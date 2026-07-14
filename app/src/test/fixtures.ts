@@ -1,4 +1,5 @@
-import type { PolarTable, WindGrid } from '../types';
+import type { PolarTable, WindGrid, MaskMeta } from '../types';
+import { NavMask } from '../lib/mask';
 
 /** Tiny synthetic polar: symmetric, monotone in TWS, humped over TWA. */
 export const TEST_POLAR: PolarTable = {
@@ -57,3 +58,25 @@ export function makeWindGrid(
 
 export const uniformWindGrid = (speedKn: number, dirFromDeg: number, opts: WindGridOpts = {}) =>
   makeWindGrid(() => ({ speedKn, dirFromDeg }), opts);
+
+export const TEST_MASK_META: MaskMeta = {
+  west: 9.4, south: 54.3, east: 11.0, north: 55.3, cols: 320, rows: 200,
+};
+
+export function makeMask(fn: (row: number, col: number) => number, meta = TEST_MASK_META): NavMask {
+  const data = new Uint8Array(meta.rows * meta.cols);
+  for (let r = 0; r < meta.rows; r++)
+    for (let c = 0; c < meta.cols; c++) data[r * meta.cols + c] = fn(r, c);
+  return new NavMask(meta, data);
+}
+
+/** All water, 20 m deep. */
+export const openWaterMask = () => makeMask(() => 200);
+
+/** Land wall at col 160 (lon ≈ 10.2), except rows 90..99 (a gap). */
+export const wallMask = () =>
+  makeMask((r, c) => (c === 160 && (r < 90 || r > 99) ? 0 : 200));
+
+// Adjust mask in tests with c < 161 instead of c < 162 due to floating-point precision in col indexing
+export const testSnapMask = () =>
+  makeMask((_, c) => (c < 161 ? 0 : 200));
