@@ -49,6 +49,7 @@ SCHLEI_URL = (
 
 
 def fetch(url: str, dest: pathlib.Path, headers: dict | None = None) -> None:
+    # NOTE: cache check is existence-only; delete pipeline/data-src/* to recover from an interrupted download.
     if dest.exists():
         print(f"cached: {dest.name}")
         return
@@ -112,6 +113,9 @@ def main() -> None:
         [{"type": "Feature", "geometry": r["geojson"], "properties": {}} for r in schlei_geojson],
         crs="EPSG:4326",
     )
+    assert schlei.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).all(), (
+        f"Schlei relation returned unexpected geometry types: {set(schlei.geometry.geom_type)}"
+    )
     schlei_water = features.rasterize(
         schlei.geometry,
         out_shape=(ROWS, COLS),
@@ -120,6 +124,11 @@ def main() -> None:
         fill=0,
         default_value=1,
     ).astype(bool)
+    n_schlei = int(schlei_water.sum())
+    print(f"Schlei carve: {n_schlei} cells")
+    assert 2000 < n_schlei < 30000, (
+        f"Schlei carve size {n_schlei} implausible - expected a fjord of roughly 40 km x ~5-10 cells width"
+    )
     land[schlei_water] = False
 
     depth_m = np.where(np.isnan(elev), np.nan, np.maximum(-elev, 0.0))

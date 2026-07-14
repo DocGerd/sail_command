@@ -106,7 +106,9 @@ About dialog):
   depth. If the mask starts failing near a currently-unlisted narrow inland
   water body, the fix is almost always the same: find its OSM relation and
   add the same carve-out, not to weaken `all_touched` or the depth
-  threshold.
+  threshold. Note: Nominatim-fetched relation geometry may drift on future
+  re-fetches (same caveat as the EMODnet coverage ID), and Nominatim's usage
+  policy makes this a manual on-demand step, not CI-suitable.
 
 Regenerate:
 
