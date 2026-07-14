@@ -14,6 +14,8 @@
       "Bash(git -C:*)",
       "Bash(gh:*)",
       "Bash(jq:*)",
+      "Bash(pipeline/bin/pmtiles:*)",
+      "Bash(pipeline/extract_basemap.sh:*)",
       "WebFetch(domain:api.open-meteo.com)",
       "WebFetch(domain:open-meteo.com)"
     ]

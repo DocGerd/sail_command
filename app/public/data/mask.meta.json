@@ -1,0 +1,15 @@
+{
+ "west": 9.4,
+ "south": 54.3,
+ "east": 11.0,
+ "north": 55.3,
+ "cols": 1100,
+ "rows": 1200,
+ "encoding": "uint8 row-major, row 0 = south; 0=land/unknown, 1-254=depth dm floored, 255=deep(>=25.4m)",
+ "verticalDatum": "LAT (EMODnet DTM 2024)",
+ "sources": [
+  "EMODnet Bathymetry Consortium (2024). EMODnet Digital Bathymetry (DTM 2024). doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1 (CC-BY 4.0)",
+  "Land polygons (c) OpenStreetMap contributors (ODbL), osmdata.openstreetmap.de",
+  "Schlei fjord water body (c) OpenStreetMap contributors (ODbL), relation 2340930 via nominatim.openstreetmap.org"
+ ]
+}
