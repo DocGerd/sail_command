@@ -38,8 +38,8 @@
   },
   "country": "DE",
   "snap": {
-   "lat": 54.629,
-   "lon": 9.935
+   "lat": 54.6254,
+   "lon": 9.9316
   },
   "approachNote": {
    "de": "Oberhalb der Kappelner Brücke (Öffnung erforderlich); schmales markiertes Fahrwasser vor Arnis.",
@@ -72,8 +72,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 55.265,
-   "lon": 9.885
+   "lat": 55.2621,
+   "lon": 9.8778
   }
  },
  {
@@ -85,8 +85,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 54.942,
-   "lon": 9.866
+   "lat": 54.9412,
+   "lon": 9.8502
   },
   "approachNote": {
    "de": "Betonntes Fahrwasser den Augustenborg Fjord hinauf, im oberen Bereich ca. 3 m.",
@@ -166,8 +166,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 55.043,
-   "lon": 9.71
+   "lat": 55.0429,
+   "lon": 9.7033
   },
   "approachNote": {
    "de": "Zufahrt über die Stegsvig durch ein schmales betonntes Fahrwasser (ca. 3,0–3,5 m, ca. 30 m breit, max. 5 kn).",
@@ -183,7 +183,7 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 55.092,
+   "lat": 55.0912,
    "lon": 10.24
   }
  },
@@ -226,8 +226,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 54.9925,
-   "lon": 9.9905
+   "lat": 54.9921,
+   "lon": 9.9913
   },
   "approachNote": {
    "de": "Bei der Anfahrt den Fähren nach Fünen und Ærø weiträumig ausweichen.",
@@ -243,8 +243,8 @@
   },
   "country": "DE",
   "snap": {
-   "lat": 54.7555,
-   "lon": 9.8645
+   "lat": 54.7571,
+   "lon": 9.8676
   },
   "approachNote": {
    "de": "Betonnte Anfahrt mit ca. 2,5–3 m; bei normalen Wasserständen ausreichend.",
@@ -277,8 +277,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 54.917,
-   "lon": 9.603
+   "lat": 54.9162,
+   "lon": 9.6
   },
   "approachNote": {
    "de": "Über die Klappbrücke Egernsund (Öffnung zu festen Zeiten), danach betonntes Fahrwasser mit ca. 2,5 m durch den flachen Nybøl Nor.",
@@ -294,8 +294,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 54.9045,
-   "lon": 9.887
+   "lat": 54.9037,
+   "lon": 9.888
   },
   "approachNote": {
    "de": "Betonntes Fahrwasser über Flachwasser mit ca. 2,5–3 m; die Betonnung unbedingt beachten.",
@@ -311,8 +311,8 @@
   },
   "country": "DE",
   "snap": {
-   "lat": 54.66,
-   "lon": 9.9355
+   "lat": 54.6579,
+   "lon": 9.9375
   },
   "approachNote": {
    "de": "Schlei-Fahrwasser auf ca. 5 m unterhalten; die Klappbrücke öffnet zu festen Zeiten für die Weiterfahrt schleiaufwärts.",
@@ -328,8 +328,8 @@
   },
   "country": "DE",
   "snap": {
-   "lat": 54.8215,
-   "lon": 9.653
+   "lat": 54.8237,
+   "lon": 9.6524
   },
   "approachNote": {
    "de": "Einfahrt auf ca. 2,5–3 m ausgebaggert, versandet jedoch; Ostwind kann den Wasserstand um 0,5 m oder mehr senken; bei Niedrigwasser grenzwertig.",
@@ -362,8 +362,8 @@
   },
   "country": "DE",
   "snap": {
-   "lat": 54.6845,
-   "lon": 9.997
+   "lat": 54.6804,
+   "lon": 9.9927
   },
   "approachNote": {
    "de": "Kurzes betonntes Seitenfahrwasser mit ca. 2,5–3 m; strikt an die Tonnen halten, beiderseits Flachwasser.",
@@ -379,8 +379,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 54.859,
-   "lon": 10.524
+   "lat": 54.8579,
+   "lon": 10.528
   },
   "approachNote": {
    "de": "Betonnte Anfahrten mit ca. 3,2 m (N und W), 4,5 m von S; Teile des Yachthafenbeckens nur ca. 2 m.",
@@ -396,8 +396,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 54.9325,
-   "lon": 10.0485
+   "lat": 54.9329,
+   "lon": 10.0495
   },
   "approachNote": {
    "de": "Einfahrt ca. 2,5–3 m; bei starkem Ostwind exponiert.",
@@ -413,8 +413,8 @@
   },
   "country": "DE",
   "snap": {
-   "lat": 54.6606,
-   "lon": 10.0435
+   "lat": 54.6612,
+   "lon": 10.0436
   }
  },
  {
@@ -460,8 +460,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 54.944,
-   "lon": 10.254
+   "lat": 54.9454,
+   "lon": 10.256
   }
  },
  {
@@ -473,8 +473,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 54.908,
-   "lon": 9.783
+   "lat": 54.9046,
+   "lon": 9.7833
   },
   "approachNote": {
    "de": "Tiefes Wasser im Alssund; die Klappbrücke öffnet zu festen Zeiten für die Durchfahrt nach Norden.",
@@ -490,8 +490,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 55.0585,
-   "lon": 10.616
+   "lat": 55.0554,
+   "lon": 10.6167
   },
   "approachNote": {
    "de": "Tiefes Wasser, aber starke kenternde Strömung (bis ca. 2,5 kn) im Svendborg Sund.",
@@ -507,8 +507,8 @@
   },
   "country": "DK",
   "snap": {
-   "lat": 55.0375,
-   "lon": 10.642
+   "lat": 55.0371,
+   "lon": 10.6444
   },
   "approachNote": {
    "de": "Kleines Hafenbecken ca. 2,0–2,5 m – knapp für 2,1 m Tiefgang; die Strömung steht quer zur Einfahrt.",
@@ -524,8 +524,8 @@
   },
   "country": "DE",
   "snap": {
-   "lat": 54.7605,
-   "lon": 9.8745
+   "lat": 54.7604,
+   "lon": 9.872
   },
   "approachNote": {
    "de": "Einfahrt versandet; windbedingtes Niedrigwasser kann das Einlaufen unmöglich machen – für 2,1 m Tiefgang als grenzwertig einstufen.",
