@@ -13,15 +13,34 @@ function Probe() {
   );
 }
 
-it('translates, interpolates and toggles language with persistence', () => {
-  localStorage.setItem('sc-lang', 'de');
+const renderProbe = () =>
   render(
     <I18nProvider>
       <Probe />
     </I18nProvider>,
   );
+
+afterEach(() => {
+  localStorage.clear();
+});
+
+it('translates, interpolates and defaults to German when no language is stored', () => {
+  renderProbe();
   expect(screen.getByTestId('msg')).toHaveTextContent('SailCommand');
-  expect(screen.getByTestId('vars').textContent).toContain('14:30');
+  expect(screen.getByTestId('vars')).toHaveTextContent('Ankunft 14:30');
+});
+
+it('restores a persisted English preference on mount', () => {
+  localStorage.setItem('sc-lang', 'en');
+  renderProbe();
+  expect(screen.getByTestId('vars')).toHaveTextContent('Arrival 14:30');
+});
+
+it('toggle switches the rendered language and persists it', () => {
+  localStorage.setItem('sc-lang', 'de');
+  renderProbe();
+  expect(screen.getByTestId('vars')).toHaveTextContent('Ankunft 14:30');
   fireEvent.click(screen.getByText('toggle'));
+  expect(screen.getByTestId('vars')).toHaveTextContent('Arrival 14:30');
   expect(localStorage.getItem('sc-lang')).toBe('en');
 });
