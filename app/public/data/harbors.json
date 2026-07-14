@@ -1,0 +1,535 @@
+[
+ {
+  "id": "aeroeskoebing",
+  "names": {
+   "de": "Ærøskøbing",
+   "da": "Ærøskøbing",
+   "en": "Ærøskøbing"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.8935,
+   "lon": 10.416
+  },
+  "approachNote": {
+   "de": "Betonntes Anfahrtsfahrwasser durch Flachwasser; strikt im Fahrwasser bleiben, beiderseits nahe Untiefen.",
+   "en": "Buoyed approach channel through flats; keep strictly to the channel, shoals close on both sides."
+  }
+ },
+ {
+  "id": "aabenraa",
+  "names": {
+   "de": "Apenrade",
+   "da": "Aabenraa",
+   "en": "Aabenraa"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.0345,
+   "lon": 9.427
+  }
+ },
+ {
+  "id": "arnis",
+  "names": {
+   "de": "Arnis",
+   "da": "Arnæs",
+   "en": "Arnis"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.629,
+   "lon": 9.935
+  },
+  "approachNote": {
+   "de": "Oberhalb der Kappelner Brücke (Öffnung erforderlich); schmales markiertes Fahrwasser vor Arnis.",
+   "en": "Above the Kappeln bridge (opening required); narrow marked channel off Arnis."
+  }
+ },
+ {
+  "id": "aaroesund",
+  "names": {
+   "de": "Årösund",
+   "da": "Årøsund",
+   "en": "Årøsund"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.26,
+   "lon": 9.7165
+  },
+  "approachNote": {
+   "de": "Hafen ca. 2,5–3 m; starke Strömung im Årøsund-Fahrwasser.",
+   "en": "Harbor approx 2.5-3 m; strong current in the Årøsund channel."
+  }
+ },
+ {
+  "id": "assens",
+  "names": {
+   "de": "Assens",
+   "da": "Assens",
+   "en": "Assens"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.265,
+   "lon": 9.885
+  }
+ },
+ {
+  "id": "augustenborg",
+  "names": {
+   "de": "Augustenburg",
+   "da": "Augustenborg",
+   "en": "Augustenborg"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.942,
+   "lon": 9.866
+  },
+  "approachNote": {
+   "de": "Betonntes Fahrwasser den Augustenborg Fjord hinauf, im oberen Bereich ca. 3 m.",
+   "en": "Buoyed fairway up Augustenborg Fjord, approx 3 m in the upper reaches."
+  }
+ },
+ {
+  "id": "avernakoe",
+  "names": {
+   "de": "Avernakø",
+   "da": "Avernakø",
+   "en": "Avernakø"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.042,
+   "lon": 10.2525
+  },
+  "approachNote": {
+   "de": "Hafenbecken ca. 2,5 m; Anfahrt von N über allmählich flacher werdenden Grund.",
+   "en": "Basin approx 2.5 m; approach from N over gradually shoaling ground."
+  }
+ },
+ {
+  "id": "bagenkop",
+  "names": {
+   "de": "Bagenkop",
+   "da": "Bagenkop",
+   "en": "Bagenkop"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.753,
+   "lon": 10.668
+  }
+ },
+ {
+  "id": "damp",
+  "names": {
+   "de": "Damp",
+   "da": "Damp",
+   "en": "Damp"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.5855,
+   "lon": 10.031
+  },
+  "approachNote": {
+   "de": "Ausgebaggerte Einfahrt mit ca. 2,5–3 m, nach Stürmen anfällig für Versandung; den Tonnen genau folgen.",
+   "en": "Dredged entrance channel approx 2.5-3 m, prone to silting after storms; follow the buoys exactly."
+  }
+ },
+ {
+  "id": "drejoe",
+  "names": {
+   "de": "Drejø",
+   "da": "Drejø",
+   "en": "Drejø"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.9645,
+   "lon": 10.439
+  },
+  "approachNote": {
+   "de": "Hafenbecken ca. 2,5–3 m, unmittelbar vor den Molen Untiefen.",
+   "en": "Basin approx 2.5-3 m, shoal ground close outside the moles."
+  }
+ },
+ {
+  "id": "dyvig",
+  "names": {
+   "de": "Dyvig",
+   "da": "Dyvig",
+   "en": "Dyvig"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.043,
+   "lon": 9.71
+  },
+  "approachNote": {
+   "de": "Zufahrt über die Stegsvig durch ein schmales betonntes Fahrwasser (ca. 3,0–3,5 m, ca. 30 m breit, max. 5 kn).",
+   "en": "Enter via Stegsvig through a narrow buoyed channel (approx 3.0-3.5 m, ~30 m wide, 5 kn max)."
+  }
+ },
+ {
+  "id": "faaborg",
+  "names": {
+   "de": "Faaborg",
+   "da": "Faaborg",
+   "en": "Faaborg"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.092,
+   "lon": 10.24
+  }
+ },
+ {
+  "id": "faldsled",
+  "names": {
+   "de": "Faldsled",
+   "da": "Faldsled",
+   "en": "Faldsled"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.15,
+   "lon": 10.142
+  },
+  "approachNote": {
+   "de": "Betonnte Anfahrt mit ca. 2,5 m durch eine flache Bucht – wenig Reserve für 2,1 m Tiefgang.",
+   "en": "Buoyed approach approx 2.5 m through a shallow bay - little margin for 2.1 m."
+  }
+ },
+ {
+  "id": "flensburg",
+  "names": {
+   "de": "Flensburg",
+   "da": "Flensborg",
+   "en": "Flensburg"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.798,
+   "lon": 9.4335
+  }
+ },
+ {
+  "id": "fynshav",
+  "names": {
+   "de": "Fünenshaff",
+   "da": "Fynshav",
+   "en": "Fynshav"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.9925,
+   "lon": 9.9905
+  },
+  "approachNote": {
+   "de": "Bei der Anfahrt den Fähren nach Fünen und Ærø weiträumig ausweichen.",
+   "en": "Keep well clear of the Als-Fyn/Ærø ferries when approaching."
+  }
+ },
+ {
+  "id": "gelting-mole",
+  "names": {
+   "de": "Gelting Mole",
+   "da": "Gelting Mole",
+   "en": "Gelting Mole"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.7555,
+   "lon": 9.8645
+  },
+  "approachNote": {
+   "de": "Betonnte Anfahrt mit ca. 2,5–3 m; bei normalen Wasserständen ausreichend.",
+   "en": "Buoyed approach approx 2.5-3 m; adequate at normal water levels."
+  }
+ },
+ {
+  "id": "gluecksburg",
+  "names": {
+   "de": "Glücksburg",
+   "da": "Lyksborg",
+   "en": "Glücksburg"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.8415,
+   "lon": 9.5225
+  },
+  "approachNote": {
+   "de": "Hafenbecken ca. 2,0–2,5 m; bei Niedrigwasser durch Ostwind wenig Reserve für 2,1 m Tiefgang.",
+   "en": "Marina basin approx 2.0-2.5 m; little margin for 2.1 m draft at wind-driven low water."
+  }
+ },
+ {
+  "id": "graasten",
+  "names": {
+   "de": "Gravenstein",
+   "da": "Gråsten",
+   "en": "Gråsten"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.917,
+   "lon": 9.603
+  },
+  "approachNote": {
+   "de": "Über die Klappbrücke Egernsund (Öffnung zu festen Zeiten), danach betonntes Fahrwasser mit ca. 2,5 m durch den flachen Nybøl Nor.",
+   "en": "Via Egernsund bascule bridge (scheduled openings), then buoyed channel approx 2.5 m across shallow Nybøl Nor."
+  }
+ },
+ {
+  "id": "hoeruphav",
+  "names": {
+   "de": "Höruphaff",
+   "da": "Høruphav",
+   "en": "Høruphav"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.9045,
+   "lon": 9.887
+  },
+  "approachNote": {
+   "de": "Betonntes Fahrwasser über Flachwasser mit ca. 2,5–3 m; die Betonnung unbedingt beachten.",
+   "en": "Buoyed channel across shoal ground, approx 2.5-3 m; respect the buoyage."
+  }
+ },
+ {
+  "id": "kappeln",
+  "names": {
+   "de": "Kappeln",
+   "da": "Kappel",
+   "en": "Kappeln"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.66,
+   "lon": 9.9355
+  },
+  "approachNote": {
+   "de": "Schlei-Fahrwasser auf ca. 5 m unterhalten; die Klappbrücke öffnet zu festen Zeiten für die Weiterfahrt schleiaufwärts.",
+   "en": "Schlei fairway maintained approx 5 m; bascule bridge opens at fixed times for passage further up-Schlei."
+  }
+ },
+ {
+  "id": "langballigau",
+  "names": {
+   "de": "Langballigau",
+   "da": "Langballigau",
+   "en": "Langballigau"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.8215,
+   "lon": 9.653
+  },
+  "approachNote": {
+   "de": "Einfahrt auf ca. 2,5–3 m ausgebaggert, versandet jedoch; Ostwind kann den Wasserstand um 0,5 m oder mehr senken; bei Niedrigwasser grenzwertig.",
+   "en": "Entrance dredged approx 2.5-3 m but silts; easterly winds can lower the level 0.5 m+; marginal at low water."
+  }
+ },
+ {
+  "id": "lyoe",
+  "names": {
+   "de": "Lyø",
+   "da": "Lyø",
+   "en": "Lyø"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.0525,
+   "lon": 10.1615
+  },
+  "approachNote": {
+   "de": "Hafenbecken ca. 2,5 m, rings um die Insel Flachwasser; der betonnten Anfahrt folgen.",
+   "en": "Basin approx 2.5 m with shallow flats around the island; follow the buoyed approach."
+  }
+ },
+ {
+  "id": "maasholm",
+  "names": {
+   "de": "Maasholm",
+   "da": "Maasholm",
+   "en": "Maasholm"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.6845,
+   "lon": 9.997
+  },
+  "approachNote": {
+   "de": "Kurzes betonntes Seitenfahrwasser mit ca. 2,5–3 m; strikt an die Tonnen halten, beiderseits Flachwasser.",
+   "en": "Short buoyed side channel approx 2.5-3 m; keep strictly to the buoys, flats on both sides."
+  }
+ },
+ {
+  "id": "marstal",
+  "names": {
+   "de": "Marstal",
+   "da": "Marstal",
+   "en": "Marstal"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.859,
+   "lon": 10.524
+  },
+  "approachNote": {
+   "de": "Betonnte Anfahrten mit ca. 3,2 m (N und W), 4,5 m von S; Teile des Yachthafenbeckens nur ca. 2 m.",
+   "en": "Buoyed approaches approx 3.2 m (N and W), 4.5 m from S; parts of the yacht basin only approx 2 m."
+  }
+ },
+ {
+  "id": "mommark",
+  "names": {
+   "de": "Mommark",
+   "da": "Mommark",
+   "en": "Mommark"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.9325,
+   "lon": 10.0485
+  },
+  "approachNote": {
+   "de": "Einfahrt ca. 2,5–3 m; bei starkem Ostwind exponiert.",
+   "en": "Entrance approx 2.5-3 m; exposed in strong easterly winds."
+  }
+ },
+ {
+  "id": "olpenitz",
+  "names": {
+   "de": "Olpenitz",
+   "da": "Olpenitz",
+   "en": "Olpenitz"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.6606,
+   "lon": 10.0435
+  }
+ },
+ {
+  "id": "rudkoebing",
+  "names": {
+   "de": "Rudkøbing",
+   "da": "Rudkøbing",
+   "en": "Rudkøbing"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.941,
+   "lon": 10.706
+  },
+  "approachNote": {
+   "de": "Nur über den Rudkøbing Løb erreichbar, ein schmales ausgebaggertes Fahrwasser (ca. 3 m) durch ausgedehntes Flachwasser; starke kehrende Strömung.",
+   "en": "Only via Rudkøbing Løb, a narrow dredged channel (approx 3 m) through extensive flats; hard reversing current."
+  }
+ },
+ {
+  "id": "schleimuende",
+  "names": {
+   "de": "Schleimünde",
+   "da": "Slieminde",
+   "en": "Schleimünde"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.673,
+   "lon": 10.037
+  },
+  "approachNote": {
+   "de": "Kleines Hafenbecken teils nur ca. 2,0–2,5 m tief und sehr eng; mit 2,1 m Tiefgang den Liegeplatz sorgfältig wählen.",
+   "en": "Small basin only approx 2-2.5 m in parts and very tight; pick your spot carefully with 2.1 m."
+  }
+ },
+ {
+  "id": "soeby",
+  "names": {
+   "de": "Søby",
+   "da": "Søby",
+   "en": "Søby"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.944,
+   "lon": 10.254
+  }
+ },
+ {
+  "id": "soenderborg",
+  "names": {
+   "de": "Sonderburg",
+   "da": "Sønderborg",
+   "en": "Sønderborg"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 54.908,
+   "lon": 9.783
+  },
+  "approachNote": {
+   "de": "Tiefes Wasser im Alssund; die Klappbrücke öffnet zu festen Zeiten für die Durchfahrt nach Norden.",
+   "en": "Deep water in Alssund; the bascule bridge opens at scheduled times for passage north."
+  }
+ },
+ {
+  "id": "svendborg",
+  "names": {
+   "de": "Svendborg",
+   "da": "Svendborg",
+   "en": "Svendborg"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.0585,
+   "lon": 10.616
+  },
+  "approachNote": {
+   "de": "Tiefes Wasser, aber starke kehrende Strömung (bis ca. 2,5 kn) im Svendborg Sund.",
+   "en": "Deep water but strong reversing current (up to ~2.5 kn) in Svendborg Sund."
+  }
+ },
+ {
+  "id": "troense",
+  "names": {
+   "de": "Troense",
+   "da": "Troense",
+   "en": "Troense"
+  },
+  "country": "DK",
+  "snap": {
+   "lat": 55.0375,
+   "lon": 10.642
+  },
+  "approachNote": {
+   "de": "Kleines Hafenbecken ca. 2,0–2,5 m – knapp für 2,1 m Tiefgang; die Strömung steht quer zur Einfahrt.",
+   "en": "Small basin approx 2-2.5 m - tight for 2.1 m; current sets across the entrance."
+  }
+ },
+ {
+  "id": "wackerballig",
+  "names": {
+   "de": "Wackerballig",
+   "da": "Wackerballig",
+   "en": "Wackerballig"
+  },
+  "country": "DE",
+  "snap": {
+   "lat": 54.7605,
+   "lon": 9.8745
+  },
+  "approachNote": {
+   "de": "Einfahrt versandet; windbedingtes Niedrigwasser kann das Einlaufen unmöglich machen – für 2,1 m Tiefgang als grenzwertig einstufen.",
+   "en": "Entrance silts; wind-driven low water can make entry impossible - treat as marginal for 2.1 m."
+  }
+ }
+]
