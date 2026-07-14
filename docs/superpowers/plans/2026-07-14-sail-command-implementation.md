@@ -158,7 +158,7 @@ export interface Leg {
   startTimeMs: number;
   endTimeMs: number;
   headingDeg: number; // course over ground, degrees true
-  twaDeg: number; // signed: >0 starboard board, <0 port board; NaN for motor
+  twaDeg: number; // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard); NaN for motor
   twsKn: number; // TWS at leg start
   speedKn: number;
   distanceNm: number;
