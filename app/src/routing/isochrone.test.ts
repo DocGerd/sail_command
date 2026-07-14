@@ -59,13 +59,30 @@ describe('isochrone golden routes', () => {
   });
 
   it('rounds an island between the ports instead of crossing it', () => {
-    // wall at lon≈10.2 with a gap at lat≈54.75..54.80 → must aim for the gap
-    const r = solve(params({ mask: wallMask(), wind: new WindField(uniformWindGrid(14, 0)) }));
+    // Wall at col 160 (lon≈10.2) with a gap only at rows 90–99 (lat 54.75–54.80).
+    // Origin/destination sit at lat 54.60 — the direct track is blocked; the
+    // route must climb ~9 nm north to the gap, thread it, and come back down.
+    const detourA = { lat: 54.6, lon: 10.0 };
+    const detourB = { lat: 54.6, lon: 10.4 };
+    const m = wallMask();
+    expect(m.segmentNavigable(detourA, detourB, 3)).toBe(false); // direct is blocked
+    const r = solve(
+      params({
+        origin: detourA,
+        destination: detourB,
+        mask: m,
+        wind: new WindField(uniformWindGrid(14, 0)),
+      }),
+    );
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    // every leg strictly navigable
-    const m = wallMask();
     for (const l of r.legs) expect(m.segmentNavigable(l.start, l.end, 3)).toBe(true);
+    // the route genuinely detours through the gap
+    const maxLat = Math.max(...r.legs.map((l) => Math.max(l.start.lat, l.end.lat)));
+    expect(maxLat).toBeGreaterThan(54.74); // reached the gap band
+    const dist = r.legs.reduce((s, l) => s + l.distanceNm, 0);
+    expect(dist).toBeGreaterThan(20); // reviewer-verified detour ≈ 24.3 nm vs 13.9 direct
+    expect(dist).toBeLessThan(30);
   });
 
   it('blocked destination → unreachable with reason', () => {

@@ -91,7 +91,8 @@ export function solve(p: SolveParams): SolveResult {
 
   while (frontier.length > 0) {
     if (best && tMs >= best.etaMs) break;
-    const minDist = Math.min(...frontier.map((n) => n.distToDestNm));
+    let minDist = Infinity;
+    for (const n of frontier) if (n.distToDestNm < minDist) minDist = n.distToDestNm;
     const dtS = minDist < 2 ? 150 : minDist < 5 ? 300 : 600;
     if (tMs + dtS * 1000 > horizonMs) {
       if (best) break;
@@ -221,7 +222,7 @@ export function solve(p: SolveParams): SolveResult {
       if (seen === undefined || n.maneuvers < seen) visited.set(k, n.maneuvers);
     }
     if (next.length > MAX_FRONTIER) {
-      next.sort((a, b) => (better(a, b) ? -1 : 1));
+      next.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : 0));
       next = next.slice(0, MAX_FRONTIER);
     }
     frontier = next;
@@ -230,6 +231,7 @@ export function solve(p: SolveParams): SolveResult {
   }
 
   if (!best) {
+    // Heuristic: nodes pruned by visited/byKey count as neither death; adequate in real geometry, may misclassify contrived single-cell pockets.
     return {
       status: 'no-route',
       reason: blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'unreachable' : 'calm-motor-off',
