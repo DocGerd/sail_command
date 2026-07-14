@@ -11,8 +11,8 @@ const SLOW_FOCK: PolarTable = {
 };
 
 const req: PlanRequest = {
-  origin: { lat: 54.75, lon: 10.0 },
-  destination: { lat: 54.75, lon: 10.4 },
+  origin: { lat: 54.7525, lon: 10.0025 },
+  destination: { lat: 54.7525, lon: 10.4025 },
   originHarborId: null,
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
@@ -36,13 +36,13 @@ describe('planRoute', () => {
     // land west of col 162 (lon ≈ 10.21); origin on land near the edge
     const mask = makeMask((_, c) => (c < 162 ? 0 : 200));
     const r = planRoute(
-      { ...req, origin: { lat: 54.75, lon: 10.207 }, destination: { lat: 54.75, lon: 10.6 } },
+      { ...req, origin: { lat: 54.7525, lon: 10.2095 }, destination: { lat: 54.7525, lon: 10.6025 } },
       uniformWindGrid(12, 0),
       { ...deps, mask },
     );
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    expect(r.snappedOrigin.lon).toBeGreaterThan(10.207);
+    expect(r.snappedOrigin.lon).toBeGreaterThan(10.2095);
     expect(mask.isNavigable(r.snappedOrigin, DEFAULT_SETTINGS.safetyDepthM)).toBe(true);
   });
 

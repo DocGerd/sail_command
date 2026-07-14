@@ -23,9 +23,9 @@ export function planRoute(
 ): PlanResult {
   const { mask } = deps;
   const s = req.settings;
-  const origin = mask.snapToNavigable(req.origin, s.safetyDepthM, 500);
+  const origin = mask.snapToNavigable(req.origin, s.safetyDepthM);
   if (!origin) return { status: 'error', reason: 'snap-failed-origin' };
-  const destination = mask.snapToNavigable(req.destination, s.safetyDepthM, 500);
+  const destination = mask.snapToNavigable(req.destination, s.safetyDepthM);
   if (!destination) return { status: 'error', reason: 'snap-failed-destination' };
 
   const wind = new WindField(windGrid);
