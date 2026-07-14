@@ -76,7 +76,3 @@ export const openWaterMask = () => makeMask(() => 200);
 /** Land wall at col 160 (lon ≈ 10.2), except rows 90..99 (a gap). */
 export const wallMask = () =>
   makeMask((r, c) => (c === 160 && (r < 90 || r > 99) ? 0 : 200));
-
-// Adjust mask in tests with c < 161 instead of c < 162 due to floating-point precision in col indexing
-export const testSnapMask = () =>
-  makeMask((_, c) => (c < 161 ? 0 : 200));

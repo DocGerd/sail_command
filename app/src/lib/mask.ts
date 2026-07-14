@@ -1,5 +1,5 @@
 import type { LatLon, MaskMeta } from '../types';
-import { haversineNm } from './geo';
+import { haversineNm, toRad } from './geo';
 
 const LAND = 0;
 const NM_PER_M = 1 / 1852;
@@ -96,8 +96,9 @@ export class NavMask {
       row: Math.floor((p.lat - this.meta.south) / this.latStep),
       col: Math.floor((p.lon - this.meta.west) / this.lonStep),
     };
-    const cellM = 111_320 * this.latStep; // ~cell height in meters
-    const maxRing = Math.ceil(maxRadiusM / cellM) + 1;
+    const cellLatM = 111_320 * this.latStep;
+    const cellLonM = 111_320 * this.lonStep * Math.cos(toRad(p.lat));
+    const maxRing = Math.ceil(maxRadiusM / Math.min(cellLatM, cellLonM)) + 1;
     let best: { p: LatLon; d: number } | null = null;
     for (let ring = 0; ring <= maxRing; ring++) {
       for (let dr = -ring; dr <= ring; dr++) {

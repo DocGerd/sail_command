@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
-import { NavMask } from './mask';
 
 const CELL_LAT = (TEST_MASK_META.north - TEST_MASK_META.south) / TEST_MASK_META.rows; // 0.005
 const CELL_LON = (TEST_MASK_META.east - TEST_MASK_META.west) / TEST_MASK_META.cols; // 0.005
@@ -44,19 +43,20 @@ describe('NavMask', () => {
   it('snaps to the nearest navigable cell within 300 m, else null', () => {
     // Use finer grid (10x resolution) to allow cells within 300m
     const fineGridMeta = { west: 9.4, south: 54.3, east: 11.0, north: 55.3, cols: 3200, rows: 2000 };
-    const fineData = new Uint8Array(fineGridMeta.rows * fineGridMeta.cols);
-    // Land at cols < 1600, water at cols >= 1600
-    for (let r = 0; r < fineGridMeta.rows; r++) {
-      for (let c = 0; c < fineGridMeta.cols; c++) {
-        fineData[r * fineGridMeta.cols + c] = c < 1600 ? 0 : 200;
-      }
-    }
-    const m = new NavMask(fineGridMeta, fineData);
+    const m = makeMask((_, c) => (c < 1600 ? 0 : 200), fineGridMeta);
     const onLand = { lat: 54.75, lon: 10.205 }; // col ~1600 (land), ~32m from col 1600 center
     const snapped = m.snapToNavigable(onLand, 3.0);
     expect(snapped).not.toBeNull();
     expect(m.isNavigable(snapped!, 3.0)).toBe(true);
     const deepInland = { lat: 54.75, lon: 9.5 };
     expect(m.snapToNavigable(deepInland, 3.0)).toBeNull();
+  });
+
+  it('snap radius covers narrow longitude cells at high latitude (asymmetry regression)', () => {
+    const m = makeMask((_, c) => (c >= 155 ? 200 : 0));
+    const p = { lat: 54.7525, lon: 10.1549 };
+    const snapped = m.snapToNavigable(p, 3.0, 1500);
+    expect(snapped).not.toBeNull();
+    expect(m.isNavigable(snapped!, 3.0)).toBe(true);
   });
 });
