@@ -148,3 +148,17 @@ forecast horizon, route sharing/collaboration, official ENC chart data.
 - SailCommand is a **passage-planning aid, not a navigation device**. Chart
   data is simplified; the official chart/plotter remains authoritative.
 - First load downloads ~30–40 MB (basemap + data); subsequent loads cached.
+
+## 8. Post-approval additions (2026-07-15, user-requested during implementation)
+
+- **Movable via-waypoints with auto re-route (in scope, v1):** plans may carry
+  ordered via-waypoints (`PlanRequest.viaPoints`); the router solves each
+  segment per rig and concatenates. The UI lets the user add vias at plan time
+  and drag via markers on the map; on drop the route recomputes against the
+  plan's **stored** wind grid (no refetch). Vias snap to navigable water
+  (300 m) or fail with `snap-failed-via`. v1 simplification: maneuver state
+  does not carry across via joints. (Issue #4; plan tasks B13/E8.)
+- **Garmin Boating route sync (backlog, v2):** import routes from Garmin
+  Boating and push basic updates back. First increment will be file-based GPX
+  import (export already exists); true API sync is constrained by the
+  no-backend rule. (Issue #3.)

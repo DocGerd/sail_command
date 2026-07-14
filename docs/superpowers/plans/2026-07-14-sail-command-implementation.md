@@ -2544,6 +2544,20 @@ export class RoutingClient {
 
 - [ ] **Step 4: Run all tests + typecheck, expect PASS** · **Step 5: Commit** (`feat: routing web worker protocol and typed client`)
 
+
+### Task B13: Via-waypoints — segmented routing (added 2026-07-15, issue #4)
+
+**Files:**
+- Modify: `app/src/types.ts` (PlanRequest, NoRouteReason), `app/src/routing/planRoute.ts`
+- Create: `app/src/routing/viaPoints.test.ts`
+
+**Interfaces:**
+- Consumes: `solve` (B6), `mergeCollinearLegs` (B8), `snapToNavigable` (B4).
+- Produces: `PlanRequest.viaPoints: LatLon[]` (new required field — update ALL existing constructions of PlanRequest in tests/briefs to `viaPoints: []`); `NoRouteReason` gains `'snap-failed-via'`. `planRoute` behavior: snap origin, each via (300 m), destination — via snap failure → `{status:'error', reason:'snap-failed-via'}`; per rig, solve segments origin→via1→…→destination sequentially, each segment departing at the previous segment's `etaMs`; concatenate postprocessed legs (do NOT merge across joints); totals summed; any segment no-route fails that rig with the segment's reason. Recommendation on total ETA as before. Documented v1 simplification: maneuver state resets at joints (a board change across a via is not charged).
+
+- [ ] **Step 1: Write failing tests** (`viaPoints.test.ts`): (a) open water, wind 12 kn from N, origin (54.7525, 10.0025) → dest (54.7525, 10.4025) with via (54.9025, 10.2025) well north of the direct line → status ok; some leg endpoint within 0.05 nm of the snapped via; legs continuous (each start == previous end) and times strictly increasing ACROSS the joint; total distance > direct distance + 15 nm-ish sanity. (b) `viaPoints: []` behaves exactly as before (regression: reuse an existing planRoute test scenario and assert equal ETA). (c) via deep inland (54.7525, 9.6) with the col<162-land mask → `snap-failed-via`.
+- [ ] **Step 2: FAIL** → **Step 3: implement** (loop over waypoint chain per rig; thread departure time; keep progress callback wiring — report the rig once per segment) → **Step 4: PASS + full suite + lint + typecheck** → **Step 5: commit** (`feat: via-waypoint segmented routing`).
+
 **Phase B gate:** all unit + property tests green; `npm --prefix app/ run typecheck && npm --prefix app/ run lint` clean. Open PR "Phase B: routing domain core" → self-review → merge.
 
 ---
@@ -3443,6 +3457,19 @@ UI notes for every E task: ALL user-visible strings go through `useT()` — add 
 - Map tap-to-pick wiring: `PlannerPanel.onRequestMapTap` arms `MapView.tapActive`; next tap resolves to `PickedPoint` (label = `formatHeading`-free coordinate string `54.789°N 9.433°E`) and disarms.
 
 - [ ] Steps: App test (tabs switch, offline event shows banner, about opens with disclaimer text in current language); assemble; **manual check in dev browser of the complete flow: pick harbors → plan → route on map → switch rig → live tab**; commit (`feat: app shell with banners, caveats dialog, panel navigation`).
+
+
+### Task E8: Draggable via-waypoints + auto re-route (added 2026-07-15, issue #4)
+
+**Files:**
+- Modify: `app/src/components/PlannerPanel.tsx` (via list: add-by-map-tap, remove, reorder), `app/src/components/RouteLayer.tsx` (via markers), `app/src/state/usePlanFlow.ts`
+- Create: `app/src/state/replan.ts` (+ test), `app/src/components/ViaMarkers.tsx`
+
+**Interfaces:**
+- Produces: `replanWithVias(plan: Plan, viaPoints: LatLon[], deps): Promise<Plan>` — re-runs the routing worker with the plan's **stored** `windGrid` (never refetches; spec hard rule) and the same settings snapshot, returns an updated Plan (same id, result/vias replaced), saves via `savePlan`. Guard: if `departureMs` is beyond the stored grid horizon (stale saved plan), surface `error.replanStaleWind` instead (both dicts). `ViaMarkers`: draggable MapLibre markers for `plan.request.viaPoints`; on `dragend` → `replanWithVias`; while replanning, markers disabled + spinner chip; on error, marker snaps back and a banner shows the reason. PlannerPanel: "Wegpunkt hinzufügen" arms map-tap → appends via before planning; via chips removable and reorderable (up/down buttons suffice — no DnD lists).
+- All new strings in BOTH dicts. Unit tests: `replan.ts` with injected fakes (stored-grid reuse asserted — the fake fetchWind must NOT be called; stale-horizon error path; save called with same plan id). Marker/drag behavior is covered by E2E (F2 adds a drag step to plan.spec if feasible via mouse events on the marker element; otherwise assert via the panel's via-list edit path).
+
+- [ ] TDD replan.ts → implement components → wire → full suite + lint + typecheck → commit (`feat: draggable via-waypoints with stored-wind re-route`).
 
 **Phase E gate:** all tests green; `npm --prefix app/ run build` succeeds; manual dev-browser flow works end-to-end (with real Open-Meteo). PR "Phase E: UI" → self-review → merge.
 
