@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+app/dist/
+*.tsbuildinfo
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Pipeline intermediate downloads (raw source data, not the packed outputs)
+pipeline/raw/
+
+# Local/session files
+.claude/settings.local.json
+.remember/
+.env
+.env.*
+
+# OS noise
+.DS_Store
