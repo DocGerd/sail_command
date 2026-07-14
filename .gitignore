@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+app/node_modules/
+pipeline/node_modules/
 
 # Build outputs
 dist/
@@ -9,13 +11,19 @@ app/dist/
 # Test artifacts
 coverage/
 playwright-report/
+app/playwright-report/
 test-results/
+app/test-results/
 
 # Pipeline intermediate downloads (raw source data, not the packed outputs)
 pipeline/raw/
+pipeline/data-src/
+pipeline/.venv/
 
 # Local/session files
 .claude/settings.local.json
+.claude/worktrees/
+.superpowers/
 .remember/
 .env
 .env.*
