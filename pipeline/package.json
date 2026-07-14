@@ -1,0 +1,9 @@
+{
+  "name": "sailcommand-pipeline",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "polars": "node build_polars.mjs",
+    "harbors": "node build_harbors.mjs"
+  }
+}
