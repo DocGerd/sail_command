@@ -18,6 +18,7 @@ grid = np.frombuffer((OUT / "mask.bin").read_bytes(), dtype=np.uint8).reshape(
 def depth_m(lat: float, lon: float) -> float:
     row = int((lat - meta["south"]) / (meta["north"] - meta["south"]) * meta["rows"])
     col = int((lon - meta["west"]) / (meta["east"] - meta["west"]) * meta["cols"])
+    assert 0 <= row < meta["rows"] and 0 <= col < meta["cols"], f"probe {lat},{lon} maps outside the mask grid"
     b = int(grid[row, col])
     return 0.0 if b == 0 else (25.4 if b == 255 else b / 10.0)
 

@@ -6,10 +6,19 @@ const here = dirname(fileURLToPath(import.meta.url));
 const src = JSON.parse(readFileSync(join(here, 'polars-source.json'), 'utf8'));
 const outDir = join(here, '..', 'app', 'public', 'data');
 
-const SOURCE_NOTE =
-  'Estimate derived from ORC International 2026 certificate Salona 45 "Miles Ahead" (AUT 035/26); ' +
-  'downwind corrected to white sails via 23-boat ORC non-spinnaker ratio study; genoa table modeled overlay. ' +
-  'Flat-water racing VPP — tune with the performance factor. NOT race-calibrated.';
+const SOURCE_NOTES = {
+  fock:
+    'Estimate derived from ORC International 2026 certificate Salona 45 "Miles Ahead" (AUT 035/26) — ' +
+    'the measured ~110% jib makes this effectively the certificate configuration; downwind corrected to ' +
+    'white sails via 23-boat ORC non-spinnaker ratio study. ' +
+    'Flat-water racing VPP — tune with the performance factor. NOT race-calibrated.',
+  genoa:
+    'Estimate derived from ORC International 2026 certificate Salona 45 "Miles Ahead" (AUT 035/26) — ' +
+    'the ~135% genoa table is a modeled overlay on the certificate configuration (+3–5% light-air ' +
+    'upwind/reach, 0 at 14–20 kn, −2% upwind at 25 kn); downwind corrected to white sails via 23-boat ' +
+    'ORC non-spinnaker ratio study. ' +
+    'Flat-water racing VPP — tune with the performance factor. NOT race-calibrated.',
+};
 
 function validate(name, speeds) {
   if (speeds.length !== src.twa.length) throw new Error(`${name}: twa row count`);
@@ -23,7 +32,12 @@ function validate(name, speeds) {
     }
   }
   // sanity anchors (research-verified magnitudes)
-  const at = (twa, tws) => speeds[src.twa.indexOf(twa)][src.tws.indexOf(tws)];
+  const at = (twa, tws) => {
+    const i = src.twa.indexOf(twa);
+    const j = src.tws.indexOf(tws);
+    if (i < 0 || j < 0) throw new Error(`sanity anchor twa=${twa}/tws=${tws} not present in source table`);
+    return speeds[i][j];
+  };
   if (Math.abs(at(90, 16) - 8.86) > 0.6) throw new Error(`${name}: beam reach @16kn drifted`);
   if (at(52, 12) < 6.5 || at(52, 12) > 8.5) throw new Error(`${name}: upwind @12kn implausible`);
 }
@@ -38,7 +52,7 @@ for (const rig of ['genoa', 'fock']) {
     speeds: src[rig],
     beat: src.beat,
     gybe: src.gybe,
-    source: SOURCE_NOTE,
+    source: SOURCE_NOTES[rig],
   };
   writeFileSync(join(outDir, `polar-${rig}.json`), JSON.stringify(table));
   console.log(`wrote polar-${rig}.json (${src.twa.length}x${src.tws.length})`);

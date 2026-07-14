@@ -98,6 +98,7 @@ def main() -> None:
         f"zip://{land_zip}!land-polygons-split-4326/land_polygons.shp",
         bbox=(WEST, SOUTH, EAST, NORTH),
     )
+    assert len(gdf) > 5000, f"OSM land polygons: only {len(gdf)} features in bbox - check zip inner path/CRS"
     land = features.rasterize(
         gdf.geometry,
         out_shape=(ROWS, COLS),
@@ -106,6 +107,9 @@ def main() -> None:
         fill=0,
         default_value=1,
     ).astype(bool)
+    n_land = int(land.sum())
+    print(f"land cells: {n_land}")
+    assert n_land > 50000, f"OSM land raster: only {n_land} land cells - implausible for this coastline"
 
     print("carving the Schlei (OSM water=fjord relation, not coastline-tagged) out of the land mask...")
     schlei_geojson = json.loads((SRC / "schlei_relation.geojson.json").read_text())

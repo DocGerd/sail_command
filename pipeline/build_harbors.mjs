@@ -14,6 +14,7 @@ const harbors = rows.map(([id, de, da, en, country, lat, lon, noteEn]) => {
   if (seen.has(id)) throw new Error(`duplicate id ${id}`);
   seen.add(id);
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`bad id ${id}`);
+  if (![lat, lon].every(Number.isFinite)) throw new Error(`${id}: lat/lon not finite numbers`);
   if (lat < BBOX.south || lat > BBOX.north || lon < BBOX.west || lon > BBOX.east)
     throw new Error(`${id} outside bbox: ${lat},${lon}`);
   if (!['DE', 'DK'].includes(country)) throw new Error(`${id}: bad country`);

@@ -13,13 +13,16 @@ BIN=bin/pmtiles
 if [ ! -x "$BIN" ]; then
   mkdir -p bin
   echo "installing pmtiles CLI v${PMTILES_VERSION}..."
-  curl -sL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz" \
+  curl -fsSL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_x86_64.tar.gz" \
     | tar xz -C bin pmtiles
 fi
 
 "$BIN" extract "https://build.protomaps.com/${BUILD_DATE}.pmtiles" \
   ../app/public/data/basemap.pmtiles \
   --bbox="$BBOX" --maxzoom="$MAXZOOM"
+
+SIZE=$(stat -c%s ../app/public/data/basemap.pmtiles)
+[ "$SIZE" -gt $((10*1024*1024)) ] || { echo "basemap suspiciously small: $SIZE bytes" >&2; exit 1; }
 
 echo "--- verify ---"
 "$BIN" show ../app/public/data/basemap.pmtiles
