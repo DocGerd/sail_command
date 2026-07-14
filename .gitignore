@@ -19,6 +19,7 @@ app/test-results/
 pipeline/raw/
 pipeline/data-src/
 pipeline/.venv/
+pipeline/bin/
 
 # Local/session files
 .claude/settings.local.json
