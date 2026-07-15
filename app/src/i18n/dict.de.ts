@@ -63,5 +63,9 @@ export const de = {
   'route.exportGpx': 'GPX exportieren',
   'route.windBarbs.toggle': 'Windpfeile anzeigen',
   'route.windBarbs.timeSlider': 'Vorhersagezeitpunkt',
+  'plansList.empty': 'Noch keine gespeicherten Pläne.',
+  'plansList.created': 'Erstellt',
+  'plansList.delete': 'Plan löschen',
+  'plansList.confirmDelete': 'Löschen bestätigen',
 } as const;
 export type MsgKey = keyof typeof de;

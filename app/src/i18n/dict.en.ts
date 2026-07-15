@@ -65,4 +65,8 @@ export const en = {
   'route.exportGpx': 'Export GPX',
   'route.windBarbs.toggle': 'Show wind barbs',
   'route.windBarbs.timeSlider': 'Forecast time',
+  'plansList.empty': 'No saved plans yet.',
+  'plansList.created': 'Created',
+  'plansList.delete': 'Delete plan',
+  'plansList.confirmDelete': 'Confirm delete',
 } satisfies Record<MsgKey, string>;
