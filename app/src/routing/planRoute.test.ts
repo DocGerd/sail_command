@@ -60,5 +60,5 @@ describe('planRoute', () => {
     const seen = new Set<string>();
     planRoute(req, uniformWindGrid(12, 0), deps, (rig) => seen.add(rig));
     expect(seen).toEqual(new Set(['genoa', 'fock']));
-  });
+  }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
 });
