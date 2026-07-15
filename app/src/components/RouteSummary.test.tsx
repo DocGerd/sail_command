@@ -226,4 +226,25 @@ describe('RouteSummary', () => {
       clickSpy.mockRestore();
     }
   });
+
+  it('GPX export button is disabled when result has zero legs', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature must accept a Blob for the tuple-typed assertion
+    const createObjectURL = vi.fn((_blob: Blob) => 'blob:mock');
+    const originalCreate = URL.createObjectURL;
+    URL.createObjectURL = createObjectURL;
+
+    try {
+      const plan = makePlan();
+      plan.result.genoa = { ...GENOA_RESULT, legs: [] };
+      renderSummary({ plan, rig: 'genoa' });
+
+      const button = screen.getByRole('button', { name: 'Export GPX' });
+      expect(button).toBeDisabled();
+
+      fireEvent.click(button);
+      expect(createObjectURL).not.toHaveBeenCalled();
+    } finally {
+      URL.createObjectURL = originalCreate;
+    }
+  });
 });

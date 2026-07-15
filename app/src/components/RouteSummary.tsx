@@ -167,7 +167,7 @@ export default function RouteSummary({ plan, rig, onRigChange }: RouteSummaryPro
             </tbody>
           </table>
 
-          <button type="button" onClick={() => downloadGpx(plan, rig)}>
+          <button type="button" onClick={() => downloadGpx(plan, rig)} disabled={result.legs.length === 0}>
             {t('route.exportGpx')}
           </button>
         </>

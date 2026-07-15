@@ -219,9 +219,14 @@ export default function RouteLayer({ plan, rig }: RouteLayerProps) {
 
   // Barb data follows the slider position, sampled from the plan's stored
   // wind grid — never re-fetched (a saved route must render against the
-  // forecast it was computed from).
+  // forecast it was computed from). When plan clears, empty the source to
+  // remove stale barbs from the map.
   useEffect(() => {
-    if (!map || !styleReady || !plan) return;
+    if (!map || !styleReady) return;
+    if (!plan) {
+      (map.getSource(BARB_SOURCE) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
     const data = barbFeatures(plan.windGrid, tMs, BARB_STRIDE);
     (map.getSource(BARB_SOURCE) as GeoJSONSource | undefined)?.setData(data);
   }, [map, styleReady, plan, tMs]);
