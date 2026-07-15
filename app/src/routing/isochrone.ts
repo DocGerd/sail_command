@@ -271,19 +271,22 @@ function backtrack(last: Node, departureMs: number): Leg[] {
       prev.speedKn =
         prev.distanceNm / Math.max((prev.endTimeMs - prev.startTimeMs) / 3_600_000, 1e-9);
     } else {
-      legs.push({
-        kind: n.kind as LegKind,
-        board: n.board,
+      const common = {
         start, end,
         startTimeMs: parent.tMs,
         endTimeMs: n.tMs,
         headingDeg: n.headingDeg,
-        twaDeg: n.twaSigned,
         twsKn: n.twsKn,
         speedKn: distanceNm / Math.max((n.tMs - parent.tMs) / 3_600_000, 1e-9),
         distanceNm,
         maneuverAtStart: n.maneuverAtStart,
-      } as Leg);
+      };
+      if (n.kind === 'sail') {
+        if (n.board === null) throw new Error('unreachable: sail node without a board');
+        legs.push({ ...common, kind: 'sail', board: n.board, twaDeg: n.twaSigned });
+      } else {
+        legs.push({ ...common, kind: 'motor', board: null });
+      }
     }
   }
   if (legs.length > 0) legs[0].startTimeMs = departureMs;

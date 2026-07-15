@@ -7,7 +7,12 @@ import { destinationPoint, initialBearingDeg } from '../lib/geo';
 
 const t0 = Date.UTC(2026, 6, 15, 8, 0, 0);
 
-function legFrom(start: { lat: number; lon: number }, headingDeg: number, distNm: number, startMs: number, speedKn = 6): Leg {
+// legFrom only ever builds sail legs; narrowed to the sail arm (rather than the
+// full Leg union) so spreading its result below doesn't distribute over the
+// motor arm too — a fixture-only artifact of Leg becoming a discriminated union.
+type SailLeg = Extract<Leg, { kind: 'sail' }>;
+
+function legFrom(start: { lat: number; lon: number }, headingDeg: number, distNm: number, startMs: number, speedKn = 6): SailLeg {
   const end = destinationPoint(start, headingDeg, distNm);
   const durMs = (distNm / speedKn) * 3_600_000;
   return {

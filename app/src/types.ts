@@ -55,22 +55,28 @@ export interface WindSample {
   gustKn: number;
 }
 
-export interface Leg {
-  kind: LegKind;
-  board: Board | null; // null for motor
+export interface LegCommon {
   start: LatLon;
   end: LatLon;
   startTimeMs: number;
   endTimeMs: number;
   headingDeg: number; // course over ground, degrees true
-  twaDeg: number; // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard); NaN for motor
-  // Two headings are physically ambiguous: 0° (head-to-wind) is hardcoded to starboard; ±180°
-  // (dead run) inherits the parent leg's board instead of the sign rule — see boardForCandidate in maneuver.ts.
   twsKn: number; // TWS at leg start
   speedKn: number;
   distanceNm: number;
   maneuverAtStart: ManeuverKind | null;
 }
+
+export type Leg =
+  | (LegCommon & {
+      kind: 'sail';
+      board: Board;
+      // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard)
+      // Two headings are physically ambiguous: 0° (head-to-wind) is hardcoded to starboard; ±180°
+      // (dead run) inherits the parent leg's board instead of the sign rule — see boardForCandidate in maneuver.ts.
+      twaDeg: number;
+    })
+  | (LegCommon & { kind: 'motor'; board: null });
 
 export interface RigResult {
   rig: Rig;
@@ -123,7 +129,7 @@ export interface PlanResultError {
 export type PlanResult = PlanResultOk | PlanResultError;
 
 // Structured-clone-safe (IndexedDB, postMessage) but NOT JSON-safe:
-// twaDeg is NaN on motor legs and windGrid carries Float32Array fields.
+// windGrid carries Float32Array fields.
 // File import/export (e.g. Garmin sync, issue #3) needs a dedicated
 // serializer — never JSON.stringify(plan).
 export interface Plan {
