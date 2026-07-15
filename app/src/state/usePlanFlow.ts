@@ -70,7 +70,11 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // to the worker, so it must only ever be called once per client.
   const clientRef = useRef<RoutingClient | null>(null);
   const readyRef = useRef<Promise<void> | null>(null);
-  const maxSimulatedToMsRef = useRef(-Infinity);
+  // Per-rig high-water mark: each rig's simulatedToMs must be independently
+  // monotone. The genoa→fock switch is a reset, not a regression — clamping
+  // fock's early tMs against genoa's mark would plateau in a way a UI can't
+  // distinguish from a stall.
+  const maxSimulatedToMsRef = useRef<Record<Rig, number>>({ genoa: -Infinity, fock: -Infinity });
 
   const fetchWind = deps.fetchWind ?? fetchWindGrid;
   // Wrapped in useMemo: the `?? (() => ...)` fallback would otherwise
@@ -124,24 +128,32 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         }
         await readyRef.current;
       } catch {
-        // A failed init leaves a permanently-rejected readyRef promise —
-        // clear the singleton so the next run() builds a fresh client
-        // instead of re-awaiting the same broken one forever.
+        // A failed init leaves a permanently-rejected readyRef promise, and
+        // the broken client is still holding its Worker thread — dispose it
+        // (wrapped: dispose() on an already-dead client must not throw and
+        // derail recovery) before clearing the singleton, so the next run()
+        // builds a fresh client instead of re-awaiting the same broken one,
+        // or leaking the old Worker, forever.
+        try {
+          clientRef.current?.dispose();
+        } catch {
+          // Best-effort teardown of an already-broken client.
+        }
         clientRef.current = null;
         readyRef.current = null;
         transition({ phase: 'error', messageKey: 'error.internal' });
         return;
       }
 
-      maxSimulatedToMsRef.current = -Infinity;
+      maxSimulatedToMsRef.current = { genoa: -Infinity, fock: -Infinity };
       let result: PlanResult;
       try {
         result = await clientRef.current.plan(req, windGrid, (rig, tMs) => {
           // The solver's progress can regress by up to one step at
-          // via-segment joints (ledgered) — clamp so the UI never shows
-          // simulated time going backwards within a run.
-          const simulatedToMs = Math.max(maxSimulatedToMsRef.current, tMs);
-          maxSimulatedToMsRef.current = simulatedToMs;
+          // via-segment joints (ledgered) — clamp per rig so the UI never
+          // shows simulated time going backwards within that rig's own solve.
+          const simulatedToMs = Math.max(maxSimulatedToMsRef.current[rig], tMs);
+          maxSimulatedToMsRef.current[rig] = simulatedToMs;
           transition({ phase: 'routing', rig, simulatedToMs });
         });
       } catch {

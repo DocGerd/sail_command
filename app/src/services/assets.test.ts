@@ -83,4 +83,22 @@ describe('loadRoutingAssets', () => {
     const { loadRoutingAssets } = await import('./assets');
     await expect(loadRoutingAssets()).rejects.toThrow(/mask\.meta\.json/);
   });
+
+  it('resets the cache on rejection so a later call retries instead of replaying the same failure', async () => {
+    const failing = fetchMock({ maskMeta: () => new Response('nope', { status: 500 }) });
+    vi.stubGlobal('fetch', failing);
+
+    const { loadRoutingAssets } = await import('./assets');
+    await expect(loadRoutingAssets()).rejects.toThrow(/mask\.meta\.json/);
+
+    // Simulate the transient failure clearing up (e.g. a first-load network
+    // blip) — a second call must re-fetch, not keep replaying the pinned
+    // rejection.
+    const healthy = fetchMock();
+    vi.stubGlobal('fetch', healthy);
+
+    const assets = await loadRoutingAssets();
+    expect(assets.maskMeta).toEqual(TEST_MASK_META);
+    expect(healthy).toHaveBeenCalledTimes(5);
+  });
 });

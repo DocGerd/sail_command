@@ -42,5 +42,13 @@ export function loadRoutingAssets(): Promise<RoutingAssets> {
     polarFock,
     harbors,
   }));
+  // A rejection (e.g. a transient network blip on first load) must not pin
+  // every later call to the same dead promise — reset the singleton so the
+  // next call retries. Attached as a side-effect reaction on `cached`
+  // itself, not chained into the returned value, so the actual awaiter
+  // below still observes the original rejection rather than a swallowed one.
+  cached.catch(() => {
+    cached = null;
+  });
   return cached;
 }

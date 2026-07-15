@@ -45,7 +45,9 @@ function fakeWorker(opts: { failInit?: boolean } = {}) {
         else this.emit({ type: 'ready' });
       }
     },
-    terminate: () => {},
+    // A spy (not a no-op) so tests can assert the Worker thread is actually
+    // torn down (e.g. a failed-init client's dispose()) rather than leaked.
+    terminate: vi.fn(),
     emit(m: WorkerResponse) {
       this.onmessage?.({ data: m } as MessageEvent<WorkerResponse>);
     },
@@ -220,7 +222,7 @@ describe('usePlanFlow', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it('progress reaches the routing phase for both rigs, and simulatedToMs is monotone despite a regressing tMs', async () => {
+  it('progress reaches the routing phase for both rigs, and simulatedToMs is monotone per rig despite a regressing tMs', async () => {
     let now = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
 
@@ -264,7 +266,23 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'fock', tMs: 200, frontierSize: 1 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock', simulatedToMs: 1500 });
+    // The genoa→fock rig switch is a legitimate reset, not a regression:
+    // fock starts its own monotone sequence at its own tMs, not clamped up
+    // against genoa's high-water mark (a UI can't otherwise distinguish
+    // that plateau from a stall).
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock', simulatedToMs: 200 });
+
+    now += 150;
+    act(() => {
+      w.emit({ type: 'progress', id: planMsg.id, rig: 'fock', tMs: 100, frontierSize: 2 }); // fock's own via-joint regression
+    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock', simulatedToMs: 200 }); // clamped within fock
+
+    now += 150;
+    act(() => {
+      w.emit({ type: 'progress', id: planMsg.id, rig: 'fock', tMs: 600, frontierSize: 3 });
+    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock', simulatedToMs: 600 });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
@@ -296,6 +314,9 @@ describe('usePlanFlow', () => {
     expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.internal' });
     expect(makeClient).toHaveBeenCalledTimes(1);
     expect(brokenWorker.posted.some((m) => m.type === 'plan')).toBe(false); // never got past init
+    // The broken client's Worker thread must be torn down, not leaked, when
+    // init fails — dispose() is called exactly once on the recovery path.
+    expect(brokenWorker.terminate).toHaveBeenCalledTimes(1);
 
     let runPromise!: Promise<void>;
     await act(async () => {
@@ -303,6 +324,13 @@ describe('usePlanFlow', () => {
       await flush();
     });
     expect(makeClient).toHaveBeenCalledTimes(2); // a fresh client was created, not the broken one reused
+
+    const initMsg = findPosted(workingWorker.posted, 'init');
+    // The retry's init must still receive a real, intact maskBuffer — proves
+    // the cached assets.ts original wasn't detached by the first (failed)
+    // client's transfer.
+    expect(initMsg.maskBuffer.byteLength).toBe(ASSETS_FIXTURE.maskBuffer.byteLength);
+    expect(initMsg.maskBuffer.byteLength).toBeGreaterThan(0);
 
     const planMsg = findPosted(workingWorker.posted, 'plan');
     await act(async () => {
@@ -312,6 +340,8 @@ describe('usePlanFlow', () => {
 
     expect(result.current.planning).toEqual({ phase: 'idle' });
     expect(save).toHaveBeenCalledTimes(1);
+    // The working client's own Worker must still be alive (not disposed).
+    expect(workingWorker.terminate).not.toHaveBeenCalled();
   });
 
   it('run() is a guarded no-op while a plan is already in flight', async () => {
