@@ -57,7 +57,7 @@ describe('planRoute via-waypoints', () => {
 
     // detouring via a point well off the direct line meaningfully lengthens the route
     expect(rig.distanceNm).toBeGreaterThan(direct.genoa!.distanceNm + 5);
-  }, 30_000); // six full isochrone solves (two direct-comparison rigs + two rigs x two segments)
+  });
 
   it('(b) viaPoints: [] behaves exactly as before (regression: equal ETA to a direct single-segment solve)', () => {
     // origin/destination sit exactly on mask cell centers, so snapping is a
@@ -83,7 +83,7 @@ describe('planRoute via-waypoints', () => {
     if (direct.status !== 'ok') return;
 
     expect(r.genoa!.etaMs).toBe(direct.etaMs);
-  }, 20_000); // three full isochrone solves (two rigs + the direct comparison)
+  });
 
   it('(c) a via point that fails to snap fails the whole plan with snap-failed-via', () => {
     // land west of col 162 (lon ≈ 10.21); via deep inland, far past the 300 m snap radius
@@ -113,7 +113,7 @@ describe('planRoute via-waypoints', () => {
     const r = planRoute(req, uniformWindGrid(12, 0), { ...deps, mask: solidWall });
     // Mirrors the existing plan-level failure shape used for (c) above.
     expect(r).toEqual({ status: 'error', reason: 'unreachable' });
-  }, 30_000); // an exhaustive "unreachable" search (both rigs) is slow, like (a)/(b) below
+  });
 
   // (b) board-flip-at-joint pin. A deterministic board-flip (boat on one board
   // approaching the via, the opposite board leaving it) proved fragile to
@@ -136,5 +136,5 @@ describe('planRoute via-waypoints', () => {
     const viaLegIdx = rig.legs.findIndex((l) => haversineNm(l.start, via) < 0.05);
     expect(viaLegIdx).toBeGreaterThan(0);
     expect(rig.legs[viaLegIdx].maneuverAtStart).toBeNull(); // first leg of segment 2 (via→destination)
-  }, 30_000); // full isochrone solve, mirrors (a)'s timeout
+  });
 });

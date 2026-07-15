@@ -75,7 +75,7 @@ describe('planRoute', () => {
     if (r.status !== 'ok') return;
     expect(r.genoa!.etaMs).toBe(r.fock!.etaMs);
     expect(r.recommended).toBe('genoa');
-  }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
+  });
 
   it('a single-rig failure surfaces that rig no-route reason; the surviving rig reason stays null', () => {
     // Fock's polar is scaled far below MIN_SAIL_KN at any realistic TWS, so with
@@ -95,5 +95,5 @@ describe('planRoute', () => {
     expect(r.genoaReason).toBeNull();
     expect(r.fock).toBeNull();
     expect(r.fockReason).toBe('calm-motor-off');
-  }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
+  });
 });
