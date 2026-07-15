@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
 import { de } from './i18n/dict.de';
@@ -73,7 +73,13 @@ vi.mock('maplibre-gl', () => {
 });
 
 const FOCK: PolarTable = { ...TEST_POLAR, rig: 'fock' };
-const HARBORS: Harbor[] = [];
+const FLENSBURG: Harbor = {
+  id: 'flensburg',
+  names: { de: 'Flensburg', da: 'Flensborg', en: 'Flensburg' },
+  country: 'DE',
+  snap: { lat: 54.795, lon: 9.435 },
+};
+const HARBORS: Harbor[] = [FLENSBURG];
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200 });
@@ -177,5 +183,91 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: de['banner.dismiss'] }));
     expect(screen.queryByText(de['banner.persistenceError'])).not.toBeInTheDocument();
+  });
+
+  it('a persistence-failure banner clears on the next successful save, without an explicit dismiss', async () => {
+    renderApp();
+    const safetyDepthInput = await screen.findByLabelText(de['options.safetyDepth.label']);
+    await waitFor(() => expect(safetyDepthInput).toHaveValue(3));
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db, 'saveSettings').mockRejectedValueOnce(new Error('save boom'));
+
+    fireEvent.change(safetyDepthInput, { target: { value: '3.5' } });
+    fireEvent.blur(safetyDepthInput);
+    expect(await screen.findByText(de['banner.persistenceError'])).toBeInTheDocument();
+
+    // mockRejectedValueOnce only overrides the next call; this one falls
+    // through to the real saveSettings and should succeed.
+    fireEvent.change(safetyDepthInput, { target: { value: '4' } });
+    fireEvent.blur(safetyDepthInput);
+
+    await waitFor(() => {
+      expect(screen.queryByText(de['banner.persistenceError'])).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tap-to-pick', () => {
+    function armOrigin() {
+      const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+      fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+      return originSection;
+    }
+
+    const tapPickMessage = (targetLabel: string) => de['banner.tapPick'].replace('{target}', targetLabel);
+
+    it('arms tap-to-pick with a cancel banner, and switching tabs away from Plan disarms it', async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      armOrigin();
+      const message = tapPickMessage(de['planner.origin.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      // The banner and MapView's tapActive prop are both driven by the same
+      // tapTarget state, so the banner clearing is equivalent to tapActive
+      // going false — this is the only tap-armed indicator surfaced to a
+      // screen reader/DOM query; MapLibre itself is mocked in this suite.
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+    });
+
+    it('picking a harbor for the armed field disarms tap-to-pick', async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      const originSection = armOrigin();
+      const message = tapPickMessage(de['planner.origin.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      fireEvent.click(within(originSection).getByRole('button', { name: FLENSBURG.names.de }));
+
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+      expect(within(originSection).getByText(FLENSBURG.names.de, { selector: 'p' })).toBeInTheDocument();
+    });
+
+    it('the banner cancel button disarms tap-to-pick', async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      armOrigin();
+      const message = tapPickMessage(de['planner.origin.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: de['banner.tapPick.cancel'] }));
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+    });
+
+    it('pressing Escape disarms tap-to-pick', async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      armOrigin();
+      const message = tapPickMessage(de['planner.origin.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+    });
   });
 });

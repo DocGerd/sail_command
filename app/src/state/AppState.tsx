@@ -31,9 +31,11 @@ interface AppStateValue {
   // Set whenever a saveSettings() write fails (either the direct write in
   // setSettings, or the mount-time flush of a pre-load patch) — surfaced as
   // a dismissible banner (App.tsx) rather than just the existing
-  // console.error, which a user never sees. Cleared explicitly, not
-  // auto-cleared on the next successful save, so a dismissed banner doesn't
-  // silently reappear mid-session from an unrelated stale flag.
+  // console.error, which a user never sees. Also cleared by either site the
+  // moment a subsequent saveSettings() succeeds, so a transient failure
+  // (e.g. a momentary IndexedDB hiccup) self-heals instead of leaving a
+  // stale banner up after persistence has actually recovered. Explicit
+  // dismissal still works independently of that self-heal.
   persistenceError: boolean;
   clearPersistenceError: () => void;
 }
@@ -88,10 +90,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         // reconciled baseline even if unmounted by now, otherwise an
         // in-flight pre-load patch is silently dropped instead of written.
         if (pending) {
-          void saveSettings(final).catch((err) => {
-            console.error('settings save failed', err);
-            setPersistenceError(true);
-          });
+          void saveSettings(final).then(
+            () => setPersistenceError((cur) => (cur ? false : cur)),
+            (err) => {
+              console.error('settings save failed', err);
+              setPersistenceError(true);
+            },
+          );
         }
         if (cancelled) return;
         settingsRef.current = final;
@@ -112,10 +117,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       pendingRef.current = { ...pendingRef.current, ...patch };
       return;
     }
-    void saveSettings(next).catch((err) => {
-      console.error('settings save failed', err);
-      setPersistenceError(true);
-    });
+    void saveSettings(next).then(
+      () => setPersistenceError((cur) => (cur ? false : cur)),
+      (err) => {
+        console.error('settings save failed', err);
+        setPersistenceError(true);
+      },
+    );
   }, []);
 
   const setPlan = useCallback((p: Plan | null) => {

@@ -66,7 +66,12 @@ function AppShell() {
   const [destination, setDestination] = useState<PickedPoint | null>(null);
   const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
   // null = tap-to-pick disarmed; 'origin'/'destination' = MapView.tapActive
-  // is armed for that target, disarmed again the moment a tap resolves.
+  // is armed for that target. Disarmed by: a tap resolving (handleMapTap),
+  // a harbor-search pick filling the armed field (handlePickOrigin/
+  // handlePickDestination), switching away from the Plan tab
+  // (handleTabChange), or the cancel banner/Escape (handleCancelTapPick) —
+  // every path a user could take that should stop treating the next map tap
+  // as a coordinate pick.
   const [tapTarget, setTapTarget] = useState<'origin' | 'destination' | null>(null);
 
   // Eager load, matching spec §7's "first load downloads ~30-40 MB" —
@@ -99,6 +104,42 @@ function AppShell() {
       return null; // disarm
     });
   }, []);
+
+  const handleCancelTapPick = useCallback(() => setTapTarget(null), []);
+
+  // Harbor-search picks go through here rather than straight to
+  // setOrigin/setDestination, so picking a harbor for whichever field is
+  // currently armed for tap-to-pick disarms it — otherwise the map would
+  // stay armed and silently steal the user's next unrelated map tap.
+  // Picking the *other* field while armed leaves the arming untouched.
+  const handlePickOrigin = useCallback((p: PickedPoint) => {
+    setOrigin(p);
+    setTapTarget((current) => (current === 'origin' ? null : current));
+  }, []);
+
+  const handlePickDestination = useCallback((p: PickedPoint) => {
+    setDestination(p);
+    setTapTarget((current) => (current === 'destination' ? null : current));
+  }, []);
+
+  // Tap-to-pick arming is scoped to the Plan tab (that's the only place it
+  // can be armed from) — leaving it armed while on Routes/Live would let a
+  // stray tap on the map overwrite origin/destination without any visible
+  // indicator in view.
+  const handleTabChange = useCallback((next: Tab) => {
+    setTab(next);
+    if (next !== 'plan') setTapTarget(null);
+  }, []);
+
+  // Escape is the keyboard equivalent of the banner's cancel button below.
+  useEffect(() => {
+    if (!tapTarget) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setTapTarget(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [tapTarget]);
 
   const handlePlan = useCallback(() => {
     if (!origin || !destination) return;
@@ -173,17 +214,24 @@ function AppShell() {
             {t('banner.persistenceError')}
           </Banner>
         )}
+        {tapTarget && (
+          <Banner kind="info" onDismiss={handleCancelTapPick} dismissLabel={t('banner.tapPick.cancel')}>
+            {t('banner.tapPick', {
+              target: t(tapTarget === 'origin' ? 'planner.origin.label' : 'planner.destination.label'),
+            })}
+          </Banner>
+        )}
       </div>
 
       <div className="app-bottom-sheet">
         <nav className="app-tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'plan'} onClick={() => setTab('plan')}>
+          <button type="button" role="tab" aria-selected={tab === 'plan'} onClick={() => handleTabChange('plan')}>
             {t('nav.plan')}
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'routes'} onClick={() => setTab('routes')}>
+          <button type="button" role="tab" aria-selected={tab === 'routes'} onClick={() => handleTabChange('routes')}>
             {t('nav.routes')}
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'live'} onClick={() => setTab('live')}>
+          <button type="button" role="tab" aria-selected={tab === 'live'} onClick={() => handleTabChange('live')}>
             {t('nav.live')}
           </button>
         </nav>
@@ -194,8 +242,8 @@ function AppShell() {
               harbors={harbors}
               origin={origin}
               destination={destination}
-              onPickOrigin={setOrigin}
-              onPickDestination={setDestination}
+              onPickOrigin={handlePickOrigin}
+              onPickDestination={handlePickDestination}
               onRequestMapTap={handleRequestMapTap}
               departureMs={departureMs}
               onDepartureChange={setDepartureMs}

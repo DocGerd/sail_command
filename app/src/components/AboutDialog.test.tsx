@@ -77,6 +77,28 @@ describe('AboutDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('calls onClose on Escape while open, and stops listening once closed', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <I18nProvider>
+        <AboutDialog open onClose={onClose} />
+      </I18nProvider>,
+    );
+    await screen.findByRole('dialog');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <I18nProvider>
+        <AboutDialog open={false} onClose={onClose} />
+      </I18nProvider>,
+    );
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('renders the static attributions and the mask.meta.json sources fetched on open', async () => {
     const mock = fetchMock(['EMODnet Bathymetry Consortium (2024) doi:10.12770/test', 'OSM land polygons (ODbL)']);
     vi.stubGlobal('fetch', mock);

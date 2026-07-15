@@ -102,4 +102,6 @@ export const en = {
   'banner.offline': 'Offline — planning disabled. Saved routes remain available.',
   'banner.persistenceError': 'Settings could not be saved.',
   'banner.dismiss': 'Dismiss',
+  'banner.tapPick': 'Tap the map to set {target}.',
+  'banner.tapPick.cancel': 'Cancel',
 } satisfies Record<MsgKey, string>;

@@ -348,6 +348,61 @@ describe('AppStateProvider', () => {
     expect(screen.getByTestId('persistenceError')).toHaveTextContent('false');
   });
 
+  it('persistenceError self-heals on the next successful direct save, without an explicit dismiss', async () => {
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+        <PersistenceErrorProbe />
+      </AppStateProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+    });
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db, 'saveSettings').mockRejectedValueOnce(new Error('save boom'));
+
+    fireEvent.click(screen.getByText('patch'));
+    await waitFor(() => {
+      expect(screen.getByTestId('persistenceError')).toHaveTextContent('true');
+    });
+
+    // mockRejectedValueOnce only overrides the next call; this one falls
+    // through to the real saveSettings and should succeed, self-healing the
+    // flag without the explicit clearPersistenceError() button.
+    fireEvent.click(screen.getByText('patchSafetyDepthOnly'));
+    await waitFor(() => {
+      expect(screen.getByTestId('persistenceError')).toHaveTextContent('false');
+    });
+  });
+
+  it('persistenceError self-heals when a subsequent pre-load-flush save succeeds', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db, 'saveSettings').mockRejectedValueOnce(new Error('flush boom'));
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+        <PersistenceErrorProbe />
+      </AppStateProvider>,
+    );
+
+    // Patch synchronously, before the mount-time load resolves — goes
+    // through the flush-on-load-resolve saveSettings call, which fails once.
+    fireEvent.click(screen.getByText('patch'));
+    await waitFor(() => {
+      expect(screen.getByTestId('persistenceError')).toHaveTextContent('true');
+    });
+
+    // The next save (real saveSettings, via the direct setSettings path since
+    // the load has resolved by now) succeeds and should clear the flag.
+    fireEvent.click(screen.getByText('patchSafetyDepthOnly'));
+    await waitFor(() => {
+      expect(screen.getByTestId('persistenceError')).toHaveTextContent('false');
+    });
+  });
+
   it('a pre-load patch that fails to flush once the load resolves also surfaces persistenceError', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(db, 'saveSettings').mockRejectedValue(new Error('flush boom'));

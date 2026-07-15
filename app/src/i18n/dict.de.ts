@@ -100,5 +100,7 @@ export const de = {
   'banner.offline': 'Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.',
   'banner.persistenceError': 'Einstellungen konnten nicht gespeichert werden.',
   'banner.dismiss': 'Schließen',
+  'banner.tapPick': 'Auf Karte tippen für {target}.',
+  'banner.tapPick.cancel': 'Abbrechen',
 } as const;
 export type MsgKey = keyof typeof de;
