@@ -192,6 +192,52 @@ describe('AppStateProvider', () => {
     });
   });
 
+  it('a pre-load patch on a fresh DB (nothing persisted) is reflected in both final state and the persisted value', async () => {
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    // Patch synchronously on the same tick as mount, before loadSettings() resolves.
+    fireEvent.click(screen.getByText('patch'));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent('false');
+
+    // The load-resolution flush must persist the reconciled baseline (defaults
+    // + the pending patch) even though nothing was on disk beforehand.
+    await waitFor(async () => {
+      const persisted = await loadSettings();
+      expect(persisted?.safetyDepthM).toBe(2.5);
+      expect(persisted?.motorEnabled).toBe(false);
+    });
+
+    // Final in-memory state still reflects the patch, and untouched fields
+    // still reflect the defaults.
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent('false');
+    expect(screen.getByTestId('motorSpeed')).toHaveTextContent(String(DEFAULT_SETTINGS.motorSpeedKn));
+  });
+
+  it('a loadSettings rejection on mount is caught and logged; defaults apply and nothing crashes', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const loadError = new Error('load boom');
+    vi.spyOn(db, 'loadSettings').mockRejectedValue(loadError);
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith('settings load failed', loadError);
+    });
+
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent(String(DEFAULT_SETTINGS.motorEnabled));
+  });
+
   it('a saveSettings rejection after the load resolves is caught and logged, not thrown', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 

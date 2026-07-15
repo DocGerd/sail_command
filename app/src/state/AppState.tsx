@@ -59,19 +59,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return undefined;
       })
       .then((persisted) => {
-        if (cancelled) return;
         const pending = pendingRef.current;
         // Merge order is the contract: persisted values first, pre-load
         // patches last, so a patch made while the load was in flight wins
         // over the now-known persisted baseline instead of reverting it.
         const final: Settings = { ...DEFAULT_SETTINGS, ...persisted, ...pending };
+        // Persistence doesn't need the component mounted — flush the
+        // reconciled baseline even if unmounted by now, otherwise an
+        // in-flight pre-load patch is silently dropped instead of written.
+        if (pending) {
+          void saveSettings(final).catch((err) => console.error('settings save failed', err));
+        }
+        if (cancelled) return;
         settingsRef.current = final;
         loadedRef.current = true;
         pendingRef.current = null;
         setSettingsState(final);
-        if (pending) {
-          void saveSettings(final).catch((err) => console.error('settings save failed', err));
-        }
       });
     return () => {
       cancelled = true;

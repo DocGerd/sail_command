@@ -5,9 +5,14 @@ const API = 'https://api.open-meteo.com/v1/forecast';
 const LATS = Array.from({ length: 11 }, (_, i) => Number((54.3 + i * 0.1).toFixed(1)));
 const LONS = Array.from({ length: 17 }, (_, i) => Number((9.4 + i * 0.1).toFixed(1)));
 const RETRY_DELAYS_MS = [1000, 4000];
+const REQUEST_TIMEOUT_MS = 15_000;
 
 export type OpenMeteoErrorKind = 'offline' | 'rate-limited' | 'http' | 'malformed';
 
+// NOT structured-clone-safe: Error subclasses lose their prototype chain across
+// postMessage/IndexedDB. OpenMeteoError must never cross the worker/IndexedDB
+// structured-clone boundary — catch it and convert to a plain message first
+// (mirrors the Float32Array structured-clone note on Plan/WindGrid in types.ts).
 export class OpenMeteoError extends Error {
   readonly kind: OpenMeteoErrorKind;
 
@@ -43,11 +48,36 @@ function buildUrl(): string {
   return `${API}?${p}`;
 }
 
+// Races a fetch attempt against a rejecting setTimeout timer rather than
+// AbortSignal.timeout — vitest fake timers can drive setTimeout but cannot
+// drive the internal clock AbortSignal.timeout relies on. The timer is always
+// cleared on settle (success or failure) so no handle is left dangling.
+function fetchWithTimeout(url: string, fetchFn: typeof fetch): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`request timed out after ${REQUEST_TIMEOUT_MS}ms`));
+    }, REQUEST_TIMEOUT_MS);
+    fetchFn(url).then(
+      (res) => {
+        clearTimeout(timer);
+        resolve(res);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
-      res = await fetchFn(url);
+      // A timeout rejects fetchWithTimeout the same way a fetch throw would,
+      // so it falls into this catch and is treated as a retryable network
+      // failure — same branch, same retry/backoff, same 'offline' on exhaustion.
+      res = await fetchWithTimeout(url, fetchFn);
     } catch (err) {
       if (attempt >= RETRY_DELAYS_MS.length)
         throw new OpenMeteoError('offline', `network failure: ${String(err)}`);
@@ -61,6 +91,11 @@ async function fetchWithRetry(url: string, fetchFn: typeof fetch): Promise<Respo
       await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
       continue;
     }
+    // 5xx exhausted its retries maps to 'offline' (not 'http'): a persistently
+    // failing server reads to the user as "can't reach the forecast service"
+    // the same way a network failure does — this mapping is plan-mandated.
+    // Phase E's error copy should cross-check useOnline() before wording this
+    // case (decision tracked on the Phase E intake).
     throw new OpenMeteoError(res.status >= 500 ? 'offline' : 'http', `HTTP ${res.status}`);
   }
 }
@@ -117,9 +152,20 @@ export async function fetchWindGrid(opts?: {
     }
     for (let t = 0; t < nT; t++) {
       const k = t * nPoints + p; // p = latIdx * LONS.length + lonIdx — matches WindGrid layout
-      speedKn[k] = h.wind_speed_10m[t];
-      dirFromDeg[k] = h.wind_direction_10m[t];
-      gustKn[k] = h.wind_gusts_10m[t];
+      const speed = h.wind_speed_10m[t];
+      const dir = h.wind_direction_10m[t];
+      const gust = h.wind_gusts_10m[t];
+      // null/undefined/string elements must not silently become 0 (calm) —
+      // a fake calm can flip a leg from sail to motor. Reject at the source.
+      if (!Number.isFinite(speed))
+        throw new OpenMeteoError('malformed', `point ${p} hour ${t}: wind_speed_10m is not a finite number`);
+      if (!Number.isFinite(dir))
+        throw new OpenMeteoError('malformed', `point ${p} hour ${t}: wind_direction_10m is not a finite number`);
+      if (!Number.isFinite(gust))
+        throw new OpenMeteoError('malformed', `point ${p} hour ${t}: wind_gusts_10m is not a finite number`);
+      speedKn[k] = speed;
+      dirFromDeg[k] = dir;
+      gustKn[k] = gust;
     }
   }
   return {

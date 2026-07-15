@@ -159,7 +159,6 @@ export interface LegCommon {
   twsKn: number; // TWS at leg start
   speedKn: number;
   distanceNm: number;
-  maneuverAtStart: ManeuverKind | null;
 }
 
 export type Leg =
@@ -167,11 +166,13 @@ export type Leg =
       kind: 'sail';
       board: Board;
       // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard)
-      // Two headings are physically ambiguous: 0° (head-to-wind) is hardcoded to starboard; ±180°
-      // (dead run) inherits the parent leg's board instead of the sign rule — see boardForCandidate in maneuver.ts.
+      // 0° (head-to-wind) resolves to starboard as a side effect of the >= 0 rule above; ±180°
+      // (dead run) is the one case with special handling — see boardForCandidate in maneuver.ts
+      // (inherits the parent leg's board).
       twaDeg: number;
+      maneuverAtStart: ManeuverKind | null;
     })
-  | (LegCommon & { kind: 'motor'; board: null });
+  | (LegCommon & { kind: 'motor'; board: null; maneuverAtStart: null });
 
 export interface RigResult {
   rig: Rig;

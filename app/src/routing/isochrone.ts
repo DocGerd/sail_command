@@ -279,13 +279,18 @@ function backtrack(last: Node, departureMs: number): Leg[] {
         twsKn: n.twsKn,
         speedKn: distanceNm / Math.max((n.tMs - parent.tMs) / 3_600_000, 1e-9),
         distanceNm,
-        maneuverAtStart: n.maneuverAtStart,
       };
       if (n.kind === 'sail') {
         if (n.board === null) throw new Error('unreachable: sail node without a board');
-        legs.push({ ...common, kind: 'sail', board: n.board, twaDeg: n.twaSigned });
+        legs.push({
+          ...common, kind: 'sail', board: n.board, twaDeg: n.twaSigned,
+          maneuverAtStart: n.maneuverAtStart,
+        });
       } else {
-        legs.push({ ...common, kind: 'motor', board: null });
+        // Motor arm sets maneuverAtStart explicitly: n.maneuverAtStart is
+        // ManeuverKind | null on Node (shared by both branches), but a motor
+        // leg can never actually carry a maneuver — the type now says so too.
+        legs.push({ ...common, kind: 'motor', board: null, maneuverAtStart: null });
       }
     }
   }

@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fetchWindGrid, OpenMeteoError, FORECAST_DAYS } from './openMeteo';
 
-const LATS = Array.from({ length: 11 }, (_, i) => Number((54.3 + i * 0.1).toFixed(1)));
-const LONS = Array.from({ length: 17 }, (_, i) => Number((9.4 + i * 0.1).toFixed(1)));
+// Grid-bounds literals (not the same Array.from formula openMeteo.ts uses to
+// build these — re-deriving via the identical formula would let a bug in the
+// source's own bounds silently pass here too).
+const LATS = [54.3, 54.4, 54.5, 54.6, 54.7, 54.8, 54.9, 55.0, 55.1, 55.2, 55.3];
+const LONS = [
+  9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 10.0, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8, 10.9, 11.0,
+];
 const NPOINTS = LATS.length * LONS.length; // 187
 
 interface FakePoint {
@@ -127,6 +132,78 @@ describe('openMeteo', () => {
     vi.useRealTimers();
   });
 
+  // Step 3b: Persistent network failure exhausts both retries → OpenMeteoError('offline')
+  it('should throw OpenMeteoError with kind="offline" after exhausting retries on persistent network failure', async () => {
+    vi.useFakeTimers();
+
+    const mockFetch = vi.fn().mockRejectedValue(new Error('Network error'));
+    const promise = fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch });
+    let caught: unknown;
+    const done = promise.catch((err) => {
+      caught = err;
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(4000);
+    await done;
+
+    expect(caught).toBeInstanceOf(OpenMeteoError);
+    expect((caught as OpenMeteoError).kind).toBe('offline');
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    vi.useRealTimers();
+  });
+
+  // Step 3c: Persistent HTTP 500 exhausts both retries → OpenMeteoError('offline')
+  it('should throw OpenMeteoError with kind="offline" after exhausting retries on persistent HTTP 500', async () => {
+    vi.useFakeTimers();
+
+    const mockFetch = vi.fn().mockResolvedValue(new Response('', { status: 500 }));
+    const promise = fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch });
+    let caught: unknown;
+    const done = promise.catch((err) => {
+      caught = err;
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(4000);
+    await done;
+
+    expect(caught).toBeInstanceOf(OpenMeteoError);
+    expect((caught as OpenMeteoError).kind).toBe('offline');
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    vi.useRealTimers();
+  });
+
+  // Step 3d: A never-settling fetch must not hang forever — each attempt times
+  // out after REQUEST_TIMEOUT_MS and is treated as a retryable network failure,
+  // same attempt count and outcome as a persistent throw.
+  it('should throw OpenMeteoError with kind="offline" after 3 attempts each time out', async () => {
+    vi.useFakeTimers();
+
+    const REQUEST_TIMEOUT_MS = 15_000; // mirrors openMeteo.ts's internal constant
+    const mockFetch = vi.fn(() => new Promise<Response>(() => {})); // never settles
+    const promise = fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch });
+    let caught: unknown;
+    const done = promise.catch((err) => {
+      caught = err;
+    });
+
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS); // attempt 1 times out
+    await vi.advanceTimersByTimeAsync(1000); // backoff before attempt 2
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS); // attempt 2 times out
+    await vi.advanceTimersByTimeAsync(4000); // backoff before attempt 3
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS); // attempt 3 times out
+    await done;
+
+    expect(caught).toBeInstanceOf(OpenMeteoError);
+    expect((caught as OpenMeteoError).kind).toBe('offline');
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+
+    vi.useRealTimers();
+  });
+
   // Step 4: 429 rate-limited error, no retry
   it('should throw OpenMeteoError with kind="rate-limited" on HTTP 429', async () => {
     const mockFetch = vi.fn().mockResolvedValue(
@@ -216,6 +293,28 @@ describe('openMeteo', () => {
       expect((err as OpenMeteoError).kind).toBe('malformed');
       expect((err as OpenMeteoError).message).toContain('point 42');
       expect((err as OpenMeteoError).message).toContain('wind_gusts_10m');
+    }
+  });
+
+  // Step 5e: A null element in an hourly array (e.g. a gap in the forecast
+  // response) must not silently become 0 (calm) — a fake calm can flip a leg
+  // from sail to motor, so it's rejected as malformed instead.
+  it('should throw OpenMeteoError with kind="malformed" when an hourly element is null', async () => {
+    const fakeData = buildFakeResponse();
+    (fakeData[7].hourly.wind_speed_10m as (number | null)[])[3] = null;
+
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(fakeData), { status: 200 })
+    );
+
+    try {
+      await fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch });
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(OpenMeteoError);
+      expect((err as OpenMeteoError).kind).toBe('malformed');
+      expect((err as OpenMeteoError).message).toContain('point 7');
+      expect((err as OpenMeteoError).message).toContain('wind_speed_10m');
     }
   });
 

@@ -1,9 +1,9 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { Plan, Rig, Settings } from '../types';
+import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { recommendedResult, type Plan, type Rig, type Settings } from '../types';
 
 interface SailDB extends DBSchema {
   plans: { key: string; value: Plan; indexes: { 'by-createdAt': number } };
-  settings: { key: string; value: Settings };
+  settings: { key: 'user'; value: Settings };
 }
 
 let dbPromise: Promise<IDBPDatabase<SailDB>> | null = null;
@@ -25,7 +25,11 @@ export async function __resetDbForTests(): Promise<void> {
     (await dbPromise).close();
   }
   dbPromise = null;
-  await indexedDB.deleteDatabase('sailcommand');
+  // idb's deleteDB actually awaits IDBOpenDBRequest completion; a bare
+  // `await indexedDB.deleteDatabase(...)` awaits the request object itself
+  // (a no-op — it resolves immediately, not on the request's success event)
+  // and only worked here by incidental ordering.
+  await deleteDB('sailcommand');
 }
 
 export interface PlanSummary {
@@ -44,14 +48,14 @@ export async function savePlan(plan: Plan): Promise<void> {
 export async function listPlans(): Promise<PlanSummary[]> {
   const all = await (await db()).getAllFromIndex('plans', 'by-createdAt');
   return all.reverse().map((p) => {
-    const rec = p.result.recommended === 'genoa' ? p.result.genoa : p.result.fock;
+    const rec = recommendedResult(p.result);
     return {
       id: p.id,
       name: p.name,
       createdAtMs: p.createdAtMs,
       departureMs: p.request.departureMs,
       recommended: p.result.recommended,
-      etaMs: rec ? rec.etaMs : p.request.departureMs,
+      etaMs: rec.etaMs,
     };
   });
 }

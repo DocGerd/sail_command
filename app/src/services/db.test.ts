@@ -172,6 +172,99 @@ describe('IndexedDB persistence', () => {
     });
   });
 
+  it('savePlan upserts by id: saving the same id again keeps one entry with the latest data', async () => {
+    const windGrid: WindGrid = {
+      lats: [54.0],
+      lons: [9.0],
+      timesMs: [1000],
+      speedKn: new Float32Array([5.0]),
+      dirFromDeg: new Float32Array([90]),
+      gustKn: new Float32Array([7.0]),
+      fetchedAtMs: 1626340800000,
+      model: 'open-meteo',
+    };
+
+    const basePlan: Plan = {
+      id: 'upsert-me',
+      name: 'Original Name',
+      createdAtMs: 1000,
+      request: {
+        origin: { lat: 54.0, lon: 9.0 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1000,
+        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+      },
+      windGrid,
+      result: {
+        status: 'ok',
+        genoa: { rig: 'genoa', legs: [], etaMs: 4000, durationMs: 3000, distanceNm: 40.0, maneuverCount: 1, motorDistanceNm: 0 },
+        fock: null,
+        genoaReason: null,
+        fockReason: null,
+        recommended: 'genoa',
+        snappedOrigin: { lat: 54.0, lon: 9.0 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
+    };
+
+    await savePlan(basePlan);
+    await savePlan({ ...basePlan, name: 'Renamed' });
+
+    const retrieved = await getPlan('upsert-me');
+    expect(retrieved?.name).toBe('Renamed');
+
+    const summaries = await listPlans();
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].name).toBe('Renamed');
+  });
+
+  it('listPlans surfaces a thrown error rather than fabricating an ETA when the recommended rig result is null', async () => {
+    const windGrid: WindGrid = {
+      lats: [54.0],
+      lons: [9.0],
+      timesMs: [1000],
+      speedKn: new Float32Array([5.0]),
+      dirFromDeg: new Float32Array([90]),
+      gustKn: new Float32Array([7.0]),
+      fetchedAtMs: 1626340800000,
+      model: 'open-meteo',
+    };
+
+    // Hand-built to violate the invariant status 'ok' is supposed to guarantee:
+    // recommended === 'genoa' but genoa is null.
+    const brokenPlan: Plan = {
+      id: 'broken-invariant',
+      name: 'Broken',
+      createdAtMs: 1000,
+      request: {
+        origin: { lat: 54.0, lon: 9.0 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1000,
+        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+      },
+      windGrid,
+      result: {
+        status: 'ok',
+        genoa: null,
+        fock: { rig: 'fock', legs: [], etaMs: 5000, durationMs: 3000, distanceNm: 41.0, maneuverCount: 2, motorDistanceNm: 0 },
+        genoaReason: 'unreachable',
+        fockReason: null,
+        recommended: 'genoa',
+        snappedOrigin: { lat: 54.0, lon: 9.0 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
+    };
+
+    await savePlan(brokenPlan);
+    await expect(listPlans()).rejects.toThrow(/invariant violated/);
+  });
+
   it('deletePlan removes the plan', async () => {
     const windGrid: WindGrid = {
       lats: [54.0],

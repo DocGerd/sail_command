@@ -44,7 +44,7 @@ describe('mergeCollinearLegs', () => {
     expect(mergeCollinearLegs([a, b], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
     const c = { ...legFrom(a.end, 91, 2, a.endTimeMs), board: 'port' as const };
     expect(mergeCollinearLegs([a, c], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
-    const d = { ...legFrom(a.end, 91, 2, a.endTimeMs), kind: 'motor' as const, board: null };
+    const d = { ...legFrom(a.end, 91, 2, a.endTimeMs), kind: 'motor' as const, board: null, maneuverAtStart: null };
     expect(mergeCollinearLegs([a, d], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
   });
 
@@ -70,8 +70,8 @@ describe('mergeCollinearLegs', () => {
   });
 
   it('merges two adjacent motor legs within tolerance (endTimeMs/distanceNm summed)', () => {
-    const a = { ...legFrom({ lat: 54.7, lon: 10.0 }, 90, 2, t0, 6.5), kind: 'motor' as const, board: null };
-    const b = { ...legFrom(a.end, 90, 2, a.endTimeMs, 6.5), kind: 'motor' as const, board: null };
+    const a = { ...legFrom({ lat: 54.7, lon: 10.0 }, 90, 2, t0, 6.5), kind: 'motor' as const, board: null, maneuverAtStart: null };
+    const b = { ...legFrom(a.end, 90, 2, a.endTimeMs, 6.5), kind: 'motor' as const, board: null, maneuverAtStart: null };
     const merged = mergeCollinearLegs([a, b], openWaterMask(), wind, DEFAULT_SETTINGS);
     expect(merged.length).toBe(1);
     expect(merged[0].start).toEqual(a.start);
