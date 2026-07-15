@@ -133,17 +133,51 @@ describe('openMeteo', () => {
       new Response('', { status: 429 })
     );
 
-    await expect(fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch })).rejects.toThrow(OpenMeteoError);
-
     try {
       await fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch });
+      expect.fail('should have thrown');
     } catch (err) {
       expect(err).toBeInstanceOf(OpenMeteoError);
       expect((err as OpenMeteoError).kind).toBe('rate-limited');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     }
   });
 
-  // Step 5: Ragged arrays should throw malformed
+  // Step 5a: Non-429 4xx error, no retry
+  it('should throw OpenMeteoError with kind="http" on non-429 4xx', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response('', { status: 404 })
+    );
+
+    try {
+      await fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch });
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(OpenMeteoError);
+      expect((err as OpenMeteoError).kind).toBe('http');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  // Step 5b: JSON parse failure → malformed
+  it('should throw OpenMeteoError with kind="malformed" on JSON parse failure', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response('', {
+        status: 200,
+        json: () => Promise.reject(new SyntaxError('bad')),
+      } as Response)
+    );
+
+    try {
+      await fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch });
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(OpenMeteoError);
+      expect((err as OpenMeteoError).kind).toBe('malformed');
+    }
+  });
+
+  // Step 5c: Ragged arrays should throw malformed
   it('should throw OpenMeteoError with kind="malformed" on ragged hourly arrays', async () => {
     const fakeData = buildFakeResponse();
     // Break the second point's wind_speed_10m array to be too short

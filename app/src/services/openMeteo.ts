@@ -71,7 +71,12 @@ export async function fetchWindGrid(opts?: {
 }): Promise<WindGrid> {
   const fetchFn = opts?.fetchFn ?? fetch;
   const res = await fetchWithRetry(opts?.fixtureUrl ?? buildUrl(), fetchFn);
-  const data = (await res.json()) as PointResponse[];
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw new OpenMeteoError('malformed', 'response body is not valid JSON');
+  }
   const nPoints = LATS.length * LONS.length;
   if (!Array.isArray(data) || data.length !== nPoints)
     throw new OpenMeteoError(
@@ -79,7 +84,10 @@ export async function fetchWindGrid(opts?: {
       `expected ${nPoints} points, got ${Array.isArray(data) ? data.length : typeof data}`,
     );
 
-  const timesS = data[0].hourly.time;
+  const t0 = (data as PointResponse[])[0]?.hourly?.time;
+  if (!Array.isArray(t0) || t0.length === 0)
+    throw new OpenMeteoError('malformed', 'point 0 missing hourly.time');
+  const timesS = t0;
   const nT = timesS.length;
   const speedKn = new Float32Array(nT * nPoints);
   const dirFromDeg = new Float32Array(nT * nPoints);
