@@ -71,4 +71,24 @@ describe('planRoute', () => {
     expect(r.genoa!.etaMs).toBe(r.fock!.etaMs);
     expect(r.recommended).toBe('genoa');
   }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
+
+  it('a single-rig failure surfaces that rig no-route reason; the surviving rig reason stays null', () => {
+    // Fock's polar is scaled far below MIN_SAIL_KN at any realistic TWS, so with
+    // the motor disabled it can never produce a sailing candidate — calm-motor-off —
+    // while genoa's normal polar still solves fine in the same 12 kn wind.
+    const calmFock: PolarTable = {
+      ...TEST_POLAR,
+      rig: 'fock',
+      speeds: TEST_POLAR.speeds.map((row) => row.map((v) => v * 0.01)),
+    };
+    const calmDeps = { ...deps, polarFock: calmFock };
+    const settings = { ...DEFAULT_SETTINGS, motorEnabled: false };
+    const r = planRoute({ ...req, settings }, uniformWindGrid(12, 0), calmDeps);
+    expect(r.status).toBe('ok');
+    if (r.status !== 'ok') return;
+    expect(r.genoa).not.toBeNull();
+    expect(r.genoaReason).toBeNull();
+    expect(r.fock).toBeNull();
+    expect(r.fockReason).toBe('calm-motor-off');
+  }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
 });

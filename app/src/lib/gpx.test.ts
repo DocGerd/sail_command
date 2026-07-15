@@ -24,6 +24,8 @@ const plan: Plan = {
     snappedOrigin: { lat: 54.79, lon: 9.43 },
     snappedDestination: { lat: 54.85, lon: 10.52 },
     fock: null,
+    fockReason: 'unreachable',
+    genoaReason: null,
     genoa: {
       rig: 'genoa',
       etaMs: Date.UTC(2026, 6, 15, 13, 0, 0), // matches the last leg's endTimeMs

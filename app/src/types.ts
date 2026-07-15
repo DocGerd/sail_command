@@ -106,6 +106,10 @@ export interface PlanResultOk {
   // (both-failed returns status 'error' instead).
   genoa: RigResult | null; // null if that rig found no route
   fock: RigResult | null;
+  // why a null rig found no route ("both results are user-visible" needs the
+  // reason, not just the absence); null when the rig has a result
+  genoaReason: NoRouteReason | null;
+  fockReason: NoRouteReason | null;
   recommended: Rig;
   snappedOrigin: LatLon;
   snappedDestination: LatLon;

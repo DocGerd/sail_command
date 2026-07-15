@@ -87,6 +87,8 @@ export function planRoute(
     status: 'ok',
     genoa: genoa.rigResult,
     fock: fock.rigResult,
+    genoaReason: genoa.rigResult ? null : genoa.reason,
+    fockReason: fock.rigResult ? null : fock.reason,
     recommended,
     snappedOrigin: origin,
     snappedDestination: destination,
