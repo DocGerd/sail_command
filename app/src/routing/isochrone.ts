@@ -61,6 +61,10 @@ function pruneKey(lat: number, lon: number, kind: LegKind | 'start', board: Boar
 
 /** Deterministic "is a better than b" for same-cell pruning and frontier capping. */
 function better(a: Node, b: Node): boolean {
+  // Substepped nodes (see the blocked-candidate retry in solve) carry earlier
+  // clocks than full-step nodes; prefer the earlier arrival in a cell. No-op
+  // while the frontier is time-synchronized (no substeps taken).
+  if (a.tMs !== b.tMs) return a.tMs < b.tMs;
   if (a.maneuvers !== b.maneuvers) return a.maneuvers < b.maneuvers;
   if (a.distToDestNm !== b.distToDestNm) return a.distToDestNm < b.distToDestNm;
   if (a.headingDeg !== b.headingDeg) return a.headingDeg < b.headingDeg;
@@ -95,11 +99,17 @@ export function solve(p: SolveParams): SolveResult {
   let calmDeaths = 0;
 
   while (frontier.length > 0) {
-    if (best && tMs >= best.etaMs) break;
+    // Substepped nodes lag the global clock, so the termination guards use the
+    // earliest node clock in the frontier (=== tMs when no substeps occurred).
     let minDist = Infinity;
-    for (const n of frontier) if (n.distToDestNm < minDist) minDist = n.distToDestNm;
+    let minTMs = Infinity;
+    for (const n of frontier) {
+      if (n.distToDestNm < minDist) minDist = n.distToDestNm;
+      if (n.tMs < minTMs) minTMs = n.tMs;
+    }
+    if (best && minTMs >= best.etaMs) break;
     const dtS = minDist < 2 ? 150 : minDist < 5 ? 300 : 600;
-    if (tMs + dtS * 1000 > horizonMs) {
+    if (minTMs + dtS * 1000 > horizonMs) {
       if (best) break;
       return { status: 'no-route', reason: 'beyond-horizon' };
     }
@@ -179,14 +189,38 @@ export function solve(p: SolveParams): SolveResult {
           continue; // the direct edge is consumed by the arrival attempt
         }
 
-        const end = destinationPoint(from, headingDeg, distNm);
+        let stepMs = dtS * 1000;
+        let end = destinationPoint(from, headingDeg, distNm);
         if (!mask.segmentNavigable(from, end, settings.safetyDepthM)) {
-          sawBlocked = true;
-          continue;
+          // A full step can be far longer than the local channel is straight
+          // (issue #20: harbor arms are ~200-400 m wide while steps run
+          // 0.5-2 km, so every heading died on the first expansion out of
+          // Flensburg). Retry the same heading over dtS/2, dtS/4, dtS/8 and
+          // take the largest substep that fits; the child keeps the honest
+          // (shorter) clock, which better()/the loop guards account for.
+          let fitted = false;
+          for (const div of [2, 4, 8]) {
+            const subDtS = dtS / div;
+            const subEffS = maneuver ? Math.max(subDtS - settings.maneuverPenaltyS, 0) : subDtS;
+            const d = (speed * subEffS) / 3600;
+            if (d <= 0) break; // maneuver penalty swallows this and every shorter substep
+            const e = destinationPoint(from, headingDeg, d);
+            if (mask.segmentNavigable(from, e, settings.safetyDepthM)) {
+              end = e;
+              stepMs = subDtS * 1000;
+              fitted = true;
+              break;
+            }
+          }
+          if (!fitted) {
+            sawBlocked = true;
+            continue;
+          }
         }
+        if (node.tMs + stepMs > horizonMs) continue;
 
         const child: Node = {
-          lat: end.lat, lon: end.lon, tMs: node.tMs + dtS * 1000, kind, board,
+          lat: end.lat, lon: end.lon, tMs: node.tMs + stepMs, kind, board,
           headingDeg, twaSigned: kind === 'motor' ? NaN : twa, stepSpeedKn: speed,
           twsKn: w.speedKn, maneuverAtStart: maneuver,
           maneuvers: node.maneuvers + (maneuver ? 1 : 0),
@@ -232,7 +266,12 @@ export function solve(p: SolveParams): SolveResult {
     }
     frontier = next;
     tMs += dtS * 1000;
-    p.onProgress?.({ tMs, frontierSize: frontier.length });
+    // Report the true frontier clock: substepped nodes lag the ring clock by
+    // up to 7/8 dtS, so the ring clock alone can overstate progress. Equal to
+    // tMs when no substeps occurred; empty frontier falls back to the ring.
+    let frontierTMs = tMs;
+    for (const n of frontier) if (n.tMs < frontierTMs) frontierTMs = n.tMs;
+    p.onProgress?.({ tMs: frontierTMs, frontierSize: frontier.length });
   }
 
   if (!best) {
