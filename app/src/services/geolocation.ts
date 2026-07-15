@@ -36,10 +36,20 @@ export function watchPosition(
   const id = navigator.geolocation.watchPosition(
     (pos) => {
       const { latitude, longitude, heading, speed, accuracy } = pos.coords;
+      // Per the Geolocation spec, heading/speed are `null` only when the
+      // device never reports them; when it does, either can still be `NaN`
+      // at that particular fix — heading is NaN whenever speed is 0 (a
+      // stationary or unmoving device has no meaningful course over
+      // ground). NaN and null both mean "nothing to show" to the UI, so
+      // both collapse to null here — otherwise a NaN leaks into GpsFix and
+      // renders literally as "NaN°"/"NaN kn" (formatHeading/formatKn don't
+      // special-case it).
+      const cogDeg = heading == null || Number.isNaN(heading) ? null : heading;
+      const sogKn = speed == null || Number.isNaN(speed) ? null : speed * MS_TO_KN;
       onFix({
         point: { lat: latitude, lon: longitude },
-        cogDeg: heading ?? null,
-        sogKn: speed == null ? null : speed * MS_TO_KN,
+        cogDeg,
+        sogKn,
         accuracyM: accuracy,
       });
     },

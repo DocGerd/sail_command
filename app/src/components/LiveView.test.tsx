@@ -160,6 +160,20 @@ describe('LiveView', () => {
     expect(dashes.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('renders the COG placeholder — not "NaN°" — for a stationary fix (geolocation.ts maps NaN heading to null; SOG 0 still renders as 0.0 kn)', async () => {
+    const { wp, emitFix } = fakeWatchPosition();
+    renderLive(wp, TEST_PLAN);
+    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+
+    // What geolocation.ts's watchPosition now emits for a stationary device
+    // (heading: NaN -> cogDeg: null; speed: 0 is a real reading, not NaN).
+    act(() => emitFix({ point: FIX_POINT, cogDeg: null, sogKn: 0, accuracyM: 9 }));
+
+    expect(screen.getByText('—')).toBeInTheDocument(); // COG placeholder
+    expect(screen.getByText('0.0 kn')).toBeInTheDocument(); // SOG still a real reading
+    expect(screen.queryByText(/nan/i)).not.toBeInTheDocument();
+  });
+
   it('projects a later ETA (positive drift) when the fix arrives behind schedule (mocked clock)', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);

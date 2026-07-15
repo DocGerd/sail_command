@@ -2,7 +2,7 @@ import { useT, useLang } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import { formatDateTime, formatDuration, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
-import { activeRigResult, isStaleForecast } from '../lib/plan';
+import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import type { Board, Leg, NoRouteReason, Plan, Rig } from '../types';
 
 export interface RouteSummaryProps {
@@ -16,19 +16,6 @@ const RIGS: Rig[] = ['genoa', 'fock'];
 const RIG_LABEL_KEY: Record<Rig, MsgKey> = {
   genoa: 'route.rig.genoa',
   fock: 'route.rig.fock',
-};
-
-// Mirrors usePlanFlow.ts's NO_ROUTE_MESSAGE_KEY. Kept as a separate local
-// copy rather than imported/shared: usePlanFlow.ts is outside this task's
-// file list, and the mapping is small enough that duplicating it doesn't
-// cost much.
-const NO_ROUTE_MESSAGE_KEY: Record<NoRouteReason, MsgKey> = {
-  unreachable: 'error.noRoute.unreachable',
-  'beyond-horizon': 'error.noRoute.beyondHorizon',
-  'calm-motor-off': 'error.noRoute.calmMotorOff',
-  'snap-failed-origin': 'error.noRoute.snapOrigin',
-  'snap-failed-destination': 'error.noRoute.snapDestination',
-  'snap-failed-via': 'error.noRoute.snapVia',
 };
 
 // Okabe-Ito colorblind-safe green/red, echoing the port/starboard nav-light

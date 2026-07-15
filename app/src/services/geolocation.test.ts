@@ -77,6 +77,36 @@ describe('watchPosition', () => {
     );
   });
 
+  it('maps a NaN heading to null, keeping a legitimate speed of 0 as 0 (not null) — spec: heading is NaN, not null, whenever speed is 0 (e.g. a stationary fix)', () => {
+    const geoWatchPosition = vi.fn().mockReturnValue(1);
+    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+
+    const onFix = vi.fn();
+    watchPosition(onFix, vi.fn());
+    const successCb = geoWatchPosition.mock.calls[0][0] as (pos: GeolocationPosition) => void;
+
+    successCb(fakePosition({ heading: NaN, speed: 0 }));
+
+    const fix = onFix.mock.calls[0][0];
+    expect(fix.cogDeg).toBeNull();
+    expect(fix.sogKn).toBe(0);
+  });
+
+  it('maps a NaN speed to null, for symmetry with the heading guard above (the spec does not rule it out)', () => {
+    const geoWatchPosition = vi.fn().mockReturnValue(1);
+    vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });
+
+    const onFix = vi.fn();
+    watchPosition(onFix, vi.fn());
+    const successCb = geoWatchPosition.mock.calls[0][0] as (pos: GeolocationPosition) => void;
+
+    successCb(fakePosition({ heading: 90, speed: NaN }));
+
+    const fix = onFix.mock.calls[0][0];
+    expect(fix.cogDeg).toBe(90);
+    expect(fix.sogKn).toBeNull();
+  });
+
   it("maps PERMISSION_DENIED to 'denied'", () => {
     const geoWatchPosition = vi.fn().mockReturnValue(1);
     vi.stubGlobal('navigator', { geolocation: { watchPosition: geoWatchPosition, clearWatch: vi.fn() } });

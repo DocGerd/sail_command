@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLang, useT } from './i18n';
 import { AppStateProvider, useActivePlan, useOnline, usePersistenceError, useSettings } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
@@ -97,6 +97,31 @@ function AppShell() {
   // above disarm paths apply to it unchanged.
   const [tapTarget, setTapTarget] = useState<TapTarget | null>(null);
 
+  // Phase-gate fix (E8 clobber guard): tracks which plan is *currently*
+  // active, for the two async via-replan resolution sites below to check
+  // against once their replan settles. A ref, not a read of `plan` in the
+  // closure — handleViaPointsChange/handleViaDragEnd close over the `plan`
+  // that was active when the replan *started*; by the time it resolves the
+  // user may have loaded a different plan (PlansList), and `updated.id`
+  // (replanWithVias always preserves the original plan's id) would still
+  // equal that stale closed-over id, so the closure alone can't detect the
+  // race — only a value that's re-read at resolve time, synced from
+  // whatever `plan` actually is *then*, can.
+  //
+  // usePlanFlow.run()'s own setPlan(plan) (usePlanFlow.ts) is deliberately
+  // NOT guarded the same way: run() always mints a brand-new plan.id, so a
+  // completed run is never "the same plan, possibly superseded" — it's a
+  // fresh planning request the user just asked for, which should become
+  // active even if another plan was loaded while it was in flight. Guarding
+  // it by planIdRef would incorrectly block every legitimate run() result
+  // (a new id can never match the ref's pre-existing value). The clobber
+  // this guards against is specific to replans: an edit to a *specific*,
+  // possibly-since-abandoned plan resolving late.
+  const planIdRef = useRef<string | null>(plan?.id ?? null);
+  useEffect(() => {
+    planIdRef.current = plan?.id ?? null;
+  }, [plan?.id]);
+
   // Eager load, matching spec §7's "first load downloads ~30-40 MB" —
   // mask/polars/harbors are meant to be fetched up front, not deferred to
   // first Plan tap. Best-effort: a failed fetch leaves `harbors` empty
@@ -131,7 +156,21 @@ function AppShell() {
         return;
       }
       void viaReplan.replace(plan, next).then((updated) => {
-        if (updated) setPlan(updated);
+        // Clobber guard (see planIdRef above): commit only if `plan` is
+        // still the active plan. replanWithVias preserves the original
+        // plan's id, so `updated.id` is always the id this replan targeted
+        // — comparing it against planIdRef.current (not the closed-over
+        // `plan.id`, which is the same value and would never catch this)
+        // is what actually detects that the user moved on. A guarded-out
+        // update is a no-op either way: plan.request.viaPoints (which
+        // `viaPoints` derives from) was never touched, so there's nothing
+        // to revert. Accepted residual: replanWithVias's own save() (see
+        // state/replan.ts) already persisted `updated` to IndexedDB before
+        // this guard runs — if the user also deleted this plan (PlansList)
+        // in the same window, that save silently resurrects it there. Not
+        // worth guarding against for a save that's already in flight by the
+        // time we could know the delete happened.
+        if (updated && updated.id === planIdRef.current) setPlan(updated);
       });
     },
     [plan, viaReplan, setPlan],
@@ -186,7 +225,11 @@ function AppShell() {
       if (!plan) return false; // ViaMarkers only ever renders once a plan exists; guarded defensively
       const nextVias = plan.request.viaPoints.map((v, i) => (i === index ? next : v));
       const updated = await viaReplan.replace(plan, nextVias);
-      if (updated) {
+      // Same clobber guard as handleViaPointsChange above. A mismatch here
+      // reads as a rejection to the caller (marker snaps back) — a dragged
+      // via belonging to a plan that's no longer active shouldn't leave its
+      // marker looking "accepted" even if the drag technically succeeded.
+      if (updated && updated.id === planIdRef.current) {
         setPlan(updated);
         return true;
       }
@@ -222,14 +265,19 @@ function AppShell() {
   }, []);
 
   // Escape is the keyboard equivalent of the banner's cancel button below.
+  // Gated on !aboutOpen (and not attached at all while About is open, rather
+  // than checking aboutOpen inside the handler) so a single Escape with both
+  // the dialog and tap-to-pick open only closes the dialog — AboutDialog
+  // owns its own Escape listener, and without this gate both would fire off
+  // the same keydown.
   useEffect(() => {
-    if (!tapTarget) return;
+    if (!tapTarget || aboutOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setTapTarget(null);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [tapTarget]);
+  }, [tapTarget, aboutOpen]);
 
   const handlePlan = useCallback(() => {
     if (!origin || !destination) return;
@@ -252,10 +300,17 @@ function AppShell() {
   }, [origin, destination, departureMs, settings, run, viaPoints]);
 
   // The Plan button independently guards offline (spec §4) on top of the
-  // banner; canPlan also requires both endpoints and an idle/error (not
-  // already in-flight) planning phase.
+  // banner; canPlan also requires both endpoints, an idle/error (not
+  // already in-flight) planning phase, and no via-replan in flight — a
+  // fresh run() while a replan of the current plan is pending would race
+  // the same "which result wins" question planIdRef's guard exists for
+  // above, so it's simplest to just not let one start.
   const canPlan =
-    origin !== null && destination !== null && online && (planning.phase === 'idle' || planning.phase === 'error');
+    origin !== null &&
+    destination !== null &&
+    online &&
+    (planning.phase === 'idle' || planning.phase === 'error') &&
+    !viaReplan.state.replanning;
   const planDisabledReason = online ? null : t('error.offline');
 
   const plannerPlanningState = toPlannerPlanningState(planning, departureMs, t);

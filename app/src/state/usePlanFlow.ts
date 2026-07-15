@@ -5,6 +5,7 @@ import { loadRoutingAssets } from '../services/assets';
 import { RoutingClient } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { dedupeViaPoints } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Plan, PlanRequest, PlanResult, Rig, Settings, WindGrid } from '../types';
 
@@ -97,6 +98,19 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         transition({ phase: 'error', messageKey: 'error.offline' });
         return;
       }
+
+      // Ledgered intake (mirrors state/replan.ts's replanWithVias): the same
+      // ~60 m coincident-waypoint dedupe that guards every later via-replan
+      // must also apply to a plan's *initial* via list, or a via this close
+      // to origin/destination/a neighboring via reaches the segmented router
+      // (routing/planRoute.ts) as a zero-duration leg on the very first run.
+      // Both the request handed to the worker below and the Plan persisted
+      // at the end use `req` (reassigned here) so a saved plan's viaPoints
+      // always match what was actually routed. Silent drop, no banner — v1
+      // scope; replans surface a droppedCount (useViaReplan) because there's
+      // an existing plan/banner surface to attach it to, but run() has none
+      // yet at this point.
+      req = { ...req, viaPoints: dedupeViaPoints(req.origin, req.viaPoints, req.destination).kept };
 
       transition({ phase: 'fetching-wind' });
 

@@ -8,6 +8,7 @@ import type { WorkerRequest, WorkerResponse } from '../routing/protocol';
 import { OpenMeteoError, type OpenMeteoErrorKind } from '../services/openMeteo';
 import * as assetsModule from '../services/assets';
 import { __resetDbForTests } from '../services/db';
+import { destinationPoint } from '../lib/geo';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type NoRouteReason, type Plan, type PlanResultOk } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
@@ -342,6 +343,41 @@ describe('usePlanFlow', () => {
     expect(save).toHaveBeenCalledTimes(1);
     // The working client's own Worker must still be alive (not disposed).
     expect(workingWorker.terminate).not.toHaveBeenCalled();
+  });
+
+  it('run() dedupes adjacent via points (< 60 m) before submitting the request, and before saving the plan', async () => {
+    const w = fakeWorker();
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const via1 = { lat: 54.76, lon: 10.1 }; // far from REQ.origin/REQ.destination
+    const via2 = destinationPoint(via1, 10, 50 / 1852); // ~50 m from via1, within the 60 m dedupe threshold
+    const reqWithVias = { ...REQ, viaPoints: [via1, via2] };
+
+    const { result } = renderHook(
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
+      { wrapper: AppStateProvider },
+    );
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(reqWithVias, 'Test plan with vias');
+      await flush();
+    });
+
+    const planMsg = findPosted(w.posted, 'plan');
+    expect(planMsg.request.viaPoints).toEqual([via1]); // via2 dropped, too close to via1
+
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+
+    expect(save).toHaveBeenCalledTimes(1);
+    const savedPlan = save.mock.calls[0][0];
+    expect(savedPlan.request.viaPoints).toEqual([via1]); // the saved plan carries the deduped list too
   });
 
   it('run() is a guarded no-op while a plan is already in flight', async () => {
