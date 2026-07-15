@@ -75,7 +75,11 @@ export class RoutingClient {
     if (this.disposed) throw new Error('RoutingClient disposed');
     const id = crypto.randomUUID();
     return new Promise<PlanResult>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, onProgress });
+      // exactOptionalPropertyTypes: `onProgress` is `ProgressCb | undefined`
+      // here (an omitted arg), but the map's value type declares it as
+      // optional-if-present, not optional-or-undefined — so an absent
+      // callback must omit the key entirely rather than set it to undefined.
+      this.pending.set(id, onProgress ? { resolve, reject, onProgress } : { resolve, reject });
       this.worker.postMessage({ type: 'plan', id, request, windGrid } satisfies WorkerRequest);
     });
   }

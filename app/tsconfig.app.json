@@ -8,6 +8,7 @@
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
     "strict": true,
+    "exactOptionalPropertyTypes": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",

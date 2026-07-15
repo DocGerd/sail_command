@@ -20,5 +20,15 @@ export const de = {
   'planner.status.fetching': 'Windvorhersage wird geladen…',
   'planner.status.routing': 'Route wird berechnet…',
   'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
+  'error.offline': 'Windvorhersagedienst nicht erreichbar. Internetverbindung prüfen und erneut versuchen.',
+  'error.rateLimited': 'Anfragelimit des Windvorhersagedienstes erreicht. Kurz warten und erneut versuchen.',
+  'error.windService': 'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
+  'error.internal': 'Routenplanung unerwartet fehlgeschlagen. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+  'error.noRoute.unreachable': 'Keine Route gefunden — das Ziel ist ohne Landkontakt oder zu flaches Wasser nicht erreichbar.',
+  'error.noRoute.beyondHorizon': 'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen.',
+  'error.noRoute.calmMotorOff': 'Zu wenig Wind zum Segeln und Motor deaktiviert — Motor in den Optionen aktivieren oder Abfahrt verschieben.',
+  'error.noRoute.snapOrigin': 'Der Startpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+  'error.noRoute.snapDestination': 'Das Ziel ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+  'error.noRoute.snapVia': 'Ein Zwischenpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
 } as const;
 export type MsgKey = keyof typeof de;
