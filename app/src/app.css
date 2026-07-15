@@ -356,6 +356,35 @@ select {
   opacity: 0.75;
 }
 
+.planner-via-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.planner-via-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-bottom: 1px solid var(--sc-border);
+  padding: 0.3rem 0;
+}
+
+.planner-via-coord {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.via-markers-spinner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sc-fg) 8%, transparent);
+  font-size: 0.8rem;
+}
+
 .harbor-picker ul {
   list-style: none;
   margin: 0;

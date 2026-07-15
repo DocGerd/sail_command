@@ -7,7 +7,8 @@ import { formatTime } from '../lib/format';
 import { activeRigResult } from '../lib/plan';
 import { barbFeatures, legsToFeatureCollection, maneuverFeatures, nearestHourIndex } from '../lib/routeGeoJson';
 import { registerBarbImages } from '../lib/windBarbs';
-import type { Plan, Rig } from '../types';
+import ViaMarkers from './ViaMarkers';
+import type { LatLon, Plan, Rig } from '../types';
 
 export interface RouteLayerProps {
   plan: Plan | null;
@@ -16,6 +17,14 @@ export interface RouteLayerProps {
   // cheap setFilter() on the highlight layer only — never a source re-set —
   // so near-boundary GPS noise flipping between adjacent legs stays cheap.
   activeLegIndex: number | null;
+  // E8: via-waypoint re-route. ViaMarkers is rendered here (not as a
+  // sibling in App.tsx) mirroring LiveView's own BoatMarker — a plan's via
+  // points are route-scoped, and RouteLayer already receives `plan`. Both
+  // props are only meaningful once `plan` exists (renders null before
+  // that), so App.tsx's wiring only needs to keep them defined once a plan
+  // is active.
+  viaReplanning: boolean;
+  onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
 
 // Not unit-tested: jsdom has no MapLibre/WebGL runtime, so source/layer
@@ -149,7 +158,7 @@ function setupLayers(map: MaplibreMap): void {
   }
 }
 
-export default function RouteLayer({ plan, rig, activeLegIndex }: RouteLayerProps) {
+export default function RouteLayer({ plan, rig, activeLegIndex, viaReplanning, onViaDragEnd }: RouteLayerProps) {
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
@@ -291,6 +300,7 @@ export default function RouteLayer({ plan, rig, activeLegIndex }: RouteLayerProp
           <span>{formatTime(tMs, lang)}</span>
         </div>
       )}
+      <ViaMarkers viaPoints={plan.request.viaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
     </div>
   );
 }

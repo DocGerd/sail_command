@@ -2,8 +2,11 @@ import { useState } from 'react';
 import type { Harbor, LatLon, Settings } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
+import { formatLatLon } from '../lib/format';
 import HarborPicker from './HarborPicker';
 import OptionsPanel from './OptionsPanel';
+
+export type TapTarget = 'origin' | 'destination' | 'via';
 
 // Presentational output of a harbor selection or a map tap. Wiring (turning
 // a raw map-tap LatLon or harbor pick into app state) is E3's job; this type
@@ -29,7 +32,18 @@ export interface PlannerPanelProps {
   destination: PickedPoint | null;
   onPickOrigin: (p: PickedPoint) => void;
   onPickDestination: (p: PickedPoint) => void;
-  onRequestMapTap: (target: 'origin' | 'destination') => void; // parent arms MapView tap mode
+  onRequestMapTap: (target: TapTarget) => void; // parent arms MapView tap mode
+  // E8: via-waypoint re-route. Source of truth is the caller's — either a
+  // pre-first-plan local draft, or (once a plan exists) plan.request.viaPoints
+  // itself, so a rejected replan is reflected here automatically. Reorder is
+  // up/down buttons, not drag-and-drop (v1 scope).
+  viaPoints: LatLon[];
+  onRemoveVia: (index: number) => void;
+  onReorderVia: (index: number, direction: 'up' | 'down') => void;
+  // True while a via edit (from this panel or a map-marker drag) is being
+  // replanned — disables the via controls so a second edit can't be queued
+  // while one is in flight (mirrors ViaMarkers' own disabled state).
+  viaReplanning: boolean;
   departureMs: number;
   onDepartureChange: (ms: number) => void;
   settings: Settings;
@@ -72,6 +86,10 @@ export default function PlannerPanel({
   onPickOrigin,
   onPickDestination,
   onRequestMapTap,
+  viaPoints,
+  onRemoveVia,
+  onReorderVia,
+  viaReplanning,
   departureMs,
   onDepartureChange,
   settings,
@@ -116,6 +134,46 @@ export default function PlannerPanel({
           harbors={harbors}
           onSelect={(h) => onPickDestination(harborToPickedPoint(h, lang))}
         />
+      </section>
+
+      <section aria-label={t('planner.via.label')} className="planner-via">
+        <h2>{t('planner.via.label')}</h2>
+        {viaPoints.length > 0 && (
+          <ol className="planner-via-list">
+            {viaPoints.map((v, i) => (
+              <li key={i} className="planner-via-row">
+                <span className="planner-via-coord">{formatLatLon(v)}</span>
+                <button
+                  type="button"
+                  disabled={viaReplanning || i === 0}
+                  onClick={() => onReorderVia(i, 'up')}
+                  aria-label={t('planner.via.moveUp', { index: i + 1 })}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={viaReplanning || i === viaPoints.length - 1}
+                  onClick={() => onReorderVia(i, 'down')}
+                  aria-label={t('planner.via.moveDown', { index: i + 1 })}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  disabled={viaReplanning}
+                  onClick={() => onRemoveVia(i)}
+                  aria-label={t('planner.via.remove', { index: i + 1 })}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+        <button type="button" disabled={viaReplanning} onClick={() => onRequestMapTap('via')}>
+          {t('planner.via.add')}
+        </button>
       </section>
 
       <div className="planner-departure">

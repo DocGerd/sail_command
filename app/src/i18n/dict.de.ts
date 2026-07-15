@@ -15,6 +15,12 @@ export const de = {
   'planner.destination.label': 'Ziel',
   'planner.notSelected': 'Nicht ausgewählt',
   'planner.pickOnMap': 'Auf Karte wählen',
+  'planner.via.label': 'Wegpunkte',
+  'planner.via.add': 'Wegpunkt hinzufügen',
+  'planner.via.remove': 'Wegpunkt {index} entfernen',
+  'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
+  'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
+  'planner.via.replanning': 'Route wird mit geänderten Wegpunkten neu berechnet…',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
@@ -30,6 +36,7 @@ export const de = {
   'error.noRoute.snapOrigin': 'Der Startpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
   'error.noRoute.snapDestination': 'Das Ziel ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
   'error.noRoute.snapVia': 'Ein Zwischenpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+  'error.replanStaleWind': 'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'route.rig.genoa': 'Genua',
   'route.rig.fock': 'Fock',
   'route.rigTabs': 'Riggvergleich',
@@ -102,5 +109,6 @@ export const de = {
   'banner.dismiss': 'Schließen',
   'banner.tapPick': 'Auf Karte tippen für {target}.',
   'banner.tapPick.cancel': 'Abbrechen',
+  'banner.viaTooClose': 'Wegpunkt zu nah am Nachbarn — übersprungen',
 } as const;
 export type MsgKey = keyof typeof de;

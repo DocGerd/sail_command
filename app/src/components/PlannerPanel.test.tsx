@@ -2,8 +2,8 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import { DEFAULT_SETTINGS, type Harbor } from '../types';
-import PlannerPanel, { nextFullHourMs, type PickedPoint, type PlanningState } from './PlannerPanel';
+import { DEFAULT_SETTINGS, type Harbor, type LatLon } from '../types';
+import PlannerPanel, { nextFullHourMs, type PickedPoint, type PlanningState, type TapTarget } from './PlannerPanel';
 
 const FLENSBURG: Harbor = {
   id: 'flensburg',
@@ -28,7 +28,11 @@ interface Overrides {
   destination?: PickedPoint | null;
   onPickOrigin?: (p: PickedPoint) => void;
   onPickDestination?: (p: PickedPoint) => void;
-  onRequestMapTap?: (target: 'origin' | 'destination') => void;
+  onRequestMapTap?: (target: TapTarget) => void;
+  viaPoints?: LatLon[];
+  onRemoveVia?: (index: number) => void;
+  onReorderVia?: (index: number, direction: 'up' | 'down') => void;
+  viaReplanning?: boolean;
   onDepartureChange?: (ms: number) => void;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
   canPlan?: boolean;
@@ -46,6 +50,10 @@ function renderPanel(overrides: Overrides = {}) {
     onPickOrigin: vi.fn(),
     onPickDestination: vi.fn(),
     onRequestMapTap: vi.fn(),
+    viaPoints: [],
+    onRemoveVia: vi.fn(),
+    onReorderVia: vi.fn(),
+    viaReplanning: false,
     departureMs: DEPARTURE_MS,
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
@@ -186,5 +194,60 @@ describe('PlannerPanel', () => {
   it('renders the error message during planning.phase "error"', () => {
     renderPanel({ planning: { phase: 'error', message: 'Open-Meteo is unreachable.' } });
     expect(screen.getByText('Open-Meteo is unreachable.')).toBeInTheDocument();
+  });
+
+  describe('via waypoints', () => {
+    const VIA_A = { lat: 54.8, lon: 9.9 };
+    const VIA_B = { lat: 54.82, lon: 9.95 };
+
+    it('shows no chip list when there are no via points', () => {
+      renderPanel({ viaPoints: [] });
+      const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+      expect(within(viaSection).queryByRole('list')).not.toBeInTheDocument();
+    });
+
+    it('requests map-tap mode for "via" when "Add waypoint" is clicked', () => {
+      const props = renderPanel();
+      fireEvent.click(screen.getByRole('button', { name: 'Add waypoint' }));
+      expect(props.onRequestMapTap).toHaveBeenCalledWith('via');
+    });
+
+    it('renders one chip per via point, formatted as a coordinate label', () => {
+      renderPanel({ viaPoints: [VIA_A, VIA_B] });
+      const viaSection = screen.getByRole('region', { name: 'Waypoints' });
+      const items = within(viaSection).getAllByRole('listitem');
+      expect(items).toHaveLength(2);
+      expect(items[0]).toHaveTextContent('54.800°N 9.900°E');
+      expect(items[1]).toHaveTextContent('54.820°N 9.950°E');
+    });
+
+    it('removing a chip calls onRemoveVia with that chip\'s index', () => {
+      const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
+      fireEvent.click(screen.getByRole('button', { name: 'Remove waypoint 2' }));
+      expect(props.onRemoveVia).toHaveBeenCalledWith(1);
+    });
+
+    it('reordering a chip calls onReorderVia with its index and direction', () => {
+      const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
+      fireEvent.click(screen.getByRole('button', { name: 'Move waypoint 2 up' }));
+      expect(props.onReorderVia).toHaveBeenCalledWith(1, 'up');
+      fireEvent.click(screen.getByRole('button', { name: 'Move waypoint 1 down' }));
+      expect(props.onReorderVia).toHaveBeenCalledWith(0, 'down');
+    });
+
+    it('disables the first chip\'s "move up" and the last chip\'s "move down" buttons', () => {
+      renderPanel({ viaPoints: [VIA_A, VIA_B] });
+      expect(screen.getByRole('button', { name: 'Move waypoint 1 up' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Move waypoint 2 down' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Move waypoint 1 down' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Move waypoint 2 up' })).toBeEnabled();
+    });
+
+    it('disables all via controls while a replan is in flight', () => {
+      renderPanel({ viaPoints: [VIA_A], viaReplanning: true });
+      expect(screen.getByRole('button', { name: 'Add waypoint' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Remove waypoint 1' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Move waypoint 1 down' })).toBeDisabled();
+    });
   });
 });

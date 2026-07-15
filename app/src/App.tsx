@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLang, useT } from './i18n';
 import { AppStateProvider, useActivePlan, useOnline, usePersistenceError, useSettings } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
+import { useViaReplan } from './state/replan';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
@@ -10,6 +11,7 @@ import PlannerPanel, {
   nextFullHourMs,
   type PickedPoint,
   type PlanningState as PlannerPlanningState,
+  type TapTarget,
 } from './components/PlannerPanel';
 import PlansList from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
@@ -18,11 +20,18 @@ import Banner from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import { isStaleForecast } from './lib/plan';
 import { formatLatLon } from './lib/format';
+import type { MsgKey } from './i18n/dict.de';
 import type { Harbor, LatLon } from './types';
 
 type Tab = 'plan' | 'routes' | 'live';
 
 const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
+
+const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
+  origin: 'planner.origin.label',
+  destination: 'planner.destination.label',
+  via: 'planner.via.label',
+};
 
 // Reconciles usePlanFlow.ts's PlanningState (fetching-wind / routing{rig,
 // simulatedToMs} / error{messageKey}) with PlannerPanel's own, coarser
@@ -55,9 +64,13 @@ function AppShell() {
   const [lang, setLang] = useLang();
   const online = useOnline();
   const [settings, setSettings] = useSettings();
-  const { plan, rig, setRig, activeLegIndex } = useActivePlan();
+  const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
   const [persistenceError, clearPersistenceError] = usePersistenceError();
-  const { planning, run } = usePlanFlow();
+  const { planning, run, getClient } = usePlanFlow();
+  // E8: via-waypoint re-route. Reuses usePlanFlow's singleton RoutingClient
+  // (via the getClient getter — see usePlanFlow.ts's docstring on why it's a
+  // getter, not a value) rather than spawning a second worker.
+  const viaReplan = useViaReplan(getClient);
 
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -65,14 +78,24 @@ function AppShell() {
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
   const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
-  // null = tap-to-pick disarmed; 'origin'/'destination' = MapView.tapActive
+  // Pre-first-plan via draft, mirroring origin/destination — only read once
+  // `plan` is null. Once a plan exists, the committed plan.request.viaPoints
+  // *is* the via list (see `viaPoints` below): every edit past that point
+  // goes through a replan, so there is no separate optimistic draft to keep
+  // in sync — a rejected replan leaves plan.request.viaPoints (and thus the
+  // displayed list) exactly where it was, which is the "snap back" behavior
+  // ViaMarkers/the panel both rely on.
+  const [draftViaPoints, setDraftViaPoints] = useState<LatLon[]>([]);
+  const viaPoints = plan ? plan.request.viaPoints : draftViaPoints;
+  // null = tap-to-pick disarmed; 'origin'/'destination'/'via' = MapView.tapActive
   // is armed for that target. Disarmed by: a tap resolving (handleMapTap),
   // a harbor-search pick filling the armed field (handlePickOrigin/
   // handlePickDestination), switching away from the Plan tab
   // (handleTabChange), or the cancel banner/Escape (handleCancelTapPick) —
   // every path a user could take that should stop treating the next map tap
-  // as a coordinate pick.
-  const [tapTarget, setTapTarget] = useState<'origin' | 'destination' | null>(null);
+  // as a coordinate pick. 'via' extends the same machinery (E8): all of the
+  // above disarm paths apply to it unchanged.
+  const [tapTarget, setTapTarget] = useState<TapTarget | null>(null);
 
   // Eager load, matching spec §7's "first load downloads ~30-40 MB" —
   // mask/polars/harbors are meant to be fetched up front, not deferred to
@@ -91,19 +114,86 @@ function AppShell() {
     };
   }, []);
 
-  const handleRequestMapTap = useCallback((target: 'origin' | 'destination') => {
+  const handleRequestMapTap = useCallback((target: TapTarget) => {
     setTapTarget(target);
   }, []);
 
-  const handleMapTap = useCallback((p: LatLon) => {
-    setTapTarget((current) => {
-      if (!current) return current;
-      const picked: PickedPoint = { point: p, harborId: null, label: formatLatLon(p) };
-      if (current === 'origin') setOrigin(picked);
-      else setDestination(picked);
-      return null; // disarm
-    });
-  }, []);
+  // E8: shared by ViaMarkers' drag-replan, the panel's add/remove/reorder
+  // chips, and handleMapTap's 'via' branch below — one place that decides
+  // "pre-plan draft edit" vs. "post-plan replan". A rejected replan is a
+  // no-op here (viaReplan.replace already resolved null and recorded the
+  // error in viaReplan.state; nothing to revert since plan.request.viaPoints,
+  // which `viaPoints` derives from, was never touched).
+  const handleViaPointsChange = useCallback(
+    (next: LatLon[]) => {
+      if (!plan) {
+        setDraftViaPoints(next);
+        return;
+      }
+      void viaReplan.replace(plan, next).then((updated) => {
+        if (updated) setPlan(updated);
+      });
+    },
+    [plan, viaReplan, setPlan],
+  );
+
+  const handleMapTap = useCallback(
+    (p: LatLon) => {
+      setTapTarget((current) => {
+        if (!current) return current;
+        if (current === 'via') {
+          // Side effect inside a setState updater, same as the
+          // origin/destination branches below — StrictMode double-invokes
+          // updater functions in dev, but handleViaPointsChange's replan
+          // path is protected by useViaReplan's synchronous in-flight guard
+          // (set before any await), and its pre-plan draft path is a plain,
+          // idempotent setState computed identically both times.
+          handleViaPointsChange([...viaPoints, p]);
+          return null;
+        }
+        const picked: PickedPoint = { point: p, harborId: null, label: formatLatLon(p) };
+        if (current === 'origin') setOrigin(picked);
+        else setDestination(picked);
+        return null; // disarm
+      });
+    },
+    [viaPoints, handleViaPointsChange],
+  );
+
+  const handleRemoveVia = useCallback(
+    (index: number) => {
+      handleViaPointsChange(viaPoints.filter((_, i) => i !== index));
+    },
+    [viaPoints, handleViaPointsChange],
+  );
+
+  const handleReorderVia = useCallback(
+    (index: number, direction: 'up' | 'down') => {
+      const swapWith = direction === 'up' ? index - 1 : index + 1;
+      if (swapWith < 0 || swapWith >= viaPoints.length) return;
+      const next = [...viaPoints];
+      [next[index], next[swapWith]] = [next[swapWith], next[index]];
+      handleViaPointsChange(next);
+    },
+    [viaPoints, handleViaPointsChange],
+  );
+
+  // ViaMarkers' dragend handler: resolves true (accepted) once the plan's
+  // committed viaPoints reflect the drag, or false (rejected) to tell the
+  // marker to snap back to its last committed position.
+  const handleViaDragEnd = useCallback(
+    async (index: number, next: LatLon): Promise<boolean> => {
+      if (!plan) return false; // ViaMarkers only ever renders once a plan exists; guarded defensively
+      const nextVias = plan.request.viaPoints.map((v, i) => (i === index ? next : v));
+      const updated = await viaReplan.replace(plan, nextVias);
+      if (updated) {
+        setPlan(updated);
+        return true;
+      }
+      return false;
+    },
+    [plan, viaReplan, setPlan],
+  );
 
   const handleCancelTapPick = useCallback(() => setTapTarget(null), []);
 
@@ -147,8 +237,11 @@ function AppShell() {
       {
         origin: origin.point,
         destination: destination.point,
-        // No via-point UI yet (backlog: issue #4, via-waypoint re-route).
-        viaPoints: [],
+        // Whatever via chips are currently shown feed into the next plan
+        // request, whether that's the pre-plan draft or (re-planning from
+        // scratch with new origin/destination while a plan is still active)
+        // the previous plan's committed via list.
+        viaPoints,
         originHarborId: origin.harborId,
         destinationHarborId: destination.harborId,
         departureMs,
@@ -156,7 +249,7 @@ function AppShell() {
       },
       `${origin.label} → ${destination.label}`,
     );
-  }, [origin, destination, departureMs, settings, run]);
+  }, [origin, destination, departureMs, settings, run, viaPoints]);
 
   // The Plan button independently guards offline (spec §4) on top of the
   // banner; canPlan also requires both endpoints and an idle/error (not
@@ -183,7 +276,13 @@ function AppShell() {
             child-added sources; a full remount would need viewport capture
             plumbing this assembly pass deliberately keeps out of scope. */}
         <MapView tapActive={tapTarget !== null} onTap={handleMapTap}>
-          <RouteLayer plan={plan} rig={rig} activeLegIndex={activeLegIndex} />
+          <RouteLayer
+            plan={plan}
+            rig={rig}
+            activeLegIndex={activeLegIndex}
+            viaReplanning={viaReplan.state.replanning}
+            onViaDragEnd={handleViaDragEnd}
+          />
           {/* LiveView must live inside MapView's subtree so its BoatMarker
               child can resolve useMapInstance() (see E6's report). Styled to
               occupy the same bottom-sheet screen region as .app-bottom-sheet
@@ -216,9 +315,17 @@ function AppShell() {
         )}
         {tapTarget && (
           <Banner kind="info" onDismiss={handleCancelTapPick} dismissLabel={t('banner.tapPick.cancel')}>
-            {t('banner.tapPick', {
-              target: t(tapTarget === 'origin' ? 'planner.origin.label' : 'planner.destination.label'),
-            })}
+            {t('banner.tapPick', { target: t(TAP_TARGET_LABEL_KEY[tapTarget]) })}
+          </Banner>
+        )}
+        {viaReplan.state.error && (
+          <Banner kind="error" onDismiss={viaReplan.clearError} dismissLabel={t('banner.dismiss')}>
+            {t(viaReplan.state.error)}
+          </Banner>
+        )}
+        {viaReplan.state.droppedCount > 0 && (
+          <Banner kind="info" onDismiss={viaReplan.clearDroppedNotice} dismissLabel={t('banner.dismiss')}>
+            {t('banner.viaTooClose')}
           </Banner>
         )}
       </div>
@@ -245,6 +352,10 @@ function AppShell() {
               onPickOrigin={handlePickOrigin}
               onPickDestination={handlePickDestination}
               onRequestMapTap={handleRequestMapTap}
+              viaPoints={viaPoints}
+              onRemoveVia={handleRemoveVia}
+              onReorderVia={handleReorderVia}
+              viaReplanning={viaReplan.state.replanning}
               departureMs={departureMs}
               onDepartureChange={setDepartureMs}
               settings={settings}

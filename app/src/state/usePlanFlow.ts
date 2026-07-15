@@ -4,8 +4,9 @@ import { savePlan } from '../services/db';
 import { loadRoutingAssets } from '../services/assets';
 import { RoutingClient } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
+import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import type { MsgKey } from '../i18n/dict.de';
-import type { NoRouteReason, Plan, PlanRequest, PlanResult, Rig, Settings, WindGrid } from '../types';
+import type { Plan, PlanRequest, PlanResult, Rig, Settings, WindGrid } from '../types';
 
 export type PlanningState =
   | { phase: 'idle' }
@@ -18,20 +19,6 @@ export interface PlanFlowDeps {
   makeClient?: () => RoutingClient;
   save?: typeof savePlan;
 }
-
-const NO_ROUTE_MESSAGE_KEY: Record<NoRouteReason, MsgKey> = {
-  unreachable: 'error.noRoute.unreachable',
-  'beyond-horizon': 'error.noRoute.beyondHorizon',
-  'calm-motor-off': 'error.noRoute.calmMotorOff',
-  'snap-failed-origin': 'error.noRoute.snapOrigin',
-  'snap-failed-destination': 'error.noRoute.snapDestination',
-  // Not called out by name in the E3 brief's mapping list (which only
-  // enumerates unreachable/beyondHorizon/calmMotorOff/snapOrigin/
-  // snapDestination), but NoRouteReason has six members and vias are a
-  // first-class waypoint kind (viaPoints.ts) — completing the Record here
-  // rather than leaving this reason to fall through to error.internal.
-  'snap-failed-via': 'error.noRoute.snapVia',
-};
 
 function mapWindError(err: unknown): MsgKey {
   if (err instanceof OpenMeteoError) {
@@ -51,6 +38,18 @@ function mapWindError(err: unknown): MsgKey {
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
   run: (req: Omit<PlanRequest, 'settings'> & { settings: Settings }, name: string) => Promise<void>;
+  // Reads the singleton RoutingClient, once a first run() has created and
+  // init'd it (null before that). Exposed as a getter — not the ref value
+  // itself — so E8's replanWithVias (state/replan.ts) can reuse the same
+  // init'd worker for via re-routes instead of spawning a second one
+  // (init() transfers the maskBuffer and must only happen once per client)
+  // without reading clientRef.current during render, which
+  // react-hooks/refs flags: refs must only be read from event handlers/
+  // effects, i.e. at call time inside getClient(), never at render time. A
+  // replan is only ever possible once a Plan already exists, which itself
+  // requires a prior successful run(), so by the time a caller invokes this
+  // it is guaranteed non-null.
+  getClient: () => RoutingClient | null;
 } {
   const { setPlan } = useActivePlan();
   const [planning, setPlanning] = useState<PlanningState>({ phase: 'idle' });
@@ -188,5 +187,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     [fetchWind, makeClient, save, setPlan, transition],
   );
 
-  return { planning, run };
+  const getClient = useCallback(() => clientRef.current, []);
+
+  return { planning, run, getClient };
 }

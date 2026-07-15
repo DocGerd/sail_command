@@ -214,6 +214,16 @@ describe('App', () => {
       return originSection;
     }
 
+    // E8: 'via' extends the same tapTarget machinery (arming/disarming) as
+    // origin/destination — armed from the panel's "Add waypoint" button
+    // instead of a harbor section's "Pick on map" button, since via points
+    // have no harbor picker of their own.
+    function armVia() {
+      const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+      fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+      return viaSection;
+    }
+
     const tapPickMessage = (targetLabel: string) => de['banner.tapPick'].replace('{target}', targetLabel);
 
     it('arms tap-to-pick with a cancel banner, and switching tabs away from Plan disarms it', async () => {
@@ -268,6 +278,54 @@ describe('App', () => {
 
       fireEvent.keyDown(window, { key: 'Escape' });
       expect(screen.queryByText(message)).not.toBeInTheDocument();
+    });
+
+    it('arms tap-to-pick for "via" from the panel\'s Add waypoint button, and switching tabs disarms it', async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      armVia();
+      const message = tapPickMessage(de['planner.via.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+    });
+
+    it('the banner cancel button disarms via tap-to-pick', async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      armVia();
+      const message = tapPickMessage(de['planner.via.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: de['banner.tapPick.cancel'] }));
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+    });
+
+    it('pressing Escape disarms via tap-to-pick', async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      armVia();
+      const message = tapPickMessage(de['planner.via.label']);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+    });
+
+    it('arming origin then arming via re-arms for the new target (only one can be armed at a time)', async () => {
+      renderApp();
+      await screen.findByRole('heading', { name: 'SailCommand' });
+
+      armOrigin();
+      expect(await screen.findByText(tapPickMessage(de['planner.origin.label']))).toBeInTheDocument();
+
+      armVia();
+      expect(screen.queryByText(tapPickMessage(de['planner.origin.label']))).not.toBeInTheDocument();
+      expect(await screen.findByText(tapPickMessage(de['planner.via.label']))).toBeInTheDocument();
     });
   });
 });

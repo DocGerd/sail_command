@@ -6,7 +6,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { DEFAULT_SETTINGS, type Harbor } from '../types';
-import PlannerPanel, { nextFullHourMs, type PickedPoint, type PlanningState } from './PlannerPanel';
+import PlannerPanel, { nextFullHourMs, type PickedPoint, type PlanningState, type TapTarget } from './PlannerPanel';
 
 // Verify TZ pinning works: DST fold instant 2026-10-25 02:00 CEST becomes 03:00 CET
 const dstTest = new Date(2026, 9, 25, 2, 23);
@@ -36,7 +36,7 @@ interface Overrides {
   destination?: PickedPoint | null;
   onPickOrigin?: (p: PickedPoint) => void;
   onPickDestination?: (p: PickedPoint) => void;
-  onRequestMapTap?: (target: 'origin' | 'destination') => void;
+  onRequestMapTap?: (target: TapTarget) => void;
   onDepartureChange?: (ms: number) => void;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
   canPlan?: boolean;
@@ -55,6 +55,10 @@ function renderPanel(overrides: Overrides = {}) {
     onPickOrigin: vi.fn(),
     onPickDestination: vi.fn(),
     onRequestMapTap: vi.fn(),
+    viaPoints: [],
+    onRemoveVia: vi.fn(),
+    onReorderVia: vi.fn(),
+    viaReplanning: false,
     departureMs: Date.UTC(2026, 6, 20, 9, 0, 0),
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
