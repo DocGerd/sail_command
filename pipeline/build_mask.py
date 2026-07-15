@@ -74,7 +74,8 @@ def main() -> None:
     )
 
     dst_transform = from_origin(WEST, NORTH, (EAST - WEST) / COLS, (NORTH - SOUTH) / ROWS)
-    elev = np.full((ROWS, COLS), np.nan, dtype=np.float32)  # row 0 = north (numpy)
+    elev_max = np.full((ROWS, COLS), np.nan, dtype=np.float32)  # row 0 = north (numpy)
+    elev_bilinear = np.full((ROWS, COLS), np.nan, dtype=np.float32)
     with rasterio.open(SRC / "emodnet_dtm.tif") as src:
         # LAST-RESORT DEVIATION (issue #6): Resampling.max on LAT-referenced
         # *elevation* picks the SHALLOWEST contributing source cell, which is
@@ -86,26 +87,76 @@ def main() -> None:
         # "approx 3 m in the upper reaches" - all documented >= 3.0 m yet
         # max-resampled to well under 3.0 m at 46 m cells, disconnecting
         # those harbors from open water even after the resolution/rasterize
-        # fixes below). Switched to Resampling.bilinear, which trades
-        # worst-case shallow-biased conservatism for channel fidelity - a
-        # cell's depth is now a distance-weighted average of nearby source
-        # cells instead of always the shallowest. NOTE this is a real
-        # conservatism tradeoff, not a free lunch: averaging CAN report a
-        # cell deeper than its shallowest contributing source pixel (e.g.
-        # avg of -2 m and -10 m -> -6 m), which max() never did. The
-        # floor-to-decimeter step below still never overstates whatever
-        # depth value comes out of this resampling - it just no longer
-        # guarantees that value is the single shallowest source pixel.
-        # unknown/void -> land conservatism is unchanged.
+        # fixes below).
+        #
+        # An UNCONDITIONAL switch to Resampling.bilinear (tried first) fixes
+        # those channels but is not a free lunch: bilinear interpolates from
+        # the nearest source pixels around each destination cell's *center*
+        # rather than aggregating a footprint the way max() does, so at a
+        # sharp source discontinuity (a tidal flat right next to a dredged
+        # channel or a steep drop-off) it can manufacture depth that isn't
+        # really there. Measured against pure Resampling.max on this same
+        # bbox, in the actual final encoded output (post OSM-land-mask,
+        # post-Schlei-carve, post-floor - i.e. what would really ship):
+        # unconditional bilinear flips 22,948 cells from LAND (dry/unknown
+        # under max) to WATER, of which 1,780 read >= 3.0 m (the app's
+        # default safety depth) and 663 read >= 5.0 m; the worst single flip
+        # went from a max-depth of 0.00 m to a bilinear-depth of 15.64 m.
+        # 97.6% of the >= 3.0 m flips are more than 1 km from any harbor
+        # snap - i.e. outside the harbor-scoped channels this fix is
+        # actually trying to reconnect, and squarely inside water an
+        # unwitting user could route through believing it's surveyed depth.
+        # That violates "never overstate depth" project-wide for a fix that
+        # only needed to help ~4 named channels.
+        #
+        # Fix: compute BOTH reprojections and blend per-cell. Trust bilinear
+        # only where it's close to max (smooth, gently-varying depth - the
+        # kind of local averaging bilinear is legitimately good at); fall
+        # back to the conservative max value wherever they diverge by more
+        # than TOLERANCE_M (a source discontinuity - shoal/channel boundary,
+        # drop-off, or land/water edge - where bilinear's interpolation
+        # cannot be trusted). See TOLERANCE_M below for the measured
+        # trade-off this tolerance was chosen against.
         reproject(
             source=rasterio.band(src, 1),
-            destination=elev,
+            destination=elev_max,
+            src_nodata=float("nan"),
+            dst_transform=dst_transform,
+            dst_crs="EPSG:4326",
+            dst_nodata=float("nan"),
+            resampling=Resampling.max,
+        )
+        reproject(
+            source=rasterio.band(src, 1),
+            destination=elev_bilinear,
             src_nodata=float("nan"),
             dst_transform=dst_transform,
             dst_crs="EPSG:4326",
             dst_nodata=float("nan"),
             resampling=Resampling.bilinear,
         )
+
+    # Tuned against two constraints, in priority order: (a) the connectivity
+    # gate in verify_mask.py must still pass every harbor that needed
+    # bilinear to reconnect (Aabenraa, Augustenborg's and Marstal's
+    # CONNECTIVITY_EXCEPTIONS_M thresholds, and the channels feeding them);
+    # (b) minimize land->water flips crossing the 3.0 m default safety
+    # depth. At TOLERANCE_M=2.0, both are satisfied: verify_mask.py reports
+    # the same 28 OK / 2 exceptions / 5 known-disconnected table as the
+    # unconditional-bilinear run, while land->water flips crossing 3.0 m
+    # (and 5.0 m) drop from 1,780 (663) under unconditional bilinear to
+    # ZERO under the blend - every flip the blend still allows stays below
+    # the default safety depth. Total land->water flips (any depth) also
+    # drop from 22,948 to 17,724, since most flipped cells were themselves
+    # close to the max/bilinear divergence that gates them out.
+    TOLERANCE_M = 2.0
+    both_valid = ~np.isnan(elev_max) & ~np.isnan(elev_bilinear)
+    diff = np.where(both_valid, np.abs(elev_bilinear - elev_max), np.inf)
+    use_bilinear = both_valid & (diff <= TOLERANCE_M)
+    # Cells where elev_max itself is NaN (unknown source) stay NaN here
+    # regardless of bilinear - bilinear never gets to rescue an unknown
+    # cell into "known", only to refine a cell max() already resolved.
+    elev = np.where(use_bilinear, elev_bilinear, elev_max)
 
     print("rasterizing OSM land polygons (bbox-filtered read of the global zip)...")
     # GDAL's shapefile driver does not auto-detect a .shp nested inside a zip
