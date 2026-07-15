@@ -96,12 +96,25 @@ export async function fetchWindGrid(opts?: {
     const h = data[p]?.hourly;
     if (
       !h ||
+      !Array.isArray(h.time) ||
+      !Array.isArray(h.wind_speed_10m) ||
+      !Array.isArray(h.wind_direction_10m) ||
+      !Array.isArray(h.wind_gusts_10m) ||
       h.time.length !== nT ||
       h.wind_speed_10m.length !== nT ||
       h.wind_direction_10m.length !== nT ||
       h.wind_gusts_10m.length !== nT
-    )
-      throw new OpenMeteoError('malformed', `ragged hourly arrays at point ${p}`);
+    ) {
+      const missing = [];
+      if (!Array.isArray(h?.time)) missing.push('time');
+      if (!Array.isArray(h?.wind_speed_10m)) missing.push('wind_speed_10m');
+      if (!Array.isArray(h?.wind_direction_10m)) missing.push('wind_direction_10m');
+      if (!Array.isArray(h?.wind_gusts_10m)) missing.push('wind_gusts_10m');
+      const msg = missing.length > 0
+        ? `point ${p} missing hourly.${missing.join(', hourly.')}`
+        : `ragged hourly arrays at point ${p}`;
+      throw new OpenMeteoError('malformed', msg);
+    }
     for (let t = 0; t < nT; t++) {
       const k = t * nPoints + p; // p = latIdx * LONS.length + lonIdx — matches WindGrid layout
       speedKn[k] = h.wind_speed_10m[t];

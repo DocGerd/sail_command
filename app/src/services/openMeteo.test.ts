@@ -159,13 +159,10 @@ describe('openMeteo', () => {
     }
   });
 
-  // Step 5b: JSON parse failure → malformed
-  it('should throw OpenMeteoError with kind="malformed" on JSON parse failure', async () => {
+  // Step 5b: Non-JSON 200 body → malformed
+  it('should throw OpenMeteoError with kind="malformed" on HTTP 200 with non-JSON body', async () => {
     const mockFetch = vi.fn().mockResolvedValue(
-      new Response('', {
-        status: 200,
-        json: () => Promise.reject(new SyntaxError('bad')),
-      } as Response)
+      new Response('', { status: 200 })
     );
 
     try {
@@ -193,6 +190,32 @@ describe('openMeteo', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(OpenMeteoError);
       expect((err as OpenMeteoError).kind).toBe('malformed');
+    }
+  });
+
+  // Step 5d: Missing hourly array field (e.g., wind_gusts_10m entirely absent)
+  it('should throw OpenMeteoError with kind="malformed" when hourly field is missing', async () => {
+    const fakeData = buildFakeResponse();
+    // Remove wind_gusts_10m from point 42's hourly object
+    const incomplete = {
+      time: fakeData[42].hourly.time,
+      wind_speed_10m: fakeData[42].hourly.wind_speed_10m,
+      wind_direction_10m: fakeData[42].hourly.wind_direction_10m,
+    } as Record<string, number[]>;
+    fakeData[42] = { hourly: incomplete } as unknown as FakePoint;
+
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(fakeData), { status: 200 })
+    );
+
+    try {
+      await fetchWindGrid({ fetchFn: mockFetch as unknown as typeof fetch });
+      expect.fail('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(OpenMeteoError);
+      expect((err as OpenMeteoError).kind).toBe('malformed');
+      expect((err as OpenMeteoError).message).toContain('point 42');
+      expect((err as OpenMeteoError).message).toContain('wind_gusts_10m');
     }
   });
 
