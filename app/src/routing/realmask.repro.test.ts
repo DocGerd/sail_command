@@ -34,7 +34,13 @@ const OPEN_BALTIC: LatLon = { lat: 54.75, lon: 10.3 };
 
 const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
 
-function solveGenoa(origin: LatLon, destination: LatLon, dirFromDeg: number, settings: Settings) {
+function solveGenoa(
+  origin: LatLon,
+  destination: LatLon,
+  dirFromDeg: number,
+  settings: Settings,
+  onProgress?: (info: { tMs: number; frontierSize: number }) => void,
+) {
   const o = mask.snapToNavigable(origin, settings.safetyDepthM);
   const d = mask.snapToNavigable(destination, settings.safetyDepthM);
   if (!o || !d) throw new Error('snap failed');
@@ -42,7 +48,7 @@ function solveGenoa(origin: LatLon, destination: LatLon, dirFromDeg: number, set
     origin: o, destination: d, departureMs: T0,
     polar: new Polar(polarGenoa, settings.performanceFactor),
     wind: new WindField(uniformWindGrid(12, dirFromDeg)),
-    mask, settings,
+    mask, settings, onProgress,
   });
 }
 
@@ -79,6 +85,23 @@ describe('real mask routing (issue #20)', () => {
       expect(rig!.durationMs).toBeLessThan(1.5 * 3_600_000);
       expectLegsNavigable(rig!.legs, DEFAULT_SETTINGS.safetyDepthM);
     }
+  });
+
+  it('progress reports the true frontier clock, not the ring clock, under substeps', () => {
+    // Out of Flensburg every full-step candidate is blocked (that was the bug),
+    // so the entire first frontier consists of substepped children with clocks
+    // at most dtS/2 = 150 s past departure. The ring clock would report
+    // T0 + 300 s here; the frontier clock must not.
+    const reports: number[] = [];
+    const res = solveGenoa(FLENSBURG, GLUECKSBURG, 270, DEFAULT_SETTINGS, ({ tMs }) =>
+      reports.push(tMs),
+    );
+    expect(res.status).toBe('ok');
+    expect(reports.length).toBeGreaterThan(0);
+    expect(reports[0]).toBeGreaterThan(T0);
+    expect(reports[0]).toBeLessThan(T0 + 300_000);
+    for (let i = 1; i < reports.length; i++)
+      expect(reports[i]).toBeGreaterThanOrEqual(reports[i - 1]);
   });
 
   it('Flensburg -> Gluecksburg routes under any wind direction', () => {

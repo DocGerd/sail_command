@@ -266,7 +266,12 @@ export function solve(p: SolveParams): SolveResult {
     }
     frontier = next;
     tMs += dtS * 1000;
-    p.onProgress?.({ tMs, frontierSize: frontier.length });
+    // Report the true frontier clock: substepped nodes lag the ring clock by
+    // up to 7/8 dtS, so the ring clock alone can overstate progress. Equal to
+    // tMs when no substeps occurred; empty frontier falls back to the ring.
+    let frontierTMs = tMs;
+    for (const n of frontier) if (n.tMs < frontierTMs) frontierTMs = n.tMs;
+    p.onProgress?.({ tMs: frontierTMs, frontierSize: frontier.length });
   }
 
   if (!best) {
