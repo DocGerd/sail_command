@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AppStateProvider, useActivePlan } from '../state/AppState';
 import { I18nProvider } from '../i18n';
 import { savePlan, __resetDbForTests } from '../services/db';
+import * as db from '../services/db';
 import * as openMeteo from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Plan, type Rig, type WindGrid } from '../types';
@@ -159,6 +160,37 @@ describe('PlansList', () => {
     expect(screen.getAllByRole('button', { name: 'Confirm delete' })).toHaveLength(1);
     expect(screen.getByText('First')).toBeInTheDocument();
     expect(screen.getByText('Second')).toBeInTheDocument();
+  });
+
+  it('a failed load shows an inline error and does not touch the active plan', async () => {
+    await savePlan(makePlan({ id: 'p1', createdAtMs: 1000 }));
+    renderList();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db, 'getPlan').mockRejectedValueOnce(new Error('idb boom'));
+
+    fireEvent.click(await screen.findByRole('button', { name: /Plan p1/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/failed/i);
+    expect(screen.getByTestId('active-wind')).toHaveTextContent('none');
+  });
+
+  it('a failed delete shows an inline error, leaves the plan undeleted, and resets pendingDeleteId so the row is ready for a retry', async () => {
+    await savePlan(makePlan({ id: 'p1', createdAtMs: 1000 }));
+    renderList();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db, 'deletePlan').mockRejectedValueOnce(new Error('idb boom'));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete plan' }));
+    expect(await screen.findByRole('button', { name: 'Confirm delete' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/failed/i);
+    // The plan is still there (delete failed) and pendingDeleteId was reset
+    // (cleared only after the rejected deletePlan() settled), so the row is
+    // back to its un-armed "Delete plan" state, ready for another attempt.
+    expect(screen.getByText('Plan p1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirm delete' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete plan' })).toBeInTheDocument();
   });
 
   it('tapping the row itself while its delete is pending resets the confirm and loads the plan', async () => {

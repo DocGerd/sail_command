@@ -34,7 +34,7 @@ export interface ViaMarkersProps {
 
 const VIA_COLOR = '#CC79A7'; // Okabe-Ito reddish-purple — distinct from BoatMarker's blue and the route's port/starboard green/red
 
-function viaElement(): HTMLDivElement {
+function viaElement(ariaLabel: string): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'sc-via-marker';
   el.style.width = '16px';
@@ -43,6 +43,12 @@ function viaElement(): HTMLDivElement {
   el.style.background = VIA_COLOR;
   el.style.border = '2px solid #ffffff';
   el.style.boxShadow = '0 0 2px rgba(0,0,0,0.5)';
+  // A draggable point on the map, not a native <button> — role/tabIndex
+  // make it reachable and identifiable to assistive tech (dragging itself
+  // stays mouse/touch-only, same as every other MapLibre marker; v1 scope).
+  el.setAttribute('role', 'button');
+  el.tabIndex = 0;
+  el.setAttribute('aria-label', ariaLabel);
   return el;
 }
 
@@ -60,18 +66,27 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
     if (!map) return;
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = viaPoints.map((p, index) => {
-      const marker = new Marker({ element: viaElement(), draggable: true }).setLngLat([
+      const ariaLabel = t('planner.via.marker', { index: index + 1 });
+      const marker = new Marker({ element: viaElement(ariaLabel), draggable: true }).setLngLat([
         p.lon,
         p.lat,
       ] as LngLatLike);
       marker.on('dragend', () => {
         const lngLat = marker.getLngLat();
-        void onDragEnd(index, { lat: lngLat.lat, lon: lngLat.lng }).then((accepted) => {
-          // Rejected: the prop didn't change, so nothing will re-sync this
-          // marker's position on its own — explicitly snap the live DOM
-          // position back to the last committed point.
-          if (!accepted) marker.setLngLat([p.lon, p.lat] as LngLatLike);
-        });
+        const snapBack = () => marker.setLngLat([p.lon, p.lat] as LngLatLike);
+        void onDragEnd(index, { lat: lngLat.lat, lon: lngLat.lng })
+          .then((accepted) => {
+            // Rejected: the prop didn't change, so nothing will re-sync this
+            // marker's position on its own — explicitly snap the live DOM
+            // position back to the last committed point.
+            if (!accepted) snapBack();
+          })
+          // Defense-in-depth: onDragEnd (App.tsx's handleViaDragEnd) always
+          // resolves (viaReplan.replace catches everything internally and
+          // returns null), so this is currently unreachable — but a future
+          // caller that lets a rejection through must not leave the marker
+          // silently stuck at the dragged-to position.
+          .catch(snapBack);
       });
       marker.addTo(map);
       return marker;
@@ -80,8 +95,7 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onDragEnd is expected stable per caller (useCallback); replanning drives draggable below, not marker identity/rebuild
-  }, [map, viaPoints]);
+  }, [map, viaPoints, onDragEnd, t]);
 
   // Disable dragging (not marker identity) while a replan — from this drag
   // or the panel's chip edits — is in flight, so a user can't queue a second

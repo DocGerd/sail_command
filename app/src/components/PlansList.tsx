@@ -20,6 +20,10 @@ export default function PlansList() {
   // load it) clears any pending confirm outright — both read as "elsewhere"
   // relative to the row that was awaiting its second tap.
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // Shared by handleLoad/handleDeleteTap — both are simple "did the async
+  // call fail" surfaces, so one inline line covers either without needing a
+  // per-action variant of the same message.
+  const [error, setError] = useState<MsgKey | null>(null);
   const { setPlan } = useActivePlan();
   const t = useT();
   const [lang] = useLang();
@@ -35,6 +39,7 @@ export default function PlansList() {
   const handleLoad = useCallback(
     (id: string) => {
       setPendingDeleteId(null);
+      setError(null);
       void getPlan(id)
         .then((plan) => {
           // Renders against the plan's STORED wind grid — getPlan/setPlan only,
@@ -43,7 +48,10 @@ export default function PlansList() {
           if (plan) setPlan(plan);
           refresh();
         })
-        .catch(console.error);
+        .catch((err) => {
+          console.error(err);
+          setError('plansList.actionError');
+        });
     },
     [setPlan, refresh],
   );
@@ -54,8 +62,21 @@ export default function PlansList() {
         setPendingDeleteId(id);
         return;
       }
-      setPendingDeleteId(null);
-      void deletePlan(id).then(refresh).catch(console.error);
+      setError(null);
+      // pendingDeleteId is cleared only once deletePlan settles (below), not
+      // synchronously here — clearing it up front would let a second tap on
+      // the same row re-arm the confirm state (and re-issue a second delete)
+      // while the first one is still in flight.
+      void deletePlan(id)
+        .then(() => {
+          setPendingDeleteId(null);
+          refresh();
+        })
+        .catch((err) => {
+          console.error(err);
+          setPendingDeleteId(null);
+          setError('plansList.actionError');
+        });
     },
     [pendingDeleteId, refresh],
   );
@@ -65,29 +86,32 @@ export default function PlansList() {
   }
 
   return (
-    <ul className="plans-list">
-      {plans.map((p) => (
-        <li key={p.id} className="plans-list-row">
-          <button type="button" className="plans-list-load" onClick={() => handleLoad(p.id)}>
-            <span className="plans-list-name">{p.name}</span>
-            <span className="plans-list-created">
-              {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
-            </span>
-            <span className="plans-list-eta">
-              {t('route.totals.eta')} {formatDateTime(p.etaMs, lang)}
-            </span>
-            <span className="chip chip-rig">{t(RIG_LABEL_KEY[p.recommended])}</span>
-          </button>
-          <button
-            type="button"
-            className="plans-list-delete"
-            onClick={() => handleDeleteTap(p.id)}
-            aria-label={pendingDeleteId === p.id ? t('plansList.confirmDelete') : t('plansList.delete')}
-          >
-            {pendingDeleteId === p.id ? '✓' : '🗑'}
-          </button>
-        </li>
-      ))}
-    </ul>
+    <>
+      {error && <p role="alert">{t(error)}</p>}
+      <ul className="plans-list">
+        {plans.map((p) => (
+          <li key={p.id} className="plans-list-row">
+            <button type="button" className="plans-list-load" onClick={() => handleLoad(p.id)}>
+              <span className="plans-list-name">{p.name}</span>
+              <span className="plans-list-created">
+                {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
+              </span>
+              <span className="plans-list-eta">
+                {t('route.totals.eta')} {formatDateTime(p.etaMs, lang)}
+              </span>
+              <span className="chip chip-rig">{t(RIG_LABEL_KEY[p.recommended])}</span>
+            </button>
+            <button
+              type="button"
+              className="plans-list-delete"
+              onClick={() => handleDeleteTap(p.id)}
+              aria-label={pendingDeleteId === p.id ? t('plansList.confirmDelete') : t('plansList.delete')}
+            >
+              {pendingDeleteId === p.id ? '✓' : '🗑'}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

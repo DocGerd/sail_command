@@ -2,7 +2,9 @@ import 'fake-indexeddb/auto';
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
+import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
+import { en } from './i18n/dict.en';
 import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
@@ -119,6 +121,18 @@ vi.mock('maplibre-gl', () => {
     setRotation() {
       return this;
     }
+    getLngLat() {
+      return { lat: 0, lng: 0 };
+    }
+    setDraggable() {
+      return this;
+    }
+    on() {
+      return this;
+    }
+    off() {
+      return this;
+    }
     addTo() {
       return this;
     }
@@ -167,8 +181,18 @@ function fetchMock() {
   });
 }
 
+// I18nProvider lives in main.tsx (outside App.tsx itself — see App.tsx's own
+// composition), so rendering the bare <App /> component leaves useLang()'s
+// setLang wired to the context's default no-op stub. Every existing test
+// only ever *reads* the current language (default 'de' matches the
+// context's own default), but the language-toggle test below needs a real,
+// working setLang — so this wraps the same way main.tsx does.
 function renderApp() {
-  return render(<App />);
+  return render(
+    <I18nProvider>
+      <App />
+    </I18nProvider>,
+  );
 }
 
 // Simulates a resolved MapView tap (see the maplibre-gl mock's FakeMap.on
@@ -199,6 +223,23 @@ function okPlanResult(distanceNm: number): PlanResultOk {
     snappedOrigin: { lat: 54.7, lon: 9.5 },
     snappedDestination: { lat: 54.9, lon: 10.5 },
   };
+}
+
+// Shared by the clobber-guard describe block below and the banner-matrix
+// tests: picking a real origin/destination via simulated map taps is the
+// only way to drive a real routingMock.calls entry through the app tree.
+const ORIGIN_A = { lat: 54.79, lon: 9.43 };
+const DEST_A = { lat: 54.85, lon: 10.35 };
+const VIA_A = { lat: 54.82, lon: 9.9 };
+
+function pickOriginAndDestination() {
+  const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+  fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+  simulateMapClick(ORIGIN_A.lat, ORIGIN_A.lon);
+
+  const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+  fireEvent.click(within(destSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+  simulateMapClick(DEST_A.lat, DEST_A.lon);
 }
 
 beforeEach(async () => {
@@ -455,20 +496,6 @@ describe('App', () => {
 // resolution-order race can be reproduced, not just asserted about in the
 // abstract.
 describe('via-replan clobber guard (Phase E gate fix)', () => {
-  const ORIGIN_A = { lat: 54.79, lon: 9.43 };
-  const DEST_A = { lat: 54.85, lon: 10.35 };
-  const VIA_A = { lat: 54.82, lon: 9.9 };
-
-  function pickOriginAndDestination() {
-    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
-    fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
-    simulateMapClick(ORIGIN_A.lat, ORIGIN_A.lon);
-
-    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
-    fireEvent.click(within(destSection).getByRole('button', { name: de['planner.pickOnMap'] }));
-    simulateMapClick(DEST_A.lat, DEST_A.lon);
-  }
-
   it('a via-replan that resolves after the user loaded a different plan does not clobber it, and the Plan button is disabled while the replan is in flight', async () => {
     const planB: Plan = {
       id: 'plan-b-preseeded',
@@ -530,5 +557,177 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
     });
     expect(screen.getByText(formatNm(77))).toBeInTheDocument();
     expect(screen.queryByText(formatNm(55))).not.toBeInTheDocument();
+  });
+});
+
+// PR self-review fix wave: banner matrix. Each banner already has its own
+// unit-level coverage elsewhere (usePlanFlow.test.tsx, replan.test.ts); these
+// drive the real App tree end-to-end to prove the wiring itself — tab
+// independence, dismiss behavior, and that multiple banners can be visible
+// at once without one clobbering another's DOM.
+describe('banner surfacing (PR self-review fix wave)', () => {
+  it('a plan-run error surfaces as a tab-independent banner even while a different tab is active', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+
+    // Switch away from the Plan tab before the result actually lands —
+    // PlannerPanel's own inline alert isn't even mounted once this happens.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
+
+    expect(await screen.findByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('the stale-forecast banner renders through the real App tree for a loaded plan whose windGrid predates departure by >12h', async () => {
+    const staleWindGrid = uniformWindGrid(10, 250, { t0Ms: Date.now() - 20 * 3_600_000, hours: 48 });
+    const stalePlan: Plan = {
+      id: 'stale-plan',
+      name: 'Stale Plan',
+      createdAtMs: Date.now() - 20 * 3_600_000,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now(),
+        settings: DEFAULT_SETTINGS,
+      },
+      windGrid: staleWindGrid,
+      result: okPlanResult(33),
+    };
+    await db.savePlan(stalePlan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(stalePlan.name) }));
+
+    // Scoped to .banner-area: RouteSummary (also visible on the Routes tab)
+    // shows its own pre-existing inline stale-forecast alert too, so the
+    // same text is legitimately on the page twice once a stale plan is
+    // active here — this assertion is specifically about the App-level
+    // banner-area surface, not a claim that it's the only place stale
+    // forecasts are ever shown.
+    const bannerArea = document.querySelector('.banner-area');
+    if (!bannerArea) throw new Error('expected .banner-area to be present');
+    expect(await within(bannerArea as HTMLElement).findByText(de['route.staleForecast'])).toBeInTheDocument();
+  });
+
+  it('a viaReplan error banner renders through the real App tree', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() => expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled());
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+    routingMock.calls[1].resolve({ status: 'error', reason: 'unreachable' });
+
+    expect(await screen.findByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
+  });
+
+  it('a droppedCount === 1 banner (singular copy) renders through the real App tree, and is dismissible', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() => expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled());
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    // ~15 m from ORIGIN_A — within the 60 m dedupe threshold, so
+    // replanWithVias's own dedupe drops it (droppedCount === 1).
+    simulateMapClick(ORIGIN_A.lat + 0.0001, ORIGIN_A.lon + 0.0001);
+    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+    routingMock.calls[1].resolve(okPlanResult(10));
+
+    expect(await screen.findByText(de['banner.viaTooClose'])).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: de['banner.dismiss'] }));
+    expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
+  });
+
+  it('droppedCount > 1 shows the pluralized "waypoints…skipped" copy, not the singular one', async () => {
+    // Both within ~15-30 m of ORIGIN_A — dedupeViaPoints measures each
+    // against the last *kept* waypoint starting at origin; since the first
+    // is dropped, `previous` stays origin for the second too, so both drop
+    // in the same dedupe pass (droppedCount === 2), independent of order.
+    const nearOrigin1 = { lat: ORIGIN_A.lat + 0.0001, lon: ORIGIN_A.lon + 0.0001 };
+    const nearOrigin2 = { lat: ORIGIN_A.lat + 0.0002, lon: ORIGIN_A.lon + 0.0002 };
+    const preseeded: Plan = {
+      id: 'plural-drop-plan',
+      name: 'Plural Drop Plan',
+      createdAtMs: Date.now() - 60_000,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [nearOrigin1, nearOrigin2],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now() + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
+      result: okPlanResult(66),
+    };
+    await db.savePlan(preseeded);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(preseeded.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(66))).toBeInTheDocument());
+
+    // Reordering re-submits the same two-via list unchanged (content-wise)
+    // to a fresh replan, which is enough to re-trigger the dedupe drop —
+    // no need to add a third via through tap-to-pick.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    fireEvent.click(screen.getByRole('button', { name: de['planner.via.moveDown'].replace('{index}', '1') }));
+
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(66));
+
+    expect(await screen.findByText(de['banner.viaTooClose.plural'].replace('{count}', '2'))).toBeInTheDocument();
+    expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
+  });
+
+  it('offline and settings-persistence-error banners stack simultaneously, without one hiding the other', async () => {
+    renderApp();
+    const safetyDepthInput = await screen.findByLabelText(de['options.safetyDepth.label']);
+    await waitFor(() => expect(safetyDepthInput).toHaveValue(3));
+
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(db, 'saveSettings').mockRejectedValue(new Error('save boom'));
+    fireEvent.change(safetyDepthInput, { target: { value: '3.5' } });
+    fireEvent.blur(safetyDepthInput);
+    expect(await screen.findByText(de['banner.persistenceError'])).toBeInTheDocument();
+
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    fireEvent(window, new Event('offline'));
+
+    expect(await screen.findByText(de['banner.offline'])).toBeInTheDocument();
+    expect(screen.getByText(de['banner.persistenceError'])).toBeInTheDocument();
+  });
+
+  it('the language-toggle button label goes through the i18n dict (shows the target language\'s code)', async () => {
+    renderApp();
+    const toggle = await screen.findByRole('button', { name: de['nav.langToggle'] });
+    // Starts in German — the button offers to switch to English.
+    expect(toggle).toHaveTextContent(de['nav.langToggle.en']);
+
+    fireEvent.click(toggle);
+    expect(await screen.findByRole('button', { name: en['nav.langToggle'] })).toHaveTextContent(de['nav.langToggle.de']);
   });
 });

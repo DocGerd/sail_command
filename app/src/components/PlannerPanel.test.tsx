@@ -2,8 +2,8 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import { DEFAULT_SETTINGS, type Harbor, type LatLon } from '../types';
-import PlannerPanel, { nextFullHourMs, type PickedPoint, type PlanningState, type TapTarget } from './PlannerPanel';
+import { DEFAULT_SETTINGS, type Harbor, type LatLon, type PickedPoint } from '../types';
+import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
 
 const FLENSBURG: Harbor = {
   id: 'flensburg',
@@ -38,7 +38,7 @@ interface Overrides {
   canPlan?: boolean;
   planDisabledReason?: string | null;
   onPlan?: () => void;
-  planning?: PlanningState;
+  planning?: PlannerStatus;
 }
 
 function renderPanel(overrides: Overrides = {}) {
@@ -61,7 +61,7 @@ function renderPanel(overrides: Overrides = {}) {
     canPlan: true,
     planDisabledReason: null,
     onPlan: vi.fn(),
-    planning: { phase: 'idle' } as PlanningState,
+    planning: { phase: 'idle' } as PlannerStatus,
     ...overrides,
   };
   render(
@@ -104,8 +104,8 @@ describe('PlannerPanel', () => {
 
   it('renders the picked origin and destination labels', () => {
     renderPanel({
-      origin: { point: FLENSBURG.snap, harborId: FLENSBURG.id, label: 'Flensburg' },
-      destination: { point: MARSTAL.snap, harborId: MARSTAL.id, label: 'Marstal' },
+      origin: { source: 'harbor', point: FLENSBURG.snap, harborId: FLENSBURG.id, label: 'Flensburg' },
+      destination: { source: 'harbor', point: MARSTAL.snap, harborId: MARSTAL.id, label: 'Marstal' },
     });
     // Scoped to the <p> label, not the harbor-picker buttons that also
     // render "Flensburg"/"Marstal" as list entries.
@@ -131,6 +131,7 @@ describe('PlannerPanel', () => {
     const originSection = screen.getByRole('region', { name: 'Origin' });
     fireEvent.click(within(originSection).getByRole('button', { name: 'Marstal' }));
     expect(props.onPickOrigin).toHaveBeenCalledWith({
+      source: 'harbor',
       point: MARSTAL.snap,
       harborId: MARSTAL.id,
       label: 'Marstal',
@@ -143,6 +144,7 @@ describe('PlannerPanel', () => {
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
     fireEvent.click(within(destinationSection).getByRole('button', { name: 'Flensburg' }));
     expect(props.onPickDestination).toHaveBeenCalledWith({
+      source: 'harbor',
       point: FLENSBURG.snap,
       harborId: FLENSBURG.id,
       label: 'Flensburg',

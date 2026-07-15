@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoutingClient } from './workerClient';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
@@ -128,4 +128,69 @@ describe('RoutingClient promise settling', () => {
     w.onerror?.(new ErrorEvent('error', { message: 'worker crashed' }));
     await expect(p).rejects.toThrow(/worker crashed/);
   }, 2000);
+});
+
+describe('RoutingClient.plan() timeout', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects with "routing timed out" once timeoutMs elapses without a worker response, and a late result is then a no-op', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, 5_000);
+    // Attach a rejection handler immediately so the promise is never
+    // "unhandled" for even a tick, regardless of when the assertion below
+    // actually awaits it.
+    const outcome = p.catch((e: Error) => e);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    const err = await outcome;
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/routing timed out/);
+
+    // The worker eventually replies anyway — must not throw or otherwise
+    // affect anything; the pending entry (and its timer) is already gone.
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+    const result: PlanResult = { status: 'error', reason: 'unreachable' };
+    expect(() => w.emit({ type: 'result', id: sent.id, result })).not.toThrow();
+  });
+
+  it('does not fire the timeout once plan() resolves normally, and clears the underlying timer (no leftover fake timers)', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, 5_000);
+    await vi.advanceTimersByTimeAsync(0); // let postMessage/microtasks settle
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+    const result: PlanResult = { status: 'error', reason: 'unreachable' };
+    w.emit({ type: 'result', id: sent.id, result });
+
+    await expect(p).resolves.toBe(result);
+    // The timeout's setTimeout must have been cleared on settle — otherwise
+    // this would still report one pending fake timer.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears the timer on dispose(), leaving no pending fake timer', async () => {
+    vi.useFakeTimers();
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, 5_000);
+    const outcome = p.catch((e: Error) => e);
+    await vi.advanceTimersByTimeAsync(0);
+    client.dispose();
+
+    await outcome;
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

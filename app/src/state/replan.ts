@@ -1,16 +1,17 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { haversineNm } from '../lib/geo';
 import type { MsgKey } from '../i18n/dict.de';
 import type { LatLon, Plan, PlanRequest, PlanResult, WindGrid } from '../types';
 
-// ~60 m in nautical miles (haversineNm's unit) — the E8 controller's
-// coincident-waypoint dedupe guard. B13's segmented router (planRoute.ts)
-// solves origin->via->...->destination as independent solve() segments;
-// two consecutive request points that snap to the same (or an adjacent)
-// mask cell produce a zero-duration leg, so any via this close to a
-// neighboring waypoint is dropped rather than submitted.
+// ~60 m in nautical miles (haversineNm's unit) — the coincident-waypoint
+// dedupe guard every via-replan (and a plan's initial via list) enforces.
+// The segmented router (routing/planRoute.ts) solves
+// origin->via->...->destination as independent solve() segments; two
+// consecutive request points that snap to the same (or an adjacent) mask
+// cell produce a zero-duration leg, so any via this close to a neighboring
+// waypoint is dropped rather than submitted.
 const DEDUPE_THRESHOLD_NM = 60 / 1852;
 
 export interface ViaDedupeResult {
@@ -82,7 +83,7 @@ export interface ReplanDeps {
 export async function replanWithVias(plan: Plan, viaPoints: LatLon[], deps: ReplanDeps): Promise<Plan> {
   const { timesMs } = plan.windGrid;
   const horizonMs = timesMs[timesMs.length - 1];
-  // Simplest honest check (E8 controller decision): only the plan's fixed
+  // Simplest honest check (design resolution): only the plan's fixed
   // departureMs is validated against the stored grid's own coverage, not
   // the replanned route's eventual ETA. A detour that pushes the new ETA
   // past the grid's last hour is instead caught by the router itself and
@@ -96,11 +97,11 @@ export async function replanWithVias(plan: Plan, viaPoints: LatLon[], deps: Repl
     );
   }
 
-  // Ledgered intake (E8 controller decision): the dedupe guard is enforced
-  // here, at the point the request is actually submitted, regardless of
-  // whether the caller already pre-filtered (dedupeViaPoints is exported
-  // separately so a caller can also use it to decide whether to show the
-  // "waypoint skipped" info banner — see state/replan.ts's useViaReplan).
+  // Ledgered intake (design resolution): the dedupe guard is enforced here,
+  // at the point the request is actually submitted, regardless of whether
+  // the caller already pre-filtered (dedupeViaPoints is exported separately
+  // so a caller can also use it to decide whether to show the "waypoint
+  // skipped" info banner — see state/replan.ts's useViaReplan).
   const { kept } = dedupeViaPoints(plan.request.origin, viaPoints, plan.request.destination);
   const request: PlanRequest = { ...plan.request, viaPoints: kept };
 
@@ -128,10 +129,10 @@ export async function replanWithVias(plan: Plan, viaPoints: LatLon[], deps: Repl
 export interface ViaReplanState {
   replanning: boolean;
   error: MsgKey | null;
-  // > 0 right after a replan silently dropped a too-close via (E8
-  // controller decision 1) — surfaced so the UI can show a brief info
-  // banner ("Wegpunkt zu nah am Nachbarn — übersprungen"). Reset to 0 at
-  // the start of every replace() call.
+  // > 0 right after a replan silently dropped a too-close via (design
+  // resolution: a silent drop rather than blocking the edit) — surfaced so
+  // the UI can show a brief info banner ("Wegpunkt zu nah am Nachbarn —
+  // übersprungen"). Reset to 0 at the start of every replace() call.
   droppedCount: number;
 }
 
@@ -142,18 +143,20 @@ const IDLE_STATE: ViaReplanState = { replanning: false, error: null, droppedCoun
  * share: tracks `replanning`/`error`/`droppedCount` and guards against
  * overlapping calls. Mirrors usePlanFlow.run's in-flight guard (a synchronous
  * ref, not just React state, since state only commits on the next render) —
- * per the E8 controller's cancellation resolution, a replace() made while
- * one is already in flight is a no-op (GUARD, not cancel/dispose; see E3's
- * deferred per-plan cancellation note in usePlanFlow.ts).
+ * design resolution: a replace() made while one is already in flight is a
+ * no-op (GUARD, not cancel/dispose — per-plan cancellation is deliberately
+ * out of scope; see usePlanFlow.ts's own note on run()).
  *
- * Takes a `getClient` *getter* (mirrors usePlanFlow's own exposed
- * getClient), not a client value — the client doesn't exist until a first
- * plan has been run, and reading it must happen at call time (inside
- * replace(), an event-handler-triggered async function), never during
- * render (react-hooks/refs would flag a direct ref read at render time).
+ * Takes an `ensureClient` function (usePlanFlow.ts's own exposed
+ * ensureClient, typically), not a client value — the client may not exist
+ * yet (a plan loaded from PlansList without a prior run() in this session
+ * has none), so replace() awaits it to lazily create/init one on demand.
+ * This is also why a replan stays usable offline: ensureClient only loads
+ * routing assets and inits the worker, never fetches a forecast — the
+ * navigator.onLine gate lives solely in usePlanFlow.ts's run().
  */
 export function useViaReplan(
-  getClient: () => ReplanClient | null,
+  ensureClient: () => Promise<ReplanClient | null>,
   deps: { save?: typeof savePlan } = {},
 ): {
   state: ViaReplanState;
@@ -166,8 +169,10 @@ export function useViaReplan(
 
   const replace = useCallback(
     async (plan: Plan, viaPoints: LatLon[]): Promise<Plan | null> => {
-      const client = getClient();
-      if (busyRef.current || !client) return null;
+      // Set synchronously, before the first await, so a second synchronous
+      // replace() call (same tick) observes busyRef.current === true and
+      // bails out immediately rather than racing ensureClient/client.plan.
+      if (busyRef.current) return null;
       busyRef.current = true;
       setState({ replanning: true, error: null, droppedCount: 0 });
 
@@ -177,6 +182,15 @@ export function useViaReplan(
       const { droppedCount } = dedupeViaPoints(plan.request.origin, viaPoints, plan.request.destination);
 
       try {
+        const client = await ensureClient();
+        if (!client) {
+          // Not silent: a failed ensure (asset load or worker init) is a
+          // real failure, distinct from "no via was ever queued" — the UI
+          // must show something, not just quietly leave the via unedited.
+          setState({ replanning: false, error: 'error.replanInit', droppedCount });
+          return null;
+        }
+
         // exactOptionalPropertyTypes: ReplanDeps.save is optional-if-present,
         // not optional-or-undefined, so an absent deps.save must omit the key
         // entirely rather than pass `{ save: undefined }` (mirrors
@@ -196,11 +210,21 @@ export function useViaReplan(
         busyRef.current = false;
       }
     },
-    [getClient, deps.save],
+    [ensureClient, deps.save],
   );
 
   const clearError = useCallback(() => setState((s) => ({ ...s, error: null })), []);
   const clearDroppedNotice = useCallback(() => setState((s) => ({ ...s, droppedCount: 0 })), []);
 
-  return { state, replace, clearError, clearDroppedNotice };
+  // Stable object identity across renders that don't change state/replace
+  // themselves — App.tsx's handleViaDragEnd/handleViaPointsChange close over
+  // this whole return value in their own useCallback deps, so an
+  // unmemoized object here would silently defeat that memoization (a new
+  // identity every render, even though nothing meaningful changed) and,
+  // downstream, ViaMarkers' rebuild effect would see a "changed" onDragEnd
+  // on every render too.
+  return useMemo(
+    () => ({ state, replace, clearError, clearDroppedNotice }),
+    [state, replace, clearError, clearDroppedNotice],
+  );
 }

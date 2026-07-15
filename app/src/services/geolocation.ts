@@ -21,7 +21,9 @@ function mapErrorKind(err: GeolocationPositionError): GpsErrorKind {
 /**
  * Thin wrapper over navigator.geolocation.watchPosition: converts
  * coords.speed (m/s) to knots, maps heading/speed nulls through untouched,
- * and collapses the DOM's three-way error code into the two kinds the UI
+ * also collapses a NaN heading/speed to null (the device reports NaN rather
+ * than null for a stationary fix — see the inline comment below), and
+ * collapses the DOM's three-way error code into the two kinds the UI
  * distinguishes. Returns an unsubscribe function.
  */
 export function watchPosition(

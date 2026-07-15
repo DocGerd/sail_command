@@ -36,8 +36,8 @@ interface AppStateValue {
   // (e.g. a momentary IndexedDB hiccup) self-heals instead of leaving a
   // stale banner up after persistence has actually recovered. Explicit
   // dismissal still works independently of that self-heal.
-  persistenceError: boolean;
-  clearPersistenceError: () => void;
+  settingsPersistenceError: boolean;
+  clearSettingsPersistenceError: () => void;
 }
 
 const AppStateCtx = createContext<AppStateValue | null>(null);
@@ -53,8 +53,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [plan, setPlanState] = useState<Plan | null>(null);
   const [rig, setRig] = useState<Rig | null>(null);
   const [activeLegIndex, setActiveLegIndex] = useState<number | null>(null);
-  const [persistenceError, setPersistenceError] = useState(false);
-  const clearPersistenceError = useCallback(() => setPersistenceError(false), []);
+  const [settingsPersistenceError, setSettingsPersistenceError] = useState(false);
+  const clearSettingsPersistenceError = useCallback(() => setSettingsPersistenceError(false), []);
 
   // Mirrors the latest settings outside React state so setSettings can
   // compute `next` and call saveSettings as plain statements rather than
@@ -91,10 +91,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         // in-flight pre-load patch is silently dropped instead of written.
         if (pending) {
           void saveSettings(final).then(
-            () => setPersistenceError((cur) => (cur ? false : cur)),
+            () => setSettingsPersistenceError((cur) => (cur ? false : cur)),
             (err) => {
               console.error('settings save failed', err);
-              setPersistenceError(true);
+              setSettingsPersistenceError(true);
             },
           );
         }
@@ -118,10 +118,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       return;
     }
     void saveSettings(next).then(
-      () => setPersistenceError((cur) => (cur ? false : cur)),
+      () => setSettingsPersistenceError((cur) => (cur ? false : cur)),
       (err) => {
         console.error('settings save failed', err);
-        setPersistenceError(true);
+        setSettingsPersistenceError(true);
       },
     );
   }, []);
@@ -144,10 +144,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setRig,
       activeLegIndex,
       setActiveLegIndex,
-      persistenceError,
-      clearPersistenceError,
+      settingsPersistenceError,
+      clearSettingsPersistenceError,
     }),
-    [settings, setSettings, plan, rig, setPlan, activeLegIndex, persistenceError, clearPersistenceError],
+    [settings, setSettings, plan, rig, setPlan, activeLegIndex, settingsPersistenceError, clearSettingsPersistenceError],
   );
 
   return <AppStateCtx.Provider value={value}>{children}</AppStateCtx.Provider>;
@@ -155,7 +155,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
 function useAppState(): AppStateValue {
   const ctx = useContext(AppStateCtx);
-  if (!ctx) throw new Error('useSettings/useActivePlan/usePersistenceError must be used within AppStateProvider');
+  if (!ctx) throw new Error('useSettings/useActivePlan/useSettingsPersistenceError must be used within AppStateProvider');
   return ctx;
 }
 
@@ -179,9 +179,9 @@ export function useActivePlan(): {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export function usePersistenceError(): [boolean, () => void] {
-  const { persistenceError, clearPersistenceError } = useAppState();
-  return [persistenceError, clearPersistenceError];
+export function useSettingsPersistenceError(): [boolean, () => void] {
+  const { settingsPersistenceError, clearSettingsPersistenceError } = useAppState();
+  return [settingsPersistenceError, clearSettingsPersistenceError];
 }
 
 function subscribeOnlineStatus(callback: () => void): () => void {

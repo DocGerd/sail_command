@@ -7,7 +7,7 @@ export type Lang = 'de' | 'en';
 
 const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
 
-function padStart(n: number, width: number): string {
+function zeroPad(n: number, width: number): string {
   return String(n).padStart(width, '0');
 }
 
@@ -21,7 +21,7 @@ export function formatKn(kn: number): string {
 
 export function formatHeading(deg: number): string {
   const normalized = ((Math.round(deg) % 360) + 360) % 360;
-  return `${padStart(normalized, 3)}°`;
+  return `${zeroPad(normalized, 3)}°`;
 }
 
 /**
@@ -39,7 +39,7 @@ export function formatDuration(ms: number): string {
   const totalMinutes = Math.round(ms / 60_000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return `${hours} h ${padStart(minutes, 2)} min`;
+  return `${hours} h ${zeroPad(minutes, 2)} min`;
 }
 
 /** Signed schedule drift in whole minutes, e.g. "+12 min" (behind) / "-10 min" (ahead) / "0 min". */

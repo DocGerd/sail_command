@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Harbor, LatLon, Settings } from '../types';
+import type { Harbor, LatLon, PickedPoint, Settings } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { formatLatLon } from '../lib/format';
@@ -8,19 +8,10 @@ import OptionsPanel from './OptionsPanel';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
-// Presentational output of a harbor selection or a map tap. Wiring (turning
-// a raw map-tap LatLon or harbor pick into app state) is E3's job; this type
-// may move to a shared module once that lands.
-export interface PickedPoint {
-  point: LatLon;
-  harborId: string | null;
-  label: string;
-}
-
-// Placeholder for E3's planning-state type — idle/fetching/routing/error per
-// the Phase E task brief. E3 owns and will refine the real type; this is
-// kept minimal so PlannerPanel can be built and tested ahead of that wiring.
-export type PlanningState =
+// This panel's own idle/fetching/routing/error view of planning progress —
+// coarser than usePlanFlow.ts's PlanningState (which additionally tracks
+// per-rig simulatedToMs). App.tsx's toPlannerStatus adapts one to the other.
+export type PlannerStatus =
   | { phase: 'idle' }
   | { phase: 'fetching' }
   | { phase: 'routing'; progress?: number }
@@ -51,7 +42,7 @@ export interface PlannerPanelProps {
   canPlan: boolean;
   planDisabledReason: string | null;
   onPlan: () => void;
-  planning: PlanningState;
+  planning: PlannerStatus;
 }
 
 /**
@@ -76,7 +67,7 @@ function toLocalInputValue(ms: number): string {
 }
 
 function harborToPickedPoint(h: Harbor, lang: 'de' | 'en'): PickedPoint {
-  return { point: h.snap, harborId: h.id, label: h.names[lang] };
+  return { source: 'harbor', point: h.snap, harborId: h.id, label: h.names[lang] };
 }
 
 export default function PlannerPanel({

@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePlanFlow } from './usePlanFlow';
+import { useViaReplan } from './replan';
 import { AppStateProvider, useActivePlan } from './AppState';
 import { RoutingClient } from '../routing/workerClient';
 import type { WorkerRequest, WorkerResponse } from '../routing/protocol';
@@ -192,9 +193,29 @@ describe('usePlanFlow', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it('maps a fetchWind rejection that is not an OpenMeteoError (e.g. a bare Error) to error.internal', async () => {
+    const fetchWind = vi.fn().mockRejectedValue(new Error('unexpected'));
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+
+    const { result } = renderHook(
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
+      { wrapper: AppStateProvider },
+    );
+
+    await act(async () => {
+      await result.current.run(REQ, 'Test plan');
+    });
+
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.internal' });
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it.each<[NoRouteReason, MsgKey]>([
     ['unreachable', 'error.noRoute.unreachable'],
     ['calm-motor-off', 'error.noRoute.calmMotorOff'],
+    ['beyond-horizon', 'error.noRoute.beyondHorizon'],
+    ['snap-failed-origin', 'error.noRoute.snapOrigin'],
+    ['snap-failed-destination', 'error.noRoute.snapDestination'],
   ])('maps a PlanResultError reason %s to %s', async (reason, messageKey) => {
     const w = fakeWorker();
     const windGrid = uniformWindGrid(12, 0);
@@ -345,6 +366,56 @@ describe('usePlanFlow', () => {
     expect(workingWorker.terminate).not.toHaveBeenCalled();
   });
 
+  it('a worker fatal during client.plan() (not init) disposes the poisoned client so the next run() builds a fresh one', async () => {
+    const firstWorker = fakeWorker();
+    const secondWorker = fakeWorker();
+    const makeClient = vi
+      .fn()
+      .mockImplementationOnce(() => new RoutingClient(() => firstWorker as unknown as Worker))
+      .mockImplementationOnce(() => new RoutingClient(() => secondWorker as unknown as Worker));
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), { wrapper: AppStateProvider });
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'First attempt');
+      await flush();
+    });
+    const firstPlanMsg = findPosted(firstWorker.posted, 'plan');
+    await act(async () => {
+      // Mid-plan worker crash: a targeted fatal for the in-flight id, not
+      // the global (id: null) form the "global fatal" workerClient.test.ts
+      // case covers.
+      firstWorker.emit({ type: 'fatal', id: firstPlanMsg.id, message: 'segment blocked' });
+      await runPromise;
+    });
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.internal' });
+    expect(makeClient).toHaveBeenCalledTimes(1);
+    // The poisoned client must be disposed (Worker thread torn down), not
+    // just abandoned with the shared singleton still pointing at it.
+    expect(firstWorker.terminate).toHaveBeenCalledTimes(1);
+
+    let secondRunPromise!: Promise<void>;
+    await act(async () => {
+      secondRunPromise = result.current.run(REQ, 'Retry');
+      await flush();
+    });
+    expect(makeClient).toHaveBeenCalledTimes(2); // a fresh client was built, not the poisoned one reused
+
+    const secondPlanMsg = findPosted(secondWorker.posted, 'plan');
+    await act(async () => {
+      secondWorker.emit({ type: 'result', id: secondPlanMsg.id, result: OK_RESULT });
+      await secondRunPromise;
+    });
+
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
   it('run() dedupes adjacent via points (< 60 m) before submitting the request, and before saving the plan', async () => {
     const w = fakeWorker();
     const windGrid = uniformWindGrid(12, 0);
@@ -396,5 +467,105 @@ describe('usePlanFlow', () => {
 
     expect(fetchWind).toHaveBeenCalledTimes(1);
     expect(result.current.planning).toEqual({ phase: 'fetching-wind' });
+  });
+});
+
+// ensureClient's whole purpose is being shared with state/replan.ts's
+// useViaReplan (see usePlanFlow.ts's own docstring) — these two tests drive
+// both hooks together to prove that sharing actually works end-to-end,
+// which a usePlanFlow-only or replan-only suite (with a hand-rolled fake
+// ensureClient) can't.
+describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('a via-replan works with no prior run() in this session — ensureClient lazily creates the client on demand', async () => {
+    const w = fakeWorker();
+    const makeClient = vi.fn(() => new RoutingClient(() => w as unknown as Worker));
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(
+      () => {
+        const flow = usePlanFlow({ makeClient });
+        const viaReplan = useViaReplan(flow.ensureClient);
+        return { flow, viaReplan };
+      },
+      { wrapper: AppStateProvider },
+    );
+
+    const windGrid = uniformWindGrid(12, 0);
+    const loadedPlan: Plan = {
+      id: 'loaded-not-run',
+      name: 'Loaded from PlansList',
+      createdAtMs: REQ.departureMs - 3_600_000,
+      request: { ...REQ, viaPoints: [] },
+      windGrid,
+      result: OK_RESULT,
+    };
+
+    let replacePromise!: Promise<Plan | null>;
+    await act(async () => {
+      replacePromise = result.current.viaReplan.replace(loadedPlan, [{ lat: 54.76, lon: 10.15 }]);
+      await flush();
+    });
+
+    // Proves the client was created by ensureClient itself, not by a run()
+    // that never happened in this test.
+    expect(makeClient).toHaveBeenCalledTimes(1);
+    const planMsg = findPosted(w.posted, 'plan');
+
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await replacePromise;
+    });
+
+    expect(await replacePromise).not.toBeNull();
+    expect(result.current.viaReplan.state.error).toBeNull();
+  });
+
+  it('a via-replan through ensureClient works while navigator.onLine is false — the offline guard lives only in run()', async () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    const w = fakeWorker();
+    const makeClient = vi.fn(() => new RoutingClient(() => w as unknown as Worker));
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(
+      () => {
+        const flow = usePlanFlow({ makeClient });
+        const viaReplan = useViaReplan(flow.ensureClient);
+        return { flow, viaReplan };
+      },
+      { wrapper: AppStateProvider },
+    );
+
+    const windGrid = uniformWindGrid(12, 0);
+    const loadedPlan: Plan = {
+      id: 'offline-replan',
+      name: 'Loaded from PlansList',
+      createdAtMs: REQ.departureMs - 3_600_000,
+      request: { ...REQ, viaPoints: [] },
+      windGrid,
+      result: OK_RESULT,
+    };
+
+    let replacePromise!: Promise<Plan | null>;
+    await act(async () => {
+      replacePromise = result.current.viaReplan.replace(loadedPlan, [{ lat: 54.76, lon: 10.15 }]);
+      await flush();
+    });
+
+    const planMsg = findPosted(w.posted, 'plan');
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await replacePromise;
+    });
+
+    expect(await replacePromise).not.toBeNull();
+    expect(result.current.viaReplan.state.error).toBeNull();
   });
 });

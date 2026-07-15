@@ -27,10 +27,12 @@ export interface RouteLayerProps {
   onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
 
-// Not unit-tested: jsdom has no MapLibre/WebGL runtime, so source/layer
-// wiring here can only be exercised against a real map (see the Phase E4
-// browser verification pass). The pure feature-building logic it calls into
-// (routeGeoJson.ts) is covered separately.
+// Not unit-tested: jsdom has no MapLibre/WebGL runtime — map.addSource/
+// addLayer/getSource etc. either no-op or return undefined under jsdom, so
+// this component's own source/layer wiring can only be meaningfully
+// exercised against a real browser (manual/Playwright verification). The
+// pure feature-building logic it calls into (routeGeoJson.ts) is covered
+// separately, with ordinary unit tests.
 
 const ROUTE_SOURCE = 'sc-route';
 const MANEUVER_SOURCE = 'sc-maneuvers';

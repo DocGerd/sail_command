@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useT } from '../i18n';
 import type { MaskMeta } from '../types';
 
@@ -19,13 +19,22 @@ export interface AboutDialogProps {
 function fetchMaskSources(): Promise<string[] | undefined> {
   return fetch(`${import.meta.env.BASE_URL}data/mask.meta.json`)
     .then((res) => (res.ok ? (res.json() as Promise<MaskMeta>) : Promise.reject(new Error(`HTTP ${res.status}`))))
-    .then((meta) => meta.sources)
+    // Minimal runtime validation rather than trusting the cast above: an
+    // older/malformed mask.meta.json (or a fetch that resolved with the
+    // wrong content entirely) must fall back to "no dynamic sources", not
+    // hand a non-array through to the .map() render below.
+    .then((meta) => (Array.isArray(meta.sources) ? meta.sources : undefined))
     .catch(() => undefined);
 }
 
 export default function AboutDialog({ open, onClose }: AboutDialogProps) {
   const t = useT();
   const [maskSources, setMaskSources] = useState<string[] | undefined>(undefined);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  // The element focused right before the dialog opened — restored on close
+  // so keyboard/screen-reader users land back where they were (the header's
+  // ⓘ button in practice), rather than at the top of the document.
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -46,6 +55,15 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    return () => {
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -81,7 +99,7 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           </ul>
         </section>
 
-        <button type="button" onClick={onClose}>
+        <button type="button" ref={closeButtonRef} onClick={onClose}>
           {t('about.close')}
         </button>
       </div>

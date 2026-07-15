@@ -39,18 +39,20 @@ function mapWindError(err: unknown): MsgKey {
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
   run: (req: Omit<PlanRequest, 'settings'> & { settings: Settings }, name: string) => Promise<void>;
-  // Reads the singleton RoutingClient, once a first run() has created and
-  // init'd it (null before that). Exposed as a getter — not the ref value
-  // itself — so E8's replanWithVias (state/replan.ts) can reuse the same
-  // init'd worker for via re-routes instead of spawning a second one
-  // (init() transfers the maskBuffer and must only happen once per client)
-  // without reading clientRef.current during render, which
-  // react-hooks/refs flags: refs must only be read from event handlers/
-  // effects, i.e. at call time inside getClient(), never at render time. A
-  // replan is only ever possible once a Plan already exists, which itself
-  // requires a prior successful run(), so by the time a caller invokes this
-  // it is guaranteed non-null.
-  getClient: () => RoutingClient | null;
+  // Lazily creates/inits the singleton RoutingClient (loading routing assets
+  // first, if this is the first call), or returns the already-init'd one.
+  // Shared by run() and by replanWithVias (state/replan.ts's useViaReplan)
+  // so a via re-route through a plan that was *loaded* (PlansList), not
+  // just planned in this session, can still init a client on demand instead
+  // of requiring a prior run() in the same session — replans only ever need
+  // the plan's already-stored windGrid, so this never touches the network
+  // itself and stays available offline (the navigator.onLine gate lives
+  // only in run(), which is the one path that fetches a fresh forecast).
+  // Resolves null on a failed load/init (mirrors run()'s own recovery: the
+  // broken client is disposed and the singleton cleared so the next call
+  // starts fresh); callers must treat a null result as a real failure, not
+  // silently do nothing.
+  ensureClient: () => Promise<RoutingClient | null>;
 } {
   const { setPlan } = useActivePlan();
   const [planning, setPlanning] = useState<PlanningState>({ phase: 'idle' });
@@ -83,17 +85,60 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   const makeClient = useMemo(() => deps.makeClient ?? (() => new RoutingClient()), [deps.makeClient]);
   const save = deps.save ?? savePlan;
 
+  // Shared by run() below and by the ensureClient this hook returns
+  // (state/replan.ts's useViaReplan calls it directly, so a via-replan on a
+  // *loaded* plan can init a client on demand without a prior run() in this
+  // session). See the return type's own docstring for the offline-replan
+  // rationale and the failure-recovery contract.
+  const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
+    try {
+      if (!clientRef.current) {
+        const assets = await loadRoutingAssets();
+        clientRef.current = makeClient();
+        readyRef.current = clientRef.current.init({
+          maskMeta: assets.maskMeta,
+          // Transferred to the worker on postMessage — always pass a
+          // copy and keep assets.ts's module-cached original intact.
+          maskBuffer: assets.maskBuffer.slice(0),
+          polarGenoa: assets.polarGenoa,
+          polarFock: assets.polarFock,
+        });
+      }
+      await readyRef.current;
+      return clientRef.current;
+    } catch {
+      // A failed load/init leaves a permanently-rejected readyRef promise,
+      // and (if init() was reached) the broken client is still holding its
+      // Worker thread — dispose it (wrapped: dispose() on an already-dead
+      // or never-inited client must not throw and derail recovery) before
+      // clearing the singleton, so the next call builds a fresh client
+      // instead of re-awaiting the same broken one, or leaking the old
+      // Worker, forever.
+      try {
+        clientRef.current?.dispose();
+      } catch {
+        // Best-effort teardown of an already-broken client.
+      }
+      clientRef.current = null;
+      readyRef.current = null;
+      return null;
+    }
+  }, [makeClient]);
+
   const run = useCallback(
     async (req: Omit<PlanRequest, 'settings'> & { settings: Settings }, name: string): Promise<void> => {
       // Belt, not the primary guard: the UI's canPlan already disables the
       // plan button while a run is in flight. Per-plan cancellation
-      // (dispose + recreate the client mid-run) is deliberately deferred to
-      // E8's replan work; RoutingClient's dispose-race guard (Phase B)
-      // makes that safe to add later without touching this hook.
+      // (dispose + recreate the client mid-run) is deliberately deferred —
+      // RoutingClient's dispose-race guard (Phase B) makes that safe to add
+      // later without touching this hook.
       if (phaseRef.current !== 'idle' && phaseRef.current !== 'error') return;
 
       // Planning is the only network feature (repo rule) — checked before
-      // anything else so a fetch is never attempted while offline.
+      // anything else so a fetch is never attempted while offline. Replans
+      // (state/replan.ts) are deliberately NOT gated this way: they reuse a
+      // plan's already-stored windGrid and never touch the network, so they
+      // must keep working offline.
       if (!navigator.onLine) {
         transition({ phase: 'error', messageKey: 'error.offline' });
         return;
@@ -126,34 +171,8 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         return;
       }
 
-      try {
-        if (!clientRef.current) {
-          const assets = await loadRoutingAssets();
-          clientRef.current = makeClient();
-          readyRef.current = clientRef.current.init({
-            maskMeta: assets.maskMeta,
-            // Transferred to the worker on postMessage — always pass a
-            // copy and keep assets.ts's module-cached original intact.
-            maskBuffer: assets.maskBuffer.slice(0),
-            polarGenoa: assets.polarGenoa,
-            polarFock: assets.polarFock,
-          });
-        }
-        await readyRef.current;
-      } catch {
-        // A failed init leaves a permanently-rejected readyRef promise, and
-        // the broken client is still holding its Worker thread — dispose it
-        // (wrapped: dispose() on an already-dead client must not throw and
-        // derail recovery) before clearing the singleton, so the next run()
-        // builds a fresh client instead of re-awaiting the same broken one,
-        // or leaking the old Worker, forever.
-        try {
-          clientRef.current?.dispose();
-        } catch {
-          // Best-effort teardown of an already-broken client.
-        }
-        clientRef.current = null;
-        readyRef.current = null;
+      const client = await ensureClient();
+      if (!client) {
         transition({ phase: 'error', messageKey: 'error.internal' });
         return;
       }
@@ -161,7 +180,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       maxSimulatedToMsRef.current = { genoa: -Infinity, fock: -Infinity };
       let result: PlanResult;
       try {
-        result = await clientRef.current.plan(req, windGrid, (rig, tMs) => {
+        result = await client.plan(req, windGrid, (rig, tMs) => {
           // The solver's progress can regress by up to one step at
           // via-segment joints (ledgered) — clamp per rig so the UI never
           // shows simulated time going backwards within that rig's own solve.
@@ -171,7 +190,19 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         });
       } catch {
         // Worker fatal (rejected promise) — a resolved PlanResult with
-        // status 'error' is handled separately below.
+        // status 'error' is handled separately below. Mirrors ensureClient's
+        // own recovery: without this, a mid-plan crash would leave the
+        // shared client silently poisoned (its ready promise already
+        // resolved, but the Worker thread dead underneath it), so the
+        // *next* run()/replan would be handed back the same broken client
+        // instead of building a fresh one.
+        try {
+          client.dispose();
+        } catch {
+          // Best-effort teardown of an already-broken client.
+        }
+        clientRef.current = null;
+        readyRef.current = null;
         transition({ phase: 'error', messageKey: 'error.internal' });
         return;
       }
@@ -198,10 +229,8 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       setPlan(plan);
       transition({ phase: 'idle' });
     },
-    [fetchWind, makeClient, save, setPlan, transition],
+    [ensureClient, fetchWind, save, setPlan, transition],
   );
 
-  const getClient = useCallback(() => clientRef.current, []);
-
-  return { planning, run, getClient };
+  return { planning, run, ensureClient };
 }

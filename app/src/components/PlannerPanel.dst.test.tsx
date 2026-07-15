@@ -5,8 +5,8 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import { DEFAULT_SETTINGS, type Harbor } from '../types';
-import PlannerPanel, { nextFullHourMs, type PickedPoint, type PlanningState, type TapTarget } from './PlannerPanel';
+import { DEFAULT_SETTINGS, type Harbor, type PickedPoint } from '../types';
+import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
 
 // Verify TZ pinning works: DST fold instant 2026-10-25 02:00 CEST becomes 03:00 CET
 const dstTest = new Date(2026, 9, 25, 2, 23);
@@ -42,7 +42,7 @@ interface Overrides {
   canPlan?: boolean;
   planDisabledReason?: string | null;
   onPlan?: () => void;
-  planning?: PlanningState;
+  planning?: PlannerStatus;
   departureMs?: number;
 }
 
@@ -66,7 +66,7 @@ function renderPanel(overrides: Overrides = {}) {
     canPlan: true,
     planDisabledReason: null,
     onPlan: vi.fn(),
-    planning: { phase: 'idle' } as PlanningState,
+    planning: { phase: 'idle' } as PlannerStatus,
     ...overrides,
   };
   render(

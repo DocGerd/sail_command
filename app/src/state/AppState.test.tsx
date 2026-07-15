@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { AppStateProvider, useSettings, useActivePlan, useOnline, usePersistenceError } from './AppState';
+import { AppStateProvider, useSettings, useActivePlan, useOnline, useSettingsPersistenceError } from './AppState';
 import { loadSettings, saveSettings, __resetDbForTests } from '../services/db';
 import * as db from '../services/db';
 import { DEFAULT_SETTINGS, type Plan, type WindGrid } from '../types';
@@ -15,6 +15,7 @@ function SettingsProbe() {
       <span data-testid="motorSpeed">{settings.motorSpeedKn}</span>
       <button onClick={() => setSettings({ safetyDepthM: 2.5, motorEnabled: false })}>patch</button>
       <button onClick={() => setSettings({ safetyDepthM: 4 })}>patchSafetyDepthOnly</button>
+      <button onClick={() => setSettings({ motorSpeedKn: 9 })}>patchMotorSpeedOnly</button>
     </div>
   );
 }
@@ -39,12 +40,12 @@ function OnlineProbe() {
   return <span data-testid="online">{String(online)}</span>;
 }
 
-function PersistenceErrorProbe() {
-  const [persistenceError, clearPersistenceError] = usePersistenceError();
+function SettingsPersistenceErrorProbe() {
+  const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
   return (
     <div>
-      <span data-testid="persistenceError">{String(persistenceError)}</span>
-      <button onClick={clearPersistenceError}>clearPersistenceError</button>
+      <span data-testid="settingsPersistenceError">{String(settingsPersistenceError)}</span>
+      <button onClick={clearSettingsPersistenceError}>clearSettingsPersistenceError</button>
     </div>
   );
 }
@@ -204,6 +205,37 @@ describe('AppStateProvider', () => {
     });
   });
 
+  it('two pre-load patches to different fields both survive reconciliation (accumulation, not clobber)', async () => {
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    // Both fired synchronously, before the mount-time load resolves —
+    // pendingRef must accumulate `{ ...pendingRef.current, ...patch }`
+    // across the two calls, not let the second overwrite the first's
+    // (non-overlapping) field.
+    fireEvent.click(screen.getByText('patch')); // safetyDepthM: 2.5, motorEnabled: false
+    fireEvent.click(screen.getByText('patchMotorSpeedOnly')); // motorSpeedKn: 9 (different field)
+
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent('false');
+    expect(screen.getByTestId('motorSpeed')).toHaveTextContent('9');
+
+    await waitFor(async () => {
+      const persisted = await loadSettings();
+      expect(persisted?.safetyDepthM).toBe(2.5);
+      expect(persisted?.motorEnabled).toBe(false);
+      expect(persisted?.motorSpeedKn).toBe(9);
+    });
+
+    // Final in-memory state still reflects all three patched fields.
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent('false');
+    expect(screen.getByTestId('motorSpeed')).toHaveTextContent('9');
+  });
+
   it('a pre-load patch on a fresh DB (nothing persisted) is reflected in both final state and the persisted value', async () => {
     render(
       <AppStateProvider>
@@ -322,18 +354,18 @@ describe('AppStateProvider', () => {
     expect(screen.getByTestId('activeLegIndex')).toHaveTextContent('none');
   });
 
-  it('usePersistenceError surfaces a saveSettings failure and can be cleared', async () => {
+  it('useSettingsPersistenceError surfaces a saveSettings failure and can be cleared', async () => {
     render(
       <AppStateProvider>
         <SettingsProbe />
-        <PersistenceErrorProbe />
+        <SettingsPersistenceErrorProbe />
       </AppStateProvider>,
     );
 
     await waitFor(() => {
       expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
     });
-    expect(screen.getByTestId('persistenceError')).toHaveTextContent('false');
+    expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('false');
 
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(db, 'saveSettings').mockRejectedValue(new Error('save boom'));
@@ -341,18 +373,18 @@ describe('AppStateProvider', () => {
     fireEvent.click(screen.getByText('patch'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('persistenceError')).toHaveTextContent('true');
+      expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('true');
     });
 
-    fireEvent.click(screen.getByText('clearPersistenceError'));
-    expect(screen.getByTestId('persistenceError')).toHaveTextContent('false');
+    fireEvent.click(screen.getByText('clearSettingsPersistenceError'));
+    expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('false');
   });
 
-  it('persistenceError self-heals on the next successful direct save, without an explicit dismiss', async () => {
+  it('settingsPersistenceError self-heals on the next successful direct save, without an explicit dismiss', async () => {
     render(
       <AppStateProvider>
         <SettingsProbe />
-        <PersistenceErrorProbe />
+        <SettingsPersistenceErrorProbe />
       </AppStateProvider>,
     );
 
@@ -365,26 +397,26 @@ describe('AppStateProvider', () => {
 
     fireEvent.click(screen.getByText('patch'));
     await waitFor(() => {
-      expect(screen.getByTestId('persistenceError')).toHaveTextContent('true');
+      expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('true');
     });
 
     // mockRejectedValueOnce only overrides the next call; this one falls
     // through to the real saveSettings and should succeed, self-healing the
-    // flag without the explicit clearPersistenceError() button.
+    // flag without the explicit clearSettingsPersistenceError() button.
     fireEvent.click(screen.getByText('patchSafetyDepthOnly'));
     await waitFor(() => {
-      expect(screen.getByTestId('persistenceError')).toHaveTextContent('false');
+      expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('false');
     });
   });
 
-  it('persistenceError self-heals when a subsequent pre-load-flush save succeeds', async () => {
+  it('settingsPersistenceError self-heals when a subsequent pre-load-flush save succeeds', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(db, 'saveSettings').mockRejectedValueOnce(new Error('flush boom'));
 
     render(
       <AppStateProvider>
         <SettingsProbe />
-        <PersistenceErrorProbe />
+        <SettingsPersistenceErrorProbe />
       </AppStateProvider>,
     );
 
@@ -392,25 +424,25 @@ describe('AppStateProvider', () => {
     // through the flush-on-load-resolve saveSettings call, which fails once.
     fireEvent.click(screen.getByText('patch'));
     await waitFor(() => {
-      expect(screen.getByTestId('persistenceError')).toHaveTextContent('true');
+      expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('true');
     });
 
     // The next save (real saveSettings, via the direct setSettings path since
     // the load has resolved by now) succeeds and should clear the flag.
     fireEvent.click(screen.getByText('patchSafetyDepthOnly'));
     await waitFor(() => {
-      expect(screen.getByTestId('persistenceError')).toHaveTextContent('false');
+      expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('false');
     });
   });
 
-  it('a pre-load patch that fails to flush once the load resolves also surfaces persistenceError', async () => {
+  it('a pre-load patch that fails to flush once the load resolves also surfaces settingsPersistenceError', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(db, 'saveSettings').mockRejectedValue(new Error('flush boom'));
 
     render(
       <AppStateProvider>
         <SettingsProbe />
-        <PersistenceErrorProbe />
+        <SettingsPersistenceErrorProbe />
       </AppStateProvider>,
     );
 
@@ -420,7 +452,7 @@ describe('AppStateProvider', () => {
     fireEvent.click(screen.getByText('patch'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('persistenceError')).toHaveTextContent('true');
+      expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('true');
     });
   });
 

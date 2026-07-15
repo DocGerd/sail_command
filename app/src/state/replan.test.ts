@@ -181,6 +181,9 @@ describe('replanWithVias', () => {
   it.each<[NoRouteReason, string]>([
     ['unreachable', 'error.noRoute.unreachable'],
     ['snap-failed-via', 'error.noRoute.snapVia'],
+    ['beyond-horizon', 'error.noRoute.beyondHorizon'],
+    ['snap-failed-origin', 'error.noRoute.snapOrigin'],
+    ['snap-failed-destination', 'error.noRoute.snapDestination'],
   ])('maps a no-route result reason %s to ReplanError(%s)', async (reason, messageKey) => {
     const plan = makePlan();
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue({ status: 'error', reason }) };
@@ -231,17 +234,22 @@ describe('useViaReplan', () => {
   });
 
   it('starts idle', () => {
-    const { result } = renderHook(() => useViaReplan(() => null));
+    const { result } = renderHook(() => useViaReplan(() => Promise.resolve(null)));
     expect(result.current.state).toEqual({ replanning: false, error: null, droppedCount: 0 });
   });
 
-  it('replace() is a no-op (returns null, does not call client) when client is null', async () => {
-    const { result } = renderHook(() => useViaReplan(() => null));
+  it('a failed ensureClient (asset load or worker init failure) surfaces error.replanInit — not a silent no-op', async () => {
+    const ensureClient = vi.fn().mockResolvedValue(null);
+    const { result } = renderHook(() => useViaReplan(ensureClient));
+
     let outcome: Plan | null = null;
     await act(async () => {
       outcome = await result.current.replace(makePlan(), []);
     });
+
     expect(outcome).toBeNull();
+    expect(ensureClient).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toEqual({ replanning: false, error: 'error.replanInit', droppedCount: 0 });
   });
 
   it('a successful replace() transitions replanning true then false, and returns the updated plan', async () => {
@@ -250,7 +258,9 @@ describe('useViaReplan', () => {
     const client: ReplanClient = {
       plan: vi.fn(() => new Promise<PlanResultOk>((res) => { resolvePlan = res; })),
     };
-    const { result } = renderHook(() => useViaReplan(() => client, { save: vi.fn().mockResolvedValue(undefined) }));
+    const { result } = renderHook(() =>
+      useViaReplan(() => Promise.resolve(client), { save: vi.fn().mockResolvedValue(undefined) }),
+    );
 
     let replacePromise!: Promise<Plan | null>;
     act(() => {
@@ -266,13 +276,14 @@ describe('useViaReplan', () => {
     expect(result.current.state).toEqual({ replanning: false, error: null, droppedCount: 0 });
   });
 
-  it('a second replace() call while one is in flight is a guarded no-op (same pattern as usePlanFlow.run)', async () => {
+  it('a second replace() call while one is in flight is a guarded no-op (same pattern as usePlanFlow.run) — the guard is set before ensureClient is even awaited', async () => {
     const plan = makePlan();
     let resolvePlan!: (r: PlanResultOk) => void;
     const client: ReplanClient = {
       plan: vi.fn(() => new Promise<PlanResultOk>((res) => { resolvePlan = res; })),
     };
-    const { result } = renderHook(() => useViaReplan(() => client, { save: vi.fn().mockResolvedValue(undefined) }));
+    const ensureClient = vi.fn().mockResolvedValue(client);
+    const { result } = renderHook(() => useViaReplan(ensureClient, { save: vi.fn().mockResolvedValue(undefined) }));
 
     let first!: Promise<Plan | null>;
     let second!: Promise<Plan | null>;
@@ -281,7 +292,16 @@ describe('useViaReplan', () => {
       second = result.current.replace(plan, [{ lat: 54.91, lon: 10.11 }]);
     });
 
-    expect(client.plan).toHaveBeenCalledTimes(1); // the second call never reached the client
+    // The second call never even reaches ensureClient, let alone client.plan.
+    expect(ensureClient).toHaveBeenCalledTimes(1);
+
+    // ensureClient() is now async, so client.plan() isn't called in the same
+    // synchronous tick as replace() — flush the one microtask hop for
+    // ensureClient's own promise to resolve before asserting on client.plan.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(client.plan).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolvePlan(OK_RESULT);
@@ -294,7 +314,7 @@ describe('useViaReplan', () => {
   it('surfaces the ReplanError messageKey on a failed replace(), and clearError resets it', async () => {
     const plan = makePlan();
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue({ status: 'error', reason: 'unreachable' }) };
-    const { result } = renderHook(() => useViaReplan(() => client));
+    const { result } = renderHook(() => useViaReplan(() => Promise.resolve(client)));
 
     await act(async () => {
       await result.current.replace(plan, []);
@@ -310,14 +330,16 @@ describe('useViaReplan', () => {
     const plan = makePlan();
     const tooClose = destinationPoint(ORIGIN, 45, 50 / 1852);
     const okClient: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
-    const { result: okResult } = renderHook(() => useViaReplan(() => okClient, { save: vi.fn().mockResolvedValue(undefined) }));
+    const { result: okResult } = renderHook(() =>
+      useViaReplan(() => Promise.resolve(okClient), { save: vi.fn().mockResolvedValue(undefined) }),
+    );
     await act(async () => {
       await okResult.current.replace(plan, [tooClose]);
     });
     expect(okResult.current.state.droppedCount).toBe(1);
 
     const failClient: ReplanClient = { plan: vi.fn().mockResolvedValue({ status: 'error', reason: 'unreachable' }) };
-    const { result: failResult } = renderHook(() => useViaReplan(() => failClient));
+    const { result: failResult } = renderHook(() => useViaReplan(() => Promise.resolve(failClient)));
     await act(async () => {
       await failResult.current.replace(plan, [tooClose]);
     });
@@ -327,7 +349,9 @@ describe('useViaReplan', () => {
   it('a replace() after a prior one settled is not blocked by the guard (guard is per-call, not permanent)', async () => {
     const plan = makePlan();
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
-    const { result } = renderHook(() => useViaReplan(() => client, { save: vi.fn().mockResolvedValue(undefined) }));
+    const { result } = renderHook(() =>
+      useViaReplan(() => Promise.resolve(client), { save: vi.fn().mockResolvedValue(undefined) }),
+    );
 
     await act(async () => {
       await result.current.replace(plan, []);
@@ -337,5 +361,15 @@ describe('useViaReplan', () => {
     });
 
     expect(client.plan).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a stable {state, replace, clearError, clearDroppedNotice} object identity across renders that do not change state', () => {
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const ensureClient = () => Promise.resolve(client);
+    const { result, rerender } = renderHook(() => useViaReplan(ensureClient));
+
+    const first = result.current;
+    rerender();
+    expect(result.current).toBe(first);
   });
 });

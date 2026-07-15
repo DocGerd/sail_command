@@ -1,9 +1,25 @@
+import { useState } from 'react';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import AboutDialog from './AboutDialog';
+
+// Standalone in every other test (open/onClose are just props), but focus
+// return specifically needs a real "trigger" element to hand focus back to
+// — App.tsx's ⓘ header button in practice, reproduced here minimally.
+function DialogWithTrigger() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        Open
+      </button>
+      <AboutDialog open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200 });
@@ -126,6 +142,42 @@ describe('AboutDialog', () => {
     );
 
     expect(await screen.findByText(de['about.sources.protomaps'])).toBeInTheDocument();
+  });
+
+  it('renders no sources list item when mask.meta.json.sources is present but not an array (malformed data)', async () => {
+    // @ts-expect-error deliberately malformed for the runtime-validation test
+    vi.stubGlobal('fetch', fetchMock('not-an-array'));
+    render(
+      <I18nProvider>
+        <AboutDialog open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    // Static attributions still render; the malformed dynamic sources are
+    // dropped instead of being handed to .map() (which would throw/render
+    // garbage for a non-array).
+    expect(await screen.findByText(de['about.sources.protomaps'])).toBeInTheDocument();
+  });
+
+  it('focuses the close button on open, and returns focus to the trigger that opened it on close', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <DialogWithTrigger />
+      </I18nProvider>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Open' });
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+
+    fireEvent.click(trigger);
+    const closeButton = await screen.findByRole('button', { name: de['about.close'] });
+    await waitFor(() => expect(closeButton).toHaveFocus());
+
+    fireEvent.click(closeButton);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it('does not force-fetch the full routing asset bundle — only mask.meta.json', async () => {

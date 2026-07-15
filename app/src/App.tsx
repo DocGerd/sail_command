@@ -1,18 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLang, useT } from './i18n';
-import { AppStateProvider, useActivePlan, useOnline, usePersistenceError, useSettings } from './state/AppState';
+import { AppStateProvider, useActivePlan, useOnline, useSettingsPersistenceError, useSettings } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { useViaReplan } from './state/replan';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
 import RouteLayer from './components/RouteLayer';
-import PlannerPanel, {
-  nextFullHourMs,
-  type PickedPoint,
-  type PlanningState as PlannerPlanningState,
-  type TapTarget,
-} from './components/PlannerPanel';
+import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './components/PlannerPanel';
 import PlansList from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import LiveView from './components/LiveView';
@@ -21,7 +16,7 @@ import AboutDialog from './components/AboutDialog';
 import { isStaleForecast } from './lib/plan';
 import { formatLatLon } from './lib/format';
 import type { MsgKey } from './i18n/dict.de';
-import type { Harbor, LatLon } from './types';
+import type { Harbor, LatLon, PickedPoint } from './types';
 
 type Tab = 'plan' | 'routes' | 'live';
 
@@ -35,16 +30,17 @@ const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
 
 // Reconciles usePlanFlow.ts's PlanningState (fetching-wind / routing{rig,
 // simulatedToMs} / error{messageKey}) with PlannerPanel's own, coarser
-// PlanningState (fetching / routing{progress?} / error{message}) — flagged
-// as an open gap by both E1 and E3's reports; App.tsx (the wiring task) is
-// where it gets resolved. `progress` is simulatedToMs's advance through the
-// departure->forecast-horizon window — an approximation (the router may
-// finish well before the horizon), good enough for a progress indicator.
-function toPlannerPlanningState(
+// PlannerStatus (fetching / routing{progress?} / error{message}) — the two
+// hooks are owned by different modules and track planning progress at
+// different granularities, so this adapter is what reconciles them.
+// `progress` is simulatedToMs's advance through the departure->forecast-
+// horizon window — an approximation (the router may finish well before the
+// horizon), good enough for a progress indicator.
+function toPlannerStatus(
   flow: FlowPlanningState,
   departureMs: number,
   t: ReturnType<typeof useT>,
-): PlannerPlanningState {
+): PlannerStatus {
   switch (flow.phase) {
     case 'idle':
       return { phase: 'idle' };
@@ -65,12 +61,14 @@ function AppShell() {
   const online = useOnline();
   const [settings, setSettings] = useSettings();
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
-  const [persistenceError, clearPersistenceError] = usePersistenceError();
-  const { planning, run, getClient } = usePlanFlow();
+  const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
+  const { planning, run, ensureClient } = usePlanFlow();
   // E8: via-waypoint re-route. Reuses usePlanFlow's singleton RoutingClient
-  // (via the getClient getter — see usePlanFlow.ts's docstring on why it's a
-  // getter, not a value) rather than spawning a second worker.
-  const viaReplan = useViaReplan(getClient);
+  // (via the ensureClient function — see usePlanFlow.ts's docstring: it
+  // lazily creates/inits the client on demand, so a via edit on a plan
+  // that was only ever *loaded* from PlansList, never run() in this
+  // session, still works) rather than spawning a second worker.
+  const viaReplan = useViaReplan(ensureClient);
 
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -143,7 +141,7 @@ function AppShell() {
     setTapTarget(target);
   }, []);
 
-  // E8: shared by ViaMarkers' drag-replan, the panel's add/remove/reorder
+  // Shared by ViaMarkers' drag-replan, the panel's add/remove/reorder
   // chips, and handleMapTap's 'via' branch below — one place that decides
   // "pre-plan draft edit" vs. "post-plan replan". A rejected replan is a
   // no-op here (viaReplan.replace already resolved null and recorded the
@@ -190,7 +188,7 @@ function AppShell() {
           handleViaPointsChange([...viaPoints, p]);
           return null;
         }
-        const picked: PickedPoint = { point: p, harborId: null, label: formatLatLon(p) };
+        const picked: PickedPoint = { source: 'tap', point: p, label: formatLatLon(p) };
         if (current === 'origin') setOrigin(picked);
         else setDestination(picked);
         return null; // disarm
@@ -290,8 +288,8 @@ function AppShell() {
         // scratch with new origin/destination while a plan is still active)
         // the previous plan's committed via list.
         viaPoints,
-        originHarborId: origin.harborId,
-        destinationHarborId: destination.harborId,
+        originHarborId: origin.source === 'harbor' ? origin.harborId : null,
+        destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
         departureMs,
         settings,
       },
@@ -313,7 +311,7 @@ function AppShell() {
     !viaReplan.state.replanning;
   const planDisabledReason = online ? null : t('error.offline');
 
-  const plannerPlanningState = toPlannerPlanningState(planning, departureMs, t);
+  const plannerStatus = toPlannerStatus(planning, departureMs, t);
   const stale = plan !== null && isStaleForecast(plan);
 
   return (
@@ -338,12 +336,15 @@ function AppShell() {
             viaReplanning={viaReplan.state.replanning}
             onViaDragEnd={handleViaDragEnd}
           />
-          {/* LiveView must live inside MapView's subtree so its BoatMarker
-              child can resolve useMapInstance() (see E6's report). Styled to
-              occupy the same bottom-sheet screen region as .app-bottom-sheet
-              below, even though it's a different DOM subtree. Only mounted
-              while the Live tab is active — switching away stops GPS
-              tracking rather than running it in the background. */}
+          {/* LiveView must live inside MapView's subtree: useMapInstance()
+              (its BoatMarker child calls it) reads the map instance off a
+              React context that MapView provides, and only descendants of
+              MapView can see it — a sibling would always get null. Styled
+              to occupy the same bottom-sheet screen region as
+              .app-bottom-sheet below, even though it's a different DOM
+              subtree. Only mounted while the Live tab is active — switching
+              away stops GPS tracking rather than running it in the
+              background. */}
           {tab === 'live' && <LiveView />}
         </MapView>
       </div>
@@ -352,7 +353,7 @@ function AppShell() {
         <h1>{t('app.title')}</h1>
         <div className="app-header-actions">
           <button type="button" aria-label={t('nav.langToggle')} onClick={() => setLang(lang === 'de' ? 'en' : 'de')}>
-            {lang === 'de' ? 'EN' : 'DE'}
+            {lang === 'de' ? t('nav.langToggle.en') : t('nav.langToggle.de')}
           </button>
           <button type="button" aria-label={t('about.open')} onClick={() => setAboutOpen(true)}>
             ⓘ
@@ -363,11 +364,18 @@ function AppShell() {
       <div className="banner-area">
         {!online && <Banner kind="warning">{t('banner.offline')}</Banner>}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
-        {persistenceError && (
-          <Banner kind="error" onDismiss={clearPersistenceError} dismissLabel={t('banner.dismiss')}>
+        {settingsPersistenceError && (
+          <Banner kind="error" onDismiss={clearSettingsPersistenceError} dismissLabel={t('banner.dismiss')}>
             {t('banner.persistenceError')}
           </Banner>
         )}
+        {/* Tab-independent: a plan-run error must be visible even while the
+            user has switched away from the Plan tab (e.g. to Routes, while
+            waiting) — PlannerPanel's own inline alert only renders while
+            that tab is mounted. Self-clearing like offline/stale-forecast
+            above (no onDismiss): it tracks planning.phase directly, which
+            only leaves 'error' on the next run() attempt. */}
+        {planning.phase === 'error' && <Banner kind="error">{t(planning.messageKey)}</Banner>}
         {tapTarget && (
           <Banner kind="info" onDismiss={handleCancelTapPick} dismissLabel={t('banner.tapPick.cancel')}>
             {t('banner.tapPick', { target: t(TAP_TARGET_LABEL_KEY[tapTarget]) })}
@@ -380,7 +388,9 @@ function AppShell() {
         )}
         {viaReplan.state.droppedCount > 0 && (
           <Banner kind="info" onDismiss={viaReplan.clearDroppedNotice} dismissLabel={t('banner.dismiss')}>
-            {t('banner.viaTooClose')}
+            {t(viaReplan.state.droppedCount === 1 ? 'banner.viaTooClose' : 'banner.viaTooClose.plural', {
+              count: viaReplan.state.droppedCount,
+            })}
           </Banner>
         )}
       </div>
@@ -418,7 +428,7 @@ function AppShell() {
               canPlan={canPlan}
               planDisabledReason={planDisabledReason}
               onPlan={handlePlan}
-              planning={plannerPlanningState}
+              planning={plannerStatus}
             />
           )}
           {tab === 'routes' && (

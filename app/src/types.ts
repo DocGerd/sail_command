@@ -165,6 +165,16 @@ export interface Harbor {
   approachNote?: { de: string; en: string };
 }
 
+// Presentational output of an origin/destination/via pick, shared between
+// PlannerPanel and App.tsx's wiring. Source-discriminated rather than a
+// nullable harborId: a harbor pick always has a real harborId (never ''/
+// null), so a consumer that only cares about the harbor case (e.g. building
+// a PlanRequest's originHarborId/destinationHarborId) narrows on `source`
+// instead of null-checking a field that a 'tap' pick never meaningfully has.
+export type PickedPoint =
+  | { source: 'harbor'; point: LatLon; harborId: string; label: string }
+  | { source: 'tap'; point: LatLon; label: string };
+
 export interface MaskMeta {
   west: number;
   south: number;

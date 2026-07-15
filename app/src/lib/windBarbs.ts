@@ -1,8 +1,10 @@
 import type { Map as MaplibreMap } from 'maplibre-gl';
 
-// Not unit-tested: jsdom has no canvas/WebGL backend, so image registration
-// against a real MapLibre GL map can only be exercised in a real browser
-// (see the Phase E4 browser verification pass).
+// Not unit-tested: jsdom's canvas.getContext('2d') returns null (no canvas/
+// WebGL backend), so registerBarbImages() below always hits its "no 2d
+// context" branch and never actually draws or registers anything under
+// jsdom — real image registration against a MapLibre GL map can only be
+// exercised in a real browser (manual/Playwright verification).
 
 const IMAGE_SIZE = 32;
 const CENTER_X = IMAGE_SIZE / 2;

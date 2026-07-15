@@ -10,7 +10,7 @@ export function safeGetItem(key: string): string | null {
   }
 }
 
-/** Returns whether the write succeeded, so callers can decide how to react. */
+/** Returns whether the write succeeded. */
 export function safeSetItem(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
