@@ -102,7 +102,7 @@ export class NavMask {
     const maxRing = Math.ceil(maxRadiusM / minCellStepM) + 1;
     let best: { p: LatLon; d: number } | null = null;
     for (let ring = 0; ring <= maxRing; ring++) {
-      // Cells are ~557 m (lat) x ~321 m (lon) at 55°N, so a farther ring can
+      // Cells can be non-square (lat vs lon extent), so a farther ring can
       // still hold a nearer cell than a closer ring (lon-offset hits vs.
       // lat-offset hits). Only stop once no unscanned ring could possibly
       // beat the current best.
