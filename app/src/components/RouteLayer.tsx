@@ -12,6 +12,10 @@ import type { Plan, Rig } from '../types';
 export interface RouteLayerProps {
   plan: Plan | null;
   rig: Rig | null;
+  // From useActivePlan() (published by LiveView off the GPS fix). Drives a
+  // cheap setFilter() on the highlight layer only — never a source re-set —
+  // so near-boundary GPS noise flipping between adjacent legs stays cheap.
+  activeLegIndex: number | null;
 }
 
 // Not unit-tested: jsdom has no MapLibre/WebGL runtime, so source/layer
@@ -23,6 +27,10 @@ const ROUTE_SOURCE = 'sc-route';
 const MANEUVER_SOURCE = 'sc-maneuvers';
 const BARB_SOURCE = 'sc-barbs';
 const BARB_STRIDE = 2;
+const HIGHLIGHT_LAYER = 'sc-route-highlight';
+// No leg can ever have this index — an always-false filter, used while no
+// leg is active instead of toggling the layer's visibility on/off.
+const NO_HIGHLIGHT_IDX = -1;
 
 // Gates a callback on the map's style existing, for calls that need to
 // happen exactly once per map instance (setupLayers, below). map.once('load', ...)
@@ -44,6 +52,23 @@ function whenStyleReady(map: MaplibreMap, fn: () => void): void {
 function setupLayers(map: MaplibreMap): void {
   if (!map.getSource(ROUTE_SOURCE)) {
     map.addSource(ROUTE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    // Halo layer, added first so it paints underneath the sail/motor lines
+    // added below. Starts matching nothing (NO_HIGHLIGHT_IDX); the
+    // activeLegIndex-sync effect below re-filters it with a cheap
+    // setFilter() call — never a source re-set — as the live fix moves.
+    map.addLayer({
+      id: HIGHLIGHT_LAYER,
+      type: 'line',
+      source: ROUTE_SOURCE,
+      filter: ['==', ['get', 'legIndex'], NO_HIGHLIGHT_IDX],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-width': 10,
+        'line-color': '#FFD400',
+        'line-opacity': 0.55,
+        'line-blur': 1,
+      },
+    });
     // Two filtered layers rather than one data-driven layer: line-dasharray
     // is not a data-driven-capable paint property in the MapLibre style
     // spec, so sail vs. motor legs (only the latter dashed) need separate
@@ -124,7 +149,7 @@ function setupLayers(map: MaplibreMap): void {
   }
 }
 
-export default function RouteLayer({ plan, rig }: RouteLayerProps) {
+export default function RouteLayer({ plan, rig, activeLegIndex }: RouteLayerProps) {
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
@@ -235,6 +260,14 @@ export default function RouteLayer({ plan, rig }: RouteLayerProps) {
     if (!map || !styleReady || !map.getLayer('sc-wind-barbs')) return;
     map.setLayoutProperty('sc-wind-barbs', 'visibility', barbsVisible ? 'visible' : 'none');
   }, [map, styleReady, barbsVisible]);
+
+  // Cheap setFilter() only — no source re-set — so this stays cheap even
+  // when GPS noise near a leg boundary flips activeLegIndex back and forth.
+  // The effect dependency array already value-gates this to real changes.
+  useEffect(() => {
+    if (!map || !styleReady || !map.getLayer(HIGHLIGHT_LAYER)) return;
+    map.setFilter(HIGHLIGHT_LAYER, ['==', ['get', 'legIndex'], activeLegIndex ?? NO_HIGHLIGHT_IDX]);
+  }, [map, styleReady, activeLegIndex]);
 
   if (!plan) return null;
 

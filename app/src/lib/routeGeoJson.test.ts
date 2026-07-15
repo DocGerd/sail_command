@@ -63,12 +63,17 @@ describe('legsToFeatureCollection', () => {
 
   it('tags a sail leg with its kind, board and maneuver', () => {
     const fc = legsToFeatureCollection([TACK_LEG]);
-    expect(fc.features[0].properties).toEqual({ kind: 'sail', board: 'port', maneuver: 'tack' });
+    expect(fc.features[0].properties).toEqual({ kind: 'sail', board: 'port', maneuver: 'tack', legIndex: 0 });
   });
 
   it('tags a motor leg with board null and maneuver null', () => {
     const fc = legsToFeatureCollection([MOTOR_LEG]);
-    expect(fc.features[0].properties).toEqual({ kind: 'motor', board: null, maneuver: null });
+    expect(fc.features[0].properties).toEqual({ kind: 'motor', board: null, maneuver: null, legIndex: 0 });
+  });
+
+  it('tags each feature with its index into the legs array', () => {
+    const fc = legsToFeatureCollection([SAIL_LEG, TACK_LEG, MOTOR_LEG]);
+    expect(fc.features.map((f) => f.properties.legIndex)).toEqual([0, 1, 2]);
   });
 
   it('returns an empty feature collection for no legs', () => {

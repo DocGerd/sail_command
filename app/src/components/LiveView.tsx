@@ -10,6 +10,7 @@ import {
   projectedEtaMs,
 } from '../lib/live';
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
+import { safeGetItem, safeSetItem } from '../lib/storage';
 import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
 import BoatMarker from './BoatMarker';
 import type { ManeuverKind } from '../types';
@@ -56,8 +57,8 @@ export default function LiveView({ watchPosition = realWatchPosition }: LiveView
   // the moment it's displayed (not on dismiss), so a remount before the user
   // dismisses it doesn't show it again.
   const markGpsHintShownOnce = () => {
-    if (localStorage.getItem(GPS_HINT_STORAGE_KEY) !== '1') {
-      localStorage.setItem(GPS_HINT_STORAGE_KEY, '1');
+    if (safeGetItem(GPS_HINT_STORAGE_KEY) !== '1') {
+      safeSetItem(GPS_HINT_STORAGE_KEY, '1');
       setHintVisible(true);
     }
   };

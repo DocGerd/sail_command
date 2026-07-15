@@ -28,6 +28,14 @@ interface AppStateValue {
   // this field's neighbor deliberately avoids.
   activeLegIndex: number | null;
   setActiveLegIndex: (i: number | null) => void;
+  // Set whenever a saveSettings() write fails (either the direct write in
+  // setSettings, or the mount-time flush of a pre-load patch) — surfaced as
+  // a dismissible banner (App.tsx) rather than just the existing
+  // console.error, which a user never sees. Cleared explicitly, not
+  // auto-cleared on the next successful save, so a dismissed banner doesn't
+  // silently reappear mid-session from an unrelated stale flag.
+  persistenceError: boolean;
+  clearPersistenceError: () => void;
 }
 
 const AppStateCtx = createContext<AppStateValue | null>(null);
@@ -43,6 +51,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [plan, setPlanState] = useState<Plan | null>(null);
   const [rig, setRig] = useState<Rig | null>(null);
   const [activeLegIndex, setActiveLegIndex] = useState<number | null>(null);
+  const [persistenceError, setPersistenceError] = useState(false);
+  const clearPersistenceError = useCallback(() => setPersistenceError(false), []);
 
   // Mirrors the latest settings outside React state so setSettings can
   // compute `next` and call saveSettings as plain statements rather than
@@ -78,7 +88,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         // reconciled baseline even if unmounted by now, otherwise an
         // in-flight pre-load patch is silently dropped instead of written.
         if (pending) {
-          void saveSettings(final).catch((err) => console.error('settings save failed', err));
+          void saveSettings(final).catch((err) => {
+            console.error('settings save failed', err);
+            setPersistenceError(true);
+          });
         }
         if (cancelled) return;
         settingsRef.current = final;
@@ -99,7 +112,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       pendingRef.current = { ...pendingRef.current, ...patch };
       return;
     }
-    void saveSettings(next).catch((err) => console.error('settings save failed', err));
+    void saveSettings(next).catch((err) => {
+      console.error('settings save failed', err);
+      setPersistenceError(true);
+    });
   }, []);
 
   const setPlan = useCallback((p: Plan | null) => {
@@ -111,8 +127,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AppStateValue>(
-    () => ({ settings, setSettings, plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex }),
-    [settings, setSettings, plan, rig, setPlan, activeLegIndex],
+    () => ({
+      settings,
+      setSettings,
+      plan,
+      rig,
+      setPlan,
+      setRig,
+      activeLegIndex,
+      setActiveLegIndex,
+      persistenceError,
+      clearPersistenceError,
+    }),
+    [settings, setSettings, plan, rig, setPlan, activeLegIndex, persistenceError, clearPersistenceError],
   );
 
   return <AppStateCtx.Provider value={value}>{children}</AppStateCtx.Provider>;
@@ -120,7 +147,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
 function useAppState(): AppStateValue {
   const ctx = useContext(AppStateCtx);
-  if (!ctx) throw new Error('useSettings/useActivePlan must be used within AppStateProvider');
+  if (!ctx) throw new Error('useSettings/useActivePlan/usePersistenceError must be used within AppStateProvider');
   return ctx;
 }
 
@@ -141,6 +168,12 @@ export function useActivePlan(): {
 } {
   const { plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex } = useAppState();
   return { plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex };
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function usePersistenceError(): [boolean, () => void] {
+  const { persistenceError, clearPersistenceError } = useAppState();
+  return [persistenceError, clearPersistenceError];
 }
 
 function subscribeOnlineStatus(callback: () => void): () => void {

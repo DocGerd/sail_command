@@ -25,7 +25,7 @@ export default function PlansList() {
   const [lang] = useLang();
 
   const refresh = useCallback(() => {
-    void listPlans().then(setPlans);
+    void listPlans().then(setPlans).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -35,13 +35,15 @@ export default function PlansList() {
   const handleLoad = useCallback(
     (id: string) => {
       setPendingDeleteId(null);
-      void getPlan(id).then((plan) => {
-        // Renders against the plan's STORED wind grid — getPlan/setPlan only,
-        // never a re-fetch; refresh() below re-syncs the summary list (e.g.
-        // its createdAt ordering) but never touches windGrid.
-        if (plan) setPlan(plan);
-        refresh();
-      });
+      void getPlan(id)
+        .then((plan) => {
+          // Renders against the plan's STORED wind grid — getPlan/setPlan only,
+          // never a re-fetch; refresh() below re-syncs the summary list (e.g.
+          // its createdAt ordering) but never touches windGrid.
+          if (plan) setPlan(plan);
+          refresh();
+        })
+        .catch(console.error);
     },
     [setPlan, refresh],
   );
@@ -53,7 +55,7 @@ export default function PlansList() {
         return;
       }
       setPendingDeleteId(null);
-      void deletePlan(id).then(refresh);
+      void deletePlan(id).then(refresh).catch(console.error);
     },
     [pendingDeleteId, refresh],
   );

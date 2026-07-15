@@ -81,4 +81,25 @@ export const en = {
   'live.gpsHint':
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
   'live.gpsHint.dismiss': 'Got it',
+  'nav.plan': 'Plan',
+  'nav.routes': 'Routes',
+  'nav.live': 'Live',
+  'nav.langToggle': 'Auf Deutsch anzeigen',
+  'about.open': 'About SailCommand',
+  'about.title': 'About SailCommand',
+  'about.close': 'Close',
+  'about.caveats.heading': 'Important notes',
+  'about.caveats.polars':
+    'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
+  'about.dataSize':
+    'First load downloads ~30–40 MB (basemap and route data); later loads are served from cache and work offline.',
+  'about.sources.heading': 'Data sources',
+  'about.sources.protomaps': 'Map rendering: Protomaps',
+  'about.sources.osm': '© OpenStreetMap contributors (ODbL)',
+  'about.sources.openMeteo': 'Wind forecast: Open-Meteo (CC-BY 4.0)',
+  'about.sources.polars':
+    'Polars: ORC International 2026 certificate, Salona 45 "Miles Ahead" (AUT 035/26); downwind values corrected to white sails (non-spinnaker) — an estimate, not race-calibrated.',
+  'banner.offline': 'Offline — planning disabled. Saved routes remain available.',
+  'banner.persistenceError': 'Settings could not be saved.',
+  'banner.dismiss': 'Dismiss',
 } satisfies Record<MsgKey, string>;

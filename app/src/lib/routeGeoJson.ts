@@ -5,13 +5,17 @@ export interface LegProperties {
   kind: LegKind;
   board: Board | null;
   maneuver: ManeuverKind | null;
+  // Index into the legs array, for RouteLayer's active-leg highlight layer
+  // to filter on (`['==', ['get', 'legIndex'], activeLegIndex]`) without a
+  // source re-set when the highlighted leg changes.
+  legIndex: number;
 }
 
 export function legsToFeatureCollection(legs: Leg[]): FeatureCollection<LineString, LegProperties> {
   return {
     type: 'FeatureCollection',
     features: legs.map(
-      (leg): Feature<LineString, LegProperties> => ({
+      (leg, legIndex): Feature<LineString, LegProperties> => ({
         type: 'Feature',
         geometry: {
           type: 'LineString',
@@ -24,6 +28,7 @@ export function legsToFeatureCollection(legs: Leg[]): FeatureCollection<LineStri
           kind: leg.kind,
           board: leg.kind === 'sail' ? leg.board : null,
           maneuver: leg.maneuverAtStart,
+          legIndex,
         },
       }),
     ),

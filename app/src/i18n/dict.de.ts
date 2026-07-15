@@ -79,5 +79,26 @@ export const de = {
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
   'live.gpsHint.dismiss': 'Verstanden',
+  'nav.plan': 'Planen',
+  'nav.routes': 'Routen',
+  'nav.live': 'Live',
+  'nav.langToggle': 'English anzeigen',
+  'about.open': 'Über SailCommand',
+  'about.title': 'Über SailCommand',
+  'about.close': 'Schließen',
+  'about.caveats.heading': 'Wichtige Hinweise',
+  'about.caveats.polars':
+    'Die Polardaten sind Schätzungen auf Basis ORC-artiger VPP-Daten, einstellbar über den Leistungsfaktor in den Optionen — nicht renngenau kalibriert.',
+  'about.dataSize':
+    'Der erste Aufruf lädt ca. 30–40 MB (Basiskarte und Routendaten) herunter; spätere Aufrufe werden aus dem Cache bedient und funktionieren offline.',
+  'about.sources.heading': 'Datenquellen',
+  'about.sources.protomaps': 'Kartendarstellung: Protomaps',
+  'about.sources.osm': '© OpenStreetMap-Mitwirkende (ODbL)',
+  'about.sources.openMeteo': 'Windvorhersage: Open-Meteo (CC-BY 4.0)',
+  'about.sources.polars':
+    'Polare: ORC International Zertifikat 2026, Salona 45 „Miles Ahead" (AUT 035/26); Vorwind-Werte auf Weißsegel (ohne Spinnaker) korrigiert — Schätzung, nicht renngenau kalibriert.',
+  'banner.offline': 'Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.',
+  'banner.persistenceError': 'Einstellungen konnten nicht gespeichert werden.',
+  'banner.dismiss': 'Schließen',
 } as const;
 export type MsgKey = keyof typeof de;

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { de, type MsgKey } from './dict.de';
 import { en } from './dict.en';
+import { safeGetItem, safeSetItem } from '../lib/storage';
 
 export type Lang = 'de' | 'en';
 const dicts: Record<Lang, Record<MsgKey, string>> = { de, en };
@@ -12,10 +13,10 @@ const LangCtx = createContext<{ lang: Lang; setLang: (l: Lang) => void }>({
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() =>
-    localStorage.getItem('sc-lang') === 'en' ? 'en' : 'de',
+    safeGetItem('sc-lang') === 'en' ? 'en' : 'de',
   );
   const setLang = (l: Lang) => {
-    localStorage.setItem('sc-lang', l);
+    safeSetItem('sc-lang', l);
     setLangState(l);
   };
   return <LangCtx.Provider value={{ lang, setLang }}>{children}</LangCtx.Provider>;

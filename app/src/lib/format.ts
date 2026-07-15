@@ -1,6 +1,8 @@
 // Formatting helpers for the planner UI. No i18n module dependency here —
 // callers pass the active language explicitly so this module stays testable
 // in isolation.
+import type { LatLon } from '../types';
+
 export type Lang = 'de' | 'en';
 
 const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
@@ -20,6 +22,17 @@ export function formatKn(kn: number): string {
 export function formatHeading(deg: number): string {
   const normalized = ((Math.round(deg) % 360) + 360) % 360;
   return `${padStart(normalized, 3)}°`;
+}
+
+/**
+ * Plain decimal-degree coordinate label for a map-tap-picked point, e.g.
+ * `54.789°N 9.433°E` — deliberately NOT formatHeading (that's for 0..360°
+ * bearings, no decimals/hemisphere letter). Zero is treated as N/E.
+ */
+export function formatLatLon(p: LatLon): string {
+  const ns = p.lat < 0 ? 'S' : 'N';
+  const ew = p.lon < 0 ? 'W' : 'E';
+  return `${Math.abs(p.lat).toFixed(3)}°${ns} ${Math.abs(p.lon).toFixed(3)}°${ew}`;
 }
 
 export function formatDuration(ms: number): string {

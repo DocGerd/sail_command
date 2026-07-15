@@ -176,4 +176,11 @@ export interface MaskMeta {
   // 1..254 = depth in decimeters, rounded DOWN (0.1..25.4 m);
   // 255 = deep (>= 25.4 m). Row 0 = southernmost row,
   // col 0 = westernmost col; cell center = origin + (idx + 0.5) * step.
+  // Optional build-time provenance metadata (pipeline/build_mask.py writes
+  // these into mask.meta.json; older builds may omit them). Structured-clone-
+  // safe (plain string/string[]) — never assume present, only rendered for
+  // display (e.g. AboutDialog's data-sources list).
+  encoding?: string;
+  verticalDatum?: string;
+  sources?: string[];
 }

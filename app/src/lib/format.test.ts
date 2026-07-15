@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { formatNm, formatKn, formatHeading, formatTime, formatDateTime, formatDuration, formatDriftMin } from './format';
+import {
+  formatNm,
+  formatKn,
+  formatHeading,
+  formatTime,
+  formatDateTime,
+  formatDuration,
+  formatDriftMin,
+  formatLatLon,
+} from './format';
 
 describe('formatNm', () => {
   it('formats with one decimal and unit suffix', () => {
@@ -106,6 +115,24 @@ describe('formatTime', () => {
   it('renders midnight as 00:00, not 24:00', () => {
     const ms = new Date(2026, 6, 15, 0, 0).getTime();
     expect(formatTime(ms, 'de')).toBe('00:00');
+  });
+});
+
+describe('formatLatLon', () => {
+  it('formats a NE point with three decimals and N/E suffixes', () => {
+    expect(formatLatLon({ lat: 54.789, lon: 9.433 })).toBe('54.789°N 9.433°E');
+  });
+
+  it('formats a southern/western point with S/W suffixes', () => {
+    expect(formatLatLon({ lat: -12.5, lon: -3.1 })).toBe('12.500°S 3.100°W');
+  });
+
+  it('treats exactly zero as N/E (non-negative)', () => {
+    expect(formatLatLon({ lat: 0, lon: 0 })).toBe('0.000°N 0.000°E');
+  });
+
+  it('rounds to three decimals', () => {
+    expect(formatLatLon({ lat: 54.78949, lon: 9.43349 })).toBe('54.789°N 9.433°E');
   });
 });
 
