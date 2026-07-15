@@ -17,6 +17,7 @@ function legDesc(leg: Leg): string {
 export function toGpx(plan: Plan, rig: Rig): string {
   const result = rig === 'genoa' ? plan.result.genoa : plan.result.fock;
   if (!result) throw new Error(`no ${rig} result on plan ${plan.id}`);
+  if (result.legs.length === 0) throw new Error(`empty route on plan ${plan.id} (${rig})`);
   const pts = result.legs.map(
     (leg) =>
       `    <rtept lat="${leg.start.lat}" lon="${leg.start.lon}">\n` +

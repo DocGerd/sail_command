@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toGpx } from './gpx';
-import { TEST_POLAR, uniformWindGrid } from '../test/fixtures';
+import { uniformWindGrid } from '../test/fixtures';
 import type { Plan } from '../types';
 
 const plan: Plan = {
@@ -60,5 +60,12 @@ describe('toGpx', () => {
     expect(xml).toContain('&lt;Marstal&gt; &amp; back');
     expect(xml).toContain('motor');
     expect(xml).not.toContain('<Marstal>');
+  });
+
+  it('throws a descriptive error when the rig result is missing or empty', () => {
+    expect(() => toGpx(plan, 'fock')).toThrow(/no fock result/);
+    const empty: Plan = structuredClone(plan);
+    if (empty.result.status === 'ok' && empty.result.genoa) empty.result.genoa.legs = [];
+    expect(() => toGpx(empty, 'genoa')).toThrow(/empty route/);
   });
 });
