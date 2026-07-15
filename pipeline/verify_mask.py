@@ -5,6 +5,7 @@ import pathlib
 import sys
 
 import numpy as np
+from scipy import ndimage
 
 HERE = pathlib.Path(__file__).parent
 OUT = HERE.parent / "app" / "public" / "data"
@@ -21,6 +22,13 @@ def depth_m(lat: float, lon: float) -> float:
     assert 0 <= row < meta["rows"] and 0 <= col < meta["cols"], f"probe {lat},{lon} maps outside the mask grid"
     b = int(grid[row, col])
     return 0.0 if b == 0 else (25.4 if b == 255 else b / 10.0)
+
+
+def rc_of(lat: float, lon: float) -> tuple[int, int]:
+    row = int((lat - meta["south"]) / (meta["north"] - meta["south"]) * meta["rows"])
+    col = int((lon - meta["west"]) / (meta["east"] - meta["west"]) * meta["cols"])
+    assert 0 <= row < meta["rows"] and 0 <= col < meta["cols"], f"probe {lat},{lon} maps outside the mask grid"
+    return row, col
 
 
 WATER_PROBES = [  # (name, lat, lon, min expected depth m)
@@ -54,6 +62,84 @@ for h in harbors:
     d = depth_m(h["snap"]["lat"], h["snap"]["lon"])
     if d < 2.2:
         failures.append(f"HARBOR {h['id']} snap ({h['snap']['lat']},{h['snap']['lon']}): {d} m < 2.2 m")
+
+# ---- Connectivity gate (issue #6) ----
+# A harbor snap can sit on an individually-navigable cell (checked above) yet
+# still be cut off from open water by land/depth artifacts elsewhere on the
+# grid - that was exactly issue #6 (14/44 harbors, incl. Flensburg, stranded
+# in disconnected pockets despite passing the per-cell probe). This gate
+# 4-connected-flood-fills the navigable cells from a fixed open-water seed
+# and asserts every harbor snap's cell is reachable. 4-connectivity (not 8)
+# is deliberate: a diagonal-only "connection" through a single pinched corner
+# is not something a 4.2 m-beam boat can reliably thread, and this pipeline's
+# rule is to never overstate navigability.
+SEED_LAT, SEED_LON = 54.8455, 9.5216  # open Flensburg Fjord water
+DEFAULT_GATE_DEPTH_M = 3.0  # matches the app's default safety depth
+
+# Per-harbor override for a gate depth below the 3.0 m default, used ONLY
+# when the harbor's own approachNote documents a genuinely shallower
+# approach that the DTM/rasterization can't resolve as >= 3.0 m even at the
+# current 46 m cell size. Each entry must be justified by that harbor's own
+# approachNote text (checked against harbors.json below) - never by fudging
+# the bathymetry. Values were derived by scanning gate depths against the
+# regenerated mask to find the threshold at which each harbor's snap cell
+# actually reconnects to open water (see fix-mask-report.md), then rounded
+# down from that measured threshold to match the harbor's own documented
+# figure, so the exception is never more permissive than the source text.
+CONNECTIVITY_EXCEPTIONS_M: dict[str, float] = {
+    # "Buoyed fairway up Augustenborg Fjord, approx 3 m in the upper
+    # reaches." Reconnects at gate <= 2.8 m; matches the approx-3 m note.
+    "augustenborg": 2.8,
+    # "Buoyed approaches approx 3.2 m (N and W), 4.5 m from S; parts of the
+    # yacht basin only approx 2 m." Reconnects at gate <= 2.3 m; 2.0 m is
+    # the harbor's own documented figure for its shallowest reach and keeps
+    # a safety margin below the measured 2.3 m threshold.
+    "marstal": 2.0,
+}
+
+FOUR_CONNECTIVITY = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=np.uint8)
+_depth_grid = np.where(grid == 255, 25.4, np.where(grid == 0, 0.0, grid / 10.0))
+_label_cache: dict[float, np.ndarray] = {}
+
+
+def labeled_for(min_depth_m: float) -> np.ndarray:
+    if min_depth_m not in _label_cache:
+        labeled, _ = ndimage.label(_depth_grid >= min_depth_m, structure=FOUR_CONNECTIVITY)
+        _label_cache[min_depth_m] = labeled
+    return _label_cache[min_depth_m]
+
+
+seed_row, seed_col = rc_of(SEED_LAT, SEED_LON)
+default_labeled = labeled_for(DEFAULT_GATE_DEPTH_M)
+seed_label = int(default_labeled[seed_row, seed_col])
+assert seed_label != 0, f"connectivity seed ({SEED_LAT},{SEED_LON}) is not itself navigable at {DEFAULT_GATE_DEPTH_M} m"
+main_component_size = int((default_labeled == seed_label).sum())
+print(f"open-water seed component: {main_component_size} cells at >= {DEFAULT_GATE_DEPTH_M} m")
+
+connectivity_report = []
+for h in harbors:
+    hid = h["id"]
+    if hid in CONNECTIVITY_EXCEPTIONS_M:
+        assert "approachNote" in h, f"CONNECTIVITY_EXCEPTIONS_M[{hid}] has no approachNote to justify it"
+    gate_depth = CONNECTIVITY_EXCEPTIONS_M.get(hid, DEFAULT_GATE_DEPTH_M)
+    labeled = labeled_for(gate_depth)
+    row, col = rc_of(h["snap"]["lat"], h["snap"]["lon"])
+    harbor_label = int(labeled[row, col])
+    seed_label_here = int(labeled[seed_row, seed_col])
+    connected = harbor_label != 0 and harbor_label == seed_label_here
+    connectivity_report.append((hid, gate_depth, connected))
+    if not connected:
+        failures.append(
+            f"CONNECTIVITY {hid} snap ({h['snap']['lat']},{h['snap']['lon']}) not reachable from open "
+            f"water at gate depth {gate_depth} m"
+        )
+
+n_connected = sum(1 for _, _, ok in connectivity_report if ok)
+print(f"connectivity: {n_connected}/{len(connectivity_report)} harbors reach open water")
+for hid, gate_depth, ok in connectivity_report:
+    status = "OK" if ok else "FAIL"
+    exc = f" (exception @ {gate_depth} m)" if hid in CONNECTIVITY_EXCEPTIONS_M else ""
+    print(f"  {status:4} {hid}{exc}")
 
 if failures:
     print("\n".join(failures))

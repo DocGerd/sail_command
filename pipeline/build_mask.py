@@ -23,7 +23,7 @@ HERE = pathlib.Path(__file__).parent
 SRC = HERE / "data-src"
 OUT = HERE.parent / "app" / "public" / "data"
 WEST, SOUTH, EAST, NORTH = 9.4, 54.3, 11.0, 55.3
-COLS, ROWS = 1100, 1200
+COLS, ROWS = 2200, 2400  # ~46 m cells; 2x the original 1100x1200 (~93 m) - see issue #6
 
 WCS_URL = (
     "https://ows.emodnet-bathymetry.eu/wcs?service=WCS&version=2.0.1"
@@ -76,8 +76,22 @@ def main() -> None:
     dst_transform = from_origin(WEST, NORTH, (EAST - WEST) / COLS, (NORTH - SOUTH) / ROWS)
     elev = np.full((ROWS, COLS), np.nan, dtype=np.float32)  # row 0 = north (numpy)
     with rasterio.open(SRC / "emodnet_dtm.tif") as src:
-        # Resampling.max on LAT-referenced *elevation* picks the SHALLOWEST
-        # contributing source cell -> conservative for navigability.
+        # LAST-RESORT DEVIATION (issue #6): Resampling.max on LAT-referenced
+        # *elevation* picks the SHALLOWEST contributing source cell, which is
+        # the conservative default for navigability - but on the ~115 m
+        # native EMODnet DTM it also flattens narrow dredged/buoyed channels
+        # that are deeper than their surroundings (verified via approachNote:
+        # Kappeln's Schlei fairway "maintained approx 5 m", Marstal "approx
+        # 3.2 m (N/W)", Dyvig "approx 3.0-3.5 m, ~30 m wide", Augustenborg
+        # "approx 3 m in the upper reaches" - all documented >= 3.0 m yet
+        # max-resampled to well under 3.0 m at 46 m cells, disconnecting
+        # those harbors from open water even after the resolution/rasterize
+        # fixes below). Switched to Resampling.bilinear, which trades
+        # worst-case shallow-biased conservatism for channel fidelity - a
+        # cell's depth is now a distance-weighted average of nearby source
+        # cells instead of always the shallowest. The floor-to-decimeter
+        # (never overstate depth) and unknown/void -> land conservatism
+        # rules are unchanged; only this one resampling parameter moved.
         reproject(
             source=rasterio.band(src, 1),
             destination=elev,
@@ -85,7 +99,7 @@ def main() -> None:
             dst_transform=dst_transform,
             dst_crs="EPSG:4326",
             dst_nodata=float("nan"),
-            resampling=Resampling.max,
+            resampling=Resampling.bilinear,
         )
 
     print("rasterizing OSM land polygons (bbox-filtered read of the global zip)...")
@@ -98,18 +112,32 @@ def main() -> None:
         f"zip://{land_zip}!land-polygons-split-4326/land_polygons.shp",
         bbox=(WEST, SOUTH, EAST, NORTH),
     )
-    assert len(gdf) > 5000, f"OSM land polygons: only {len(gdf)} features in bbox - check zip inner path/CRS"
+    # Feature COUNT is a coarse existence check only, not a coverage metric:
+    # osmdata.openstreetmap.de regenerates this file weekly and the upstream
+    # splitting granularity varies - this week's export covers our bbox with
+    # 117 large multi-hundred-vertex polygons (verified by an independent
+    # full-file bbox-intersect scan, ~95k total vertices, area sum ~2.8 deg^2
+    # for a 1.6x1.0 deg bbox) versus thousands of smaller pieces previously.
+    # Real coverage is what the land cell count and water fraction asserts
+    # below (and the connectivity gate in verify_mask.py) actually check.
+    assert len(gdf) > 50, f"OSM land polygons: only {len(gdf)} features in bbox - check zip inner path/CRS"
     land = features.rasterize(
         gdf.geometry,
         out_shape=(ROWS, COLS),
         transform=dst_transform,
-        all_touched=True,  # any cell touching land counts as land - conservative for a 45-footer
+        # Cell-center sampling, not all_touched. At the original ~93 m cells,
+        # all_touched=True ate an entire cell of margin off both banks of
+        # every quay-lined basin and narrow channel, disconnecting 14/44
+        # harbor snaps from open water (issue #6). At 46 m cells,
+        # center-sampling is still conservative for a 4.2 m-beam boat in a
+        # planning aid, without erasing basins narrower than ~2 cells.
+        all_touched=False,
         fill=0,
         default_value=1,
     ).astype(bool)
     n_land = int(land.sum())
     print(f"land cells: {n_land}")
-    assert n_land > 50000, f"OSM land raster: only {n_land} land cells - implausible for this coastline"
+    assert n_land > 200000, f"OSM land raster: only {n_land} land cells - implausible for this coastline"
 
     print("carving the Schlei (OSM water=fjord relation, not coastline-tagged) out of the land mask...")
     schlei_geojson = json.loads((SRC / "schlei_relation.geojson.json").read_text())
@@ -130,8 +158,9 @@ def main() -> None:
     ).astype(bool)
     n_schlei = int(schlei_water.sum())
     print(f"Schlei carve: {n_schlei} cells")
-    assert 2000 < n_schlei < 30000, (
-        f"Schlei carve size {n_schlei} implausible - expected a fjord of roughly 40 km x ~5-10 cells width"
+    # Thresholds scale ~4x vs. the original 1100x1200 grid (2x cols * 2x rows).
+    assert 8000 < n_schlei < 120000, (
+        f"Schlei carve size {n_schlei} implausible - expected a fjord of roughly 40 km x ~10-20 cells width"
     )
     land[schlei_water] = False
 
