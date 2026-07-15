@@ -48,8 +48,8 @@ export interface PlannerPanelProps {
 // eslint-disable-next-line react-refresh/only-export-components
 export function nextFullHourMs(nowMs: number = Date.now()): number {
   const d = new Date(nowMs);
-  d.setMinutes(0, 0, 0);
-  return d.getTime() + 3_600_000;
+  d.setHours(d.getHours() + 1, 0, 0, 0); // setHours tracks wall-clock hour boundaries across DST folds; raw +3600000 does not
+  return d.getTime();
 }
 
 // datetime-local reads/writes LOCAL wall-clock time with no offset suffix;
