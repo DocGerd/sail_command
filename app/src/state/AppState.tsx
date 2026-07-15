@@ -34,30 +34,59 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [plan, setPlanState] = useState<Plan | null>(null);
   const [rig, setRig] = useState<Rig | null>(null);
 
-  // Guards the mount-time load against a patch that lands first: once true,
-  // the async loadSettings() merge below is a no-op instead of clobbering a
-  // patch the user already made before the load resolved.
-  const settledRef = useRef(false);
+  // Mirrors the latest settings outside React state so setSettings can
+  // compute `next` and call saveSettings as plain statements rather than
+  // from inside a functional state updater — StrictMode double-invokes
+  // updaters, which would double-fire the persistence write.
+  const settingsRef = useRef(settings);
+
+  // True once the mount-time load has resolved (or failed) and any pre-load
+  // patches have been reconciled into `settings`.
+  const loadedRef = useRef(false);
+  // Patches issued before the load resolves. These are applied to display
+  // state immediately but NOT persisted yet, because persisting them would
+  // mean writing a guess (defaults + patch) that overwrites every other
+  // persisted field once the real baseline arrives. Once the load resolves,
+  // they're replayed on top of the persisted baseline and the reconciled
+  // result is persisted exactly once.
+  const pendingRef = useRef<Partial<Settings> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void loadSettings().then((persisted) => {
-      if (cancelled || settledRef.current) return;
-      settledRef.current = true;
-      if (persisted) setSettingsState((prev) => ({ ...prev, ...persisted }));
-    });
+    void loadSettings()
+      .catch((err) => {
+        console.error('settings load failed', err);
+        return undefined;
+      })
+      .then((persisted) => {
+        if (cancelled) return;
+        const pending = pendingRef.current;
+        // Merge order is the contract: persisted values first, pre-load
+        // patches last, so a patch made while the load was in flight wins
+        // over the now-known persisted baseline instead of reverting it.
+        const final: Settings = { ...DEFAULT_SETTINGS, ...persisted, ...pending };
+        settingsRef.current = final;
+        loadedRef.current = true;
+        pendingRef.current = null;
+        setSettingsState(final);
+        if (pending) {
+          void saveSettings(final).catch((err) => console.error('settings save failed', err));
+        }
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
   const setSettings = useCallback((patch: Partial<Settings>) => {
-    settledRef.current = true;
-    setSettingsState((prev) => {
-      const next = { ...prev, ...patch };
-      void saveSettings(next);
-      return next;
-    });
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next;
+    setSettingsState(next);
+    if (!loadedRef.current) {
+      pendingRef.current = { ...pendingRef.current, ...patch };
+      return;
+    }
+    void saveSettings(next).catch((err) => console.error('settings save failed', err));
   }, []);
 
   const setPlan = useCallback((p: Plan | null) => {

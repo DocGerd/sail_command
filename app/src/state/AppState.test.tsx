@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AppStateProvider, useSettings, useActivePlan, useOnline } from './AppState';
 import { loadSettings, saveSettings, __resetDbForTests } from '../services/db';
+import * as db from '../services/db';
 import { DEFAULT_SETTINGS, type Plan, type WindGrid } from '../types';
 
 function SettingsProbe() {
@@ -11,7 +12,9 @@ function SettingsProbe() {
     <div>
       <span data-testid="safetyDepth">{settings.safetyDepthM}</span>
       <span data-testid="motorEnabled">{String(settings.motorEnabled)}</span>
+      <span data-testid="motorSpeed">{settings.motorSpeedKn}</span>
       <button onClick={() => setSettings({ safetyDepthM: 2.5, motorEnabled: false })}>patch</button>
+      <button onClick={() => setSettings({ safetyDepthM: 4 })}>patchSafetyDepthOnly</button>
     </div>
   );
 }
@@ -142,6 +145,76 @@ describe('AppStateProvider', () => {
       expect(persisted?.safetyDepthM).toBe(2.5);
     });
     expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+  });
+
+  it('a pre-load patch to one field does not clobber a different field already persisted (regression)', async () => {
+    // Field A: a non-default value already on disk from a previous session.
+    await saveSettings({ ...DEFAULT_SETTINGS, motorSpeedKn: 8 });
+
+    const { unmount } = render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    // Field B: patched synchronously, before the mount-time load resolves.
+    // The pre-fix code would compute `{...DEFAULT_SETTINGS, ...patch}` here
+    // (persisted data hasn't arrived yet), persist that whole object, and
+    // latch out the load's merge — permanently reverting field A to its
+    // default both in memory and on disk.
+    fireEvent.click(screen.getByText('patchSafetyDepthOnly'));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('4');
+
+    // Let the load resolve and reconcile; both fields must be correct.
+    await waitFor(() => {
+      expect(screen.getByTestId('motorSpeed')).toHaveTextContent('8');
+    });
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('4');
+    expect(screen.getByTestId('motorSpeed')).toHaveTextContent('8');
+
+    await waitFor(async () => {
+      const persisted = await loadSettings();
+      expect(persisted?.motorSpeedKn).toBe(8);
+      expect(persisted?.safetyDepthM).toBe(4);
+    });
+
+    unmount();
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent('4');
+      expect(screen.getByTestId('motorSpeed')).toHaveTextContent('8');
+    });
+  });
+
+  it('a saveSettings rejection after the load resolves is caught and logged, not thrown', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    // Let the mount-time load settle first (nothing persisted, defaults apply).
+    await waitFor(() => {
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+    });
+
+    const saveError = new Error('save boom');
+    vi.spyOn(db, 'saveSettings').mockRejectedValue(saveError);
+
+    fireEvent.click(screen.getByText('patch'));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith('settings save failed', saveError);
+    });
   });
 
   it('useActivePlan().setPlan defaults rig to the recommended rig, and setPlan(null) clears both', () => {
