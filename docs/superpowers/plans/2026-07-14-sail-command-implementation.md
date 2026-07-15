@@ -150,20 +150,29 @@ export interface WindSample {
   gustKn: number;
 }
 
-export interface Leg {
-  kind: LegKind;
-  board: Board | null; // null for motor
+export interface LegCommon {
   start: LatLon;
   end: LatLon;
   startTimeMs: number;
   endTimeMs: number;
   headingDeg: number; // course over ground, degrees true
-  twaDeg: number; // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard); NaN for motor
   twsKn: number; // TWS at leg start
   speedKn: number;
   distanceNm: number;
-  maneuverAtStart: ManeuverKind | null;
 }
+
+export type Leg =
+  | (LegCommon & {
+      kind: 'sail';
+      board: Board;
+      // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard)
+      // 0° (head-to-wind) resolves to starboard as a side effect of the >= 0 rule above; ±180°
+      // (dead run) is the one case with special handling — see boardForCandidate in maneuver.ts
+      // (inherits the parent leg's board).
+      twaDeg: number;
+      maneuverAtStart: ManeuverKind | null;
+    })
+  | (LegCommon & { kind: 'motor'; board: null; maneuverAtStart: null });
 
 export interface RigResult {
   rig: Rig;

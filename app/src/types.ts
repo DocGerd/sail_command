@@ -55,22 +55,29 @@ export interface WindSample {
   gustKn: number;
 }
 
-export interface Leg {
-  kind: LegKind;
-  board: Board | null; // null for motor
+export interface LegCommon {
   start: LatLon;
   end: LatLon;
   startTimeMs: number;
   endTimeMs: number;
   headingDeg: number; // course over ground, degrees true
-  twaDeg: number; // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard); NaN for motor
-  // Two headings are physically ambiguous: 0° (head-to-wind) is hardcoded to starboard; ±180°
-  // (dead run) inherits the parent leg's board instead of the sign rule — see boardForCandidate in maneuver.ts.
   twsKn: number; // TWS at leg start
   speedKn: number;
   distanceNm: number;
-  maneuverAtStart: ManeuverKind | null;
 }
+
+export type Leg =
+  | (LegCommon & {
+      kind: 'sail';
+      board: Board;
+      // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard)
+      // 0° (head-to-wind) resolves to starboard as a side effect of the >= 0 rule above; ±180°
+      // (dead run) is the one case with special handling — see boardForCandidate in maneuver.ts
+      // (inherits the parent leg's board).
+      twaDeg: number;
+      maneuverAtStart: ManeuverKind | null;
+    })
+  | (LegCommon & { kind: 'motor'; board: null; maneuverAtStart: null });
 
 export interface RigResult {
   rig: Rig;
@@ -115,6 +122,21 @@ export interface PlanResultOk {
   snappedDestination: LatLon;
 }
 
+// Returns the recommended rig's RigResult. Throws rather than fabricating an
+// ETA if the recommended rig's result is null — status 'ok' guarantees the
+// recommended rig has a non-null result (both-failed is a status 'error'
+// instead), so a null here means that invariant was violated upstream and
+// callers must not paper over it with a fallback like the departure time.
+export function recommendedResult(result: PlanResultOk): RigResult {
+  const rig = result.recommended === 'genoa' ? result.genoa : result.fock;
+  if (!rig) {
+    throw new Error(
+      `invariant violated: recommended rig '${result.recommended}' has a null result`,
+    );
+  }
+  return rig;
+}
+
 export interface PlanResultError {
   status: 'error';
   reason: NoRouteReason;
@@ -123,7 +145,7 @@ export interface PlanResultError {
 export type PlanResult = PlanResultOk | PlanResultError;
 
 // Structured-clone-safe (IndexedDB, postMessage) but NOT JSON-safe:
-// twaDeg is NaN on motor legs and windGrid carries Float32Array fields.
+// windGrid carries Float32Array fields.
 // File import/export (e.g. Garmin sync, issue #3) needs a dedicated
 // serializer — never JSON.stringify(plan).
 export interface Plan {

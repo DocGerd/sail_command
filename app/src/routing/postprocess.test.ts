@@ -7,7 +7,12 @@ import { destinationPoint, initialBearingDeg } from '../lib/geo';
 
 const t0 = Date.UTC(2026, 6, 15, 8, 0, 0);
 
-function legFrom(start: { lat: number; lon: number }, headingDeg: number, distNm: number, startMs: number, speedKn = 6): Leg {
+// legFrom only ever builds sail legs; narrowed to the sail arm (rather than the
+// full Leg union) so spreading its result below doesn't distribute over the
+// motor arm too — a fixture-only artifact of Leg becoming a discriminated union.
+type SailLeg = Extract<Leg, { kind: 'sail' }>;
+
+function legFrom(start: { lat: number; lon: number }, headingDeg: number, distNm: number, startMs: number, speedKn = 6): SailLeg {
   const end = destinationPoint(start, headingDeg, distNm);
   const durMs = (distNm / speedKn) * 3_600_000;
   return {
@@ -39,7 +44,7 @@ describe('mergeCollinearLegs', () => {
     expect(mergeCollinearLegs([a, b], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
     const c = { ...legFrom(a.end, 91, 2, a.endTimeMs), board: 'port' as const };
     expect(mergeCollinearLegs([a, c], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
-    const d = { ...legFrom(a.end, 91, 2, a.endTimeMs), kind: 'motor' as const, board: null };
+    const d = { ...legFrom(a.end, 91, 2, a.endTimeMs), kind: 'motor' as const, board: null, maneuverAtStart: null };
     expect(mergeCollinearLegs([a, d], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
   });
 
@@ -65,8 +70,8 @@ describe('mergeCollinearLegs', () => {
   });
 
   it('merges two adjacent motor legs within tolerance (endTimeMs/distanceNm summed)', () => {
-    const a = { ...legFrom({ lat: 54.7, lon: 10.0 }, 90, 2, t0, 6.5), kind: 'motor' as const, board: null };
-    const b = { ...legFrom(a.end, 90, 2, a.endTimeMs, 6.5), kind: 'motor' as const, board: null };
+    const a = { ...legFrom({ lat: 54.7, lon: 10.0 }, 90, 2, t0, 6.5), kind: 'motor' as const, board: null, maneuverAtStart: null };
+    const b = { ...legFrom(a.end, 90, 2, a.endTimeMs, 6.5), kind: 'motor' as const, board: null, maneuverAtStart: null };
     const merged = mergeCollinearLegs([a, b], openWaterMask(), wind, DEFAULT_SETTINGS);
     expect(merged.length).toBe(1);
     expect(merged[0].start).toEqual(a.start);

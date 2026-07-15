@@ -42,7 +42,7 @@ const plan: Plan = {
           kind: 'motor', board: null,
           start: { lat: 54.8, lon: 10.0 }, end: { lat: 54.85, lon: 10.52 },
           startTimeMs: Date.UTC(2026, 6, 15, 10, 0, 0), endTimeMs: Date.UTC(2026, 6, 15, 12, 0, 0),
-          headingDeg: 90, twaDeg: NaN, twsKn: 2, speedKn: 6.5, distanceNm: 5, maneuverAtStart: null,
+          headingDeg: 90, twsKn: 2, speedKn: 6.5, distanceNm: 5, maneuverAtStart: null,
         },
         {
           kind: 'sail', board: 'port',

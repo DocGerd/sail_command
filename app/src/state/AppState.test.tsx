@@ -1,0 +1,306 @@
+import 'fake-indexeddb/auto';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { AppStateProvider, useSettings, useActivePlan, useOnline } from './AppState';
+import { loadSettings, saveSettings, __resetDbForTests } from '../services/db';
+import * as db from '../services/db';
+import { DEFAULT_SETTINGS, type Plan, type WindGrid } from '../types';
+
+function SettingsProbe() {
+  const [settings, setSettings] = useSettings();
+  return (
+    <div>
+      <span data-testid="safetyDepth">{settings.safetyDepthM}</span>
+      <span data-testid="motorEnabled">{String(settings.motorEnabled)}</span>
+      <span data-testid="motorSpeed">{settings.motorSpeedKn}</span>
+      <button onClick={() => setSettings({ safetyDepthM: 2.5, motorEnabled: false })}>patch</button>
+      <button onClick={() => setSettings({ safetyDepthM: 4 })}>patchSafetyDepthOnly</button>
+    </div>
+  );
+}
+
+function ActivePlanProbe() {
+  const { plan, rig, setPlan, setRig } = useActivePlan();
+  return (
+    <div>
+      <span data-testid="planId">{plan ? plan.id : 'none'}</span>
+      <span data-testid="rig">{rig ?? 'none'}</span>
+      <button onClick={() => setPlan(TEST_PLAN)}>setPlan</button>
+      <button onClick={() => setPlan(null)}>clearPlan</button>
+      <button onClick={() => setRig('fock')}>setRigFock</button>
+    </div>
+  );
+}
+
+function OnlineProbe() {
+  const online = useOnline();
+  return <span data-testid="online">{String(online)}</span>;
+}
+
+const TEST_WIND_GRID: WindGrid = {
+  lats: [54.0],
+  lons: [9.0],
+  timesMs: [1000],
+  speedKn: new Float32Array([5.0]),
+  dirFromDeg: new Float32Array([90]),
+  gustKn: new Float32Array([7.0]),
+  fetchedAtMs: 1626340800000,
+  model: 'test',
+};
+
+const TEST_PLAN: Plan = {
+  id: 'plan-active-1',
+  name: 'Test Plan',
+  createdAtMs: 1000,
+  request: {
+    origin: { lat: 54.0, lon: 9.0 },
+    destination: { lat: 55.0, lon: 10.0 },
+    viaPoints: [],
+    originHarborId: null,
+    destinationHarborId: null,
+    departureMs: 1000,
+    settings: DEFAULT_SETTINGS,
+  },
+  windGrid: TEST_WIND_GRID,
+  result: {
+    status: 'ok',
+    genoa: null,
+    fock: { rig: 'fock', legs: [], etaMs: 5000, durationMs: 3000, distanceNm: 41.0, maneuverCount: 2, motorDistanceNm: 0 },
+    genoaReason: null,
+    fockReason: null,
+    recommended: 'fock',
+    snappedOrigin: { lat: 54.0, lon: 9.0 },
+    snappedDestination: { lat: 55.0, lon: 10.0 },
+  },
+};
+
+describe('AppStateProvider', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('renders children with default settings when nothing is persisted', () => {
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent(String(DEFAULT_SETTINGS.motorEnabled));
+  });
+
+  it('useSettings patch persists to IndexedDB and survives a provider remount', async () => {
+    const { unmount } = render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    fireEvent.click(screen.getByText('patch'));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+
+    // Wait for the fire-and-forget saveSettings() write to actually land before
+    // tearing this provider down, otherwise the remount below races the write.
+    await waitFor(async () => {
+      const persisted = await loadSettings();
+      expect(persisted?.safetyDepthM).toBe(2.5);
+      expect(persisted?.motorEnabled).toBe(false);
+    });
+
+    unmount();
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+      expect(screen.getByTestId('motorEnabled')).toHaveTextContent('false');
+    });
+  });
+
+  it('a patch issued before the initial load resolves is not clobbered by the load', async () => {
+    await saveSettings({ ...DEFAULT_SETTINGS, safetyDepthM: 4.0 });
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    // Patch synchronously on the same tick as mount, before loadSettings() resolves.
+    fireEvent.click(screen.getByText('patch'));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+
+    // Give the pending initial load a chance to resolve; the patch must win.
+    await waitFor(async () => {
+      const persisted = await loadSettings();
+      expect(persisted?.safetyDepthM).toBe(2.5);
+    });
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+  });
+
+  it('a pre-load patch to one field does not clobber a different field already persisted (regression)', async () => {
+    // Field A: a non-default value already on disk from a previous session.
+    await saveSettings({ ...DEFAULT_SETTINGS, motorSpeedKn: 8 });
+
+    const { unmount } = render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    // Field B: patched synchronously, before the mount-time load resolves.
+    // The pre-fix code would compute `{...DEFAULT_SETTINGS, ...patch}` here
+    // (persisted data hasn't arrived yet), persist that whole object, and
+    // latch out the load's merge — permanently reverting field A to its
+    // default both in memory and on disk.
+    fireEvent.click(screen.getByText('patchSafetyDepthOnly'));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('4');
+
+    // Let the load resolve and reconcile; both fields must be correct.
+    await waitFor(() => {
+      expect(screen.getByTestId('motorSpeed')).toHaveTextContent('8');
+    });
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('4');
+    expect(screen.getByTestId('motorSpeed')).toHaveTextContent('8');
+
+    await waitFor(async () => {
+      const persisted = await loadSettings();
+      expect(persisted?.motorSpeedKn).toBe(8);
+      expect(persisted?.safetyDepthM).toBe(4);
+    });
+
+    unmount();
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent('4');
+      expect(screen.getByTestId('motorSpeed')).toHaveTextContent('8');
+    });
+  });
+
+  it('a pre-load patch on a fresh DB (nothing persisted) is reflected in both final state and the persisted value', async () => {
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    // Patch synchronously on the same tick as mount, before loadSettings() resolves.
+    fireEvent.click(screen.getByText('patch'));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent('false');
+
+    // The load-resolution flush must persist the reconciled baseline (defaults
+    // + the pending patch) even though nothing was on disk beforehand.
+    await waitFor(async () => {
+      const persisted = await loadSettings();
+      expect(persisted?.safetyDepthM).toBe(2.5);
+      expect(persisted?.motorEnabled).toBe(false);
+    });
+
+    // Final in-memory state still reflects the patch, and untouched fields
+    // still reflect the defaults.
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent('false');
+    expect(screen.getByTestId('motorSpeed')).toHaveTextContent(String(DEFAULT_SETTINGS.motorSpeedKn));
+  });
+
+  it('a loadSettings rejection on mount is caught and logged; defaults apply and nothing crashes', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const loadError = new Error('load boom');
+    vi.spyOn(db, 'loadSettings').mockRejectedValue(loadError);
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith('settings load failed', loadError);
+    });
+
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent(String(DEFAULT_SETTINGS.motorEnabled));
+  });
+
+  it('a saveSettings rejection after the load resolves is caught and logged, not thrown', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    // Let the mount-time load settle first (nothing persisted, defaults apply).
+    await waitFor(() => {
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+    });
+
+    const saveError = new Error('save boom');
+    vi.spyOn(db, 'saveSettings').mockRejectedValue(saveError);
+
+    fireEvent.click(screen.getByText('patch'));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith('settings save failed', saveError);
+    });
+  });
+
+  it('useActivePlan().setPlan defaults rig to the recommended rig, and setPlan(null) clears both', () => {
+    render(
+      <AppStateProvider>
+        <ActivePlanProbe />
+      </AppStateProvider>,
+    );
+
+    expect(screen.getByTestId('planId')).toHaveTextContent('none');
+    expect(screen.getByTestId('rig')).toHaveTextContent('none');
+
+    fireEvent.click(screen.getByText('setPlan'));
+    expect(screen.getByTestId('planId')).toHaveTextContent('plan-active-1');
+    expect(screen.getByTestId('rig')).toHaveTextContent('fock');
+
+    fireEvent.click(screen.getByText('setRigFock'));
+    expect(screen.getByTestId('rig')).toHaveTextContent('fock');
+
+    fireEvent.click(screen.getByText('clearPlan'));
+    expect(screen.getByTestId('planId')).toHaveTextContent('none');
+    expect(screen.getByTestId('rig')).toHaveTextContent('none');
+  });
+
+  it('useOnline reflects navigator.onLine and flips on the offline/online events', () => {
+    const onlineSpy = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(true);
+
+    render(
+      <AppStateProvider>
+        <OnlineProbe />
+      </AppStateProvider>,
+    );
+    expect(screen.getByTestId('online')).toHaveTextContent('true');
+
+    onlineSpy.mockReturnValue(false);
+    fireEvent(window, new Event('offline'));
+    expect(screen.getByTestId('online')).toHaveTextContent('false');
+
+    onlineSpy.mockReturnValue(true);
+    fireEvent(window, new Event('online'));
+    expect(screen.getByTestId('online')).toHaveTextContent('true');
+  });
+});
