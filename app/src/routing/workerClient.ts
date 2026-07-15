@@ -10,6 +10,7 @@ export class RoutingClient {
   private ready: Promise<void>;
   private readyResolve!: () => void;
   private readyReject!: (e: Error) => void;
+  private disposed = false;
   private pending = new Map<string, { resolve: (r: PlanResult) => void; reject: (e: Error) => void; onProgress?: ProgressCb }>();
   // throttle state: last-forwarded timestamp per `${id}:${rig}`, at most 1 progress callback per 100 ms per rig
   private lastProgressAt = new Map<string, number>();
@@ -68,6 +69,7 @@ export class RoutingClient {
 
   async plan(request: PlanRequest, windGrid: WindGrid, onProgress?: ProgressCb): Promise<PlanResult> {
     await this.ready;
+    if (this.disposed) throw new Error('RoutingClient disposed');
     const id = crypto.randomUUID();
     return new Promise<PlanResult>((resolve, reject) => {
       this.pending.set(id, { resolve, reject, onProgress });
@@ -76,6 +78,7 @@ export class RoutingClient {
   }
 
   dispose() {
+    this.disposed = true;
     this.failAll(new Error('RoutingClient disposed'));
     this.worker.terminate();
   }

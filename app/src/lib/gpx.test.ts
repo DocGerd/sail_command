@@ -42,6 +42,12 @@ const plan: Plan = {
           startTimeMs: Date.UTC(2026, 6, 15, 10, 0, 0), endTimeMs: Date.UTC(2026, 6, 15, 12, 0, 0),
           headingDeg: 90, twaDeg: NaN, twsKn: 2, speedKn: 6.5, distanceNm: 5, maneuverAtStart: null,
         },
+        {
+          kind: 'sail', board: 'port',
+          start: { lat: 54.85, lon: 10.52 }, end: { lat: 54.86, lon: 10.55 },
+          startTimeMs: Date.UTC(2026, 6, 15, 12, 0, 0), endTimeMs: Date.UTC(2026, 6, 15, 13, 0, 0),
+          headingDeg: 60, twaDeg: -80, twsKn: 10, speedKn: 6, distanceNm: 1.5, maneuverAtStart: 'tack',
+        },
       ],
     },
   },
@@ -52,9 +58,10 @@ describe('toGpx', () => {
 
   it('produces a GPX 1.1 route with rtepts for each leg start + destination', () => {
     expect(xml).toContain('<gpx version="1.1"');
-    expect((xml.match(/<rtept /g) ?? []).length).toBe(3); // 2 legs + final point
+    expect((xml.match(/<rtept /g) ?? []).length).toBe(4); // 3 legs + final point
     expect(xml).toContain('lat="54.85"');
     expect(xml).toContain('<time>2026-07-15T08:00:00.000Z</time>');
+    expect(xml).toContain('tack → sail port');
   });
 
   it('escapes XML and marks motor legs', () => {

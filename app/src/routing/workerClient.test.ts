@@ -68,4 +68,12 @@ describe('RoutingClient promise settling', () => {
     w.emit({ type: 'fatal', id: null, message: 'bad mask length' });
     await expect(p).rejects.toThrow(/bad mask length/);
   }, 2000);
+
+  it('plan() called after dispose() rejects immediately', async () => {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+    client.dispose();
+    await expect(client.plan(PLAN_REQUEST, uniformWindGrid(12, 0))).rejects.toThrow(/disposed/);
+  }, 2000);
 });

@@ -114,6 +114,10 @@ export interface PlanResultError {
 
 export type PlanResult = PlanResultOk | PlanResultError;
 
+// Structured-clone-safe (IndexedDB, postMessage) but NOT JSON-safe:
+// twaDeg is NaN on motor legs and windGrid carries Float32Array fields.
+// File import/export (e.g. Garmin sync, issue #3) needs a dedicated
+// serializer — never JSON.stringify(plan).
 export interface Plan {
   id: string; // crypto.randomUUID()
   name: string; // e.g. "Flensburg → Marstal"

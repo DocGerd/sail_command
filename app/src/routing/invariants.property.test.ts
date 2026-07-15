@@ -68,6 +68,10 @@ describe('router invariants', () => {
               // 3. geometric + temporal continuity
               expect(haversineNm(rig.legs[i - 1].end, leg.start)).toBeLessThan(0.01);
               expect(leg.startTimeMs).toBe(rig.legs[i - 1].endTimeMs);
+              // 5b. a board change between consecutive sail legs must be a charged maneuver
+              const prev = rig.legs[i - 1];
+              if (prev.kind === 'sail' && leg.kind === 'sail' && prev.board !== leg.board)
+                expect(leg.maneuverAtStart).not.toBeNull();
             }
             // 4. motor legs flagged consistently
             if (leg.kind === 'motor') expect(leg.board).toBeNull();

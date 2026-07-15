@@ -69,6 +69,8 @@ export function planRoute(
   const genoa = run('genoa', deps.polarGenoa);
   const fock = run('fock', deps.polarFock);
   if (!genoa.rigResult && !fock.rigResult)
+    // Deliberately report genoa's reason: it's the primary rig and the two
+    // rigs' failure reasons rarely differ.
     return { status: 'error', reason: genoa.reason! };
 
   const recommended: Rig =

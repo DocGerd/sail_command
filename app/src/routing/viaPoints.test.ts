@@ -55,6 +55,8 @@ describe('planRoute via-waypoints', () => {
   }, 30_000); // six full isochrone solves (two direct-comparison rigs + two rigs x two segments)
 
   it('(b) viaPoints: [] behaves exactly as before (regression: equal ETA to a direct single-segment solve)', () => {
+    // origin/destination sit exactly on mask cell centers, so snapping is a
+    // no-op and the bare solve() comparison below is exact.
     const wind = uniformWindGrid(12, 0);
     const req: PlanRequest = { ...baseReq, viaPoints: [] };
     const r = planRoute(req, wind, deps);
