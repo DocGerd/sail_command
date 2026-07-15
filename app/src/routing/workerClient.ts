@@ -9,6 +9,7 @@ export class RoutingClient {
   private worker: Worker;
   private ready: Promise<void>;
   private readyResolve!: () => void;
+  private readyReject!: (e: Error) => void;
   private pending = new Map<string, { resolve: (r: PlanResult) => void; reject: (e: Error) => void; onProgress?: ProgressCb }>();
   // throttle state: last-forwarded timestamp per `${id}:${rig}`, at most 1 progress callback per 100 ms per rig
   private lastProgressAt = new Map<string, number>();
@@ -17,7 +18,13 @@ export class RoutingClient {
     this.worker = workerFactory
       ? workerFactory()
       : new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-    this.ready = new Promise((res) => (this.readyResolve = res));
+    this.ready = new Promise((res, rej) => {
+      this.readyResolve = res;
+      this.readyReject = rej;
+    });
+    // Swallow unhandled-rejection warnings when disposed before anyone awaits
+    // init(); init() still returns `this.ready` directly, so callers observe it.
+    this.ready.catch(() => {});
     this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => this.handle(e.data);
   }
 
@@ -34,18 +41,24 @@ export class RoutingClient {
       this.pending.get(msg.id)?.resolve(msg.result);
       this.pending.delete(msg.id);
       this.clearProgress(msg.id);
+    } else if (msg.id) {
+      this.pending.get(msg.id)?.reject(new Error(msg.message));
+      this.pending.delete(msg.id);
+      this.clearProgress(msg.id);
     } else {
-      const entry = msg.id ? this.pending.get(msg.id) : null;
-      entry?.reject(new Error(msg.message));
-      if (msg.id) {
-        this.pending.delete(msg.id);
-        this.clearProgress(msg.id);
-      }
+      this.failAll(new Error(msg.message));
     }
   }
 
   private clearProgress(id: string) {
     for (const rig of RIGS) this.lastProgressAt.delete(`${id}:${rig}`);
+  }
+
+  private failAll(err: Error) {
+    this.readyReject(err);
+    for (const entry of this.pending.values()) entry.reject(err);
+    this.pending.clear();
+    this.lastProgressAt.clear();
   }
 
   init(assets: Omit<Extract<WorkerRequest, { type: 'init' }>, 'type'>): Promise<void> {
@@ -63,6 +76,7 @@ export class RoutingClient {
   }
 
   dispose() {
+    this.failAll(new Error('RoutingClient disposed'));
     this.worker.terminate();
   }
 }
