@@ -19,7 +19,8 @@ function db(): Promise<IDBPDatabase<SailDB>> {
   return dbPromise;
 }
 
-export async function resetDb(): Promise<void> {
+export async function __resetDbForTests(): Promise<void> {
+  // test-only helper — closes the cached connection so deleteDatabase cannot block; not for app use
   if (dbPromise) {
     (await dbPromise).close();
   }

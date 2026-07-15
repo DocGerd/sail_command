@@ -1,16 +1,11 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { savePlan, getPlan, listPlans, deletePlan, saveSettings, loadSettings, resetDb } from './db';
+import { savePlan, getPlan, listPlans, deletePlan, saveSettings, loadSettings, __resetDbForTests } from './db';
 import type { Plan, Settings, WindGrid } from '../types';
-
-// Helper to verify TypedArray preservation (works with fake-indexeddb which doesn't preserve instanceof)
-function isFloat32Array(obj: unknown): boolean {
-  return obj instanceof Float32Array || (typeof obj === 'object' && obj !== null && (obj as Record<string, unknown>).constructor?.name === 'Float32Array');
-}
 
 describe('IndexedDB persistence', () => {
   beforeEach(async () => {
-    await resetDb();
+    await __resetDbForTests();
   });
 
   it('save→get roundtrip preserves windGrid.speedKn instanceof Float32Array and all values', async () => {
@@ -73,11 +68,14 @@ describe('IndexedDB persistence', () => {
     expect(retrieved?.id).toBe('test-plan-1');
 
     // Verify Float32Arrays are preserved (not converted to plain arrays)
-    expect(isFloat32Array(retrieved?.windGrid.speedKn)).toBe(true);
+    // structured clone in vitest crosses VM realms, so instanceof fails even though the value is a
+    // genuine Float32Array; the brand check is realm-independent (not a security-grade brand check —
+    // a value could spoof this via its own Symbol.toStringTag — but no data on this path ever does)
+    expect(Object.prototype.toString.call(retrieved?.windGrid.speedKn)).toBe('[object Float32Array]');
     expect(Array.from(retrieved?.windGrid.speedKn || [])).toEqual(Array.from(windGrid.speedKn));
-    expect(isFloat32Array(retrieved?.windGrid.dirFromDeg)).toBe(true);
+    expect(Object.prototype.toString.call(retrieved?.windGrid.dirFromDeg)).toBe('[object Float32Array]');
     expect(Array.from(retrieved?.windGrid.dirFromDeg || [])).toEqual(Array.from(windGrid.dirFromDeg));
-    expect(isFloat32Array(retrieved?.windGrid.gustKn)).toBe(true);
+    expect(Object.prototype.toString.call(retrieved?.windGrid.gustKn)).toBe('[object Float32Array]');
     expect(Array.from(retrieved?.windGrid.gustKn || [])).toEqual(Array.from(windGrid.gustKn));
   });
 
