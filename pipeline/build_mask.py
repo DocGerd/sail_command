@@ -149,6 +149,13 @@ def main() -> None:
     # the default safety depth. Total land->water flips (any depth) also
     # drop from 22,948 to 17,724, since most flipped cells were themselves
     # close to the max/bilinear divergence that gates them out.
+    # Residual bound: where max() reads 0 (dry), the blend can report at
+    # most TOLERANCE_M of depth - the |bilinear - max| <= TOLERANCE_M test
+    # against a max of 0 provably never admits more than TOLERANCE_M itself.
+    # Measured 38 such cells (0.0007% of the grid), all reading exactly
+    # 2.00 m. Only reachable by a user who sets safetyDepthM <= 2.0 m, which
+    # is already below the boat's 2.1 m draft - the settings UI should clamp
+    # safetyDepthM above draft regardless of this (tracked for Phase E).
     TOLERANCE_M = 2.0
     both_valid = ~np.isnan(elev_max) & ~np.isnan(elev_bilinear)
     diff = np.where(both_valid, np.abs(elev_bilinear - elev_max), np.inf)
