@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatNm, formatKn, formatHeading, formatTime, formatDateTime, formatDuration } from './format';
+import { formatNm, formatKn, formatHeading, formatTime, formatDateTime, formatDuration, formatDriftMin } from './format';
 
 describe('formatNm', () => {
   it('formats with one decimal and unit suffix', () => {
@@ -66,6 +66,29 @@ describe('formatDuration', () => {
 
   it('rounds to the nearest minute', () => {
     expect(formatDuration(3661000)).toBe('1 h 01 min');
+  });
+});
+
+describe('formatDriftMin', () => {
+  it('formats positive drift (behind schedule) with an explicit + sign', () => {
+    expect(formatDriftMin(12 * 60_000)).toBe('+12 min');
+  });
+
+  it('formats negative drift (ahead of schedule) with a - sign', () => {
+    expect(formatDriftMin(-10 * 60_000)).toBe('-10 min');
+  });
+
+  it('formats zero drift without a sign', () => {
+    expect(formatDriftMin(0)).toBe('0 min');
+  });
+
+  it('rounds to the nearest minute', () => {
+    expect(formatDriftMin(89_000)).toBe('+1 min'); // 1.48 min
+    expect(formatDriftMin(-89_000)).toBe('-1 min');
+  });
+
+  it('rounds a sub-30s drift down to zero (no sign)', () => {
+    expect(formatDriftMin(20_000)).toBe('0 min');
   });
 });
 

@@ -20,14 +20,16 @@ function SettingsProbe() {
 }
 
 function ActivePlanProbe() {
-  const { plan, rig, setPlan, setRig } = useActivePlan();
+  const { plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex } = useActivePlan();
   return (
     <div>
       <span data-testid="planId">{plan ? plan.id : 'none'}</span>
       <span data-testid="rig">{rig ?? 'none'}</span>
+      <span data-testid="activeLegIndex">{activeLegIndex ?? 'none'}</span>
       <button onClick={() => setPlan(TEST_PLAN)}>setPlan</button>
       <button onClick={() => setPlan(null)}>clearPlan</button>
       <button onClick={() => setRig('fock')}>setRigFock</button>
+      <button onClick={() => setActiveLegIndex(2)}>setActiveLegIndex</button>
     </div>
   );
 }
@@ -283,6 +285,31 @@ describe('AppStateProvider', () => {
     fireEvent.click(screen.getByText('clearPlan'));
     expect(screen.getByTestId('planId')).toHaveTextContent('none');
     expect(screen.getByTestId('rig')).toHaveTextContent('none');
+  });
+
+  it('useActivePlan().activeLegIndex defaults to null, is settable, and resets when setPlan runs (new or cleared plan)', () => {
+    render(
+      <AppStateProvider>
+        <ActivePlanProbe />
+      </AppStateProvider>,
+    );
+
+    expect(screen.getByTestId('activeLegIndex')).toHaveTextContent('none');
+
+    fireEvent.click(screen.getByText('setActiveLegIndex'));
+    expect(screen.getByTestId('activeLegIndex')).toHaveTextContent('2');
+
+    // A leg index computed against the previous plan is meaningless once the
+    // plan itself changes — setPlan resets it, whether loading a new plan...
+    fireEvent.click(screen.getByText('setPlan'));
+    expect(screen.getByTestId('activeLegIndex')).toHaveTextContent('none');
+
+    fireEvent.click(screen.getByText('setActiveLegIndex'));
+    expect(screen.getByTestId('activeLegIndex')).toHaveTextContent('2');
+
+    // ...or clearing it outright.
+    fireEvent.click(screen.getByText('clearPlan'));
+    expect(screen.getByTestId('activeLegIndex')).toHaveTextContent('none');
   });
 
   it('useOnline reflects navigator.onLine and flips on the offline/online events', () => {

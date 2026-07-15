@@ -69,4 +69,16 @@ export const en = {
   'plansList.created': 'Created',
   'plansList.delete': 'Delete plan',
   'plansList.confirmDelete': 'Confirm delete',
+  'live.toggle': 'Live view',
+  'live.noPlan': 'Load or plan a route to use live guidance.',
+  'live.hts.label': 'HTS',
+  'live.cog.label': 'COG',
+  'live.sog.label': 'SOG',
+  'live.nextEvent.label': 'Next in {distance}',
+  'live.nextEvent.motorStart': 'Motor on',
+  'live.nextEvent.none': 'No more maneuvers on this route',
+  'live.eta.label': 'Projected ETA',
+  'live.gpsHint':
+    "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
+  'live.gpsHint.dismiss': 'Got it',
 } satisfies Record<MsgKey, string>;

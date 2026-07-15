@@ -29,6 +29,13 @@ export function formatDuration(ms: number): string {
   return `${hours} h ${padStart(minutes, 2)} min`;
 }
 
+/** Signed schedule drift in whole minutes, e.g. "+12 min" (behind) / "-10 min" (ahead) / "0 min". */
+export function formatDriftMin(driftMs: number): string {
+  const minutes = Math.round(driftMs / 60_000);
+  const sign = minutes > 0 ? '+' : '';
+  return `${sign}${minutes} min`;
+}
+
 export function formatTime(ms: number, lang: Lang): string {
   return new Intl.DateTimeFormat(LOCALES[lang], {
     hour: '2-digit',

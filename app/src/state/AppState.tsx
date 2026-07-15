@@ -19,6 +19,15 @@ interface AppStateValue {
   rig: Rig | null;
   setPlan: (p: Plan | null) => void;
   setRig: (r: Rig) => void;
+  // Index into the active rig's legs nearest the live GPS fix, set by
+  // LiveView (whose fix state itself stays local — 1 Hz updates must not
+  // re-render the whole app) so RouteLayer can render the active-leg
+  // highlight without LiveView and RouteLayer needing to be siblings under a
+  // common prop-drilling parent. Changes only on leg transitions, not on
+  // every fix, so sharing it here doesn't reintroduce the 1 Hz re-render
+  // this field's neighbor deliberately avoids.
+  activeLegIndex: number | null;
+  setActiveLegIndex: (i: number | null) => void;
 }
 
 const AppStateCtx = createContext<AppStateValue | null>(null);
@@ -33,6 +42,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [settings, setSettingsState] = useState<Settings>(DEFAULT_SETTINGS);
   const [plan, setPlanState] = useState<Plan | null>(null);
   const [rig, setRig] = useState<Rig | null>(null);
+  const [activeLegIndex, setActiveLegIndex] = useState<number | null>(null);
 
   // Mirrors the latest settings outside React state so setSettings can
   // compute `next` and call saveSettings as plain statements rather than
@@ -95,11 +105,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const setPlan = useCallback((p: Plan | null) => {
     setPlanState(p);
     setRig(p ? p.result.recommended : null);
+    // A leg index computed against the previous plan's legs is meaningless
+    // (and possibly out of bounds) once the plan itself changes.
+    setActiveLegIndex(null);
   }, []);
 
   const value = useMemo<AppStateValue>(
-    () => ({ settings, setSettings, plan, rig, setPlan, setRig }),
-    [settings, setSettings, plan, rig, setPlan],
+    () => ({ settings, setSettings, plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex }),
+    [settings, setSettings, plan, rig, setPlan, activeLegIndex],
   );
 
   return <AppStateCtx.Provider value={value}>{children}</AppStateCtx.Provider>;
@@ -123,9 +136,11 @@ export function useActivePlan(): {
   rig: Rig | null;
   setPlan: (p: Plan | null) => void;
   setRig: (r: Rig) => void;
+  activeLegIndex: number | null;
+  setActiveLegIndex: (i: number | null) => void;
 } {
-  const { plan, rig, setPlan, setRig } = useAppState();
-  return { plan, rig, setPlan, setRig };
+  const { plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex } = useAppState();
+  return { plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex };
 }
 
 function subscribeOnlineStatus(callback: () => void): () => void {

@@ -67,5 +67,17 @@ export const de = {
   'plansList.created': 'Erstellt',
   'plansList.delete': 'Plan löschen',
   'plansList.confirmDelete': 'Löschen bestätigen',
+  'live.toggle': 'Live-Ansicht',
+  'live.noPlan': 'Route laden oder planen, um die Live-Führung zu nutzen.',
+  'live.hts.label': 'Steuerkurs',
+  'live.cog.label': 'COG',
+  'live.sog.label': 'SOG',
+  'live.nextEvent.label': 'Nächstes in {distance}',
+  'live.nextEvent.motorStart': 'Motor an',
+  'live.nextEvent.none': 'Keine weiteren Manöver auf dieser Route',
+  'live.eta.label': 'Voraussichtliche Ankunft',
+  'live.gpsHint':
+    'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
+  'live.gpsHint.dismiss': 'Verstanden',
 } as const;
 export type MsgKey = keyof typeof de;
