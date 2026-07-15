@@ -38,6 +38,7 @@ describe('router invariants', () => {
   // 25 runs x 2 rigs x full isochrone solves is a multi-minute suite (see task brief);
   // vitest's default 5s per-test timeout is far too short, so it is extended here.
   it('holds core invariants on random scenarios', () => {
+    let okScenarios = 0;
     fc.assert(
       fc.property(arbScenario, (sc) => {
         const mask = blobMask(sc.blobs);
@@ -54,6 +55,7 @@ describe('router invariants', () => {
           { polarGenoa: TEST_POLAR, polarFock: FOCK, mask },
         );
         if (r.status !== 'ok') return true; // unreachable scenarios are legitimate
+        okScenarios++;
         for (const rig of [r.genoa, r.fock]) {
           if (!rig) continue;
           for (let i = 0; i < rig.legs.length; i++) {
@@ -71,7 +73,7 @@ describe('router invariants', () => {
             if (leg.kind === 'motor') expect(leg.board).toBeNull();
           }
           // 5. maneuver count consistency
-          expect(rig.maneuverCount).toBe(rig.legs.filter((l) => l.maneuverAtStart).length);
+          expect(rig.maneuverCount).toBe(rig.legs.filter((l) => l.maneuverAtStart !== null).length);
         }
         // 6. recommendation is the faster rig
         if (r.genoa && r.fock)
@@ -80,5 +82,7 @@ describe('router invariants', () => {
       }),
       { numRuns: 25, seed: 42 }, // deterministic CI; bump numRuns locally when touching the router
     );
+    // Guard against a vacuous pass: with numRuns/seed fixed this is deterministic.
+    expect(okScenarios).toBeGreaterThan(0);
   }, 300_000);
 });
