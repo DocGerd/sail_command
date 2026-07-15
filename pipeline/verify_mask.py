@@ -16,19 +16,17 @@ grid = np.frombuffer((OUT / "mask.bin").read_bytes(), dtype=np.uint8).reshape(
 )  # row 0 = south
 
 
-def depth_m(lat: float, lon: float) -> float:
-    row = int((lat - meta["south"]) / (meta["north"] - meta["south"]) * meta["rows"])
-    col = int((lon - meta["west"]) / (meta["east"] - meta["west"]) * meta["cols"])
-    assert 0 <= row < meta["rows"] and 0 <= col < meta["cols"], f"probe {lat},{lon} maps outside the mask grid"
-    b = int(grid[row, col])
-    return 0.0 if b == 0 else (25.4 if b == 255 else b / 10.0)
-
-
 def rc_of(lat: float, lon: float) -> tuple[int, int]:
     row = int((lat - meta["south"]) / (meta["north"] - meta["south"]) * meta["rows"])
     col = int((lon - meta["west"]) / (meta["east"] - meta["west"]) * meta["cols"])
     assert 0 <= row < meta["rows"] and 0 <= col < meta["cols"], f"probe {lat},{lon} maps outside the mask grid"
     return row, col
+
+
+def depth_m(lat: float, lon: float) -> float:
+    row, col = rc_of(lat, lon)
+    b = int(grid[row, col])
+    return 0.0 if b == 0 else (25.4 if b == 255 else b / 10.0)
 
 
 WATER_PROBES = [  # (name, lat, lon, min expected depth m)
@@ -79,13 +77,16 @@ DEFAULT_GATE_DEPTH_M = 3.0  # matches the app's default safety depth
 # Per-harbor override for a gate depth below the 3.0 m default, used ONLY
 # when the harbor's own approachNote documents a genuinely shallower
 # approach that the DTM/rasterization can't resolve as >= 3.0 m even at the
-# current 46 m cell size. Each entry must be justified by that harbor's own
-# approachNote text (checked against harbors.json below) - never by fudging
-# the bathymetry. Values were derived by scanning gate depths against the
-# regenerated mask to find the threshold at which each harbor's snap cell
-# actually reconnects to open water (see fix-mask-report.md), then rounded
-# down from that measured threshold to match the harbor's own documented
-# figure, so the exception is never more permissive than the source text.
+# current 46 m cell size - never by fudging the bathymetry. The assert below
+# only checks that an approachNote *exists*; it can't verify the note's text
+# actually supports the chosen number, so treat every entry here as a
+# manual-review item at PR time, cited in the comment next to it (see PR #8,
+# github.com/DocGerd/sail_command/pull/8, for the full investigation).
+# Values were derived by scanning gate depths against the regenerated mask
+# to find the threshold at which each harbor's snap cell actually reconnects
+# to open water, then rounded down from that measured threshold to match
+# the harbor's own documented figure, so the exception is never more
+# permissive than the source text.
 CONNECTIVITY_EXCEPTIONS_M: dict[str, float] = {
     # "Buoyed fairway up Augustenborg Fjord, approx 3 m in the upper
     # reaches." Reconnects at gate <= 2.8 m; matches the approx-3 m note.

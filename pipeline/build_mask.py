@@ -89,9 +89,14 @@ def main() -> None:
         # fixes below). Switched to Resampling.bilinear, which trades
         # worst-case shallow-biased conservatism for channel fidelity - a
         # cell's depth is now a distance-weighted average of nearby source
-        # cells instead of always the shallowest. The floor-to-decimeter
-        # (never overstate depth) and unknown/void -> land conservatism
-        # rules are unchanged; only this one resampling parameter moved.
+        # cells instead of always the shallowest. NOTE this is a real
+        # conservatism tradeoff, not a free lunch: averaging CAN report a
+        # cell deeper than its shallowest contributing source pixel (e.g.
+        # avg of -2 m and -10 m -> -6 m), which max() never did. The
+        # floor-to-decimeter step below still never overstates whatever
+        # depth value comes out of this resampling - it just no longer
+        # guarantees that value is the single shallowest source pixel.
+        # unknown/void -> land conservatism is unchanged.
         reproject(
             source=rasterio.band(src, 1),
             destination=elev,
@@ -113,13 +118,16 @@ def main() -> None:
         bbox=(WEST, SOUTH, EAST, NORTH),
     )
     # Feature COUNT is a coarse existence check only, not a coverage metric:
-    # osmdata.openstreetmap.de regenerates this file weekly and the upstream
-    # splitting granularity varies - this week's export covers our bbox with
-    # 117 large multi-hundred-vertex polygons (verified by an independent
-    # full-file bbox-intersect scan, ~95k total vertices, area sum ~2.8 deg^2
-    # for a 1.6x1.0 deg bbox) versus thousands of smaller pieces previously.
-    # Real coverage is what the land cell count and water fraction asserts
-    # below (and the connectivity gate in verify_mask.py) actually check.
+    # osmdata.openstreetmap.de regenerates this file periodically and the
+    # upstream splitting granularity is not a stable contract - a real
+    # regen (2026-07-15) covered our bbox with only 117 features because
+    # each was a large multi-hundred-vertex polygon rather than many small
+    # ones (independently verified via a full-file bbox-intersect scan, not
+    # just this filtered read), so a high threshold here would be testing
+    # this dataset's incidental shape, not our correctness. Real coverage is
+    # what the land cell count and water fraction asserts below (and the
+    # connectivity gate in verify_mask.py) actually check; this just catches
+    # a badly wrong zip inner path/CRS returning an empty-ish read.
     assert len(gdf) > 50, f"OSM land polygons: only {len(gdf)} features in bbox - check zip inner path/CRS"
     land = features.rasterize(
         gdf.geometry,
@@ -137,6 +145,14 @@ def main() -> None:
     ).astype(bool)
     n_land = int(land.sum())
     print(f"land cells: {n_land}")
+    # Two competing effects vs. the original threshold (50000 land cells on
+    # the 1100x1200/all_touched=True grid): 4x more cells from the 2x/2x
+    # resolution bump pushes this up, while all_touched=False drops the
+    # thin one-cell-wide coastal fringe that all_touched=True used to count,
+    # pushing it back down. Empirically this regen landed at ~2.6M land
+    # cells (>10x the naive 4x-only estimate) since most of this bbox's area
+    # is actually land (the mainland + islands), not thin fringe - 200000 is
+    # a wide-margin floor against a badly broken read, not a tight estimate.
     assert n_land > 200000, f"OSM land raster: only {n_land} land cells - implausible for this coastline"
 
     print("carving the Schlei (OSM water=fjord relation, not coastline-tagged) out of the land mask...")
