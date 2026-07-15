@@ -5,6 +5,7 @@ const esc = (s: string) =>
 
 const fmtDeg = (d: number) => `${String(Math.round(d)).padStart(3, '0')}°T`;
 
+// desc strings are chartplotter data interchange (GPX), deliberately English / not routed through the app i18n dictionary.
 function legDesc(leg: Leg): string {
   const man = leg.maneuverAtStart ? `${leg.maneuverAtStart} → ` : '';
   const what =

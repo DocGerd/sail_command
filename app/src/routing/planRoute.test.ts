@@ -62,4 +62,13 @@ describe('planRoute', () => {
     planRoute(req, uniformWindGrid(12, 0), deps, (rig) => seen.add(rig));
     expect(seen).toEqual(new Set(['genoa', 'fock']));
   }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
+
+  it('recommends genoa on an exact ETA tie between rigs', () => {
+    const tieDeps = { ...deps, polarFock: TEST_POLAR }; // identical polar table → identical solve
+    const r = planRoute(req, uniformWindGrid(12, 0), tieDeps);
+    expect(r.status).toBe('ok');
+    if (r.status !== 'ok') return;
+    expect(r.genoa!.etaMs).toBe(r.fock!.etaMs);
+    expect(r.recommended).toBe('genoa');
+  }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
 });

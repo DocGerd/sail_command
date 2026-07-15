@@ -33,11 +33,17 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
       );
       post({ type: 'result', id: req.id, result });
     } catch (err) {
-      post({
-        type: 'fatal',
-        id: req.type === 'plan' ? req.id : null,
-        message: err instanceof Error ? err.message : String(err),
-      });
+      try {
+        post({
+          type: 'fatal',
+          id: req.type === 'plan' ? req.id : null,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      } catch {
+        // If even the fatal report can't be serialized/posted, there's nothing
+        // more we can do here — the client's worker.onerror/failAll path is
+        // the backstop.
+      }
     }
   };
 }

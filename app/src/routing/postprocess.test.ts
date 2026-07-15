@@ -63,4 +63,23 @@ describe('mergeCollinearLegs', () => {
     // control: same legs over open water DO merge
     expect(mergeCollinearLegs([a, b], openWaterMask(), windE, DEFAULT_SETTINGS).length).toBe(1);
   });
+
+  it('merges two adjacent motor legs within tolerance (endTimeMs/distanceNm summed)', () => {
+    const a = { ...legFrom({ lat: 54.7, lon: 10.0 }, 90, 2, t0, 6.5), kind: 'motor' as const, board: null };
+    const b = { ...legFrom(a.end, 90, 2, a.endTimeMs, 6.5), kind: 'motor' as const, board: null };
+    const merged = mergeCollinearLegs([a, b], openWaterMask(), wind, DEFAULT_SETTINGS);
+    expect(merged.length).toBe(1);
+    expect(merged[0].start).toEqual(a.start);
+    expect(merged[0].end).toEqual(b.end);
+    expect(merged[0].endTimeMs).toBe(b.endTimeMs);
+    expect(merged[0].distanceNm).toBeCloseTo(a.distanceNm + b.distanceNm, 3);
+  });
+
+  it('heading-delta merge tolerance is inclusive at exactly 10°, exclusive just over', () => {
+    const a = legFrom({ lat: 54.7, lon: 10.0 }, 90, 2, t0);
+    const bAt10 = legFrom(a.end, 100, 2, a.endTimeMs); // exactly MAX_MERGE_DEG — merges
+    expect(mergeCollinearLegs([a, bAt10], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(1);
+    const bOver10 = legFrom(a.end, 100.5, 2, a.endTimeMs); // just over — does not merge
+    expect(mergeCollinearLegs([a, bOver10], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
+  });
 });

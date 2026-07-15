@@ -26,9 +26,9 @@ const plan: Plan = {
     fock: null,
     genoa: {
       rig: 'genoa',
-      etaMs: Date.UTC(2026, 6, 15, 12, 0, 0),
-      durationMs: 4 * 3_600_000,
-      distanceNm: 20, maneuverCount: 1, motorDistanceNm: 5,
+      etaMs: Date.UTC(2026, 6, 15, 13, 0, 0), // matches the last leg's endTimeMs
+      durationMs: 5 * 3_600_000,
+      distanceNm: 21.5, maneuverCount: 1, motorDistanceNm: 5, // sum of the three legs' distanceNm
       legs: [
         {
           kind: 'sail', board: 'starboard',
@@ -75,5 +75,14 @@ describe('toGpx', () => {
     const empty: Plan = structuredClone(plan);
     if (empty.result.status === 'ok' && empty.result.genoa) empty.result.genoa.legs = [];
     expect(() => toGpx(empty, 'genoa')).toThrow(/empty route/);
+  });
+
+  it('a single-leg plan produces exactly 2 rtept (leg start + destination)', () => {
+    const singleLeg: Plan = structuredClone(plan);
+    if (singleLeg.result.status === 'ok' && singleLeg.result.genoa) {
+      singleLeg.result.genoa.legs = [singleLeg.result.genoa.legs[0]];
+    }
+    const singleXml = toGpx(singleLeg, 'genoa');
+    expect((singleXml.match(/<rtept /g) ?? []).length).toBe(2);
   });
 });

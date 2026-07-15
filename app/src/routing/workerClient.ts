@@ -3,7 +3,7 @@ import type { WorkerRequest, WorkerResponse } from './protocol';
 
 type ProgressCb = (rig: Rig, tMs: number, frontierSize: number) => void;
 
-const RIGS = ['genoa', 'fock'] as const;
+const RIGS: readonly Rig[] = ['genoa', 'fock'];
 
 export class RoutingClient {
   private worker: Worker;
@@ -27,6 +27,9 @@ export class RoutingClient {
     // init(); init() still returns `this.ready` directly, so callers observe it.
     this.ready.catch(() => {});
     this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => this.handle(e.data);
+    this.worker.onerror = (e) => this.failAll(new Error(e.message || 'worker error'));
+    this.worker.onmessageerror = () =>
+      this.failAll(new Error('worker message could not be deserialized'));
   }
 
   private handle(msg: WorkerResponse) {

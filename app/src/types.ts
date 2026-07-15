@@ -64,6 +64,8 @@ export interface Leg {
   endTimeMs: number;
   headingDeg: number; // course over ground, degrees true
   twaDeg: number; // signed: >= 0 starboard board, < 0 port board (0 = head-to-wind edge case, starboard); NaN for motor
+  // Two headings are physically ambiguous: 0° (head-to-wind) is hardcoded to starboard; ±180°
+  // (dead run) inherits the parent leg's board instead of the sign rule — see boardForCandidate in maneuver.ts.
   twsKn: number; // TWS at leg start
   speedKn: number;
   distanceNm: number;
@@ -100,6 +102,8 @@ export interface PlanRequest {
 
 export interface PlanResultOk {
   status: 'ok';
+  // planRoute guarantees at least one of genoa/fock is non-null when status is 'ok'
+  // (both-failed returns status 'error' instead).
   genoa: RigResult | null; // null if that rig found no route
   fock: RigResult | null;
   recommended: Rig;

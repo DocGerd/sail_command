@@ -92,4 +92,44 @@ describe('planRoute via-waypoints', () => {
     const r = planRoute(req, uniformWindGrid(12, 0), { ...deps, mask });
     expect(r).toEqual({ status: 'error', reason: 'snap-failed-via' });
   });
+
+  it('(d) a segment blocked by land fails the plan with that segment\'s no-route reason', () => {
+    // Solid wall at col 170 (lon ≈ 10.25) across ALL rows — unlike wallMask,
+    // there is no gap, so it is genuinely unreachable, not just a longer detour.
+    // origin→via (cols ~120→~140) stays clear of it; via→destination (cols
+    // ~140→~200) must cross it.
+    const solidWall = makeMask((_, c) => (c === 170 ? 0 : 200));
+    const req: PlanRequest = {
+      ...baseReq,
+      origin: { lat: 54.7525, lon: 10.0025 },
+      viaPoints: [{ lat: 54.7525, lon: 10.1025 }],
+      destination: { lat: 54.7525, lon: 10.4025 },
+    };
+    const r = planRoute(req, uniformWindGrid(12, 0), { ...deps, mask: solidWall });
+    // Mirrors the existing plan-level failure shape used for (c) above.
+    expect(r).toEqual({ status: 'error', reason: 'unreachable' });
+  }, 30_000); // an exhaustive "unreachable" search (both rigs) is slow, like (a)/(b) below
+
+  // (b) board-flip-at-joint pin. A deterministic board-flip (boat on one board
+  // approaching the via, the opposite board leaving it) proved fragile to
+  // construct reliably from wind/geometry alone, so this instead pins the
+  // structural guarantee the v1 reset rule provides (see planRoute.ts): the
+  // first leg of every segment — including the one starting at the via —
+  // always has maneuverAtStart === null, regardless of the board the boat
+  // was on approaching the joint. Reuses the (a) detour scenario, which has
+  // exactly two segments (origin→via, via→destination), so checking both
+  // segments' first legs covers "every" segment here.
+  it('(b) the first leg of every via segment has maneuverAtStart === null (v1 board-reset rule)', () => {
+    const via = { lat: 54.9025, lon: 10.2025 };
+    const wind = uniformWindGrid(12, 0);
+    const req: PlanRequest = { ...baseReq, viaPoints: [via] };
+    const r = planRoute(req, wind, deps);
+    expect(r.status).toBe('ok');
+    if (r.status !== 'ok') return;
+    const rig = r.genoa!;
+    expect(rig.legs[0].maneuverAtStart).toBeNull(); // first leg of segment 1 (origin→via)
+    const viaLegIdx = rig.legs.findIndex((l) => haversineNm(l.start, via) < 0.05);
+    expect(viaLegIdx).toBeGreaterThan(0);
+    expect(rig.legs[viaLegIdx].maneuverAtStart).toBeNull(); // first leg of segment 2 (via→destination)
+  }, 30_000); // full isochrone solve, mirrors (a)'s timeout
 });

@@ -109,6 +109,40 @@ describe('isochrone golden routes', () => {
     expect(short).toEqual({ status: 'no-route', reason: 'beyond-horizon' });
   });
 
+  it('horizon boundary: eta just inside succeeds; one hour-bucket shorter reports beyond-horizon', () => {
+    const departureMs = Date.UTC(2026, 6, 15, 8, 0, 0);
+    // Generous reference horizon establishes the scenario's true (unconstrained) ETA.
+    const reference = solve(
+      params({
+        departureMs,
+        wind: new WindField(uniformWindGrid(12, 0, { hours: 24, t0Ms: departureMs })),
+      }),
+    );
+    expect(reference.status).toBe('ok');
+    if (reference.status !== 'ok') return;
+
+    // Just inside: the smallest whole-hour grid horizon that still covers the ETA.
+    // The result must be the identical (deterministic) solve as the reference.
+    const hoursInside = Math.ceil((reference.etaMs - departureMs) / 3_600_000) + 1;
+    const inside = solve(
+      params({
+        departureMs,
+        wind: new WindField(uniformWindGrid(12, 0, { hours: hoursInside, t0Ms: departureMs })),
+      }),
+    );
+    expect(inside.status).toBe('ok');
+    if (inside.status === 'ok') expect(inside.etaMs).toBe(reference.etaMs);
+
+    // Just outside: one hour-bucket shorter, so the same route no longer fits.
+    const outside = solve(
+      params({
+        departureMs,
+        wind: new WindField(uniformWindGrid(12, 0, { hours: hoursInside - 1, t0Ms: departureMs })),
+      }),
+    );
+    expect(outside).toEqual({ status: 'no-route', reason: 'beyond-horizon' });
+  });
+
   it('is deterministic', () => {
     const a = solve(params({ wind: new WindField(uniformWindGrid(12, 45)) }));
     const b = solve(params({ wind: new WindField(uniformWindGrid(12, 45)) }));

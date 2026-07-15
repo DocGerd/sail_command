@@ -33,4 +33,25 @@ describe('WindField', () => {
     expect(wf.sample({ lat: 60, lon: 20 }, wf.startMs() - 3_600_000).speedKn).toBeCloseTo(8, 4);
     expect(wf.sample({ lat: 54.8, lon: 10 }, wf.horizonMs() + 3_600_000).speedKn).toBeCloseTo(8, 4);
   });
+
+  it('interpolates gustKn linearly in time, independent of the speed/direction vector math', () => {
+    // makeWindGrid's fixture generator sets gustKn = speedKn * 1.3 per sample.
+    const wf = new WindField(makeWindGrid((_la, _lo, h) => ({ speedKn: 10 + h, dirFromDeg: 180 })));
+    const s = wf.sample({ lat: 54.8, lon: 10.2 }, wf.startMs() + 30 * 60_000);
+    expect(s.speedKn).toBeCloseTo(10.5, 3); // pins the existing time-interpolation test's value
+    expect(s.gustKn).toBeCloseTo(10.5 * 1.3, 3);
+  });
+
+  it('samples without error on a single-lat/single-lon grid (bracket n===1 branch)', () => {
+    const wf = new WindField(
+      makeWindGrid(() => ({ speedKn: 9, dirFromDeg: 45 }), {
+        south: 54.75, north: 54.75, west: 10.2, east: 10.2, hours: 2,
+      }),
+    );
+    // Query far from the grid's single point — with only one lat/lon bracket,
+    // every query must clamp to that single point's value without error.
+    const s = wf.sample({ lat: 10, lon: -5 }, wf.startMs());
+    expect(s.speedKn).toBeCloseTo(9, 4);
+    expect(s.dirFromDeg).toBeCloseTo(45, 3);
+  });
 });

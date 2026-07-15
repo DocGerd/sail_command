@@ -42,4 +42,13 @@ describe('Polar', () => {
     expect(p.beatAngleDeg(99)).toBeCloseTo(40, 5);
     expect(p.gybeAngleDeg(12)).toBeCloseTo(165, 5);
   });
+
+  it('clamps beat and gybe angles below the table TWS minimum', () => {
+    expect(p.beatAngleDeg(1)).toBeCloseTo(47, 5); // below min (4) clamps to the first table entry
+    expect(p.gybeAngleDeg(1)).toBeCloseTo(150, 5);
+  });
+
+  it('clamps gybe angle above the table TWS maximum', () => {
+    expect(p.gybeAngleDeg(99)).toBeCloseTo(175, 5);
+  });
 });

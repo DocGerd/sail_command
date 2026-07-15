@@ -59,4 +59,19 @@ describe('NavMask', () => {
     expect(snapped).not.toBeNull();
     expect(m.isNavigable(snapped!, 3.0)).toBe(true);
   });
+
+  it('isNavigable at the exact north/east edge is fail-closed (false) by design', () => {
+    // meta.north/meta.east are exclusive bounds: floor((edge - origin) / step)
+    // lands exactly on rows/cols, one past the last valid index, so the edge
+    // coordinate itself never falls inside any cell. Pinning this as
+    // intentional (not a bug) so a future "fix" doesn't silently flip it.
+    const m = makeMask(() => 200);
+    expect(m.isNavigable({ lat: TEST_MASK_META.north, lon: 10 }, 3)).toBe(false);
+    expect(m.isNavigable({ lat: 54.5, lon: TEST_MASK_META.east }, 3)).toBe(false);
+  });
+
+  it('snapToNavigable centered far outside the bbox returns null', () => {
+    const m = makeMask(() => 200);
+    expect(m.snapToNavigable({ lat: 60, lon: 20 }, 3.0)).toBeNull();
+  });
 });

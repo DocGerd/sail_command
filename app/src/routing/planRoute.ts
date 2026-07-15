@@ -69,8 +69,9 @@ export function planRoute(
   const genoa = run('genoa', deps.polarGenoa);
   const fock = run('fock', deps.polarFock);
   if (!genoa.rigResult && !fock.rigResult)
-    // Deliberately report genoa's reason: it's the primary rig and the two
-    // rigs' failure reasons rarely differ.
+    // Arbitrary tie-break: report genoa's reason (checked first); both rigs solve
+    // identical mask/wind/waypoints and differ only in polar table, so their
+    // failure reasons rarely differ in practice.
     return { status: 'error', reason: genoa.reason! };
 
   const recommended: Rig =

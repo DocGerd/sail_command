@@ -20,5 +20,6 @@ describe('maneuver', () => {
     expect(classifyManeuver(-150, 150)).toBe('gybe'); // run: through dead-downwind
     expect(classifyManeuver(-60, 130)).toBe('gybe'); // mixed, shorter turn is through the stern
     expect(classifyManeuver(-60, 110)).toBe('tack'); // mixed, shorter turn is through the bow
+    expect(classifyManeuver(-90, 90)).toBe('tack'); // exactly 180° combined — boundary inclusive
   });
 });

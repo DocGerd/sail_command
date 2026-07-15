@@ -1,4 +1,4 @@
-import type { Board, Leg, LegKind, LatLon, ManeuverKind, Settings } from '../types';
+import type { Board, Leg, LegKind, LatLon, ManeuverKind, NoRouteReason, Settings } from '../types';
 import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
@@ -23,7 +23,7 @@ export interface SolveParams {
 
 export type SolveResult =
   | { status: 'ok'; legs: Leg[]; etaMs: number }
-  | { status: 'no-route'; reason: 'unreachable' | 'beyond-horizon' | 'calm-motor-off' };
+  | { status: 'no-route'; reason: Extract<NoRouteReason, 'unreachable' | 'beyond-horizon' | 'calm-motor-off'> };
 
 interface Node {
   lat: number;
@@ -45,6 +45,11 @@ const MIN_SAIL_KN = 0.2;
 const CAPTURE_NM = 0.1;
 const PRUNE_LAT = 0.002; // ~220 m
 const PRUNE_LON = 0.003; // ~190 m at 55°N
+// Perf safeguard, not a correctness bound: when the frontier exceeds this,
+// non-dominated candidates are discarded by count (see `better()` below for
+// the ordering) rather than by geometry. A no-route in that regime may
+// reflect search capacity rather than actual unreachability; surfacing that
+// distinction to the caller is deferred (plan-amendment pending).
 const MAX_FRONTIER = 30_000;
 const EXTRA_TWAS = [45, 55, 65, 75, 85, 95, 105, 115, 125, 135, 145, 155, 165, 175];
 const MOTOR_TWAS = [0, 20, 35];
@@ -231,7 +236,8 @@ export function solve(p: SolveParams): SolveResult {
   }
 
   if (!best) {
-    // Heuristic: nodes pruned by visited/byKey count as neither death; adequate in real geometry, may misclassify contrived single-cell pockets.
+    // Heuristic: nodes pruned by visited/byKey count as neither death; adequate in real geometry, may misclassify contrived single-cell pockets,
+    // plus a handful of consumed-without-registering paths (a blocked direct-arrival attempt; a zero-effective-speed candidate after a maneuver penalty).
     return {
       status: 'no-route',
       reason: blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'unreachable' : 'calm-motor-off',
@@ -250,6 +256,8 @@ function backtrack(last: Node, departureMs: number): Leg[] {
     const end = { lat: n.lat, lon: n.lon };
     const distanceNm = haversineNm(start, end);
     const prev = legs[legs.length - 1];
+    // Merges the solver's own per-step bookkeeping within already-validated steps;
+    // this is NOT the CLAUDE.md-governed collinear merge pass (postprocess.ts), which re-validates.
     const collinear =
       prev &&
       prev.kind === n.kind &&

@@ -35,7 +35,7 @@ const arbScenario = fc.record({
 });
 
 describe('router invariants', () => {
-  // 25 runs x 2 rigs x full isochrone solves is a multi-minute suite (see task brief);
+  // 25 runs x 2 rigs x full isochrone solves is a multi-minute suite;
   // vitest's default 5s per-test timeout is far too short, so it is extended here.
   it('holds core invariants on random scenarios', () => {
     let okScenarios = 0;

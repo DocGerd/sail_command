@@ -98,9 +98,15 @@ export class NavMask {
     };
     const cellLatM = 111_320 * this.latStep;
     const cellLonM = 111_320 * this.lonStep * Math.cos(toRad(p.lat));
-    const maxRing = Math.ceil(maxRadiusM / Math.min(cellLatM, cellLonM)) + 1;
+    const minCellStepM = Math.min(cellLatM, cellLonM);
+    const maxRing = Math.ceil(maxRadiusM / minCellStepM) + 1;
     let best: { p: LatLon; d: number } | null = null;
     for (let ring = 0; ring <= maxRing; ring++) {
+      // Cells are ~557 m (lat) x ~321 m (lon) at 55°N, so a farther ring can
+      // still hold a nearer cell than a closer ring (lon-offset hits vs.
+      // lat-offset hits). Only stop once no unscanned ring could possibly
+      // beat the current best.
+      if (best && ring * minCellStepM > best.d) break;
       for (let dr = -ring; dr <= ring; dr++) {
         for (let dc = -ring; dc <= ring; dc++) {
           if (Math.max(Math.abs(dr), Math.abs(dc)) !== ring) continue;
@@ -115,7 +121,6 @@ export class NavMask {
           if (dM <= maxRadiusM && (!best || dM < best.d)) best = { p: center, d: dM };
         }
       }
-      if (best) return best.p; // rings grow outward; first ring with a hit is nearest (±ring width)
     }
     return best ? best.p : null;
   }

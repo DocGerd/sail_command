@@ -16,6 +16,13 @@ export class WindField {
   private grid: WindGrid;
 
   constructor(grid: WindGrid) {
+    const expected = grid.timesMs.length * grid.lats.length * grid.lons.length;
+    if (grid.speedKn.length !== expected)
+      throw new Error(`windGrid speedKn length ${grid.speedKn.length} != timesMs*lats*lons ${expected}`);
+    if (grid.dirFromDeg.length !== expected)
+      throw new Error(`windGrid dirFromDeg length ${grid.dirFromDeg.length} != timesMs*lats*lons ${expected}`);
+    if (grid.gustKn.length !== expected)
+      throw new Error(`windGrid gustKn length ${grid.gustKn.length} != timesMs*lats*lons ${expected}`);
     this.grid = grid;
   }
 
