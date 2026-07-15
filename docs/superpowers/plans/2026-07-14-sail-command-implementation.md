@@ -195,6 +195,11 @@ export interface PlanResultOk {
   status: 'ok';
   genoa: RigResult | null; // null if that rig found no route
   fock: RigResult | null;
+  // Amendment 2026-07-15 (PR #5 self-review, user-approved): why a null rig
+  // found no route — the spec's "both results are user-visible" needs the
+  // reason, not just the absence. null when the rig has a result.
+  genoaReason: NoRouteReason | null;
+  fockReason: NoRouteReason | null;
   recommended: Rig;
   snappedOrigin: LatLon;
   snappedDestination: LatLon;
@@ -3062,6 +3067,29 @@ Expected: range-request download (~30–100 MB transferred), then `pmtiles show`
 ---
 
 # Phase D — Services & state
+
+### Task D0: Leg discriminated-union refactor (added 2026-07-15, PR #5 self-review, user-approved)
+
+Restructure `Leg` from the flat shape into a discriminated union on `kind`:
+sail legs carry `board: Board` (non-null) and `twaDeg: number`; motor legs
+carry `board: null` and **no `twaDeg` field** (the NaN sentinel disappears,
+which also removes the JSON-unsafety caveat for that field). Rationale: the
+flat shape admits illegal states (`{kind:'sail', board:null}` compiles) and
+TS cannot narrow `board` from a `kind` check (live gap in `gpx.ts`).
+Scope: `types.ts`, leg construction in `isochrone.ts`, consumers
+(`postprocess.ts`, `gpx.ts`), and test fixtures. Behavior must be identical —
+pin with the existing golden/property suites. Update this appendix's `Leg`
+definition in the same commit.
+
+### Phase D intake (from Phase B reviews, ledger-tracked)
+
+- `MaskMeta`: optional `encoding`/`verticalDatum`/`sources` fields when
+  `mask.meta.json` is first parsed (About dialog consumes `sources` in E7).
+- Frontier-truncation surfacing: `MAX_FRONTIER` cap currently only documented;
+  decide between a progress flag or a dedicated `NoRouteReason`.
+- `RoutingClient` cancellation: decide dispose/recreate vs per-plan cancel at
+  the first real consumer.
+- Plan file serializer (NaN/Float32Array-safe) before Garmin import/export (#3).
 
 ### Task D1: Open-Meteo wind service
 
