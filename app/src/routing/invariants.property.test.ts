@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { planRoute } from './planRoute';
 import { makeMask, makeWindGrid, TEST_POLAR } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PolarTable } from '../types';
 import { haversineNm } from '../lib/geo';
+
+// Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
+// dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
+// files keep vitest's 5s default so hang detection stays meaningful there.
+vi.setConfig({ testTimeout: 120_000 });
 
 const FOCK: PolarTable = {
   ...TEST_POLAR, rig: 'fock',
@@ -35,8 +40,9 @@ const arbScenario = fc.record({
 });
 
 describe('router invariants', () => {
-  // 25 runs x 2 rigs x full isochrone solves is a multi-minute suite;
-  // vitest's default 5s per-test timeout is far too short, so it is extended here.
+  // 25 runs x 2 rigs x full isochrone solves is a multi-minute suite on CI;
+  // the per-file 120s is still insufficient for slow CI runners (observed 374s),
+  // so this test has an explicit ceiling well above that.
   it('holds core invariants on random scenarios', () => {
     let okScenarios = 0;
     fc.assert(
@@ -88,5 +94,5 @@ describe('router invariants', () => {
     );
     // Guard against a vacuous pass: with numRuns/seed fixed this is deterministic.
     expect(okScenarios).toBeGreaterThan(0);
-  }, 300_000);
+  }, 900_000);
 });

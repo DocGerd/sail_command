@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { planRoute } from './planRoute';
 import { solve } from './isochrone';
 import { Polar } from '../lib/polar';
@@ -6,6 +6,11 @@ import { WindField } from '../lib/wind';
 import { openWaterMask, TEST_POLAR, uniformWindGrid, makeMask } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PlanRequest } from '../types';
 import { haversineNm } from '../lib/geo';
+
+// Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
+// dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
+// files keep vitest's 5s default so hang detection stays meaningful there.
+vi.setConfig({ testTimeout: 120_000 });
 
 const baseReq: PlanRequest = {
   origin: { lat: 54.7525, lon: 10.0025 },

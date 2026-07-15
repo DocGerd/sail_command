@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { planRoute } from './planRoute';
 import { openWaterMask, TEST_POLAR, uniformWindGrid, makeMask } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PlanRequest, type PolarTable } from '../types';
+
+// Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
+// dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
+// files keep vitest's 5s default so hang detection stays meaningful there.
+vi.setConfig({ testTimeout: 120_000 });
 
 /** Fock fixture: uniformly 12% slower than TEST_POLAR (genoa must win). */
 const SLOW_FOCK: PolarTable = {
@@ -31,7 +36,7 @@ describe('planRoute', () => {
     expect(r.recommended).toBe('genoa');
     expect(r.genoa!.etaMs).toBeLessThanOrEqual(r.fock!.etaMs);
     expect(r.genoa!.maneuverCount).toBe(r.genoa!.legs.filter((l) => l.maneuverAtStart).length);
-  }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
+  });
 
   it('snaps origin off land and reports snapped coordinates', () => {
     // land west of col 162 (lon ≈ 10.21); origin on land near the edge
@@ -61,7 +66,7 @@ describe('planRoute', () => {
     const seen = new Set<string>();
     planRoute(req, uniformWindGrid(12, 0), deps, (rig) => seen.add(rig));
     expect(seen).toEqual(new Set(['genoa', 'fock']));
-  }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
+  });
 
   it('recommends genoa on an exact ETA tie between rigs', () => {
     const tieDeps = { ...deps, polarFock: TEST_POLAR }; // identical polar table → identical solve

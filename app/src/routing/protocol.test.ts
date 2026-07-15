@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createHandler, type WorkerResponse } from './protocol';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PolarTable } from '../types';
+
+// Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
+// dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
+// files keep vitest's 5s default so hang detection stays meaningful there.
+vi.setConfig({ testTimeout: 120_000 });
 
 const FOCK: PolarTable = { ...TEST_POLAR, rig: 'fock' };
 

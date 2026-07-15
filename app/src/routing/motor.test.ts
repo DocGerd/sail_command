@@ -1,10 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { solve } from './isochrone';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import { openWaterMask, TEST_POLAR, uniformWindGrid, makeWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS } from '../types';
 import { haversineNm } from '../lib/geo';
+
+// Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
+// dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
+// files keep vitest's 5s default so hang detection stays meaningful there.
+vi.setConfig({ testTimeout: 120_000 });
 
 const A = { lat: 54.75, lon: 10.0 };
 const B = { lat: 54.75, lon: 10.4 };
