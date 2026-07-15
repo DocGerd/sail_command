@@ -9,6 +9,7 @@ const plan: Plan = {
   createdAtMs: Date.UTC(2026, 6, 15, 7, 0, 0),
   request: {
     origin: { lat: 54.79, lon: 9.43 }, destination: { lat: 54.85, lon: 10.52 },
+    viaPoints: [],
     originHarborId: 'flensburg', destinationHarborId: 'marstal',
     departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
     settings: {

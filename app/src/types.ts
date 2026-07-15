@@ -85,11 +85,13 @@ export type NoRouteReason =
   | 'beyond-horizon' // forecast horizon exceeded before arrival
   | 'calm-motor-off' // no progress possible under sail, motor disabled
   | 'snap-failed-origin' // origin not navigable within 300 m
-  | 'snap-failed-destination';
+  | 'snap-failed-destination'
+  | 'snap-failed-via'; // a via point not navigable within 300 m
 
 export interface PlanRequest {
   origin: LatLon;
   destination: LatLon;
+  viaPoints: LatLon[]; // visited in order, origin -> viaPoints[0] -> ... -> destination
   originHarborId: string | null;
   destinationHarborId: string | null;
   departureMs: number;

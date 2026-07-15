@@ -13,6 +13,7 @@ const SLOW_FOCK: PolarTable = {
 const req: PlanRequest = {
   origin: { lat: 54.7525, lon: 10.0025 },
   destination: { lat: 54.7525, lon: 10.4025 },
+  viaPoints: [],
   originHarborId: null,
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
@@ -30,7 +31,7 @@ describe('planRoute', () => {
     expect(r.recommended).toBe('genoa');
     expect(r.genoa!.etaMs).toBeLessThanOrEqual(r.fock!.etaMs);
     expect(r.genoa!.maneuverCount).toBe(r.genoa!.legs.filter((l) => l.maneuverAtStart).length);
-  });
+  }, 60_000); // full two-rig solve measures ~5.5s — vitest's 5s default is borderline under load
 
   it('snaps origin off land and reports snapped coordinates', () => {
     // land west of col 162 (lon ≈ 10.21); origin on land near the edge

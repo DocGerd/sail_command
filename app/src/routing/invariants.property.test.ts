@@ -47,7 +47,7 @@ describe('router invariants', () => {
         fc.pre(haversineNm(origin, destination) > 3);
         const r = planRoute(
           {
-            origin, destination, originHarborId: null, destinationHarborId: null,
+            origin, destination, viaPoints: [], originHarborId: null, destinationHarborId: null,
             departureMs: Date.UTC(2026, 6, 15, 6, 0, 0),
             settings: DEFAULT_SETTINGS,
           },

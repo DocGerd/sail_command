@@ -34,7 +34,7 @@ const PLAN_REQUEST = {
   // cell centers (grid step 0.005°), per 449af00: keep the spec-mandated
   // 300 m snap radius and adapt test geometry rather than loosen it.
   origin: { lat: 54.7525, lon: 10.0025 }, destination: { lat: 54.7525, lon: 10.3025 },
-  originHarborId: null, destinationHarborId: null,
+  viaPoints: [], originHarborId: null, destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0), settings: DEFAULT_SETTINGS,
 };
 
