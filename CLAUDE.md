@@ -25,8 +25,54 @@ deviate from it.
   offline caching, de/en i18n. Tests: Vitest (unit/property), Playwright (E2E
   incl. offline reload).
 
-Commands will be documented here as the scaffold lands (npm scripts in
-`app/package.json` and `pipeline/package.json`).
+## Commands
+
+- App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
+  `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
+  catch unused imports or type errors.
+- Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
+  a ~40 s real-mask solver acceptance file). Use focused filters while
+  iterating (`npm --prefix app run test -- <filter>`); give the full run a
+  generous timeout. Solver-heavy test files set
+  `vi.setConfig({ testTimeout: 120_000 })`; the property test carries 900 s.
+  **CI runners are 6–10× slower than dev machines** — never add a per-test
+  timeout tighter than the file-level config, and never trust local timing
+  margins for CI.
+- Pipeline: `npm --prefix pipeline run polars|harbors|mask` (mask needs
+  `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
+  requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
+  cache — NEVER delete it casually (re-downloading costs an hour); preserve it
+  when removing worktrees. `verify_mask.py` must exit 0: it flood-fill-checks
+  every harbor snap and has a documented KNOWN_DISCONNECTED allowlist (#9).
+- Production build uses Vite `base: '/sail_command/'` (GitHub Pages) — local
+  static serving must serve at that sub-path (and support HTTP Range for
+  pmtiles).
+
+## Code conventions (enforced, will fail review otherwise)
+
+- TypeScript `strict` + `exactOptionalPropertyTypes` are ON; tsconfig
+  `erasableSyntaxOnly` forbids enums and constructor parameter properties.
+- `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
+  motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
+  never cast.
+- `Plan` is structured-clone-safe (IndexedDB/postMessage) but NOT JSON-safe
+  (Float32Array wind grids) — file export needs a dedicated serializer (#3).
+- Tests import vitest APIs explicitly (`import { describe, it, expect, vi }
+  from 'vitest'`). i18n dicts enforce key parity via
+  `satisfies Record<MsgKey, string>` — add every key to BOTH dicts.
+- Never transfer the wind grid's buffers to the worker (clone keeps the saved
+  plan's forecast intact); only the mask buffer is transferred, always as a
+  `.slice(0)` copy of the cached original.
+
+## Verification lessons (hard-won)
+
+- Synthetic-mask tests missed a product-blocking solver bug that the FIRST
+  real-data browser run found in minutes (#20: step length vs. real channel
+  width). UI tasks should end with a real-browser pass (dev server +
+  Playwright); routing changes must keep `app/src/routing/realmask.repro.test.ts`
+  green (it uses the real committed mask/polars).
+- Flensburg→Marstal routes only at safety depth ≤ 2.3 m — that is correct
+  data behavior, not a bug (documented in the realmask test; see #9).
 
 ## Domain rules that are easy to get wrong
 
