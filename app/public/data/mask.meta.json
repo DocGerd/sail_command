@@ -3,8 +3,8 @@
  "south": 54.3,
  "east": 11.0,
  "north": 55.3,
- "cols": 1100,
- "rows": 1200,
+ "cols": 2200,
+ "rows": 2400,
  "encoding": "uint8 row-major, row 0 = south; 0=land/unknown, 1-254=depth dm floored, 255=deep(>=25.4m)",
  "verticalDatum": "LAT (EMODnet DTM 2024)",
  "sources": [

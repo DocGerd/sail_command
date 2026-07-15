@@ -23,7 +23,7 @@ HERE = pathlib.Path(__file__).parent
 SRC = HERE / "data-src"
 OUT = HERE.parent / "app" / "public" / "data"
 WEST, SOUTH, EAST, NORTH = 9.4, 54.3, 11.0, 55.3
-COLS, ROWS = 1100, 1200
+COLS, ROWS = 2200, 2400  # ~46 m cells; 2x the original 1100x1200 (~93 m) - see issue #6
 
 WCS_URL = (
     "https://ows.emodnet-bathymetry.eu/wcs?service=WCS&version=2.0.1"
@@ -74,19 +74,96 @@ def main() -> None:
     )
 
     dst_transform = from_origin(WEST, NORTH, (EAST - WEST) / COLS, (NORTH - SOUTH) / ROWS)
-    elev = np.full((ROWS, COLS), np.nan, dtype=np.float32)  # row 0 = north (numpy)
+    elev_max = np.full((ROWS, COLS), np.nan, dtype=np.float32)  # row 0 = north (numpy)
+    elev_bilinear = np.full((ROWS, COLS), np.nan, dtype=np.float32)
     with rasterio.open(SRC / "emodnet_dtm.tif") as src:
-        # Resampling.max on LAT-referenced *elevation* picks the SHALLOWEST
-        # contributing source cell -> conservative for navigability.
+        # LAST-RESORT DEVIATION (issue #6): Resampling.max on LAT-referenced
+        # *elevation* picks the SHALLOWEST contributing source cell, which is
+        # the conservative default for navigability - but on the ~115 m
+        # native EMODnet DTM it also flattens narrow dredged/buoyed channels
+        # that are deeper than their surroundings (verified via approachNote:
+        # Kappeln's Schlei fairway "maintained approx 5 m", Marstal "approx
+        # 3.2 m (N/W)", Dyvig "approx 3.0-3.5 m, ~30 m wide", Augustenborg
+        # "approx 3 m in the upper reaches" - all documented >= 3.0 m yet
+        # max-resampled to well under 3.0 m at 46 m cells, disconnecting
+        # those harbors from open water even after the resolution/rasterize
+        # fixes below).
+        #
+        # An UNCONDITIONAL switch to Resampling.bilinear (tried first) fixes
+        # those channels but is not a free lunch: bilinear interpolates from
+        # the nearest source pixels around each destination cell's *center*
+        # rather than aggregating a footprint the way max() does, so at a
+        # sharp source discontinuity (a tidal flat right next to a dredged
+        # channel or a steep drop-off) it can manufacture depth that isn't
+        # really there. Measured against pure Resampling.max on this same
+        # bbox, in the actual final encoded output (post OSM-land-mask,
+        # post-Schlei-carve, post-floor - i.e. what would really ship):
+        # unconditional bilinear flips 22,948 cells from LAND (dry/unknown
+        # under max) to WATER, of which 1,780 read >= 3.0 m (the app's
+        # default safety depth) and 663 read >= 5.0 m; the worst single flip
+        # went from a max-depth of 0.00 m to a bilinear-depth of 15.64 m.
+        # 97.6% of the >= 3.0 m flips are more than 1 km from any harbor
+        # snap - i.e. outside the harbor-scoped channels this fix is
+        # actually trying to reconnect, and squarely inside water an
+        # unwitting user could route through believing it's surveyed depth.
+        # That violates "never overstate depth" project-wide for a fix that
+        # only needed to help ~4 named channels.
+        #
+        # Fix: compute BOTH reprojections and blend per-cell. Trust bilinear
+        # only where it's close to max (smooth, gently-varying depth - the
+        # kind of local averaging bilinear is legitimately good at); fall
+        # back to the conservative max value wherever they diverge by more
+        # than TOLERANCE_M (a source discontinuity - shoal/channel boundary,
+        # drop-off, or land/water edge - where bilinear's interpolation
+        # cannot be trusted). See TOLERANCE_M below for the measured
+        # trade-off this tolerance was chosen against.
         reproject(
             source=rasterio.band(src, 1),
-            destination=elev,
+            destination=elev_max,
             src_nodata=float("nan"),
             dst_transform=dst_transform,
             dst_crs="EPSG:4326",
             dst_nodata=float("nan"),
             resampling=Resampling.max,
         )
+        reproject(
+            source=rasterio.band(src, 1),
+            destination=elev_bilinear,
+            src_nodata=float("nan"),
+            dst_transform=dst_transform,
+            dst_crs="EPSG:4326",
+            dst_nodata=float("nan"),
+            resampling=Resampling.bilinear,
+        )
+
+    # Tuned against two constraints, in priority order: (a) the connectivity
+    # gate in verify_mask.py must still pass every harbor that needed
+    # bilinear to reconnect (Aabenraa, Augustenborg's and Marstal's
+    # CONNECTIVITY_EXCEPTIONS_M thresholds, and the channels feeding them);
+    # (b) minimize land->water flips crossing the 3.0 m default safety
+    # depth. At TOLERANCE_M=2.0, both are satisfied: verify_mask.py reports
+    # the same 28 OK / 2 exceptions / 5 known-disconnected table as the
+    # unconditional-bilinear run, while land->water flips crossing 3.0 m
+    # (and 5.0 m) drop from 1,780 (663) under unconditional bilinear to
+    # ZERO under the blend - every flip the blend still allows stays below
+    # the default safety depth. Total land->water flips (any depth) also
+    # drop from 22,948 to 17,724, since most flipped cells were themselves
+    # close to the max/bilinear divergence that gates them out.
+    # Residual bound: where max() reads 0 (dry), the blend can report at
+    # most TOLERANCE_M of depth - the |bilinear - max| <= TOLERANCE_M test
+    # against a max of 0 provably never admits more than TOLERANCE_M itself.
+    # Measured 38 such cells (0.0007% of the grid), all reading exactly
+    # 2.00 m. Only reachable by a user who sets safetyDepthM <= 2.0 m, which
+    # is already below the boat's 2.1 m draft - the settings UI should clamp
+    # safetyDepthM above draft regardless of this (tracked for Phase E).
+    TOLERANCE_M = 2.0
+    both_valid = ~np.isnan(elev_max) & ~np.isnan(elev_bilinear)
+    diff = np.where(both_valid, np.abs(elev_bilinear - elev_max), np.inf)
+    use_bilinear = both_valid & (diff <= TOLERANCE_M)
+    # Cells where elev_max itself is NaN (unknown source) stay NaN here
+    # regardless of bilinear - bilinear never gets to rescue an unknown
+    # cell into "known", only to refine a cell max() already resolved.
+    elev = np.where(use_bilinear, elev_bilinear, elev_max)
 
     print("rasterizing OSM land polygons (bbox-filtered read of the global zip)...")
     # GDAL's shapefile driver does not auto-detect a .shp nested inside a zip
@@ -98,18 +175,43 @@ def main() -> None:
         f"zip://{land_zip}!land-polygons-split-4326/land_polygons.shp",
         bbox=(WEST, SOUTH, EAST, NORTH),
     )
-    assert len(gdf) > 5000, f"OSM land polygons: only {len(gdf)} features in bbox - check zip inner path/CRS"
+    # Feature COUNT is a coarse existence check only, not a coverage metric:
+    # osmdata.openstreetmap.de regenerates this file periodically and the
+    # upstream splitting granularity is not a stable contract - a real
+    # regen (2026-07-15) covered our bbox with only 117 features because
+    # each was a large multi-hundred-vertex polygon rather than many small
+    # ones (independently verified via a full-file bbox-intersect scan, not
+    # just this filtered read), so a high threshold here would be testing
+    # this dataset's incidental shape, not our correctness. Real coverage is
+    # what the land cell count and water fraction asserts below (and the
+    # connectivity gate in verify_mask.py) actually check; this just catches
+    # a badly wrong zip inner path/CRS returning an empty-ish read.
+    assert len(gdf) > 50, f"OSM land polygons: only {len(gdf)} features in bbox - check zip inner path/CRS"
     land = features.rasterize(
         gdf.geometry,
         out_shape=(ROWS, COLS),
         transform=dst_transform,
-        all_touched=True,  # any cell touching land counts as land - conservative for a 45-footer
+        # Cell-center sampling, not all_touched. At the original ~93 m cells,
+        # all_touched=True ate an entire cell of margin off both banks of
+        # every quay-lined basin and narrow channel, disconnecting 14/44
+        # harbor snaps from open water (issue #6). At 46 m cells,
+        # center-sampling is still conservative for a 4.2 m-beam boat in a
+        # planning aid, without erasing basins narrower than ~2 cells.
+        all_touched=False,
         fill=0,
         default_value=1,
     ).astype(bool)
     n_land = int(land.sum())
     print(f"land cells: {n_land}")
-    assert n_land > 50000, f"OSM land raster: only {n_land} land cells - implausible for this coastline"
+    # Two competing effects vs. the original threshold (50000 land cells on
+    # the 1100x1200/all_touched=True grid): 4x more cells from the 2x/2x
+    # resolution bump pushes this up, while all_touched=False drops the
+    # thin one-cell-wide coastal fringe that all_touched=True used to count,
+    # pushing it back down. Empirically this regen landed at ~2.6M land
+    # cells (>10x the naive 4x-only estimate) since most of this bbox's area
+    # is actually land (the mainland + islands), not thin fringe - 200000 is
+    # a wide-margin floor against a badly broken read, not a tight estimate.
+    assert n_land > 200000, f"OSM land raster: only {n_land} land cells - implausible for this coastline"
 
     print("carving the Schlei (OSM water=fjord relation, not coastline-tagged) out of the land mask...")
     schlei_geojson = json.loads((SRC / "schlei_relation.geojson.json").read_text())
@@ -130,8 +232,9 @@ def main() -> None:
     ).astype(bool)
     n_schlei = int(schlei_water.sum())
     print(f"Schlei carve: {n_schlei} cells")
-    assert 2000 < n_schlei < 30000, (
-        f"Schlei carve size {n_schlei} implausible - expected a fjord of roughly 40 km x ~5-10 cells width"
+    # Thresholds scale ~4x vs. the original 1100x1200 grid (2x cols * 2x rows).
+    assert 8000 < n_schlei < 120000, (
+        f"Schlei carve size {n_schlei} implausible - expected a fjord of roughly 40 km x ~10-20 cells width"
     )
     land[schlei_water] = False
 
