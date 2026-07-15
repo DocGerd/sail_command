@@ -47,17 +47,28 @@ export async function savePlan(plan: Plan): Promise<void> {
 
 export async function listPlans(): Promise<PlanSummary[]> {
   const all = await (await db()).getAllFromIndex('plans', 'by-createdAt');
-  return all.reverse().map((p) => {
-    const rec = recommendedResult(p.result);
-    return {
-      id: p.id,
-      name: p.name,
-      createdAtMs: p.createdAtMs,
-      departureMs: p.request.departureMs,
-      recommended: p.result.recommended,
-      etaMs: rec.etaMs,
-    };
-  });
+  const summaries: PlanSummary[] = [];
+  // Isolated per row: one corrupt/invariant-violating plan (recommendedResult
+  // throws — see its own docstring in types.ts) must not blank out the
+  // entire list for the user. Logged, not surfaced as a banner — this is a
+  // pre-existing-data integrity issue a user can't act on beyond "some plan
+  // somewhere is broken", not a transient failure worth a dismissible UI.
+  for (const p of all.reverse()) {
+    try {
+      const rec = recommendedResult(p.result);
+      summaries.push({
+        id: p.id,
+        name: p.name,
+        createdAtMs: p.createdAtMs,
+        departureMs: p.request.departureMs,
+        recommended: p.result.recommended,
+        etaMs: rec.etaMs,
+      });
+    } catch (err) {
+      console.error(`listPlans: skipping corrupt plan ${p.id}`, err);
+    }
+  }
+  return summaries;
 }
 
 export async function getPlan(id: string): Promise<Plan | undefined> {

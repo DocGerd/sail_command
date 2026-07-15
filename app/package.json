@@ -14,7 +14,10 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@protomaps/basemaps": "^5.7.2",
     "idb": "^8.0.3",
+    "maplibre-gl": "^5.24.0",
+    "pmtiles": "^4.4.1",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },

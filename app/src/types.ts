@@ -165,6 +165,16 @@ export interface Harbor {
   approachNote?: { de: string; en: string };
 }
 
+// Presentational output of an origin/destination/via pick, shared between
+// PlannerPanel and App.tsx's wiring. Source-discriminated rather than a
+// nullable harborId: a harbor pick always has a real harborId (never ''/
+// null), so a consumer that only cares about the harbor case (e.g. building
+// a PlanRequest's originHarborId/destinationHarborId) narrows on `source`
+// instead of null-checking a field that a 'tap' pick never meaningfully has.
+export type PickedPoint =
+  | { source: 'harbor'; point: LatLon; harborId: string; label: string }
+  | { source: 'tap'; point: LatLon; label: string };
+
 export interface MaskMeta {
   west: number;
   south: number;
@@ -176,4 +186,11 @@ export interface MaskMeta {
   // 1..254 = depth in decimeters, rounded DOWN (0.1..25.4 m);
   // 255 = deep (>= 25.4 m). Row 0 = southernmost row,
   // col 0 = westernmost col; cell center = origin + (idx + 0.5) * step.
+  // Optional build-time provenance metadata (pipeline/build_mask.py writes
+  // these into mask.meta.json; older builds may omit them). Structured-clone-
+  // safe (plain string/string[]) — never assume present, only rendered for
+  // display (e.g. AboutDialog's data-sources list).
+  encoding?: string;
+  verticalDatum?: string;
+  sources?: string[];
 }

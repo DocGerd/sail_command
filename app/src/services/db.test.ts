@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { savePlan, getPlan, listPlans, deletePlan, saveSettings, loadSettings, __resetDbForTests } from './db';
 import type { Plan, Settings, WindGrid } from '../types';
 
@@ -221,7 +221,8 @@ describe('IndexedDB persistence', () => {
     expect(summaries[0].name).toBe('Renamed');
   });
 
-  it('listPlans surfaces a thrown error rather than fabricating an ETA when the recommended rig result is null', async () => {
+  it('listPlans isolates a corrupt plan (recommendedResult throws): skips it with console.error, still returns the valid rows', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const windGrid: WindGrid = {
       lats: [54.0],
       lons: [9.0],
@@ -238,7 +239,7 @@ describe('IndexedDB persistence', () => {
     const brokenPlan: Plan = {
       id: 'broken-invariant',
       name: 'Broken',
-      createdAtMs: 1000,
+      createdAtMs: 500,
       request: {
         origin: { lat: 54.0, lon: 9.0 },
         destination: { lat: 55.0, lon: 10.0 },
@@ -261,8 +262,43 @@ describe('IndexedDB persistence', () => {
       },
     };
 
+    const validPlan: Plan = {
+      id: 'valid-plan',
+      name: 'Valid',
+      createdAtMs: 1500,
+      request: {
+        origin: { lat: 54.0, lon: 9.0 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1500,
+        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+      },
+      windGrid,
+      result: {
+        status: 'ok',
+        genoa: { rig: 'genoa', legs: [], etaMs: 6000, durationMs: 3000, distanceNm: 20.0, maneuverCount: 0, motorDistanceNm: 0 },
+        fock: null,
+        genoaReason: null,
+        fockReason: null,
+        recommended: 'genoa',
+        snappedOrigin: { lat: 54.0, lon: 9.0 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
+    };
+
     await savePlan(brokenPlan);
-    await expect(listPlans()).rejects.toThrow(/invariant violated/);
+    await savePlan(validPlan);
+
+    const summaries = await listPlans();
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].id).toBe('valid-plan');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('broken-invariant'),
+      expect.any(Error),
+    );
   });
 
   it('deletePlan removes the plan', async () => {

@@ -19,6 +19,25 @@ interface AppStateValue {
   rig: Rig | null;
   setPlan: (p: Plan | null) => void;
   setRig: (r: Rig) => void;
+  // Index into the active rig's legs nearest the live GPS fix, set by
+  // LiveView (whose fix state itself stays local — 1 Hz updates must not
+  // re-render the whole app) so RouteLayer can render the active-leg
+  // highlight without LiveView and RouteLayer needing to be siblings under a
+  // common prop-drilling parent. Changes only on leg transitions, not on
+  // every fix, so sharing it here doesn't reintroduce the 1 Hz re-render
+  // this field's neighbor deliberately avoids.
+  activeLegIndex: number | null;
+  setActiveLegIndex: (i: number | null) => void;
+  // Set whenever a saveSettings() write fails (either the direct write in
+  // setSettings, or the mount-time flush of a pre-load patch) — surfaced as
+  // a dismissible banner (App.tsx) rather than just the existing
+  // console.error, which a user never sees. Also cleared by either site the
+  // moment a subsequent saveSettings() succeeds, so a transient failure
+  // (e.g. a momentary IndexedDB hiccup) self-heals instead of leaving a
+  // stale banner up after persistence has actually recovered. Explicit
+  // dismissal still works independently of that self-heal.
+  settingsPersistenceError: boolean;
+  clearSettingsPersistenceError: () => void;
 }
 
 const AppStateCtx = createContext<AppStateValue | null>(null);
@@ -33,6 +52,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [settings, setSettingsState] = useState<Settings>(DEFAULT_SETTINGS);
   const [plan, setPlanState] = useState<Plan | null>(null);
   const [rig, setRig] = useState<Rig | null>(null);
+  const [activeLegIndex, setActiveLegIndex] = useState<number | null>(null);
+  const [settingsPersistenceError, setSettingsPersistenceError] = useState(false);
+  const clearSettingsPersistenceError = useCallback(() => setSettingsPersistenceError(false), []);
 
   // Mirrors the latest settings outside React state so setSettings can
   // compute `next` and call saveSettings as plain statements rather than
@@ -68,7 +90,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         // reconciled baseline even if unmounted by now, otherwise an
         // in-flight pre-load patch is silently dropped instead of written.
         if (pending) {
-          void saveSettings(final).catch((err) => console.error('settings save failed', err));
+          void saveSettings(final).then(
+            () => setSettingsPersistenceError((cur) => (cur ? false : cur)),
+            (err) => {
+              console.error('settings save failed', err);
+              setSettingsPersistenceError(true);
+            },
+          );
         }
         if (cancelled) return;
         settingsRef.current = final;
@@ -89,17 +117,37 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       pendingRef.current = { ...pendingRef.current, ...patch };
       return;
     }
-    void saveSettings(next).catch((err) => console.error('settings save failed', err));
+    void saveSettings(next).then(
+      () => setSettingsPersistenceError((cur) => (cur ? false : cur)),
+      (err) => {
+        console.error('settings save failed', err);
+        setSettingsPersistenceError(true);
+      },
+    );
   }, []);
 
   const setPlan = useCallback((p: Plan | null) => {
     setPlanState(p);
     setRig(p ? p.result.recommended : null);
+    // A leg index computed against the previous plan's legs is meaningless
+    // (and possibly out of bounds) once the plan itself changes.
+    setActiveLegIndex(null);
   }, []);
 
   const value = useMemo<AppStateValue>(
-    () => ({ settings, setSettings, plan, rig, setPlan, setRig }),
-    [settings, setSettings, plan, rig, setPlan],
+    () => ({
+      settings,
+      setSettings,
+      plan,
+      rig,
+      setPlan,
+      setRig,
+      activeLegIndex,
+      setActiveLegIndex,
+      settingsPersistenceError,
+      clearSettingsPersistenceError,
+    }),
+    [settings, setSettings, plan, rig, setPlan, activeLegIndex, settingsPersistenceError, clearSettingsPersistenceError],
   );
 
   return <AppStateCtx.Provider value={value}>{children}</AppStateCtx.Provider>;
@@ -107,7 +155,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
 function useAppState(): AppStateValue {
   const ctx = useContext(AppStateCtx);
-  if (!ctx) throw new Error('useSettings/useActivePlan must be used within AppStateProvider');
+  if (!ctx) throw new Error('useSettings/useActivePlan/useSettingsPersistenceError must be used within AppStateProvider');
   return ctx;
 }
 
@@ -123,9 +171,17 @@ export function useActivePlan(): {
   rig: Rig | null;
   setPlan: (p: Plan | null) => void;
   setRig: (r: Rig) => void;
+  activeLegIndex: number | null;
+  setActiveLegIndex: (i: number | null) => void;
 } {
-  const { plan, rig, setPlan, setRig } = useAppState();
-  return { plan, rig, setPlan, setRig };
+  const { plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex } = useAppState();
+  return { plan, rig, setPlan, setRig, activeLegIndex, setActiveLegIndex };
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function useSettingsPersistenceError(): [boolean, () => void] {
+  const { settingsPersistenceError, clearSettingsPersistenceError } = useAppState();
+  return [settingsPersistenceError, clearSettingsPersistenceError];
 }
 
 function subscribeOnlineStatus(callback: () => void): () => void {

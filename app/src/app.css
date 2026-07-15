@@ -1,5 +1,17 @@
 :root {
   color-scheme: light dark;
+  --sc-bg: #ffffff;
+  --sc-fg: #1a1a1a;
+  --sc-border: #d8d8d8;
+  --sc-accent: #0072b2; /* Okabe-Ito blue, matches BoatMarker/RouteLayer */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sc-bg: #1e1e1e;
+    --sc-fg: #f0f0f0;
+    --sc-border: #3a3a3a;
+  }
 }
 
 * {
@@ -9,4 +21,410 @@
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
+  color: var(--sc-fg);
+}
+
+button {
+  font: inherit;
+  /* Cockpit-use, boat-glove-friendly touch targets. */
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+}
+
+input,
+select {
+  font: inherit;
+  min-height: 40px;
+}
+
+/* ---- App shell: full-viewport map with overlaid header/banners/sheet ---- */
+
+.app-shell {
+  position: relative;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--sc-bg);
+}
+
+.map-area {
+  position: absolute;
+  inset: 0;
+}
+
+.app-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in srgb, var(--sc-bg) 88%, transparent);
+  backdrop-filter: blur(4px);
+  border-bottom: 1px solid var(--sc-border);
+}
+
+.app-header h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.app-header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.banner-area {
+  position: absolute;
+  top: 3rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.banner-info {
+  background: #cce4f6;
+  color: #063a5e;
+}
+
+.banner-warning {
+  background: #fff0b3;
+  color: #5c4600;
+}
+
+.banner-error {
+  background: #f8d0d0;
+  color: #5c0a0a;
+}
+
+.banner-dismiss {
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+/* ---- Bottom sheet: tabs + panel, overlaid at the bottom of the map ---- */
+
+/* .app-tabs's height, shared with .live-view/.live-view-no-plan below so
+   they can dock directly above it instead of underneath it — the tab strip
+   itself is NOT tab-gated (it's how the user switches tabs at all), so it's
+   always on screen, even while the Live tab's own content renders outside
+   .app-panel (inside MapView's subtree, for BoatMarker's map context). */
+:root {
+  --sc-tabbar-h: 3.25rem;
+}
+
+.app-bottom-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 55vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--sc-bg);
+  border-top: 1px solid var(--sc-border);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.app-tabs {
+  display: flex;
+  height: var(--sc-tabbar-h);
+  border-bottom: 1px solid var(--sc-border);
+}
+
+.app-tabs button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 0.6rem;
+}
+
+.app-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--sc-accent);
+  font-weight: 600;
+}
+
+.app-panel {
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+/* LiveView renders inside MapView's subtree (for BoatMarker's map context),
+   not inside .app-panel, but is styled to dock in the same visual region —
+   directly above the always-visible .app-tabs strip (bottom: var(--sc-tabbar-h),
+   not 0, or the tab strip — painted later in DOM order — would cover it). */
+.live-view {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: var(--sc-tabbar-h);
+  max-height: calc(55vh - var(--sc-tabbar-h));
+  overflow-y: auto;
+  background: var(--sc-bg);
+  border-top: 1px solid var(--sc-border);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.75rem;
+}
+
+.live-view-no-plan {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(var(--sc-tabbar-h) + 0.75rem);
+  padding: 0.75rem;
+  background: var(--sc-bg);
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+}
+
+.live-view-gps-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: #fff0b3;
+  color: #5c4600;
+  border-radius: 6px;
+}
+
+.live-view-data {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.live-view-hts {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.live-view-hts-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.live-view-label {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.live-view-cogsog {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  justify-content: start;
+  gap: 0.25rem 0.75rem;
+}
+
+/* ---- Map-overlay controls (RouteLayer's barb toggle/time slider) ---- */
+
+.route-layer-controls {
+  position: absolute;
+  top: 3.5rem;
+  right: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  background: color-mix(in srgb, var(--sc-bg) 90%, transparent);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.route-layer-time-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sc-boat-marker {
+  pointer-events: none;
+}
+
+/* ---- Panel content shared across tabs ---- */
+
+.planner-panel,
+.route-summary,
+.plans-list,
+.options-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.options-field,
+.planner-departure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.route-totals {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  justify-content: start;
+  gap: 0.25rem 1rem;
+}
+
+.route-legs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.route-legs th,
+.route-legs td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--sc-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sc-fg) 8%, transparent);
+  font-size: 0.8rem;
+}
+
+.board-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+}
+
+.plans-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.plans-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--sc-border);
+  padding: 0.4rem 0;
+}
+
+.plans-list-load {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+}
+
+.plans-list-name {
+  font-weight: 600;
+}
+
+.plans-list-created,
+.plans-list-eta {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.planner-via-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.planner-via-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-bottom: 1px solid var(--sc-border);
+  padding: 0.3rem 0;
+}
+
+.planner-via-coord {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.via-markers-spinner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sc-fg) 8%, transparent);
+  font-size: 0.8rem;
+}
+
+.harbor-picker ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 8rem;
+  overflow-y: auto;
+}
+
+.approach-note {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin: 0.1rem 0 0.3rem;
+}
+
+/* ---- About dialog ---- */
+
+.about-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 100;
+}
+
+.about-dialog {
+  background: var(--sc-bg);
+  color: var(--sc-fg);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  max-width: 32rem;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.about-disclaimer {
+  font-weight: 600;
+  padding: 0.5rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
 }
