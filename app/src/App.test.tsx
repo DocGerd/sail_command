@@ -98,6 +98,11 @@ vi.mock('maplibre-gl', () => {
     }
     remove() {}
     addControl() {}
+    getContainer() {
+      // A detached, control-less div: collapseAttributionAtLoad
+      // (MapView.tsx, #33) finds no attribution element in it and no-ops.
+      return document.createElement('div');
+    }
     addSource() {}
     addLayer() {}
     getSource() {
