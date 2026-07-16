@@ -26,6 +26,8 @@ pipeline/bin/
 .claude/worktrees/
 .superpowers/
 .remember/
+graphify-out/
+.playwright-mcp/
 .env
 .env.*
 
