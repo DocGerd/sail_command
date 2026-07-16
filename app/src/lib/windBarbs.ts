@@ -1,10 +1,11 @@
 import type { Map as MaplibreMap } from 'maplibre-gl';
 
-// Not unit-tested: jsdom's canvas.getContext('2d') returns null (no canvas/
-// WebGL backend), so registerBarbImages() below always hits its "no 2d
-// context" branch and never actually draws or registers anything under
-// jsdom — real image registration against a MapLibre GL map can only be
-// exercised in a real browser (manual/Playwright verification).
+// Testing: barbSegments() (the WMO geometry) is pure and unit-tested, and
+// windBarbs.test.ts also replays registerBarbImages() through a recording 2d
+// context to pin the segment->canvas-op stream. Plain jsdom's
+// canvas.getContext('2d') returns null (no canvas/WebGL backend), so
+// registerBarbImages() no-ops there; registering real images against a live
+// MapLibre GL map is still browser-only (manual/Playwright verification).
 
 const IMAGE_SIZE = 32;
 const CENTER_X = IMAGE_SIZE / 2;

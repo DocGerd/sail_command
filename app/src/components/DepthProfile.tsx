@@ -198,9 +198,14 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
 
   if (!result || legs.length === 0) return null;
 
-  const minDepthM = samples.length ? Math.min(...samples.map((s) => s.depthM)) : null;
+  // The shallowest sample drives the summary glance value. If even the
+  // shallowest point is deep-capped, the whole route is >= 25 m — show the
+  // honest cap label, never the fake 25.4 sentinel number (design rule).
+  const minSample = samples.length ? samples.reduce((m, s) => (s.depthM < m.depthM ? s : m)) : null;
   const summaryValue =
-    minDepthM === null ? '' : ` · ${t('profile.minDepth')} ${minDepthM.toFixed(1)} m`;
+    minSample === null
+      ? ''
+      : ` · ${t('profile.minDepth')} ${minSample.capped ? t('profile.deepCap') : `${minSample.depthM.toFixed(1)} m`}`;
 
   return (
     <details
@@ -431,17 +436,23 @@ function ProfileChart({
         opacity="0.6"
       />
 
-      {/* Safety-depth line + label (moves with the setting, no resampling) */}
-      <line
-        className="dp-safety-line"
-        x1={x0}
-        y1={safetyY.toFixed(1)}
-        x2={x1}
-        y2={safetyY.toFixed(1)}
-        stroke={SAFETY_COLOR}
-        strokeWidth="1.5"
-        strokeDasharray="4 3"
-      />
+      {/* Safety-depth line + label (moves with the setting, no resampling).
+          When the safety depth is deeper than the axis max (a setting raised
+          past the route's deepest sample + margin), yOf() clamps to the bottom
+          frame — a line there would lie about its depth, so draw only the label
+          in that case. The label always shows the true set value. */}
+      {safetyDepthM <= axisMax && (
+        <line
+          className="dp-safety-line"
+          x1={x0}
+          y1={safetyY.toFixed(1)}
+          x2={x1}
+          y2={safetyY.toFixed(1)}
+          stroke={SAFETY_COLOR}
+          strokeWidth="1.5"
+          strokeDasharray="4 3"
+        />
+      )}
       <text
         className="dp-safety-label"
         x={x1}

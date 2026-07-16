@@ -91,7 +91,9 @@ export const en = {
   'profile.safetyDepth': 'Safety depth',
   'profile.heading': 'Heading',
   'profile.wind': 'Wind',
-  'profile.minDepth': 'min',
+  // 'min.' with the period: disambiguates from the panel's minutes ('x h yy
+  // min', '+12 min') on this time-axis chart.
+  'profile.minDepth': 'min.',
   'map.depth.toggle': 'Water depths',
   'plansList.empty': 'No saved plans yet.',
   'plansList.created': 'Created',

@@ -92,7 +92,9 @@ export const de = {
   'profile.safetyDepth': 'Sicherheitstiefe',
   'profile.heading': 'Kurs',
   'profile.wind': 'Wind',
-  'profile.minDepth': 'min',
+  // 'min.' with the period: disambiguates from the panel's minutes ('x h yy
+  // min', '+12 min') on this time-axis chart (German abbreviations take a dot).
+  'profile.minDepth': 'min.',
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',

@@ -100,9 +100,12 @@ export function tickIntervalMs(durationMs: number): number {
 
 /**
  * Clock-aligned tick times within [startMs, endMs] at the adaptive interval.
- * Alignment is to the interval in epoch ms, so labels land on clean HH:mm
- * boundaries (00/30 for 30 min, whole hours otherwise) that a skipper can
- * cross-reference against the map ETA labels.
+ * Alignment is to the interval in epoch ms, so in any whole-hour-offset
+ * timezone (incl. the target region's CET/CEST) labels land on clean HH:mm
+ * boundaries (00/30 for 30 min, whole hours otherwise). Under a fractional
+ * offset (e.g. UTC+5:30) an hourly tick would render :30 instead — the ticks
+ * still coincide with the map ETA labels regardless of offset, which is the
+ * property a skipper cross-references.
  */
 export function tickTimes(startMs: number, endMs: number): number[] {
   const interval = tickIntervalMs(endMs - startMs);

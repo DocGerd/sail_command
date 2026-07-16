@@ -41,11 +41,14 @@ export class NavMask {
 
   /**
    * Depth in metres plus whether the underlying byte is the deep-cap sentinel
-   * (255 = "deep, >= 25.4 m"). Byte 254 (a real measured 25.4 m reading) also
-   * decodes to 25.4 via byteToDepthM, so depthM alone cannot tell the two
-   * apart — the explicit `capped` flag is the only honest discriminator, used
-   * by the depth profile's ">= 25 m" rendering. Additive accessor:
-   * depthM/isNavigable/segmentNavigable behaviour is unchanged.
+   * (255 = "deep, >= 25.4 m"). Byte 254 is *reserved* by the encoding for a
+   * measured 25.4 m reading and also decodes to 25.4 via byteToDepthM — the
+   * current pipeline never emits it (build_mask.py folds every >= 25.4 m
+   * reading into 255, and the committed mask has zero 254 bytes), but relying
+   * on that would be fragile, so depthM alone cannot robustly tell "deep,
+   * capped" from a 25.4 m reading; the explicit `capped` flag is the honest
+   * discriminator, used by the depth profile's ">= 25 m" rendering. Additive
+   * accessor: depthM/isNavigable/segmentNavigable behaviour is unchanged.
    */
   depthInfoM(p: LatLon): { depthM: number; capped: boolean } {
     const c = this.cellOf(p);

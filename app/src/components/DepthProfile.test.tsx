@@ -1,8 +1,15 @@
 import { render, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
-import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type Leg, type Plan, type Rig, type RigResult } from '../types';
+import { TEST_MASK_META, TEST_POLAR, makeWindGrid, uniformWindGrid } from '../test/fixtures';
+import {
+  DEFAULT_SETTINGS,
+  type Leg,
+  type Plan,
+  type Rig,
+  type RigResult,
+  type WindGrid,
+} from '../types';
 
 // The mask is fetched via the module-cached loadRoutingAssets(); mock it so a
 // jsdom test can drive a synthetic (uniform-byte) mask through the component.
@@ -15,7 +22,8 @@ vi.mock('../lib/routeProfile', async (importOriginal) => {
   return { ...actual, profileSamples: vi.fn(actual.profileSamples) };
 });
 import { loadRoutingAssets } from '../services/assets';
-import { profileSamples } from '../lib/routeProfile';
+import { profileSamples, sampleCount } from '../lib/routeProfile';
+import { NavMask } from '../lib/mask';
 import DepthProfile from './DepthProfile';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
@@ -101,7 +109,7 @@ const FOCK_RESULT: RigResult = {
   ],
 };
 
-function makePlan(overrides: Partial<Plan['result']> = {}): Plan {
+function makePlan(overrides: Partial<Plan['result']> = {}, windGrid?: WindGrid): Plan {
   return {
     id: 'plan-1',
     name: 'Flensburg to Marstal',
@@ -115,7 +123,7 @@ function makePlan(overrides: Partial<Plan['result']> = {}): Plan {
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
     },
-    windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: FETCHED_AT_MS },
+    windGrid: windGrid ?? { ...uniformWindGrid(10, 270), fetchedAtMs: FETCHED_AT_MS },
     result: {
       status: 'ok',
       genoa: GENOA_RESULT,
@@ -159,6 +167,13 @@ async function waitForChart(container: HTMLElement) {
   await waitFor(() => expect(container.querySelector('.dp-seabed')).not.toBeNull());
 }
 
+/** Indicator-strip wind speeds (kn) parsed from each barb's <title>, DOM (ascending-time) order. */
+function indicatorSpeeds(container: HTMLElement): number[] {
+  return Array.from(container.querySelectorAll('.depth-profile-svg title')).map((el) =>
+    Number(/·\s*([\d.]+)\s*kn/.exec(el.textContent ?? '')?.[1]),
+  );
+}
+
 beforeEach(() => {
   mockedLoad.mockResolvedValue(assetsWith(200)); // 20 m everywhere by default
   setMatchMedia(false);
@@ -182,7 +197,7 @@ describe('DepthProfile', () => {
     await waitForChart(container);
     const summary = container.querySelector('.depth-profile-summary');
     expect(summary?.textContent).toContain('Depth profile');
-    expect(summary?.textContent).toContain('min 20.0 m');
+    expect(summary?.textContent).toContain('min. 20.0 m');
   });
 
   it('opens by default on wide viewports, stays collapsed on narrow (matchMedia at mount)', async () => {
@@ -232,6 +247,12 @@ describe('DepthProfile', () => {
     await waitForChart(container);
     const callsAfterMount = spiedSamples.mock.calls.length;
     expect(callsAfterMount).toBeGreaterThan(0);
+    // Wiring: n comes from sampleCount(durationMs), and the EXACT legs/mask refs
+    // are passed (a hardcoded n or a rebuilt mask/legs would fail here).
+    const [legsArg, maskArg, nArg] = spiedSamples.mock.calls[0];
+    expect(nArg).toBe(sampleCount(GENOA_RESULT.durationMs));
+    expect(legsArg).toBe(plan.result.genoa!.legs);
+    expect(maskArg).toBeInstanceOf(NavMask);
     const seabedBefore = container.querySelector('.dp-seabed')?.getAttribute('d');
     const safetyYBefore = container.querySelector('.dp-safety-line')?.getAttribute('y1');
 
@@ -286,5 +307,62 @@ describe('DepthProfile', () => {
     await waitForChart(container);
     expect(container.querySelectorAll('.dp-barb').length).toBeGreaterThan(0);
     expect(container.querySelectorAll('.dp-heading').length).toBeGreaterThan(0);
+  });
+
+  it('samples wind at each indicator OWN time (time-varying grid -> strictly rising barb speeds)', async () => {
+    // 5 + 5*hourIndex, uniform in space: a component that sampled one fixed
+    // time for the whole strip (the forbidden regression) would show a flat
+    // strip, not a rising one.
+    const grid: WindGrid = {
+      ...makeWindGrid((_lat, _lon, h) => ({ speedKn: 5 + 5 * h, dirFromDeg: 270 })),
+      fetchedAtMs: FETCHED_AT_MS,
+    };
+    const { container } = renderProfile({ plan: makePlan({}, grid) });
+    await waitForChart(container);
+    const speeds = indicatorSpeeds(container);
+    expect(speeds.length).toBeGreaterThan(1);
+    for (let i = 1; i < speeds.length; i++) expect(speeds[i]).toBeGreaterThan(speeds[i - 1]);
+  });
+
+  it('samples wind at each indicator OWN position (space-varying grid -> rising barbs eastbound)', async () => {
+    // Wind grows with longitude, constant in time; the route runs west->east,
+    // so a fixed-position sample would flatten the strip.
+    const grid: WindGrid = {
+      ...makeWindGrid((_lat, lon) => ({ speedKn: (lon - 9) * 10, dirFromDeg: 270 })),
+      fetchedAtMs: FETCHED_AT_MS,
+    };
+    const { container } = renderProfile({ plan: makePlan({}, grid) });
+    await waitForChart(container);
+    const speeds = indicatorSpeeds(container);
+    expect(speeds.length).toBeGreaterThan(1);
+    for (let i = 1; i < speeds.length; i++) expect(speeds[i]).toBeGreaterThan(speeds[i - 1]);
+  });
+
+  it('all-capped route: summary shows the deep-cap label, never a fake "min 25.4 m"', async () => {
+    mockedLoad.mockResolvedValue(assetsWith(255)); // deep cap everywhere
+    const { container } = renderProfile();
+    await waitForChart(container);
+    const summary = container.querySelector('.depth-profile-summary')?.textContent ?? '';
+    expect(summary).toContain('≥ 25 m'); // "... · min. ≥ 25 m"
+    expect(summary).not.toContain('25.4');
+  });
+
+  it('byte 254 (measured 25.4 m) is NOT deep-cap: no cap band, no ">= 25 m" band label', async () => {
+    mockedLoad.mockResolvedValue(assetsWith(254));
+    const { container } = renderProfile();
+    await waitForChart(container);
+    expect(container.querySelectorAll('.dp-cap-band').length).toBe(0);
+    const labels = Array.from(container.querySelectorAll('text')).map((n) => n.textContent);
+    expect(labels).not.toContain('≥ 25 m');
+  });
+
+  it('omits the safety line when the safety depth is off-scale (deeper than the axis), keeps the label', async () => {
+    mockedLoad.mockResolvedValue(assetsWith(20)); // 2.0 m -> axisMax 4
+    const { container } = renderProfile({ safetyDepthM: 10 }); // 10 > 4, off-scale
+    await waitForChart(container);
+    expect(container.querySelectorAll('.dp-safety-line').length).toBe(0);
+    expect(container.querySelector('.dp-safety-label')?.textContent ?? '').toMatch(
+      /Safety depth\s+10\.0\s*m/,
+    );
   });
 });

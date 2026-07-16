@@ -121,6 +121,17 @@ describe('profileSamples', () => {
     expect(samples.every((s) => s.capped && s.depthM === 25.4)).toBe(true);
   });
 
+  it('does NOT flag byte 254 (reserved measured 25.4 m) as capped — counter-case', () => {
+    // Guards against a `capped: depthM >= 25.4` shortcut that would hatch a
+    // genuine 25.4 m reading as ">= 25 m". Same decoded depth, opposite flag.
+    const samples = profileSamples(
+      [leg],
+      makeMask(() => 254),
+      4,
+    );
+    expect(samples.every((s) => s.depthM === 25.4 && s.capped === false)).toBe(true);
+  });
+
   it('identifies motor time spans from the active leg', () => {
     const legs = [
       sailLeg(T0, T0 + HOUR, { lat: 54.5, lon: 10.0 }, { lat: 54.5, lon: 10.1 }),

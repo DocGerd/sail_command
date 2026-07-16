@@ -41,6 +41,30 @@ describe('barbSegments (WMO geometry, 5 kn buckets)', () => {
     expect(barbSegments(12).map((s) => s.kind)).toEqual(barbSegments(10).map((s) => s.kind));
     expect(barbSegments(13).map((s) => s.kind)).toEqual(barbSegments(15).map((s) => s.kind));
   });
+
+  it('pins literal feathered-barb coordinates (regression anchor, hardcoded from the WMO math)', () => {
+    // Numbers computed by hand from the pre-extraction constants (CENTER_X=16,
+    // TIP_Y=4, FEATHER_LENGTH=9, FEATHER_SPACING=6), NOT derived from
+    // barbSegments — a wrong length/angle mutation must fail here.
+    const s15 = barbSegments(15); // shaft, full barb, half barb
+    const full = s15[1] as Extract<BarbSegment, { kind: 'stroke' }>;
+    const half = s15[2] as Extract<BarbSegment, { kind: 'stroke' }>;
+    // full barb: (16,4) -> (25, 0.4)   [x = 16+9, y = 4 - 6*0.6]
+    expect(full.points[0]).toEqual({ x: 16, y: 4 });
+    expect(full.points[1].x).toBe(25);
+    expect(full.points[1].y).toBeCloseTo(0.4, 6);
+    // half barb: (16,10) -> (20.5, 8.2)  [x = 16+9/2, y = 10 - 6*0.3]
+    expect(half.points[0]).toEqual({ x: 16, y: 10 });
+    expect(half.points[1].x).toBe(20.5);
+    expect(half.points[1].y).toBeCloseTo(8.2, 6);
+    // 50 kn pennant triangle: (16,4), (25,7), (16,10)
+    const pennant = barbSegments(50)[1] as Extract<BarbSegment, { kind: 'fill' }>;
+    expect(pennant.points).toEqual([
+      { x: 16, y: 4 },
+      { x: 25, y: 7 },
+      { x: 16, y: 10 },
+    ]);
+  });
 });
 
 // Recording canvas context: captures only the path/draw op stream (ignores
