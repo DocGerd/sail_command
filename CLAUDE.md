@@ -78,6 +78,12 @@ deviate from it.
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
   stored per plan in IndexedDB, not in the SW cache).
+- Font glyphs (`basemap-assets/fonts/**`) are runtime-cached, never precached
+  (#28): a `sailcommand-glyphs-*` CacheFirst route in `app/src/sw.ts` plus an
+  app-side background warm-up (`app/src/services/glyphWarmup.ts`) that runs
+  only once the SW controls the page. Never extend the SW install/activate to
+  fetch them — the small install is the point. Cache version-bump procedure
+  lives in `app/src/lib/glyphs.ts`.
 - Deploy: `deploy.yml` fires on every push to main. Main is guarded by the
   `protect-main` ruleset (#15): PR-only merges (merge commits, review threads
   resolved), required checks `app` + `e2e` with strict up-to-date policy, no

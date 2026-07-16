@@ -147,6 +147,11 @@ vi.mock('maplibre-gl', () => {
     }
     remove() {}
     addControl() {}
+    getContainer() {
+      // A detached, control-less div: collapseAttributionAtLoad
+      // (MapView.tsx, #33) finds no attribution element in it and no-ops.
+      return document.createElement('div');
+    }
     addSource() {}
     // Track added layer ids so getLayer() reflects reality: MapView's
     // harbor-hit gate calls getLayer(id) before queryRenderedFeatures, and

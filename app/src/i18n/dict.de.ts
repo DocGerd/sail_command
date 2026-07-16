@@ -122,7 +122,9 @@ export const de = {
   'about.sources.heading': 'Datenquellen',
   'about.sources.protomaps': 'Kartendarstellung: Protomaps',
   'about.sources.osm': '© OpenStreetMap-Mitwirkende (ODbL)',
-  'about.sources.openMeteo': 'Windvorhersage: Open-Meteo (CC-BY 4.0)',
+  'about.sources.osmMask':
+    'Land-/Tiefenmaske: abgeleitet von © OpenStreetMap-Mitwirkenden, bereitgestellt unter ODbL',
+  'about.sources.openMeteo': 'Windvorhersage: Wetterdaten von Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polare: ORC International Zertifikat 2026, Salona 45 „Miles Ahead" (AUT 035/26); Vorwind-Werte auf Weißsegel (ohne Spinnaker) korrigiert — Schätzung, nicht renngenau kalibriert.',
   'banner.offline': 'Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.',

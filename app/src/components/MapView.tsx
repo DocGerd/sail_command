@@ -11,6 +11,7 @@ import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useLang } from '../i18n';
+import { noteMapError } from '../services/swRecovery';
 import type { LatLon } from '../types';
 
 // Register the pmtiles:// protocol once per module load (MapLibre protocols
@@ -28,7 +29,8 @@ const ZOOM = 9;
 const ATTRIBUTION =
   '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · ' +
   '<a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a> · ' +
-  'EMODnet Bathymetry (CC-BY 4.0) · Open-Meteo (CC-BY 4.0)';
+  '<a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a> (CC-BY 4.0) · ' +
+  '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a> (CC-BY 4.0)';
 
 function buildStyle(lang: string): StyleSpecification {
   const pmtilesUrl = new URL(import.meta.env.BASE_URL + 'data/basemap.pmtiles', location.href);
@@ -54,6 +56,55 @@ const MapInstanceCtx = createContext<MaplibreMap | null>(null);
 // eslint-disable-next-line react-refresh/only-export-components
 export function useMapInstance(): MaplibreMap | null {
   return useContext(MapInstanceCtx);
+}
+
+// #33: MapLibre 5.x's compact AttributionControl always enters compact mode
+// EXPANDED — the control enters the DOM empty/non-compact at onAdd, then
+// `_updateCompact` adds `maplibregl-compact` together with
+// `maplibregl-compact-show` (the class that reveals the full notice) the
+// moment the first attribution string arrives, and it stays expanded until
+// the first map drag (or a tap on its own toggle) — `_updateCompactMinimize`
+// removes `maplibregl-compact-show`. There is no upstream option for "start
+// collapsed". Below the 1024px breakpoint that expanded ~600px bar overlays
+// the bottom sheet's full-width controls and intercepts their pointer
+// events, so this reproduces upstream's own drag-collapse — remove
+// `maplibregl-compact-show`, nothing else — at the moment of that one-shot
+// auto-expansion. The attribution starts collapsed EVERYWHERE (not gated on
+// viewport width): a load-time gate would leave a wide-loaded session that
+// is later narrowed with the bar overlapping the sheet. Collapsing keeps the
+// notice one tap away — the position #33 accepted as satisfying CC-BY/ODbL
+// (upstream's compact docs recommend not collapsing where the bar fits; the
+// wide layout deliberately trades that for consistency and for closing the
+// resize gap). Removing or permanently hiding it would not be acceptable. A
+// MutationObserver callback runs as a microtask, i.e. before the expanded
+// bar can ever paint. Only CSS classes MapLibre itself ships styles for in
+// maplibre-gl.css are touched (a de-facto-stable surface; no JS internals);
+// the control's summary button keeps working. Returns a disposer for
+// unmount (no-op once the one-shot has fired).
+//
+// eslint-disable-next-line react-refresh/only-export-components
+export function collapseAttributionAtLoad(mapContainer: HTMLElement): () => void {
+  const attrib = mapContainer.querySelector('details.maplibregl-ctrl-attrib');
+  if (!attrib) return () => {};
+  // Already expanded at add time (attributions were available synchronously).
+  if (attrib.classList.contains('maplibregl-compact-show')) {
+    attrib.classList.remove('maplibregl-compact-show');
+    return () => {};
+  }
+  // One-shot: the first appearance of `maplibregl-compact-show` is always the
+  // auto-expansion (the toggle button only becomes usable once compact mode
+  // engages, which is the same instant), so collapsing it can never swallow a
+  // deliberate user expansion. Afterwards MapLibre never re-adds the class on
+  // its own (`_updateCompact` no-ops once `maplibregl-compact` is set), so
+  // the observer disconnects for good.
+  const observer = new MutationObserver(() => {
+    if (attrib.classList.contains('maplibregl-compact-show')) {
+      attrib.classList.remove('maplibregl-compact-show');
+      observer.disconnect();
+    }
+  });
+  observer.observe(attrib, { attributes: true, attributeFilter: ['class'] });
+  return () => observer.disconnect();
 }
 
 export interface MapViewProps {
@@ -125,6 +176,9 @@ export default function MapView({
       attributionControl: false,
     });
     instance.addControl(new AttributionControl({ compact: true }));
+    // Collapse the attribution's one-shot auto-expansion before it can paint
+    // (#33) — see collapseAttributionAtLoad.
+    const stopAttributionCollapse = collapseAttributionAtLoad(instance.getContainer());
 
     const handleClick = (e: MapMouseEvent) => {
       if (!tapActiveRef.current) return;
@@ -153,6 +207,10 @@ export default function MapView({
     // surfaces once. Every error is still console-logged, one-shot or not.
     const handleError = (e: ErrorEvent) => {
       console.error('MapLibre error', e.error);
+      // #27: recorded for EVERY error (before the one-shot banner gate
+      // below) — swRecovery itself decides whether the page was
+      // SW-uncontrolled at the time, which is the only case it acts on.
+      noteMapError();
       if (mapErrorReportedRef.current) return;
       mapErrorReportedRef.current = true;
       onMapErrorRef.current?.();
@@ -162,6 +220,7 @@ export default function MapView({
     setMap(instance);
 
     return () => {
+      stopAttributionCollapse();
       instance.off('click', handleClick);
       instance.off('error', handleError);
       instance.remove();

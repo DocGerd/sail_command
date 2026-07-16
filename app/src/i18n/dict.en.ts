@@ -119,7 +119,9 @@ export const en = {
   'about.sources.heading': 'Data sources',
   'about.sources.protomaps': 'Map rendering: Protomaps',
   'about.sources.osm': '© OpenStreetMap contributors (ODbL)',
-  'about.sources.openMeteo': 'Wind forecast: Open-Meteo (CC-BY 4.0)',
+  'about.sources.osmMask':
+    'Land/depth mask: derived from © OpenStreetMap contributors, made available under ODbL',
+  'about.sources.openMeteo': 'Wind forecast: Weather data by Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polars: ORC International 2026 certificate, Salona 45 "Miles Ahead" (AUT 035/26); downwind values corrected to white sails (non-spinnaker) — an estimate, not race-calibrated.',
   'banner.offline': 'Offline — planning disabled. Saved routes remain available.',
