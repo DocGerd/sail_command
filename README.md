@@ -55,16 +55,17 @@ in the background, applied on demand rather than mid-passage.
 
 ```
 npm --prefix app/ install
-npm --prefix app/ run dev        # local dev server
-npm --prefix app/ run test       # unit + property tests, ~4 min
-npm --prefix app/ run e2e        # Playwright E2E (plan flow, offline reload)
-npm --prefix app/ run build      # production build to app/dist
+npm --prefix app/ run dev                        # local dev server
+npm --prefix app/ run test                       # unit + property tests, ~4 min
+npm --prefix app/ exec playwright install chromium  # one-time E2E browser install
+npm --prefix app/ run e2e                        # Playwright E2E (plan flow, offline reload)
+npm --prefix app/ run build                      # production build to app/dist
 ```
 
 `npm run test` runs the full unit/property battery (polar interpolation,
 isochrone routing, mask queries, persistence, UI) and takes about 4 minutes.
 `npm run e2e` builds the app and drives it with Playwright, including a
-true offline reload against a killed dev server.
+true offline reload against a killed preview server.
 
 ## Data pipeline
 

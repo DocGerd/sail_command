@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { Harbor } from '../types';
 import { useLang, useT } from '../i18n';
 
@@ -34,6 +34,11 @@ export default function HarborPicker({ harbors, onSelect }: HarborPickerProps) {
   const [query, setQuery] = useState('');
   const [lang] = useLang();
   const t = useT();
+  // Origin and destination each render their own HarborPicker at the same
+  // time (PlannerPanel), so a hardcoded id would collide across instances —
+  // useId() gives every instance its own, keeping the label/input
+  // association (and the a11y tree) correct for both.
+  const searchId = useId();
 
   const results = useMemo(() => {
     const normalizedQuery = normalizeHarborSearch(query);
@@ -42,9 +47,9 @@ export default function HarborPicker({ harbors, onSelect }: HarborPickerProps) {
 
   return (
     <div className="harbor-picker">
-      <label htmlFor="harbor-picker-search">{t('harborPicker.searchLabel')}</label>
+      <label htmlFor={searchId}>{t('harborPicker.searchLabel')}</label>
       <input
-        id="harbor-picker-search"
+        id={searchId}
         type="text"
         role="searchbox"
         value={query}

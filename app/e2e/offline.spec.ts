@@ -85,6 +85,19 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
       page.getByText('Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.'),
     ).toBeVisible();
 
+    // Proves sw.ts's dedicated Range-request route for .pmtiles is actually
+    // what's serving the basemap here, not just "some cached response that
+    // happens to render a canvas" — workbox's *default* precache route would
+    // instead replay a full 200 to a ranged request, which pmtiles'
+    // FetchSource rejects (see sw.ts's own comment). This is the only place
+    // in the offline pass that would catch that route silently regressing
+    // while the map still happens to render via some other fallback.
+    const rangeStatus = await page.evaluate(async () => {
+      const res = await fetch('data/basemap.pmtiles', { headers: { range: 'bytes=0-99' } });
+      return res.status;
+    });
+    expect(rangeStatus).toBe(206);
+
     // Picking origin/destination still works offline: data/harbors.json is
     // precached too (vite.config.ts's globPatterns includes json), served
     // straight from the SW's cache regardless of network state. With both

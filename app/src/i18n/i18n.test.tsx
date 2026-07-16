@@ -44,3 +44,11 @@ it('toggle switches the rendered language and persists it', () => {
   expect(screen.getByTestId('vars')).toHaveTextContent('Arrival 14:30');
   expect(localStorage.getItem('sc-lang')).toBe('en');
 });
+
+it('syncs document.documentElement.lang to the active language, including on toggle', () => {
+  localStorage.setItem('sc-lang', 'de');
+  renderProbe();
+  expect(document.documentElement.lang).toBe('de');
+  fireEvent.click(screen.getByText('toggle'));
+  expect(document.documentElement.lang).toBe('en');
+});

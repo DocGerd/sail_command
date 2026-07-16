@@ -102,7 +102,7 @@ export const de = {
   'about.caveats.polars':
     'Die Polardaten sind Schätzungen auf Basis ORC-artiger VPP-Daten, einstellbar über den Leistungsfaktor in den Optionen — nicht renngenau kalibriert.',
   'about.dataSize':
-    'Der erste Aufruf lädt ca. 30–40 MB (Basiskarte und Routendaten) herunter; spätere Aufrufe werden aus dem Cache bedient und funktionieren offline.',
+    'Der erste Aufruf lädt ca. 44 MB (Basiskarte und Routendaten) herunter; spätere Aufrufe werden aus dem Cache bedient und funktionieren offline.',
   'about.sources.heading': 'Datenquellen',
   'about.sources.protomaps': 'Kartendarstellung: Protomaps',
   'about.sources.osm': '© OpenStreetMap-Mitwirkende (ODbL)',
@@ -110,6 +110,7 @@ export const de = {
   'about.sources.polars':
     'Polare: ORC International Zertifikat 2026, Salona 45 „Miles Ahead" (AUT 035/26); Vorwind-Werte auf Weißsegel (ohne Spinnaker) korrigiert — Schätzung, nicht renngenau kalibriert.',
   'banner.offline': 'Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.',
+  'banner.mapError': 'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.',
   'banner.persistenceError': 'Einstellungen konnten nicht gespeichert werden.',
   'banner.dismiss': 'Schließen',
   'banner.tapPick': 'Auf Karte tippen für {target}.',

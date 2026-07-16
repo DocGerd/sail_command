@@ -10,7 +10,7 @@ export interface AboutDialogProps {
 // Mask-data provenance (EMODnet DTM citation + DOI, OSM/ODbL land polygons)
 // comes from mask.meta.json's optional `sources` field (types.ts), fetched
 // directly here on every dialog open — NOT via services/assets.ts's
-// loadRoutingAssets(), which would force the full ~30-40 MB routing bundle
+// loadRoutingAssets(), which would force the full ~44 MB routing bundle
 // (mask.bin, both polars, harbors.json) to download just to open an About
 // dialog. mask.meta.json alone is a few hundred bytes; the browser's own
 // HTTP cache makes repeat opens cheap without any module-level caching here.

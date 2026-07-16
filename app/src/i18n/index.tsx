@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { de, type MsgKey } from './dict.de';
 import { en } from './dict.en';
 import { safeGetItem, safeSetItem } from '../lib/storage';
@@ -19,6 +19,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     safeSetItem('sc-lang', l);
     setLangState(l);
   };
+  // Keeps the document's declared language (index.html's static default is
+  // 'de') in sync with the active UI language, so screen readers pronounce
+  // content correctly after a toggle — not just on first load.
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
   return <LangCtx.Provider value={{ lang, setLang }}>{children}</LangCtx.Provider>;
 }
 

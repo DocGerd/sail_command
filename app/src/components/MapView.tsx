@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Map as MaplibreMap, addProtocol, AttributionControl } from 'maplibre-gl';
-import type { StyleSpecification, MapMouseEvent, LngLatBoundsLike, LngLatLike } from 'maplibre-gl';
+import type { StyleSpecification, MapMouseEvent, ErrorEvent, LngLatBoundsLike, LngLatLike } from 'maplibre-gl';
 import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -52,28 +52,39 @@ export function useMapInstance(): MaplibreMap | null {
 export interface MapViewProps {
   tapActive: boolean;
   onTap: (p: LatLon) => void;
+  onMapError?: () => void;
   children?: ReactNode;
 }
 
-export default function MapView({ tapActive, onTap, children }: MapViewProps) {
+export default function MapView({ tapActive, onTap, onMapError, children }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<MaplibreMap | null>(null);
   const [lang] = useLang();
 
-  // Refs so the click handler always sees the latest prop values without
-  // tearing down and recreating the map (an expensive operation) on every
-  // prop change. Synced in an effect (not during render) per the
+  // Refs so the click/error handlers always see the latest prop values
+  // without tearing down and recreating the map (an expensive operation) on
+  // every prop change. Synced in an effect (not during render) per the
   // react-hooks/refs rule.
   const tapActiveRef = useRef(tapActive);
   const onTapRef = useRef(onTap);
+  const onMapErrorRef = useRef(onMapError);
   useEffect(() => {
     tapActiveRef.current = tapActive;
     onTapRef.current = onTap;
+    onMapErrorRef.current = onMapError;
   });
+
+  // MapLibre can fire many 'error' events in a row (style/glyph/tile fetch
+  // failures, etc.); only the first should surface the app's map-error
+  // banner. A ref, not state — it needs to gate the handler synchronously
+  // on every subsequent event, not trigger a re-render itself.
+  const mapErrorReportedRef = useRef(false);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    mapErrorReportedRef.current = false;
 
     // Label language is baked into the style at creation time; SailCommand's
     // language switch is rare enough that re-fetching/re-diffing the whole
@@ -94,10 +105,21 @@ export default function MapView({ tapActive, onTap, children }: MapViewProps) {
     };
     instance.on('click', handleClick);
 
+    // See mapErrorReportedRef's declaration above for why this only ever
+    // surfaces once. Every error is still console-logged, one-shot or not.
+    const handleError = (e: ErrorEvent) => {
+      console.error('MapLibre error', e.error);
+      if (mapErrorReportedRef.current) return;
+      mapErrorReportedRef.current = true;
+      onMapErrorRef.current?.();
+    };
+    instance.on('error', handleError);
+
     setMap(instance);
 
     return () => {
       instance.off('click', handleClick);
+      instance.off('error', handleError);
       instance.remove();
       setMap(null);
     };

@@ -104,7 +104,7 @@ export const en = {
   'about.caveats.polars':
     'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
   'about.dataSize':
-    'First load downloads ~30–40 MB (basemap and route data); later loads are served from cache and work offline.',
+    'First load downloads ~44 MB (basemap and route data); later loads are served from cache and work offline.',
   'about.sources.heading': 'Data sources',
   'about.sources.protomaps': 'Map rendering: Protomaps',
   'about.sources.osm': '© OpenStreetMap contributors (ODbL)',
@@ -112,6 +112,7 @@ export const en = {
   'about.sources.polars':
     'Polars: ORC International 2026 certificate, Salona 45 "Miles Ahead" (AUT 035/26); downwind values corrected to white sails (non-spinnaker) — an estimate, not race-calibrated.',
   'banner.offline': 'Offline — planning disabled. Saved routes remain available.',
+  'banner.mapError': 'Map data could not be loaded — the display may be incomplete.',
   'banner.persistenceError': 'Settings could not be saved.',
   'banner.dismiss': 'Dismiss',
   'banner.tapPick': 'Tap the map to set {target}.',

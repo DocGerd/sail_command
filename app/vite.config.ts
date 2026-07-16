@@ -17,7 +17,7 @@ export default defineConfig({
       // working until the user opts into ReloadPrompt's reload.
       registerType: 'prompt',
       injectManifest: {
-        // ~30-40 MB expected (basemap.pmtiles + mask.bin + polars + fonts/
+        // ~44 MB expected (basemap.pmtiles + mask.bin + polars + fonts/
         // sprites + app shell) — see spec §7's first-load budget.
         maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,pmtiles,pbf}'],
@@ -33,6 +33,7 @@ export default defineConfig({
         name: 'SailCommand',
         short_name: 'SailCommand',
         description: 'Törnplanung Flensburger Förde & Dänische Südsee',
+        lang: 'de',
         theme_color: '#0b3d5c',
         background_color: '#0b3d5c',
         display: 'standalone',
