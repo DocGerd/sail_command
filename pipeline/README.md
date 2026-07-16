@@ -71,7 +71,8 @@ against OSM) rather than weakening the threshold or fudging the mask.
 
 **Hook-protected binary — regenerate, never hand-edit `mask.bin`.**
 
-A packed 1100×1200 grid (dLon ≈ 92.8 m, dLat ≈ 92.6 m at 54.8°N) covering
+A packed 2200×2400 grid (dLon ≈ 46.6 m, dLat ≈ 46.3 m at 54.8°N; 2× the
+original 1100×1200 grid — see issue #6) covering
 9.4–11.0°E, 54.3–55.3°N. Each cell is one byte: `0` = land or
 unknown/unsurveyed (non-navigable), `1..254` = depth in decimeters (floored,
 never rounded up — 0.1–25.4 m), `255` = deep (≥ 25.4 m). Row 0 is the
