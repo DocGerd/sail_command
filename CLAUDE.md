@@ -76,9 +76,9 @@ deviate from it.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
-- E2E determinism: never `waitForTimeout` — gate on state signals with
-  `expect.poll` (settle canvas baselines via two consecutive byte-equal
-  screenshots before pixel comparisons).
+- E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
+  on state signals with `expect.poll`; settle canvas baselines via two
+  consecutive byte-equal screenshots before byte-comparing frames against them.
 - `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
@@ -143,9 +143,10 @@ deviate from it.
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
-- PR review threads via API: bodies containing backticks must be sent as JSON
-  `--input` files (shell quoting mangles them); inline comments 422 outside diff
-  hunks — anchor to in-diff lines, put out-of-diff findings in a PR comment.
+- PR review threads via API: send bodies containing backticks as JSON `--input`
+  files (double-quoted shell interpolation mangles them); inline comments 422
+  outside diff hunks — anchor to in-diff lines, put out-of-diff findings in a
+  PR comment.
 - Worktree-isolated agents don't survive completion (branch + node_modules do):
   fix waves need a FRESH agent pointed at the surviving worktree. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
