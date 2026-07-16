@@ -26,19 +26,23 @@ describe('RouteLegend', () => {
     expect(screen.getByText('Legend')).toBeInTheDocument();
   });
 
-  it('lists the six route legend entries with their swatch spans', () => {
-    const { container } = renderLegend();
-    for (const label of [
-      'Sail, starboard tack',
-      'Sail, port tack',
-      'Motor (engine only)',
-      'Tack/gybe',
-      'Heading change',
-      'Via waypoint',
-    ]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+  it('pairs each legend label with its own swatch class in the same row', () => {
+    renderLegend();
+    // Label -> swatch class. Asserting the swatch sits in the SAME <li> as its
+    // label catches a swapped starboard/port color (a mere count would not).
+    const entries: [string, string][] = [
+      ['Sail, starboard tack', 'route-legend-line-starboard'],
+      ['Sail, port tack', 'route-legend-line-port'],
+      ['Motor (engine only)', 'route-legend-line-motor'],
+      ['Tack/gybe', 'route-legend-maneuver'],
+      ['Heading change', 'route-legend-heading'],
+      ['Via waypoint', 'route-legend-via'],
+    ];
+    for (const [label, cls] of entries) {
+      const li = screen.getByText(label).closest('li');
+      expect(li).not.toBeNull();
+      expect(li!.querySelector('.' + cls)).not.toBeNull();
     }
-    expect(container.querySelectorAll('.route-legend-swatch')).toHaveLength(6);
   });
 
   it('expands and collapses when the summary is toggled', () => {

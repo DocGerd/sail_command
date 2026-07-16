@@ -133,6 +133,13 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
 
     await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible();
 
+    // #46a: the collapsed route legend mounts in the route-layer controls once
+    // a plan renders. RouteLayer has no unit test (MapLibre-bound) and no other
+    // spec references the legend, so this pins the <RouteLegend /> mount through
+    // the #35/36/37 RouteLayer rewrite — dropping the mount line would fail here
+    // rather than passing silently. German UI, so the summary reads "Legende".
+    await expect(page.locator('details.route-legend > summary')).toHaveText('Legende');
+
     await expect(page.locator('.plans-list-row')).toHaveCount(1);
   } finally {
     server.kill();

@@ -293,8 +293,8 @@ select {
   gap: 0.25rem 0.75rem;
 }
 
-/* ---- Map-overlay controls (RouteLayer's barb toggle/time slider, and
-   DataLayers' always-mounted depth toggle) ---- */
+/* ---- Map-overlay controls (RouteLayer's barb toggle/time slider and
+   collapsible legend, and DataLayers' always-mounted depth toggle) ---- */
 
 .route-layer-controls,
 .data-layer-controls {
@@ -326,89 +326,24 @@ select {
   gap: 0.4rem;
 }
 
-.sc-boat-marker {
-  pointer-events: none;
-}
-
-/* ---- Panel content shared across tabs ---- */
-
-.planner-panel,
-.route-summary,
-.plans-list,
-.options-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.options-field,
-.planner-departure {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.route-totals {
-  display: grid;
-  grid-template-columns: max-content max-content;
-  justify-content: start;
-  gap: 0.25rem 1rem;
-}
-
-.route-legs {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-  display: block;
-  overflow-x: auto;
-}
-
-.route-legs th,
-.route-legs td {
-  padding: 0.3rem 0.5rem;
-  border-bottom: 1px solid var(--sc-border);
-  text-align: left;
-  white-space: nowrap;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--sc-fg) 8%, transparent);
-  font-size: 0.8rem;
-}
-
-.board-dot {
-  display: inline-block;
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 50%;
-}
-
-/* ---- #46a motor-semantics legibility: options help text, motor footnote,
-   and the collapsible route legend ---- */
-
-.options-help {
-  margin: 0;
-  font-size: 0.8rem;
-  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
-}
-
-.route-legs-note {
-  margin: 0;
-  font-size: 0.8rem;
-  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
-}
-
+/* Collapsible route legend (#46a), rendered inside .route-layer-controls. */
 .route-legend > summary {
   /* Boat-glove-friendly touch target, matching the button min-height. */
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 0.3rem;
   cursor: pointer;
+}
+
+/* display:flex drops the native ::marker disclosure triangle, so give an
+   explicit affordance that flips on open — touch devices have no hover cue. */
+.route-legend > summary::before {
+  content: '\25B8';
+}
+
+.route-legend[open] > summary::before {
+  content: '\25BE';
 }
 
 .route-legend ul {
@@ -477,6 +412,83 @@ select {
   height: 0.85rem;
   border-radius: 50%;
   background: #cc79a7;
+}
+
+.sc-boat-marker {
+  pointer-events: none;
+}
+
+/* ---- Panel content shared across tabs ---- */
+
+.planner-panel,
+.route-summary,
+.plans-list,
+.options-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.options-field,
+.planner-departure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.route-totals {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  justify-content: start;
+  gap: 0.25rem 1rem;
+}
+
+.route-legs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.route-legs th,
+.route-legs td {
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--sc-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sc-fg) 8%, transparent);
+  font-size: 0.8rem;
+}
+
+.board-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+}
+
+/* #46a: options help text (OptionsPanel) and motor footnote (RouteSummary);
+   both are panel content. The legend's own rules live in the Map-overlay
+   controls section above, where it actually renders. */
+.options-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+.route-legs-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
 }
 
 .plans-list {
