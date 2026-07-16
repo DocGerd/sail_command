@@ -15,6 +15,7 @@ import { registerBarbImages } from '../lib/windBarbs';
 import { NavMask } from '../lib/mask';
 import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
+import RouteLegend from './RouteLegend';
 import type { LatLon, Plan, Rig } from '../types';
 
 export interface RouteLayerProps {
@@ -541,6 +542,7 @@ export default function RouteLayer({
         replanning={viaReplanning}
         onDragEnd={onViaDragEnd}
       />
+      <RouteLegend />
     </div>
   );
 }

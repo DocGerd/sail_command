@@ -1,6 +1,13 @@
 import { useT, useLang } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
-import { formatDateTime, formatDuration, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
+import {
+  formatDateTime,
+  formatDuration,
+  formatHeading,
+  formatKn,
+  formatNm,
+  formatTime,
+} from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import type { Board, Leg, NoRouteReason, Plan, Rig } from '../types';
@@ -34,12 +41,14 @@ function reasonForRig(plan: Plan, rig: Rig): NoRouteReason | null {
   return rig === 'genoa' ? plan.result.genoaReason : plan.result.fockReason;
 }
 
-function LegKindChip({ leg }: { leg: Leg }) {
+function LegKindChip({ leg, rig }: { leg: Leg; rig: Rig }) {
   const t = useT();
   if (leg.kind === 'motor') {
     return <span className="chip chip-motor">{t('route.kind.motor')}</span>;
   }
   const boardKey = leg.board === 'port' ? 'route.board.port' : 'route.board.starboard';
+  // Prefix the displayed rig's sail name so each sail leg names the sail
+  // actually driving it (Genoa/Fock), making propulsion explicit per leg.
   return (
     <span className="chip chip-sail">
       <span
@@ -47,7 +56,7 @@ function LegKindChip({ leg }: { leg: Leg }) {
         aria-hidden="true"
         style={{ backgroundColor: BOARD_COLOR[leg.board] }}
       />
-      {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
+      {t(RIG_LABEL_KEY[rig])} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
     </span>
   );
 }
@@ -135,7 +144,7 @@ export default function RouteSummary({ plan, rig, onRigChange }: RouteSummaryPro
                 <tr key={i}>
                   <td>{formatTime(leg.startTimeMs, lang)}</td>
                   <td>
-                    <LegKindChip leg={leg} />
+                    <LegKindChip leg={leg} rig={rig} />
                   </td>
                   <td>{formatHeading(leg.headingDeg)}</td>
                   <td>{leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}</td>
@@ -145,7 +154,11 @@ export default function RouteSummary({ plan, rig, onRigChange }: RouteSummaryPro
                   <td>
                     {leg.maneuverAtStart && (
                       <span className="chip chip-maneuver">
-                        {t(leg.maneuverAtStart === 'tack' ? 'route.maneuver.tack' : 'route.maneuver.gybe')}
+                        {t(
+                          leg.maneuverAtStart === 'tack'
+                            ? 'route.maneuver.tack'
+                            : 'route.maneuver.gybe',
+                        )}
                       </span>
                     )}
                   </td>
@@ -154,7 +167,13 @@ export default function RouteSummary({ plan, rig, onRigChange }: RouteSummaryPro
             </tbody>
           </table>
 
-          <button type="button" onClick={() => downloadGpx(plan, rig)} disabled={result.legs.length === 0}>
+          {result.legs.length > 0 && <p className="route-legs-note">{t('route.legs.motorNote')}</p>}
+
+          <button
+            type="button"
+            onClick={() => downloadGpx(plan, rig)}
+            disabled={result.legs.length === 0}
+          >
             {t('route.exportGpx')}
           </button>
         </>

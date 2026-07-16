@@ -160,7 +160,9 @@ describe('RouteSummary', () => {
   it('shows the motor-distance totals row when motor nm > 0', () => {
     const { totals } = renderSummary({ rig: 'genoa' });
     expect(totals).not.toBeNull();
-    expect(within(totals!).getByText('Motor distance').nextElementSibling).toHaveTextContent('5.0 nm');
+    expect(within(totals!).getByText('Motor distance').nextElementSibling).toHaveTextContent(
+      '5.0 nm',
+    );
   });
 
   it('omits the motor-distance totals row when motor nm is 0', () => {
@@ -187,6 +189,29 @@ describe('RouteSummary', () => {
     expect(screen.getByText('088°')).toBeInTheDocument();
   });
 
+  it('prefixes each sail-leg chip with the displayed rig name (genoa)', () => {
+    renderSummary({ rig: 'genoa' });
+    expect(screen.getByText('Genoa · Stbd Reach')).toBeInTheDocument();
+    expect(screen.getByText('Genoa · Port Reach')).toBeInTheDocument();
+  });
+
+  it('switches the sail-chip rig prefix to the displayed rig (fock)', () => {
+    renderSummary({ rig: 'fock' });
+    expect(screen.getByText('Fock · Stbd Reach')).toBeInTheDocument();
+  });
+
+  it('renders the motor-note footnote under the leg table when the result has legs', () => {
+    renderSummary({ rig: 'genoa' });
+    expect(screen.getByText(/Motor = engine only/)).toBeInTheDocument();
+  });
+
+  it('omits the motor-note footnote when the selected rig result has no legs', () => {
+    const plan = makePlan();
+    plan.result.genoa = { ...GENOA_RESULT, legs: [] };
+    renderSummary({ plan, rig: 'genoa' });
+    expect(screen.queryByText(/Motor = engine only/)).not.toBeInTheDocument();
+  });
+
   it('renders a no-route message instead of totals/legs when the selected rig has no result', () => {
     const plan = makePlan();
     plan.result.fock = null;
@@ -206,11 +231,11 @@ describe('RouteSummary', () => {
     URL.revokeObjectURL = revokeObjectURL;
 
     let downloadName = '';
-    const clickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, 'click')
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        downloadName = this.download;
-      });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadName = this.download;
+    });
 
     try {
       const { plan } = renderSummary({ rig: 'genoa' });
