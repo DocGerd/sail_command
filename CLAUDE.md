@@ -64,6 +64,23 @@ deviate from it.
   plan's forecast intact); only the mask buffer is transferred, always as a
   `.slice(0)` copy of the cached original.
 
+## PWA / E2E / deploy (Phase F)
+
+- E2E: `npm --prefix app run e2e` (the `pree2e` hook regenerates
+  `app/public/test-fixtures/wind-sw12.json` with fresh timestamps and builds —
+  a dirty fixture diff after an e2e run is expected churn, restore it, don't
+  commit it). One-time setup: `npm --prefix app exec playwright install chromium`.
+- **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
+  service-worker fetches (Playwright #2311) — the offline spec kills the
+  preview server instead. Never "simplify" that away.
+- `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
+  `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
+  full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
+  stored per plan in IndexedDB, not in the SW cache).
+- Deploy: `deploy.yml` fires on every push to main, gated by the build only —
+  required status checks are tracked in #15. Pages serves at
+  `https://docgerd.github.io/sail_command/`.
+
 ## Verification lessons (hard-won)
 
 - Synthetic-mask tests missed a product-blocking solver bug that the FIRST
