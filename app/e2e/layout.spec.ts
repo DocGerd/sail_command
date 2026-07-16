@@ -54,17 +54,19 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     expect(wideCanvas.width).toBeGreaterThan(1280 * 0.5);
     expect(wideCanvas.width).toBeLessThan(1280 * 0.75);
 
-    // Live readout floats as a compact card in the MAP column, not stretched
-    // across the panel. A fresh e2e context has no active plan/GPS fix, so
-    // LiveView renders its no-plan card (`.live-view-no-plan`) — enough to
-    // assert placement. It must sit right of the panel (in the map column) and
-    // stay capped to a card width (22rem + slack), not fill the map.
+    // #31: on wide the Live readout renders INSIDE the left panel column (so
+    // the panel content area is no longer empty under the Live tab), not as a
+    // floating card over the map. A fresh e2e context has no active plan/GPS
+    // fix, so LiveView renders its no-plan card (`.live-view-no-plan`) — enough
+    // to assert placement. Scope the locator to the bottom-sheet panel to prove
+    // DOM containment (the portal target lives there), then confirm it sits
+    // within the panel column's horizontal bounds, not right of it over the map.
     await page.getByRole('tab', { name: 'Live' }).click();
-    const liveCard = page.locator('.live-view-no-plan');
+    const liveCard = page.locator('.app-bottom-sheet .live-view-no-plan');
     await expect(liveCard).toBeVisible();
     const liveBox = await box(liveCard);
-    expect(liveBox.x).toBeGreaterThan(widePanel.x + widePanel.width);
-    expect(liveBox.width).toBeLessThanOrEqual(356);
+    expect(liveBox.x).toBeGreaterThanOrEqual(widePanel.x - 2);
+    expect(liveBox.x + liveBox.width).toBeLessThanOrEqual(widePanel.x + widePanel.width + 2);
     // Switch back so the banner/form-control assertions below see the planner.
     await page.getByRole('tab', { name: 'Planen' }).click();
 
@@ -110,6 +112,15 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     expect(narrowMap.x).toBeLessThan(2);
     expect(narrowMap.width).toBeGreaterThan(375 * 0.95);
     expect(narrowMap.height).toBeGreaterThan(667 * 0.95);
+
+    // #31: narrow layout is unchanged — the readout stays a map-corner card in
+    // MapView's subtree (inside .map-area), NOT portaled into the bottom-sheet
+    // panel. This pins the split direction so a future refactor can't quietly
+    // move the narrow readout into the panel.
+    await page.getByRole('tab', { name: 'Live' }).click();
+    await expect(page.locator('.map-area .live-view-no-plan')).toBeVisible();
+    await expect(page.locator('.app-bottom-sheet .live-view-no-plan')).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Planen' }).click();
 
     // --- Back to wide: the canvas must resize with its container ---
     await page.setViewportSize({ width: 1280, height: 800 });

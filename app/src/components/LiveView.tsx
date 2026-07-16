@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import { useActivePlan } from '../state/AppState';
@@ -15,8 +16,15 @@ import { watchPosition as realWatchPosition, type GpsFix } from '../services/geo
 import BoatMarker from './BoatMarker';
 import type { ManeuverKind } from '../types';
 
-export interface LiveViewDeps {
+export interface LiveViewProps {
   watchPosition?: typeof realWatchPosition;
+  // #31: when set (wide layout), the textual readout renders into this
+  // panel-column slot via a portal instead of the map-corner card. BoatMarker
+  // and its map-anchored accuracy circle always stay in MapView's subtree —
+  // React context flows through a portal by tree position, not DOM position, so
+  // useMapInstance() keeps resolving the map wherever the readout lands. Null/
+  // undefined = render inline (narrow, unchanged).
+  panelSlot?: HTMLElement | null;
 }
 
 // Marks the GPS-denied/unavailable hint as shown, forever (spec §4: "hint
@@ -33,7 +41,10 @@ const MANEUVER_LABEL_KEY: Record<ManeuverKind, MsgKey> = {
 // AppState) — see AppState.tsx's docstring: 1 Hz position updates must not
 // re-render the whole app. Only the much-lower-frequency derived
 // activeLegIndex is pushed up, for RouteLayer's highlight.
-export default function LiveView({ watchPosition = realWatchPosition }: LiveViewDeps = {}) {
+export default function LiveView({
+  watchPosition = realWatchPosition,
+  panelSlot,
+}: LiveViewProps = {}) {
   const t = useT();
   const [lang] = useLang();
   const { plan, rig, setActiveLegIndex } = useActivePlan();
@@ -83,13 +94,17 @@ export default function LiveView({ watchPosition = realWatchPosition }: LiveView
   }, []);
 
   if (!result || legs.length === 0) {
-    return <p className="live-view-no-plan">{t('live.noPlan')}</p>;
+    const noPlan = <p className="live-view-no-plan">{t('live.noPlan')}</p>;
+    return panelSlot ? createPortal(noPlan, panelSlot) : noPlan;
   }
 
   const hts = fix && legIdx !== null ? headingToSteerDeg(legs, legIdx, fix.point) : null;
-  const nextEvent = fix && legIdx !== null ? distanceToNextManeuverNm(legs, legIdx, fix.point) : null;
+  const nextEvent =
+    fix && legIdx !== null ? distanceToNextManeuverNm(legs, legIdx, fix.point) : null;
   const etaMs =
-    fix && legIdx !== null && fixAtMs !== null ? projectedEtaMs(legs, legIdx, fix.point, fixAtMs) : null;
+    fix && legIdx !== null && fixAtMs !== null
+      ? projectedEtaMs(legs, legIdx, fix.point, fixAtMs)
+      : null;
   const driftMs = etaMs !== null ? etaMs - legs[legs.length - 1].endTimeMs : null;
 
   const toggleActive = () => {
@@ -103,7 +118,7 @@ export default function LiveView({ watchPosition = realWatchPosition }: LiveView
     }
   };
 
-  return (
+  const readout = (
     <div className="live-view">
       <button type="button" aria-pressed={active} onClick={toggleActive}>
         {t('live.toggle')}
@@ -135,7 +150,9 @@ export default function LiveView({ watchPosition = realWatchPosition }: LiveView
           <p className="live-view-next-event">
             {nextEvent
               ? `${t('live.nextEvent.label', { distance: formatNm(nextEvent.distNm) })} ${t(
-                  nextEvent.kind === 'motor-start' ? 'live.nextEvent.motorStart' : MANEUVER_LABEL_KEY[nextEvent.kind],
+                  nextEvent.kind === 'motor-start'
+                    ? 'live.nextEvent.motorStart'
+                    : MANEUVER_LABEL_KEY[nextEvent.kind],
                 )}`
               : t('live.nextEvent.none')}
           </p>
@@ -144,10 +161,25 @@ export default function LiveView({ watchPosition = realWatchPosition }: LiveView
             {t('live.eta.label')}: {etaMs !== null ? formatTime(etaMs, lang) : '—'}
             {driftMs !== null && ` (${formatDriftMin(driftMs)})`}
           </p>
-
-          <BoatMarker point={fix.point} cogDeg={fix.cogDeg} headingToSteerDeg={hts} accuracyM={fix.accuracyM} />
         </div>
       )}
     </div>
+  );
+
+  // The readout is portaled into the panel column on wide (#31); BoatMarker is
+  // rendered as a sibling — always inline in MapView's subtree, never portaled
+  // — so a narrow<->wide switch never remounts the imperative map marker.
+  return (
+    <>
+      {panelSlot ? createPortal(readout, panelSlot) : readout}
+      {fix && hts !== null && (
+        <BoatMarker
+          point={fix.point}
+          cogDeg={fix.cogDeg}
+          headingToSteerDeg={hts}
+          accuracyM={fix.accuracyM}
+        />
+      )}
+    </>
   );
 }
