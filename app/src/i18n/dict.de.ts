@@ -85,6 +85,14 @@ export const de = {
   'route.exportGpx': 'GPX exportieren',
   'route.windBarbs.toggle': 'Windpfeile anzeigen',
   'route.windBarbs.timeSlider': 'Vorhersagezeitpunkt',
+  // Depth profile (#45)
+  'profile.title': 'Tiefenprofil',
+  'profile.depthAxis': 'Tiefe (m)',
+  'profile.deepCap': '≥ 25 m',
+  'profile.safetyDepth': 'Sicherheitstiefe',
+  'profile.heading': 'Kurs',
+  'profile.wind': 'Wind',
+  'profile.minDepth': 'min',
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',

@@ -17,34 +17,50 @@ const STROKE = '#1a1a1a';
 const STEP_KN = 5;
 const MAX_KN = 50;
 
-/**
- * Draws one WMO-style wind barb for `speedKn` onto `ctx`. The icon is drawn
- * "north-up" (shaft vertical, feathers at the top / tip) so that a MapLibre
- * `icon-rotate: dirFromDeg` (clockwise bearing) turns the feathered end to
- * point INTO the wind's FROM direction — the standard barb convention.
- */
-function drawBarb(ctx: CanvasRenderingContext2D, speedKn: number): void {
-  ctx.clearRect(0, 0, IMAGE_SIZE, IMAGE_SIZE);
-  ctx.strokeStyle = STROKE;
-  ctx.fillStyle = STROKE;
-  ctx.lineWidth = 1.5;
-  ctx.lineCap = 'round';
+export interface BarbPoint {
+  x: number;
+  y: number;
+}
 
+/**
+ * One primitive of a wind-barb glyph in the 32x32 icon box. `circle` is the
+ * calm marker (stroked, no fill); `stroke` is the shaft and the full/half
+ * feathers (open polyline); `fill` is a 50 kn pennant (closed, filled
+ * triangle).
+ */
+export type BarbSegment =
+  | { kind: 'circle'; cx: number; cy: number; r: number }
+  | { kind: 'stroke'; points: readonly BarbPoint[] }
+  | { kind: 'fill'; points: readonly BarbPoint[] };
+
+/**
+ * Pure WMO wind-barb geometry for `speedKn`, in the 32x32 icon box, drawn
+ * "north-up" (shaft vertical, station end at the bottom near the anchor,
+ * feathers at the top / tip) so a clockwise rotation by the meteorological
+ * FROM bearing turns the feathered end INTO the wind — the standard barb
+ * convention. 5 kn buckets: pennant = 50 kn (filled triangle), full barb =
+ * 10 kn, half barb = 5 kn. This is the single source of truth for the barb
+ * shape shared by the canvas `drawBarb` (map icons) and the depth profile's
+ * SVG glyphs.
+ */
+export function barbSegments(speedKn: number): BarbSegment[] {
   const units = Math.round(speedKn / STEP_KN); // number of 5 kn increments
 
   if (units <= 0) {
     // Calm: a small circle at the station end, no shaft/feathers.
-    ctx.beginPath();
-    ctx.arc(CENTER_X, TAIL_Y, 4, 0, Math.PI * 2);
-    ctx.stroke();
-    return;
+    return [{ kind: 'circle', cx: CENTER_X, cy: TAIL_Y, r: 4 }];
   }
 
-  // Shaft.
-  ctx.beginPath();
-  ctx.moveTo(CENTER_X, TAIL_Y);
-  ctx.lineTo(CENTER_X, TIP_Y);
-  ctx.stroke();
+  const segments: BarbSegment[] = [
+    // Shaft.
+    {
+      kind: 'stroke',
+      points: [
+        { x: CENTER_X, y: TAIL_Y },
+        { x: CENTER_X, y: TIP_Y },
+      ],
+    },
+  ];
 
   let remaining = units;
   const pennants = Math.floor(remaining / 10); // 50 kn each
@@ -57,26 +73,69 @@ function drawBarb(ctx: CanvasRenderingContext2D, speedKn: number): void {
   // barbs, then a trailing half barb).
   let y = TIP_Y;
   for (let i = 0; i < pennants; i++) {
-    ctx.beginPath();
-    ctx.moveTo(CENTER_X, y);
-    ctx.lineTo(CENTER_X + FEATHER_LENGTH, y + FEATHER_SPACING / 2);
-    ctx.lineTo(CENTER_X, y + FEATHER_SPACING);
-    ctx.closePath();
-    ctx.fill();
+    segments.push({
+      kind: 'fill',
+      points: [
+        { x: CENTER_X, y },
+        { x: CENTER_X + FEATHER_LENGTH, y: y + FEATHER_SPACING / 2 },
+        { x: CENTER_X, y: y + FEATHER_SPACING },
+      ],
+    });
     y += FEATHER_SPACING + 1;
   }
   for (let i = 0; i < fullBarbs; i++) {
-    ctx.beginPath();
-    ctx.moveTo(CENTER_X, y);
-    ctx.lineTo(CENTER_X + FEATHER_LENGTH, y - FEATHER_SPACING * 0.6);
-    ctx.stroke();
+    segments.push({
+      kind: 'stroke',
+      points: [
+        { x: CENTER_X, y },
+        { x: CENTER_X + FEATHER_LENGTH, y: y - FEATHER_SPACING * 0.6 },
+      ],
+    });
     y += FEATHER_SPACING;
   }
   if (halfBarb) {
+    segments.push({
+      kind: 'stroke',
+      points: [
+        { x: CENTER_X, y },
+        { x: CENTER_X + FEATHER_LENGTH / 2, y: y - FEATHER_SPACING * 0.3 },
+      ],
+    });
+  }
+  return segments;
+}
+
+/**
+ * Draws one WMO-style wind barb for `speedKn` onto `ctx`, replaying the
+ * shared `barbSegments` geometry. The icon is drawn "north-up" (shaft
+ * vertical, feathers at the top / tip) so that a MapLibre `icon-rotate:
+ * dirFromDeg` (clockwise bearing) turns the feathered end to point INTO the
+ * wind's FROM direction — the standard barb convention.
+ */
+function drawBarb(ctx: CanvasRenderingContext2D, speedKn: number): void {
+  ctx.clearRect(0, 0, IMAGE_SIZE, IMAGE_SIZE);
+  ctx.strokeStyle = STROKE;
+  ctx.fillStyle = STROKE;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+
+  for (const seg of barbSegments(speedKn)) {
     ctx.beginPath();
-    ctx.moveTo(CENTER_X, y);
-    ctx.lineTo(CENTER_X + FEATHER_LENGTH / 2, y - FEATHER_SPACING * 0.3);
-    ctx.stroke();
+    if (seg.kind === 'circle') {
+      ctx.arc(seg.cx, seg.cy, seg.r, 0, Math.PI * 2);
+      ctx.stroke();
+      continue;
+    }
+    seg.points.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    if (seg.kind === 'fill') {
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.stroke();
+    }
   }
 }
 

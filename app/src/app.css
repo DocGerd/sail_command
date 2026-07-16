@@ -388,6 +388,41 @@ select {
   border-radius: 50%;
 }
 
+/* ---- Depth profile (#45) ---- */
+
+.depth-profile {
+  border: 1px solid var(--sc-border);
+  border-radius: 6px;
+  padding: 0 0.5rem;
+}
+
+.depth-profile-summary {
+  cursor: pointer;
+  /* >= 44 px touch target for gloved use (cockpit lens). */
+  min-height: 44px;
+  padding: 0.7rem 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.depth-profile-plot {
+  width: 100%;
+  height: 160px; /* fixed narrow height; map stays primary */
+  padding: 0 0 0.5rem;
+}
+
+.depth-profile-svg {
+  display: block;
+  /* currentColor drives axes/text/barbs, so the chart follows the theme. */
+  color: var(--sc-fg);
+}
+
+@media (min-width: 1024px) {
+  .depth-profile-plot {
+    height: 220px; /* more vertical room on the wide two-column layout */
+  }
+}
+
 .plans-list {
   list-style: none;
   margin: 0;
