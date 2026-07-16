@@ -10,11 +10,11 @@ import { startPreview } from './helpers';
 // Attribution (#33): MapLibre's compact attribution control used to load
 // EXPANDED (a ~600px bar anchored bottom-right) and intercepted clicks aimed
 // at the full-width "Route planen" button at any width below the 1024px
-// breakpoint. MapView now collapses that auto-expansion before first paint in
-// the bottom-sheet layout, and this spec asserts the fixed contract instead of
-// working around it: collapsed on load (below), expandable by tap (attribution
-// must stay reachable — CC-BY/ODbL), and the plan click landing with NO
-// collapse click in between (the interception regression guard).
+// breakpoint. MapView now collapses that auto-expansion before first paint
+// (at every viewport width), and this spec asserts the fixed contract instead
+// of working around it: collapsed on load (the primary regression guard,
+// below), expandable by tap (attribution must stay reachable — CC-BY/ODbL),
+// and the plan click landing with no collapse click in between.
 test.use({ viewport: { width: 375, height: 667 } });
 
 // End-to-end happy path: harbor search -> plan -> rig comparison -> saved
@@ -90,11 +90,12 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     await page.getByRole('button', { name: 'Abbrechen' }).click();
     await expect(tapPickBanner).not.toBeVisible();
 
-    // #33 contract, part 3 — no interception: this click must land WITHOUT
-    // any attribution-collapse click before it. Playwright's actionability
-    // check fails the test if an expanded attribution bar intercepts the
-    // button's centre again, so this line IS the overlap regression guard —
-    // do not re-add a collapse click above it.
+    // #33 contract, part 3 — no interception, belt-and-suspenders: part 1's
+    // load-state class assertion is the primary regression guard (part 2
+    // re-collapses the attribution above, so by this point the control is
+    // collapsed either way). This click landing without any collapse click
+    // before it adds a behavioral backstop via Playwright's actionability
+    // check — do not re-add a collapse click above it.
     const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();
     // Wait for run() to fully settle (button re-enabled: usePlanFlow.ts's

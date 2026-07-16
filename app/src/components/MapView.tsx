@@ -61,29 +61,25 @@ export function useMapInstance(): MaplibreMap | null {
 // `maplibregl-compact-show` (the class that reveals the full notice) the
 // moment the first attribution string arrives, and only the first map drag
 // collapses it (`_updateCompactMinimize` removes `maplibregl-compact-show`).
-// There is no upstream option for "start collapsed". In the bottom-sheet
-// layout (viewport < 1024px, see app.css) that expanded ~600px bar overlays
-// the sheet's full-width controls and intercepts their pointer events, so
-// this reproduces upstream's own drag-collapse — remove
-// `maplibregl-compact-show`, nothing else — at the moment of that one-shot
-// auto-expansion. A MutationObserver callback runs as a microtask, i.e.
-// before the expanded bar can ever paint. Only documented CSS contract
-// classes are touched (they're the stable styling API in maplibre-gl.css);
-// the control's summary button keeps working, so the attribution stays one
-// tap away — collapsed-but-expandable satisfies CC-BY/ODbL, removed would
-// not. Returns a disposer for unmount (no-op once the one-shot has fired).
+// There is no upstream option for "start collapsed". Below the 1024px
+// breakpoint that expanded ~600px bar overlays the bottom sheet's full-width
+// controls and intercepts their pointer events, so this reproduces upstream's
+// own drag-collapse — remove `maplibregl-compact-show`, nothing else — at the
+// moment of that one-shot auto-expansion. The attribution starts collapsed
+// EVERYWHERE (not gated on viewport width): a load-time gate would leave a
+// wide-loaded session that is later narrowed with the bar overlapping the
+// sheet, and collapsed-but-expandable is CC-BY/ODbL-compliant in both
+// layouts. A MutationObserver callback runs as a microtask, i.e. before the
+// expanded bar can ever paint. Only documented CSS contract classes are
+// touched (they're the stable styling API in maplibre-gl.css); the control's
+// summary button keeps working, so the attribution stays one tap away —
+// collapsed-but-expandable satisfies CC-BY/ODbL, removed would not. Returns
+// a disposer for unmount (no-op once the one-shot has fired).
 //
 // eslint-disable-next-line react-refresh/only-export-components
-export function collapseAttributionUnderBottomSheet(mapContainer: HTMLElement): () => void {
-  // Guarded because jsdom (App.test.tsx) has no matchMedia; every real
-  // browser does. Media query mirrors app.css's side-panel breakpoint — on
-  // wide layouts nothing overlaps the map column, so upstream's behavior
-  // (expanded until the first drag) is kept for maximum attribution
-  // visibility.
-  const wideLayout =
-    typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches;
+export function collapseAttributionAtLoad(mapContainer: HTMLElement): () => void {
   const attrib = mapContainer.querySelector('details.maplibregl-ctrl-attrib');
-  if (wideLayout || !attrib) return () => {};
+  if (!attrib) return () => {};
   // Already expanded at add time (attributions were available synchronously).
   if (attrib.classList.contains('maplibregl-compact-show')) {
     attrib.classList.remove('maplibregl-compact-show');
@@ -162,8 +158,8 @@ export default function MapView({ tapActive, onTap, onMapError, children }: MapV
     });
     instance.addControl(new AttributionControl({ compact: true }));
     // Collapse the attribution's one-shot auto-expansion before it can paint
-    // over the bottom sheet (#33) — see collapseAttributionUnderBottomSheet.
-    const stopAttributionCollapse = collapseAttributionUnderBottomSheet(instance.getContainer());
+    // (#33) — see collapseAttributionAtLoad.
+    const stopAttributionCollapse = collapseAttributionAtLoad(instance.getContainer());
 
     const handleClick = (e: MapMouseEvent) => {
       if (!tapActiveRef.current) return;

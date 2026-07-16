@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { collapseAttributionUnderBottomSheet } from './MapView';
+import { collapseAttributionAtLoad } from './MapView';
 
 // MapView.tsx registers the pmtiles protocol against the real maplibre-gl at
 // module load; stub the module so importing the collapse helper stays free of
@@ -11,10 +11,10 @@ vi.mock('maplibre-gl', () => ({
   addProtocol: vi.fn(),
 }));
 
-// Unit coverage for the #33 collapse logic itself (one-shot semantics, wide-
-// layout gate, disposer). The honest end-to-end proof — a real MapLibre
-// attribution control collapsed at load with the Plan button clickable —
-// lives in e2e/plan.spec.ts.
+// Unit coverage for the #33 collapse logic itself (one-shot semantics,
+// viewport-independence, disposer). The honest end-to-end proof — a real
+// MapLibre attribution control collapsed at load with the Plan button
+// clickable — lives in e2e/plan.spec.ts.
 
 /** MapLibre 5.x auto-expansion: compact + compact-show land in one call. */
 function simulateAutoExpansion(attrib: HTMLElement) {
@@ -41,10 +41,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('collapseAttributionUnderBottomSheet', () => {
+describe('collapseAttributionAtLoad', () => {
   it('collapses the auto-expansion (removes only maplibregl-compact-show)', async () => {
     const { container, attrib } = makeMapContainer();
-    collapseAttributionUnderBottomSheet(container);
+    collapseAttributionAtLoad(container);
 
     simulateAutoExpansion(attrib);
     await flushMicrotasks();
@@ -58,14 +58,14 @@ describe('collapseAttributionUnderBottomSheet', () => {
     const { container, attrib } = makeMapContainer();
     simulateAutoExpansion(attrib);
 
-    collapseAttributionUnderBottomSheet(container);
+    collapseAttributionAtLoad(container);
 
     expect(attrib.classList.contains('maplibregl-compact-show')).toBe(false);
   });
 
   it('is one-shot: a later (user) expansion is left alone', async () => {
     const { container, attrib } = makeMapContainer();
-    collapseAttributionUnderBottomSheet(container);
+    collapseAttributionAtLoad(container);
     simulateAutoExpansion(attrib);
     await flushMicrotasks();
 
@@ -76,21 +76,24 @@ describe('collapseAttributionUnderBottomSheet', () => {
     expect(attrib.classList.contains('maplibregl-compact-show')).toBe(true);
   });
 
-  it('keeps upstream behavior (expanded until drag) on the wide side-panel layout', async () => {
-    // jsdom has no matchMedia — stub the wide-layout answer.
+  it('collapses on wide viewports too (review round 1: no load-time layout gate)', async () => {
+    // Deliberately NOT gated on viewport width: a load-time media-query gate
+    // would leave a wide-loaded, later-narrowed session with the expanded bar
+    // overlapping the sheet. jsdom has no matchMedia — stub a wide answer to
+    // pin that the helper ignores it; re-adding a gate must fail this test.
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true } as MediaQueryList));
     const { container, attrib } = makeMapContainer();
-    collapseAttributionUnderBottomSheet(container);
+    collapseAttributionAtLoad(container);
 
     simulateAutoExpansion(attrib);
     await flushMicrotasks();
 
-    expect(attrib.classList.contains('maplibregl-compact-show')).toBe(true);
+    expect(attrib.classList.contains('maplibregl-compact-show')).toBe(false);
   });
 
   it('stops observing once disposed (unmount before the map ever expanded)', async () => {
     const { container, attrib } = makeMapContainer();
-    const dispose = collapseAttributionUnderBottomSheet(container);
+    const dispose = collapseAttributionAtLoad(container);
     dispose();
 
     simulateAutoExpansion(attrib);
@@ -101,6 +104,6 @@ describe('collapseAttributionUnderBottomSheet', () => {
 
   it('no-ops on a container without an attribution control', () => {
     const container = document.createElement('div');
-    expect(() => collapseAttributionUnderBottomSheet(container)()).not.toThrow();
+    expect(() => collapseAttributionAtLoad(container)()).not.toThrow();
   });
 });
