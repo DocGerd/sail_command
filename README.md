@@ -83,13 +83,22 @@ for setup and regeneration instructions.
 - **Bathymetry**: EMODnet Bathymetry Consortium (2024). EMODnet Digital
   Bathymetry (DTM 2024). doi:
   [10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1](https://doi.org/10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1)
-  (CC-BY 4.0).
+  ([CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)). The data was
+  processed (resampled onto the app's ~46 m grid and depth-quantized) for
+  this app.
 - **Land & Schlei fjord water body**: © OpenStreetMap contributors (ODbL),
   via osmdata.openstreetmap.de land polygons and Nominatim relation
   [2340930](https://www.openstreetmap.org/relation/2340930).
+  The land/depth mask (`mask.bin`) is a Derivative Database of OpenStreetMap
+  data and is made available under the
+  [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1.0/).
+  © OpenStreetMap contributors.
 - **Basemap rendering**: [Protomaps](https://protomaps.com/), an ODbL
-  Produced Work derived from OpenStreetMap data. Map fonts (Noto Sans, SIL
-  OFL) and sprites (BSD-3-Clause) are self-hosted from
+  Produced Work derived from OpenStreetMap data. Map fonts (Noto Sans,
+  [SIL OFL 1.1](app/public/basemap-assets/fonts/OFL.txt)) and sprites
+  ([MIT](app/public/basemap-assets/sprites/LICENSE.txt), derived from
+  [tangrams/icons](https://github.com/tangrams/icons), © 2017 Mapzen) are
+  self-hosted from
   [protomaps/basemaps-assets](https://github.com/protomaps/basemaps-assets).
 - **Wind forecast**: [Open-Meteo](https://open-meteo.com/) (CC-BY 4.0),
   fetched directly from the browser.
@@ -100,10 +109,8 @@ for setup and regeneration instructions.
   and explicitly **not** race-calibrated.
 
 Full attribution, including the dynamically-sourced mask citation, is also
-shown in the app's About dialog.
-
-No license file has been added yet (data licenses above apply to the
-underlying data only, not to this repository's code).
+shown in the app's About dialog. Data licenses above apply to the underlying
+data; the code license is covered in the [License](#license) section below.
 
 ## Known limitations
 
@@ -125,4 +132,8 @@ the forecast horizon, route sharing/collaboration, official ENC chart data.
 Code is licensed under the [Apache License 2.0](LICENSE). Map tiles and
 bathymetry carry their own upstream licenses (OpenStreetMap ODbL, EMODnet
 CC-BY 4.0, and others) — see `pipeline/README.md` and the app's About dialog
-for the full attribution.
+for the full attribution. Licenses of the bundled runtime JavaScript
+dependencies are collected in
+[`app/public/THIRD-PARTY-NOTICES.txt`](app/public/THIRD-PARTY-NOTICES.txt),
+which also deploys with the site (regenerate via `npm --prefix app run
+notices` after dependency bumps).

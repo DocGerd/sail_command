@@ -100,6 +100,7 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           <ul>
             <li>{t('about.sources.protomaps')}</li>
             <li>{t('about.sources.osm')}</li>
+            <li>{t('about.sources.osmMask')}</li>
             <li>{t('about.sources.openMeteo')}</li>
             <li>{t('about.sources.polars')}</li>
             {maskSources?.map((s) => (

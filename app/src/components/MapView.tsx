@@ -28,7 +28,8 @@ const ZOOM = 9;
 const ATTRIBUTION =
   '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · ' +
   '<a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a> · ' +
-  'EMODnet Bathymetry (CC-BY 4.0) · Open-Meteo (CC-BY 4.0)';
+  '<a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a> (CC-BY 4.0) · ' +
+  '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a> (CC-BY 4.0)';
 
 function buildStyle(lang: string): StyleSpecification {
   const pmtilesUrl = new URL(import.meta.env.BASE_URL + 'data/basemap.pmtiles', location.href);
