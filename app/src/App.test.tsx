@@ -30,6 +30,10 @@ const mapTestHooks = vi.hoisted(() => ({
   // a resolved map tap (origin/destination/via pick) without a real
   // WebGL/MapLibre runtime, which jsdom doesn't have.
   clickHandler: null as ((e: { lngLat: { lat: number; lng: number } }) => void) | null,
+  // Same idea for MapView's `instance.on('error', handleError)' — lets tests
+  // simulate a MapLibre runtime error (e.g. a failed tile/style fetch)
+  // without a real map, to drive the project-gate map-error banner.
+  errorHandler: null as ((e: { error: unknown }) => void) | null,
 }));
 
 // Fake plan()-call queue for the RoutingClient mock below, shared the same
@@ -81,11 +85,13 @@ vi.mock('./services/openMeteo', async (importOriginal) => {
 // logic, not actual map rendering (covered by the Playwright browser pass).
 vi.mock('maplibre-gl', () => {
   class FakeMap {
-    on(event: string, cb: (e: { lngLat: { lat: number; lng: number } }) => void) {
-      if (event === 'click') mapTestHooks.clickHandler = cb;
+    on(event: string, cb: (e: { lngLat: { lat: number; lng: number } } | { error: unknown }) => void) {
+      if (event === 'click') mapTestHooks.clickHandler = cb as typeof mapTestHooks.clickHandler;
+      if (event === 'error') mapTestHooks.errorHandler = cb as typeof mapTestHooks.errorHandler;
     }
     off(event: string) {
       if (event === 'click') mapTestHooks.clickHandler = null;
+      if (event === 'error') mapTestHooks.errorHandler = null;
     }
     once(event: string, cb: () => void) {
       if (event === 'load') cb();
@@ -201,6 +207,15 @@ function renderApp() {
 function simulateMapClick(lat: number, lon: number) {
   act(() => {
     mapTestHooks.clickHandler?.({ lngLat: { lat, lng: lon } });
+  });
+}
+
+// Simulates MapLibre firing a runtime 'error' event (see the maplibre-gl
+// mock's FakeMap.on above) — used to drive the project-gate map-error
+// banner without a real WebGL/MapLibre runtime.
+function simulateMapError(error: unknown = new Error('style load failed')) {
+  act(() => {
+    mapTestHooks.errorHandler?.({ error });
   });
 }
 
@@ -719,6 +734,30 @@ describe('banner surfacing (PR self-review fix wave)', () => {
 
     expect(await screen.findByText(de['banner.offline'])).toBeInTheDocument();
     expect(screen.getByText(de['banner.persistenceError'])).toBeInTheDocument();
+  });
+
+  it('shows a dismissible map-error banner on the first MapLibre error, logs it, and ignores further errors from the same mount', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(screen.queryByText(de['banner.mapError'])).not.toBeInTheDocument();
+
+    const firstError = new Error('style load failed');
+    simulateMapError(firstError);
+    expect(await screen.findByText(de['banner.mapError'])).toBeInTheDocument();
+    expect(consoleError).toHaveBeenCalledWith('MapLibre error', firstError);
+
+    // MapLibre can fire many errors in a row (MapView.tsx's own comment) —
+    // only the first should have surfaced the banner; a second one must
+    // still be logged but not re-trigger anything banner-visible.
+    const callsAfterFirst = consoleError.mock.calls.length;
+    simulateMapError(new Error('second, unrelated failure'));
+    expect(consoleError.mock.calls.length).toBe(callsAfterFirst + 1);
+    expect(screen.getByText(de['banner.mapError'])).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: de['banner.dismiss'] }));
+    expect(screen.queryByText(de['banner.mapError'])).not.toBeInTheDocument();
   });
 
   it('the language-toggle button label goes through the i18n dict (shows the target language\'s code)', async () => {

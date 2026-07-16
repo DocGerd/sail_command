@@ -5,6 +5,10 @@
   "scripts": {
     "polars": "node build_polars.mjs",
     "harbors": "node build_harbors.mjs",
-    "mask": "./.venv/bin/python build_mask.py && ./.venv/bin/python verify_mask.py"
+    "mask": "./.venv/bin/python build_mask.py && ./.venv/bin/python verify_mask.py",
+    "icons": "node build_icons.mjs"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.3"
   }
 }

@@ -13,6 +13,7 @@ import RouteSummary from './components/RouteSummary';
 import LiveView from './components/LiveView';
 import Banner from './components/Banner';
 import AboutDialog from './components/AboutDialog';
+import ReloadPrompt from './components/ReloadPrompt';
 import { isStaleForecast } from './lib/plan';
 import { formatLatLon } from './lib/format';
 import type { MsgKey } from './i18n/dict.de';
@@ -72,6 +73,10 @@ function AppShell() {
 
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
+  // MapView reports at most one error per mount (see its own comment) —
+  // this just needs to flip a banner on and let the user dismiss it; there's
+  // no retry path since the underlying map instance isn't recreated.
+  const [mapError, setMapError] = useState(false);
   const [harbors, setHarbors] = useState<Harbor[]>([]);
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
@@ -120,7 +125,7 @@ function AppShell() {
     planIdRef.current = plan?.id ?? null;
   }, [plan?.id]);
 
-  // Eager load, matching spec §7's "first load downloads ~30-40 MB" —
+  // Eager load, matching spec §7's first-load budget (measured ~44 MB) —
   // mask/polars/harbors are meant to be fetched up front, not deferred to
   // first Plan tap. Best-effort: a failed fetch leaves `harbors` empty
   // (HarborPicker just shows no results; map tap-to-pick still works) rather
@@ -237,6 +242,8 @@ function AppShell() {
   );
 
   const handleCancelTapPick = useCallback(() => setTapTarget(null), []);
+  const handleMapError = useCallback(() => setMapError(true), []);
+  const handleDismissMapError = useCallback(() => setMapError(false), []);
 
   // Harbor-search picks go through here rather than straight to
   // setOrigin/setDestination, so picking a harbor for whichever field is
@@ -328,7 +335,7 @@ function AppShell() {
             re-styling in place risked disturbing RouteLayer/BoatMarker's
             child-added sources; a full remount would need viewport capture
             plumbing this assembly pass deliberately keeps out of scope. */}
-        <MapView tapActive={tapTarget !== null} onTap={handleMapTap}>
+        <MapView tapActive={tapTarget !== null} onTap={handleMapTap} onMapError={handleMapError}>
           <RouteLayer
             plan={plan}
             rig={rig}
@@ -362,7 +369,13 @@ function AppShell() {
       </header>
 
       <div className="banner-area">
+        <ReloadPrompt />
         {!online && <Banner kind="warning">{t('banner.offline')}</Banner>}
+        {mapError && (
+          <Banner kind="error" onDismiss={handleDismissMapError} dismissLabel={t('banner.dismiss')}>
+            {t('banner.mapError')}
+          </Banner>
+        )}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
         {settingsPersistenceError && (
           <Banner kind="error" onDismiss={clearSettingsPersistenceError} dismissLabel={t('banner.dismiss')}>
