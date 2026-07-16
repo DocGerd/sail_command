@@ -180,3 +180,19 @@ cp pipeline/data-src/basemaps-assets/sprites/v4/light.json \
 
 `pipeline/data-src/basemaps-assets/` is a scratch clone, gitignored like the
 rest of `pipeline/data-src/`.
+
+### `app/public/icons/icon-*.png` — installable-PWA icons
+
+Rasterized from the hand-authored `app/public/icons/icon.svg` (a flat sail
+motif — edit the SVG directly to change the artwork). `build_icons.mjs` uses
+`sharp` (pipeline dev-dep) to render the sizes `manifest.icons` in
+`app/vite.config.ts` expects: 192, 512, and a maskable 512 with 20%
+safe-zone padding (artwork scaled to 60% of the canvas, composited onto a
+full-bleed `#0b3d5c` background so an OS mask crop never reveals
+transparency).
+
+Regenerate:
+
+```
+node pipeline/build_icons.mjs
+```

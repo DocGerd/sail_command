@@ -116,5 +116,8 @@ export const de = {
   'banner.tapPick.cancel': 'Abbrechen',
   'banner.viaTooClose': 'Wegpunkt zu nah am Nachbarn — übersprungen',
   'banner.viaTooClose.plural': '{count} Wegpunkte zu nah an Nachbarn — übersprungen',
+  'pwa.updateAvailable': 'Update verfügbar',
+  'pwa.reload': 'Neu laden',
+  'pwa.offlineReady': 'App & Karten offline verfügbar',
 } as const;
 export type MsgKey = keyof typeof de;

@@ -13,6 +13,7 @@ import RouteSummary from './components/RouteSummary';
 import LiveView from './components/LiveView';
 import Banner from './components/Banner';
 import AboutDialog from './components/AboutDialog';
+import ReloadPrompt from './components/ReloadPrompt';
 import { isStaleForecast } from './lib/plan';
 import { formatLatLon } from './lib/format';
 import type { MsgKey } from './i18n/dict.de';
@@ -362,6 +363,7 @@ function AppShell() {
       </header>
 
       <div className="banner-area">
+        <ReloadPrompt />
         {!online && <Banner kind="warning">{t('banner.offline')}</Banner>}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
         {settingsPersistenceError && (

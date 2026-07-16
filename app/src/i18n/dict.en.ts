@@ -118,4 +118,7 @@ export const en = {
   'banner.tapPick.cancel': 'Cancel',
   'banner.viaTooClose': 'Waypoint too close to a neighbor — skipped',
   'banner.viaTooClose.plural': '{count} waypoints too close to a neighbor — skipped',
+  'pwa.updateAvailable': 'Update available',
+  'pwa.reload': 'Reload',
+  'pwa.offlineReady': 'App & maps available offline',
 } satisfies Record<MsgKey, string>;
