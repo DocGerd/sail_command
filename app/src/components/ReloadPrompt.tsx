@@ -21,9 +21,16 @@ export default function ReloadPrompt() {
       // ask the browser whether a newer SW exists — on window focus, and
       // only while online, so a check never fires against a forecast-only
       // offline session.
+      // Never removed: ReloadPrompt mounts once for the app's lifetime, so
+      // there's no unmount to clean this listener up on.
       window.addEventListener('focus', () => {
-        if (navigator.onLine) void registration?.update();
+        // Transient rejections (e.g. a mid-flight network drop) are benign —
+        // swallowed here so they never surface as an unhandledrejection.
+        if (navigator.onLine) void registration?.update().catch(() => {});
       });
+    },
+    onRegisterError(error) {
+      console.error('SW registration failed — offline mode unavailable', error);
     },
   });
 

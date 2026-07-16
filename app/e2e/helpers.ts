@@ -36,6 +36,14 @@ export async function startPreview(): Promise<PreviewServer> {
     stdio: 'ignore',
   });
 
+  // Captured rather than thrown immediately: 'error' (e.g. ENOENT if `npm`
+  // isn't on PATH) can fire before or after the poll loop starts, and we
+  // want it surfaced with useful context either way — see usage below.
+  let spawnError: Error | undefined;
+  child.on('error', (err) => {
+    spawnError = err;
+  });
+
   let killed = false;
   const kill = () => {
     if (killed || !child.pid) return;
@@ -49,6 +57,9 @@ export async function startPreview(): Promise<PreviewServer> {
 
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    if (spawnError) {
+      throw new Error(`preview server process failed to spawn before answering at ${BASE}: ${spawnError.message}`);
+    }
     if (child.exitCode !== null) {
       throw new Error(`preview server process exited early (code ${child.exitCode}) before answering at ${BASE}`);
     }
@@ -61,5 +72,8 @@ export async function startPreview(): Promise<PreviewServer> {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
   kill();
-  throw new Error(`preview server did not respond at ${BASE} within ${START_TIMEOUT_MS}ms`);
+  // A captured spawn error (e.g. ENOENT) is the real cause of a timeout here —
+  // surface it instead of a bare, misleading "didn't respond in 30s".
+  const cause = spawnError ? `: ${spawnError.message}` : '';
+  throw new Error(`preview server did not respond at ${BASE} within ${START_TIMEOUT_MS}ms${cause}`);
 }

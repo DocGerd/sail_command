@@ -16,7 +16,11 @@ registerRoute(
     if (full) {
       return request.headers.has('range') ? createPartialResponse(request, full) : full;
     }
-    return fetch(request); // dev / cache-miss fallthrough
+    // Cache miss, e.g. a file exceeding maximumFileSizeToCacheInBytes was
+    // dropped from the manifest at build time (the SW never runs in dev —
+    // devOptions is disabled).
+    console.warn('[sw] pmtiles precache miss, falling through to network:', request.url);
+    return fetch(request);
   },
 );
 

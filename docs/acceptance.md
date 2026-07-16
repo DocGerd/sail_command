@@ -1,7 +1,7 @@
 # SailCommand — manual acceptance runbook
 
-This is the project's manual acceptance gate (design spec §5, "Manual
-acceptance"). Automated CI (unit + property tests, Playwright E2E) covers
+This is the project's manual acceptance gate (design spec §5 ("Testing"),
+Manual acceptance item). Automated CI (unit + property tests, Playwright E2E) covers
 correctness in isolation; this runbook exercises the whole system — a real
 wind forecast, a real deployed build, a real phone — the way a sailor
 actually would.

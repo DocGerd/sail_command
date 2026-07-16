@@ -15,14 +15,21 @@ const registerSWMock = vi.hoisted(() => ({
   needRefresh: false,
   updateServiceWorker: vi.fn(),
   setOfflineReady: vi.fn(),
+  // Captures the options object ReloadPrompt passes to useRegisterSW each
+  // render, so tests can invoke callbacks (e.g. onRegisterError) directly —
+  // there's no real SW registration to trigger them in jsdom.
+  lastOptions: undefined as { onRegisterError?: (error: unknown) => void } | undefined,
 }));
 
 vi.mock('virtual:pwa-register/react', () => ({
-  useRegisterSW: () => ({
-    offlineReady: [registerSWMock.offlineReady, registerSWMock.setOfflineReady],
-    needRefresh: [registerSWMock.needRefresh, vi.fn()],
-    updateServiceWorker: registerSWMock.updateServiceWorker,
-  }),
+  useRegisterSW: (options: { onRegisterError?: (error: unknown) => void }) => {
+    registerSWMock.lastOptions = options;
+    return {
+      offlineReady: [registerSWMock.offlineReady, registerSWMock.setOfflineReady],
+      needRefresh: [registerSWMock.needRefresh, vi.fn()],
+      updateServiceWorker: registerSWMock.updateServiceWorker,
+    };
+  },
 }));
 
 afterEach(() => {
@@ -31,6 +38,7 @@ afterEach(() => {
   registerSWMock.needRefresh = false;
   registerSWMock.updateServiceWorker.mockClear();
   registerSWMock.setOfflineReady.mockClear();
+  registerSWMock.lastOptions = undefined;
 });
 
 describe('ReloadPrompt', () => {
@@ -66,5 +74,21 @@ describe('ReloadPrompt', () => {
     expect(screen.getByRole('status')).toHaveTextContent(de['pwa.offlineReady']);
     fireEvent.click(screen.getByRole('button', { name: de['banner.dismiss'] }));
     expect(registerSWMock.setOfflineReady).toHaveBeenCalledWith(false);
+  });
+
+  it('logs a console error when SW registration fails, instead of failing silently', () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(
+      <I18nProvider>
+        <ReloadPrompt />
+      </I18nProvider>,
+    );
+    const registrationError = new Error('registration failed');
+    registerSWMock.lastOptions?.onRegisterError?.(registrationError);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'SW registration failed — offline mode unavailable',
+      registrationError,
+    );
+    consoleErrorSpy.mockRestore();
   });
 });
