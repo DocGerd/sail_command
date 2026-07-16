@@ -7,14 +7,14 @@ import { startPreview } from './helpers';
 // the wide side-panel layout (covered by layout.spec), so this flow pins a
 // phone viewport to keep bottom-sheet coverage where the real usage is.
 //
-// Attribution overlap: the map's attribution control is `compact: true`
-// (MapView.tsx), so it loads EXPANDED (a ~600px bar anchored bottom-right) and
-// overlaps the full-width "Route planen" button's centre at any width below
-// the 1024px breakpoint — the old 1280px default only cleared it because it
-// was wide enough for the bar to stop short of centre. The 1000x720 fallback
-// does NOT avoid this, so instead of widening (impossible in bottom-sheet) we
-// collapse the attribution once before the plan click (see below): a real user
-// action, no assertion weakened.
+// Attribution (#33): MapLibre's compact attribution control used to load
+// EXPANDED (a ~600px bar anchored bottom-right) and intercepted clicks aimed
+// at the full-width "Route planen" button at any width below the 1024px
+// breakpoint. MapView now collapses that auto-expansion before first paint
+// (at every viewport width), and this spec asserts the fixed contract instead
+// of working around it: collapsed on load (the primary regression guard,
+// below), expandable by tap (attribution must stay reachable — CC-BY/ODbL),
+// and the plan click landing with no collapse click in between.
 test.use({ viewport: { width: 375, height: 667 } });
 
 // End-to-end happy path: harbor search -> plan -> rig comparison -> saved
@@ -31,6 +31,28 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
   const server = await startPreview();
   try {
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    // #33 contract, part 1 — collapsed on load: once the basemap's
+    // attribution arrives the control enters compact mode, and MapView must
+    // have swallowed MapLibre's one-shot auto-expansion (no
+    // `maplibregl-compact-show`, which is the class that paints the full-width
+    // bar). Generous timeout: compact mode needs the pmtiles source metadata,
+    // and CI runners are 6-10x slower than dev machines.
+    // `(\s|$)` not `\b`: a word boundary alone would also match the
+    // "maplibregl-compact" prefix inside "maplibregl-compact-show".
+    const attribution = page.locator('details.maplibregl-ctrl-attrib');
+    await expect(attribution).toHaveClass(/maplibregl-compact(\s|$)/, { timeout: 30_000 });
+    await expect(attribution).not.toHaveClass(/maplibregl-compact-show/);
+
+    // #33 contract, part 2 — still reachable: a tap on the toggle expands the
+    // full notice (attribution must never be removed, only collapsed), and a
+    // second tap collapses it again so the flow below runs on the load state.
+    const attributionToggle = page.locator('.maplibregl-ctrl-attrib-button');
+    await attributionToggle.click();
+    await expect(attribution).toHaveClass(/maplibregl-compact-show/);
+    await expect(attribution.getByRole('link', { name: 'OpenStreetMap' })).toBeVisible();
+    await attributionToggle.click();
+    await expect(attribution).not.toHaveClass(/maplibregl-compact-show/);
 
     await page.getByRole('tab', { name: 'Planen' }).click();
 
@@ -68,12 +90,12 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     await page.getByRole('button', { name: 'Abbrechen' }).click();
     await expect(tapPickBanner).not.toBeVisible();
 
-    // Collapse the map's attribution before clicking Plan: it loads expanded
-    // (compact: true) and its ~600px bar overlaps the full-width Plan button in
-    // the bottom-sheet layout, intercepting the click. Clicking its toggle is a
-    // real user action and leaves every planning assertion intact.
-    await page.locator('.maplibregl-ctrl-attrib-button').click();
-
+    // #33 contract, part 3 — no interception, belt-and-suspenders: part 1's
+    // load-state class assertion is the primary regression guard (part 2
+    // re-collapses the attribution above, so by this point the control is
+    // collapsed either way). This click landing without any collapse click
+    // before it adds a behavioral backstop via Playwright's actionability
+    // check — do not re-add a collapse click above it.
     const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();
     // Wait for run() to fully settle (button re-enabled: usePlanFlow.ts's

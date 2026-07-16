@@ -159,9 +159,14 @@ CDN). Copied from the
 repo:
 
 - `fonts/` — Noto Sans Regular, Medium, and Italic, as pre-rendered `.pbf`
-  glyph range files (SIL Open Font License).
+  glyph range files (SIL Open Font License 1.1; the verbatim license text
+  ships as `fonts/OFL.txt`).
 - `sprites/v4/` — the `light` sprite sheet, standard + `@2x`, as
-  `.json`/`.png` pairs (repo license: BSD-3-Clause).
+  `.json`/`.png` pairs (MIT — derived from
+  [tangrams/icons](https://github.com/tangrams/icons), © 2017 Mapzen; text
+  committed as `sprites/LICENSE.txt`). Not to be confused with the
+  BSD-3-Clause license of the `@protomaps/basemaps` styles *library* used at
+  app runtime — that covers the style code, not these sprite assets.
 
 Regeneration (re-run if upstream assets change; not part of the mask/polar/
 harbor build):
@@ -172,12 +177,17 @@ cp -r "pipeline/data-src/basemaps-assets/fonts/Noto Sans Regular" \
       "pipeline/data-src/basemaps-assets/fonts/Noto Sans Medium" \
       "pipeline/data-src/basemaps-assets/fonts/Noto Sans Italic" \
       app/public/basemap-assets/fonts/
+cp pipeline/data-src/basemaps-assets/fonts/OFL.txt \
+   app/public/basemap-assets/fonts/OFL.txt
 cp pipeline/data-src/basemaps-assets/sprites/v4/light.json \
    pipeline/data-src/basemaps-assets/sprites/v4/light.png \
    pipeline/data-src/basemaps-assets/sprites/v4/light@2x.json \
    pipeline/data-src/basemaps-assets/sprites/v4/light@2x.png \
    app/public/basemap-assets/sprites/v4/
 ```
+
+`app/public/basemap-assets/sprites/LICENSE.txt` (MIT, tangrams/icons) is
+committed in this repo — preserve it when refreshing the sprite files above.
 
 `pipeline/data-src/basemaps-assets/` is a scratch clone, gitignored like the
 rest of `pipeline/data-src/`.
