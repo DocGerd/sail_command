@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { startPreview } from './helpers';
+
+const DIST_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
 // Flagship E2E: plan -> save -> kill the server -> offline reload -> the
 // saved plan is still there and loads. See helpers.ts's playwright.config.ts
@@ -25,9 +30,17 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // Create + auto-save a plan (mirrors plan.spec.ts's flow; this spec
     // only needs *a* saved plan to exist, not to re-verify rig/leg detail).
     await page.getByRole('region', { name: 'Start' }).getByRole('searchbox').fill('Langballigau');
-    await page.getByRole('region', { name: 'Start' }).locator('.harbor-picker li button').first().click();
+    await page
+      .getByRole('region', { name: 'Start' })
+      .locator('.harbor-picker li button')
+      .first()
+      .click();
     await page.getByRole('region', { name: 'Ziel' }).getByRole('searchbox').fill('Sønderborg');
-    await page.getByRole('region', { name: 'Ziel' }).locator('.harbor-picker li button').first().click();
+    await page
+      .getByRole('region', { name: 'Ziel' })
+      .locator('.harbor-picker li button')
+      .first()
+      .click();
     const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();
     // Wait for run() to fully settle *before* switching tabs — see
@@ -36,7 +49,9 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // Routen tab is entered, so switching too early races the save.
     await expect(planButton).toBeEnabled({ timeout: 60_000 });
     await page.getByRole('tab', { name: 'Routen' }).click();
-    await expect(page.getByRole('tablist', { name: 'Riggvergleich' })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('tablist', { name: 'Riggvergleich' })).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(page.locator('.plans-list-row')).toHaveCount(1);
     await page.getByRole('tab', { name: 'Planen' }).click();
 
@@ -80,7 +95,9 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // The app shell (HTML/JS/CSS) rendering at all, with the real server
     // dead and setOffline blocking everything else, is only possible if the
     // SW served it from its precache.
-    await expect(page.getByRole('heading', { name: 'SailCommand' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: 'SailCommand' })).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(
       page.getByText('Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.'),
     ).toBeVisible();
@@ -105,13 +122,23 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // false is the offline guard itself — a meaningfully offline-specific
     // assertion, not just "button disabled because nothing is picked yet".
     await page.getByRole('region', { name: 'Start' }).getByRole('searchbox').fill('Langballigau');
-    await page.getByRole('region', { name: 'Start' }).locator('.harbor-picker li button').first().click();
+    await page
+      .getByRole('region', { name: 'Start' })
+      .locator('.harbor-picker li button')
+      .first()
+      .click();
     await page.getByRole('region', { name: 'Ziel' }).getByRole('searchbox').fill('Sønderborg');
-    await page.getByRole('region', { name: 'Ziel' }).locator('.harbor-picker li button').first().click();
+    await page
+      .getByRole('region', { name: 'Ziel' })
+      .locator('.harbor-picker li button')
+      .first()
+      .click();
     const offlinePlanButton = page.getByRole('button', { name: 'Route planen' });
     await expect(offlinePlanButton).toBeDisabled();
     await expect(
-      page.getByText('Windvorhersagedienst nicht erreichbar. Internetverbindung prüfen und erneut versuchen.'),
+      page.getByText(
+        'Windvorhersagedienst nicht erreichbar. Internetverbindung prüfen und erneut versuchen.',
+      ),
     ).toBeVisible();
 
     // The plan saved before going offline is still there and still loads,
@@ -127,5 +154,37 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
   } finally {
     await context.setOffline(false).catch(() => {});
     server.kill();
+  }
+});
+
+// Static guards over the *built* output — deliberately fixture-less: no page /
+// context, so this launches neither a browser nor a server (pree2e's
+// `npm run build` already guarantees dist/ exists). These catch pipeline-output
+// drift the runtime offline pass above cannot:
+//  - index.html hardcodes an ABSOLUTE og:image URL to brand/social-card.png
+//    (scrapers don't resolve relative paths), so a renamed/missing card would
+//    ship a dead share image with nothing else failing; and
+//  - the ~44 MB precache budget (#28) relies on vite.config.ts's globIgnores
+//    keeping brand/ and test-fixtures/ out of the SW manifest — drop the ignore
+//    and every install silently bloats.
+test('built output guards: og:image card present, precache excludes brand/ + test-fixtures/, manifest icons resolve', () => {
+  // og:image path coupling: index.html's absolute URL points at this exact file.
+  expect(existsSync(resolve(DIST_DIR, 'brand/social-card.png'))).toBe(true);
+
+  // Precache budget (#28): the built SW must list neither the og:image card nor
+  // the e2e wind fixtures — both are excluded via vite.config.ts globIgnores.
+  const sw = readFileSync(resolve(DIST_DIR, 'sw.js'), 'utf8');
+  expect(sw).not.toContain('brand/');
+  expect(sw).not.toContain('test-fixtures/');
+
+  // A renamed pipeline icon output would 404 the launcher icon silently: every
+  // manifest-declared icon src must resolve to a real file under dist/.
+  const manifest = JSON.parse(readFileSync(resolve(DIST_DIR, 'manifest.webmanifest'), 'utf8')) as {
+    icons: { src: string }[];
+  };
+  for (const icon of manifest.icons) {
+    expect(existsSync(resolve(DIST_DIR, icon.src)), `manifest icon missing: ${icon.src}`).toBe(
+      true,
+    );
   }
 });

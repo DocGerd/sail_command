@@ -55,7 +55,8 @@ that survives both the 16 px favicon and the maskable crop intact.
 | error fg on error bg | 5.96:1 | 5.43:1 |
 | white mark on --sc-brand | 15.65:1 | (same) |
 | banner-art kicker #82B2E8 on brand | 7.07:1 | (same) |
-| banner-art tagline #C2C7CD on brand | 9.20:1 | (same) |
+| social-card tagline #C2C7CD on brand | 9.20:1 | (same) |
+| banner tagline #ECEEF1 on brand | 13.46:1 | (same) |
 
 All text-bearing pairs ≥ 4.5:1. Secondary EN tagline in artwork (#969CA4 on navy, 5.66:1) is decorative large-type in raster-only contexts, and still clears 4.5.
 

@@ -3,10 +3,12 @@
   --sc-bg: #fbfbfc;
   --sc-fg: #14161a;
   --sc-border: #dce0e4;
-  /* DocGerdSoft Azure — the UI accent (tab underline, focus, disclaimer wash).
-     NOTE: the MAP palette (RouteLayer/BoatMarker/ViaMarkers/wind barbs) is
-     Okabe-Ito (#0072B2 etc.) and is intentionally NOT tied to this UI accent —
-     the two color systems are decoupled by design. */
+  /* DocGerdSoft Azure — the UI accent (tab underline, disclaimer wash).
+     NOTE: only the SEMANTIC map colors (RouteLayer port/starboard, BoatMarker,
+     ViaMarkers) are Okabe-Ito (#0072B2 etc.); the rest of the map layer is
+     neutral (wind barbs ink #1a1a1a, position halo #FFD400, motor legs #5b5b5b).
+     None of it is tied to this UI accent — the two color systems are decoupled
+     by design. */
   --sc-accent: #2c6cb0;
   --sc-banner-info-bg: #eaf1f8;
   --sc-banner-info-fg: #21568c;
@@ -14,8 +16,11 @@
   --sc-banner-warning-fg: #7a5414;
   --sc-banner-error-bg: #f9e9e7;
   --sc-banner-error-fg: #9e3529;
-  --sc-brand: #10243d; /* replaces #0b3d5c: icon bg, PWA theme_color/background_color */
-  /* justified extension: hover/pressed state of --sc-accent (DocGerdSoft accent-strong) */
+  /* Documentary mirror only — nothing consumes this token. icon.svg's bg rect,
+     index.html's theme-color, and the manifest theme_color/background_color each
+     HARDCODE #10243D and must be hand-synced with this value. */
+  --sc-brand: #10243d;
+  /* Reserved for future hover/pressed states of --sc-accent (currently unconsumed). */
   --sc-accent-strong: #21568c;
 }
 
@@ -31,7 +36,10 @@
     --sc-banner-warning-fg: #d6a23e;
     --sc-banner-error-bg: #2e1714;
     --sc-banner-error-fg: #e0726a;
-    --sc-brand: #10243d; /* identical in both modes: one PWA theme color */
+    /* Same value in both modes; still a documentary mirror — the real #10243D
+       lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
+    --sc-brand: #10243d;
+    /* Reserved for future hover/pressed states of --sc-accent (currently unconsumed). */
     --sc-accent-strong: #82b2e8;
   }
 }
@@ -98,7 +106,8 @@ select {
 }
 
 /* DocGerdSoft brand mark sitting before the title text. Inherits the header
-   text color via fill="currentColor"; sized to the cap height of the title. */
+   text color via fill="currentColor"; height 1.25rem, a touch taller than the
+   1.1rem title text. */
 .app-brand-mark {
   height: 1.25rem;
   width: auto;

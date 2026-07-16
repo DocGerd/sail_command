@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-<!-- Source icon for pipeline/build_icons.mjs. DocGerdSoft-derived mark (two
-     white sail marks) on a full-bleed chart-navy square — rasterized at
-     192/512/maskable-512 by the pipeline script; the script's BG constant
-     must match this rect's fill (#10243D). -->
+<!-- Source icon for pipeline/build_icons.mjs. DocGerdSoft-derived mark (a
+     two-shape sail-and-hull delta split by a waterline gap, in white) on a
+     full-bleed chart-navy square — rasterized at 192/512/maskable-512 by the
+     pipeline script; the script's BG constant must match this rect's fill
+     (#10243D). -->
 <rect width="512" height="512" fill="#10243D"></rect>
 <g fill="#FFFFFF" transform="translate(-24 -20.08) scale(5.6)"><path d="M50 22.59L69 55.5L31 55.5Z"></path><path d="M26.96 62.5L73.04 62.5L63.5 76L36.5 76Z"></path></g>
 </svg>
