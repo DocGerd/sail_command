@@ -8,6 +8,7 @@ import { activeRigResult } from '../lib/plan';
 import { barbFeatures, legsToFeatureCollection, maneuverFeatures, nearestHourIndex } from '../lib/routeGeoJson';
 import { registerBarbImages } from '../lib/windBarbs';
 import ViaMarkers from './ViaMarkers';
+import RouteLegend from './RouteLegend';
 import type { LatLon, Plan, Rig } from '../types';
 
 export interface RouteLayerProps {
@@ -307,6 +308,7 @@ export default function RouteLayer({ plan, rig, activeLegIndex, viaReplanning, o
         </div>
       )}
       <ViaMarkers viaPoints={plan.request.viaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
+      <RouteLegend />
     </div>
   );
 }

@@ -388,6 +388,97 @@ select {
   border-radius: 50%;
 }
 
+/* ---- #46a motor-semantics legibility: options help text, motor footnote,
+   and the collapsible route legend ---- */
+
+.options-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+.route-legs-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+.route-legend > summary {
+  /* Boat-glove-friendly touch target, matching the button min-height. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.route-legend ul {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.route-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.route-legend-swatch {
+  flex: none;
+  display: inline-block;
+}
+
+/* Line swatches mirror the live route paint (RouteLayer.tsx). */
+.route-legend-line-starboard,
+.route-legend-line-port,
+.route-legend-line-motor {
+  width: 1.25rem;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.route-legend-line-starboard {
+  background: #009e73;
+}
+
+.route-legend-line-port {
+  background: #d55e00;
+}
+
+.route-legend-line-motor {
+  /* Dashed grey, echoing the motor line's line-dasharray. */
+  background: repeating-linear-gradient(to right, #5b5b5b 0 6px, transparent 6px 9px);
+}
+
+/* White maneuver circle with the dark stroke used on the map. */
+.route-legend-maneuver {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #1a1a1a;
+}
+
+/* The subordinate heading-change dot (Task B #37) — same family, smaller. */
+.route-legend-heading {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid #1a1a1a;
+}
+
+/* Via marker (ViaMarkers.tsx). */
+.route-legend-via {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: #cc79a7;
+}
+
 .plans-list {
   list-style: none;
   margin: 0;
