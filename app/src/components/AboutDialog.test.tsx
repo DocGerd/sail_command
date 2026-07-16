@@ -25,12 +25,22 @@ function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200 });
 }
 
-function fetchMock(sources: string[] | undefined = ['EMODnet Bathymetry Consortium (2024) doi:10.12770/test']) {
+function fetchMock(
+  sources: string[] | undefined = ['EMODnet Bathymetry Consortium (2024) doi:10.12770/test'],
+) {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes('mask.meta.json')) {
       return Promise.resolve(
-        jsonResponse({ west: 9.4, south: 54.3, east: 11.0, north: 55.3, cols: 1, rows: 1, sources }),
+        jsonResponse({
+          west: 9.4,
+          south: 54.3,
+          east: 11.0,
+          north: 55.3,
+          cols: 1,
+          rows: 1,
+          sources,
+        }),
       );
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -65,6 +75,7 @@ describe('AboutDialog', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(de['app.disclaimer'])).toBeInTheDocument();
     expect(screen.getByText(de['about.title'])).toBeInTheDocument();
+    expect(screen.getByText(de['app.tagline'])).toBeInTheDocument();
   });
 
   it('shows the English disclaimer when the language is English', async () => {
@@ -116,7 +127,10 @@ describe('AboutDialog', () => {
   });
 
   it('renders the static attributions and the mask.meta.json sources fetched on open', async () => {
-    const mock = fetchMock(['EMODnet Bathymetry Consortium (2024) doi:10.12770/test', 'OSM land polygons (ODbL)']);
+    const mock = fetchMock([
+      'EMODnet Bathymetry Consortium (2024) doi:10.12770/test',
+      'OSM land polygons (ODbL)',
+    ]);
     vi.stubGlobal('fetch', mock);
     render(
       <I18nProvider>

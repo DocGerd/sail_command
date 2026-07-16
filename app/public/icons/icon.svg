@@ -1,12 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Source icon for pipeline/build_icons.mjs. Flat sail/compass motif:
-       dark-blue disc, white mast, two white sail triangles (main aft,
-       genoa forward). Kept deliberately simple/flat — rasterized at
-       192/512/maskable-512 by the pipeline script, not hand-tuned per size. -->
-  <circle cx="256" cy="256" r="240" fill="#0b3d5c" />
-  <rect x="250" y="96" width="12" height="320" rx="6" fill="#ffffff" />
-  <!-- Mainsail: aft (right) of the mast, masthead to boom end -->
-  <polygon points="256,112 256,392 382,368" fill="#ffffff" />
-  <!-- Genoa: forward (left) of the mast, smaller, higher clew -->
-  <polygon points="256,176 256,392 146,364" fill="#ffffff" fill-opacity="0.82" />
+<!-- Source icon for pipeline/build_icons.mjs. DocGerdSoft-derived mark (a
+     two-shape sail-and-hull delta split by a waterline gap, in white) on a
+     full-bleed chart-navy square — rasterized at 192/512/maskable-512 by the
+     pipeline script; the script's BG constant must match this rect's fill
+     (#10243D). -->
+<rect width="512" height="512" fill="#10243D"></rect>
+<g fill="#FFFFFF" transform="translate(-24 -20.08) scale(5.6)"><path d="M50 22.59L69 55.5L31 55.5Z"></path><path d="M26.96 62.5L73.04 62.5L63.5 76L36.5 76Z"></path></g>
 </svg>

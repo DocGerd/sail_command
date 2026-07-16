@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLang, useT } from './i18n';
-import { AppStateProvider, useActivePlan, useOnline, useSettingsPersistenceError, useSettings } from './state/AppState';
+import {
+  AppStateProvider,
+  useActivePlan,
+  useOnline,
+  useSettingsPersistenceError,
+  useSettings,
+} from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { useViaReplan } from './state/replan';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
 import RouteLayer from './components/RouteLayer';
-import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './components/PlannerPanel';
+import PlannerPanel, {
+  nextFullHourMs,
+  type PlannerStatus,
+  type TapTarget,
+} from './components/PlannerPanel';
 import PlansList from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import LiveView from './components/LiveView';
@@ -48,7 +58,10 @@ function toPlannerStatus(
     case 'fetching-wind':
       return { phase: 'fetching' };
     case 'routing': {
-      const progress = Math.min(1, Math.max(0, (flow.simulatedToMs - departureMs) / FORECAST_HORIZON_MS));
+      const progress = Math.min(
+        1,
+        Math.max(0, (flow.simulatedToMs - departureMs) / FORECAST_HORIZON_MS),
+      );
       return { phase: 'routing', progress };
     }
     case 'error':
@@ -357,9 +370,27 @@ function AppShell() {
       </div>
 
       <header className="app-header">
-        <h1>{t('app.title')}</h1>
+        <h1>
+          {/* DocGerdSoft brand mark — decorative, the h1 text carries the name.
+              Tight viewBox around the two-shape artwork (x 26.96–73.04, y
+              22.59–76); fill inherits the header text color. */}
+          <svg
+            className="app-brand-mark"
+            viewBox="24 20 52 58"
+            aria-hidden="true"
+            fill="currentColor"
+          >
+            <path d="M50 22.59L69 55.5L31 55.5Z" />
+            <path d="M26.96 62.5L73.04 62.5L63.5 76L36.5 76Z" />
+          </svg>
+          {t('app.title')}
+        </h1>
         <div className="app-header-actions">
-          <button type="button" aria-label={t('nav.langToggle')} onClick={() => setLang(lang === 'de' ? 'en' : 'de')}>
+          <button
+            type="button"
+            aria-label={t('nav.langToggle')}
+            onClick={() => setLang(lang === 'de' ? 'en' : 'de')}
+          >
             {lang === 'de' ? t('nav.langToggle.en') : t('nav.langToggle.de')}
           </button>
           <button type="button" aria-label={t('about.open')} onClick={() => setAboutOpen(true)}>
@@ -378,7 +409,11 @@ function AppShell() {
         )}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
         {settingsPersistenceError && (
-          <Banner kind="error" onDismiss={clearSettingsPersistenceError} dismissLabel={t('banner.dismiss')}>
+          <Banner
+            kind="error"
+            onDismiss={clearSettingsPersistenceError}
+            dismissLabel={t('banner.dismiss')}
+          >
             {t('banner.persistenceError')}
           </Banner>
         )}
@@ -390,7 +425,11 @@ function AppShell() {
             only leaves 'error' on the next run() attempt. */}
         {planning.phase === 'error' && <Banner kind="error">{t(planning.messageKey)}</Banner>}
         {tapTarget && (
-          <Banner kind="info" onDismiss={handleCancelTapPick} dismissLabel={t('banner.tapPick.cancel')}>
+          <Banner
+            kind="info"
+            onDismiss={handleCancelTapPick}
+            dismissLabel={t('banner.tapPick.cancel')}
+          >
             {t('banner.tapPick', { target: t(TAP_TARGET_LABEL_KEY[tapTarget]) })}
           </Banner>
         )}
@@ -400,23 +439,47 @@ function AppShell() {
           </Banner>
         )}
         {viaReplan.state.droppedCount > 0 && (
-          <Banner kind="info" onDismiss={viaReplan.clearDroppedNotice} dismissLabel={t('banner.dismiss')}>
-            {t(viaReplan.state.droppedCount === 1 ? 'banner.viaTooClose' : 'banner.viaTooClose.plural', {
-              count: viaReplan.state.droppedCount,
-            })}
+          <Banner
+            kind="info"
+            onDismiss={viaReplan.clearDroppedNotice}
+            dismissLabel={t('banner.dismiss')}
+          >
+            {t(
+              viaReplan.state.droppedCount === 1
+                ? 'banner.viaTooClose'
+                : 'banner.viaTooClose.plural',
+              {
+                count: viaReplan.state.droppedCount,
+              },
+            )}
           </Banner>
         )}
       </div>
 
       <div className="app-bottom-sheet">
         <nav className="app-tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'plan'} onClick={() => handleTabChange('plan')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'plan'}
+            onClick={() => handleTabChange('plan')}
+          >
             {t('nav.plan')}
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'routes'} onClick={() => handleTabChange('routes')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'routes'}
+            onClick={() => handleTabChange('routes')}
+          >
             {t('nav.routes')}
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'live'} onClick={() => handleTabChange('live')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'live'}
+            onClick={() => handleTabChange('live')}
+          >
             {t('nav.live')}
           </button>
         </nav>

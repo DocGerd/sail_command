@@ -2,6 +2,7 @@ import type { MsgKey } from './dict.de';
 
 export const en = {
   'app.title': 'SailCommand',
+  'app.tagline': 'Time-optimal passage planning — offline, on board.',
   'app.disclaimer':
     'SailCommand is a passage-planning aid, not a navigation device. Chart data is simplified; official charts and your plotter remain authoritative.',
   'plan.eta': 'Arrival {time}',
@@ -32,15 +33,24 @@ export const en = {
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
   'error.rateLimited': 'Wind forecast service rate limit reached. Wait a moment and try again.',
   'error.windService': 'Wind forecast could not be loaded. Try again in a moment.',
-  'error.internal': 'Route planning failed unexpectedly. Try again; if it keeps happening, reload the app.',
-  'error.noRoute.unreachable': 'No route found — the destination cannot be reached without crossing land or too-shallow water.',
-  'error.noRoute.beyondHorizon': 'No route found within the 6-day forecast horizon. Try a later departure or a closer destination.',
-  'error.noRoute.calmMotorOff': 'Too little wind to sail and the motor is disabled — enable the motor in options or delay departure.',
-  'error.noRoute.snapOrigin': 'The origin is not navigable — pick a point at least 300 m from land or shallow water.',
-  'error.noRoute.snapDestination': 'The destination is not navigable — pick a point at least 300 m from land or shallow water.',
-  'error.noRoute.snapVia': 'A via point is not navigable — pick a point at least 300 m from land or shallow water.',
-  'error.replanStaleWind': "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
-  'error.replanInit': 'The route planner could not be started. Try again; if it keeps happening, reload the app.',
+  'error.internal':
+    'Route planning failed unexpectedly. Try again; if it keeps happening, reload the app.',
+  'error.noRoute.unreachable':
+    'No route found — the destination cannot be reached without crossing land or too-shallow water.',
+  'error.noRoute.beyondHorizon':
+    'No route found within the 6-day forecast horizon. Try a later departure or a closer destination.',
+  'error.noRoute.calmMotorOff':
+    'Too little wind to sail and the motor is disabled — enable the motor in options or delay departure.',
+  'error.noRoute.snapOrigin':
+    'The origin is not navigable — pick a point at least 300 m from land or shallow water.',
+  'error.noRoute.snapDestination':
+    'The destination is not navigable — pick a point at least 300 m from land or shallow water.',
+  'error.noRoute.snapVia':
+    'A via point is not navigable — pick a point at least 300 m from land or shallow water.',
+  'error.replanStaleWind':
+    "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
+  'error.replanInit':
+    'The route planner could not be started. Try again; if it keeps happening, reload the app.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
   'route.rigTabs': 'Rig comparison',

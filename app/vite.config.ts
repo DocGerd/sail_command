@@ -21,7 +21,10 @@ export default defineConfig({
         // sprites + app shell) — see spec §7's first-load budget.
         maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,pmtiles,pbf}'],
-        globIgnores: ['**/test-fixtures/**'],
+        // brand/social-card.png is an og:image served over HTTP, not part of
+        // the offline app — keep it out of the precache so the ~44 MB install
+        // budget (#28) doesn't grow.
+        globIgnores: ['**/test-fixtures/**', '**/brand/**'],
       },
       // devOptions.enabled defaults to false, so `vite dev`/Vitest (both
       // resolve this config with command 'serve') never register a real SW
@@ -32,16 +35,22 @@ export default defineConfig({
       manifest: {
         name: 'SailCommand',
         short_name: 'SailCommand',
-        description: 'Törnplanung Flensburger Förde & Dänische Südsee',
+        description:
+          'Offline-Törnplaner für zeitoptimale Segelrouten in Flensburger Förde und Dänischer Südsee. Kein Navigationsgerät.',
         lang: 'de',
-        theme_color: '#0b3d5c',
-        background_color: '#0b3d5c',
+        theme_color: '#10243D',
+        background_color: '#10243D',
         display: 'standalone',
         start_url: '.',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          {
+            src: 'icons/icon-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
         ],
       },
     }),

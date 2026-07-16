@@ -3,10 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b3d5c" />
+    <meta name="theme-color" content="#10243D" />
+    <meta
+      name="description"
+      content="Offline-Törnplaner für zeitoptimale Segelrouten in Flensburger Förde und Dänischer Südsee. Kein Navigationsgerät."
+    />
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>SailCommand</title>
+    <!-- Social share (Open Graph / Twitter). Absolute og:image URL is required —
+         scrapers do not resolve relative paths. The card is served from
+         /brand/social-card.png but kept out of the SW precache (vite.config.ts). -->
+    <meta property="og:title" content="SailCommand" />
+    <meta
+      property="og:description"
+      content="Offline-Törnplaner für zeitoptimale Segelrouten in Flensburger Förde und Dänischer Südsee. Kein Navigationsgerät."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://docgerd.github.io/sail_command/" />
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:image" content="https://docgerd.github.io/sail_command/brand/social-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SailCommand — Zeitoptimale Törnplanung, offline an Bord." />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="root"></div>

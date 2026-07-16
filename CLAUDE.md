@@ -16,9 +16,10 @@ deviate from it.
 ## Layout
 
 - `pipeline/` — build-time data preparation (Node/Python scripts). Outputs are
-  committed static assets in `app/public/data/`: land/depth mask (packed
-  binary, ~46 m cells, quantized depth per cell), curated harbor list JSON,
-  PMTiles regional basemap, Salona 45 polar tables (main+genoa, main+fock).
+  committed static assets under `app/public/` (`data/`, `icons/`, and `brand/`
+  for the social card): land/depth mask (packed binary, ~46 m cells, quantized
+  depth per cell), curated harbor list JSON, PMTiles regional basemap, Salona 45
+  polar tables (main+genoa, main+fock).
   Pipeline runs on demand, never at app runtime.
 - `app/` — the PWA: Vite + React + TypeScript, MapLibre GL + PMTiles,
   routing engine in a Web Worker, IndexedDB persistence, service-worker
