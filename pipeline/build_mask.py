@@ -264,6 +264,7 @@ def main() -> None:
             "EMODnet Bathymetry Consortium (2024). EMODnet Digital Bathymetry (DTM 2024). doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1 (CC-BY 4.0)",
             "Land polygons (c) OpenStreetMap contributors (ODbL), osmdata.openstreetmap.de",
             "Schlei fjord water body (c) OpenStreetMap contributors (ODbL), relation 2340930 via nominatim.openstreetmap.org",
+            "The land/depth mask (mask.bin) is a Derivative Database of OpenStreetMap data and is made available under the Open Database License (ODbL). © OpenStreetMap contributors.",
         ],
     }
     (OUT / "mask.meta.json").write_text(json.dumps(meta, indent=1))
