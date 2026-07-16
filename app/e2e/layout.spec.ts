@@ -52,10 +52,11 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
 
     // --- Narrow: 375x667, bottom-sheet overlay (unchanged base layout) ---
     await page.setViewportSize({ width: 375, height: 667 });
-    // Wait for the media query + MapLibre resize to settle.
-    await expect
-      .poll(async () => (await panel.boundingBox())?.width ?? 0)
-      .toBeGreaterThan(375 * 0.9);
+    // Wait for the media query + MapLibre resize to settle. Poll panel.y:
+    // only the bottom-sheet layout docks the panel low (y > 100) — the wide
+    // panel's width already exceeds the narrow threshold, so width cannot
+    // distinguish the two states.
+    await expect.poll(async () => (await panel.boundingBox())?.y ?? 0).toBeGreaterThan(100);
     const narrowPanel = await box(panel);
     const narrowMap = await box(mapArea);
     // Panel spans the full width and is docked at the bottom (not the top).
