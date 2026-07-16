@@ -8,7 +8,7 @@ import { en } from './i18n/dict.en';
 import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
-import { formatNm } from './lib/format';
+import { formatLatLon, formatNm } from './lib/format';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -36,8 +36,12 @@ const mapTestHooks = vi.hoisted(() => ({
   // `instance.on('click', handleClick)` — one FakeMap per App mount, so
   // "most recent" is unambiguous within a single test. Lets tests simulate
   // a resolved map tap (origin/destination/via pick) without a real
-  // WebGL/MapLibre runtime, which jsdom doesn't have.
-  clickHandler: null as ((e: { lngLat: { lat: number; lng: number } }) => void) | null,
+  // WebGL/MapLibre runtime, which jsdom doesn't have. Carries `point` too
+  // (the screen pixel MapLibre reports): MapView's harbor-hit gate feeds it
+  // to queryRenderedFeatures.
+  clickHandler: null as
+    | ((e: { lngLat: { lat: number; lng: number }; point: { x: number; y: number } }) => void)
+    | null,
   // Same idea for MapView's `instance.on('error', handleError)' — lets tests
   // simulate a MapLibre runtime error (e.g. a failed tile/style fetch)
   // without a real map, to drive the project-gate map-error banner.
@@ -49,6 +53,11 @@ const mapTestHooks = vi.hoisted(() => ({
     string,
     (e: { features?: { properties?: Record<string, unknown> }[] }) => void
   >,
+  // Harbor features MapView's gate should report at a given click point,
+  // keyed by "x,y" — i.e. where a marker is rendered. Lets a test place a
+  // marker under a specific tap so the generic-tap gate (queryRenderedFeatures)
+  // engages exactly as it would in the browser; empty means open water.
+  harborHitFeatures: {} as Record<string, { properties?: Record<string, unknown> }[]>,
 }));
 
 // Fake plan()-call queue for the RoutingClient mock below, shared the same
@@ -139,12 +148,27 @@ vi.mock('maplibre-gl', () => {
     remove() {}
     addControl() {}
     addSource() {}
-    addLayer() {}
+    // Track added layer ids so getLayer() reflects reality: MapView's
+    // harbor-hit gate calls getLayer(id) before queryRenderedFeatures, and
+    // must see the harbor layer once DataLayers has added it.
+    _addedLayers = new Set<string>();
+    addLayer(layer?: { id?: string }) {
+      if (layer && typeof layer.id === 'string') this._addedLayers.add(layer.id);
+    }
     getSource() {
       return undefined;
     }
-    getLayer() {
-      return undefined;
+    getLayer(id?: string) {
+      return typeof id === 'string' && this._addedLayers.has(id) ? { id } : undefined;
+    }
+    // Faithful stand-in for MapView.handleClick's harbor-hit gate: reports the
+    // harbor feature only when the click point matches a marker the test placed
+    // there (mapTestHooks.harborHitFeatures) AND the harbor layer is the one
+    // queried — otherwise open water, so a plain tap-pick proceeds.
+    queryRenderedFeatures(point: { x: number; y: number }, options?: { layers?: string[] }) {
+      const layers = options?.layers ?? [];
+      if (!layers.includes('sc-harbor-points')) return [];
+      return mapTestHooks.harborHitFeatures[`${point.x},${point.y}`] ?? [];
     }
     removeLayer() {}
     removeSource() {}
@@ -243,10 +267,16 @@ function renderApp() {
 
 // Simulates a resolved MapView tap (see the maplibre-gl mock's FakeMap.on
 // above) — the counterpart to the tap-to-pick tests' arm-only helpers below,
-// which never actually resolve a coordinate.
-function simulateMapClick(lat: number, lon: number) {
+// which never actually resolve a coordinate. `point` is the screen pixel
+// MapLibre reports; the default lands on open water (no harbor feature there,
+// so MapView's harbor-hit gate lets the tap through to onTap).
+function simulateMapClick(
+  lat: number,
+  lon: number,
+  point: { x: number; y: number } = { x: 5, y: 5 },
+) {
   act(() => {
-    mapTestHooks.clickHandler?.({ lngLat: { lat, lng: lon } });
+    mapTestHooks.clickHandler?.({ lngLat: { lat, lng: lon }, point });
   });
 }
 
@@ -303,17 +333,40 @@ beforeEach(async () => {
   routingMock.calls.length = 0;
   for (const key of Object.keys(mapTestHooks.layerClickHandlers))
     delete mapTestHooks.layerClickHandlers[key];
+  for (const key of Object.keys(mapTestHooks.harborHitFeatures))
+    delete mapTestHooks.harborHitFeatures[key];
 });
 
-// Simulates a click on a harbor marker (DataLayers' layer-scoped map handler
-// — see the maplibre-gl mock's FakeMap.on above). Waits for registration
-// first: DataLayers only registers once the (mocked) routing assets resolve.
-async function simulateHarborMarkerClick(harborId: string) {
+// Screen pixel a harbor marker sits at for these tests, and a raw click
+// coordinate distinct from every harbor snap — if it ever leaked through the
+// gate into origin/destination, the DOM would show these coords instead of the
+// harbor name.
+const HARBOR_MARKER_POINT = { x: 300, y: 200 };
+const RAW_TAP_ON_MARKER = { lat: 54.6, lon: 10.2 };
+
+// Simulates a real single click on a harbor marker. In the browser one native
+// click fires MapView's generic tap handler FIRST and DataLayers' layer-scoped
+// harbor handler SECOND — so this fires BOTH, with the marker registered under
+// the tap point (mapTestHooks.harborHitFeatures) so MapView's harbor-hit gate
+// engages exactly as it would live: while armed, the generic tap sees a harbor
+// feature at the point and bails, leaving the harbor handler the sole owner of
+// the click. Firing only the layer handler (the earlier version) hid the
+// armed-pick race entirely. Waits for both handlers' registration first —
+// DataLayers registers its layer handler only once the (mocked) assets resolve.
+async function simulateHarborMarkerClick(
+  harborId: string,
+  point: { x: number; y: number } = HARBOR_MARKER_POINT,
+) {
   await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-harbor-points']).toBeTruthy());
+  await waitFor(() => expect(mapTestHooks.clickHandler).toBeTruthy());
+  const features = [{ properties: { id: harborId } }];
+  mapTestHooks.harborHitFeatures[`${point.x},${point.y}`] = features;
   act(() => {
-    mapTestHooks.layerClickHandlers['sc-harbor-points']?.({
-      features: [{ properties: { id: harborId } }],
+    mapTestHooks.clickHandler?.({
+      lngLat: { lat: RAW_TAP_ON_MARKER.lat, lng: RAW_TAP_ON_MARKER.lon },
+      point,
     });
+    mapTestHooks.layerClickHandlers['sc-harbor-points']?.({ features });
   });
 }
 
@@ -902,6 +955,50 @@ describe('harbor marker click-to-pick (#38)', () => {
       within(originSection).getByText(de['planner.notSelected'], { selector: 'p' }),
     ).toBeInTheDocument();
     expect(screen.queryByText(message)).not.toBeInTheDocument();
+  });
+
+  it('while armed for origin, a tap on a harbor marker is gated to the harbor handler — the generic tap never sets a raw-coordinate origin (#38 armed-pick regression)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Arm origin-pick, then place a harbor marker under the tap point.
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    const armedMessage = de['banner.tapPick'].replace('{target}', de['planner.origin.label']);
+    expect(await screen.findByText(armedMessage)).toBeInTheDocument();
+    await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-harbor-points']).toBeTruthy());
+    const markerPoint = { x: 300, y: 200 };
+    mapTestHooks.harborHitFeatures[`${markerPoint.x},${markerPoint.y}`] = [
+      { properties: { id: 'flensburg' } },
+    ];
+
+    // MapLibre fires the generic map tap FIRST for this click. MapView's
+    // harbor-hit gate must swallow it — the query finds a harbor feature at the
+    // point, so no raw-coordinate origin is set and tap-to-pick stays armed.
+    // This is the deterministic teeth of the fix: fired alone (no harbor
+    // handler yet to mask the result), without the gate onTap would set origin
+    // to the raw tap coordinate here and disarm.
+    simulateMapClick(RAW_TAP_ON_MARKER.lat, RAW_TAP_ON_MARKER.lon, markerPoint);
+    expect(
+      within(originSection).getByText(de['planner.notSelected'], { selector: 'p' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(armedMessage)).toBeInTheDocument();
+
+    // MapLibre fires the harbor layer handler SECOND — it alone resolves the
+    // click, to Flensburg's curated snap (shown by the harbor NAME, whose
+    // PickedPoint carries harbor.snap), and disarms.
+    act(() => {
+      mapTestHooks.layerClickHandlers['sc-harbor-points']?.({
+        features: [{ properties: { id: 'flensburg' } }],
+      });
+    });
+    await waitFor(() =>
+      expect(within(originSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument(),
+    );
+    expect(
+      within(originSection).queryByText(formatLatLon(RAW_TAP_ON_MARKER), { selector: 'p' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(armedMessage)).not.toBeInTheDocument();
   });
 
   it('renders the always-mounted depth toggle (off by default) with no plan active', async () => {

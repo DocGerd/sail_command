@@ -12,7 +12,7 @@ import { useViaReplan } from './state/replan';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
-import DataLayers from './components/DataLayers';
+import DataLayers, { HARBOR_CIRCLE_LAYER } from './components/DataLayers';
 import RouteLayer from './components/RouteLayer';
 import PlannerPanel, {
   harborToPickedPoint,
@@ -35,6 +35,11 @@ import type { Harbor, LatLon, PickedPoint } from './types';
 type Tab = 'plan' | 'routes' | 'live';
 
 const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
+
+// The harbor-marker layer (DataLayers) owns any click that lands on it, so
+// MapView gates a raw tap-pick out on a harbor hit (#38). Module-level for a
+// stable identity — MapView syncs it into a ref every render.
+const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER];
 
 const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
   origin: 'planner.origin.label',
@@ -280,13 +285,16 @@ function AppShell() {
   // selection does (harborToPickedPoint) and fills origin-if-empty, else
   // destination — resolveHarborPickTarget documents the tap-to-pick interplay.
   //
-  // Event-ordering note: this runs inside the same map 'click' as MapView's
-  // generic tap handler, which registers at map creation and therefore always
-  // fires FIRST. While armed, that handler has already queued a raw-tap pick
-  // for the armed field and disarmed — but React batches both handlers'
-  // updates in the one DOM event (no re-render in between), so `tapTarget`/
-  // `origin` here still hold the PRE-click values, and this handler's
-  // same-field update is queued later, i.e. the curated harbor pick wins.
+  // No race with MapView's generic tap handler: a click that hits the harbor
+  // marker layer is gated OUT of that handler (MapView's interactiveLayerIds
+  // queries the layer at the click point and bails on a hit — see MapView.tsx),
+  // so exactly one handler ever resolves a given click. This handler owns
+  // harbor hits; the generic tap owns open-water taps. That gate replaced an
+  // earlier belief that React update ordering let this curated pick "win" over
+  // a same-event raw-tap pick: it did NOT — handleMapTap sets the raw tap from
+  // inside a setState updater (runs during render), so that write was actually
+  // queued LAST and clobbered the harbor snap. The armed-pick regression test
+  // in App.test.tsx caught it; the gate removes the ordering question entirely.
   const handleHarborPick = useCallback(
     (h: Harbor) => {
       const target = resolveHarborPickTarget(tapTarget, origin !== null);
@@ -373,7 +381,12 @@ function AppShell() {
             re-styling in place risked disturbing RouteLayer/BoatMarker's
             child-added sources; a full remount would need viewport capture
             plumbing this assembly pass deliberately keeps out of scope. */}
-        <MapView tapActive={tapTarget !== null} onTap={handleMapTap} onMapError={handleMapError}>
+        <MapView
+          tapActive={tapTarget !== null}
+          onTap={handleMapTap}
+          onMapError={handleMapError}
+          interactiveLayerIds={INTERACTIVE_MAP_LAYER_IDS}
+        >
           {/* Always-mounted, plan-independent layers (#38/#39) — must NOT
               live in RouteLayer, which renders null until a plan exists. */}
           <DataLayers onHarborPick={handleHarborPick} />

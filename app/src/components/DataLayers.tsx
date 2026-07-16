@@ -27,7 +27,9 @@ export interface DataLayersProps {
 const DEPTH_SOURCE = 'sc-depth';
 const DEPTH_LAYER = 'sc-depth';
 const HARBOR_SOURCE = 'sc-harbors';
-const HARBOR_CIRCLE_LAYER = 'sc-harbor-points';
+// Exported so App can hand MapView the same id its raw-tap gate queries,
+// keeping the 'sc-harbor-points' literal in exactly one place (#38).
+export const HARBOR_CIRCLE_LAYER = 'sc-harbor-points';
 const HARBOR_LABEL_LAYER = 'sc-harbor-labels';
 
 // Deterministic cross-component layer ordering: RouteLayer's bottom-most
