@@ -27,6 +27,7 @@ import Banner from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import { isStaleForecast } from './lib/plan';
+import { useWideLayout } from './lib/useWideLayout';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
@@ -94,6 +95,13 @@ function AppShell() {
 
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
+  const isWide = useWideLayout();
+  // #31: on wide, LiveView (which must stay mounted inside MapView's subtree
+  // for BoatMarker's map context) portals its textual readout into this
+  // panel-column slot. A callback ref into state so the portal target becomes
+  // available as soon as the slot commits; changes only on tab/layout switch,
+  // never at the 1 Hz GPS cadence, so it costs no extra per-fix re-render.
+  const [liveSlot, setLiveSlot] = useState<HTMLDivElement | null>(null);
   // MapView reports at most one error per mount (see its own comment) —
   // this just needs to flip a banner on and let the user dismiss it; there's
   // no retry path since the underlying map instance isn't recreated.
@@ -400,13 +408,14 @@ function AppShell() {
           {/* LiveView must live inside MapView's subtree: useMapInstance()
               (its BoatMarker child calls it) reads the map instance off a
               React context that MapView provides, and only descendants of
-              MapView can see it — a sibling would always get null. Styled
-              to occupy the same bottom-sheet screen region as
-              .app-bottom-sheet below, even though it's a different DOM
-              subtree. Only mounted while the Live tab is active — switching
-              away stops GPS tracking rather than running it in the
-              background. */}
-          {tab === 'live' && <LiveView />}
+              MapView can see it — a sibling would always get null. On narrow
+              it renders its readout inline, styled to occupy the same
+              bottom-sheet screen region as .app-bottom-sheet below; on wide
+              (#31) it portals that readout into the left panel column's
+              `liveSlot` (BoatMarker stays here on the map either way). Only
+              mounted while the Live tab is active — switching away stops GPS
+              tracking rather than running it in the background. */}
+          {tab === 'live' && <LiveView panelSlot={isWide ? liveSlot : null} />}
         </MapView>
       </div>
 
@@ -554,9 +563,12 @@ function AppShell() {
               <PlansList />
             </>
           )}
-          {/* tab === 'live': LiveView is already mounted above, inside
-              MapView's subtree — its own JSX (toggle, HTS/COG/SOG, hint) is
-              what the Live panel shows; nothing extra to render here. */}
+          {/* tab === 'live': LiveView is mounted above, inside MapView's
+              subtree (BoatMarker needs the map context). On wide it portals
+              its readout into this slot so the panel column isn't empty (#31);
+              on narrow the slot isn't rendered and the readout stays a
+              bottom-docked card above the tab strip. */}
+          {tab === 'live' && isWide && <div className="app-panel-live" ref={setLiveSlot} />}
         </div>
       </div>
 

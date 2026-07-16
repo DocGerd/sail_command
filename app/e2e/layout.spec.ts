@@ -54,17 +54,22 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     expect(wideCanvas.width).toBeGreaterThan(1280 * 0.5);
     expect(wideCanvas.width).toBeLessThan(1280 * 0.75);
 
-    // Live readout floats as a compact card in the MAP column, not stretched
-    // across the panel. A fresh e2e context has no active plan/GPS fix, so
-    // LiveView renders its no-plan card (`.live-view-no-plan`) — enough to
-    // assert placement. It must sit right of the panel (in the map column) and
-    // stay capped to a card width (22rem + slack), not fill the map.
+    // #31: on wide the Live readout renders INSIDE the left panel column (so
+    // the panel content area is no longer empty under the Live tab), not as a
+    // floating card over the map. A fresh e2e context has no active plan/GPS
+    // fix, so LiveView renders its no-plan card (`.live-view-no-plan`) — enough
+    // to assert placement. Scope the locator to the bottom-sheet panel to prove
+    // DOM containment (the portal target lives there), then confirm it sits
+    // within the panel column's horizontal bounds, not right of it over the map.
     await page.getByRole('tab', { name: 'Live' }).click();
-    const liveCard = page.locator('.live-view-no-plan');
+    const liveCard = page.locator('.app-bottom-sheet .live-view-no-plan');
     await expect(liveCard).toBeVisible();
     const liveBox = await box(liveCard);
-    expect(liveBox.x).toBeGreaterThan(widePanel.x + widePanel.width);
-    expect(liveBox.width).toBeLessThanOrEqual(356);
+    expect(liveBox.x).toBeGreaterThanOrEqual(widePanel.x - 2);
+    expect(liveBox.x + liveBox.width).toBeLessThanOrEqual(widePanel.x + widePanel.width + 2);
+    // And NOT also rendered inline over the map — a dual-render regression
+    // (portaled AND inline) would leave a second copy in .map-area.
+    await expect(page.locator('.map-area .live-view-no-plan')).toHaveCount(0);
     // Switch back so the banner/form-control assertions below see the planner.
     await page.getByRole('tab', { name: 'Planen' }).click();
 
@@ -111,8 +116,25 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     expect(narrowMap.width).toBeGreaterThan(375 * 0.95);
     expect(narrowMap.height).toBeGreaterThan(667 * 0.95);
 
-    // --- Back to wide: the canvas must resize with its container ---
+    // #31: narrow layout is unchanged — the readout stays a bottom-docked card
+    // in MapView's subtree (inside .map-area), NOT portaled into the bottom-
+    // sheet panel. This pins the split direction so a future refactor can't
+    // quietly move the narrow readout into the panel. Stay on the Live tab: the
+    // resize crossing below is asserted while Live is active.
+    await page.getByRole('tab', { name: 'Live' }).click();
+    await expect(page.locator('.map-area .live-view-no-plan')).toBeVisible();
+    await expect(page.locator('.app-bottom-sheet .live-view-no-plan')).toHaveCount(0);
+
+    // --- Back to wide, WHILE STILL ON LIVE: the #31 breakpoint crossing ---
+    // The one runtime path where useWideLayout's change listener, the slot's
+    // callback-ref, and the portal<->inline relocation interact end to end (the
+    // unit test uses a static slot; App.test is always narrow). The readout must
+    // relocate from the map corner (.map-area) into the panel column
+    // (.app-bottom-sheet) — auto-retrying locators, no fixed waits.
     await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.locator('.app-bottom-sheet .live-view-no-plan')).toBeVisible();
+    await expect(page.locator('.map-area .live-view-no-plan')).toHaveCount(0);
+    // The canvas must also resize with its container.
     await expect
       .poll(async () => Math.round((await canvas.boundingBox())?.width ?? 0))
       .toBeGreaterThan(1280 * 0.5);
@@ -125,6 +147,13 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     // to the 1024 grid geometry (~341px, vs ~427px at 1280) before asserting.
     await page.setViewportSize({ width: 1024, height: 768 });
     await expect.poll(async () => (await panel.boundingBox())?.width ?? 0).toBeLessThan(400);
+    // #31: guard the JS (matchMedia) side of the duplicated 1024px breakpoint,
+    // not just the CSS @media geometry below — at exactly 1024 the Live readout
+    // (still selected from the crossing above) must be in the panel column. A
+    // JS-only drift (e.g. WIDE_LAYOUT_QUERY bumped to 1025) would leave the
+    // panel empty under Live here while the CSS grid still switched.
+    await expect(page.locator('.app-bottom-sheet .live-view-no-plan')).toBeVisible();
+    await expect(page.locator('.map-area .live-view-no-plan')).toHaveCount(0);
     const edgePanel = await box(panel);
     const edgeMap = await box(mapArea);
     // Panel is the flush-left column, well under half the viewport.
