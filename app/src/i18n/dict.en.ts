@@ -84,6 +84,8 @@ export const en = {
   'route.exportGpx': 'Export GPX',
   'route.windBarbs.toggle': 'Show wind barbs',
   'route.windBarbs.timeSlider': 'Forecast time',
+  'route.annotations.toggle': 'Times & speeds',
+  'route.motorLetter': 'M',
   'map.depth.toggle': 'Water depths',
   'plansList.empty': 'No saved plans yet.',
   'plansList.created': 'Created',

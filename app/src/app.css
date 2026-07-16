@@ -316,6 +316,15 @@ select {
   right: 0.5rem;
 }
 
+/* Touch targets: each toggle row is a ≥44 px hit area (gloved-hand cockpit
+   use) — padding grows the label, the checkbox stays its native size. */
+.route-layer-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+}
+
 /* Opposite corner from the plan-gated route cluster so the two can never
    collide when a plan is active — kept terse (dict) to share the map-top row
    with it even at phone widths. */
