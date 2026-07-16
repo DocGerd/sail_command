@@ -16,6 +16,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+      # Drift guard: a dependency bump that forgets to regenerate the
+      # committed third-party notices fails CI. Pathspec is relative to the
+      # job's working-directory (app/).
+      - run: npm run notices
+      - run: git diff --exit-code public/THIRD-PARTY-NOTICES.txt
   e2e:
     needs: app
     runs-on: ubuntu-latest
