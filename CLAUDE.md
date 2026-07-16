@@ -39,6 +39,8 @@ deviate from it.
   **CI runners are 6–10× slower than dev machines** — never add a per-test
   timeout tighter than the file-level config, and never trust local timing
   margins for CI.
+- `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
+  CI fails if the committed file drifts — run it after any dependency change.
 - Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
@@ -74,6 +76,9 @@ deviate from it.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
+- E2E determinism: never `waitForTimeout` — gate on state signals with
+  `expect.poll` (settle canvas baselines via two consecutive byte-equal
+  screenshots before pixel comparisons).
 - `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
@@ -89,6 +94,9 @@ deviate from it.
   resolved), required checks `app` + `e2e` with strict up-to-date policy, no
   force pushes or deletions. Pages serves at
   `https://docgerd.github.io/sail_command/`.
+- Multiple open PRs: develop in parallel, merge strictly serially — after each
+  merge, `git merge origin/main` into the next branch and let full CI (~10 min)
+  re-run before its merge (strict up-to-date policy).
 
 ## Verification lessons (hard-won)
 
@@ -133,6 +141,17 @@ deviate from it.
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
+- The destructive-git guard pattern-matches `-f` anywhere in a compound command:
+  never combine `gh api -f …` with `git push` in one Bash call — split them.
+- PR review threads via API: bodies containing backticks must be sent as JSON
+  `--input` files (shell quoting mangles them); inline comments 422 outside diff
+  hunks — anchor to in-diff lines, put out-of-diff findings in a PR comment.
+- Worktree-isolated agents don't survive completion (branch + node_modules do):
+  fix waves need a FRESH agent pointed at the surviving worktree. Parallel
+  implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
+  Playwright MCP browser is contested — verify the URL before every screenshot.
+- Spec edits (`docs/superpowers/specs/`) go through the main session only (the
+  ask-gate hook must prompt the user) — never through subagents.
 
 ## graphify
 
