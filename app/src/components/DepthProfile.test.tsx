@@ -7,10 +7,19 @@ import { DEFAULT_SETTINGS, type Leg, type Plan, type Rig, type RigResult } from 
 // The mask is fetched via the module-cached loadRoutingAssets(); mock it so a
 // jsdom test can drive a synthetic (uniform-byte) mask through the component.
 vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
+// Spy on profileSamples (real implementation kept) so the "safety change
+// doesn't resample" test can pin sample-memo identity by call count, not just
+// path-string equality.
+vi.mock('../lib/routeProfile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/routeProfile')>();
+  return { ...actual, profileSamples: vi.fn(actual.profileSamples) };
+});
 import { loadRoutingAssets } from '../services/assets';
+import { profileSamples } from '../lib/routeProfile';
 import DepthProfile from './DepthProfile';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
+const spiedSamples = vi.mocked(profileSamples);
 
 const FETCHED_AT_MS = Date.UTC(2026, 6, 15, 6, 0, 0);
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -207,20 +216,34 @@ describe('DepthProfile', () => {
     expect(yOfLabel('0')).toBeLessThan(yOfLabel('5'));
   });
 
-  it('the safety line moves on a settings change WITHOUT resampling the seabed', async () => {
-    const { container, rerender } = renderProfile({ safetyDepthM: 3 });
+  it('the safety line moves on a settings change WITHOUT resampling (sample identity pinned)', async () => {
+    localStorage.setItem('sc-lang', 'en');
+    // ONE plan object reused across the rerender — only safetyDepthM changes,
+    // so a correct component reuses the memoized samples (no profileSamples
+    // call, byte-identical seabed). If safetyDepthM were wrongly added to the
+    // samples-memo deps, the spy would be called again and this fails.
+    const plan = makePlan();
+    spiedSamples.mockClear();
+    const { container, rerender } = render(
+      <I18nProvider>
+        <DepthProfile plan={plan} rig="genoa" safetyDepthM={3} />
+      </I18nProvider>,
+    );
     await waitForChart(container);
+    const callsAfterMount = spiedSamples.mock.calls.length;
+    expect(callsAfterMount).toBeGreaterThan(0);
     const seabedBefore = container.querySelector('.dp-seabed')?.getAttribute('d');
     const safetyYBefore = container.querySelector('.dp-safety-line')?.getAttribute('y1');
 
     rerender(
       <I18nProvider>
-        <DepthProfile plan={makePlan()} rig="genoa" safetyDepthM={10} />
+        <DepthProfile plan={plan} rig="genoa" safetyDepthM={10} />
       </I18nProvider>,
     );
     const seabedAfter = container.querySelector('.dp-seabed')?.getAttribute('d');
     const safetyYAfter = container.querySelector('.dp-safety-line')?.getAttribute('y1');
 
+    expect(spiedSamples.mock.calls.length).toBe(callsAfterMount); // no resample
     expect(seabedAfter).toBe(seabedBefore); // samples untouched by the safety change
     expect(safetyYAfter).not.toBe(safetyYBefore); // overlay moved
     expect(container.querySelector('.dp-safety-line')?.getAttribute('stroke')).toBe('#E69F00');

@@ -191,10 +191,10 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
     () => (mask && legs.length ? profileSamples(legs, mask, sampleCount(durationMs)) : []),
     [mask, legs, durationMs],
   );
-  const windField = useMemo(
-    () => (legs.length ? new WindField(plan.windGrid) : null),
-    [plan.windGrid, legs.length],
-  );
+  // WindField wraps the stored grid only (never re-fetched); it does not
+  // depend on the legs. Constructed unconditionally — the empty-route early
+  // return below means the unused instance is thrown away harmlessly.
+  const windField = useMemo(() => new WindField(plan.windGrid), [plan.windGrid]);
 
   if (!result || legs.length === 0) return null;
 
@@ -213,7 +213,7 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
         {summaryValue}
       </summary>
       <div className="depth-profile-plot" ref={plotRef}>
-        {samples.length > 0 && windField && (
+        {samples.length > 0 && (
           <ProfileChart
             W={W}
             H={H}
