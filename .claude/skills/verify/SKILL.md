@@ -51,5 +51,5 @@ Kill the server's whole process group (`kill -- -<pid>` on the backgrounded
 job); killing only `npm` strands `vite` on the port (documented in
 app/e2e/helpers.ts). Then restore the fixture churn — the regenerated
 timestamp diff must never be committed:
-`git checkout -- app/public/test-fixtures/wind-sw12.json`. Finish with
+`git restore app/public/test-fixtures/wind-sw12.json`. Finish with
 `git status` showing only the intended change.

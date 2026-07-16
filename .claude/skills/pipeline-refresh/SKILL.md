@@ -45,14 +45,16 @@ Order matters: rebuild harbors **before** running mask verify.
 1. `build_mask.py` asserts water fraction 0.45–0.85 — on failure inspect
    inputs; never relax a bound.
 2. `pipeline/.venv/bin/python pipeline/verify_mask.py` must exit 0 printing
-   `all probes OK (6 water, 5 land, N harbor snaps)`.
+   `all probes OK (N water, M land, K harbor snaps)` (counts derived at
+   runtime from its probe lists and harbors.json).
 3. Verify-failure triage:
    - Snap < 2.2 m → move the coordinate out along the real fairway in
      `harbors-source.json`; never weaken the threshold.
    - New harbor unreachable from open water → `CONNECTIVITY_EXCEPTIONS_M`
-     entry (requires an approachNote citing the depth) or, if disconnected at
-     any gate depth (sub-cell channel), `KNOWN_DISCONNECTED` with an issue
-     reference (#9 pattern).
+     entry (the gate asserts an approachNote exists; by convention it must
+     cite the documented depth) or, if disconnected at any gate depth
+     (sub-cell channel), `KNOWN_DISCONNECTED` with an issue reference
+     (#9 pattern).
    - A `KNOWN_DISCONNECTED` harbor now reported connected → the gate fails on
      purpose; remove the stale entry.
    - Narrow inland water masked as land (Schlei pattern) → add that water
