@@ -271,7 +271,7 @@ def main() -> None:
             # which the About dialog also renders dynamically), remove the
             # static about.sources.osmMask item from AboutDialog + both i18n
             # dicts (or dedupe) to avoid showing the statement twice.
-            "The land/depth mask (mask.bin) is a Derivative Database of OpenStreetMap data and is made available under the Open Database License (ODbL). © OpenStreetMap contributors.",
+            "The land/depth mask (mask.bin) is a Derivative Database of OpenStreetMap data and is made available under the Open Database License (ODbL). (c) OpenStreetMap contributors.",
         ],
     }
     (OUT / "mask.meta.json").write_text(json.dumps(meta, indent=1))

@@ -84,12 +84,14 @@ for setup and regeneration instructions.
   Bathymetry (DTM 2024). doi:
   [10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1](https://doi.org/10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1)
   ([CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)). The data was
-  processed (reprojected and depth-quantized) for this app.
+  processed (resampled onto the app's ~46 m grid and depth-quantized) for
+  this app.
 - **Land & Schlei fjord water body**: © OpenStreetMap contributors (ODbL),
   via osmdata.openstreetmap.de land polygons and Nominatim relation
   [2340930](https://www.openstreetmap.org/relation/2340930).
   The land/depth mask (`mask.bin`) is a Derivative Database of OpenStreetMap
-  data and is made available under the Open Database License (ODbL).
+  data and is made available under the
+  [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1.0/).
   © OpenStreetMap contributors.
 - **Basemap rendering**: [Protomaps](https://protomaps.com/), an ODbL
   Produced Work derived from OpenStreetMap data. Map fonts (Noto Sans,
