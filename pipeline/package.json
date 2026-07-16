@@ -1,6 +1,7 @@
 {
   "name": "sailcommand-pipeline",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "polars": "node build_polars.mjs",

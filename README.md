@@ -115,3 +115,10 @@ underlying data only, not to this repository's code).
 
 Currents/tides, wave data, AIS, live re-routing, multi-day passages beyond
 the forecast horizon, route sharing/collaboration, official ENC chart data.
+
+## License
+
+Code is licensed under the [Apache License 2.0](LICENSE). Map tiles and
+bathymetry carry their own upstream licenses (OpenStreetMap ODbL, EMODnet
+CC-BY 4.0, and others) — see `pipeline/README.md` and the app's About dialog
+for the full attribution.
