@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "lint": "eslint src",
     "typecheck": "tsc -b --noEmit",
+    "pree2e": "node scripts/gen-wind-fixture.mjs && npm run build",
     "e2e": "playwright test"
   },
   "dependencies": {
