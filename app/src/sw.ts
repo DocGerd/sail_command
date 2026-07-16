@@ -6,7 +6,7 @@ import { matchPrecache, precacheAndRoute, cleanupOutdatedCaches } from 'workbox-
 import { createPartialResponse } from 'workbox-range-requests';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
-import { GLYPH_CACHE_NAME, isGlyphPath } from './lib/glyphs';
+import { GLYPH_CACHE_NAME, isGlyphPath, isRetiredGlyphCache } from './lib/glyphs';
 
 // MUST be registered before precacheAndRoute: first-registered route wins, and the
 // default precache route replays a full 200 to Range requests, which makes
@@ -45,6 +45,24 @@ registerRoute(
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 clientsClaim();
+
+// #28 (glyph cache lifecycle): cleanupOutdatedCaches() above only manages
+// workbox's PRECACHE caches — a GLYPH_CACHE_NAME version bump would leak
+// the retired runtime cache's ~14 MB forever without this. Bounded work
+// (one caches.keys() + targeted deletes of `sailcommand-glyphs-*` names
+// that aren't the current version), so extending activate via waitUntil is
+// fine here; it does not delay page takeover — clientsClaim() registers
+// its own activate listener whose clients.claim() call fires regardless of
+// this handler's pending waitUntil.
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((names) =>
+        Promise.all(names.filter(isRetiredGlyphCache).map((name) => caches.delete(name))),
+      ),
+  );
+});
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') void self.skipWaiting();

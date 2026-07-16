@@ -5,6 +5,9 @@
 // mirror these values as literals (the e2e tsconfig project can't import
 // app source) — keep them in sync when changing anything here.
 
+/** Family prefix for glyph runtime caches — see isRetiredGlyphCache(). */
+export const GLYPH_CACHE_PREFIX = 'sailcommand-glyphs-';
+
 /**
  * Dedicated runtime cache for basemap font glyph ranges (#28). The ~768
  * `basemap-assets/fonts/**` .pbf files are deliberately NOT precached
@@ -15,9 +18,20 @@
  *
  * Versioned suffix: cleanupOutdatedCaches() only manages workbox's precache
  * caches, so retiring this cache (e.g. after a font update) means bumping
- * the name and deleting the old one in an activate handler.
+ * the version here — sw.ts's activate handler then deletes every retired
+ * `sailcommand-glyphs-*` cache (via isRetiredGlyphCache below) on the next
+ * activation, so the old ~14 MB never leaks.
  */
-export const GLYPH_CACHE_NAME = 'sailcommand-glyphs-v1';
+export const GLYPH_CACHE_NAME = `${GLYPH_CACHE_PREFIX}v1`;
+
+/**
+ * True for glyph caches of any version OTHER than the current one —
+ * sw.ts's activate handler deletes exactly these. Prefix-scoped so it can
+ * never touch workbox's precache caches (or anything else).
+ */
+export function isRetiredGlyphCache(name: string): boolean {
+  return name.startsWith(GLYPH_CACHE_PREFIX) && name !== GLYPH_CACHE_NAME;
+}
 
 /**
  * Build-time manifest of every glyph-range path, emitted into dist/ by

@@ -6,11 +6,11 @@ import { scheduleGlyphWarmup } from './services/glyphWarmup';
 import App from './App.tsx';
 import './app.css';
 
-// Best-effort: protects saved plans (IndexedDB) and the ~44 MB offline
-// storage (SW precache + glyph runtime cache) from browser storage-pressure
-// eviction. The browser may still deny the request (no prompt on most
-// desktop browsers, and it's not guaranteed even when granted) — nothing
-// here depends on it succeeding.
+// Best-effort: protects saved plans (IndexedDB) and the offline storage
+// (~33 MB SW precache + up to ~14 MB glyph runtime cache, #28) from browser
+// storage-pressure eviction. The browser may still deny the request (no
+// prompt on most desktop browsers, and it's not guaranteed even when
+// granted) — nothing here depends on it succeeding.
 void navigator.storage?.persist?.();
 
 // #27: arm the one-shot broken-pre-SW-map recovery before React renders,
