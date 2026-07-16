@@ -264,6 +264,13 @@ def main() -> None:
             "EMODnet Bathymetry Consortium (2024). EMODnet Digital Bathymetry (DTM 2024). doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1 (CC-BY 4.0)",
             "Land polygons (c) OpenStreetMap contributors (ODbL), osmdata.openstreetmap.de",
             "Schlei fjord water body (c) OpenStreetMap contributors (ODbL), relation 2340930 via nominatim.openstreetmap.org",
+            # NOTE: the About dialog currently shows this ODbL statement as a
+            # static i18n item (about.sources.osmMask) because the committed
+            # mask.meta.json predates this entry. When the mask is next
+            # regenerated (and this string lands in mask.meta.json's sources,
+            # which the About dialog also renders dynamically), remove the
+            # static about.sources.osmMask item from AboutDialog + both i18n
+            # dicts (or dedupe) to avoid showing the statement twice.
             "The land/depth mask (mask.bin) is a Derivative Database of OpenStreetMap data and is made available under the Open Database License (ODbL). © OpenStreetMap contributors.",
         ],
     }
