@@ -1,6 +1,22 @@
 import { test, expect } from '@playwright/test';
 import { startPreview } from './helpers';
 
+// Run the full planning flow at a phone viewport so it exercises the
+// bottom-sheet layout — the primary on-boat mode (CLAUDE.md). Before the #24
+// side-panel work the default 1280x720 viewport WAS the bottom sheet; now it's
+// the wide side-panel layout (covered by layout.spec), so this flow pins a
+// phone viewport to keep bottom-sheet coverage where the real usage is.
+//
+// Attribution overlap: the map's attribution control is `compact: true`
+// (MapView.tsx), so it loads EXPANDED (a ~600px bar anchored bottom-right) and
+// overlaps the full-width "Route planen" button's centre at any width below
+// the 1024px breakpoint — the old 1280px default only cleared it because it
+// was wide enough for the bar to stop short of centre. The 1000x720 fallback
+// does NOT avoid this, so instead of widening (impossible in bottom-sheet) we
+// collapse the attribution once before the plan click (see below): a real user
+// action, no assertion weakened.
+test.use({ viewport: { width: 375, height: 667 } });
+
 // End-to-end happy path: harbor search -> plan -> rig comparison -> saved
 // under Routen. Deterministic wind via the `?windFixture=` escape hatch
 // (E3) — no live Open-Meteo call, no route-dependent flakiness.
@@ -43,11 +59,20 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     // real via add/drag needs a canvas-coordinate map tap, which depends on
     // MapLibre's live projection (center/zoom/bounds) and was judged too
     // fragile for this spec — see task-F2-report.md.
-    await page.getByRole('region', { name: 'Wegpunkte' }).getByRole('button', { name: 'Wegpunkt hinzufügen' }).click();
+    await page
+      .getByRole('region', { name: 'Wegpunkte' })
+      .getByRole('button', { name: 'Wegpunkt hinzufügen' })
+      .click();
     const tapPickBanner = page.getByText('Auf Karte tippen für Wegpunkte.');
     await expect(tapPickBanner).toBeVisible();
     await page.getByRole('button', { name: 'Abbrechen' }).click();
     await expect(tapPickBanner).not.toBeVisible();
+
+    // Collapse the map's attribution before clicking Plan: it loads expanded
+    // (compact: true) and its ~600px bar overlaps the full-width Plan button in
+    // the bottom-sheet layout, intercepting the click. Clicking its toggle is a
+    // real user action and leaves every planning assertion intact.
+    await page.locator('.maplibregl-ctrl-attrib-button').click();
 
     const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();

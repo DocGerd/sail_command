@@ -1,6 +1,12 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Map as MaplibreMap, addProtocol, AttributionControl } from 'maplibre-gl';
-import type { StyleSpecification, MapMouseEvent, ErrorEvent, LngLatBoundsLike, LngLatLike } from 'maplibre-gl';
+import type {
+  StyleSpecification,
+  MapMouseEvent,
+  ErrorEvent,
+  LngLatBoundsLike,
+  LngLatLike,
+} from 'maplibre-gl';
 import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -30,7 +36,8 @@ function buildStyle(lang: string): StyleSpecification {
   return {
     version: 8,
     glyphs: import.meta.env.BASE_URL + 'basemap-assets/fonts/{fontstack}/{range}.pbf',
-    sprite: new URL(import.meta.env.BASE_URL + 'basemap-assets/sprites/v4/light', location.href).href,
+    sprite: new URL(import.meta.env.BASE_URL + 'basemap-assets/sprites/v4/light', location.href)
+      .href,
     sources: {
       protomaps: {
         type: 'vector',
@@ -89,6 +96,13 @@ export default function MapView({ tapActive, onTap, onMapError, children }: MapV
     // Label language is baked into the style at creation time; SailCommand's
     // language switch is rare enough that re-fetching/re-diffing the whole
     // style (which would also disturb child-added layers) isn't worth it here.
+    //
+    // No explicit resize handling: `trackResize` defaults to true, and
+    // MapLibre v5 backs it with a ResizeObserver on `container` (not a bare
+    // window 'resize' listener). That already keeps the canvas in sync when
+    // the container box changes — including the #24 responsive breakpoint
+    // crossing that flips the map between full-viewport and the ~2/3 side-
+    // panel column — so a second observer here would only double-fire resize.
     const instance = new MaplibreMap({
       container,
       style: buildStyle(lang),
