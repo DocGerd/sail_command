@@ -167,3 +167,40 @@ forecast horizon, route sharing/collaboration, official ENC chart data.
   Boating and push basic updates back. First increment will be file-based GPX
   import (export already exists); true API sync is constrained by the
   no-backend rule. (Issue #3.)
+
+## Addendum 2026-07-16: Route presentation (#35 #36 #37 #45 #46a — PRs #48 #49 #50)
+
+The planned route carries its own reading aids on the map and in the panel. All of it is
+presentation-only: no routing/solver behavior changed, and all wind/depth data comes from the
+plan's stored grid and the committed mask (offline-safe, never re-fetched).
+
+- **Map annotations (#35, #37).** Route point features (start, finish, tack/gybe maneuvers, and
+  every surviving heading change) render with a visual hierarchy: user via-waypoints (#CC79A7) >
+  maneuver circles (white, W/H de / T/G en) > secondary heading dots (r=3, neutral, z≥11).
+  Start/finish/maneuver/heading points carry HH:mm ETA labels (locale-invariant, plan timezone);
+  heading ETAs appear from z12 in a subordinate layer. Legs carry speed labels (kn,
+  `symbol-placement: line`). A "Times & speeds" toggle (default ON) flips the annotation layers
+  together; heading dots always show. Collision priority within the primary ETA layer is
+  rank-ordered (finish > start > maneuver).
+- **Wind-barb density (#36).** Barbs render from a deterministic, pan-stable, grid-index-anchored
+  lattice (~96 px target, subdivision bounded at 4× the native forecast grid) plus route-ribbon
+  samples (~110 px along legs, 48 px near-route dedup), land-culled via the mask, capped at 500
+  features with ribbon priority, and viewport-clipped so the cap budget is spent in view (amended
+  after an empirically-proven cap-starvation failure at deep zoom on long routes). Wind is sampled
+  at the slider hour from the plan's stored grid; barb icon conventions unchanged.
+- **Motor semantics legibility (#46a).** The motor option carries visible help text (fallback
+  semantics: motor only where predicted sailing speed < threshold, at motor speed) via
+  aria-describedby; RouteSummary chips name the displayed rig per sail leg and a footnote states
+  that motor legs model engine only (no sail contribution); a collapsed-by-default map legend in
+  the route controls names all route marks. No motorsailing claims — the model remains sail XOR
+  motor (motorsailing would be a separate spec-level feature, #46 scope b).
+- **Depth profile (#45).** A self-contained SVG chart next to the route summary: depth under the
+  boat over trip time (samples: clamp(duration/5 min, 60, 240); positions interpolated along leg
+  geometry; depth via the mask decode path with an explicit `capped` flag — byte 255 renders as an
+  honest hatched "≥ 25 m" band, never a fake value). Wind/heading indicator rows sample each
+  instant's own forecast hour (the profile is a timeline; the map is a moment). The safety-depth
+  line/tint (#E69F00) is a render-time overlay of the current query-time setting — changing the
+  setting never resamples; the line is skipped (label kept) when off the depth scale. Motor legs
+  are shaded distinctly. Rig duality: the profile follows the displayed rig result. Wide layout
+  default-open, narrow collapsed. Shared `barbSegments` geometry keeps one WMO barb language
+  across map and chart.
