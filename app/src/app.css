@@ -180,8 +180,9 @@ select {
 /* .app-tabs's height, shared with .live-view/.live-view-no-plan below so
    they can dock directly above it instead of underneath it — the tab strip
    itself is NOT tab-gated (it's how the user switches tabs at all), so it's
-   always on screen, even while the Live tab's own content renders outside
-   .app-panel (inside MapView's subtree, for BoatMarker's map context). */
+   always on screen. On narrow the Live tab's readout renders outside .app-panel
+   (inside MapView's subtree, for BoatMarker's map context); on wide it portals
+   into .app-panel-live (#31), but BoatMarker still stays in MapView's subtree. */
 :root {
   --sc-tabbar-h: 3.25rem;
 }
@@ -224,10 +225,12 @@ select {
   padding: 0.75rem;
 }
 
-/* LiveView renders inside MapView's subtree (for BoatMarker's map context),
-   not inside .app-panel, but is styled to dock in the same visual region —
-   directly above the always-visible .app-tabs strip (bottom: var(--sc-tabbar-h),
-   not 0, or the tab strip — painted later in DOM order — would cover it). */
+/* Narrow-layout base: LiveView's readout DOM stays outside .app-panel, inside
+   MapView's subtree (for BoatMarker's map context), styled to dock in the same
+   visual region — directly above the always-visible .app-tabs strip (bottom:
+   var(--sc-tabbar-h), not 0, or the tab strip — painted later in DOM order —
+   would cover it). On wide the readout portals into .app-panel-live and these
+   absolute rules are neutralized (see the #31 block in the wide media query). */
 .live-view {
   position: absolute;
   left: 0;
@@ -293,8 +296,8 @@ select {
   gap: 0.25rem 0.75rem;
 }
 
-/* ---- Map-overlay controls (RouteLayer's barb toggle/time slider, and
-   DataLayers' always-mounted depth toggle) ---- */
+/* ---- Map-overlay controls (RouteLayer's annotations toggle, barb toggle/time
+   slider and collapsible legend, and DataLayers' always-mounted depth toggle) ---- */
 
 .route-layer-controls,
 .data-layer-controls {
@@ -313,6 +316,15 @@ select {
   right: 0.5rem;
 }
 
+/* Touch targets: each toggle row is a ≥44 px hit area (gloved-hand cockpit
+   use) — padding grows the label, the checkbox stays its native size. */
+.route-layer-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+}
+
 /* Opposite corner from the plan-gated route cluster so the two can never
    collide when a plan is active — kept terse (dict) to share the map-top row
    with it even at phone widths. */
@@ -324,6 +336,94 @@ select {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+/* Collapsible route legend (#46a), rendered inside .route-layer-controls. */
+.route-legend > summary {
+  /* Boat-glove-friendly touch target, matching the button min-height. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+/* display:flex drops the native ::marker disclosure triangle, so give an
+   explicit affordance that flips on open — touch devices have no hover cue. */
+.route-legend > summary::before {
+  content: '\25B8';
+}
+
+.route-legend[open] > summary::before {
+  content: '\25BE';
+}
+
+.route-legend ul {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.route-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.route-legend-swatch {
+  flex: none;
+  display: inline-block;
+}
+
+/* Line swatches mirror the live route paint (RouteLayer.tsx). */
+.route-legend-line-starboard,
+.route-legend-line-port,
+.route-legend-line-motor {
+  width: 1.25rem;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.route-legend-line-starboard {
+  background: #009e73;
+}
+
+.route-legend-line-port {
+  background: #d55e00;
+}
+
+.route-legend-line-motor {
+  /* Dashed grey, echoing the motor line's line-dasharray. */
+  background: repeating-linear-gradient(to right, #5b5b5b 0 6px, transparent 6px 9px);
+}
+
+/* White maneuver circle with the dark stroke used on the map. */
+.route-legend-maneuver {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #1a1a1a;
+}
+
+/* The subordinate heading-change dot (Task B #37) — same family, smaller. */
+.route-legend-heading {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid #1a1a1a;
+}
+
+/* Via marker (ViaMarkers.tsx). */
+.route-legend-via {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: #cc79a7;
 }
 
 .sc-boat-marker {
@@ -421,6 +521,21 @@ select {
   .depth-profile-plot {
     height: 220px; /* more vertical room on the wide two-column layout */
   }
+}
+
+/* #46a: options help text (OptionsPanel) and motor footnote (RouteSummary);
+   both are panel content. The legend's own rules live in the Map-overlay
+   controls section above, where it actually renders. */
+.options-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+.route-legs-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
 }
 
 .plans-list {
@@ -576,10 +691,12 @@ select {
   }
 
   .map-area {
-    /* Defensive positioning only — NOT the containing block for the
-       RouteLayer/LiveView overlays. Those are absolutely positioned against
-       MapView's own inline position:relative wrapper div (MapView.tsx), in
-       both layouts, so this relative context is never what they resolve to. */
+    /* Defensive positioning only — NOT the containing block for the RouteLayer
+       (and, on narrow, LiveView) overlays. Those are absolutely positioned
+       against MapView's own inline position:relative wrapper div (MapView.tsx),
+       so this relative context is never what they resolve to. On wide the
+       LiveView readout is position:static and portaled into the panel column
+       (#31), not an overlay here at all. */
     position: relative;
     inset: auto;
     grid-area: map;
@@ -617,20 +734,22 @@ select {
     gap: 0.5rem;
   }
 
-  /* Live readout: a compact floating card at the map column's bottom-left,
-     not a full-width bottom sheet — there is no bottom tab strip to dock above
-     here (the tabs live in the left panel column). */
-  .live-view {
-    left: 0.75rem;
-    right: auto;
-    bottom: 0.75rem;
-    width: min(22rem, calc(100% - 1.5rem));
-    max-height: calc(100% - 1.5rem);
-    border: 1px solid var(--sc-border);
-    border-radius: 12px;
-    /* Base shadow points upward (0 -2px) for the docked bottom sheet; as a
-       free-floating card the light should read as coming from above. */
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  /* #31: on wide the Live readout is portaled into the left panel column
+     (.app-panel-live), replacing the empty panel content that used to sit
+     under the Live tab. Neutralise the base absolute/bottom-sheet chrome so it
+     flows naturally inside the panel (which supplies its own padding) instead
+     of floating over the map. */
+  .app-panel-live .live-view {
+    position: static;
+    inset: auto;
+    width: auto;
+    max-height: none;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
   }
 
   /* Header sits in the left panel column here, so the map's top edge is clear
@@ -641,10 +760,10 @@ select {
     top: 0.75rem;
   }
 
-  .live-view-no-plan {
-    left: 0.75rem;
-    right: auto;
-    bottom: 0.75rem;
-    width: min(22rem, calc(100% - 1.5rem));
+  /* The no-plan card keeps its border/padding but flows in the panel too. */
+  .app-panel-live .live-view-no-plan {
+    position: static;
+    inset: auto;
+    width: auto;
   }
 }

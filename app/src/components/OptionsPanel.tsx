@@ -123,9 +123,18 @@ export default function OptionsPanel({ value, onChange }: OptionsPanelProps) {
           id="options-motorEnabled"
           type="checkbox"
           checked={value.motorEnabled}
+          aria-describedby="options-motorEnabled-help"
           onChange={(e) => onChange({ ...value, motorEnabled: e.target.checked })}
         />
       </div>
+      {/* Sibling of the checkbox field, not a child of it: the wide-layout rule
+          turns the checkbox `.options-field` into a flex row, which would strand
+          a third child inline. aria-describedby links by id regardless of nesting.
+          A visible paragraph, never a `title` tooltip — tooltips don't exist for
+          gloved touch. */}
+      <p className="options-help" id="options-motorEnabled-help">
+        {t('options.motorEnabled.help')}
+      </p>
     </div>
   );
 }

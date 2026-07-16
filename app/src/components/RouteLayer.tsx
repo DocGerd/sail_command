@@ -5,9 +5,17 @@ import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { formatTime } from '../lib/format';
 import { activeRigResult } from '../lib/plan';
-import { barbFeatures, legsToFeatureCollection, maneuverFeatures, nearestHourIndex } from '../lib/routeGeoJson';
+import {
+  adaptiveBarbFeatures,
+  legsToFeatureCollection,
+  nearestHourIndex,
+  routePointFeatures,
+} from '../lib/routeGeoJson';
 import { registerBarbImages } from '../lib/windBarbs';
+import { NavMask } from '../lib/mask';
+import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
+import RouteLegend from './RouteLegend';
 import type { LatLon, Plan, Rig } from '../types';
 
 export interface RouteLayerProps {
@@ -37,7 +45,10 @@ export interface RouteLayerProps {
 const ROUTE_SOURCE = 'sc-route';
 const MANEUVER_SOURCE = 'sc-maneuvers';
 const BARB_SOURCE = 'sc-barbs';
-const BARB_STRIDE = 2;
+// The three annotation symbol layers the "Times & speeds" checkbox flips
+// together (heading dots stay on — they're tiny and minzoom-gated).
+const ANNOTATION_LAYERS = ['sc-eta-primary', 'sc-eta-secondary', 'sc-leg-speed'] as const;
+const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
 // Exported as the cross-component z-order anchor: DataLayers inserts its
 // plan-independent layers BEFORE this one (below the whole route stack). Shared
 // so a rename here can't silently break that ordering (a stale string literal
@@ -66,7 +77,10 @@ function whenStyleReady(map: MaplibreMap, fn: () => void): void {
 
 function setupLayers(map: MaplibreMap): void {
   if (!map.getSource(ROUTE_SOURCE)) {
-    map.addSource(ROUTE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addSource(ROUTE_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
     // Halo layer, added first so it paints underneath the sail/motor lines
     // added below. Starts matching nothing (NO_HIGHLIGHT_IDX); the
     // activeLegIndex-sync effect below re-filters it with a cheap
@@ -113,13 +127,60 @@ function setupLayers(map: MaplibreMap): void {
         'line-dasharray': [2, 1.5],
       },
     });
+    // Per-leg speed label along the line (#35). line-center placement only
+    // renders when the label fits the on-screen leg length and collision
+    // culls overlaps, so short legs stay unlabeled at low zoom and gain a
+    // label as you zoom in — no hand-tuned nm threshold. Text stays achromatic
+    // for contrast; the board colors live on the line beneath it.
+    map.addLayer({
+      id: 'sc-leg-speed',
+      type: 'symbol',
+      source: ROUTE_SOURCE,
+      minzoom: 10,
+      layout: {
+        'text-field': ['get', 'speedLabel'],
+        'symbol-placement': 'line-center',
+        'text-size': 11,
+        'text-font': ['Noto Sans Regular'],
+        'text-rotation-alignment': 'map',
+      },
+      paint: {
+        'text-color': '#1a1a1a',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 1.4,
+      },
+    });
   }
   if (!map.getSource(MANEUVER_SOURCE)) {
-    map.addSource(MANEUVER_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addSource(MANEUVER_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    // MANEUVER_SOURCE now carries the whole uniform point set (routePointFeatures):
+    // start/finish/tack/gybe/heading. The maneuver circle+letter layers must
+    // therefore filter to tack/gybe (inlined below), or they'd draw r=9 circles
+    // at every point.
+    // Heading-change dots (#37): a "mini" maneuver circle, same achromatic
+    // family, clearly subordinate. Added first so it paints beneath the r=9
+    // maneuver circles. minzoom 11 — declutter is by zoom, not a toggle.
+    map.addLayer({
+      id: 'sc-heading-dots',
+      type: 'circle',
+      source: MANEUVER_SOURCE,
+      minzoom: 11,
+      filter: ['==', ['get', 'kind'], 'heading'],
+      paint: {
+        'circle-radius': 3,
+        'circle-color': '#ffffff',
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#1a1a1a',
+      },
+    });
     map.addLayer({
       id: 'sc-maneuver-circles',
       type: 'circle',
       source: MANEUVER_SOURCE,
+      filter: ['in', ['get', 'kind'], ['literal', ['tack', 'gybe']]],
       paint: {
         'circle-radius': 9,
         'circle-color': '#ffffff',
@@ -131,6 +192,7 @@ function setupLayers(map: MaplibreMap): void {
       id: 'sc-maneuver-labels',
       type: 'symbol',
       source: MANEUVER_SOURCE,
+      filter: ['in', ['get', 'kind'], ['literal', ['tack', 'gybe']]],
       layout: {
         'text-field': '', // populated by the lang-sync effect below
         'text-size': 11,
@@ -139,10 +201,62 @@ function setupLayers(map: MaplibreMap): void {
       },
       paint: { 'text-color': '#1a1a1a' },
     });
+    // ETA text labels (#35). Two layers so zoom-tiering is by layer minzoom
+    // (never a ['zoom'] filter): primary (departure/arrival/maneuvers) from
+    // z9, secondary (plain heading joints) from z12 — one step after the dots
+    // appear at 11, so a dot never pops in already-labeled. symbol-sort-key
+    // = rank, so on a collision the destination ETA (rank 0) wins, then the
+    // departure, then maneuvers. text-allow-overlap:false → MapLibre declutters.
+    // (Layout/paint inlined per layer so addLayer's contextual typing applies.)
+    map.addLayer({
+      id: 'sc-eta-primary',
+      type: 'symbol',
+      source: MANEUVER_SOURCE,
+      minzoom: 9,
+      filter: ['in', ['get', 'kind'], ['literal', ['start', 'finish', 'tack', 'gybe']]],
+      layout: {
+        'text-field': ['get', 'eta'],
+        'text-anchor': 'left',
+        'text-offset': [0.9, 0],
+        'text-size': 11,
+        'text-font': ['Noto Sans Regular'],
+        'text-allow-overlap': false,
+        'symbol-sort-key': ['get', 'rank'],
+      },
+      paint: {
+        'text-color': '#1a1a1a',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 1.4,
+      },
+    });
+    map.addLayer({
+      id: 'sc-eta-secondary',
+      type: 'symbol',
+      source: MANEUVER_SOURCE,
+      minzoom: 12,
+      filter: ['==', ['get', 'kind'], 'heading'],
+      layout: {
+        'text-field': ['get', 'eta'],
+        'text-anchor': 'left',
+        'text-offset': [0.9, 0],
+        'text-size': 11,
+        'text-font': ['Noto Sans Regular'],
+        'text-allow-overlap': false,
+        'symbol-sort-key': ['get', 'rank'],
+      },
+      paint: {
+        'text-color': '#1a1a1a',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 1.4,
+      },
+    });
   }
   if (!map.getSource(BARB_SOURCE)) {
     registerBarbImages(map);
-    map.addSource(BARB_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addSource(BARB_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
     map.addLayer({
       id: 'sc-wind-barbs',
       type: 'symbol',
@@ -164,11 +278,25 @@ function setupLayers(map: MaplibreMap): void {
   }
 }
 
-export default function RouteLayer({ plan, rig, activeLegIndex, viaReplanning, onViaDragEnd }: RouteLayerProps) {
+export default function RouteLayer({
+  plan,
+  rig,
+  activeLegIndex,
+  viaReplanning,
+  onViaDragEnd,
+}: RouteLayerProps) {
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
   const [barbsVisible, setBarbsVisible] = useState(false);
+  // "Times & speeds" escape hatch — the single clean-chart toggle over the ETA
+  // and per-leg-speed labels. Defaults ON (a skipper wants the numbers).
+  const [annotationsVisible, setAnnotationsVisible] = useState(true);
+  // Real land/depth mask for barb land-culling — loaded once, best-effort.
+  // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
+  // transferred, never mutated). null until it resolves; sampling skips
+  // culling gracefully in the meantime.
+  const [mask, setMask] = useState<NavMask | null>(null);
   const [hourIdx, setHourIdx] = useState(0);
   // Reset the slider to departure whenever the plan itself changes (not on
   // every render). Adjusted during render — React's documented pattern for
@@ -204,14 +332,54 @@ export default function RouteLayer({ plan, rig, activeLegIndex, viaReplanning, o
     });
   }, [map]);
 
-  // Route + maneuver geometry follows the active rig's legs.
+  // E2E handle: publish the live map so Playwright can introspect the barb and
+  // annotation layers (queryRenderedFeatures / getLayoutProperty) — there is no
+  // DOM handle for symbol counts. Mirrors the window.__sailGlyphWarmup E2E
+  // signal convention; a reference to an already-in-memory object, harmless in
+  // production.
+  useEffect(() => {
+    if (!map) return;
+    const w = window as unknown as { __scMap?: MaplibreMap };
+    w.__scMap = map;
+    return () => {
+      if (w.__scMap === map) delete w.__scMap;
+    };
+  }, [map]);
+
+  // Load the real mask once (for barb land-culling). new Uint8Array(buffer) is
+  // a read-only VIEW over the module-cached maskBuffer — no copy, no transfer,
+  // no mutation; NavMask only reads. Best-effort: on failure, barbs still
+  // render without land-culling.
+  useEffect(() => {
+    let cancelled = false;
+    loadRoutingAssets()
+      .then((assets) => {
+        if (cancelled) return;
+        setMask(new NavMask(assets.maskMeta, new Uint8Array(assets.maskBuffer)));
+      })
+      .catch(() => {
+        /* leave mask null — barbs render un-culled */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Route line + the uniform annotation point set (start/finish/maneuvers/
+  // heading joints, each carrying its precomputed ETA string). The line source
+  // also gains the per-leg speed label; both depend on lang (ETA/speed strings
+  // are precomputed), so a language switch rebuilds them.
   useEffect(() => {
     if (!map || !styleReady) return;
-    const routeData = legsToFeatureCollection(result?.legs ?? []);
-    const maneuverData = maneuverFeatures(result?.legs ?? []);
+    const legs = result?.legs ?? [];
+    const routeData = legsToFeatureCollection(legs, { motorLetter: t('route.motorLetter') });
+    const pointData = routePointFeatures(legs, result?.etaMs ?? 0, lang);
     (map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined)?.setData(routeData);
-    (map.getSource(MANEUVER_SOURCE) as GeoJSONSource | undefined)?.setData(maneuverData);
-  }, [map, styleReady, result]);
+    (map.getSource(MANEUVER_SOURCE) as GeoJSONSource | undefined)?.setData(pointData);
+    // t() is re-derived from lang every render; only lang's identity should
+    // retrigger this rebuild (the strings are language-dependent).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, styleReady, result, lang]);
 
   // Maneuver letter labels are language-dependent: W/H (de), T/G (en).
   useEffect(() => {
@@ -257,24 +425,75 @@ export default function RouteLayer({ plan, rig, activeLegIndex, viaReplanning, o
   const clampedHourIdx = Math.min(hourIdx, Math.max(0, hourOptions.length - 1));
   const tMs = hourOptions[clampedHourIdx] ?? plan?.request.departureMs ?? 0;
 
-  // Barb data follows the slider position, sampled from the plan's stored
-  // wind grid — never re-fetched (a saved route must render against the
-  // forecast it was computed from). When plan clears, empty the source to
-  // remove stale barbs from the map.
+  // Viewport-scoped adaptive barbs (#36): recomputed on debounced moveend/
+  // zoomend and on slider/plan/rig/mask changes — but ONLY while visible (no
+  // per-frame JS during a pan, and no work at all when the toggle is off).
+  // Always sampled from plan.windGrid at the slider time — never re-fetched.
   useEffect(() => {
     if (!map || !styleReady) return;
-    if (!plan) {
-      (map.getSource(BARB_SOURCE) as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features: [] });
+    const source = () => map.getSource(BARB_SOURCE) as GeoJSONSource | undefined;
+    if (!plan || !barbsVisible) {
+      // No plan → clear stale barbs. Hidden → the layer is already invisible,
+      // but clearing avoids a one-frame flash of the previous hour/zoom when
+      // it's re-enabled.
+      source()?.setData(EMPTY_FC);
       return;
     }
-    const data = barbFeatures(plan.windGrid, tMs, BARB_STRIDE);
-    (map.getSource(BARB_SOURCE) as GeoJSONSource | undefined)?.setData(data);
-  }, [map, styleReady, plan, tMs]);
+    const legs = result?.legs ?? [];
+    let raf = 0;
+    const rebuild = () => {
+      const b = map.getBounds();
+      const data = adaptiveBarbFeatures(
+        plan.windGrid,
+        tMs,
+        {
+          project: (p: LatLon) => {
+            const pt = map.project([p.lon, p.lat]);
+            return { x: pt.x, y: pt.y };
+          },
+          bounds: {
+            west: b.getWest(),
+            south: b.getSouth(),
+            east: b.getEast(),
+            north: b.getNorth(),
+          },
+        },
+        legs,
+        mask,
+      );
+      source()?.setData(data);
+    };
+    const onViewChange = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        rebuild();
+      });
+    };
+    rebuild(); // initial paint for the current slider/plan/rig/mask/viewport
+    map.on('moveend', onViewChange);
+    map.on('zoomend', onViewChange);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      map.off('moveend', onViewChange);
+      map.off('zoomend', onViewChange);
+    };
+  }, [map, styleReady, plan, tMs, result, barbsVisible, mask]);
 
   useEffect(() => {
     if (!map || !styleReady || !map.getLayer('sc-wind-barbs')) return;
     map.setLayoutProperty('sc-wind-barbs', 'visibility', barbsVisible ? 'visible' : 'none');
   }, [map, styleReady, barbsVisible]);
+
+  // "Times & speeds" toggle flips the ETA + per-leg-speed label layers
+  // together (heading dots are NOT included — they stay minzoom-gated).
+  useEffect(() => {
+    if (!map || !styleReady) return;
+    const visibility = annotationsVisible ? 'visible' : 'none';
+    for (const id of ANNOTATION_LAYERS) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    }
+  }, [map, styleReady, annotationsVisible]);
 
   // Cheap setFilter() only — no source re-set — so this stays cheap even
   // when GPS noise near a leg boundary flips activeLegIndex back and forth.
@@ -289,7 +508,19 @@ export default function RouteLayer({ plan, rig, activeLegIndex, viaReplanning, o
   return (
     <div className="route-layer-controls">
       <label>
-        <input type="checkbox" checked={barbsVisible} onChange={(e) => setBarbsVisible(e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={annotationsVisible}
+          onChange={(e) => setAnnotationsVisible(e.target.checked)}
+        />
+        {t('route.annotations.toggle')}
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={barbsVisible}
+          onChange={(e) => setBarbsVisible(e.target.checked)}
+        />
         {t('route.windBarbs.toggle')}
       </label>
       {hourOptions.length > 1 && (
@@ -306,7 +537,12 @@ export default function RouteLayer({ plan, rig, activeLegIndex, viaReplanning, o
           <span>{formatTime(tMs, lang)}</span>
         </div>
       )}
-      <ViaMarkers viaPoints={plan.request.viaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
+      <ViaMarkers
+        viaPoints={plan.request.viaPoints}
+        replanning={viaReplanning}
+        onDragEnd={onViaDragEnd}
+      />
+      <RouteLegend />
     </div>
   );
 }

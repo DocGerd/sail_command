@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { useEffect, type ReactNode } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppStateProvider, useActivePlan } from '../state/AppState';
 import { I18nProvider } from '../i18n';
@@ -21,12 +21,32 @@ const P2 = destinationPoint(P0, 90, 10);
 
 const LEGS: Leg[] = [
   {
-    kind: 'sail', start: P0, end: P1, startTimeMs: T0, endTimeMs: T0 + HOUR,
-    headingDeg: 90, twsKn: 12, speedKn: 5, distanceNm: 5, board: 'starboard', twaDeg: 45, maneuverAtStart: null,
+    kind: 'sail',
+    start: P0,
+    end: P1,
+    startTimeMs: T0,
+    endTimeMs: T0 + HOUR,
+    headingDeg: 90,
+    twsKn: 12,
+    speedKn: 5,
+    distanceNm: 5,
+    board: 'starboard',
+    twaDeg: 45,
+    maneuverAtStart: null,
   },
   {
-    kind: 'sail', start: P1, end: P2, startTimeMs: T0 + HOUR, endTimeMs: T0 + 2 * HOUR,
-    headingDeg: 90, twsKn: 12, speedKn: 5, distanceNm: 5, board: 'port', twaDeg: -45, maneuverAtStart: 'tack',
+    kind: 'sail',
+    start: P1,
+    end: P2,
+    startTimeMs: T0 + HOUR,
+    endTimeMs: T0 + 2 * HOUR,
+    headingDeg: 90,
+    twsKn: 12,
+    speedKn: 5,
+    distanceNm: 5,
+    board: 'port',
+    twaDeg: -45,
+    maneuverAtStart: 'tack',
   },
 ];
 
@@ -35,17 +55,35 @@ const TEST_PLAN: Plan = {
   name: 'Live Test Plan',
   createdAtMs: T0,
   request: {
-    origin: P0, destination: P2, viaPoints: [], originHarborId: null, destinationHarborId: null,
-    departureMs: T0, settings: DEFAULT_SETTINGS,
+    origin: P0,
+    destination: P2,
+    viaPoints: [],
+    originHarborId: null,
+    destinationHarborId: null,
+    departureMs: T0,
+    settings: DEFAULT_SETTINGS,
   },
   windGrid: {
-    lats: [54.7], lons: [9.5], timesMs: [T0],
-    speedKn: new Float32Array([12]), dirFromDeg: new Float32Array([270]), gustKn: new Float32Array([15]),
-    fetchedAtMs: T0, model: 'test',
+    lats: [54.7],
+    lons: [9.5],
+    timesMs: [T0],
+    speedKn: new Float32Array([12]),
+    dirFromDeg: new Float32Array([270]),
+    gustKn: new Float32Array([15]),
+    fetchedAtMs: T0,
+    model: 'test',
   },
   result: {
     status: 'ok',
-    genoa: { rig: 'genoa', legs: LEGS, etaMs: T0 + 2 * HOUR, durationMs: 2 * HOUR, distanceNm: 10, maneuverCount: 1, motorDistanceNm: 0 },
+    genoa: {
+      rig: 'genoa',
+      legs: LEGS,
+      etaMs: T0 + 2 * HOUR,
+      durationMs: 2 * HOUR,
+      distanceNm: 10,
+      maneuverCount: 1,
+      motorDistanceNm: 0,
+    },
     fock: null,
     genoaReason: null,
     fockReason: 'calm-motor-off',
@@ -93,7 +131,11 @@ function fakeWatchPosition() {
   };
 }
 
-function renderLive(watchPosition: ReturnType<typeof fakeWatchPosition>['wp'], plan?: Plan, extra?: ReactNode) {
+function renderLive(
+  watchPosition: ReturnType<typeof fakeWatchPosition>['wp'],
+  plan?: Plan,
+  extra?: ReactNode,
+) {
   localStorage.setItem('sc-lang', 'en');
   return render(
     <I18nProvider>
@@ -144,7 +186,9 @@ describe('LiveView', () => {
     expect(screen.getByText(expectedHts)).toBeInTheDocument();
     expect(screen.getByText(formatHeading(91.4))).toBeInTheDocument(); // COG
     expect(screen.getByText('6.3 kn')).toBeInTheDocument(); // SOG
-    expect(screen.getByText(new RegExp(formatNm(nextEvent.distNm).replace('.', '\\.')))).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(formatNm(nextEvent.distNm).replace('.', '\\.'))),
+    ).toBeInTheDocument();
     expect(screen.getByText(/tack/i)).toBeInTheDocument();
     expect(screen.getByText(/projected eta/i)).toBeInTheDocument();
   });
@@ -202,7 +246,7 @@ describe('LiveView', () => {
     expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
   });
 
-  it("a denied GPS error shows a one-time hint, recorded in localStorage, that does not reappear across remounts", async () => {
+  it('a denied GPS error shows a one-time hint, recorded in localStorage, that does not reappear across remounts', async () => {
     const { wp: wp1, emitError: emitError1 } = fakeWatchPosition();
     const { unmount } = renderLive(wp1, TEST_PLAN);
     fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
@@ -232,6 +276,37 @@ describe('LiveView', () => {
 
     expect(screen.queryByText(/location access/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Live view' })).toBeEnabled();
+  });
+
+  it('renders its readout into the provided panel slot via a portal, with no map instance required', async () => {
+    // #31: the wide layout passes a panel-column DOM node; the textual readout
+    // must render into it (not inline in MapView's subtree, the base
+    // bottom-sheet-region card), and the branch needs no MapView/map context —
+    // only BoatMarker would, and it renders null without a map. Proving the
+    // toggle+fix land inside `slot` and NOT in the render container is the split
+    // contract this task hangs on.
+    const slot = document.createElement('div');
+    document.body.appendChild(slot);
+    localStorage.setItem('sc-lang', 'en');
+    const { wp, emitFix } = fakeWatchPosition();
+
+    const { container } = render(
+      <I18nProvider>
+        <AppStateProvider>
+          <TestSetPlan plan={TEST_PLAN} />
+          <LiveView watchPosition={wp} panelSlot={slot} />
+        </AppStateProvider>
+      </I18nProvider>,
+    );
+
+    const toggle = await within(slot).findByRole('button', { name: 'Live view' });
+    expect(within(container).queryByRole('button', { name: 'Live view' })).toBeNull();
+
+    fireEvent.click(toggle);
+    act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+
+    expect(within(slot).getByText('5.0 kn')).toBeInTheDocument(); // SOG, inside the slot
+    slot.remove();
   });
 
   it('toggling off unsubscribes from watchPosition', async () => {

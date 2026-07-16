@@ -80,4 +80,18 @@ describe('OptionsPanel', () => {
     fireEvent.click(screen.getByLabelText('Motor enabled'));
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, motorEnabled: false });
   });
+
+  it('describes the motor checkbox with a visible help paragraph via aria-describedby, not a title tooltip', () => {
+    renderPanel();
+    const input = screen.getByLabelText('Motor enabled');
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    // A tooltip would be a `title` attribute — the spec forbids it (gloved touch).
+    expect(input).not.toHaveAttribute('title');
+    const help = document.getElementById(describedBy!);
+    expect(help).not.toBeNull();
+    expect(help).toHaveClass('options-help');
+    expect(help).toHaveTextContent(/Engine as fallback only/);
+    expect(help).toHaveTextContent(/motor speed/);
+  });
 });

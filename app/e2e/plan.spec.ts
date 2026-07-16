@@ -133,7 +133,38 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
 
     await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible();
 
+    // #46a: the collapsed route legend mounts in the route-layer controls once
+    // a plan renders. RouteLayer has no unit test (MapLibre-bound) and no other
+    // spec references the legend, so this pins the <RouteLegend /> mount through
+    // the #35/36/37 RouteLayer rewrite — dropping the mount line would fail here
+    // rather than passing silently. German UI, so the summary reads "Legende".
+    await expect(page.locator('details.route-legend > summary')).toHaveText('Legende');
+
     await expect(page.locator('.plans-list-row')).toHaveCount(1);
+
+    // #31 with-plan wide coverage: the `.app-panel-live .live-view`
+    // neutralization (position:static, in-panel) — the feature's primary
+    // with-plan state — has no other coverage. layout.spec only exercises the
+    // fresh-context `.live-view-no-plan` branch, and jsdom can't see CSS. Here a
+    // real plan is active, so resizing into the side-panel layout and opening
+    // Live renders the full `.live-view` readout; assert it sits INSIDE the
+    // panel column, not the absolute full-width-bottom fallback a regressed
+    // neutralization would produce (position:absolute against .app-shell,
+    // spanning the viewport bottom over the map).
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const panel = page.locator('.app-bottom-sheet');
+    // Poll the panel into its side-column geometry before reading positions.
+    await expect.poll(async () => (await panel.boundingBox())?.width ?? 0).toBeLessThan(1280 * 0.5);
+    await page.getByRole('tab', { name: 'Live' }).click();
+    const readout = page.locator('.app-bottom-sheet .live-view');
+    await expect(readout).toBeVisible();
+    // Not also rendered inline over the map (no dual render).
+    await expect(page.locator('.map-area .live-view')).toHaveCount(0);
+    const panelBox = await panel.boundingBox();
+    const readoutBox = await readout.boundingBox();
+    if (!panelBox || !readoutBox) throw new Error('expected panel + readout bounding boxes');
+    expect(readoutBox.x).toBeGreaterThanOrEqual(panelBox.x - 2);
+    expect(readoutBox.x + readoutBox.width).toBeLessThanOrEqual(panelBox.x + panelBox.width + 2);
   } finally {
     server.kill();
   }
