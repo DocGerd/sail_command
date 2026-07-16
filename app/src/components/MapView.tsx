@@ -137,7 +137,7 @@ export default function MapView({
       // on a hit, so exactly one handler ever owns a given click — no
       // dependence on React update ordering. getLayer guards ids whose layer
       // hasn't been added yet (assets still loading): queryRenderedFeatures
-      // throws on an unknown layer id.
+      // surfaces an unknown layer id as a map error event (banner noise).
       for (const layerId of interactiveLayerIdsRef.current) {
         if (
           instance.getLayer(layerId) &&

@@ -66,6 +66,11 @@ app runtime.
 - **Map view** — MapLibre GL + PMTiles protocol. Route overlay: legs colored
   by type (sail port/starboard, motor), maneuver markers, wind barbs overlay
   (from the plan's stored wind grid), boat position marker.
+  *Addendum (2026-07-16, user-requested — #38/#39):* curated harbor markers
+  (always visible, click-to-pick feeds the planner's origin/destination with
+  the curated snap point) and a user-toggleable depth overlay rendered
+  client-side from the committed mask (absolute depth only — never a
+  navigability view; safety depth stays a query-time setting).
 - **Planner UI** — origin/destination picker (searchable harbor list + map
   tap), departure time picker, options panel: safety depth, motor speed,
   motor threshold, maneuver penalty, performance factor. "Plan route" button.
