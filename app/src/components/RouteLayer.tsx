@@ -38,7 +38,11 @@ const ROUTE_SOURCE = 'sc-route';
 const MANEUVER_SOURCE = 'sc-maneuvers';
 const BARB_SOURCE = 'sc-barbs';
 const BARB_STRIDE = 2;
-const HIGHLIGHT_LAYER = 'sc-route-highlight';
+// Exported as the cross-component z-order anchor: DataLayers inserts its
+// plan-independent layers BEFORE this one (below the whole route stack). Shared
+// so a rename here can't silently break that ordering (a stale string literal
+// would resolve to no beforeId and drop the layers on top, with no error).
+export const HIGHLIGHT_LAYER = 'sc-route-highlight';
 // No leg can ever have this index — an always-false filter, used while no
 // leg is active instead of toggling the layer's visibility on/off.
 const NO_HIGHLIGHT_IDX = -1;

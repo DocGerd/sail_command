@@ -28,8 +28,11 @@ installs as a standalone icon and works fully offline after the first visit
 
 ## What it does
 
-- Enter a departure and destination (curated harbor search or tap anywhere
-  on the map), pick a departure time within the forecast horizon.
+- Enter a departure and destination — via the curated harbor search, by
+  tapping a harbor marker on the map, or by tapping anywhere on the map — and
+  pick a departure time within the forecast horizon. A water-depths overlay
+  can be toggled on to shade the bathymetry (shallows warm, deep water fading
+  out) while you plan.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per rig (main+genoa, main+fock) — and recommends the faster
   (marked ★). Tacks and gybes are priced as a time penalty inside the

@@ -293,12 +293,13 @@ select {
   gap: 0.25rem 0.75rem;
 }
 
-/* ---- Map-overlay controls (RouteLayer's barb toggle/time slider) ---- */
+/* ---- Map-overlay controls (RouteLayer's barb toggle/time slider, and
+   DataLayers' always-mounted depth toggle) ---- */
 
-.route-layer-controls {
+.route-layer-controls,
+.data-layer-controls {
   position: absolute;
   top: 3.5rem;
-  right: 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -306,6 +307,17 @@ select {
   background: color-mix(in srgb, var(--sc-bg) 90%, transparent);
   border-radius: 8px;
   font-size: 0.85rem;
+}
+
+.route-layer-controls {
+  right: 0.5rem;
+}
+
+/* Opposite corner from the plan-gated route cluster so the two can never
+   collide when a plan is active — kept terse (dict) to share the map-top row
+   with it even at phone widths. */
+.data-layer-controls {
+  left: 0.5rem;
 }
 
 .route-layer-time-slider {
@@ -589,7 +601,8 @@ select {
   /* Header sits in the left panel column here, so the map's top edge is clear
      — the base top:3.5rem (which clears the narrow-layout header overlaying
      the map) would otherwise leave a dead gap at the top-right controls. */
-  .route-layer-controls {
+  .route-layer-controls,
+  .data-layer-controls {
     top: 0.75rem;
   }
 

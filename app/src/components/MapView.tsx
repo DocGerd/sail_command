@@ -111,10 +111,21 @@ export interface MapViewProps {
   tapActive: boolean;
   onTap: (p: LatLon) => void;
   onMapError?: () => void;
+  // Marker layer ids (e.g. DataLayers' harbor points, #38) whose own click
+  // handlers own a click that lands on them: a tap hitting one of these is
+  // gated OUT of the generic tap-pick below, so exactly one handler ever
+  // resolves a given click. Defaults to none.
+  interactiveLayerIds?: string[];
   children?: ReactNode;
 }
 
-export default function MapView({ tapActive, onTap, onMapError, children }: MapViewProps) {
+export default function MapView({
+  tapActive,
+  onTap,
+  onMapError,
+  interactiveLayerIds = [],
+  children,
+}: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<MaplibreMap | null>(null);
   const [lang] = useLang();
@@ -126,10 +137,12 @@ export default function MapView({ tapActive, onTap, onMapError, children }: MapV
   const tapActiveRef = useRef(tapActive);
   const onTapRef = useRef(onTap);
   const onMapErrorRef = useRef(onMapError);
+  const interactiveLayerIdsRef = useRef(interactiveLayerIds);
   useEffect(() => {
     tapActiveRef.current = tapActive;
     onTapRef.current = onTap;
     onMapErrorRef.current = onMapError;
+    interactiveLayerIdsRef.current = interactiveLayerIds;
   });
 
   // MapLibre can fire many 'error' events in a row (style/glyph/tile fetch
@@ -169,6 +182,23 @@ export default function MapView({ tapActive, onTap, onMapError, children }: MapV
 
     const handleClick = (e: MapMouseEvent) => {
       if (!tapActiveRef.current) return;
+      // A tap that lands on an interactive marker layer (the harbor points,
+      // #38) belongs to that layer's own click handler, which resolves it to
+      // the curated harbor snap. If the generic tap also fired a raw-
+      // coordinate pick for the same armed field, the two would both write
+      // origin/destination in one native click and race (see App.tsx
+      // handleHarborPick). Query the marker layer at the click point and bail
+      // on a hit, so exactly one handler ever owns a given click — no
+      // dependence on React update ordering. getLayer guards ids whose layer
+      // hasn't been added yet (assets still loading): queryRenderedFeatures
+      // surfaces an unknown layer id as a map error event (banner noise).
+      for (const layerId of interactiveLayerIdsRef.current) {
+        if (
+          instance.getLayer(layerId) &&
+          instance.queryRenderedFeatures(e.point, { layers: [layerId] }).length > 0
+        )
+          return;
+      }
       onTapRef.current({ lat: e.lngLat.lat, lon: e.lngLat.lng });
     };
     instance.on('click', handleClick);
