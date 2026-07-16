@@ -30,8 +30,31 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.bin|*.pmtiles) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Binary data assets (*.bin, *.pmtiles) are pipeline outputs - regenerate them with pipeline scripts instead of editing.\"}}' ;; esac",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.bin|*.pmtiles|*app/public/data/*.json) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Pipeline outputs (*.bin, *.pmtiles, app/public/data/*.json) are generated artifacts - regenerate via npm --prefix pipeline run polars|harbors|mask, never hand-edit.\"}}' ;; *docs/superpowers/specs/*) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"docs/superpowers/specs/ is the user-approved source of truth - CLAUDE.md forbids silently deviating from it. Confirm the user wants the spec itself changed before editing.\"}}' ;; esac",
             "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CMD=$(python3 -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',d).get('command',''))\" 2>/dev/null || true); case \"$CMD\" in *grep*|*rg\\ *|*ripgrep*|*find\\ *|*fd\\ *|*ack\\ *|*ag\\ *)   [ -f graphify-out/graph.json ] &&   echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"MANDATORY: graphify-out/graph.json exists. You MUST run `graphify query \\\"<question>\\\"` before grepping raw files. Only grep after graphify has oriented you, or to modify/debug specific lines.\"}}'   || true ;; esac"
+          },
+          {
+            "type": "command",
+            "command": "CMD=$(jq -r '.tool_input.command // empty'); FIX=\"app/public/test-fixtures/wind-sw12.json\"; case \"$CMD\" in *git\\ commit*) git -C \"$CLAUDE_PROJECT_DIR\" diff --cached --name-only | grep -qx \"$FIX\" && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"wind-sw12.json is staged. pree2e regenerates this fixture with fresh timestamps - CLAUDE.md says restore it, not commit it (git restore --staged app/public/test-fixtures/wind-sw12.json && git restore app/public/test-fixtures/wind-sw12.json). Proceed only if the fixture change is intentional (generator changed).\"}}' ;; *git\\ add*) [ -n \"$(git -C \"$CLAUDE_PROJECT_DIR\" status --porcelain -- \"$FIX\")\" ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"wind-sw12.json is dirty - expected pree2e churn per CLAUDE.md. Restore with: git restore app/public/test-fixtures/wind-sw12.json instead of staging it, unless the change is intentional.\"}}' ;; esac; exit 0",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HIT=$(python3 -c \"import json,sys;d=json.load(sys.stdin);t=d.get('tool_input',d);exts=('.py','.js','.ts','.tsx','.jsx','.astro','.vue','.svelte','.go','.rs','.java','.rb','.c','.h','.cpp','.hpp','.cc','.cs','.kt','.swift','.php','.scala','.lua','.sh','.md','.rst','.txt','.mdx');vals=[str(t.get('file_path') or ''),str(t.get('pattern') or ''),str(t.get('path') or '')];j=' '.join(vals).lower().replace(chr(92),'/');tails=[('.'+x.rsplit('.',1)[-1]) for v in vals if v for x in [v.lower().replace(chr(92),'/').rsplit('/',1)[-1]] if '.' in x];sys.stdout.write('1' if 'graphify-out/' not in j and any(tl in exts for tl in tails) else '')\" 2>/dev/null || true); if [ \"$HIT\" = 1 ] && [ -f graphify-out/graph.json ]; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"MANDATORY: graphify-out/graph.json exists. You MUST run graphify before reading source files. Use: `graphify query \\\"<question>\\\"` (scoped subgraph), `graphify explain \\\"<concept>\\\"`, or `graphify path \\\"<A>\\\" \\\"<B>\\\"`. Only read raw files after graphify has oriented you, or to modify/debug specific lines. This rule applies to subagents too \u2014 include it in every subagent prompt involving code exploration.\"}}'; fi || true"
           }
         ]
       }
@@ -42,8 +65,25 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty'); p=\"$CLAUDE_PROJECT_DIR/node_modules/.bin/prettier\"; case \"$f\" in *package-lock.json) ;; *.ts|*.tsx|*.css|*.json) [ -x \"$p\" ] && \"$p\" --write \"$f\" >/dev/null 2>&1; true ;; esac",
+            "command": "f=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty'); p=\"$CLAUDE_PROJECT_DIR/app/node_modules/.bin/prettier\"; case \"$f\" in *package-lock.json) ;; *.ts|*.tsx|*.css|*.json) [ -x \"$p\" ] && \"$p\" --write \"$f\" >/dev/null 2>&1; true ;; esac",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty'); case \"$f\" in *app/src/i18n/dict.*.ts) [ -x \"$CLAUDE_PROJECT_DIR/app/node_modules/.bin/tsc\" ] || exit 0; out=$(npm --prefix \"$CLAUDE_PROJECT_DIR/app\" run typecheck 2>&1) || { echo 'typecheck failed after i18n dict edit (key parity via satisfies Record<MsgKey,string> - add every key to BOTH dict.de.ts and dict.en.ts):' >&2; echo \"$out\" | tail -30 >&2; exit 2; } ;; esac",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v graphify >/dev/null 2>&1 && [ -f \"$CLAUDE_PROJECT_DIR/graphify-out/graph.json\" ] && graphify update \"$CLAUDE_PROJECT_DIR\" >/dev/null 2>&1; exit 0",
+            "timeout": 60
           }
         ]
       }

@@ -17,7 +17,7 @@ deviate from it.
 
 - `pipeline/` — build-time data preparation (Node/Python scripts). Outputs are
   committed static assets in `app/public/data/`: land/depth mask (packed
-  binary, ~100 m cells, quantized depth per cell), curated harbor list JSON,
+  binary, ~46 m cells, quantized depth per cell), curated harbor list JSON,
   PMTiles regional basemap, Salona 45 polar tables (main+genoa, main+fock).
   Pipeline runs on demand, never at app runtime.
 - `app/` — the PWA: Vite + React + TypeScript, MapLibre GL + PMTiles,
@@ -121,3 +121,13 @@ deviate from it.
 - The app is a passage-planning aid, not a navigation device — user-facing
   copy must not claim chart authority.
 - UI strings always go through the i18n dictionary (de/en), never hardcoded.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
