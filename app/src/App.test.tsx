@@ -9,7 +9,15 @@ import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
 import { formatNm } from './lib/format';
-import { DEFAULT_SETTINGS, type Harbor, type Plan, type PlanRequest, type PlanResult, type PlanResultOk, type PolarTable } from './types';
+import {
+  DEFAULT_SETTINGS,
+  type Harbor,
+  type Plan,
+  type PlanRequest,
+  type PlanResult,
+  type PlanResultOk,
+  type PolarTable,
+} from './types';
 
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
 // (mirrors the "not unit-tested" notes in RouteLayer.tsx/BoatMarker.tsx —
@@ -34,6 +42,13 @@ const mapTestHooks = vi.hoisted(() => ({
   // simulate a MapLibre runtime error (e.g. a failed tile/style fetch)
   // without a real map, to drive the project-gate map-error banner.
   errorHandler: null as ((e: { error: unknown }) => void) | null,
+  // LAYER-scoped click handlers (`map.on('click', layerId, cb)` — DataLayers'
+  // harbor markers), keyed by layer id. Kept apart from clickHandler above:
+  // the 3-arg registration must never clobber MapView's generic 2-arg one.
+  layerClickHandlers: {} as Record<
+    string,
+    (e: { features?: { properties?: Record<string, unknown> }[] }) => void
+  >,
 }));
 
 // Fake plan()-call queue for the RoutingClient mock below, shared the same
@@ -72,7 +87,10 @@ vi.mock('./services/openMeteo', async (importOriginal) => {
   return {
     ...actual,
     fetchWindGrid: vi.fn(async () =>
-      uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 24 * (actual.FORECAST_DAYS + 2) }),
+      uniformWindGrid(10, 250, {
+        t0Ms: Date.now() - 3_600_000,
+        hours: 24 * (actual.FORECAST_DAYS + 2),
+      }),
     ),
   };
 });
@@ -85,13 +103,35 @@ vi.mock('./services/openMeteo', async (importOriginal) => {
 // logic, not actual map rendering (covered by the Playwright browser pass).
 vi.mock('maplibre-gl', () => {
   class FakeMap {
-    on(event: string, cb: (e: { lngLat: { lat: number; lng: number } } | { error: unknown }) => void) {
-      if (event === 'click') mapTestHooks.clickHandler = cb as typeof mapTestHooks.clickHandler;
-      if (event === 'error') mapTestHooks.errorHandler = cb as typeof mapTestHooks.errorHandler;
+    // Two registration shapes, mirroring MapLibre: generic `on(event, cb)`
+    // (MapView's click/error) and layer-scoped `on(event, layerId, cb)`
+    // (DataLayers' harbor-marker click/hover) — the layer-scoped form must
+    // not overwrite the generic hooks.
+    on(event: string, layerOrCb: unknown, maybeCb?: unknown) {
+      if (typeof layerOrCb === 'function') {
+        if (event === 'click')
+          mapTestHooks.clickHandler = layerOrCb as typeof mapTestHooks.clickHandler;
+        if (event === 'error')
+          mapTestHooks.errorHandler = layerOrCb as typeof mapTestHooks.errorHandler;
+      } else if (
+        event === 'click' &&
+        typeof layerOrCb === 'string' &&
+        typeof maybeCb === 'function'
+      ) {
+        mapTestHooks.layerClickHandlers[layerOrCb] =
+          maybeCb as (typeof mapTestHooks.layerClickHandlers)[string];
+      }
     }
-    off(event: string) {
+    off(event: string, layerOrCb?: unknown) {
+      if (typeof layerOrCb === 'string') {
+        if (event === 'click') delete mapTestHooks.layerClickHandlers[layerOrCb];
+        return;
+      }
       if (event === 'click') mapTestHooks.clickHandler = null;
       if (event === 'error') mapTestHooks.errorHandler = null;
+    }
+    getCanvas() {
+      return { style: {} } as HTMLCanvasElement;
     }
     once(event: string, cb: () => void) {
       if (event === 'load') cb();
@@ -261,7 +301,21 @@ beforeEach(async () => {
   await __resetDbForTests();
   vi.stubGlobal('fetch', fetchMock());
   routingMock.calls.length = 0;
+  for (const key of Object.keys(mapTestHooks.layerClickHandlers))
+    delete mapTestHooks.layerClickHandlers[key];
 });
+
+// Simulates a click on a harbor marker (DataLayers' layer-scoped map handler
+// — see the maplibre-gl mock's FakeMap.on above). Waits for registration
+// first: DataLayers only registers once the (mocked) routing assets resolve.
+async function simulateHarborMarkerClick(harborId: string) {
+  await waitFor(() => expect(mapTestHooks.layerClickHandlers['sc-harbor-points']).toBeTruthy());
+  act(() => {
+    mapTestHooks.layerClickHandlers['sc-harbor-points']?.({
+      features: [{ properties: { id: harborId } }],
+    });
+  });
+}
 
 afterEach(() => {
   cleanup();
@@ -273,21 +327,32 @@ afterEach(() => {
 describe('App', () => {
   it('renders the app shell with the SailCommand title', async () => {
     renderApp();
-    expect(await screen.findByRole('heading', { name: 'SailCommand', level: 1 })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'SailCommand', level: 1 }),
+    ).toBeInTheDocument();
   });
 
   it('defaults to the Planen tab, and switching tabs shows Routen and Live panel content', async () => {
     renderApp();
 
-    expect(await screen.findByRole('tab', { name: de['nav.plan'] })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('tab', { name: de['nav.plan'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
-    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(await screen.findByText(de['plansList.empty'])).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.live'] }));
-    expect(screen.getByRole('tab', { name: de['nav.live'] })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: de['nav.live'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     expect(await screen.findByText(de['live.noPlan'])).toBeInTheDocument();
   });
 
@@ -378,7 +443,8 @@ describe('App', () => {
       return viaSection;
     }
 
-    const tapPickMessage = (targetLabel: string) => de['banner.tapPick'].replace('{target}', targetLabel);
+    const tapPickMessage = (targetLabel: string) =>
+      de['banner.tapPick'].replace('{target}', targetLabel);
 
     it('arms tap-to-pick with a cancel banner, and switching tabs away from Plan disarms it', async () => {
       renderApp();
@@ -407,7 +473,9 @@ describe('App', () => {
       fireEvent.click(within(originSection).getByRole('button', { name: FLENSBURG.names.de }));
 
       expect(screen.queryByText(message)).not.toBeInTheDocument();
-      expect(within(originSection).getByText(FLENSBURG.names.de, { selector: 'p' })).toBeInTheDocument();
+      expect(
+        within(originSection).getByText(FLENSBURG.names.de, { selector: 'p' }),
+      ).toBeInTheDocument();
     });
 
     it('the banner cancel button disarms tap-to-pick', async () => {
@@ -492,10 +560,14 @@ describe('App', () => {
       await screen.findByRole('heading', { name: 'SailCommand' });
 
       armOrigin();
-      expect(await screen.findByText(tapPickMessage(de['planner.origin.label']))).toBeInTheDocument();
+      expect(
+        await screen.findByText(tapPickMessage(de['planner.origin.label'])),
+      ).toBeInTheDocument();
 
       armVia();
-      expect(screen.queryByText(tapPickMessage(de['planner.origin.label']))).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(tapPickMessage(de['planner.origin.label'])),
+      ).not.toBeInTheDocument();
       expect(await screen.findByText(tapPickMessage(de['planner.via.label']))).toBeInTheDocument();
     });
   });
@@ -595,11 +667,17 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
 
     expect(await screen.findByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 
   it('the stale-forecast banner renders through the real App tree for a loaded plan whose windGrid predates departure by >12h', async () => {
-    const staleWindGrid = uniformWindGrid(10, 250, { t0Ms: Date.now() - 20 * 3_600_000, hours: 48 });
+    const staleWindGrid = uniformWindGrid(10, 250, {
+      t0Ms: Date.now() - 20 * 3_600_000,
+      hours: 48,
+    });
     const stalePlan: Plan = {
       id: 'stale-plan',
       name: 'Stale Plan',
@@ -631,7 +709,9 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     // forecasts are ever shown.
     const bannerArea = document.querySelector('.banner-area');
     if (!bannerArea) throw new Error('expected .banner-area to be present');
-    expect(await within(bannerArea as HTMLElement).findByText(de['route.staleForecast'])).toBeInTheDocument();
+    expect(
+      await within(bannerArea as HTMLElement).findByText(de['route.staleForecast']),
+    ).toBeInTheDocument();
   });
 
   it('a viaReplan error banner renders through the real App tree', async () => {
@@ -641,7 +721,9 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
-    await waitFor(() => expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
 
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
     fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
@@ -659,7 +741,9 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
-    await waitFor(() => expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
 
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
     fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
@@ -709,12 +793,16 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     // to a fresh replan, which is enough to re-trigger the dedupe drop —
     // no need to add a third via through tap-to-pick.
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
-    fireEvent.click(screen.getByRole('button', { name: de['planner.via.moveDown'].replace('{index}', '1') }));
+    fireEvent.click(
+      screen.getByRole('button', { name: de['planner.via.moveDown'].replace('{index}', '1') }),
+    );
 
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(66));
 
-    expect(await screen.findByText(de['banner.viaTooClose.plural'].replace('{count}', '2'))).toBeInTheDocument();
+    expect(
+      await screen.findByText(de['banner.viaTooClose.plural'].replace('{count}', '2')),
+    ).toBeInTheDocument();
     expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
   });
 
@@ -760,13 +848,70 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     expect(screen.queryByText(de['banner.mapError'])).not.toBeInTheDocument();
   });
 
-  it('the language-toggle button label goes through the i18n dict (shows the target language\'s code)', async () => {
+  it("the language-toggle button label goes through the i18n dict (shows the target language's code)", async () => {
     renderApp();
     const toggle = await screen.findByRole('button', { name: de['nav.langToggle'] });
     // Starts in German — the button offers to switch to English.
     expect(toggle).toHaveTextContent(de['nav.langToggle.en']);
 
     fireEvent.click(toggle);
-    expect(await screen.findByRole('button', { name: en['nav.langToggle'] })).toHaveTextContent(de['nav.langToggle.de']);
+    expect(await screen.findByRole('button', { name: en['nav.langToggle'] })).toHaveTextContent(
+      de['nav.langToggle.de'],
+    );
+  });
+});
+
+describe('harbor marker click-to-pick (#38)', () => {
+  it('fills origin first, then destination, with the same endpoint shape as the search picker', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // First click: origin is empty -> harbor becomes the origin, shown by
+    // its localized label (the { selector: 'p' } pins the section's picked-
+    // label line, not the HarborPicker result button of the same name).
+    await simulateHarborMarkerClick('flensburg');
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    await waitFor(() =>
+      expect(within(originSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument(),
+    );
+
+    // Second click: origin already set -> destination gets (re)filled.
+    await simulateHarborMarkerClick('flensburg');
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    await waitFor(() =>
+      expect(within(destSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument(),
+    );
+  });
+
+  it('while tap-to-pick is armed for destination, a harbor click fills destination (not the empty origin) and disarms', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    fireEvent.click(within(destSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    const message = de['banner.tapPick'].replace('{target}', de['planner.destination.label']);
+    expect(await screen.findByText(message)).toBeInTheDocument();
+
+    await simulateHarborMarkerClick('flensburg');
+    await waitFor(() =>
+      expect(within(destSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument(),
+    );
+    // Origin stays untouched; the tap-pick banner is gone (disarmed).
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    expect(
+      within(originSection).getByText(de['planner.notSelected'], { selector: 'p' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
+  });
+
+  it('renders the always-mounted depth toggle (off by default) with no plan active', async () => {
+    renderApp();
+    const toggle = await screen.findByRole('checkbox', { name: de['map.depth.toggle'] });
+    expect(toggle).not.toBeChecked();
+    // The plan-gated route-layer cluster (wind barbs) must NOT be hosting it:
+    // no plan exists, so the barb toggle is absent while depth is present.
+    expect(
+      screen.queryByRole('checkbox', { name: de['route.windBarbs.toggle'] }),
+    ).not.toBeInTheDocument();
   });
 });

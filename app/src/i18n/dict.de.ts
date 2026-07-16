@@ -85,6 +85,9 @@ export const de = {
   'route.exportGpx': 'GPX exportieren',
   'route.windBarbs.toggle': 'Windpfeile anzeigen',
   'route.windBarbs.timeSlider': 'Vorhersagezeitpunkt',
+  // Deliberately terse: shares the narrow-viewport map-top row with the
+  // plan-gated wind-barb toggle on the opposite side (app.css).
+  'map.depth.toggle': 'Wassertiefen',
   'plansList.empty': 'Noch keine gespeicherten Pläne.',
   'plansList.created': 'Erstellt',
   'plansList.delete': 'Plan löschen',

@@ -66,7 +66,10 @@ function toLocalInputValue(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function harborToPickedPoint(h: Harbor, lang: 'de' | 'en'): PickedPoint {
+// Exported for App.tsx's harbor-marker click-to-pick (#38): a marker click
+// must produce the IDENTICAL endpoint shape a search-picker selection does.
+// eslint-disable-next-line react-refresh/only-export-components
+export function harborToPickedPoint(h: Harbor, lang: 'de' | 'en'): PickedPoint {
   return { source: 'harbor', point: h.snap, harborId: h.id, label: h.names[lang] };
 }
 

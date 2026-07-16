@@ -12,8 +12,10 @@ import { useViaReplan } from './state/replan';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
+import DataLayers from './components/DataLayers';
 import RouteLayer from './components/RouteLayer';
 import PlannerPanel, {
+  harborToPickedPoint,
   nextFullHourMs,
   type PlannerStatus,
   type TapTarget,
@@ -26,6 +28,7 @@ import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import { isStaleForecast } from './lib/plan';
 import { formatLatLon } from './lib/format';
+import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
 import type { Harbor, LatLon, PickedPoint } from './types';
 
@@ -273,6 +276,28 @@ function AppShell() {
     setTapTarget((current) => (current === 'destination' ? null : current));
   }, []);
 
+  // #38: a harbor-marker click builds the SAME endpoint shape a search-picker
+  // selection does (harborToPickedPoint) and fills origin-if-empty, else
+  // destination — resolveHarborPickTarget documents the tap-to-pick interplay.
+  //
+  // Event-ordering note: this runs inside the same map 'click' as MapView's
+  // generic tap handler, which registers at map creation and therefore always
+  // fires FIRST. While armed, that handler has already queued a raw-tap pick
+  // for the armed field and disarmed — but React batches both handlers'
+  // updates in the one DOM event (no re-render in between), so `tapTarget`/
+  // `origin` here still hold the PRE-click values, and this handler's
+  // same-field update is queued later, i.e. the curated harbor pick wins.
+  const handleHarborPick = useCallback(
+    (h: Harbor) => {
+      const target = resolveHarborPickTarget(tapTarget, origin !== null);
+      if (!target) return;
+      const picked = harborToPickedPoint(h, lang);
+      if (target === 'origin') handlePickOrigin(picked);
+      else handlePickDestination(picked);
+    },
+    [tapTarget, origin, lang, handlePickOrigin, handlePickDestination],
+  );
+
   // Tap-to-pick arming is scoped to the Plan tab (that's the only place it
   // can be armed from) — leaving it armed while on Routes/Live would let a
   // stray tap on the map overwrite origin/destination without any visible
@@ -349,6 +374,9 @@ function AppShell() {
             child-added sources; a full remount would need viewport capture
             plumbing this assembly pass deliberately keeps out of scope. */}
         <MapView tapActive={tapTarget !== null} onTap={handleMapTap} onMapError={handleMapError}>
+          {/* Always-mounted, plan-independent layers (#38/#39) — must NOT
+              live in RouteLayer, which renders null until a plan exists. */}
+          <DataLayers onHarborPick={handleHarborPick} />
           <RouteLayer
             plan={plan}
             rig={rig}
