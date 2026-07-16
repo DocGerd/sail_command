@@ -10,8 +10,7 @@
 //
 // This module bridges exactly that window: it records whether MapLibre
 // errored while `navigator.serviceWorker.controller` was null, and on the
-// FIRST controllerchange reloads the page ONCE. Guards, in order of the
-// issue's "never" list:
+// FIRST controllerchange reloads the page ONCE. Guards (the hard rules):
 //  - never loops: a sessionStorage flag is set BEFORE reloading, and a page
 //    that finds the flag (or can't read/write sessionStorage) never arms;
 //    a reloaded page is also SW-controlled, so it exits on that check too.
@@ -19,6 +18,11 @@
 //    controller is null at init time.
 //  - never masks other errors: MapView's console.error + error banner are
 //    untouched; this only adds the single recovery trigger.
+//
+// Accepted cost: the reload discards planner form state and any in-flight
+// route computation (saved plans in IndexedDB are untouched) — acceptable
+// because it only fires on a page whose map is already visibly broken, and
+// at most once per session.
 const RECOVERY_KEY = 'sailcommand-sw-recovery-reloaded';
 
 let sawUncontrolledMapError = false;

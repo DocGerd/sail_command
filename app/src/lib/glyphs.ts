@@ -20,7 +20,9 @@ export const GLYPH_CACHE_PREFIX = 'sailcommand-glyphs-';
  * caches, so retiring this cache (e.g. after a font update) means bumping
  * the version here — sw.ts's activate handler then deletes every retired
  * `sailcommand-glyphs-*` cache (via isRetiredGlyphCache below) on the next
- * activation, so the old ~14 MB never leaks.
+ * activation, so the old ~11 MB never leaks. Bump checklist: the version
+ * suffix here AND the mirrored cache-name literal in e2e/offline.spec.ts
+ * (see the module comment above for why that literal can't import this).
  */
 export const GLYPH_CACHE_NAME = `${GLYPH_CACHE_PREFIX}v1`;
 
@@ -36,8 +38,11 @@ export function isRetiredGlyphCache(name: string): boolean {
 /**
  * Build-time manifest of every glyph-range path, emitted into dist/ by
  * vite.config.ts's glyphManifest() plugin — paths relative to BASE_URL.
- * Build-only: `vite dev` never emits it (and never registers a SW either),
- * so the warm-up treats a failed manifest fetch as a silent skip.
+ * Build-only, but that's moot in `vite dev`: with no SW ever registering
+ * there, the warm-up parks in whenControlled() and never reaches the
+ * manifest fetch. A 404 for this file only happens under a STALE
+ * controlling SW whose precache predates it; the warm-up then warns and
+ * skips (offline glyph coverage grows on demand only).
  */
 export const GLYPH_MANIFEST_PATH = 'glyph-manifest.json';
 

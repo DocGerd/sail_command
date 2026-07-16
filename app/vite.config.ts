@@ -17,8 +17,10 @@ const APP_DIR = dirname(fileURLToPath(import.meta.url));
 // requested yet, so offline coverage converges without blocking the install.
 // The emitted JSON itself IS picked up by the precache glob (**/*.json) —
 // tiny, and it keeps the warm-up's source of truth available offline.
-// Build-only (apply: 'build'): `vite dev` neither emits it nor registers a
-// SW, and the warm-up treats the resulting 404 as a silent skip.
+// Build-only (apply: 'build'): fine for `vite dev`, where the warm-up never
+// runs at all — no SW ever registers, so it parks waiting for a controller
+// and never reaches the manifest fetch; the 404→warn+skip path only occurs
+// under a stale controlling SW from an older deploy.
 function glyphManifest(): Plugin {
   return {
     name: 'sailcommand:glyph-manifest',
@@ -35,6 +37,12 @@ function glyphManifest(): Plugin {
             .join('/'),
         )
         .sort();
+      // Deploy is gated on the build alone — an empty manifest would ship a
+      // fontless offline experience with nothing else failing, so a missing
+      // or empty fonts directory must fail the build loudly.
+      if (paths.length === 0) {
+        this.error('glyph-manifest: no .pbf files found under public/basemap-assets/fonts');
+      }
       this.emitFile({
         type: 'asset',
         fileName: 'glyph-manifest.json',
@@ -59,8 +67,8 @@ export default defineConfig({
       // working until the user opts into ReloadPrompt's reload.
       registerType: 'prompt',
       injectManifest: {
-        // ~30 MB expected (basemap.pmtiles + mask.bin + polars + sprites +
-        // app shell) — see spec §7's first-load budget. The ~14 MB of font
+        // ~33 MB expected (basemap.pmtiles + mask.bin + polars + sprites +
+        // app shell) — see spec §7's first-load budget. The ~11 MB of font
         // glyph ranges are runtime-cached, not precached (#28, below).
         maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,pmtiles,pbf}'],

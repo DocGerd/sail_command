@@ -49,11 +49,13 @@ works fully offline once the app has been loaded once.
 
 ## First load / offline
 
-The first visit downloads and precaches roughly **44 MB** (regional basemap
-tiles, land/depth mask, polar tables, harbor list, map fonts/sprites, app
-shell). Subsequent visits are served from the cache and work with no
-network at all; an update prompt appears when a new version is available
-in the background, applied on demand rather than mid-passage.
+The first visit precaches roughly **33 MB** (regional basemap tiles,
+land/depth mask, polar tables, harbor list, sprites, app shell); the ~11 MB
+of map fonts land in a runtime cache in the background after install (#28),
+for a total eventual download of ~45 MB. Subsequent visits are served from
+the cache and work with no network at all; an update prompt appears when a
+new version is available in the background, applied on demand rather than
+mid-passage.
 
 ## Development
 

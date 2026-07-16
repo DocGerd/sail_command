@@ -5,8 +5,9 @@
 // them through a runtime CacheFirst route instead. The trade-off: a glyph
 // range the map never requested while online would be unavailable offline.
 // This module closes that gap from the WINDOW side — never from the SW's
-// install/activate waitUntil, which must stay instant — by fetching every
-// not-yet-cached range once the SW controls the page and the app is idle.
+// install/activate waitUntil, which must not grow (install already awaits
+// the ~33 MB precache) — by fetching every not-yet-cached range once the
+// SW controls the page and the app is idle.
 //
 // Resilience contract (issue #28): every failure here is non-fatal and
 // silent — a missed range is simply retried on the next visit because the
@@ -18,7 +19,9 @@ import { GLYPH_CACHE_NAME, GLYPH_MANIFEST_PATH } from '../lib/glyphs';
  * Terminal states: 'done' = every manifest range was fetched (or already
  * cached) this run; 'partial' = some fetches failed or the connection
  * dropped mid-run (retried next visit); 'skipped' = preconditions unmet
- * (no SW/Cache API, offline at start, or no manifest — e.g. `vite dev`).
+ * (no SW/Cache API, offline at start, or no usable manifest — which only
+ * happens under a STALE controlling SW; in dev the run never gets that far,
+ * it parks in whenControlled() because no SW ever registers).
  */
 export type GlyphWarmupOutcome = 'done' | 'partial' | 'skipped';
 
@@ -34,8 +37,9 @@ declare global {
 }
 
 // Small enough to stay polite to the main thread and the connection (the
-// ranges are tiny, ~5–50 KB each); large enough that ~768 ranges warm in a
-// few seconds on a decent link.
+// ranges are mostly a few KB to ~50 KB, avg ~14 KB, with a CJK-heavy tail
+// running larger); large enough that ~768 ranges warm in a few seconds on
+// a decent link.
 const BATCH_SIZE = 8;
 
 function whenControlled(): Promise<void> {
@@ -62,17 +66,30 @@ function whenIdle(): Promise<void> {
 }
 
 async function fetchManifest(): Promise<string[] | null> {
+  let manifest: string[] | null = null;
   try {
     const res = await fetch(import.meta.env.BASE_URL + GLYPH_MANIFEST_PATH);
-    if (!res.ok) return null;
-    const data: unknown = await res.json();
-    if (!Array.isArray(data) || !data.every((p): p is string => typeof p === 'string')) {
-      return null;
+    if (res.ok) {
+      const data: unknown = await res.json();
+      if (Array.isArray(data) && data.every((p): p is string => typeof p === 'string')) {
+        manifest = data;
+      }
     }
-    return data;
   } catch {
-    return null;
+    // fall through to the shared warn below
   }
+  if (!manifest) {
+    // Reachable only under a controlling SW whose precache predates the
+    // manifest (a stale deploy) or a genuinely broken response — never in
+    // dev, where whenControlled() parks forever before this fetch. warn,
+    // not error: this is a degraded-but-working state (glyph coverage
+    // still grows on demand), and the offline e2e's console collector
+    // rightly treats type=error as a failure.
+    console.warn(
+      '[glyphWarmup] glyph manifest unavailable; offline glyph coverage grows on demand only',
+    );
+  }
+  return manifest;
 }
 
 async function warmOne(href: string): Promise<boolean> {
@@ -130,7 +147,13 @@ let scheduled: Promise<GlyphWarmupOutcome> | null = null;
  */
 export function scheduleGlyphWarmup(): Promise<GlyphWarmupOutcome> {
   scheduled ??= runGlyphWarmup()
-    .catch((): GlyphWarmupOutcome => 'skipped')
+    .catch((err: unknown): GlyphWarmupOutcome => {
+      // Unexpected — every anticipated failure path already resolves as
+      // 'skipped'/'partial' inside runGlyphWarmup. Surfaced as warn, kept
+      // non-fatal per the module's resilience contract.
+      console.warn('[glyphWarmup] failed', err);
+      return 'skipped';
+    })
     .then((outcome) => {
       window.__sailGlyphWarmup = outcome;
       return outcome;

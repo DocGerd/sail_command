@@ -63,6 +63,7 @@ function stubEnv({
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('runGlyphWarmup', () => {
@@ -81,18 +82,23 @@ describe('runGlyphWarmup', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("returns 'skipped' when the manifest is missing (dev mode serves a 404)", async () => {
+  it("returns 'skipped' with a console.warn when the manifest is missing (stale SW serves a 404)", async () => {
     const { fetchMock } = stubEnv({ manifest: null });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     await expect(runGlyphWarmup()).resolves.toBe('skipped');
-    // Only the manifest attempt — no glyph fetches on a failed manifest.
+    // Only the manifest attempt — no glyph fetches on a failed manifest —
+    // but never a SILENT skip: the degraded offline coverage is surfaced.
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('glyph manifest unavailable'));
   });
 
-  it("returns 'skipped' on a malformed manifest", async () => {
+  it("returns 'skipped' with a console.warn on a malformed manifest", async () => {
     stubEnv({ manifest: { not: 'an array' } });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     await expect(runGlyphWarmup()).resolves.toBe('skipped');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('glyph manifest unavailable'));
   });
 
   it('defers everything until the SW takes control of the page', async () => {
