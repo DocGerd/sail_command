@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 // side-panel grid. This mirrors the `@media (min-width: 1024px)` query in
 // app.css — the one value that must stay in sync between the CSS layout and any
 // JS that needs to know which layout is active (#31: the Live readout renders
-// in the panel column on wide, as a map-corner card on narrow).
+// in the panel column on wide, as a bottom-docked card above the tab strip on
+// narrow).
 const WIDE_LAYOUT_QUERY = '(min-width: 1024px)';
 
 // True while the wide (side-panel) layout is active. jsdom has no matchMedia

@@ -19,11 +19,12 @@ import type { ManeuverKind } from '../types';
 export interface LiveViewProps {
   watchPosition?: typeof realWatchPosition;
   // #31: when set (wide layout), the textual readout renders into this
-  // panel-column slot via a portal instead of the map-corner card. BoatMarker
-  // and its map-anchored accuracy circle always stay in MapView's subtree —
-  // React context flows through a portal by tree position, not DOM position, so
-  // useMapInstance() keeps resolving the map wherever the readout lands. Null/
-  // undefined = render inline (narrow, unchanged).
+  // panel-column slot via a portal instead of rendering inline in MapView's
+  // subtree (the base bottom-sheet-region card). BoatMarker and its map-anchored
+  // accuracy circle always stay in MapView's subtree — React context flows
+  // through a portal by tree position, not DOM position, so useMapInstance()
+  // keeps resolving the map wherever the readout lands. Null/undefined = render
+  // inline (narrow, unchanged).
   panelSlot?: HTMLElement | null;
 }
 
@@ -107,6 +108,13 @@ export default function LiveView({
       : null;
   const driftMs = etaMs !== null ? etaMs - legs[legs.length - 1].endTimeMs : null;
 
+  // One gate shared by the readout data block and the BoatMarker sibling below:
+  // both render exactly when there is a fix with a computable heading-to-steer,
+  // so they must never drift apart (a marker without a readout, or vice versa).
+  // Bundling the narrowed non-null values keeps that single check type-safe for
+  // both consumers.
+  const steerable = fix !== null && hts !== null ? { fix, hts } : null;
+
   const toggleActive = () => {
     const next = !active;
     setActive(next);
@@ -133,18 +141,18 @@ export default function LiveView({
         </div>
       )}
 
-      {fix && hts !== null && (
+      {steerable && (
         <div className="live-view-data">
           <div className="live-view-hts">
             <span className="live-view-label">{t('live.hts.label')}</span>
-            <span className="live-view-hts-value">{formatHeading(hts)}</span>
+            <span className="live-view-hts-value">{formatHeading(steerable.hts)}</span>
           </div>
 
           <dl className="live-view-cogsog">
             <dt>{t('live.cog.label')}</dt>
-            <dd>{fix.cogDeg !== null ? formatHeading(fix.cogDeg) : '—'}</dd>
+            <dd>{steerable.fix.cogDeg !== null ? formatHeading(steerable.fix.cogDeg) : '—'}</dd>
             <dt>{t('live.sog.label')}</dt>
-            <dd>{fix.sogKn !== null ? formatKn(fix.sogKn) : '—'}</dd>
+            <dd>{steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn) : '—'}</dd>
           </dl>
 
           <p className="live-view-next-event">
@@ -169,15 +177,27 @@ export default function LiveView({
   // The readout is portaled into the panel column on wide (#31); BoatMarker is
   // rendered as a sibling — always inline in MapView's subtree, never portaled
   // — so a narrow<->wide switch never remounts the imperative map marker.
+  //
+  // The readout DOM, by contrast, is intentionally NOT remount-stable across
+  // that switch: the fragment's first child alternates between a portal node
+  // and a plain element (different node types to the reconciler), so crossing
+  // the 1024px breakpoint while Live is active unmounts and recreates the
+  // readout. Component state survives (it lives in this component, above the
+  // return); transient DOM state does not — keyboard focus on the toggle falls
+  // back to <body>, and any scroll position resets. Accepted: a breakpoint
+  // crossing is a deliberate, rare window/orientation change, not a mid-
+  // interaction event, and the readout holds no text entry or long scroll worth
+  // preserving. Restoring focus in a panelSlot-keyed effect was considered and
+  // rejected as focus-stealing for no real benefit here.
   return (
     <>
       {panelSlot ? createPortal(readout, panelSlot) : readout}
-      {fix && hts !== null && (
+      {steerable && (
         <BoatMarker
-          point={fix.point}
-          cogDeg={fix.cogDeg}
-          headingToSteerDeg={hts}
-          accuracyM={fix.accuracyM}
+          point={steerable.fix.point}
+          cogDeg={steerable.fix.cogDeg}
+          headingToSteerDeg={steerable.hts}
+          accuracyM={steerable.fix.accuracyM}
         />
       )}
     </>

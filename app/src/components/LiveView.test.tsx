@@ -280,10 +280,11 @@ describe('LiveView', () => {
 
   it('renders its readout into the provided panel slot via a portal, with no map instance required', async () => {
     // #31: the wide layout passes a panel-column DOM node; the textual readout
-    // must render into it (not the map-corner inline position), and the branch
-    // needs no MapView/map context — only BoatMarker would, and it renders null
-    // without a map. Proving the toggle+fix land inside `slot` and NOT in the
-    // render container is the split contract this task hangs on.
+    // must render into it (not inline in MapView's subtree, the base
+    // bottom-sheet-region card), and the branch needs no MapView/map context —
+    // only BoatMarker would, and it renders null without a map. Proving the
+    // toggle+fix land inside `slot` and NOT in the render container is the split
+    // contract this task hangs on.
     const slot = document.createElement('div');
     document.body.appendChild(slot);
     localStorage.setItem('sc-lang', 'en');

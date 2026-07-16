@@ -567,7 +567,7 @@ function AppShell() {
               subtree (BoatMarker needs the map context). On wide it portals
               its readout into this slot so the panel column isn't empty (#31);
               on narrow the slot isn't rendered and the readout stays a
-              map-corner card. */}
+              bottom-docked card above the tab strip. */}
           {tab === 'live' && isWide && <div className="app-panel-live" ref={setLiveSlot} />}
         </div>
       </div>

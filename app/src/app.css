@@ -180,8 +180,9 @@ select {
 /* .app-tabs's height, shared with .live-view/.live-view-no-plan below so
    they can dock directly above it instead of underneath it — the tab strip
    itself is NOT tab-gated (it's how the user switches tabs at all), so it's
-   always on screen, even while the Live tab's own content renders outside
-   .app-panel (inside MapView's subtree, for BoatMarker's map context). */
+   always on screen. On narrow the Live tab's readout renders outside .app-panel
+   (inside MapView's subtree, for BoatMarker's map context); on wide it portals
+   into .app-panel-live (#31), but BoatMarker still stays in MapView's subtree. */
 :root {
   --sc-tabbar-h: 3.25rem;
 }
@@ -224,10 +225,12 @@ select {
   padding: 0.75rem;
 }
 
-/* LiveView renders inside MapView's subtree (for BoatMarker's map context),
-   not inside .app-panel, but is styled to dock in the same visual region —
-   directly above the always-visible .app-tabs strip (bottom: var(--sc-tabbar-h),
-   not 0, or the tab strip — painted later in DOM order — would cover it). */
+/* Narrow-layout base: LiveView's readout DOM stays outside .app-panel, inside
+   MapView's subtree (for BoatMarker's map context), styled to dock in the same
+   visual region — directly above the always-visible .app-tabs strip (bottom:
+   var(--sc-tabbar-h), not 0, or the tab strip — painted later in DOM order —
+   would cover it). On wide the readout portals into .app-panel-live and these
+   absolute rules are neutralized (see the #31 block in the wide media query). */
 .live-view {
   position: absolute;
   left: 0;
@@ -541,10 +544,12 @@ select {
   }
 
   .map-area {
-    /* Defensive positioning only — NOT the containing block for the
-       RouteLayer/LiveView overlays. Those are absolutely positioned against
-       MapView's own inline position:relative wrapper div (MapView.tsx), in
-       both layouts, so this relative context is never what they resolve to. */
+    /* Defensive positioning only — NOT the containing block for the RouteLayer
+       (and, on narrow, LiveView) overlays. Those are absolutely positioned
+       against MapView's own inline position:relative wrapper div (MapView.tsx),
+       so this relative context is never what they resolve to. On wide the
+       LiveView readout is position:static and portaled into the panel column
+       (#31), not an overlay here at all. */
     position: relative;
     inset: auto;
     grid-area: map;
