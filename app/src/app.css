@@ -441,3 +441,100 @@ select {
   border-radius: 6px;
   background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
 }
+
+/* ---- Wide screens (>=1024px): side-panel layout (#24) ----
+
+   Below this width the bottom-sheet layout above is kept unchanged — phone /
+   cockpit-portrait use is the primary on-boat mode. At >=1024px the shell
+   becomes a two-column grid: the panel (header + banners + tabs/content) is a
+   ~1/3-width column on the LEFT and the map fills the remaining ~2/3 at full
+   viewport height, instead of the map's vertical space being eaten by a
+   full-width bottom sheet. 1024px is chosen so landscape tablets get the side
+   panel while portrait tablets/phones keep the bottom sheet.
+
+   The overlay elements (header/banner/sheet/map-area) are all absolutely
+   positioned in the base layout; here they become ordinary grid items placed
+   via grid-template-areas. The map column spans all three rows, so it keeps
+   full height regardless of how tall the header/banner rows are. */
+@media (min-width: 1024px) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) 2fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'header map'
+      'banner map'
+      'panel  map';
+  }
+
+  .app-header {
+    position: static;
+    grid-area: header;
+    /* Solid over the panel column instead of the translucent-over-map look. */
+    background: var(--sc-bg);
+    backdrop-filter: none;
+  }
+
+  .banner-area {
+    position: static;
+    grid-area: banner;
+  }
+
+  .map-area {
+    position: relative; /* stays the containing block for RouteLayer/LiveView overlays */
+    inset: auto;
+    grid-area: map;
+    border-left: 1px solid var(--sc-border); /* single divider between panel and map */
+  }
+
+  .app-bottom-sheet {
+    position: static;
+    grid-area: panel;
+    min-height: 0; /* let .app-panel scroll rather than the 1fr row growing past the viewport */
+    max-height: none;
+    border-top: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .app-panel {
+    flex: 1;
+    min-height: 0; /* enables the panel's own overflow-y scroll inside the flex column */
+  }
+
+  /* Form controls shouldn't stretch across the full ~1/3-viewport panel
+     width (the wide-screen complaint in #24). Checkboxes keep their natural
+     size. */
+  .app-panel input:not([type='checkbox']),
+  .app-panel select {
+    max-width: 22rem;
+  }
+
+  /* The lone motor-enabled checkbox reads better inline than stacked once the
+     panel is only ~1/3 wide. */
+  .options-field:has(input[type='checkbox']) {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* Live readout: a compact floating card at the map column's bottom-left,
+     not a full-width bottom sheet — there is no bottom tab strip to dock above
+     here (the tabs live in the left panel column). */
+  .live-view {
+    left: 0.75rem;
+    right: auto;
+    bottom: 0.75rem;
+    width: min(22rem, calc(100% - 1.5rem));
+    max-height: calc(100% - 1.5rem);
+    border: 1px solid var(--sc-border);
+    border-radius: 12px;
+  }
+
+  .live-view-no-plan {
+    left: 0.75rem;
+    right: auto;
+    bottom: 0.75rem;
+    width: min(22rem, calc(100% - 1.5rem));
+  }
+}
