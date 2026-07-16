@@ -214,6 +214,11 @@ describe('adaptiveBarbFeatures', () => {
     maneuverAtStart: null,
   };
 
+  // All-land mask: every lattice point is culled (depthM 0), leaving a
+  // ribbon-only result (the ribbon is never land-culled). Cleaner than a
+  // far-away viewport for isolating the ribbon now that it is viewport-clipped.
+  const allLand = makeMask(() => 0);
+
   it('is deterministic and dense at overview zoom (the #36 repro: > 3 barbs)', () => {
     const view = {
       project: proj(1000),
@@ -267,7 +272,7 @@ describe('adaptiveBarbFeatures', () => {
     expect(minDiff).toBeLessThan(0.03);
   });
 
-  it('caps total features at 500 with the route ribbon kept first', () => {
+  it('caps total features at 500, ribbon first and budget spent in-view', () => {
     const bigView = {
       project: proj(4000),
       bounds: { west: 9.4, south: 54.3, east: 11.0, north: 55.3 },
@@ -275,23 +280,26 @@ describe('adaptiveBarbFeatures', () => {
     const full = adaptiveBarbFeatures(GRID, T0, bigView, [BARB_LEG], null);
     expect(full.features.length).toBe(500);
 
-    // Ribbon-only: bounds far from the grid → zero lattice, but the ribbon still
-    // walks the leg (it is not viewport-culled).
-    const farView = { project: proj(4000), bounds: { west: 20, south: 60, east: 21, north: 61 } };
-    const ribbonOnly = adaptiveBarbFeatures(GRID, T0, farView, [BARB_LEG], null);
+    // Ribbon-only via an all-land mask (lattice culled; ribbon never is). The
+    // leg is fully inside bigView, so this is every ribbon sample.
+    const ribbonOnly = adaptiveBarbFeatures(GRID, T0, bigView, [BARB_LEG], allLand);
     expect(ribbonOnly.features.length).toBeGreaterThan(0);
     expect(ribbonOnly.features.length).toBeLessThan(500);
 
-    // Every ribbon barb survives the cap (ribbon has priority).
-    const fullKeys = new Set(full.features.map((f) => key(f.geometry.coordinates)));
-    for (const f of ribbonOnly.features)
-      expect(fullKeys.has(key(f.geometry.coordinates))).toBe(true);
+    // Ribbon leads the feature list (priority under the cap): the first
+    // ribbonOnly.length features of the full result are exactly the ribbon.
+    for (let i = 0; i < ribbonOnly.features.length; i++) {
+      expect(key(full.features[i].geometry.coordinates)).toBe(
+        key(ribbonOnly.features[i].geometry.coordinates),
+      );
+    }
   });
 
   it('spaces ribbon samples ~110 px apart, starting a half-interval in', () => {
     const p = proj(1000);
-    const farView = { project: p, bounds: { west: 20, south: 60, east: 21, north: 61 } }; // ribbon only
-    const fc = adaptiveBarbFeatures(GRID, T0, farView, [BARB_LEG], null);
+    // All-land mask → ribbon only; the whole leg is inside the viewport.
+    const view = { project: p, bounds: { west: 9.4, south: 54.3, east: 11.0, north: 55.3 } };
+    const fc = adaptiveBarbFeatures(GRID, T0, view, [BARB_LEG], allLand);
     const screens = fc.features.map((f) =>
       p({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }),
     );
@@ -308,17 +316,87 @@ describe('adaptiveBarbFeatures', () => {
     }
   });
 
+  it('clips ribbon to the padded viewport: in-view samples kept, off-view dropped', () => {
+    const p = proj(2000);
+    // A long leg spanning the whole grid; a small viewport over its middle.
+    const longLeg: Leg = {
+      ...BARB_LEG,
+      start: { lat: 54.3, lon: 9.4 },
+      end: { lat: 55.3, lon: 11.0 },
+    };
+    const bounds = { west: 10.0, south: 54.7, east: 10.3, north: 54.9 };
+    // All-land mask → the count is purely the clipped ribbon.
+    const ribbon = adaptiveBarbFeatures(
+      GRID,
+      T0,
+      { project: p, bounds },
+      [longLeg],
+      allLand,
+    ).features;
+    expect(ribbon.length).toBeGreaterThan(0);
+
+    // Reference padded on-screen rect (RIBBON_PX = 110), same 4-corner method.
+    const corners = [
+      p({ lat: bounds.north, lon: bounds.west }),
+      p({ lat: bounds.north, lon: bounds.east }),
+      p({ lat: bounds.south, lon: bounds.west }),
+      p({ lat: bounds.south, lon: bounds.east }),
+    ];
+    const minX = Math.min(...corners.map((c) => c.x)) - 110;
+    const maxX = Math.max(...corners.map((c) => c.x)) + 110;
+    const minY = Math.min(...corners.map((c) => c.y)) - 110;
+    const maxY = Math.max(...corners.map((c) => c.y)) + 110;
+    const inRect = (s: { x: number; y: number }) =>
+      s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY;
+
+    // Every emitted ribbon sample is inside the padded rect.
+    for (const f of ribbon) {
+      const s = p({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] });
+      expect(inRect(s)).toBe(true);
+    }
+    // The count equals exactly the in-view samples of the full leg (out-of-view
+    // dropped, in-view unchanged).
+    const ps = p(longLeg.start);
+    const pe = p(longLeg.end);
+    const len = Math.hypot(pe.x - ps.x, pe.y - ps.y);
+    let expected = 0;
+    for (let d = 55; d <= len; d += 110) {
+      const s = { x: ps.x + ((pe.x - ps.x) * d) / len, y: ps.y + ((pe.y - ps.y) * d) / len };
+      if (inRect(s)) expected++;
+    }
+    expect(ribbon.length).toBe(expected);
+    // The clip really dropped most of the long leg's samples.
+    expect(expected).toBeLessThan(Math.floor(len / 110));
+  });
+
+  it('samples lattice AND ribbon at the slider time, not a fixed hour', () => {
+    // Wind uniform in space but hour-dependent: 5 + hourIdx*10 kn.
+    const grid = makeWindGrid((_lat, _lon, h) => ({ speedKn: 5 + h * 10, dirFromDeg: 180 }), {
+      hours: 3,
+    });
+    const view = {
+      project: proj(1000),
+      bounds: { west: 9.4, south: 54.3, east: 11.0, north: 55.3 },
+    };
+    // Sample at hour index 1 → every barb (lattice and ribbon) must read 15 kn.
+    const fc = adaptiveBarbFeatures(grid, grid.timesMs[1], view, [BARB_LEG], null);
+    expect(fc.features.length).toBeGreaterThan(0);
+    for (const f of fc.features) expect(f.properties.speedKn).toBeCloseTo(15, 5);
+    // The ribbon alone (all-land mask) also reads the slider hour.
+    const ribbon = adaptiveBarbFeatures(grid, grid.timesMs[1], view, [BARB_LEG], allLand);
+    expect(ribbon.features.length).toBeGreaterThan(0);
+    for (const f of ribbon.features) expect(f.properties.speedKn).toBeCloseTo(15, 5);
+    // At hour 0 the same barbs read 5 kn — proves it's the slider hour, not fixed.
+    const fc0 = adaptiveBarbFeatures(grid, grid.timesMs[0], view, [BARB_LEG], null);
+    for (const f of fc0.features) expect(f.properties.speedKn).toBeCloseTo(5, 5);
+  });
+
   it('skips lattice barbs within 48 px of a ribbon sample', () => {
     const p = proj(1000);
     const view = { project: p, bounds: { west: 9.4, south: 54.3, east: 11.0, north: 55.3 } };
     const full = adaptiveBarbFeatures(GRID, T0, view, [BARB_LEG], null);
-    const ribbonOnly = adaptiveBarbFeatures(
-      GRID,
-      T0,
-      { project: p, bounds: { west: 20, south: 60, east: 21, north: 61 } },
-      [BARB_LEG],
-      null,
-    );
+    // Same viewport, all-land mask → ribbon only (coords identical to full's ribbon).
+    const ribbonOnly = adaptiveBarbFeatures(GRID, T0, view, [BARB_LEG], allLand);
     const ribbonKeys = new Set(ribbonOnly.features.map((f) => key(f.geometry.coordinates)));
     const ribbonScreens = ribbonOnly.features.map((f) =>
       p({ lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] }),

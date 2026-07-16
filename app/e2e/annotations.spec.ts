@@ -16,7 +16,7 @@ test.use({ viewport: { width: 1280, height: 800 } });
 // before the closures reach the browser; this only satisfies tsc for the
 // page.evaluate() source text (this project can't import app source).
 interface ScTestMap {
-  queryRenderedFeatures(opts: { layers: string[] }): unknown[];
+  queryRenderedFeatures(opts: { layers: string[] }): Array<{ properties: Record<string, unknown> }>;
   querySourceFeatures(source: string): Array<{
     geometry: { coordinates: [number, number] };
     properties: Record<string, unknown>;
@@ -71,6 +71,20 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
     await barbToggle.check();
     await expect.poll(barbCount, { timeout: 30_000 }).toBeGreaterThan(3);
 
+    // --- #37/#35: maneuver circles are kind-filtered to tack/gybe. The shared
+    // point source now also carries start/finish/heading points; removing the
+    // filter would draw r=9 circles at those too. Assert every rendered circle
+    // is a maneuver (and that at least one is in view, so the filter is
+    // actually exercised). ---
+    const maneuverKinds = await page.evaluate(() => {
+      const map = (window as { __scMap?: ScTestMap }).__scMap;
+      return (map?.queryRenderedFeatures({ layers: ['sc-maneuver-circles'] }) ?? []).map(
+        (f) => f.properties.kind,
+      );
+    });
+    expect(maneuverKinds.length).toBeGreaterThan(0);
+    for (const k of maneuverKinds) expect(['tack', 'gybe']).toContain(k);
+
     // --- #36: zooming into a leg still shows barbs (the route ribbon keeps
     // wind on the route at high zoom). Center on the origin (on the route). ---
     const startCoord = await page.evaluate(() => {
@@ -116,10 +130,9 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
       (window as { __scMap?: ScTestMap }).__scMap?.panBy([90, 60]);
     });
     const slider = page.getByRole('slider', { name: 'Vorhersagezeitpunkt' });
-    if (await slider.count()) {
-      await slider.focus();
-      await page.keyboard.press('ArrowRight');
-    }
+    await expect(slider).toBeVisible();
+    await slider.focus();
+    await page.keyboard.press('ArrowRight');
     await page.waitForLoadState('networkidle');
     expect(
       openMeteoRequests,

@@ -52,10 +52,12 @@ export function legsToFeatureCollection(
 
 // Uniform annotation point over the route, feeding the shared MANEUVER_SOURCE
 // (one point source for maneuver circles/letters, heading dots and ETA
-// labels). `rank` drives `symbol-sort-key` on both ETA layers so the
-// destination ETA (0) always wins a label collision, then the departure (1),
-// then maneuvers (2), then plain heading changes (3). Layers filter on `kind`,
-// never on rank — zoom tiering is done with layer `minzoom` only.
+// labels). `symbol-sort-key` is per-layer, so `rank` orders labels only WITHIN
+// sc-eta-primary (finish 0 wins a collision, then start 1, then maneuvers 2) —
+// it does NOT rank across layers. Heading changes live on the separate
+// sc-eta-secondary layer; their subordination comes from that layer's order
+// and its higher minzoom (12), not from rank (3 is set only for completeness).
+// Layers filter on `kind`; zoom tiering is done with layer `minzoom` only.
 export type RoutePointKind = 'start' | 'finish' | 'tack' | 'gybe' | 'heading';
 
 export interface RoutePointProperties {
@@ -140,7 +142,9 @@ const RIBBON_PX = 110; // along-leg ribbon spacing (screen px)
 const NEAR_ROUTE_PX = 48; // ribbon dedupe radius AND near-route lattice skip
 const LATTICE_TARGET_PX = 96; // target on-screen lattice spacing
 const BARB_CAP = 500; // hard feature cap (ribbon first, then lattice)
-const MIN_SUBDIV_N = -2; // clamp: at most 4x grid subdivision (2^-2)
+// Subdivision is bounded at 4x the native grid (n >= -2, i.e. 2^-2): beyond
+// that, interpolated barbs would pretend a precision the forecast doesn't have.
+const MIN_SUBDIV_N = -2;
 
 // Viewport-scoped, zoom-adaptive wind barbs sampled from the plan's stored
 // grid at slider time `tMs` (never re-fetched). Two deterministic parts under
@@ -149,8 +153,9 @@ const MIN_SUBDIV_N = -2; // clamp: at most 4x grid subdivision (2^-2)
 //      cap) so the wind along the route is readable at any zoom (#36).
 //   2. Grid-anchored lattice: fills the rest of the viewport at ~96 px, with
 //      the step locked to power-of-two multiples of the native grid step
-//      anchored at grid index 0 — so barbs are pan-stable (no jitter on move)
-//      and never pretend more resolution than the forecast has (n >= -2).
+//      anchored at grid index 0 — so barbs are pan-stable (no jitter on move).
+//      Subdivision is bounded at 4x the native grid (n >= -2); beyond that,
+//      interpolated barbs would pretend a precision the forecast doesn't have.
 // Density is deterministic by construction (no collision culling — the #36
 // complaint was random barb disappearance), so `icon-allow-overlap` stays true.
 export function adaptiveBarbFeatures(
@@ -173,7 +178,25 @@ export function adaptiveBarbFeatures(
     });
   };
 
-  // 1) Route ribbon — on the route, so navigable by construction (no cull).
+  // On-screen viewport rectangle (padded by one ribbon interval) that ribbon
+  // candidates are clipped to below. Derived from all four projected bounds
+  // corners so a rotated map still clips correctly.
+  const corners = [
+    view.project({ lat: view.bounds.north, lon: view.bounds.west }),
+    view.project({ lat: view.bounds.north, lon: view.bounds.east }),
+    view.project({ lat: view.bounds.south, lon: view.bounds.west }),
+    view.project({ lat: view.bounds.south, lon: view.bounds.east }),
+  ];
+  const clipMinX = Math.min(...corners.map((c) => c.x)) - RIBBON_PX;
+  const clipMaxX = Math.max(...corners.map((c) => c.x)) + RIBBON_PX;
+  const clipMinY = Math.min(...corners.map((c) => c.y)) - RIBBON_PX;
+  const clipMaxY = Math.max(...corners.map((c) => c.y)) + RIBBON_PX;
+
+  // 1) Route ribbon — clipped to the padded viewport BEFORE the cap counts it.
+  // Unclipped, a long route at deep zoom exhausts the 500-feature cap off-screen
+  // and leaves zero barbs near the destination (defeats #36 at harbor-approach
+  // zoom). Determinism stays per-viewport (same view -> same barbs). On-route,
+  // so no land-cull.
   for (const leg of legs) {
     if (features.length >= BARB_CAP) break;
     const ps = view.project(leg.start);
@@ -187,6 +210,8 @@ export function adaptiveBarbFeatures(
       const f = d / len;
       const sx = ps.x + (pe.x - ps.x) * f;
       const sy = ps.y + (pe.y - ps.y) * f;
+      // Drop off-screen candidates so the cap budget is spent in-view.
+      if (sx < clipMinX || sx > clipMaxX || sy < clipMinY || sy > clipMaxY) continue;
       let tooClose = false;
       for (const r of ribbonScreen) {
         if (Math.hypot(sx - r.x, sy - r.y) < NEAR_ROUTE_PX) {
