@@ -34,9 +34,10 @@ export function harborFeatureCollection(
  * - Armed for 'origin'/'destination' (tap-to-pick): the harbor pick wins
  *   that field — clicking a marker while aiming for a coordinate is a more
  *   specific intent, and the curated snap point beats a raw tap.
- * - Armed for 'via': the raw tap handler has already appended the tapped
- *   point as a via; answering 'origin'/'destination' here would double-handle
- *   the click, so the harbor click resolves to nothing.
+ * - Armed for 'via': MapView's harbor-hit gate swallows the raw tap (no via is
+ *   appended — see MapView.tsx), and a via-armed click must not be hijacked
+ *   into an origin/destination fill, so the harbor click resolves to nothing: a
+ *   via-armed tap on a marker is deliberately a no-op.
  * - Disarmed (the issue's headline case): fill origin if still empty,
  *   otherwise (re)fill destination.
  */

@@ -5,7 +5,8 @@ import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
-import { buildDepthImageData } from '../lib/depthColor';
+import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
+import { HIGHLIGHT_LAYER } from './RouteLayer';
 import type { Harbor, MaskMeta } from '../types';
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
@@ -27,23 +28,25 @@ export interface DataLayersProps {
 const DEPTH_SOURCE = 'sc-depth';
 const DEPTH_LAYER = 'sc-depth';
 const HARBOR_SOURCE = 'sc-harbors';
-// Exported so App can hand MapView the same id its raw-tap gate queries,
-// keeping the 'sc-harbor-points' literal in exactly one place (#38).
+// Exported so App can hand MapView the same id its raw-tap gate queries: the
+// 'sc-harbor-points' literal lives in one place in production source. (The
+// App.test.tsx FakeMap still hardcodes it — a vi.mock factory is hoisted above
+// the imports and can't reference this constant.) (#38)
 export const HARBOR_CIRCLE_LAYER = 'sc-harbor-points';
 const HARBOR_LABEL_LAYER = 'sc-harbor-labels';
 
-// Deterministic cross-component layer ordering: RouteLayer's bottom-most
-// layer (its highlight halo — the first layer its setupLayers adds). Both
-// components add layers whenever their own prerequisites happen to resolve,
-// so ordering must hold for either interleaving, not by load-order luck:
+// Deterministic cross-component layer ordering, anchored on RouteLayer's
+// bottom-most layer (HIGHLIGHT_LAYER, the first its setupLayers adds — imported
+// so a rename can't silently drop the ordering). Both components add layers
+// whenever their own prerequisites happen to resolve, so ordering must hold for
+// either interleaving, not by load-order luck:
 // - Route layers exist first (the common case — they only wait for the map
 //   style, while these layers also wait for the assets fetch): everything
-//   here is inserted BEFORE this anchor, i.e. below the whole route stack.
+//   here is inserted BEFORE the anchor, i.e. below the whole route stack.
 // - These layers exist first: RouteLayer appends its layers with no beforeId,
 //   which always lands them on top.
 // Either way route/maneuver/barb layers render above, and an active route
 // stays fully visible.
-const ROUTE_ANCHOR_LAYER = 'sc-route-highlight';
 
 // Same one-shot helper as RouteLayer.tsx's whenStyleReady — see the caveats
 // documented there (map 'load' fires exactly once; only valid for one-time
@@ -72,8 +75,8 @@ function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElemen
 }
 
 function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer): void {
-  // Anchor resolved at add time — see ROUTE_ANCHOR_LAYER above.
-  const beforeId = map.getLayer(ROUTE_ANCHOR_LAYER) ? ROUTE_ANCHOR_LAYER : undefined;
+  // Anchor resolved at add time — see HIGHLIGHT_LAYER above.
+  const beforeId = map.getLayer(HIGHLIGHT_LAYER) ? HIGHLIGHT_LAYER : undefined;
   if (!map.getSource(DEPTH_SOURCE)) {
     const canvas = buildDepthCanvas(meta, maskBuffer);
     if (canvas) {
@@ -81,15 +84,10 @@ function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer):
         type: 'canvas',
         canvas,
         animate: false,
-        // Corner order per the MapLibre spec: top-left, top-right,
-        // bottom-right, bottom-left — read from mask.meta.json at runtime,
-        // never hardcoded.
-        coordinates: [
-          [meta.west, meta.north],
-          [meta.east, meta.north],
-          [meta.east, meta.south],
-          [meta.west, meta.south],
-        ],
+        // Corner order (top-left, top-right, bottom-right, bottom-left) derived
+        // from the mask bbox — kept in depthColor.ts alongside the row-flip it
+        // must stay coupled to, and unit-tested there.
+        coordinates: depthSourceCorners(meta),
       });
       map.addLayer(
         {
@@ -117,19 +115,12 @@ function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer):
         type: 'circle',
         source: HARBOR_SOURCE,
         paint: {
-          // Black fill + white stroke (#38/#39 review round, reviewer-3839): a
-          // plain #E69F00 collided with depthColor.ts's ~2 m ramp band — orange
-          // markers over orange shallows. Black is the one Okabe-Ito anchor no
-          // other symbol claims: distinct from every depth-ramp stop
-          // (vermillion/orange/yellow/sky-blue/blue), the via reddish-purple
-          // (#CC79A7), boat blue (#0072B2), route port/starboard
-          // (#D55E00/#009E73), motor grey (#5b5b5b), route halo (#FFD400) and
-          // the water tint (#bfd9ea). Being achromatic it can't be confused
-          // with any of them under colour-blindness, and the 2 px white stroke
-          // keeps it popping over both plain water and every band of the depth
-          // raster. Reads as the deliberate inverse of the maneuver circles
-          // (white fill + #1a1a1a ring), and true black keeps it distinct from
-          // the #1a1a1a annotation ink used for the harbor labels and barbs.
+          // Black fill + white stroke (#38/#39 review): the prior #E69F00
+          // collided with depthColor.ts's ~2 m ramp band (orange markers over
+          // orange shallows). Black is distinct from every depth-ramp stop and,
+          // being achromatic, can't collide with any symbol on the map under
+          // colour-blindness; the 2 px white stroke keeps it popping over both
+          // plain water and every band of the depth raster.
           'circle-radius': 5.5,
           'circle-color': '#000000',
           'circle-stroke-width': 2,

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildDepthImageData, depthByteToRgba } from './depthColor';
+import { buildDepthImageData, depthByteToRgba, depthSourceCorners } from './depthColor';
+import { TEST_MASK_META } from '../test/fixtures';
 
 describe('depthByteToRgba', () => {
   it('renders land/unknown (byte 0) fully transparent', () => {
@@ -68,5 +69,19 @@ describe('buildDepthImageData', () => {
     for (let i = 0; i < bytes.length; i++) {
       expect(Array.from(img.subarray(i * 4, i * 4 + 4))).toEqual(depthByteToRgba(bytes[i]));
     }
+  });
+});
+
+describe('depthSourceCorners', () => {
+  it('orders corners TL, TR, BR, BL from the mask bbox (locks the flip↔corner coupling)', () => {
+    const { west, south, east, north } = TEST_MASK_META;
+    // Any reorder here mirrors the raster; must match buildDepthImageData's
+    // south→north row flip, which anchors image row 0 at `north`.
+    expect(depthSourceCorners(TEST_MASK_META)).toEqual([
+      [west, north], // top-left
+      [east, north], // top-right
+      [east, south], // bottom-right
+      [west, south], // bottom-left
+    ]);
   });
 });

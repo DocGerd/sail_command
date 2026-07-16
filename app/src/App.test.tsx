@@ -58,6 +58,10 @@ const mapTestHooks = vi.hoisted(() => ({
   // marker under a specific tap so the generic-tap gate (queryRenderedFeatures)
   // engages exactly as it would in the browser; empty means open water.
   harborHitFeatures: {} as Record<string, { properties?: Record<string, unknown> }[]>,
+  // Latest setData payload per source id (FakeMap.getSource returns a spy for
+  // added sources). Lets tests observe the language-relabel rebuild wiring,
+  // which previously no-opped because getSource returned undefined.
+  sourceSetData: {} as Record<string, unknown>,
 }));
 
 // Fake plan()-call queue for the RoutingClient mock below, shared the same
@@ -152,7 +156,20 @@ vi.mock('maplibre-gl', () => {
       // (MapView.tsx, #33) finds no attribution element in it and no-ops.
       return document.createElement('div');
     }
-    addSource() {}
+    // Track added source ids and expose a setData spy, so the language-relabel
+    // wiring (DataLayers rebuilds the harbor source on a lang switch) is
+    // observable — getSource returned undefined before, so that setData no-opped
+    // in every test. Sources never added still return undefined (unchanged).
+    _sources = new Map<string, { setData: (data: unknown) => void }>();
+    addSource(id?: string) {
+      if (typeof id === 'string' && !this._sources.has(id)) {
+        this._sources.set(id, {
+          setData: (data: unknown) => {
+            mapTestHooks.sourceSetData[id] = data;
+          },
+        });
+      }
+    }
     // Track added layer ids so getLayer() reflects reality: MapView's
     // harbor-hit gate calls getLayer(id) before queryRenderedFeatures, and
     // must see the harbor layer once DataLayers has added it.
@@ -160,8 +177,8 @@ vi.mock('maplibre-gl', () => {
     addLayer(layer?: { id?: string }) {
       if (layer && typeof layer.id === 'string') this._addedLayers.add(layer.id);
     }
-    getSource() {
-      return undefined;
+    getSource(id?: string) {
+      return typeof id === 'string' ? this._sources.get(id) : undefined;
     }
     getLayer(id?: string) {
       return typeof id === 'string' && this._addedLayers.has(id) ? { id } : undefined;
@@ -235,7 +252,15 @@ const FLENSBURG: Harbor = {
   country: 'DE',
   snap: { lat: 54.795, lon: 9.435 },
 };
-const HARBORS: Harbor[] = [FLENSBURG];
+// Deliberately distinct de/en names (real harbors here mostly share a name) so
+// the language-relabel test can prove the harbor source rebuilt into English.
+const RELABEL_HARBOR: Harbor = {
+  id: 'relabel-town',
+  names: { de: 'Relabelburg', da: 'Relabelby', en: 'Relabel Harbour' },
+  country: 'DK',
+  snap: { lat: 54.9, lon: 10.5 },
+};
+const HARBORS: Harbor[] = [FLENSBURG, RELABEL_HARBOR];
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200 });
@@ -340,6 +365,8 @@ beforeEach(async () => {
     delete mapTestHooks.layerClickHandlers[key];
   for (const key of Object.keys(mapTestHooks.harborHitFeatures))
     delete mapTestHooks.harborHitFeatures[key];
+  for (const key of Object.keys(mapTestHooks.sourceSetData))
+    delete mapTestHooks.sourceSetData[key];
 });
 
 // Screen pixel a harbor marker sits at for these tests, and a raw click
@@ -1004,6 +1031,50 @@ describe('harbor marker click-to-pick (#38)', () => {
       within(originSection).queryByText(formatLatLon(RAW_TAP_ON_MARKER), { selector: 'p' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(armedMessage)).not.toBeInTheDocument();
+  });
+
+  it('a marker click while armed for a via waypoint is a deliberate no-op: no via is appended and arming stays active', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Arm tap-to-pick for a via waypoint (the panel's "Add waypoint" button —
+    // via has no harbor picker of its own), then click a harbor marker.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    const viaArmedMessage = de['banner.tapPick'].replace('{target}', de['planner.via.label']);
+    expect(await screen.findByText(viaArmedMessage)).toBeInTheDocument();
+
+    // simulateHarborMarkerClick fires both handlers (browser fan-out): the
+    // generic tap is gated out on the harbor hit (so no via is appended), and
+    // resolveHarborPickTarget returns null for a via-armed marker click (so it
+    // is not hijacked into an origin/destination fill). Net: a no-op.
+    await simulateHarborMarkerClick('flensburg');
+
+    // No via row was added (each via renders as a listitem in the Waypoints
+    // region), and arming is still active — the documented fail-safe.
+    expect(within(viaSection).queryAllByRole('listitem')).toHaveLength(0);
+    expect(screen.getByText(viaArmedMessage)).toBeInTheDocument();
+  });
+
+  it('rebuilds the harbor source with localized names when the UI language switches (#38 relabel wiring)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Initial (German) harbor source data lands once map+style+assets resolve.
+    const harborNames = () =>
+      (
+        mapTestHooks.sourceSetData['sc-harbors'] as
+          | { features: { properties: { name: string } }[] }
+          | undefined
+      )?.features.map((f) => f.properties.name) ?? [];
+    await waitFor(() => expect(harborNames()).toContain(RELABEL_HARBOR.names.de));
+    expect(harborNames()).not.toContain(RELABEL_HARBOR.names.en);
+
+    // Toggling the language must rebuild the source and setData the en names —
+    // wiring that no-opped in every prior test (getSource returned undefined).
+    fireEvent.click(await screen.findByRole('button', { name: de['nav.langToggle'] }));
+    await waitFor(() => expect(harborNames()).toContain(RELABEL_HARBOR.names.en));
+    expect(harborNames()).not.toContain(RELABEL_HARBOR.names.de);
   });
 
   it('renders the always-mounted depth toggle (off by default) with no plan active', async () => {

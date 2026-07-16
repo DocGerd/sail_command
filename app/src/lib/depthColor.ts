@@ -11,11 +11,33 @@
 // fully transparent — the basemap already draws land), 1..254 = depth in
 // decimetres floored (0.1..25.4 m), 255 = deep (>= 25.4 m).
 
+import type { MaskMeta } from '../types';
+
 const LAND = 0;
 const DEEP = 255;
 const DEEP_M = 25.4;
 
 export type Rgba = [r: number, g: number, b: number, a: number];
+
+/**
+ * Image-source corner coordinates for the depth raster, in MapLibre's required
+ * order — top-left, top-right, bottom-right, bottom-left — derived from the
+ * mask bbox. Kept here, next to buildDepthImageData, because the two are
+ * coupled: buildDepthImageData flips mask rows south→north so image row 0 is
+ * NORTH, and this anchors the source's top edge at `north` to match. A reorder
+ * on either side silently mirrors the overlay, which neither the e2e pixel
+ * check nor jsdom can catch — so it's pinned by a unit test here instead.
+ */
+export function depthSourceCorners(
+  meta: MaskMeta,
+): [[number, number], [number, number], [number, number], [number, number]] {
+  return [
+    [meta.west, meta.north], // top-left
+    [meta.east, meta.north], // top-right
+    [meta.east, meta.south], // bottom-right
+    [meta.west, meta.south], // bottom-left
+  ];
+}
 
 // Okabe-Ito-anchored sequential ramp: shallows scream warm (that's what a
 // sailor scans for — the Salona 45 draws 2.1 m), then cools and fades so
