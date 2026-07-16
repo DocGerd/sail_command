@@ -115,12 +115,21 @@ function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer):
         type: 'circle',
         source: HARBOR_SOURCE,
         paint: {
-          // Okabe-Ito orange — distinct from the via markers' reddish purple
-          // (#CC79A7), the boat's blue (#0072B2), the white/black maneuver
-          // circles (also smaller than their radius 9), and both route line
-          // colors.
+          // Black fill + white stroke (#38/#39 review round, reviewer-3839): a
+          // plain #E69F00 collided with depthColor.ts's ~2 m ramp band — orange
+          // markers over orange shallows. Black is the one Okabe-Ito anchor no
+          // other symbol claims: distinct from every depth-ramp stop
+          // (vermillion/orange/yellow/sky-blue/blue), the via reddish-purple
+          // (#CC79A7), boat blue (#0072B2), route port/starboard
+          // (#D55E00/#009E73), motor grey (#5b5b5b), route halo (#FFD400) and
+          // the water tint (#bfd9ea). Being achromatic it can't be confused
+          // with any of them under colour-blindness, and the 2 px white stroke
+          // keeps it popping over both plain water and every band of the depth
+          // raster. Reads as the deliberate inverse of the maneuver circles
+          // (white fill + #1a1a1a ring), and true black keeps it distinct from
+          // the #1a1a1a annotation ink used for the harbor labels and barbs.
           'circle-radius': 5.5,
-          'circle-color': '#E69F00',
+          'circle-color': '#000000',
           'circle-stroke-width': 2,
           'circle-stroke-color': '#ffffff',
         },
