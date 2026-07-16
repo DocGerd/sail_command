@@ -22,6 +22,7 @@ import PlannerPanel, {
 } from './components/PlannerPanel';
 import PlansList from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
+import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
 import Banner from './components/Banner';
 import AboutDialog from './components/AboutDialog';
@@ -560,6 +561,9 @@ function AppShell() {
           {tab === 'routes' && (
             <>
               {plan && rig && <RouteSummary plan={plan} rig={rig} onRigChange={setRig} />}
+              {plan && rig && (
+                <DepthProfile plan={plan} rig={rig} safetyDepthM={settings.safetyDepthM} />
+              )}
               <PlansList />
             </>
           )}

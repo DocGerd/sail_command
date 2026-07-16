@@ -42,7 +42,14 @@ describe('NavMask', () => {
 
   it('snaps to the nearest navigable cell within 300 m, else null', () => {
     // Use finer grid (10x resolution) to allow cells within 300m
-    const fineGridMeta = { west: 9.4, south: 54.3, east: 11.0, north: 55.3, cols: 3200, rows: 2000 };
+    const fineGridMeta = {
+      west: 9.4,
+      south: 54.3,
+      east: 11.0,
+      north: 55.3,
+      cols: 3200,
+      rows: 2000,
+    };
     const m = makeMask((_, c) => (c < 1600 ? 0 : 200), fineGridMeta);
     const onLand = { lat: 54.75, lon: 10.205 }; // col ~1600 (land), ~32m from col 1600 center
     const snapped = m.snapToNavigable(onLand, 3.0);
@@ -73,5 +80,39 @@ describe('NavMask', () => {
   it('snapToNavigable centered far outside the bbox returns null', () => {
     const m = makeMask(() => 200);
     expect(m.snapToNavigable({ lat: 60, lon: 20 }, 3.0)).toBeNull();
+  });
+});
+
+describe('NavMask.depthInfoM', () => {
+  const inBounds = { lat: 54.75, lon: 10.2 };
+
+  it('byte 255 (deep cap) reports capped, depth 25.4', () => {
+    const m = makeMask(() => 255);
+    expect(m.depthInfoM(inBounds)).toEqual({ depthM: 25.4, capped: true });
+  });
+
+  it('byte 254 (measured 25.4 m) reports NOT capped, same depth — the honest discriminator', () => {
+    const m = makeMask(() => 254);
+    expect(m.depthInfoM(inBounds)).toEqual({ depthM: 25.4, capped: false });
+  });
+
+  it('byte 0 (land/unknown) is depth 0, not capped', () => {
+    const m = makeMask(() => 0);
+    expect(m.depthInfoM(inBounds)).toEqual({ depthM: 0, capped: false });
+  });
+
+  it('a mid-range depth byte decodes to decimetres, not capped', () => {
+    const m = makeMask(() => 31); // 3.1 m
+    expect(m.depthInfoM(inBounds)).toEqual({ depthM: 3.1, capped: false });
+  });
+
+  it('out-of-bounds is depth 0, not capped', () => {
+    const m = makeMask(() => 255);
+    expect(m.depthInfoM({ lat: 60, lon: 20 })).toEqual({ depthM: 0, capped: false });
+  });
+
+  it('depthM() is unchanged by the new accessor (255 -> 25.4, 254 -> 25.4)', () => {
+    expect(makeMask(() => 255).depthM(inBounds)).toBeCloseTo(25.4, 5);
+    expect(makeMask(() => 254).depthM(inBounds)).toBeCloseTo(25.4, 5);
   });
 });

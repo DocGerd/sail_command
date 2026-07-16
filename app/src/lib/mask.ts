@@ -39,6 +39,24 @@ export class NavMask {
     return c ? this.byteToDepthM(this.depthByte(c.row, c.col)) : 0;
   }
 
+  /**
+   * Depth in metres plus whether the underlying byte is the deep-cap sentinel
+   * (255 = "deep, >= 25.4 m"). Byte 254 is *reserved* by the encoding for a
+   * measured 25.4 m reading and also decodes to 25.4 via byteToDepthM — the
+   * current pipeline never emits it (build_mask.py folds every >= 25.4 m
+   * reading into 255, and the committed mask has zero 254 bytes), but relying
+   * on that would be fragile, so depthM alone cannot robustly tell "deep,
+   * capped" from a 25.4 m reading; the explicit `capped` flag is the honest
+   * discriminator, used by the depth profile's ">= 25 m" rendering. Additive
+   * accessor: depthM/isNavigable/segmentNavigable behaviour is unchanged.
+   */
+  depthInfoM(p: LatLon): { depthM: number; capped: boolean } {
+    const c = this.cellOf(p);
+    if (!c) return { depthM: 0, capped: false };
+    const b = this.depthByte(c.row, c.col);
+    return { depthM: this.byteToDepthM(b), capped: b === 255 };
+  }
+
   isNavigable(p: LatLon, safetyDepthM: number): boolean {
     const c = this.cellOf(p);
     if (!c) return false;
@@ -69,10 +87,8 @@ export class NavMask {
     const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
     const tDeltaX = stepX === 0 ? Infinity : Math.abs(1 / dx);
     const tDeltaY = stepY === 0 ? Infinity : Math.abs(1 / dy);
-    let tMaxX =
-      stepX === 0 ? Infinity : (stepX > 0 ? cx + 1 - x0 : x0 - cx) * tDeltaX;
-    let tMaxY =
-      stepY === 0 ? Infinity : (stepY > 0 ? cy + 1 - y0 : y0 - cy) * tDeltaY;
+    let tMaxX = stepX === 0 ? Infinity : (stepX > 0 ? cx + 1 - x0 : x0 - cx) * tDeltaX;
+    let tMaxY = stepY === 0 ? Infinity : (stepY > 0 ? cy + 1 - y0 : y0 - cy) * tDeltaY;
 
     if (!this.cellNavigable(cy, cx, safetyDepthM)) return false;
     // guard: bounded number of iterations

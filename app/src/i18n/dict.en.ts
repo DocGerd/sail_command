@@ -96,6 +96,16 @@ export const en = {
   'route.windBarbs.timeSlider': 'Forecast time',
   'route.annotations.toggle': 'Times & speeds',
   'route.motorLetter': 'M',
+  // Depth profile (#45)
+  'profile.title': 'Depth profile',
+  'profile.depthAxis': 'Depth (m)',
+  'profile.deepCap': '≥ 25 m',
+  'profile.safetyDepth': 'Safety depth',
+  'profile.heading': 'Heading',
+  'profile.wind': 'Wind',
+  // 'min.' with the period: disambiguates from the panel's minutes ('x h yy
+  // min', '+12 min') on this time-axis chart.
+  'profile.minDepth': 'min.',
   'map.depth.toggle': 'Water depths',
   'plansList.empty': 'No saved plans yet.',
   'plansList.created': 'Created',
