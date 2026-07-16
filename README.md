@@ -1,4 +1,8 @@
+![SailCommand](docs/brand/banner.svg)
+
 # SailCommand
+
+**Zeitoptimale Törnplanung — offline an Bord.** — *Time-optimal passage planning — offline, on board.*
 
 SailCommand plans time-optimal sailing routes for a Salona 45 in the
 Flensburg Fjord / Danish South Sea area, using real hourly wind forecasts and

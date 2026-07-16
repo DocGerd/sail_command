@@ -1,5 +1,6 @@
 export const de = {
   'app.title': 'SailCommand',
+  'app.tagline': 'Zeitoptimale Törnplanung — offline an Bord.',
   'app.disclaimer':
     'SailCommand ist eine Törnplanungshilfe, kein Navigationsgerät. Kartendaten sind vereinfacht; maßgeblich bleiben amtliche Seekarten und der Plotter.',
   'plan.eta': 'Ankunft {time}',
@@ -27,18 +28,30 @@ export const de = {
   'planner.status.fetching': 'Windvorhersage wird geladen…',
   'planner.status.routing': 'Route wird berechnet…',
   'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
-  'error.offline': 'Windvorhersagedienst nicht erreichbar. Internetverbindung prüfen und erneut versuchen.',
-  'error.rateLimited': 'Anfragelimit des Windvorhersagedienstes erreicht. Kurz warten und erneut versuchen.',
-  'error.windService': 'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
-  'error.internal': 'Routenplanung unerwartet fehlgeschlagen. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
-  'error.noRoute.unreachable': 'Keine Route gefunden — das Ziel ist ohne Landkontakt oder zu flaches Wasser nicht erreichbar.',
-  'error.noRoute.beyondHorizon': 'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen.',
-  'error.noRoute.calmMotorOff': 'Zu wenig Wind zum Segeln und Motor deaktiviert — Motor in den Optionen aktivieren oder Abfahrt verschieben.',
-  'error.noRoute.snapOrigin': 'Der Startpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
-  'error.noRoute.snapDestination': 'Das Ziel ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
-  'error.noRoute.snapVia': 'Ein Zwischenpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
-  'error.replanStaleWind': 'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
-  'error.replanInit': 'Routenplaner konnte nicht gestartet werden. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+  'error.offline':
+    'Windvorhersagedienst nicht erreichbar. Internetverbindung prüfen und erneut versuchen.',
+  'error.rateLimited':
+    'Anfragelimit des Windvorhersagedienstes erreicht. Kurz warten und erneut versuchen.',
+  'error.windService':
+    'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
+  'error.internal':
+    'Routenplanung unerwartet fehlgeschlagen. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+  'error.noRoute.unreachable':
+    'Keine Route gefunden — das Ziel ist ohne Landkontakt oder zu flaches Wasser nicht erreichbar.',
+  'error.noRoute.beyondHorizon':
+    'Keine Route innerhalb des 6-Tage-Vorhersagehorizonts gefunden. Spätere Abfahrt oder ein näheres Ziel versuchen.',
+  'error.noRoute.calmMotorOff':
+    'Zu wenig Wind zum Segeln und Motor deaktiviert — Motor in den Optionen aktivieren oder Abfahrt verschieben.',
+  'error.noRoute.snapOrigin':
+    'Der Startpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+  'error.noRoute.snapDestination':
+    'Das Ziel ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+  'error.noRoute.snapVia':
+    'Ein Zwischenpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+  'error.replanStaleWind':
+    'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
+  'error.replanInit':
+    'Routenplaner konnte nicht gestartet werden. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
   'route.rig.genoa': 'Genua',
   'route.rig.fock': 'Fock',
   'route.rigTabs': 'Riggvergleich',

@@ -1,16 +1,38 @@
 :root {
   color-scheme: light dark;
-  --sc-bg: #ffffff;
-  --sc-fg: #1a1a1a;
-  --sc-border: #d8d8d8;
-  --sc-accent: #0072b2; /* Okabe-Ito blue, matches BoatMarker/RouteLayer */
+  --sc-bg: #fbfbfc;
+  --sc-fg: #14161a;
+  --sc-border: #dce0e4;
+  /* DocGerdSoft Azure — the UI accent (tab underline, focus, disclaimer wash).
+     NOTE: the MAP palette (RouteLayer/BoatMarker/ViaMarkers/wind barbs) is
+     Okabe-Ito (#0072B2 etc.) and is intentionally NOT tied to this UI accent —
+     the two color systems are decoupled by design. */
+  --sc-accent: #2c6cb0;
+  --sc-banner-info-bg: #eaf1f8;
+  --sc-banner-info-fg: #21568c;
+  --sc-banner-warning-bg: #f6eedc;
+  --sc-banner-warning-fg: #7a5414;
+  --sc-banner-error-bg: #f9e9e7;
+  --sc-banner-error-fg: #9e3529;
+  --sc-brand: #10243d; /* replaces #0b3d5c: icon bg, PWA theme_color/background_color */
+  /* justified extension: hover/pressed state of --sc-accent (DocGerdSoft accent-strong) */
+  --sc-accent-strong: #21568c;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --sc-bg: #1e1e1e;
-    --sc-fg: #f0f0f0;
-    --sc-border: #3a3a3a;
+    --sc-bg: #0d0e10;
+    --sc-fg: #eceef1;
+    --sc-border: #2a2e33;
+    --sc-accent: #5e9be0;
+    --sc-banner-info-bg: #16222f;
+    --sc-banner-info-fg: #82b2e8;
+    --sc-banner-warning-bg: #2a2310;
+    --sc-banner-warning-fg: #d6a23e;
+    --sc-banner-error-bg: #2e1714;
+    --sc-banner-error-fg: #e0726a;
+    --sc-brand: #10243d; /* identical in both modes: one PWA theme color */
+    --sc-accent-strong: #82b2e8;
   }
 }
 
@@ -70,6 +92,17 @@ select {
 .app-header h1 {
   font-size: 1.1rem;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* DocGerdSoft brand mark sitting before the title text. Inherits the header
+   text color via fill="currentColor"; sized to the cap height of the title. */
+.app-brand-mark {
+  height: 1.25rem;
+  width: auto;
+  flex: none;
 }
 
 .app-header-actions {
@@ -97,18 +130,18 @@ select {
 }
 
 .banner-info {
-  background: #cce4f6;
-  color: #063a5e;
+  background: var(--sc-banner-info-bg);
+  color: var(--sc-banner-info-fg);
 }
 
 .banner-warning {
-  background: #fff0b3;
-  color: #5c4600;
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
 }
 
 .banner-error {
-  background: #f8d0d0;
-  color: #5c0a0a;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
 }
 
 .banner-dismiss {
@@ -217,8 +250,8 @@ select {
   gap: 0.5rem;
   padding: 0.5rem;
   margin-bottom: 0.5rem;
-  background: #fff0b3;
-  color: #5c4600;
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
   border-radius: 6px;
 }
 
@@ -433,6 +466,12 @@ select {
   max-width: 32rem;
   max-height: 85vh;
   overflow-y: auto;
+}
+
+.about-tagline {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  opacity: 0.75;
 }
 
 .about-disclaimer {

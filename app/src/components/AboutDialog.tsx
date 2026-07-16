@@ -17,14 +17,20 @@ export interface AboutDialogProps {
 // Best-effort: a failed/older-build fetch just omits the dynamic sources —
 // the static attributions below still render.
 function fetchMaskSources(): Promise<string[] | undefined> {
-  return fetch(`${import.meta.env.BASE_URL}data/mask.meta.json`)
-    .then((res) => (res.ok ? (res.json() as Promise<MaskMeta>) : Promise.reject(new Error(`HTTP ${res.status}`))))
-    // Minimal runtime validation rather than trusting the cast above: an
-    // older/malformed mask.meta.json (or a fetch that resolved with the
-    // wrong content entirely) must fall back to "no dynamic sources", not
-    // hand a non-array through to the .map() render below.
-    .then((meta) => (Array.isArray(meta.sources) ? meta.sources : undefined))
-    .catch(() => undefined);
+  return (
+    fetch(`${import.meta.env.BASE_URL}data/mask.meta.json`)
+      .then((res) =>
+        res.ok
+          ? (res.json() as Promise<MaskMeta>)
+          : Promise.reject(new Error(`HTTP ${res.status}`)),
+      )
+      // Minimal runtime validation rather than trusting the cast above: an
+      // older/malformed mask.meta.json (or a fetch that resolved with the
+      // wrong content entirely) must fall back to "no dynamic sources", not
+      // hand a non-array through to the .map() render below.
+      .then((meta) => (Array.isArray(meta.sources) ? meta.sources : undefined))
+      .catch(() => undefined)
+  );
 }
 
 export default function AboutDialog({ open, onClose }: AboutDialogProps) {
@@ -77,6 +83,7 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="about-dialog-title">{t('about.title')}</h2>
+        <p className="about-tagline">{t('app.tagline')}</p>
 
         <p className="about-disclaimer">{t('app.disclaimer')}</p>
 
@@ -95,7 +102,9 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
             <li>{t('about.sources.osm')}</li>
             <li>{t('about.sources.openMeteo')}</li>
             <li>{t('about.sources.polars')}</li>
-            {maskSources?.map((s) => <li key={s}>{s}</li>)}
+            {maskSources?.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
           </ul>
         </section>
 
