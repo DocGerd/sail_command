@@ -38,7 +38,7 @@ deviate from it.
   **CI runners are 6–10× slower than dev machines** — never add a per-test
   timeout tighter than the file-level config, and never trust local timing
   margins for CI.
-- Pipeline: `npm --prefix pipeline run polars|harbors|mask` (mask needs
+- Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
@@ -77,8 +77,10 @@ deviate from it.
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
   stored per plan in IndexedDB, not in the SW cache).
-- Deploy: `deploy.yml` fires on every push to main, gated by the build only —
-  required status checks are tracked in #15. Pages serves at
+- Deploy: `deploy.yml` fires on every push to main. Main is guarded by the
+  `protect-main` ruleset (#15): PR-only merges (merge commits, review threads
+  resolved), required checks `app` + `e2e` with strict up-to-date policy, no
+  force pushes or deletions. Pages serves at
   `https://docgerd.github.io/sail_command/`.
 
 ## Verification lessons (hard-won)
@@ -121,6 +123,9 @@ deviate from it.
 - The app is a passage-planning aid, not a navigation device — user-facing
   copy must not claim chart authority.
 - UI strings always go through the i18n dictionary (de/en), never hardcoded.
+- Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
+  `sail-implementer` per task (never reuse across tasks); one persistent
+  `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
 
 ## graphify
 
