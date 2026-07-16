@@ -11,6 +11,7 @@ import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useLang } from '../i18n';
+import { noteMapError } from '../services/swRecovery';
 import type { LatLon } from '../types';
 
 // Register the pmtiles:// protocol once per module load (MapLibre protocols
@@ -123,6 +124,10 @@ export default function MapView({ tapActive, onTap, onMapError, children }: MapV
     // surfaces once. Every error is still console-logged, one-shot or not.
     const handleError = (e: ErrorEvent) => {
       console.error('MapLibre error', e.error);
+      // #27: recorded for EVERY error (before the one-shot banner gate
+      // below) — swRecovery itself decides whether the page was
+      // SW-uncontrolled at the time, which is the only case it acts on.
+      noteMapError();
       if (mapErrorReportedRef.current) return;
       mapErrorReportedRef.current = true;
       onMapErrorRef.current?.();

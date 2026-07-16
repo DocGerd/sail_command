@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startPreview } from './helpers';
@@ -20,11 +20,12 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
 
     // Resolves once this origin has an active worker. workbox-precaching's
     // install-event handler (src/sw.ts) awaits the full precache download
-    // (~44 MB, including the 27 MB basemap.pmtiles) before the worker can
-    // reach 'installed'; since this is a brand-new registration with no
-    // prior controller to conflict with, it then auto-activates, and
-    // clientsClaim() (also sw.ts) hands this already-open page control
-    // immediately — no reload needed to reach this point.
+    // (~33 MB, including the 27 MB basemap.pmtiles — fonts are runtime-
+    // cached since #28) before the worker can reach 'installed'; since this
+    // is a brand-new registration with no prior controller to conflict
+    // with, it then auto-activates, and clientsClaim() (also sw.ts) hands
+    // this already-open page control immediately — no reload needed to
+    // reach this point.
     await page.evaluate(() => navigator.serviceWorker.ready);
 
     // Create + auto-save a plan (mirrors plan.spec.ts's flow; this spec
@@ -74,8 +75,46 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // offline phase re-fetches wind.
     await page.goto(server.url);
 
+    // #28: font glyphs are runtime-cached, not precached — the offline
+    // reload below can only render map labels from ranges that were already
+    // in the runtime cache when the server died. Two deterministic signals,
+    // never sleeps: the warm-up (src/services/glyphWarmup.ts) publishes its
+    // terminal state on window.__sailGlyphWarmup for exactly this purpose
+    // ('done' means every manifest range was fetched), and the cache itself
+    // must then hold every range (the SW's CacheFirst route finishes its
+    // cache.put moments after the warm-up's fetch resolves, hence the
+    // second wait instead of a one-shot count assertion).
+    await page.waitForFunction(
+      () => (window as { __sailGlyphWarmup?: string }).__sailGlyphWarmup === 'done',
+      undefined,
+      { timeout: 90_000 },
+    );
+    const glyphManifest = JSON.parse(
+      readFileSync(resolve(DIST_DIR, 'glyph-manifest.json'), 'utf8'),
+    ) as string[];
+    await page.waitForFunction(
+      async ({ cacheName, expected }) => {
+        const cache = await caches.open(cacheName);
+        return (await cache.keys()).length >= expected;
+      },
+      // Cache name literal mirrors GLYPH_CACHE_NAME (src/lib/glyphs.ts) —
+      // this tsconfig project can't import app source.
+      { cacheName: 'sailcommand-glyphs-v1', expected: glyphManifest.length },
+      { timeout: 30_000 },
+    );
+
     server.kill();
     await context.setOffline(true);
+
+    // From here on the run must be console-error-free: with the server dead,
+    // any un-cached resource (app shell, tiles, sprites, glyph ranges) fails
+    // loudly — MapLibre errors land in the console via MapView's handler —
+    // so an empty collection at the end of the test is the proof that the
+    // offline reload rendered entirely from the SW's caches.
+    const offlineConsoleErrors: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') offlineConsoleErrors.push(msg.text());
+    });
 
     // Empirically, in this same environment (task-F1-report.md's
     // offline-reload proof): Playwright/CDP's setOffline blocks the network
@@ -115,6 +154,15 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     });
     expect(rangeStatus).toBe(206);
 
+    // Same pattern for the glyph runtime cache (#28): a warmed range must be
+    // served by sw.ts's CacheFirst route with the server dead — a cache miss
+    // here would fall through to the killed network and reject the fetch.
+    const glyphStatus = await page.evaluate(async () => {
+      const res = await fetch('basemap-assets/fonts/Noto Sans Regular/0-255.pbf');
+      return res.status;
+    });
+    expect(glyphStatus).toBe(200);
+
     // Picking origin/destination still works offline: data/harbors.json is
     // precached too (vite.config.ts's globPatterns includes json), served
     // straight from the SW's cache regardless of network state. With both
@@ -151,6 +199,10 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
 
     await expect(page.getByRole('tablist', { name: 'Riggvergleich' })).toBeVisible();
     await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible();
+
+    // See the collector's comment above — zero console errors across the
+    // entire offline phase is the flagship claim of this spec.
+    expect(offlineConsoleErrors).toEqual([]);
   } finally {
     await context.setOffline(false).catch(() => {});
     server.kill();
@@ -164,10 +216,11 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
 //  - index.html hardcodes an ABSOLUTE og:image URL to brand/social-card.png
 //    (scrapers don't resolve relative paths), so a renamed/missing card would
 //    ship a dead share image with nothing else failing; and
-//  - the ~44 MB precache budget (#28) relies on vite.config.ts's globIgnores
-//    keeping brand/ and test-fixtures/ out of the SW manifest — drop the ignore
-//    and every install silently bloats.
-test('built output guards: og:image card present, precache excludes brand/ + test-fixtures/, manifest icons resolve', () => {
+//  - the precache install budget (#28) relies on vite.config.ts's globIgnores
+//    keeping brand/, test-fixtures/ and basemap-assets/fonts/ out of the SW
+//    manifest — drop an ignore and every install silently bloats (the fonts
+//    one alone re-adds 768 entries, the very regression #28 fixed).
+test('built output guards: og:image card present, precache excludes brand/ + test-fixtures/ + fonts, glyph manifest complete, manifest icons resolve', () => {
   // og:image path coupling: index.html's absolute URL points at this exact file.
   expect(existsSync(resolve(DIST_DIR, 'brand/social-card.png'))).toBe(true);
 
@@ -176,6 +229,35 @@ test('built output guards: og:image card present, precache excludes brand/ + tes
   const sw = readFileSync(resolve(DIST_DIR, 'sw.js'), 'utf8');
   expect(sw).not.toContain('brand/');
   expect(sw).not.toContain('test-fixtures/');
+
+  // Font glyphs are runtime-cached, never precached (#28). A raw substring
+  // check would false-positive here — the runtime glyph route's own matcher
+  // code legitimately mentions the fonts path — so parse the injected
+  // {revision, url} manifest entries instead.
+  const precacheUrls = [...sw.matchAll(/"url":"([^"]+)"/g)].map((m) => m[1]);
+  expect(precacheUrls.length).toBeGreaterThan(0);
+  expect(precacheUrls.filter((u) => u.includes('basemap-assets/fonts/'))).toEqual([]);
+  // Sanity bound: excluding the 768 glyph files leaves ~24 entries; a glob
+  // regression that re-adds them must fail loudly, well before this bound.
+  expect(precacheUrls.length).toBeLessThan(400);
+
+  // The glyph warm-up's build-time manifest (#28): emitted, itself precached
+  // (it's how offline coverage converges), and complete — every listed path
+  // must resolve to a real file, and every .pbf on disk must be listed, or
+  // the warm-up would silently leave ranges un-warmable offline.
+  expect(precacheUrls).toContain('glyph-manifest.json');
+  const glyphManifest = JSON.parse(
+    readFileSync(resolve(DIST_DIR, 'glyph-manifest.json'), 'utf8'),
+  ) as string[];
+  expect(glyphManifest.length).toBeGreaterThan(700);
+  for (const path of glyphManifest) {
+    expect(path).toMatch(/^basemap-assets\/fonts\/.+\.pbf$/);
+    expect(existsSync(resolve(DIST_DIR, path)), `glyph range missing: ${path}`).toBe(true);
+  }
+  const pbfOnDisk = readdirSync(resolve(DIST_DIR, 'basemap-assets/fonts'), {
+    recursive: true,
+  }).filter((p) => String(p).endsWith('.pbf'));
+  expect(glyphManifest.length).toBe(pbfOnDisk.length);
 
   // A renamed pipeline icon output would 404 the launcher icon silently: every
   // manifest-declared icon src must resolve to a real file under dist/.
