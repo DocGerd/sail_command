@@ -481,7 +481,11 @@ select {
   }
 
   .map-area {
-    position: relative; /* stays the containing block for RouteLayer/LiveView overlays */
+    /* Defensive positioning only — NOT the containing block for the
+       RouteLayer/LiveView overlays. Those are absolutely positioned against
+       MapView's own inline position:relative wrapper div (MapView.tsx), in
+       both layouts, so this relative context is never what they resolve to. */
+    position: relative;
     inset: auto;
     grid-area: map;
     border-left: 1px solid var(--sc-border); /* single divider between panel and map */
@@ -529,6 +533,16 @@ select {
     max-height: calc(100% - 1.5rem);
     border: 1px solid var(--sc-border);
     border-radius: 12px;
+    /* Base shadow points upward (0 -2px) for the docked bottom sheet; as a
+       free-floating card the light should read as coming from above. */
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  /* Header sits in the left panel column here, so the map's top edge is clear
+     — the base top:3.5rem (which clears the narrow-layout header overlaying
+     the map) would otherwise leave a dead gap at the top-right controls. */
+  .route-layer-controls {
+    top: 0.75rem;
   }
 
   .live-view-no-plan {
