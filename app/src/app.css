@@ -180,8 +180,9 @@ select {
 /* .app-tabs's height, shared with .live-view/.live-view-no-plan below so
    they can dock directly above it instead of underneath it — the tab strip
    itself is NOT tab-gated (it's how the user switches tabs at all), so it's
-   always on screen, even while the Live tab's own content renders outside
-   .app-panel (inside MapView's subtree, for BoatMarker's map context). */
+   always on screen. On narrow the Live tab's readout renders outside .app-panel
+   (inside MapView's subtree, for BoatMarker's map context); on wide it portals
+   into .app-panel-live (#31), but BoatMarker still stays in MapView's subtree. */
 :root {
   --sc-tabbar-h: 3.25rem;
 }
@@ -224,10 +225,12 @@ select {
   padding: 0.75rem;
 }
 
-/* LiveView renders inside MapView's subtree (for BoatMarker's map context),
-   not inside .app-panel, but is styled to dock in the same visual region —
-   directly above the always-visible .app-tabs strip (bottom: var(--sc-tabbar-h),
-   not 0, or the tab strip — painted later in DOM order — would cover it). */
+/* Narrow-layout base: LiveView's readout DOM stays outside .app-panel, inside
+   MapView's subtree (for BoatMarker's map context), styled to dock in the same
+   visual region — directly above the always-visible .app-tabs strip (bottom:
+   var(--sc-tabbar-h), not 0, or the tab strip — painted later in DOM order —
+   would cover it). On wide the readout portals into .app-panel-live and these
+   absolute rules are neutralized (see the #31 block in the wide media query). */
 .live-view {
   position: absolute;
   left: 0;
@@ -550,10 +553,12 @@ select {
   }
 
   .map-area {
-    /* Defensive positioning only — NOT the containing block for the
-       RouteLayer/LiveView overlays. Those are absolutely positioned against
-       MapView's own inline position:relative wrapper div (MapView.tsx), in
-       both layouts, so this relative context is never what they resolve to. */
+    /* Defensive positioning only — NOT the containing block for the RouteLayer
+       (and, on narrow, LiveView) overlays. Those are absolutely positioned
+       against MapView's own inline position:relative wrapper div (MapView.tsx),
+       so this relative context is never what they resolve to. On wide the
+       LiveView readout is position:static and portaled into the panel column
+       (#31), not an overlay here at all. */
     position: relative;
     inset: auto;
     grid-area: map;
@@ -591,20 +596,22 @@ select {
     gap: 0.5rem;
   }
 
-  /* Live readout: a compact floating card at the map column's bottom-left,
-     not a full-width bottom sheet — there is no bottom tab strip to dock above
-     here (the tabs live in the left panel column). */
-  .live-view {
-    left: 0.75rem;
-    right: auto;
-    bottom: 0.75rem;
-    width: min(22rem, calc(100% - 1.5rem));
-    max-height: calc(100% - 1.5rem);
-    border: 1px solid var(--sc-border);
-    border-radius: 12px;
-    /* Base shadow points upward (0 -2px) for the docked bottom sheet; as a
-       free-floating card the light should read as coming from above. */
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  /* #31: on wide the Live readout is portaled into the left panel column
+     (.app-panel-live), replacing the empty panel content that used to sit
+     under the Live tab. Neutralise the base absolute/bottom-sheet chrome so it
+     flows naturally inside the panel (which supplies its own padding) instead
+     of floating over the map. */
+  .app-panel-live .live-view {
+    position: static;
+    inset: auto;
+    width: auto;
+    max-height: none;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
   }
 
   /* Header sits in the left panel column here, so the map's top edge is clear
@@ -615,10 +622,10 @@ select {
     top: 0.75rem;
   }
 
-  .live-view-no-plan {
-    left: 0.75rem;
-    right: auto;
-    bottom: 0.75rem;
-    width: min(22rem, calc(100% - 1.5rem));
+  /* The no-plan card keeps its border/padding but flows in the panel too. */
+  .app-panel-live .live-view-no-plan {
+    position: static;
+    inset: auto;
+    width: auto;
   }
 }
