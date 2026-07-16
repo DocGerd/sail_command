@@ -125,7 +125,7 @@ function AppShell() {
     planIdRef.current = plan?.id ?? null;
   }, [plan?.id]);
 
-  // Eager load, matching spec §7's "first load downloads ~44 MB" —
+  // Eager load, matching spec §7's first-load budget (measured ~44 MB) —
   // mask/polars/harbors are meant to be fetched up front, not deferred to
   // first Plan tap. Best-effort: a failed fetch leaves `harbors` empty
   // (HarborPicker just shows no results; map tap-to-pick still works) rather
