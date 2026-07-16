@@ -9,15 +9,7 @@ import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
 import { formatNm } from './lib/format';
-import {
-  DEFAULT_SETTINGS,
-  type Harbor,
-  type Plan,
-  type PlanRequest,
-  type PlanResult,
-  type PlanResultOk,
-  type PolarTable,
-} from './types';
+import { DEFAULT_SETTINGS, type Harbor, type Plan, type PlanRequest, type PlanResult, type PlanResultOk, type PolarTable } from './types';
 
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
 // (mirrors the "not unit-tested" notes in RouteLayer.tsx/BoatMarker.tsx —
@@ -80,10 +72,7 @@ vi.mock('./services/openMeteo', async (importOriginal) => {
   return {
     ...actual,
     fetchWindGrid: vi.fn(async () =>
-      uniformWindGrid(10, 250, {
-        t0Ms: Date.now() - 3_600_000,
-        hours: 24 * (actual.FORECAST_DAYS + 2),
-      }),
+      uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 24 * (actual.FORECAST_DAYS + 2) }),
     ),
   };
 });
@@ -96,10 +85,7 @@ vi.mock('./services/openMeteo', async (importOriginal) => {
 // logic, not actual map rendering (covered by the Playwright browser pass).
 vi.mock('maplibre-gl', () => {
   class FakeMap {
-    on(
-      event: string,
-      cb: (e: { lngLat: { lat: number; lng: number } } | { error: unknown }) => void,
-    ) {
+    on(event: string, cb: (e: { lngLat: { lat: number; lng: number } } | { error: unknown }) => void) {
       if (event === 'click') mapTestHooks.clickHandler = cb as typeof mapTestHooks.clickHandler;
       if (event === 'error') mapTestHooks.errorHandler = cb as typeof mapTestHooks.errorHandler;
     }
@@ -292,32 +278,21 @@ afterEach(() => {
 describe('App', () => {
   it('renders the app shell with the SailCommand title', async () => {
     renderApp();
-    expect(
-      await screen.findByRole('heading', { name: 'SailCommand', level: 1 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'SailCommand', level: 1 })).toBeInTheDocument();
   });
 
   it('defaults to the Planen tab, and switching tabs shows Routen and Live panel content', async () => {
     renderApp();
 
-    expect(await screen.findByRole('tab', { name: de['nav.plan'] })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(await screen.findByRole('tab', { name: de['nav.plan'] })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
-    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText(de['plansList.empty'])).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.live'] }));
-    expect(screen.getByRole('tab', { name: de['nav.live'] })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: de['nav.live'] })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText(de['live.noPlan'])).toBeInTheDocument();
   });
 
@@ -408,8 +383,7 @@ describe('App', () => {
       return viaSection;
     }
 
-    const tapPickMessage = (targetLabel: string) =>
-      de['banner.tapPick'].replace('{target}', targetLabel);
+    const tapPickMessage = (targetLabel: string) => de['banner.tapPick'].replace('{target}', targetLabel);
 
     it('arms tap-to-pick with a cancel banner, and switching tabs away from Plan disarms it', async () => {
       renderApp();
@@ -438,9 +412,7 @@ describe('App', () => {
       fireEvent.click(within(originSection).getByRole('button', { name: FLENSBURG.names.de }));
 
       expect(screen.queryByText(message)).not.toBeInTheDocument();
-      expect(
-        within(originSection).getByText(FLENSBURG.names.de, { selector: 'p' }),
-      ).toBeInTheDocument();
+      expect(within(originSection).getByText(FLENSBURG.names.de, { selector: 'p' })).toBeInTheDocument();
     });
 
     it('the banner cancel button disarms tap-to-pick', async () => {
@@ -525,14 +497,10 @@ describe('App', () => {
       await screen.findByRole('heading', { name: 'SailCommand' });
 
       armOrigin();
-      expect(
-        await screen.findByText(tapPickMessage(de['planner.origin.label'])),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(tapPickMessage(de['planner.origin.label']))).toBeInTheDocument();
 
       armVia();
-      expect(
-        screen.queryByText(tapPickMessage(de['planner.origin.label'])),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(tapPickMessage(de['planner.origin.label']))).not.toBeInTheDocument();
       expect(await screen.findByText(tapPickMessage(de['planner.via.label']))).toBeInTheDocument();
     });
   });
@@ -632,17 +600,11 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
 
     expect(await screen.findByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('the stale-forecast banner renders through the real App tree for a loaded plan whose windGrid predates departure by >12h', async () => {
-    const staleWindGrid = uniformWindGrid(10, 250, {
-      t0Ms: Date.now() - 20 * 3_600_000,
-      hours: 48,
-    });
+    const staleWindGrid = uniformWindGrid(10, 250, { t0Ms: Date.now() - 20 * 3_600_000, hours: 48 });
     const stalePlan: Plan = {
       id: 'stale-plan',
       name: 'Stale Plan',
@@ -674,9 +636,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     // forecasts are ever shown.
     const bannerArea = document.querySelector('.banner-area');
     if (!bannerArea) throw new Error('expected .banner-area to be present');
-    expect(
-      await within(bannerArea as HTMLElement).findByText(de['route.staleForecast']),
-    ).toBeInTheDocument();
+    expect(await within(bannerArea as HTMLElement).findByText(de['route.staleForecast'])).toBeInTheDocument();
   });
 
   it('a viaReplan error banner renders through the real App tree', async () => {
@@ -686,9 +646,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
-    );
+    await waitFor(() => expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled());
 
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
     fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
@@ -706,9 +664,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
-    );
+    await waitFor(() => expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled());
 
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
     fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
@@ -758,16 +714,12 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     // to a fresh replan, which is enough to re-trigger the dedupe drop —
     // no need to add a third via through tap-to-pick.
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
-    fireEvent.click(
-      screen.getByRole('button', { name: de['planner.via.moveDown'].replace('{index}', '1') }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: de['planner.via.moveDown'].replace('{index}', '1') }));
 
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(66));
 
-    expect(
-      await screen.findByText(de['banner.viaTooClose.plural'].replace('{count}', '2')),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(de['banner.viaTooClose.plural'].replace('{count}', '2'))).toBeInTheDocument();
     expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
   });
 
@@ -813,15 +765,13 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     expect(screen.queryByText(de['banner.mapError'])).not.toBeInTheDocument();
   });
 
-  it("the language-toggle button label goes through the i18n dict (shows the target language's code)", async () => {
+  it('the language-toggle button label goes through the i18n dict (shows the target language\'s code)', async () => {
     renderApp();
     const toggle = await screen.findByRole('button', { name: de['nav.langToggle'] });
     // Starts in German — the button offers to switch to English.
     expect(toggle).toHaveTextContent(de['nav.langToggle.en']);
 
     fireEvent.click(toggle);
-    expect(await screen.findByRole('button', { name: en['nav.langToggle'] })).toHaveTextContent(
-      de['nav.langToggle.de'],
-    );
+    expect(await screen.findByRole('button', { name: en['nav.langToggle'] })).toHaveTextContent(de['nav.langToggle.de']);
   });
 });

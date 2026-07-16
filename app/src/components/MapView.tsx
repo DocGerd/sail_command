@@ -56,25 +56,29 @@ export function useMapInstance(): MaplibreMap | null {
   return useContext(MapInstanceCtx);
 }
 
-// #33: MapLibre 5.x's compact AttributionControl always enters the DOM
-// EXPANDED — `_updateCompact` adds `maplibregl-compact` together with
+// #33: MapLibre 5.x's compact AttributionControl always enters compact mode
+// EXPANDED — the control enters the DOM empty/non-compact at onAdd, then
+// `_updateCompact` adds `maplibregl-compact` together with
 // `maplibregl-compact-show` (the class that reveals the full notice) the
-// moment the first attribution string arrives, and only the first map drag
-// collapses it (`_updateCompactMinimize` removes `maplibregl-compact-show`).
-// There is no upstream option for "start collapsed". Below the 1024px
-// breakpoint that expanded ~600px bar overlays the bottom sheet's full-width
-// controls and intercepts their pointer events, so this reproduces upstream's
-// own drag-collapse — remove `maplibregl-compact-show`, nothing else — at the
-// moment of that one-shot auto-expansion. The attribution starts collapsed
-// EVERYWHERE (not gated on viewport width): a load-time gate would leave a
-// wide-loaded session that is later narrowed with the bar overlapping the
-// sheet, and collapsed-but-expandable is CC-BY/ODbL-compliant in both
-// layouts. A MutationObserver callback runs as a microtask, i.e. before the
-// expanded bar can ever paint. Only documented CSS contract classes are
-// touched (they're the stable styling API in maplibre-gl.css); the control's
-// summary button keeps working, so the attribution stays one tap away —
-// collapsed-but-expandable satisfies CC-BY/ODbL, removed would not. Returns
-// a disposer for unmount (no-op once the one-shot has fired).
+// moment the first attribution string arrives, and it stays expanded until
+// the first map drag (or a tap on its own toggle) — `_updateCompactMinimize`
+// removes `maplibregl-compact-show`. There is no upstream option for "start
+// collapsed". Below the 1024px breakpoint that expanded ~600px bar overlays
+// the bottom sheet's full-width controls and intercepts their pointer
+// events, so this reproduces upstream's own drag-collapse — remove
+// `maplibregl-compact-show`, nothing else — at the moment of that one-shot
+// auto-expansion. The attribution starts collapsed EVERYWHERE (not gated on
+// viewport width): a load-time gate would leave a wide-loaded session that
+// is later narrowed with the bar overlapping the sheet. Collapsing keeps the
+// notice one tap away — the position #33 accepted as satisfying CC-BY/ODbL
+// (upstream's compact docs recommend not collapsing where the bar fits; the
+// wide layout deliberately trades that for consistency and for closing the
+// resize gap). Removing or permanently hiding it would not be acceptable. A
+// MutationObserver callback runs as a microtask, i.e. before the expanded
+// bar can ever paint. Only CSS classes MapLibre itself ships styles for in
+// maplibre-gl.css are touched (a de-facto-stable surface; no JS internals);
+// the control's summary button keeps working. Returns a disposer for
+// unmount (no-op once the one-shot has fired).
 //
 // eslint-disable-next-line react-refresh/only-export-components
 export function collapseAttributionAtLoad(mapContainer: HTMLElement): () => void {

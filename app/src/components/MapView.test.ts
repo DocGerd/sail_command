@@ -76,11 +76,13 @@ describe('collapseAttributionAtLoad', () => {
     expect(attrib.classList.contains('maplibregl-compact-show')).toBe(true);
   });
 
-  it('collapses on wide viewports too (review round 1: no load-time layout gate)', async () => {
+  it('collapses on wide viewports too — no load-time layout gate', async () => {
     // Deliberately NOT gated on viewport width: a load-time media-query gate
     // would leave a wide-loaded, later-narrowed session with the expanded bar
     // overlapping the sheet. jsdom has no matchMedia — stub a wide answer to
-    // pin that the helper ignores it; re-adding a gate must fail this test.
+    // pin that the helper ignores it. (Precision: a re-added wide-skip gate
+    // fails THIS test; a matchMedia gate of any other polarity would instead
+    // crash the other tests here, which run without a matchMedia stub.)
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true } as MediaQueryList));
     const { container, attrib } = makeMapContainer();
     collapseAttributionAtLoad(container);
