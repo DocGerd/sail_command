@@ -56,6 +56,55 @@ export function useMapInstance(): MaplibreMap | null {
   return useContext(MapInstanceCtx);
 }
 
+// #33: MapLibre 5.x's compact AttributionControl always enters the DOM
+// EXPANDED — `_updateCompact` adds `maplibregl-compact` together with
+// `maplibregl-compact-show` (the class that reveals the full notice) the
+// moment the first attribution string arrives, and only the first map drag
+// collapses it (`_updateCompactMinimize` removes `maplibregl-compact-show`).
+// There is no upstream option for "start collapsed". In the bottom-sheet
+// layout (viewport < 1024px, see app.css) that expanded ~600px bar overlays
+// the sheet's full-width controls and intercepts their pointer events, so
+// this reproduces upstream's own drag-collapse — remove
+// `maplibregl-compact-show`, nothing else — at the moment of that one-shot
+// auto-expansion. A MutationObserver callback runs as a microtask, i.e.
+// before the expanded bar can ever paint. Only documented CSS contract
+// classes are touched (they're the stable styling API in maplibre-gl.css);
+// the control's summary button keeps working, so the attribution stays one
+// tap away — collapsed-but-expandable satisfies CC-BY/ODbL, removed would
+// not. Returns a disposer for unmount (no-op once the one-shot has fired).
+//
+// eslint-disable-next-line react-refresh/only-export-components
+export function collapseAttributionUnderBottomSheet(mapContainer: HTMLElement): () => void {
+  // Guarded because jsdom (App.test.tsx) has no matchMedia; every real
+  // browser does. Media query mirrors app.css's side-panel breakpoint — on
+  // wide layouts nothing overlaps the map column, so upstream's behavior
+  // (expanded until the first drag) is kept for maximum attribution
+  // visibility.
+  const wideLayout =
+    typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1024px)').matches;
+  const attrib = mapContainer.querySelector('details.maplibregl-ctrl-attrib');
+  if (wideLayout || !attrib) return () => {};
+  // Already expanded at add time (attributions were available synchronously).
+  if (attrib.classList.contains('maplibregl-compact-show')) {
+    attrib.classList.remove('maplibregl-compact-show');
+    return () => {};
+  }
+  // One-shot: the first appearance of `maplibregl-compact-show` is always the
+  // auto-expansion (the toggle button only becomes usable once compact mode
+  // engages, which is the same instant), so collapsing it can never swallow a
+  // deliberate user expansion. Afterwards MapLibre never re-adds the class on
+  // its own (`_updateCompact` no-ops once `maplibregl-compact` is set), so
+  // the observer disconnects for good.
+  const observer = new MutationObserver(() => {
+    if (attrib.classList.contains('maplibregl-compact-show')) {
+      attrib.classList.remove('maplibregl-compact-show');
+      observer.disconnect();
+    }
+  });
+  observer.observe(attrib, { attributes: true, attributeFilter: ['class'] });
+  return () => observer.disconnect();
+}
+
 export interface MapViewProps {
   tapActive: boolean;
   onTap: (p: LatLon) => void;
@@ -112,6 +161,9 @@ export default function MapView({ tapActive, onTap, onMapError, children }: MapV
       attributionControl: false,
     });
     instance.addControl(new AttributionControl({ compact: true }));
+    // Collapse the attribution's one-shot auto-expansion before it can paint
+    // over the bottom sheet (#33) — see collapseAttributionUnderBottomSheet.
+    const stopAttributionCollapse = collapseAttributionUnderBottomSheet(instance.getContainer());
 
     const handleClick = (e: MapMouseEvent) => {
       if (!tapActiveRef.current) return;
@@ -132,6 +184,7 @@ export default function MapView({ tapActive, onTap, onMapError, children }: MapV
     setMap(instance);
 
     return () => {
+      stopAttributionCollapse();
       instance.off('click', handleClick);
       instance.off('error', handleError);
       instance.remove();
