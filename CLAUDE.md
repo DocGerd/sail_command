@@ -107,6 +107,20 @@ deviate from it.
   green (it uses the real committed mask/polars).
 - Flensburg→Marstal routes only at safety depth ≤ 2.3 m — that is correct
   data behavior, not a bug (documented in the realmask test; see #9).
+- Issue texts are not ground truth for states they don't describe: #31's
+  correct wide-float description got misapplied to the narrow layout and
+  spread into 5 code sites — verify wording against code before reusing it in
+  briefs, comments, or commit messages.
+- Review must probe the ISSUE'S GOAL at extremes, not just design compliance:
+  the unclipped barb ribbon was implemented and unit-test-pinned exactly as
+  designed, yet yielded 0 barbs at harbor-approach zoom on long routes (#36) —
+  the design doc itself encoded the bug.
+- Mutation-check new tests before trusting them: an "equivalence" test
+  deriving expectations from the function under test always passes (#50
+  reached reviewer approval with three such false-pass holes, caught pre-merge
+  only by a mutation-check lens). Pin literal values recomputed from
+  pre-change math; the reviewer re-derives them independently — copying
+  current output re-creates the tautology one level up.
 
 ## Domain rules that are easy to get wrong
 
@@ -128,6 +142,12 @@ deviate from it.
 - Angles: wind direction is meteorological (coming FROM, degrees true);
   polars are TWA × TWS → boat speed in knots. Positions are WGS84.
   Distances in nautical miles, speeds in knots.
+- **Two wind-sampling clocks by design**: map barbs sample the plan's grid at
+  the SLIDER hour; the depth profile samples each instant's OWN hour (the map
+  is a moment, the profile is a timeline). Don't "unify" them.
+- Depth byte 254 is reserved but never emitted (the pipeline folds ≥25.4 m
+  into byte 255) — `depthInfoM().capped` is the only honest "≥25 m"
+  discriminator; never infer the cap from `depthM === 25.4`.
 - Open-Meteo is called directly from the browser (CORS is open, no API key).
   There is deliberately **no backend** — do not introduce one.
 
@@ -152,7 +172,17 @@ deviate from it.
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
-  ask-gate hook must prompt the user) — never through subagents.
+  ask-gate hook must prompt the user) — never through subagents. Use the
+  Edit/Write tools for them: the hook does not match Bash appends (`cat >>`),
+  which silently skip the user prompt.
+- `.superpowers/` (SDD ledger) is gitignored — append session records
+  directly, no PR needed.
+- `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
+  update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
+- e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
+  parallel worktrees contend — serialize them; per-agent dev ports are for
+  manual browser passes only. The dirty wind fixture (see E2E section) also
+  blocks `git worktree remove` — restore before removing; never `--force`.
 
 ## graphify
 
