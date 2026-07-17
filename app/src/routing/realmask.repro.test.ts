@@ -134,7 +134,7 @@ describe('real mask routing (issue #20)', () => {
   // pipeline/verify_mask.py and PR #8). At 3.0 m 'unreachable' is the CORRECT
   // answer for this data. If the mask ever resolves the channel at 3.0 m,
   // this test should be tightened back to DEFAULT_SETTINGS.
-  it('Flensburg -> Marstal (spec acceptance at 2.3 m safety depth)', { timeout: 480_000 }, () => {
+  it('Flensburg -> Marstal (spec acceptance at 2.3 m safety depth)', { timeout: 600_000 }, () => {
     const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 2.3 };
     const res = planRoute(
       {

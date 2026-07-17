@@ -57,11 +57,11 @@ describe('issue #21 gap 1: visited pruning is clock-aware', () => {
 
   it('stampVisited keeps componentwise minima and never raises either one', () => {
     const visited = new Map<string, VisitedStamp>();
-    stampVisited(visited, 'k', 1_200_000, 0);
+    stampVisited(visited, 'k', { tMs: 1_200_000, maneuvers: 0 });
     expect(visited.get('k')).toEqual({ tMs: 1_200_000, maneuvers: 0 });
-    stampVisited(visited, 'k', 450_000, 2);
+    stampVisited(visited, 'k', { tMs: 450_000, maneuvers: 2 });
     expect(visited.get('k')).toEqual({ tMs: 450_000, maneuvers: 0 });
-    stampVisited(visited, 'k', 2_000_000, 5);
+    stampVisited(visited, 'k', { tMs: 2_000_000, maneuvers: 5 });
     expect(visited.get('k')).toEqual({ tMs: 450_000, maneuvers: 0 });
     expect(visited.size).toBe(1);
   });
@@ -100,12 +100,14 @@ describe('issue #21 gap 2: blocked direct arrivals get the substep retry', () =>
 
 describe('issue #21 gap 3: the endpoint-capture hop is mask-validated', () => {
   it('does not capture a destination across a land wall', () => {
-    // D at col-137 center: 451 m east of O, 75 m east of the wall. The ring-1
-    // substep fan (278 m around O) ends inside D's 0.1 nm (185 m) capture
-    // radius — e.g. the heading-085 child ends 176 m from D
-    // (√((451.2−276.7)² + 24.2²)) — but every line from that water to D
-    // crosses the wall. Before the fix the capture hop skipped mask
-    // validation and returned an 'ok' route whose final hop crossed land.
+    // D at col-137 center: 451 m east of O, 75 m east of the wall. The hand
+    // probe below (destinationPoint(O, 85, 0.15), a fixed 0.15 nm substep) ends
+    // 176 m from D; the real solver heading-085 child instead advances at the
+    // interpolated polar speed speedKn(85, 12) = 7.0833 kn and ends 180.5 m from
+    // D. All real ring-1 children (173.4 / 177.4 / 180.5 m from D) stay inside
+    // the 0.1 nm (185.2 m) capture radius — but every line from that water to D
+    // crosses the wall. Before the fix the capture hop skipped mask validation
+    // and returned an 'ok' route whose final hop crossed land.
     const D = { lat: O.lat, lon: colCenterLon(137) };
     const mask = wallCol135Mask();
 

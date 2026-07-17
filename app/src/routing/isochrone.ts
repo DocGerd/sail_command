@@ -77,19 +77,23 @@ export function visitedDominates(seen: VisitedStamp, cand: VisitedStamp): boolea
   return seen.tMs <= cand.tMs && seen.maneuvers <= cand.maneuvers;
 }
 
-/** Lower the stored componentwise minima for `key` with one more arrival. */
+/**
+ * Lower the stored componentwise minima for `key` with one more arrival.
+ * The arrival is passed as a single `VisitedStamp` so the two axes can never be
+ * swapped at a call site (issue #21 gap 1): `tMs` and `maneuvers` are named
+ * fields, not two same-typed positional numbers.
+ */
 export function stampVisited(
   visited: Map<string, VisitedStamp>,
   key: string,
-  tMs: number,
-  maneuvers: number,
+  stamp: VisitedStamp,
 ): void {
   const seen = visited.get(key);
   if (seen === undefined) {
-    visited.set(key, { tMs, maneuvers });
+    visited.set(key, { tMs: stamp.tMs, maneuvers: stamp.maneuvers });
   } else {
-    if (tMs < seen.tMs) seen.tMs = tMs;
-    if (maneuvers < seen.maneuvers) seen.maneuvers = maneuvers;
+    if (stamp.tMs < seen.tMs) seen.tMs = stamp.tMs;
+    if (stamp.maneuvers < seen.maneuvers) seen.maneuvers = stamp.maneuvers;
   }
 }
 
@@ -286,13 +290,17 @@ export function solve(p: SolveParams): SolveResult {
         // in). The capture hop end→destination is validated like any other
         // edge (issue #21 gap 3): without the check the final hop could cross
         // non-navigable cells that segmentNavigable rejects everywhere else.
-        if (
-          child.distToDestNm < CAPTURE_NM &&
-          mask.segmentNavigable(end, destination, settings.safetyDepthM)
-        ) {
+        // All four conjuncts are side-effect-free, so the cheap distance/ETA
+        // gates run first and the expensive mask walk runs last, unchanged in
+        // result.
+        if (child.distToDestNm < CAPTURE_NM) {
           const finalEtaMs =
             child.tMs + (child.distToDestNm / Math.max(speed, MIN_SAIL_KN)) * 3600 * 1000;
-          if (finalEtaMs <= horizonMs && (!best || finalEtaMs < best.etaMs)) {
+          if (
+            finalEtaMs <= horizonMs &&
+            (!best || finalEtaMs < best.etaMs) &&
+            mask.segmentNavigable(end, destination, settings.safetyDepthM)
+          ) {
             const last: Node = {
               ...child,
               lat: destination.lat,
@@ -322,7 +330,7 @@ export function solve(p: SolveParams): SolveResult {
     }
 
     let next = [...byKey.values()];
-    for (const [k, n] of byKey) stampVisited(visited, k, n.tMs, n.maneuvers);
+    for (const [k, n] of byKey) stampVisited(visited, k, { tMs: n.tMs, maneuvers: n.maneuvers });
     if (next.length > MAX_FRONTIER) {
       next.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : 0));
       next = next.slice(0, MAX_FRONTIER);
