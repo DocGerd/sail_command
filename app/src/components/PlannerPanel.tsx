@@ -5,6 +5,9 @@ import { FORECAST_DAYS } from '../services/openMeteo';
 import { formatLatLon } from '../lib/format';
 import HarborPicker from './HarborPicker';
 import OptionsPanel from './OptionsPanel';
+import Card from './Card';
+import Field from './Field';
+import Button from './Button';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -108,72 +111,77 @@ export default function PlannerPanel({
 
   return (
     <div className="planner-panel">
-      <section aria-label={t('planner.origin.label')}>
-        <h2>{t('planner.origin.label')}</h2>
-        <p>{origin ? origin.label : t('planner.notSelected')}</p>
-        <button type="button" onClick={() => onRequestMapTap('origin')}>
-          {t('planner.pickOnMap')}
-        </button>
-        <HarborPicker
-          harbors={harbors}
-          onSelect={(h) => onPickOrigin(harborToPickedPoint(h, lang))}
-        />
-      </section>
+      <Card title={t('planner.card.trip')} className="planner-trip">
+        <section aria-label={t('planner.origin.label')} className="planner-endpoint">
+          <h3 className="sc-section-title">{t('planner.origin.label')}</h3>
+          <p>{origin ? origin.label : t('planner.notSelected')}</p>
+          <Button variant="secondary" onClick={() => onRequestMapTap('origin')}>
+            {t('planner.pickOnMap')}
+          </Button>
+          <HarborPicker
+            harbors={harbors}
+            onSelect={(h) => onPickOrigin(harborToPickedPoint(h, lang))}
+          />
+        </section>
 
-      <section aria-label={t('planner.destination.label')}>
-        <h2>{t('planner.destination.label')}</h2>
-        <p>{destination ? destination.label : t('planner.notSelected')}</p>
-        <button type="button" onClick={() => onRequestMapTap('destination')}>
-          {t('planner.pickOnMap')}
-        </button>
-        <HarborPicker
-          harbors={harbors}
-          onSelect={(h) => onPickDestination(harborToPickedPoint(h, lang))}
-        />
-      </section>
+        <section aria-label={t('planner.destination.label')} className="planner-endpoint">
+          <h3 className="sc-section-title">{t('planner.destination.label')}</h3>
+          <p>{destination ? destination.label : t('planner.notSelected')}</p>
+          <Button variant="secondary" onClick={() => onRequestMapTap('destination')}>
+            {t('planner.pickOnMap')}
+          </Button>
+          <HarborPicker
+            harbors={harbors}
+            onSelect={(h) => onPickDestination(harborToPickedPoint(h, lang))}
+          />
+        </section>
 
-      <section aria-label={t('planner.via.label')} className="planner-via">
-        <h2>{t('planner.via.label')}</h2>
-        {viaPoints.length > 0 && (
-          <ol className="planner-via-list">
-            {viaPoints.map((v, i) => (
-              <li key={i} className="planner-via-row">
-                <span className="planner-via-coord">{formatLatLon(v)}</span>
-                <button
-                  type="button"
-                  disabled={viaReplanning || i === 0}
-                  onClick={() => onReorderVia(i, 'up')}
-                  aria-label={t('planner.via.moveUp', { index: i + 1 })}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  disabled={viaReplanning || i === viaPoints.length - 1}
-                  onClick={() => onReorderVia(i, 'down')}
-                  aria-label={t('planner.via.moveDown', { index: i + 1 })}
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  disabled={viaReplanning}
-                  onClick={() => onRemoveVia(i)}
-                  aria-label={t('planner.via.remove', { index: i + 1 })}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ol>
-        )}
-        <button type="button" disabled={viaReplanning} onClick={() => onRequestMapTap('via')}>
-          {t('planner.via.add')}
-        </button>
-      </section>
+        <section aria-label={t('planner.via.label')} className="planner-via planner-endpoint">
+          <h3 className="sc-section-title">{t('planner.via.label')}</h3>
+          {viaPoints.length > 0 && (
+            <ol className="planner-via-list">
+              {viaPoints.map((v, i) => (
+                <li key={i} className="planner-via-row">
+                  <span className="planner-via-coord">{formatLatLon(v)}</span>
+                  <Button
+                    variant="ghost"
+                    disabled={viaReplanning || i === 0}
+                    onClick={() => onReorderVia(i, 'up')}
+                    aria-label={t('planner.via.moveUp', { index: i + 1 })}
+                  >
+                    ↑
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    disabled={viaReplanning || i === viaPoints.length - 1}
+                    onClick={() => onReorderVia(i, 'down')}
+                    aria-label={t('planner.via.moveDown', { index: i + 1 })}
+                  >
+                    ↓
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    disabled={viaReplanning}
+                    onClick={() => onRemoveVia(i)}
+                    aria-label={t('planner.via.remove', { index: i + 1 })}
+                  >
+                    ×
+                  </Button>
+                </li>
+              ))}
+            </ol>
+          )}
+          <Button variant="ghost" disabled={viaReplanning} onClick={() => onRequestMapTap('via')}>
+            {t('planner.via.add')}
+          </Button>
+        </section>
+      </Card>
 
-      <div className="planner-departure">
-        <label htmlFor="planner-departure">{t('planner.departure.label')}</label>
+      <Field
+        className="planner-departure"
+        label={t('planner.departure.label')}
+        htmlFor="planner-departure"
+      >
         <input
           id="planner-departure"
           type="datetime-local"
@@ -185,13 +193,15 @@ export default function PlannerPanel({
             onDepartureChange(new Date(e.target.value).getTime());
           }}
         />
-      </div>
+      </Field>
 
-      <OptionsPanel value={settings} onChange={onSettingsChange} />
+      <Card title={t('planner.card.advanced')} className="planner-advanced">
+        <OptionsPanel value={settings} onChange={onSettingsChange} />
+      </Card>
 
-      <button type="button" onClick={onPlan} disabled={!canPlan}>
+      <Button variant="primary" onClick={onPlan} disabled={!canPlan}>
         {t('planner.plan')}
-      </button>
+      </Button>
       {planDisabledReason && <p role="alert">{planDisabledReason}</p>}
 
       {planning.phase === 'fetching' && <p role="status">{t('planner.status.fetching')}</p>}

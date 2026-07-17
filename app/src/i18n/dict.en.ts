@@ -16,6 +16,8 @@ export const en = {
   'options.motorEnabled.label': 'Motor enabled',
   'options.motorEnabled.help':
     'Engine as fallback only: motor legs are planned where predicted sailing speed drops below the threshold, and run at motor speed.',
+  'planner.card.trip': 'Trip',
+  'planner.card.advanced': 'Advanced',
   'planner.origin.label': 'Origin',
   'planner.destination.label': 'Destination',
   'planner.notSelected': 'Not selected',
