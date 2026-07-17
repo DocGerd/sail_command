@@ -5,12 +5,14 @@ on:
       - 'pipeline/**'
       - 'app/public/data/**'
       - '.github/workflows/verify-mask.yml'
+      - '.github/workflows/verify-mask-requirements.txt'
   push:
     branches: [main]
     paths:
       - 'pipeline/**'
       - 'app/public/data/**'
       - '.github/workflows/verify-mask.yml'
+      - '.github/workflows/verify-mask-requirements.txt'
 permissions:
   contents: read
 jobs:
@@ -23,5 +25,5 @@ jobs:
         with: { python-version: '3.12' }
       # Slim on purpose: verify_mask.py flood-fills the COMMITTED mask
       # (app/public/data/mask.bin) — no rebuild, no geo stack.
-      - run: pip install numpy==2.5.1 scipy==1.18.0
+      - run: pip install --require-hashes -r "$GITHUB_WORKSPACE/.github/workflows/verify-mask-requirements.txt"
       - run: python verify_mask.py
