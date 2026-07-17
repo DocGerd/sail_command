@@ -74,6 +74,8 @@ function toPlannerStatus(
       );
       return { phase: 'routing', progress };
     }
+    case 'probing-depth':
+      return { phase: 'probing' };
     case 'error':
       return { phase: 'error', message: t(flow.messageKey) };
   }

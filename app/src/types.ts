@@ -64,6 +64,13 @@ export interface LegCommon {
   twsKn: number; // TWS at leg start
   speedKn: number;
   distanceNm: number;
+  // #53 graceful degradation: present only on plans that relaxed the depth
+  // gate, on legs whose geometry crosses cells charted shallower than the
+  // REQUESTED safety depth — carrying that leg's minimum charted depth so map
+  // and depth profile can highlight it. exactOptionalPropertyTypes: the key is
+  // omitted entirely on unflagged legs, never set to undefined. Lives on
+  // LegCommon so both Leg variants (sail and motor) carry it.
+  shallow?: { minDepthM: number };
 }
 
 export type Leg =
@@ -107,12 +114,26 @@ export interface PlanRequest {
   settings: Settings;
 }
 
+// #53 graceful degradation below safety depth: when a plan only routes at a
+// relaxed (below-requested) depth gate, the result carries this plan-level
+// warning. Structured-clone-safe plain numbers (IndexedDB/postMessage).
+export interface ShallowInfo {
+  requestedDepthM: number; // the user's safety depth the plan was requested at
+  usedDepthM: number; // the relaxed gate the solver actually ran with (>= 2.1)
+  minGateDepthM: number; // shallowest charted cell actually traversed below requestedDepthM
+}
+
 export interface PlanResultOk {
   status: 'ok';
   // planRoute guarantees at least one of genoa/fock is non-null when status is 'ok'
   // (both-failed returns status 'error' instead).
   genoa: RigResult | null; // null if that rig found no route
   fock: RigResult | null;
+  // #53: present only when the route required relaxing the depth gate below
+  // the requested safety depth. One value for the whole plan — both rigs
+  // solve at the same relaxed gate by construction. exactOptionalPropertyTypes:
+  // omitted entirely when no relaxation happened, never set to undefined.
+  shallow?: ShallowInfo;
   // why a null rig found no route ("both results are user-visible" needs the
   // reason, not just the absence); null when the rig has a result
   genoaReason: NoRouteReason | null;

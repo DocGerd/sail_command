@@ -365,4 +365,21 @@ describe('DepthProfile', () => {
       /Safety depth\s+10\.0\s*m/,
     );
   });
+
+  it('emphasizes #53-flagged shallow legs with one .dp-shallow-leg band each', async () => {
+    const flaggedLegs: Leg[] = [
+      { ...GENOA_LEGS[0], shallow: { minDepthM: 2.3 } },
+      GENOA_LEGS[1], // unflagged motor leg — no band
+    ];
+    const plan = makePlan({ genoa: { ...GENOA_RESULT, legs: flaggedLegs } });
+    const { container } = renderProfile({ plan });
+    await waitForChart(container);
+    expect(container.querySelectorAll('.dp-shallow-leg').length).toBe(1);
+  });
+
+  it('renders no shallow-leg bands for plans without #53 flags', async () => {
+    const { container } = renderProfile();
+    await waitForChart(container);
+    expect(container.querySelectorAll('.dp-shallow-leg').length).toBe(0);
+  });
 });

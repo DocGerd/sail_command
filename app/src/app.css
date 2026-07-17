@@ -426,6 +426,14 @@ select {
   background: #cc79a7;
 }
 
+/* #53: shallow-leg casing (sc-route-shallow), safety-depth warning color. */
+.route-legend-shallow {
+  width: 1.25rem;
+  height: 7px;
+  border-radius: 3px;
+  background: #e69f00;
+}
+
 .sc-boat-marker {
   pointer-events: none;
 }
@@ -446,6 +454,18 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+}
+
+/* #53: prominent shallow-water warning on the route summary (both rig tabs).
+   Safety-depth warning color family (#E69F00) — matches the map casing and
+   the depth profile emphasis. */
+.shallow-warning {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-left: 4px solid #e69f00;
+  border-radius: 4px;
+  background: rgba(230, 159, 0, 0.16);
+  font-weight: 500;
 }
 
 .route-totals {

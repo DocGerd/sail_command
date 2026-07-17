@@ -1,6 +1,14 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { savePlan, getPlan, listPlans, deletePlan, saveSettings, loadSettings, __resetDbForTests } from './db';
+import {
+  savePlan,
+  getPlan,
+  listPlans,
+  deletePlan,
+  saveSettings,
+  loadSettings,
+  __resetDbForTests,
+} from './db';
 import type { Plan, Settings, WindGrid } from '../types';
 
 describe('IndexedDB persistence', () => {
@@ -71,12 +79,114 @@ describe('IndexedDB persistence', () => {
     // structured clone in vitest crosses VM realms, so instanceof fails even though the value is a
     // genuine Float32Array; the brand check is realm-independent (not a security-grade brand check —
     // a value could spoof this via its own Symbol.toStringTag — but no data on this path ever does)
-    expect(Object.prototype.toString.call(retrieved?.windGrid.speedKn)).toBe('[object Float32Array]');
+    expect(Object.prototype.toString.call(retrieved?.windGrid.speedKn)).toBe(
+      '[object Float32Array]',
+    );
     expect(Array.from(retrieved?.windGrid.speedKn || [])).toEqual(Array.from(windGrid.speedKn));
-    expect(Object.prototype.toString.call(retrieved?.windGrid.dirFromDeg)).toBe('[object Float32Array]');
-    expect(Array.from(retrieved?.windGrid.dirFromDeg || [])).toEqual(Array.from(windGrid.dirFromDeg));
-    expect(Object.prototype.toString.call(retrieved?.windGrid.gustKn)).toBe('[object Float32Array]');
+    expect(Object.prototype.toString.call(retrieved?.windGrid.dirFromDeg)).toBe(
+      '[object Float32Array]',
+    );
+    expect(Array.from(retrieved?.windGrid.dirFromDeg || [])).toEqual(
+      Array.from(windGrid.dirFromDeg),
+    );
+    expect(Object.prototype.toString.call(retrieved?.windGrid.gustKn)).toBe(
+      '[object Float32Array]',
+    );
     expect(Array.from(retrieved?.windGrid.gustKn || [])).toEqual(Array.from(windGrid.gustKn));
+  });
+
+  it('save→get roundtrip preserves #53 shallow warnings (plan-level and per-leg) exactly', async () => {
+    const windGrid: WindGrid = {
+      lats: [54.0, 54.5],
+      lons: [9.0, 9.5],
+      timesMs: [1000, 2000],
+      speedKn: new Float32Array([5.0, 6.0, 7.0, 8.0]),
+      dirFromDeg: new Float32Array([90, 95, 100, 105]),
+      gustKn: new Float32Array([7.0, 8.0, 9.0, 10.0]),
+      fetchedAtMs: 1626340800000,
+      model: 'open-meteo',
+    };
+    const legCommon = {
+      start: { lat: 54.75, lon: 10.0 },
+      end: { lat: 54.75, lon: 10.2 },
+      startTimeMs: 1626340800000,
+      endTimeMs: 1626344400000,
+      headingDeg: 90,
+      twsKn: 12,
+      speedKn: 6,
+      distanceNm: 6,
+    };
+    const plan: Plan = {
+      id: 'shallow-plan-1',
+      name: 'Flensburg → Marstal',
+      createdAtMs: 1626340800000,
+      request: {
+        origin: { lat: 54.75, lon: 10.0 },
+        destination: { lat: 54.75, lon: 10.4 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1626340800000,
+        settings: {
+          safetyDepthM: 3.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+        },
+      },
+      windGrid,
+      result: {
+        status: 'ok',
+        genoa: {
+          rig: 'genoa',
+          legs: [
+            // Both Leg variants carry the shallow flag; one leg stays unflagged.
+            {
+              ...legCommon,
+              kind: 'sail',
+              board: 'starboard',
+              twaDeg: 90,
+              maneuverAtStart: null,
+              shallow: { minDepthM: 2.3 },
+            },
+            {
+              ...legCommon,
+              kind: 'motor',
+              board: null,
+              maneuverAtStart: null,
+              shallow: { minDepthM: 2.5 },
+            },
+            { ...legCommon, kind: 'sail', board: 'port', twaDeg: -90, maneuverAtStart: 'tack' },
+          ],
+          etaMs: 1626344400000,
+          durationMs: 3600000,
+          distanceNm: 18,
+          maneuverCount: 1,
+          motorDistanceNm: 6,
+        },
+        fock: null,
+        genoaReason: null,
+        fockReason: null,
+        recommended: 'genoa',
+        snappedOrigin: { lat: 54.75, lon: 10.0 },
+        snappedDestination: { lat: 54.75, lon: 10.4 },
+        shallow: { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 2.3 },
+      },
+    };
+
+    await savePlan(plan);
+    const retrieved = await getPlan('shallow-plan-1');
+    expect(retrieved?.result.shallow).toEqual({
+      requestedDepthM: 3.0,
+      usedDepthM: 2.3,
+      minGateDepthM: 2.3,
+    });
+    const legs = retrieved?.result.genoa?.legs ?? [];
+    expect(legs[0].shallow).toEqual({ minDepthM: 2.3 });
+    expect(legs[1].shallow).toEqual({ minDepthM: 2.5 });
+    expect('shallow' in legs[2]).toBe(false);
   });
 
   it('listPlans returns summaries newest-first without wind grids', async () => {
@@ -102,12 +212,27 @@ describe('IndexedDB persistence', () => {
         originHarborId: null,
         destinationHarborId: null,
         departureMs: 1000,
-        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+        settings: {
+          safetyDepthM: 3.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+        },
       },
       windGrid,
       result: {
         status: 'ok',
-        genoa: { rig: 'genoa', legs: [], etaMs: 4000, durationMs: 3000, distanceNm: 40.0, maneuverCount: 1, motorDistanceNm: 0 },
+        genoa: {
+          rig: 'genoa',
+          legs: [],
+          etaMs: 4000,
+          durationMs: 3000,
+          distanceNm: 40.0,
+          maneuverCount: 1,
+          motorDistanceNm: 0,
+        },
         fock: null,
         genoaReason: null,
         fockReason: null,
@@ -128,13 +253,28 @@ describe('IndexedDB persistence', () => {
         originHarborId: null,
         destinationHarborId: null,
         departureMs: 2000,
-        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+        settings: {
+          safetyDepthM: 3.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+        },
       },
       windGrid,
       result: {
         status: 'ok',
         genoa: null,
-        fock: { rig: 'fock', legs: [], etaMs: 5000, durationMs: 3000, distanceNm: 41.0, maneuverCount: 2, motorDistanceNm: 0 },
+        fock: {
+          rig: 'fock',
+          legs: [],
+          etaMs: 5000,
+          durationMs: 3000,
+          distanceNm: 41.0,
+          maneuverCount: 2,
+          motorDistanceNm: 0,
+        },
         genoaReason: null,
         fockReason: null,
         recommended: 'fock',
@@ -195,12 +335,27 @@ describe('IndexedDB persistence', () => {
         originHarborId: null,
         destinationHarborId: null,
         departureMs: 1000,
-        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+        settings: {
+          safetyDepthM: 3.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+        },
       },
       windGrid,
       result: {
         status: 'ok',
-        genoa: { rig: 'genoa', legs: [], etaMs: 4000, durationMs: 3000, distanceNm: 40.0, maneuverCount: 1, motorDistanceNm: 0 },
+        genoa: {
+          rig: 'genoa',
+          legs: [],
+          etaMs: 4000,
+          durationMs: 3000,
+          distanceNm: 40.0,
+          maneuverCount: 1,
+          motorDistanceNm: 0,
+        },
         fock: null,
         genoaReason: null,
         fockReason: null,
@@ -247,13 +402,28 @@ describe('IndexedDB persistence', () => {
         originHarborId: null,
         destinationHarborId: null,
         departureMs: 1000,
-        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+        settings: {
+          safetyDepthM: 3.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+        },
       },
       windGrid,
       result: {
         status: 'ok',
         genoa: null,
-        fock: { rig: 'fock', legs: [], etaMs: 5000, durationMs: 3000, distanceNm: 41.0, maneuverCount: 2, motorDistanceNm: 0 },
+        fock: {
+          rig: 'fock',
+          legs: [],
+          etaMs: 5000,
+          durationMs: 3000,
+          distanceNm: 41.0,
+          maneuverCount: 2,
+          motorDistanceNm: 0,
+        },
         genoaReason: 'unreachable',
         fockReason: null,
         recommended: 'genoa',
@@ -273,12 +443,27 @@ describe('IndexedDB persistence', () => {
         originHarborId: null,
         destinationHarborId: null,
         departureMs: 1500,
-        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+        settings: {
+          safetyDepthM: 3.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+        },
       },
       windGrid,
       result: {
         status: 'ok',
-        genoa: { rig: 'genoa', legs: [], etaMs: 6000, durationMs: 3000, distanceNm: 20.0, maneuverCount: 0, motorDistanceNm: 0 },
+        genoa: {
+          rig: 'genoa',
+          legs: [],
+          etaMs: 6000,
+          durationMs: 3000,
+          distanceNm: 20.0,
+          maneuverCount: 0,
+          motorDistanceNm: 0,
+        },
         fock: null,
         genoaReason: null,
         fockReason: null,
@@ -324,12 +509,27 @@ describe('IndexedDB persistence', () => {
         originHarborId: null,
         destinationHarborId: null,
         departureMs: 1000,
-        settings: { safetyDepthM: 3.0, motorSpeedKn: 6.5, motorThresholdKn: 2.5, maneuverPenaltyS: 45, performanceFactor: 0.9, motorEnabled: true },
+        settings: {
+          safetyDepthM: 3.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+        },
       },
       windGrid,
       result: {
         status: 'ok',
-        genoa: { rig: 'genoa', legs: [], etaMs: 4000, durationMs: 3000, distanceNm: 40.0, maneuverCount: 1, motorDistanceNm: 0 },
+        genoa: {
+          rig: 'genoa',
+          legs: [],
+          etaMs: 4000,
+          durationMs: 3000,
+          distanceNm: 40.0,
+          maneuverCount: 1,
+          motorDistanceNm: 0,
+        },
         fock: null,
         genoaReason: null,
         fockReason: null,

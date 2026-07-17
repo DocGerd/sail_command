@@ -105,6 +105,19 @@ export default function RouteSummary({ plan, rig, onRigChange }: RouteSummaryPro
 
       {stale && <p role="alert">{t('route.staleForecast')}</p>}
 
+      {/* #53: plan-level shallow-water warning — both rigs solved at the same
+          relaxed gate, so this renders on BOTH rig tabs (it sits outside the
+          per-rig branch below). Persisted with the plan, so a reloaded plan
+          renders it identically. */}
+      {plan.result.shallow && (
+        <p className="shallow-warning" role="alert">
+          {t('route.shallow.banner', {
+            requested: plan.result.shallow.requestedDepthM.toFixed(1),
+            minGate: plan.result.shallow.minGateDepthM.toFixed(1),
+          })}
+        </p>
+      )}
+
       {!result ? (
         <p role="alert">{t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.internal')}</p>
       ) : (

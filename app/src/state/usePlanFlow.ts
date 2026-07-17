@@ -13,6 +13,11 @@ export type PlanningState =
   | { phase: 'idle' }
   | { phase: 'fetching-wind' }
   | { phase: 'routing'; rig: Rig; simulatedToMs: number }
+  // #53: the worker is probing relaxed depth gates (mask connectivity BFS)
+  // after an unreachable solve at the requested safety depth. Reported so the
+  // UI shows the probe phase instead of a stalled routing bar; the relaxed
+  // re-solve transitions back to 'routing'.
+  | { phase: 'probing-depth' }
   | { phase: 'error'; messageKey: MsgKey };
 
 export interface PlanFlowDeps {
@@ -82,7 +87,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // Wrapped in useMemo: the `?? (() => ...)` fallback would otherwise
   // allocate a new closure identity every render, which would in turn
   // invalidate run's useCallback below on every render.
-  const makeClient = useMemo(() => deps.makeClient ?? (() => new RoutingClient()), [deps.makeClient]);
+  const makeClient = useMemo(
+    () => deps.makeClient ?? (() => new RoutingClient()),
+    [deps.makeClient],
+  );
   const save = deps.save ?? savePlan;
 
   // Shared by run() below and by the ensureClient this hook returns
@@ -126,7 +134,10 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   }, [makeClient]);
 
   const run = useCallback(
-    async (req: Omit<PlanRequest, 'settings'> & { settings: Settings }, name: string): Promise<void> => {
+    async (
+      req: Omit<PlanRequest, 'settings'> & { settings: Settings },
+      name: string,
+    ): Promise<void> => {
       // Belt, not the primary guard: the UI's canPlan already disables the
       // plan button while a run is in flight. Per-plan cancellation
       // (dispose + recreate the client mid-run) is deliberately deferred —
@@ -180,14 +191,26 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       maxSimulatedToMsRef.current = { genoa: -Infinity, fock: -Infinity };
       let result: PlanResult;
       try {
-        result = await client.plan(req, windGrid, (rig, tMs) => {
-          // The solver's progress can regress by up to one step at
-          // via-segment joints (ledgered) — clamp per rig so the UI never
-          // shows simulated time going backwards within that rig's own solve.
-          const simulatedToMs = Math.max(maxSimulatedToMsRef.current[rig], tMs);
-          maxSimulatedToMsRef.current[rig] = simulatedToMs;
-          transition({ phase: 'routing', rig, simulatedToMs });
-        });
+        result = await client.plan(
+          req,
+          windGrid,
+          (rig, tMs) => {
+            // The solver's progress can regress by up to one step at
+            // via-segment joints (ledgered) — clamp per rig so the UI never
+            // shows simulated time going backwards within that rig's own solve.
+            const simulatedToMs = Math.max(maxSimulatedToMsRef.current[rig], tMs);
+            maxSimulatedToMsRef.current[rig] = simulatedToMs;
+            transition({ phase: 'routing', rig, simulatedToMs });
+          },
+          undefined,
+          () => {
+            // #53 probe phase. The relaxed re-solve that may follow restarts
+            // each rig's progress clock — reset the high-water marks so its
+            // early ticks aren't clamped flat against the doomed first run.
+            maxSimulatedToMsRef.current = { genoa: -Infinity, fock: -Infinity };
+            transition({ phase: 'probing-depth' });
+          },
+        );
       } catch {
         // Worker fatal (rejected promise) — a resolved PlanResult with
         // status 'error' is handled separately below. Mirrors ensureClient's

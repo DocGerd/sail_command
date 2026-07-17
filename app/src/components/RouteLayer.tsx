@@ -98,6 +98,23 @@ function setupLayers(map: MaplibreMap): void {
         'line-blur': 1,
       },
     });
+    // #53: shallow-leg highlight — a wide casing under the sail/motor lines
+    // (added before them, above the active-leg halo) in the established
+    // safety-depth warning color (#E69F00: depth overlay + DepthProfile),
+    // marking legs that cross cells charted below the plan's requested
+    // safety depth.
+    map.addLayer({
+      id: 'sc-route-shallow',
+      type: 'line',
+      source: ROUTE_SOURCE,
+      filter: ['==', ['get', 'shallow'], true],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-width': 9,
+        'line-color': '#E69F00',
+        'line-opacity': 0.8,
+      },
+    });
     // Two filtered layers rather than one data-driven layer: line-dasharray
     // is not a data-driven-capable paint property in the MapLibre style
     // spec, so sail vs. motor legs (only the latter dashed) need separate

@@ -70,8 +70,13 @@ export class NavMask {
     return b !== LAND && this.byteToDepthM(b) >= safetyDepthM;
   }
 
-  /** Amanatides–Woo grid traversal from a to b; every touched cell must be navigable. */
-  segmentNavigable(a: LatLon, b: LatLon, safetyDepthM: number): boolean {
+  /**
+   * Amanatides–Woo grid traversal from a to b, visiting every touched cell in
+   * order. `visit` returning false aborts the walk. Returns true only when the
+   * walk reached b's cell with every visit accepting; false on an abort or
+   * when the bounded iteration guard trips.
+   */
+  private walkCells(a: LatLon, b: LatLon, visit: (row: number, col: number) => boolean): boolean {
     // continuous grid coordinates (col-space x, row-space y)
     const x0 = (a.lon - this.meta.west) / this.lonStep;
     const y0 = (a.lat - this.meta.south) / this.latStep;
@@ -90,7 +95,7 @@ export class NavMask {
     let tMaxX = stepX === 0 ? Infinity : (stepX > 0 ? cx + 1 - x0 : x0 - cx) * tDeltaX;
     let tMaxY = stepY === 0 ? Infinity : (stepY > 0 ? cy + 1 - y0 : y0 - cy) * tDeltaY;
 
-    if (!this.cellNavigable(cy, cx, safetyDepthM)) return false;
+    if (!visit(cy, cx)) return false;
     // guard: bounded number of iterations
     for (let iter = 0; iter < this.meta.rows + this.meta.cols + 4; iter++) {
       if (cx === ex && cy === ey) return true;
@@ -101,7 +106,87 @@ export class NavMask {
         cy += stepY;
         tMaxY += tDeltaY;
       }
-      if (!this.cellNavigable(cy, cx, safetyDepthM)) return false;
+      if (!visit(cy, cx)) return false;
+    }
+    return false;
+  }
+
+  /** Every cell the a→b segment touches must be navigable at the given gate. */
+  segmentNavigable(a: LatLon, b: LatLon, safetyDepthM: number): boolean {
+    return this.walkCells(a, b, (row, col) => this.cellNavigable(row, col, safetyDepthM));
+  }
+
+  /**
+   * Shallowest charted depth among cells the a→b segment touches that are
+   * charted strictly below `thresholdM`; null when no touched cell is. Used by
+   * #53's per-leg shallow flagging (threshold = the REQUESTED safety depth).
+   * Deep-capped cells (byte 255, "≥ 25.4 m — actual depth unknown") never
+   * count as shallow: the cap is a floor, not a reading (depthInfoM's
+   * `capped` is the honest discriminator, never `depthM === 25.4`). Returns
+   * null too when the walk leaves the grid or trips its iteration guard —
+   * callers only ever hand this segments the solver already validated.
+   */
+  segmentShallowestBelow(a: LatLon, b: LatLon, thresholdM: number): number | null {
+    let min = Infinity;
+    const completed = this.walkCells(a, b, (row, col) => {
+      if (row < 0 || row >= this.meta.rows || col < 0 || col >= this.meta.cols) return false;
+      const byte = this.depthByte(row, col);
+      if (byte === 255) return true; // deep cap: never shallow
+      const depthM = this.byteToDepthM(byte);
+      if (depthM < thresholdM && depthM < min) min = depthM;
+      return true;
+    });
+    return completed && min !== Infinity ? min : null;
+  }
+
+  /**
+   * True when a's cell and b's cell are 4-connected through cells navigable at
+   * `safetyDepthM` (query-time gate, like every navigability decision). A
+   * cheap BFS over the raw byte grid — #53's relaxed-depth discovery probes
+   * this per candidate gate instead of running the isochrone solver. Any
+   * solver-emitted route implies such a chain (segmentNavigable's traversal
+   * steps one cell at a time in x or y, so its swept cells are themselves
+   * 4-connected), which is what makes "disconnected ⇒ unreachable" sound.
+   */
+  cellsConnected(a: LatLon, b: LatLon, safetyDepthM: number): boolean {
+    const ca = this.cellOf(a);
+    const cb = this.cellOf(b);
+    if (!ca || !cb) return false;
+    if (
+      !this.cellNavigable(ca.row, ca.col, safetyDepthM) ||
+      !this.cellNavigable(cb.row, cb.col, safetyDepthM)
+    )
+      return false;
+    const { rows, cols } = this.meta;
+    const target = cb.row * cols + cb.col;
+    const startIdx = ca.row * cols + ca.col;
+    if (startIdx === target) return true;
+    const visited = new Uint8Array(rows * cols);
+    const queue = new Int32Array(rows * cols);
+    let head = 0;
+    let tail = 0;
+    visited[startIdx] = 1;
+    queue[tail++] = startIdx;
+    while (head < tail) {
+      const idx = queue[head++];
+      const row = (idx / cols) | 0;
+      const col = idx - row * cols;
+      // 4-neighborhood (edge-sharing only — diagonal corner touches do not
+      // connect; mirrors pipeline/verify_mask.py's flood fill).
+      for (const [nr, nc] of [
+        [row - 1, col],
+        [row + 1, col],
+        [row, col - 1],
+        [row, col + 1],
+      ]) {
+        if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+        const nIdx = nr * cols + nc;
+        if (visited[nIdx]) continue;
+        if (!this.cellNavigable(nr, nc, safetyDepthM)) continue;
+        if (nIdx === target) return true;
+        visited[nIdx] = 1;
+        queue[tail++] = nIdx;
+      }
     }
     return false;
   }

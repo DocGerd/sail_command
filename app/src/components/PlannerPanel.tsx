@@ -15,6 +15,8 @@ export type PlannerStatus =
   | { phase: 'idle' }
   | { phase: 'fetching' }
   | { phase: 'routing'; progress?: number }
+  // #53: probing relaxed depth gates after an unreachable requested-depth solve
+  | { phase: 'probing' }
   | { phase: 'error'; message: string };
 
 export interface PlannerPanelProps {
@@ -200,6 +202,7 @@ export default function PlannerPanel({
             : t('planner.status.routing')}
         </p>
       )}
+      {planning.phase === 'probing' && <p role="status">{t('planner.status.probing')}</p>}
       {planning.phase === 'error' && <p role="alert">{planning.message}</p>}
     </div>
   );

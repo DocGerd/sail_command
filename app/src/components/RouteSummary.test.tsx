@@ -273,3 +273,31 @@ describe('RouteSummary', () => {
     }
   });
 });
+
+describe('shallow-water warning banner (#53)', () => {
+  function makeShallowPlan(): Plan {
+    const plan = makePlan();
+    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 2.3 };
+    return plan;
+  }
+
+  it('renders the plan-level warning with the requested and minimum charted gate depths', () => {
+    renderSummary({ plan: makeShallowPlan() });
+    const banner = screen.getByText(/charted shallower than your safety depth/);
+    expect(banner).toHaveAttribute('role', 'alert');
+    expect(banner.textContent).toContain('3.0 m');
+    expect(banner.textContent).toContain('2.3 m');
+    // Honest passage-planning-aid copy: never claims verified safety.
+    expect(banner.textContent).not.toMatch(/verified|guaranteed/i);
+  });
+
+  it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
+    renderSummary({ plan: makeShallowPlan(), rig: 'fock' });
+    expect(screen.getByText(/charted shallower than your safety depth/)).toBeInTheDocument();
+  });
+
+  it('is absent on plans without relaxation', () => {
+    renderSummary();
+    expect(screen.queryByText(/charted shallower than your safety depth/)).toBeNull();
+  });
+});

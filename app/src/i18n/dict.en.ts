@@ -32,6 +32,8 @@ export const en = {
   'planner.status.fetching': 'Fetching wind forecast…',
   'planner.status.routing': 'Calculating route…',
   'planner.status.routingProgress': 'Calculating route… {progress}%',
+  // #53: relaxed-depth probe phase after an unreachable requested-depth solve
+  'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
   'error.rateLimited': 'Wind forecast service rate limit reached. Wait a moment and try again.',
   'error.windService': 'Wind forecast could not be loaded. Try again in a moment.',
@@ -59,6 +61,11 @@ export const en = {
   'route.recommended': 'Recommended',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
+  // #53: honest passage-planning-aid copy — charted data may under- OR
+  // overstate real depths (dredged channels are exactly where chart data is
+  // pessimistic); never claim the route is verified safe.
+  'route.shallow.banner':
+    'Caution: this route crosses water charted shallower than your safety depth of {requested} m — shallowest charted depth along the route: {minGate} m. Chart data may understate or overstate real depths; dredged channels in particular are often deeper than charted. Verify the highlighted sections against official charts and your depth sounder.',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -91,6 +98,7 @@ export const en = {
   'route.legend.maneuver': 'Tack/gybe',
   'route.legend.headingChange': 'Heading change',
   'route.legend.via': 'Via waypoint',
+  'route.legend.shallow': 'Charted shallower than safety depth',
   'route.exportGpx': 'Export GPX',
   'route.windBarbs.toggle': 'Show wind barbs',
   'route.windBarbs.timeSlider': 'Forecast time',

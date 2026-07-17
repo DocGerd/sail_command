@@ -123,18 +123,21 @@ describe('real mask routing (issue #20)', () => {
     }
   });
 
-  // Spec acceptance case (Flensburg -> Marstal), runtime-heavy: ~45 s locally
-  // (~40 s before #21's clock-aware visited pruning deliberately widened the
-  // search; CI runners are 6-10x slower, hence the generous timeout).
+  // Direct-request case (Flensburg -> Marstal at an explicit 2.3 m),
+  // runtime-heavy: ~45 s locally (~40 s before #21's clock-aware visited
+  // pruning deliberately widened the search; CI runners are 6-10x slower,
+  // hence the generous timeout).
   //
-  // Runs at safetyDepthM 2.3 rather than the 3.0 default: in the shipped mask
-  // Marstal's snap cell sits in a 119-cell pocket that only 4-connects to open
-  // water at gate depths <= 2.3 m (EMODnet can't resolve the dredged approach
-  // channel at 46 m cells; see CONNECTIVITY_EXCEPTIONS_M in
-  // pipeline/verify_mask.py and PR #8). At 3.0 m 'unreachable' is the CORRECT
-  // answer for this data. If the mask ever resolves the channel at 3.0 m,
-  // this test should be tightened back to DEFAULT_SETTINGS.
-  it('Flensburg -> Marstal (spec acceptance at 2.3 m safety depth)', { timeout: 600_000 }, () => {
+  // Runs at safetyDepthM 2.3: in the shipped mask Marstal's snap cell sits in
+  // a 119-cell pocket that only 4-connects to open water at gate depths
+  // <= 2.3 m (EMODnet can't resolve the dredged approach channel at 46 m
+  // cells; see CONNECTIVITY_EXCEPTIONS_M in pipeline/verify_mask.py and PR
+  // #8). A user explicitly planning at 2.3 m gets a plain route with no
+  // shallow warnings — nothing was relaxed. The former note here ("at 3.0 m
+  // 'unreachable' is the CORRECT answer for this data") is superseded by
+  // #53's graceful degradation: the DEFAULT_SETTINGS spec acceptance case
+  // below now expects a route WITH shallow warnings instead.
+  it('Flensburg -> Marstal (direct request at 2.3 m safety depth)', { timeout: 600_000 }, () => {
     const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 2.3 };
     const res = planRoute(
       {
@@ -151,6 +154,8 @@ describe('real mask routing (issue #20)', () => {
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
+    // Explicitly-requested 2.3 m needs no relaxation: no shallow warnings.
+    expect('shallow' in res).toBe(false);
     const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
     expect(rig).not.toBeNull();
     // ~38 nm great-circle; sane plans stay inside these envelopes
@@ -158,4 +163,65 @@ describe('real mask routing (issue #20)', () => {
     expect(rig!.durationMs).toBeLessThan(12 * 3_600_000);
     expectLegsNavigable(rig!.legs, settings.safetyDepthM);
   });
+
+  // Spec acceptance case for #53 (graceful degradation below safety depth):
+  // Flensburg -> Marstal at DEFAULT_SETTINGS (3.0 m) returns a route WITH
+  // shallow warnings instead of 'unreachable'. usedDepthM = 2.3 was derived
+  // INDEPENDENTLY of the router: a standalone stack-based flood fill over the
+  // raw committed mask.bin reports the Flensburg/Marstal snap cells connected
+  // at every decimeter gate <= 2.3 m and disconnected at >= 2.4 m (matching
+  // the 2.3 m gate documented in pipeline/verify_mask.py's
+  // CONNECTIVITY_EXCEPTIONS_M); the in-test cellsConnected assertions below
+  // cross-check the shipped BFS against those literals. Runtime ≈ the 2.3 m
+  // case above (the disconnection fast path skips the doomed 3.0 m solves;
+  // the relaxed solve does the same work as a direct 2.3 m plan), hence the
+  // same generous timeout.
+  it(
+    'Flensburg -> Marstal at DEFAULT_SETTINGS degrades gracefully with shallow warnings (#53)',
+    { timeout: 600_000 },
+    () => {
+      const o = mask.snapToNavigable(FLENSBURG, DEFAULT_SETTINGS.safetyDepthM);
+      const d = mask.snapToNavigable(MARSTAL, DEFAULT_SETTINGS.safetyDepthM);
+      expect(o).not.toBeNull();
+      expect(d).not.toBeNull();
+      // The independently-derived connectivity flip pinning usedDepthM = 2.3:
+      expect(mask.cellsConnected(o!, d!, 2.3)).toBe(true);
+      expect(mask.cellsConnected(o!, d!, 2.4)).toBe(false);
+
+      const res = planRoute(
+        {
+          origin: FLENSBURG,
+          destination: MARSTAL,
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'marstal',
+          departureMs: T0,
+          settings: DEFAULT_SETTINGS,
+        },
+        uniformWindGrid(12, 270),
+        { polarGenoa, polarFock, mask },
+      );
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+      expect(res.shallow).toBeDefined();
+      expect(res.shallow!.requestedDepthM).toBe(3.0);
+      expect(res.shallow!.usedDepthM).toBeCloseTo(2.3, 6);
+      // Every traversed cell is >= the 2.3 m gate, and the warning only exists
+      // because something charted below 3.0 m was actually crossed.
+      expect(res.shallow!.minGateDepthM).toBeGreaterThanOrEqual(2.3);
+      expect(res.shallow!.minGateDepthM).toBeLessThan(3.0);
+      for (const rig of [res.genoa, res.fock]) {
+        expect(rig).not.toBeNull();
+        expect(rig!.distanceNm).toBeGreaterThan(30);
+        expect(rig!.durationMs).toBeLessThan(12 * 3_600_000);
+        expectLegsNavigable(rig!.legs, res.shallow!.usedDepthM);
+        const flagged = rig!.legs.filter((l) => l.shallow);
+        expect(flagged.length).toBeGreaterThan(0);
+        for (const leg of flagged) {
+          expect(leg.shallow!.minDepthM).toBeGreaterThanOrEqual(res.shallow!.minGateDepthM);
+          expect(leg.shallow!.minDepthM).toBeLessThan(3.0);
+        }
+      }
+    },
+  );
 });

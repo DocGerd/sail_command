@@ -90,6 +90,7 @@ describe('legsToFeatureCollection', () => {
       maneuver: 'tack',
       legIndex: 0,
       speedLabel: '6.0 kn',
+      shallow: false,
     });
   });
 
@@ -101,7 +102,14 @@ describe('legsToFeatureCollection', () => {
       maneuver: null,
       legIndex: 0,
       speedLabel: 'M · 6.5 kn', // default motor letter
+      shallow: false,
     });
+  });
+
+  it('tags legs carrying a #53 shallow flag with shallow: true', () => {
+    const flagged: Leg = { ...SAIL_LEG, shallow: { minDepthM: 2.3 } };
+    const fc = legsToFeatureCollection([flagged, MOTOR_LEG]);
+    expect(fc.features.map((f) => f.properties.shallow)).toEqual([true, false]);
   });
 
   it('uses the injected motor letter in the speedLabel', () => {
