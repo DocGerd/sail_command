@@ -42,13 +42,13 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
     // --- Plan a route on the deterministic fixture wind ---
     await page.getByRole('tab', { name: 'Planen' }).click();
     const origin = page.getByRole('region', { name: 'Start' });
-    await origin.getByRole('searchbox').fill('Langballigau');
-    const originResults = origin.locator('.harbor-picker li button');
+    await origin.getByRole('combobox').fill('Langballigau');
+    const originResults = origin.getByRole('option');
     await expect(originResults).toHaveCount(1);
     await originResults.first().click();
     const dest = page.getByRole('region', { name: 'Ziel' });
-    await dest.getByRole('searchbox').fill('Sønderborg');
-    const destResults = dest.locator('.harbor-picker li button');
+    await dest.getByRole('combobox').fill('Sønderborg');
+    const destResults = dest.getByRole('option');
     await expect(destResults).toHaveCount(1);
     await destResults.first().click();
     const planButton = page.getByRole('button', { name: 'Route planen' });

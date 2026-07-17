@@ -570,7 +570,10 @@ describe('App', () => {
       const message = tapPickMessage(de['planner.origin.label']);
       expect(await screen.findByText(message)).toBeInTheDocument();
 
-      fireEvent.click(within(originSection).getByRole('button', { name: FLENSBURG.names.de }));
+      fireEvent.change(within(originSection).getByRole('combobox'), {
+        target: { value: FLENSBURG.names.de },
+      });
+      fireEvent.click(within(originSection).getByRole('option', { name: FLENSBURG.names.de }));
 
       expect(screen.queryByText(message)).not.toBeInTheDocument();
       expect(
@@ -996,11 +999,10 @@ describe('harbor marker click-to-pick (#38)', () => {
     await waitFor(() =>
       expect(within(destSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument(),
     );
-    // Origin stays untouched; the tap-pick banner is gone (disarmed).
+    // Origin stays untouched; the tap-pick banner is gone (disarmed). An unset
+    // endpoint shows its search combobox rather than a collapsed selection row.
     const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
-    expect(
-      within(originSection).getByText(de['planner.notSelected'], { selector: 'p' }),
-    ).toBeInTheDocument();
+    expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
     expect(screen.queryByText(message)).not.toBeInTheDocument();
   });
 
@@ -1026,9 +1028,8 @@ describe('harbor marker click-to-pick (#38)', () => {
     // handler yet to mask the result), without the gate onTap would set origin
     // to the raw tap coordinate here and disarm.
     simulateMapClick(RAW_TAP_ON_MARKER.lat, RAW_TAP_ON_MARKER.lon, markerPoint);
-    expect(
-      within(originSection).getByText(de['planner.notSelected'], { selector: 'p' }),
-    ).toBeInTheDocument();
+    // Origin unset (still its search combobox, not a collapsed selection row).
+    expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
     expect(screen.getByText(armedMessage)).toBeInTheDocument();
 
     // MapLibre fires the harbor layer handler SECOND — it alone resolves the

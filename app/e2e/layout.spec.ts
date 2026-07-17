@@ -89,8 +89,8 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
     await expect(tapPickBanner).not.toBeVisible();
 
     // Form controls are capped, not stretched across the ~1/3 panel — the
-    // original #24 complaint. The harbor-search input caps at 22rem (+ slack).
-    const searchBox = await box(page.getByRole('region', { name: 'Start' }).getByRole('searchbox'));
+    // original #24 complaint. The harbor-search combobox caps at 22rem (+ slack).
+    const searchBox = await box(page.getByRole('region', { name: 'Start' }).getByRole('combobox'));
     expect(searchBox.width).toBeLessThanOrEqual(356);
 
     // --- Narrow: 375x667, bottom-sheet overlay (unchanged base layout) ---

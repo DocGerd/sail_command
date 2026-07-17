@@ -779,18 +779,104 @@ select {
   font-size: 0.8rem;
 }
 
-.harbor-picker ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 8rem;
-  overflow-y: auto;
+/* Harbor combobox (#64 phase 2): a role="combobox" input over a popup
+   role="listbox". The div stacks label/input/popup; the input stretches to the
+   column (capped to 22rem on the wide panel by the .app-panel input rule). */
+.harbor-picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
-.approach-note {
+.harbor-picker-input:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 1px;
+}
+
+/* Popup: at most ~8 rows tall (each row a >=44px gloved touch target), scrolls
+   beyond that — the whole ~35-harbor list is never rendered inline again. */
+.harbor-picker-listbox {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  max-height: 20rem;
+  overflow-y: auto;
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  background: var(--sc-bg);
+}
+
+.harbor-picker-option {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 44px;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--sc-border);
+}
+
+.harbor-picker-option:last-child {
+  border-bottom: none;
+}
+
+.harbor-picker-option[aria-selected='true'] {
+  background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
+}
+
+.harbor-picker-name {
+  font-weight: 600;
+}
+
+/* Depth caveat: muted, single line, ellipsized (full text shows on the selected
+   endpoint row). min-width:0 lets the flex child shrink so ellipsis engages. */
+.harbor-picker-caveat {
+  min-width: 0;
   font-size: 0.8rem;
   opacity: 0.75;
-  margin: 0.1rem 0 0.3rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.harbor-picker-empty {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+/* Selected endpoint row: pin dot (color set inline — starboard green for Start,
+   UI accent for Ziel), name + full caveat, and a ghost "Ändern" that reopens
+   the combobox. */
+.planner-endpoint-selected {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.endpoint-pin {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.endpoint-detail {
+  flex: 1;
+  min-width: 0;
+}
+
+.endpoint-name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.endpoint-caveat {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.75;
 }
 
 /* ---- About dialog ---- */
@@ -900,6 +986,13 @@ select {
      size. */
   .app-panel input:not([type='checkbox']),
   .app-panel select {
+    max-width: 22rem;
+  }
+
+  /* Cap the whole combobox (not just its input) so the popup listbox shares the
+     input's 22rem width — otherwise on wide viewports the popup outgrows the
+     capped input and their right edges misalign. */
+  .app-panel .harbor-picker {
     max-width: 22rem;
   }
 
