@@ -27,7 +27,9 @@ async function settledCanvas(page: Page, canvas: Locator): Promise<Buffer> {
   return prev; // best-effort: never stabilized within the cap
 }
 
-test('depth toggle is available pre-plan and flips the rendered map', async ({ page }) => {
+test('depth toggle is available pre-plan, defaults ON (#63), flips the rendered map, and an explicit off persists across reload', async ({
+  page,
+}) => {
   const server = await startPreview();
   try {
     await page.goto(server.url);
@@ -36,40 +38,50 @@ test('depth toggle is available pre-plan and flips the rendered map', async ({ p
     // route-layer cluster (wind barbs) must not be.
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
     await expect(depthToggle).toBeVisible();
-    await expect(depthToggle).not.toBeChecked(); // default OFF
+    // #63: a fresh profile (Playwright context = clean localStorage) sees the
+    // depth overlay with zero clicks.
+    await expect(depthToggle).toBeChecked();
     await expect(page.locator('.route-layer-controls')).toHaveCount(0);
 
     const canvas = page.locator('canvas.maplibregl-canvas');
     await expect(canvas).toBeVisible();
     await page.waitForLoadState('networkidle');
 
-    // Baseline: the settled pre-overlay frame. Because it's stable, a later
-    // byte difference against it is a real rendering delta (the raster), not
-    // transient tile/label noise — which is what lets the byte compares below
-    // stand in for a pixel diff without a PNG decoder in the e2e deps.
-    const baseline = await settledCanvas(page, canvas);
+    // Baseline: the settled default frame (overlay ON). Because it's stable,
+    // a later byte difference against it is a real rendering delta (the
+    // raster going away), not transient tile/label noise — which is what lets
+    // the byte compares below stand in for a pixel diff without a PNG decoder
+    // in the e2e deps.
+    const overlayOn = await settledCanvas(page, canvas);
 
-    // ON must change the rendered map. expect.poll (house style, cf.
-    // layout.spec) waits for the raster to actually draw instead of racing it
-    // with a one-shot compare.
-    await depthToggle.check();
-    await expect(depthToggle).toBeChecked();
+    // OFF must remove the raster. expect.poll (house style, cf. layout.spec)
+    // waits for the redraw instead of racing it with a one-shot compare.
+    await depthToggle.uncheck();
+    await expect(depthToggle).not.toBeChecked();
     await expect
-      .poll(async () => (await canvas.screenshot()).equals(baseline), {
-        message: 'toggling depth ON must change the rendered map',
+      .poll(async () => (await canvas.screenshot()).equals(overlayOn), {
+        message: 'toggling depth OFF must remove the raster',
         timeout: 30_000,
       })
       .toBe(false);
 
-    // OFF must remove the raster. Compare against the settled OVERLAY frame
-    // (not byte-equality with `baseline` — tile/label rendering isn't
-    // guaranteed bit-stable across frames, so `off === baseline` is unsafe).
-    const overlay = await settledCanvas(page, canvas);
-    await depthToggle.uncheck();
+    // #63 persistence: the explicit OFF must survive a reload (same origin,
+    // same localStorage). Reload rather than a new context — a new context
+    // would be a fresh profile and legitimately reset to ON.
+    await page.reload();
+    await expect(depthToggle).toBeVisible();
     await expect(depthToggle).not.toBeChecked();
+    await page.waitForLoadState('networkidle');
+
+    // ON must draw the raster again. Compare against the settled OFF frame
+    // (not byte-equality with `overlayOn` — tile/label rendering isn't
+    // guaranteed bit-stable across frames, so `on === overlayOn` is unsafe).
+    const overlayOff = await settledCanvas(page, canvas);
+    await depthToggle.check();
+    await expect(depthToggle).toBeChecked();
     await expect
-      .poll(async () => (await canvas.screenshot()).equals(overlay), {
-        message: 'toggling depth OFF must remove the raster',
+      .poll(async () => (await canvas.screenshot()).equals(overlayOff), {
+        message: 'toggling depth ON must change the rendered map',
         timeout: 30_000,
       })
       .toBe(false);

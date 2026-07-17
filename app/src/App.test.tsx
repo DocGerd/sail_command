@@ -40,8 +40,7 @@ const mapTestHooks = vi.hoisted(() => ({
   // (the screen pixel MapLibre reports): MapView's harbor-hit gate feeds it
   // to queryRenderedFeatures.
   clickHandler: null as
-    | ((e: { lngLat: { lat: number; lng: number }; point: { x: number; y: number } }) => void)
-    | null,
+    ((e: { lngLat: { lat: number; lng: number }; point: { x: number; y: number } }) => void) | null,
   // Same idea for MapView's `instance.on('error', handleError)' — lets tests
   // simulate a MapLibre runtime error (e.g. a failed tile/style fetch)
   // without a real map, to drive the project-gate map-error banner.
@@ -201,6 +200,23 @@ vi.mock('maplibre-gl', () => {
     setFilter() {}
     setPaintProperty() {}
     fitBounds() {}
+    // #63: barbs default ON, so RouteLayer's barb rebuild effect now runs in
+    // every plan-bearing test (before, barbsVisible=false early-returned it).
+    // A fixed app-region viewport with a linear projection keeps
+    // adaptiveBarbFeatures deterministic and small; the barb OUTPUT is not
+    // asserted here (that's annotations.spec.ts against a real browser) —
+    // these stubs only keep the effect from crashing the tree.
+    getBounds() {
+      return {
+        getWest: () => 9.4,
+        getSouth: () => 54.3,
+        getEast: () => 11.0,
+        getNorth: () => 55.3,
+      };
+    }
+    project(lngLat: [number, number]) {
+      return { x: (lngLat[0] - 9.4) * 500, y: (55.3 - lngLat[1]) * 500 };
+    }
     hasImage() {
       return false;
     }
@@ -365,8 +381,7 @@ beforeEach(async () => {
     delete mapTestHooks.layerClickHandlers[key];
   for (const key of Object.keys(mapTestHooks.harborHitFeatures))
     delete mapTestHooks.harborHitFeatures[key];
-  for (const key of Object.keys(mapTestHooks.sourceSetData))
-    delete mapTestHooks.sourceSetData[key];
+  for (const key of Object.keys(mapTestHooks.sourceSetData)) delete mapTestHooks.sourceSetData[key];
 });
 
 // Screen pixel a harbor marker sits at for these tests, and a raw click
@@ -1064,8 +1079,7 @@ describe('harbor marker click-to-pick (#38)', () => {
     const harborNames = () =>
       (
         mapTestHooks.sourceSetData['sc-harbors'] as
-          | { features: { properties: { name: string } }[] }
-          | undefined
+          { features: { properties: { name: string } }[] } | undefined
       )?.features.map((f) => f.properties.name) ?? [];
     await waitFor(() => expect(harborNames()).toContain(RELABEL_HARBOR.names.de));
     expect(harborNames()).not.toContain(RELABEL_HARBOR.names.en);
@@ -1077,15 +1091,24 @@ describe('harbor marker click-to-pick (#38)', () => {
     expect(harborNames()).not.toContain(RELABEL_HARBOR.names.de);
   });
 
-  it('renders the always-mounted depth toggle (off by default) with no plan active', async () => {
+  it('renders the always-mounted depth toggle (ON by default, #63) with no plan active', async () => {
     renderApp();
     const toggle = await screen.findByRole('checkbox', { name: de['map.depth.toggle'] });
-    expect(toggle).not.toBeChecked();
+    // Fresh profile (afterEach cleared localStorage): #63 flipped the default
+    // from OFF to ON — depth must be visible with zero clicks.
+    expect(toggle).toBeChecked();
     // The plan-gated route-layer cluster (wind barbs) must NOT be hosting it:
     // no plan exists, so the barb toggle is absent while depth is present.
     expect(
       screen.queryByRole('checkbox', { name: de['route.windBarbs.toggle'] }),
     ).not.toBeInTheDocument();
+  });
+
+  it("a persisted explicit 'off' (sc-depth-visible = '0') overrides the ON default (#63)", async () => {
+    localStorage.setItem('sc-depth-visible', '0');
+    renderApp();
+    const toggle = await screen.findByRole('checkbox', { name: de['map.depth.toggle'] });
+    expect(toggle).not.toBeChecked();
   });
 });
 
