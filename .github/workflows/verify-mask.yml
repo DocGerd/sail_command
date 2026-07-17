@@ -1,0 +1,27 @@
+name: Mask integrity
+on:
+  pull_request:
+    paths:
+      - 'pipeline/**'
+      - 'app/public/data/**'
+      - '.github/workflows/verify-mask.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'pipeline/**'
+      - 'app/public/data/**'
+      - '.github/workflows/verify-mask.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: pipeline } }
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with: { python-version: '3.12' }
+      # Slim on purpose: verify_mask.py flood-fills the COMMITTED mask
+      # (app/public/data/mask.bin) — no rebuild, no geo stack.
+      - run: pip install numpy==2.5.1 scipy==1.18.0
+      - run: python verify_mask.py
