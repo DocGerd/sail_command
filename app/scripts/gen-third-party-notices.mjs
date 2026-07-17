@@ -11,6 +11,8 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { copyrightHolder } from './copyright-holder.mjs';
+
 const APP_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Runtime packages bundled into the deployed app:
@@ -118,34 +120,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.`,
 };
 
-// Verified upstream copyright holders for packages whose npm tarball omits
-// the license text AND whose package.json author field does not match the
-// copyright line of the upstream LICENSE. Checked 2026-07-16 against:
-// - https://github.com/protomaps/PMTiles/blob/main/LICENSE
-//   ("Copyright 2021 Protomaps LLC")
-// - https://github.com/protomaps/basemaps/blob/main/LICENSE.md
-//   ("Copyright 2019-2023 Protomaps LLC, Kelso Cartography"). Note: that
-//   LICENSE.md is a compound file (it also contains MIT sections for Mapzen
-//   2015-2018 / Linux Foundation 2019); the generated block reproduces the
-//   canonical BSD-3 per the package's declared npm license.
-const COPYRIGHT_HOLDER_OVERRIDES = {
-  pmtiles: '2021 Protomaps LLC',
-  '@protomaps/basemaps': '2019-2023 Protomaps LLC, Kelso Cartography',
-};
-
-// Copyright holder for the template: verified override first, then the
-// package.json author field (string or object form; email/url decorations
-// stripped), falling back to "the <name> authors".
-function copyrightHolder(pkg) {
-  const override = COPYRIGHT_HOLDER_OVERRIDES[pkg.name];
-  if (override) return override;
-  const raw = typeof pkg.author === 'string' ? pkg.author : pkg.author?.name;
-  const holder = raw
-    ?.replace(/<[^>]*>/g, '')
-    .replace(/\([^)]*\)/g, '')
-    .trim();
-  return holder || `the ${pkg.name} authors`;
-}
+// Copyright-holder resolution (verified overrides + sanitized author field)
+// lives in copyright-holder.mjs so it stays unit-testable (#69).
 
 function packageBlock(pkgName) {
   const pkgDir = join(APP_ROOT, 'node_modules', pkgName);
