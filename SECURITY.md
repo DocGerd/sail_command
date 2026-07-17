@@ -26,3 +26,25 @@ appreciated; there is no bug-bounty program.
 - The deployed site is static (GitHub Pages). Supply-chain reports about
   bundled dependencies are in scope; see
   `app/public/THIRD-PARTY-NOTICES.txt` for the inventory.
+
+## Branch protection & code review
+
+SailCommand is solo-maintained with an agent-driven review workflow, so the
+repository deliberately does **not** require a second human's approving review
+on pull requests: GitHub forbids approving your own PR, so requiring approvers
+(or last-push approval) would deadlock every merge. Review rigor is instead
+enforced by repository rulesets applied identically to both `main` and
+`develop`:
+
+- Pull-request-only merges — no direct pushes, no force-pushes, no branch
+  deletion.
+- Required status checks `app` + `e2e` under the strict up-to-date policy.
+- Mandatory resolution of every review thread before merge.
+- A per-PR automated reviewer pass that posts inline review threads, each of
+  which must be addressed and resolved.
+
+For this reason the OpenSSF Scorecard *Branch-Protection* and *Code-Review*
+findings — which assume a multi-maintainer approving-review model — are
+dismissed as "won't fix"; the controls above provide equivalent review
+assurance without a self-approval deadlock. This is revisited if a second
+maintainer joins.
