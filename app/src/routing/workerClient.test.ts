@@ -40,9 +40,13 @@ const INIT_ASSETS = {
 const PLAN_REQUEST = {
   // cell centers (grid step 0.005°): keep the spec-mandated 300 m snap
   // radius and adapt test geometry rather than loosen it.
-  origin: { lat: 54.7525, lon: 10.0025 }, destination: { lat: 54.7525, lon: 10.3025 },
-  viaPoints: [], originHarborId: null, destinationHarborId: null,
-  departureMs: Date.UTC(2026, 6, 15, 8, 0, 0), settings: DEFAULT_SETTINGS,
+  origin: { lat: 54.7525, lon: 10.0025 },
+  destination: { lat: 54.7525, lon: 10.3025 },
+  viaPoints: [],
+  originHarborId: null,
+  destinationHarborId: null,
+  departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
+  settings: DEFAULT_SETTINGS,
 };
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -117,6 +121,33 @@ describe('RoutingClient promise settling', () => {
     w.emit({ type: 'fatal', id: sent2.id, message: 'segment blocked' });
     await expect(p1).resolves.toBe(result);
     await expect(p2).rejects.toThrow(/segment blocked/);
+  }, 2000);
+
+  it('forwards probe messages (#53) to onProbe untouched and unthrottled', async () => {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+    const probes: [number, number, number][] = [];
+    const p = client.plan(
+      PLAN_REQUEST,
+      uniformWindGrid(12, 0),
+      undefined,
+      undefined,
+      (d, done, total) => probes.push([d, done, total]),
+    );
+    await flush();
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+    // Back-to-back probes (same tick) must both arrive — no 100 ms throttle.
+    w.emit({ type: 'probe', id: sent.id, probeDepthM: 2.5, done: 1, total: 4 });
+    w.emit({ type: 'probe', id: sent.id, probeDepthM: 2.2, done: 2, total: 4 });
+    const result: PlanResult = { status: 'error', reason: 'unreachable' };
+    w.emit({ type: 'result', id: sent.id, result });
+    await expect(p).resolves.toBe(result);
+    expect(probes).toEqual([
+      [2.5, 1, 4],
+      [2.2, 2, 4],
+    ]);
   }, 2000);
 
   it('worker.onerror fired by the runtime rejects an in-flight plan', async () => {

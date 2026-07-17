@@ -83,6 +83,66 @@ describe('NavMask', () => {
   });
 });
 
+describe('NavMask.cellsConnected (#53)', () => {
+  // Wall at col 160 (lon ≈ 10.2), except rows 90..99 charted 2.3 m (byte 23).
+  const gapMask = () => makeMask((r, c) => (c !== 160 ? 200 : r >= 90 && r <= 99 ? 23 : 0));
+  // Cell centers (grid step 0.005°): lat 54.7525 → row 90; lon 10.1025 → col
+  // 140, lon 10.3025 → col 180 (west resp. east of the wall).
+  const WEST = { lat: 54.7525, lon: 10.1025 };
+  const EAST = { lat: 54.7525, lon: 10.3025 };
+
+  it('connects across a 2.3 m gap at gates <= 2.3, not above (query-time navigability)', () => {
+    const m = gapMask();
+    expect(m.cellsConnected(WEST, EAST, 2.3)).toBe(true);
+    // 2.3 >= 2.4 is false → the gap cells drop out of the navigable set
+    expect(m.cellsConnected(WEST, EAST, 2.4)).toBe(false);
+  });
+
+  it('is 4-connectivity: a diagonal-only corner touch does not connect', () => {
+    // Only two navigable cells, corner-touching at (100,100) and (101,101).
+    const m = makeMask((r, c) => ((r === 100 && c === 100) || (r === 101 && c === 101) ? 200 : 0));
+    const a = { lat: 54.3 + 100.5 * 0.005, lon: 9.4 + 100.5 * 0.005 };
+    const b = { lat: 54.3 + 101.5 * 0.005, lon: 9.4 + 101.5 * 0.005 };
+    expect(m.cellsConnected(a, b, 3)).toBe(false);
+  });
+
+  it('same cell is trivially connected; a non-navigable endpoint is not connected', () => {
+    const m = gapMask();
+    expect(m.cellsConnected(WEST, WEST, 3)).toBe(true);
+    const onWall = { lat: 54.3025, lon: 10.2025 }; // row 0, col 160 → land byte 0
+    expect(m.cellsConnected(WEST, onWall, 2.0)).toBe(false);
+    expect(m.cellsConnected(onWall, WEST, 2.0)).toBe(false);
+  });
+
+  it('out-of-bbox endpoints are never connected', () => {
+    const m = makeMask(() => 200);
+    expect(m.cellsConnected({ lat: 60, lon: 20 }, { lat: 54.75, lon: 10.2 }, 3)).toBe(false);
+  });
+});
+
+describe('NavMask.segmentShallowestBelow (#53)', () => {
+  // Shoal lines: col 160 charted 2.5 m, col 162 charted 2.8 m, rest 20 m.
+  const m = makeMask((_, c) => (c === 160 ? 25 : c === 162 ? 28 : 200));
+  const a = { lat: 54.7525, lon: 10.1925 }; // col 158
+  const b = { lat: 54.7525, lon: 10.2225 }; // col 164
+
+  it('reports the shallowest crossed cell below the threshold', () => {
+    // Crossed cols 158..164 → below 3.0 m: 2.5 and 2.8 → min 2.5
+    expect(m.segmentShallowestBelow(a, b, 3.0)).toBeCloseTo(2.5, 6);
+  });
+
+  it('cells at or above the threshold never count (strictly below)', () => {
+    expect(m.segmentShallowestBelow(a, b, 2.6)).toBeCloseTo(2.5, 6); // 2.8 >= 2.6 excluded
+    expect(m.segmentShallowestBelow(a, b, 2.5)).toBeNull(); // 2.5 is not < 2.5
+    expect(m.segmentShallowestBelow(a, b, 2.0)).toBeNull();
+  });
+
+  it('deep-capped cells (byte 255) never count as shallow — the cap is "≥ 25.4 m", not a reading', () => {
+    const deep = makeMask(() => 255);
+    expect(deep.segmentShallowestBelow(a, b, 30)).toBeNull();
+  });
+});
+
 describe('NavMask.depthInfoM', () => {
   const inBounds = { lat: 54.75, lon: 10.2 };
 

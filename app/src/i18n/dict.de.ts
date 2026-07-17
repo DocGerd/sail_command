@@ -30,6 +30,9 @@ export const de = {
   'planner.status.fetching': 'Windvorhersage wird geladen…',
   'planner.status.routing': 'Route wird berechnet…',
   'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
+  // #53: relaxed-depth probe phase after an unreachable requested-depth solve
+  'planner.status.probing':
+    'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
   'error.offline':
     'Windvorhersagedienst nicht erreichbar. Internetverbindung prüfen und erneut versuchen.',
   'error.rateLimited':
@@ -60,6 +63,11 @@ export const de = {
   'route.recommended': 'Empfohlen',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
+  // #53: honest passage-planning-aid copy — charted data may under- OR
+  // overstate real depths (dredged channels are exactly where chart data is
+  // pessimistic); never claim the route is verified safe.
+  'route.shallow.banner':
+    'Achtung: Diese Route quert Wasser, das flacher kartiert ist als die eingestellte Sicherheitstiefe von {requested} m — geringste kartierte Tiefe entlang der Route: {minGate} m. Kartendaten können reale Tiefen unter- wie überschätzen; insbesondere ausgebaggerte Fahrrinnen sind oft tiefer als kartiert. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -92,6 +100,7 @@ export const de = {
   'route.legend.maneuver': 'Wende/Halse',
   'route.legend.headingChange': 'Kursänderung',
   'route.legend.via': 'Zwischenpunkt',
+  'route.legend.shallow': 'Flacher als Sicherheitstiefe kartiert',
   'route.exportGpx': 'GPX exportieren',
   'route.windBarbs.toggle': 'Windpfeile anzeigen',
   'route.windBarbs.timeSlider': 'Vorhersagezeitpunkt',

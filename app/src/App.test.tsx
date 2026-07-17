@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import App from './App';
+import App, { toPlannerStatus } from './App';
 import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
 import { en } from './i18n/dict.en';
@@ -1086,5 +1086,26 @@ describe('harbor marker click-to-pick (#38)', () => {
     expect(
       screen.queryByRole('checkbox', { name: de['route.windBarbs.toggle'] }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
+  // The adapter only uses `t` on the error branch (t(messageKey)); an identity
+  // stub is enough to pin the passthrough there.
+  const t = ((key: string) => key) as unknown as Parameters<typeof toPlannerStatus>[2];
+
+  it("maps usePlanFlow's 'probing-depth' to the panel's { phase: 'probing' }", () => {
+    expect(toPlannerStatus({ phase: 'probing-depth' }, 0, t)).toEqual({ phase: 'probing' });
+  });
+
+  // Guard the sibling branches too, so the probing mapping isn't a lone case a
+  // typo could silently collapse into another phase.
+  it('maps the sibling planning phases to their own panel phases', () => {
+    expect(toPlannerStatus({ phase: 'idle' }, 0, t)).toEqual({ phase: 'idle' });
+    expect(toPlannerStatus({ phase: 'fetching-wind' }, 0, t)).toEqual({ phase: 'fetching' });
+    expect(toPlannerStatus({ phase: 'error', messageKey: 'error.internal' }, 0, t)).toEqual({
+      phase: 'error',
+      message: 'error.internal',
+    });
   });
 });

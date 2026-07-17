@@ -394,6 +394,33 @@ function ProfileChart({
         );
       })}
 
+      {/* #53: legs flagged as crossing cells charted below the plan's
+          REQUESTED safety depth (leg.shallow, persisted with the plan) —
+          emphasized beyond the generic render-time tint above: a stronger
+          band plus a solid marker bar along the top edge. */}
+      {legs.map((leg, k) =>
+        leg.shallow ? (
+          <g key={`sw${k}`} className="dp-shallow-leg">
+            <rect
+              x={xOf(leg.startTimeMs).toFixed(1)}
+              y={y0}
+              width={Math.max(1, xOf(leg.endTimeMs) - xOf(leg.startTimeMs)).toFixed(1)}
+              height={plotH.toFixed(1)}
+              fill={SAFETY_COLOR}
+              opacity="0.28"
+            />
+            <line
+              x1={xOf(leg.startTimeMs).toFixed(1)}
+              y1={(y0 + 1.5).toFixed(1)}
+              x2={xOf(leg.endTimeMs).toFixed(1)}
+              y2={(y0 + 1.5).toFixed(1)}
+              stroke={SAFETY_COLOR}
+              strokeWidth="3"
+            />
+          </g>
+        ) : null,
+      )}
+
       {/* Motor bands (grey hatch) over the motor legs' time spans */}
       {legs.map((leg, k) =>
         leg.kind === 'motor' ? (

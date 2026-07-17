@@ -18,6 +18,10 @@ export interface LegProperties {
   // imports the i18n dictionary; the 'M' default only mirrors that
   // language-invariant key for standalone/test callers.
   speedLabel: string;
+  // #53: true when the leg crosses cells charted below the plan's requested
+  // safety depth (leg.shallow present) — RouteLayer's sc-route-shallow
+  // highlight layer filters on it.
+  shallow: boolean;
 }
 
 export function legsToFeatureCollection(
@@ -45,6 +49,7 @@ export function legsToFeatureCollection(
           leg.kind === 'motor'
             ? `${motorLetter} · ${formatKn(leg.speedKn)}`
             : formatKn(leg.speedKn),
+        shallow: leg.shallow !== undefined,
       },
     })),
   };

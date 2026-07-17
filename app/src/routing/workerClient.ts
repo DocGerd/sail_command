@@ -2,6 +2,9 @@ import type { PlanRequest, PlanResult, Rig, WindGrid } from '../types';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 
 type ProgressCb = (rig: Rig, tMs: number, frontierSize: number) => void;
+// #53 relaxed-depth probe phase (one call per mask-connectivity probe). Not
+// throttled like ProgressCb: a whole search is at most a handful of probes.
+type ProbeCb = (probeDepthM: number, done: number, total: number) => void;
 
 const RIGS: readonly Rig[] = ['genoa', 'fock'];
 
@@ -16,6 +19,7 @@ interface PendingEntry {
   resolve: (r: PlanResult) => void;
   reject: (e: Error) => void;
   onProgress?: ProgressCb;
+  onProbe?: ProbeCb;
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -55,6 +59,8 @@ export class RoutingClient {
       if (last !== undefined && now - last < 100) return;
       this.lastProgressAt.set(key, now);
       this.pending.get(msg.id)?.onProgress?.(msg.rig, msg.tMs, msg.frontierSize);
+    } else if (msg.type === 'probe') {
+      this.pending.get(msg.id)?.onProbe?.(msg.probeDepthM, msg.done, msg.total);
     } else if (msg.type === 'result') {
       this.settle(msg.id, (entry) => entry.resolve(msg.result));
     } else if (msg.id) {
@@ -104,6 +110,7 @@ export class RoutingClient {
     windGrid: WindGrid,
     onProgress?: ProgressCb,
     timeoutMs: number = DEFAULT_PLAN_TIMEOUT_MS,
+    onProbe?: ProbeCb,
   ): Promise<PlanResult> {
     await this.ready;
     if (this.disposed) throw new Error('RoutingClient disposed');
@@ -119,11 +126,14 @@ export class RoutingClient {
       const timer = setTimeout(() => {
         this.settle(id, (entry) => entry.reject(new Error('routing timed out')));
       }, timeoutMs);
-      // exactOptionalPropertyTypes: `onProgress` is `ProgressCb | undefined`
-      // here (an omitted arg), but the map's value type declares it as
+      // exactOptionalPropertyTypes: `onProgress`/`onProbe` are `... | undefined`
+      // here (omitted args), but the map's value type declares them as
       // optional-if-present, not optional-or-undefined — so an absent
-      // callback must omit the key entirely rather than set it to undefined.
-      this.pending.set(id, onProgress ? { resolve, reject, onProgress, timer } : { resolve, reject, timer });
+      // callback must omit its key entirely rather than set it to undefined.
+      const entry: PendingEntry = { resolve, reject, timer };
+      if (onProgress) entry.onProgress = onProgress;
+      if (onProbe) entry.onProbe = onProbe;
+      this.pending.set(id, entry);
       this.worker.postMessage({ type: 'plan', id, request, windGrid } satisfies WorkerRequest);
     });
   }

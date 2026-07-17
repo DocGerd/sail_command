@@ -40,6 +40,10 @@ export default function RouteLegend() {
           <span className="route-legend-swatch route-legend-via" aria-hidden="true" />
           {t('route.legend.via')}
         </li>
+        <li>
+          <span className="route-legend-swatch route-legend-shallow" aria-hidden="true" />
+          {t('route.legend.shallow')}
+        </li>
       </ul>
     </details>
   );

@@ -34,15 +34,66 @@ describe('worker protocol handler', () => {
       request: {
         // cell centers (grid step 0.005°): keep the spec-mandated 300 m snap
         // radius and adapt test geometry rather than loosen it.
-        origin: { lat: 54.7525, lon: 10.0025 }, destination: { lat: 54.7525, lon: 10.3025 },
-        viaPoints: [], originHarborId: null, destinationHarborId: null,
-        departureMs: Date.UTC(2026, 6, 15, 8, 0, 0), settings: DEFAULT_SETTINGS,
+        origin: { lat: 54.7525, lon: 10.0025 },
+        destination: { lat: 54.7525, lon: 10.3025 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
+        settings: DEFAULT_SETTINGS,
       },
       windGrid: uniformWindGrid(12, 0),
     });
     const result = out.find((m) => m.type === 'result');
     expect(result && result.type === 'result' && result.result.status).toBe('ok');
     expect(out.some((m) => m.type === 'progress')).toBe(true);
+  });
+
+  it('a depth-unreachable plan degrades through the worker: probe messages, then a shallow result (#53)', () => {
+    // E-W corridor (rows 85..105) split by a wall at col 160 whose only
+    // opening (rows 90..99) is charted 2.5 m — unreachable at the default
+    // 3.0 m, connected at gates <= 2.5 m.
+    const data = new Uint8Array(TEST_MASK_META.rows * TEST_MASK_META.cols);
+    for (let r = 0; r < TEST_MASK_META.rows; r++)
+      for (let c = 0; c < TEST_MASK_META.cols; c++) {
+        let byte = 0;
+        if (r >= 85 && r <= 105) byte = c !== 160 ? 200 : r >= 90 && r <= 99 ? 25 : 0;
+        data[r * TEST_MASK_META.cols + c] = byte;
+      }
+    const out: WorkerResponse[] = [];
+    const handle = createHandler((m) => out.push(m));
+    handle({
+      type: 'init',
+      maskMeta: TEST_MASK_META,
+      maskBuffer: data.buffer,
+      polarGenoa: TEST_POLAR,
+      polarFock: FOCK,
+    });
+    handle({
+      type: 'plan',
+      id: 'p53',
+      request: {
+        origin: { lat: 54.7525, lon: 10.0025 },
+        destination: { lat: 54.7525, lon: 10.4025 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
+        settings: DEFAULT_SETTINGS,
+      },
+      windGrid: uniformWindGrid(12, 0),
+    });
+    const probes = out.filter((m) => m.type === 'probe');
+    // Hand-derived binary search over candidates 2.1..2.9: 2.5 ok, 2.7 fail, 2.6 fail.
+    expect(probes.map((m) => m.probeDepthM)).toEqual([2.5, 2.7, 2.6]);
+    const result = out.find((m) => m.type === 'result');
+    if (!result || result.type !== 'result' || result.result.status !== 'ok')
+      throw new Error('expected an ok result');
+    expect(result.result.shallow).toEqual({
+      requestedDepthM: 3.0,
+      usedDepthM: 2.5,
+      minGateDepthM: 2.5,
+    });
   });
 
   it('plan before init → fatal', () => {
@@ -67,9 +118,13 @@ describe('worker protocol handler', () => {
       type: 'plan',
       id: 'p1',
       request: {
-        origin: { lat: 54.7525, lon: 10.0025 }, destination: { lat: 54.7525, lon: 10.3025 },
-        viaPoints: [], originHarborId: null, destinationHarborId: null,
-        departureMs: Date.UTC(2026, 6, 15, 8, 0, 0), settings: DEFAULT_SETTINGS,
+        origin: { lat: 54.7525, lon: 10.0025 },
+        destination: { lat: 54.7525, lon: 10.3025 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
+        settings: DEFAULT_SETTINGS,
       },
       windGrid: badWindGrid,
     });
