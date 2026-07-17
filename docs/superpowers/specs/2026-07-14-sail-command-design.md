@@ -204,3 +204,49 @@ plan's stored grid and the committed mask (offline-safe, never re-fetched).
   are shaded distinctly. Rig duality: the profile follows the displayed rig result. Wide layout
   default-open, narrow collapsed. Shared `barbSegments` geometry keeps one WMO barb language
   across map and chart.
+
+## Addendum 2026-07-17: Graceful degradation below safety depth (#53)
+
+When the solver reports mask-unreachability at the requested safety depth (and ONLY for that
+failure class — calm+motor-off and beyond-horizon keep today's errors), the router degrades
+gracefully instead of failing hard. Motivating case: Flensburg → Marstal at default 3.0 m, where
+EMODnet 46 m cells can't resolve Marstal's dredged approach (#9) and the snap pocket only connects
+at gate depths ≤ 2.3 m.
+
+- **Relaxed-depth discovery (mask-side, not solver retries).** The worker binary-searches the
+  HIGHEST quantized depth (decimeter steps, floor = boat draft 2.1 m, ceiling = one decimeter
+  BELOW requested — the requested gate has already failed, directly or via the pre-check) at which
+  the destination snap cell is 4-connected to the start snap cell — each probe a cheap mask BFS,
+  no isochrone run. On a CONNECTED mask where the solver still reports `unreachable` (channel
+  vs. step-length geometry), every probe trivially connects and the search lands at
+  requested − 0.1 m. The full solver then runs ONCE per rig at that single relaxed depth (depth
+  gates are rig-independent, so genoa/fock stay apples-to-apples by construction). If requested
+  ≤ 2.1 m, no relaxation is attempted and today's `unreachable` error stands. If the relaxed
+  solve itself fails, its OWN failure class is reported — beyond-horizon and calm+motor-off
+  propagate (they are actionable: change departure / refresh forecast / enable motor); only
+  mask-level failure remains `unreachable`. The already-transferred mask is reused in-worker;
+  never re-transferred. Progress reporting covers the probe phase. The user's `safetyDepthM`
+  setting is NEVER mutated — relaxation is per-plan, not sticky.
+  *Amendment (2026-07-17, PR #68 review):* mask-unreachability may equivalently be established by
+  a connectivity pre-check at the REQUESTED gate (same snapped start/dest cells the solver uses,
+  4-connected BFS) without running the doomed solves first — the BFS-reachable set is a superset
+  of any solver path (every emitted leg is segmentNavigable-validated over 4-connected cell
+  walks), so the classification is exact. Consequence: on a DISCONNECTED mask the requested-gate
+  solves are skipped and classification starts as `unreachable`; if the relaxed solve then fails
+  for a non-mask reason, that reason is reported per the propagation rule above. On connected
+  masks the solver runs and its failure reason is used verbatim.
+- **Result contract (structured-clone-safe).** Plan-level `shallow?: { requestedDepthM,
+  usedDepthM, minGateDepthM }` (minGateDepthM = shallowest charted cell actually traversed below
+  the requested depth). Per-leg flagging of legs whose geometry crosses cells below the requested
+  depth, carrying that leg's minimum charted depth, so map and depth profile can highlight them.
+- **UI.** Prominent warning banner on the route summary (both rig results) naming requested vs.
+  minimum charted gate depth; flagged legs highlighted on the map and emphasized in the depth
+  profile using the established safety-depth warning color (#E69F00). Copy is honest
+  passage-planning-aid language: charted data may under- OR overstate real depths (dredged
+  channels are exactly where chart data is pessimistic) — never "verified safe". de/en dict
+  parity. Warnings persist with the saved plan (IndexedDB round-trip) and render identically on
+  reload.
+- **Acceptance.** Flensburg → Marstal at `DEFAULT_SETTINGS` returns a route WITH shallow warnings
+  (realmask acceptance test updated accordingly — the pinned "unreachable at 3.0 m is correct"
+  note is superseded); a genuinely unreachable destination still errors; relaxation never gates
+  below 2.1 m; both dicts updated.
