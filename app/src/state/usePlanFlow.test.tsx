@@ -313,6 +313,59 @@ describe('usePlanFlow', () => {
     expect(result.current.planning).toEqual({ phase: 'idle' });
   });
 
+  it('a relaxed-depth probe enters probing-depth and resets the per-rig high-water so the relaxed re-solve is not clamped flat (#53/#68)', async () => {
+    let now = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+
+    const w = fakeWorker();
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
+      { wrapper: AppStateProvider },
+    );
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'Test plan');
+      await flush();
+    });
+
+    const planMsg = findPosted(w.posted, 'plan');
+
+    // The doomed requested-depth solve advances genoa's clock to 5000.
+    act(() => {
+      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 5000, frontierSize: 3 });
+    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 5000 });
+
+    // The worker starts probing relaxed depth gates (mask BFS): the UI shows
+    // the probe phase, not a routing bar frozen at the doomed run's progress.
+    act(() => {
+      w.emit({ type: 'probe', id: planMsg.id, probeDepthM: 2.5, done: 1, total: 4 });
+    });
+    expect(result.current.planning).toEqual({ phase: 'probing-depth' });
+
+    // The relaxed re-solve restarts each rig's clock from scratch. Its early
+    // genoa tMs (200) is BELOW the doomed run's 5000 high-water: without the
+    // probe's reset it would clamp to 5000 (Math.max) and read as a stall.
+    // The reset lets the genuine early progress (200) show through.
+    now += 150; // clear the 100 ms per-rig progress throttle
+    act(() => {
+      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 200, frontierSize: 2 });
+    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 200 });
+
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+  });
+
   it('a failed init does not stick: the next run() creates a fresh client and can succeed', async () => {
     const brokenWorker = fakeWorker({ failInit: true });
     const workingWorker = fakeWorker();

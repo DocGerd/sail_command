@@ -169,10 +169,13 @@ describe('real mask routing (issue #20)', () => {
   // shallow warnings instead of 'unreachable'. usedDepthM = 2.3 was derived
   // INDEPENDENTLY of the router: a standalone stack-based flood fill over the
   // raw committed mask.bin reports the Flensburg/Marstal snap cells connected
-  // at every decimeter gate <= 2.3 m and disconnected at >= 2.4 m (matching
-  // the 2.3 m gate documented in pipeline/verify_mask.py's
-  // CONNECTIVITY_EXCEPTIONS_M); the in-test cellsConnected assertions below
-  // cross-check the shipped BFS against those literals. Runtime ≈ the 2.3 m
+  // at every decimeter gate <= 2.3 m and disconnected at >= 2.4 m. That 2.3 m
+  // is the measured reconnection threshold recorded in the PROSE comment of
+  // pipeline/verify_mask.py's CONNECTIVITY_EXCEPTIONS_M["marstal"] entry; the
+  // entry's actual gate VALUE is 2.0 m — a deliberate safety margin below the
+  // 2.3 m, used only for the pipeline's connectivity self-check, never for
+  // routing. The in-test cellsConnected assertions below cross-check the
+  // shipped BFS against the 2.3 m reconnection literal. Runtime ≈ the 2.3 m
   // case above (the disconnection fast path skips the doomed 3.0 m solves;
   // the relaxed solve does the same work as a direct 2.3 m plan), hence the
   // same generous timeout.

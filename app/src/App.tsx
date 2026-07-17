@@ -57,7 +57,11 @@ const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
 // `progress` is simulatedToMs's advance through the departure->forecast-
 // horizon window — an approximation (the router may finish well before the
 // horizon), good enough for a progress indicator.
-function toPlannerStatus(
+// Exported for a focused unit test of the phase mapping (App.test.tsx) — the
+// full render can't easily hold the transient 'probing-depth' phase, and the
+// adapter is the single point where a phase-mapping typo would slip through.
+// eslint-disable-next-line react-refresh/only-export-components
+export function toPlannerStatus(
   flow: FlowPlanningState,
   departureMs: number,
   t: ReturnType<typeof useT>,

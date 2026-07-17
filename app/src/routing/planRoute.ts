@@ -32,6 +32,22 @@ interface RunOut {
 }
 
 /**
+ * #68 reason propagation: fold the two rigs' failure reasons from the RELAXED
+ * re-solve into one plan-level reason. Precedence encodes actionability, so the
+ * class the user can act on wins when the rigs disagree:
+ *   'beyond-horizon' (change departure / refresh forecast)
+ *   > 'calm-motor-off' (enable motor)
+ *   > 'unreachable' (mask-level, nothing the user can change).
+ * Both rigs share mask/wind/waypoints and differ only in polar table, so a
+ * disagreement is rare — but the fold is deterministic so the result is stable.
+ */
+function combineNoRouteReason(a: NoRouteReason | null, b: NoRouteReason | null): NoRouteReason {
+  if (a === 'beyond-horizon' || b === 'beyond-horizon') return 'beyond-horizon';
+  if (a === 'calm-motor-off' || b === 'calm-motor-off') return 'calm-motor-off';
+  return 'unreachable';
+}
+
+/**
  * #53: flag every leg whose geometry crosses cells charted below the REQUESTED
  * safety depth with that leg's minimum charted depth, across both rig results,
  * and derive the plan-level ShallowInfo (minGateDepthM = shallowest such cell
@@ -189,8 +205,16 @@ export function planRoute(
         const shallow = flagShallowLegs(mask, relaxed, s.safetyDepthM, usedDepthM);
         return assemble(relaxed.genoa, relaxed.fock, shallow);
       }
+      // #68: relaxation FOUND a connected gate but both rigs still failed to
+      // solve there, so this is no longer a mask-level failure — propagate the
+      // relaxed solve's OWN class (beyond-horizon / calm-motor-off are
+      // actionable) rather than leaving the stale 'unreachable'. See
+      // combineNoRouteReason for the rig-disagreement precedence.
+      reason = combineNoRouteReason(relaxed.genoa.reason, relaxed.fock.reason);
     }
   }
-  // Even the relaxed solve failed (or nothing connected): today's error stands.
+  // The relaxed solve failed (or no gate connected / relaxation not attempted):
+  // report `reason` — 'unreachable' when the mask never connected, else the
+  // propagated relaxed-solve class.
   return { status: 'error', reason };
 }

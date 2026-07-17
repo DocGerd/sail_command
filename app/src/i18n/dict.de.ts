@@ -32,7 +32,7 @@ export const de = {
   'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
-    'Keine Route bei eingestellter Sicherheitstiefe — prüfe verringerte Tiefenfreigaben…',
+    'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
   'error.offline':
     'Windvorhersagedienst nicht erreichbar. Internetverbindung prüfen und erneut versuchen.',
   'error.rateLimited':
@@ -67,7 +67,7 @@ export const de = {
   // overstate real depths (dredged channels are exactly where chart data is
   // pessimistic); never claim the route is verified safe.
   'route.shallow.banner':
-    'Achtung: Diese Route quert Wasser, das flacher kartiert ist als die eingestellte Sicherheitstiefe von {requested} m — geringste kartierte Tiefe entlang der Route: {minGate} m. Kartendaten können reale Tiefen unter- wie überschätzen; gerade ausgebaggerte Fahrrinnen sind oft tiefer als kartiert. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+    'Achtung: Diese Route quert Wasser, das flacher kartiert ist als die eingestellte Sicherheitstiefe von {requested} m — geringste kartierte Tiefe entlang der Route: {minGate} m. Kartendaten können reale Tiefen unter- wie überschätzen; insbesondere ausgebaggerte Fahrrinnen sind oft tiefer als kartiert. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',

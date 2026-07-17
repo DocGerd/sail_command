@@ -72,10 +72,24 @@ describe('planRoute graceful shallow degradation (#53)', () => {
       expect(flagged.length).toBeGreaterThan(0);
       // The only sub-3.0 cells in this mask are the 2.5 m gap cells.
       for (const leg of flagged) expect(leg.shallow!.minDepthM).toBeCloseTo(2.5, 6);
+      // Independent depth-along-geometry oracle for the flag state, NOT a
+      // re-call of segmentShallowestBelow (which SETS the flag — asserting the
+      // flag against its own source can never fail). This mask's ONLY sub-3.0
+      // water is the 2.5 m gap in the wall at col 160, whose lon span is
+      // [10.200, 10.205] (west edge 9.4 + 160*0.005, east edge 9.4 + 161*0.005);
+      // every other corridor cell is 20 m. Since each emitted leg is
+      // navigable-validated at 2.5 m, it can only cross the wall column THROUGH
+      // that gap — so a leg is shallow-flagged iff its lon span straddles the
+      // gap column. Endpoints are solver-computed positions, never exactly on a
+      // cell boundary, so the strict inequalities are safe.
+      const GAP_W = 9.4 + 160 * 0.005; // 10.200
+      const GAP_E = 9.4 + 161 * 0.005; // 10.205
       for (const leg of rig!.legs) {
         expect(mask.segmentNavigable(leg.start, leg.end, 2.5)).toBe(true);
-        // Unflagged legs really don't cross sub-requested water.
-        if (!leg.shallow) expect(mask.segmentShallowestBelow(leg.start, leg.end, 3.0)).toBeNull();
+        const straddlesGap =
+          Math.min(leg.start.lon, leg.end.lon) < GAP_E &&
+          Math.max(leg.start.lon, leg.end.lon) > GAP_W;
+        expect(Boolean(leg.shallow)).toBe(straddlesGap);
       }
       // The route genuinely uses the relaxed gate (some leg fails at 3.0 m).
       expect(rig!.legs.some((l) => !mask.segmentNavigable(l.start, l.end, 3.0))).toBe(true);
@@ -121,6 +135,30 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     );
     expect(r).toEqual({ status: 'error', reason: 'beyond-horizon' });
     expect(probes).toEqual([]);
+  });
+
+  it('propagates the relaxed solve reason: disconnected at requested, but beyond-horizon at the relaxed gate (#68)', () => {
+    const probes: ProbeInfo[] = [];
+    // Gap charted 2.5 m: DISCONNECTED at the requested 3.0 m gate, so the
+    // connected-mask fast path is skipped and classification starts
+    // 'unreachable'; CONNECTED at 2.5 m, so relaxation runs the solver once per
+    // rig at that gate. The 3-hour grid (06..08 UTC) with an 08:00 departure
+    // overruns the forecast horizon on the very first step, so BOTH relaxed
+    // solves fail 'beyond-horizon'. Because relaxation DID find a connected
+    // gate, the failure is no longer mask-level: the plan-level reason must
+    // propagate the actionable 'beyond-horizon', not the stale 'unreachable'.
+    // (Before #68 this returned 'unreachable' — the relaxed class was dropped.)
+    const r = planRoute(
+      req,
+      uniformWindGrid(12, 0, { hours: 3 }),
+      depsWith(corridorGapMask(25)),
+      undefined,
+      (p) => probes.push(p),
+    );
+    expect(r).toEqual({ status: 'error', reason: 'beyond-horizon' });
+    // Relaxation actually ran: same hand-derived descent as the successful
+    // case above (2.5 connects, 2.7/2.6 fail → relaxed gate 2.5).
+    expect(probes.map((p) => p.probeDepthM)).toEqual([2.5, 2.7, 2.6]);
   });
 
   it('a genuinely unreachable destination still errors unreachable after the probe descent', () => {

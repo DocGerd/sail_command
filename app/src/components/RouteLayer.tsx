@@ -49,11 +49,20 @@ const BARB_SOURCE = 'sc-barbs';
 // together (heading dots stay on — they're tiny and minzoom-gated).
 const ANNOTATION_LAYERS = ['sc-eta-primary', 'sc-eta-secondary', 'sc-leg-speed'] as const;
 const EMPTY_FC = { type: 'FeatureCollection' as const, features: [] };
-// Exported as the cross-component z-order anchor: DataLayers inserts its
-// plan-independent layers BEFORE this one (below the whole route stack). Shared
-// so a rename here can't silently break that ordering (a stale string literal
-// would resolve to no beforeId and drop the layers on top, with no error).
+// The active-leg halo. Translucent, and (since #68) painted ABOVE the shallow
+// casing so a leg that is both shallow and active keeps BOTH signals — the
+// yellow "you are here" wash on top, the orange shallow casing showing through
+// beneath — instead of the halo being reduced to a sliver. Still below the
+// sail/motor route lines.
 export const HIGHLIGHT_LAYER = 'sc-route-highlight';
+// #53 shallow-leg casing AND the cross-component z-order anchor: it is the
+// bottom-most layer of RouteLayer's stack (added first in setupLayers), so
+// DataLayers inserts its plan-independent layers BEFORE this one — below the
+// whole route stack, so the depth overlay never paints over the shallow
+// warning. Exported/shared so a rename here can't silently break that ordering
+// (a stale string literal would resolve to no beforeId and drop the layers on
+// top, with no error).
+export const ROUTE_STACK_BOTTOM_LAYER = 'sc-route-shallow';
 // No leg can ever have this index — an always-false filter, used while no
 // leg is active instead of toggling the layer's visibility on/off.
 const NO_HIGHLIGHT_IDX = -1;
@@ -81,10 +90,33 @@ function setupLayers(map: MaplibreMap): void {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     });
-    // Halo layer, added first so it paints underneath the sail/motor lines
-    // added below. Starts matching nothing (NO_HIGHLIGHT_IDX); the
-    // activeLegIndex-sync effect below re-filters it with a cheap
-    // setFilter() call — never a source re-set — as the live fix moves.
+    // #53 shallow-leg casing — a wide casing under the sail/motor route lines
+    // in the established safety-depth warning color (#E69F00: depth overlay +
+    // DepthProfile), marking legs that cross cells charted below the plan's
+    // requested safety depth. Added FIRST so it is the bottom-most route layer:
+    // it is the z-order anchor DataLayers inserts below (the depth overlay must
+    // never paint over this warning), and the translucent active-leg halo is
+    // added right after so the halo paints ABOVE this casing rather than being
+    // occluded by it — before #68 a leg that was both shallow and active kept
+    // only a sliver of the halo.
+    map.addLayer({
+      id: ROUTE_STACK_BOTTOM_LAYER,
+      type: 'line',
+      source: ROUTE_SOURCE,
+      filter: ['==', ['get', 'shallow'], true],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-width': 9,
+        'line-color': '#E69F00',
+        'line-opacity': 0.8,
+      },
+    });
+    // Active-leg halo, added above the shallow casing but still before (below)
+    // the sail/motor lines. Translucent (0.55), so on a shallow+active leg the
+    // orange casing shows through the yellow wash and both stay legible. Starts
+    // matching nothing (NO_HIGHLIGHT_IDX); the activeLegIndex-sync effect below
+    // re-filters it with a cheap setFilter() call — never a source re-set — as
+    // the live fix moves.
     map.addLayer({
       id: HIGHLIGHT_LAYER,
       type: 'line',
@@ -96,23 +128,6 @@ function setupLayers(map: MaplibreMap): void {
         'line-color': '#FFD400',
         'line-opacity': 0.55,
         'line-blur': 1,
-      },
-    });
-    // #53: shallow-leg highlight — a wide casing under the sail/motor lines
-    // (added before them, above the active-leg halo) in the established
-    // safety-depth warning color (#E69F00: depth overlay + DepthProfile),
-    // marking legs that cross cells charted below the plan's requested
-    // safety depth.
-    map.addLayer({
-      id: 'sc-route-shallow',
-      type: 'line',
-      source: ROUTE_SOURCE,
-      filter: ['==', ['get', 'shallow'], true],
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: {
-        'line-width': 9,
-        'line-color': '#E69F00',
-        'line-opacity': 0.8,
       },
     });
     // Two filtered layers rather than one data-driven layer: line-dasharray

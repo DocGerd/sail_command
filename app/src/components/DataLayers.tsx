@@ -6,7 +6,7 @@ import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
-import { HIGHLIGHT_LAYER } from './RouteLayer';
+import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import type { Harbor, MaskMeta } from '../types';
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
@@ -36,8 +36,9 @@ export const HARBOR_CIRCLE_LAYER = 'sc-harbor-points';
 const HARBOR_LABEL_LAYER = 'sc-harbor-labels';
 
 // Deterministic cross-component layer ordering, anchored on RouteLayer's
-// bottom-most layer (HIGHLIGHT_LAYER, the first its setupLayers adds — imported
-// so a rename can't silently drop the ordering). Both components add layers
+// bottom-most layer (ROUTE_STACK_BOTTOM_LAYER, the shallow casing — the first
+// its setupLayers adds — imported so a rename can't silently drop the
+// ordering). Both components add layers
 // whenever their own prerequisites happen to resolve, so ordering must hold for
 // either interleaving, not by load-order luck:
 // - Route layers exist first (the common case — they only wait for the map
@@ -75,8 +76,8 @@ function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElemen
 }
 
 function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer): void {
-  // Anchor resolved at add time — see HIGHLIGHT_LAYER above.
-  const beforeId = map.getLayer(HIGHLIGHT_LAYER) ? HIGHLIGHT_LAYER : undefined;
+  // Anchor resolved at add time — see ROUTE_STACK_BOTTOM_LAYER above.
+  const beforeId = map.getLayer(ROUTE_STACK_BOTTOM_LAYER) ? ROUTE_STACK_BOTTOM_LAYER : undefined;
   if (!map.getSource(DEPTH_SOURCE)) {
     const canvas = buildDepthCanvas(meta, maskBuffer);
     if (canvas) {
