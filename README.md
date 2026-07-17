@@ -19,6 +19,12 @@ account or backend.
 
 **Live app:** https://docgerd.github.io/sail_command/
 
+## Screenshots
+
+| Start view | Planned route |
+|---|---|
+| ![Start view: map with curated harbors](docs/screenshots/start-view.png) | ![Planned route with per-leg detail and rig recommendation](docs/screenshots/plan-route.png) |
+
 ## Install on Android
 
 Open the live URL in Chrome, then use the browser menu → **Add to Home
@@ -75,6 +81,33 @@ npm --prefix app/ run build                      # production build to app/dist
 isochrone routing, mask queries, persistence, UI) and takes about 4 minutes.
 `npm run e2e` builds the app and drives it with Playwright, including a
 true offline reload against a killed preview server.
+
+Timeout policy: solver-heavy test files set generous file-level timeouts
+(`vi.setConfig({ testTimeout: 120_000 })`; the seeded property suite carries
+900 s) because CI runners are 6–10× slower than dev machines — don't add
+tighter per-test timeouts.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph pipeline ["Build time — pipeline/ (run on demand, never at app runtime)"]
+    EMOD["EMODnet bathymetry (DTM 2024)"] --> MASK["build_mask.py → mask.bin (packed ~46 m cells, quantized depth)"]
+    OSMLP["OSM land polygons"] --> MASK
+    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs → polar-genoa/fock.json"]
+    CUR["curated harbor list"] --> HARB["build_harbors.mjs → harbors.json"]
+    PROTO["Protomaps extract"] --> PMT["basemap.pmtiles"]
+  end
+  MASK & POLARS & HARB & PMT --> ASSETS["committed static assets — app/public/data/"]
+  subgraph app ["Runtime — app/ (PWA, no backend)"]
+    ASSETS --> UI["React + MapLibre GL UI"]
+    UI -->|"plan request"| WORKER["isochrone router (Web Worker), tack/gybe time penalty, dual-rig"]
+    OM["Open-Meteo hourly wind (browser-direct)"] --> WORKER
+    WORKER -->|"Plan (legs, wind grid)"| UI
+    UI <--> IDB[("IndexedDB — saved plans incl. their wind grids")]
+    SW["service worker — ~33 MB precache + runtime font cache"] -.-> UI
+  end
+```
 
 ## Data pipeline
 
