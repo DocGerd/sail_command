@@ -11,6 +11,7 @@ import {
   nearestHourIndex,
   routePointFeatures,
 } from '../lib/routeGeoJson';
+import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { registerBarbImages } from '../lib/windBarbs';
 import { NavMask } from '../lib/mask';
 import { loadRoutingAssets } from '../services/assets';
@@ -304,7 +305,10 @@ function setupLayers(map: MaplibreMap): void {
         'icon-rotate': ['get', 'dirFromDeg'],
         'icon-rotation-alignment': 'map',
         'icon-allow-overlap': true,
-        visibility: 'none', // togglable via the barbsVisible control below
+        // Hidden at creation; the barbsVisible sync effect applies the
+        // persisted/default state (ON for a fresh profile — #63) in the same
+        // commit, before any paint.
+        visibility: 'none',
       },
     });
   }
@@ -320,10 +324,14 @@ export default function RouteLayer({
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
-  const [barbsVisible, setBarbsVisible] = useState(false);
-  // "Times & speeds" escape hatch — the single clean-chart toggle over the ETA
-  // and per-leg-speed labels. Defaults ON (a skipper wants the numbers).
-  const [annotationsVisible, setAnnotationsVisible] = useState(true);
+  // #63: both overlays default ON (a skipper wants the wind and the numbers
+  // without hunting for checkboxes) and persist an explicit choice across
+  // reloads. The toggles below stay as the clean-chart escape hatch.
+  const [barbsVisible, setBarbsVisible] = usePersistedToggle('sc-barbs-visible', true);
+  const [annotationsVisible, setAnnotationsVisible] = usePersistedToggle(
+    'sc-annotations-visible',
+    true,
+  );
   // Real land/depth mask for barb land-culling — loaded once, best-effort.
   // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
   // transferred, never mutated). null until it resolves; sampling skips

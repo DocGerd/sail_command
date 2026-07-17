@@ -6,6 +6,7 @@ import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
+import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import type { Harbor, MaskMeta } from '../types';
 
@@ -95,7 +96,10 @@ function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer):
           id: DEPTH_LAYER,
           type: 'raster',
           source: DEPTH_SOURCE,
-          layout: { visibility: 'none' }, // toggle default OFF
+          // Hidden at creation; the depthVisible sync effect (below, same
+          // commit) applies the persisted/default state — ON for a fresh
+          // profile (#63) — before any paint.
+          layout: { visibility: 'none' },
           // Opacity lives in the ramp's per-pixel alpha (land fully
           // transparent, deep water fading out); no fade so the toggle
           // flips instantly.
@@ -162,9 +166,9 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
-  // Session-only, default OFF — mirrors RouteLayer's barbsVisible toggle,
-  // which likewise does not persist across sessions.
-  const [depthVisible, setDepthVisible] = useState(false);
+  // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
+  // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
+  const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
   const [assets, setAssets] = useState<RoutingAssets | null>(null);
   // Same pattern and rationale as RouteLayer's styleReady state. Registered
   // from a [map]-effect (below) so the whenStyleReady call happens at map

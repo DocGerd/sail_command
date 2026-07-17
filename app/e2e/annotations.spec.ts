@@ -66,9 +66,12 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
         return map ? map.queryRenderedFeatures({ layers: ['sc-wind-barbs'] }).length : -1;
       });
 
+    // --- #63: barbs are ON by default for a fresh profile (clean Playwright
+    // context) — no click needed before they render. ---
+    await expect(barbToggle).toBeChecked();
+
     // --- #36: overview zoom shows many barbs (the reported repro was "barely
     // any barbs at overview") ---
-    await barbToggle.check();
     await expect.poll(barbCount, { timeout: 30_000 }).toBeGreaterThan(3);
 
     // --- #37/#35: maneuver circles are kind-filtered to tack/gybe. The shared
