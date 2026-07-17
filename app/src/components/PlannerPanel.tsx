@@ -3,6 +3,7 @@ import type { Harbor, LatLon, PickedPoint, Settings } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { formatLatLon } from '../lib/format';
+import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
 import OptionsPanel from './OptionsPanel';
 import Card from './Card';
@@ -100,6 +101,13 @@ export default function PlannerPanel({
 }: PlannerPanelProps) {
   const t = useT();
   const [lang] = useLang();
+  const { recent, remember } = useRecentHarbors();
+  // Per-endpoint "editing" flag: a selected endpoint collapses to a compact row,
+  // and "Ändern"/"Change" reopens its combobox without clearing the selection.
+  // Arming map-pick clears it so the endpoint re-collapses once the map tap
+  // lands on the parent's origin/destination.
+  const [editingOrigin, setEditingOrigin] = useState(false);
+  const [editingDestination, setEditingDestination] = useState(false);
 
   // Soft form guidance for the datetime-local min/max, computed once at
   // mount — not a ticking clock; the actual horizon check happens server
@@ -109,31 +117,99 @@ export default function PlannerPanel({
     return { min: now, max: now + FORECAST_DAYS * 86_400_000 };
   });
 
+  // Full approach caveat for a selected endpoint row — only harbor picks carry a
+  // harborId to look one up; a map-tap pick has just a coordinate label.
+  const originHarbor =
+    origin?.source === 'harbor' ? harbors.find((h) => h.id === origin.harborId) : undefined;
+  const destinationHarbor =
+    destination?.source === 'harbor'
+      ? harbors.find((h) => h.id === destination.harborId)
+      : undefined;
+
   return (
     <div className="planner-panel">
       <Card title={t('planner.card.trip')} className="planner-trip">
         <section aria-label={t('planner.origin.label')} className="planner-endpoint">
           <h3 className="sc-section-title">{t('planner.origin.label')}</h3>
-          <p>{origin ? origin.label : t('planner.notSelected')}</p>
-          <Button variant="secondary" onClick={() => onRequestMapTap('origin')}>
+          {origin && !editingOrigin ? (
+            <div className="planner-endpoint-selected">
+              <span className="endpoint-pin" style={{ background: '#009e73' }} aria-hidden="true" />
+              <div className="endpoint-detail">
+                <p className="endpoint-name">{origin.label}</p>
+                {originHarbor?.approachNote && (
+                  <p className="endpoint-caveat">{originHarbor.approachNote[lang]}</p>
+                )}
+              </div>
+              <Button variant="ghost" onClick={() => setEditingOrigin(true)}>
+                {t('planner.change')}
+              </Button>
+            </div>
+          ) : (
+            <HarborPicker
+              harbors={harbors}
+              recentIds={recent}
+              onSelect={(h) => {
+                remember(h.id);
+                setEditingOrigin(false);
+                onPickOrigin(harborToPickedPoint(h, lang));
+              }}
+              // Abandoning a re-pick over a committed origin collapses back to
+              // the row (no-op on a first, still-unselected pick — origin stays
+              // null, so the combobox keeps showing).
+              onCancel={() => setEditingOrigin(false)}
+            />
+          )}
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setEditingOrigin(false);
+              onRequestMapTap('origin');
+            }}
+          >
             {t('planner.pickOnMap')}
           </Button>
-          <HarborPicker
-            harbors={harbors}
-            onSelect={(h) => onPickOrigin(harborToPickedPoint(h, lang))}
-          />
         </section>
 
         <section aria-label={t('planner.destination.label')} className="planner-endpoint">
           <h3 className="sc-section-title">{t('planner.destination.label')}</h3>
-          <p>{destination ? destination.label : t('planner.notSelected')}</p>
-          <Button variant="secondary" onClick={() => onRequestMapTap('destination')}>
+          {destination && !editingDestination ? (
+            <div className="planner-endpoint-selected">
+              <span
+                className="endpoint-pin"
+                style={{ background: 'var(--sc-accent)' }}
+                aria-hidden="true"
+              />
+              <div className="endpoint-detail">
+                <p className="endpoint-name">{destination.label}</p>
+                {destinationHarbor?.approachNote && (
+                  <p className="endpoint-caveat">{destinationHarbor.approachNote[lang]}</p>
+                )}
+              </div>
+              <Button variant="ghost" onClick={() => setEditingDestination(true)}>
+                {t('planner.change')}
+              </Button>
+            </div>
+          ) : (
+            <HarborPicker
+              harbors={harbors}
+              recentIds={recent}
+              onSelect={(h) => {
+                remember(h.id);
+                setEditingDestination(false);
+                onPickDestination(harborToPickedPoint(h, lang));
+              }}
+              onCancel={() => setEditingDestination(false)}
+            />
+          )}
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setEditingDestination(false);
+              onRequestMapTap('destination');
+            }}
+          >
             {t('planner.pickOnMap')}
           </Button>
-          <HarborPicker
-            harbors={harbors}
-            onSelect={(h) => onPickDestination(harborToPickedPoint(h, lang))}
-          />
         </section>
 
         <section aria-label={t('planner.via.label')} className="planner-via planner-endpoint">

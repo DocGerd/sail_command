@@ -24,6 +24,7 @@ const HARBORS = [FLENSBURG, MARSTAL];
 const DEPARTURE_MS = Date.UTC(2026, 6, 20, 9, 0, 0);
 
 interface Overrides {
+  harbors?: Harbor[];
   origin?: PickedPoint | null;
   destination?: PickedPoint | null;
   onPickOrigin?: (p: PickedPoint) => void;
@@ -97,22 +98,125 @@ describe('nextFullHourMs', () => {
 });
 
 describe('PlannerPanel', () => {
-  it('shows a placeholder when origin/destination are unset', () => {
+  it('shows a search combobox for each endpoint when none is selected', () => {
     renderPanel();
-    expect(screen.getAllByText('Not selected')).toHaveLength(2);
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    const destinationSection = screen.getByRole('region', { name: 'Destination' });
+    expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
+    expect(within(destinationSection).getByRole('combobox')).toBeInTheDocument();
   });
 
   it('renders the picked origin and destination labels', () => {
     renderPanel({
-      origin: { source: 'harbor', point: FLENSBURG.snap, harborId: FLENSBURG.id, label: 'Flensburg' },
-      destination: { source: 'harbor', point: MARSTAL.snap, harborId: MARSTAL.id, label: 'Marstal' },
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+      destination: {
+        source: 'harbor',
+        point: MARSTAL.snap,
+        harborId: MARSTAL.id,
+        label: 'Marstal',
+      },
     });
-    // Scoped to the <p> label, not the harbor-picker buttons that also
-    // render "Flensburg"/"Marstal" as list entries.
+    // Scoped to the selected-endpoint-row <p>: a selected endpoint collapses to
+    // a row, so no combobox option of the same name competes here.
     const originSection = screen.getByRole('region', { name: 'Origin' });
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
     expect(within(originSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument();
     expect(within(destinationSection).getByText('Marstal', { selector: 'p' })).toBeInTheDocument();
+  });
+
+  it('collapses a selected endpoint to a row (name + Change), hiding the combobox but keeping map-pick', () => {
+    renderPanel({
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    expect(within(originSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument();
+    expect(within(originSection).getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    expect(within(originSection).getByRole('button', { name: 'Pick on map' })).toBeInTheDocument();
+    expect(within(originSection).queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('reopens the combobox when Change is clicked on a selected endpoint', () => {
+    renderPanel({
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.click(within(originSection).getByRole('button', { name: 'Change' }));
+    expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
+  });
+
+  it('reverts a re-picked selected endpoint to its row when the search is dismissed with Escape', () => {
+    renderPanel({
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.click(within(originSection).getByRole('button', { name: 'Change' }));
+    const combobox = within(originSection).getByRole('combobox');
+    fireEvent.focus(combobox);
+    fireEvent.keyDown(combobox, { key: 'Escape' });
+    // The committed selection is unchanged, so the row comes back — no empty box.
+    expect(within(originSection).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(within(originSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument();
+    expect(within(originSection).getByRole('button', { name: 'Change' })).toBeInTheDocument();
+  });
+
+  it('reverts a re-picked selected endpoint to its row when the search loses focus without a pick', () => {
+    renderPanel({
+      origin: {
+        source: 'harbor',
+        point: FLENSBURG.snap,
+        harborId: FLENSBURG.id,
+        label: 'Flensburg',
+      },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.click(within(originSection).getByRole('button', { name: 'Change' }));
+    const combobox = within(originSection).getByRole('combobox');
+    fireEvent.focus(combobox);
+    fireEvent.blur(combobox);
+    expect(within(originSection).queryByRole('combobox')).not.toBeInTheDocument();
+    expect(within(originSection).getByRole('button', { name: 'Change' })).toBeInTheDocument();
+  });
+
+  it('keeps the combobox for a first, still-unselected endpoint when the search is dismissed', () => {
+    renderPanel(); // origin unset — no committed value to revert to
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    const combobox = within(originSection).getByRole('combobox');
+    fireEvent.focus(combobox);
+    fireEvent.keyDown(combobox, { key: 'Escape' });
+    expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
+  });
+
+  it('shows the full approach caveat on a selected endpoint row', () => {
+    const noted: Harbor = {
+      ...MARSTAL,
+      approachNote: { de: 'Enge Zufahrt.', en: 'Narrow entrance.' },
+    };
+    renderPanel({
+      harbors: [FLENSBURG, noted],
+      origin: { source: 'harbor', point: noted.snap, harborId: noted.id, label: 'Marstal' },
+    });
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    expect(within(originSection).getByText('Narrow entrance.')).toBeInTheDocument();
   });
 
   it('requests map-tap mode for the correct target when its "pick on map" button is clicked', () => {
@@ -129,7 +233,8 @@ describe('PlannerPanel', () => {
   it('picking a harbor from the origin search calls onPickOrigin with a PickedPoint, not onPickDestination', () => {
     const props = renderPanel();
     const originSection = screen.getByRole('region', { name: 'Origin' });
-    fireEvent.click(within(originSection).getByRole('button', { name: 'Marstal' }));
+    fireEvent.change(within(originSection).getByRole('combobox'), { target: { value: 'Marstal' } });
+    fireEvent.click(within(originSection).getByRole('option', { name: 'Marstal' }));
     expect(props.onPickOrigin).toHaveBeenCalledWith({
       source: 'harbor',
       point: MARSTAL.snap,
@@ -142,7 +247,10 @@ describe('PlannerPanel', () => {
   it('picking a harbor from the destination search calls onPickDestination with a PickedPoint', () => {
     const props = renderPanel();
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
-    fireEvent.click(within(destinationSection).getByRole('button', { name: 'Flensburg' }));
+    fireEvent.change(within(destinationSection).getByRole('combobox'), {
+      target: { value: 'Flensburg' },
+    });
+    fireEvent.click(within(destinationSection).getByRole('option', { name: 'Flensburg' }));
     expect(props.onPickDestination).toHaveBeenCalledWith({
       source: 'harbor',
       point: FLENSBURG.snap,
@@ -223,7 +331,7 @@ describe('PlannerPanel', () => {
       expect(items[1]).toHaveTextContent('54.820°N 9.950°E');
     });
 
-    it('removing a chip calls onRemoveVia with that chip\'s index', () => {
+    it("removing a chip calls onRemoveVia with that chip's index", () => {
       const props = renderPanel({ viaPoints: [VIA_A, VIA_B] });
       fireEvent.click(screen.getByRole('button', { name: 'Remove waypoint 2' }));
       expect(props.onRemoveVia).toHaveBeenCalledWith(1);
