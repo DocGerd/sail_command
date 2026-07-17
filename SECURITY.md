@@ -34,14 +34,16 @@ repository deliberately does **not** require a second human's approving review
 on pull requests: GitHub forbids approving your own PR, so requiring approvers
 (or last-push approval) would deadlock every merge. Review rigor is instead
 enforced by repository rulesets applied identically to both `main` and
-`develop`:
+`develop`, backed by a per-PR review workflow:
 
 - Pull-request-only merges — no direct pushes, no force-pushes, no branch
-  deletion.
+  deletion. *(ruleset)*
 - Required status checks `app` + `e2e` under the strict up-to-date policy.
-- Mandatory resolution of every review thread before merge.
-- A per-PR automated reviewer pass that posts inline review threads, each of
-  which must be addressed and resolved.
+  *(ruleset)*
+- Mandatory resolution of every review thread before merge. *(ruleset)*
+- A per-PR automated reviewer pass posts inline review threads — a workflow
+  practice, not a ruleset gate; the threads it opens are then covered by the
+  mandatory-resolution rule above. *(workflow)*
 
 For this reason the OpenSSF Scorecard *Branch-Protection* and *Code-Review*
 findings — which assume a multi-maintainer approving-review model — are
