@@ -17,23 +17,39 @@ export const COPYRIGHT_HOLDER_OVERRIDES = {
   '@protomaps/basemaps': '2019-2023 Protomaps LLC, Kelso Cartography',
 };
 
+// Drop every angle-bracket-delimited span (and any stray '<'/'>') by scanning
+// character by character, so the output can NEVER contain '<' or '>'. A '<'
+// opens a span that swallows characters up to its matching '>' (depth-counted,
+// so nested brackets are handled); an unclosed '<' truncates the rest of the
+// string. Using a scanner instead of `.replace(/<[^>]*>/g, '')` avoids the
+// "removal of a multi-character pattern can create a new instance" heuristic
+// that CodeQL js/incomplete-multi-character-sanitization flags (#69) — there
+// is no regex removal to be incomplete.
+function stripAngleBracketed(s) {
+  let out = '';
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === '<') depth += 1;
+    else if (ch === '>') {
+      if (depth > 0) depth -= 1;
+    } else if (depth === 0) {
+      out += ch;
+    }
+  }
+  return out;
+}
+
 // Copyright holder for the license template: verified override first, then
-// the package.json author field (string or object form; "<email>" and
-// "(url)" decorations stripped), falling back to "the <name> authors".
+// the package.json author field (string or object form). "(url)" decorations
+// are stripped first, then stripAngleBracketed() removes any "<email>" span
+// and every residual bracket. The scanner runs LAST on purpose: even if the
+// paren strip splices survivors into a fresh "<...`-shaped fragment (e.g.
+// "<(x)script" -> "<script"), the scanner then drops it, so the result is
+// bracket-free by construction (#69). Falls back to "the <name> authors".
 export function copyrightHolder(pkg) {
   const override = COPYRIGHT_HOLDER_OVERRIDES[pkg.name];
   if (override) return override;
   const raw = typeof pkg.author === 'string' ? pkg.author : pkg.author?.name;
-  const holder = raw
-    ?.replace(/<[^>]*>/g, '')
-    .replace(/\([^)]*\)/g, '')
-    // The two targeted removals above are single-pass, and deleting a match
-    // can splice the survivors into a NEW `<...`-shaped instance (e.g.
-    // "<(x)script" -> "<script"); an unclosed "<script" never matched at all
-    // (CodeQL js/incomplete-multi-character-sanitization, #69). Dropping
-    // every residual angle bracket makes the result fixpoint-stable: with no
-    // `<` or `>` left, no tag-shaped content can survive.
-    .replace(/[<>]/g, '')
-    .trim();
+  const holder = raw ? stripAngleBracketed(raw.replace(/\([^)]*\)/g, '')).trim() : '';
   return holder || `the ${pkg.name} authors`;
 }

@@ -3,37 +3,57 @@ import { describe, expect, it } from 'vitest';
 import { copyrightHolder } from '../../scripts/copyright-holder.mjs';
 
 // Regression tests for CodeQL js/incomplete-multi-character-sanitization
-// (#69): the author-field sanitizer used to be two single-pass global
-// replaces (strip "<email>", strip "(url)") with no residual-character
-// cleanup, so crafted author strings could reach the generated notices file
-// with `<script`-shaped content intact. All expectations below are derived
-// BY HAND from the replace semantics and pinned as literals — never computed
-// by calling the function under test.
+// (#69). The author-field sanitizer strips "(url)" decorations with a regex
+// and then removes every "<...>" span (and any stray bracket) with a
+// character scanner (stripAngleBracketed) that runs LAST, so the result can
+// never contain a '<' or '>' — no matter what the paren strip splices. All
+// expectations below are derived BY HAND from that pipeline and pinned as
+// literals — never computed by calling the function under test.
 describe('copyrightHolder sanitization', () => {
-  it('defeats the paren-splice bypass: removal must not CREATE "<script"', () => {
+  it('defeats the paren-splice bypass: removal must not surface "<script"', () => {
     // Hand-derivation for raw = '<(x)script':
-    //   1. /<[^>]*>/g  — the string contains no '>' at all, so the tag
-    //      pattern never matches: unchanged.
-    //   2. /\([^)]*\)/g — deletes '(x)', splicing the surviving '<' onto
-    //      'script'. The OLD sanitizer stopped here and returned the
-    //      sanitizer-manufactured string '<script'.
-    //   3. residual [<>] strip — drops the '<': 'script'.
-    expect(copyrightHolder({ name: 'evil-pkg', author: '<(x)script' })).toBe('script');
+    //   1. /\([^)]*\)/g deletes '(x)', splicing the surviving '<' onto
+    //      'script' → '<script' (the exact #69 attack shape).
+    //   2. stripAngleBracketed runs LAST: the '<' opens a span with no
+    //      closing '>', so 'script' is swallowed → ''.
+    //   3. trim → '' → fallback.
+    expect(copyrightHolder({ name: 'evil-pkg', author: '<(x)script' })).toBe(
+      'the evil-pkg authors',
+    );
   });
 
-  it('defeats the unclosed-tag bypass: a lone "<script" must not survive', () => {
+  it('defeats the unclosed-tag bypass: a lone "<script" is truncated', () => {
     // Hand-derivation for raw = 'Mallory <script':
-    //   1. /<[^>]*>/g  — no closing '>', so nothing matches: unchanged.
-    //   2. /\([^)]*\)/g — no parens: unchanged. The OLD sanitizer returned
-    //      'Mallory <script' verbatim.
-    //   3. residual [<>] strip — drops the '<': 'Mallory script'.
-    expect(copyrightHolder({ name: 'evil-pkg', author: 'Mallory <script' })).toBe('Mallory script');
+    //   1. no parens: unchanged.
+    //   2. scanner keeps 'Mallory ', then '<' opens an unclosed span that
+    //      swallows 'script' → 'Mallory '.
+    //   3. trim → 'Mallory'.
+    expect(copyrightHolder({ name: 'evil-pkg', author: 'Mallory <script' })).toBe('Mallory');
+  });
+
+  it('counts bracket depth so a nested "> " does not surface inner text early', () => {
+    // Hand-derivation for raw = '<a<b>c>d':
+    //   scanner: '<'(depth 1) drops 'a'; '<'(depth 2) drops 'b'; '>'(→1)
+    //   still open, drops 'c'; '>'(→0); 'd' kept → 'd'. trim → 'd'.
+    // A naive "first '<' to first '>'" stripper would yield 'cd'; pinning
+    // 'd' distinguishes true depth counting.
+    expect(copyrightHolder({ name: 'some-pkg', author: '<a<b>c>d' })).toBe('d');
+  });
+
+  it('drops fully nested bracket content entirely', () => {
+    // '<<x>>' → scanner: '<'(1) '<'(2) 'x' dropped '>'(1) '>'(0) → '' →
+    // fallback.
+    expect(copyrightHolder({ name: 'some-pkg', author: '<<x>>' })).toBe('the some-pkg authors');
   });
 
   it('still strips ordinary "<email>" and "(url)" decorations', () => {
-    // 'Jane Doe <jane@example.com> (https://example.com)' →
-    // tag replace drops '<jane@example.com>', paren replace drops
-    // '(https://example.com)', trim collapses the trailing spaces.
+    // 'Jane Doe <jane@example.com> (https://example.com)':
+    //   1. paren strip removes '(https://example.com)' →
+    //      'Jane Doe <jane@example.com> '.
+    //   2. scanner keeps 'Jane Doe ', drops '<jane@example.com>', keeps the
+    //      trailing ' ' → 'Jane Doe  '.
+    //   3. trim → 'Jane Doe'. (Byte-identical to the pre-#69 chain for
+    //      well-formed authors, so the notices file must not drift.)
     expect(
       copyrightHolder({
         name: 'some-pkg',
@@ -47,7 +67,7 @@ describe('copyrightHolder sanitization', () => {
   });
 
   it('falls back when sanitization leaves nothing', () => {
-    // '<>' is fully consumed by the tag replace → empty → fallback.
+    // '<>' → scanner: '<'(1) '>'(0) → '' → fallback.
     expect(copyrightHolder({ name: 'some-pkg', author: '<>' })).toBe('the some-pkg authors');
   });
 
