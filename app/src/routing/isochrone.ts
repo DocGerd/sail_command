@@ -2,12 +2,7 @@ import type { Board, Leg, LegKind, LatLon, ManeuverKind, NoRouteReason, Settings
 import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
-import {
-  destinationPoint,
-  haversineNm,
-  initialBearingDeg,
-  normalizeDeg180,
-} from '../lib/geo';
+import { destinationPoint, haversineNm, initialBearingDeg, normalizeDeg180 } from '../lib/geo';
 import { boardForCandidate, classifyManeuver } from './maneuver';
 
 export interface SolveParams {
@@ -23,7 +18,10 @@ export interface SolveParams {
 
 export type SolveResult =
   | { status: 'ok'; legs: Leg[]; etaMs: number }
-  | { status: 'no-route'; reason: Extract<NoRouteReason, 'unreachable' | 'beyond-horizon' | 'calm-motor-off'> };
+  | {
+      status: 'no-route';
+      reason: Extract<NoRouteReason, 'unreachable' | 'beyond-horizon' | 'calm-motor-off'>;
+    };
 
 interface Node {
   lat: number;
@@ -57,6 +55,46 @@ const MOTOR_TWAS = [0, 20, 35];
 function pruneKey(lat: number, lon: number, kind: LegKind | 'start', board: Board | null): string {
   const b = kind === 'motor' ? 'M' : board === 'port' ? 'P' : 'S';
   return `${Math.floor(lat / PRUNE_LAT)}:${Math.floor(lon / PRUNE_LON)}:${b}`;
+}
+
+/** Componentwise minima of the arrivals a prune cell has seen in completed rings. */
+export interface VisitedStamp {
+  tMs: number;
+  maneuvers: number;
+}
+
+/**
+ * True when the stamp dominates the candidate on BOTH axes (issue #21 gap 1):
+ * a candidate is pruned only when nothing about it — arrival clock or maneuver
+ * count — improves on what already reached the cell. Substepped threads carry
+ * earlier clocks than full-step threads (see the blocked-candidate retry in
+ * solve), so a maneuvers-only rule could let a later-clock arrival prune an
+ * earlier-clock one. Componentwise minima can combine two different stampers
+ * into a dominator neither of them was alone — a conservative residual, but
+ * strictly less pruning than the maneuvers-only rule this replaces.
+ */
+export function visitedDominates(seen: VisitedStamp, cand: VisitedStamp): boolean {
+  return seen.tMs <= cand.tMs && seen.maneuvers <= cand.maneuvers;
+}
+
+/**
+ * Lower the stored componentwise minima for `key` with one more arrival.
+ * The arrival is passed as a single `VisitedStamp` so the two axes can never be
+ * swapped at a call site (issue #21 gap 1): `tMs` and `maneuvers` are named
+ * fields, not two same-typed positional numbers.
+ */
+export function stampVisited(
+  visited: Map<string, VisitedStamp>,
+  key: string,
+  stamp: VisitedStamp,
+): void {
+  const seen = visited.get(key);
+  if (seen === undefined) {
+    visited.set(key, { tMs: stamp.tMs, maneuvers: stamp.maneuvers });
+  } else {
+    if (stamp.tMs < seen.tMs) seen.tMs = stamp.tMs;
+    if (stamp.maneuvers < seen.maneuvers) seen.maneuvers = stamp.maneuvers;
+  }
 }
 
 /** Deterministic "is a better than b" for same-cell pruning and frontier capping. */
@@ -94,7 +132,7 @@ export function solve(p: SolveParams): SolveResult {
   let frontier: Node[] = [start];
   let tMs = p.departureMs;
   let best: { etaMs: number; last: Node } | null = null;
-  const visited = new Map<string, number>(); // pruneKey → min maneuvers seen
+  const visited = new Map<string, VisitedStamp>(); // pruneKey → min clock + min maneuvers seen
   let blockedDeaths = 0;
   let calmDeaths = 0;
 
@@ -142,7 +180,7 @@ export function solve(p: SolveParams): SolveResult {
       let sawCalm = false;
 
       for (const twa of twas) {
-        const headingDeg = ((w.dirFromDeg - twa) % 360 + 360) % 360;
+        const headingDeg = (((w.dirFromDeg - twa) % 360) + 360) % 360;
         const sailSpeed = polar.speedKn(twa, w.speedKn);
         let kind: LegKind;
         let speed: number;
@@ -178,15 +216,28 @@ export function solve(p: SolveParams): SolveResult {
             const etaMs = node.tMs + (penaltyS + (node.distToDestNm / speed) * 3600) * 1000;
             if (etaMs <= horizonMs && (!best || etaMs < best.etaMs)) {
               const last: Node = {
-                lat: destination.lat, lon: destination.lon, tMs: etaMs, kind, board,
-                headingDeg, twaSigned: kind === 'motor' ? NaN : twa, stepSpeedKn: speed,
-                twsKn: w.speedKn, maneuverAtStart: maneuver,
-                maneuvers: node.maneuvers + (maneuver ? 1 : 0), distToDestNm: 0, parent: node,
+                lat: destination.lat,
+                lon: destination.lon,
+                tMs: etaMs,
+                kind,
+                board,
+                headingDeg,
+                twaSigned: kind === 'motor' ? NaN : twa,
+                stepSpeedKn: speed,
+                twsKn: w.speedKn,
+                maneuverAtStart: maneuver,
+                maneuvers: node.maneuvers + (maneuver ? 1 : 0),
+                distToDestNm: 0,
+                parent: node,
               };
               best = { etaMs, last };
             }
+            continue; // the direct edge is consumed by the arrival attempt
           }
-          continue; // the direct edge is consumed by the arrival attempt
+          // Blocked direct arrival: fall through to the normal step below so
+          // this heading gets the same substep retry as every other candidate
+          // (issue #21 gap 2 — the destination-pocket mirror of the #20
+          // origin-pocket fix) instead of dying consumed.
         }
 
         let stepMs = dtS * 1000;
@@ -220,22 +271,45 @@ export function solve(p: SolveParams): SolveResult {
         if (node.tMs + stepMs > horizonMs) continue;
 
         const child: Node = {
-          lat: end.lat, lon: end.lon, tMs: node.tMs + stepMs, kind, board,
-          headingDeg, twaSigned: kind === 'motor' ? NaN : twa, stepSpeedKn: speed,
-          twsKn: w.speedKn, maneuverAtStart: maneuver,
+          lat: end.lat,
+          lon: end.lon,
+          tMs: node.tMs + stepMs,
+          kind,
+          board,
+          headingDeg,
+          twaSigned: kind === 'motor' ? NaN : twa,
+          stepSpeedKn: speed,
+          twsKn: w.speedKn,
+          maneuverAtStart: maneuver,
           maneuvers: node.maneuvers + (maneuver ? 1 : 0),
-          distToDestNm: haversineNm(end, destination), parent: node,
+          distToDestNm: haversineNm(end, destination),
+          parent: node,
         };
 
-        // Endpoint-capture arrival (covers non-direct approaches, e.g. beating in)
+        // Endpoint-capture arrival (covers non-direct approaches, e.g. beating
+        // in). The capture hop end→destination is validated like any other
+        // edge (issue #21 gap 3): without the check the final hop could cross
+        // non-navigable cells that segmentNavigable rejects everywhere else.
+        // All four conjuncts are side-effect-free, so the cheap distance/ETA
+        // gates run first and the expensive mask walk runs last, unchanged in
+        // result.
         if (child.distToDestNm < CAPTURE_NM) {
           const finalEtaMs =
-            child.tMs + ((child.distToDestNm / Math.max(speed, MIN_SAIL_KN)) * 3600) * 1000;
-          if (finalEtaMs <= horizonMs && (!best || finalEtaMs < best.etaMs)) {
+            child.tMs + (child.distToDestNm / Math.max(speed, MIN_SAIL_KN)) * 3600 * 1000;
+          if (
+            finalEtaMs <= horizonMs &&
+            (!best || finalEtaMs < best.etaMs) &&
+            mask.segmentNavigable(end, destination, settings.safetyDepthM)
+          ) {
             const last: Node = {
-              ...child, lat: destination.lat, lon: destination.lon,
-              tMs: finalEtaMs, distToDestNm: 0, parent: child,
-              maneuverAtStart: null, headingDeg: initialBearingDeg(end, destination),
+              ...child,
+              lat: destination.lat,
+              lon: destination.lon,
+              tMs: finalEtaMs,
+              distToDestNm: 0,
+              parent: child,
+              maneuverAtStart: null,
+              headingDeg: initialBearingDeg(end, destination),
             };
             best = { etaMs: finalEtaMs, last };
           }
@@ -243,7 +317,7 @@ export function solve(p: SolveParams): SolveResult {
 
         const key = pruneKey(child.lat, child.lon, child.kind, child.board);
         const seen = visited.get(key);
-        if (seen !== undefined && seen <= child.maneuvers) continue;
+        if (seen !== undefined && visitedDominates(seen, child)) continue;
         const incumbent = byKey.get(key);
         if (!incumbent || better(child, incumbent)) byKey.set(key, child);
         produced++;
@@ -256,10 +330,7 @@ export function solve(p: SolveParams): SolveResult {
     }
 
     let next = [...byKey.values()];
-    for (const [k, n] of byKey) {
-      const seen = visited.get(k);
-      if (seen === undefined || n.maneuvers < seen) visited.set(k, n.maneuvers);
-    }
+    for (const [k, n] of byKey) stampVisited(visited, k, { tMs: n.tMs, maneuvers: n.maneuvers });
     if (next.length > MAX_FRONTIER) {
       next.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : 0));
       next = next.slice(0, MAX_FRONTIER);
@@ -311,7 +382,8 @@ function backtrack(last: Node, departureMs: number): Leg[] {
         prev.distanceNm / Math.max((prev.endTimeMs - prev.startTimeMs) / 3_600_000, 1e-9);
     } else {
       const common = {
-        start, end,
+        start,
+        end,
         startTimeMs: parent.tMs,
         endTimeMs: n.tMs,
         headingDeg: n.headingDeg,
@@ -322,7 +394,10 @@ function backtrack(last: Node, departureMs: number): Leg[] {
       if (n.kind === 'sail') {
         if (n.board === null) throw new Error('unreachable: sail node without a board');
         legs.push({
-          ...common, kind: 'sail', board: n.board, twaDeg: n.twaSigned,
+          ...common,
+          kind: 'sail',
+          board: n.board,
+          twaDeg: n.twaSigned,
           maneuverAtStart: n.maneuverAtStart,
         });
       } else {

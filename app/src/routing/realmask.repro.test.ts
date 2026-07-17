@@ -21,8 +21,12 @@ vi.setConfig({ testTimeout: 120_000 });
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
 const maskMeta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8')) as MaskMeta;
 const mask = new NavMask(maskMeta, new Uint8Array(readFileSync(resolve(dataDir, 'mask.bin'))));
-const polarGenoa = JSON.parse(readFileSync(resolve(dataDir, 'polar-genoa.json'), 'utf8')) as PolarTable;
-const polarFock = JSON.parse(readFileSync(resolve(dataDir, 'polar-fock.json'), 'utf8')) as PolarTable;
+const polarGenoa = JSON.parse(
+  readFileSync(resolve(dataDir, 'polar-genoa.json'), 'utf8'),
+) as PolarTable;
+const polarFock = JSON.parse(
+  readFileSync(resolve(dataDir, 'polar-fock.json'), 'utf8'),
+) as PolarTable;
 
 // Real harbor snap coordinates from harbors.json
 const FLENSBURG: LatLon = { lat: 54.798, lon: 9.4335 };
@@ -45,10 +49,14 @@ function solveGenoa(
   const d = mask.snapToNavigable(destination, settings.safetyDepthM);
   if (!o || !d) throw new Error('snap failed');
   return solve({
-    origin: o, destination: d, departureMs: T0,
+    origin: o,
+    destination: d,
+    departureMs: T0,
     polar: new Polar(polarGenoa, settings.performanceFactor),
     wind: new WindField(uniformWindGrid(12, dirFromDeg)),
-    mask, settings, onProgress,
+    mask,
+    settings,
+    onProgress,
   });
 }
 
@@ -70,9 +78,13 @@ describe('real mask routing (issue #20)', () => {
   it('Flensburg -> Gluecksburg routes at default settings (the issue #20 repro)', () => {
     const res = planRoute(
       {
-        origin: FLENSBURG, destination: GLUECKSBURG, viaPoints: [],
-        originHarborId: 'flensburg', destinationHarborId: 'gluecksburg',
-        departureMs: T0, settings: DEFAULT_SETTINGS,
+        origin: FLENSBURG,
+        destination: GLUECKSBURG,
+        viaPoints: [],
+        originHarborId: 'flensburg',
+        destinationHarborId: 'gluecksburg',
+        departureMs: T0,
+        settings: DEFAULT_SETTINGS,
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
@@ -111,7 +123,9 @@ describe('real mask routing (issue #20)', () => {
     }
   });
 
-  // Spec acceptance case (Flensburg -> Marstal), runtime-heavy: ~40 s locally.
+  // Spec acceptance case (Flensburg -> Marstal), runtime-heavy: ~45 s locally
+  // (~40 s before #21's clock-aware visited pruning deliberately widened the
+  // search; CI runners are 6-10x slower, hence the generous timeout).
   //
   // Runs at safetyDepthM 2.3 rather than the 3.0 default: in the shipped mask
   // Marstal's snap cell sits in a 119-cell pocket that only 4-connects to open
@@ -120,13 +134,17 @@ describe('real mask routing (issue #20)', () => {
   // pipeline/verify_mask.py and PR #8). At 3.0 m 'unreachable' is the CORRECT
   // answer for this data. If the mask ever resolves the channel at 3.0 m,
   // this test should be tightened back to DEFAULT_SETTINGS.
-  it('Flensburg -> Marstal (spec acceptance at 2.3 m safety depth)', { timeout: 240_000 }, () => {
+  it('Flensburg -> Marstal (spec acceptance at 2.3 m safety depth)', { timeout: 600_000 }, () => {
     const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 2.3 };
     const res = planRoute(
       {
-        origin: FLENSBURG, destination: MARSTAL, viaPoints: [],
-        originHarborId: 'flensburg', destinationHarborId: 'marstal',
-        departureMs: T0, settings,
+        origin: FLENSBURG,
+        destination: MARSTAL,
+        viaPoints: [],
+        originHarborId: 'flensburg',
+        destinationHarborId: 'marstal',
+        departureMs: T0,
+        settings,
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
