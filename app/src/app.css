@@ -20,7 +20,7 @@
      index.html's theme-color, and the manifest theme_color/background_color each
      HARDCODE #10243D and must be hand-synced with this value. */
   --sc-brand: #10243d;
-  /* Reserved for future hover/pressed states of --sc-accent (currently unconsumed). */
+  /* Hover/pressed shade of --sc-accent — consumed by the .sc-btn variants. */
   --sc-accent-strong: #21568c;
 }
 
@@ -39,7 +39,7 @@
     /* Same value in both modes; still a documentary mirror — the real #10243D
        lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
     --sc-brand: #10243d;
-    /* Reserved for future hover/pressed states of --sc-accent (currently unconsumed). */
+    /* Hover/pressed shade of --sc-accent — consumed by the .sc-btn variants. */
     --sc-accent-strong: #82b2e8;
   }
 }
@@ -438,6 +438,162 @@ select {
   pointer-events: none;
 }
 
+/* ---- Component primitives (#64 phase 1) ----
+
+   Card / Field / Button / Chip / Disclosure, all on the locked --sc-* tokens.
+   Class selectors (0,1,0) intentionally out-specify the element base rules
+   (`button`, `input,select`) so variant paint wins while the base min-heights
+   (44px buttons, 40px controls) are inherited, not overridden. No transitions:
+   motion is deferred to phase 4 (every animation must be reduced-motion-gated),
+   so hover/pressed changes here are instant. */
+
+.sc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 10px;
+  background: var(--sc-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.sc-card-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--sc-fg) 58%, transparent);
+  text-wrap: balance;
+}
+
+/* Endpoint sections inside the Trip card: vertical rhythm via flex gap (no
+   margins — avoids the collapse/specificity pitfalls). Default align-stretch
+   lets the label, secondary button and harbor picker share one column width,
+   matching the already-full-width primary action. */
+.planner-endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sc-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.sc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sc-field-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+.sc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.sc-btn:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+.sc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary: accent fill. Text = --sc-bg so it reads white on the light-mode
+   accent and near-black on the lighter dark-mode accent — no new token. */
+.sc-btn-primary {
+  background: var(--sc-accent);
+  border-color: var(--sc-accent);
+  color: var(--sc-bg);
+}
+
+.sc-btn-primary:not(:disabled):hover,
+.sc-btn-primary:not(:disabled):active {
+  background: var(--sc-accent-strong);
+  border-color: var(--sc-accent-strong);
+}
+
+.sc-btn-secondary {
+  background: transparent;
+  border-color: var(--sc-accent);
+  color: var(--sc-accent);
+}
+
+.sc-btn-secondary:not(:disabled):hover,
+.sc-btn-secondary:not(:disabled):active {
+  border-color: var(--sc-accent-strong);
+  color: var(--sc-accent-strong);
+  background: color-mix(in srgb, var(--sc-accent) 10%, transparent);
+}
+
+.sc-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--sc-fg);
+}
+
+.sc-btn-ghost:not(:disabled):hover,
+.sc-btn-ghost:not(:disabled):active {
+  color: var(--sc-accent-strong);
+  background: color-mix(in srgb, var(--sc-fg) 8%, transparent);
+}
+
+/* Disclosure: labelled native <details>, chevron via ::before glyph swap
+   (matching .route-legend / .depth-profile). Not yet rendered in the Plan tab
+   — first use is phase 3. */
+.sc-disclosure {
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  padding: 0 0.75rem;
+}
+
+.sc-disclosure-summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.sc-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.sc-disclosure-summary::before {
+  content: '\25B8';
+  font-size: 0.8em;
+}
+
+.sc-disclosure[open] > .sc-disclosure-summary::before {
+  content: '\25BE';
+}
+
+.sc-disclosure-body {
+  padding: 0 0 0.75rem;
+}
+
 /* ---- Panel content shared across tabs ---- */
 
 .planner-panel,
@@ -610,6 +766,7 @@ select {
 .planner-via-coord {
   flex: 1;
   font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .via-markers-spinner-chip {

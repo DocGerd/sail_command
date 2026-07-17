@@ -14,6 +14,8 @@ export const de = {
   'options.motorEnabled.label': 'Motor aktiviert',
   'options.motorEnabled.help':
     'Motor nur als Rückfall: Motorabschnitte werden geplant, wenn die berechnete Segelfahrt unter den Schwellenwert fällt, und mit Motorfahrtgeschwindigkeit gefahren.',
+  'planner.card.trip': 'Reise',
+  'planner.card.advanced': 'Erweitert',
   'planner.origin.label': 'Start',
   'planner.destination.label': 'Ziel',
   'planner.notSelected': 'Nicht ausgewählt',
