@@ -94,9 +94,20 @@ deviate from it.
   resolved), required checks `app` + `e2e` with strict up-to-date policy, no
   force pushes or deletions. Pages serves at
   `https://docgerd.github.io/sail_command/`.
+- **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
+  where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
+  is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
+  up-to-date policy), merged as a merge commit, then tagged on `main`; `main` is
+  released-state-only and `deploy.yml` (unchanged) fires on push to `main`, so
+  Pages serves only released states. A HOTFIX branches from `main`, PRs to
+  `main`, then `main` is merged back into `develop` to keep it ahead. CI
+  (`ci.yml`, `codeql.yml`, `verify-mask.yml`) fires on pushes to both `main`
+  and `develop` so required checks keep reporting; both `protect-main` and the
+  `develop` ruleset require `app`+`e2e`.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
-  merge, `git merge origin/main` into the next branch and let full CI (~10 min)
-  re-run before its merge (strict up-to-date policy).
+  merge, re-sync the next branch from its base (`git merge origin/develop`, or
+  `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
+  its merge (the strict up-to-date policy applies on `develop` too).
 
 ## Verification lessons (hard-won)
 

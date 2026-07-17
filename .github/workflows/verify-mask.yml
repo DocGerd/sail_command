@@ -7,7 +7,7 @@ on:
       - '.github/workflows/verify-mask.yml'
       - '.github/workflows/verify-mask-requirements.txt'
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - 'pipeline/**'
       - 'app/public/data/**'
