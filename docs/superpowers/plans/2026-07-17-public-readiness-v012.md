@@ -208,8 +208,8 @@ flowchart LR
   MASK & POLARS & HARB & PMT --> ASSETS["committed static assets — app/public/data/"]
   subgraph app ["Runtime — app/ (PWA, no backend)"]
     ASSETS --> UI["React + MapLibre GL UI"]
-    UI -->|"plan request"| WORKER["isochrone router (Web Worker), tack/gybe time penalty, dual-rig"]
-    OM["Open-Meteo hourly wind (browser-direct)"] --> WORKER
+    OM["Open-Meteo hourly wind (browser-direct)"] --> UI
+    UI -->|"plan request + wind grid"| WORKER["isochrone router (Web Worker), tack/gybe time penalty, dual-rig"]
     WORKER -->|"Plan (legs, wind grid)"| UI
     UI <--> IDB[("IndexedDB — saved plans incl. their wind grids")]
     SW["service worker — ~33 MB precache + runtime font cache"] -.-> UI
