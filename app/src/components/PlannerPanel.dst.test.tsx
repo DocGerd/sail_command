@@ -67,6 +67,7 @@ function renderPanel(overrides: Overrides = {}) {
     onSettingsChange: vi.fn(),
     canPlan: true,
     planDisabledReason: null,
+    online: true,
     onPlan: vi.fn(),
     planning: { phase: 'idle' } as PlannerStatus,
     plan: null,
