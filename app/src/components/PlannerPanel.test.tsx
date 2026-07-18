@@ -105,6 +105,7 @@ interface Overrides {
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
   canPlan?: boolean;
   planDisabledReason?: string | null;
+  online?: boolean;
   onPlan?: () => void;
   planning?: PlannerStatus;
   plan?: Plan | null;
@@ -130,6 +131,7 @@ function baseProps(overrides: Overrides = {}) {
     onSettingsChange: vi.fn(),
     canPlan: true,
     planDisabledReason: null,
+    online: true,
     onPlan: vi.fn(),
     planning: { phase: 'idle' } as PlannerStatus,
     plan: null as Plan | null,
@@ -148,6 +150,17 @@ function renderPanel(overrides: Overrides = {}) {
     </I18nProvider>,
   );
   return props;
+}
+
+// Same as renderPanel but exposes the container for class-based structural
+// assertions (the skeleton/onboarding presentation carries no accessible role).
+function renderPanelReturningContainer(overrides: Overrides = {}) {
+  localStorage.setItem('sc-lang', 'en');
+  return render(
+    <I18nProvider>
+      <PlannerPanel {...baseProps(overrides)} />
+    </I18nProvider>,
+  );
 }
 
 afterEach(() => {
@@ -347,10 +360,39 @@ describe('PlannerPanel', () => {
     expect(props.onDepartureChange).toHaveBeenCalledWith(new Date('2026-07-21T10:30').getTime());
   });
 
-  it('disables the plan button and shows the reason when canPlan is false', () => {
-    renderPanel({ canPlan: false, planDisabledReason: 'Pick an origin and destination first.' });
+  it('disables the plan button and shows the offline disabled reason (offline suppresses onboarding)', () => {
+    // Offline: onboarding is suppressed (nothing can be planned), so the
+    // disabled reason itself renders. role="alert" — an actionable blocker.
+    renderPanel({
+      canPlan: false,
+      online: false,
+      planDisabledReason: 'Wind forecast service is unreachable.',
+    });
     expect(screen.getByRole('button', { name: 'Plan route' })).toBeDisabled();
-    expect(screen.getByText('Pick an origin and destination first.')).toBeInTheDocument();
+    const reason = screen.getByText('Wind forecast service is unreachable.');
+    expect(reason).toBeInTheDocument();
+    expect(reason).toHaveAttribute('role', 'alert');
+    // The empty-state onboarding must NOT also show — one message only.
+    expect(
+      screen.queryByText('Pick a start and destination to plan a route.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the missing-endpoints disabled reason (no onboarding) once a plan already exists', () => {
+    // A plan exists but an endpoint is missing: onboarding (a first-run hint)
+    // is gone, so the terse disabled reason renders instead.
+    renderPanel({
+      plan: makePlan(),
+      rig: 'genoa',
+      origin: null,
+      destination: null,
+      canPlan: false,
+      planDisabledReason: 'Select a start and destination.',
+    });
+    expect(screen.getByText('Select a start and destination.')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Pick a start and destination to plan a route.'),
+    ).not.toBeInTheDocument();
   });
 
   it('enables the plan button and calls onPlan when clicked, with no reason shown', () => {
@@ -376,9 +418,12 @@ describe('PlannerPanel', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Calculating route');
   });
 
-  it('renders the error message during planning.phase "error"', () => {
+  it('does NOT render a plan-run error inline (the App banner is the single alert surface)', () => {
+    // §3.5 consolidation: the error lives only in App.tsx's tab-independent
+    // <Banner>, so it is never announced twice. The panel stays quiet.
     renderPanel({ planning: { phase: 'error', message: 'Open-Meteo is unreachable.' } });
-    expect(screen.getByText('Open-Meteo is unreachable.')).toBeInTheDocument();
+    expect(screen.queryByText('Open-Meteo is unreachable.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   describe('via waypoints', () => {
@@ -588,6 +633,91 @@ describe('PlannerPanel', () => {
       // Seeded from the mount plan id, so re-entering the tab with an existing
       // result stays quiet — the region is empty, not restating the summary.
       expect(screen.getByRole('status').textContent).toBe('');
+    });
+  });
+
+  // §3.5: empty/first-run onboarding + loading skeleton.
+  describe('states & motion (§3.5)', () => {
+    const ORIGIN: PickedPoint = {
+      source: 'harbor',
+      point: FLENSBURG.snap,
+      harborId: FLENSBURG.id,
+      label: 'Flensburg',
+    };
+    const DESTINATION: PickedPoint = {
+      source: 'harbor',
+      point: MARSTAL.snap,
+      harborId: MARSTAL.id,
+      label: 'Marstal',
+    };
+
+    it('shows the onboarding line when no plan exists and an endpoint is unpicked', () => {
+      renderPanel({ origin: null, destination: null, plan: null });
+      expect(screen.getByText('Pick a start and destination to plan a route.')).toBeInTheDocument();
+    });
+
+    it('hides the onboarding line once both endpoints are set', () => {
+      renderPanel({ origin: ORIGIN, destination: DESTINATION, plan: null });
+      expect(
+        screen.queryByText('Pick a start and destination to plan a route.'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('hides the onboarding line once a plan exists', () => {
+      renderPanel({ origin: null, destination: null, plan: makePlan(), rig: 'genoa' });
+      expect(
+        screen.queryByText('Pick a start and destination to plan a route.'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('suppresses the onboarding line while offline (the offline reason takes its place)', () => {
+      renderPanel({ online: false, origin: null, destination: null, plan: null });
+      expect(
+        screen.queryByText('Pick a start and destination to plan a route.'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders a decorative skeleton in the result slot while a first plan is in flight', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'routing', progress: 0.3 },
+        plan: null,
+        rig: null,
+      });
+      const skeletonCard = container.querySelector('.planner-result-skeleton');
+      expect(skeletonCard).not.toBeNull();
+      expect(skeletonCard).toHaveAttribute('aria-hidden', 'true');
+      // Placeholder shapes: one chip + four stat blocks (matching the compact card).
+      expect(skeletonCard!.querySelectorAll('.sc-skeleton')).toHaveLength(5);
+      // The live status region still carries the a11y feedback (not the skeleton).
+      expect(screen.getByRole('status')).toHaveTextContent('Calculating route');
+    });
+
+    it('shows no skeleton once a result is present (real card replaces it)', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan: makePlan(),
+        rig: 'genoa',
+      });
+      expect(container.querySelector('.planner-result-skeleton')).toBeNull();
+    });
+
+    it('shows no skeleton while idle before any planning has started', () => {
+      const { container } = renderPanelReturningContainer({ planning: { phase: 'idle' } });
+      expect(container.querySelector('.planner-result-skeleton')).toBeNull();
+    });
+
+    it('shows no skeleton while re-planning an existing result — the live card stays, not stacked', () => {
+      // Replan case: in-flight (routing) WITH an existing summary. The `!summary`
+      // gate must keep the real compact Ergebnis card and NOT overlay a skeleton
+      // on top of it. Mutating the gate to drop `!summary` makes this fail.
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'routing', progress: 0.3 },
+        plan: makePlan(),
+        rig: 'genoa',
+      });
+      expect(container.querySelector('.planner-result-skeleton')).toBeNull();
+      // The real card (its faster-rig chip only exists on the real Ergebnis card).
+      expect(container.querySelector('.chip-faster-rig')).not.toBeNull();
     });
   });
 });

@@ -443,9 +443,9 @@ select {
    Card / Field / Button / Chip / Disclosure, all on the locked --sc-* tokens.
    Class selectors (0,1,0) intentionally out-specify the element base rules
    (`button`, `input,select`) so variant paint wins while the base min-heights
-   (44px buttons, 40px controls) are inherited, not overridden. No transitions:
-   motion is deferred to phase 4 (every animation must be reduced-motion-gated),
-   so hover/pressed changes here are instant. */
+   (44px buttons, 40px controls) are inherited, not overridden. Hover/pressed/
+   focus transitions were added in phase 4 (§3.5) and every one of them is
+   neutralised under the reduced-motion block at the end of this file. */
 
 .sc-card {
   display: flex;
@@ -507,6 +507,13 @@ select {
   border-radius: 8px;
   font-weight: 600;
   line-height: 1.2;
+  /* §3.5 motion: ease hover/pressed/focus paint (outline-color included so the
+     focus ring fades rather than snaps). Reduced-motion zeroes this below. */
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    outline-color 0.15s ease;
 }
 
 .sc-btn:focus-visible {
@@ -581,13 +588,18 @@ select {
   display: none;
 }
 
+/* §3.5 motion: one right-pointing chevron that ROTATES to point down on open,
+   so the change is a transitionable transform (a `content` swap can't animate).
+   inline-block is required for the transform to apply to the ::before box. */
 .sc-disclosure-summary::before {
   content: '\25B8';
+  display: inline-block;
   font-size: 0.8em;
+  transition: transform 0.15s ease;
 }
 
 .sc-disclosure[open] > .sc-disclosure-summary::before {
-  content: '\25BE';
+  transform: rotate(90deg);
 }
 
 .sc-disclosure-body {
@@ -891,6 +903,130 @@ select {
   border: none;
   border-radius: 0;
   padding: 0;
+}
+
+/* ---- #64 phase 4 (§3.5): states & motion ----
+
+   Empty/first-run guidance, the loading skeleton, the banner "Try again"
+   action, and tasteful motion. ALL motion is neutralised by the
+   `prefers-reduced-motion: reduce` block at the very end of this section — the
+   default has subtle motion, reduced-motion has none. No ambient/looping
+   decoration; every animation plays once on appearance. */
+
+/* Empty/first-run + disabled-reason line under the primary action. Muted,
+   quiet — guidance, not an error. */
+.planner-guidance {
+  margin: 0;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* Banner "Try again" action — a compact outline button sized to the banner
+   strip, distinct from the ×-glyph dismiss button. */
+.banner-action {
+  flex: none;
+  align-self: center;
+  min-height: 32px;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    outline-color 0.15s ease;
+}
+
+.banner-action:hover,
+.banner-action:active {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.banner-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Loading skeleton: a subtle shimmer on the ink token, kept low-contrast so it
+   reads as "pending", not content. The gradient sweeps via background-position.
+   Reduced-motion freezes it to a static block (below). */
+@keyframes sc-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+.sc-skeleton {
+  display: block;
+  min-height: 0.9rem;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--sc-fg) 9%, transparent);
+  background-image: linear-gradient(
+    90deg,
+    transparent 25%,
+    color-mix(in srgb, var(--sc-fg) 7%, transparent) 50%,
+    transparent 75%
+  );
+  background-size: 300% 100%;
+  animation: sc-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Skeleton Ergebnis card: same layout as the real compact card so nothing
+   jumps when the result replaces it. */
+.planner-result-skeleton .skeleton-chip {
+  width: 8rem;
+  height: 1.4rem;
+  border-radius: 999px;
+}
+
+.planner-result-skeleton .skeleton-stat {
+  height: 2.4rem;
+}
+
+/* Ergebnis fade-in: the compact strip and the full Routes card ease in when
+   they first appear (plan completion). Applied to the element itself, so it
+   plays once on mount and never re-fires on slider/via re-renders. */
+@keyframes sc-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.planner-result,
+.route-ergebnis {
+  animation: sc-fade-in 0.2s ease both;
+}
+
+/* Gentle disclosure body reveal — the body already display-toggles natively;
+   this just fades its content in on open (no fragile height animation). */
+.sc-disclosure[open] > .sc-disclosure-body {
+  animation: sc-fade-in 0.15s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-btn,
+  .banner-action,
+  .sc-disclosure-summary::before {
+    transition: none;
+  }
+
+  .sc-skeleton,
+  .planner-result,
+  .route-ergebnis,
+  .sc-disclosure[open] > .sc-disclosure-body {
+    animation: none;
+  }
 }
 
 /* ---- Depth profile (#45) ---- */

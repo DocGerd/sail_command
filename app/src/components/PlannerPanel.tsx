@@ -14,6 +14,7 @@ import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
 import Disclosure from './Disclosure';
+import Skeleton from './Skeleton';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -52,6 +53,10 @@ export interface PlannerPanelProps {
   onSettingsChange: (s: Settings) => void;
   canPlan: boolean;
   planDisabledReason: string | null;
+  // #64 phase 4 (§3.5): drives the empty/first-run onboarding line, which only
+  // makes sense while online — offline gets the `error.offline` disabled reason
+  // (planDisabledReason) instead, since no endpoints can be planned offline.
+  online: boolean;
   onPlan: () => void;
   planning: PlannerStatus;
   // #64 phase 3: the active plan + rig drive the compact Ergebnis strip and the
@@ -107,6 +112,7 @@ export default function PlannerPanel({
   onSettingsChange,
   canPlan,
   planDisabledReason,
+  online,
   onPlan,
   planning,
   plan,
@@ -188,6 +194,18 @@ export default function PlannerPanel({
   // the visible surface is the prominent Ergebnis card, so a visible sentence
   // here just duplicates it. Progress/probing stay visible.
   const statusSrOnly = planning.phase === 'idle';
+
+  // §3.5 loading: the worker solves twice (genoa + fock). While a fresh plan is
+  // in flight and no result exists yet, a decorative skeleton stands in for the
+  // compact Ergebnis card. A replan of an existing plan keeps its card (summary
+  // still present), so the skeleton is strictly a first-result placeholder.
+  const isPlanningInFlight =
+    planning.phase === 'fetching' || planning.phase === 'routing' || planning.phase === 'probing';
+
+  // §3.5 empty/first-run: friendly guidance near the primary action while no
+  // plan exists and an endpoint is unpicked. Suppressed offline — the
+  // `error.offline` disabled reason is the more actionable message there.
+  const showOnboarding = online && !plan && (!origin || !destination);
 
   // One-line glance of the collapsed advanced disclosure, from current settings.
   const advancedSummary = [
@@ -375,12 +393,23 @@ export default function PlannerPanel({
       </Disclosure>
 
       {/* §3.3: the primary action stays reachable at the panel bottom (sticky),
-          never below a long scroll. */}
+          never below a long scroll. §3.5: a single guidance/reason line under
+          it — onboarding when the trip is still empty (online), otherwise the
+          disabled reason (offline, or missing endpoints once a plan exists).
+          The two never render together, so the empty state reads as one hint. */}
       <div className="planner-actions">
         <Button variant="primary" onClick={onPlan} disabled={!canPlan}>
           {t('planner.plan')}
         </Button>
-        {planDisabledReason && <p role="alert">{planDisabledReason}</p>}
+        {showOnboarding ? (
+          <p className="planner-guidance">{t('planner.onboarding')}</p>
+        ) : (
+          planDisabledReason && (
+            <p className="planner-guidance" role="alert">
+              {planDisabledReason}
+            </p>
+          )
+        )}
       </div>
 
       {/* ONE persistent live region (aria-atomic): in-flight status while
@@ -394,7 +423,26 @@ export default function PlannerPanel({
       >
         {statusText}
       </p>
-      {planning.phase === 'error' && <p role="alert">{planning.message}</p>}
+      {/* Plan-run errors are NOT rendered inline here: the tab-independent
+          <Banner> in App.tsx (banner-area) is the single alert surface, so the
+          error isn't announced twice. */}
+
+      {/* §3.5 loading: decorative skeleton in the Ergebnis card's slot while a
+          first plan solves. The status live region above carries the a11y
+          feedback; this block is aria-hidden presentation only. */}
+      {isPlanningInFlight && !summary && (
+        <div className="sc-card planner-result planner-result-skeleton" aria-hidden="true">
+          <Skeleton className="skeleton-chip" />
+          <div className="planner-result-primary">
+            <Skeleton className="skeleton-stat" />
+            <Skeleton className="skeleton-stat" />
+          </div>
+          <div className="planner-result-secondary">
+            <Skeleton className="skeleton-stat" />
+            <Skeleton className="skeleton-stat" />
+          </div>
+        </div>
+      )}
 
       {/* §3.4 (Option B): compact Ergebnis strip, immediately after the status
           live region. A strict subset of the full Routes card; "Details

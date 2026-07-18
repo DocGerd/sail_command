@@ -39,6 +39,12 @@ export const en = {
   'planner.via.replanning': 'Recalculating route with updated waypoints…',
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
+  // §3.5 empty/first-run: friendly guidance near the primary action while no
+  // plan exists yet and an endpoint is still unpicked.
+  'planner.onboarding': 'Pick a start and destination to plan a route.',
+  // §3.5: terse disabled-button reason when both endpoints aren't set (the
+  // gap-fill for the previously reasonless online-but-incomplete state).
+  'planner.disabled.pickEndpoints': 'Select a start and destination.',
   'planner.result.details': 'View details',
   // Swapped into the planner's live status region on plan completion — a
   // stable, atomic summary announced once per new plan (never on slider/
@@ -181,6 +187,8 @@ export const en = {
   'banner.mapError': 'Map data could not be loaded — the display may be incomplete.',
   'banner.persistenceError': 'Settings could not be saved.',
   'banner.dismiss': 'Dismiss',
+  // §3.5: retry action shown on network/offline plan errors (re-runs the plan).
+  'banner.retry': 'Try again',
   'banner.tapPick': 'Tap the map to set {target}.',
   'banner.tapPick.cancel': 'Cancel',
   'banner.viaTooClose': 'Waypoint too close to a neighbor — skipped',

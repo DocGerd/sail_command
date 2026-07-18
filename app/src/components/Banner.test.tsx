@@ -31,4 +31,20 @@ describe('Banner', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it('renders no action button when action is omitted', () => {
+    render(<Banner kind="warning">No action</Banner>);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('renders an action button labeled with action.label and calls action.onClick when clicked', () => {
+    const onClick = vi.fn();
+    render(
+      <Banner kind="warning" action={{ label: 'Try again', onClick }}>
+        Recoverable
+      </Banner>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
 });

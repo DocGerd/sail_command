@@ -37,6 +37,12 @@ export const de = {
   'planner.via.replanning': 'Route wird mit geänderten Wegpunkten neu berechnet…',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
+  // §3.5 empty/first-run: friendly guidance near the primary action while no
+  // plan exists yet and an endpoint is still unpicked.
+  'planner.onboarding': 'Wähle Start und Ziel, um eine Route zu planen.',
+  // §3.5: terse disabled-button reason when both endpoints aren't set (the
+  // gap-fill for the previously reasonless online-but-incomplete state).
+  'planner.disabled.pickEndpoints': 'Start und Ziel wählen.',
   'planner.result.details': 'Details ansehen',
   // Swapped into the planner's live status region on plan completion — a
   // stable, atomic summary announced once per new plan (never on slider/
@@ -184,6 +190,8 @@ export const de = {
   'banner.mapError': 'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.',
   'banner.persistenceError': 'Einstellungen konnten nicht gespeichert werden.',
   'banner.dismiss': 'Schließen',
+  // §3.5: retry action shown on network/offline plan errors (re-runs the plan).
+  'banner.retry': 'Erneut versuchen',
   'banner.tapPick': 'Auf Karte tippen für {target}.',
   'banner.tapPick.cancel': 'Abbrechen',
   'banner.viaTooClose': 'Wegpunkt zu nah am Nachbarn — übersprungen',
