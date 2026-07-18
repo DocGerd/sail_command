@@ -1,14 +1,19 @@
-import { useState } from 'react';
-import type { Harbor, LatLon, PickedPoint, Settings } from '../types';
+import { useEffect, useRef, useState } from 'react';
+import type { Harbor, LatLon, PickedPoint, Plan, Rig, RigResult, Settings } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import { formatLatLon } from '../lib/format';
+import { formatDateTime, formatDuration, formatKn, formatLatLon, formatNm } from '../lib/format';
+import { activeRigResult } from '../lib/plan';
+import { resultSummary } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
-import OptionsPanel from './OptionsPanel';
+import OptionsPanel, { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
+import NumberInput from './NumberInput';
 import Card from './Card';
 import Field from './Field';
 import Button from './Button';
+import Chip from './Chip';
+import Disclosure from './Disclosure';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -49,6 +54,12 @@ export interface PlannerPanelProps {
   planDisabledReason: string | null;
   onPlan: () => void;
   planning: PlannerStatus;
+  // #64 phase 3: the active plan + rig drive the compact Ergebnis strip and the
+  // plan-completion announcement. Null before the first plan.
+  plan: Plan | null;
+  rig: Rig | null;
+  // "Details ansehen": switch to the Routes tab and focus its Ergebnis heading.
+  onViewDetails: () => void;
 }
 
 /**
@@ -98,6 +109,9 @@ export default function PlannerPanel({
   planDisabledReason,
   onPlan,
   planning,
+  plan,
+  rig,
+  onViewDetails,
 }: PlannerPanelProps) {
   const t = useT();
   const [lang] = useLang();
@@ -125,6 +139,63 @@ export default function PlannerPanel({
     destination?.source === 'harbor'
       ? harbors.find((h) => h.id === destination.harborId)
       : undefined;
+
+  // The active rig's result + its single-source display fields — used by the
+  // compact Ergebnis strip below and the completion announcement.
+  const result = plan && rig ? activeRigResult(plan, rig) : null;
+  const summary = plan && result ? resultSummary(plan, result, lang) : null;
+
+  // #64 §3.4 (Option B) a11y: announce the terminal result in the persistent
+  // live region, ONCE per completed plan. We freeze the RESULT that completed
+  // (not the rendered string) and re-derive the sentence from the CURRENT
+  // language each render — so a language switch re-announces in the new
+  // language, while a via-edit (same plan.id, new result) leaves the frozen
+  // result untouched. Seeded from the plan present at mount so re-entering the
+  // tab with an existing result does NOT re-announce; a genuinely new plan (new
+  // id) does. Via-edits preserve plan.id (App.tsx); slider/map re-renders don't
+  // touch `plan` at all.
+  const lastAnnouncedIdRef = useRef<string | null>(plan?.id ?? null);
+  const [announcedResult, setAnnouncedResult] = useState<RigResult | null>(null);
+  useEffect(() => {
+    if (planning.phase !== 'idle' || !plan) return;
+    const res = rig ? activeRigResult(plan, rig) : null;
+    if (!res || plan.id === lastAnnouncedIdRef.current) return;
+    lastAnnouncedIdRef.current = plan.id;
+    setAnnouncedResult(res);
+  }, [planning.phase, plan, rig]);
+
+  const announcement = announcedResult
+    ? t('planner.result.announce', {
+        arrival: formatDateTime(announcedResult.etaMs, lang),
+        duration: formatDuration(announcedResult.durationMs),
+        distance: formatNm(announcedResult.distanceNm),
+      })
+    : '';
+
+  // Single derived text for the ONE persistent live region: in-flight phase
+  // messages while planning, then the completion summary once idle. Never a
+  // second aria-live region.
+  let statusText = '';
+  if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
+  else if (planning.phase === 'routing')
+    statusText =
+      planning.progress !== undefined
+        ? t('planner.status.routingProgress', { progress: Math.round(planning.progress * 100) })
+        : t('planner.status.routing');
+  else if (planning.phase === 'probing') statusText = t('planner.status.probing');
+  else if (planning.phase === 'idle') statusText = announcement;
+  // §3.4 (fix wave): the idle completion announcement is screen-reader-only —
+  // the visible surface is the prominent Ergebnis card, so a visible sentence
+  // here just duplicates it. Progress/probing stay visible.
+  const statusSrOnly = planning.phase === 'idle';
+
+  // One-line glance of the collapsed advanced disclosure, from current settings.
+  const advancedSummary = [
+    settings.motorEnabled ? t('options.summary.motorOn') : t('options.summary.motorOff'),
+    formatKn(settings.motorSpeedKn),
+    t('options.summary.maneuver', { seconds: settings.maneuverPenaltyS }),
+    t('options.summary.performance', { factor: settings.performanceFactor }),
+  ].join(' · ');
 
   return (
     <div className="planner-panel">
@@ -253,43 +324,111 @@ export default function PlannerPanel({
         </section>
       </Card>
 
-      <Field
-        className="planner-departure"
-        label={t('planner.departure.label')}
-        htmlFor="planner-departure"
+      {/* §3.3: the two most-changed inputs — departure + safety depth — stay
+          visible in a compact row above the advanced disclosure. */}
+      <div className="planner-compact-row">
+        <Field
+          className="planner-departure"
+          label={t('planner.departure.label')}
+          htmlFor="planner-departure"
+        >
+          <input
+            id="planner-departure"
+            type="datetime-local"
+            value={toLocalInputValue(departureMs)}
+            min={toLocalInputValue(bounds.min)}
+            max={toLocalInputValue(bounds.max)}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              onDepartureChange(new Date(e.target.value).getTime());
+            }}
+          />
+        </Field>
+        <Field
+          className="planner-safety-depth"
+          label={t(SAFETY_DEPTH_FIELD.labelKey)}
+          htmlFor="planner-safety-depth"
+        >
+          <NumberInput
+            id="planner-safety-depth"
+            value={settings.safetyDepthM}
+            min={SAFETY_DEPTH_FIELD.min}
+            max={SAFETY_DEPTH_FIELD.max}
+            step={SAFETY_DEPTH_FIELD.step}
+            onCommit={(n) => commitSetting(settings, 'safetyDepthM', n, onSettingsChange)}
+          />
+        </Field>
+      </div>
+
+      {/* §3.3: the remaining five advanced inputs move behind an "Erweitert"
+          disclosure with a collapsed one-line value summary. */}
+      <Disclosure
+        className="planner-advanced"
+        summary={
+          <>
+            <span className="planner-advanced-label">{t('planner.card.advanced')}</span>
+            <span className="planner-advanced-values">{advancedSummary}</span>
+          </>
+        }
       >
-        <input
-          id="planner-departure"
-          type="datetime-local"
-          value={toLocalInputValue(departureMs)}
-          min={toLocalInputValue(bounds.min)}
-          max={toLocalInputValue(bounds.max)}
-          onChange={(e) => {
-            if (!e.target.value) return;
-            onDepartureChange(new Date(e.target.value).getTime());
-          }}
-        />
-      </Field>
-
-      <Card title={t('planner.card.advanced')} className="planner-advanced">
         <OptionsPanel value={settings} onChange={onSettingsChange} />
-      </Card>
+      </Disclosure>
 
-      <Button variant="primary" onClick={onPlan} disabled={!canPlan}>
-        {t('planner.plan')}
-      </Button>
-      {planDisabledReason && <p role="alert">{planDisabledReason}</p>}
+      {/* §3.3: the primary action stays reachable at the panel bottom (sticky),
+          never below a long scroll. */}
+      <div className="planner-actions">
+        <Button variant="primary" onClick={onPlan} disabled={!canPlan}>
+          {t('planner.plan')}
+        </Button>
+        {planDisabledReason && <p role="alert">{planDisabledReason}</p>}
+      </div>
 
-      {planning.phase === 'fetching' && <p role="status">{t('planner.status.fetching')}</p>}
-      {planning.phase === 'routing' && (
-        <p role="status">
-          {planning.progress !== undefined
-            ? t('planner.status.routingProgress', { progress: Math.round(planning.progress * 100) })
-            : t('planner.status.routing')}
-        </p>
-      )}
-      {planning.phase === 'probing' && <p role="status">{t('planner.status.probing')}</p>}
+      {/* ONE persistent live region (aria-atomic): in-flight status while
+          planning (visible), then the stable completion summary once idle
+          (sr-only — the Ergebnis card is the visible surface). Its text is
+          swapped, never a second region added. */}
+      <p
+        className={`planner-status${statusSrOnly ? ' sr-only' : ''}`}
+        role="status"
+        aria-atomic="true"
+      >
+        {statusText}
+      </p>
       {planning.phase === 'error' && <p role="alert">{planning.message}</p>}
+
+      {/* §3.4 (Option B): compact Ergebnis strip, immediately after the status
+          live region. A strict subset of the full Routes card; "Details
+          ansehen" jumps to the full card. */}
+      {summary && (
+        <Card title={t('planner.card.result')} className="planner-result">
+          <Chip className="chip-faster-rig">
+            {t('route.fasterRig', { rig: t(summary.recommendedRigLabelKey) })}
+          </Chip>
+          <div className="planner-result-primary">
+            <div className="ergebnis-stat ergebnis-stat-lg">
+              <span className="ergebnis-stat-label">{t('route.totals.eta')}</span>
+              <span className="ergebnis-stat-value tabular-nums">{summary.arrivalText}</span>
+            </div>
+            <div className="ergebnis-stat ergebnis-stat-lg">
+              <span className="ergebnis-stat-label">{t('route.totals.duration')}</span>
+              <span className="ergebnis-stat-value tabular-nums">{summary.durationText}</span>
+            </div>
+          </div>
+          <div className="planner-result-secondary">
+            <div className="ergebnis-stat">
+              <span className="ergebnis-stat-label">{t('route.totals.distance')}</span>
+              <span className="ergebnis-stat-value tabular-nums">{summary.distanceText}</span>
+            </div>
+            <div className="ergebnis-stat">
+              <span className="ergebnis-stat-label">{t('route.totals.avgSpeed')}</span>
+              <span className="ergebnis-stat-value tabular-nums">{summary.avgSpeedText}</span>
+            </div>
+          </div>
+          <Button variant="secondary" className="planner-result-details" onClick={onViewDetails}>
+            {t('planner.result.details')} <span aria-hidden="true">→</span>
+          </Button>
+        </Card>
+      )}
     </div>
   );
 }

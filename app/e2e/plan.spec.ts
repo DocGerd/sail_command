@@ -122,10 +122,17 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     // sail plan on this short leg.
     for (const tab of [genoaTab, fockTab]) {
       await tab.click();
-      await expect(page.locator('.route-summary dt', { hasText: 'Ankunft' })).toBeVisible();
+      // #64 phase 3: totals became a stat grid — the Ankunft (ETA) stat proves
+      // a route was found (an ETA, not a no-route alert).
+      await expect(
+        page.locator('.route-summary .ergebnis-stat', { hasText: 'Ankunft' }),
+      ).toBeVisible();
       await expect(page.locator('.route-summary [role="alert"]')).toHaveCount(0);
     }
 
+    // #64 phase 3: the legs table moved behind a disclosure — open it to reveal
+    // the rows.
+    await page.locator('.route-legs-disclosure > summary').click();
     const legRows = page.locator('.route-legs tbody tr');
     await expect(legRows.first()).toBeVisible();
     expect(await legRows.count()).toBeGreaterThan(0);

@@ -964,6 +964,38 @@ describe('banner surfacing (PR self-review fix wave)', () => {
   });
 });
 
+describe('Details ansehen → Routes focus (#64 phase 3)', () => {
+  it('jumps to the Routes tab AND moves focus to the Ergebnis card heading', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // The compact Ergebnis strip appears in the Plan tab; its "Details ansehen"
+    // action switches to Routes AND focuses the full Ergebnis card heading
+    // (end-to-end: handleViewDetails -> setTab + the tab-keyed focus effect
+    // firing on routeResultHeadingRef, forwarded via Card titleRef).
+    fireEvent.click(
+      await screen.findByRole('button', { name: new RegExp(de['planner.result.details']) }),
+    );
+
+    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await waitFor(() => {
+      const heading = document.querySelector('.route-ergebnis > .sc-card-title');
+      expect(heading).not.toBeNull();
+      expect(document.activeElement).toBe(heading);
+    });
+  });
+});
+
 describe('harbor marker click-to-pick (#38)', () => {
   it('fills origin first, then destination, with the same endpoint shape as the search picker', async () => {
     renderApp();
