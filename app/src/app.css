@@ -664,6 +664,235 @@ select {
   border-radius: 50%;
 }
 
+/* ---- #64 phase 3: advanced disclosure + Ergebnis card ---- */
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Visually hidden but kept in the accessibility tree (screen-reader-only) —
+   used for the idle completion announcement in .planner-status, whose visible
+   twin is the Ergebnis card. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* §3.3 compact row: departure + safety depth side by side above the advanced
+   disclosure. Collapses to one column when the panel is very narrow. */
+.planner-compact-row {
+  display: grid;
+  grid-template-columns: 1fr minmax(7rem, 10rem);
+  gap: 0.75rem;
+  align-items: end;
+}
+
+@media (max-width: 380px) {
+  .planner-compact-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* §3.3 advanced disclosure summary: bold label + a muted, ellipsized one-line
+   value glance that is hidden once the disclosure is open (the fields show). */
+.planner-advanced-label {
+  font-weight: 600;
+}
+
+.planner-advanced-values {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--sc-fg) 60%, transparent);
+}
+
+.sc-disclosure.planner-advanced[open] .planner-advanced-values {
+  display: none;
+}
+
+/* §3.3 sticky primary action — reachable without scrolling past a long panel. */
+.planner-actions {
+  /* In the narrow bottom-sheet the sticky bar would pin over the map's
+     attribution control at the viewport bottom-right and intercept its clicks
+     (#64 Phase 3 regression caught by plan.spec). Sticky is scoped to the wide
+     side-panel below, where the panel is its own column and cannot overlap the
+     map chrome. bottom/z-index stay here — inert until position:sticky applies. */
+  position: static;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  background: var(--sc-bg);
+}
+
+.planner-status {
+  margin: 0;
+}
+
+/* No phantom gap while idle with nothing to announce (jsdom ignores this, so
+   getByRole('status') still finds the region in tests). */
+.planner-status:empty {
+  display: none;
+}
+
+/* Rig comparison tablist (segmented control). ★-recommended tab kept intact. */
+.rig-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.rig-tabs button {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 600;
+  color: var(--sc-fg);
+}
+
+.rig-tabs button[aria-selected='true'] {
+  border-color: var(--sc-accent);
+  color: var(--sc-accent-strong);
+  background: color-mix(in srgb, var(--sc-accent) 10%, transparent);
+}
+
+.rig-tabs button:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+/* Faster-rig chip (both surfaces) — UI accent, not a map-palette color. */
+.chip-faster-rig {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
+  color: var(--sc-accent-strong);
+  font-weight: 600;
+}
+
+/* Stat grid (full Ergebnis card) + compact-strip stat rows. */
+.ergebnis-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.planner-result-primary,
+.planner-result-secondary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.ergebnis-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ergebnis-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--sc-fg) 58%, transparent);
+}
+
+.ergebnis-stat-value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.ergebnis-stat-lg .ergebnis-stat-value {
+  font-size: 1.35rem;
+}
+
+.ergebnis-maneuvers {
+  margin: 0;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--sc-fg) 70%, transparent);
+}
+
+/* Sail/motor split bar — sail = UI accent, motor = a muted neutral grey
+   derived from the ink token (deliberately NOT the Okabe-Ito map motor color,
+   and not a new palette token). */
+.ergebnis-split {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ergebnis-split-bar {
+  display: flex;
+  height: 0.6rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--sc-fg) 10%, transparent);
+}
+
+.ergebnis-split-sail,
+.ergebnis-split-swatch-sail {
+  background: var(--sc-accent);
+}
+
+.ergebnis-split-motor,
+.ergebnis-split-swatch-motor {
+  background: color-mix(in srgb, var(--sc-fg) 42%, transparent);
+}
+
+.ergebnis-split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.8rem;
+}
+
+.ergebnis-split-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ergebnis-split-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 3px;
+}
+
+.planner-result-details {
+  align-self: flex-start;
+}
+
+/* Focus indicator when "Details ansehen" moves focus to the Ergebnis heading
+   (heading is tabIndex -1, so :focus only ever fires from that programmatic
+   jump). */
+.route-ergebnis > .sc-card-title:focus {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Depth profile inside its card: drop the inner details border so card +
+   details read as a single surface (#64 phase 3). */
+.depth-profile-card .depth-profile {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
 /* ---- Depth profile (#45) ---- */
 
 .depth-profile {
@@ -696,6 +925,13 @@ select {
 @media (min-width: 1024px) {
   .depth-profile-plot {
     height: 220px; /* more vertical room on the wide two-column layout */
+  }
+
+  /* Sticky "Route planen" only on the wide side-panel (§3.3) — its own column,
+     so it cannot overlap the map attribution the way it does in the narrow
+     bottom-sheet. */
+  .planner-actions {
+    position: sticky;
   }
 }
 

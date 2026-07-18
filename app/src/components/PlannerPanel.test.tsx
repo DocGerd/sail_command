@@ -1,8 +1,18 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import { DEFAULT_SETTINGS, type Harbor, type LatLon, type PickedPoint } from '../types';
+import { uniformWindGrid } from '../test/fixtures';
+import {
+  DEFAULT_SETTINGS,
+  type Harbor,
+  type LatLon,
+  type Leg,
+  type PickedPoint,
+  type Plan,
+  type Rig,
+  type RigResult,
+} from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
 
 const FLENSBURG: Harbor = {
@@ -22,6 +32,63 @@ const MARSTAL: Harbor = {
 const HARBORS = [FLENSBURG, MARSTAL];
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 20, 9, 0, 0);
+const PLAN_DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
+
+const GENOA_LEGS: Leg[] = [
+  {
+    kind: 'sail',
+    board: 'starboard',
+    start: { lat: 54.79, lon: 9.43 },
+    end: { lat: 54.85, lon: 10.52 },
+    startTimeMs: PLAN_DEPARTURE_MS,
+    endTimeMs: PLAN_DEPARTURE_MS + 5 * 3_600_000,
+    headingDeg: 88,
+    twaDeg: 92,
+    twsKn: 10,
+    speedKn: 7,
+    distanceNm: 21.5,
+    maneuverAtStart: null,
+  },
+];
+
+const GENOA_RESULT: RigResult = {
+  rig: 'genoa',
+  etaMs: PLAN_DEPARTURE_MS + 5 * 3_600_000,
+  durationMs: 5 * 3_600_000,
+  distanceNm: 21.5,
+  maneuverCount: 1,
+  motorDistanceNm: 5,
+  legs: GENOA_LEGS,
+};
+
+function makePlan(over: { id?: string; distanceNm?: number } = {}): Plan {
+  const distanceNm = over.distanceNm ?? GENOA_RESULT.distanceNm;
+  return {
+    id: over.id ?? 'plan-1',
+    name: 'Flensburg to Marstal',
+    createdAtMs: PLAN_DEPARTURE_MS,
+    request: {
+      origin: { lat: 54.79, lon: 9.43 },
+      destination: { lat: 54.85, lon: 10.52 },
+      viaPoints: [],
+      originHarborId: 'flensburg',
+      destinationHarborId: 'marstal',
+      departureMs: PLAN_DEPARTURE_MS,
+      settings: DEFAULT_SETTINGS,
+    },
+    windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: PLAN_DEPARTURE_MS },
+    result: {
+      status: 'ok',
+      genoa: { ...GENOA_RESULT, distanceNm },
+      fock: null,
+      genoaReason: null,
+      fockReason: 'calm-motor-off',
+      recommended: 'genoa',
+      snappedOrigin: { lat: 54.79, lon: 9.43 },
+      snappedDestination: { lat: 54.85, lon: 10.52 },
+    },
+  };
+}
 
 interface Overrides {
   harbors?: Harbor[];
@@ -40,11 +107,13 @@ interface Overrides {
   planDisabledReason?: string | null;
   onPlan?: () => void;
   planning?: PlannerStatus;
+  plan?: Plan | null;
+  rig?: Rig | null;
+  onViewDetails?: () => void;
 }
 
-function renderPanel(overrides: Overrides = {}) {
-  localStorage.setItem('sc-lang', 'en');
-  const props = {
+function baseProps(overrides: Overrides = {}) {
+  return {
     harbors: HARBORS,
     origin: null,
     destination: null,
@@ -63,8 +132,16 @@ function renderPanel(overrides: Overrides = {}) {
     planDisabledReason: null,
     onPlan: vi.fn(),
     planning: { phase: 'idle' } as PlannerStatus,
+    plan: null as Plan | null,
+    rig: null as Rig | null,
+    onViewDetails: vi.fn(),
     ...overrides,
   };
+}
+
+function renderPanel(overrides: Overrides = {}) {
+  localStorage.setItem('sc-lang', 'en');
+  const props = baseProps(overrides);
   render(
     <I18nProvider>
       <PlannerPanel {...props} />
@@ -74,6 +151,7 @@ function renderPanel(overrides: Overrides = {}) {
 }
 
 afterEach(() => {
+  cleanup();
   localStorage.clear();
 });
 
@@ -121,8 +199,6 @@ describe('PlannerPanel', () => {
         label: 'Marstal',
       },
     });
-    // Scoped to the selected-endpoint-row <p>: a selected endpoint collapses to
-    // a row, so no combobox option of the same name competes here.
     const originSection = screen.getByRole('region', { name: 'Origin' });
     const destinationSection = screen.getByRole('region', { name: 'Destination' });
     expect(within(originSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument();
@@ -173,7 +249,6 @@ describe('PlannerPanel', () => {
     const combobox = within(originSection).getByRole('combobox');
     fireEvent.focus(combobox);
     fireEvent.keyDown(combobox, { key: 'Escape' });
-    // The committed selection is unchanged, so the row comes back — no empty box.
     expect(within(originSection).queryByRole('combobox')).not.toBeInTheDocument();
     expect(within(originSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument();
     expect(within(originSection).getByRole('button', { name: 'Change' })).toBeInTheDocument();
@@ -198,7 +273,7 @@ describe('PlannerPanel', () => {
   });
 
   it('keeps the combobox for a first, still-unselected endpoint when the search is dismissed', () => {
-    renderPanel(); // origin unset — no committed value to revert to
+    renderPanel();
     const originSection = screen.getByRole('region', { name: 'Origin' });
     const combobox = within(originSection).getByRole('combobox');
     fireEvent.focus(combobox);
@@ -358,6 +433,161 @@ describe('PlannerPanel', () => {
       expect(screen.getByRole('button', { name: 'Add waypoint' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Remove waypoint 1' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Move waypoint 1 down' })).toBeDisabled();
+    });
+  });
+
+  // §3.3: advanced-options progressive disclosure.
+  describe('advanced disclosure (§3.3)', () => {
+    it('keeps departure AND safety depth visible in the compact row (not behind the disclosure)', () => {
+      renderPanel();
+      expect(screen.getByLabelText('Departure')).toBeInTheDocument();
+      expect(screen.getByLabelText('Safety depth (m)')).toBeInTheDocument();
+    });
+
+    it('commits a clamped safety depth on blur (max 10)', () => {
+      const props = renderPanel();
+      const input = screen.getByLabelText('Safety depth (m)');
+      fireEvent.change(input, { target: { value: '12' } });
+      fireEvent.blur(input);
+      expect(input).toHaveValue(10);
+      expect(props.onSettingsChange).toHaveBeenCalledWith({
+        ...DEFAULT_SETTINGS,
+        safetyDepthM: 10,
+      });
+    });
+
+    it('clamps safety depth below the 2.2 m floor (never below draft + margin)', () => {
+      const props = renderPanel();
+      const input = screen.getByLabelText('Safety depth (m)');
+      fireEvent.change(input, { target: { value: '1' } });
+      fireEvent.blur(input);
+      expect(input).toHaveValue(2.2);
+      expect(props.onSettingsChange).toHaveBeenCalledWith({
+        ...DEFAULT_SETTINGS,
+        safetyDepthM: 2.2,
+      });
+    });
+
+    it('hides the five advanced fields behind a collapsed "Advanced" disclosure', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const { container } = render(
+        <I18nProvider>
+          <PlannerPanel {...baseProps()} />
+        </I18nProvider>,
+      );
+      const details = container.querySelector('details.planner-advanced') as HTMLDetailsElement;
+      expect(details).not.toBeNull();
+      expect(details.open).toBe(false);
+      // The advanced fields live inside the disclosure (native details keeps
+      // them in the DOM even when collapsed).
+      expect(within(details).getByLabelText('Motoring speed (kn)')).toBeInTheDocument();
+      expect(within(details).getByLabelText('Performance factor (×)')).toBeInTheDocument();
+    });
+
+    it('shows a one-line value summary of the advanced settings when collapsed', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const { container } = render(
+        <I18nProvider>
+          <PlannerPanel {...baseProps()} />
+        </I18nProvider>,
+      );
+      const values = container.querySelector('.planner-advanced-values');
+      expect(values).not.toBeNull();
+      // DEFAULT_SETTINGS: motor on, 6.5 kn, 45 s penalty, ×0.9.
+      const text = values!.textContent ?? '';
+      expect(text).toContain('Motor on');
+      expect(text).toContain('6.5 kn');
+      expect(text).toContain('Maneuver 45 s');
+      expect(text).toContain('×0.9');
+    });
+  });
+
+  // §3.4 (Option B): compact Ergebnis strip + completion announcement.
+  describe('compact Ergebnis strip (§3.4)', () => {
+    it('renders no Ergebnis strip before a plan exists', () => {
+      renderPanel({ plan: null, rig: null });
+      expect(screen.queryByRole('button', { name: /View details/ })).not.toBeInTheDocument();
+    });
+
+    it('renders the strip with distance, avg speed and a faster-rig chip once a plan is present', () => {
+      renderPanel({ plan: makePlan(), rig: 'genoa' });
+      // 21.5 nm / 5 h = 4.3 kn (hand-derived).
+      expect(screen.getByText('21.5 nm')).toBeInTheDocument();
+      expect(screen.getByText('4.3 kn')).toBeInTheDocument();
+      expect(screen.getByText('Faster: Genoa')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /View details/ })).toBeInTheDocument();
+    });
+
+    it('"View details" calls onViewDetails (tab switch + focus handled by the parent)', () => {
+      const props = renderPanel({ plan: makePlan(), rig: 'genoa' });
+      fireEvent.click(screen.getByRole('button', { name: /View details/ }));
+      expect(props.onViewDetails).toHaveBeenCalledTimes(1);
+    });
+
+    it('swaps the status live region to the completion summary on the routing->idle transition', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const { rerender } = render(
+        <I18nProvider>
+          <PlannerPanel {...baseProps({ planning: { phase: 'routing' }, plan: null, rig: null })} />
+        </I18nProvider>,
+      );
+      // In-flight: the region shows the routing message.
+      expect(screen.getByRole('status')).toHaveTextContent('Calculating route');
+
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' })}
+          />
+        </I18nProvider>,
+      );
+      const status = screen.getByRole('status');
+      // Stable summary swapped into the SAME region (no second live region).
+      expect(status).toHaveTextContent('Route calculated');
+      expect(status).toHaveTextContent('21.5 nm');
+      expect(status).toHaveTextContent('5 h 00 min');
+    });
+
+    it('does NOT re-announce on a same-id plan update (via-edit/slider re-render freezes the summary)', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const { rerender } = render(
+        <I18nProvider>
+          <PlannerPanel {...baseProps({ planning: { phase: 'routing' }, plan: null, rig: null })} />
+        </I18nProvider>,
+      );
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' })}
+          />
+        </I18nProvider>,
+      );
+      expect(screen.getByRole('status')).toHaveTextContent('21.5 nm');
+
+      // A new plan OBJECT with the SAME id but a different distance (as a via
+      // re-plan produces). The announcement must stay frozen at 21.5, proving
+      // it did not re-derive/re-fire on a same-id update.
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'idle' },
+              plan: makePlan({ id: 'plan-1', distanceNm: 30 }),
+              rig: 'genoa',
+            })}
+          />
+        </I18nProvider>,
+      );
+      const status = screen.getByRole('status');
+      expect(status).toHaveTextContent('21.5 nm');
+      expect(status).not.toHaveTextContent('30.0 nm');
+    });
+
+    it('does NOT announce on mount when a plan is already present (only on a genuine completion)', () => {
+      renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa' });
+      // Seeded from the mount plan id, so re-entering the tab with an existing
+      // result stays quiet — the region is empty, not restating the summary.
+      expect(screen.getByRole('status').textContent).toBe('');
     });
   });
 });

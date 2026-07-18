@@ -330,6 +330,27 @@ function AppShell() {
     if (next !== 'plan') setTapTarget(null);
   }, []);
 
+  // #64 phase 3: "Details ansehen" from the Plan-tab Ergebnis strip switches to
+  // the Routes tab AND moves focus to its Ergebnis heading (user-initiated, so
+  // moving focus is correct). The heading only exists once the Routes panel is
+  // mounted (panels are conditionally rendered), so focus is applied in an
+  // effect after the tab switch commits.
+  const routeResultHeadingRef = useRef<HTMLHeadingElement>(null);
+  // A ref, not state: setting it must not trigger a render (the tab change
+  // already does), and the focus effect keys off the `tab` transition, which
+  // is exactly when the Routes heading first mounts.
+  const pendingResultFocusRef = useRef(false);
+  const handleViewDetails = useCallback(() => {
+    handleTabChange('routes');
+    pendingResultFocusRef.current = true;
+  }, [handleTabChange]);
+  useEffect(() => {
+    if (tab === 'routes' && pendingResultFocusRef.current) {
+      pendingResultFocusRef.current = false;
+      routeResultHeadingRef.current?.focus();
+    }
+  }, [tab]);
+
   // Escape is the keyboard equivalent of the banner's cancel button below.
   // Gated on !aboutOpen (and not attached at all while About is open, rather
   // than checking aboutOpen inside the handler) so a single Escape with both
@@ -562,11 +583,21 @@ function AppShell() {
               planDisabledReason={planDisabledReason}
               onPlan={handlePlan}
               planning={plannerStatus}
+              plan={plan}
+              rig={rig}
+              onViewDetails={handleViewDetails}
             />
           )}
           {tab === 'routes' && (
             <>
-              {plan && rig && <RouteSummary plan={plan} rig={rig} onRigChange={setRig} />}
+              {plan && rig && (
+                <RouteSummary
+                  plan={plan}
+                  rig={rig}
+                  onRigChange={setRig}
+                  resultHeadingRef={routeResultHeadingRef}
+                />
+              )}
               {plan && rig && (
                 <DepthProfile plan={plan} rig={rig} safetyDepthM={settings.safetyDepthM} />
               )}

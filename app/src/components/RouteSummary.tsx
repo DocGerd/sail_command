@@ -1,29 +1,26 @@
+import type { Ref } from 'react';
 import { useT, useLang } from '../i18n';
-import type { MsgKey } from '../i18n/dict.de';
-import {
-  formatDateTime,
-  formatDuration,
-  formatHeading,
-  formatKn,
-  formatNm,
-  formatTime,
-} from '../lib/format';
+import { formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
+import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, Rig } from '../types';
+import Card from './Card';
+import Chip from './Chip';
+import Button from './Button';
+import Disclosure from './Disclosure';
 
 export interface RouteSummaryProps {
   plan: Plan;
   rig: Rig;
   onRigChange: (rig: Rig) => void;
+  // #64 phase 3: focus target for the Plan-tab "Details ansehen" link — App
+  // forwards it onto the Ergebnis card heading (tabIndex -1, focused on jump).
+  resultHeadingRef?: Ref<HTMLHeadingElement>;
 }
 
 const RIGS: Rig[] = ['genoa', 'fock'];
-
-const RIG_LABEL_KEY: Record<Rig, MsgKey> = {
-  genoa: 'route.rig.genoa',
-  fock: 'route.rig.fock',
-};
 
 // Okabe-Ito colorblind-safe green/red, echoing the port/starboard nav-light
 // convention. Mirrored in RouteLayer.tsx's line-color paint expression.
@@ -72,16 +69,37 @@ function downloadGpx(plan: Plan, rig: Rig): void {
   URL.revokeObjectURL(url);
 }
 
-export default function RouteSummary({ plan, rig, onRigChange }: RouteSummaryProps) {
+/** A labelled statistic cell with a `tabular-nums` value. */
+function Stat({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={['ergebnis-stat', className].filter(Boolean).join(' ')}>
+      <span className="ergebnis-stat-label">{label}</span>
+      <span className="ergebnis-stat-value tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+export default function RouteSummary({
+  plan,
+  rig,
+  onRigChange,
+  resultHeadingRef,
+}: RouteSummaryProps) {
   const t = useT();
   const [lang] = useLang();
   const result = activeRigResult(plan, rig);
   const stale = isStaleForecast(plan);
   const reason = !result ? reasonForRig(plan, rig) : null;
+  const summary = result ? resultSummary(plan, result, lang) : null;
 
   return (
-    <div className="route-summary">
-      <div role="tablist" aria-label={t('route.rigTabs')}>
+    <Card
+      title={t('planner.card.result')}
+      className="route-summary route-ergebnis"
+      titleRef={resultHeadingRef}
+      titleTabIndex={-1}
+    >
+      <div role="tablist" aria-label={t('route.rigTabs')} className="rig-tabs">
         {RIGS.map((r) => (
           <button
             key={r}
@@ -103,6 +121,11 @@ export default function RouteSummary({ plan, rig, onRigChange }: RouteSummaryPro
         ))}
       </div>
 
+      {/* Additive faster-rig chip (the ★ on the tab stays — e2e depends on it). */}
+      <Chip className="chip-faster-rig">
+        {t('route.fasterRig', { rig: t(RIG_LABEL_KEY[plan.result.recommended]) })}
+      </Chip>
+
       {stale && <p role="alert">{t('route.staleForecast')}</p>}
 
       {/* #53: plan-level shallow-water warning — both rigs solved at the same
@@ -118,79 +141,122 @@ export default function RouteSummary({ plan, rig, onRigChange }: RouteSummaryPro
         </p>
       )}
 
-      {!result ? (
+      {!result || !summary ? (
         <p role="alert">{t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.internal')}</p>
       ) : (
         <>
-          <dl className="route-totals">
-            <dt>{t('route.totals.distance')}</dt>
-            <dd>{formatNm(result.distanceNm)}</dd>
-            <dt>{t('route.totals.duration')}</dt>
-            <dd>{formatDuration(result.durationMs)}</dd>
-            <dt>{t('route.totals.eta')}</dt>
-            <dd>{formatDateTime(result.etaMs, lang)}</dd>
-            <dt>{t('route.totals.maneuvers')}</dt>
-            <dd>{result.maneuverCount}</dd>
-            {result.motorDistanceNm > 0 && (
-              <>
-                <dt>{t('route.totals.motorDistance')}</dt>
-                <dd>{formatNm(result.motorDistanceNm)}</dd>
-              </>
-            )}
-          </dl>
+          <div className="ergebnis-stats">
+            <Stat label={t('route.totals.eta')} value={summary.arrivalText} />
+            <Stat label={t('route.totals.distance')} value={summary.distanceText} />
+            <Stat label={t('route.totals.duration')} value={summary.durationText} />
+            <Stat label={t('route.totals.avgSpeed')} value={summary.avgSpeedText} />
+          </div>
+          <p className="ergebnis-maneuvers">
+            {t('route.totals.maneuvers')}:{' '}
+            <span className="tabular-nums">{result.maneuverCount}</span>
+          </p>
 
-          <table className="route-legs">
-            <thead>
-              <tr>
-                <th>{t('route.legs.time')}</th>
-                <th>{t('route.legs.kind')}</th>
-                <th>{t('route.legs.heading')}</th>
-                <th>{t('route.legs.twa')}</th>
-                <th>{t('route.legs.tws')}</th>
-                <th>{t('route.legs.speed')}</th>
-                <th>{t('route.legs.distance')}</th>
-                <th>{t('route.legs.maneuver')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.legs.map((leg, i) => (
-                <tr key={i}>
-                  <td>{formatTime(leg.startTimeMs, lang)}</td>
-                  <td>
-                    <LegKindChip leg={leg} rig={rig} />
-                  </td>
-                  <td>{formatHeading(leg.headingDeg)}</td>
-                  <td>{leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}</td>
-                  <td>{formatKn(leg.twsKn)}</td>
-                  <td>{formatKn(leg.speedKn)}</td>
-                  <td>{formatNm(leg.distanceNm)}</td>
-                  <td>
-                    {leg.maneuverAtStart && (
-                      <span className="chip chip-maneuver">
-                        {t(
-                          leg.maneuverAtStart === 'tack'
-                            ? 'route.maneuver.tack'
-                            : 'route.maneuver.gybe',
-                        )}
-                      </span>
-                    )}
-                  </td>
+          {/* Sail/motor split bar — proportions from the shared formatter.
+              Motor uses a neutral grey (NOT a map-palette token). */}
+          <div className="ergebnis-split">
+            <div
+              className="ergebnis-split-bar"
+              role="img"
+              aria-label={t('route.split.aria', {
+                sailPct: summary.sailPct,
+                motorPct: summary.motorPct,
+              })}
+            >
+              <span className="ergebnis-split-sail" style={{ flexGrow: summary.sailFraction }} />
+              {summary.motorNm > 0 && (
+                <span
+                  className="ergebnis-split-motor"
+                  style={{ flexGrow: summary.motorFraction }}
+                />
+              )}
+            </div>
+            <div className="ergebnis-split-legend">
+              <span className="ergebnis-split-item">
+                <span
+                  className="ergebnis-split-swatch ergebnis-split-swatch-sail"
+                  aria-hidden="true"
+                />
+                <span className="tabular-nums">
+                  {t('route.split.sail')} · {formatNm(summary.sailNm)} · {summary.sailPct}%
+                </span>
+              </span>
+              <span className="ergebnis-split-item">
+                <span
+                  className="ergebnis-split-swatch ergebnis-split-swatch-motor"
+                  aria-hidden="true"
+                />
+                <span className="tabular-nums">
+                  {t('route.split.motor')} · {formatNm(summary.motorNm)} · {summary.motorPct}%
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* Legs move behind a disclosure — the card leads with the glance
+              stats; the full etappen table is one tap away. */}
+          <Disclosure
+            className="route-legs-disclosure"
+            summary={t('route.legs.disclosure', { count: result.legs.length })}
+          >
+            <table className="route-legs">
+              <thead>
+                <tr>
+                  <th>{t('route.legs.time')}</th>
+                  <th>{t('route.legs.kind')}</th>
+                  <th>{t('route.legs.heading')}</th>
+                  <th>{t('route.legs.twa')}</th>
+                  <th>{t('route.legs.tws')}</th>
+                  <th>{t('route.legs.speed')}</th>
+                  <th>{t('route.legs.distance')}</th>
+                  <th>{t('route.legs.maneuver')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {result.legs.map((leg, i) => (
+                  <tr key={i}>
+                    <td>{formatTime(leg.startTimeMs, lang)}</td>
+                    <td>
+                      <LegKindChip leg={leg} rig={rig} />
+                    </td>
+                    <td>{formatHeading(leg.headingDeg)}</td>
+                    <td>{leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}</td>
+                    <td>{formatKn(leg.twsKn)}</td>
+                    <td>{formatKn(leg.speedKn)}</td>
+                    <td>{formatNm(leg.distanceNm)}</td>
+                    <td>
+                      {leg.maneuverAtStart && (
+                        <span className="chip chip-maneuver">
+                          {t(
+                            leg.maneuverAtStart === 'tack'
+                              ? 'route.maneuver.tack'
+                              : 'route.maneuver.gybe',
+                          )}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {result.legs.length > 0 && (
+              <p className="route-legs-note">{t('route.legs.motorNote')}</p>
+            )}
+          </Disclosure>
 
-          {result.legs.length > 0 && <p className="route-legs-note">{t('route.legs.motorNote')}</p>}
-
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => downloadGpx(plan, rig)}
             disabled={result.legs.length === 0}
           >
             {t('route.exportGpx')}
-          </button>
+          </Button>
         </>
       )}
-    </div>
+    </Card>
   );
 }

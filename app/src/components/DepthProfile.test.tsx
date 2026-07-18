@@ -192,12 +192,28 @@ describe('DepthProfile', () => {
     expect(container.querySelector('.depth-profile')).toBeNull();
   });
 
-  it('summary shows the title and the min depth glance value', async () => {
+  it('wraps the profile in an Ergebnis-style card (#64 phase 3), keeping the inner details', async () => {
+    const { container } = renderProfile();
+    await waitForChart(container);
+    const card = container.querySelector('.depth-profile-card.sc-card');
+    expect(card).not.toBeNull();
+    expect(card?.querySelector('.sc-card-title')?.textContent).toBe('Depth profile');
+    // The collapsible details + SVG still live inside the card.
+    expect(card?.querySelector('details.depth-profile')).not.toBeNull();
+  });
+
+  it('summary shows ONLY the min-depth glance (title lives on the card h2, not duplicated)', async () => {
     const { container } = renderProfile();
     await waitForChart(container);
     const summary = container.querySelector('.depth-profile-summary');
-    expect(summary?.textContent).toContain('Depth profile');
     expect(summary?.textContent).toContain('min. 20.0 m');
+    // The title is not repeated in the summary (avoids the double-render / double
+    // screen-reader announcement).
+    expect(summary?.textContent).not.toContain('Depth profile');
+    // The card <h2> carries the single title.
+    expect(container.querySelector('.depth-profile-card > .sc-card-title')?.textContent).toBe(
+      'Depth profile',
+    );
   });
 
   it('opens by default on wide viewports, stays collapsed on narrow (matchMedia at mount)', async () => {
