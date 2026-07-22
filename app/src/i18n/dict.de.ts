@@ -67,6 +67,8 @@ export const de = {
     '{dropped} zusätzliche Wegpunkte verworfen (Höchstzahl an Wegpunkten überschritten).',
   'planner.import.notice.multipleRoutes':
     'Mehrere Routen in der Datei — nur die erste wurde importiert.',
+  'planner.import.notice.multipleTracks':
+    'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
   'planner.status.routing': 'Route wird berechnet…',
   'planner.status.routingProgress': 'Route wird berechnet… {progress}%',

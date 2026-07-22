@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { GpxParseError, MAX_VIA_POINTS, parseGpx } from './gpx';
+import { DATA_AREA, GpxParseError, MAX_VIA_POINTS, parseGpx } from './gpx';
 
 // ---------------------------------------------------------------------------
 // Literals in these tests are hand-derived from the fixture coordinates below,
@@ -78,6 +81,24 @@ describe('parseGpx — <trk> fallback (priority 2)', () => {
     expect(route.origin).toEqual({ lat: 54.6, lon: 9.5 });
     expect(route.destination).toEqual({ lat: 54.68, lon: 9.7 });
     expect(route.viaPoints).toEqual([]);
+    expect(route.notices).toContainEqual({ kind: 'track-reduced' });
+  });
+
+  it('uses the FIRST <trk> and notes the others were ignored (mirrors multiple-routes)', () => {
+    const xml =
+      GPX_OPEN +
+      '<trk><name>First</name><trkseg>' +
+      '<trkpt lat="54.60" lon="9.50"/><trkpt lat="54.62" lon="9.55"/>' +
+      '</trkseg></trk>' +
+      '<trk><name>Second</name><trkseg>' +
+      '<trkpt lat="54.80" lon="10.00"/><trkpt lat="54.82" lon="10.05"/>' +
+      '</trkseg></trk></gpx>';
+    const route = parseGpx(xml);
+    // First trk's endpoints only — the second trk's coords must NOT appear.
+    expect(route.origin).toEqual({ lat: 54.6, lon: 9.5 });
+    expect(route.destination).toEqual({ lat: 54.62, lon: 9.55 });
+    expect(route.viaPoints).toEqual([]);
+    expect(route.notices).toContainEqual({ kind: 'multiple-tracks' });
     expect(route.notices).toContainEqual({ kind: 'track-reduced' });
   });
 
@@ -204,5 +225,28 @@ describe('parseGpx — realistic Garmin-style export', () => {
     expect(route.destination).toEqual({ lat: 54.854, lon: 10.52 });
     expect(route.viaPoints).toEqual([{ lat: 54.91, lon: 9.79 }]);
     expect(route.notices).toEqual([]);
+  });
+});
+
+describe('DATA_AREA (mask.meta.json drift guard)', () => {
+  it('deep-equals the committed mask.meta.json west/south/east/north bounds', () => {
+    // Read the committed mask metadata independently (resolveJsonModule is off,
+    // so no JSON import) and pin DATA_AREA to it. If the mask data-area ever
+    // moves, this fails until gpx.ts's DATA_AREA is updated to match — the
+    // enforcement of its "keep in sync with mask.meta.json" note. The expectation
+    // is derived from the committed file, not from DATA_AREA (repo lesson #50).
+    const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
+    const meta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8')) as {
+      west: number;
+      south: number;
+      east: number;
+      north: number;
+    };
+    expect(DATA_AREA).toEqual({
+      west: meta.west,
+      south: meta.south,
+      east: meta.east,
+      north: meta.north,
+    });
   });
 });

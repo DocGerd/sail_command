@@ -69,6 +69,8 @@ export const en = {
   'planner.import.notice.viaCapped': '{dropped} extra waypoints dropped (waypoint limit exceeded).',
   'planner.import.notice.multipleRoutes':
     'Multiple routes in the file — only the first was imported.',
+  'planner.import.notice.multipleTracks':
+    'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
   'planner.status.routing': 'Calculating route…',
   'planner.status.routingProgress': 'Calculating route… {progress}%',

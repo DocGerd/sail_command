@@ -178,6 +178,7 @@ export default function PlannerPanel({
         ...route.notices.map((n) => {
           if (n.kind === 'track-reduced') return t('planner.import.notice.trackReduced');
           if (n.kind === 'multiple-routes') return t('planner.import.notice.multipleRoutes');
+          if (n.kind === 'multiple-tracks') return t('planner.import.notice.multipleTracks');
           return t('planner.import.notice.viaCapped', { dropped: n.dropped });
         }),
       ]);

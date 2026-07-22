@@ -62,7 +62,9 @@ export const MAX_VIA_POINTS = 8;
 // app/public/data/mask.meta.json — the locked 54.3..55.3°N / 9.4..11.0°E domain
 // area the design spec fixes (openMeteo.ts hardcodes the same corner). Keep in
 // sync with mask.meta.json if the data-area ever changes.
-const DATA_AREA: Pick<MaskMeta, 'west' | 'south' | 'east' | 'north'> = {
+// Exported so a test can pin it against the committed mask.meta.json (the only
+// enforcement of the "keep in sync" note above) — nothing else imports it.
+export const DATA_AREA: Pick<MaskMeta, 'west' | 'south' | 'east' | 'north'> = {
   west: 9.4,
   south: 54.3,
   east: 11.0,
@@ -94,7 +96,8 @@ export class GpxParseError extends Error {
 export type GpxNotice =
   | { kind: 'track-reduced' } // a <trk> was collapsed to its first+last point
   | { kind: 'via-capped'; dropped: number } // via count exceeded MAX_VIA_POINTS
-  | { kind: 'multiple-routes' }; // >1 <rte> present, only the first was used
+  | { kind: 'multiple-routes' } // >1 <rte> present, only the first was used
+  | { kind: 'multiple-tracks' }; // >1 <trk> present, only the first was used
 
 /**
  * Local hand-off shape (not a domain type, not persisted): the imported route
@@ -173,6 +176,7 @@ export function parseGpx(xml: string): ParsedGpxRoute {
     if (rtes.length > 1) notices.push({ kind: 'multiple-routes' });
     points = elementsByLocalName(rtes[0], 'rtept').map(pointFrom);
   } else if (trks.length > 0) {
+    if (trks.length > 1) notices.push({ kind: 'multiple-tracks' });
     const trkpts = elementsByLocalName(trks[0], 'trkpt');
     if (trkpts.length < 2) throw new GpxParseError('too-few-points');
     points = [pointFrom(trkpts[0]), pointFrom(trkpts[trkpts.length - 1])];
