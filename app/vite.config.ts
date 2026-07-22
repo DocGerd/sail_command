@@ -159,6 +159,13 @@ export default defineConfig({
       },
     }),
   ],
+  // #107: build-time flag for UAT-only UI (the header badge). JSON.stringify
+  // keeps the replacement an exact `true`/`false` literal. Production
+  // (SC_DEPLOY_ENV unset) gets `false`, and the badge's import-site gate
+  // (`__SC_UAT__ && …` in App.tsx) then dead-code-eliminates the whole
+  // UatBadge module graph — the prod bundle stays byte-identical (verified
+  // like #96). Vitest inherits this config, so tests see the constant too.
+  define: { __SC_UAT__: JSON.stringify(isUat) },
   build: { target: 'es2022' },
   worker: { format: 'es' },
   test: {

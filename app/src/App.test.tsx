@@ -452,6 +452,12 @@ describe('App', () => {
     expect(
       await screen.findByRole('heading', { name: 'SailCommand', level: 1 }),
     ).toBeInTheDocument();
+    // #107: vitest sees the non-UAT define (`__SC_UAT__` is false, like a
+    // production build), so the REAL import-site gate in the header must
+    // render no UAT environment badge. (The heading-name assertion above
+    // already implies it — a rendered badge would make the accessible name
+    // "SailCommand UAT" — but pin it explicitly.)
+    expect(screen.queryByText('UAT')).toBeNull();
   });
 
   it('defaults to the Planen tab, and switching tabs shows Routen and Live panel content', async () => {

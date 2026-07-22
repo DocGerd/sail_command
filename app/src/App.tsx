@@ -29,6 +29,7 @@ import LiveView from './components/LiveView';
 import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
+import UatBadge from './components/UatBadge';
 import { isStaleForecast } from './lib/plan';
 import { useWideLayout } from './lib/useWideLayout';
 import { formatLatLon } from './lib/format';
@@ -536,6 +537,14 @@ function AppShell() {
             <path d="M26.96 62.5L73.04 62.5L63.5 76L36.5 76Z" />
           </svg>
           {t('app.title')}
+          {/* #107: UAT environment badge — the gate MUST stay this literal
+              `__SC_UAT__ &&` expression at the import site: Vite's define
+              turns it into `false && …` in production builds, which lets
+              Rollup drop the JSX call, the import, and the whole UatBadge
+              module graph (incl. its UAT-local dict), keeping the prod
+              bundle byte-identical (#96). Never route the flag through a
+              prop or wrapper component — that keeps the module referenced. */}
+          {__SC_UAT__ && <UatBadge />}
         </h1>
         <div className="app-header-actions">
           <button
