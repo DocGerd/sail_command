@@ -107,7 +107,10 @@ deviate from it.
   as a separate PWA rather than colliding with production's). This
   deliberately couples the two deploys (any push to either branch rebuilds
   both); the existing `concurrency: { group: pages }` still serializes
-  overlapping main+develop pushes. Production:
+  overlapping main+develop pushes. Develop-triggered runs additionally record
+  a distinct `uat` GitHub Deployments-UI environment (bookkeeping only,
+  hosting unchanged) so `github-pages` in the sidebar reads as production.
+  Production:
   `https://docgerd.github.io/sail_command/` (unchanged, verified
   byte-for-byte identical to the pre-#96 build). UAT (unreleased develop
   state — noindex, not chart-authoritative, don't link it from anywhere
