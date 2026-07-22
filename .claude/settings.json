@@ -72,6 +72,26 @@
             "type": "command",
             "command": "f=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty'); case \"$f\" in *app/src/i18n/dict.*.ts) [ -x \"$CLAUDE_PROJECT_DIR/app/node_modules/.bin/tsc\" ] || { echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"i18n key-parity guard SKIPPED: app/node_modules is missing tsc - run npm --prefix app install, then verify dict.de.ts/dict.en.ts key parity manually (typecheck).\"}}'; exit 0; }; out=$(npm --prefix \"$CLAUDE_PROJECT_DIR/app\" run typecheck 2>&1) || { echo 'typecheck failed after i18n dict edit. If errors point at dict.*.ts: key parity (satisfies Record<MsgKey,string>) - add every key to BOTH dict.de.ts and dict.en.ts. If errors are elsewhere: pre-existing, do not fix them by editing the dicts:' >&2; echo \"$out\" | tail -30 >&2; exit 2; } ;; esac",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty'); e=\"$CLAUDE_PROJECT_DIR/app/node_modules/.bin/eslint\"; case \"$f\" in *app/src/*.ts|*app/src/*.tsx) if [ -x \"$e\" ]; then out=$(cd \"$CLAUDE_PROJECT_DIR/app\" && node_modules/.bin/eslint \"$f\" 2>&1) || { fs=$(printf '%s' \"$f\" | tr '\"' \"'\"); msg=$(printf '%s' \"$out\" | grep -E 'error|warning' | head -8 | tr '\\n' ' ' | tr '\"' \"'\"); printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"eslint flagged %s (CI runs lint BEFORE tests and fails on unused imports/type errors - fix now, do not wait for CI): %s\"}}' \"$fs\" \"$msg\"; }; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"eslint hook inert: app/node_modules/.bin/eslint missing - run npm --prefix app install.\"}}'; fi ;; esac",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty'); case \"$f\" in *app/package.json|*app/package-lock.json) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"Dependency manifest changed. Regenerate third-party notices: npm --prefix app run notices - CI fails on any drift in app/public/THIRD-PARTY-NOTICES.txt (ci.yml runs git diff --exit-code). Do it now to avoid a ~10-min CI round-trip.\"}}' ;; esac",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null); case \"$CMD\" in *npm*install*|*npm*uninstall*|*npm*update*) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"npm changed dependencies. Regenerate third-party notices: npm --prefix app run notices - CI fails on any drift in app/public/THIRD-PARTY-NOTICES.txt. Run it before committing.\"}}' ;; esac",
+            "timeout": 5
           }
         ]
       }
