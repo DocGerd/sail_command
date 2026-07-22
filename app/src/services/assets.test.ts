@@ -1,11 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_MASK_META, TEST_POLAR } from '../test/fixtures';
 import type { Harbor, PolarTable } from '../types';
+import type { SeamarkFeatureCollection } from '../lib/seamarkGeoJson';
 
 const FOCK: PolarTable = { ...TEST_POLAR, rig: 'fock' };
 const HARBORS: Harbor[] = [
-  { id: 'h1', names: { de: 'Hafen', da: 'Havn', en: 'Harbor' }, country: 'DE', snap: { lat: 54.5, lon: 10.0 } },
+  {
+    id: 'h1',
+    names: { de: 'Hafen', da: 'Havn', en: 'Harbor' },
+    country: 'DE',
+    snap: { lat: 54.5, lon: 10.0 },
+  },
 ];
+const SEAMARKS: SeamarkFeatureCollection = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [10.0, 54.5] },
+      properties: { seamarkType: 'buoy_lateral', category: 'port', colour: 'red' },
+    },
+  ],
+};
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200 });
@@ -20,16 +36,24 @@ function maskArrayBuffer(): ArrayBuffer {
 function fetchMock(overrides: Partial<Record<string, () => Response>> = {}) {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
-    if (overrides.maskMeta && url.includes('mask.meta.json')) return Promise.resolve(overrides.maskMeta());
+    if (overrides.maskMeta && url.includes('mask.meta.json'))
+      return Promise.resolve(overrides.maskMeta());
     if (url.includes('mask.meta.json')) return Promise.resolve(jsonResponse(TEST_MASK_META));
     if (overrides.maskBin && url.includes('mask.bin')) return Promise.resolve(overrides.maskBin());
-    if (url.includes('mask.bin')) return Promise.resolve(new Response(maskArrayBuffer(), { status: 200 }));
-    if (overrides.polarGenoa && url.includes('polar-genoa.json')) return Promise.resolve(overrides.polarGenoa());
+    if (url.includes('mask.bin'))
+      return Promise.resolve(new Response(maskArrayBuffer(), { status: 200 }));
+    if (overrides.polarGenoa && url.includes('polar-genoa.json'))
+      return Promise.resolve(overrides.polarGenoa());
     if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-    if (overrides.polarFock && url.includes('polar-fock.json')) return Promise.resolve(overrides.polarFock());
+    if (overrides.polarFock && url.includes('polar-fock.json'))
+      return Promise.resolve(overrides.polarFock());
     if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
-    if (overrides.harbors && url.includes('harbors.json')) return Promise.resolve(overrides.harbors());
+    if (overrides.harbors && url.includes('harbors.json'))
+      return Promise.resolve(overrides.harbors());
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
+    if (overrides.seamarks && url.includes('seamarks.json'))
+      return Promise.resolve(overrides.seamarks());
+    if (url.includes('seamarks.json')) return Promise.resolve(jsonResponse(SEAMARKS));
     throw new Error(`unexpected fetch: ${url}`);
   });
 }
@@ -46,7 +70,7 @@ describe('loadRoutingAssets', () => {
     vi.unstubAllGlobals();
   });
 
-  it('fetches mask meta/buffer, both polars, and harbors from BASE_URL-relative paths', async () => {
+  it('fetches mask meta/buffer, both polars, harbors, and seamarks from BASE_URL-relative paths', async () => {
     const mock = fetchMock();
     vi.stubGlobal('fetch', mock);
 
@@ -57,8 +81,9 @@ describe('loadRoutingAssets', () => {
     expect(assets.polarGenoa).toEqual(TEST_POLAR);
     expect(assets.polarFock).toEqual(FOCK);
     expect(assets.harbors).toEqual(HARBORS);
+    expect(assets.seamarks).toEqual(SEAMARKS);
     expect(new Uint8Array(assets.maskBuffer)).toEqual(new Uint8Array(maskArrayBuffer()));
-    expect(mock).toHaveBeenCalledTimes(5);
+    expect(mock).toHaveBeenCalledTimes(6);
     for (const call of mock.mock.calls) {
       expect(String(call[0])).toContain(import.meta.env.BASE_URL);
     }
@@ -73,7 +98,7 @@ describe('loadRoutingAssets', () => {
     const second = await loadRoutingAssets();
 
     expect(second).toBe(first);
-    expect(mock).toHaveBeenCalledTimes(5);
+    expect(mock).toHaveBeenCalledTimes(6);
   });
 
   it('throws when a fetch response is not ok', async () => {
@@ -99,6 +124,6 @@ describe('loadRoutingAssets', () => {
 
     const assets = await loadRoutingAssets();
     expect(assets.maskMeta).toEqual(TEST_MASK_META);
-    expect(healthy).toHaveBeenCalledTimes(5);
+    expect(healthy).toHaveBeenCalledTimes(6);
   });
 });

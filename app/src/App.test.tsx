@@ -253,11 +253,30 @@ vi.mock('maplibre-gl', () => {
       return this;
     }
   }
+  // #7: DataLayers opens a seamark info popover via `new Popup()` on a
+  // sc-seamarks click — no test here drives that click path (covered by the
+  // real-browser verify pass), but the stub keeps the module import itself
+  // from throwing if that ever changes.
+  class FakePopup {
+    setLngLat() {
+      return this;
+    }
+    setDOMContent() {
+      return this;
+    }
+    addTo() {
+      return this;
+    }
+    remove() {
+      return this;
+    }
+  }
   return {
     Map: FakeMap,
     Marker: FakeMarker,
     AttributionControl: FakeAttributionControl,
     LngLatBounds: FakeLngLatBounds,
+    Popup: FakePopup,
     addProtocol: vi.fn(),
   };
 });
@@ -294,6 +313,8 @@ function fetchMock() {
     if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
     if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
+    if (url.includes('seamarks.json'))
+      return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
     return Promise.reject(new Error(`unexpected fetch: ${url}`));
   });
 }

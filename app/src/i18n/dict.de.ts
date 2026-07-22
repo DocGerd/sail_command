@@ -172,6 +172,14 @@ export const de = {
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',
+  // Seezeichen-Overlay (#7) — standardmäßig AUS, Opt-in.
+  'map.seamarks.toggle': 'Seezeichen',
+  'seamark.popover.type': 'Typ',
+  'seamark.popover.category': 'Kategorie',
+  'seamark.popover.colour': 'Farbe',
+  'seamark.popover.lightCharacter': 'Kennung',
+  'seamark.popover.lightColour': 'Lichtfarbe',
+  'seamark.popover.lightPeriod': 'Wiederkehr',
   'plansList.empty': 'Noch keine gespeicherten Pläne.',
   'plansList.created': 'Erstellt',
   'plansList.delete': 'Plan löschen',
@@ -211,6 +219,8 @@ export const de = {
   'about.sources.openMeteo': 'Windvorhersage: Wetterdaten von Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polare: ORC International Zertifikat 2026, Salona 45 „Miles Ahead" (AUT 035/26); Vorwind-Werte auf Weißsegel (ohne Spinnaker) korrigiert — Schätzung, nicht renngenau kalibriert.',
+  'about.sources.seamarks':
+    'Seezeichen: © OpenStreetMap-Mitwirkende (ODbL), Stand der Seezeichendaten: 22. Juli 2026 — Zeitpunkt-Extrakt, nicht laufend überprüft',
   'banner.offline': 'Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.',
   'banner.mapError': 'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.',
   'banner.persistenceError': 'Einstellungen konnten nicht gespeichert werden.',
