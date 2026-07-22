@@ -3,7 +3,7 @@ import type { Harbor, LatLon, PickedPoint, Plan, Rig, RigResult, Settings } from
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { formatDateTime, formatDuration, formatKn, formatLatLon, formatNm } from '../lib/format';
-import { GpxParseError, parseGpx, type GpxErrorReason } from '../lib/gpx';
+import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
 import { resultSummary } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
@@ -151,6 +151,8 @@ export default function PlannerPanel({
         return t('planner.import.error.badCoord');
       case 'out-of-bounds':
         return t('planner.import.error.outOfBounds');
+      case 'too-large':
+        return t('planner.import.error.tooLarge');
       case 'not-xml':
       case 'not-gpx':
         return t('planner.import.error.notGpx');
@@ -165,6 +167,16 @@ export default function PlannerPanel({
     if (!file) return;
     setImportError(null);
     setImportNotices([]);
+    // DoS guard (#3 hardening): reject an oversized file BEFORE reading it into
+    // memory. parseGpx runs synchronously on the main thread, so a hundreds-of-MB
+    // GPX would freeze the tab (blast radius = the user's own tab). The 10 MB cap
+    // (MAX_GPX_FILE_BYTES) is far above any real route/track export, so this never
+    // rejects a legitimate file; a belt-and-suspenders element-count guard lives
+    // in parseGpx for a well-formed file that slips under the byte cap.
+    if (file.size > MAX_GPX_FILE_BYTES) {
+      setImportError(t('planner.import.error.tooLarge'));
+      return;
+    }
     try {
       const route = parseGpx(await file.text());
       const toPicked = (p: LatLon): PickedPoint => ({

@@ -1,6 +1,8 @@
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
+import { en } from '../i18n/dict.en';
+import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
 import {
@@ -720,5 +722,26 @@ describe('PlannerPanel', () => {
       // The real card (its faster-rig chip only exists on the real Ergebnis card).
       expect(container.querySelector('.chip-faster-rig')).not.toBeNull();
     });
+  });
+});
+
+describe('GPX import — file-size DoS guard (#3 hardening)', () => {
+  it('rejects an oversized file with the too-large error and never reads it', async () => {
+    renderPanel();
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) throw new Error('import file input not found');
+
+    // A tiny File whose reported .size is stubbed one byte past the cap, so the
+    // guard fires without allocating a real >10 MB blob. The text() spy is the
+    // load-bearing assertion: the rejection must happen BEFORE any read, so the
+    // hundreds-of-MB file is never pulled into memory (parseGpx never runs).
+    const file = new File(['<gpx/>'], 'huge.gpx', { type: 'application/gpx+xml' });
+    Object.defineProperty(file, 'size', { value: MAX_GPX_FILE_BYTES + 1 });
+    const textSpy = vi.spyOn(file, 'text');
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    expect(await screen.findByText(en['planner.import.error.tooLarge'])).toBeInTheDocument();
+    expect(textSpy).not.toHaveBeenCalled();
   });
 });

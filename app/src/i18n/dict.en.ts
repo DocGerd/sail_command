@@ -63,6 +63,7 @@ export const en = {
   'planner.import.error.badCoord': 'The GPX file contains invalid coordinates.',
   'planner.import.error.outOfBounds':
     'A point lies outside the covered area (Flensburg Fjord / Danish South Sea).',
+  'planner.import.error.tooLarge': 'The GPX file is too large to import.',
   'planner.import.error.failed': 'The GPX file could not be read.',
   'planner.import.notice.trackReduced':
     "Track reduced to its start and end point — the track's shape is ignored for planning.",

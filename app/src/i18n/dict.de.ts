@@ -60,6 +60,7 @@ export const de = {
   'planner.import.error.badCoord': 'Die GPX-Datei enthält ungültige Koordinaten.',
   'planner.import.error.outOfBounds':
     'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+  'planner.import.error.tooLarge': 'Die GPX-Datei ist zu groß für den Import.',
   'planner.import.error.failed': 'GPX-Datei konnte nicht gelesen werden.',
   'planner.import.notice.trackReduced':
     'Track auf Start- und Zielpunkt reduziert — der Trackverlauf wird für die Planung ignoriert.',

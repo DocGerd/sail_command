@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DATA_AREA, GpxParseError, MAX_VIA_POINTS, parseGpx } from './gpx';
+import { DATA_AREA, GpxParseError, MAX_GPX_ELEMENTS, MAX_VIA_POINTS, parseGpx } from './gpx';
 
 // ---------------------------------------------------------------------------
 // Literals in these tests are hand-derived from the fixture coordinates below,
@@ -193,6 +193,23 @@ describe('parseGpx — via-count cap (§5)', () => {
     expect(route.viaPoints[7]).toEqual({ lat: 54.9, lon: 9.9 });
     expect(route.notices).toContainEqual({ kind: 'via-capped', dropped: 2 });
   });
+});
+
+describe('parseGpx — element-count DoS guard', () => {
+  it('rejects a document whose total element count exceeds MAX_GPX_ELEMENTS', () => {
+    // Hand-derived count: (MAX_GPX_ELEMENTS + 1) rtepts + the <gpx> and <rte>
+    // wrapper elements = MAX_GPX_ELEMENTS + 3 total elements, one past the bound.
+    // The coordinates are in-bounds and valid, so nothing but the size guard can
+    // reject this — proving the guard, not a coord/bounds check, fires. Generous
+    // per-test timeout: building + jsdom-parsing 100k nodes is ~0.5 s here but
+    // CI runners are 6–10× slower (never tighten below the file default).
+    const xml =
+      GPX_OPEN +
+      '<rte>' +
+      '<rtept lat="54.5" lon="9.5"/>'.repeat(MAX_GPX_ELEMENTS + 1) +
+      '</rte></gpx>';
+    expect(parseError(xml).reason).toBe('too-large');
+  }, 30_000);
 });
 
 describe('parseGpx — realistic Garmin-style export', () => {

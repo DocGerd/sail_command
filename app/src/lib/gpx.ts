@@ -57,6 +57,29 @@ export function toGpx(plan: Plan, rig: Rig): string {
  */
 export const MAX_VIA_POINTS = 8;
 
+/**
+ * DoS bound — primary: the largest GPX file the import handler will read.
+ * `parseGpx` runs synchronously on the main thread and reads the whole file into
+ * memory, so a hundreds-of-MB / millions-of-element GPX would freeze or OOM the
+ * tab (blast radius = the user's own tab; there is no backend). The import
+ * handler in PlannerPanel rejects a larger file BEFORE `file.text()`, so an
+ * oversized file is never read. 10 MB is orders of magnitude above any real
+ * export — a route is KB and even a densely recorded multi-day track is a few MB
+ * — so this never false-positives on a legitimate file.
+ */
+export const MAX_GPX_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * DoS bound — belt-and-suspenders behind {@link MAX_GPX_FILE_BYTES}: the largest
+ * number of DOM elements `parseGpx` will process. A well-formed GPX that slips
+ * under the byte cap could still carry an adversarial element count, and every
+ * downstream pass (element gathering, per-point validation) is linear and
+ * synchronous. `parseGpx` reads the count via `getElementsByTagName('*').length`
+ * — an O(1) live-collection length — and rejects up front, before any traversal.
+ * 100k is far above any legitimate route (a handful of rtepts) or dense track.
+ */
+export const MAX_GPX_ELEMENTS = 100_000;
+
 // The app can only route inside its committed mask data-area, so an imported
 // point beyond this window is rejected at parse time. Mirrors the bounds in
 // app/public/data/mask.meta.json — the locked 54.3..55.3°N / 9.4..11.0°E domain
@@ -76,7 +99,8 @@ export type GpxErrorReason =
   | 'not-gpx' // well-formed XML but no <gpx> root element
   | 'too-few-points' // fewer than 2 usable points (need origin + destination)
   | 'bad-coord' // a lat/lon is missing, non-numeric, or out of WGS84 range
-  | 'out-of-bounds'; // a point is valid WGS84 but outside the mask data-area
+  | 'out-of-bounds' // a point is valid WGS84 but outside the mask data-area
+  | 'too-large'; // input exceeds the element-count DoS bound (MAX_GPX_ELEMENTS)
 
 /**
  * Thrown by {@link parseGpx} on any rejection. The caller maps `reason` to a
@@ -164,6 +188,15 @@ export function parseGpx(xml: string): ParsedGpxRoute {
   if (doc.getElementsByTagName('parsererror').length > 0) throw new GpxParseError('not-xml');
   const root = doc.documentElement;
   if (!root || root.localName !== 'gpx') throw new GpxParseError('not-gpx');
+
+  // DoS guard (belt-and-suspenders behind the import handler's file-size cap).
+  // Read the total element count cheaply (live-collection `.length`, no
+  // materialization) and reject an oversized document BEFORE any element
+  // gathering — because the gathering (`elementsByLocalName`) and per-point
+  // validation are the costly O(n) passes we are protecting against. Counting
+  // candidate points first would mean doing that expensive work on a hostile
+  // document, defeating the guard.
+  if (doc.getElementsByTagName('*').length > MAX_GPX_ELEMENTS) throw new GpxParseError('too-large');
 
   const notices: GpxNotice[] = [];
   let points: LatLon[];
