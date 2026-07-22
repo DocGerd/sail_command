@@ -9,6 +9,46 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 const APP_DIR = dirname(fileURLToPath(import.meta.url));
 
+// #96: UAT deploy of `develop` to the Pages sub-path /sail_command/uat/,
+// alongside production's unchanged /sail_command/ root. deploy.yml sets
+// SC_DEPLOY_ENV=uat only for the develop build; the production build never
+// sets it, so `isUat` is false and `basePath` matches the pre-#96 constant
+// exactly — production's build output is unaffected by this addition.
+const isUat = process.env.SC_DEPLOY_ENV === 'uat';
+const basePath = isUat ? '/sail_command/uat/' : '/sail_command/';
+
+// #96: rewrites the two absolute og: URLs to the actual deploy sub-path and,
+// for the UAT build only, marks the page noindex and retitles it — so the
+// staging deploy is never confused with (or indexed as) production. Regex
+// on the exact production strings rather than templating index.html, so a
+// production build's html output is byte-for-byte identical to before #96.
+function subPathMeta(base: string, uat: boolean): Plugin {
+  const origin = 'https://docgerd.github.io';
+  return {
+    name: 'sailcommand:sub-path-meta',
+    transformIndexHtml(html) {
+      let out = html
+        .replace(
+          '<meta property="og:url" content="https://docgerd.github.io/sail_command/" />',
+          `<meta property="og:url" content="${origin}${base}" />`,
+        )
+        .replace(
+          '<meta property="og:image" content="https://docgerd.github.io/sail_command/brand/social-card.png" />',
+          `<meta property="og:image" content="${origin}${base}brand/social-card.png" />`,
+        );
+      if (uat) {
+        out = out
+          .replace('<title>SailCommand</title>', '<title>SailCommand UAT</title>')
+          .replace(
+            '<meta name="theme-color" content="#10243D" />',
+            '<meta name="theme-color" content="#10243D" />\n    <meta name="robots" content="noindex, nofollow" />',
+          );
+      }
+      return out;
+    },
+  };
+}
+
 // #28: emits dist/glyph-manifest.json — the complete, sorted list of font
 // glyph-range files under public/basemap-assets/fonts/, as BASE_URL-relative
 // paths. Fonts are excluded from the SW precache (globIgnores below) and
@@ -53,10 +93,11 @@ function glyphManifest(): Plugin {
 }
 
 export default defineConfig({
-  base: '/sail_command/',
+  base: basePath,
   plugins: [
     react(),
     glyphManifest(),
+    subPathMeta(basePath, isUat),
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',
@@ -90,8 +131,13 @@ export default defineConfig({
       // mock `virtual:pwa-register/react` directly rather than relying on
       // this, but even unmocked the dev-mode stub would no-op registration.
       manifest: {
-        name: 'SailCommand',
-        short_name: 'SailCommand',
+        // #96: distinct name + id for the UAT build so it installs as a
+        // SEPARATE PWA from production rather than colliding with it (scope
+        // already differs automatically — vite-plugin-pwa defaults
+        // `manifest.scope` to the build's `base`). Production keeps exactly
+        // the previous name/short_name and omits `id` (unset before #96).
+        name: isUat ? 'SailCommand UAT' : 'SailCommand',
+        short_name: isUat ? 'SailCommand UAT' : 'SailCommand',
         description:
           'Offline-Törnplaner für zeitoptimale Segelrouten in Flensburger Förde und Dänischer Südsee. Kein Navigationsgerät.',
         lang: 'de',
@@ -99,6 +145,7 @@ export default defineConfig({
         background_color: '#10243D',
         display: 'standalone',
         start_url: '.',
+        ...(isUat ? { id: basePath } : {}),
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },

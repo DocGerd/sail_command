@@ -1,7 +1,7 @@
 name: Deploy
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
 permissions:
   contents: read
 concurrency: { group: pages, cancel-in-progress: true }
@@ -9,15 +9,49 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # #96: GitHub Pages serves a SINGLE deployment artifact, so every run
+      # builds BOTH refs regardless of which one triggered it: main -> the
+      # site root (production, unchanged), develop -> /uat/ (unreleased-state
+      # preview). This deliberately couples the two deploys (any push to
+      # either branch rebuilds both) per the issue's recommended
+      # combined-build approach; the concurrency group above still serializes
+      # overlapping main+develop pushes so two partial artifacts can't race.
+      - name: Checkout main (production, site root)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with: { ref: main, path: build-main }
+      - name: Checkout develop (UAT, /uat/ sub-path)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with: { ref: develop, path: build-develop }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
-      - run: npm ci
-        working-directory: app
-      - run: npm run build
-        working-directory: app
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            build-main/app/package-lock.json
+            build-develop/app/package-lock.json
+      - name: Build main (production)
+        run: |
+          npm ci
+          npm run build
+        working-directory: build-main/app
+      - name: Build develop (UAT)
+        run: |
+          npm ci
+          npm run build
+        working-directory: build-develop/app
+        env:
+          # Switches app/vite.config.ts's base to /sail_command/uat/ and, via
+          # its subPathMeta() plugin + PWA manifest block, adds noindex and a
+          # distinct manifest name/id — the production build above never
+          # sets this, so its output stays byte-for-byte unchanged by #96.
+          SC_DEPLOY_ENV: uat
+      - name: Assemble combined Pages artifact
+        run: |
+          mkdir -p site/uat
+          cp -r build-main/app/dist/. site/
+          cp -r build-develop/app/dist/. site/uat/
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with: { path: app/dist }
+        with: { path: site }
   deploy:
     needs: build
     runs-on: ubuntu-latest
