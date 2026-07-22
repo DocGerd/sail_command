@@ -536,15 +536,25 @@ function AppShell() {
             <path d="M50 22.59L69 55.5L31 55.5Z" />
             <path d="M26.96 62.5L73.04 62.5L63.5 76L36.5 76Z" />
           </svg>
-          {t('app.title')}
           {/* #107: UAT environment badge — the gate MUST stay this literal
-              `__SC_UAT__ &&` expression at the import site: Vite's define
-              turns it into `false && …` in production builds, which lets
-              Rollup drop the JSX call, the import, and the whole UatBadge
-              module graph (incl. its UAT-local dict), keeping the prod
-              bundle byte-identical (#96). Never route the flag through a
-              prop or wrapper component — that keeps the module referenced. */}
-          {__SC_UAT__ && <UatBadge />}
+              `__SC_UAT__ ?` ternary IN the title-child slot: Vite's define
+              makes it `false ? … : t('app.title')` in production builds,
+              which Rollup folds to exactly the pre-#107 child expression —
+              dropping the JSX call, the import, and the whole UatBadge
+              module graph (incl. its UAT-local dict) so the prod bundle
+              stays byte-identical (#96). An `{__SC_UAT__ && <UatBadge />}`
+              sibling would NOT: the dead child slot minifies to a `!1`
+              residue (measured: 3-byte bundle drift). Never route the flag
+              through a prop or wrapper component either — that keeps the
+              module referenced. */}
+          {__SC_UAT__ ? (
+            <>
+              {t('app.title')}
+              <UatBadge />
+            </>
+          ) : (
+            t('app.title')
+          )}
         </h1>
         <div className="app-header-actions">
           <button
