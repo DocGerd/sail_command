@@ -96,18 +96,35 @@ deviate from it.
   only once the SW controls the page. Never extend the SW install/activate to
   fetch them — the small install is the point. Cache version-bump procedure
   lives in `app/src/lib/glyphs.ts`.
-- Deploy: `deploy.yml` fires on every push to main. `main` and `develop` are
-  both guarded by the `protect-main` ruleset (#15 — one ruleset covering both
-  branches via literal refs): PR-only merges (merge commits, review threads
-  resolved), required checks `app` + `e2e` with strict up-to-date policy, no
-  force pushes or deletions. Pages serves at
-  `https://docgerd.github.io/sail_command/`.
+- Deploy (#96): `deploy.yml` fires on push to `main` OR `develop`. Pages
+  serves a SINGLE deployment artifact, so every run builds BOTH refs into one
+  combined artifact regardless of which branch triggered it — `main` → the
+  site root (production, `app/vite.config.ts` `base: '/sail_command/'`,
+  unchanged), `develop` → `/uat/` (`SC_DEPLOY_ENV=uat` env var switches
+  `base` to `/sail_command/uat/` and, via the config's `subPathMeta()`
+  plugin + PWA `manifest` block, adds `<meta name="robots" content=
+  "noindex, nofollow">` and a distinct manifest `name`/`id` so the UAT build installs
+  as a separate PWA rather than colliding with production's). This
+  deliberately couples the two deploys (any push to either branch rebuilds
+  both); the existing `concurrency: { group: pages }` still serializes
+  overlapping main+develop pushes. Production:
+  `https://docgerd.github.io/sail_command/` (unchanged, verified
+  byte-for-byte identical to the pre-#96 build). UAT (unreleased develop
+  state — noindex, not chart-authoritative, don't link it from anywhere
+  production-facing): `https://docgerd.github.io/sail_command/uat/`. `main`
+  and `develop` are both guarded by the `protect-main` ruleset (#15 — one
+  ruleset covering both branches via literal refs): PR-only merges (merge
+  commits, review threads resolved), required checks `app` + `e2e` with
+  strict up-to-date policy, no force pushes or deletions.
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
   up-to-date policy), merged as a merge commit, then tagged on `main`; `main` is
-  released-state-only and `deploy.yml` (unchanged) fires on push to `main`, so
-  Pages serves only released states. A HOTFIX branches from `main`, PRs to
+  released-state-only. `deploy.yml` (#96) fires on push to either `main` or
+  `develop`: production at the Pages site root reflects only released
+  (`main`) state as before; `develop`'s unreleased state is additionally
+  published to the deliberately-labeled, `noindex`ed `/uat/` sub-path in the
+  same run — a UAT preview, not a second production. A HOTFIX branches from `main`, PRs to
   `main`, then `main` is merged back into `develop` to keep it ahead. CI
   (`ci.yml`, `codeql.yml`, `verify-mask.yml`) fires on pushes to both `main`
   and `develop` so required checks keep reporting; the single `protect-main`

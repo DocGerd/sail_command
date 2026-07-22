@@ -47,19 +47,25 @@ cleanupOutdatedCaches();
 clientsClaim();
 
 // #28 (glyph cache lifecycle): cleanupOutdatedCaches() above only manages
-// workbox's PRECACHE caches — a GLYPH_CACHE_NAME version bump would leak
-// the retired runtime cache's ~11 MB forever without this. Bounded work
-// (one caches.keys() + targeted deletes of `sailcommand-glyphs-*` names
-// that aren't the current version), so extending activate via waitUntil is
-// fine here; it does not delay page takeover — clientsClaim() registers
-// its own activate listener whose clients.claim() call fires regardless of
-// this handler's pending waitUntil.
+// workbox's PRECACHE caches — a GLYPH_CACHE_VERSION bump would leak the
+// retired runtime cache's ~11 MB forever without this. Bounded work (one
+// caches.keys() + targeted deletes of THIS deployment's retired glyph caches),
+// so extending activate via waitUntil is fine here; it does not delay page
+// takeover — clientsClaim() registers its own activate listener whose
+// clients.claim() call fires regardless of this handler's pending waitUntil.
+// #96: isRetiredGlyphCache is scoped to this deployment's BASE_URL (statically
+// replaced in this injectManifest bundle) so a UAT deploy never evicts
+// production's live glyph cache (or vice versa) on the shared Pages origin.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
       .then((names) =>
-        Promise.all(names.filter(isRetiredGlyphCache).map((name) => caches.delete(name))),
+        Promise.all(
+          names
+            .filter((name) => isRetiredGlyphCache(name, import.meta.env.BASE_URL))
+            .map((name) => caches.delete(name)),
+        ),
       ),
   );
 });

@@ -89,9 +89,11 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
         const cache = await caches.open(cacheName);
         return (await cache.keys()).length >= expected;
       },
-      // Cache name literal mirrors GLYPH_CACHE_NAME (src/lib/glyphs.ts) —
-      // this tsconfig project can't import app source.
-      { cacheName: 'sailcommand-glyphs-v1', expected: glyphManifest.length },
+      // Cache name literal mirrors GLYPH_CACHE_NAME (src/lib/glyphs.ts) — this
+      // tsconfig project can't import app source. #96: the name is now scoped
+      // to the build's BASE_URL; the e2e build is the production build
+      // (base `/sail_command/` — no SC_DEPLOY_ENV), whose slug is `sail_command`.
+      { cacheName: 'sailcommand-glyphs-sail_command@v1', expected: glyphManifest.length },
       { timeout: 30_000 },
     );
 
