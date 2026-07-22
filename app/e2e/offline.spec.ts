@@ -30,18 +30,10 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
 
     // Create + auto-save a plan (mirrors plan.spec.ts's flow; this spec
     // only needs *a* saved plan to exist, not to re-verify rig/leg detail).
-    await page.getByRole('region', { name: 'Start' }).getByRole('searchbox').fill('Langballigau');
-    await page
-      .getByRole('region', { name: 'Start' })
-      .locator('.harbor-picker li button')
-      .first()
-      .click();
-    await page.getByRole('region', { name: 'Ziel' }).getByRole('searchbox').fill('Sønderborg');
-    await page
-      .getByRole('region', { name: 'Ziel' })
-      .locator('.harbor-picker li button')
-      .first()
-      .click();
+    await page.getByRole('region', { name: 'Start' }).getByRole('combobox').fill('Langballigau');
+    await page.getByRole('region', { name: 'Start' }).getByRole('option').first().click();
+    await page.getByRole('region', { name: 'Ziel' }).getByRole('combobox').fill('Sønderborg');
+    await page.getByRole('region', { name: 'Ziel' }).getByRole('option').first().click();
     const planButton = page.getByRole('button', { name: 'Route planen' });
     await planButton.click();
     // Wait for run() to fully settle *before* switching tabs — see
@@ -169,18 +161,10 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // endpoints set, the only remaining reason canPlan (App.tsx) can be
     // false is the offline guard itself — a meaningfully offline-specific
     // assertion, not just "button disabled because nothing is picked yet".
-    await page.getByRole('region', { name: 'Start' }).getByRole('searchbox').fill('Langballigau');
-    await page
-      .getByRole('region', { name: 'Start' })
-      .locator('.harbor-picker li button')
-      .first()
-      .click();
-    await page.getByRole('region', { name: 'Ziel' }).getByRole('searchbox').fill('Sønderborg');
-    await page
-      .getByRole('region', { name: 'Ziel' })
-      .locator('.harbor-picker li button')
-      .first()
-      .click();
+    await page.getByRole('region', { name: 'Start' }).getByRole('combobox').fill('Langballigau');
+    await page.getByRole('region', { name: 'Start' }).getByRole('option').first().click();
+    await page.getByRole('region', { name: 'Ziel' }).getByRole('combobox').fill('Sønderborg');
+    await page.getByRole('region', { name: 'Ziel' }).getByRole('option').first().click();
     const offlinePlanButton = page.getByRole('button', { name: 'Route planen' });
     await expect(offlinePlanButton).toBeDisabled();
     await expect(

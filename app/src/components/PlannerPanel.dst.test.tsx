@@ -12,7 +12,9 @@ import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from
 const dstTest = new Date(2026, 9, 25, 2, 23);
 const tzVerifyHour = dstTest.getHours();
 if (tzVerifyHour !== 2) {
-  throw new Error(`TZ pinning failed: expected hour 2 at DST fold, got ${tzVerifyHour}. Skipping DST tests.`);
+  throw new Error(
+    `TZ pinning failed: expected hour 2 at DST fold, got ${tzVerifyHour}. Skipping DST tests.`,
+  );
 }
 
 const FLENSBURG: Harbor = {
@@ -65,8 +67,12 @@ function renderPanel(overrides: Overrides = {}) {
     onSettingsChange: vi.fn(),
     canPlan: true,
     planDisabledReason: null,
+    online: true,
     onPlan: vi.fn(),
     planning: { phase: 'idle' } as PlannerStatus,
+    plan: null,
+    rig: null,
+    onViewDetails: vi.fn(),
     ...overrides,
   };
   render(

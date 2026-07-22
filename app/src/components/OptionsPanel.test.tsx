@@ -21,37 +21,30 @@ const renderPanel = (onChange = vi.fn()) => {
 };
 
 describe('OptionsPanel', () => {
-  it('renders every setting label with its unit', () => {
+  it('renders the five advanced settings and does NOT render safety depth (pulled into the compact row)', () => {
     renderPanel();
-    expect(screen.getByLabelText('Safety depth (m)')).toBeInTheDocument();
     expect(screen.getByLabelText('Motoring speed (kn)')).toBeInTheDocument();
     expect(screen.getByLabelText('Motor threshold (kn)')).toBeInTheDocument();
     expect(screen.getByLabelText('Maneuver penalty (s)')).toBeInTheDocument();
     expect(screen.getByLabelText('Performance factor (×)')).toBeInTheDocument();
     expect(screen.getByLabelText('Motor enabled')).toBeInTheDocument();
+    // §3.3: safety depth is one of the two most-changed inputs and lives in
+    // PlannerPanel's compact row now, not behind this advanced group.
+    expect(screen.queryByLabelText('Safety depth (m)')).not.toBeInTheDocument();
   });
 
-  it('clamps a safetyDepth value above the maximum on blur', () => {
+  it('clamps a value above the maximum on blur (motoring speed, max 10)', () => {
     const onChange = renderPanel();
-    const input = screen.getByLabelText('Safety depth (m)');
-    fireEvent.change(input, { target: { value: '12' } });
+    const input = screen.getByLabelText('Motoring speed (kn)');
+    fireEvent.change(input, { target: { value: '25' } });
     fireEvent.blur(input);
     expect(input).toHaveValue(10);
-    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, safetyDepthM: 10 });
-  });
-
-  it('clamps a safetyDepth value below the 2.2 m safety floor on blur (never below draft + margin)', () => {
-    const onChange = renderPanel();
-    const input = screen.getByLabelText('Safety depth (m)');
-    fireEvent.change(input, { target: { value: '1' } });
-    fireEvent.blur(input);
-    expect(input).toHaveValue(2.2);
-    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, safetyDepthM: 2.2 });
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, motorSpeedKn: 10 });
   });
 
   it('does not call onChange when blurring without changing the value', () => {
     const onChange = renderPanel();
-    const input = screen.getByLabelText('Safety depth (m)');
+    const input = screen.getByLabelText('Motoring speed (kn)');
     fireEvent.focus(input);
     fireEvent.blur(input);
     expect(onChange).not.toHaveBeenCalled();

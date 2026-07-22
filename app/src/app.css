@@ -20,7 +20,7 @@
      index.html's theme-color, and the manifest theme_color/background_color each
      HARDCODE #10243D and must be hand-synced with this value. */
   --sc-brand: #10243d;
-  /* Reserved for future hover/pressed states of --sc-accent (currently unconsumed). */
+  /* Hover/pressed shade of --sc-accent — consumed by the .sc-btn variants. */
   --sc-accent-strong: #21568c;
 }
 
@@ -39,7 +39,7 @@
     /* Same value in both modes; still a documentary mirror — the real #10243D
        lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
     --sc-brand: #10243d;
-    /* Reserved for future hover/pressed states of --sc-accent (currently unconsumed). */
+    /* Hover/pressed shade of --sc-accent — consumed by the .sc-btn variants. */
     --sc-accent-strong: #82b2e8;
   }
 }
@@ -438,6 +438,174 @@ select {
   pointer-events: none;
 }
 
+/* ---- Component primitives (#64 phase 1) ----
+
+   Card / Field / Button / Chip / Disclosure, all on the locked --sc-* tokens.
+   Class selectors (0,1,0) intentionally out-specify the element base rules
+   (`button`, `input,select`) so variant paint wins while the base min-heights
+   (44px buttons, 40px controls) are inherited, not overridden. Hover/pressed/
+   focus transitions were added in phase 4 (§3.5) and every one of them is
+   neutralised under the reduced-motion block at the end of this file. */
+
+.sc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 10px;
+  background: var(--sc-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.sc-card-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--sc-fg) 58%, transparent);
+  text-wrap: balance;
+}
+
+/* Endpoint sections inside the Trip card: vertical rhythm via flex gap (no
+   margins — avoids the collapse/specificity pitfalls). Default align-stretch
+   lets the label, secondary button and harbor picker share one column width,
+   matching the already-full-width primary action. */
+.planner-endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sc-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.sc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sc-field-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+.sc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-weight: 600;
+  line-height: 1.2;
+  /* §3.5 motion: ease hover/pressed/focus paint (outline-color included so the
+     focus ring fades rather than snaps). Reduced-motion zeroes this below. */
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    outline-color 0.15s ease;
+}
+
+.sc-btn:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+.sc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary: accent fill. Text = --sc-bg so it reads white on the light-mode
+   accent and near-black on the lighter dark-mode accent — no new token. */
+.sc-btn-primary {
+  background: var(--sc-accent);
+  border-color: var(--sc-accent);
+  color: var(--sc-bg);
+}
+
+.sc-btn-primary:not(:disabled):hover,
+.sc-btn-primary:not(:disabled):active {
+  background: var(--sc-accent-strong);
+  border-color: var(--sc-accent-strong);
+}
+
+.sc-btn-secondary {
+  background: transparent;
+  border-color: var(--sc-accent);
+  color: var(--sc-accent);
+}
+
+.sc-btn-secondary:not(:disabled):hover,
+.sc-btn-secondary:not(:disabled):active {
+  border-color: var(--sc-accent-strong);
+  color: var(--sc-accent-strong);
+  background: color-mix(in srgb, var(--sc-accent) 10%, transparent);
+}
+
+.sc-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--sc-fg);
+}
+
+.sc-btn-ghost:not(:disabled):hover,
+.sc-btn-ghost:not(:disabled):active {
+  color: var(--sc-accent-strong);
+  background: color-mix(in srgb, var(--sc-fg) 8%, transparent);
+}
+
+/* Disclosure: labelled native <details>, chevron via ::before glyph swap
+   (matching .route-legend / .depth-profile). Not yet rendered in the Plan tab
+   — first use is phase 3. */
+.sc-disclosure {
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  padding: 0 0.75rem;
+}
+
+.sc-disclosure-summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.sc-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* §3.5 motion: one right-pointing chevron that ROTATES to point down on open,
+   so the change is a transitionable transform (a `content` swap can't animate).
+   inline-block is required for the transform to apply to the ::before box. */
+.sc-disclosure-summary::before {
+  content: '\25B8';
+  display: inline-block;
+  font-size: 0.8em;
+  transition: transform 0.15s ease;
+}
+
+.sc-disclosure[open] > .sc-disclosure-summary::before {
+  transform: rotate(90deg);
+}
+
+.sc-disclosure-body {
+  padding: 0 0 0.75rem;
+}
+
 /* ---- Panel content shared across tabs ---- */
 
 .planner-panel,
@@ -508,6 +676,359 @@ select {
   border-radius: 50%;
 }
 
+/* ---- #64 phase 3: advanced disclosure + Ergebnis card ---- */
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Visually hidden but kept in the accessibility tree (screen-reader-only) —
+   used for the idle completion announcement in .planner-status, whose visible
+   twin is the Ergebnis card. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* §3.3 compact row: departure + safety depth side by side above the advanced
+   disclosure. Collapses to one column when the panel is very narrow. */
+.planner-compact-row {
+  display: grid;
+  grid-template-columns: 1fr minmax(7rem, 10rem);
+  gap: 0.75rem;
+  align-items: end;
+}
+
+@media (max-width: 380px) {
+  .planner-compact-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* §3.3 advanced disclosure summary: bold label + a muted, ellipsized one-line
+   value glance that is hidden once the disclosure is open (the fields show). */
+.planner-advanced-label {
+  font-weight: 600;
+}
+
+.planner-advanced-values {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--sc-fg) 60%, transparent);
+}
+
+.sc-disclosure.planner-advanced[open] .planner-advanced-values {
+  display: none;
+}
+
+/* §3.3 sticky primary action — reachable without scrolling past a long panel. */
+.planner-actions {
+  /* In the narrow bottom-sheet the sticky bar would pin over the map's
+     attribution control at the viewport bottom-right and intercept its clicks
+     (#64 Phase 3 regression caught by plan.spec). Sticky is scoped to the wide
+     side-panel below, where the panel is its own column and cannot overlap the
+     map chrome. bottom/z-index stay here — inert until position:sticky applies. */
+  position: static;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  background: var(--sc-bg);
+}
+
+.planner-status {
+  margin: 0;
+}
+
+/* No phantom gap while idle with nothing to announce (jsdom ignores this, so
+   getByRole('status') still finds the region in tests). */
+.planner-status:empty {
+  display: none;
+}
+
+/* Rig comparison tablist (segmented control). ★-recommended tab kept intact. */
+.rig-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.rig-tabs button {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 600;
+  color: var(--sc-fg);
+}
+
+.rig-tabs button[aria-selected='true'] {
+  border-color: var(--sc-accent);
+  color: var(--sc-accent-strong);
+  background: color-mix(in srgb, var(--sc-accent) 10%, transparent);
+}
+
+.rig-tabs button:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
+/* Faster-rig chip (both surfaces) — UI accent, not a map-palette color. */
+.chip-faster-rig {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
+  color: var(--sc-accent-strong);
+  font-weight: 600;
+}
+
+/* Stat grid (full Ergebnis card) + compact-strip stat rows. */
+.ergebnis-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.planner-result-primary,
+.planner-result-secondary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.ergebnis-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ergebnis-stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--sc-fg) 58%, transparent);
+}
+
+.ergebnis-stat-value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.ergebnis-stat-lg .ergebnis-stat-value {
+  font-size: 1.35rem;
+}
+
+.ergebnis-maneuvers {
+  margin: 0;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--sc-fg) 70%, transparent);
+}
+
+/* Sail/motor split bar — sail = UI accent, motor = a muted neutral grey
+   derived from the ink token (deliberately NOT the Okabe-Ito map motor color,
+   and not a new palette token). */
+.ergebnis-split {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ergebnis-split-bar {
+  display: flex;
+  height: 0.6rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--sc-fg) 10%, transparent);
+}
+
+.ergebnis-split-sail,
+.ergebnis-split-swatch-sail {
+  background: var(--sc-accent);
+}
+
+.ergebnis-split-motor,
+.ergebnis-split-swatch-motor {
+  background: color-mix(in srgb, var(--sc-fg) 42%, transparent);
+}
+
+.ergebnis-split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.8rem;
+}
+
+.ergebnis-split-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ergebnis-split-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 3px;
+}
+
+.planner-result-details {
+  align-self: flex-start;
+}
+
+/* Focus indicator when "Details ansehen" moves focus to the Ergebnis heading
+   (heading is tabIndex -1, so :focus only ever fires from that programmatic
+   jump). */
+.route-ergebnis > .sc-card-title:focus {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* Depth profile inside its card: drop the inner details border so card +
+   details read as a single surface (#64 phase 3). */
+.depth-profile-card .depth-profile {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* ---- #64 phase 4 (§3.5): states & motion ----
+
+   Empty/first-run guidance, the loading skeleton, the banner "Try again"
+   action, and tasteful motion. ALL motion is neutralised by the
+   `prefers-reduced-motion: reduce` block at the very end of this section — the
+   default has subtle motion, reduced-motion has none. No ambient/looping
+   decoration; every animation plays once on appearance. */
+
+/* Empty/first-run + disabled-reason line under the primary action. Muted,
+   quiet — guidance, not an error. */
+.planner-guidance {
+  margin: 0;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* Banner "Try again" action — a compact outline button sized to the banner
+   strip, distinct from the ×-glyph dismiss button. */
+.banner-action {
+  flex: none;
+  align-self: center;
+  min-height: 32px;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    outline-color 0.15s ease;
+}
+
+.banner-action:hover,
+.banner-action:active {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.banner-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Loading skeleton: a subtle shimmer on the ink token, kept low-contrast so it
+   reads as "pending", not content. The gradient sweeps via background-position.
+   Reduced-motion freezes it to a static block (below). */
+@keyframes sc-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+.sc-skeleton {
+  display: block;
+  min-height: 0.9rem;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--sc-fg) 9%, transparent);
+  background-image: linear-gradient(
+    90deg,
+    transparent 25%,
+    color-mix(in srgb, var(--sc-fg) 7%, transparent) 50%,
+    transparent 75%
+  );
+  background-size: 300% 100%;
+  animation: sc-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Skeleton Ergebnis card: same layout as the real compact card so nothing
+   jumps when the result replaces it. */
+.planner-result-skeleton .skeleton-chip {
+  width: 8rem;
+  height: 1.4rem;
+  border-radius: 999px;
+}
+
+.planner-result-skeleton .skeleton-stat {
+  height: 2.4rem;
+}
+
+/* Ergebnis fade-in: the compact strip and the full Routes card ease in when
+   they first appear (plan completion). Applied to the element itself, so it
+   plays once on mount and never re-fires on slider/via re-renders. */
+@keyframes sc-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.planner-result,
+.route-ergebnis {
+  animation: sc-fade-in 0.2s ease both;
+}
+
+/* Gentle disclosure body reveal — the body already display-toggles natively;
+   this just fades its content in on open (no fragile height animation). */
+.sc-disclosure[open] > .sc-disclosure-body {
+  animation: sc-fade-in 0.15s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-btn,
+  .banner-action,
+  .sc-disclosure-summary::before {
+    transition: none;
+  }
+
+  .sc-skeleton,
+  .planner-result,
+  .route-ergebnis,
+  .sc-disclosure[open] > .sc-disclosure-body {
+    animation: none;
+  }
+}
+
 /* ---- Depth profile (#45) ---- */
 
 .depth-profile {
@@ -540,6 +1061,13 @@ select {
 @media (min-width: 1024px) {
   .depth-profile-plot {
     height: 220px; /* more vertical room on the wide two-column layout */
+  }
+
+  /* Sticky "Route planen" only on the wide side-panel (§3.3) — its own column,
+     so it cannot overlap the map attribution the way it does in the narrow
+     bottom-sheet. */
+  .planner-actions {
+    position: sticky;
   }
 }
 
@@ -610,6 +1138,7 @@ select {
 .planner-via-coord {
   flex: 1;
   font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .via-markers-spinner-chip {
@@ -622,18 +1151,104 @@ select {
   font-size: 0.8rem;
 }
 
-.harbor-picker ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 8rem;
-  overflow-y: auto;
+/* Harbor combobox (#64 phase 2): a role="combobox" input over a popup
+   role="listbox". The div stacks label/input/popup; the input stretches to the
+   column (capped to 22rem on the wide panel by the .app-panel input rule). */
+.harbor-picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
-.approach-note {
+.harbor-picker-input:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 1px;
+}
+
+/* Popup: at most ~8 rows tall (each row a >=44px gloved touch target), scrolls
+   beyond that — the whole ~35-harbor list is never rendered inline again. */
+.harbor-picker-listbox {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  max-height: 20rem;
+  overflow-y: auto;
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  background: var(--sc-bg);
+}
+
+.harbor-picker-option {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 44px;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--sc-border);
+}
+
+.harbor-picker-option:last-child {
+  border-bottom: none;
+}
+
+.harbor-picker-option[aria-selected='true'] {
+  background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
+}
+
+.harbor-picker-name {
+  font-weight: 600;
+}
+
+/* Depth caveat: muted, single line, ellipsized (full text shows on the selected
+   endpoint row). min-width:0 lets the flex child shrink so ellipsis engages. */
+.harbor-picker-caveat {
+  min-width: 0;
   font-size: 0.8rem;
   opacity: 0.75;
-  margin: 0.1rem 0 0.3rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.harbor-picker-empty {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+/* Selected endpoint row: pin dot (color set inline — starboard green for Start,
+   UI accent for Ziel), name + full caveat, and a ghost "Ändern" that reopens
+   the combobox. */
+.planner-endpoint-selected {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.endpoint-pin {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.endpoint-detail {
+  flex: 1;
+  min-width: 0;
+}
+
+.endpoint-name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.endpoint-caveat {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.75;
 }
 
 /* ---- About dialog ---- */
@@ -743,6 +1358,13 @@ select {
      size. */
   .app-panel input:not([type='checkbox']),
   .app-panel select {
+    max-width: 22rem;
+  }
+
+  /* Cap the whole combobox (not just its input) so the popup listbox shares the
+     input's 22rem width — otherwise on wide viewports the popup outgrows the
+     capped input and their right edges misalign. */
+  .app-panel .harbor-picker {
     max-width: 22rem;
   }
 

@@ -7,6 +7,8 @@ export const en = {
     'SailCommand is a passage-planning aid, not a navigation device. Chart data is simplified; official charts and your plotter remain authoritative.',
   'plan.eta': 'Arrival {time}',
   'harborPicker.searchLabel': 'Search harbor',
+  'harborPicker.searchPlaceholder': 'Search harbor…',
+  'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
   'options.safetyDepth.label': 'Safety depth (m)',
   'options.motorSpeed.label': 'Motoring speed (kn)',
@@ -16,10 +18,18 @@ export const en = {
   'options.motorEnabled.label': 'Motor enabled',
   'options.motorEnabled.help':
     'Engine as fallback only: motor legs are planned where predicted sailing speed drops below the threshold, and run at motor speed.',
+  // One-line glance of the collapsed "Advanced" disclosure, joined with " · ".
+  'options.summary.motorOn': 'Motor on',
+  'options.summary.motorOff': 'Motor off',
+  'options.summary.maneuver': 'Maneuver {seconds} s',
+  'options.summary.performance': '×{factor}',
+  'planner.card.trip': 'Trip',
+  'planner.card.advanced': 'Advanced',
+  'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',
   'planner.destination.label': 'Destination',
-  'planner.notSelected': 'Not selected',
   'planner.pickOnMap': 'Pick on map',
+  'planner.change': 'Change',
   'planner.via.label': 'Waypoints',
   'planner.via.add': 'Add waypoint',
   'planner.via.remove': 'Remove waypoint {index}',
@@ -29,6 +39,18 @@ export const en = {
   'planner.via.replanning': 'Recalculating route with updated waypoints…',
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
+  // §3.5 empty/first-run: friendly guidance near the primary action while no
+  // plan exists yet and an endpoint is still unpicked.
+  'planner.onboarding': 'Pick a start and destination to plan a route.',
+  // §3.5: terse disabled-button reason when both endpoints aren't set (the
+  // gap-fill for the previously reasonless online-but-incomplete state).
+  'planner.disabled.pickEndpoints': 'Select a start and destination.',
+  'planner.result.details': 'View details',
+  // Swapped into the planner's live status region on plan completion — a
+  // stable, atomic summary announced once per new plan (never on slider/
+  // via-edit re-renders).
+  'planner.result.announce':
+    'Route calculated — arrival {arrival}, duration {duration}, {distance}.',
   'planner.status.fetching': 'Fetching wind forecast…',
   'planner.status.routing': 'Calculating route…',
   'planner.status.routingProgress': 'Calculating route… {progress}%',
@@ -59,6 +81,7 @@ export const en = {
   'route.rig.fock': 'Fock',
   'route.rigTabs': 'Rig comparison',
   'route.recommended': 'Recommended',
+  'route.fasterRig': 'Faster: {rig}',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
   // #53: honest passage-planning-aid copy — charted data may under- OR
@@ -71,6 +94,11 @@ export const en = {
   'route.totals.eta': 'ETA',
   'route.totals.maneuvers': 'Maneuvers',
   'route.totals.motorDistance': 'Motor distance',
+  'route.totals.avgSpeed': 'Avg speed',
+  // Sail/motor split bar (Ergebnis card).
+  'route.split.sail': 'Sailing',
+  'route.split.motor': 'Motor',
+  'route.split.aria': 'Sail {sailPct}%, motor {motorPct}%',
   'route.legs.time': 'Time',
   'route.legs.kind': 'Type',
   'route.legs.heading': 'Heading',
@@ -80,6 +108,7 @@ export const en = {
   'route.legs.distance': 'Distance',
   'route.legs.maneuver': 'Maneuver',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
+  'route.legs.disclosure': 'Legs ({count})',
   'route.kind.motor': 'Motor',
   'route.board.port': 'Port',
   'route.board.starboard': 'Stbd',
@@ -158,6 +187,8 @@ export const en = {
   'banner.mapError': 'Map data could not be loaded — the display may be incomplete.',
   'banner.persistenceError': 'Settings could not be saved.',
   'banner.dismiss': 'Dismiss',
+  // §3.5: retry action shown on network/offline plan errors (re-runs the plan).
+  'banner.retry': 'Try again',
   'banner.tapPick': 'Tap the map to set {target}.',
   'banner.tapPick.cancel': 'Cancel',
   'banner.viaTooClose': 'Waypoint too close to a neighbor — skipped',

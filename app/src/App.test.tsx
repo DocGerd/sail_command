@@ -1,10 +1,11 @@
 import 'fake-indexeddb/auto';
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import App, { toPlannerStatus } from './App';
+import App, { planErrorBannerKind, planErrorGroup, toPlannerStatus } from './App';
 import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
 import { en } from './i18n/dict.en';
+import { fetchWindGrid, OpenMeteoError } from './services/openMeteo';
 import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
@@ -570,7 +571,10 @@ describe('App', () => {
       const message = tapPickMessage(de['planner.origin.label']);
       expect(await screen.findByText(message)).toBeInTheDocument();
 
-      fireEvent.click(within(originSection).getByRole('button', { name: FLENSBURG.names.de }));
+      fireEvent.change(within(originSection).getByRole('combobox'), {
+        target: { value: FLENSBURG.names.de },
+      });
+      fireEvent.click(within(originSection).getByRole('option', { name: FLENSBURG.names.de }));
 
       expect(screen.queryByText(message)).not.toBeInTheDocument();
       expect(
@@ -961,6 +965,38 @@ describe('banner surfacing (PR self-review fix wave)', () => {
   });
 });
 
+describe('Details ansehen → Routes focus (#64 phase 3)', () => {
+  it('jumps to the Routes tab AND moves focus to the Ergebnis card heading', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // The compact Ergebnis strip appears in the Plan tab; its "Details ansehen"
+    // action switches to Routes AND focuses the full Ergebnis card heading
+    // (end-to-end: handleViewDetails -> setTab + the tab-keyed focus effect
+    // firing on routeResultHeadingRef, forwarded via Card titleRef).
+    fireEvent.click(
+      await screen.findByRole('button', { name: new RegExp(de['planner.result.details']) }),
+    );
+
+    expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await waitFor(() => {
+      const heading = document.querySelector('.route-ergebnis > .sc-card-title');
+      expect(heading).not.toBeNull();
+      expect(document.activeElement).toBe(heading);
+    });
+  });
+});
+
 describe('harbor marker click-to-pick (#38)', () => {
   it('fills origin first, then destination, with the same endpoint shape as the search picker', async () => {
     renderApp();
@@ -996,11 +1032,10 @@ describe('harbor marker click-to-pick (#38)', () => {
     await waitFor(() =>
       expect(within(destSection).getByText('Flensburg', { selector: 'p' })).toBeInTheDocument(),
     );
-    // Origin stays untouched; the tap-pick banner is gone (disarmed).
+    // Origin stays untouched; the tap-pick banner is gone (disarmed). An unset
+    // endpoint shows its search combobox rather than a collapsed selection row.
     const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
-    expect(
-      within(originSection).getByText(de['planner.notSelected'], { selector: 'p' }),
-    ).toBeInTheDocument();
+    expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
     expect(screen.queryByText(message)).not.toBeInTheDocument();
   });
 
@@ -1026,9 +1061,8 @@ describe('harbor marker click-to-pick (#38)', () => {
     // handler yet to mask the result), without the gate onTap would set origin
     // to the raw tap coordinate here and disarm.
     simulateMapClick(RAW_TAP_ON_MARKER.lat, RAW_TAP_ON_MARKER.lon, markerPoint);
-    expect(
-      within(originSection).getByText(de['planner.notSelected'], { selector: 'p' }),
-    ).toBeInTheDocument();
+    // Origin unset (still its search combobox, not a collapsed selection row).
+    expect(within(originSection).getByRole('combobox')).toBeInTheDocument();
     expect(screen.getByText(armedMessage)).toBeInTheDocument();
 
     // MapLibre fires the harbor layer handler SECOND — it alone resolves the
@@ -1130,5 +1164,85 @@ describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
       phase: 'error',
       message: 'error.internal',
     });
+  });
+});
+
+// #64 phase 4 (§3.5): the plan-run error banner classifies an already-existing
+// MsgKey into a group for presentation. Literals below are pinned by hand
+// (mutation-check, #50) — NOT read back from the classifier under test.
+describe('planErrorGroup / planErrorBannerKind (§3.5 error presentation)', () => {
+  it('classifies network keys as retryable warnings', () => {
+    for (const key of ['error.offline', 'error.rateLimited', 'error.windService'] as const) {
+      expect(planErrorGroup(key)).toBe('network');
+      expect(planErrorBannerKind(key)).toBe('warning');
+    }
+  });
+
+  it('classifies every no-route key as a (non-retryable) warning', () => {
+    for (const key of [
+      'error.noRoute.unreachable',
+      'error.noRoute.beyondHorizon',
+      'error.noRoute.calmMotorOff',
+      'error.noRoute.snapOrigin',
+      'error.noRoute.snapDestination',
+      'error.noRoute.snapVia',
+    ] as const) {
+      expect(planErrorGroup(key)).toBe('noRoute');
+      expect(planErrorBannerKind(key)).toBe('warning');
+    }
+  });
+
+  it('classifies error.internal as an unexpected failure with the assertive error paint', () => {
+    expect(planErrorGroup('error.internal')).toBe('unexpected');
+    expect(planErrorBannerKind('error.internal')).toBe('error');
+  });
+});
+
+describe('states & motion (§3.5, App tree)', () => {
+  it('shows the onboarding line on first load and hides it once both endpoints are set', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Empty trip, online: the friendly guidance stands in for a bare form.
+    expect(await screen.findByText(de['planner.onboarding'])).toBeInTheDocument();
+
+    pickOriginAndDestination();
+    expect(screen.queryByText(de['planner.onboarding'])).not.toBeInTheDocument();
+  });
+
+  it('shows a no-route error as a warning banner with NO retry action', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve({ status: 'error', reason: 'unreachable' });
+
+    const message = await screen.findByText(de['error.noRoute.unreachable']);
+    // Warning paint (still role="alert"); no "Try again" — the copy already
+    // states the next step, so a retry would just repeat the failure.
+    expect(message.closest('.banner')).toHaveClass('banner-warning');
+    expect(screen.queryByRole('button', { name: de['banner.retry'] })).not.toBeInTheDocument();
+  });
+
+  it('shows a network error as a warning banner whose "Try again" re-runs the plan', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    // Fail the wind fetch once → usePlanFlow maps http to error.windService.
+    vi.mocked(fetchWindGrid).mockRejectedValueOnce(new OpenMeteoError('http', 'HTTP 500'));
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+
+    const message = await screen.findByText(de['error.windService']);
+    expect(message.closest('.banner')).toHaveClass('banner-warning');
+    // The first attempt failed before routing, so no routing call yet.
+    expect(routingMock.calls.length).toBe(0);
+
+    // Retry re-invokes the same plan path; the wind mock now resolves, so the
+    // run reaches the router — proving the action re-drove the flow.
+    fireEvent.click(screen.getByRole('button', { name: de['banner.retry'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
   });
 });

@@ -24,7 +24,7 @@ import PlansList from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
-import Banner from './components/Banner';
+import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import { isStaleForecast } from './lib/plan';
@@ -83,6 +83,34 @@ export function toPlannerStatus(
     case 'error':
       return { phase: 'error', message: t(flow.messageKey) };
   }
+}
+
+// #64 phase 4 (§3.5): the plan-run error banner presents three distinguishable
+// groups. The MsgKey taxonomy already separates them (usePlanFlow); this only
+// classifies an existing key for presentation — it adds NO new error typing.
+//   - network: offline / rate-limited / wind-service — transient, retryable.
+//   - noRoute: error.noRoute.* — the copy already states the next step.
+//   - unexpected: anything else (error.internal) — genuine failure.
+const NETWORK_ERROR_KEYS: ReadonlySet<MsgKey> = new Set([
+  'error.offline',
+  'error.rateLimited',
+  'error.windService',
+]);
+
+export type PlanErrorGroup = 'network' | 'noRoute' | 'unexpected';
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function planErrorGroup(key: MsgKey): PlanErrorGroup {
+  if (NETWORK_ERROR_KEYS.has(key)) return 'network';
+  if (key.startsWith('error.noRoute.')) return 'noRoute';
+  return 'unexpected';
+}
+
+// Only unexpected failures use the assertive error paint; network and no-route
+// are recoverable/expected and read as warnings (both still role="alert").
+// eslint-disable-next-line react-refresh/only-export-components
+export function planErrorBannerKind(key: MsgKey): BannerKind {
+  return planErrorGroup(key) === 'unexpected' ? 'error' : 'warning';
 }
 
 function AppShell() {
@@ -330,6 +358,27 @@ function AppShell() {
     if (next !== 'plan') setTapTarget(null);
   }, []);
 
+  // #64 phase 3: "Details ansehen" from the Plan-tab Ergebnis strip switches to
+  // the Routes tab AND moves focus to its Ergebnis heading (user-initiated, so
+  // moving focus is correct). The heading only exists once the Routes panel is
+  // mounted (panels are conditionally rendered), so focus is applied in an
+  // effect after the tab switch commits.
+  const routeResultHeadingRef = useRef<HTMLHeadingElement>(null);
+  // A ref, not state: setting it must not trigger a render (the tab change
+  // already does), and the focus effect keys off the `tab` transition, which
+  // is exactly when the Routes heading first mounts.
+  const pendingResultFocusRef = useRef(false);
+  const handleViewDetails = useCallback(() => {
+    handleTabChange('routes');
+    pendingResultFocusRef.current = true;
+  }, [handleTabChange]);
+  useEffect(() => {
+    if (tab === 'routes' && pendingResultFocusRef.current) {
+      pendingResultFocusRef.current = false;
+      routeResultHeadingRef.current?.focus();
+    }
+  }, [tab]);
+
   // Escape is the keyboard equivalent of the banner's cancel button below.
   // Gated on !aboutOpen (and not attached at all while About is open, rather
   // than checking aboutOpen inside the handler) so a single Escape with both
@@ -377,7 +426,14 @@ function AppShell() {
     online &&
     (planning.phase === 'idle' || planning.phase === 'error') &&
     !viaReplan.state.replanning;
-  const planDisabledReason = online ? null : t('error.offline');
+  // §3.5: the primary button always states WHY it's disabled. Offline is the
+  // most blocking (nothing can be planned), then a missing endpoint. When both
+  // endpoints are set and online, the button is enabled — reason is null.
+  const planDisabledReason = !online
+    ? t('error.offline')
+    : origin === null || destination === null
+      ? t('planner.disabled.pickEndpoints')
+      : null;
 
   const plannerStatus = toPlannerStatus(planning, departureMs, t);
   const stale = plan !== null && isStaleForecast(plan);
@@ -476,11 +532,25 @@ function AppShell() {
         )}
         {/* Tab-independent: a plan-run error must be visible even while the
             user has switched away from the Plan tab (e.g. to Routes, while
-            waiting) — PlannerPanel's own inline alert only renders while
-            that tab is mounted. Self-clearing like offline/stale-forecast
-            above (no onDismiss): it tracks planning.phase directly, which
-            only leaves 'error' on the next run() attempt. */}
-        {planning.phase === 'error' && <Banner kind="error">{t(planning.messageKey)}</Banner>}
+            waiting). §3.5: this is now the SINGLE alert surface for plan
+            errors (PlannerPanel no longer renders an inline duplicate). Kind
+            is chosen per error group; a "Try again" action re-runs the plan on
+            recoverable NETWORK errors only (no-route/internal copy already
+            states the next step, so retry wouldn't help). Self-clearing like
+            offline/stale-forecast above: it tracks planning.phase directly,
+            which only leaves 'error' on the next run() attempt. */}
+        {planning.phase === 'error' && (
+          <Banner
+            kind={planErrorBannerKind(planning.messageKey)}
+            action={
+              planErrorGroup(planning.messageKey) === 'network'
+                ? { label: t('banner.retry'), onClick: handlePlan }
+                : undefined
+            }
+          >
+            {t(planning.messageKey)}
+          </Banner>
+        )}
         {tapTarget && (
           <Banner
             kind="info"
@@ -560,13 +630,24 @@ function AppShell() {
               onSettingsChange={setSettings}
               canPlan={canPlan}
               planDisabledReason={planDisabledReason}
+              online={online}
               onPlan={handlePlan}
               planning={plannerStatus}
+              plan={plan}
+              rig={rig}
+              onViewDetails={handleViewDetails}
             />
           )}
           {tab === 'routes' && (
             <>
-              {plan && rig && <RouteSummary plan={plan} rig={rig} onRigChange={setRig} />}
+              {plan && rig && (
+                <RouteSummary
+                  plan={plan}
+                  rig={rig}
+                  onRigChange={setRig}
+                  resultHeadingRef={routeResultHeadingRef}
+                />
+              )}
               {plan && rig && (
                 <DepthProfile plan={plan} rig={rig} safetyDepthM={settings.safetyDepthM} />
               )}

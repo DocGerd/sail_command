@@ -89,8 +89,9 @@ deviate from it.
   only once the SW controls the page. Never extend the SW install/activate to
   fetch them — the small install is the point. Cache version-bump procedure
   lives in `app/src/lib/glyphs.ts`.
-- Deploy: `deploy.yml` fires on every push to main. Main is guarded by the
-  `protect-main` ruleset (#15): PR-only merges (merge commits, review threads
+- Deploy: `deploy.yml` fires on every push to main. `main` and `develop` are
+  both guarded by the `protect-main` ruleset (#15 — one ruleset covering both
+  branches via literal refs): PR-only merges (merge commits, review threads
   resolved), required checks `app` + `e2e` with strict up-to-date policy, no
   force pushes or deletions. Pages serves at
   `https://docgerd.github.io/sail_command/`.
@@ -102,8 +103,10 @@ deviate from it.
   Pages serves only released states. A HOTFIX branches from `main`, PRs to
   `main`, then `main` is merged back into `develop` to keep it ahead. CI
   (`ci.yml`, `codeql.yml`, `verify-mask.yml`) fires on pushes to both `main`
-  and `develop` so required checks keep reporting; both `protect-main` and the
-  `develop` ruleset require `app`+`e2e`.
+  and `develop` so required checks keep reporting; the single `protect-main`
+  ruleset targets both `main` and `develop` via literal refs (never
+  `~DEFAULT_BRANCH` — that follows a default-branch flip and would strand the
+  non-default branch) and requires `app`+`e2e` on each.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before

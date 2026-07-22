@@ -21,12 +21,12 @@ test.use({ viewport: { width: 375, height: 667 } });
 // under Routen. Deterministic wind via the `?windFixture=` escape hatch
 // (E3) — no live Open-Meteo call, no route-dependent flakiness.
 //
-// Harbor-name note: the search box matches all three locale name fields
+// Harbor-name note: the combobox matches all three locale name fields
 // (HarborPicker.tsx's `matchesQuery`), so searching the Danish/English
 // "Sønderborg" finds the harbor even though its *displayed* name in the
 // app's default German UI is the exonym "Sonderburg" — the two names are
-// intentionally different, so results are selected structurally (first
-// button in the filtered list) rather than by matching display text.
+// intentionally different, so results are selected structurally (the first
+// listbox option) rather than by matching display text.
 test('plans a route: harbor search -> rig comparison -> saved under Routen', async ({ page }) => {
   const server = await startPreview();
   try {
@@ -57,24 +57,23 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     await page.getByRole('tab', { name: 'Planen' }).click();
 
     const originSection = page.getByRole('region', { name: 'Start' });
-    await originSection.getByRole('searchbox').fill('Langballigau');
+    await originSection.getByRole('combobox').fill('Langballigau');
     // Exactly one match expected — pins the search actually narrowed the
-    // list rather than clicking whatever happened to render first.
-    const originResults = originSection.locator('.harbor-picker li button');
+    // listbox rather than clicking whatever happened to render first.
+    const originResults = originSection.getByRole('option');
     await expect(originResults).toHaveCount(1);
     await originResults.first().click();
-    // '> p' (direct child): the section's own "selected point" status
-    // paragraph, distinct from HarborPicker's nested approach-note <p>
-    // (Langballigau has one — matching getByRole('paragraph') unscoped
-    // would hit both and make toHaveText ambiguous).
-    await expect(originSection.locator('> p')).toHaveText('Langballigau');
+    // Selecting collapses the combobox to the endpoint row; `.endpoint-name`
+    // is that row's harbor-name line (the full caveat, if any, is a sibling).
+    await expect(originSection.locator('.endpoint-name')).toHaveText('Langballigau');
 
     const destSection = page.getByRole('region', { name: 'Ziel' });
-    await destSection.getByRole('searchbox').fill('Sønderborg');
-    const destResults = destSection.locator('.harbor-picker li button');
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    const destResults = destSection.getByRole('option');
     await expect(destResults).toHaveCount(1);
     await destResults.first().click();
-    await expect(destSection.locator('> p')).not.toHaveText('Nicht ausgewählt');
+    // German UI displays the exonym "Sonderburg" for the Danish "Sønderborg".
+    await expect(destSection.locator('.endpoint-name')).toHaveText('Sonderburg');
 
     // Cheap smoke check on the via UI (Phase E gate backlog item): arming
     // tap-to-pick shows the map-tap banner and "Abbrechen" disarms it. A
@@ -123,10 +122,17 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     // sail plan on this short leg.
     for (const tab of [genoaTab, fockTab]) {
       await tab.click();
-      await expect(page.locator('.route-summary dt', { hasText: 'Ankunft' })).toBeVisible();
+      // #64 phase 3: totals became a stat grid — the Ankunft (ETA) stat proves
+      // a route was found (an ETA, not a no-route alert).
+      await expect(
+        page.locator('.route-summary .ergebnis-stat', { hasText: 'Ankunft' }),
+      ).toBeVisible();
       await expect(page.locator('.route-summary [role="alert"]')).toHaveCount(0);
     }
 
+    // #64 phase 3: the legs table moved behind a disclosure — open it to reveal
+    // the rows.
+    await page.locator('.route-legs-disclosure > summary').click();
     const legRows = page.locator('.route-legs tbody tr');
     await expect(legRows.first()).toBeVisible();
     expect(await legRows.count()).toBeGreaterThan(0);

@@ -5,6 +5,8 @@ export const de = {
     'SailCommand ist eine Törnplanungshilfe, kein Navigationsgerät. Kartendaten sind vereinfacht; maßgeblich bleiben amtliche Seekarten und der Plotter.',
   'plan.eta': 'Ankunft {time}',
   'harborPicker.searchLabel': 'Hafen suchen',
+  'harborPicker.searchPlaceholder': 'Hafen suchen…',
+  'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
   'options.motorSpeed.label': 'Motorfahrtgeschwindigkeit (kn)',
@@ -14,10 +16,18 @@ export const de = {
   'options.motorEnabled.label': 'Motor aktiviert',
   'options.motorEnabled.help':
     'Motor nur als Rückfall: Motorabschnitte werden geplant, wenn die berechnete Segelfahrt unter den Schwellenwert fällt, und mit Motorfahrtgeschwindigkeit gefahren.',
+  // One-line glance of the collapsed "Erweitert" disclosure, joined with " · ".
+  'options.summary.motorOn': 'Motor an',
+  'options.summary.motorOff': 'Motor aus',
+  'options.summary.maneuver': 'Wende {seconds} s',
+  'options.summary.performance': '×{factor}',
+  'planner.card.trip': 'Reise',
+  'planner.card.advanced': 'Erweitert',
+  'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
   'planner.destination.label': 'Ziel',
-  'planner.notSelected': 'Nicht ausgewählt',
   'planner.pickOnMap': 'Auf Karte wählen',
+  'planner.change': 'Ändern',
   'planner.via.label': 'Wegpunkte',
   'planner.via.add': 'Wegpunkt hinzufügen',
   'planner.via.remove': 'Wegpunkt {index} entfernen',
@@ -27,6 +37,17 @@ export const de = {
   'planner.via.replanning': 'Route wird mit geänderten Wegpunkten neu berechnet…',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
+  // §3.5 empty/first-run: friendly guidance near the primary action while no
+  // plan exists yet and an endpoint is still unpicked.
+  'planner.onboarding': 'Wähle Start und Ziel, um eine Route zu planen.',
+  // §3.5: terse disabled-button reason when both endpoints aren't set (the
+  // gap-fill for the previously reasonless online-but-incomplete state).
+  'planner.disabled.pickEndpoints': 'Start und Ziel wählen.',
+  'planner.result.details': 'Details ansehen',
+  // Swapped into the planner's live status region on plan completion — a
+  // stable, atomic summary announced once per new plan (never on slider/
+  // via-edit re-renders).
+  'planner.result.announce': 'Route berechnet — Ankunft {arrival}, Dauer {duration}, {distance}.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
   'planner.status.routing': 'Route wird berechnet…',
   'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
@@ -61,6 +82,7 @@ export const de = {
   'route.rig.fock': 'Fock',
   'route.rigTabs': 'Riggvergleich',
   'route.recommended': 'Empfohlen',
+  'route.fasterRig': 'Schneller: {rig}',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
   // #53: honest passage-planning-aid copy — charted data may under- OR
@@ -73,6 +95,11 @@ export const de = {
   'route.totals.eta': 'Ankunft',
   'route.totals.maneuvers': 'Manöver',
   'route.totals.motorDistance': 'Strecke unter Motor',
+  'route.totals.avgSpeed': 'Ø Geschw.',
+  // Sail/motor split bar (Ergebnis card).
+  'route.split.sail': 'Segeln',
+  'route.split.motor': 'Motor',
+  'route.split.aria': 'Segelanteil {sailPct} %, Motoranteil {motorPct} %',
   'route.legs.time': 'Zeit',
   'route.legs.kind': 'Art',
   'route.legs.heading': 'Kurs',
@@ -82,6 +109,7 @@ export const de = {
   'route.legs.distance': 'Distanz',
   'route.legs.maneuver': 'Manöver',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
+  'route.legs.disclosure': 'Etappen ({count})',
   'route.kind.motor': 'Motor',
   'route.board.port': 'Bb',
   'route.board.starboard': 'Stb',
@@ -162,6 +190,8 @@ export const de = {
   'banner.mapError': 'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.',
   'banner.persistenceError': 'Einstellungen konnten nicht gespeichert werden.',
   'banner.dismiss': 'Schließen',
+  // §3.5: retry action shown on network/offline plan errors (re-runs the plan).
+  'banner.retry': 'Erneut versuchen',
   'banner.tapPick': 'Auf Karte tippen für {target}.',
   'banner.tapPick.cancel': 'Abbrechen',
   'banner.viaTooClose': 'Wegpunkt zu nah am Nachbarn — übersprungen',

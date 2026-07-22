@@ -15,6 +15,7 @@ import {
 } from '../lib/routeProfile';
 import { loadRoutingAssets } from '../services/assets';
 import type { Leg, Plan, Rig } from '../types';
+import Card from './Card';
 
 export interface DepthProfileProps {
   plan: Plan;
@@ -202,39 +203,44 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
   // shallowest point is deep-capped, the whole route is >= 25 m — show the
   // honest cap label, never the fake 25.4 sentinel number (design rule).
   const minSample = samples.length ? samples.reduce((m, s) => (s.depthM < m.depthM ? s : m)) : null;
+  // The <summary> carries ONLY the min-depth glance — the Card <h2> is the
+  // single section title, so the label is not rendered (or announced) twice.
   const summaryValue =
     minSample === null
       ? ''
-      : ` · ${t('profile.minDepth')} ${minSample.capped ? t('profile.deepCap') : `${minSample.depthM.toFixed(1)} m`}`;
+      : `${t('profile.minDepth')} ${minSample.capped ? t('profile.deepCap') : `${minSample.depthM.toFixed(1)} m`}`;
 
+  // #64 phase 3: the profile gets the card treatment for visual consistency
+  // with the Ergebnis card. The inner <details> keeps its own collapse + SVG
+  // behavior (the summary carries the min-depth glance); CSS drops the inner
+  // border so the two read as one surface.
   return (
-    <details
-      className="depth-profile"
-      open={open}
-      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary className="depth-profile-summary">
-        {t('profile.title')}
-        {summaryValue}
-      </summary>
-      <div className="depth-profile-plot" ref={plotRef}>
-        {samples.length > 0 && (
-          <ProfileChart
-            W={W}
-            H={H}
-            uid={uid}
-            lang={lang}
-            t={t}
-            legs={legs}
-            samples={samples}
-            windField={windField}
-            startMs={startMs}
-            endMs={endMs}
-            safetyDepthM={safetyDepthM}
-          />
-        )}
-      </div>
-    </details>
+    <Card title={t('profile.title')} className="depth-profile-card">
+      <details
+        className="depth-profile"
+        open={open}
+        onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+      >
+        <summary className="depth-profile-summary">{summaryValue}</summary>
+        <div className="depth-profile-plot" ref={plotRef}>
+          {samples.length > 0 && (
+            <ProfileChart
+              W={W}
+              H={H}
+              uid={uid}
+              lang={lang}
+              t={t}
+              legs={legs}
+              samples={samples}
+              windField={windField}
+              startMs={startMs}
+              endMs={endMs}
+              safetyDepthM={safetyDepthM}
+            />
+          )}
+        </div>
+      </details>
+    </Card>
   );
 }
 
