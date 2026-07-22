@@ -12,7 +12,7 @@ import { useViaReplan } from './state/replan';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
-import DataLayers, { HARBOR_CIRCLE_LAYER } from './components/DataLayers';
+import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './components/DataLayers';
 import RouteLayer from './components/RouteLayer';
 import PlannerPanel, {
   harborToPickedPoint,
@@ -38,10 +38,11 @@ type Tab = 'plan' | 'routes' | 'live';
 
 const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 
-// The harbor-marker layer (DataLayers) owns any click that lands on it, so
-// MapView gates a raw tap-pick out on a harbor hit (#38). Module-level for a
-// stable identity — MapView syncs it into a ref every render.
-const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER];
+// The harbor-marker and seamark-glyph layers (DataLayers) each own any click
+// that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
+// #7). Module-level for a stable identity — MapView syncs it into a ref
+// every render.
+const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER];
 
 const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
   origin: 'planner.origin.label',

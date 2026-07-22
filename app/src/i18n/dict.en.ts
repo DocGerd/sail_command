@@ -165,6 +165,14 @@ export const en = {
   // min', '+12 min') on this time-axis chart.
   'profile.minDepth': 'min.',
   'map.depth.toggle': 'Water depths',
+  // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
+  'map.seamarks.toggle': 'Seamarks',
+  'seamark.popover.type': 'Type',
+  'seamark.popover.category': 'Category',
+  'seamark.popover.colour': 'Colour',
+  'seamark.popover.lightCharacter': 'Light character',
+  'seamark.popover.lightColour': 'Light colour',
+  'seamark.popover.lightPeriod': 'Light period',
   'plansList.empty': 'No saved plans yet.',
   'plansList.created': 'Created',
   'plansList.delete': 'Delete plan',
@@ -204,6 +212,8 @@ export const en = {
   'about.sources.openMeteo': 'Wind forecast: Weather data by Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polars: ORC International 2026 certificate, Salona 45 "Miles Ahead" (AUT 035/26); downwind values corrected to white sails (non-spinnaker) — an estimate, not race-calibrated.',
+  'about.sources.seamarks':
+    'Seamarks: © OpenStreetMap contributors (ODbL), seamark data as of 22 July 2026 — a point-in-time extract, not continuously verified',
   'banner.offline': 'Offline — planning disabled. Saved routes remain available.',
   'banner.mapError': 'Map data could not be loaded — the display may be incomplete.',
   'banner.persistenceError': 'Settings could not be saved.',

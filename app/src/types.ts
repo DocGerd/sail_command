@@ -215,3 +215,23 @@ export interface MaskMeta {
   verticalDatum?: string;
   sources?: string[];
 }
+
+// Seamarks / aids-to-navigation overlay (#7). One Point feature per aid in
+// app/public/data/seamarks.json (pipeline/build_seamarks.mjs), trimmed to
+// exactly these fields. `seamarkType` is always one of buoy_*/beacon_*/
+// light_* (the pipeline's core-AtoN filter) but is typed as `string`, not a
+// closed union: seamarkGlyphs.ts classifies it by prefix/suffix at render
+// time, so an unfamiliar value from a future re-pull degrades to a fallback
+// glyph instead of a type error. Light fields are flat (not a nested
+// `light: {...}` object) because a MapLibre GeoJSON source silently
+// stringifies nested object properties on read-back (queryRenderedFeatures/
+// click `e.features[].properties`) — flat strings survive the round-trip.
+export interface SeamarkProperties {
+  seamarkType: string;
+  category?: string;
+  colour?: string;
+  shape?: string;
+  lightCharacter?: string;
+  lightPeriod?: string;
+  lightColour?: string;
+}
