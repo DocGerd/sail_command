@@ -16,6 +16,9 @@ export const de = {
   'options.motorEnabled.label': 'Motor aktiviert',
   'options.motorEnabled.help':
     'Motor nur als Rückfall: Motorabschnitte werden geplant, wenn die berechnete Segelfahrt unter den Schwellenwert fällt, und mit Motorfahrtgeschwindigkeit gefahren.',
+  'options.showOwnship.label': 'Meine Position anzeigen',
+  'options.showOwnship.help':
+    'Zeigt deine GPS-Position und den Genauigkeitskreis überall auf der Karte an — beim Planen, ohne Plan oder in der Live-Ansicht, nicht nur während der Live-Führung. Consumer-GPS-Genauigkeit, keine kartengenaue Positionsbestimmung; dies ist eine Törnplanungshilfe, kein Navigationsgerät. Das Aktivieren fragt nach dem Standortzugriff.',
   // One-line glance of the collapsed "Erweitert" disclosure, joined with " · ".
   'options.summary.motorOn': 'Motor an',
   'options.summary.motorOff': 'Motor aus',

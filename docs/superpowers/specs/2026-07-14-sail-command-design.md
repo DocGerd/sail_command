@@ -250,3 +250,58 @@ at gate depths ≤ 2.3 m.
   (realmask acceptance test updated accordingly — the pinned "unreachable at 3.0 m is correct"
   note is superseded); a genuinely unreachable destination still errors; relaxation never gates
   below 2.1 m; both dicts updated.
+
+## Addendum 2026-07-22: Ownship marker (standalone) + AIS overlay (deferred) (#25)
+
+Issue #25 asks for two separable things: a live AIS traffic overlay, and "ownship recognition." A
+2026-07-22 feasibility spike found AIS's only browser-direct, no-backend-compliant live source is
+BYOK-aisstream (a real per-user cost needing explicit go-ahead). The asks are split: **ship the
+ownship marker now**; **defer AIS** with the source decision recorded. Where this addendum and the
+source spec's §3.2 (Live-View GPS marker) / §6 (AIS out of scope) conflict on these two points, this
+addendum wins; on all other behavior the source spec wins.
+
+- **Ships now — Ownship marker (decoupled from Live View).** A GPS boat marker already exists
+  (`services/geolocation.ts` `watchPosition`/`GpsFix`, `BoatMarker.tsx` with its accuracy circle),
+  but today renders only when Live View is `active` AND a plan with legs is loaded — so there is no
+  way to see your position while planning or with no plan. This addendum generalizes it:
+  - *Reuse, don't rebuild.* `geolocation.ts` and `BoatMarker.tsx` (incl. the accuracy circle) are
+    correct and unchanged; only *where* the marker may render changes.
+  - *Independent Settings toggle* ("show my position"), a new `Settings` field persisted like other
+    settings, **default OFF / opt-in** (enabling it requests geolocation permission, reusing — not
+    duplicating — the existing one-time permission-denial hint). When on, the marker renders whenever
+    the map is shown (planning, no plan, or Live View), not conditioned on an active route.
+  - *Live View keeps its own semantics.* Route-following (active-leg highlight, heading-to-steer,
+    distance-to-next-maneuver, ETA drift) still requires a plan and is unchanged; Live View is just
+    one context the standalone marker also renders in — never a double marker.
+  - *Fully offline.* GPS is device-local — no network, no key, no data-source dependency.
+  - *Framing.* Keep the "aid, not a navigation instrument" caveat; consumer-GPS accuracy, not
+    chart-grade positioning.
+  - *i18n.* New toggle label + any hint copy in BOTH `dict.de.ts`/`dict.en.ts` (`MsgKey` parity).
+  - Size: **S** — a visibility-gate change plus a persisted Settings toggle; no new data model or
+    service.
+
+- **Deferred — AIS traffic overlay (decision recorded, NOT built).** For a future session to
+  implement directly once approved:
+  - *Only compliant architecture:* BYOK-aisstream WebSocket client (worker/service), bbox-filtered
+    subscription, target store with age-out, pause when hidden, low-zoom declutter, tap-to-inspect
+    (name/MMSI/type/SOG/COG). aisstream is the ONLY browser-direct source covering this region; a
+    single shipped app key is forbidden (uncappable public secret), so **BYOK — the user pastes their
+    own free key in Settings — is the sole model satisfying both no-backend and no-secrets-in-client**
+    (Digitraffic keyless but Finnish-only; AISHub no-CORS; BarentsWatch Norwegian-EZ; DMA live is
+    paid — do not revisit).
+  - *MMSI ownship-filtering* (the AIS-side "ownship recognition") lives INSIDE this future feature,
+    not the marker above: a user-entered MMSI (Settings, IndexedDB-local, transmitted only inside the
+    aisstream subscription filter) removes the user's own vessel from the traffic layer.
+  - *Offline degradation* mirrors planning: feature disabled + honest banner when the socket can't
+    connect; never show an aged snapshot as if live.
+  - *Gated on:* (1) explicit user go-ahead accepting aisstream's BETA/no-SLA feed + per-user signup
+    friction, and (2) a live coverage spot-check over the Flensburg bbox — before any implementation.
+
+- **Out of scope.** Any backend/proxy; collision-avoidance/CPA/TCPA logic (nav-device territory,
+  incompatible with "aid, not a navigation instrument"); a shipped app-wide AIS key under any
+  circumstance.
+
+- **Acceptance (ownship marker only, this addendum).** A Settings "show my position" toggle (default
+  off) makes the existing GPS marker + accuracy circle render in any map context once permission is
+  granted; Live View route-following is unchanged and shows no duplicate marker; works offline; "aid,
+  not a navigation device" caveat retained; de/en parity. AIS: no code — spec decision recorded only.

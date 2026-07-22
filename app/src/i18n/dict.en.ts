@@ -18,6 +18,9 @@ export const en = {
   'options.motorEnabled.label': 'Motor enabled',
   'options.motorEnabled.help':
     'Engine as fallback only: motor legs are planned where predicted sailing speed drops below the threshold, and run at motor speed.',
+  'options.showOwnship.label': 'Show my position',
+  'options.showOwnship.help':
+    'Shows your GPS position and accuracy circle on the map wherever it is open — planning, no plan, or Live view — not just during Live guidance. Consumer-GPS accuracy, not chart-grade positioning; this is a passage-planning aid, not a navigation device. Turning this on will ask for location permission.',
   // One-line glance of the collapsed "Advanced" disclosure, joined with " · ".
   'options.summary.motorOn': 'Motor on',
   'options.summary.motorOff': 'Motor off',

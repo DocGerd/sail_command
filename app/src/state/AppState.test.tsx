@@ -1,7 +1,13 @@
 import 'fake-indexeddb/auto';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { AppStateProvider, useSettings, useActivePlan, useOnline, useSettingsPersistenceError } from './AppState';
+import {
+  AppStateProvider,
+  useSettings,
+  useActivePlan,
+  useOnline,
+  useSettingsPersistenceError,
+} from './AppState';
 import { loadSettings, saveSettings, __resetDbForTests } from '../services/db';
 import * as db from '../services/db';
 import { DEFAULT_SETTINGS, type Plan, type WindGrid } from '../types';
@@ -13,9 +19,11 @@ function SettingsProbe() {
       <span data-testid="safetyDepth">{settings.safetyDepthM}</span>
       <span data-testid="motorEnabled">{String(settings.motorEnabled)}</span>
       <span data-testid="motorSpeed">{settings.motorSpeedKn}</span>
+      <span data-testid="showOwnship">{String(settings.showOwnship)}</span>
       <button onClick={() => setSettings({ safetyDepthM: 2.5, motorEnabled: false })}>patch</button>
       <button onClick={() => setSettings({ safetyDepthM: 4 })}>patchSafetyDepthOnly</button>
       <button onClick={() => setSettings({ motorSpeedKn: 9 })}>patchMotorSpeedOnly</button>
+      <button onClick={() => setSettings({ showOwnship: true })}>patchShowOwnship</button>
     </div>
   );
 }
@@ -78,7 +86,15 @@ const TEST_PLAN: Plan = {
   result: {
     status: 'ok',
     genoa: null,
-    fock: { rig: 'fock', legs: [], etaMs: 5000, durationMs: 3000, distanceNm: 41.0, maneuverCount: 2, motorDistanceNm: 0 },
+    fock: {
+      rig: 'fock',
+      legs: [],
+      etaMs: 5000,
+      durationMs: 3000,
+      distanceNm: 41.0,
+      maneuverCount: 2,
+      motorDistanceNm: 0,
+    },
     genoaReason: null,
     fockReason: null,
     recommended: 'fock',
@@ -103,8 +119,47 @@ describe('AppStateProvider', () => {
         <SettingsProbe />
       </AppStateProvider>,
     );
-    expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
-    expect(screen.getByTestId('motorEnabled')).toHaveTextContent(String(DEFAULT_SETTINGS.motorEnabled));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent(
+      String(DEFAULT_SETTINGS.safetyDepthM),
+    );
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent(
+      String(DEFAULT_SETTINGS.motorEnabled),
+    );
+    // #25 addendum: the standalone ownship marker toggle is opt-in — pinned
+    // literal 'false' (not DEFAULT_SETTINGS.showOwnship, which the code under
+    // test also defines) so a regression flipping the DEFAULT_SETTINGS
+    // literal itself would still be caught.
+    expect(screen.getByTestId('showOwnship')).toHaveTextContent('false');
+  });
+
+  it('#25: showOwnship defaults OFF and a patch persists to IndexedDB across a provider remount', async () => {
+    const { unmount } = render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    expect(screen.getByTestId('showOwnship')).toHaveTextContent('false');
+
+    fireEvent.click(screen.getByText('patchShowOwnship'));
+    expect(screen.getByTestId('showOwnship')).toHaveTextContent('true');
+
+    await waitFor(async () => {
+      const persisted = await loadSettings();
+      expect(persisted?.showOwnship).toBe(true);
+    });
+
+    unmount();
+
+    render(
+      <AppStateProvider>
+        <SettingsProbe />
+      </AppStateProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('showOwnship')).toHaveTextContent('true');
+    });
   });
 
   it('useSettings patch persists to IndexedDB and survives a provider remount', async () => {
@@ -260,7 +315,9 @@ describe('AppStateProvider', () => {
     // still reflect the defaults.
     expect(screen.getByTestId('safetyDepth')).toHaveTextContent('2.5');
     expect(screen.getByTestId('motorEnabled')).toHaveTextContent('false');
-    expect(screen.getByTestId('motorSpeed')).toHaveTextContent(String(DEFAULT_SETTINGS.motorSpeedKn));
+    expect(screen.getByTestId('motorSpeed')).toHaveTextContent(
+      String(DEFAULT_SETTINGS.motorSpeedKn),
+    );
   });
 
   it('a loadSettings rejection on mount is caught and logged; defaults apply and nothing crashes', async () => {
@@ -278,8 +335,12 @@ describe('AppStateProvider', () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith('settings load failed', loadError);
     });
 
-    expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
-    expect(screen.getByTestId('motorEnabled')).toHaveTextContent(String(DEFAULT_SETTINGS.motorEnabled));
+    expect(screen.getByTestId('safetyDepth')).toHaveTextContent(
+      String(DEFAULT_SETTINGS.safetyDepthM),
+    );
+    expect(screen.getByTestId('motorEnabled')).toHaveTextContent(
+      String(DEFAULT_SETTINGS.motorEnabled),
+    );
   });
 
   it('a saveSettings rejection after the load resolves is caught and logged, not thrown', async () => {
@@ -293,7 +354,9 @@ describe('AppStateProvider', () => {
 
     // Let the mount-time load settle first (nothing persisted, defaults apply).
     await waitFor(() => {
-      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(
+        String(DEFAULT_SETTINGS.safetyDepthM),
+      );
     });
 
     const saveError = new Error('save boom');
@@ -363,7 +426,9 @@ describe('AppStateProvider', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(
+        String(DEFAULT_SETTINGS.safetyDepthM),
+      );
     });
     expect(screen.getByTestId('settingsPersistenceError')).toHaveTextContent('false');
 
@@ -389,7 +454,9 @@ describe('AppStateProvider', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(String(DEFAULT_SETTINGS.safetyDepthM));
+      expect(screen.getByTestId('safetyDepth')).toHaveTextContent(
+        String(DEFAULT_SETTINGS.safetyDepthM),
+      );
     });
 
     vi.spyOn(console, 'error').mockImplementation(() => {});
