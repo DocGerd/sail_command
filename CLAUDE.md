@@ -27,7 +27,7 @@ deviate from it.
   incl. offline reload).
 - `app/src/components/` mixes feature components with a small UI **primitive
   layer** (`Button`, `Card`, `Chip`, `Disclosure`, `Field`, `NumberInput`,
-  `Skeleton`, added in #64) styled through the locked `--sc-*` design tokens in
+  `Skeleton`, added in #64) built on the locked `--sc-*` design tokens defined in
   `app/src/app.css` (see the UI modernization addendum
   `docs/superpowers/specs/2026-07-17-ui-modernization-design.md` §3.2). Reuse the
   primitives and tokens for new UI; don't reinvent buttons/inputs or hardcode
