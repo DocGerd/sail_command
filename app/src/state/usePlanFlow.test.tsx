@@ -72,13 +72,8 @@ const REQ = {
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
   genoa: {
-    rig: 'genoa',
-    legs: [],
-    etaMs: REQ.departureMs + 3_600_000,
-    durationMs: 3_600_000,
-    distanceNm: 10,
-    maneuverCount: 0,
-    motorDistanceNm: 0,
+    rig: 'genoa', legs: [], etaMs: REQ.departureMs + 3_600_000, durationMs: 3_600_000,
+    distanceNm: 10, maneuverCount: 0, motorDistanceNm: 0,
   },
   fock: null,
   genoaReason: null,
@@ -114,12 +109,7 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
     const { result } = renderHook(
-      () =>
-        usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
-        }),
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
       { wrapper: AppStateProvider },
     );
 
@@ -140,11 +130,7 @@ describe('usePlanFlow', () => {
 
     const { result } = renderHook(
       () => ({
-        flow: usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => w as unknown as Worker),
-        }),
+        flow: usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
         active: useActivePlan(),
       }),
       { wrapper: AppStateProvider },
@@ -196,12 +182,7 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
     const { result } = renderHook(
-      () =>
-        usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
-        }),
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
       { wrapper: AppStateProvider },
     );
 
@@ -218,12 +199,7 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
     const { result } = renderHook(
-      () =>
-        usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
-        }),
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
       { wrapper: AppStateProvider },
     );
 
@@ -249,12 +225,7 @@ describe('usePlanFlow', () => {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
     const { result } = renderHook(
-      () =>
-        usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => w as unknown as Worker),
-        }),
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
       { wrapper: AppStateProvider },
     );
 
@@ -285,12 +256,7 @@ describe('usePlanFlow', () => {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
     const { result } = renderHook(
-      () =>
-        usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => w as unknown as Worker),
-        }),
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
       { wrapper: AppStateProvider },
     );
 
@@ -305,31 +271,19 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 1000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({
-      phase: 'routing',
-      rig: 'genoa',
-      simulatedToMs: 1000,
-    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 1000 });
 
     now += 150; // clear the 100 ms per-rig progress throttle
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 800, frontierSize: 4 }); // via-joint regression
     });
-    expect(result.current.planning).toEqual({
-      phase: 'routing',
-      rig: 'genoa',
-      simulatedToMs: 1000,
-    }); // clamped
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 1000 }); // clamped
 
     now += 150;
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 1500, frontierSize: 5 });
     });
-    expect(result.current.planning).toEqual({
-      phase: 'routing',
-      rig: 'genoa',
-      simulatedToMs: 1500,
-    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 1500 });
 
     now += 150;
     act(() => {
@@ -371,12 +325,7 @@ describe('usePlanFlow', () => {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
     const { result } = renderHook(
-      () =>
-        usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => w as unknown as Worker),
-        }),
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
       { wrapper: AppStateProvider },
     );
 
@@ -392,11 +341,7 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 5000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({
-      phase: 'routing',
-      rig: 'genoa',
-      simulatedToMs: 5000,
-    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 5000 });
 
     // The worker starts probing relaxed depth gates (mask BFS): the UI shows
     // the probe phase, not a routing bar frozen at the doomed run's progress.
@@ -434,9 +379,10 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
-    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), {
-      wrapper: AppStateProvider,
-    });
+    const { result } = renderHook(
+      () => usePlanFlow({ fetchWind, save, makeClient }),
+      { wrapper: AppStateProvider },
+    );
 
     await act(async () => {
       await result.current.run(REQ, 'First attempt');
@@ -486,9 +432,7 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
-    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), {
-      wrapper: AppStateProvider,
-    });
+    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), { wrapper: AppStateProvider });
 
     let runPromise!: Promise<void>;
     await act(async () => {
@@ -538,12 +482,7 @@ describe('usePlanFlow', () => {
     const reqWithVias = { ...REQ, viaPoints: [via1, via2] };
 
     const { result } = renderHook(
-      () =>
-        usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => w as unknown as Worker),
-        }),
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
       { wrapper: AppStateProvider },
     );
 
@@ -571,12 +510,7 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
     const { result } = renderHook(
-      () =>
-        usePlanFlow({
-          fetchWind,
-          save,
-          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
-        }),
+      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
       { wrapper: AppStateProvider },
     );
 

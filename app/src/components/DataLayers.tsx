@@ -310,7 +310,7 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
       disclaimer.className = 'seamark-popover-disclaimer';
       disclaimer.textContent = t('app.disclaimer');
       container.append(disclaimer);
-      new Popup({ closeButton: true, maxWidth: '240px' })
+      new Popup({ closeButton: true, maxWidth: '240px', className: 'seamark-popup' })
         .setLngLat(e.lngLat)
         .setDOMContent(container)
         .addTo(map);

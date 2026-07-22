@@ -349,6 +349,21 @@ select {
   opacity: 0.75;
 }
 
+/* MapLibre's own popup chrome hardcodes a white content background with no
+   dark variant, which left dark-mode .seamark-popover text (near-white,
+   --sc-fg) illegible on first click. Theme the chrome itself via the Popup's
+   className (set in DataLayers.tsx) using the same --sc-bg token as the rest
+   of the app; cover both tip directions since the popup may anchor above or
+   below the clicked glyph. */
+.seamark-popup .maplibregl-popup-content {
+  background: var(--sc-bg);
+}
+
+.seamark-popup .maplibregl-popup-tip {
+  border-top-color: var(--sc-bg);
+  border-bottom-color: var(--sc-bg);
+}
+
 .route-layer-time-slider {
   display: flex;
   align-items: center;
