@@ -921,6 +921,26 @@ select {
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
 }
 
+/* GPX import (#3): the import control sits atop the Trip card. Its success and
+   notice lines reuse the muted guidance tone; the file input itself is sr-only
+   and triggered by the Button primitive. */
+.planner-import {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.planner-import-notices {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+.planner-import-notices li + li {
+  margin-top: 0.2rem;
+}
+
 /* Banner "Try again" action — a compact outline button sized to the banner
    strip, distinct from the ×-glyph dismiss button. */
 .banner-action {

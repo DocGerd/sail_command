@@ -324,6 +324,26 @@ function AppShell() {
     setTapTarget((current) => (current === 'destination' ? null : current));
   }, []);
 
+  // GPX import (#3): seed a FRESH planner draft from a parsed .gpx. Import is
+  // prefill-only (design §7): it must never mutate an active plan. So it clears
+  // any active plan (setPlan(null)) and sets the draft origin/destination/via
+  // state directly, deliberately BYPASSING handleViaPointsChange — which, when a
+  // plan is active, would replan THAT plan with the imported vias but its old
+  // origin/destination/windGrid and persist the incoherent result (a route that
+  // ignores the imported endpoints). After this the panel shows a clean draft;
+  // the user sets departure/options and presses Plan, which mints a new plan.
+  // (setDraftViaPoints is only read while `plan` is null — see `viaPoints` above
+  // — so clearing the plan and seeding the draft in the same batch is coherent.)
+  const handleImportRoute = useCallback(
+    (o: PickedPoint, d: PickedPoint, vias: LatLon[]) => {
+      setPlan(null);
+      setDraftViaPoints(vias);
+      handlePickOrigin(o);
+      handlePickDestination(d);
+    },
+    [setPlan, handlePickOrigin, handlePickDestination],
+  );
+
   // #38: a harbor-marker click builds the SAME endpoint shape a search-picker
   // selection does (harborToPickedPoint) and fills origin-if-empty, else
   // destination — resolveHarborPickTarget documents the tap-to-pick interplay.
@@ -619,6 +639,7 @@ function AppShell() {
               destination={destination}
               onPickOrigin={handlePickOrigin}
               onPickDestination={handlePickDestination}
+              onImportRoute={handleImportRoute}
               onRequestMapTap={handleRequestMapTap}
               viaPoints={viaPoints}
               onRemoveVia={handleRemoveVia}
