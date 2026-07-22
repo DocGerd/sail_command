@@ -1,6 +1,6 @@
 ---
 name: pr-selfreview
-description: Use when self-reviewing a PR you authored — run a review, post ONE inline review thread per finding, solve all findings, resolve every thread. Triggers on /pr-selfreview.
+description: Use whenever you have created or updated a pull request you authored and need to self-review it before merge — run a review, post ONE inline review thread per finding, solve all findings, then resolve every thread (reply + GraphQL resolveReviewThread). Reach for this any time you open a PR of your own, even when not explicitly asked to review it. Triggers on /pr-selfreview.
 ---
 
 # Self-review a PR you authored
