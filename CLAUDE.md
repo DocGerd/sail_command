@@ -136,6 +136,18 @@ deviate from it.
   deploying branch needs a policy entry
   (`gh api .../deployment-branch-policies -f name=<branch>`) or the deploy job
   is rejected with "not allowed to deploy".
+- UAT-only UI (#107): gate on the `__SC_UAT__` Vite `define` (set by
+  `SC_DEPLOY_ENV=uat`) with a fold-exact ternary — a JSX `&&` gate leaves a
+  minified residue in the prod bundle — and keep its strings in a
+  component-local de/en dict with `satisfies` parity (main-dict keys always
+  ship to prod). Required evidence: prod double-build vs. base `diff -r`
+  byte-identical. That check is NOT CI-gated — re-verify it whenever the gate
+  or badge module area changes.
+- UAT regression triage: `/uat/` redeploys on EVERY develop push, so "it broke
+  on UAT" reports are often the reporter's stale SW — before filing, verify the
+  deployed artifact with a cache-busted browser pass (unregister both origin
+  SWs, clear caches, hard-reload) and inspect ARIA/DOM, not pixels (#107
+  session; harbor-combobox false alarm).
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
@@ -155,6 +167,8 @@ deviate from it.
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
   its merge (the strict up-to-date policy applies on `develop` too).
+  `gh api repos/…/pulls/N/update-branch --method PUT` performs that re-sync
+  server-side — no local checkout of the branch needed.
 
 ## Verification lessons (hard-won)
 
@@ -240,8 +254,10 @@ deviate from it.
   files (double-quoted shell interpolation mangles them); inline comments 422
   outside diff hunks — anchor to in-diff lines, put out-of-diff findings in a
   PR comment.
-- Worktree-isolated agents don't survive completion (branch + node_modules do):
-  fix waves need a FRESH agent pointed at the surviving worktree. Parallel
+- Completed worktree agents CAN be resumed for fix waves — SendMessage to the
+  same agent re-loads its transcript with worktree + branch intact (verified,
+  #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
+  fallback. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
 - When the session's OWN cwd is a worktree, `isolation:worktree` agents and
