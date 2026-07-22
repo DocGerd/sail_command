@@ -62,3 +62,17 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+  uat-environment:
+    needs: deploy
+    runs-on: ubuntu-latest
+    # Bookkeeping only, hosting is unchanged: this run's deploy job above
+    # already redeploys /uat/ regardless of which branch triggered it (see
+    # the build job's comment). Gating this record to develop-triggered runs
+    # keeps the "uat" Deployments-UI history keyed to actual develop pushes —
+    # a main-triggered run rebuilds the SAME develop tip into /uat/ (identical
+    # content) but its run SHA is a main commit, and recording that here would
+    # pollute the uat history with main SHAs for content that didn't change.
+    if: github.ref == 'refs/heads/develop'
+    environment: { name: uat, url: "https://docgerd.github.io/sail_command/uat/" }
+    steps:
+      - run: echo "UAT deployed to https://docgerd.github.io/sail_command/uat/"
