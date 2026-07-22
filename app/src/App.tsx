@@ -9,11 +9,13 @@ import {
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { useViaReplan } from './state/replan';
+import { useOwnshipGps } from './state/useOwnshipGps';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './components/DataLayers';
 import RouteLayer from './components/RouteLayer';
+import OwnshipMarker from './components/OwnshipMarker';
 import PlannerPanel, {
   harborToPickedPoint,
   nextFullHourMs,
@@ -128,6 +130,14 @@ function AppShell() {
   // that was only ever *loaded* from PlansList, never run() in this
   // session, still works) rather than spawning a second worker.
   const viaReplan = useViaReplan(ensureClient);
+  // #25 addendum: standalone "show my position" marker, decoupled from Live
+  // View — subscribes to GPS whenever the setting is on, regardless of
+  // tab/plan/active state (see useOwnshipGps.ts and OwnshipMarker.tsx).
+  const {
+    fix: ownshipFix,
+    hintVisible: ownshipHintVisible,
+    dismissHint: dismissOwnshipHint,
+  } = useOwnshipGps(settings.showOwnship);
 
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -489,6 +499,14 @@ function AppShell() {
             viaReplanning={viaReplan.state.replanning}
             onViaDragEnd={handleViaDragEnd}
           />
+          {/* #25 addendum: the standalone ownship marker — always mounted
+              (like DataLayers above), gated only on there being a fix, which
+              useOwnshipGps only ever produces while settings.showOwnship is
+              on. Renders in ANY tab/plan state, Live View included; LiveView
+              itself no longer renders a marker (see its #25 comment), so this
+              is the single place BoatMarker ever renders — no dedupe logic
+              needed beyond that. */}
+          <OwnshipMarker fix={ownshipFix} />
           {/* LiveView must live inside MapView's subtree: useMapInstance()
               (its BoatMarker child calls it) reads the map instance off a
               React context that MapView provides, and only descendants of
@@ -542,6 +560,15 @@ function AppShell() {
           </Banner>
         )}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
+        {/* #25 addendum: reuses the SAME one-time hint LiveView shows on its
+            own GPS denial (lib/gpsHint.ts's shared claim, live.gpsHint copy)
+            — whichever of the two consumers hits the denial first is the one
+            that ever shows it, so this is not a second, separate hint. */}
+        {ownshipHintVisible && (
+          <Banner kind="warning" onDismiss={dismissOwnshipHint} dismissLabel={t('banner.dismiss')}>
+            {t('live.gpsHint')}
+          </Banner>
+        )}
         {settingsPersistenceError && (
           <Banner
             kind="error"

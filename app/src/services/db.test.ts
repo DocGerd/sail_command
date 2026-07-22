@@ -46,6 +46,7 @@ describe('IndexedDB persistence', () => {
           maneuverPenaltyS: 45,
           performanceFactor: 0.9,
           motorEnabled: true,
+          showOwnship: false,
         },
       },
       windGrid,
@@ -134,6 +135,7 @@ describe('IndexedDB persistence', () => {
           maneuverPenaltyS: 45,
           performanceFactor: 0.9,
           motorEnabled: true,
+          showOwnship: false,
         },
       },
       windGrid,
@@ -219,6 +221,7 @@ describe('IndexedDB persistence', () => {
           maneuverPenaltyS: 45,
           performanceFactor: 0.9,
           motorEnabled: true,
+          showOwnship: false,
         },
       },
       windGrid,
@@ -260,6 +263,7 @@ describe('IndexedDB persistence', () => {
           maneuverPenaltyS: 45,
           performanceFactor: 0.9,
           motorEnabled: true,
+          showOwnship: false,
         },
       },
       windGrid,
@@ -342,6 +346,7 @@ describe('IndexedDB persistence', () => {
           maneuverPenaltyS: 45,
           performanceFactor: 0.9,
           motorEnabled: true,
+          showOwnship: false,
         },
       },
       windGrid,
@@ -409,6 +414,7 @@ describe('IndexedDB persistence', () => {
           maneuverPenaltyS: 45,
           performanceFactor: 0.9,
           motorEnabled: true,
+          showOwnship: false,
         },
       },
       windGrid,
@@ -450,6 +456,7 @@ describe('IndexedDB persistence', () => {
           maneuverPenaltyS: 45,
           performanceFactor: 0.9,
           motorEnabled: true,
+          showOwnship: false,
         },
       },
       windGrid,
@@ -516,6 +523,7 @@ describe('IndexedDB persistence', () => {
           maneuverPenaltyS: 45,
           performanceFactor: 0.9,
           motorEnabled: true,
+          showOwnship: false,
         },
       },
       windGrid,
@@ -556,6 +564,10 @@ describe('IndexedDB persistence', () => {
       maneuverPenaltyS: 50,
       performanceFactor: 0.85,
       motorEnabled: false,
+      // Non-default (DEFAULT_SETTINGS.showOwnship is false): distinguishes
+      // "roundtrip preserves the field" from "field happens to equal the
+      // default whether or not it round-trips at all".
+      showOwnship: true,
     };
 
     await saveSettings(settings);

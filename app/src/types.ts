@@ -15,6 +15,11 @@ export interface Settings {
   maneuverPenaltyS: number; // default 45
   performanceFactor: number; // default 0.9
   motorEnabled: boolean; // default true
+  // #25 addendum: standalone "show my position" ownship marker, decoupled
+  // from Live View — default OFF/opt-in (enabling it triggers the
+  // geolocation permission flow). Unrelated to routing, so it is
+  // deliberately NOT part of PlanRequest/the router's inputs.
+  showOwnship: boolean; // default false
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maneuverPenaltyS: 45,
   performanceFactor: 0.9,
   motorEnabled: true,
+  showOwnship: false,
 };
 
 export interface PolarTable {

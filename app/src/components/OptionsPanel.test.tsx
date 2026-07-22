@@ -87,4 +87,30 @@ describe('OptionsPanel', () => {
     expect(help).toHaveTextContent(/Engine as fallback only/);
     expect(help).toHaveTextContent(/motor speed/);
   });
+
+  // #25 addendum: standalone "show my position" ownship marker toggle.
+  it('renders the "show my position" checkbox UNCHECKED against DEFAULT_SETTINGS (opt-in, default off)', () => {
+    renderPanel();
+    expect(screen.getByLabelText('Show my position')).not.toBeChecked();
+  });
+
+  it('toggling "show my position" ON calls onChange with showOwnship: true, immediately (no blur needed)', () => {
+    const onChange = renderPanel();
+    fireEvent.click(screen.getByLabelText('Show my position'));
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, showOwnship: true });
+  });
+
+  it('describes the ownship checkbox with a visible help paragraph via aria-describedby, not a title tooltip', () => {
+    renderPanel();
+    const input = screen.getByLabelText('Show my position');
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(input).not.toHaveAttribute('title');
+    const help = document.getElementById(describedBy!);
+    expect(help).not.toBeNull();
+    expect(help).toHaveClass('options-help');
+    // Framing (#25 addendum): the caveat travels with the toggle, not just
+    // the app-wide disclaimer.
+    expect(help).toHaveTextContent(/not a navigation device/);
+  });
 });

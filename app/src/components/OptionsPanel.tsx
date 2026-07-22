@@ -95,6 +95,24 @@ export default function OptionsPanel({ value, onChange }: OptionsPanelProps) {
       <p className="options-help" id="options-motorEnabled-help">
         {t('options.motorEnabled.help')}
       </p>
+      {/* #25 addendum: standalone "show my position" ownship marker — default
+          OFF/opt-in (types.ts DEFAULT_SETTINGS). Unrelated to routing (not
+          part of PlanRequest), so it lives here as a plain settings toggle
+          rather than in PlannerPanel's advanced-summary recap, which only
+          recaps solver-relevant fields. */}
+      <div className="options-field">
+        <label htmlFor="options-showOwnship">{t('options.showOwnship.label')}</label>
+        <input
+          id="options-showOwnship"
+          type="checkbox"
+          checked={value.showOwnship}
+          aria-describedby="options-showOwnship-help"
+          onChange={(e) => onChange({ ...value, showOwnship: e.target.checked })}
+        />
+      </div>
+      <p className="options-help" id="options-showOwnship-help">
+        {t('options.showOwnship.help')}
+      </p>
     </div>
   );
 }
