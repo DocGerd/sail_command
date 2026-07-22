@@ -21,6 +21,10 @@ review capacity is limited.
 See [README → Development](README.md#development). Quick reference:
 
 - `npm --prefix app run lint` / `typecheck` / `test` / `build` / `e2e`
+- New or changed functionality should be accompanied by automated tests —
+  Vitest unit/property tests, plus Playwright e2e tests where the change
+  affects user-facing behavior, map rendering, or offline/PWA flows. PRs
+  that add or change behavior without tests will be asked to add them.
 - CI runs lint + typecheck before tests — vitest alone will not catch
   unused imports or type errors.
 - The full unit/property suite takes ~4 min (a ~200 s seeded fast-check

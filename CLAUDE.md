@@ -25,6 +25,13 @@ deviate from it.
   routing engine in a Web Worker, IndexedDB persistence, service-worker
   offline caching, de/en i18n. Tests: Vitest (unit/property), Playwright (E2E
   incl. offline reload).
+- `app/src/components/` mixes feature components with a small UI **primitive
+  layer** (`Button`, `Card`, `Chip`, `Disclosure`, `Field`, `NumberInput`,
+  `Skeleton`, added in #64) built on the locked `--sc-*` design tokens defined in
+  `app/src/app.css` (see the UI modernization addendum
+  `docs/superpowers/specs/2026-07-17-ui-modernization-design.md` §3.2). Reuse the
+  primitives and tokens for new UI; don't reinvent buttons/inputs or hardcode
+  colors/spacing.
 
 ## Commands
 
@@ -152,6 +159,13 @@ deviate from it.
   only by a mutation-check lens). Pin literal values recomputed from
   pre-change math; the reviewer re-derives them independently — copying
   current output re-creates the tautology one level up.
+- CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
+  `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
+  mime-insensitive, but an `application/xml` parse is inert (no script exec, no
+  HTML sink) and e.g. `parseGpx` extracts only numeric coords + enum notices. No
+  code change removes it (XML parsing needs DOMParser); dismiss the alert as
+  false-positive WITH a linked evidence record, not code churn (#3, alert #9 —
+  verified by two adversarial passes + live Chromium PoCs).
 
 ## Domain rules that are easy to get wrong
 
@@ -202,6 +216,12 @@ deviate from it.
   fix waves need a FRESH agent pointed at the surviving worktree. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
+- When the session's OWN cwd is a worktree, `isolation:worktree` agents and
+  un-isolated reviewers can SHARE it rather than get a separate tree — a reviewer
+  that checks PR code in for a RED-check leaves those changes for your next
+  `git commit` to silently absorb. Always `git show --stat <sha>` before trusting
+  a commit's file list (a new-file addendum must be 1 file, insertions-only), and
+  stage explicit paths — never `git add -A`.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
   ask-gate hook must prompt the user) — never through subagents. Use the
   Edit/Write tools for them: the hook does not match Bash appends (`cat >>`),
@@ -210,6 +230,12 @@ deviate from it.
   directly, no PR needed.
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
+- A GitHub **504 during `gh pr merge`** can land the merge (base ref updates,
+  merge commit created) yet leave the PR marked `open` and skip branch-delete /
+  `Closes #` auto-close. VERIFY via the develop tip / merge-commit parents before
+  retrying — never blind-retry (you double-merge or get a confusing `behind`);
+  reconcile a stuck-but-merged PR by closing the PR + deleting the branch +
+  closing the issue manually (#94).
 - e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
   parallel worktrees contend — serialize them; per-agent dev ports are for
   manual browser passes only. The dirty wind fixture (see E2E section) also

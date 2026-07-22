@@ -121,3 +121,91 @@ describe('issue #21 gap 3: the endpoint-capture hop is mask-validated', () => {
     expect(r).toEqual({ status: 'no-route', reason: 'unreachable' });
   });
 });
+
+// Regression for issue #67 — the frontier-cap visited-stamp seal.
+//
+// Before the fix `stampVisited` ran over ALL byKey ring winners *before* the
+// MAX_FRONTIER truncation. A node stamped and then capped out never expands,
+// yet its visited-stamp permanently prunes every later arrival into that same
+// prune cell (visitedDominates: stamp no later AND no more maneuvers). When a
+// SOLE gateway cell's first arrival is the capped-out one, the cell is sealed
+// with no surviving subtree, so a still-connected destination is reported
+// unreachable. The fix stamps only the survivors of the cap.
+//
+// Scenario (an H-shaped water region, cell = 0.001° ≈ 64 m lon × 111 m lat):
+// the origin sits in a tall west shaft at the latitude of a long dead-end
+// "gulf" that points straight at the destination — a strong decoy (closer to D
+// but walled off from it). The only real route climbs the shaft to a thin top
+// corridor and runs east to D. Under a small frontier cap the decoy fills the
+// cap and the corridor gateway is capped out; stamp-before-cap seals it and
+// returns 'unreachable', while stamp-after-cap leaves it re-openable and finds
+// a valid detour. The route is provably reachable (mask.cellsConnected), so
+// 'unreachable' is a solver bug, not a data property.
+describe('issue #67: a capped-out node must not seal its prune cell', () => {
+  const TRAP_META: MaskMeta = {
+    west: 9.9,
+    south: 54.7,
+    east: 10.1,
+    north: 54.8,
+    cols: 200,
+    rows: 100,
+  };
+  const cell = (r: number, c: number) => ({
+    lat: 54.7 + (r + 0.5) * 0.001,
+    lon: 9.9 + (c + 0.5) * 0.001,
+  });
+  // rows increase north, cols increase east.
+  const trapMask = () =>
+    makeMask((r, c) => {
+      const shaft = c >= 10 && c <= 24 && r >= 20 && r <= 82; // tall west shaft (holds the origin)
+      const gulf = r >= 30 && r <= 55 && c >= 24 && c <= 185; // long dead-end decoy pointing at D
+      const top = r >= 74 && r <= 82 && c >= 24 && c <= 185; // the only through-route corridor
+      return shaft || gulf || top ? 200 : 0;
+    }, TRAP_META);
+  const trapO = cell(42, 17); // west shaft, at the gulf's latitude
+  const trapD = cell(78, 180); // east end of the top corridor
+  // Calm wind + motor ⇒ every candidate steps at motorSpeedKn in all
+  // directions, so ring ordering is purely geometric and fully deterministic.
+  const trapWind = new WindField(uniformWindGrid(0.1, 0));
+  const trapSettings = { ...DEFAULT_SETTINGS, motorEnabled: true };
+
+  it('never reports a connected destination unreachable, whatever the frontier cap', () => {
+    const mask = trapMask();
+    // Independent oracles (NOT the solver): the direct track is blocked, yet a
+    // navigable 4-connected chain trapO→trapD exists, so a route MUST exist.
+    expect(mask.segmentNavigable(trapO, trapD, trapSettings.safetyDepthM)).toBe(false);
+    expect(mask.cellsConnected(trapO, trapD, trapSettings.safetyDepthM)).toBe(true);
+    // Straight-line lower bound (geo lib, not the solver): ≈ 6.03 nm. Any real
+    // path is ≥ this by the triangle inequality, and strictly longer here since
+    // the direct segment is blocked — so the route is a genuine detour.
+    const directNm = haversineNm(trapO, trapD);
+
+    // Each cap is ≥ the frontier the solver needs (the fix finds a route within
+    // this many slots), yet stamp-before-cap sealed the gateway and returned
+    // { status:'no-route', reason:'unreachable' } at every one of these caps.
+    for (const maxFrontier of [11, 12, 16, 17, 22]) {
+      const r = solve({
+        origin: trapO,
+        destination: trapD,
+        departureMs: T0,
+        polar,
+        wind: trapWind,
+        mask,
+        settings: trapSettings,
+        maxFrontier,
+      });
+      expect(r.status, `cap=${maxFrontier}`).toBe('ok');
+      if (r.status !== 'ok') continue;
+      // The route is real: every leg is navigable at the safety depth, and its
+      // summed length exceeds the blocked direct line (a genuine detour, not a
+      // phantom capture across land).
+      for (const l of r.legs)
+        expect(
+          mask.segmentNavigable(l.start, l.end, trapSettings.safetyDepthM),
+          `cap=${maxFrontier} leg`,
+        ).toBe(true);
+      const dist = r.legs.reduce((s, l) => s + l.distanceNm, 0);
+      expect(dist, `cap=${maxFrontier} detours`).toBeGreaterThan(directNm);
+    }
+  });
+});

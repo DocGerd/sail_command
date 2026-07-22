@@ -751,6 +751,94 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
   });
 });
 
+// PR self-review fix (#3 Major): GPX import is prefill-only (design §7). When a
+// plan is already active, import must seed a FRESH draft (imported endpoints +
+// cleared plan), NOT route the imported vias through handleViaPointsChange,
+// which would replan the active plan with those vias but its OLD
+// origin/destination/windGrid and persist the incoherent result. Drives the
+// real App tree through the hidden file input (the actual handleImportFile ->
+// handleImportRoute path).
+describe('GPX import while a plan is active (#3 self-review: prefill-only)', () => {
+  it('seeds a fresh draft from the imported endpoints and does NOT replan the active plan', async () => {
+    const activePlan: Plan = {
+      id: 'active-before-import',
+      name: 'Active Before Import',
+      createdAtMs: Date.now() - 60_000,
+      request: {
+        origin: { lat: 54.95, lon: 10.6 },
+        destination: { lat: 55.05, lon: 10.9 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now() + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
+      result: okPlanResult(88),
+    };
+    await db.savePlan(activePlan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Load the saved plan so a plan is active (its 88.0 nm total is on screen).
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(activePlan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(88))).toBeInTheDocument());
+
+    // Import a GPX (rte with one via) whose endpoints are inside the data-area
+    // but DISTINCT from the active plan's — so the assertions prove the IMPORTED
+    // endpoints are shown, not the old plan's.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const importOrigin = { lat: 54.79, lon: 9.43 };
+    const importVia = { lat: 54.85, lon: 10.0 };
+    const importDest = { lat: 54.9, lon: 10.5 };
+    const gpx =
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><rte>' +
+      `<rtept lat="${importOrigin.lat}" lon="${importOrigin.lon}"/>` +
+      `<rtept lat="${importVia.lat}" lon="${importVia.lon}"/>` +
+      `<rtept lat="${importDest.lat}" lon="${importDest.lon}"/>` +
+      '</rte></gpx>';
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) throw new Error('import file input not found');
+    // 0 — loading a saved plan dispatches no routing call; captured so the
+    // "no replan" assertion is robust to any incidental prior calls.
+    const routingCallsBefore = routingMock.calls.length;
+
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [new File([gpx], 'route.gpx', { type: 'application/gpx+xml' })] },
+      });
+    });
+
+    // Success notice, and the imported endpoints prefill the draft inputs.
+    expect(await screen.findByText(de['planner.import.success'])).toBeInTheDocument();
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    await waitFor(() =>
+      expect(
+        within(originSection).getByText(formatLatLon(importOrigin), { selector: 'p' }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(destSection).getByText(formatLatLon(importDest), { selector: 'p' }),
+    ).toBeInTheDocument();
+
+    // The active plan was CLEARED (prefill-only) — its 88.0 nm summary is gone.
+    expect(screen.queryByText(formatNm(88))).not.toBeInTheDocument();
+
+    // Deterministic teeth: no replan was dispatched. Under the pre-fix code,
+    // handleImportRoute -> handleViaPointsChange(vias) with an active plan would
+    // queue a viaReplan routing call here. Give any such (buggy) dispatch every
+    // chance to land before asserting it didn't.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(routingMock.calls.length).toBe(routingCallsBefore);
+  });
+});
+
 // PR self-review fix wave: banner matrix. Each banner already has its own
 // unit-level coverage elsewhere (usePlanFlow.test.tsx, replan.test.ts); these
 // drive the real App tree end-to-end to prove the wiring itself — tab

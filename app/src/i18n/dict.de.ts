@@ -48,6 +48,28 @@ export const de = {
   // stable, atomic summary announced once per new plan (never on slider/
   // via-edit re-renders).
   'planner.result.announce': 'Route berechnet — Ankunft {arrival}, Dauer {duration}, {distance}.',
+  // GPX import (#3): the control, the success confirmation, one message per
+  // rejection reason, and the non-blocking notices. "Import/Planung"-Sprache,
+  // niemals "Navigation" — importierte Geometrie ist eine Planungseingabe.
+  'planner.import.button': 'GPX importieren',
+  'planner.import.success':
+    'Route importiert — Start, Ziel und Wegpunkte übernommen. Abfahrt und Optionen wählen, dann planen.',
+  'planner.import.error.notGpx': 'Keine gültige GPX-Datei.',
+  'planner.import.error.tooFewPoints':
+    'Die GPX-Datei enthält keine zwei verwendbaren Punkte (Start und Ziel).',
+  'planner.import.error.badCoord': 'Die GPX-Datei enthält ungültige Koordinaten.',
+  'planner.import.error.outOfBounds':
+    'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+  'planner.import.error.tooLarge': 'Die GPX-Datei ist zu groß für den Import.',
+  'planner.import.error.failed': 'GPX-Datei konnte nicht gelesen werden.',
+  'planner.import.notice.trackReduced':
+    'Track auf Start- und Zielpunkt reduziert — der Trackverlauf wird für die Planung ignoriert.',
+  'planner.import.notice.viaCapped':
+    '{dropped} zusätzliche Wegpunkte verworfen (Höchstzahl an Wegpunkten überschritten).',
+  'planner.import.notice.multipleRoutes':
+    'Mehrere Routen in der Datei — nur die erste wurde importiert.',
+  'planner.import.notice.multipleTracks':
+    'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
   'planner.status.routing': 'Route wird berechnet…',
   'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
