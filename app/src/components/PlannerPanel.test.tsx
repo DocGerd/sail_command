@@ -120,6 +120,7 @@ function baseProps(overrides: Overrides = {}) {
     destination: null,
     onPickOrigin: vi.fn(),
     onPickDestination: vi.fn(),
+    onImportRoute: vi.fn(),
     onRequestMapTap: vi.fn(),
     viaPoints: [],
     onRemoveVia: vi.fn(),

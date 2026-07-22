@@ -324,6 +324,19 @@ function AppShell() {
     setTapTarget((current) => (current === 'destination' ? null : current));
   }, []);
 
+  // GPX import (#3): prefill the planner inputs from a parsed .gpx, reusing the
+  // canonical setters. viaPoints route through handleViaPointsChange (the single
+  // "set via" entry point) — before a plan exists (the normal import case) that
+  // just seeds the draft; the user then sets departure/options and presses Plan.
+  const handleImportRoute = useCallback(
+    (o: PickedPoint, d: PickedPoint, vias: LatLon[]) => {
+      handlePickOrigin(o);
+      handlePickDestination(d);
+      handleViaPointsChange(vias);
+    },
+    [handlePickOrigin, handlePickDestination, handleViaPointsChange],
+  );
+
   // #38: a harbor-marker click builds the SAME endpoint shape a search-picker
   // selection does (harborToPickedPoint) and fills origin-if-empty, else
   // destination — resolveHarborPickTarget documents the tap-to-pick interplay.
@@ -619,6 +632,7 @@ function AppShell() {
               destination={destination}
               onPickOrigin={handlePickOrigin}
               onPickDestination={handlePickDestination}
+              onImportRoute={handleImportRoute}
               onRequestMapTap={handleRequestMapTap}
               viaPoints={viaPoints}
               onRemoveVia={handleRemoveVia}

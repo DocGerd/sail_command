@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { Harbor, LatLon, PickedPoint, Plan, Rig, RigResult, Settings } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { formatDateTime, formatDuration, formatKn, formatLatLon, formatNm } from '../lib/format';
+import { GpxParseError, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
 import { resultSummary } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
@@ -35,6 +36,10 @@ export interface PlannerPanelProps {
   destination: PickedPoint | null;
   onPickOrigin: (p: PickedPoint) => void;
   onPickDestination: (p: PickedPoint) => void;
+  // GPX import (#3): prefill origin/destination/viaPoints from a parsed .gpx.
+  // The parent owns the planner input state (App.tsx), so import routes through
+  // it — origin+destination as tap-source PickedPoints, vias as raw LatLon.
+  onImportRoute: (origin: PickedPoint, destination: PickedPoint, viaPoints: LatLon[]) => void;
   onRequestMapTap: (target: TapTarget) => void; // parent arms MapView tap mode
   // E8: via-waypoint re-route. Source of truth is the caller's — either a
   // pre-first-plan local draft, or (once a plan exists) plan.request.viaPoints
@@ -101,6 +106,7 @@ export default function PlannerPanel({
   destination,
   onPickOrigin,
   onPickDestination,
+  onImportRoute,
   onRequestMapTap,
   viaPoints,
   onRemoveVia,
@@ -128,6 +134,57 @@ export default function PlannerPanel({
   // lands on the parent's origin/destination.
   const [editingOrigin, setEditingOrigin] = useState(false);
   const [editingDestination, setEditingDestination] = useState(false);
+
+  // GPX import (#3): a hidden file input triggered by the Button primitive.
+  // Parsing is pure local file handling (available offline); only the later
+  // Plan action needs network. On success we prefill the planner inputs and
+  // surface any non-blocking notices; on rejection we show a specific message.
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importNotices, setImportNotices] = useState<string[]>([]);
+
+  const importErrorMessage = (reason: GpxErrorReason | null): string => {
+    switch (reason) {
+      case 'too-few-points':
+        return t('planner.import.error.tooFewPoints');
+      case 'bad-coord':
+        return t('planner.import.error.badCoord');
+      case 'out-of-bounds':
+        return t('planner.import.error.outOfBounds');
+      case 'not-xml':
+      case 'not-gpx':
+        return t('planner.import.error.notGpx');
+      default:
+        return t('planner.import.error.failed');
+    }
+  };
+
+  const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so re-selecting the same file re-fires change
+    if (!file) return;
+    setImportError(null);
+    setImportNotices([]);
+    try {
+      const route = parseGpx(await file.text());
+      const toPicked = (p: LatLon): PickedPoint => ({
+        source: 'tap',
+        point: p,
+        label: formatLatLon(p),
+      });
+      onImportRoute(toPicked(route.origin), toPicked(route.destination), route.viaPoints);
+      setImportNotices([
+        t('planner.import.success'),
+        ...route.notices.map((n) => {
+          if (n.kind === 'track-reduced') return t('planner.import.notice.trackReduced');
+          if (n.kind === 'multiple-routes') return t('planner.import.notice.multipleRoutes');
+          return t('planner.import.notice.viaCapped', { dropped: n.dropped });
+        }),
+      ]);
+    } catch (err) {
+      setImportError(importErrorMessage(err instanceof GpxParseError ? err.reason : null));
+    }
+  };
 
   // Soft form guidance for the datetime-local min/max, computed once at
   // mount — not a ticking clock; the actual horizon check happens server
@@ -218,6 +275,31 @@ export default function PlannerPanel({
   return (
     <div className="planner-panel">
       <Card title={t('planner.card.trip')} className="planner-trip">
+        <section className="planner-import">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".gpx,application/gpx+xml"
+            className="sr-only"
+            onChange={(e) => void handleImportFile(e)}
+          />
+          <Button variant="secondary" onClick={() => importInputRef.current?.click()}>
+            {t('planner.import.button')}
+          </Button>
+          {importError && (
+            <p className="planner-guidance" role="alert">
+              {importError}
+            </p>
+          )}
+          {importNotices.length > 0 && (
+            <ul className="planner-import-notices" role="status">
+              {importNotices.map((n, i) => (
+                <li key={i}>{n}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <section aria-label={t('planner.origin.label')} className="planner-endpoint">
           <h3 className="sc-section-title">{t('planner.origin.label')}</h3>
           {origin && !editingOrigin ? (
