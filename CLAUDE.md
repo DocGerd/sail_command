@@ -143,11 +143,12 @@ deviate from it.
   ship to prod). Required evidence: prod double-build vs. base `diff -r`
   byte-identical. That check is NOT CI-gated — re-verify it whenever the gate
   or badge module area changes.
-- UAT regression triage: `/uat/` redeploys on EVERY develop push, so "it broke
-  on UAT" reports are often the reporter's stale SW — before filing, verify the
+- UAT regression triage: `/uat/` redeploys on EVERY develop push, so an
+  installed UAT PWA is routinely one version behind — "it broke on UAT" can
+  simply be the reporter's stale SW (the reporter-confirmed cause of the
+  harbor-combobox false alarm, #107 session). Before filing, verify the
   deployed artifact with a cache-busted browser pass (unregister both origin
-  SWs, clear caches, hard-reload) and inspect ARIA/DOM, not pixels (#107
-  session; harbor-combobox false alarm).
+  SWs, clear caches, hard-reload) and inspect ARIA/DOM, not pixels.
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
