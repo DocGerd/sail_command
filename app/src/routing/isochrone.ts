@@ -14,6 +14,12 @@ export interface SolveParams {
   mask: NavMask;
   settings: Settings;
   onProgress?: (info: { tMs: number; frontierSize: number }) => void;
+  /**
+   * Perf-cap on the per-ring frontier size. Defaults to {@link MAX_FRONTIER}.
+   * Injectable so tests can drive the cap into a regime where it actually
+   * truncates the frontier (issue #67) without building a 30 000-node mask.
+   */
+  maxFrontier?: number;
 }
 
 export type SolveResult =
@@ -111,6 +117,7 @@ function better(a: Node, b: Node): boolean {
 
 export function solve(p: SolveParams): SolveResult {
   const { polar, wind, mask, settings, destination } = p;
+  const maxFrontier = p.maxFrontier ?? MAX_FRONTIER;
   const horizonMs = wind.horizonMs();
 
   const start: Node = {
@@ -330,11 +337,27 @@ export function solve(p: SolveParams): SolveResult {
     }
 
     let next = [...byKey.values()];
-    for (const [k, n] of byKey) stampVisited(visited, k, { tMs: n.tMs, maneuvers: n.maneuvers });
-    if (next.length > MAX_FRONTIER) {
+    if (next.length > maxFrontier) {
       next.sort((a, b) => (better(a, b) ? -1 : better(b, a) ? 1 : 0));
-      next = next.slice(0, MAX_FRONTIER);
+      next = next.slice(0, maxFrontier);
     }
+    // Stamp visited ONLY for the nodes that survive the frontier cap (issue
+    // #67). A capped-out node never expands, so stamping it would permanently
+    // seal its prune cell against every later arrival — even though that
+    // capped node grew no subtree there — and a sole gateway cell whose first
+    // arrival is capped out gets sealed, reporting a still-connected
+    // destination as unreachable. Stamping after the slice keeps every
+    // existing domination guarantee for the survivors (each surviving cell's
+    // live representative still stamps its arrival) while no longer sealing
+    // cells that have no surviving expander. When the frontier fits under the
+    // cap, `next` === all byKey winners, so this is byte-identical to stamping
+    // every winner — the uncapped path (the common case, incl. every real-mask
+    // route whose frontier peaks below MAX_FRONTIER) is unchanged.
+    for (const n of next)
+      stampVisited(visited, pruneKey(n.lat, n.lon, n.kind, n.board), {
+        tMs: n.tMs,
+        maneuvers: n.maneuvers,
+      });
     frontier = next;
     tMs += dtS * 1000;
     // Report the true frontier clock: substepped nodes lag the ring clock by
