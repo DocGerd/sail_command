@@ -24,6 +24,11 @@ account or backend.
 
 **Live app:** https://docgerd.github.io/sail_command/
 
+**UAT preview:** https://docgerd.github.io/sail_command/uat/ — the unreleased
+`develop` state, auto-deployed on every push. Unstable, `noindex`ed, and not
+the productive version; use the live app link above for actual passage
+planning.
+
 ## Screenshots
 
 | Start view | Planned route |
