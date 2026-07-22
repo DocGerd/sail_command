@@ -103,7 +103,7 @@ deviate from it.
   unchanged), `develop` → `/uat/` (`SC_DEPLOY_ENV=uat` env var switches
   `base` to `/sail_command/uat/` and, via the config's `subPathMeta()`
   plugin + PWA `manifest` block, adds `<meta name="robots" content=
-  "noindex">` and a distinct manifest `name`/`id` so the UAT build installs
+  "noindex, nofollow">` and a distinct manifest `name`/`id` so the UAT build installs
   as a separate PWA rather than colliding with production's). This
   deliberately couples the two deploys (any push to either branch rebuilds
   both); the existing `concurrency: { group: pages }` still serializes
