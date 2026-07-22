@@ -73,6 +73,10 @@ deviate from it.
 - Never transfer the wind grid's buffers to the worker (clone keeps the saved
   plan's forecast intact); only the mask buffer is transferred, always as a
   `.slice(0)` copy of the cached original.
+- MapLibre Popup chrome hardcodes `background:#fff` (no dark variant) — any new
+  Popup needs a `className` plus app.css overrides theming
+  `.maplibregl-popup-content` and BOTH popup-tip borders with `--sc-bg`
+  (see `.seamark-popup`, #7).
 
 ## PWA / E2E / deploy (Phase F)
 
@@ -80,6 +84,9 @@ deviate from it.
   `app/public/test-fixtures/wind-sw12.json` with fresh timestamps and builds —
   a dirty fixture diff after an e2e run is expected churn, restore it, don't
   commit it). One-time setup: `npm --prefix app exec playwright install chromium`.
+  Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
+  failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
+  restore the wind fixture afterwards).
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -96,6 +103,10 @@ deviate from it.
   only once the SW controls the page. Never extend the SW install/activate to
   fetch them — the small install is the point. Cache version-bump procedure
   lives in `app/src/lib/glyphs.ts`.
+- Runtime cache names must be deployment-scoped: prod and `/uat/` are two SWs on
+  ONE origin and `sw.ts`'s activate cleanup enumerates ALL origin caches — glyph
+  caches use `sailcommand-glyphs-<slug>@<version>` derived from BASE_URL (#96);
+  never add a bare shared cache name or an unscoped cleanup matcher.
 - Deploy (#96): `deploy.yml` fires on push to `main` OR `develop`. Pages
   serves a SINGLE deployment artifact, so every run builds BOTH refs into one
   combined artifact regardless of which branch triggered it — `main` → the
@@ -120,6 +131,11 @@ deviate from it.
   ruleset covering both branches via literal refs): PR-only merges (merge
   commits, review threads resolved), required checks `app` + `e2e` with
   strict up-to-date policy, no force pushes or deletions.
+- The github-pages ENVIRONMENT branch policy (repo Settings, not YAML) gates
+  deploys by triggering branch — `main`+`develop` are allowlisted (#96). A new
+  deploying branch needs a policy entry
+  (`gh api .../deployment-branch-policies -f name=<branch>`) or the deploy job
+  is rejected with "not allowed to deploy".
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
@@ -149,6 +165,10 @@ deviate from it.
   green (it uses the real committed mask/polars).
 - Flensburg→Marstal routes only at safety depth ≤ 2.3 m — that is correct
   data behavior, not a bug (documented in the realmask test; see #9).
+- The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
+  (measured, issue #9: the bridge decks are already deep water; sub-cell
+  channels ≤30 m wide are the real barrier) — reconnecting them requires
+  fabricating depth; don't attempt without hi-res bathymetry.
 - Issue texts are not ground truth for states they don't describe: #31's
   correct wide-float description got misapplied to the narrow layout and
   spread into 5 code sites — verify wording against code before reusing it in
@@ -170,6 +190,10 @@ deviate from it.
   code change removes it (XML parsing needs DOMParser); dismiss the alert as
   false-positive WITH a linked evidence record, not code churn (#3, alert #9 —
   verified by two adversarial passes + live Chromium PoCs).
+- MapView's ATTRIBUTION must keep one anchor per accessible name — a second
+  identical `<a>OpenStreetMap</a>` broke plan.spec.ts's strict-mode locator
+  (#7); extend the existing anchor's text for new data credits instead of
+  adding a link.
 
 ## Domain rules that are easy to get wrong
 
@@ -244,6 +268,9 @@ deviate from it.
   parallel worktrees contend — serialize them; per-agent dev ports are for
   manual browser passes only. The dirty wind fixture (see E2E section) also
   blocks `git worktree remove` — restore before removing; never `--force`.
+- IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
+  churn — trust `npm --prefix app run typecheck` (`tsc -b`), never the
+  diagnostics stream.
 
 ## graphify
 
