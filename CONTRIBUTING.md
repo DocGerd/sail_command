@@ -35,6 +35,11 @@ See [README → Development](README.md#development). Quick reference:
   type-enforced — add every key to BOTH dicts.
 - TypeScript `strict` + `exactOptionalPropertyTypes` are on; enums are
   forbidden (`erasableSyntaxOnly`).
+- **UAT preview:** https://docgerd.github.io/sail_command/uat/ is a real
+  deployment of the current `develop` state, auto-refreshed on every push —
+  use it to verify unreleased changes beyond local testing. It serves
+  whatever `develop` currently holds, so it's explicitly not the productive
+  version and may break at any time.
 
 ## Data pipeline
 
