@@ -6,6 +6,7 @@
   "scripts": {
     "polars": "node build_polars.mjs",
     "harbors": "node build_harbors.mjs",
+    "seamarks": "node build_seamarks.mjs",
     "mask": "./.venv/bin/python build_mask.py && ./.venv/bin/python verify_mask.py",
     "icons": "node build_icons.mjs"
   },

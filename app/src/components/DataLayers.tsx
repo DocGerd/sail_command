@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Map as MaplibreMap } from 'maplibre-gl';
+import { Map as MaplibreMap, Popup } from 'maplibre-gl';
 import type { GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
+import { seamarkFeatureCollectionWithIcons } from '../lib/seamarkGeoJson';
+import { registerSeamarkImages } from '../lib/seamarkGlyphs';
+import { seamarkPopoverRows } from '../lib/seamarkPopover';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
-import type { Harbor, MaskMeta } from '../types';
+import type { Harbor, MaskMeta, SeamarkProperties } from '../types';
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
 // markers, #39 depth overlay). Deliberately a SIBLING of RouteLayer, not part
@@ -35,6 +38,12 @@ const HARBOR_SOURCE = 'sc-harbors';
 // the imports and can't reference this constant.) (#38)
 export const HARBOR_CIRCLE_LAYER = 'sc-harbor-points';
 const HARBOR_LABEL_LAYER = 'sc-harbor-labels';
+const SEAMARKS_SOURCE = 'sc-seamarks';
+// Exported for the same reason as HARBOR_CIRCLE_LAYER: App hands MapView this
+// id so a click landing on a seamark glyph is gated OUT of the generic
+// tap-to-pick handler (a seamark click always opens the info popover below,
+// never sets origin/destination). (#7)
+export const SEAMARKS_LAYER = 'sc-seamarks';
 
 // Deterministic cross-component layer ordering, anchored on RouteLayer's
 // bottom-most layer (ROUTE_STACK_BOTTOM_LAYER, the shallow casing — the first
@@ -160,6 +169,35 @@ function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer):
       beforeId,
     );
   }
+  if (!map.getSource(SEAMARKS_SOURCE)) {
+    map.addSource(SEAMARKS_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }, // populated once seamarks.json resolves
+    });
+    map.addLayer(
+      {
+        id: SEAMARKS_LAYER,
+        type: 'symbol',
+        source: SEAMARKS_SOURCE,
+        layout: {
+          // Precomputed per feature (seamarkFeatureCollectionWithIcons) —
+          // seamarkType/category alone can't distinguish e.g. a red from a
+          // green lateral buoy, which the glyph fidelity needs (seamarkGlyphs.ts).
+          'icon-image': ['get', 'icon'],
+          // ~1,794 points is dense enough that unculled icons would pile up
+          // at low zoom (unlike the 33 harbor markers) — collision-cull like
+          // the harbor labels, not like the sparser route wind barbs.
+          'icon-allow-overlap': false,
+          'icon-size': 0.85,
+          // Hidden at creation; the seamarksVisible sync effect (below, same
+          // commit) applies the persisted/default state — OFF for a fresh
+          // profile (#7, opt-in specialist layer) — before any paint.
+          visibility: 'none',
+        },
+      },
+      beforeId,
+    );
+  }
 }
 
 export default function DataLayers({ onHarborPick }: DataLayersProps) {
@@ -169,6 +207,9 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
   const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
+  // #7: default OFF — ~1,794 points is a dense specialist layer (vs. 33
+  // harbor markers) that would clutter the map before the user opts in.
+  const [seamarksVisible, setSeamarksVisible] = usePersistedToggle('sc-seamarks-visible', false);
   const [assets, setAssets] = useState<RoutingAssets | null>(null);
   // Same pattern and rationale as RouteLayer's styleReady state. Registered
   // from a [map]-effect (below) so the whenStyleReady call happens at map
@@ -228,6 +269,68 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     map.setLayoutProperty(DEPTH_LAYER, 'visibility', depthVisible ? 'visible' : 'none');
   }, [map, styleReady, assets, depthVisible]);
 
+  // Seamark glyphs (#7) — registered/set once per assets load, independent of
+  // the visibility toggle (so the layer is ready to paint the instant the
+  // user opts in, no flash of unstyled icons). registerSeamarkImages is
+  // idempotent (hasImage guard), so this is safe to re-run.
+  useEffect(() => {
+    if (!map || !styleReady || !assets) return;
+    const withIcons = seamarkFeatureCollectionWithIcons(assets.seamarks);
+    registerSeamarkImages(
+      map,
+      withIcons.features.map((f) => f.properties),
+    );
+    (map.getSource(SEAMARKS_SOURCE) as GeoJSONSource | undefined)?.setData(withIcons);
+  }, [map, styleReady, assets]);
+
+  useEffect(() => {
+    if (!map || !styleReady || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
+    map.setLayoutProperty(SEAMARKS_LAYER, 'visibility', seamarksVisible ? 'visible' : 'none');
+  }, [map, styleReady, assets, seamarksVisible]);
+
+  // Click a seamark glyph -> a small info popover (type/category/colour,
+  // light character/colour/period when tagged) — never a route pick (#7):
+  // seamarks aren't route-pickable points, unlike harbor markers, so this
+  // owns its own popup rather than calling back into App/PlannerPanel state.
+  useEffect(() => {
+    if (!map || !styleReady || !assets) return;
+    const handleClick = (e: MapLayerMouseEvent) => {
+      const props = e.features?.[0]?.properties as SeamarkProperties | undefined;
+      if (!props) return;
+      const container = document.createElement('div');
+      container.className = 'seamark-popover';
+      for (const row of seamarkPopoverRows(props)) {
+        const line = document.createElement('div');
+        const label = document.createElement('strong');
+        label.textContent = `${t(row.labelKey)}: `;
+        line.append(label, document.createTextNode(row.value));
+        container.append(line);
+      }
+      const disclaimer = document.createElement('p');
+      disclaimer.className = 'seamark-popover-disclaimer';
+      disclaimer.textContent = t('app.disclaimer');
+      container.append(disclaimer);
+      new Popup({ closeButton: true, maxWidth: '240px', className: 'seamark-popup' })
+        .setLngLat(e.lngLat)
+        .setDOMContent(container)
+        .addTo(map);
+    };
+    const handleEnter = () => {
+      map.getCanvas().style.cursor = 'pointer';
+    };
+    const handleLeave = () => {
+      map.getCanvas().style.cursor = '';
+    };
+    map.on('click', SEAMARKS_LAYER, handleClick);
+    map.on('mouseenter', SEAMARKS_LAYER, handleEnter);
+    map.on('mouseleave', SEAMARKS_LAYER, handleLeave);
+    return () => {
+      map.off('click', SEAMARKS_LAYER, handleClick);
+      map.off('mouseenter', SEAMARKS_LAYER, handleEnter);
+      map.off('mouseleave', SEAMARKS_LAYER, handleLeave);
+    };
+  }, [map, styleReady, assets, t]);
+
   // Click-to-pick + hover cursor on the harbor circles. The callback lives in
   // a ref so a re-render of App (new onHarborPick identity) doesn't
   // re-register map listeners.
@@ -270,6 +373,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
           onChange={(e) => setDepthVisible(e.target.checked)}
         />
         {t('map.depth.toggle')}
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={seamarksVisible}
+          onChange={(e) => setSeamarksVisible(e.target.checked)}
+        />
+        {t('map.seamarks.toggle')}
       </label>
     </div>
   );

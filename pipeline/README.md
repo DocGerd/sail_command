@@ -67,6 +67,30 @@ snap points. If a rebuild moves a snap point's cell below 2.2 m, move the
 coordinate further out along the harbor's real approach fairway (checked
 against OSM) rather than weakening the threshold or fudging the mask.
 
+### `seamarks.json` — aids-to-navigation overlay (#7)
+
+Core aids-to-navigation (`seamark:type` nodes tagged `buoy_*`, `beacon_*`, or
+`light_*`) in the app bbox — 1,794 nodes as of the 2026-07-22 build, a
+GeoJSON `FeatureCollection` of Point features trimmed to `seamarkType`,
+`category`, `colour`, `shape`, and light `lightCharacter`/`lightPeriod`/
+`lightColour` where tagged. Presentation-only overlay (`app/src/lib/
+seamarkGlyphs.ts` draws the glyphs, `DataLayers.tsx` hosts the `sc-seamarks`
+layer, default OFF) — no routing/solver input.
+
+Regenerate:
+
+```
+node pipeline/build_seamarks.mjs
+```
+
+Pulled live from the Overpass API (one query, filtered client-side to the
+core-AtoN prefixes) — needs network, and Overpass occasionally 504s under
+load; just retry. NOT wired into app runtime (Overpass has no CORS guarantee
+and rate-limits per IP) — regenerate on the same ad-hoc "when it visibly
+matters" cadence as `harbors.json`; seamark data (buoy positions, ice-season
+removals) drifts faster than coastline, so treat a rebuild as a fresh
+point-in-time extract, not a continuously-verified feed.
+
 ### `mask.bin` / `mask.meta.json` — land/depth mask
 
 **Hook-protected binary — regenerate, never hand-edit `mask.bin`.**
