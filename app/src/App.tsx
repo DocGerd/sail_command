@@ -580,7 +580,13 @@ function AppShell() {
             <>
               {/* #25 AIS live traffic overlay — Live tab only, inside MapView's
                   subtree for the map context. Fully inert without a key. */}
-              <AisTraffic apiKey={settings.aisApiKey} ownMmsi={settings.ownMmsi} />
+              <AisTraffic
+                apiKey={settings.aisApiKey}
+                ownMmsi={settings.ownMmsi}
+                plan={plan}
+                rig={rig}
+                activeLegIndex={activeLegIndex}
+              />
               <LiveView
                 panelSlot={isWide ? liveSlot : null}
                 reroute={{

@@ -6,11 +6,17 @@ import { useAisTraffic, type AisStatus } from '../state/useAisTraffic';
 import AisLayer from './AisLayer';
 import Chip from './Chip';
 import { padBoundingBox, viewportEscapedBbox, type AisBoundingBox } from '../services/aisStream';
+import {
+  AIS_CORRIDOR_HALF_WIDTH_NM,
+  mergeOverlappingBoxes,
+  routeCorridorBoxes,
+} from '../lib/routeCorridor';
+import { activeRigResult } from '../lib/plan';
+import type { Plan, Rig } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
 
 const AIS_BBOX_PAD = 0.2; // subscribe to the viewport padded 20% each side
 const AIS_RESUBSCRIBE_DEBOUNCE_MS = 2000;
-const EMPTY_CORRIDOR: AisBoundingBox[] = []; // stable identity until Task 5 wires the corridor
 
 const STATUS_KEY: Record<Exclude<AisStatus, 'live'>, MsgKey> = {
   off: 'ais.status.off',
@@ -58,9 +64,15 @@ export function AisStatusChip({
 export default function AisTraffic({
   apiKey,
   ownMmsi,
+  plan,
+  rig,
+  activeLegIndex,
 }: {
   apiKey: string | undefined;
   ownMmsi: string | undefined;
+  plan: Plan | null;
+  rig: Rig | null;
+  activeLegIndex: number | null;
 }) {
   const map = useMapInstance();
   const online = useOnline();
@@ -99,16 +111,32 @@ export default function AisTraffic({
     };
   }, [map]);
 
-  // Memoized so an unchanged viewport keeps list identity and the hook's
-  // subscription effect does not re-fire per render (Task 5 composes the
-  // route corridor into this list).
-  const bboxes = useMemo<AisBoundingBox[] | null>(() => (bbox === null ? null : [bbox]), [bbox]);
+  // #146 route corridor: recomputes only on [plan, rig, activeLegIndex] — all
+  // three are stable references / change on leg transitions, never per GPS fix.
+  const corridorBoxes = useMemo<AisBoundingBox[]>(() => {
+    if (!plan || !rig) return [];
+    const rr = activeRigResult(plan, rig);
+    if (!rr) return [];
+    return routeCorridorBoxes(rr.legs, activeLegIndex, AIS_CORRIDOR_HALF_WIDTH_NM);
+  }, [plan, rig, activeLegIndex]);
 
-  const { status, targets, targetCount } = useAisTraffic({
+  // Subscription union (corridor ∪ padded viewport), memoized so an unchanged
+  // corridor + viewport keeps list identity and the hook's subscription effect
+  // does not re-fire per render (a leg/plan/rig change resends on the open
+  // socket, never reconnects).
+  const bboxes = useMemo<AisBoundingBox[] | null>(
+    () => (bbox === null ? null : mergeOverlappingBoxes([bbox, ...corridorBoxes])),
+    [bbox, corridorBoxes],
+  );
+
+  // A real route exists for the active rig (#146 OQ2) — gates the chip split.
+  const routeActive = plan !== null && rig !== null && activeRigResult(plan, rig) !== null;
+
+  const { status, targets, targetCount, routeCount } = useAisTraffic({
     apiKey,
     ownMmsi,
     bboxes,
-    corridorBoxes: EMPTY_CORRIDOR,
+    corridorBoxes,
     online,
     visible,
   });
@@ -116,7 +144,12 @@ export default function AisTraffic({
   return (
     <>
       <AisLayer targets={targets} />
-      <AisStatusChip status={status} targetCount={targetCount} routeActive={false} routeCount={0} />
+      <AisStatusChip
+        status={status}
+        targetCount={targetCount}
+        routeActive={routeActive}
+        routeCount={routeCount}
+      />
     </>
   );
 }
