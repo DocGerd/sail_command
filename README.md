@@ -1,6 +1,7 @@
 [![CI](https://github.com/DocGerd/sail_command/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DocGerd/sail_command/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/DocGerd/sail_command/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/DocGerd/sail_command/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/DocGerd/sail_command/badge)](https://scorecard.dev/viewer/?uri=github.com/DocGerd/sail_command)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13749/badge)](https://www.bestpractices.dev/projects/13749)
 
 ![SailCommand](docs/brand/banner.svg)
 
@@ -22,6 +23,11 @@ account or backend.
 > Plotter.
 
 **Live app:** https://docgerd.github.io/sail_command/
+
+**UAT preview:** https://docgerd.github.io/sail_command/uat/ — the unreleased
+`develop` state, auto-deployed on every push. Unstable, `noindex`ed, and not
+the productive version; use the live app link above for actual passage
+planning.
 
 ## Screenshots
 
@@ -100,7 +106,7 @@ flowchart LR
     OSMLP["OSM land polygons"] --> MASK
     ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs → polar-genoa/fock.json"]
     CUR["curated harbor list"] --> HARB["build_harbors.mjs → harbors.json"]
-    PROTO["Protomaps extract"] --> PMT["basemap.pmtiles"]
+    PROTO["Protomaps extract"] --> PMT["basemap.pmtiles.png"]
   end
   MASK & POLARS & HARB & PMT --> ASSETS["committed static assets — app/public/data/"]
   subgraph app ["Runtime — app/ (PWA, no backend)"]

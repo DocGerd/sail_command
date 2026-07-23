@@ -1,4 +1,5 @@
 import type { Harbor, MaskMeta, PolarTable } from '../types';
+import type { SeamarkFeatureCollection } from '../lib/seamarkGeoJson';
 
 export interface RoutingAssets {
   maskMeta: MaskMeta;
@@ -6,6 +7,10 @@ export interface RoutingAssets {
   polarGenoa: PolarTable;
   polarFock: PolarTable;
   harbors: Harbor[];
+  // #7: fetched alongside harbors.json (same offline-precached asset tier —
+  // small, plan-independent, useful before any route exists). Presentation
+  // only; never touched by the routing worker.
+  seamarks: SeamarkFeatureCollection;
 }
 
 // Build-time committed assets under app/public/data/ — fetched once and
@@ -35,12 +40,14 @@ export function loadRoutingAssets(): Promise<RoutingAssets> {
     fetchJson<PolarTable>('data/polar-genoa.json'),
     fetchJson<PolarTable>('data/polar-fock.json'),
     fetchJson<Harbor[]>('data/harbors.json'),
-  ]).then(([maskMeta, maskBuffer, polarGenoa, polarFock, harbors]) => ({
+    fetchJson<SeamarkFeatureCollection>('data/seamarks.json'),
+  ]).then(([maskMeta, maskBuffer, polarGenoa, polarFock, harbors, seamarks]) => ({
     maskMeta,
     maskBuffer,
     polarGenoa,
     polarFock,
     harbors,
+    seamarks,
   }));
   // A rejection (e.g. a transient network blip on first load) must not pin
   // every later call to the same dead promise — reset the singleton so the

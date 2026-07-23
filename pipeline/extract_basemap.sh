@@ -17,12 +17,16 @@ if [ ! -x "$BIN" ]; then
     | tar xz -C bin pmtiles
 fi
 
+# The .png suffix is DELIBERATE (#118): GitHub Pages/Fastly gzip-compresses
+# application/octet-stream Range responses into un-inflatable fragments;
+# image/png is served identity with true 206s. This is NOT a PNG — it is a
+# PMTiles archive masquerading as one. Do NOT "fix" the extension.
 "$BIN" extract "https://build.protomaps.com/${BUILD_DATE}.pmtiles" \
-  ../app/public/data/basemap.pmtiles \
+  ../app/public/data/basemap.pmtiles.png \
   --bbox="$BBOX" --maxzoom="$MAXZOOM"
 
-SIZE=$(stat -c%s ../app/public/data/basemap.pmtiles)
+SIZE=$(stat -c%s ../app/public/data/basemap.pmtiles.png)
 [ "$SIZE" -gt $((10*1024*1024)) ] || { echo "basemap suspiciously small: $SIZE bytes" >&2; exit 1; }
 
 echo "--- verify ---"
-"$BIN" show ../app/public/data/basemap.pmtiles
+"$BIN" show ../app/public/data/basemap.pmtiles.png

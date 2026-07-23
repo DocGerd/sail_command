@@ -25,5 +25,6 @@
   },
   // Tests that need node builtins (fs access to real data assets). Kept out of
   // tsconfig.app.json so node globals/types never leak into browser app code.
-  "include": ["src/**/realmask.repro.test.ts"]
+  // gpx.parse.test.ts reads app/public/data/mask.meta.json to pin DATA_AREA (#3).
+  "include": ["src/**/realmask.repro.test.ts", "src/**/gpx.parse.test.ts"]
 }

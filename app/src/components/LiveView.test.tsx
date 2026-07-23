@@ -11,6 +11,12 @@ import { formatHeading, formatNm } from '../lib/format';
 import type { GpsErrorKind, GpsFix } from '../services/geolocation';
 import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
 import LiveView from './LiveView';
+// #25 addendum: LiveView no longer renders BoatMarker at all (that moved to
+// the standalone OwnshipMarker) — mocked here purely so the dedupe test
+// below can prove the import was actually removed, not just that this test
+// file happens not to exercise it.
+vi.mock('./BoatMarker', () => ({ default: vi.fn(() => null) }));
+import BoatMarker from './BoatMarker';
 
 const ORIGIN = { lat: 54.7, lon: 9.5 };
 const T0 = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -191,6 +197,20 @@ describe('LiveView', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/tack/i)).toBeInTheDocument();
     expect(screen.getByText(/projected eta/i)).toBeInTheDocument();
+  });
+
+  it('#25: never renders BoatMarker itself, even fully active with a steerable fix — the standalone OwnshipMarker is the ONLY marker render site, so this is what keeps Live View + the ownship toggle from ever showing two markers', async () => {
+    const { wp, emitFix } = fakeWatchPosition();
+    renderLive(wp, TEST_PLAN);
+    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+
+    act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+
+    // Sanity: the readout DID render off this fix (steerable is non-null) —
+    // otherwise "BoatMarker not called" would be true for the trivial wrong
+    // reason (nothing rendered at all).
+    expect(screen.getByText(formatHeading(91.4))).toBeInTheDocument();
+    expect(BoatMarker).not.toHaveBeenCalled();
   });
 
   it('shows en dash placeholders for COG/SOG when the device does not report them', async () => {

@@ -26,6 +26,7 @@ const ASSETS_FIXTURE: assetsModule.RoutingAssets = {
   polarGenoa: TEST_POLAR,
   polarFock: FOCK_POLAR,
   harbors: [],
+  seamarks: { type: 'FeatureCollection', features: [] },
 };
 
 // Mirrors workerClient.test.ts's fakeWorker, plus an auto-reply on

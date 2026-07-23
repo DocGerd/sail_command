@@ -14,6 +14,12 @@ checks (or one person doing both in sequence).
 
 **Live app:** https://docgerd.github.io/sail_command/
 
+For a pre-release acceptance pass, this runbook can instead be run against
+the UAT preview (https://docgerd.github.io/sail_command/uat/), which serves
+the current `develop` state. It is not the productive version and may break
+at any time — use the live app above for the pre-release "done" gate once
+UAT looks clean.
+
 For every checkbox, record a result — don't leave it blank. If a check
 fails or looks wrong, don't silently work around it: file a GitHub issue
 against DocGerd/sail_command describing the deviation, link it in the

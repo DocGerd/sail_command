@@ -18,6 +18,9 @@ export const en = {
   'options.motorEnabled.label': 'Motor enabled',
   'options.motorEnabled.help':
     'Engine as fallback only: motor legs are planned where predicted sailing speed drops below the threshold, and run at motor speed.',
+  'options.showOwnship.label': 'Show my position',
+  'options.showOwnship.help':
+    'Shows your GPS position and accuracy circle on the map wherever it is open — planning, no plan, or Live view — not just during Live guidance. Consumer-GPS accuracy, not chart-grade positioning; this is a passage-planning aid, not a navigation device. Turning this on will ask for location permission.',
   // One-line glance of the collapsed "Advanced" disclosure, joined with " · ".
   'options.summary.motorOn': 'Motor on',
   'options.summary.motorOff': 'Motor off',
@@ -51,6 +54,27 @@ export const en = {
   // via-edit re-renders).
   'planner.result.announce':
     'Route calculated — arrival {arrival}, duration {duration}, {distance}.',
+  // GPX import (#3): the control, the success confirmation, one message per
+  // rejection reason, and the non-blocking notices. "Import/planning" language,
+  // never "navigation" — imported geometry is a planning input, not a route.
+  'planner.import.button': 'Import GPX',
+  'planner.import.success':
+    'Route imported — origin, destination and waypoints filled in. Set departure and options, then plan.',
+  'planner.import.error.notGpx': 'Not a valid GPX file.',
+  'planner.import.error.tooFewPoints':
+    'The GPX file has fewer than two usable points (origin and destination).',
+  'planner.import.error.badCoord': 'The GPX file contains invalid coordinates.',
+  'planner.import.error.outOfBounds':
+    'A point lies outside the covered area (Flensburg Fjord / Danish South Sea).',
+  'planner.import.error.tooLarge': 'The GPX file is too large to import.',
+  'planner.import.error.failed': 'The GPX file could not be read.',
+  'planner.import.notice.trackReduced':
+    "Track reduced to its start and end point — the track's shape is ignored for planning.",
+  'planner.import.notice.viaCapped': '{dropped} extra waypoints dropped (waypoint limit exceeded).',
+  'planner.import.notice.multipleRoutes':
+    'Multiple routes in the file — only the first was imported.',
+  'planner.import.notice.multipleTracks':
+    'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
   'planner.status.routing': 'Calculating route…',
   'planner.status.routingProgress': 'Calculating route… {progress}%',
@@ -144,6 +168,14 @@ export const en = {
   // min', '+12 min') on this time-axis chart.
   'profile.minDepth': 'min.',
   'map.depth.toggle': 'Water depths',
+  // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
+  'map.seamarks.toggle': 'Seamarks',
+  'seamark.popover.type': 'Type',
+  'seamark.popover.category': 'Category',
+  'seamark.popover.colour': 'Colour',
+  'seamark.popover.lightCharacter': 'Light character',
+  'seamark.popover.lightColour': 'Light colour',
+  'seamark.popover.lightPeriod': 'Light period',
   'plansList.empty': 'No saved plans yet.',
   'plansList.created': 'Created',
   'plansList.delete': 'Delete plan',
@@ -183,6 +215,8 @@ export const en = {
   'about.sources.openMeteo': 'Wind forecast: Weather data by Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polars: ORC International 2026 certificate, Salona 45 "Miles Ahead" (AUT 035/26); downwind values corrected to white sails (non-spinnaker) — an estimate, not race-calibrated.',
+  'about.sources.seamarks':
+    'Seamarks: © OpenStreetMap contributors (ODbL), seamark data as of 22 July 2026 — a point-in-time extract, not continuously verified',
   'banner.offline': 'Offline — planning disabled. Saved routes remain available.',
   'banner.mapError': 'Map data could not be loaded — the display may be incomplete.',
   'banner.persistenceError': 'Settings could not be saved.',

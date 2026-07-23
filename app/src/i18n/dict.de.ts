@@ -16,6 +16,9 @@ export const de = {
   'options.motorEnabled.label': 'Motor aktiviert',
   'options.motorEnabled.help':
     'Motor nur als Rückfall: Motorabschnitte werden geplant, wenn die berechnete Segelfahrt unter den Schwellenwert fällt, und mit Motorfahrtgeschwindigkeit gefahren.',
+  'options.showOwnship.label': 'Meine Position anzeigen',
+  'options.showOwnship.help':
+    'Zeigt deine GPS-Position und den Genauigkeitskreis überall auf der Karte an — beim Planen, ohne Plan oder in der Live-Ansicht, nicht nur während der Live-Führung. Consumer-GPS-Genauigkeit, keine kartengenaue Positionsbestimmung; dies ist eine Törnplanungshilfe, kein Navigationsgerät. Das Aktivieren fragt nach dem Standortzugriff.',
   // One-line glance of the collapsed "Erweitert" disclosure, joined with " · ".
   'options.summary.motorOn': 'Motor an',
   'options.summary.motorOff': 'Motor aus',
@@ -48,6 +51,28 @@ export const de = {
   // stable, atomic summary announced once per new plan (never on slider/
   // via-edit re-renders).
   'planner.result.announce': 'Route berechnet — Ankunft {arrival}, Dauer {duration}, {distance}.',
+  // GPX import (#3): the control, the success confirmation, one message per
+  // rejection reason, and the non-blocking notices. "Import/Planung"-Sprache,
+  // niemals "Navigation" — importierte Geometrie ist eine Planungseingabe.
+  'planner.import.button': 'GPX importieren',
+  'planner.import.success':
+    'Route importiert — Start, Ziel und Wegpunkte übernommen. Abfahrt und Optionen wählen, dann planen.',
+  'planner.import.error.notGpx': 'Keine gültige GPX-Datei.',
+  'planner.import.error.tooFewPoints':
+    'Die GPX-Datei enthält keine zwei verwendbaren Punkte (Start und Ziel).',
+  'planner.import.error.badCoord': 'Die GPX-Datei enthält ungültige Koordinaten.',
+  'planner.import.error.outOfBounds':
+    'Ein Punkt liegt außerhalb des abgedeckten Seegebiets (Flensburger Förde / Dänische Südsee).',
+  'planner.import.error.tooLarge': 'Die GPX-Datei ist zu groß für den Import.',
+  'planner.import.error.failed': 'GPX-Datei konnte nicht gelesen werden.',
+  'planner.import.notice.trackReduced':
+    'Track auf Start- und Zielpunkt reduziert — der Trackverlauf wird für die Planung ignoriert.',
+  'planner.import.notice.viaCapped':
+    '{dropped} zusätzliche Wegpunkte verworfen (Höchstzahl an Wegpunkten überschritten).',
+  'planner.import.notice.multipleRoutes':
+    'Mehrere Routen in der Datei — nur die erste wurde importiert.',
+  'planner.import.notice.multipleTracks':
+    'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
   'planner.status.routing': 'Route wird berechnet…',
   'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
@@ -147,6 +172,14 @@ export const de = {
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',
+  // Seezeichen-Overlay (#7) — standardmäßig AUS, Opt-in.
+  'map.seamarks.toggle': 'Seezeichen',
+  'seamark.popover.type': 'Typ',
+  'seamark.popover.category': 'Kategorie',
+  'seamark.popover.colour': 'Farbe',
+  'seamark.popover.lightCharacter': 'Kennung',
+  'seamark.popover.lightColour': 'Lichtfarbe',
+  'seamark.popover.lightPeriod': 'Wiederkehr',
   'plansList.empty': 'Noch keine gespeicherten Pläne.',
   'plansList.created': 'Erstellt',
   'plansList.delete': 'Plan löschen',
@@ -186,6 +219,8 @@ export const de = {
   'about.sources.openMeteo': 'Windvorhersage: Wetterdaten von Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polare: ORC International Zertifikat 2026, Salona 45 „Miles Ahead" (AUT 035/26); Vorwind-Werte auf Weißsegel (ohne Spinnaker) korrigiert — Schätzung, nicht renngenau kalibriert.',
+  'about.sources.seamarks':
+    'Seezeichen: © OpenStreetMap-Mitwirkende (ODbL), Stand der Seezeichendaten: 22. Juli 2026 — Zeitpunkt-Extrakt, nicht laufend überprüft',
   'banner.offline': 'Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.',
   'banner.mapError': 'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.',
   'banner.persistenceError': 'Einstellungen konnten nicht gespeichert werden.',

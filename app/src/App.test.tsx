@@ -253,11 +253,30 @@ vi.mock('maplibre-gl', () => {
       return this;
     }
   }
+  // #7: DataLayers opens a seamark info popover via `new Popup()` on a
+  // sc-seamarks click — no test here drives that click path (covered by the
+  // real-browser verify pass), but the stub keeps the module import itself
+  // from throwing if that ever changes.
+  class FakePopup {
+    setLngLat() {
+      return this;
+    }
+    setDOMContent() {
+      return this;
+    }
+    addTo() {
+      return this;
+    }
+    remove() {
+      return this;
+    }
+  }
   return {
     Map: FakeMap,
     Marker: FakeMarker,
     AttributionControl: FakeAttributionControl,
     LngLatBounds: FakeLngLatBounds,
+    Popup: FakePopup,
     addProtocol: vi.fn(),
   };
 });
@@ -294,6 +313,19 @@ function fetchMock() {
     if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
     if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
+    if (url.includes('seamarks.json'))
+      return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
+    if (url.includes('basemap.pmtiles.png')) {
+      // #118: MapView's uncontrolled-page preflight (Range bytes=0-15) runs
+      // on every mount now — answer like an honest ranged origin (true 206,
+      // body starting with the PMTiles magic 'PM') so the app tree takes the
+      // normal 'range-ok' path and never triggers the Blob fallback here.
+      return Promise.resolve(
+        new Response(Uint8Array.from([0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73]), {
+          status: 206,
+        }),
+      );
+    }
     return Promise.reject(new Error(`unexpected fetch: ${url}`));
   });
 }
@@ -431,6 +463,12 @@ describe('App', () => {
     expect(
       await screen.findByRole('heading', { name: 'SailCommand', level: 1 }),
     ).toBeInTheDocument();
+    // #107: vitest sees the non-UAT define (`__SC_UAT__` is false, like a
+    // production build), so the REAL import-site gate in the header must
+    // render no UAT environment badge. (The heading-name assertion above
+    // already implies it — a rendered badge would make the accessible name
+    // "SailCommand UAT" — but pin it explicitly.)
+    expect(screen.queryByText('UAT')).toBeNull();
   });
 
   it('defaults to the Planen tab, and switching tabs shows Routen and Live panel content', async () => {
@@ -748,6 +786,94 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
     });
     expect(screen.getByText(formatNm(77))).toBeInTheDocument();
     expect(screen.queryByText(formatNm(55))).not.toBeInTheDocument();
+  });
+});
+
+// PR self-review fix (#3 Major): GPX import is prefill-only (design §7). When a
+// plan is already active, import must seed a FRESH draft (imported endpoints +
+// cleared plan), NOT route the imported vias through handleViaPointsChange,
+// which would replan the active plan with those vias but its OLD
+// origin/destination/windGrid and persist the incoherent result. Drives the
+// real App tree through the hidden file input (the actual handleImportFile ->
+// handleImportRoute path).
+describe('GPX import while a plan is active (#3 self-review: prefill-only)', () => {
+  it('seeds a fresh draft from the imported endpoints and does NOT replan the active plan', async () => {
+    const activePlan: Plan = {
+      id: 'active-before-import',
+      name: 'Active Before Import',
+      createdAtMs: Date.now() - 60_000,
+      request: {
+        origin: { lat: 54.95, lon: 10.6 },
+        destination: { lat: 55.05, lon: 10.9 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now() + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
+      result: okPlanResult(88),
+    };
+    await db.savePlan(activePlan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Load the saved plan so a plan is active (its 88.0 nm total is on screen).
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(activePlan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(88))).toBeInTheDocument());
+
+    // Import a GPX (rte with one via) whose endpoints are inside the data-area
+    // but DISTINCT from the active plan's — so the assertions prove the IMPORTED
+    // endpoints are shown, not the old plan's.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const importOrigin = { lat: 54.79, lon: 9.43 };
+    const importVia = { lat: 54.85, lon: 10.0 };
+    const importDest = { lat: 54.9, lon: 10.5 };
+    const gpx =
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><rte>' +
+      `<rtept lat="${importOrigin.lat}" lon="${importOrigin.lon}"/>` +
+      `<rtept lat="${importVia.lat}" lon="${importVia.lon}"/>` +
+      `<rtept lat="${importDest.lat}" lon="${importDest.lon}"/>` +
+      '</rte></gpx>';
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) throw new Error('import file input not found');
+    // 0 — loading a saved plan dispatches no routing call; captured so the
+    // "no replan" assertion is robust to any incidental prior calls.
+    const routingCallsBefore = routingMock.calls.length;
+
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [new File([gpx], 'route.gpx', { type: 'application/gpx+xml' })] },
+      });
+    });
+
+    // Success notice, and the imported endpoints prefill the draft inputs.
+    expect(await screen.findByText(de['planner.import.success'])).toBeInTheDocument();
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    await waitFor(() =>
+      expect(
+        within(originSection).getByText(formatLatLon(importOrigin), { selector: 'p' }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(destSection).getByText(formatLatLon(importDest), { selector: 'p' }),
+    ).toBeInTheDocument();
+
+    // The active plan was CLEARED (prefill-only) — its 88.0 nm summary is gone.
+    expect(screen.queryByText(formatNm(88))).not.toBeInTheDocument();
+
+    // Deterministic teeth: no replan was dispatched. Under the pre-fix code,
+    // handleImportRoute -> handleViaPointsChange(vias) with an active plan would
+    // queue a viaReplan routing call here. Give any such (buggy) dispatch every
+    // chance to land before asserting it didn't.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(routingMock.calls.length).toBe(routingCallsBefore);
   });
 });
 

@@ -41,6 +41,7 @@ function assetsWith(byte: number) {
     polarGenoa: TEST_POLAR,
     polarFock: TEST_POLAR,
     harbors: [],
+    seamarks: { type: 'FeatureCollection' as const, features: [] },
   };
 }
 

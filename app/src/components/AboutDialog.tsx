@@ -103,6 +103,7 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
             <li>{t('about.sources.osmMask')}</li>
             <li>{t('about.sources.openMeteo')}</li>
             <li>{t('about.sources.polars')}</li>
+            <li>{t('about.sources.seamarks')}</li>
             {maskSources?.map((s) => (
               <li key={s}>{s}</li>
             ))}

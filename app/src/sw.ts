@@ -6,13 +6,20 @@ import { matchPrecache, precacheAndRoute, cleanupOutdatedCaches } from 'workbox-
 import { createPartialResponse } from 'workbox-range-requests';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
+import { isBasemapArchivePath } from './lib/basemap';
 import { GLYPH_CACHE_NAME, isGlyphPath, isRetiredGlyphCache } from './lib/glyphs';
 
 // MUST be registered before precacheAndRoute: first-registered route wins, and the
 // default precache route replays a full 200 to Range requests, which makes
 // pmtiles' FetchSource throw (verified against pmtiles 4.4.1 source).
+// #118: the archive is deployed as `basemap.pmtiles.png` (the .png masquerade
+// dodges the CDN's gzip-of-range mangling for UNCONTROLLED pages — see
+// src/lib/basemap.ts). The legacy bare `.pmtiles` shape stays OWNED BY THIS
+// ROUTE for the update transition — but the new precache holds only the
+// renamed file, so a legacy request matchPrecache-MISSES and degrades to a
+// network fetch (404 post-rename), self-healing on the update reload.
 registerRoute(
-  ({ url }) => url.pathname.endsWith('.pmtiles'),
+  ({ url }) => isBasemapArchivePath(url.pathname),
   async ({ request }) => {
     const full = await matchPrecache(request.url);
     if (full) {
@@ -35,8 +42,8 @@ registerRoute(
 // Scoping (fails review if loosened): `sameOrigin` plus isGlyphPath's
 // path-prefix + .pbf check means this route can never match the Open-Meteo
 // origin (which the SW must NEVER cache — wind lives per plan in IndexedDB)
-// nor `.pmtiles` requests (owned by the Range→206 route above, which must
-// stay the FIRST registration).
+// nor basemap-archive requests (`.pmtiles.png`/legacy `.pmtiles`, owned by
+// the Range→206 route above, which must stay the FIRST registration).
 registerRoute(
   ({ url, sameOrigin }) => sameOrigin && isGlyphPath(url.pathname),
   new CacheFirst({ cacheName: GLYPH_CACHE_NAME }),
@@ -47,19 +54,25 @@ cleanupOutdatedCaches();
 clientsClaim();
 
 // #28 (glyph cache lifecycle): cleanupOutdatedCaches() above only manages
-// workbox's PRECACHE caches — a GLYPH_CACHE_NAME version bump would leak
-// the retired runtime cache's ~11 MB forever without this. Bounded work
-// (one caches.keys() + targeted deletes of `sailcommand-glyphs-*` names
-// that aren't the current version), so extending activate via waitUntil is
-// fine here; it does not delay page takeover — clientsClaim() registers
-// its own activate listener whose clients.claim() call fires regardless of
-// this handler's pending waitUntil.
+// workbox's PRECACHE caches — a GLYPH_CACHE_VERSION bump would leak the
+// retired runtime cache's ~11 MB forever without this. Bounded work (one
+// caches.keys() + targeted deletes of THIS deployment's retired glyph caches),
+// so extending activate via waitUntil is fine here; it does not delay page
+// takeover — clientsClaim() registers its own activate listener whose
+// clients.claim() call fires regardless of this handler's pending waitUntil.
+// #96: isRetiredGlyphCache is scoped to this deployment's BASE_URL (statically
+// replaced in this injectManifest bundle) so a UAT deploy never evicts
+// production's live glyph cache (or vice versa) on the shared Pages origin.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
       .then((names) =>
-        Promise.all(names.filter(isRetiredGlyphCache).map((name) => caches.delete(name))),
+        Promise.all(
+          names
+            .filter((name) => isRetiredGlyphCache(name, import.meta.env.BASE_URL))
+            .map((name) => caches.delete(name)),
+        ),
       ),
   );
 });

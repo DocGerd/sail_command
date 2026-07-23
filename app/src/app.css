@@ -332,6 +332,38 @@ select {
   left: 0.5rem;
 }
 
+/* Seamark info popover (#7) — content of a MapLibre Popup's setDOMContent,
+   so only inner typography/spacing is styled here; position/arrow/close
+   button are the library's own maplibregl-popup chrome. */
+.seamark-popover {
+  font-size: 0.85rem;
+  color: var(--sc-fg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.seamark-popover-disclaimer {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+/* MapLibre's own popup chrome hardcodes a white content background with no
+   dark variant, which left dark-mode .seamark-popover text (near-white,
+   --sc-fg) illegible on first click. Theme the chrome itself via the Popup's
+   className (set in DataLayers.tsx) using the same --sc-bg token as the rest
+   of the app; cover both tip directions since the popup may anchor above or
+   below the clicked glyph. */
+.seamark-popup .maplibregl-popup-content {
+  background: var(--sc-bg);
+}
+
+.seamark-popup .maplibregl-popup-tip {
+  border-top-color: var(--sc-bg);
+  border-bottom-color: var(--sc-bg);
+}
+
 .route-layer-time-slider {
   display: flex;
   align-items: center;
@@ -919,6 +951,26 @@ select {
   margin: 0;
   font-size: 0.85rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* GPX import (#3): the import control sits atop the Trip card. Its success and
+   notice lines reuse the muted guidance tone; the file input itself is sr-only
+   and triggered by the Button primitive. */
+.planner-import {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.planner-import-notices {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+.planner-import-notices li + li {
+  margin-top: 0.2rem;
 }
 
 /* Banner "Try again" action — a compact outline button sized to the banner

@@ -9,11 +9,13 @@ import {
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { useViaReplan } from './state/replan';
+import { useOwnshipGps } from './state/useOwnshipGps';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
-import DataLayers, { HARBOR_CIRCLE_LAYER } from './components/DataLayers';
+import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './components/DataLayers';
 import RouteLayer from './components/RouteLayer';
+import OwnshipMarker from './components/OwnshipMarker';
 import PlannerPanel, {
   harborToPickedPoint,
   nextFullHourMs,
@@ -27,6 +29,7 @@ import LiveView from './components/LiveView';
 import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
+import UatBadge from './components/UatBadge';
 import { isStaleForecast } from './lib/plan';
 import { useWideLayout } from './lib/useWideLayout';
 import { formatLatLon } from './lib/format';
@@ -38,10 +41,11 @@ type Tab = 'plan' | 'routes' | 'live';
 
 const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 
-// The harbor-marker layer (DataLayers) owns any click that lands on it, so
-// MapView gates a raw tap-pick out on a harbor hit (#38). Module-level for a
-// stable identity — MapView syncs it into a ref every render.
-const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER];
+// The harbor-marker and seamark-glyph layers (DataLayers) each own any click
+// that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
+// #7). Module-level for a stable identity — MapView syncs it into a ref
+// every render.
+const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER];
 
 const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
   origin: 'planner.origin.label',
@@ -127,6 +131,14 @@ function AppShell() {
   // that was only ever *loaded* from PlansList, never run() in this
   // session, still works) rather than spawning a second worker.
   const viaReplan = useViaReplan(ensureClient);
+  // #25 addendum: standalone "show my position" marker, decoupled from Live
+  // View — subscribes to GPS whenever the setting is on, regardless of
+  // tab/plan/active state (see useOwnshipGps.ts and OwnshipMarker.tsx).
+  const {
+    fix: ownshipFix,
+    hintVisible: ownshipHintVisible,
+    dismissHint: dismissOwnshipHint,
+  } = useOwnshipGps(settings.showOwnship);
 
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -324,6 +336,26 @@ function AppShell() {
     setTapTarget((current) => (current === 'destination' ? null : current));
   }, []);
 
+  // GPX import (#3): seed a FRESH planner draft from a parsed .gpx. Import is
+  // prefill-only (design §7): it must never mutate an active plan. So it clears
+  // any active plan (setPlan(null)) and sets the draft origin/destination/via
+  // state directly, deliberately BYPASSING handleViaPointsChange — which, when a
+  // plan is active, would replan THAT plan with the imported vias but its old
+  // origin/destination/windGrid and persist the incoherent result (a route that
+  // ignores the imported endpoints). After this the panel shows a clean draft;
+  // the user sets departure/options and presses Plan, which mints a new plan.
+  // (setDraftViaPoints is only read while `plan` is null — see `viaPoints` above
+  // — so clearing the plan and seeding the draft in the same batch is coherent.)
+  const handleImportRoute = useCallback(
+    (o: PickedPoint, d: PickedPoint, vias: LatLon[]) => {
+      setPlan(null);
+      setDraftViaPoints(vias);
+      handlePickOrigin(o);
+      handlePickDestination(d);
+    },
+    [setPlan, handlePickOrigin, handlePickDestination],
+  );
+
   // #38: a harbor-marker click builds the SAME endpoint shape a search-picker
   // selection does (harborToPickedPoint) and fills origin-if-empty, else
   // destination — resolveHarborPickTarget documents the tap-to-pick interplay.
@@ -468,6 +500,14 @@ function AppShell() {
             viaReplanning={viaReplan.state.replanning}
             onViaDragEnd={handleViaDragEnd}
           />
+          {/* #25 addendum: the standalone ownship marker — always mounted
+              (like DataLayers above), gated only on there being a fix, which
+              useOwnshipGps only ever produces while settings.showOwnship is
+              on. Renders in ANY tab/plan state, Live View included; LiveView
+              itself no longer renders a marker (see its #25 comment), so this
+              is the single place BoatMarker ever renders — no dedupe logic
+              needed beyond that. */}
+          <OwnshipMarker fix={ownshipFix} />
           {/* LiveView must live inside MapView's subtree: useMapInstance()
               (its BoatMarker child calls it) reads the map instance off a
               React context that MapView provides, and only descendants of
@@ -496,7 +536,25 @@ function AppShell() {
             <path d="M50 22.59L69 55.5L31 55.5Z" />
             <path d="M26.96 62.5L73.04 62.5L63.5 76L36.5 76Z" />
           </svg>
-          {t('app.title')}
+          {/* #107: UAT environment badge — the gate MUST stay this literal
+              `__SC_UAT__ ?` ternary IN the title-child slot: Vite's define
+              makes it `false ? … : t('app.title')` in production builds,
+              which Rollup folds to exactly the pre-#107 child expression —
+              dropping the JSX call, the import, and the whole UatBadge
+              module graph (incl. its UAT-local dict) so the prod bundle
+              stays byte-identical (#96). An `{__SC_UAT__ && <UatBadge />}`
+              sibling would NOT: the dead child slot minifies to a `!1`
+              residue (measured: 3-byte bundle drift). Never route the flag
+              through a prop or wrapper component either — that keeps the
+              module referenced. */}
+          {__SC_UAT__ ? (
+            <>
+              {t('app.title')}
+              <UatBadge />
+            </>
+          ) : (
+            t('app.title')
+          )}
         </h1>
         <div className="app-header-actions">
           <button
@@ -521,6 +579,15 @@ function AppShell() {
           </Banner>
         )}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
+        {/* #25 addendum: reuses the SAME one-time hint LiveView shows on its
+            own GPS denial (lib/gpsHint.ts's shared claim, live.gpsHint copy)
+            — whichever of the two consumers hits the denial first is the one
+            that ever shows it, so this is not a second, separate hint. */}
+        {ownshipHintVisible && (
+          <Banner kind="warning" onDismiss={dismissOwnshipHint} dismissLabel={t('banner.dismiss')}>
+            {t('live.gpsHint')}
+          </Banner>
+        )}
         {settingsPersistenceError && (
           <Banner
             kind="error"
@@ -619,6 +686,7 @@ function AppShell() {
               destination={destination}
               onPickOrigin={handlePickOrigin}
               onPickDestination={handlePickDestination}
+              onImportRoute={handleImportRoute}
               onRequestMapTap={handleRequestMapTap}
               viaPoints={viaPoints}
               onRemoveVia={handleRemoveVia}
