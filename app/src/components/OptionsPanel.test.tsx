@@ -113,4 +113,49 @@ describe('OptionsPanel', () => {
     // the app-wide disclaimer.
     expect(help).toHaveTextContent(/not a navigation device/);
   });
+
+  // #25 AIS group.
+  it('renders the AIS API-key and MMSI fields with the privacy help text', () => {
+    renderPanel();
+    expect(screen.getByLabelText('AIS API key (aisstream.io)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Your MMSI (optional)')).toBeInTheDocument();
+    expect(screen.getByText(/stay on this device/)).toBeInTheDocument();
+    expect(screen.getByText(/only to aisstream\.io/)).toBeInTheDocument();
+    expect(screen.getByText(/never transmitted/)).toBeInTheDocument();
+  });
+
+  it('commits the API key on change', () => {
+    const onChange = renderPanel();
+    fireEvent.change(screen.getByLabelText('AIS API key (aisstream.io)'), {
+      target: { value: 'my-key' },
+    });
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, aisApiKey: 'my-key' });
+  });
+
+  it('shows the MMSI validation message for a non-empty, non-9-digit value', () => {
+    localStorage.setItem('sc-lang', 'en');
+    render(
+      <I18nProvider>
+        <OptionsPanel value={{ ...DEFAULT_SETTINGS, ownMmsi: '123' }} onChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText('MMSI must be exactly 9 digits.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Your MMSI (optional)')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('shows no MMSI validation message for a valid 9-digit value', () => {
+    localStorage.setItem('sc-lang', 'en');
+    render(
+      <I18nProvider>
+        <OptionsPanel value={{ ...DEFAULT_SETTINGS, ownMmsi: '211234560' }} onChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(screen.queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Your MMSI (optional)')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('shows no MMSI validation message when the field is empty (feature simply off)', () => {
+    renderPanel();
+    expect(screen.queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
+  });
 });

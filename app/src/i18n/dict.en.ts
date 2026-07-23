@@ -267,4 +267,9 @@ export const en = {
   'ais.popup.age': 'Last signal',
   'ais.disclaimer':
     'AIS coverage comes from volunteer shore stations and is not guaranteed or complete. This overlay is an awareness aid, not collision avoidance and not a navigation device.',
+  'options.ais.apiKey.label': 'AIS API key (aisstream.io)',
+  'options.ais.mmsi.label': 'Your MMSI (optional)',
+  'options.ais.mmsi.invalid': 'MMSI must be exactly 9 digits.',
+  'options.ais.help':
+    'Shows live surrounding vessel traffic in the Live view only (online only). Create a free API key at aisstream.io and paste it here. Your key and MMSI stay on this device; the key is sent only to aisstream.io as part of the subscription, and the MMSI is used only to filter your own vessel out of the display and is never transmitted. An awareness aid, not a navigation device.',
 } satisfies Record<MsgKey, string>;
