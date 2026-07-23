@@ -15,10 +15,10 @@ export interface AisSubscription {
   FilterMessageTypes: ['PositionReport', 'ShipStaticData'];
 }
 
-export function buildSubscription(apiKey: string, bbox: AisBoundingBox): AisSubscription {
+export function buildSubscription(apiKey: string, bboxes: AisBoundingBox[]): AisSubscription {
   return {
     APIKey: apiKey,
-    BoundingBoxes: [bbox],
+    BoundingBoxes: bboxes,
     FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
   };
 }
@@ -227,7 +227,7 @@ export class AisStreamClient {
   private keyProven = false;
   private timerId: number | null = null;
   private stabilityTimerId: number | null = null;
-  private currentBbox: AisBoundingBox | null = null;
+  private currentBboxes: AisBoundingBox[] = [];
   private status: AisClientStatus = 'closed';
 
   constructor(apiKey: string, callbacks: AisStreamCallbacks, deps: AisStreamDeps) {
@@ -239,21 +239,21 @@ export class AisStreamClient {
     this.clearTimer = deps.clearTimer ?? ((id) => window.clearTimeout(id));
   }
 
-  start(bbox: AisBoundingBox): void {
+  start(bboxes: AisBoundingBox[]): void {
     if (this.running) {
-      this.updateBbox(bbox);
+      this.updateSubscription(bboxes);
       return;
     }
     this.running = true;
     this.authFailed = false;
     this.attempt = 0;
     this.earlyCloses = 0;
-    this.currentBbox = bbox;
+    this.currentBboxes = bboxes;
     this.open();
   }
 
-  updateBbox(bbox: AisBoundingBox): void {
-    this.currentBbox = bbox;
+  updateSubscription(bboxes: AisBoundingBox[]): void {
+    this.currentBboxes = bboxes;
     // Re-sending on an open socket replaces the server-side filter — no reconnect.
     if (this.socketOpen) this.sendSubscription();
   }
@@ -356,8 +356,8 @@ export class AisStreamClient {
   }
 
   private sendSubscription(): void {
-    if (!this.socket || !this.currentBbox) return;
-    this.socket.send(JSON.stringify(buildSubscription(this.apiKey, this.currentBbox)));
+    if (!this.socket || this.currentBboxes.length === 0) return;
+    this.socket.send(JSON.stringify(buildSubscription(this.apiKey, this.currentBboxes)));
   }
 
   private clearStabilityTimer(): void {
