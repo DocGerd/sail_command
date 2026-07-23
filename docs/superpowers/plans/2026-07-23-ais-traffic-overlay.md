@@ -1393,7 +1393,7 @@ export function useAisTraffic(
 
 - [ ] Run to pass: `npm --prefix app run test -- useAisTraffic` — all green (~10 tests).
 
-- [ ] Typecheck + lint: `npm --prefix app run typecheck && npm --prefix app run lint` — clean (note the intentional `apiKey` non-null flow: inside the `active` branch `keyValid` guarantees `apiKey` is a non-empty string, so `createClient(apiKey, …)` / `clientKeyRef.current = apiKey` are sound).
+- [ ] Typecheck + lint: `npm --prefix app run typecheck && npm --prefix app run lint` — clean (note the intentional `apiKey` non-null flow: past the inline guard `apiKey` is a non-empty string, so `createClient(apiKey, …)` / `clientKeyRef.current = apiKey` are sound).
 
 - [ ] Commit:
   - `git add app/src/state/useAisTraffic.ts app/src/state/useAisTraffic.test.tsx`
@@ -1401,9 +1401,11 @@ export function useAisTraffic(
 
 ---
 
-### Task 5: GeoJSON + popup builders (`aisGeoJson.ts`) + `AisLayer` map component
+### Task 5: shared projection vector + GeoJSON/popup builders (`aisGeoJson.ts`) + `AisLayer` map component
 
-Splits the map layer into a PURE, unit-tested part (feature-collection builder + popup rows) and the imperative `AisLayer` component (GeoJSON source, three declutter-tiered layers, themed popup) that — like `DataLayers`/`BoatMarker` — is NOT unit-tested (jsdom has no MapLibre/WebGL) and is verified in-browser in Task 8.
+Splits the map layer into PURE, unit-tested parts (a reusable projection-vector geometry helper, the feature-collection builder, and popup rows) and the imperative `AisLayer` component (GeoJSON source, three declutter-tiered layers, themed popup) that — like `DataLayers`/`BoatMarker` — is NOT unit-tested (jsdom has no MapLibre/WebGL) and is verified in-browser in Task 8.
+
+The 6-minute COG/SOG projection geometry is extracted into `app/src/lib/projectionVector.ts` as a standalone pure helper so follow-up issue **#141** (the ownship marker's projection vector) can reuse it with zero refactoring. This task adds NO ownship rendering — #141 stays a separate issue; it only makes the geometry reusable.
 
 **Files**
 - Create: `app/src/lib/projectionVector.ts` (pure, reusable — #141 ownship vector will consume it too)
@@ -1412,6 +1414,7 @@ Splits the map layer into a PURE, unit-tested part (feature-collection builder +
 - Create: `app/src/lib/aisGeoJson.test.ts`
 - Create: `app/src/components/AisLayer.tsx`
 - Modify: `app/src/app.css` (`.ais-popup` popup-chrome theming)
+- Modify: `app/src/i18n/dict.de.ts`, `app/src/i18n/dict.en.ts` (popup + disclaimer keys)
 
 **Interfaces**
 - Consumes: `AisTargetSnapshot` from `../lib/aisTargets`; `projectionLine` from `../lib/projectionVector`; `formatHeading`, `formatKn` from `../lib/format`; `MsgKey` from `../i18n/dict.de`; `useMapInstance` from `./MapView`; `ROUTE_STACK_BOTTOM_LAYER` from `./RouteLayer`. (`projectionVector.ts` itself consumes `destinationPoint` from `../lib/geo` + `LatLon` from `../types`.)
@@ -1421,9 +1424,73 @@ Splits the map layer into a PURE, unit-tested part (feature-collection builder +
   - `export function aisFeatureCollection(targets: AisTargetSnapshot[]): GeoJSON.FeatureCollection`
   - `export interface AisPopupProps { mmsi: string; name: string; shipType: number | null; sog: number | null; cog: number | null; heading: number | null; lastUpdateMs: number }`
   - `export function aisPopupRows(props: AisPopupProps, nowMs: number): { labelKey: MsgKey; value: string }[]`
-  - (AisLayer) `export const AIS_SOURCE = 'sc-ais'`, `export const AIS_VESSEL_LAYER = 'sc-ais-vessels'`, `export default function AisLayer(props: { targets: AisTargetSnapshot[] })`.
+  - (AisLayer) `export const AIS_SOURCE = 'sc-ais'`, `export const AIS_VECTOR_LAYER = 'sc-ais-vectors'`, `export const AIS_VESSEL_LAYER = 'sc-ais-vessels'`, `export const AIS_LABEL_LAYER = 'sc-ais-labels'`, `export default function AisLayer(props: { targets: AisTargetSnapshot[] })`.
 
 Steps:
+
+- [ ] Write the failing test `app/src/lib/projectionVector.test.ts` (the shared geometry helper is a dependency of `aisGeoJson.ts`, so build it first):
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { projectionLine } from './projectionVector';
+import { destinationPoint } from './geo';
+
+describe('projectionLine', () => {
+  it('returns a 2-point line from the position to the SOG*minutes projection along COG', () => {
+    const pos = { lat: 54.79, lon: 9.43 };
+    const line = projectionLine(pos, 90, 6, 6); // 6 kn for 6 min = 0.6 nm along COG 90
+    expect(line[0]).toEqual({ lat: 54.79, lon: 9.43 });
+    const end = destinationPoint(pos, 90, 0.6);
+    expect(line[1].lat).toBeCloseTo(end.lat, 9);
+    expect(line[1].lon).toBeCloseTo(end.lon, 9);
+  });
+
+  it('scales length with both speed and time (12 kn for 30 min = 6 nm)', () => {
+    const pos = { lat: 54.5, lon: 10.0 };
+    const line = projectionLine(pos, 0, 12, 30);
+    const end = destinationPoint(pos, 0, 6);
+    expect(line[1].lat).toBeCloseTo(end.lat, 9);
+    expect(line[1].lon).toBeCloseTo(end.lon, 9);
+  });
+
+  it('collapses to ~zero length at zero speed (the caller suppresses the draw)', () => {
+    const pos = { lat: 54.5, lon: 10.0 };
+    const line = projectionLine(pos, 45, 0, 6);
+    expect(line[1].lat).toBeCloseTo(54.5, 9);
+    expect(line[1].lon).toBeCloseTo(10.0, 9);
+  });
+});
+```
+
+- [ ] Run to see it fail: `npm --prefix app run test -- projectionVector` — fails ("Cannot find module './projectionVector'").
+
+- [ ] Minimal implementation `app/src/lib/projectionVector.ts`:
+
+```ts
+import { destinationPoint } from './geo';
+import type { LatLon } from '../types';
+
+/**
+ * The straight-line "where will it be in `minutes`" projection used by moving
+ * markers/targets: a 2-point line from `pos` along course `cogDeg` (degrees
+ * true) with length = the distance covered at `sogKn` over `minutes`. Pure
+ * geometry — the caller decides whether to draw it (e.g. suppress the
+ * zero-length line of a stationary vessel). Shared by the AIS COG vectors (#25)
+ * and the ownship projection vector (#141) so both use identical math; never
+ * inline this computation.
+ */
+export function projectionLine(
+  pos: LatLon,
+  cogDeg: number,
+  sogKn: number,
+  minutes: number,
+): [LatLon, LatLon] {
+  const distanceNm = (sogKn * minutes) / 60;
+  return [{ lat: pos.lat, lon: pos.lon }, destinationPoint(pos, cogDeg, distanceNm)];
+}
+```
+
+- [ ] Run to pass: `npm --prefix app run test -- projectionVector` — 3 passing.
 
 - [ ] Write the failing test `app/src/lib/aisGeoJson.test.ts`:
 
@@ -1535,7 +1602,7 @@ describe('aisPopupRows', () => {
 - [ ] Minimal implementation `app/src/lib/aisGeoJson.ts`:
 
 ```ts
-import { destinationPoint } from './geo';
+import { projectionLine } from './projectionVector';
 import { formatHeading, formatKn } from './format';
 import type { AisTargetSnapshot } from './aisTargets';
 import type { MsgKey } from '../i18n/dict.de';
@@ -1546,10 +1613,11 @@ export const AIS_VECTOR_MINUTES = 6;
 /**
  * #25: one GeoJSON FeatureCollection for the AIS overlay. Per target: a vessel
  * Point (props drive paint/rotation/label + declutter) and, when moving with a
- * known course, a COG-vector LineString. Rotation prefers true heading, falls
- * back to COG, else a neutral dot (hasCourse:false, rotation:0). Nested objects
- * are avoided in properties — a MapLibre GeoJSON source stringifies them on
- * read-back (the seamarks flat-props lesson).
+ * known course, a COG-vector LineString (geometry via the shared projectionLine
+ * helper, reused by #141). Rotation prefers true heading, falls back to COG,
+ * else a neutral dot (hasCourse:false, rotation:0). Nested objects are avoided
+ * in properties — a MapLibre GeoJSON source stringifies them on read-back (the
+ * seamarks flat-props lesson).
  */
 export function aisFeatureCollection(targets: AisTargetSnapshot[]): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature[] = [];
@@ -1574,13 +1642,13 @@ export function aisFeatureCollection(targets: AisTargetSnapshot[]): GeoJSON.Feat
       },
     });
     if (t.sogKn !== undefined && t.sogKn > 0 && courseDeg !== undefined) {
-      const end = destinationPoint(t.position, courseDeg, (t.sogKn * AIS_VECTOR_MINUTES) / 60);
+      const [start, end] = projectionLine(t.position, courseDeg, t.sogKn, AIS_VECTOR_MINUTES);
       features.push({
         type: 'Feature',
         geometry: {
           type: 'LineString',
           coordinates: [
-            [t.position.lon, t.position.lat],
+            [start.lon, start.lat],
             [end.lon, end.lat],
           ],
         },
@@ -1611,13 +1679,43 @@ export function aisPopupRows(props: AisPopupProps, nowMs: number): { labelKey: M
   if (props.shipType !== null) rows.push({ labelKey: 'ais.popup.shipType', value: String(props.shipType) });
   if (props.sog !== null) rows.push({ labelKey: 'ais.popup.sog', value: formatKn(props.sog) });
   if (props.cog !== null) rows.push({ labelKey: 'ais.popup.cog', value: formatHeading(props.cog) });
-  const ageMin = Math.max(0, Math.round((nowMs - props.lastUpdateMs) / 60_000));
+  // floor, not round: a 30 s-old signal is "0 min" ago (matches the pinned
+  // test literals '2 min' @120 s and '0 min' @30 s).
+  const ageMin = Math.max(0, Math.floor((nowMs - props.lastUpdateMs) / 60_000));
   rows.push({ labelKey: 'ais.popup.age', value: `${ageMin} min` });
   return rows;
 }
 ```
 
 - [ ] Run to pass: `npm --prefix app run test -- aisGeoJson` — all green (~9 tests).
+
+- [ ] Add the popup + disclaimer i18n keys to BOTH dicts (required now: `aisGeoJson.ts` types its `labelKey`s as `MsgKey`, so typecheck fails without them). In `app/src/i18n/dict.de.ts`, before the closing `} as const;`:
+
+```ts
+  // #25 AIS overlay — vessel popup + shared disclaimer.
+  'ais.popup.name': 'Name',
+  'ais.popup.mmsi': 'MMSI',
+  'ais.popup.shipType': 'Schiffstyp',
+  'ais.popup.sog': 'SOG',
+  'ais.popup.cog': 'COG',
+  'ais.popup.age': 'Letztes Signal vor',
+  'ais.disclaimer':
+    'AIS-Abdeckung stammt von freiwilligen Landstationen und ist nicht garantiert oder vollständig. Diese Anzeige ist eine Aufmerksamkeitshilfe, keine Kollisionsverhütung und kein Navigationsgerät.',
+```
+
+In `app/src/i18n/dict.en.ts`, at the matching position before `} satisfies Record<MsgKey, string>;`:
+
+```ts
+  // #25 AIS overlay — vessel popup + shared disclaimer.
+  'ais.popup.name': 'Name',
+  'ais.popup.mmsi': 'MMSI',
+  'ais.popup.shipType': 'Ship type',
+  'ais.popup.sog': 'SOG',
+  'ais.popup.cog': 'COG',
+  'ais.popup.age': 'Last signal',
+  'ais.disclaimer':
+    'AIS coverage comes from volunteer shore stations and is not guaranteed or complete. This overlay is an awareness aid, not collision avoidance and not a navigation device.',
+```
 
 - [ ] Create the map component `app/src/components/AisLayer.tsx` (NOT unit-tested — verified in-browser, Task 8):
 
@@ -1882,39 +1980,11 @@ export default function AisLayer({ targets }: { targets: AisTargetSnapshot[] }) 
 }
 ```
 
-- [ ] Add the popup + disclaimer i18n keys to BOTH dicts (required now: `aisGeoJson.ts` types its `labelKey`s as `MsgKey`, so typecheck fails without them). In `app/src/i18n/dict.de.ts`, before the closing `} as const;`:
-
-```ts
-  // #25 AIS overlay — vessel popup + shared disclaimer.
-  'ais.popup.name': 'Name',
-  'ais.popup.mmsi': 'MMSI',
-  'ais.popup.shipType': 'Schiffstyp',
-  'ais.popup.sog': 'SOG',
-  'ais.popup.cog': 'COG',
-  'ais.popup.age': 'Letztes Signal vor',
-  'ais.disclaimer':
-    'AIS-Abdeckung stammt von freiwilligen Landstationen und ist nicht garantiert oder vollständig. Diese Anzeige ist eine Aufmerksamkeitshilfe, keine Kollisionsverhütung und kein Navigationsgerät.',
-```
-
-In `app/src/i18n/dict.en.ts`, at the matching position before `} satisfies Record<MsgKey, string>;`:
-
-```ts
-  // #25 AIS overlay — vessel popup + shared disclaimer.
-  'ais.popup.name': 'Name',
-  'ais.popup.mmsi': 'MMSI',
-  'ais.popup.shipType': 'Ship type',
-  'ais.popup.sog': 'SOG',
-  'ais.popup.cog': 'COG',
-  'ais.popup.age': 'Last signal',
-  'ais.disclaimer':
-    'AIS coverage comes from volunteer shore stations and is not guaranteed or complete. This overlay is an awareness aid, not collision avoidance and not a navigation device.',
-```
-
 - [ ] Typecheck + lint: `npm --prefix app run typecheck && npm --prefix app run lint` — clean.
 
 - [ ] Commit:
-  - `git add app/src/lib/aisGeoJson.ts app/src/lib/aisGeoJson.test.ts app/src/components/AisLayer.tsx app/src/app.css app/src/i18n/dict.de.ts app/src/i18n/dict.en.ts`
-  - `git commit -m "feat: add AIS GeoJSON builder + map layer (#25)"`
+  - `git add app/src/lib/projectionVector.ts app/src/lib/projectionVector.test.ts app/src/lib/aisGeoJson.ts app/src/lib/aisGeoJson.test.ts app/src/components/AisLayer.tsx app/src/app.css app/src/i18n/dict.de.ts app/src/i18n/dict.en.ts`
+  - `git commit -m "feat: add AIS projection vector + GeoJSON builder + map layer (#25)"`
 
 ---
 
@@ -1953,11 +2023,10 @@ In `app/src/i18n/dict.en.ts`, at the matching position:
     'Shows live surrounding vessel traffic in the Live view only (online only). Create a free API key at aisstream.io and paste it here. Your key and MMSI stay on this device; the key is sent only to aisstream.io as part of the subscription, and the MMSI is used only to filter your own vessel out of the display and is never transmitted. An awareness aid, not a navigation device.',
 ```
 
-- [ ] Write the failing test additions in `app/src/components/OptionsPanel.test.tsx` (inside `describe('OptionsPanel', …)`, after the ownship tests). Also extend `renderPanel` to accept a settings override:
+- [ ] Write the failing test additions in `app/src/components/OptionsPanel.test.tsx` (inside `describe('OptionsPanel', …)`, after the ownship tests):
 
 ```ts
-  // #25 AIS group. renderPanel is extended to take a value override so the
-  // MMSI-validation branches can be exercised without a controlled parent.
+  // #25 AIS group.
   it('renders the AIS API-key and MMSI fields with the privacy help text', () => {
     renderPanel();
     expect(screen.getByLabelText('AIS API key (aisstream.io)')).toBeInTheDocument();
@@ -2355,7 +2424,7 @@ Steps:
   - `npm --prefix app run test` (full suite; give it a generous timeout — the seeded property + real-mask files run for minutes)
   - `npm --prefix app run build`
 
-- [ ] Confirm the feature is network-free without a key: grep the test run for any real WebSocket/`aisstream` traffic (there must be none — every client is injected). Re-run the offline-sensitive suites explicitly: `npm --prefix app run test -- db.test aisStream aisTargets useAisTraffic aisGeoJson` all green.
+- [ ] Confirm the feature is network-free without a key: grep the test run for any real WebSocket/`aisstream` traffic (there must be none — every client is injected). Re-run the offline-sensitive suites explicitly: `npm --prefix app run test -- db.test aisStream aisTargets useAisTraffic aisGeoJson projectionVector` all green.
 
 - [ ] E2E smoke (the feature must not disturb existing Live-tab e2e; no key is set in e2e, so zero AIS network): `npm --prefix app run e2e -- live.spec.ts` (and `plan.spec.ts` if the interactive-layer-id change touched tap-to-pick). The `pree2e` hook rebuilds and rewrites `app/public/test-fixtures/wind-sw12.json` — restore that fixture afterward (`git checkout -- app/public/test-fixtures/wind-sw12.json`); never commit its churn.
 
@@ -2395,5 +2464,6 @@ Steps:
 - **Reuse the three re-run/data primitives correctly:** this feature adds a FOURTH data path — a live streaming source that is neither a plan nor a forecast. It never touches `Plan`, `PlanRequest`, the router, or IndexedDB plan storage; the only persisted state is the two `Settings` fields.
 - **Never introduce a backend.** aisstream.io is called browser-direct over WebSocket, exactly like Open-Meteo is called browser-direct over HTTPS.
 - **exactOptionalPropertyTypes recurs throughout:** build objects by conditionally assigning keys; type "string-or-absent" call-site values as `string | undefined`, not `?`-optional; narrow with inline guards (see Task 4).
-- **Map-bound components are verified in-browser, not jsdom-unit-tested** — `AisLayer` and `AisTraffic`'s map wiring follow `DataLayers`/`BoatMarker`'s precedent. Everything pure (`aisStream`, `aisTargets`, `aisGeoJson`, `mmsi`, `useAisTraffic`, `AisStatusChip`) is unit-tested.
+- **Map-bound components are verified in-browser, not jsdom-unit-tested** — `AisLayer` and `AisTraffic`'s map wiring follow `DataLayers`/`BoatMarker`'s precedent. Everything pure (`aisStream`, `aisTargets`, `aisGeoJson`, `projectionVector`, `mmsi`, `useAisTraffic`, `AisStatusChip`) is unit-tested.
+- **The 6-minute projection geometry is a shared helper (`lib/projectionVector.ts`)** so follow-up **#141** (ownship projection vector) reuses it verbatim. Do NOT add any ownship rendering in this plan — #141 is a separate issue; this plan only makes the geometry reusable.
 - **The live auth-vs-transient semantics are pinned deterministically now** (error frame = terminal keyError; everything else = transient backoff). During the Task 8 browser pass, confirm how aisstream actually signals a bad key; if it is a bare early close rather than an error frame, route that signal to the existing terminal `keyError` state in `AisStreamClient` (a small change, no restructuring) and add/adjust a client test.
