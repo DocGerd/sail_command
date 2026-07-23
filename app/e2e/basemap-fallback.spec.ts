@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { startPreview } from './helpers';
 
 // #118: GitHub Pages/Fastly gzip-compresses application/octet-stream and
@@ -22,20 +22,60 @@ import { startPreview } from './helpers';
 const GERMAN_MAP_ERROR_BANNER =
   'Kartendaten konnten nicht geladen werden — Anzeige evtl. unvollständig.';
 
-test('forced CDN corruption (#118 signature): preflight fails, one full-body fetch, Blob-backed map still paints', async ({
+const ARCHIVE_GLOB = '**/data/basemap.pmtiles.png';
+
+// Same settle idiom as datalayers.spec.ts: polls until the canvas stops
+// changing frame-to-frame (two consecutive byte-equal screenshots), then
+// returns that settled frame — adaptive, no fixed-sleep synchronization.
+// CI runners are 6-10x slower than dev machines, hence the generous cap.
+async function settledCanvas(page: Page, canvas: Locator): Promise<Buffer> {
+  let prev = await canvas.screenshot();
+  for (let i = 0; i < 60; i++) {
+    await page.waitForTimeout(250);
+    const next = await canvas.screenshot();
+    if (next.equals(prev)) return next;
+    prev = next;
+  }
+  return prev; // best-effort: never stabilized within the cap
+}
+
+test('forced CDN corruption (#118 signature): preflight fails, exactly one full-body fetch, Blob-backed map paints real tiles', async ({
   browser,
 }) => {
   const server = await startPreview();
   const context = await browser.newContext({ serviceWorkers: 'block' });
   try {
     const page = await context.newPage();
+    const canvas = page.locator('canvas.maplibregl-canvas');
 
+    // ---- Phase 1: deterministic NO-TILES baseline. ----------------------
+    // MapLibre shows a canvas even with zero tiles (background layer only),
+    // so "canvas visible" alone proves nothing — capture what a tiles-less
+    // settled frame looks like at this exact viewport, to compare against.
+    // The preflight (bytes=0-15) passes through honestly so the map
+    // constructs on the 'range-ok' path; every OTHER archive read (pmtiles'
+    // header/directory/tile fetches) is aborted, so no tile can ever render.
+    // Console errors and the map-error banner are EXPECTED in this phase and
+    // deliberately not asserted on; the banner lives outside the canvas.
+    await page.route(ARCHIVE_GLOB, async (route) => {
+      if (route.request().headers()['range'] === 'bytes=0-15') {
+        await route.continue();
+        return;
+      }
+      await route.abort();
+    });
+    await page.goto(server.url);
+    await expect(canvas).toBeVisible({ timeout: 60_000 });
+    const blankBaseline = await settledCanvas(page, canvas);
+    await page.unroute(ARCHIVE_GLOB);
+
+    // ---- Phase 2: the #118 corruption — fallback must paint real tiles. --
     const consoleMessages: string[] = [];
     page.on('console', (msg) => consoleMessages.push(msg.text()));
 
     let corruptedRangeRequests = 0;
     let fullBodyRequests = 0;
-    await page.route('**/data/basemap.pmtiles.png', async (route) => {
+    await page.route(ARCHIVE_GLOB, async (route) => {
       if (route.request().headers()['range'] !== undefined) {
         // Simulate the live CDN failure: a "206" whose bytes are a slice of
         // the COMPRESSED stream — gzip magic where 'PMTiles' should be. The
@@ -59,20 +99,27 @@ test('forced CDN corruption (#118 signature): preflight fails, one full-body fet
 
     await page.goto(server.url);
 
-    // The fallback full-body GET fired exactly once...
+    // The fallback full-body GET fired...
     await expect.poll(() => fullBodyRequests, { timeout: 60_000 }).toBe(1);
-    // ...and only after at least one ranged request (the preflight) was
-    // answered with the corrupted slice.
-    expect(corruptedRangeRequests).toBeGreaterThanOrEqual(1);
 
-    // The map still paints, entirely from the Blob-backed source.
-    await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 60_000 });
+    // ...and the map paints REAL tiles from the Blob-backed source: the
+    // settled frame must differ from the tiles-less baseline of phase 1
+    // (byte-compare of settled frames, the datalayers.spec.ts idiom —
+    // canvas visibility alone would pass with zero tiles).
+    await expect(canvas).toBeVisible({ timeout: 60_000 });
+    const fallbackFrame = await settledCanvas(page, canvas);
+    expect(fallbackFrame.equals(blankBaseline)).toBe(false);
+
+    // Exact end-of-spec totals (pinned AFTER the paint proof): the preflight
+    // is the ONLY ranged request — a Protocol key drift would silently
+    // auto-create a lazy FetchSource whose reads show up as EXTRA ranged
+    // requests here — and the 27 MB full-body fetch ran exactly once.
+    expect(corruptedRangeRequests).toBe(1);
+    expect(fullBodyRequests).toBe(1);
 
     // The one-line breadcrumb names #118; the decoding failure never happens
     // (the whole point — the browser only ever decodes a COMPLETE stream).
-    await expect
-      .poll(() => consoleMessages.some((m) => m.includes('[#118]')), { timeout: 30_000 })
-      .toBe(true);
+    expect(consoleMessages.some((m) => m.includes('[#118]'))).toBe(true);
     expect(consoleMessages.filter((m) => m.includes('ERR_CONTENT_DECODING_FAILED'))).toEqual([]);
 
     // The fallback is silent by design — the map-error banner must NOT show.

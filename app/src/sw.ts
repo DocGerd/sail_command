@@ -14,8 +14,10 @@ import { GLYPH_CACHE_NAME, isGlyphPath, isRetiredGlyphCache } from './lib/glyphs
 // pmtiles' FetchSource throw (verified against pmtiles 4.4.1 source).
 // #118: the archive is deployed as `basemap.pmtiles.png` (the .png masquerade
 // dodges the CDN's gzip-of-range mangling for UNCONTROLLED pages — see
-// src/lib/basemap.ts); the predicate still owns the legacy bare `.pmtiles`
-// shape so an installed SW updating across the rename keeps serving it.
+// src/lib/basemap.ts). The legacy bare `.pmtiles` shape stays OWNED BY THIS
+// ROUTE for the update transition — but the new precache holds only the
+// renamed file, so a legacy request matchPrecache-MISSES and degrades to a
+// network fetch (404 post-rename), self-healing on the update reload.
 registerRoute(
   ({ url }) => isBasemapArchivePath(url.pathname),
   async ({ request }) => {

@@ -172,6 +172,10 @@ export default function MapView({
     // first tile request. `cancelled` closes the unmount-during-fetch
     // window; `instance` stays undefined until the map actually exists so
     // the cleanup below only tears down what was really created.
+    // StrictMode (dev-only) double-mounts run the preflight twice by design:
+    // the first mount's continuation is cancelled before it constructs, and
+    // a repeated protocol.add would be a benign keyed overwrite — accepted
+    // (pinned in MapView.mount.test.tsx).
     let cancelled = false;
     let instance: MaplibreMap | undefined;
     let stopAttributionCollapse: () => void = () => {};
@@ -187,84 +191,90 @@ export default function MapView({
       const controlled = 'serviceWorker' in navigator && navigator.serviceWorker.controller != null;
       try {
         await ensureBasemapProtocolSource(pmtilesProtocol, pmtilesUrl, controlled);
-      } catch (err) {
-        // The fallback full-body fetch itself failed (true network trouble,
-        // not just broken ranges): surface it through the existing map-error
-        // path — same #27 recording, same one-shot banner gate the MapLibre
-        // 'error' handler below uses.
         if (cancelled) return;
-        console.error('basemap transport check failed', err);
+
+        // Label language is baked into the style at creation time; SailCommand's
+        // language switch is rare enough that re-fetching/re-diffing the whole
+        // style (which would also disturb child-added layers) isn't worth it here.
+        //
+        // No explicit resize handling: `trackResize` defaults to true, and
+        // MapLibre v5 backs it with a ResizeObserver on `container` (not a bare
+        // window 'resize' listener). That already keeps the canvas in sync when
+        // the container box changes — including the #24 responsive breakpoint
+        // crossing that flips the map between full-viewport and the ~2/3 side-
+        // panel column — so a second observer here would only double-fire resize.
+        instance = new MaplibreMap({
+          container,
+          style: buildStyle(lang, pmtilesUrl),
+          center: CENTER,
+          zoom: ZOOM,
+          maxBounds: MAX_BOUNDS,
+          attributionControl: false,
+        });
+        instance.addControl(new AttributionControl({ compact: true }));
+        // Collapse the attribution's one-shot auto-expansion before it can paint
+        // (#33) — see collapseAttributionAtLoad.
+        stopAttributionCollapse = collapseAttributionAtLoad(instance.getContainer());
+
+        const mapInstance = instance;
+        handleClick = (e: MapMouseEvent) => {
+          if (!tapActiveRef.current) return;
+          // A tap that lands on an interactive marker layer (the harbor points,
+          // #38) belongs to that layer's own click handler, which resolves it to
+          // the curated harbor snap. If the generic tap also fired a raw-
+          // coordinate pick for the same armed field, the two would both write
+          // origin/destination in one native click and race (see App.tsx
+          // handleHarborPick). Query the marker layer at the click point and bail
+          // on a hit, so exactly one handler ever owns a given click — no
+          // dependence on React update ordering. getLayer guards ids whose layer
+          // hasn't been added yet (assets still loading): queryRenderedFeatures
+          // surfaces an unknown layer id as a map error event (banner noise).
+          for (const layerId of interactiveLayerIdsRef.current) {
+            if (
+              mapInstance.getLayer(layerId) &&
+              mapInstance.queryRenderedFeatures(e.point, { layers: [layerId] }).length > 0
+            )
+              return;
+          }
+          onTapRef.current({ lat: e.lngLat.lat, lon: e.lngLat.lng });
+        };
+        instance.on('click', handleClick);
+
+        // See mapErrorReportedRef's declaration above for why this only ever
+        // surfaces once. Every error is still console-logged, one-shot or not.
+        handleError = (e: ErrorEvent) => {
+          console.error('MapLibre error', e.error);
+          // #27: recorded for EVERY error (before the one-shot banner gate
+          // below) — swRecovery itself decides whether the page was
+          // SW-uncontrolled at the time, which is the only case it acts on.
+          noteMapError();
+          if (mapErrorReportedRef.current) return;
+          mapErrorReportedRef.current = true;
+          onMapErrorRef.current?.();
+        };
+        instance.on('error', handleError);
+
+        setMap(instance);
+      } catch (err) {
+        // One catch for the WHOLE async mount: the transport check (a failed
+        // fallback full-body fetch = true network trouble) AND every sync
+        // throw after the await (WebGL/context init in the MaplibreMap
+        // constructor, control wiring). Pre-#118 those construction throws
+        // crashed the synchronous effect loudly; the async mount must not
+        // downgrade them to a silent floating rejection — route them into
+        // the existing map-error path (#27 recording + the same one-shot
+        // banner gate the MapLibre 'error' handler above uses).
+        // Log FIRST, even when cancelled: an unmounted component's failed
+        // fetch/init still deserves a trace; only the user-facing banner and
+        // the #27 recording are gated on the mount still being live.
+        console.error('basemap transport / map init failed', err);
+        if (cancelled) return;
         noteMapError();
         if (!mapErrorReportedRef.current) {
           mapErrorReportedRef.current = true;
           onMapErrorRef.current?.();
         }
-        return;
       }
-      if (cancelled) return;
-
-      // Label language is baked into the style at creation time; SailCommand's
-      // language switch is rare enough that re-fetching/re-diffing the whole
-      // style (which would also disturb child-added layers) isn't worth it here.
-      //
-      // No explicit resize handling: `trackResize` defaults to true, and
-      // MapLibre v5 backs it with a ResizeObserver on `container` (not a bare
-      // window 'resize' listener). That already keeps the canvas in sync when
-      // the container box changes — including the #24 responsive breakpoint
-      // crossing that flips the map between full-viewport and the ~2/3 side-
-      // panel column — so a second observer here would only double-fire resize.
-      instance = new MaplibreMap({
-        container,
-        style: buildStyle(lang, pmtilesUrl),
-        center: CENTER,
-        zoom: ZOOM,
-        maxBounds: MAX_BOUNDS,
-        attributionControl: false,
-      });
-      instance.addControl(new AttributionControl({ compact: true }));
-      // Collapse the attribution's one-shot auto-expansion before it can paint
-      // (#33) — see collapseAttributionAtLoad.
-      stopAttributionCollapse = collapseAttributionAtLoad(instance.getContainer());
-
-      const mapInstance = instance;
-      handleClick = (e: MapMouseEvent) => {
-        if (!tapActiveRef.current) return;
-        // A tap that lands on an interactive marker layer (the harbor points,
-        // #38) belongs to that layer's own click handler, which resolves it to
-        // the curated harbor snap. If the generic tap also fired a raw-
-        // coordinate pick for the same armed field, the two would both write
-        // origin/destination in one native click and race (see App.tsx
-        // handleHarborPick). Query the marker layer at the click point and bail
-        // on a hit, so exactly one handler ever owns a given click — no
-        // dependence on React update ordering. getLayer guards ids whose layer
-        // hasn't been added yet (assets still loading): queryRenderedFeatures
-        // surfaces an unknown layer id as a map error event (banner noise).
-        for (const layerId of interactiveLayerIdsRef.current) {
-          if (
-            mapInstance.getLayer(layerId) &&
-            mapInstance.queryRenderedFeatures(e.point, { layers: [layerId] }).length > 0
-          )
-            return;
-        }
-        onTapRef.current({ lat: e.lngLat.lat, lon: e.lngLat.lng });
-      };
-      instance.on('click', handleClick);
-
-      // See mapErrorReportedRef's declaration above for why this only ever
-      // surfaces once. Every error is still console-logged, one-shot or not.
-      handleError = (e: ErrorEvent) => {
-        console.error('MapLibre error', e.error);
-        // #27: recorded for EVERY error (before the one-shot banner gate
-        // below) — swRecovery itself decides whether the page was
-        // SW-uncontrolled at the time, which is the only case it acts on.
-        noteMapError();
-        if (mapErrorReportedRef.current) return;
-        mapErrorReportedRef.current = true;
-        onMapErrorRef.current?.();
-      };
-      instance.on('error', handleError);
-
-      setMap(instance);
     })();
 
     return () => {

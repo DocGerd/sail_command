@@ -64,7 +64,7 @@ describe('looksLikePmtiles', () => {
 });
 
 describe('pmtilesRangeModeWorks', () => {
-  it('passes on a true 206 carrying PMTiles bytes', async () => {
+  it('passes on a true 206 carrying PMTiles bytes — probing the NETWORK, never the HTTP cache', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       status: 206,
       arrayBuffer: () => Promise.resolve(PM_MAGIC.slice().buffer),
@@ -72,6 +72,14 @@ describe('pmtilesRangeModeWorks', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     await expect(pmtilesRangeModeWorks(ARCHIVE_URL)).resolves.toBe(true);
+    // Literal init pin: Chrome can synthesize an honest-looking 206 from an
+    // HTTP-cached full body (e.g. cached by a prior blob-fallback 200) —
+    // without cache:'no-store' the preflight would mask a still-broken CDN
+    // as 'range-ok'.
+    expect(fetchMock).toHaveBeenCalledWith(ARCHIVE_URL, {
+      headers: { Range: 'bytes=0-15' },
+      cache: 'no-store',
+    });
   });
 
   it('fails on a 206 whose body is a compressed-stream slice (gzip magic)', async () => {
@@ -124,9 +132,14 @@ describe('ensureBasemapProtocolSource', () => {
       'range-ok',
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    // The single call was the preflight — it MUST carry the Range header.
-    const init = fetchMock.mock.calls[0]?.[1] as { headers?: Record<string, string> };
+    // The single call was the preflight — it MUST carry the Range header AND
+    // bypass the HTTP cache (see the no-store rationale above).
+    const init = fetchMock.mock.calls[0]?.[1] as {
+      headers?: Record<string, string>;
+      cache?: string;
+    };
     expect(init.headers).toEqual({ Range: 'bytes=0-15' });
+    expect(init.cache).toBe('no-store');
     expect(protocol.add).not.toHaveBeenCalled();
   });
 

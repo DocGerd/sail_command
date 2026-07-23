@@ -14,9 +14,10 @@ export const BASEMAP_PATH = 'data/basemap.pmtiles.png';
 /**
  * True for the basemap archive and nothing else — the predicate behind
  * sw.ts's first-registered Range→206 route. Matches BOTH the renamed
- * `.pmtiles.png` shape and the legacy bare `.pmtiles` shape: an
- * already-installed SW updating across the #118 rename must keep owning the
- * old URL until its precache turns over. Deliberately NOT a bare `.png`
+ * `.pmtiles.png` shape and the legacy bare `.pmtiles` shape: across the #118
+ * rename the legacy URL stays owned by that route — degrading to a network
+ * fetch on precache miss (the post-rename precache holds only the renamed
+ * file), self-healing on the update reload. Deliberately NOT a bare `.png`
  * check — ordinary image assets (icons, sprites) must stay with workbox's
  * default precache route.
  */

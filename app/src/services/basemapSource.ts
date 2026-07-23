@@ -66,7 +66,11 @@ export function looksLikePmtiles(bytes: Uint8Array): boolean {
  */
 export async function pmtilesRangeModeWorks(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url, { headers: { Range: 'bytes=0-15' } });
+    // cache:'no-store' is load-bearing: Chrome can synthesize an honest 206
+    // from an HTTP-cached FULL body (e.g. one cached by a prior
+    // blob-fallback 200) — such a synthetic 206 would mask a still-broken
+    // CDN as 'range-ok'. The probe must hit the network.
+    const res = await fetch(url, { headers: { Range: 'bytes=0-15' }, cache: 'no-store' });
     if (res.status !== 206) {
       void res.body?.cancel();
       return false;
