@@ -84,6 +84,10 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
       >
         <h2 id="about-dialog-title">{t('about.title')}</h2>
         <p className="about-tagline">{t('app.tagline')}</p>
+        {/* #125: build-time version (vite.config.ts `define`) — identifies
+            the installed bundle for stale-service-worker triage. Shows the
+            literal 'dev' on the dev server by design. */}
+        <p className="about-version">{t('about.version', { version: __SC_APP_VERSION__ })}</p>
 
         <p className="about-disclaimer">{t('app.disclaimer')}</p>
 

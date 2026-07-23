@@ -91,6 +91,24 @@ describe('AboutDialog', () => {
     expect(screen.getByText(en['app.disclaimer'])).toBeInTheDocument();
   });
 
+  it('shows the build-time app version line — literally "Version dev" under vitest (#125)', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <AboutDialog open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    // Vitest resolves vite.config.ts with command 'serve', so the
+    // __SC_APP_VERSION__ define is the literal 'dev' here (pinned below) —
+    // a real build bakes `git describe --tags --always` output instead
+    // (asserted by grepping dist, not unit-testable). Literal expectation on
+    // purpose: deriving it from the dict + define would be a tautology.
+    expect(__SC_APP_VERSION__).toBe('dev');
+    expect(screen.getByText('Version dev')).toBeInTheDocument();
+  });
+
   it('calls onClose when the close button is clicked', async () => {
     vi.stubGlobal('fetch', fetchMock());
     const onClose = vi.fn();

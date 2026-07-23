@@ -19,12 +19,16 @@ jobs:
       # either branch rebuilds both) per the issue's recommended
       # combined-build approach; the concurrency group above still serializes
       # overlapping main+develop pushes so two partial artifacts can't race.
+      # #125: fetch-depth: 0 (full history + tags) on BOTH checkouts so each
+      # build's `git describe --tags --always` (app/vite.config.ts, the
+      # __SC_APP_VERSION__ define) yields a tag-relative version rather than
+      # degrading to a bare short SHA on a shallow, tagless checkout.
       - name: Checkout main (production, site root)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with: { ref: main, path: build-main }
+        with: { ref: main, path: build-main, fetch-depth: 0 }
       - name: Checkout develop (UAT, /uat/ sub-path)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with: { ref: develop, path: build-develop }
+        with: { ref: develop, path: build-develop, fetch-depth: 0 }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
