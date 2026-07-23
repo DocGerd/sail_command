@@ -34,6 +34,7 @@ export default function OwnshipMarker({ fix }: OwnshipMarkerProps) {
     <BoatMarker
       point={fix.point}
       cogDeg={fix.cogDeg}
+      sogKn={fix.sogKn}
       headingToSteerDeg={fix.cogDeg ?? 0}
       accuracyM={fix.accuracyM}
     />

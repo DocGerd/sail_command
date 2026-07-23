@@ -17,6 +17,7 @@ vi.mock('./BoatMarker', () => ({
     <div
       data-testid="ownship-boat-marker"
       data-cog={String(props.cogDeg)}
+      data-sog={String(props.sogKn)}
       data-hts={String(props.headingToSteerDeg)}
       data-accuracy={String(props.accuracyM)}
       data-lat={String((props.point as { lat: number }).lat)}
@@ -40,6 +41,8 @@ describe('OwnshipMarker', () => {
     expect(el).toHaveAttribute('data-lat', '54.79');
     expect(el).toHaveAttribute('data-lon', '9.43');
     expect(el).toHaveAttribute('data-cog', '91.4');
+    // #141: SOG feeds BoatMarker's projection vector.
+    expect(el).toHaveAttribute('data-sog', '6.3');
     expect(el).toHaveAttribute('data-accuracy', '12');
     // cogDeg is present, so it (not the fallback) is what's passed as the
     // rotation fallback prop too.
@@ -51,5 +54,10 @@ describe('OwnshipMarker', () => {
     const el = screen.getByTestId('ownship-boat-marker');
     expect(el).toHaveAttribute('data-cog', 'null');
     expect(el).toHaveAttribute('data-hts', '0');
+  });
+
+  it('#141: forwards a null SOG untouched (BoatMarker suppresses the vector)', () => {
+    render(<OwnshipMarker fix={{ ...FIX, sogKn: null }} />);
+    expect(screen.getByTestId('ownship-boat-marker')).toHaveAttribute('data-sog', 'null');
   });
 });

@@ -3,11 +3,13 @@ import { Marker } from 'maplibre-gl';
 import type { GeoJSONSource, LngLatLike } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { destinationPoint } from '../lib/geo';
+import { ownshipVectorGeoJson } from '../lib/ownshipVector';
 import type { LatLon } from '../types';
 
 export interface BoatMarkerProps {
   point: LatLon;
   cogDeg: number | null;
+  sogKn: number | null; // feeds the #141 projection vector; null = no vector
   headingToSteerDeg: number; // fallback rotation when the device reports no COG
   accuracyM: number;
 }
@@ -18,6 +20,8 @@ export interface BoatMarkerProps {
 
 const ACCURACY_SOURCE = 'sc-boat-accuracy';
 const ACCURACY_LAYER = 'sc-boat-accuracy-fill';
+const VECTOR_SOURCE = 'sc-boat-vector';
+const VECTOR_LAYER = 'sc-boat-vector-line';
 const NM_PER_METER = 1 / 1852;
 const CIRCLE_STEPS = 32;
 const BOAT_COLOR = '#0072B2'; // Okabe-Ito blue
@@ -32,7 +36,11 @@ function accuracyCircleGeoJson(center: LatLon, radiusM: number) {
   return {
     type: 'FeatureCollection' as const,
     features: [
-      { type: 'Feature' as const, properties: {}, geometry: { type: 'Polygon' as const, coordinates: [coords] } },
+      {
+        type: 'Feature' as const,
+        properties: {},
+        geometry: { type: 'Polygon' as const, coordinates: [coords] },
+      },
     ],
   };
 }
@@ -64,7 +72,13 @@ function boatTriangleElement(): HTMLDivElement {
   return el;
 }
 
-export default function BoatMarker({ point, cogDeg, headingToSteerDeg, accuracyM }: BoatMarkerProps) {
+export default function BoatMarker({
+  point,
+  cogDeg,
+  sogKn,
+  headingToSteerDeg,
+  accuracyM,
+}: BoatMarkerProps) {
   const map = useMapInstance();
   const markerRef = useRef<Marker | null>(null);
 
@@ -79,7 +93,10 @@ export default function BoatMarker({ point, cogDeg, headingToSteerDeg, accuracyM
     markerRef.current = marker;
 
     if (!map.getSource(ACCURACY_SOURCE)) {
-      map.addSource(ACCURACY_SOURCE, { type: 'geojson', data: accuracyCircleGeoJson(point, accuracyM) });
+      map.addSource(ACCURACY_SOURCE, {
+        type: 'geojson',
+        data: accuracyCircleGeoJson(point, accuracyM),
+      });
       map.addLayer({
         id: ACCURACY_LAYER,
         type: 'fill',
@@ -88,9 +105,31 @@ export default function BoatMarker({ point, cogDeg, headingToSteerDeg, accuracyM
       });
     }
 
+    // #141: 6-min COG/SOG projection vector — geometry + suppression policy
+    // live in lib/ownshipVector.ts (shared projectionLine, same 6-min
+    // convention as the AIS target vectors). Same line-style family as
+    // AisLayer's COG vectors (width 1.5, opacity 0.85) but the ownship blue,
+    // so it can't read as a traffic vector. Added above the accuracy fill; no
+    // minzoom — unlike the many AIS targets there is nothing to declutter,
+    // and the skipper's own projection matters most.
+    if (!map.getSource(VECTOR_SOURCE)) {
+      map.addSource(VECTOR_SOURCE, {
+        type: 'geojson',
+        data: ownshipVectorGeoJson(point, cogDeg, sogKn),
+      });
+      map.addLayer({
+        id: VECTOR_LAYER,
+        type: 'line',
+        source: VECTOR_SOURCE,
+        paint: { 'line-color': BOAT_COLOR, 'line-width': 1.5, 'line-opacity': 0.85 },
+      });
+    }
+
     return () => {
       marker.remove();
       markerRef.current = null;
+      if (map.getLayer(VECTOR_LAYER)) map.removeLayer(VECTOR_LAYER);
+      if (map.getSource(VECTOR_SOURCE)) map.removeSource(VECTOR_SOURCE);
       if (map.getLayer(ACCURACY_LAYER)) map.removeLayer(ACCURACY_LAYER);
       if (map.getSource(ACCURACY_SOURCE)) map.removeSource(ACCURACY_SOURCE);
     };
@@ -104,8 +143,20 @@ export default function BoatMarker({ point, cogDeg, headingToSteerDeg, accuracyM
 
   useEffect(() => {
     if (!map || !map.getSource(ACCURACY_SOURCE)) return;
-    (map.getSource(ACCURACY_SOURCE) as GeoJSONSource).setData(accuracyCircleGeoJson(point, accuracyM));
+    (map.getSource(ACCURACY_SOURCE) as GeoJSONSource).setData(
+      accuracyCircleGeoJson(point, accuracyM),
+    );
   }, [map, point, accuracyM]);
+
+  // #141: per-fix vector update — ownshipVectorGeoJson returns an empty
+  // collection when suppressed (no COG/SOG, or SOG below the noise floor),
+  // so a single unconditional setData both draws and clears.
+  useEffect(() => {
+    if (!map || !map.getSource(VECTOR_SOURCE)) return;
+    (map.getSource(VECTOR_SOURCE) as GeoJSONSource).setData(
+      ownshipVectorGeoJson(point, cogDeg, sogKn),
+    );
+  }, [map, point, cogDeg, sogKn]);
 
   return null;
 }
