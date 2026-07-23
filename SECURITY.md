@@ -49,7 +49,7 @@ enforced by repository rulesets applied identically to both `main` and
   practice, not a ruleset gate; the threads it opens are then covered by the
   mandatory-resolution rule above. *(workflow)*
 
-### OpenSSF Scorecard: Branch-Protection posture
+### OpenSSF Scorecard posture (Branch-Protection, Code-Review)
 
 Scorecard rates this repository's *Branch-Protection* check **4/10**; that
 ceiling is deliberate. Three of its remaining Warn classes are intentionally
@@ -61,7 +61,11 @@ ceiling is deliberate. Three of its remaining Warn classes are intentionally
 
 GitHub does not count self-approval, so with a single human maintainer each of
 these would hard-block every PR on a reviewer that does not exist. The
-repository's actual review control is the set of ruleset/workflow gates listed
-above. Future Scorecard triage should treat these three findings as "won't
-fix" without re-litigating them; revisit all three if a second trusted
-maintainer joins.
+*Code-Review* check (**0/10**) shares this disposition for the same reason: it
+measures approving reviews from a second maintainer, which self-approval rules
+make impossible here. The repository's actual review control is the set of
+ruleset/workflow gates listed above — the mandatory agent self-review loop
+with ruleset-enforced thread resolution plus the required `app` + `e2e`
+checks. Future Scorecard triage should treat these findings (both checks) as
+"won't fix" without re-litigating them; revisit if a second trusted maintainer
+joins.
