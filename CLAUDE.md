@@ -131,6 +131,14 @@ deviate from it.
   ruleset covering both branches via literal refs): PR-only merges (merge
   commits, review threads resolved), required checks `app` + `e2e` with
   strict up-to-date policy, no force pushes or deletions.
+- Post-deploy CDN smoke probe (#117, guards the #118 fix class): `deploy.yml`'s
+  `smoke-probe` job probes ONLY the triggering ref's deployment (develop →
+  `/uat/`, main → site root) at the archive filename discovered from that ref's
+  built dist (`data/basemap.pmtiles*`, never hardcoded; zero matches fails the
+  job), requiring 200 with no `content-encoding` plus a `Range: bytes=0-15` →
+  206 of exactly 16 bytes starting with the `PMTiles` magic, with retries for
+  CDN propagation — a CDN gzip/range flip becomes a red deploy run, not a
+  silent user-facing slowdown.
 - The github-pages ENVIRONMENT branch policy (repo Settings, not YAML) gates
   deploys by triggering branch — `main`+`develop` are allowlisted (#96). A new
   deploying branch needs a policy entry
