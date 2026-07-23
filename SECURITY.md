@@ -41,12 +41,27 @@ enforced by repository rulesets applied identically to both `main` and
 - Required status checks `app` + `e2e` under the strict up-to-date policy.
   *(ruleset)*
 - Mandatory resolution of every review thread before merge. *(ruleset)*
+- Stale-review dismissal on push (`dismiss_stale_reviews_on_push`, adopted
+  2026-07-23): new commits invalidate earlier approvals. Reviews here are
+  advisory (required count 0), so dismissal can never block a merge — it only
+  keeps any recorded approval honest. *(ruleset)*
 - A per-PR automated reviewer pass posts inline review threads — a workflow
   practice, not a ruleset gate; the threads it opens are then covered by the
   mandatory-resolution rule above. *(workflow)*
 
-For this reason the OpenSSF Scorecard *Branch-Protection* and *Code-Review*
-findings — which assume a multi-maintainer approving-review model — are
-dismissed as "won't fix"; the controls above provide equivalent review
-assurance without a self-approval deadlock. This is revisited if a second
+### OpenSSF Scorecard: Branch-Protection posture
+
+Scorecard rates this repository's *Branch-Protection* check **4/10**; that
+ceiling is deliberate. Three of its remaining Warn classes are intentionally
+**not** adopted in this solo-maintainer repository:
+
+- required approving reviews ≥ 1,
+- CODEOWNERS-backed review requirement,
+- last-push approval (approval by someone other than the last pusher).
+
+GitHub does not count self-approval, so with a single human maintainer each of
+these would hard-block every PR on a reviewer that does not exist. The
+repository's actual review control is the set of ruleset/workflow gates listed
+above. Future Scorecard triage should treat these three findings as "won't
+fix" without re-litigating them; revisit all three if a second trusted
 maintainer joins.
