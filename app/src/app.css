@@ -1147,6 +1147,9 @@ select {
 .plans-list-row {
   display: flex;
   align-items: center;
+  /* #114: lets the full-width recalc editor wrap onto its own line below the
+     load/recalc/delete row without changing the row's own layout. */
+  flex-wrap: wrap;
   gap: 0.5rem;
   border-bottom: 1px solid var(--sc-border);
   padding: 0.4rem 0;
@@ -1172,6 +1175,25 @@ select {
 .plans-list-eta {
   font-size: 0.8rem;
   opacity: 0.75;
+}
+
+/* #114: per-row recalculate editor — a full-width block under the row's
+   buttons (flex-wrap on .plans-list-row wraps it), token-styled like the
+   planner's own compact inputs. */
+.plans-list-recalc {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+  padding: 0.5rem 0 0.35rem;
+  border-top: 1px dashed var(--sc-border);
+}
+
+.plans-list-recalc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .planner-via-list {

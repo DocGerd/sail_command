@@ -2,7 +2,14 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { Harbor, LatLon, PickedPoint, Plan, Rig, RigResult, Settings } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
-import { formatDateTime, formatDuration, formatKn, formatLatLon, formatNm } from '../lib/format';
+import {
+  formatDateTime,
+  formatDuration,
+  formatKn,
+  formatLatLon,
+  formatNm,
+  toLocalInputValue,
+} from '../lib/format';
 import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
 import { resultSummary } from '../lib/resultSummary';
@@ -82,15 +89,6 @@ export function nextFullHourMs(nowMs: number = Date.now()): number {
   const d = new Date(nowMs);
   d.setHours(d.getHours() + 1, 0, 0, 0); // setHours tracks wall-clock hour boundaries across DST folds; raw +3600000 does not
   return d.getTime();
-}
-
-// datetime-local reads/writes LOCAL wall-clock time with no offset suffix;
-// the Date getters/constructor below both operate in local time by design,
-// so ms <-> string round-trips through the browser's own timezone.
-function toLocalInputValue(ms: number): string {
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // Exported for App.tsx's harbor-marker click-to-pick (#38): a marker click

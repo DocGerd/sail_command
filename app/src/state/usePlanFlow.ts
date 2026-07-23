@@ -41,9 +41,23 @@ function mapWindError(err: unknown): MsgKey {
   return 'error.internal';
 }
 
+// #114: options for run(). `replacePlanId` is the explicit-confirm
+// "recalculate and replace" path: the completed run is persisted under that
+// EXISTING plan id (overwriting the saved plan atomically at save time — a
+// failed run never touches it). Every other caller omits it and gets a fresh
+// UUID, which keeps the default "recalculate as new plan" and ordinary
+// planner runs non-destructive.
+export interface RunOptions {
+  replacePlanId?: string;
+}
+
 export function usePlanFlow(deps: PlanFlowDeps = {}): {
   planning: PlanningState;
-  run: (req: Omit<PlanRequest, 'settings'> & { settings: Settings }, name: string) => Promise<void>;
+  run: (
+    req: Omit<PlanRequest, 'settings'> & { settings: Settings },
+    name: string,
+    opts?: RunOptions,
+  ) => Promise<void>;
   // Lazily creates/inits the singleton RoutingClient (loading routing assets
   // first, if this is the first call), or returns the already-init'd one.
   // Shared by run() and by replanWithVias (state/replan.ts's useViaReplan)
@@ -137,6 +151,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
     async (
       req: Omit<PlanRequest, 'settings'> & { settings: Settings },
       name: string,
+      opts: RunOptions = {},
     ): Promise<void> => {
       // Belt, not the primary guard: the UI's canPlan already disables the
       // plan button while a run is in flight. Per-plan cancellation
@@ -236,7 +251,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       }
 
       const plan: Plan = {
-        id: crypto.randomUUID(),
+        // #114: a replace-recalculation persists under the original plan's id
+        // (see RunOptions) — everything else mints a fresh one.
+        id: opts.replacePlanId ?? crypto.randomUUID(),
         name,
         createdAtMs: Date.now(),
         request: req,

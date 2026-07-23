@@ -23,7 +23,7 @@ import PlannerPanel, {
   type PlannerStatus,
   type TapTarget,
 } from './components/PlannerPanel';
-import PlansList from './components/PlansList';
+import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
@@ -32,12 +32,13 @@ import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
 import { isStaleForecast } from './lib/plan';
+import { recalcRequest } from './lib/recalc';
 import { useWideLayout } from './lib/useWideLayout';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
-import type { Harbor, LatLon, PickedPoint } from './types';
+import type { Harbor, LatLon, PickedPoint, Plan } from './types';
 
 const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 
@@ -188,14 +189,15 @@ function AppShell() {
   // whatever `plan` actually is *then*, can.
   //
   // usePlanFlow.run()'s own setPlan(plan) (usePlanFlow.ts) is deliberately
-  // NOT guarded the same way: run() always mints a brand-new plan.id, so a
-  // completed run is never "the same plan, possibly superseded" — it's a
-  // fresh planning request the user just asked for, which should become
-  // active even if another plan was loaded while it was in flight. Guarding
-  // it by planIdRef would incorrectly block every legitimate run() result
-  // (a new id can never match the ref's pre-existing value). The clobber
-  // this guards against is specific to replans: an edit to a *specific*,
-  // possibly-since-abandoned plan resolving late.
+  // NOT guarded the same way: run() mints a brand-new plan.id (or, for a
+  // #114 replace-recalculation, reuses the id the user explicitly confirmed
+  // overwriting), so a completed run is never "the same plan, possibly
+  // superseded" — it's a fresh planning request the user just asked for,
+  // which should become active even if another plan was loaded while it was
+  // in flight. Guarding it by planIdRef would incorrectly block every
+  // legitimate run() result (a new id can never match the ref's pre-existing
+  // value). The clobber this guards against is specific to replans: an edit
+  // to a *specific*, possibly-since-abandoned plan resolving late.
   const planIdRef = useRef<string | null>(plan?.id ?? null);
   useEffect(() => {
     planIdRef.current = plan?.id ?? null;
@@ -456,18 +458,34 @@ function AppShell() {
     );
   }, [origin, destination, departureMs, settings, run, viaPoints]);
 
+  // #114: recalculate a saved plan with a FRESH forecast — seeds run() from
+  // the plan's own stored request (origin/destination/vias/settings) with the
+  // editor's departure. Sharply distinct from the via-replan above, which
+  // reuses the stored grid and never refetches. Default mode saves a NEW
+  // plan under a derived name; the two-tap-confirmed 'replace' mode persists
+  // under the original id (overwriting it only if the run succeeds).
+  const handleRecalculate = useCallback(
+    (recalcPlan: Plan, departureMs: number, mode: RecalcMode): Promise<void> => {
+      const req = recalcRequest(recalcPlan, departureMs);
+      return mode === 'replace'
+        ? run(req, recalcPlan.name, { replacePlanId: recalcPlan.id })
+        : run(req, t('plansList.recalcName', { name: recalcPlan.name }));
+    },
+    [run, t],
+  );
+
   // The Plan button independently guards offline (spec §4) on top of the
   // banner; canPlan also requires both endpoints, an idle/error (not
   // already in-flight) planning phase, and no via-replan in flight — a
   // fresh run() while a replan of the current plan is pending would race
   // the same "which result wins" question planIdRef's guard exists for
   // above, so it's simplest to just not let one start.
-  const canPlan =
-    origin !== null &&
-    destination !== null &&
-    online &&
-    (planning.phase === 'idle' || planning.phase === 'error') &&
-    !viaReplan.state.replanning;
+  // #114: `runBusy` is that same in-flight condition on its own — shared by
+  // canPlan and the PlansList recalc actions, so no two runs can overlap
+  // regardless of which surface starts them.
+  const runBusy =
+    !(planning.phase === 'idle' || planning.phase === 'error') || viaReplan.state.replanning;
+  const canPlan = origin !== null && destination !== null && online && !runBusy;
   // §3.5: the primary button always states WHY it's disabled. Offline is the
   // most blocking (nothing can be planned), then a missing endpoint. When both
   // endpoints are set and online, the button is enabled — reason is null.
@@ -620,7 +638,13 @@ function AppShell() {
           <Banner
             kind={planErrorBannerKind(planning.messageKey)}
             action={
-              planErrorGroup(planning.messageKey) === 'network'
+              // "Try again" re-runs the planner form, so it needs both
+              // endpoints — a #114 recalculation can error without any form
+              // state (handlePlan would silently no-op), in which case the
+              // user retries from the plan row instead.
+              planErrorGroup(planning.messageKey) === 'network' &&
+              origin !== null &&
+              destination !== null
                 ? { label: t('banner.retry'), onClick: handlePlan }
                 : undefined
             }
@@ -729,7 +753,7 @@ function AppShell() {
               {plan && rig && (
                 <DepthProfile plan={plan} rig={rig} safetyDepthM={settings.safetyDepthM} />
               )}
-              <PlansList />
+              <PlansList online={online} busy={runBusy} onRecalculate={handleRecalculate} />
             </>
           )}
           {/* tab === 'live': LiveView is mounted above, inside MapView's
