@@ -28,6 +28,8 @@ vi.mock('maplibre-gl', () => ({
 const hoisted = vi.hoisted(() => ({ map: null as unknown }));
 vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 
+const ACCURACY_SOURCE = 'sc-boat-accuracy';
+const ACCURACY_LAYER = 'sc-boat-accuracy-fill';
 const VECTOR_SOURCE = 'sc-boat-vector';
 const VECTOR_LAYER = 'sc-boat-vector-line';
 
@@ -42,12 +44,49 @@ interface FakeLayer {
   paint?: Record<string, unknown>;
 }
 
-function makeFakeMap() {
+type Handler = () => void;
+
+function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = {}) {
   const sources = new Map<string, FakeSource>();
   const layers = new Map<string, FakeLayer>();
+  // Minimal Evented model (#150): plain on() listeners plus once() listeners
+  // (drained on fire). MapLibre's Evented.off removes a listener regardless of
+  // whether it was registered via on() or once() — BoatMarker's unmount
+  // cleanup relies on exactly that for the pending whenStyleReady one-shot.
+  const listeners = new Map<string, Set<Handler>>();
+  const onceListeners = new Map<string, Set<Handler>>();
+  const state = { styleLoaded };
+  const bucket = (store: Map<string, Set<Handler>>, type: string): Set<Handler> => {
+    let set = store.get(type);
+    if (!set) {
+      set = new Set();
+      store.set(type, set);
+    }
+    return set;
+  };
   return {
     sources,
     layers,
+    setStyleLoaded: (v: boolean) => {
+      state.styleLoaded = v;
+    },
+    fire: (type: string) => {
+      for (const fn of [...bucket(listeners, type)]) fn();
+      const pending = [...bucket(onceListeners, type)];
+      bucket(onceListeners, type).clear();
+      for (const fn of pending) fn();
+    },
+    isStyleLoaded: () => state.styleLoaded,
+    on: vi.fn((type: string, fn: Handler) => {
+      bucket(listeners, type).add(fn);
+    }),
+    once: vi.fn((type: string, fn: Handler) => {
+      bucket(onceListeners, type).add(fn);
+    }),
+    off: vi.fn((type: string, fn: Handler) => {
+      listeners.get(type)?.delete(fn);
+      onceListeners.get(type)?.delete(fn);
+    }),
     addSource: vi.fn((id: string, def: FakeSource['def']) => {
       sources.set(id, { setData: vi.fn(), def });
     }),
@@ -63,6 +102,15 @@ function makeFakeMap() {
       sources.delete(id);
     }),
   };
+}
+
+// What a mid-session map.setStyle() does to component-added content (#150):
+// every custom source/layer is dropped with the old style, then MapLibre
+// fires 'styledata' once the replacement style is in place.
+function simulateStyleReload(map: ReturnType<typeof makeFakeMap>): void {
+  map.sources.clear();
+  map.layers.clear();
+  map.fire('styledata');
 }
 
 // Latest vector-source content: the last setData payload if any update effect
@@ -149,5 +197,86 @@ describe('BoatMarker ownship projection vector (#141)', () => {
     unmount();
     expect(map.layers.has(VECTOR_LAYER)).toBe(false);
     expect(map.sources.has(VECTOR_SOURCE)).toBe(false);
+  });
+});
+
+describe('BoatMarker style reload (#150)', () => {
+  it('re-adds the accuracy and vector sources/layers after a style reload', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(<BoatMarker {...MOVING} />);
+    simulateStyleReload(map);
+    expect(map.sources.has(ACCURACY_SOURCE)).toBe(true);
+    expect(map.sources.has(VECTOR_SOURCE)).toBe(true);
+    // Re-added with the SAME ids/types/styling as the original mount (paint
+    // literals pinned from the pre-#150 mount effect): the reload path must
+    // not restyle anything.
+    const fill = map.layers.get(ACCURACY_LAYER);
+    expect(fill?.type).toBe('fill');
+    expect(fill?.source).toBe(ACCURACY_SOURCE);
+    expect(fill?.paint).toEqual({ 'fill-color': '#0072B2', 'fill-opacity': 0.15 });
+    const line = map.layers.get(VECTOR_LAYER);
+    expect(line?.type).toBe('line');
+    expect(line?.source).toBe(VECTOR_SOURCE);
+    expect(line?.paint).toEqual({
+      'line-color': '#0072B2',
+      'line-width': 1.5,
+      'line-opacity': 0.85,
+    });
+  });
+
+  it('re-adds with the latest fix, not the mount-time one', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { rerender } = render(<BoatMarker {...MOVING} />);
+    // Latest fix before the reload: new position, SOG below the 0.5 kn floor.
+    rerender(<BoatMarker {...MOVING} point={{ lat: 54.9, lon: 9.6 }} sogKn={0.3} />);
+    simulateStyleReload(map);
+    // Vector: suppressed at the LATEST fix — a mount-closure re-add would
+    // wrongly repaint the original moving fix's one-feature line.
+    expect(vectorData(map).features).toHaveLength(0);
+    // Accuracy circle: centered on the LATEST point. Ring point 0 sits 12 m
+    // due north of the center: 12 m = 12 / 1852 / 60 ° ≈ 0.000108°, so
+    // lat ≈ 54.900108 with lon unchanged (hand-derived, not read off the
+    // implementation).
+    const accuracy = map.sources.get(ACCURACY_SOURCE);
+    if (!accuracy) throw new Error('accuracy source not re-added');
+    const ring = (accuracy.def.data.features[0].geometry as GeoJSON.Polygon).coordinates[0];
+    expect(ring[0][0]).toBeCloseTo(9.6, 6);
+    expect(ring[0][1]).toBeCloseTo(54.900108, 4);
+  });
+
+  it('unmount removes the re-add hook: a later style reload cannot resurrect the layers', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { unmount } = render(<BoatMarker {...MOVING} />);
+    unmount();
+    simulateStyleReload(map);
+    expect(map.sources.size).toBe(0);
+    expect(map.layers.size).toBe(0);
+  });
+
+  it('defers setup until the style is ready when the map is still loading (AisLayer gating)', () => {
+    const map = makeFakeMap({ styleLoaded: false });
+    hoisted.map = map;
+    render(<BoatMarker {...MOVING} />);
+    expect(map.sources.size).toBe(0);
+    map.setStyleLoaded(true);
+    map.fire('load');
+    expect(map.sources.has(ACCURACY_SOURCE)).toBe(true);
+    expect(map.sources.has(VECTOR_SOURCE)).toBe(true);
+    expect(map.layers.has(ACCURACY_LAYER)).toBe(true);
+    expect(map.layers.has(VECTOR_LAYER)).toBe(true);
+  });
+
+  it('unmount before the style is ready cancels the pending one-shot setup', () => {
+    const map = makeFakeMap({ styleLoaded: false });
+    hoisted.map = map;
+    const { unmount } = render(<BoatMarker {...MOVING} />);
+    unmount();
+    map.setStyleLoaded(true);
+    map.fire('load');
+    expect(map.sources.size).toBe(0);
+    expect(map.layers.size).toBe(0);
   });
 });
