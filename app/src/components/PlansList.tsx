@@ -96,6 +96,9 @@ export default function PlansList() {
               <span className="plans-list-created">
                 {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
               </span>
+              <span className="plans-list-departure">
+                {t('planner.departure.label')} {formatDateTime(p.departureMs, lang)}
+              </span>
               <span className="plans-list-eta">
                 {t('route.totals.eta')} {formatDateTime(p.etaMs, lang)}
               </span>
@@ -105,7 +108,9 @@ export default function PlansList() {
               type="button"
               className="plans-list-delete"
               onClick={() => handleDeleteTap(p.id)}
-              aria-label={pendingDeleteId === p.id ? t('plansList.confirmDelete') : t('plansList.delete')}
+              aria-label={
+                pendingDeleteId === p.id ? t('plansList.confirmDelete') : t('plansList.delete')
+              }
             >
               {pendingDeleteId === p.id ? '✓' : '🗑'}
             </button>

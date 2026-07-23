@@ -17,6 +17,7 @@ function makePlan(overrides: {
   windGrid?: WindGrid;
   recommended?: Rig;
   etaMs?: number;
+  departureMs?: number;
 }): Plan {
   const recommended = overrides.recommended ?? 'genoa';
   const etaMs = overrides.etaMs ?? overrides.createdAtMs + 4 * 3_600_000;
@@ -38,7 +39,7 @@ function makePlan(overrides: {
       viaPoints: [],
       originHarborId: null,
       destinationHarborId: null,
-      departureMs: overrides.createdAtMs,
+      departureMs: overrides.departureMs ?? overrides.createdAtMs,
       settings: DEFAULT_SETTINGS,
     },
     windGrid: overrides.windGrid ?? uniformWindGrid(10, 270),
@@ -60,7 +61,9 @@ function makePlan(overrides: {
 function ActivePlanWindProbe() {
   const { plan } = useActivePlan();
   return (
-    <span data-testid="active-wind">{plan ? Array.from(plan.windGrid.speedKn).join(',') : 'none'}</span>
+    <span data-testid="active-wind">
+      {plan ? Array.from(plan.windGrid.speedKn).join(',') : 'none'}
+    </span>
   );
 }
 
@@ -103,6 +106,26 @@ describe('PlansList', () => {
     expect(rows[0]).toHaveTextContent('Newer');
     expect(rows[1]).toHaveTextContent('Older');
     expect(rows[0]).toHaveTextContent('Genoa');
+  });
+
+  it('shows the departure time on the card, distinct from created and ETA', async () => {
+    // Local-time Date construction (matching format.test.ts's idiom) keeps
+    // the expected literal independent of the runner's timezone: whatever
+    // zone Intl resolves to, `new Date(y, m, d, h, min)` and the formatted
+    // output agree. departureMs is deliberately NOT createdAtMs, so this
+    // also pins that the card reads PlanSummary.departureMs specifically
+    // (not accidentally re-showing createdAtMs under a new label).
+    const createdAtMs = new Date(2026, 0, 10, 8, 0).getTime();
+    const departureMs = new Date(2026, 0, 15, 6, 30).getTime();
+    await savePlan(makePlan({ id: 'p1', createdAtMs, departureMs, name: 'Solo' }));
+
+    renderList();
+
+    const row = await screen.findByRole('button', { name: /Solo/ });
+    // en-GB, hourCycle h23 renders DD/MM/YYYY, HH:MM (pinned in
+    // format.test.ts) — computed by hand, not via formatDateTime.
+    expect(row).toHaveTextContent('Created 10/01/2026, 08:00');
+    expect(row).toHaveTextContent('Departure 15/01/2026, 06:30');
   });
 
   it('tapping a row loads the full plan into active state with the stored wind grid, never refetching', async () => {
