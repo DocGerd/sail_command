@@ -1168,6 +1168,7 @@ select {
 }
 
 .plans-list-created,
+.plans-list-departure,
 .plans-list-eta {
   font-size: 0.8rem;
   opacity: 0.75;
