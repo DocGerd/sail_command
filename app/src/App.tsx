@@ -10,6 +10,7 @@ import {
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { useViaReplan } from './state/replan';
 import { useOwnshipGps } from './state/useOwnshipGps';
+import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
@@ -35,9 +36,8 @@ import { useWideLayout } from './lib/useWideLayout';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
+import type { Tab } from './lib/sessionSnapshot';
 import type { Harbor, LatLon, PickedPoint } from './types';
-
-type Tab = 'plan' | 'routes' | 'live';
 
 const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 
@@ -141,6 +141,12 @@ function AppShell() {
   } = useOwnshipGps(settings.showOwnship);
 
   const [tab, setTab] = useState<Tab>('plan');
+  // #113: restores the last session's plan/rig/tab on boot (pure local
+  // replay of PlansList's getPlan→setPlan path) and persists the small
+  // session snapshot on every plan/tab/rig change. Raw setTab, not
+  // handleTabChange: at boot tap-to-pick cannot be armed, so there is
+  // nothing to disarm.
+  useSessionRestore(tab, setTab);
   const [aboutOpen, setAboutOpen] = useState(false);
   const isWide = useWideLayout();
   // #31: on wide, LiveView (which must stay mounted inside MapView's subtree
