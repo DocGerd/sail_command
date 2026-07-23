@@ -97,6 +97,16 @@ deviate from it.
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
   stored per plan in IndexedDB, not in the SW cache).
+- The basemap ships as `app/public/data/basemap.pmtiles.png` (#118) — a deliberate
+  masquerade, never "clean up" the extension: GitHub Pages' CDN gzips
+  `application/octet-stream` at EVERY size and serves Range 206 slices of the
+  COMPRESSED body, which breaks PMTiles reads for first-load/no-SW visitors;
+  `image/png` is the only probe-proven exempt content-type (a `.bin` rename does
+  NOT work). `sw.ts`'s Range route owns BOTH `.pmtiles` and `.pmtiles.png`
+  (`isBasemapArchivePath`, transition-safe), and uncontrolled pages run a 16-byte
+  magic preflight (`app/src/services/basemapSource.ts`, `cache:'no-store'`) that
+  falls back to a full-body Blob-backed source if the CDN ever re-gzips — a
+  future CDN flip degrades to a slow map, never an outage.
 - Font glyphs (`basemap-assets/fonts/**`) are runtime-cached, never precached
   (#28): a `sailcommand-glyphs-*` CacheFirst route in `app/src/sw.ts` plus an
   app-side background warm-up (`app/src/services/glyphWarmup.ts`) that runs
@@ -281,6 +291,14 @@ deviate from it.
   retrying — never blind-retry (you double-merge or get a confusing `behind`);
   reconcile a stuck-but-merged PR by closing the PR + deleting the branch +
   closing the issue manually (#94).
+- Before ANY merge: verify the PR's `head.sha` equals the SHA you pushed AND
+  that check-runs exist for that exact SHA — PR #119's head stuck on a stale
+  SHA after a push (dropped `synchronize` webhook), so all-green checks +
+  `mergeable_state: clean` described the PRE-fix commit; merging would have
+  silently dropped the fix. REST close→reopen resyncs the head but fires TWO
+  `pull_request` events whose shared concurrency group can cancel the fresh
+  run's jobs — cancel the stale-SHA run first (verify `.head_sha`), then
+  `POST …/actions/runs/<id>/rerun` (#119).
 - e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
   parallel worktrees contend — serialize them; per-agent dev ports are for
   manual browser passes only. The dirty wind fixture (see E2E section) also
