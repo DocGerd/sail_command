@@ -381,6 +381,57 @@ select {
   border-bottom-color: var(--sc-bg);
 }
 
+/* AIS vessel popup (#25) — content of a MapLibre Popup's setDOMContent. */
+.ais-popover {
+  font-size: 0.85rem;
+  color: var(--sc-fg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ais-popover-disclaimer {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+/* Theme MapLibre's own popup chrome (it hardcodes a white background with no
+   dark variant); cover both tip directions. Same fix as .seamark-popup. */
+.ais-popup .maplibregl-popup-content {
+  background: var(--sc-bg);
+}
+
+.ais-popup .maplibregl-popup-tip {
+  border-top-color: var(--sc-bg);
+  border-bottom-color: var(--sc-bg);
+}
+
+/* AIS status chip (#25) — a small map overlay on the Live tab, top-centered so
+   it clears the top-left data-layer controls and the top-right route cluster. */
+.ais-status {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.ais-status-chip {
+  background: color-mix(in srgb, var(--sc-bg) 88%, transparent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.ais-status-live {
+  color: #009e73;
+}
+
+.ais-status-offline,
+.ais-status-keyError {
+  color: #d55e00;
+}
+
 .route-layer-time-slider {
   display: flex;
   align-items: center;

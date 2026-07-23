@@ -263,5 +263,24 @@ export const de = {
   'pwa.updateAvailable': 'Update verfügbar',
   'pwa.reload': 'Neu laden',
   'pwa.offlineReady': 'App & Karten offline verfügbar',
+  // #25 AIS overlay — vessel popup + shared disclaimer.
+  'ais.popup.name': 'Name',
+  'ais.popup.mmsi': 'MMSI',
+  'ais.popup.shipType': 'Schiffstyp',
+  'ais.popup.sog': 'SOG',
+  'ais.popup.cog': 'COG',
+  'ais.popup.age': 'Letztes Signal vor',
+  'ais.disclaimer':
+    'AIS-Abdeckung stammt von freiwilligen Landstationen und ist nicht garantiert oder vollständig. Diese Anzeige ist eine Aufmerksamkeitshilfe, keine Kollisionsverhütung und kein Navigationsgerät.',
+  'options.ais.apiKey.label': 'AIS-API-Schlüssel (aisstream.io)',
+  'options.ais.mmsi.label': 'Eigene MMSI (optional)',
+  'options.ais.mmsi.invalid': 'Die MMSI muss aus genau 9 Ziffern bestehen.',
+  'options.ais.help':
+    'Zeigt Live-Schiffsverkehr aus der Umgebung nur in der Live-Ansicht (nur online). Erstelle einen kostenlosen API-Schlüssel auf aisstream.io und füge ihn hier ein. Schlüssel und MMSI bleiben nur auf diesem Gerät gespeichert; der Schlüssel wird ausschließlich an aisstream.io als Teil des Abonnements gesendet, die MMSI dient nur dazu, das eigene Schiff aus der Anzeige herauszufiltern, und wird niemals übertragen. Aufmerksamkeitshilfe, kein Navigationsgerät.',
+  'ais.status.off': 'AIS aus — Schlüssel in den Optionen eingeben',
+  'ais.status.connecting': 'AIS verbindet…',
+  'ais.status.live': 'AIS live · {count} Schiffe',
+  'ais.status.offline': 'AIS offline',
+  'ais.status.keyError': 'AIS: API-Schlüssel prüfen',
 } as const;
 export type MsgKey = keyof typeof de;

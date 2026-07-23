@@ -2,6 +2,8 @@ import type { Settings } from '../types';
 import { useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
 import NumberInput from './NumberInput';
+import Field from './Field';
+import { isValidMmsi } from '../lib/mmsi';
 
 export interface OptionsPanelProps {
   value: Settings;
@@ -62,6 +64,9 @@ export function commitSetting(
 export default function OptionsPanel({ value, onChange }: OptionsPanelProps) {
   const t = useT();
 
+  const mmsi = value.ownMmsi ?? '';
+  const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
+
   return (
     <div className="options-panel">
       {ADVANCED_FIELDS.map((f) => (
@@ -113,6 +118,43 @@ export default function OptionsPanel({ value, onChange }: OptionsPanelProps) {
       <p className="options-help" id="options-showOwnship-help">
         {t('options.showOwnship.help')}
       </p>
+      {/* #25 AIS live traffic overlay (Live tab only): BYOK aisstream.io key +
+          own-vessel MMSI. Text fields (not NumberInput — the key is
+          alphanumeric and the MMSI is a string that preserves leading zeros).
+          Both commit on change like the checkboxes above. */}
+      <Field
+        label={t('options.ais.apiKey.label')}
+        htmlFor="options-aisApiKey"
+        help={t('options.ais.help')}
+        helpId="options-ais-help"
+      >
+        <input
+          id="options-aisApiKey"
+          type="text"
+          autoComplete="off"
+          spellCheck={false}
+          aria-describedby="options-ais-help"
+          value={value.aisApiKey ?? ''}
+          onChange={(e) => onChange({ ...value, aisApiKey: e.target.value })}
+        />
+      </Field>
+      <Field label={t('options.ais.mmsi.label')} htmlFor="options-ownMmsi">
+        <input
+          id="options-ownMmsi"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          aria-invalid={mmsiInvalid}
+          aria-describedby={mmsiInvalid ? 'options-ownMmsi-error' : undefined}
+          value={mmsi}
+          onChange={(e) => onChange({ ...value, ownMmsi: e.target.value })}
+        />
+      </Field>
+      {mmsiInvalid && (
+        <p className="options-help" id="options-ownMmsi-error" role="alert">
+          {t('options.ais.mmsi.invalid')}
+        </p>
+      )}
     </div>
   );
 }
