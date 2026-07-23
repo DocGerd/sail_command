@@ -20,6 +20,15 @@ export interface Settings {
   // geolocation permission flow). Unrelated to routing, so it is
   // deliberately NOT part of PlanRequest/the router's inputs.
   showOwnship: boolean; // default false
+  // #25 AIS live traffic overlay (Live tab only): BYOK aisstream.io API key +
+  // the user's own vessel MMSI, both device-local (IndexedDB settings), never
+  // transmitted anywhere except (the key) inside aisstream's subscription
+  // message. Both OPTIONAL and absent-by-default = feature off;
+  // exactOptionalPropertyTypes means an unset field is omitted, never
+  // `undefined`. `ownMmsi` is a string (preserves leading zeros; validated via
+  // isValidMmsi before use) and only ever filters the display — never sent.
+  aisApiKey?: string;
+  ownMmsi?: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

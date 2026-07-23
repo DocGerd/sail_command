@@ -576,6 +576,27 @@ describe('IndexedDB persistence', () => {
     expect(retrieved).toEqual(settings);
   });
 
+  it('settings roundtrip preserves the #25 AIS fields (aisApiKey, ownMmsi)', async () => {
+    const settings: Settings = {
+      safetyDepthM: 3.0,
+      motorSpeedKn: 6.5,
+      motorThresholdKn: 2.5,
+      maneuverPenaltyS: 45,
+      performanceFactor: 0.9,
+      motorEnabled: true,
+      showOwnship: false,
+      aisApiKey: 'abc123-key',
+      ownMmsi: '002110000',
+    };
+
+    await saveSettings(settings);
+    const retrieved = await loadSettings();
+
+    expect(retrieved).toEqual(settings);
+    // Explicitly pin the leading-zero MMSI survives as a string, not a number.
+    expect(retrieved?.ownMmsi).toBe('002110000');
+  });
+
   it('loadSettings on fresh DB returns undefined', async () => {
     const retrieved = await loadSettings();
     expect(retrieved).toBeUndefined();
