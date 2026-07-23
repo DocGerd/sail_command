@@ -22,8 +22,10 @@ describe('isGlyphPath (runtime route scoping)', () => {
     expect(isGlyphPath('/basemap-assets/fonts/Noto Sans Italic/9984-10239.pbf')).toBe(true);
   });
 
-  it('never matches .pmtiles — those belong to the first-registered Range→206 route', () => {
+  it('never matches the basemap archive — that belongs to the first-registered Range→206 route', () => {
     expect(isGlyphPath('/sail_command/data/basemap.pmtiles')).toBe(false);
+    // #118: the archive now ships renamed to .pmtiles.png — still not a glyph.
+    expect(isGlyphPath('/sail_command/data/basemap.pmtiles.png')).toBe(false);
   });
 
   it('never matches non-font .pbf or fonts-path non-.pbf requests', () => {

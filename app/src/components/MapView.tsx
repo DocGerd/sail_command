@@ -11,6 +11,8 @@ import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useLang } from '../i18n';
+import { BASEMAP_PATH } from '../lib/basemap';
+import { ensureBasemapProtocolSource } from '../services/basemapSource';
 import { noteMapError } from '../services/swRecovery';
 import type { LatLon } from '../types';
 
@@ -36,8 +38,11 @@ const ATTRIBUTION =
   '<a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a> (CC-BY 4.0) · ' +
   '<a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a> (CC-BY 4.0)';
 
-function buildStyle(lang: string): StyleSpecification {
-  const pmtilesUrl = new URL(import.meta.env.BASE_URL + 'data/basemap.pmtiles', location.href);
+// #118: `pmtilesUrl` is computed ONCE in the mount effect and passed in here
+// so the style's 'pmtiles://' reference uses the IDENTICAL href string the
+// fallback Blob source may have been keyed with (see basemapSource.ts's
+// key-drift warning) — never rebuild the URL independently in two places.
+function buildStyle(lang: string, pmtilesUrl: string): StyleSpecification {
   const flavor = { ...namedFlavor('light'), water: '#bfd9ea' };
   return {
     version: 8,
@@ -47,7 +52,7 @@ function buildStyle(lang: string): StyleSpecification {
     sources: {
       protomaps: {
         type: 'vector',
-        url: 'pmtiles://' + pmtilesUrl.href,
+        url: 'pmtiles://' + pmtilesUrl,
         attribution: ATTRIBUTION,
       },
     },
@@ -161,74 +166,116 @@ export default function MapView({
 
     mapErrorReportedRef.current = false;
 
-    // Label language is baked into the style at creation time; SailCommand's
-    // language switch is rare enough that re-fetching/re-diffing the whole
-    // style (which would also disturb child-added layers) isn't worth it here.
-    //
-    // No explicit resize handling: `trackResize` defaults to true, and
-    // MapLibre v5 backs it with a ResizeObserver on `container` (not a bare
-    // window 'resize' listener). That already keeps the canvas in sync when
-    // the container box changes — including the #24 responsive breakpoint
-    // crossing that flips the map between full-viewport and the ~2/3 side-
-    // panel column — so a second observer here would only double-fire resize.
-    const instance = new MaplibreMap({
-      container,
-      style: buildStyle(lang),
-      center: CENTER,
-      zoom: ZOOM,
-      maxBounds: MAX_BOUNDS,
-      attributionControl: false,
-    });
-    instance.addControl(new AttributionControl({ compact: true }));
-    // Collapse the attribution's one-shot auto-expansion before it can paint
-    // (#33) — see collapseAttributionAtLoad.
-    const stopAttributionCollapse = collapseAttributionAtLoad(instance.getContainer());
+    // #118: the mount is async — the basemap transport check (and, under a
+    // misbehaving CDN, the Blob-fallback registration) must fully resolve
+    // BEFORE the map is constructed, or protocol.add would race the map's
+    // first tile request. `cancelled` closes the unmount-during-fetch
+    // window; `instance` stays undefined until the map actually exists so
+    // the cleanup below only tears down what was really created.
+    let cancelled = false;
+    let instance: MaplibreMap | undefined;
+    let stopAttributionCollapse: () => void = () => {};
+    let handleClick: ((e: MapMouseEvent) => void) | undefined;
+    let handleError: ((e: ErrorEvent) => void) | undefined;
 
-    const handleClick = (e: MapMouseEvent) => {
-      if (!tapActiveRef.current) return;
-      // A tap that lands on an interactive marker layer (the harbor points,
-      // #38) belongs to that layer's own click handler, which resolves it to
-      // the curated harbor snap. If the generic tap also fired a raw-
-      // coordinate pick for the same armed field, the two would both write
-      // origin/destination in one native click and race (see App.tsx
-      // handleHarborPick). Query the marker layer at the click point and bail
-      // on a hit, so exactly one handler ever owns a given click — no
-      // dependence on React update ordering. getLayer guards ids whose layer
-      // hasn't been added yet (assets still loading): queryRenderedFeatures
-      // surfaces an unknown layer id as a map error event (banner noise).
-      for (const layerId of interactiveLayerIdsRef.current) {
-        if (
-          instance.getLayer(layerId) &&
-          instance.queryRenderedFeatures(e.point, { layers: [layerId] }).length > 0
-        )
-          return;
+    void (async () => {
+      // Computed ONCE and passed both to the transport check and to
+      // buildStyle — the style's 'pmtiles://' reference and a possible
+      // fallback Blob source key must be the IDENTICAL href string (see
+      // basemapSource.ts's key-drift warning).
+      const pmtilesUrl = new URL(import.meta.env.BASE_URL + BASEMAP_PATH, location.href).href;
+      const controlled = 'serviceWorker' in navigator && navigator.serviceWorker.controller != null;
+      try {
+        await ensureBasemapProtocolSource(pmtilesProtocol, pmtilesUrl, controlled);
+      } catch (err) {
+        // The fallback full-body fetch itself failed (true network trouble,
+        // not just broken ranges): surface it through the existing map-error
+        // path — same #27 recording, same one-shot banner gate the MapLibre
+        // 'error' handler below uses.
+        if (cancelled) return;
+        console.error('basemap transport check failed', err);
+        noteMapError();
+        if (!mapErrorReportedRef.current) {
+          mapErrorReportedRef.current = true;
+          onMapErrorRef.current?.();
+        }
+        return;
       }
-      onTapRef.current({ lat: e.lngLat.lat, lon: e.lngLat.lng });
-    };
-    instance.on('click', handleClick);
+      if (cancelled) return;
 
-    // See mapErrorReportedRef's declaration above for why this only ever
-    // surfaces once. Every error is still console-logged, one-shot or not.
-    const handleError = (e: ErrorEvent) => {
-      console.error('MapLibre error', e.error);
-      // #27: recorded for EVERY error (before the one-shot banner gate
-      // below) — swRecovery itself decides whether the page was
-      // SW-uncontrolled at the time, which is the only case it acts on.
-      noteMapError();
-      if (mapErrorReportedRef.current) return;
-      mapErrorReportedRef.current = true;
-      onMapErrorRef.current?.();
-    };
-    instance.on('error', handleError);
+      // Label language is baked into the style at creation time; SailCommand's
+      // language switch is rare enough that re-fetching/re-diffing the whole
+      // style (which would also disturb child-added layers) isn't worth it here.
+      //
+      // No explicit resize handling: `trackResize` defaults to true, and
+      // MapLibre v5 backs it with a ResizeObserver on `container` (not a bare
+      // window 'resize' listener). That already keeps the canvas in sync when
+      // the container box changes — including the #24 responsive breakpoint
+      // crossing that flips the map between full-viewport and the ~2/3 side-
+      // panel column — so a second observer here would only double-fire resize.
+      instance = new MaplibreMap({
+        container,
+        style: buildStyle(lang, pmtilesUrl),
+        center: CENTER,
+        zoom: ZOOM,
+        maxBounds: MAX_BOUNDS,
+        attributionControl: false,
+      });
+      instance.addControl(new AttributionControl({ compact: true }));
+      // Collapse the attribution's one-shot auto-expansion before it can paint
+      // (#33) — see collapseAttributionAtLoad.
+      stopAttributionCollapse = collapseAttributionAtLoad(instance.getContainer());
 
-    setMap(instance);
+      const mapInstance = instance;
+      handleClick = (e: MapMouseEvent) => {
+        if (!tapActiveRef.current) return;
+        // A tap that lands on an interactive marker layer (the harbor points,
+        // #38) belongs to that layer's own click handler, which resolves it to
+        // the curated harbor snap. If the generic tap also fired a raw-
+        // coordinate pick for the same armed field, the two would both write
+        // origin/destination in one native click and race (see App.tsx
+        // handleHarborPick). Query the marker layer at the click point and bail
+        // on a hit, so exactly one handler ever owns a given click — no
+        // dependence on React update ordering. getLayer guards ids whose layer
+        // hasn't been added yet (assets still loading): queryRenderedFeatures
+        // surfaces an unknown layer id as a map error event (banner noise).
+        for (const layerId of interactiveLayerIdsRef.current) {
+          if (
+            mapInstance.getLayer(layerId) &&
+            mapInstance.queryRenderedFeatures(e.point, { layers: [layerId] }).length > 0
+          )
+            return;
+        }
+        onTapRef.current({ lat: e.lngLat.lat, lon: e.lngLat.lng });
+      };
+      instance.on('click', handleClick);
+
+      // See mapErrorReportedRef's declaration above for why this only ever
+      // surfaces once. Every error is still console-logged, one-shot or not.
+      handleError = (e: ErrorEvent) => {
+        console.error('MapLibre error', e.error);
+        // #27: recorded for EVERY error (before the one-shot banner gate
+        // below) — swRecovery itself decides whether the page was
+        // SW-uncontrolled at the time, which is the only case it acts on.
+        noteMapError();
+        if (mapErrorReportedRef.current) return;
+        mapErrorReportedRef.current = true;
+        onMapErrorRef.current?.();
+      };
+      instance.on('error', handleError);
+
+      setMap(instance);
+    })();
 
     return () => {
+      cancelled = true;
       stopAttributionCollapse();
-      instance.off('click', handleClick);
-      instance.off('error', handleError);
-      instance.remove();
-      setMap(null);
+      if (instance !== undefined) {
+        if (handleClick) instance.off('click', handleClick);
+        if (handleError) instance.off('error', handleError);
+        instance.remove();
+        setMap(null);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one map instance per mount; lang at mount time only, see comment above
   }, []);

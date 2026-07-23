@@ -315,6 +315,17 @@ function fetchMock() {
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
     if (url.includes('seamarks.json'))
       return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
+    if (url.includes('basemap.pmtiles.png')) {
+      // #118: MapView's uncontrolled-page preflight (Range bytes=0-15) runs
+      // on every mount now — answer like an honest ranged origin (true 206,
+      // body starting with the PMTiles magic 'PM') so the app tree takes the
+      // normal 'range-ok' path and never triggers the Blob fallback here.
+      return Promise.resolve(
+        new Response(Uint8Array.from([0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73]), {
+          status: 206,
+        }),
+      );
+    }
     return Promise.reject(new Error(`unexpected fetch: ${url}`));
   });
 }
