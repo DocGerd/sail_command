@@ -263,5 +263,14 @@ export const de = {
   'pwa.updateAvailable': 'Update verfügbar',
   'pwa.reload': 'Neu laden',
   'pwa.offlineReady': 'App & Karten offline verfügbar',
+  // #25 AIS overlay — vessel popup + shared disclaimer.
+  'ais.popup.name': 'Name',
+  'ais.popup.mmsi': 'MMSI',
+  'ais.popup.shipType': 'Schiffstyp',
+  'ais.popup.sog': 'SOG',
+  'ais.popup.cog': 'COG',
+  'ais.popup.age': 'Letztes Signal vor',
+  'ais.disclaimer':
+    'AIS-Abdeckung stammt von freiwilligen Landstationen und ist nicht garantiert oder vollständig. Diese Anzeige ist eine Aufmerksamkeitshilfe, keine Kollisionsverhütung und kein Navigationsgerät.',
 } as const;
 export type MsgKey = keyof typeof de;

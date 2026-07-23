@@ -258,4 +258,13 @@ export const en = {
   'pwa.updateAvailable': 'Update available',
   'pwa.reload': 'Reload',
   'pwa.offlineReady': 'App & maps available offline',
+  // #25 AIS overlay — vessel popup + shared disclaimer.
+  'ais.popup.name': 'Name',
+  'ais.popup.mmsi': 'MMSI',
+  'ais.popup.shipType': 'Ship type',
+  'ais.popup.sog': 'SOG',
+  'ais.popup.cog': 'COG',
+  'ais.popup.age': 'Last signal',
+  'ais.disclaimer':
+    'AIS coverage comes from volunteer shore stations and is not guaranteed or complete. This overlay is an awareness aid, not collision avoidance and not a navigation device.',
 } satisfies Record<MsgKey, string>;

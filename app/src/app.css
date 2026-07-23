@@ -381,6 +381,32 @@ select {
   border-bottom-color: var(--sc-bg);
 }
 
+/* AIS vessel popup (#25) — content of a MapLibre Popup's setDOMContent. */
+.ais-popover {
+  font-size: 0.85rem;
+  color: var(--sc-fg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ais-popover-disclaimer {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+/* Theme MapLibre's own popup chrome (it hardcodes a white background with no
+   dark variant); cover both tip directions. Same fix as .seamark-popup. */
+.ais-popup .maplibregl-popup-content {
+  background: var(--sc-bg);
+}
+
+.ais-popup .maplibregl-popup-tip {
+  border-top-color: var(--sc-bg);
+  border-bottom-color: var(--sc-bg);
+}
+
 .route-layer-time-slider {
   display: flex;
   align-items: center;
