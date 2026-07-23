@@ -56,6 +56,19 @@ jobs:
           cache-dependency-path: |
             build-main/app/package-lock.json
             build-develop/app/package-lock.json
+      # The develop/UAT half is built UNCONDITIONALLY on every deploying
+      # trigger — only the PROD half is cache-reusable under #117a.
+      - name: Build develop (UAT)
+        run: |
+          npm ci
+          npm run build
+        working-directory: build-develop/app
+        env:
+          # Switches app/vite.config.ts's base to /sail_command/uat/ and, via
+          # its subPathMeta() plugin + PWA manifest block, adds noindex and a
+          # distinct manifest name/id — the production build below never
+          # sets this, so its output stays byte-for-byte unchanged by #96.
+          SC_DEPLOY_ENV: uat
       - name: Resolve run mode and main sha
         id: refs
         working-directory: build-main
@@ -69,6 +82,41 @@ jobs:
           echo "main-sha=$main_sha" >> "$GITHUB_OUTPUT"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "Run mode: $mode (main ref at $main_sha)"
+      # #117b: fetch the newest main-authored drift baseline for THIS main
+      # sha up front (develop-triggered runs only) — BOTH consumers below
+      # need it: the REUSE path re-validates the cached dist against it (a
+      # cached manifest that no longer matches the baseline is discarded, so
+      # a cache can never shadow a later main-authored baseline for the same
+      # sha), and the REBUILD path enforces byte-stability with it. Not
+      # retrievable -> found=false, handled loudly downstream.
+      - name: Fetch main-authored drift baseline
+        id: baseline
+        if: steps.refs.outputs.mode == 'develop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
+        run: |
+          found=false
+          if run_ids="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=main&head_sha=$MAIN_SHA&per_page=10" --jq '.workflow_runs[].id')"; then
+            for rid in $run_ids; do
+              art_id="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$rid/artifacts" --jq '[.artifacts[] | select(.name == "prod-manifest" and .expired == false)][0].id // empty' || true)"
+              [ -n "$art_id" ] || continue
+              if gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$art_id/zip" > baseline.zip && unzip -o -q baseline.zip -d baseline-manifest; then
+                if [ "$(cat baseline-manifest/main-sha.txt 2>/dev/null)" = "$MAIN_SHA" ]; then
+                  found=true
+                  echo "Drift baseline: prod-manifest artifact of main-triggered run $rid (main@$MAIN_SHA)."
+                  break
+                fi
+                echo "run $rid artifact is for a different main sha — skipping"
+              else
+                echo "run $rid artifact download/unzip failed — skipping"
+              fi
+            done
+          else
+            echo "workflow-run lookup failed (API error)"
+          fi
+          echo "found=$found" >> "$GITHUB_OUTPUT"
+          [ "$found" = "true" ] || echo "No main-authored prod manifest retrievable for main@$MAIN_SHA (none recorded yet, expired, or API error)."
       # #117a: restore the prod dist built at THIS main sha. Saved by earlier
       # develop-triggered runs (below) — develop is the DEFAULT branch, so
       # its cache scope is visible to every run; a main-scoped save would be
@@ -87,15 +135,21 @@ jobs:
       # #117a fail-safe: NEVER assemble unverified cached bytes into the
       # production root. Full per-file sha256 manifest verification plus
       # sanity checks (expected top-level entries, no files beyond the
-      # manifest, PMTiles magic on the basemap archive — 16-byte header read
-      # like the smoke probe's). Any failure discards the cache and falls
-      # back to a full rebuild: a validation bug costs a rebuild, never
-      # ships wrong bytes. A corrupted cache entry cannot be overwritten
-      # in-place (same key), so it is rebuilt-around loudly on every run
-      # until the main sha (and thus the key) changes.
+      # manifest, PMTiles magic on the basemap archive — same 7-byte magic
+      # check as the smoke probe's), PLUS — whenever a main-authored baseline
+      # is retrievable — a cross-check of the cached manifest against it, so
+      # reuse is held to the SAME byte-stability bar as a rebuild (#117b) and
+      # a stale cache can never shadow a newer baseline for the same sha.
+      # Any failure discards the cache and falls back to a full rebuild: a
+      # validation bug costs a rebuild, never ships wrong bytes. A bad cache
+      # entry cannot be overwritten in-place (same key), so it is
+      # rebuilt-around loudly on every run until the main sha (and thus the
+      # key) changes.
       - name: Validate cached prod dist before reuse
         id: validate-cache
         if: steps.refs.outputs.mode == 'develop' && steps.prod-cache.outputs.cache-hit == 'true'
+        env:
+          BASELINE_FOUND: ${{ steps.baseline.outputs.found }}
         run: |
           d=prod-dist-cache/dist
           m=prod-dist-cache/manifest.sha256
@@ -119,6 +173,9 @@ jobs:
             files_in_manifest="$(wc -l < "$m")"
             [ "$files_on_disk" -eq "$files_in_manifest" ] || { echo "$files_on_disk files on disk vs $files_in_manifest manifest entries"; return 1; }
             (cd "$d" && sha256sum -c --quiet ../manifest.sha256) || { echo "sha256 manifest mismatch"; return 1; }
+            if [ "$BASELINE_FOUND" = "true" ]; then
+              diff -u baseline-manifest/manifest.sha256 "$m" > cache-baseline.diff || { head -20 cache-baseline.diff; echo "cached manifest differs from the main-authored baseline"; return 1; }
+            fi
           }
           if check; then
             echo "valid=true" >> "$GITHUB_OUTPUT"
@@ -181,58 +238,48 @@ jobs:
           path: prod-manifest/
       # #117b: a develop-triggered run that DID rebuild the main ref must
       # prove the rebuild is byte-identical to what the last main-triggered
-      # run built — drift fails the run LOUDLY instead of silently
-      # republishing altered production bytes. No baseline available (first
-      # run after this workflow change, expired artifact, API error) ->
-      # proceed with a loud warning; the next main-triggered run records a
-      # fresh baseline.
+      # run built (baseline fetched above) — drift fails the run LOUDLY
+      # instead of silently republishing altered production bytes. No
+      # baseline available (first run after this workflow change, expired
+      # artifact, API error) -> proceed with a loud warning; the next
+      # main-triggered run records a fresh baseline.
       - name: Enforce byte-stability vs last main-triggered build
+        id: drift
         if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          BASELINE_FOUND: ${{ steps.baseline.outputs.found }}
           MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
         run: |
-          baseline=""
-          if run_ids="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=main&head_sha=$MAIN_SHA&per_page=10" --jq '.workflow_runs[].id')"; then
-            for rid in $run_ids; do
-              art_id="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$rid/artifacts" --jq '[.artifacts[] | select(.name == "prod-manifest" and .expired == false)][0].id // empty' || true)"
-              [ -n "$art_id" ] || continue
-              if gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$art_id/zip" > baseline.zip && unzip -o -q baseline.zip -d baseline-manifest; then
-                if [ "$(cat baseline-manifest/main-sha.txt 2>/dev/null)" = "$MAIN_SHA" ]; then
-                  baseline="baseline-manifest/manifest.sha256"
-                  echo "Drift baseline: prod-manifest artifact of main-triggered run $rid (main@$MAIN_SHA)."
-                  break
-                fi
-                echo "run $rid artifact is for a different main sha — skipping"
-              else
-                echo "run $rid artifact download/unzip failed — skipping"
-              fi
-            done
-          else
-            echo "workflow-run lookup failed (API error)"
-          fi
-          if [ -z "$baseline" ]; then
-            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (first run after this workflow change, expired artifact, or API error). The next main-triggered run records one."
+          if [ "$BASELINE_FOUND" != "true" ]; then
+            echo "baseline-verified=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (first run after this workflow change, expired artifact, or API error), and NOT caching it. A main-triggered run (release, or a workflow_dispatch on main) records a baseline."
             exit 0
           fi
-          if ! diff -u "$baseline" prod-manifest/manifest.sha256 > drift.diff; then
+          if ! diff -u baseline-manifest/manifest.sha256 prod-manifest/manifest.sha256 > drift.diff; then
             head -100 drift.diff
             echo "::error::#117b PROD BYTE DRIFT: rebuilding main@$MAIN_SHA on this develop-triggered run produced bytes that DIFFER from the last main-triggered production build (diff above). Refusing to publish drifted production content — find the toolchain/dependency nondeterminism first."
             exit 1
           fi
-          echo "Byte-stability verified: rebuilt prod dist is identical to the last main-triggered build ($(wc -l < "$baseline") files)."
-      # #117a: cache the (drift-checked) rebuild so future develop-triggered
-      # runs skip the prod rebuild entirely. Only reached when the
-      # byte-stability step above passed (a failed step aborts the job).
+          echo "baseline-verified=true" >> "$GITHUB_OUTPUT"
+          echo "Byte-stability verified: rebuilt prod dist is identical to the last main-triggered build ($(wc -l < prod-manifest/manifest.sha256) files)."
+      # #117a: cache the rebuild so future develop-triggered runs skip the
+      # prod rebuild entirely — but ONLY when it was verified against a
+      # main-authored baseline (baseline-verified above). The cache key is
+      # immutable (a saved entry cannot be replaced), so caching
+      # baseline-UNVERIFIED bytes could permanently shadow a baseline
+      # recorded later for the same sha; gating the save keeps the chain of
+      # custody: every cache entry that exists passed the byte-stability
+      # check when it was written, and the reuse path re-checks it against
+      # the current baseline anyway.
       - name: Stage prod dist for caching
-        if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true'
+        if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true' && steps.drift.outputs.baseline-verified == 'true'
         run: |
           rm -rf prod-dist-cache
           mkdir -p prod-dist-cache
           cp -r build-main/app/dist prod-dist-cache/dist
           cp prod-manifest/manifest.sha256 prod-dist-cache/manifest.sha256
       - name: Save prod dist cache
-        if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true'
+        if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true' && steps.drift.outputs.baseline-verified == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: prod-dist-cache

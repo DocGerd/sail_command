@@ -128,15 +128,18 @@ deviate from it.
   as a separate PWA rather than colliding with production's). This
   deliberately couples the two deploys; since #117, develop-triggered runs
   REUSE a cached, validated prod dist keyed on the main SHA instead of
-  rebuilding it (validation = full sha256 manifest + sanity + PMTiles magic
-  BEFORE assembly; miss/invalid → loud full rebuild + byte-drift check
-  against the main-authored manifest artifact — drift fails the run;
-  main-triggered runs double-build as a determinism proof and publish that
-  baseline). Cache saves happen on develop-triggered runs only: develop is
-  the DEFAULT branch, so its cache scope is visible everywhere, while
-  main-scoped saves would be invisible to develop runs — that cache-scope
-  asymmetry is why the drift baseline travels as a workflow ARTIFACT, not a
-  cache. The existing `concurrency: { group: pages }` still serializes
+  rebuilding it (validation BEFORE assembly = full sha256 manifest + sanity +
+  PMTiles magic + cross-check against the main-authored baseline whenever one
+  is retrievable; miss/invalid → loud full rebuild + byte-drift check against
+  that baseline — drift fails the run; main-triggered runs double-build as a
+  determinism proof and publish the baseline as the `prod-manifest`
+  artifact). Cache saves happen only on BASELINE-VERIFIED develop-triggered
+  rebuilds — cache keys are immutable, so caching unverified bytes could
+  permanently shadow a baseline recorded later for the same SHA — and on
+  develop-triggered runs only: develop is the DEFAULT branch, so its cache
+  scope is visible everywhere, while main-scoped saves would be invisible to
+  develop runs — that cache-scope asymmetry is why the drift baseline
+  travels as a workflow ARTIFACT, not a cache. The existing `concurrency: { group: pages }` still serializes
   overlapping main+develop pushes. Develop-triggered runs additionally
   record a `uat` environment in the Deployments UI and main-triggered runs a
   `prod` one (both bookkeeping only, #106/#127); `github-pages` remains the
