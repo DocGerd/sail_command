@@ -175,7 +175,12 @@ deviate from it.
   `develop`: production at the Pages site root reflects only released
   (`main`) state as before; `develop`'s unreleased state is additionally
   published to the deliberately-labeled, `noindex`ed `/uat/` sub-path in the
-  same run — a UAT preview, not a second production. A HOTFIX branches from `main`, PRs to
+  same run — a UAT preview, not a second production. After a RELEASE, back-merge
+  `main` into `develop` via a TOPIC branch (branch off `develop`, `git merge
+  origin/main` — fast-forwards to the release commit, zero file diff — then PR →
+  `develop`): a DIRECT main→develop PR reads BEHIND under the strict up-to-date
+  policy, and its "Update branch" button would merge develop→main, polluting the
+  released branch (v0.2.0 lesson, reused for v0.3.0). A HOTFIX branches from `main`, PRs to
   `main`, then `main` is merged back into `develop` to keep it ahead. CI
   (`ci.yml`, `codeql.yml`, `verify-mask.yml`) fires on pushes to both `main`
   and `develop` so required checks keep reporting; the single `protect-main`
@@ -306,7 +311,11 @@ deviate from it.
   silently dropped the fix. REST close→reopen resyncs the head but fires TWO
   `pull_request` events whose shared concurrency group can cancel the fresh
   run's jobs — cancel the stale-SHA run first (verify `.head_sha`), then
-  `POST …/actions/runs/<id>/rerun` (#119).
+  `POST …/actions/runs/<id>/rerun` (#119). `mergeable_state: unstable` = only
+  OPTIONAL checks red — mergeable (required checks are `app`+`e2e` only);
+  scorecard's `analysis` job reds EVERY push to `main` by design
+  (default-branch-only action, #124), so release commits carry one cosmetic
+  red check-run — don't chase it.
 - e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
   parallel worktrees contend — serialize them; per-agent dev ports are for
   manual browser passes only. The dirty wind fixture (see E2E section) also
@@ -314,6 +323,9 @@ deviate from it.
 - IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
   churn — trust `npm --prefix app run typecheck` (`tsc -b`), never the
   diagnostics stream.
+- A committed change to the always-dirty `.claude/settings.json` blocks `git
+  switch` between branches until both sides hold the same blob — `git fetch
+  origin develop:develop` (ref update without checkout), then switch.
 
 ## graphify
 
