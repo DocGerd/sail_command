@@ -126,12 +126,23 @@ deviate from it.
   plugin + PWA `manifest` block, adds `<meta name="robots" content=
   "noindex, nofollow">` and a distinct manifest `name`/`id` so the UAT build installs
   as a separate PWA rather than colliding with production's). This
-  deliberately couples the two deploys (any push to either branch rebuilds
-  both); the existing `concurrency: { group: pages }` still serializes
-  overlapping main+develop pushes. Develop-triggered runs additionally record a `uat` environment in the
-  Deployments UI (bookkeeping only), giving UAT deploys their own history with
-  the `/uat/` URL; `github-pages` itself still interleaves both branches'
-  entries unchanged.
+  deliberately couples the two deploys; since #117, develop-triggered runs
+  REUSE a cached, validated prod dist keyed on the main SHA instead of
+  rebuilding it (validation = full sha256 manifest + sanity + PMTiles magic
+  BEFORE assembly; miss/invalid → loud full rebuild + byte-drift check
+  against the main-authored manifest artifact — drift fails the run;
+  main-triggered runs double-build as a determinism proof and publish that
+  baseline). Cache saves happen on develop-triggered runs only: develop is
+  the DEFAULT branch, so its cache scope is visible everywhere, while
+  main-scoped saves would be invisible to develop runs — that cache-scope
+  asymmetry is why the drift baseline travels as a workflow ARTIFACT, not a
+  cache. The existing `concurrency: { group: pages }` still serializes
+  overlapping main+develop pushes. Develop-triggered runs additionally
+  record a `uat` environment in the Deployments UI and main-triggered runs a
+  `prod` one (both bookkeeping only, #106/#127); `github-pages` remains the
+  platform-managed mechanical env — never rename it (the Pages OIDC flow
+  owns it; rename is a trap, #127 spike) — and still interleaves both
+  branches' entries unchanged.
   Production:
   `https://docgerd.github.io/sail_command/` (unchanged, verified
   byte-for-byte identical to the pre-#96 build). UAT (unreleased develop
@@ -142,8 +153,10 @@ deviate from it.
   commits, review threads resolved), required checks `app` + `e2e` with
   strict up-to-date policy, no force pushes or deletions.
 - Post-deploy CDN smoke probe (#117, guards the #118 fix class): `deploy.yml`'s
-  `smoke-probe` job probes ONLY the triggering ref's deployment (develop →
-  `/uat/`, main → site root) at the archive filename discovered from that ref's
+  `smoke-probe` job probes BOTH deployments (prod site root AND `/uat/`) on
+  EVERY run — a redeploy evicts prod's CDN edge Range objects even when zero
+  prod bytes changed (measured on #117: develop pushes resurfaced the #118
+  gzip flip on prod) — at archive filenames discovered from each ref's own
   built dist (`data/basemap.pmtiles*`, never hardcoded; zero matches fails the
   job), requiring 200 with no `content-encoding` plus a `Range: bytes=0-15` →
   206 of exactly 16 bytes starting with the `PMTiles` magic, with retries for
