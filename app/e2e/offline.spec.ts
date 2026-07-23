@@ -46,7 +46,9 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
       timeout: 60_000,
     });
     await expect(page.locator('.plans-list-row')).toHaveCount(1);
-    await page.getByRole('tab', { name: 'Planen' }).click();
+    // Deliberately STAY on the Routen tab: the session snapshot (#113) now
+    // holds {planId, tab:'routes'}, which is what the two restore assertions
+    // below (online navigation, then the true-offline reload) replay against.
 
     // Research-verified constraint: context.setOffline(true) blocks new
     // browser-initiated connections but does NOT block a service worker's
@@ -66,6 +68,15 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // saved plan's own windGrid is already stored, and nothing in this
     // offline phase re-fetches wind.
     await page.goto(server.url);
+
+    // #113: that navigation was already a full boot — session restore must
+    // bring back the saved plan and the Routen tab with zero interaction
+    // (both locators auto-retry, gating on the restore's state signals).
+    await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByRole('tablist', { name: 'Riggvergleich' })).toBeVisible();
 
     // #28: font glyphs are runtime-cached, not precached — the offline
     // reload below can only render map labels from ranges that were already
@@ -135,6 +146,20 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
       page.getByText('Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.'),
     ).toBeVisible();
 
+    // #113 session restore, fully offline: the reload comes back where the
+    // user left off — Routen tab selected and the saved plan re-activated by
+    // pure local replay (localStorage snapshot → IndexedDB getPlan → its
+    // STORED wind grid). The server is dead and setOffline blocks everything
+    // else, so a restore that fetched ANYTHING would fail loudly here and
+    // land in offlineConsoleErrors.
+    await expect(page.getByRole('tab', { name: 'Routen' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.getByRole('tablist', { name: 'Riggvergleich' })).toBeVisible({
+      timeout: 30_000,
+    });
+
     // Proves sw.ts's dedicated Range-request route for the basemap archive
     // (basemap.pmtiles.png since the #118 rename) is actually what's serving
     // it here, not just "some cached response that happens to render a
@@ -164,6 +189,8 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // endpoints set, the only remaining reason canPlan (App.tsx) can be
     // false is the offline guard itself — a meaningfully offline-specific
     // assertion, not just "button disabled because nothing is picked yet".
+    // (#113 restored the Routen tab above, so switch to Planen first.)
+    await page.getByRole('tab', { name: 'Planen' }).click();
     await page.getByRole('region', { name: 'Start' }).getByRole('combobox').fill('Langballigau');
     await page.getByRole('region', { name: 'Start' }).getByRole('option').first().click();
     await page.getByRole('region', { name: 'Ziel' }).getByRole('combobox').fill('Sønderborg');
