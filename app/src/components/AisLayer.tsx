@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { Map as MaplibreMap, Popup } from 'maplibre-gl';
-import type { GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
+import { Popup } from 'maplibre-gl';
+import type { GeoJSONSource, Map as MaplibreMap, MapLayerMouseEvent } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useT } from '../i18n';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { aisFeatureCollection, aisPopupRows, type AisPopupProps } from '../lib/aisGeoJson';
+import { installStyleSetup } from '../lib/styleReload';
 import type { AisTargetSnapshot } from '../lib/aisTargets';
 
 export const AIS_SOURCE = 'sc-ais';
@@ -15,13 +16,6 @@ export const AIS_LABEL_LAYER = 'sc-ais-labels';
 const ARROW_IMAGE = 'sc-ais-arrow';
 const DOT_IMAGE = 'sc-ais-dot';
 const AIS_COLOR = '#009E73'; // Okabe-Ito green, distinct from BoatMarker's blue
-
-// Same one-shot style-ready helper as DataLayers/RouteLayer (map 'load' fires
-// once; valid only for one-time setup).
-function whenStyleReady(map: MaplibreMap, fn: () => void): void {
-  if (map.isStyleLoaded()) fn();
-  else map.once('load', fn);
-}
 
 // A crisp directional arrow + a neutral dot, registered as map images so the
 // symbol layer can rotate the arrow via icon-rotate. Built on a canvas (no DOM
@@ -149,23 +143,41 @@ export default function AisLayer({ targets }: { targets: AisTargetSnapshot[] }) 
   const t = useT();
   const styleReadyRef = useRef(false);
   const tRef = useRef(t);
+  // Latest snapshot, readable from the style setup below without re-running
+  // that effect per snapshot: a re-add after a mid-session style reload must
+  // paint the CURRENT targets, not the ones the mount effect closed over
+  // (#153, BoatMarker's fixRef idiom).
+  const targetsRef = useRef(targets);
   useEffect(() => {
     tRef.current = t;
+    targetsRef.current = targets;
   });
 
-  // One-time source/layer/image setup, gated on the style being ready.
+  // Source/layer/image setup — run once the style is ready and re-run after
+  // every style reload via the shared installStyleSetup hook (#153): a
+  // mid-session map.setStyle() drops custom sources/layers/images, and
+  // 'styledata' fires once the replacement style is in place. The guard makes
+  // routine 'styledata' firings (any addLayer map-wide, including this
+  // setup's own adds) cheap no-ops; the styleReadyRef half admits a remount
+  // that finds the previous instance's layers still in place (AisLayer never
+  // removes them) and must still repaint + re-arm its own setData effect.
   useEffect(() => {
     if (!map) return;
-    whenStyleReady(map, () => {
+    const setup = () => {
+      if (map.getSource(AIS_SOURCE) && styleReadyRef.current) return;
       registerAisImages(map);
       setupLayers(map);
       styleReadyRef.current = true;
-      // Paint whatever targets already arrived before the style finished.
+      // Paint whatever targets already arrived (first ready) or the current
+      // snapshot (re-add after a reload).
       (map.getSource(AIS_SOURCE) as GeoJSONSource | undefined)?.setData(
-        aisFeatureCollection(targets),
+        aisFeatureCollection(targetsRef.current),
       );
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time setup; targets flow through the setData effect below
+    };
+    // Unmount: the layers stay in place for the map's lifetime (as before),
+    // but both listeners must go — a post-unmount 'load'/'styledata' must
+    // never resurrect anything ownerless.
+    return installStyleSetup(map, setup);
   }, [map]);
 
   // ≤1 Hz setData: `targets` is already published at ≤1 Hz by useAisTraffic.
