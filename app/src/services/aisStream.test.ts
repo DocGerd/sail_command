@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+  AIS_AUTH_STABLE_MS,
   AIS_STREAM_URL,
   AisStreamClient,
   buildSubscription,
@@ -188,17 +189,37 @@ function fakeSocket() {
   };
 }
 
-/** A deterministic timer harness: records scheduled callbacks + delays. */
+/**
+ * A deterministic timer harness: records scheduled callbacks + delays. The 30 s
+ * auth-stability timer (identified by its AIS_AUTH_STABLE_MS delay — client
+ * tests never reach a backoff attempt that could collide with it) is tracked
+ * separately from the reconnect timers so the reconnect-delay pins stay exact.
+ */
 function fakeTimers() {
-  const scheduled: { fn: () => void; ms: number }[] = [];
+  const scheduled: { fn: () => void; ms: number; cleared: boolean }[] = [];
+  const reconnects = () => scheduled.filter((s) => s.ms !== AIS_AUTH_STABLE_MS);
+  const stability = () => scheduled.filter((s) => s.ms === AIS_AUTH_STABLE_MS && !s.cleared);
   return {
     setTimer: (fn: () => void, ms: number): number => {
-      scheduled.push({ fn, ms });
+      scheduled.push({ fn, ms, cleared: false });
       return scheduled.length; // 1-based id
     },
-    clearTimer: vi.fn(),
-    delays: () => scheduled.map((s) => s.ms),
-    fireLast: () => scheduled[scheduled.length - 1].fn(),
+    clearTimer: (id: number) => {
+      const t = scheduled[id - 1];
+      if (t) t.cleared = true;
+    },
+    /** Reconnect backoff delays only (stability timers excluded). */
+    delays: () => reconnects().map((s) => s.ms),
+    fireLast: () => reconnects()[reconnects().length - 1].fn(),
+    /** Fire the pending auth-stability timer: the socket stayed open 30 s. */
+    fireStability: () => {
+      const st = stability();
+      const t = st[st.length - 1];
+      t.cleared = true; // fired = no longer pending
+      t.fn();
+    },
+    /** Auth-stability timers armed but neither fired nor cleared (leak probe). */
+    pendingStability: () => stability().length,
   };
 }
 
@@ -304,6 +325,40 @@ describe('AisStreamClient', () => {
     fs.remoteClose(); // subscribed close 3 -> terminal keyError, NO new timer
     expect(statuses).toEqual(['connecting', 'keyError']);
     expect(timers.delays()).toEqual([500, 1000]);
+    // Every per-connect stability timer was cleared by its close (no leak).
+    expect(timers.pendingStability()).toBe(0);
+  });
+
+  // Review F1 (PR #145): a VALID key in a vessel-empty bbox produces zero
+  // messages — silent closes there are network drops. Surviving the 30 s
+  // stability window proves the key, so later silent closes must reconnect
+  // forever and never reach keyError.
+  it('a connection surviving the stability window proves the key: later silent closes stay transient', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start(BBOX);
+    fs.open();
+    timers.fireStability(); // 30 s open, zero traffic -> key proven, counters reset
+    fs.remoteClose(); // silent close 1
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // silent close 2
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // silent close 3 -> would be keyError were the key unproven
+    // Backoff attempts 1..3 after the stability reset -> 0.5 * (1000, 2000, 4000):
+    // the third close armed a retry instead of going terminal.
+    expect(timers.delays()).toEqual([500, 1000, 2000]);
+    expect(statuses).toEqual(['connecting']); // never keyError, never closed
+  });
+
+  it('stop() clears a pending auth-stability timer (no leak) and arms no reconnect', () => {
+    const { client, fs, timers } = makeClient();
+    client.start(BBOX);
+    fs.open();
+    expect(timers.pendingStability()).toBe(1);
+    client.stop();
+    expect(timers.pendingStability()).toBe(0);
+    expect(timers.delays()).toEqual([]);
   });
 
   it('a received message resets the early-close counter (transient blips never reach keyError)', () => {

@@ -137,12 +137,16 @@ export function parseAisMessage(raw: string): ParsedAisMessage | null {
 export const AIS_BACKOFF_BASE_MS = 1_000;
 export const AIS_BACKOFF_CAP_MS = 60_000;
 
-// Consecutive subscribed-then-bare-closed cycles (zero inbound messages) that
-// are promoted to the terminal keyError state — the live-verified aisstream
-// wrong-key signature (no error frame; close 1006 with an empty reason right
-// after the subscription is sent). Three cycles keeps a single transient blip
-// or two reconnecting normally while a wrong key settles in a few seconds.
+// Wrong-key detection is TIME-GATED (live-verified; PR #145 review F1):
+// aisstream kills a bad-key socket within ~a second of the subscription (bare
+// close 1006, empty reason, no error frame), while a valid key's socket stays
+// open indefinitely even in a vessel-empty bbox. A close therefore counts
+// toward keyError only while the key is still UNPROVEN and the subscription
+// was sent; a connection that survives AIS_AUTH_STABLE_MS with the socket
+// open — or that receives any message — proves the key, after which every
+// close is a transient network drop (backoff reconnect, never keyError).
 export const AIS_AUTH_CLOSE_THRESHOLD = 3;
+export const AIS_AUTH_STABLE_MS = 30_000;
 
 // Full-jitter capped exponential backoff. attempt is 1-based (consecutive
 // failed connects); delay in [0, min(cap, base * 2^(attempt-1))). random()
@@ -213,9 +217,16 @@ export class AisStreamClient {
   private attempt = 0;
   private receivedSinceConnect = false;
   // Consecutive connects that opened AND sent the subscription, then closed
-  // without a single inbound message — the live-verified wrong-key signature.
+  // without a single inbound message and before the key was proven — the
+  // live-verified wrong-key signature.
   private earlyCloses = 0;
+  // Once true, the key demonstrably works (a message arrived, or a connection
+  // survived AIS_AUTH_STABLE_MS with the socket open) — early closes can no
+  // longer reach keyError. Deliberately NOT reset in start(): the key is fixed
+  // per client instance (the hook recreates the client on a key change).
+  private keyProven = false;
   private timerId: number | null = null;
+  private stabilityTimerId: number | null = null;
   private currentBbox: AisBoundingBox | null = null;
   private status: AisClientStatus = 'closed';
 
@@ -253,6 +264,7 @@ export class AisStreamClient {
       this.clearTimer(this.timerId);
       this.timerId = null;
     }
+    this.clearStabilityTimer();
     const s = this.socket;
     this.socket = null;
     this.socketOpen = false;
@@ -270,14 +282,19 @@ export class AisStreamClient {
       disconnected = true;
       this.socket = null;
       this.socketOpen = false;
+      this.clearStabilityTimer();
       if (!this.running || this.authFailed) return;
       // Live-verified (#25 Task 8): a bad/revoked key produces NO error frame —
       // aisstream accepts the socket, takes the subscription, then closes bare
-      // (1006, empty reason) and keeps doing so on every reconnect. Promote
+      // (1006, empty reason) within ~a second, on every reconnect. Promote
       // AIS_AUTH_CLOSE_THRESHOLD consecutive subscribed-then-closed cycles with
-      // zero inbound messages to the terminal keyError state (no retry storm).
-      // Failures that never reached onOpen (offline, DNS) stay transient.
-      if (subscribed && !this.receivedSinceConnect) {
+      // zero inbound messages to the terminal keyError state (no retry storm) —
+      // but ONLY while the key is unproven (see AIS_AUTH_STABLE_MS): once any
+      // connection received a message or stayed open through the stability
+      // window, silent closes are network drops, not auth failures (a valid key
+      // in a vessel-empty bbox must never reach keyError; review F1). Failures
+      // that never reached onOpen (offline, DNS) always stay transient.
+      if (!this.keyProven && subscribed && !this.receivedSinceConnect) {
         this.earlyCloses += 1;
         if (this.earlyCloses >= AIS_AUTH_CLOSE_THRESHOLD) {
           this.authFailed = true;
@@ -297,6 +314,17 @@ export class AisStreamClient {
         this.socketOpen = true;
         subscribed = true;
         this.sendSubscription();
+        // Arm the auth-stability window: a socket the server keeps open this
+        // long proves the key even with zero traffic in the subscribed bbox
+        // (bad-key sockets die within ~a second), so the early-close streak
+        // and the backoff attempt counter reset.
+        this.stabilityTimerId = this.setTimer(() => {
+          this.stabilityTimerId = null;
+          if (!this.socketOpen) return;
+          this.keyProven = true;
+          this.earlyCloses = 0;
+          this.attempt = 0;
+        }, AIS_AUTH_STABLE_MS);
       },
       onMessage: (data) => {
         const parsed = parseAisMessage(data);
@@ -305,6 +333,7 @@ export class AisStreamClient {
           // Terminal: a bad/revoked key must not spin a retry storm.
           this.authFailed = true;
           disconnected = true; // suppress the retry the imminent close would arm
+          this.clearStabilityTimer();
           this.emitStatus('keyError');
           const s = this.socket;
           this.socket = null;
@@ -316,6 +345,7 @@ export class AisStreamClient {
           this.receivedSinceConnect = true;
           this.attempt = 0; // a live subscription resets backoff
           this.earlyCloses = 0; // …and the wrong-key early-close streak
+          this.keyProven = true; // a delivered message proves the key outright
           this.emitStatus('live');
         }
         this.callbacks.onMessage(parsed);
@@ -328,6 +358,13 @@ export class AisStreamClient {
   private sendSubscription(): void {
     if (!this.socket || !this.currentBbox) return;
     this.socket.send(JSON.stringify(buildSubscription(this.apiKey, this.currentBbox)));
+  }
+
+  private clearStabilityTimer(): void {
+    if (this.stabilityTimerId !== null) {
+      this.clearTimer(this.stabilityTimerId);
+      this.stabilityTimerId = null;
+    }
   }
 
   private emitStatus(status: AisClientStatus): void {
