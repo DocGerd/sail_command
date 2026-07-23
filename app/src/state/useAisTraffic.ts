@@ -1,0 +1,152 @@
+import { useEffect, useRef, useState } from 'react';
+import {
+  AisStreamClient,
+  browserAisSocket,
+  type AisBoundingBox,
+  type AisClientStatus,
+  type AisStreamCallbacks,
+} from '../services/aisStream';
+import {
+  mergeAisMessage,
+  snapshotTargets,
+  sweepDropped,
+  type AisTarget,
+  type AisTargetSnapshot,
+} from '../lib/aisTargets';
+
+export type AisStatus = 'off' | 'connecting' | 'live' | 'offline' | 'keyError';
+
+export interface AisClientLike {
+  start(bbox: AisBoundingBox): void;
+  updateBbox(bbox: AisBoundingBox): void;
+  stop(): void;
+}
+
+export interface UseAisTrafficInput {
+  // string | undefined (not ?-optional): settings.aisApiKey is string|undefined
+  // and exactOptionalPropertyTypes forbids passing undefined into a ?-optional.
+  apiKey: string | undefined;
+  ownMmsi: string | undefined;
+  bbox: AisBoundingBox | null;
+  online: boolean;
+  visible: boolean;
+}
+
+export interface UseAisTrafficDeps {
+  createClient?: (apiKey: string, callbacks: AisStreamCallbacks) => AisClientLike;
+  now?: () => number;
+}
+
+export interface UseAisTrafficResult {
+  status: AisStatus;
+  targets: AisTargetSnapshot[];
+  targetCount: number;
+}
+
+function defaultCreateClient(apiKey: string, callbacks: AisStreamCallbacks): AisClientLike {
+  return new AisStreamClient(apiKey, callbacks, { socketFactory: browserAisSocket });
+}
+
+/**
+ * #25 AIS live traffic overlay hook. Mirrors useOwnshipGps: high-frequency data
+ * stays local (the target Map lives in a ref; only the ≤1 Hz snapshot is React
+ * state), never AppState. Only mounted while the Live tab is active (App gates
+ * the mount), so "Live tab active" is implied; the socket additionally requires
+ * a non-empty key, navigator.onLine, and document visibility — all passed in.
+ * Going offline/hidden stops the socket but KEEPS the store aging; unmount
+ * (tab switch) discards it, so a fresh Live visit starts empty.
+ */
+export function useAisTraffic(
+  input: UseAisTrafficInput,
+  deps: UseAisTrafficDeps = {},
+): UseAisTrafficResult {
+  const { apiKey, ownMmsi, bbox, online, visible } = input;
+  const createClient = deps.createClient ?? defaultCreateClient;
+  const now = deps.now ?? Date.now;
+
+  const keyValid = apiKey !== undefined && apiKey.length > 0;
+
+  const storeRef = useRef<Map<string, AisTarget>>(new Map());
+  const clientRef = useRef<AisClientLike | null>(null);
+  const clientKeyRef = useRef<string | null>(null);
+  // ownMmsi read through a ref so the client's long-lived onMessage closure
+  // always filters against the latest value without recreating the client.
+  // Synced in an effect (not during render) — the react-hooks lint rule
+  // forbids ref writes in the render body.
+  const ownMmsiRef = useRef(ownMmsi);
+  useEffect(() => {
+    ownMmsiRef.current = ownMmsi;
+  }, [ownMmsi]);
+
+  const [clientStatus, setClientStatus] = useState<AisClientStatus>('closed');
+  const [targets, setTargets] = useState<AisTargetSnapshot[]>([]);
+
+  // ≤1 Hz publish tick: doubles as the drop-sweeper and recomputes age tiers so
+  // stale targets fade smoothly. One new array per second is exactly the
+  // "setData at most 1 Hz" the renderer wants.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const t = now();
+      sweepDropped(storeRef.current, t);
+      setTargets(snapshotTargets(storeRef.current, t));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [now]);
+
+  // Connection lifecycle. The guard is written inline (not via the `keyValid`
+  // boolean) so TypeScript's control-flow analysis narrows `apiKey` to a
+  // non-empty string and `bbox` to non-null past it — a separate boolean const
+  // would not narrow them, and `createClient(apiKey, …)` would fail strict.
+  useEffect(() => {
+    if (apiKey === undefined || apiKey.length === 0 || !online || !visible || bbox === null) {
+      clientRef.current?.stop();
+      clientRef.current = null;
+      clientKeyRef.current = null;
+      return; // store intentionally NOT cleared — targets persist & keep aging
+    }
+    if (!clientRef.current || clientKeyRef.current !== apiKey) {
+      clientRef.current?.stop();
+      const client = createClient(apiKey, {
+        onMessage: (msg) => mergeAisMessage(storeRef.current, msg, now(), ownMmsiRef.current),
+        onStatus: (s) => setClientStatus(s),
+      });
+      clientRef.current = client;
+      clientKeyRef.current = apiKey;
+      client.start(bbox);
+    } else {
+      clientRef.current.updateBbox(bbox);
+    }
+  }, [online, visible, bbox, apiKey, createClient, now]);
+
+  // Unmount teardown: a tab switch discards the store so a fresh Live visit
+  // starts empty (spec).
+  useEffect(() => {
+    const store = storeRef.current;
+    return () => {
+      clientRef.current?.stop();
+      clientRef.current = null;
+      store.clear();
+    };
+  }, []);
+
+  // Whether the connection gates are open this render — the same condition the
+  // lifecycle effect guards on. Deriving the effective client status from it at
+  // render time (instead of a setClientStatus('closed') reset inside the
+  // effect) avoids the react-hooks set-state-in-effect cascade, mirroring
+  // useOwnshipGps's derived-fix precedent; the observable status mapping is
+  // identical.
+  const clientActive = keyValid && online && visible && bbox !== null;
+  const effectiveStatus: AisClientStatus = clientActive ? clientStatus : 'closed';
+
+  const status: AisStatus = !keyValid
+    ? 'off'
+    : !online
+      ? 'offline'
+      : effectiveStatus === 'keyError'
+        ? 'keyError'
+        : effectiveStatus === 'live'
+          ? 'live'
+          : 'connecting';
+
+  return { status, targets, targetCount: targets.length };
+}
