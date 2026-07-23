@@ -20,11 +20,26 @@ const STATUS_KEY: Record<Exclude<AisStatus, 'live'>, MsgKey> = {
 };
 
 // Pure, unit-tested: the five-state status chip. Kept separate from the
-// map/hook wiring so it can be tested without a MapLibre instance.
-export function AisStatusChip({ status, targetCount }: { status: AisStatus; targetCount: number }) {
+// map/hook wiring so it can be tested without a MapLibre instance. While a
+// route is active (#146) the live count splits into total and along-route.
+export function AisStatusChip({
+  status,
+  targetCount,
+  routeActive,
+  routeCount,
+}: {
+  status: AisStatus;
+  targetCount: number;
+  routeActive: boolean;
+  routeCount: number;
+}) {
   const t = useT();
   const text =
-    status === 'live' ? t('ais.status.live', { count: targetCount }) : t(STATUS_KEY[status]);
+    status === 'live'
+      ? routeActive
+        ? t('ais.status.liveRoute', { count: targetCount, routeCount })
+        : t('ais.status.live', { count: targetCount })
+      : t(STATUS_KEY[status]);
   return (
     <div className="ais-status" role="status">
       <Chip className={`ais-status-chip ais-status-${status}`}>{text}</Chip>
@@ -101,7 +116,7 @@ export default function AisTraffic({
   return (
     <>
       <AisLayer targets={targets} />
-      <AisStatusChip status={status} targetCount={targetCount} />
+      <AisStatusChip status={status} targetCount={targetCount} routeActive={false} routeCount={0} />
     </>
   );
 }

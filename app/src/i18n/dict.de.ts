@@ -282,5 +282,6 @@ export const de = {
   'ais.status.live': 'AIS live · {count} Schiffe',
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: API-Schlüssel prüfen',
+  'ais.status.liveRoute': 'AIS live · {count} Schiffe ({routeCount} entlang Route)',
 } as const;
 export type MsgKey = keyof typeof de;

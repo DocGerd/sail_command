@@ -277,4 +277,5 @@ export const en = {
   'ais.status.live': 'AIS live · {count} vessels',
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: check your API key',
+  'ais.status.liveRoute': 'AIS live · {count} vessels ({routeCount} along route)',
 } satisfies Record<MsgKey, string>;
