@@ -137,6 +137,13 @@ export function parseAisMessage(raw: string): ParsedAisMessage | null {
 export const AIS_BACKOFF_BASE_MS = 1_000;
 export const AIS_BACKOFF_CAP_MS = 60_000;
 
+// Consecutive subscribed-then-bare-closed cycles (zero inbound messages) that
+// are promoted to the terminal keyError state — the live-verified aisstream
+// wrong-key signature (no error frame; close 1006 with an empty reason right
+// after the subscription is sent). Three cycles keeps a single transient blip
+// or two reconnecting normally while a wrong key settles in a few seconds.
+export const AIS_AUTH_CLOSE_THRESHOLD = 3;
+
 // Full-jitter capped exponential backoff. attempt is 1-based (consecutive
 // failed connects); delay in [0, min(cap, base * 2^(attempt-1))). random()
 // in [0,1) is injected for deterministic tests.
@@ -205,6 +212,9 @@ export class AisStreamClient {
   private authFailed = false;
   private attempt = 0;
   private receivedSinceConnect = false;
+  // Consecutive connects that opened AND sent the subscription, then closed
+  // without a single inbound message — the live-verified wrong-key signature.
+  private earlyCloses = 0;
   private timerId: number | null = null;
   private currentBbox: AisBoundingBox | null = null;
   private status: AisClientStatus = 'closed';
@@ -226,6 +236,7 @@ export class AisStreamClient {
     this.running = true;
     this.authFailed = false;
     this.attempt = 0;
+    this.earlyCloses = 0;
     this.currentBbox = bbox;
     this.open();
   }
@@ -253,12 +264,27 @@ export class AisStreamClient {
     this.receivedSinceConnect = false;
     this.emitStatus('connecting');
     let disconnected = false;
+    let subscribed = false;
     const handleDisconnect = () => {
       if (disconnected) return;
       disconnected = true;
       this.socket = null;
       this.socketOpen = false;
       if (!this.running || this.authFailed) return;
+      // Live-verified (#25 Task 8): a bad/revoked key produces NO error frame —
+      // aisstream accepts the socket, takes the subscription, then closes bare
+      // (1006, empty reason) and keeps doing so on every reconnect. Promote
+      // AIS_AUTH_CLOSE_THRESHOLD consecutive subscribed-then-closed cycles with
+      // zero inbound messages to the terminal keyError state (no retry storm).
+      // Failures that never reached onOpen (offline, DNS) stay transient.
+      if (subscribed && !this.receivedSinceConnect) {
+        this.earlyCloses += 1;
+        if (this.earlyCloses >= AIS_AUTH_CLOSE_THRESHOLD) {
+          this.authFailed = true;
+          this.emitStatus('keyError');
+          return;
+        }
+      }
       this.attempt += 1;
       this.timerId = this.setTimer(
         () => this.open(),
@@ -269,6 +295,7 @@ export class AisStreamClient {
       onOpen: () => {
         if (!this.running) return;
         this.socketOpen = true;
+        subscribed = true;
         this.sendSubscription();
       },
       onMessage: (data) => {
@@ -288,6 +315,7 @@ export class AisStreamClient {
         if (!this.receivedSinceConnect) {
           this.receivedSinceConnect = true;
           this.attempt = 0; // a live subscription resets backoff
+          this.earlyCloses = 0; // …and the wrong-key early-close streak
           this.emitStatus('live');
         }
         this.callbacks.onMessage(parsed);

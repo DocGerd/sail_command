@@ -287,6 +287,60 @@ describe('AisStreamClient', () => {
     expect(timers.delays()).toEqual([500, 1000]);
   });
 
+  // Live-verified (#25 Task 8): aisstream signals a bad key with NO error
+  // frame — the socket accepts, takes the subscription, then closes bare
+  // (1006, empty reason). Three consecutive opened-and-subscribed closes with
+  // zero inbound messages are promoted to the terminal keyError state.
+  it('treats repeated bare closes right after subscribing as terminal keyError (wrong-key signature)', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start(BBOX);
+    fs.open();
+    fs.remoteClose(); // subscribed close 1 -> still transient, timer armed
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 2 -> still transient, timer armed
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 3 -> terminal keyError, NO new timer
+    expect(statuses).toEqual(['connecting', 'keyError']);
+    expect(timers.delays()).toEqual([500, 1000]);
+  });
+
+  it('a received message resets the early-close counter (transient blips never reach keyError)', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start(BBOX);
+    fs.open();
+    fs.remoteClose(); // subscribed close 1
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 2
+    timers.fireLast();
+    fs.open();
+    fs.message(POSITION_RAW); // live -> counter back to 0
+    fs.remoteClose(); // not an early close (a message arrived) -> plain retry
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // early close 1 of a NEW streak -> still transient
+    expect(statuses).toEqual(['connecting', 'live', 'connecting']);
+    // Backoff attempts: 1, 2 (pre-live), reset by the live message, then 1, 2
+    // again -> 0.5*1000, 0.5*2000, 0.5*1000, 0.5*2000.
+    expect(timers.delays()).toEqual([500, 1000, 500, 1000]);
+  });
+
+  it('never counts unopened connection failures toward keyError (offline stays transient)', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start(BBOX);
+    fs.error(); // connect failed without ever opening (no subscription sent)
+    timers.fireLast();
+    fs.error();
+    timers.fireLast();
+    fs.error();
+    timers.fireLast();
+    fs.error(); // 4th straight failure: still transient, still retrying
+    expect(statuses).toEqual(['connecting']);
+    expect(timers.delays()).toEqual([500, 1000, 2000, 4000]);
+  });
+
   it('resets backoff after a live subscription (attempt counter returns to 1)', () => {
     const { client, fs, timers } = makeClient();
     client.start(BBOX);
