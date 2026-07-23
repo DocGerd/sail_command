@@ -5,7 +5,7 @@ import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
-import { seamarkFeatureCollectionWithIcons } from '../lib/seamarkGeoJson';
+import { SEAMARKS_LAYOUT, seamarkFeatureCollectionWithIcons } from '../lib/seamarkGeoJson';
 import { registerSeamarkImages } from '../lib/seamarkGlyphs';
 import { seamarkPopoverRows } from '../lib/seamarkPopover';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
@@ -180,15 +180,12 @@ function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer):
         type: 'symbol',
         source: SEAMARKS_SOURCE,
         layout: {
-          // Precomputed per feature (seamarkFeatureCollectionWithIcons) —
-          // seamarkType/category alone can't distinguish e.g. a red from a
-          // green lateral buoy, which the glyph fidelity needs (seamarkGlyphs.ts).
-          'icon-image': ['get', 'icon'],
           // ~1,794 points is dense enough that unculled icons would pile up
-          // at low zoom (unlike the 33 harbor markers) — collision-cull like
-          // the harbor labels, not like the sparser route wind barbs.
-          'icon-allow-overlap': false,
-          'icon-size': 0.85,
+          // at low zoom (unlike the 33 harbor markers). #144: the culling is
+          // priority-ordered (symbol-sort-key) with a z>=12 tap-safety
+          // overlap valve and a zoom size taper — expressions pinned in
+          // seamarkGeoJson.test.ts, rationale on SEAMARKS_LAYOUT itself.
+          ...SEAMARKS_LAYOUT,
           // Hidden at creation; the seamarksVisible sync effect (below, same
           // commit) applies the persisted/default state — OFF for a fresh
           // profile (#7, opt-in specialist layer) — before any paint.

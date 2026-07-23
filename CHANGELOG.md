@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Show the departure time on saved-route cards, alongside the existing created and ETA times (#112, #130).
 - Show the app's build version in the About dialog, so it's possible to tell which build an installed PWA is actually running (#125, #129).
 
+### Fixed
+
+- Fix unreadable overlapping seamark icons at medium zoom (e.g. Flensburger Förde): dense aids to navigation now thin out by navigational priority (lights before cardinals before laterals, lit before unlit) with zoom-tapered icon sizes, and from zoom 12 on every mark is shown and tappable (#144).
+
 ## [0.3.0] - 2026-07-23
 
 ### Added

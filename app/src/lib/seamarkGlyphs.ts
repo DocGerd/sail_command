@@ -65,6 +65,37 @@ export function classifySeamark(seamarkType: string): SeamarkFamily {
   return 'unknown';
 }
 
+/** Even base rank per family — navigational significance ascending (#144).
+ * Gaps of 2 leave room for the lit-ness promotion (-1) without families
+ * ever interleaving: a lit lateral (9) beats an unlit lateral (10) but
+ * never any cardinal (5/6). */
+const FAMILY_RANK: Record<SeamarkFamily, number> = {
+  lightMajor: 0,
+  lightMinor: 2,
+  isolatedDanger: 4,
+  cardinal: 6,
+  safeWater: 8,
+  lateral: 10,
+  specialPurpose: 12,
+  unknown: 14,
+};
+
+/**
+ * Collision-culling priority for the `sc-seamarks` layer's
+ * `symbol-sort-key` (#144): LOWER sorts first, and MapLibre places symbols
+ * in sort order, so lower keys win collisions. Stamped per feature at
+ * data-build time (seamarkFeatureCollectionWithIcons) — never re-derived in
+ * a style expression. Lit marks (any light field present) outrank unlit
+ * peers of the same family; integers only.
+ */
+export function seamarkPriority(props: SeamarkProperties): number {
+  const lit =
+    props.lightCharacter !== undefined ||
+    props.lightColour !== undefined ||
+    props.lightPeriod !== undefined;
+  return FAMILY_RANK[classifySeamark(props.seamarkType)] - (lit ? 1 : 0);
+}
+
 type ShapeBucket = 'can' | 'conical' | 'spar' | 'spherical' | 'pillar';
 
 /** Buckets the raw OSM `shape` tag into one of a handful of drawable
