@@ -266,6 +266,68 @@ describe('LiveView', () => {
     expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
   });
 
+  it('#142: advances the active leg as successive fixes move the boat — shared index 0 -> 1 and the next-event readout flips from the tack to "no more maneuvers"', async () => {
+    const { wp, emitFix } = fakeWatchPosition();
+    renderLive(wp, TEST_PLAN, <ActiveLegProbe />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+
+    // Fix 1: 2 nm into leg 0 (spans 0-5 nm east of P0) — leg 0 is active and
+    // the tack at leg 1's start is the next event ahead.
+    act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+    expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+    expect(screen.getByText(/tack/i)).toBeInTheDocument();
+
+    // Fix 2: 7 nm east of P0 = 2 nm into leg 1 (spans 5-10 nm) — by hand the
+    // nearest leg is now leg 1, and with no legs after it there is no flagged
+    // event ahead any more.
+    const legOneFix = destinationPoint(P0, 90, 7);
+    act(() => emitFix({ point: legOneFix, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+    expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('1');
+    expect(screen.getByText(/no more maneuvers/i)).toBeInTheDocument();
+    expect(screen.queryByText(/tack/i)).not.toBeInTheDocument();
+  });
+
+  it('#142: unmounting LiveView resets the shared active leg index to null, so a stale highlight cannot outlive the Live tab', async () => {
+    const { wp, emitFix } = fakeWatchPosition();
+    localStorage.setItem('sc-lang', 'en');
+    const ui = (withLive: boolean) => (
+      <I18nProvider>
+        <AppStateProvider>
+          <TestSetPlan plan={TEST_PLAN} />
+          <ActiveLegProbe />
+          {withLive && <LiveView watchPosition={wp} />}
+        </AppStateProvider>
+      </I18nProvider>
+    );
+    const { rerender } = render(ui(true));
+    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+    expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
+
+    // Same provider tree, LiveView child removed (what leaving the Live tab
+    // does in App.tsx) — the unmount-only effect must clear the shared index.
+    rerender(ui(false));
+    expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('none');
+  });
+
+  it('#142: toggling tracking off clears the readout data block (no stale HTS/ETA lingers)', async () => {
+    const { wp, emitFix } = fakeWatchPosition();
+    renderLive(wp, TEST_PLAN);
+    const toggle = await screen.findByRole('button', { name: 'Live view' });
+    fireEvent.click(toggle); // on
+
+    const expectedHts = formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
+    // COG 123.4, not 90: HTS on this due-east track is 090° and an identical
+    // COG would render a second '090°', breaking the single-element query.
+    act(() => emitFix({ point: FIX_POINT, cogDeg: 123.4, sogKn: 5, accuracyM: 9 }));
+    expect(screen.getByText(expectedHts)).toBeInTheDocument();
+    expect(screen.getByText(/projected eta/i)).toBeInTheDocument();
+
+    fireEvent.click(toggle); // off — fix cleared, data block unrendered
+    expect(screen.queryByText(expectedHts)).not.toBeInTheDocument();
+    expect(screen.queryByText(/projected eta/i)).not.toBeInTheDocument();
+  });
+
   it('a denied GPS error shows a one-time hint, recorded in localStorage, that does not reappear across remounts', async () => {
     const { wp: wp1, emitError: emitError1 } = fakeWatchPosition();
     const { unmount } = renderLive(wp1, TEST_PLAN);
@@ -284,6 +346,17 @@ describe('LiveView', () => {
     act(() => emitError2('denied'));
 
     expect(screen.queryByText(/location access/i)).not.toBeInTheDocument();
+  });
+
+  it("#142: an 'unavailable' GPS error shows the same one-time hint as 'denied' (spec §4: identical treatment)", async () => {
+    const { wp, emitError } = fakeWatchPosition();
+    renderLive(wp, TEST_PLAN);
+    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+
+    act(() => emitError('unavailable'));
+
+    expect(await screen.findByText(/location access/i)).toBeInTheDocument();
+    expect(localStorage.getItem('sc-gps-hint-shown')).toBe('1');
   });
 
   it('the hint can be dismissed, and the app (the toggle) remains usable while GPS is denied', async () => {
