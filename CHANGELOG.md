@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add a live AIS traffic overlay on the Live view: paste a personal aisstream.io API key in Options to see surrounding vessels (heading/COG, names, tap-for-details), with your own vessel filtered out by MMSI; online-only and fully inert without a key (#25).
 - Add a "What's new" view to the About dialog showing this changelog — the release history is baked into the app at build time and readable offline (#131, #139).
 - Add a manual "reroute from here" action in the Live view: with an active plan and a GPS fix, route from the current position to the plan's destination using the plan's stored forecast (works fully offline) and save the result as a new plan (#115, #137).
 - Add a "Recalculate" action to saved-route cards to re-plan a saved route with a fresh Open-Meteo forecast and an editable departure time, saved as a new plan by default (#114, #136).
