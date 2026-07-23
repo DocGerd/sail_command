@@ -202,6 +202,7 @@ export const en = {
   'about.open': 'About SailCommand',
   'about.title': 'About SailCommand',
   'about.close': 'Close',
+  'about.version': 'Version {version}',
   'about.caveats.heading': 'Important notes',
   'about.caveats.polars':
     'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
