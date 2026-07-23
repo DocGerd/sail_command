@@ -27,16 +27,20 @@ export default function ChangelogView({ releases }: ChangelogViewProps) {
             {release.version}
             {release.date !== null && <span className="changelog-date"> — {release.date}</span>}
           </h4>
-          {release.categories.map((category) => (
-            <div key={category.name}>
-              <h5>{category.name}</h5>
-              <ul>
-                {category.entries.map((entry) => (
-                  <li key={entry}>{entry}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {release.categories
+            // A stray empty `### Category` must not render an orphan heading
+            // over a zero-item list (review r3640079372).
+            .filter((category) => category.entries.length > 0)
+            .map((category) => (
+              <div key={category.name}>
+                <h5>{category.name}</h5>
+                <ul>
+                  {category.entries.map((entry) => (
+                    <li key={entry}>{entry}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
         </section>
       ))}
     </div>

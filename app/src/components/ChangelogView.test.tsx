@@ -24,7 +24,12 @@ const RELEASES: ChangelogRelease[] = [
   {
     version: '1.0.0',
     date: '2026-07-01',
-    categories: [{ name: 'Added', entries: ['Initial release.'] }],
+    categories: [
+      { name: 'Added', entries: ['Initial release.'] },
+      // Empty category in an otherwise non-empty release — must be omitted
+      // (no orphan 'Removed' heading), while the release itself renders.
+      { name: 'Removed', entries: [] },
+    ],
   },
 ];
 
@@ -65,6 +70,18 @@ describe('ChangelogView', () => {
       </I18nProvider>,
     );
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('omits an empty category heading inside a non-empty release (r3640079372)', () => {
+    render(
+      <I18nProvider>
+        <ChangelogView releases={RELEASES} />
+      </I18nProvider>,
+    );
+    // 1.0.0 renders (its 'Added' entry is present) but its empty 'Removed'
+    // category must not produce an orphan heading over a zero-item list.
+    expect(screen.getByText('Initial release.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Removed' })).not.toBeInTheDocument();
   });
 
   it('skips a release whose categories hold no entries (empty Unreleased)', () => {
