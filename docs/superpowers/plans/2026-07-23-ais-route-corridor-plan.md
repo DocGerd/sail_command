@@ -106,9 +106,9 @@ Steps:
   // lat pad = toDeg(5/3440.065) = 0.083277° (meridian arc, exact):
   expect(box[0][0]).toBeCloseTo(54.416723, 5); // 54.5 − 0.083277
   expect(box[1][0]).toBeCloseTo(54.583277, 5); // 54.5 + 0.083277
-  // lon pad = 5/(60.0407·cos54.5°) = 0.143406° (nm-true E/W at 54.5°N):
-  expect(box[0][1]).toBeCloseTo(9.8566, 3);    // 10.0 − 0.143406
-  expect(box[1][1]).toBeCloseTo(10.3434, 3);   // 10.2 + 0.143406
+  // lon pad = 5/(60.0405·cos54.5°) = 0.143407° (nm-true E/W at 54.5°N):
+  expect(box[0][1]).toBeCloseTo(9.8566, 3);    // 10.0 − 0.143407
+  expect(box[1][1]).toBeCloseTo(10.3434, 3);   // 10.2 + 0.143407
   ```
   (lon at precision 3 — tolerance 5e-4 — absorbs the sub-1e-4 great-circle-vs-flat difference while still killing any mutant that drops the `cos`, uses a degree-fraction pad, or changes the half-width; lat at precision 5.)
 
@@ -120,8 +120,8 @@ Steps:
     null, 5,
   );
   expect(boxes).toHaveLength(1);           // box1.lonMax(10.3434) > box2.lonMin(10.0566) ⇒ overlap ⇒ merge
-  expect(boxes[0][0][1]).toBeCloseTo(9.8566, 3);   // 10.0 − 0.143406
-  expect(boxes[0][1][1]).toBeCloseTo(10.5434, 3);  // 10.4 + 0.143406
+  expect(boxes[0][0][1]).toBeCloseTo(9.8566, 3);   // 10.0 − 0.143407
+  expect(boxes[0][1][1]).toBeCloseTo(10.5434, 3);  // 10.4 + 0.143407
   ```
 
   **1c — astern/remaining extent (`Math.max(0, i-1)`), disjoint legs so boxes stay separate.** Four point-spaced legs at lon 10.0–10.1, lats 54.4 / 54.6 / 54.8 / 55.0 (0.2° apart ≈ 12 nm > 2·0.083° pad ⇒ no merge). Use containment (exact booleans):
