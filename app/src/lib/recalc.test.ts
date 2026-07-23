@@ -83,6 +83,8 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
 
     // Copies, not shared references — nothing downstream of the run can
     // reach back into the saved plan's own request.
+    expect(seeded.origin).not.toBe(plan.request.origin);
+    expect(seeded.destination).not.toBe(plan.request.destination);
     expect(seeded.viaPoints).not.toBe(plan.request.viaPoints);
     expect(seeded.viaPoints[0]).not.toBe(plan.request.viaPoints[0]);
     expect(seeded.settings).not.toBe(plan.request.settings);

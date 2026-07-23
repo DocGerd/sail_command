@@ -18,6 +18,8 @@ import type { Plan, PlanRequest } from '../types';
 export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
   return {
     ...plan.request,
+    origin: { ...plan.request.origin },
+    destination: { ...plan.request.destination },
     viaPoints: plan.request.viaPoints.map((v) => ({ ...v })),
     settings: { ...plan.request.settings },
     departureMs,
