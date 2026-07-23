@@ -2,23 +2,43 @@ name: Deploy
 on:
   push:
     branches: [main, develop]
+  # #117: manual dispatch so the develop-path hardening (prod dist reuse,
+  # byte-drift check, dual smoke probe) can be exercised without a code push.
+  # Dispatching from any OTHER branch skips cleanly via the build job's ref
+  # guard below (and the github-pages environment branch policy would reject
+  # its deploy job anyway, #96).
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency: { group: pages, cancel-in-progress: true }
 jobs:
   build:
+    # Ref guard: only main/develop ever deploy (mirrors the github-pages
+    # environment branch policy, #96). A workflow_dispatch from any other
+    # branch skips the whole run (dependent jobs skip with `needs`).
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # actions: read — the byte-stability step (#117b) looks up the last
+      # main-triggered run and downloads its prod-manifest artifact.
+      actions: read
     outputs:
-      probe-base: ${{ steps.probe-target.outputs.base }}
-      archive-files: ${{ steps.probe-target.outputs.files }}
+      prod-archive-files: ${{ steps.probe-target.outputs.prod-files }}
+      uat-archive-files: ${{ steps.probe-target.outputs.uat-files }}
     steps:
       # #96: GitHub Pages serves a SINGLE deployment artifact, so every run
-      # builds BOTH refs regardless of which one triggered it: main -> the
+      # assembles BOTH refs regardless of which one triggered it: main -> the
       # site root (production, unchanged), develop -> /uat/ (unreleased-state
-      # preview). This deliberately couples the two deploys (any push to
-      # either branch rebuilds both) per the issue's recommended
-      # combined-build approach; the concurrency group above still serializes
-      # overlapping main+develop pushes so two partial artifacts can't race.
+      # preview). This deliberately couples the two deploys; the concurrency
+      # group above still serializes overlapping main+develop pushes so two
+      # partial artifacts can't race.
+      # #117a: develop-triggered runs no longer REBUILD the main ref by
+      # default — they reuse a cached, validated prod dist keyed on the main
+      # sha (restore/validate steps below), making a develop push
+      # structurally incapable of altering production bytes. Cache miss or
+      # failed validation falls back to a full rebuild, loudly, followed by a
+      # byte-drift check against the last main-authored manifest (#117b).
       # #125: fetch-depth: 0 (full history + tags) on BOTH checkouts so each
       # build's `git describe --tags --always` (app/vite.config.ts, the
       # __SC_APP_VERSION__ define) yields a tag-relative version rather than
@@ -36,11 +56,8 @@ jobs:
           cache-dependency-path: |
             build-main/app/package-lock.json
             build-develop/app/package-lock.json
-      - name: Build main (production)
-        run: |
-          npm ci
-          npm run build
-        working-directory: build-main/app
+      # The develop/UAT half is built UNCONDITIONALLY on every deploying
+      # trigger — only the PROD half is cache-reusable under #117a.
       - name: Build develop (UAT)
         run: |
           npm ci
@@ -49,43 +66,286 @@ jobs:
         env:
           # Switches app/vite.config.ts's base to /sail_command/uat/ and, via
           # its subPathMeta() plugin + PWA manifest block, adds noindex and a
-          # distinct manifest name/id — the production build above never
+          # distinct manifest name/id — the production build below never
           # sets this, so its output stays byte-for-byte unchanged by #96.
           SC_DEPLOY_ENV: uat
-      - name: Assemble combined Pages artifact
+      - name: Resolve run mode and main sha
+        id: refs
+        working-directory: build-main
         run: |
+          main_sha="$(git rev-parse HEAD)"
+          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then
+            mode=develop
+          else
+            mode=main
+          fi
+          echo "main-sha=$main_sha" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Run mode: $mode (main ref at $main_sha)"
+      # #117b: fetch the newest main-authored drift baseline for THIS main
+      # sha up front (develop-triggered runs only) — BOTH consumers below
+      # need it: the REUSE path re-validates the cached dist against it (a
+      # cached manifest that no longer matches the baseline is discarded, so
+      # a cache can never shadow a later main-authored baseline for the same
+      # sha), and the REBUILD path enforces byte-stability with it. Not
+      # retrievable -> found=false, handled loudly downstream.
+      - name: Fetch main-authored drift baseline
+        id: baseline
+        if: steps.refs.outputs.mode == 'develop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
+        run: |
+          found=false
+          if run_ids="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=main&head_sha=$MAIN_SHA&per_page=10" --jq '.workflow_runs[].id')"; then
+            for rid in $run_ids; do
+              art_id="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$rid/artifacts" --jq '[.artifacts[] | select(.name == "prod-manifest" and .expired == false)][0].id // empty' || true)"
+              [ -n "$art_id" ] || continue
+              if gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$art_id/zip" > baseline.zip && unzip -o -q baseline.zip -d baseline-manifest; then
+                if [ "$(cat baseline-manifest/main-sha.txt 2>/dev/null)" = "$MAIN_SHA" ]; then
+                  found=true
+                  echo "Drift baseline: prod-manifest artifact of main-triggered run $rid (main@$MAIN_SHA)."
+                  break
+                fi
+                echo "run $rid artifact is for a different main sha — skipping"
+              else
+                echo "run $rid artifact download/unzip failed — skipping"
+              fi
+            done
+          else
+            echo "workflow-run lookup failed (API error)"
+          fi
+          echo "found=$found" >> "$GITHUB_OUTPUT"
+          [ "$found" = "true" ] || echo "No main-authored prod manifest retrievable for main@$MAIN_SHA (none recorded yet, expired, or API error)."
+      # #117a: restore the prod dist built at THIS main sha. Saved by earlier
+      # develop-triggered runs (below) — develop is the DEFAULT branch, so
+      # its cache scope is visible to every run; a main-scoped save would be
+      # invisible to develop-triggered runs (GitHub cache branch isolation),
+      # which is why the main-authored drift baseline travels as a workflow
+      # ARTIFACT instead (#117b). Deliberately NO restore-keys: a prefix
+      # match from a DIFFERENT main sha must never be republished as
+      # production content.
+      - name: Restore cached prod dist (develop-triggered runs only)
+        id: prod-cache
+        if: steps.refs.outputs.mode == 'develop'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: prod-dist-cache
+          key: prod-dist-v1-${{ steps.refs.outputs.main-sha }}
+      # #117a fail-safe: NEVER assemble unverified cached bytes into the
+      # production root. Full per-file sha256 manifest verification plus
+      # sanity checks (expected top-level entries, no files beyond the
+      # manifest, PMTiles magic on the basemap archive — same 7-byte magic
+      # check as the smoke probe's), PLUS — whenever a main-authored baseline
+      # is retrievable — a cross-check of the cached manifest against it, so
+      # reuse is held to the SAME byte-stability bar as a rebuild (#117b) and
+      # a stale cache can never shadow a newer baseline for the same sha.
+      # Any failure discards the cache and falls back to a full rebuild: a
+      # validation bug costs a rebuild, never ships wrong bytes. A bad cache
+      # entry cannot be overwritten in-place (same key), so it is
+      # rebuilt-around loudly on every run until the main sha (and thus the
+      # key) changes.
+      - name: Validate cached prod dist before reuse
+        id: validate-cache
+        if: steps.refs.outputs.mode == 'develop' && steps.prod-cache.outputs.cache-hit == 'true'
+        env:
+          BASELINE_FOUND: ${{ steps.baseline.outputs.found }}
+        run: |
+          d=prod-dist-cache/dist
+          m=prod-dist-cache/manifest.sha256
+          check() {
+            [ -f "$m" ] || { echo "manifest missing"; return 1; }
+            [ -s "$m" ] || { echo "manifest empty"; return 1; }
+            grep -Eq ' \./index\.html$' "$m" || { echo "manifest has no ./index.html entry"; return 1; }
+            for entry in index.html sw.js manifest.webmanifest; do
+              [ -f "$d/$entry" ] || { echo "expected top-level file $entry missing"; return 1; }
+            done
+            for entry in assets data icons; do
+              [ -d "$d/$entry" ] || { echo "expected top-level dir $entry missing"; return 1; }
+            done
+            shopt -s nullglob
+            archives=("$d"/data/basemap.pmtiles*)
+            [ "${#archives[@]}" -ge 1 ] || { echo "no data/basemap.pmtiles* archive"; return 1; }
+            for a in "${archives[@]}"; do
+              [ "$(head -c 7 "$a")" = "PMTiles" ] || { echo "$a lacks the PMTiles magic"; return 1; }
+            done
+            files_on_disk="$(find "$d" -type f | wc -l)"
+            files_in_manifest="$(wc -l < "$m")"
+            [ "$files_on_disk" -eq "$files_in_manifest" ] || { echo "$files_on_disk files on disk vs $files_in_manifest manifest entries"; return 1; }
+            (cd "$d" && sha256sum -c --quiet ../manifest.sha256) || { echo "sha256 manifest mismatch"; return 1; }
+            if [ "$BASELINE_FOUND" = "true" ]; then
+              diff -u baseline-manifest/manifest.sha256 "$m" > cache-baseline.diff || { head -20 cache-baseline.diff; echo "cached manifest differs from the main-authored baseline"; return 1; }
+            fi
+          }
+          if check; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+            echo "Cached prod dist validated ($(wc -l < "$m") files, manifest + sanity) — skipping the prod rebuild (#117a)."
+          else
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            rm -rf prod-dist-cache
+            echo "::warning::#117a cached prod dist FAILED validation — cache discarded, falling back to a full prod rebuild. Unverified bytes are never assembled."
+          fi
+      - name: Build main (production)
+        id: build-main
+        if: steps.refs.outputs.mode == 'main' || steps.prod-cache.outputs.cache-hit != 'true' || steps.validate-cache.outputs.valid != 'true'
+        working-directory: build-main/app
+        env:
+          MODE: ${{ steps.refs.outputs.mode }}
+          MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
+        run: |
+          if [ "$MODE" = "develop" ]; then
+            echo "::notice::#117a PROD REBUILD on a develop-triggered run: no valid cached prod dist for main@$MAIN_SHA (cache miss or failed validation) — rebuilding the main ref from scratch; the byte-stability check below guards the result."
+          fi
+          npm ci
+          npm run build
+          echo "built=true" >> "$GITHUB_OUTPUT"
+      # #117b: determinism proof on main-triggered runs (releases are rare, a
+      # second build is cheap there). The reuse + drift scheme assumes one
+      # commit -> one byte-exact dist (#129's __SC_APP_VERSION__ define is
+      # describe-based, no --dirty, deterministic per commit); if two builds
+      # of the SAME commit ever differ, fail loudly instead of publishing an
+      # unprovable baseline.
+      - name: Double-build main and diff (determinism proof)
+        if: steps.refs.outputs.mode == 'main'
+        working-directory: build-main/app
+        run: |
+          mv dist dist.first
+          npm run build
+          if ! diff -r dist.first dist > determinism.diff; then
+            head -50 determinism.diff
+            echo "::error::#117b main build is NOT deterministic: two builds of the same commit differ (see above). The prod dist reuse/byte-drift scheme requires per-commit determinism — fix that before deploying."
+            exit 1
+          fi
+          rm -rf dist.first determinism.diff
+          echo "Double-build byte-identical — main build is deterministic at this commit."
+      - name: Record per-file sha256 manifest of the prod dist
+        if: steps.build-main.outputs.built == 'true'
+        env:
+          MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
+        run: |
+          mkdir -p prod-manifest
+          (cd build-main/app/dist && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > prod-manifest/manifest.sha256
+          printf '%s\n' "$MAIN_SHA" > prod-manifest/main-sha.txt
+          echo "Recorded $(wc -l < prod-manifest/manifest.sha256) file hashes for main@$MAIN_SHA"
+      # #117b: main-triggered runs publish the manifest as the authoritative
+      # drift baseline (artifacts are branch-agnostic — see the cache-scope
+      # comment above for why this is not a cache).
+      - name: Publish drift baseline (main-triggered runs only)
+        if: steps.refs.outputs.mode == 'main'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: prod-manifest
+          path: prod-manifest/
+      # #117b: a develop-triggered run that DID rebuild the main ref must
+      # prove the rebuild is byte-identical to what the last main-triggered
+      # run built (baseline fetched above) — drift fails the run LOUDLY
+      # instead of silently republishing altered production bytes. No
+      # baseline available (first run after this workflow change, expired
+      # artifact, API error) -> proceed with a loud warning; the next
+      # main-triggered run records a fresh baseline.
+      - name: Enforce byte-stability vs last main-triggered build
+        id: drift
+        if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true'
+        env:
+          BASELINE_FOUND: ${{ steps.baseline.outputs.found }}
+          MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
+        run: |
+          if [ "$BASELINE_FOUND" != "true" ]; then
+            echo "baseline-verified=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (first run after this workflow change, expired artifact, or API error), and NOT caching it. A main-triggered run (release, or a workflow_dispatch on main) records a baseline."
+            exit 0
+          fi
+          if ! diff -u baseline-manifest/manifest.sha256 prod-manifest/manifest.sha256 > drift.diff; then
+            head -100 drift.diff
+            echo "::error::#117b PROD BYTE DRIFT: rebuilding main@$MAIN_SHA on this develop-triggered run produced bytes that DIFFER from the last main-triggered production build (diff above). Refusing to publish drifted production content — find the toolchain/dependency nondeterminism first."
+            exit 1
+          fi
+          echo "baseline-verified=true" >> "$GITHUB_OUTPUT"
+          echo "Byte-stability verified: rebuilt prod dist is identical to the last main-triggered build ($(wc -l < prod-manifest/manifest.sha256) files)."
+      # #117a: cache the rebuild so future develop-triggered runs skip the
+      # prod rebuild entirely — but ONLY when it was verified against a
+      # main-authored baseline (baseline-verified above). The cache key is
+      # immutable (a saved entry cannot be replaced), so caching
+      # baseline-UNVERIFIED bytes could permanently shadow a baseline
+      # recorded later for the same sha; gating the save keeps the chain of
+      # custody: every cache entry that exists passed the byte-stability
+      # check when it was written, and the reuse path re-checks it against
+      # the current baseline anyway.
+      - name: Stage prod dist for caching
+        if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true' && steps.drift.outputs.baseline-verified == 'true'
+        run: |
+          rm -rf prod-dist-cache
+          mkdir -p prod-dist-cache
+          cp -r build-main/app/dist prod-dist-cache/dist
+          cp prod-manifest/manifest.sha256 prod-dist-cache/manifest.sha256
+      - name: Save prod dist cache
+        if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true' && steps.drift.outputs.baseline-verified == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: prod-dist-cache
+          key: prod-dist-v1-${{ steps.refs.outputs.main-sha }}
+      - name: Assemble combined Pages artifact
+        id: assemble
+        env:
+          BUILT: ${{ steps.build-main.outputs.built }}
+        run: |
+          if [ "$BUILT" = "true" ]; then
+            prod_dist=build-main/app/dist
+            echo "Site root: freshly built main dist."
+          else
+            prod_dist=prod-dist-cache/dist
+            echo "Site root: VALIDATED cached main dist — this run never rebuilt prod (#117a)."
+          fi
+          [ -f "$prod_dist/index.html" ] || { echo "::error::prod dist at $prod_dist is not a build output"; exit 1; }
           mkdir -p site/uat
-          cp -r build-main/app/dist/. site/
+          cp -r "$prod_dist"/. site/
           cp -r build-develop/app/dist/. site/uat/
+          echo "prod-dist=$prod_dist" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with: { path: site }
-      # #117: pick the smoke-probe target for THIS run. The probe checks the
-      # TRIGGERING ref's deployment ONLY: every run builds BOTH refs, but
-      # pre-release prod still ships the legacy broken basemap.pmtiles (#118)
-      # — probing the non-triggering deployment would make every develop
-      # deploy red for a condition the run didn't change. Verify what you
-      # shipped. The archive filename is DISCOVERED from the triggering ref's
-      # built dist, never hardcoded, so a future rename can't silently make
-      # the probe vacuous; zero matches fails the probe job downstream.
-      - name: Locate basemap archive in the triggering ref's dist
+      # #117d: locate the basemap archive in BOTH deployments' dists. The
+      # smoke probe checks prod AND /uat/ on EVERY run: a redeploy evicts the
+      # CDN edge's cached Range objects for PROD too even when zero
+      # production bytes changed (measured on #117 — the eviction resurfaced
+      # the #118 gzip flip on the prod site root from develop pushes), so
+      # probing only the triggering ref would miss exactly that class.
+      # Filenames are DISCOVERED from each ref's built dist, never hardcoded,
+      # so a future rename can't silently make the probe vacuous; zero
+      # matches fails the probe job downstream.
+      - name: Locate basemap archives in both dists
         id: probe-target
+        env:
+          PROD_DIST: ${{ steps.assemble.outputs.prod-dist }}
         run: |
           shopt -s nullglob
-          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then
-            dist=build-develop/app/dist
-            base="https://docgerd.github.io/sail_command/uat/"
-          else
-            dist=build-main/app/dist
-            base="https://docgerd.github.io/sail_command/"
-          fi
-          matches=("$dist"/data/basemap.pmtiles*)
-          files=""
-          for m in "${matches[@]}"; do
-            files="$files${files:+ }$(basename "$m")"
-          done
-          echo "base=$base" >> "$GITHUB_OUTPUT"
-          echo "files=$files" >> "$GITHUB_OUTPUT"
-          echo "Smoke-probe target: ${base}data/ -> [$files]"
+          locate() {
+            files=""
+            for m in "$1"/data/basemap.pmtiles*; do
+              files="$files${files:+ }$(basename "$m")"
+            done
+            printf '%s' "$files"
+          }
+          prod_files="$(locate "$PROD_DIST")"
+          uat_files="$(locate build-develop/app/dist)"
+          echo "prod-files=$prod_files" >> "$GITHUB_OUTPUT"
+          echo "uat-files=$uat_files" >> "$GITHUB_OUTPUT"
+          echo "Smoke-probe targets: prod [$prod_files], uat [$uat_files]"
+  # --- Deployments-UI semantics (#117c, #127) --------------------------------
+  # actions/deploy-pages ALWAYS records into the platform-managed
+  # `github-pages` environment with the TRIGGERING ref's sha — Pages serves
+  # one artifact per origin, so that history interleaves main- and
+  # develop-triggered entries and "refreshes" on every develop push. That is
+  # inherent to the Pages single-artifact model, NOT an accidental prod
+  # redeploy (and with #117a a develop-triggered entry's site root is
+  # assembled from the validated cached prod dist — structurally unchanged
+  # bytes). Read deployment history via the bookkeeping environments instead:
+  #   uat  (#106) — develop-triggered runs, /uat/ URL
+  #   prod (#127) — main-triggered runs, production URL
+  # Do NOT rename the deploy job's `github-pages` environment to `prod`: that
+  # env is auto-created and owned by the Pages settings, and the
+  # actions/deploy-pages OIDC flow is tied to it (the #127 spike concluded a
+  # rename is a platform trap). Its BRANCH POLICY (main+develop allowlisted,
+  # repo Settings not YAML, #96) also lives on that env.
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -110,26 +370,37 @@ jobs:
     environment: { name: uat, url: "https://docgerd.github.io/sail_command/uat/" }
     steps:
       - run: echo "UAT deployed to https://docgerd.github.io/sail_command/uat/"
+  prod-environment:
+    needs: deploy
+    runs-on: ubuntu-latest
+    # #127 (fallback pattern, mirroring uat-environment/#106): bookkeeping
+    # only — main-triggered runs record a `prod` env entry with the
+    # production URL so production deploy history is legible at a glance,
+    # without renaming the platform-managed `github-pages` env (see the
+    # semantics comment above). The env auto-creates on the first
+    # main-triggered run with no protection rules, like `uat` did.
+    if: github.ref == 'refs/heads/main'
+    environment: { name: prod, url: "https://docgerd.github.io/sail_command/" }
+    steps:
+      - run: echo "Production deployed to https://docgerd.github.io/sail_command/"
   smoke-probe:
-    # #117 (guards the #118 fix class): verify through the LIVE Pages CDN that
-    # the basemap archive of the deployment THIS run shipped still serves raw
+    # #117 (guards the #118 fix class): verify through the LIVE Pages CDN
+    # that the basemap archives of BOTH deployments still serve raw
     # (un-gzipped) HTTP Range 206s. The app carries a runtime preflight+Blob
-    # fallback, so if the CDN ever starts gzip+range-slicing the archive again
+    # fallback, so if the CDN ever starts gzip+range-slicing an archive again
     # users only see a slow map — this probe makes that flip a red deploy run
-    # instead of a silent regression: it pages us, not users. See the build
-    # job's probe-target step for why only the TRIGGERING ref is probed.
+    # instead of a silent regression: it pages us, not users. Both prod and
+    # /uat/ are probed on EVERY run (#117d) — see the build job's
+    # probe-target comment for the measured develop-push-evicts-prod-CDN
+    # rationale.
     needs: [build, deploy]
     runs-on: ubuntu-latest
     steps:
-      - name: Probe basemap archive through the live CDN
+      - name: Probe basemap archives through the live CDN
         env:
-          PROBE_BASE: ${{ needs.build.outputs.probe-base }}
-          ARCHIVE_FILES: ${{ needs.build.outputs.archive-files }}
+          PROD_FILES: ${{ needs.build.outputs.prod-archive-files }}
+          UAT_FILES: ${{ needs.build.outputs.uat-archive-files }}
         run: |
-          if [ -z "${ARCHIVE_FILES// /}" ]; then
-            echo "::error::#117/#118 smoke probe: no data/basemap.pmtiles* file found in the triggering ref's build output — a missing basemap archive is itself a regression."
-            exit 1
-          fi
           probe_once() {
             url="$1"
             # (a) Full-body request must be 200 with NO content-encoding even
@@ -173,26 +444,37 @@ jobs:
             fi
             return 0
           }
-          for f in $ARCHIVE_FILES; do
-            url="${PROBE_BASE}data/${f}"
-            echo "Probing $url"
-            ok=""
-            for attempt in 1 2 3 4 5 6 7 8 9 10; do
-              if probe_once "$url"; then
-                ok=1
-                echo "  attempt $attempt: OK"
-                break
-              fi
-              if [ "$attempt" -lt 10 ]; then
-                echo "  attempt $attempt/10 failed; retrying in 30s (CDN propagation)"
-                sleep 30
-              else
-                echo "  attempt 10/10 failed"
-              fi
-            done
-            if [ -z "$ok" ]; then
-              echo "::error::#117/#118 smoke probe FAILED for $url — the Pages CDN no longer serves raw un-gzipped Range 206s for the basemap archive. No-SW visitors degrade to the slow Blob fallback; treat this deploy as regressed (see issue #118)."
+          probe_deployment() {
+            base="$1"
+            files="$2"
+            label="$3"
+            if [ -z "${files// /}" ]; then
+              echo "::error::#117/#118 smoke probe: no data/basemap.pmtiles* file found in the $label build output — a missing basemap archive is itself a regression."
               exit 1
             fi
-          done
-          echo "Smoke probe passed: raw Range 206s intact for [$ARCHIVE_FILES] under ${PROBE_BASE}data/"
+            for f in $files; do
+              url="${base}data/${f}"
+              echo "Probing $url ($label)"
+              ok=""
+              for attempt in 1 2 3 4 5 6 7 8 9 10; do
+                if probe_once "$url"; then
+                  ok=1
+                  echo "  attempt $attempt: OK"
+                  break
+                fi
+                if [ "$attempt" -lt 10 ]; then
+                  echo "  attempt $attempt/10 failed; retrying in 30s (CDN propagation)"
+                  sleep 30
+                else
+                  echo "  attempt 10/10 failed"
+                fi
+              done
+              if [ -z "$ok" ]; then
+                echo "::error::#117/#118 smoke probe FAILED for $url — the Pages CDN no longer serves raw un-gzipped Range 206s for the basemap archive. No-SW visitors degrade to the slow Blob fallback; treat this deploy as regressed (see issue #118)."
+                exit 1
+              fi
+            done
+            echo "Smoke probe passed for $label: raw Range 206s intact for [$files] under ${base}data/"
+          }
+          probe_deployment "https://docgerd.github.io/sail_command/" "$PROD_FILES" "prod (site root)"
+          probe_deployment "https://docgerd.github.io/sail_command/uat/" "$UAT_FILES" "uat (/uat/)"
