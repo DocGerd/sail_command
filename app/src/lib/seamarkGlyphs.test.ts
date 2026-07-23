@@ -3,6 +3,7 @@ import {
   classifySeamark,
   registerSeamarkImages,
   seamarkImageId,
+  seamarkPriority,
   seamarkSegments,
   type SeamarkSegment,
 } from './seamarkGlyphs';
@@ -346,5 +347,53 @@ describe('registerSeamarkImages', () => {
 
     expect(addImage).toHaveBeenCalledTimes(1);
     expect(addImage.mock.calls[0][0]).toBe('seamark-light-major');
+  });
+});
+
+// #144: expected values hand-derived from the design formula
+// rank = familyRank - (lit ? 1 : 0) with family ranks
+// lightMajor=0, lightMinor=2, isolatedDanger=4, cardinal=6, safeWater=8,
+// lateral=10, specialPurpose=12, unknown=14 — NOT read back from the
+// implementation (repo tautology lesson).
+describe('seamarkPriority (#144 symbol-sort-key: lower = placed first = wins collisions)', () => {
+  it('ranks each family at its hand-derived unlit value', () => {
+    expect(seamarkPriority({ seamarkType: 'light_major' })).toBe(0);
+    expect(seamarkPriority({ seamarkType: 'light_minor' })).toBe(2);
+    expect(seamarkPriority({ seamarkType: 'buoy_isolated_danger' })).toBe(4);
+    expect(seamarkPriority({ seamarkType: 'buoy_cardinal' })).toBe(6);
+    expect(seamarkPriority({ seamarkType: 'buoy_safe_water' })).toBe(8);
+    expect(seamarkPriority({ seamarkType: 'buoy_lateral' })).toBe(10);
+    expect(seamarkPriority({ seamarkType: 'buoy_special_purpose' })).toBe(12);
+    expect(seamarkPriority({ seamarkType: 'mooring' })).toBe(14);
+  });
+
+  it('lit-ness (any light field present) promotes by exactly 1 within the family', () => {
+    expect(seamarkPriority({ seamarkType: 'buoy_cardinal', lightCharacter: 'Q' })).toBe(5);
+    expect(
+      seamarkPriority({
+        seamarkType: 'buoy_lateral',
+        lightCharacter: 'Fl',
+        lightColour: 'red',
+        lightPeriod: '4',
+      }),
+    ).toBe(9);
+    // Each light field alone counts as lit — presence, not completeness.
+    expect(seamarkPriority({ seamarkType: 'buoy_lateral', lightColour: 'green' })).toBe(9);
+    expect(seamarkPriority({ seamarkType: 'buoy_lateral', lightPeriod: '6' })).toBe(9);
+    // A lit light_major outranks everything, including its unlit self.
+    expect(seamarkPriority({ seamarkType: 'light_major', lightCharacter: 'Oc' })).toBe(-1);
+  });
+
+  it('never lets a lateral (lit or not) outrank any cardinal', () => {
+    const bestLateral = seamarkPriority({ seamarkType: 'buoy_lateral', lightCharacter: 'Fl' });
+    const worstCardinal = seamarkPriority({ seamarkType: 'beacon_cardinal' });
+    expect(bestLateral).toBeGreaterThan(worstCardinal); // 9 > 6
+  });
+
+  it('classifies buoy_ and beacon_ variants identically (family, not carrier)', () => {
+    expect(seamarkPriority({ seamarkType: 'beacon_lateral' })).toBe(
+      seamarkPriority({ seamarkType: 'buoy_lateral' }),
+    );
+    expect(seamarkPriority({ seamarkType: 'beacon_isolated_danger' })).toBe(4);
   });
 });
