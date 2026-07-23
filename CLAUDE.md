@@ -77,6 +77,11 @@ deviate from it.
   Popup needs a `className` plus app.css overrides theming
   `.maplibregl-popup-content` and BOTH popup-tip borders with `--sc-bg`
   (see `.seamark-popup`, #7).
+- Vite `server.fs.allow` REPLACES the default workspace root when set, and the
+  dev-server transform check tests BOTH `cleanUrl(id)` AND the `?raw`-suffixed
+  id — an out-of-root `?raw` import needs `[APP_DIR, file, file + '?raw']`
+  exactly (#131); prove any allowlist change with positive AND negative (403)
+  probes.
 
 ## PWA / E2E / deploy (Phase F)
 
@@ -241,7 +246,11 @@ deviate from it.
   reached reviewer approval with three such false-pass holes, caught pre-merge
   only by a mutation-check lens). Pin literal values recomputed from
   pre-change math; the reviewer re-derives them independently — copying
-  current output re-creates the tautology one level up.
+  current output re-creates the tautology one level up. Corollary: an
+  implementer "re-deriving" a pinned literal toward its own implementation in
+  a fix wave is the same tautology one step later — the reviewer hand-derives
+  the value from the state machine before accepting it (how #145's changed
+  backoff literal was validated rather than trusted).
 - CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
   `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
   mime-insensitive, but an `application/xml` parse is inert (no script exec, no
@@ -282,6 +291,18 @@ deviate from it.
   discriminator; never infer the cap from `depthM === 25.4`.
 - Open-Meteo is called directly from the browser (CORS is open, no API key).
   There is deliberately **no backend** — do not introduce one.
+- **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
+  client, ZERO sockets (the network-free e2e suite depends on this; never add
+  a default key or eager connect). aisstream.io signals an invalid key as bare
+  1006 closes with NO error frame — `aisStream.ts` promotes 3
+  subscribed-but-silent closes to terminal `keyError`, permanently disarmed
+  once a connection survives `AIS_AUTH_STABLE_MS` (30 s, `keyProven`); a key
+  revoked mid-session degrades to honest capped-backoff "connecting" BY
+  DESIGN — don't "simplify" the stability timer away. Per-second AIS data
+  follows the `useOwnshipGps` rule (target Map in a ref, ≤1 Hz publish, never
+  AppState); the 6-min projection geometry lives only in
+  `lib/projectionVector.ts` (`projectionLine`, shared with #141) — never
+  inline it.
 
 ## Working style for this repo
 
@@ -311,6 +332,14 @@ deviate from it.
   `git commit` to silently absorb. Always `git show --stat <sha>` before trusting
   a commit's file list (a new-file addendum must be 1 file, insertions-only), and
   stage explicit paths — never `git add -A`.
+- Agents pointed at the MAIN checkout can edit a file BETWEEN your Read and
+  your commit (the #140 plan absorbed a half-applied edit exactly that way) —
+  diff the content you are about to stage against what you reviewed, and
+  stand writers down from shared trees once their deliverable is handed over.
+  Reviewer verification worktrees must be cleaned up by their CREATOR
+  (untracked `node_modules` blocks `git worktree remove`; `rm -rf` can be
+  permission-blocked in the main session) — brief reviewers to remove their
+  own worktree or verify without a local install.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
   ask-gate hook must prompt the user) — never through subagents. Use the
   Edit/Write tools for them: the hook does not match Bash appends (`cat >>`),
