@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
+// #131: repo-root CHANGELOG.md, baked into the bundle at build time by Vite's
+// `?raw` static import — never fetched at runtime, so "What's new" works
+// fully offline and always describes the exact bundle it ships in (same
+// honesty rule as __SC_APP_VERSION__ above the disclosure). The dev server
+// serves the out-of-root file via the vite.config.ts `server.fs.allow` entry.
+import changelogRaw from '../../../CHANGELOG.md?raw';
 import { useT } from '../i18n';
+import { parseChangelog } from '../lib/changelog';
 import type { MaskMeta } from '../types';
+import ChangelogView from './ChangelogView';
+import Disclosure from './Disclosure';
+
+// Parsed once at module load — the content is a build-time constant.
+const changelogReleases = parseChangelog(changelogRaw);
 
 export interface AboutDialogProps {
   open: boolean;
@@ -88,6 +100,13 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
             the installed bundle for stale-service-worker triage. Shows the
             literal 'dev' on the dev server by design. */}
         <p className="about-version">{t('about.version', { version: __SC_APP_VERSION__ })}</p>
+
+        {/* #131: "What's new" — sibling of the version line it answers
+            ("…and what's in this build?"). Collapsed by default so the
+            disclaimer stays above the fold. */}
+        <Disclosure summary={t('about.changelog.title')} className="about-changelog">
+          <ChangelogView releases={changelogReleases} />
+        </Disclosure>
 
         <p className="about-disclaimer">{t('app.disclaimer')}</p>
 

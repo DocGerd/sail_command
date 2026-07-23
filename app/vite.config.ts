@@ -200,6 +200,12 @@ export default defineConfig(({ command }) => ({
     __SC_APP_VERSION__: JSON.stringify(appVersion(command)),
   },
   build: { target: 'es2022' },
+  // #131: AboutDialog bakes the repo-root CHANGELOG.md in via a `?raw` static
+  // import. Builds inline it, but the DEV server serves out-of-root files
+  // through /@fs/ gated by server.fs.allow, which defaults to the Vite root
+  // (app/ — no workspace markers above it). Allowing the repo root is a
+  // strict superset of that default, so nothing previously served is lost.
+  server: { fs: { allow: [resolve(APP_DIR, '..')] } },
   worker: { format: 'es' },
   test: {
     globals: true,
