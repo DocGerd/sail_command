@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { activeLegIndex, distanceToNextManeuverNm, headingToSteerDeg, projectedEtaMs } from './live';
+import {
+  activeLegIndex,
+  distanceToNextManeuverNm,
+  headingToSteerDeg,
+  projectedEtaMs,
+} from './live';
 import { destinationPoint, haversineNm, initialBearingDeg } from './geo';
 import type { Leg } from '../types';
 
@@ -154,6 +159,17 @@ describe('distanceToNextManeuverNm', () => {
     const p = pt(7); // on leg 1, already past its own (already-happened) tack
     expect(distanceToNextManeuverNm(ROUTE, 1, p)).toBeNull();
   });
+
+  it('reads 0 nm (never negative) with the fix at the active leg’s end and the maneuver on the next leg (#142)', () => {
+    // p exactly at leg 0's end: the clamped fraction is 1, so the remainder
+    // of leg 0 is 5 nm * (1 - 1) = 0 by hand — the tack at leg 1's start is
+    // flagged as 0 nm ahead, not a negative distance and not leg 1's length.
+    const result = distanceToNextManeuverNm(ROUTE, 0, P1);
+    expect(result).not.toBeNull();
+    expect(result?.kind).toBe('tack');
+    expect(result?.distNm).toBeGreaterThanOrEqual(0);
+    expect(result?.distNm).toBeCloseTo(0, 6);
+  });
 });
 
 describe('projectedEtaMs', () => {
@@ -183,5 +199,16 @@ describe('projectedEtaMs', () => {
     const pastEnd = destinationPoint(P3, 90, 3);
     const lateMs = 20 * 60_000;
     expect(projectedEtaMs(ROUTE, 2, pastEnd, planEtaMs + lateMs)).toBe(planEtaMs + lateMs);
+  });
+
+  it('clamps a fix before the route start to the departure, so drift is simply time elapsed past T0 (#142)', () => {
+    // 3 nm behind the origin: the along-track fraction is negative and clamps
+    // to 0, so the expected time at p is exactly T0 (leg 0's startTimeMs).
+    // 5 minutes after T0, still behind the start line, the boat is 5 minutes
+    // behind schedule by hand: ETA = planEtaMs + 5 min — the negative
+    // fraction must not extrapolate an earlier expected time.
+    const beforeStart = destinationPoint(P0, 270, 3);
+    const lateMs = 5 * 60_000;
+    expect(projectedEtaMs(ROUTE, 0, beforeStart, T0 + lateMs)).toBe(planEtaMs + lateMs);
   });
 });
