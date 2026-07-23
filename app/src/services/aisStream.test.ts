@@ -8,6 +8,7 @@ import {
   padBoundingBox,
   parseAisMessage,
   viewportEscapedBbox,
+  type AisBoundingBox,
   type AisClientStatus,
   type AisSocket,
   type AisSocketHandlers,
@@ -18,10 +19,18 @@ const BBOX: [[number, number], [number, number]] = [
   [54.6, 9.3],
   [55.0, 10.1],
 ];
+const BOX_A: AisBoundingBox = [
+  [54, 10],
+  [55, 11],
+];
+const BOX_B: AisBoundingBox = [
+  [54.4, 9.8],
+  [54.6, 10.4],
+];
 
 describe('buildSubscription', () => {
   it('builds the exact aisstream subscription envelope', () => {
-    expect(buildSubscription('KEY', BBOX)).toEqual({
+    expect(buildSubscription('KEY', [BBOX])).toEqual({
       APIKey: 'KEY',
       BoundingBoxes: [
         [
@@ -29,6 +38,14 @@ describe('buildSubscription', () => {
           [55.0, 10.1],
         ],
       ],
+      FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
+    });
+  });
+
+  it('passes a multi-box list through verbatim (#146 corridor ∪ viewport)', () => {
+    expect(buildSubscription('KEY', [BOX_A, BOX_B])).toEqual({
+      APIKey: 'KEY',
+      BoundingBoxes: [BOX_A, BOX_B],
       FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
     });
   });
@@ -259,15 +276,15 @@ const POSITION_RAW = JSON.stringify({
 describe('AisStreamClient', () => {
   it('sends the subscription envelope on open and reports connecting', () => {
     const { client, fs, statuses } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     expect(statuses).toEqual(['connecting']);
     fs.open();
-    expect(JSON.parse(fs.sent[0])).toEqual(buildSubscription('KEY', BBOX));
+    expect(JSON.parse(fs.sent[0])).toEqual(buildSubscription('KEY', [BBOX]));
   });
 
   it('transitions to live on the first inbound message and delivers it', () => {
     const { client, fs, statuses, messages } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     fs.message(POSITION_RAW);
     expect(statuses).toEqual(['connecting', 'live']);
@@ -286,7 +303,7 @@ describe('AisStreamClient', () => {
 
   it('treats an error frame as terminal keyError: closes and schedules NO reconnect', () => {
     const { client, fs, timers, statuses } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     fs.message(JSON.stringify({ error: 'Invalid API Key' }));
     expect(statuses).toEqual(['connecting', 'keyError']);
@@ -298,7 +315,7 @@ describe('AisStreamClient', () => {
 
   it('reconnects with capped-exponential backoff on transient closes (no message received)', () => {
     const { client, fs, timers } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     fs.remoteClose(); // attempt 1 -> 0.5 * 1000
     expect(timers.delays()).toEqual([500]);
@@ -314,7 +331,7 @@ describe('AisStreamClient', () => {
   // zero inbound messages are promoted to the terminal keyError state.
   it('treats repeated bare closes right after subscribing as terminal keyError (wrong-key signature)', () => {
     const { client, fs, timers, statuses } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     fs.remoteClose(); // subscribed close 1 -> still transient, timer armed
     timers.fireLast();
@@ -335,7 +352,7 @@ describe('AisStreamClient', () => {
   // forever and never reach keyError.
   it('a connection surviving the stability window proves the key: later silent closes stay transient', () => {
     const { client, fs, timers, statuses } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     timers.fireStability(); // 30 s open, zero traffic -> key proven, counters reset
     fs.remoteClose(); // silent close 1
@@ -353,7 +370,7 @@ describe('AisStreamClient', () => {
 
   it('stop() clears a pending auth-stability timer (no leak) and arms no reconnect', () => {
     const { client, fs, timers } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     expect(timers.pendingStability()).toBe(1);
     client.stop();
@@ -363,7 +380,7 @@ describe('AisStreamClient', () => {
 
   it('a received message resets the early-close counter (transient blips never reach keyError)', () => {
     const { client, fs, timers, statuses } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     fs.remoteClose(); // subscribed close 1
     timers.fireLast();
@@ -384,7 +401,7 @@ describe('AisStreamClient', () => {
 
   it('never counts unopened connection failures toward keyError (offline stays transient)', () => {
     const { client, fs, timers, statuses } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.error(); // connect failed without ever opening (no subscription sent)
     timers.fireLast();
     fs.error();
@@ -398,29 +415,74 @@ describe('AisStreamClient', () => {
 
   it('resets backoff after a live subscription (attempt counter returns to 1)', () => {
     const { client, fs, timers } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     fs.message(POSITION_RAW); // live -> resets attempt
     fs.remoteClose(); // attempt 1 again -> 0.5 * 1000
     expect(timers.delays()).toEqual([500]);
   });
 
-  it('re-sends the subscription on updateBbox over an open socket without reconnecting', () => {
+  it('re-sends the subscription on updateSubscription over an open socket without reconnecting', () => {
     const { client, fs } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     const bbox2: [[number, number], [number, number]] = [
       [54.7, 9.4],
       [55.1, 10.2],
     ];
-    client.updateBbox(bbox2);
-    expect(JSON.parse(fs.sent[1])).toEqual(buildSubscription('KEY', bbox2));
+    client.updateSubscription([bbox2]);
+    expect(JSON.parse(fs.sent[1])).toEqual(buildSubscription('KEY', [bbox2]));
     expect(fs.socket.close).not.toHaveBeenCalled();
+  });
+
+  it('resends a 2-box list verbatim on reconnect (stored list survives the drop)', () => {
+    const { client, fs, timers } = makeClient();
+    client.start([BOX_A, BOX_B]);
+    fs.open();
+    expect(JSON.parse(fs.sent[0])).toEqual(buildSubscription('KEY', [BOX_A, BOX_B]));
+    fs.remoteClose(); // transient drop -> backoff timer armed
+    timers.fireLast();
+    fs.open();
+    expect(JSON.parse(fs.sent[1])).toEqual(buildSubscription('KEY', [BOX_A, BOX_B]));
+  });
+
+  it('stores an updateSubscription during backoff and sends it only on the next open', () => {
+    const { client, fs, timers } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.remoteClose(); // socket closed, backoff timer pending
+    const sentBefore = fs.sent.length;
+    client.updateSubscription([BOX_A, BOX_B]);
+    expect(fs.sent.length).toBe(sentBefore); // stored, NOT sent while disconnected
+    timers.fireLast();
+    fs.open();
+    expect(JSON.parse(fs.sent[fs.sent.length - 1])).toEqual(
+      buildSubscription('KEY', [BOX_A, BOX_B]),
+    );
+  });
+
+  it('updateSubscription after terminal keyError sends nothing and schedules no timer', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.remoteClose(); // subscribed close 1
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 2
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 3 -> terminal keyError
+    expect(statuses).toEqual(['connecting', 'keyError']);
+    const sentBefore = fs.sent.length;
+    const delaysBefore = timers.delays().length;
+    client.updateSubscription([BOX_A, BOX_B]);
+    expect(fs.sent.length).toBe(sentBefore);
+    expect(timers.delays().length).toBe(delaysBefore);
   });
 
   it('stop() closes the socket, clears any pending timer, and reports closed', () => {
     const { client, fs, statuses } = makeClient();
-    client.start(BBOX);
+    client.start([BBOX]);
     fs.open();
     client.stop();
     expect(fs.socket.close).toHaveBeenCalledTimes(1);

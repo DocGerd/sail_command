@@ -17,8 +17,8 @@ import {
 export type AisStatus = 'off' | 'connecting' | 'live' | 'offline' | 'keyError';
 
 export interface AisClientLike {
-  start(bbox: AisBoundingBox): void;
-  updateBbox(bbox: AisBoundingBox): void;
+  start(bboxes: AisBoundingBox[]): void;
+  updateSubscription(bboxes: AisBoundingBox[]): void;
   stop(): void;
 }
 
@@ -112,9 +112,9 @@ export function useAisTraffic(
       });
       clientRef.current = client;
       clientKeyRef.current = apiKey;
-      client.start(bbox);
+      client.start([bbox]);
     } else {
-      clientRef.current.updateBbox(bbox);
+      clientRef.current.updateSubscription([bbox]);
     }
   }, [online, visible, bbox, apiKey, createClient, now]);
 

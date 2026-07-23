@@ -13,22 +13,22 @@ function fakeClients() {
   const clients: {
     apiKey: string;
     callbacks: AisStreamCallbacks;
-    started: AisBoundingBox[];
-    bboxes: AisBoundingBox[];
+    started: AisBoundingBox[][];
+    bboxes: AisBoundingBox[][];
     stopped: number;
   }[] = [];
   const createClient = (apiKey: string, callbacks: AisStreamCallbacks): AisClientLike => {
     const rec = {
       apiKey,
       callbacks,
-      started: [] as AisBoundingBox[],
-      bboxes: [] as AisBoundingBox[],
+      started: [] as AisBoundingBox[][],
+      bboxes: [] as AisBoundingBox[][],
       stopped: 0,
     };
     clients.push(rec);
     return {
       start: (b) => rec.started.push(b),
-      updateBbox: (b) => rec.bboxes.push(b),
+      updateSubscription: (b) => rec.bboxes.push(b),
       stop: () => (rec.stopped += 1),
     };
   };
@@ -65,7 +65,7 @@ describe('useAisTraffic', () => {
     const { clients, createClient } = fakeClients();
     const { result } = renderHook(() => useAisTraffic(base, { createClient }));
     expect(clients).toHaveLength(1);
-    expect(clients[0].started).toEqual([BBOX]);
+    expect(clients[0].started).toEqual([[BBOX]]);
     expect(result.current.status).toBe('connecting');
   });
 
@@ -138,7 +138,7 @@ describe('useAisTraffic', () => {
     });
     rerender({ ...base, bbox: bbox2 });
     expect(clients).toHaveLength(1);
-    expect(clients[0].bboxes).toEqual([bbox2]);
+    expect(clients[0].bboxes).toEqual([[bbox2]]);
   });
 
   it('recreates the client when the API key changes (keyError reset)', () => {
