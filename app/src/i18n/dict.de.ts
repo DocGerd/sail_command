@@ -185,6 +185,16 @@ export const de = {
   'plansList.delete': 'Plan löschen',
   'plansList.confirmDelete': 'Löschen bestätigen',
   'plansList.actionError': 'Aktion fehlgeschlagen. Bitte erneut versuchen.',
+  // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
+  // which reuses the stored grid and stays offline-capable).
+  'plansList.recalc': 'Neu berechnen',
+  'plansList.recalc.saveNew': 'Als neuen Plan berechnen',
+  'plansList.recalc.replace': 'Original ersetzen',
+  'plansList.recalc.confirmReplace': 'Ersetzen bestätigen',
+  'plansList.recalc.cancel': 'Abbrechen',
+  'plansList.recalc.offline':
+    'Neuberechnung nur online möglich — es wird eine frische Windvorhersage geladen.',
+  'plansList.recalcName': '{name} (neu berechnet)',
   'live.toggle': 'Live-Ansicht',
   'live.noPlan': 'Route laden oder planen, um die Live-Führung zu nutzen.',
   'live.hts.label': 'Steuerkurs',

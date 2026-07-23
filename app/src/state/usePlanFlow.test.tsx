@@ -8,8 +8,9 @@ import { RoutingClient } from '../routing/workerClient';
 import type { WorkerRequest, WorkerResponse } from '../routing/protocol';
 import { OpenMeteoError, type OpenMeteoErrorKind } from '../services/openMeteo';
 import * as assetsModule from '../services/assets';
-import { __resetDbForTests } from '../services/db';
+import { __resetDbForTests, getPlan, listPlans, savePlan } from '../services/db';
 import { destinationPoint } from '../lib/geo';
+import { recalcRequest } from '../lib/recalc';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type NoRouteReason, type Plan, type PlanResultOk } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
@@ -72,8 +73,13 @@ const REQ = {
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
   genoa: {
-    rig: 'genoa', legs: [], etaMs: REQ.departureMs + 3_600_000, durationMs: 3_600_000,
-    distanceNm: 10, maneuverCount: 0, motorDistanceNm: 0,
+    rig: 'genoa',
+    legs: [],
+    etaMs: REQ.departureMs + 3_600_000,
+    durationMs: 3_600_000,
+    distanceNm: 10,
+    maneuverCount: 0,
+    motorDistanceNm: 0,
   },
   fock: null,
   genoaReason: null,
@@ -109,7 +115,12 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
     const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
+        }),
       { wrapper: AppStateProvider },
     );
 
@@ -130,7 +141,11 @@ describe('usePlanFlow', () => {
 
     const { result } = renderHook(
       () => ({
-        flow: usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
+        flow: usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
         active: useActivePlan(),
       }),
       { wrapper: AppStateProvider },
@@ -182,7 +197,12 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
     const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
+        }),
       { wrapper: AppStateProvider },
     );
 
@@ -199,7 +219,12 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
     const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
+        }),
       { wrapper: AppStateProvider },
     );
 
@@ -225,7 +250,12 @@ describe('usePlanFlow', () => {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
     const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
       { wrapper: AppStateProvider },
     );
 
@@ -256,7 +286,12 @@ describe('usePlanFlow', () => {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
     const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
       { wrapper: AppStateProvider },
     );
 
@@ -271,19 +306,31 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 1000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 1000 });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      rig: 'genoa',
+      simulatedToMs: 1000,
+    });
 
     now += 150; // clear the 100 ms per-rig progress throttle
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 800, frontierSize: 4 }); // via-joint regression
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 1000 }); // clamped
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      rig: 'genoa',
+      simulatedToMs: 1000,
+    }); // clamped
 
     now += 150;
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 1500, frontierSize: 5 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 1500 });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      rig: 'genoa',
+      simulatedToMs: 1500,
+    });
 
     now += 150;
     act(() => {
@@ -325,7 +372,12 @@ describe('usePlanFlow', () => {
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
     const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
       { wrapper: AppStateProvider },
     );
 
@@ -341,7 +393,11 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 5000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 5000 });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      rig: 'genoa',
+      simulatedToMs: 5000,
+    });
 
     // The worker starts probing relaxed depth gates (mask BFS): the UI shows
     // the probe phase, not a routing bar frozen at the doomed run's progress.
@@ -379,10 +435,9 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
-    const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient }),
-      { wrapper: AppStateProvider },
-    );
+    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), {
+      wrapper: AppStateProvider,
+    });
 
     await act(async () => {
       await result.current.run(REQ, 'First attempt');
@@ -432,7 +487,9 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
     vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
 
-    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), { wrapper: AppStateProvider });
+    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), {
+      wrapper: AppStateProvider,
+    });
 
     let runPromise!: Promise<void>;
     await act(async () => {
@@ -482,7 +539,12 @@ describe('usePlanFlow', () => {
     const reqWithVias = { ...REQ, viaPoints: [via1, via2] };
 
     const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => w as unknown as Worker) }),
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
       { wrapper: AppStateProvider },
     );
 
@@ -510,7 +572,12 @@ describe('usePlanFlow', () => {
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
     const { result } = renderHook(
-      () => usePlanFlow({ fetchWind, save, makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker) }),
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => fakeWorker() as unknown as Worker),
+        }),
       { wrapper: AppStateProvider },
     );
 
@@ -621,5 +688,165 @@ describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
 
     expect(await replacePromise).not.toBeNull();
     expect(result.current.viaReplan.state.error).toBeNull();
+  });
+});
+
+// #114: recalculate a saved plan with a FRESH forecast. These drive run()
+// against the REAL savePlan/getPlan (fake-indexeddb) — the whole point is
+// what ends up persisted: recalc-as-new must be additive (original plan +
+// stored grid byte-identical afterwards), replace must overwrite only the
+// confirmed id, and only when the run actually succeeds.
+describe('#114 recalculate with a fresh forecast', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const NEW_DEPARTURE_MS = Date.UTC(2026, 6, 16, 9, 0, 0);
+
+  // Stored grid uniformly 17 kn — every untouched-original assertion below
+  // pins that literal 17, never a value read back through the code under test.
+  function originalPlan(): Plan {
+    return {
+      id: 'orig-1',
+      name: 'Original',
+      createdAtMs: Date.UTC(2026, 6, 14, 12, 0, 0),
+      request: { ...REQ, viaPoints: [] },
+      windGrid: uniformWindGrid(17, 90),
+      result: OK_RESULT,
+    };
+  }
+
+  function setup(freshSpeedKn: number) {
+    const w = fakeWorker();
+    const freshGrid = uniformWindGrid(freshSpeedKn, 180);
+    const fetchWind = vi.fn().mockResolvedValue(freshGrid);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    const { result } = renderHook(
+      () => ({
+        // deps.save deliberately OMITTED: the real savePlan persists into
+        // fake-indexeddb so the tests can read back what was actually stored.
+        flow: usePlanFlow({
+          fetchWind,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+        active: useActivePlan(),
+      }),
+      { wrapper: AppStateProvider },
+    );
+    return { w, freshGrid, fetchWind, result };
+  }
+
+  it('recalc-as-new: fetches fresh wind, saves under a NEW id, and leaves the original plan and its stored grid untouched', async () => {
+    const original = originalPlan();
+    await savePlan(original);
+    const { w, freshGrid, fetchWind, result } = setup(23);
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.flow.run(
+        recalcRequest(original, NEW_DEPARTURE_MS),
+        'Original (recalculated)',
+      );
+      await flush();
+    });
+
+    const planMsg = findPosted(w.posted, 'plan');
+    // Routed against the FRESH fetch with the edited departure — never the
+    // stored grid (that reuse is via-replan's job, state/replan.ts).
+    expect(planMsg.windGrid).toBe(freshGrid);
+    expect(planMsg.request.departureMs).toBe(NEW_DEPARTURE_MS);
+
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+
+    expect(fetchWind).toHaveBeenCalledTimes(1);
+
+    const activePlan = result.current.active.plan;
+    expect(activePlan).not.toBeNull();
+    expect(activePlan!.id).not.toBe('orig-1');
+    expect(activePlan!.name).toBe('Original (recalculated)');
+    expect(activePlan!.windGrid).toBe(freshGrid);
+    expect(activePlan!.request.departureMs).toBe(NEW_DEPARTURE_MS);
+
+    // The in-memory original was never mutated (grid object identity is the
+    // original's own; values still the literal 17 kn it was built with).
+    expect(original.windGrid.speedKn.every((v) => v === 17)).toBe(true);
+    expect(original.request.departureMs).toBe(Date.UTC(2026, 6, 15, 8, 0, 0));
+
+    // The PERSISTED original is untouched too, and the recalc was additive.
+    const persisted = await getPlan('orig-1');
+    expect(persisted).toBeDefined();
+    expect(Array.from(persisted!.windGrid.speedKn).every((v) => v === 17)).toBe(true);
+    expect(persisted!.request.departureMs).toBe(Date.UTC(2026, 6, 15, 8, 0, 0));
+    expect((await listPlans()).length).toBe(2);
+  });
+
+  it('recalc-replace: persists under the ORIGINAL id, overwriting it with the fresh grid and edited departure', async () => {
+    const original = originalPlan();
+    await savePlan(original);
+    const { w, freshGrid, result } = setup(23);
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.flow.run(recalcRequest(original, NEW_DEPARTURE_MS), 'Original', {
+        replacePlanId: 'orig-1',
+      });
+      await flush();
+    });
+
+    const planMsg = findPosted(w.posted, 'plan');
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+
+    const replaced = await getPlan('orig-1');
+    expect(replaced).toBeDefined();
+    expect(Array.from(replaced!.windGrid.speedKn).every((v) => v === 23)).toBe(true);
+    expect(replaced!.request.departureMs).toBe(NEW_DEPARTURE_MS);
+    expect(replaced!.name).toBe('Original');
+    expect((await listPlans()).length).toBe(1); // replaced, not added
+
+    expect(result.current.active.plan!.id).toBe('orig-1');
+    expect(result.current.active.plan!.windGrid).toBe(freshGrid);
+  });
+
+  it('a FAILED replace-recalculation leaves the original untouched — the overwrite only happens at save time', async () => {
+    const original = originalPlan();
+    await savePlan(original);
+    const { w, result } = setup(23);
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.flow.run(recalcRequest(original, NEW_DEPARTURE_MS), 'Original', {
+        replacePlanId: 'orig-1',
+      });
+      await flush();
+    });
+
+    const planMsg = findPosted(w.posted, 'plan');
+    await act(async () => {
+      w.emit({
+        type: 'result',
+        id: planMsg.id,
+        result: { status: 'error', reason: 'beyond-horizon' },
+      });
+      await runPromise;
+    });
+
+    expect(result.current.flow.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.noRoute.beyondHorizon',
+    });
+    const persisted = await getPlan('orig-1');
+    expect(persisted).toBeDefined();
+    expect(Array.from(persisted!.windGrid.speedKn).every((v) => v === 17)).toBe(true);
+    expect(persisted!.request.departureMs).toBe(Date.UTC(2026, 6, 15, 8, 0, 0));
   });
 });

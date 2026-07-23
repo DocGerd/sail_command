@@ -181,6 +181,16 @@ export const en = {
   'plansList.delete': 'Delete plan',
   'plansList.confirmDelete': 'Confirm delete',
   'plansList.actionError': 'Action failed. Please try again.',
+  // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
+  // which reuses the stored grid and stays offline-capable).
+  'plansList.recalc': 'Recalculate',
+  'plansList.recalc.saveNew': 'Recalculate as new plan',
+  'plansList.recalc.replace': 'Replace original',
+  'plansList.recalc.confirmReplace': 'Confirm replace',
+  'plansList.recalc.cancel': 'Cancel',
+  'plansList.recalc.offline':
+    'Recalculation requires a connection — it fetches a fresh wind forecast.',
+  'plansList.recalcName': '{name} (recalculated)',
   'live.toggle': 'Live view',
   'live.noPlan': 'Load or plan a route to use live guidance.',
   'live.hts.label': 'HTS',
