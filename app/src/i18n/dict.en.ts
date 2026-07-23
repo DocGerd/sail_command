@@ -272,4 +272,9 @@ export const en = {
   'options.ais.mmsi.invalid': 'MMSI must be exactly 9 digits.',
   'options.ais.help':
     'Shows live surrounding vessel traffic in the Live view only (online only). Create a free API key at aisstream.io and paste it here. Your key and MMSI stay on this device; the key is sent only to aisstream.io as part of the subscription, and the MMSI is used only to filter your own vessel out of the display and is never transmitted. An awareness aid, not a navigation device.',
+  'ais.status.off': 'AIS off — add a key in Options',
+  'ais.status.connecting': 'AIS connecting…',
+  'ais.status.live': 'AIS live · {count} vessels',
+  'ais.status.offline': 'AIS offline',
+  'ais.status.keyError': 'AIS: check your API key',
 } satisfies Record<MsgKey, string>;

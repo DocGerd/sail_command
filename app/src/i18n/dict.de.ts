@@ -277,5 +277,10 @@ export const de = {
   'options.ais.mmsi.invalid': 'Die MMSI muss aus genau 9 Ziffern bestehen.',
   'options.ais.help':
     'Zeigt Live-Schiffsverkehr aus der Umgebung nur in der Live-Ansicht (nur online). Erstelle einen kostenlosen API-Schlüssel auf aisstream.io und füge ihn hier ein. Schlüssel und MMSI bleiben nur auf diesem Gerät gespeichert; der Schlüssel wird ausschließlich an aisstream.io als Teil des Abonnements gesendet, die MMSI dient nur dazu, das eigene Schiff aus der Anzeige herauszufiltern, und wird niemals übertragen. Aufmerksamkeitshilfe, kein Navigationsgerät.',
+  'ais.status.off': 'AIS aus — Schlüssel in den Optionen eingeben',
+  'ais.status.connecting': 'AIS verbindet…',
+  'ais.status.live': 'AIS live · {count} Schiffe',
+  'ais.status.offline': 'AIS offline',
+  'ais.status.keyError': 'AIS: API-Schlüssel prüfen',
 } as const;
 export type MsgKey = keyof typeof de;

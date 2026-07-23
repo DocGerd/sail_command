@@ -407,6 +407,31 @@ select {
   border-bottom-color: var(--sc-bg);
 }
 
+/* AIS status chip (#25) — a small map overlay on the Live tab, top-centered so
+   it clears the top-left data-layer controls and the top-right route cluster. */
+.ais-status {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.ais-status-chip {
+  background: color-mix(in srgb, var(--sc-bg) 88%, transparent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.ais-status-live {
+  color: #009e73;
+}
+
+.ais-status-offline,
+.ais-status-keyError {
+  color: #d55e00;
+}
+
 .route-layer-time-slider {
   display: flex;
   align-items: center;

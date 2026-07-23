@@ -28,6 +28,8 @@ import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
+import AisTraffic from './components/AisTraffic';
+import { AIS_VESSEL_LAYER } from './components/AisLayer';
 import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
@@ -47,7 +49,7 @@ const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
 // #7). Module-level for a stable identity — MapView syncs it into a ref
 // every render.
-const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER];
+const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER, AIS_VESSEL_LAYER];
 
 const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
   origin: 'planner.origin.label',
@@ -575,14 +577,19 @@ function AppShell() {
               mounted while the Live tab is active — switching away stops GPS
               tracking rather than running it in the background. */}
           {tab === 'live' && (
-            <LiveView
-              panelSlot={isWide ? liveSlot : null}
-              reroute={{
-                busy: runBusy,
-                rerouting: liveReroute.state.rerouting,
-                onReroute: handleLiveReroute,
-              }}
-            />
+            <>
+              {/* #25 AIS live traffic overlay — Live tab only, inside MapView's
+                  subtree for the map context. Fully inert without a key. */}
+              <AisTraffic apiKey={settings.aisApiKey} ownMmsi={settings.ownMmsi} />
+              <LiveView
+                panelSlot={isWide ? liveSlot : null}
+                reroute={{
+                  busy: runBusy,
+                  rerouting: liveReroute.state.rerouting,
+                  onReroute: handleLiveReroute,
+                }}
+              />
+            </>
           )}
         </MapView>
       </div>
