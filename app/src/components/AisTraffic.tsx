@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMapInstance } from './MapView';
 import { useT } from '../i18n';
 import { useOnline } from '../state/AppState';
@@ -10,6 +10,7 @@ import type { MsgKey } from '../i18n/dict.de';
 
 const AIS_BBOX_PAD = 0.2; // subscribe to the viewport padded 20% each side
 const AIS_RESUBSCRIBE_DEBOUNCE_MS = 2000;
+const EMPTY_CORRIDOR: AisBoundingBox[] = []; // stable identity until Task 5 wires the corridor
 
 const STATUS_KEY: Record<Exclude<AisStatus, 'live'>, MsgKey> = {
   off: 'ais.status.off',
@@ -83,10 +84,16 @@ export default function AisTraffic({
     };
   }, [map]);
 
+  // Memoized so an unchanged viewport keeps list identity and the hook's
+  // subscription effect does not re-fire per render (Task 5 composes the
+  // route corridor into this list).
+  const bboxes = useMemo<AisBoundingBox[] | null>(() => (bbox === null ? null : [bbox]), [bbox]);
+
   const { status, targets, targetCount } = useAisTraffic({
     apiKey,
     ownMmsi,
-    bbox,
+    bboxes,
+    corridorBoxes: EMPTY_CORRIDOR,
     online,
     visible,
   });

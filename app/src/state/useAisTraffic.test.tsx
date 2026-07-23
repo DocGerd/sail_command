@@ -38,7 +38,8 @@ function fakeClients() {
 const base: UseAisTrafficInput = {
   apiKey: 'KEY',
   ownMmsi: undefined,
-  bbox: BBOX,
+  bboxes: [BBOX],
+  corridorBoxes: [],
   online: true,
   visible: true,
 };
@@ -127,7 +128,7 @@ describe('useAisTraffic', () => {
     expect(result.current.status).toBe('keyError');
   });
 
-  it('updates the bbox on an existing client rather than recreating it', () => {
+  it('updates the subscription on an existing client rather than recreating it', () => {
     const { clients, createClient } = fakeClients();
     const bbox2: AisBoundingBox = [
       [54.7, 9.4],
@@ -136,9 +137,42 @@ describe('useAisTraffic', () => {
     const { rerender } = renderHook((props) => useAisTraffic(props, { createClient }), {
       initialProps: base,
     });
-    rerender({ ...base, bbox: bbox2 });
+    rerender({ ...base, bboxes: [bbox2] });
     expect(clients).toHaveLength(1);
     expect(clients[0].bboxes).toEqual([[bbox2]]);
+  });
+
+  it('counts only corridor targets in routeCount at the 1 Hz tick', () => {
+    const { clients, createClient } = fakeClients();
+    const corridor: AisBoundingBox[] = [
+      [
+        [54, 10],
+        [55, 11],
+      ],
+    ];
+    const { result } = renderHook(() =>
+      useAisTraffic({ ...base, corridorBoxes: corridor }, { createClient }),
+    );
+    act(() => {
+      // pointInBox over [[54,10],[55,11]] admits (54.5,10.5), rejects (56.0,10.5):
+      clients[0].callbacks.onMessage({ kind: 'position', mmsi: '211000001', lat: 54.5, lon: 10.5 });
+      clients[0].callbacks.onMessage({ kind: 'position', mmsi: '211000002', lat: 56.0, lon: 10.5 });
+    });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.targetCount).toBe(2); // all rendered targets
+    expect(result.current.routeCount).toBe(1); // corridor-only subset
+  });
+
+  it('reports routeCount 0 when no corridor boxes exist (no plan)', () => {
+    const { clients, createClient } = fakeClients();
+    const { result } = renderHook(() => useAisTraffic(base, { createClient }));
+    act(() => {
+      clients[0].callbacks.onMessage({ kind: 'position', mmsi: '211000001', lat: 54.5, lon: 10.5 });
+      clients[0].callbacks.onMessage({ kind: 'position', mmsi: '211000002', lat: 56.0, lon: 10.5 });
+    });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(result.current.targetCount).toBe(2);
+    expect(result.current.routeCount).toBe(0);
   });
 
   it('recreates the client when the API key changes (keyError reset)', () => {
