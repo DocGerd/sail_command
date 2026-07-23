@@ -233,6 +233,8 @@ export const de = {
   'about.title': 'Über SailCommand',
   'about.close': 'Schließen',
   'about.version': 'Version {version}',
+  'about.changelog.title': 'Was ist neu',
+  'about.changelog.langNote': 'Das Änderungsprotokoll wird auf Englisch geführt.',
   'about.caveats.heading': 'Wichtige Hinweise',
   'about.caveats.polars':
     'Die Polardaten sind Schätzungen auf Basis ORC-artiger VPP-Daten, einstellbar über den Leistungsfaktor in den Optionen — nicht renngenau kalibriert.',

@@ -228,6 +228,8 @@ export const en = {
   'about.title': 'About SailCommand',
   'about.close': 'Close',
   'about.version': 'Version {version}',
+  'about.changelog.title': "What's new",
+  'about.changelog.langNote': 'The changelog is maintained in English.',
   'about.caveats.heading': 'Important notes',
   'about.caveats.polars':
     'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',

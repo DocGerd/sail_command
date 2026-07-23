@@ -109,6 +109,26 @@ describe('AboutDialog', () => {
     expect(screen.getByText('Version dev')).toBeInTheDocument();
   });
 
+  it('shows the "What\'s new" disclosure with the baked-in changelog content (#131)', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <AboutDialog open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(de['about.changelog.title'])).toBeInTheDocument();
+    // The real repo-root CHANGELOG.md is imported `?raw` and parsed at module
+    // load — 0.1.0's heading is a historical fact that can never leave the
+    // file, so it pins that real content (not a fixture) reached the DOM.
+    // (textContent, not accessible name — see ChangelogView.test.tsx.)
+    expect(screen.getByRole('heading', { name: /0\.1\.0/ })).toHaveTextContent(
+      '0.1.0 — 2026-07-16',
+    );
+    expect(screen.getByText(de['about.changelog.langNote'])).toBeInTheDocument();
+  });
+
   it('calls onClose when the close button is clicked', async () => {
     vi.stubGlobal('fetch', fetchMock());
     const onClose = vi.fn();

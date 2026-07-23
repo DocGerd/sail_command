@@ -203,6 +203,11 @@ deviate from it.
   ruleset targets both `main` and `develop` via literal refs (never
   `~DEFAULT_BRANCH` — that follows a default-branch flip and would strand the
   non-default branch) and requires `app`+`e2e` on each.
+  Changelog ritual (#131): feature PRs that change user-visible behavior add a
+  `CHANGELOG.md` `[Unreleased]` entry (Keep a Changelog 1.1, baked into the
+  About dialog's "What's new" view at build time); at each RELEASE cut, move
+  `Unreleased` into a new `## [X.Y.Z] - date` section and update the
+  comparison links at the bottom.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before

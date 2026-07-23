@@ -18,6 +18,9 @@ const APP_DIR = dirname(fileURLToPath(import.meta.url));
 const isUat = process.env.SC_DEPLOY_ENV === 'uat';
 const basePath = isUat ? '/sail_command/uat/' : '/sail_command/';
 
+// #131: the one out-of-root file the dev server may serve (see `server` below).
+const changelogPath = resolve(APP_DIR, '..', 'CHANGELOG.md');
+
 // #96: rewrites the two absolute og: URLs to the actual deploy sub-path and,
 // for the UAT build only, marks the page noindex and retitles it — so the
 // staging deploy is never confused with (or indexed as) production. Regex
@@ -200,6 +203,18 @@ export default defineConfig(({ command }) => ({
     __SC_APP_VERSION__: JSON.stringify(appVersion(command)),
   },
   build: { target: 'es2022' },
+  // #131: AboutDialog bakes the repo-root CHANGELOG.md in via a `?raw` static
+  // import. Builds inline it, but the DEV server (and Vitest's module fetch)
+  // gates served files on server.fs.allow. Setting `allow` replaces the
+  // default [workspaceRoot] (= app/, no workspace markers above), and Vite 8
+  // checks even in-root files (index.html itself 403s without APP_DIR here),
+  // so the narrowed list is the default-equivalent root plus exactly one
+  // out-of-root file. That file needs two entries: Vite 8's
+  // isServerAccessDeniedForTransform checks BOTH cleanUrl(id) and the raw id
+  // including its `?raw` query (query-bypass hardening), and a bare file
+  // path matches by isSameFilePath — it can never prefix-match its own
+  // `?raw` variant the way a directory entry would.
+  server: { fs: { allow: [APP_DIR, changelogPath, `${changelogPath}?raw`] } },
   worker: { format: 'es' },
   test: {
     globals: true,

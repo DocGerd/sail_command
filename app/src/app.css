@@ -1386,6 +1386,53 @@ select {
   background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
 }
 
+/* #131: "What's new" changelog disclosure under the version line. The list
+   scrolls internally so the disclaimer and close button stay reachable even
+   with the full release history open. Colors inherit --sc-fg/--sc-border via
+   the dialog and the sc-disclosure primitive. */
+.about-changelog {
+  margin: 0 0 0.75rem;
+}
+
+.changelog-view {
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.changelog-lang-note {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.changelog-release h4 {
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.95rem;
+}
+
+.changelog-date {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.changelog-release h5 {
+  margin: 0.4rem 0 0.15rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.changelog-release ul {
+  margin: 0 0 0.4rem;
+  padding-left: 1.1rem;
+}
+
+.changelog-release li {
+  margin: 0.15rem 0;
+}
+
 /* ---- Wide screens (>=1024px): side-panel layout (#24) ----
 
    Below this width the bottom-sheet layout above is kept unchanged — phone /
