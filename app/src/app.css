@@ -1332,6 +1332,13 @@ select {
   opacity: 0.75;
 }
 
+/* #125: unobtrusive build-version line under the tagline. */
+.about-version {
+  margin: -0.5rem 0 0.75rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
 .about-disclaimer {
   font-weight: 600;
   padding: 0.5rem;

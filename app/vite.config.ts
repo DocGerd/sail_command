@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
-import { readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -92,7 +93,30 @@ function glyphManifest(): Plugin {
   };
 }
 
-export default defineConfig({
+// #125: build-time app version shown in the About dialog — baked into the
+// bundle by the `define` below, NEVER runtime-fetched: the whole point is
+// diagnosing stale-service-worker installs, so the string must identify the
+// bundle it ships in. The dev server always shows the literal 'dev' (a baked
+// describe string would go stale between config loads); a build embeds `git
+// describe --tags --always` (e.g. v0.3.0-2-gabc1234) — `--always` degrades
+// shallow/tagless checkouts to a bare short SHA instead of throwing, and
+// deliberately NO `--dirty`: the always-dirty .claude/settings.json would
+// otherwise poison the prod double-build byte-identity verification (#107).
+// If git itself is unavailable (tarball build), fall back to the app's
+// package.json version.
+function appVersion(command: 'build' | 'serve'): string {
+  if (command === 'serve') return 'dev';
+  try {
+    return execFileSync('git', ['describe', '--tags', '--always'], { encoding: 'utf8' }).trim();
+  } catch {
+    const pkg = JSON.parse(readFileSync(resolve(APP_DIR, 'package.json'), 'utf8')) as {
+      version: string;
+    };
+    return pkg.version;
+  }
+}
+
+export default defineConfig(({ command }) => ({
   base: basePath,
   plugins: [
     react(),
@@ -169,7 +193,12 @@ export default defineConfig({
   // dead-code-eliminates the whole
   // UatBadge module graph — the prod bundle stays byte-identical (verified
   // like #96). Vitest inherits this config, so tests see the constant too.
-  define: { __SC_UAT__: JSON.stringify(isUat) },
+  // #125: __SC_APP_VERSION__ — see appVersion() above. JSON.stringify makes
+  // the replacement an exact string literal.
+  define: {
+    __SC_UAT__: JSON.stringify(isUat),
+    __SC_APP_VERSION__: JSON.stringify(appVersion(command)),
+  },
   build: { target: 'es2022' },
   worker: { format: 'es' },
   test: {
@@ -178,4 +207,4 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
   },
-});
+}));

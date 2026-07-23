@@ -11,3 +11,12 @@
 // the constant is defined (`false`) in unit tests too (pinned in
 // UatBadge.test.tsx).
 declare const __SC_UAT__: boolean;
+
+// #125: build-time app version, replaced by the `define` entry in
+// vite.config.ts — `git describe --tags --always` output in a build (package
+// version if git is unavailable), the literal 'dev' under the dev server and
+// Vitest (both resolve the config with command 'serve'). Baked into the
+// bundle so the About dialog can identify a stale-service-worker install;
+// never fetch it at runtime. Plain string interpolation — the fold-exact
+// ternary rule above is specific to the UAT gate and does not apply here.
+declare const __SC_APP_VERSION__: string;
