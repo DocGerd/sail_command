@@ -13,7 +13,21 @@ import {
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { claimGpsHintOnce } from '../lib/gpsHint';
 import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
-import type { ManeuverKind } from '../types';
+import Button from './Button';
+import type { LatLon, ManeuverKind } from '../types';
+
+// #115 manual "reroute from here": wiring provided by App.tsx (which owns the
+// useLiveReroute hook — it needs usePlanFlow's ensureClient). `busy` disables
+// the action while ANY solver run is in flight (shared client, no overlapping
+// runs regardless of which surface starts one); `rerouting` is true only for
+// this action's own in-flight solve (drives the busy label). The action stays
+// an explicit user decision — lib/live.ts's projection math never re-routes
+// (spec §2).
+export interface LiveRerouteControls {
+  busy: boolean;
+  rerouting: boolean;
+  onReroute: (fixPoint: LatLon) => void;
+}
 
 export interface LiveViewProps {
   watchPosition?: typeof realWatchPosition;
@@ -22,6 +36,9 @@ export interface LiveViewProps {
   // subtree (the base bottom-sheet-region card). Null/undefined = render
   // inline (narrow, unchanged).
   panelSlot?: HTMLElement | null;
+  // #115: absent (tests/contexts without the plan-flow wiring) = no reroute
+  // action rendered.
+  reroute?: LiveRerouteControls | null;
 }
 
 const MANEUVER_LABEL_KEY: Record<ManeuverKind, MsgKey> = {
@@ -36,6 +53,7 @@ const MANEUVER_LABEL_KEY: Record<ManeuverKind, MsgKey> = {
 export default function LiveView({
   watchPosition = realWatchPosition,
   panelSlot,
+  reroute,
 }: LiveViewProps = {}) {
   const t = useT();
   const [lang] = useLang();
@@ -163,6 +181,29 @@ export default function LiveView({
           <p className="live-view-eta">
             {t('live.eta.label')}: {etaMs !== null ? formatTime(etaMs, lang) : '—'}
             {driftMs !== null && ` (${formatDriftMin(driftMs)})`}
+          </p>
+        </div>
+      )}
+
+      {/* #115 manual "reroute from here" — an explicit user action producing
+          a NEW routed plan (App.tsx wires it to useLiveReroute); only
+          meaningful with a current GPS fix, so it is disabled (with an i18n
+          hint) until tracking is on and a fix has arrived. It never starts
+          GPS itself. */}
+      {reroute && (
+        <div className="live-view-reroute">
+          <Button
+            variant="secondary"
+            disabled={fix === null || reroute.busy}
+            aria-busy={reroute.rerouting}
+            onClick={() => {
+              if (fix) reroute.onReroute(fix.point);
+            }}
+          >
+            {reroute.rerouting ? t('live.reroute.busy') : t('live.reroute.action')}
+          </Button>
+          <p className="live-view-reroute-hint">
+            {fix === null ? t('live.reroute.needFix') : t('live.reroute.hint')}
           </p>
         </div>
       )}

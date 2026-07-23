@@ -9,6 +9,7 @@ import {
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { useViaReplan } from './state/replan';
+import { useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
@@ -132,6 +133,10 @@ function AppShell() {
   // that was only ever *loaded* from PlansList, never run() in this
   // session, still works) rather than spawning a second worker.
   const viaReplan = useViaReplan(ensureClient);
+  // #115: manual "reroute from here" (Live view). Shares the same singleton
+  // RoutingClient via ensureClient and, like a via-replan, reuses the plan's
+  // STORED wind grid — never refetches, so it stays available offline.
+  const liveReroute = useLiveReroute(ensureClient);
   // #25 addendum: standalone "show my position" marker, decoupled from Live
   // View — subscribes to GPS whenever the setting is on, regardless of
   // tab/plan/active state (see useOwnshipGps.ts and OwnshipMarker.tsx).
@@ -474,6 +479,25 @@ function AppShell() {
     [run, t],
   );
 
+  // #115: reroute the ACTIVE plan from the current GPS fix (LiveView passes
+  // the fix point). The result is a NEW plan (fresh id, derived name) — the
+  // original stays untouched — and it becomes active unconditionally on
+  // success, following run()'s precedent (a fresh id is never "the same
+  // plan, possibly superseded": it's the routed result the user explicitly
+  // just asked for; planIdRef's clobber guard exists only for replans that
+  // update a specific existing plan in place).
+  const handleLiveReroute = useCallback(
+    (fixPoint: LatLon) => {
+      if (!plan) return;
+      void liveReroute
+        .reroute(plan, fixPoint, t('live.reroute.name', { name: plan.name }))
+        .then((rerouted) => {
+          if (rerouted) setPlan(rerouted);
+        });
+    },
+    [plan, liveReroute, setPlan, t],
+  );
+
   // The Plan button independently guards offline (spec §4) on top of the
   // banner; canPlan also requires both endpoints, an idle/error (not
   // already in-flight) planning phase, and no via-replan in flight — a
@@ -483,8 +507,12 @@ function AppShell() {
   // #114: `runBusy` is that same in-flight condition on its own — shared by
   // canPlan and the PlansList recalc actions, so no two runs can overlap
   // regardless of which surface starts them.
+  // #115: liveReroute joins the same mutual exclusion — a live reroute is a
+  // solver run on the shared client like any other.
   const runBusy =
-    !(planning.phase === 'idle' || planning.phase === 'error') || viaReplan.state.replanning;
+    !(planning.phase === 'idle' || planning.phase === 'error') ||
+    viaReplan.state.replanning ||
+    liveReroute.state.rerouting;
   const canPlan = origin !== null && destination !== null && online && !runBusy;
   // §3.5: the primary button always states WHY it's disabled. Offline is the
   // most blocking (nothing can be planned), then a missing endpoint. When both
@@ -546,7 +574,16 @@ function AppShell() {
               `liveSlot` (BoatMarker stays here on the map either way). Only
               mounted while the Live tab is active — switching away stops GPS
               tracking rather than running it in the background. */}
-          {tab === 'live' && <LiveView panelSlot={isWide ? liveSlot : null} />}
+          {tab === 'live' && (
+            <LiveView
+              panelSlot={isWide ? liveSlot : null}
+              reroute={{
+                busy: runBusy,
+                rerouting: liveReroute.state.rerouting,
+                onReroute: handleLiveReroute,
+              }}
+            />
+          )}
         </MapView>
       </div>
 
@@ -664,6 +701,18 @@ function AppShell() {
         {viaReplan.state.error && (
           <Banner kind="error" onDismiss={viaReplan.clearError} dismissLabel={t('banner.dismiss')}>
             {t(viaReplan.state.error)}
+          </Banner>
+        )}
+        {/* #115: live-reroute failures (stale stored forecast, fix outside
+            the region, no route) — honest error, never a truncated route.
+            Mirrors the via-replan banner above. */}
+        {liveReroute.state.error && (
+          <Banner
+            kind="error"
+            onDismiss={liveReroute.clearError}
+            dismissLabel={t('banner.dismiss')}
+          >
+            {t(liveReroute.state.error)}
           </Banner>
         )}
         {viaReplan.state.droppedCount > 0 && (

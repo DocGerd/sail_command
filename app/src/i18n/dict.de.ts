@@ -103,6 +103,12 @@ export const de = {
     'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.replanInit':
     'Routenplaner konnte nicht gestartet werden. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+  // #115: manual "reroute from here" (Live-Ansicht) — honest failures, never
+  // eine stillschweigend gekürzte oder extrapolierte Route.
+  'error.rerouteStaleWind':
+    'Die gespeicherte Windvorhersage dieses Plans deckt die aktuelle Zeit nicht mehr ab — eine neue Route ab jetzt kann daraus nicht berechnet werden. Route neu planen, um eine aktuelle Vorhersage zu laden.',
+  'error.rerouteFixOutside':
+    'Die aktuelle GPS-Position liegt außerhalb des abgedeckten Seegebiets oder ist nicht befahrbar — von hier kann keine Route berechnet werden.',
   'route.rig.genoa': 'Genua',
   'route.rig.fock': 'Fock',
   'route.rigTabs': 'Riggvergleich',
@@ -207,6 +213,16 @@ export const de = {
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
   'live.gpsHint.dismiss': 'Verstanden',
+  // #115: manueller "Route ab hier"-Neuplan — Planungssprache, keine
+  // Navigationsführung; nutzt die GESPEICHERTE Windvorhersage des Plans
+  // (offlinefähig, im Gegensatz zur #114-Neuberechnung).
+  'live.reroute.action': 'Route ab hier neu planen',
+  'live.reroute.busy': 'Route wird ab aktueller Position neu geplant…',
+  'live.reroute.needFix':
+    'Erfordert eine aktive GPS-Position — Live-Ansicht starten und auf einen GPS-Fix warten.',
+  'live.reroute.hint':
+    'Erstellt einen neuen Plan von der aktuellen Position zum Ziel mit der gespeicherten Windvorhersage; der ursprüngliche Plan bleibt erhalten. Planungshilfe, keine Navigationsführung.',
+  'live.reroute.name': '{name} (ab Position neu geplant)',
   'nav.plan': 'Planen',
   'nav.routes': 'Routen',
   'nav.live': 'Live',

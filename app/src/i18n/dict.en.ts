@@ -101,6 +101,12 @@ export const en = {
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':
     'The route planner could not be started. Try again; if it keeps happening, reload the app.',
+  // #115: manual "reroute from here" (Live view) — honest failures, never a
+  // silently truncated or extrapolated route.
+  'error.rerouteStaleWind':
+    "This plan's stored wind forecast no longer covers the current time — a new route from now cannot be computed from it. Plan the route again to load a current forecast.",
+  'error.rerouteFixOutside':
+    'The current GPS position is outside the covered sea area or not navigable — no route can be computed from here.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
   'route.rigTabs': 'Rig comparison',
@@ -203,6 +209,15 @@ export const en = {
   'live.gpsHint':
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
   'live.gpsHint.dismiss': 'Got it',
+  // #115: manual "replan from here" — planning-aid framing, never navigation
+  // guidance; uses the plan's STORED wind forecast (offline-capable, unlike
+  // the #114 recalculation).
+  'live.reroute.action': 'Replan route from here',
+  'live.reroute.busy': 'Replanning route from current position…',
+  'live.reroute.needFix': 'Needs an active GPS fix — start the live view and wait for a fix.',
+  'live.reroute.hint':
+    'Creates a new plan from the current position to the destination using the stored wind forecast; the original plan is kept. A planning aid, not navigation guidance.',
+  'live.reroute.name': '{name} (replanned from position)',
   'nav.plan': 'Plan',
   'nav.routes': 'Routes',
   'nav.live': 'Live',

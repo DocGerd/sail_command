@@ -341,4 +341,98 @@ describe('LiveView', () => {
     fireEvent.click(toggle); // off
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
+
+  // #115 manual "reroute from here" — only rendered when App wires the
+  // controls prop; enabled exactly when a current GPS fix exists and no
+  // solver run is in flight; the action itself never starts GPS.
+  describe('reroute from here (#115)', () => {
+    const REROUTE_NAME = 'Replan route from here';
+
+    function renderWithReroute(
+      wp: ReturnType<typeof fakeWatchPosition>['wp'],
+      controls: { busy: boolean; rerouting: boolean; onReroute: (p: unknown) => void },
+    ) {
+      localStorage.setItem('sc-lang', 'en');
+      return render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveView watchPosition={wp} reroute={controls} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+    }
+
+    it('renders no reroute action at all when the controls prop is absent', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      await screen.findByRole('button', { name: 'Live view' });
+      expect(screen.queryByRole('button', { name: REROUTE_NAME })).not.toBeInTheDocument();
+    });
+
+    it('is disabled with a needs-a-fix hint while there is no GPS fix (tracking off), and never auto-starts GPS', async () => {
+      const { wp } = fakeWatchPosition();
+      const onReroute = vi.fn();
+      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+
+      const button = await screen.findByRole('button', { name: REROUTE_NAME });
+      expect(button).toBeDisabled();
+      expect(screen.getByText(/needs an active gps fix/i)).toBeInTheDocument();
+      // Rendering the disabled action must not have subscribed to GPS.
+      expect(wp).not.toHaveBeenCalled();
+
+      fireEvent.click(button);
+      expect(onReroute).not.toHaveBeenCalled();
+    });
+
+    it('enables once a fix arrives, switches the hint to planning-aid copy, and passes the exact fix point on click', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      const onReroute = vi.fn();
+      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+
+      const button = screen.getByRole('button', { name: REROUTE_NAME });
+      expect(button).toBeEnabled();
+      expect(screen.queryByText(/needs an active gps fix/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/planning aid, not navigation guidance/i)).toBeInTheDocument();
+
+      fireEvent.click(button);
+      expect(onReroute).toHaveBeenCalledTimes(1);
+      expect(onReroute).toHaveBeenCalledWith(FIX_POINT);
+    });
+
+    it('a stale fix cannot fire a reroute: toggling tracking off clears the fix and disables the action again', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      const onReroute = vi.fn();
+      renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
+
+      const toggle = await screen.findByRole('button', { name: 'Live view' });
+      fireEvent.click(toggle); // on
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+      expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeEnabled();
+
+      fireEvent.click(toggle); // off — fix cleared
+      const button = screen.getByRole('button', { name: REROUTE_NAME });
+      expect(button).toBeDisabled();
+      expect(screen.getByText(/needs an active gps fix/i)).toBeInTheDocument();
+    });
+
+    it('is disabled while ANY solver run is busy, and shows the in-flight label for its own solve', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      const onReroute = vi.fn();
+      renderWithReroute(wp, { busy: true, rerouting: true, onReroute });
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+
+      const button = screen.getByRole('button', {
+        name: 'Replanning route from current position…',
+      });
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+      expect(onReroute).not.toHaveBeenCalled();
+    });
+  });
 });
