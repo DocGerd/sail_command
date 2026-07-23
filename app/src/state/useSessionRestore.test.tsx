@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { AppStateProvider, useActivePlan } from './AppState';
 import { useSessionRestore } from './useSessionRestore';
 import { savePlan, __resetDbForTests } from '../services/db';
+import * as db from '../services/db';
 import { SESSION_SNAPSHOT_KEY, type Tab } from '../lib/sessionSnapshot';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Plan, type Rig, type RigResult } from '../types';
@@ -152,6 +153,25 @@ describe('useSessionRestore (#113)', () => {
     );
     expect(screen.getByTestId('plan-id').textContent).toBe('none');
     expect(screen.getByTestId('tab').textContent).toBe('plan');
+  });
+
+  it('a REJECTING getPlan (IndexedDB failure) degrades to a fresh boot — logged, settled, no crash', async () => {
+    // Distinct from the resolves-undefined case above: the promise REJECTS.
+    localStorage.setItem(SESSION_SNAPSHOT_KEY, '{"v":1,"planId":"p1","tab":"routes","rig":"fock"}');
+    vi.spyOn(db, 'getPlan').mockRejectedValueOnce(new Error('idb boom'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderHarness();
+
+    // `restored` still settles (the .finally path): the write-back opens and
+    // replaces the snapshot with the fresh-boot state — the observable proof
+    // the session is not left stuck un-writable.
+    await waitFor(() =>
+      expect(storedSnapshot()).toEqual({ v: 1, planId: null, tab: 'plan', rig: null }),
+    );
+    expect(screen.getByTestId('plan-id').textContent).toBe('none');
+    expect(screen.getByTestId('tab').textContent).toBe('plan');
+    expect(errorSpy).toHaveBeenCalledWith('session restore failed', new Error('idb boom'));
   });
 
   it('a corrupt snapshot falls back to a fresh boot without crashing', async () => {

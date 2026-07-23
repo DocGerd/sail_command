@@ -141,12 +141,6 @@ function AppShell() {
   } = useOwnshipGps(settings.showOwnship);
 
   const [tab, setTab] = useState<Tab>('plan');
-  // #113: restores the last session's plan/rig/tab on boot (pure local
-  // replay of PlansList's getPlan→setPlan path) and persists the small
-  // session snapshot on every plan/tab/rig change. Raw setTab, not
-  // handleTabChange: at boot tap-to-pick cannot be armed, so there is
-  // nothing to disarm.
-  useSessionRestore(tab, setTab);
   const [aboutOpen, setAboutOpen] = useState(false);
   const isWide = useWideLayout();
   // #31: on wide, LiveView (which must stay mounted inside MapView's subtree
@@ -395,6 +389,16 @@ function AppShell() {
     setTab(next);
     if (next !== 'plan') setTapTarget(null);
   }, []);
+
+  // #113: restores the last session's plan/rig/tab on boot (pure local
+  // replay of PlansList's getPlan→setPlan path) and persists the small
+  // session snapshot on every plan/tab/rig change. Goes through
+  // handleTabChange, not raw setTab: the restore's getPlan is async, so the
+  // user can arm tap-to-pick on the initial Plan tab before it resolves — a
+  // raw setTab would then switch tabs with the pick still armed, letting a
+  // stray map tap overwrite origin/destination from Routes/Live (the exact
+  // state handleTabChange's disarm exists to prevent).
+  useSessionRestore(tab, handleTabChange);
 
   // #64 phase 3: "Details ansehen" from the Plan-tab Ergebnis strip switches to
   // the Routes tab AND moves focus to its Ergebnis heading (user-initiated, so
