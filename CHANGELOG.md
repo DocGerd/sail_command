@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Show a 6-minute COG/SOG projection vector on the ownship (GPS) boat marker — same length convention as the AIS target vectors but in the ownship color; hidden while stationary (below 0.5 kn) or when the device reports no course (#141).
 - Add a live AIS traffic overlay on the Live view: paste a personal aisstream.io API key in Options to see surrounding vessels (heading/COG, names, tap-for-details), with your own vessel filtered out by MMSI; online-only and fully inert without a key (#25).
 - Add a "What's new" view to the About dialog showing this changelog — the release history is baked into the app at build time and readable offline (#131, #139).
 - Add a manual "reroute from here" action in the Live view: with an active plan and a GPS fix, route from the current position to the plan's destination using the plan's stored forecast (works fully offline) and save the result as a new plan (#115, #137).

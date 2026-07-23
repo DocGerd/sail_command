@@ -1,10 +1,11 @@
-import { projectionLine } from './projectionVector';
+import { PROJECTION_VECTOR_MINUTES, projectionLine } from './projectionVector';
 import { formatHeading, formatKn } from './format';
 import type { AisTargetSnapshot } from './aisTargets';
 import type { MsgKey } from '../i18n/dict.de';
 
-// A COG vector shows where a vessel reaches in this many minutes at current SOG.
-export const AIS_VECTOR_MINUTES = 6;
+// A COG vector shows where a vessel reaches in this many minutes at current
+// SOG — the shared convention from projectionVector.ts (#141 parity).
+export const AIS_VECTOR_MINUTES = PROJECTION_VECTOR_MINUTES;
 
 /**
  * #25: one GeoJSON FeatureCollection for the AIS overlay. Per target: a vessel
