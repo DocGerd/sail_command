@@ -20,7 +20,7 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
 
     // Resolves once this origin has an active worker. workbox-precaching's
     // install-event handler (src/sw.ts) awaits the full precache download
-    // (~33 MB, including the 27 MB basemap.pmtiles — fonts are runtime-
+    // (~33 MB, including the 27 MB basemap.pmtiles.png — fonts are runtime-
     // cached since #28) before the worker can reach 'installed'; since this
     // is a brand-new registration with no prior controller to conflict
     // with, it then auto-activates, and clientsClaim() (also sw.ts) hands
@@ -135,15 +135,16 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
       page.getByText('Offline — Planung deaktiviert. Gespeicherte Routen bleiben verfügbar.'),
     ).toBeVisible();
 
-    // Proves sw.ts's dedicated Range-request route for .pmtiles is actually
-    // what's serving the basemap here, not just "some cached response that
-    // happens to render a canvas" — workbox's *default* precache route would
-    // instead replay a full 200 to a ranged request, which pmtiles'
-    // FetchSource rejects (see sw.ts's own comment). This is the only place
-    // in the offline pass that would catch that route silently regressing
-    // while the map still happens to render via some other fallback.
+    // Proves sw.ts's dedicated Range-request route for the basemap archive
+    // (basemap.pmtiles.png since the #118 rename) is actually what's serving
+    // it here, not just "some cached response that happens to render a
+    // canvas" — workbox's *default* precache route would instead replay a
+    // full 200 to a ranged request, which pmtiles' FetchSource rejects (see
+    // sw.ts's own comment). This is the only place in the offline pass that
+    // would catch that route silently regressing while the map still happens
+    // to render via some other fallback.
     const rangeStatus = await page.evaluate(async () => {
-      const res = await fetch('data/basemap.pmtiles', { headers: { range: 'bytes=0-99' } });
+      const res = await fetch('data/basemap.pmtiles.png', { headers: { range: 'bytes=0-99' } });
       return res.status;
     });
     expect(rangeStatus).toBe(206);

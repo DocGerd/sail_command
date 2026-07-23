@@ -108,11 +108,14 @@ export default defineConfig({
       // working until the user opts into ReloadPrompt's reload.
       registerType: 'prompt',
       injectManifest: {
-        // ~33 MB expected (basemap.pmtiles + mask.bin + polars + sprites +
-        // app shell) — see spec §7's first-load budget. The ~11 MB of font
+        // ~33 MB expected (basemap.pmtiles.png + mask.bin + polars + sprites
+        // + app shell) — see spec §7's first-load budget. The ~11 MB of font
         // glyph ranges are runtime-cached, not precached (#28, below).
+        // #118: the basemap archive ships as `.pmtiles.png` (CDN gzip-of-
+        // range workaround, see src/lib/basemap.ts) — it is matched by the
+        // `png` token below, so no dedicated `pmtiles` token remains.
         maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,pmtiles,pbf}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,pbf}'],
         // brand/social-card.png is an og:image served over HTTP, not part of
         // the offline app — keep it out of the precache so the install
         // budget (#28) doesn't grow.

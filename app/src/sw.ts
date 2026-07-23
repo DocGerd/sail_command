@@ -6,13 +6,20 @@ import { matchPrecache, precacheAndRoute, cleanupOutdatedCaches } from 'workbox-
 import { createPartialResponse } from 'workbox-range-requests';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
+import { isBasemapArchivePath } from './lib/basemap';
 import { GLYPH_CACHE_NAME, isGlyphPath, isRetiredGlyphCache } from './lib/glyphs';
 
 // MUST be registered before precacheAndRoute: first-registered route wins, and the
 // default precache route replays a full 200 to Range requests, which makes
 // pmtiles' FetchSource throw (verified against pmtiles 4.4.1 source).
+// #118: the archive is deployed as `basemap.pmtiles.png` (the .png masquerade
+// dodges the CDN's gzip-of-range mangling for UNCONTROLLED pages — see
+// src/lib/basemap.ts). The legacy bare `.pmtiles` shape stays OWNED BY THIS
+// ROUTE for the update transition — but the new precache holds only the
+// renamed file, so a legacy request matchPrecache-MISSES and degrades to a
+// network fetch (404 post-rename), self-healing on the update reload.
 registerRoute(
-  ({ url }) => url.pathname.endsWith('.pmtiles'),
+  ({ url }) => isBasemapArchivePath(url.pathname),
   async ({ request }) => {
     const full = await matchPrecache(request.url);
     if (full) {
@@ -35,8 +42,8 @@ registerRoute(
 // Scoping (fails review if loosened): `sameOrigin` plus isGlyphPath's
 // path-prefix + .pbf check means this route can never match the Open-Meteo
 // origin (which the SW must NEVER cache — wind lives per plan in IndexedDB)
-// nor `.pmtiles` requests (owned by the Range→206 route above, which must
-// stay the FIRST registration).
+// nor basemap-archive requests (`.pmtiles.png`/legacy `.pmtiles`, owned by
+// the Range→206 route above, which must stay the FIRST registration).
 registerRoute(
   ({ url, sameOrigin }) => sameOrigin && isGlyphPath(url.pathname),
   new CacheFirst({ cacheName: GLYPH_CACHE_NAME }),

@@ -111,8 +111,9 @@ export const GLYPH_MANIFEST_PATH = 'glyph-manifest.json';
  * True for font glyph-range requests and nothing else. Deliberately narrow
  * (path prefix AND extension): combined with a same-origin check at the
  * call site, this can never match the Open-Meteo origin (which the SW must
- * never cache) nor `.pmtiles` Range requests (different path and extension,
- * owned by sw.ts's first-registered route).
+ * never cache) nor basemap-archive Range requests (`.pmtiles.png`, legacy
+ * `.pmtiles` — different path and extension, owned by sw.ts's
+ * first-registered route).
  */
 export function isGlyphPath(pathname: string): boolean {
   return pathname.endsWith('.pbf') && pathname.includes('/basemap-assets/fonts/');

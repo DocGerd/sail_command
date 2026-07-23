@@ -1,12 +1,19 @@
 // #27: one-shot recovery from broken pre-SW basemap loads.
 //
 // On a page NOT yet controlled by the service worker, GitHub Pages (Fastly)
-// can answer `.pmtiles` Range requests with raw byte slices stamped
+// can answer basemap-archive Range requests with raw byte slices stamped
 // `content-encoding: gzip` — the browser fails to gunzip them and MapLibre
 // surfaces tile errors (net::ERR_CONTENT_DECODING_FAILED). Once the SW
 // controls the page, ranges are sliced from the precache and are always
 // correct, so the app self-heals — except the already-errored map stays
 // broken until something reloads it.
+//
+// #118 hardened that window at the source: the archive now ships as
+// `data/basemap.pmtiles.png` (image/png is gzip-exempt + Range-clean on this
+// origin) and uncontrolled pages run a Range preflight with a Blob-backed
+// full-fetch fallback (src/services/basemapSource.ts). This module remains
+// the FINAL net behind both, for any uncontrolled-page map error the
+// preflight/fallback pair cannot absorb.
 //
 // This module bridges exactly that window: it records whether MapLibre
 // errored while `navigator.serviceWorker.controller` was null, and on the

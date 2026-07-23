@@ -106,7 +106,7 @@ flowchart LR
     OSMLP["OSM land polygons"] --> MASK
     ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs → polar-genoa/fock.json"]
     CUR["curated harbor list"] --> HARB["build_harbors.mjs → harbors.json"]
-    PROTO["Protomaps extract"] --> PMT["basemap.pmtiles"]
+    PROTO["Protomaps extract"] --> PMT["basemap.pmtiles.png"]
   end
   MASK & POLARS & HARB & PMT --> ASSETS["committed static assets — app/public/data/"]
   subgraph app ["Runtime — app/ (PWA, no backend)"]
