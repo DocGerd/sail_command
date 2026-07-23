@@ -176,3 +176,117 @@ an awareness aid, not collision avoidance and not a navigation device.
 - [ ] No key configured: zero network activity from the feature, UI shows the
       off-state hint, all existing tests (incl. offline e2e) untouched.
 - [ ] All new strings in both dicts; no CPA/TCPA-style functionality anywhere.
+
+---
+
+# Route-corridor subscription — Addendum (#146, 2026-07-23)
+
+## Goal
+
+Show AIS traffic along the active route even when it is far from the current
+viewport — a ferry crossing the track two legs ahead — without panning there.
+The subscription grows from one viewport box to a set of boxes covering
+route corridor ∪ padded viewport; rendering, aging, and declutter are
+unchanged.
+
+## Owner decisions (locked, 2026-07-23)
+
+- **Always-on**: the corridor joins the subscription automatically whenever a
+  plan is active and AIS itself is on (key + Live tab + online + visible).
+  No new setting.
+- **Half-width ±5 nm constant** (`AIS_CORRIDOR_HALF_WIDTH_NM = 5`).
+- **Extent: remaining route plus one leg astern** — legs from
+  `max(0, activeLegIndex − 1)` onward. When `activeLegIndex` is null (no fix,
+  or Live readouts not yet running): the FULL route, so pre-departure review
+  at home still covers the whole track.
+- **Status chip splits the count**: `live · N (M along route)` while a plan
+  is active; the existing `live · N` otherwise.
+
+## Client extension (aisstream envelope)
+
+The wire envelope's `BoundingBoxes` field is already an array;
+`buildSubscription` merely wraps a single box today. The client surface
+becomes list-shaped: `updateSubscription(bboxes: AisBoundingBox[])`
+(replacing `updateBbox`; single-box callers pass `[bbox]`), and
+`buildSubscription(apiKey, bboxes)` passes the list through. Every existing
+lifecycle semantic carries over unchanged: stored boxes are re-sent by
+`onOpen` on each (re)connect; a resend on an open socket replaces the
+server-side filter without reconnecting; updates during backoff only store
+(picked up at the next `onOpen`); a keyError'd client stays terminated
+regardless of new boxes; the keyProven/stability machinery is untouched.
+
+## Corridor geometry (new pure module `lib/routeCorridor.ts`)
+
+- Input: the active rig's legs (via `activeRigResult(plan, rig)`), the
+  AppState `activeLegIndex` (number | null), the half-width in nm.
+- Legs are exact 2-point great-circle segments. Per included leg: lat/lon
+  min/max box over start+end, padded by the half-width using
+  `destinationPoint` (lib/geo.ts) from the box corners — nm-true padding
+  (the degree-fraction `padBoundingBox` stays viewport-only).
+- Overlapping/adjacent boxes merge (union); output stays in
+  `AisBoundingBox` lat-first order.
+- **Budget guard (hard, new — no subscription-size guard exists today)**:
+  after merging, at most `AIS_CORRIDOR_MAX_BOXES = 8`; if exceeded, merge
+  nearest pairs until under the cap (merging over-covers, never drops
+  coverage). Defensive total-area cap `AIS_CORRIDOR_MAX_AREA_NM2 = 2000`
+  (≈ half the data region): beyond it fall back to viewport-only with a
+  `console.warn` — an over-cap corridor means something is wrong, and honest
+  degradation beats subscribing to the whole western Baltic. Exact literals
+  tunable at plan time; both pinned in tests.
+- Pure function, no React/map imports (the `projectionVector` precedent).
+
+## Subscription composition & recompute triggers
+
+- Subscribed set = merged corridor boxes ∪ the existing padded viewport box.
+  Viewport logic (20 % pad, escape check, 2 s moveend debounce) is unchanged.
+- The corridor recomputes only on `[plan, rig, activeLegIndex]` changes (a
+  leg advance moves the astern boundary one leg at a time — naturally rare);
+  never per GPS fix. Composition lives where viewport bbox state lives today
+  (`AisTraffic`), handed to `useAisTraffic` as the box list.
+- No active plan → exactly today's viewport-only behavior.
+
+## Status chip
+
+- New key `ais.status.liveRoute` — de
+  `AIS live · {count} Schiffe ({routeCount} entlang Route)`, en
+  `AIS live · {count} vessels ({routeCount} along route)` (matching the
+  existing `ais.status.live` noun) — used while a plan
+  is active and status is `live`; both dicts, `satisfies` parity. Without a
+  plan the existing `ais.status.live` string renders.
+- `routeCount` = stored targets whose position lies inside any corridor box,
+  computed in the existing ≤1 Hz snapshot pass (cheap point-in-box tests),
+  never per-message.
+
+## Explicitly unchanged / out of scope
+
+- Live-tab-only, BYOK-inert (no key → zero sockets), offline/hidden
+  teardown, ownship filter, aging/declutter, popups, projection vectors.
+- No CPA/TCPA — a distant vessel near the track is awareness, not collision
+  math.
+- No rendering changes: corridor targets flow through the same store/layers
+  (no viewport filtering exists downstream — verified during research).
+
+## Testing
+
+- Unit: corridor builder (single leg, multi-leg merge, astern inclusion,
+  null `activeLegIndex` → full route, cap-merge behavior, area fallback)
+  with hand-derived pinned literals; multi-box envelope builder;
+  point-in-corridor counting.
+- Component: chip shows the split count with an active plan, the plain count
+  without one.
+- E2E: the network-free suite stays untouched (no key → no sockets).
+- Real-browser pass with the owner key and an active plan crossing a ferry
+  lane (Flensburg area) at the end of implementation.
+
+## Acceptance criteria (#146)
+
+- [ ] With an active plan and a valid key: vessels along the corridor render
+      even when far outside the viewport; panning there shows them already
+      present with normal age tiers.
+- [ ] The subscription message carries corridor ∪ viewport boxes within the
+      caps; without a plan it carries the single viewport box exactly as
+      today.
+- [ ] Leg advance / plan / rig change updates the corridor without socket
+      churn (resend on the open socket only).
+- [ ] Chip reads `live · N (M along route)` with a plan, `live · N` without.
+- [ ] No key → zero sockets; offline e2e untouched.
