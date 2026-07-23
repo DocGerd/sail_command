@@ -10,6 +10,7 @@ import {
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { useViaReplan } from './state/replan';
 import { useOwnshipGps } from './state/useOwnshipGps';
+import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
@@ -36,9 +37,8 @@ import { useWideLayout } from './lib/useWideLayout';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
+import type { Tab } from './lib/sessionSnapshot';
 import type { Harbor, LatLon, PickedPoint, Plan } from './types';
-
-type Tab = 'plan' | 'routes' | 'live';
 
 const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 
@@ -391,6 +391,16 @@ function AppShell() {
     setTab(next);
     if (next !== 'plan') setTapTarget(null);
   }, []);
+
+  // #113: restores the last session's plan/rig/tab on boot (pure local
+  // replay of PlansList's getPlan→setPlan path) and persists the small
+  // session snapshot on every plan/tab/rig change. Goes through
+  // handleTabChange, not raw setTab: the restore's getPlan is async, so the
+  // user can arm tap-to-pick on the initial Plan tab before it resolves — a
+  // raw setTab would then switch tabs with the pick still armed, letting a
+  // stray map tap overwrite origin/destination from Routes/Live (the exact
+  // state handleTabChange's disarm exists to prevent).
+  useSessionRestore(tab, handleTabChange);
 
   // #64 phase 3: "Details ansehen" from the Plan-tab Ergebnis strip switches to
   // the Routes tab AND moves focus to its Ergebnis heading (user-initiated, so
