@@ -296,6 +296,23 @@ select {
   gap: 0.25rem 0.75rem;
 }
 
+/* #115: manual "reroute from here" action + its hint (needs-a-fix reason
+   while disabled, planning-aid framing while enabled). */
+.live-view-reroute {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--sc-border);
+}
+
+.live-view-reroute-hint {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin: 0;
+}
+
 /* ---- Map-overlay controls (RouteLayer's annotations toggle, barb toggle/time
    slider and collapsible legend, and DataLayers' always-mounted depth toggle) ---- */
 
