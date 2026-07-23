@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { Marker } from 'maplibre-gl';
-import type { GeoJSONSource, LngLatLike, Map as MaplibreMap } from 'maplibre-gl';
+import type { GeoJSONSource, LngLatLike } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { destinationPoint } from '../lib/geo';
 import { ownshipVectorGeoJson } from '../lib/ownshipVector';
+import { installStyleSetup } from '../lib/styleReload';
 import type { LatLon } from '../types';
 
 export interface BoatMarkerProps {
@@ -45,16 +46,6 @@ function accuracyCircleGeoJson(center: LatLon, radiusM: number) {
       },
     ],
   };
-}
-
-// Same one-shot style-ready helper as AisLayer/DataLayers/RouteLayer (map
-// 'load' fires exactly once per map lifetime; valid only for one-time setup —
-// see RouteLayer's whenStyleReady comment for why it must never gate REPEATED
-// updates). The style-RELOAD re-add path (#150) listens on 'styledata'
-// instead, in the mount effect below.
-function whenStyleReady(map: MaplibreMap, fn: () => void): void {
-  if (map.isStyleLoaded()) fn();
-  else map.once('load', fn);
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -117,13 +108,13 @@ export default function BoatMarker({
 
     // #150: ONE shared setup for BOTH layers (accuracy fill + #141 vector),
     // idempotent via the same source-presence guard as AisLayer's setupLayers.
-    // It runs once the style is ready (whenStyleReady, AisLayer's gate) and
-    // again on every 'styledata': a mid-session map.setStyle() drops custom
-    // sources/layers, and 'styledata' fires once the replacement style is in
-    // place (the style is parsed by then, so addSource/addLayer are safe).
-    // The guard turns the frequent routine 'styledata' firings (any
-    // addLayer/setPaintProperty map-wide, including this setup's own adds)
-    // into cheap no-ops.
+    // installStyleSetup (lib/styleReload.ts, extracted from this pattern in
+    // #153) runs it once the style is ready and again on every 'styledata' —
+    // a mid-session map.setStyle() drops custom sources/layers, and
+    // 'styledata' fires once the replacement style is in place. The guard
+    // turns the frequent routine 'styledata' firings (any addLayer/
+    // setPaintProperty map-wide, including this setup's own adds) into cheap
+    // no-ops.
     const setup = () => {
       const fix = fixRef.current;
       if (!map.getSource(ACCURACY_SOURCE)) {
@@ -159,17 +150,15 @@ export default function BoatMarker({
         });
       }
     };
-    whenStyleReady(map, setup);
-    map.on('styledata', setup);
+    const disposeStyleSetup = installStyleSetup(map, setup);
 
     return () => {
       // Unlike AisLayer (which leaves its layers in place for the map's
       // lifetime), BoatMarker tears everything down on unmount — so BOTH the
-      // 'styledata' re-add hook and a still-pending whenStyleReady one-shot
-      // must be cancelled here, or a later event would resurrect ownerless
-      // layers. Evented.off removes once()-registered listeners too.
-      map.off('styledata', setup);
-      map.off('load', setup);
+      // 'styledata' re-add hook and a still-pending ready one-shot must be
+      // cancelled here (the disposer removes both listeners), or a later
+      // event would resurrect ownerless layers.
+      disposeStyleSetup();
       marker.remove();
       markerRef.current = null;
       if (map.getLayer(VECTOR_LAYER)) map.removeLayer(VECTOR_LAYER);

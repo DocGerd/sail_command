@@ -11,6 +11,7 @@ import {
   nearestHourIndex,
   routePointFeatures,
 } from '../lib/routeGeoJson';
+import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { registerBarbImages } from '../lib/windBarbs';
 import { NavMask } from '../lib/mask';
@@ -68,22 +69,11 @@ export const ROUTE_STACK_BOTTOM_LAYER = 'sc-route-shallow';
 // leg is active instead of toggling the layer's visibility on/off.
 const NO_HIGHLIGHT_IDX = -1;
 
-// Gates a callback on the map's style existing, for calls that need to
-// happen exactly once per map instance (setupLayers, below). map.once('load', ...)
-// is correct ONLY for this one-shot use: MapLibre fires 'load' exactly once
-// per map lifetime, when the initial style finishes loading. Reusing this
-// helper for later, repeated updates (data refreshes, fitBounds, layout
-// toggles) is a bug — isStyleLoaded() can transiently read false again
-// afterwards (e.g. right after addSource, or while basemap tiles are still
-// streaming in), and registering another once('load', ...) at that point
-// waits forever, since 'load' already fired and never fires again. Those
-// later effects call the map APIs directly instead (see below) — they're
-// safe to call any time after the style exists, regardless of transient
-// tile-loading state.
-function whenStyleReady(map: MaplibreMap, fn: () => void): void {
-  if (map.isStyleLoaded()) fn();
-  else map.once('load', fn);
-}
+// Style setup/re-add gating lives in the shared installStyleSetup hook
+// (lib/styleReload.ts, #153) — see its doc for the 'load'-fires-once and
+// styledata-re-add caveats. The later, repeated update effects below call the
+// map APIs directly instead: they're safe any time after the style exists,
+// regardless of transient tile-loading state.
 
 function setupLayers(map: MaplibreMap): void {
   if (!map.getSource(ROUTE_SOURCE)) {
@@ -351,25 +341,33 @@ export default function RouteLayer({
 
   const result = plan && rig ? activeRigResult(plan, rig) : null;
 
-  // Tracks whether setupLayers() has actually run for the current map
-  // instance (sources/layers exist). Re-rendering on this flip — rather than
-  // just calling setupLayers from a fire-and-forget 'load' callback — matters
-  // because that callback can fire well after mount with only its
-  // mount-time closure (map, no plan yet); the effects below need to
-  // re-observe the *current* result/plan/etc. once sources actually exist,
-  // which only happens via a dependency-driven re-run.
-  const [styleReady, setStyleReady] = useState(false);
+  // Counts completed setup passes for the current map instance: 0 = sources/
+  // layers don't exist yet; 1 once the style is first ready; +1 after every
+  // style-reload re-add (#153). Re-rendering on each bump — rather than just
+  // calling setupLayers from a fire-and-forget callback — matters because
+  // that callback fires with only its mount-time closure (map, no plan yet);
+  // the effects below need to re-observe the *current* result/plan/toggles
+  // and repaint the freshly re-created (empty) sources, which only happens
+  // via a dependency-driven re-run. The pre-#153 boolean could only drive
+  // the first pass, so layers silently vanished after a map.setStyle().
+  const [styleEpoch, setStyleEpoch] = useState(0);
 
-  // Create sources/layers once per map instance. styleReady starts false
-  // and this only ever flips it true (never resets it) — MapView creates
-  // exactly one map instance per mount, so `map` transitions null -> instance
-  // at most once in this component's lifetime.
+  // Create sources/layers once the style is ready and again after every
+  // style reload, via the shared installStyleSetup hook (#153). setupLayers
+  // keeps its own per-source guards; `missing` additionally gates the epoch
+  // bump so routine 'styledata' firings (any addLayer map-wide, including
+  // this setup's own adds) stay cheap no-ops — the updater returns the same
+  // value and React bails out. The `e === 0` half admits a remount that
+  // finds the previous instance's layers still in place (RouteLayer never
+  // removes them) and must still run its first data pass.
   useEffect(() => {
     if (!map) return;
-    whenStyleReady(map, () => {
-      setupLayers(map);
-      setStyleReady(true);
-    });
+    const setup = () => {
+      const missing = !map.getSource(ROUTE_SOURCE);
+      if (missing) setupLayers(map);
+      setStyleEpoch((e) => (missing || e === 0 ? e + 1 : e));
+    };
+    return installStyleSetup(map, setup);
   }, [map]);
 
   // E2E handle: publish the live map so Playwright can introspect the barb and
@@ -410,7 +408,7 @@ export default function RouteLayer({
   // also gains the per-leg speed label; both depend on lang (ETA/speed strings
   // are precomputed), so a language switch rebuilds them.
   useEffect(() => {
-    if (!map || !styleReady) return;
+    if (!map || styleEpoch === 0) return;
     const legs = result?.legs ?? [];
     const routeData = legsToFeatureCollection(legs, { motorLetter: t('route.motorLetter') });
     const pointData = routePointFeatures(legs, result?.etaMs ?? 0, lang);
@@ -419,11 +417,11 @@ export default function RouteLayer({
     // t() is re-derived from lang every render; only lang's identity should
     // retrigger this rebuild (the strings are language-dependent).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, styleReady, result, lang]);
+  }, [map, styleEpoch, result, lang]);
 
   // Maneuver letter labels are language-dependent: W/H (de), T/G (en).
   useEffect(() => {
-    if (!map || !styleReady || !map.getLayer('sc-maneuver-labels')) return;
+    if (!map || styleEpoch === 0 || !map.getLayer('sc-maneuver-labels')) return;
     map.setLayoutProperty('sc-maneuver-labels', 'text-field', [
       'match',
       ['get', 'kind'],
@@ -436,7 +434,7 @@ export default function RouteLayer({
     // t() is re-derived from lang every render (see i18n/index.tsx); only
     // lang's identity should retrigger this layout update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, styleReady, lang]);
+  }, [map, styleEpoch, lang]);
 
   // Fit the map to the active route when the plan changes — not on every rig
   // switch (both rigs cover roughly the same area) or barb-slider tick.
@@ -470,7 +468,7 @@ export default function RouteLayer({
   // per-frame JS during a pan, and no work at all when the toggle is off).
   // Always sampled from plan.windGrid at the slider time — never re-fetched.
   useEffect(() => {
-    if (!map || !styleReady) return;
+    if (!map || styleEpoch === 0) return;
     const source = () => map.getSource(BARB_SOURCE) as GeoJSONSource | undefined;
     if (!plan || !barbsVisible) {
       // No plan → clear stale barbs. Hidden → the layer is already invisible,
@@ -518,30 +516,30 @@ export default function RouteLayer({
       map.off('moveend', onViewChange);
       map.off('zoomend', onViewChange);
     };
-  }, [map, styleReady, plan, tMs, result, barbsVisible, mask]);
+  }, [map, styleEpoch, plan, tMs, result, barbsVisible, mask]);
 
   useEffect(() => {
-    if (!map || !styleReady || !map.getLayer('sc-wind-barbs')) return;
+    if (!map || styleEpoch === 0 || !map.getLayer('sc-wind-barbs')) return;
     map.setLayoutProperty('sc-wind-barbs', 'visibility', barbsVisible ? 'visible' : 'none');
-  }, [map, styleReady, barbsVisible]);
+  }, [map, styleEpoch, barbsVisible]);
 
   // "Times & speeds" toggle flips the ETA + per-leg-speed label layers
   // together (heading dots are NOT included — they stay minzoom-gated).
   useEffect(() => {
-    if (!map || !styleReady) return;
+    if (!map || styleEpoch === 0) return;
     const visibility = annotationsVisible ? 'visible' : 'none';
     for (const id of ANNOTATION_LAYERS) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
-  }, [map, styleReady, annotationsVisible]);
+  }, [map, styleEpoch, annotationsVisible]);
 
   // Cheap setFilter() only — no source re-set — so this stays cheap even
   // when GPS noise near a leg boundary flips activeLegIndex back and forth.
   // The effect dependency array already value-gates this to real changes.
   useEffect(() => {
-    if (!map || !styleReady || !map.getLayer(HIGHLIGHT_LAYER)) return;
+    if (!map || styleEpoch === 0 || !map.getLayer(HIGHLIGHT_LAYER)) return;
     map.setFilter(HIGHLIGHT_LAYER, ['==', ['get', 'legIndex'], activeLegIndex ?? NO_HIGHLIGHT_IDX]);
-  }, [map, styleReady, activeLegIndex]);
+  }, [map, styleEpoch, activeLegIndex]);
 
   if (!plan) return null;
 
