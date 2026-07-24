@@ -40,21 +40,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CMD=$(python3 -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',d).get('command',''))\" 2>/dev/null || true); case \"$CMD\" in *grep\\ *|rg\\ *|*\\ rg\\ *|find\\ *|*\\ find\\ *|fd\\ *|*\\ fd\\ *|ack\\ *|*\\ ack\\ *|ag\\ *|*\\ ag\\ *) if [ -f graphify-out/graph.json ]; then if [ -f graphify-out/.update-failed ]; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify graph exists but its last auto-update FAILED (see graphify-out/.update-failed) - it may be STALE. Prefer raw files/grep until `graphify update .` succeeds.\"}}'; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"MANDATORY: graphify-out/graph.json exists. You MUST run `graphify query \\\"<question>\\\"` before grepping raw files. Only grep after graphify has oriented you, or to modify/debug specific lines.\"}}'; fi; fi ;; esac"
+            "command": "IN=$(cat); CMD=$(printf '%s' \"$IN\" | python3 -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',d).get('command',''))\" 2>/dev/null || true); case \"$CMD\" in *grep\\ *|rg\\ *|*\\ rg\\ *|find\\ *|*\\ find\\ *|fd\\ *|*\\ fd\\ *|ack\\ *|*\\ ack\\ *|ag\\ *|*\\ ag\\ *) if [ -f graphify-out/graph.json ]; then if [ -f graphify-out/.update-failed ]; then SID=$(printf '%s' \"$IN\" | python3 -c \"import json,sys; print(json.load(sys.stdin).get('session_id') or 'nosess')\" 2>/dev/null || echo nosess); SENT=\"${TMPDIR:-/tmp}/claude-graphify-stale-$SID\"; if [ ! -e \"$SENT\" ]; then : > \"$SENT\" 2>/dev/null || true; echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify graph exists but its last auto-update FAILED (see graphify-out/.update-failed) - it may be STALE (shown once per session). Prefer raw files/grep until `graphify update .` succeeds.\"}}'; fi; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"MANDATORY: graphify-out/graph.json exists. You MUST run `graphify query \\\"<question>\\\"` before grepping raw files. Only grep after graphify has oriented you, or to modify/debug specific lines.\"}}'; fi; fi ;; esac"
           },
           {
             "type": "command",
             "command": "CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null); FIX=\"app/public/test-fixtures/wind-sw12.json\"; case \"$CMD\" in *git\\ commit*|*git\\ -C*commit*|*git\\ -c*commit*) [ -n \"$(git -C \"$CLAUDE_PROJECT_DIR\" status --porcelain -- \"$FIX\")\" ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"wind-sw12.json has uncommitted changes (git commit -a would include them). pree2e regenerates this fixture with fresh timestamps - CLAUDE.md says restore it, not commit it (git restore app/public/test-fixtures/wind-sw12.json). Proceed only if the fixture change is intentional (generator changed).\"}}' ;; *git\\ add*) [ -n \"$(git -C \"$CLAUDE_PROJECT_DIR\" status --porcelain -- \"$FIX\")\" ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"wind-sw12.json is dirty - expected pree2e churn per CLAUDE.md. Restore with: git restore app/public/test-fixtures/wind-sw12.json instead of staging it, unless the change is intentional.\"}}' ;; esac; exit 0",
             "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Read|Glob",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "HIT=$(python3 -c \"import json,sys;d=json.load(sys.stdin);t=d.get('tool_input',d);exts=('.py','.js','.ts','.tsx','.jsx','.astro','.vue','.svelte','.go','.rs','.java','.rb','.c','.h','.cpp','.hpp','.cc','.cs','.kt','.swift','.php','.scala','.lua','.sh','.md','.rst','.txt','.mdx');vals=[str(t.get('file_path') or ''),str(t.get('pattern') or ''),str(t.get('path') or '')];j=' '.join(vals).lower().replace(chr(92),'/');tails=[('.'+x.rsplit('.',1)[-1]) for v in vals if v for x in [v.lower().replace(chr(92),'/').rsplit('/',1)[-1]] if '.' in x];sys.stdout.write('1' if 'graphify-out/' not in j and any(tl in exts for tl in tails) else '')\" 2>/dev/null || true); if [ \"$HIT\" = 1 ] && [ -f graphify-out/graph.json ]; then if [ -f graphify-out/.update-failed ]; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify graph exists but its last auto-update FAILED (see graphify-out/.update-failed) - it may be STALE. Prefer raw files until `graphify update .` succeeds.\"}}'; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"MANDATORY: graphify-out/graph.json exists. You MUST run graphify before reading source files. Use: `graphify query \\\"<question>\\\"` (scoped subgraph), `graphify explain \\\"<concept>\\\"`, or `graphify path \\\"<A>\\\" \\\"<B>\\\"`. Only read raw files after graphify has oriented you, or to modify/debug specific lines. This rule applies to subagents too \u2014 include it in every subagent prompt involving code exploration.\"}}'; fi; fi || true"
           }
         ]
       }
@@ -108,5 +99,10 @@
         ]
       }
     ]
-  }
+  },
+  "deniedMcpServers": [
+    {
+      "serverUrl": "https://learn.microsoft.com/api/mcp"
+    }
+  ]
 }
