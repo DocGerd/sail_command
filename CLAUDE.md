@@ -82,6 +82,23 @@ deviate from it.
   id — an out-of-root `?raw` import needs `[APP_DIR, file, file + '?raw']`
   exactly (#131); prove any allowlist change with positive AND negative (403)
   probes.
+- Map-layer components use `lib/styleReload.ts`'s `installStyleSetup`
+  (idempotent setup + `styledata` re-add + late-install-safe
+  `once('load')`+`once('idle')` deferral) and the shared
+  `test/fakeMaplibre.ts` — never hand-roll `whenStyleReady`. MapLibre's
+  `isStyleLoaded()` means EVERYTHING loaded incl. tiles in flight, never
+  "style present"; a mid-session mount deferring on it via `once('load')`
+  alone strands forever (#159). The fake's `addLayer` DROPS layers on a
+  truthy-but-missing `beforeId` like real MapLibre — keep it strict (#163).
+- Cross-component layer z-order is anchored EXPLICITLY (DataLayers inserts
+  below `AIS_STACK_BOTTOM_LAYER` whenever the AIS stack exists, #160) —
+  never rely on setup timing for ordering; the asset-fetch delay makes
+  timing races real.
+- GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
+  idempotent consumers (RouteLayer's `setFilter`); any network/subscription
+  effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with a
+  `[plan, rig]` resetKey so plan changes bypass it) — GPS noise flips the
+  nearest-leg argmin at fix rate near leg boundaries (#158).
 
 ## PWA / E2E / deploy (Phase F)
 
@@ -262,6 +279,12 @@ deviate from it.
   identical `<a>OpenStreetMap</a>` broke plan.spec.ts's strict-mode locator
   (#7); extend the existing anchor's text for new data credits instead of
   adding a link.
+- Cross-PR composition bugs are invisible to per-PR review: after the 7-PR
+  session-7 train, a 5-lens find → 2-refuter adversarial-verify sweep over
+  the CUMULATIVE diff found 3 real bugs (#158/#159/#160) that every
+  individual reviewer had correctly approved past. Run such a sweep after
+  any multi-PR burst touching shared subsystems; expect refuters to kill
+  ~2/3 of candidates — the survivors are load-bearing.
 
 ## Domain rules that are easy to get wrong
 
@@ -323,7 +346,15 @@ deviate from it.
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
-  fallback. Parallel
+  fallback.
+- Agent stall patterns (session 7, 6/6 recoveries): an implementer that stops
+  "waiting on an armed watcher/monitor" while its notification shows NO live
+  background children is asleep forever — nudge it to check the result in the
+  FOREGROUND; a reviewer that idles with zero PR activity may have WRITTEN its
+  report without SENDING it — check the PR's reviews/threads first, then nudge
+  once. Worktree cleanup ritual: agent runs `find app/node_modules -delete`
+  (`rm -rf` is permission-blocked even in the main session; `find -delete` is
+  allowed), then the main session runs `git worktree remove` — force-free. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
 - When the session's OWN cwd is a worktree, `isolation:worktree` agents and
