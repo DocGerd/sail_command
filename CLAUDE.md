@@ -115,6 +115,10 @@ deviate from it.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
+- GPS dynamics ARE e2e-testable: `app/e2e/live.spec.ts` (#142) drives
+  deterministic fix sequences via Playwright `context.setGeolocation` +
+  `grantPermissions(['geolocation'])` against the real solver/mask — extend it
+  rather than claiming live behavior is untestable.
 - `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
@@ -312,6 +316,12 @@ deviate from it.
 - Depth byte 254 is reserved but never emitted (the pipeline folds ≥25.4 m
   into byte 255) — `depthInfoM().capped` is the only honest "≥25 m"
   discriminator; never infer the cap from `depthM === 25.4`.
+- Seamark symbology authority: IALA R1001 Ed 2.0 (2022) §2.2 / Tables 5–6
+  (cardinal marks are region-independent). Glyph changes are visually
+  verifiable by capturing the REAL `registerSeamarkImages` output through a
+  fake `map.addImage` on a dev-server scratch page (4× nearest-neighbor) —
+  the #165 evidence technique; hand-derive expected geometry/colours from
+  R1001, never from the renderer's own output.
 - Open-Meteo is called directly from the browser (CORS is open, no API key).
   There is deliberately **no backend** — do not introduce one.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
