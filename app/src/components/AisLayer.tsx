@@ -12,6 +12,12 @@ export const AIS_SOURCE = 'sc-ais';
 export const AIS_VECTOR_LAYER = 'sc-ais-vectors';
 export const AIS_VESSEL_LAYER = 'sc-ais-vessels';
 export const AIS_LABEL_LAYER = 'sc-ais-labels';
+// Bottom-most layer of the AIS stack (the first setupLayers adds below) —
+// imported by DataLayers as its insert anchor so the depth/harbor/seamark
+// overlays always slot in BELOW the whole AIS stack no matter which
+// component happens to set up first (#160; the ROUTE_STACK_BOTTOM_LAYER
+// pattern — imported so a rename can't silently drop the ordering).
+export const AIS_STACK_BOTTOM_LAYER = AIS_VECTOR_LAYER;
 
 const ARROW_IMAGE = 'sc-ais-arrow';
 const DOT_IMAGE = 'sc-ais-dot';
@@ -61,9 +67,13 @@ function registerAisImages(map: MaplibreMap): void {
 }
 
 function setupLayers(map: MaplibreMap): void {
-  // Anchor below the route stack (resolved at add time) so AIS renders ABOVE the
-  // depth/seamark overlays (added earlier, also below the anchor) but BELOW the
-  // route stack and the ownship marker (a DOM Marker, always on top).
+  // Anchor below the route stack (resolved at add time) so AIS renders BELOW
+  // the route stack and the ownship marker (a DOM Marker, always on top) but
+  // ABOVE the depth/seamark overlays. The overlay half of that invariant is
+  // owned by DataLayers (#160): it anchors below AIS_STACK_BOTTOM_LAYER
+  // whenever the AIS stack already exists, so the order holds for either
+  // setup interleaving (DataLayers additionally waits for the routing-assets
+  // fetch) and on every styledata re-add, not by setup-order luck.
   const beforeId = map.getLayer(ROUTE_STACK_BOTTOM_LAYER) ? ROUTE_STACK_BOTTOM_LAYER : undefined;
   if (map.getSource(AIS_SOURCE)) return;
   map.addSource(AIS_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });

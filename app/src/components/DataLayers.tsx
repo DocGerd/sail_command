@@ -12,6 +12,7 @@ import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
+import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
 import type { Harbor, MaskMeta, SeamarkProperties } from '../types';
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
@@ -46,19 +47,26 @@ const SEAMARKS_SOURCE = 'sc-seamarks';
 // never sets origin/destination). (#7)
 export const SEAMARKS_LAYER = 'sc-seamarks';
 
-// Deterministic cross-component layer ordering, anchored on RouteLayer's
-// bottom-most layer (ROUTE_STACK_BOTTOM_LAYER, the shallow casing — the first
-// its setupLayers adds — imported so a rename can't silently drop the
-// ordering). Both components add layers
-// whenever their own prerequisites happen to resolve, so ordering must hold for
-// either interleaving, not by load-order luck:
-// - Route layers exist first (the common case — they only wait for the map
-//   style, while these layers also wait for the assets fetch): everything
-//   here is inserted BEFORE the anchor, i.e. below the whole route stack.
-// - These layers exist first: RouteLayer appends its layers with no beforeId,
-//   which always lands them on top.
-// Either way route/maneuver/barb layers render above, and an active route
-// stays fully visible.
+// Deterministic cross-component layer ordering. Documented invariant (#160,
+// AisLayer's setupLayers): route stack above the AIS stack above these
+// overlays. Each component adds layers whenever its own prerequisites happen
+// to resolve, so the order must hold for EVERY interleaving, not by
+// load-order luck. Anchors, each resolved at add time (both ids imported so
+// a rename can't silently drop the ordering):
+// - This component inserts below the AIS stack's bottom-most layer
+//   (AIS_STACK_BOTTOM_LAYER) when AisLayer set up first (its layers only
+//   wait for the map style, while these also wait for the assets fetch);
+//   otherwise below RouteLayer's bottom-most layer (ROUTE_STACK_BOTTOM_LAYER,
+//   the shallow casing — the first its setupLayers adds); otherwise appended.
+// - AisLayer inserts below ROUTE_STACK_BOTTOM_LAYER, or appends: a
+//   later-arriving AIS stack lands directly under the route anchor — above
+//   overlays already sitting there — or on top of everything so far, and a
+//   later-arriving overlay stack slots in underneath it via the AIS anchor.
+// - RouteLayer appends with no beforeId, which always lands it on top.
+// The same anchor resolution re-runs on every styledata re-add (#153), so a
+// style reload re-establishes the identical order for any listener firing
+// order. Either way route/maneuver/barb layers render above, an active route
+// stays fully visible, and AIS traffic is never buried under seamarks.
 
 // One-time raster build (#39): decode the INTACT main-thread mask buffer
 // (usePlanFlow only ever transfers a .slice(0) copy to the worker, so reading
@@ -79,8 +87,12 @@ function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElemen
 }
 
 function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer): void {
-  // Anchor resolved at add time — see ROUTE_STACK_BOTTOM_LAYER above.
-  const beforeId = map.getLayer(ROUTE_STACK_BOTTOM_LAYER) ? ROUTE_STACK_BOTTOM_LAYER : undefined;
+  // Anchor resolved at add time — see the ordering note above (#160).
+  const beforeId = map.getLayer(AIS_STACK_BOTTOM_LAYER)
+    ? AIS_STACK_BOTTOM_LAYER
+    : map.getLayer(ROUTE_STACK_BOTTOM_LAYER)
+      ? ROUTE_STACK_BOTTOM_LAYER
+      : undefined;
   if (!map.getSource(DEPTH_SOURCE)) {
     const canvas = buildDepthCanvas(meta, maskBuffer);
     if (canvas) {
