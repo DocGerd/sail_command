@@ -113,60 +113,206 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     ]);
   });
 
-  it('cardinal north: both topmark cones point up (standard IALA-A orientation)', () => {
+  // #165 (nav-safety): cardinal glyphs get IALA R1001 Ed 2.0 Tables 5-6 colour
+  // bands + on-canvas topmark cones. Every expected value below is hand-derived
+  // from R1001 (cone points indicate where the BLACK band sits: N up = black
+  // top; S down = black bottom; E apart = black top+bottom; W inward = black
+  // middle) and the §2 canvas budget — NEVER read back from the renderer (that
+  // was the bug). INK='#1a1a1a', CARDINAL_YELLOW='#f5c400', OUTLINE='#f2f2f2';
+  // body box {x:7,y:12,w:10,h:12}; cones meet at shared mid y6, extremes y1/y11,
+  // apex on x12, base half-width 4 (x 8..16). Body outline is inset 0.5px so the
+  // 1px stroke isn't clipped at the y=24 boundary; each cone outline retraces its
+  // 3 vertices + the apex.
+  const INK = '#1a1a1a';
+  const YEL = '#f5c400';
+  const OUT = '#f2f2f2';
+  const bodyOutlineSeg = {
+    kind: 'line',
+    points: [
+      { x: 7.5, y: 12.5 },
+      { x: 16.5, y: 12.5 },
+      { x: 16.5, y: 23.5 },
+      { x: 7.5, y: 23.5 },
+      { x: 7.5, y: 12.5 },
+    ],
+    stroke: OUT,
+    width: 1,
+  } as const;
+  // Cone vertices [apex, base+HW, base-HW], hand-derived from R1001 orientation.
+  const NORTH_TOP = [
+    { x: 12, y: 1 },
+    { x: 16, y: 6 },
+    { x: 8, y: 6 },
+  ];
+  const NORTH_BOT = [
+    { x: 12, y: 6 },
+    { x: 16, y: 11 },
+    { x: 8, y: 11 },
+  ];
+  const SOUTH_TOP = [
+    { x: 12, y: 6 },
+    { x: 16, y: 1 },
+    { x: 8, y: 1 },
+  ];
+  const SOUTH_BOT = [
+    { x: 12, y: 11 },
+    { x: 16, y: 6 },
+    { x: 8, y: 6 },
+  ];
+  // East: top up + bottom down, bases share y6 -> diamond (base-to-base).
+  const EAST_TOP = NORTH_TOP;
+  const EAST_BOT = SOUTH_BOT;
+  // West: top down + bottom up, apexes share (12,6) -> hourglass (point-to-point).
+  const WEST_TOP = SOUTH_TOP;
+  const WEST_BOT = NORTH_BOT;
+  const coneFill = (points: { x: number; y: number }[]) => ({
+    kind: 'polygon',
+    points,
+    fill: INK,
+  });
+  const coneOut = (points: { x: number; y: number }[]) => ({
+    kind: 'line',
+    points: [...points, points[0]],
+    stroke: OUT,
+    width: 1,
+  });
+
+  it('cardinal north: black-over-yellow body + two up cones (R1001 Tables 5-6)', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_cardinal', category: 'north' });
     expect(segs).toEqual([
-      { kind: 'rect', x: 10, y: 11, w: 4, h: 10, fill: '#1a1a1a' },
-      {
-        kind: 'polygon',
-        points: [
-          { x: 12, y: 3 },
-          { x: 16, y: 8 },
-          { x: 8, y: 8 },
-        ],
-        fill: '#1a1a1a',
-      },
-      {
-        kind: 'polygon',
-        points: [
-          { x: 12, y: 9 },
-          { x: 16, y: 14 },
-          { x: 8, y: 14 },
-        ],
-        fill: '#1a1a1a',
-      },
+      { kind: 'rect', x: 7, y: 12, w: 10, h: 6, fill: INK },
+      { kind: 'rect', x: 7, y: 18, w: 10, h: 6, fill: YEL },
+      bodyOutlineSeg,
+      coneFill(NORTH_TOP),
+      coneOut(NORTH_TOP),
+      coneFill(NORTH_BOT),
+      coneOut(NORTH_BOT),
     ]);
   });
 
-  it('cardinal west: point-to-point (top cone down, bottom cone up)', () => {
+  it('cardinal south: yellow-over-black body + two down cones (R1001 Tables 5-6)', () => {
+    const segs = seamarkSegments({ seamarkType: 'buoy_cardinal', category: 'south' });
+    expect(segs).toEqual([
+      { kind: 'rect', x: 7, y: 12, w: 10, h: 6, fill: YEL },
+      { kind: 'rect', x: 7, y: 18, w: 10, h: 6, fill: INK },
+      bodyOutlineSeg,
+      coneFill(SOUTH_TOP),
+      coneOut(SOUTH_TOP),
+      coneFill(SOUTH_BOT),
+      coneOut(SOUTH_BOT),
+    ]);
+  });
+
+  it('cardinal east: black-yellow-black body + base-to-base diamond cones (R1001 Tables 5-6)', () => {
+    const segs = seamarkSegments({ seamarkType: 'buoy_cardinal', category: 'east' });
+    expect(segs).toEqual([
+      { kind: 'rect', x: 7, y: 12, w: 10, h: 4, fill: INK },
+      { kind: 'rect', x: 7, y: 16, w: 10, h: 4, fill: YEL },
+      { kind: 'rect', x: 7, y: 20, w: 10, h: 4, fill: INK },
+      bodyOutlineSeg,
+      coneFill(EAST_TOP),
+      coneOut(EAST_TOP),
+      coneFill(EAST_BOT),
+      coneOut(EAST_BOT),
+    ]);
+  });
+
+  it('cardinal west: yellow-black-yellow body + point-to-point hourglass cones (R1001 Tables 5-6)', () => {
     const segs = seamarkSegments({ seamarkType: 'beacon_cardinal', category: 'west' });
     expect(segs).toEqual([
-      { kind: 'rect', x: 10, y: 11, w: 4, h: 10, fill: '#1a1a1a' },
-      {
-        kind: 'polygon',
-        points: [
-          { x: 12, y: 3 },
-          { x: 16, y: -2 },
-          { x: 8, y: -2 },
-        ],
-        fill: '#1a1a1a',
-      },
-      {
-        kind: 'polygon',
-        points: [
-          { x: 12, y: 9 },
-          { x: 16, y: 14 },
-          { x: 8, y: 14 },
-        ],
-        fill: '#1a1a1a',
-      },
+      { kind: 'rect', x: 7, y: 12, w: 10, h: 4, fill: YEL },
+      { kind: 'rect', x: 7, y: 16, w: 10, h: 4, fill: INK },
+      { kind: 'rect', x: 7, y: 20, w: 10, h: 4, fill: YEL },
+      bodyOutlineSeg,
+      coneFill(WEST_TOP),
+      coneOut(WEST_TOP),
+      coneFill(WEST_BOT),
+      coneOut(WEST_BOT),
     ]);
   });
 
-  it('cardinal with an untagged category falls back to the north orientation', () => {
-    expect(seamarkSegments({ seamarkType: 'buoy_cardinal' })).toEqual(
-      seamarkSegments({ seamarkType: 'buoy_cardinal', category: 'north' }),
+  it('every cardinal segment stays on-canvas 0..24 (guards the #2 top-cone clip)', () => {
+    for (const cat of ['north', 'south', 'east', 'west']) {
+      const segs = seamarkSegments({ seamarkType: 'buoy_cardinal', category: cat });
+      const pts: { x: number; y: number }[] = [];
+      for (const seg of segs) {
+        if (seg.kind === 'rect') {
+          pts.push({ x: seg.x, y: seg.y }, { x: seg.x + seg.w, y: seg.y + seg.h });
+        } else if (seg.kind === 'polygon' || seg.kind === 'line') {
+          pts.push(...seg.points);
+        } else {
+          pts.push(
+            { x: seg.cx - seg.r, y: seg.cy - seg.r },
+            { x: seg.cx + seg.r, y: seg.cy + seg.r },
+          );
+        }
+      }
+      for (const p of pts) {
+        expect(p.x, `${cat} x on-canvas`).toBeGreaterThanOrEqual(0);
+        expect(p.x, `${cat} x on-canvas`).toBeLessThanOrEqual(24);
+        expect(p.y, `${cat} y on-canvas`).toBeGreaterThanOrEqual(0);
+        expect(p.y, `${cat} y on-canvas`).toBeLessThanOrEqual(24);
+      }
+    }
+  });
+
+  const conePolys = (props: SeamarkProperties) =>
+    seamarkSegments(props).filter(
+      (s): s is Extract<SeamarkSegment, { kind: 'polygon' }> => s.kind === 'polygon',
     );
+
+  it('west topmark is geometrically distinct from north (guards #4: West must never read as North)', () => {
+    const west = conePolys({ seamarkType: 'buoy_cardinal', category: 'west' });
+    const north = conePolys({ seamarkType: 'buoy_cardinal', category: 'north' });
+    expect(west).not.toEqual(north);
+    // West apexes both meet at the shared middle (12,6); North apexes are at y1 & y6.
+    expect(west.map((c) => c.points[0])).toEqual([
+      { x: 12, y: 6 },
+      { x: 12, y: 6 },
+    ]);
+  });
+
+  it('east cones are base-to-base (both bases y6) and distinct from west apex-to-apex (guards #3)', () => {
+    const east = conePolys({ seamarkType: 'buoy_cardinal', category: 'east' });
+    // Each east cone has its two BASE vertices (indices 1,2) at y6; apexes apart (y1,y11).
+    for (const c of east) {
+      expect(c.points[1].y).toBe(6);
+      expect(c.points[2].y).toBe(6);
+    }
+    expect(east.map((c) => c.points[0].y)).toEqual([1, 11]);
+    // West is apex-to-apex, so its cone set differs from east's.
+    const west = conePolys({ seamarkType: 'buoy_cardinal', category: 'west' });
+    expect(east).not.toEqual(west);
+  });
+
+  it('cardinal banding present & ordered per R1001 (guards #1: no bands = the bug)', () => {
+    const firstBand = (cat: string) => {
+      const first = seamarkSegments({ seamarkType: 'buoy_cardinal', category: cat })[0];
+      return first.kind === 'rect' ? first.fill : undefined;
+    };
+    const bandCount = (cat: string) =>
+      seamarkSegments({ seamarkType: 'buoy_cardinal', category: cat }).filter(
+        (s) => s.kind === 'rect',
+      ).length;
+    // Top-of-body colour: N/E black, S/W yellow.
+    expect(firstBand('north')).toBe(INK);
+    expect(firstBand('east')).toBe(INK);
+    expect(firstBand('south')).toBe(YEL);
+    expect(firstBand('west')).toBe(YEL);
+    // Band count: N/S = 2 bands, E/W = 3 bands.
+    expect(bandCount('north')).toBe(2);
+    expect(bandCount('south')).toBe(2);
+    expect(bandCount('east')).toBe(3);
+    expect(bandCount('west')).toBe(3);
+  });
+
+  it('cardinal with an untagged/unknown category is a neutral grey body with NO cones (never North)', () => {
+    const segs = seamarkSegments({ seamarkType: 'buoy_cardinal' });
+    expect(segs).toEqual([{ kind: 'rect', x: 7, y: 12, w: 10, h: 12, fill: '#888888' }]);
+    // Must NOT masquerade as North (the exact #165 failure class).
+    expect(segs).not.toEqual(seamarkSegments({ seamarkType: 'buoy_cardinal', category: 'north' }));
+    // No topmark cones at all.
+    expect(segs.some((s) => s.kind === 'polygon')).toBe(false);
   });
 
   it('safe-water: vertical colour bands + a sphere topmark', () => {

@@ -12,6 +12,13 @@ const IMAGE_SIZE = 24; // smaller than windBarbs' 32: seamarks are a much
 // denser point layer (~1,794 vs one barb per route sample)
 const CENTER = IMAGE_SIZE / 2;
 const INK = '#1a1a1a'; // standard black used for topmarks/outlines, not data-driven
+// Cardinal-mark yellow: raw CSS `yellow` (#ffff00) is too garish / low-contrast
+// against the yellow-vs-black R1001 banding, so a defined IALA-style amber-yellow
+// is used for the cardinal body bands (#165).
+const CARDINAL_YELLOW = '#f5c400';
+// Near-white keyline stroked around cardinal bodies/cones so their black bands
+// don't merge with the app's dark-theme basemap (#165, §2.4).
+const OUTLINE = '#f2f2f2';
 
 export interface Point2D {
   x: number;
@@ -215,11 +222,14 @@ function lateralSegments(props: SeamarkProperties): SeamarkSegment[] {
 
 type ConeDir = 'up' | 'down';
 
-// Standard IALA-A cardinal topmark orientation, by category — NOT
-// data-driven (the pipeline doesn't carry a topmark tag; this is the fixed
-// convention). North: both cones point up. South: both point down. East:
-// base-to-base (top up, bottom down). West: point-to-point (top down,
-// bottom up).
+// Cardinal topmark orientation, by category — region-independent per IALA
+// R1001 Ed 2.0 §2.2.1.1 (cardinal marks are identical in Regions A and B),
+// NOT data-driven (the pipeline carries no topmark tag; this is the fixed
+// R1001 convention). North: both cones point up. South: both point down.
+// East: base-to-base (top up, bottom down) → diamond. West: point-to-point
+// (top down, bottom up) → hourglass. The cone points also indicate where the
+// BLACK body band sits (N up = black top; S down = black bottom; E apart =
+// black top+bottom; W inward = black middle).
 const CARDINAL_CONES: Record<string, { top: ConeDir; bottom: ConeDir }> = {
   north: { top: 'up', bottom: 'up' },
   south: { top: 'down', bottom: 'down' },
@@ -227,21 +237,84 @@ const CARDINAL_CONES: Record<string, { top: ConeDir; bottom: ConeDir }> = {
   west: { top: 'down', bottom: 'up' },
 };
 
-function coneTriangle(apexY: number, dir: ConeDir): Point2D[] {
-  const baseY = dir === 'up' ? apexY + 5 : apexY - 5;
+// Body colour bands top→bottom per category, hand-derived from R1001 Tables 5–6.
+const CARDINAL_BANDS: Record<string, string[]> = {
+  north: [INK, CARDINAL_YELLOW], // black over yellow
+  south: [CARDINAL_YELLOW, INK], // yellow over black
+  east: [INK, CARDINAL_YELLOW, INK], // black-yellow-black
+  west: [CARDINAL_YELLOW, INK, CARDINAL_YELLOW], // yellow-black-yellow
+};
+
+// Topmark cone geometry (24×24 box). The two cones meet at a shared middle row
+// CONE_MID, with extremes CONE_TOP / CONE_BOT so every vertex stays on-canvas
+// (fixes the old fixed-apex off-canvas clipping); apex on centre column CX,
+// base half-width HW (x 8..16).
+const CONE_TOP = 1;
+const CONE_MID = 6;
+const CONE_BOT = 11;
+const CX = 12;
+const HW = 4;
+
+// One cone as [apex, base+HW, base−HW]. `isTop` selects the y-band; `dir` is
+// the pointing (apex) direction — an up cone apexes at the smaller y of its
+// band, a down cone at the larger. So a top-down and a bottom-up cone both
+// apex at CONE_MID (West's hourglass), and a top-up and bottom-down cone both
+// base at CONE_MID (East's diamond).
+function cardinalCone(isTop: boolean, dir: ConeDir): Point2D[] {
+  const rows = isTop ? [CONE_TOP, CONE_MID] : [CONE_MID, CONE_BOT];
+  const [apexY, baseY] = dir === 'up' ? rows : [rows[1], rows[0]];
   return [
-    { x: 12, y: apexY },
-    { x: 16, y: baseY },
-    { x: 8, y: baseY },
+    { x: CX, y: apexY },
+    { x: CX + HW, y: baseY },
+    { x: CX - HW, y: baseY },
   ];
 }
 
+// Light near-white keyline around the body box, inset 0.5px so the 1px stroke
+// isn't clipped at the y=24 canvas boundary (dark-theme legibility, §2.4).
+function bodyOutline(box: Box): SeamarkSegment {
+  const x0 = box.x + 0.5;
+  const y0 = box.y + 0.5;
+  const x1 = box.x + box.w - 0.5;
+  const y1 = box.y + box.h - 0.5;
+  return {
+    kind: 'line',
+    points: [
+      { x: x0, y: y0 },
+      { x: x1, y: y0 },
+      { x: x1, y: y1 },
+      { x: x0, y: y1 },
+      { x: x0, y: y0 },
+    ],
+    stroke: OUTLINE,
+    width: 1,
+  };
+}
+
+// Light keyline tracing a cone's 3 vertices, repeating the apex to close it.
+function coneOutline(points: readonly Point2D[]): SeamarkSegment {
+  return { kind: 'line', points: [...points, points[0]], stroke: OUTLINE, width: 1 };
+}
+
 function cardinalSegments(props: SeamarkProperties): SeamarkSegment[] {
-  const orient = CARDINAL_CONES[props.category ?? ''] ?? CARDINAL_CONES.north;
+  const cat = props.category ?? '';
+  const cones = CARDINAL_CONES[cat];
+  const bands = CARDINAL_BANDS[cat];
+  const body: Box = { x: 7, y: 12, w: 10, h: 12 };
+  // Untagged / unknown category → neutral grey body with NO cones. It must
+  // never masquerade as North — the exact nav-safety failure class of #165.
+  if (!cones || !bands) {
+    return bandSegments(['#888888'], 'horizontal', body);
+  }
+  const topCone = cardinalCone(true, cones.top);
+  const bottomCone = cardinalCone(false, cones.bottom);
   return [
-    { kind: 'rect', x: 10, y: 11, w: 4, h: 10, fill: INK },
-    { kind: 'polygon', points: coneTriangle(3, orient.top), fill: INK },
-    { kind: 'polygon', points: coneTriangle(9, orient.bottom), fill: INK },
+    ...bandSegments(bands, 'horizontal', body),
+    bodyOutline(body),
+    { kind: 'polygon', points: topCone, fill: INK },
+    coneOutline(topCone),
+    { kind: 'polygon', points: bottomCone, fill: INK },
+    coneOutline(bottomCone),
   ];
 }
 
