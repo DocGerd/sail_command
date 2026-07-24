@@ -99,10 +99,5 @@
         ]
       }
     ]
-  },
-  "deniedMcpServers": [
-    {
-      "serverUrl": "https://learn.microsoft.com/api/mcp"
-    }
-  ]
+  }
 }
