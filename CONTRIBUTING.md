@@ -53,3 +53,57 @@ basemap). It downloads ~900 MB of source data into `pipeline/data-src/`
 `docs/superpowers/specs/2026-07-14-sail-command-design.md` is the source of
 truth for design-level decisions — PRs that silently deviate from it will
 be asked to update the spec discussion first.
+
+## Labels & milestones
+
+Issues use four **prefix-family** labels — the name carries a colon and a
+space, e.g. `type: bug` — so agents and the maintainer can self-route and
+triage. DocGerd is a user account (no org-level Issue Types), so label
+prefixes are the mechanism.
+
+**Families**
+
+- `type:` — exactly one per issue: `type: bug` · `type: feature` ·
+  `type: chore` · `type: docs`.
+- `priority:` — `priority: high` (do next; blocks a release or agents) ·
+  `priority: medium` (planned, not urgent) · `priority: low` (nice-to-have /
+  icebox).
+- `area:` — where the work lives: `area: routing` · `area: map` · `area: pwa`
+  · `area: pipeline` · `area: deploy` · `area: ais` · `area: tooling`.
+- `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
+  `status: blocked` (waiting on an external decision or dependency).
+
+Every open issue should carry a `type:` and, once triaged, an `area:` and a
+`priority:`. The issue forms in `.github/ISSUE_TEMPLATE/` apply the `type:`
+label (and `status: needs-triage` for bug reports) automatically.
+
+**Milestones**
+
+- `v0.4.0` — the next release.
+- `v0.5.0` — the release after next.
+- `Backlog` — accepted, not yet scheduled into a release.
+- `Icebox` — deferred / maybe-never; revisit opportunistically.
+
+Roll milestones forward at each release cut: the shipped milestone closes, the
+`v0.(N+1).0` scope becomes the next `v0.N.0`, and a fresh `v0.(N+2).0` is
+opened. `Backlog` and `Icebox` persist across releases.
+
+## Claude Code config placement
+
+Claude Code / agent configuration follows a four-scope convention (shared vs.
+personal vs. secret). Put every config change in the scope that matches its
+audience and sensitivity:
+
+- **`.mcp.json`** (repo root, **committed**) — MCP servers shared by the whole
+  project. Secrets go through `${ENV_VAR}` interpolation, never hardcoded.
+- **`.claude/settings.json`** (**committed**) — shared hooks, `enabledPlugins`,
+  and permissions that every contributor and agent should get.
+- **`.claude/settings.local.json`** (**gitignored**) — personal, secret, or
+  machine-specific overrides. Never committed.
+- **`~/.claude/`** (global) — personal, cross-project preferences only; never
+  project-shared config.
+
+No API keys or tokens are committed anywhere in repo config. In particular the
+AIS overlay is **BYOK** (bring-your-own-key): the aisstream.io key is supplied
+by the user at runtime and stored in the browser, and there is never a
+committed default. This is the standing rule for all future config changes.

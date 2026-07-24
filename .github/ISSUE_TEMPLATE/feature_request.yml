@@ -1,0 +1,62 @@
+name: Feature request
+description: Suggest a new user-visible capability.
+title: "[feature]: "
+labels:
+  - "type: feature"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SailCommand is deliberately client-only and offline-first. Features
+        that need a backend (proxies, token exchange, databases) will be
+        declined — see CONTRIBUTING.md. Planning a route needs network (wind
+        fetch); everything else must keep working offline.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do that the app doesn't support today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How might it work? UI, behavior, edge cases.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the app would this touch?
+      options:
+        - routing
+        - map
+        - pwa
+        - pipeline
+        - deploy
+        - ais
+        - tooling
+    validations:
+      required: false
+  - type: checkboxes
+    id: spec-impact
+    attributes:
+      label: Spec impact
+      description: >
+        Design-level decisions are tracked in docs/superpowers/specs/. Tick
+        this if the feature likely changes routing behavior, data schemas, or
+        another design decision captured there.
+      options:
+        - label: This likely touches docs/superpowers/specs/ (a design-spec change)
+          required: false
+  - type: textarea
+    id: offline
+    attributes:
+      label: Offline considerations
+      description: >
+        Does this feature assume connectivity beyond the one wind fetch at
+        plan time? If so, how should it degrade offline?
+    validations:
+      required: false
