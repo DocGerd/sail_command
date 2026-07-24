@@ -253,4 +253,33 @@ describe('useSettledValue', () => {
     act(() => vi.advanceTimersByTime(2000));
     expect(result.current).toBe(2);
   });
+
+  // #162 review r3642154768: a plan/rig identity change is NEVER GPS-fix
+  // jitter — it must bypass the settle window entirely, or the corridor
+  // computes the NEW plan's legs against the OLD plan's index for up to 2 s.
+  it('adopts the raw value in the same render when the reset key changes', () => {
+    const { result, rerender } = renderHook(
+      ({ v, k }: { v: number | null; k: string }) => useSettledValue(v, 2000, k),
+      { initialProps: { v: 1, k: 'plan-a' } as { v: number | null; k: string } },
+    );
+    expect(result.current).toBe(1);
+    // plan change batches value→null with a new key: immediate, no timers.
+    rerender({ v: null, k: 'plan-b' });
+    expect(result.current).toBe(null);
+  });
+
+  it('keeps settling same-key changes after a key reset', () => {
+    const { result, rerender } = renderHook(
+      ({ v, k }: { v: number; k: string }) => useSettledValue(v, 2000, k),
+      { initialProps: { v: 1, k: 'plan-a' } },
+    );
+    rerender({ v: 7, k: 'plan-b' }); // key reset: immediate
+    expect(result.current).toBe(7);
+    rerender({ v: 8, k: 'plan-b' }); // same key: full settle window applies
+    expect(result.current).toBe(7);
+    act(() => vi.advanceTimersByTime(1999));
+    expect(result.current).toBe(7);
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current).toBe(8);
+  });
 });

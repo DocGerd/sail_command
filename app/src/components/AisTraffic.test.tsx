@@ -74,6 +74,18 @@ function sailLeg(lat: number, hour: number): Leg {
 // boundary geometry from routeCorridor.test.ts).
 const LEGS: Leg[] = [sailLeg(54.4, 0), sailLeg(54.6, 1), sailLeg(54.8, 2), sailLeg(55.0, 3)];
 
+// Typed non-null so plan variants below can spread it (Plan.result.genoa is
+// RigResult | null — spreading through PLAN would make every field optional).
+const GENOA_RESULT = {
+  rig: 'genoa',
+  legs: LEGS,
+  etaMs: DEPARTURE_MS + 4 * 3_600_000,
+  durationMs: 4 * 3_600_000,
+  distanceNm: 14,
+  maneuverCount: 0,
+  motorDistanceNm: 0,
+} satisfies Plan['result']['genoa'];
+
 // One stable Plan instance: the corridor memo keys on plan identity, and the
 // churn under test must come from activeLegIndex alone.
 const PLAN: Plan = {
@@ -92,15 +104,7 @@ const PLAN: Plan = {
   windGrid: uniformWindGrid(12, 225, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 6 }),
   result: {
     status: 'ok',
-    genoa: {
-      rig: 'genoa',
-      legs: LEGS,
-      etaMs: DEPARTURE_MS + 4 * 3_600_000,
-      durationMs: 4 * 3_600_000,
-      distanceNm: 14,
-      maneuverCount: 0,
-      motorDistanceNm: 0,
-    },
+    genoa: GENOA_RESULT,
     fock: null,
     genoaReason: null,
     fockReason: 'calm-motor-off',
@@ -110,14 +114,61 @@ const PLAN: Plan = {
   },
 };
 
-function traffic(activeLegIndex: number | null) {
+// Second plan for the plan-change test (#162 review): TWO disjoint legs. With
+// a stale settled index 2 its corridor would slice from max(0,1)=1 ⇒ 1 box;
+// the correct null index yields the full route ⇒ 2 boxes — the counts
+// distinguish stale-index from reset-to-raw behavior.
+const B_LEGS: Leg[] = [sailLeg(54.45, 0), sailLeg(54.65, 1)];
+const PLAN_B: Plan = {
+  ...PLAN,
+  id: 'plan-158b',
+  name: 'Replacement plan',
+  result: {
+    ...PLAN.result,
+    genoa: {
+      ...GENOA_RESULT,
+      legs: B_LEGS,
+      distanceNm: 7,
+    },
+    snappedOrigin: { lat: 54.45, lon: 10.0 },
+    snappedDestination: { lat: 54.65, lon: 10.1 },
+  },
+};
+
+// Plan with BOTH rig results for the rig-change test: genoa sails PLAN's four
+// legs, fock the two B_LEGS — a genoa→fock switch swaps the leg set without
+// touching plan identity, so it isolates the rig part of the reset key.
+const PLAN_C: Plan = {
+  ...PLAN,
+  id: 'plan-158c',
+  name: 'Two-rig plan',
+  result: {
+    ...PLAN.result,
+    fock: {
+      rig: 'fock',
+      legs: B_LEGS,
+      etaMs: DEPARTURE_MS + 2 * 3_600_000,
+      durationMs: 2 * 3_600_000,
+      distanceNm: 7,
+      maneuverCount: 0,
+      motorDistanceNm: 0,
+    },
+    fockReason: null,
+  },
+};
+
+function traffic(
+  activeLegIndex: number | null,
+  plan: Plan = PLAN,
+  rig: 'genoa' | 'fock' = 'genoa',
+) {
   return (
     <I18nProvider>
       <AisTraffic
         apiKey="KEY"
         ownMmsi={undefined}
-        plan={PLAN}
-        rig="genoa"
+        plan={plan}
+        rig={rig}
         activeLegIndex={activeLegIndex}
       />
     </I18nProvider>
@@ -270,6 +321,44 @@ describe('AisTraffic corridor resubscription (#158)', () => {
     view.rerender(traffic(0));
     act(() => vi.advanceTimersByTime(2000)); // adopted — but content unchanged
     expect(ais.sockets[0].sent).toHaveLength(1);
+    expect(ais.sockets).toHaveLength(1);
+  });
+
+  // #162 review r3642154768: setPlan batches plan + activeLegIndex→null into
+  // ONE render — the settle gate must NOT hold the old plan's index against
+  // the new plan's legs (a mis-placed slice, or [] past the end) for 2 s.
+  it('gives a new plan its full-route corridor in the same render (stale settled index bypassed)', () => {
+    // Pinned derivation: send #1 = onOpen with PLAN at index 2 ⇒ startIdx
+    // max(0,1)=1 ⇒ L1..L3 ⇒ 3 corridor boxes + viewport = 4. The plan change
+    // resets the settle gate to the raw index in the same render: null ⇒
+    // PLAN_B's full route (2 boxes) ⇒ send #2 carries 1 + 2 = 3 boxes with
+    // ZERO timer advance. A stale settled index 2 would instead slice PLAN_B
+    // from max(0,1)=1 ⇒ 1 box ⇒ 2 total — the pin below rejects it.
+    const view = render(traffic(2));
+    act(() => ais.sockets[0].handlers.onOpen());
+    expect(ais.sockets[0].sent).toHaveLength(1);
+    expect(boxesOf(ais.sockets[0].sent[0])).toHaveLength(4);
+    view.rerender(traffic(null, PLAN_B)); // batched plan swap + index reset
+    expect(ais.sockets[0].sent).toHaveLength(2); // immediate — zero timers ran
+    expect(boxesOf(ais.sockets[0].sent[1])).toHaveLength(3);
+    expect(ais.sockets).toHaveLength(1);
+    expect(ais.sockets[0].closed).toBe(0);
+  });
+
+  it('applies a rig change in the same render (settle gate reset on rig identity too)', () => {
+    // Pinned derivation: PLAN_C sails genoa on PLAN's four legs and fock on
+    // the two B_LEGS. Send #1 = onOpen at index 2 on genoa ⇒ 4 boxes (as
+    // above). The genoa→fock switch (batched with the index reset, plan
+    // identity UNCHANGED) must adopt null in the same render ⇒ fock full
+    // route ⇒ 1 + 2 = 3 boxes. A stale settled index 2 would slice B_LEGS
+    // from 1 ⇒ 2 total — rejected by the pin.
+    const view = render(traffic(2, PLAN_C));
+    act(() => ais.sockets[0].handlers.onOpen());
+    expect(ais.sockets[0].sent).toHaveLength(1);
+    expect(boxesOf(ais.sockets[0].sent[0])).toHaveLength(4);
+    view.rerender(traffic(null, PLAN_C, 'fock'));
+    expect(ais.sockets[0].sent).toHaveLength(2); // immediate — zero timers ran
+    expect(boxesOf(ais.sockets[0].sent[1])).toHaveLength(3);
     expect(ais.sockets).toHaveLength(1);
   });
 });

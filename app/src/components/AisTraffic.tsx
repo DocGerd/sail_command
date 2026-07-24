@@ -118,8 +118,17 @@ export default function AisTraffic({
   // boundary GPS noise flips it between adjacent indices at fix rate. The
   // corridor consumes it through the settle gate: a genuine leg advance is
   // adopted after 2 s; sustained boundary jitter never settles, so the memo
-  // below never recomputes at fix rate.
-  const settledLegIndex = useSettledValue(activeLegIndex, AIS_CORRIDOR_LEG_SETTLE_MS);
+  // below never recomputes at fix rate. A plan/rig identity change is NEVER
+  // fix jitter (#162 review): it resets the gate to the raw index in the same
+  // render — setPlan batches plan + activeLegIndex→null, and holding the OLD
+  // plan's index against the NEW plan's legs would slice a mis-placed
+  // corridor for up to 2 s.
+  const corridorEpoch = useMemo(() => [plan, rig] as const, [plan, rig]);
+  const settledLegIndex = useSettledValue(
+    activeLegIndex,
+    AIS_CORRIDOR_LEG_SETTLE_MS,
+    corridorEpoch,
+  );
 
   // #146 route corridor: recomputes only on [plan, rig, settledLegIndex] — all
   // three are stable references / change at leg-transition cadence (#158),

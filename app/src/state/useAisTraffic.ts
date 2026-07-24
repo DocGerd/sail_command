@@ -26,14 +26,25 @@ export type AisStatus = 'off' | 'connecting' | 'live' | 'offline' | 'keyError';
  * leg boundaries — RouteLayer absorbs those flips with a cheap setFilter, but
  * a network resubscription needs this stronger absorption so the corridor
  * recomputes at leg-transition cadence, never fix rate.
+ *
+ * `resetKey` (#162 review): when its identity changes, the raw `value` is
+ * adopted IN THE SAME RENDER, bypassing the settle window. Only same-key
+ * changes are GPS-fix jitter; a key change (AisTraffic passes plan+rig
+ * identity) means the value's frame of reference moved — holding the old
+ * plan's settled index against a new plan's legs would slice the wrong
+ * corridor for up to settleMs. Uses React's render-time state-adjustment
+ * pattern (not an effect), so consumers never observe the stale pairing.
  */
-export function useSettledValue<T>(value: T, settleMs: number): T {
-  const [settled, setSettled] = useState(value);
+export function useSettledValue<T>(value: T, settleMs: number, resetKey?: unknown): T {
+  const [state, setState] = useState({ settled: value, resetKey });
+  const keyChanged = !Object.is(state.resetKey, resetKey);
+  if (keyChanged) setState({ settled: value, resetKey });
+  const settled = keyChanged ? value : state.settled;
   useEffect(() => {
     if (Object.is(value, settled)) return;
-    const timer = window.setTimeout(() => setSettled(value), settleMs);
+    const timer = window.setTimeout(() => setState({ settled: value, resetKey }), settleMs);
     return () => window.clearTimeout(timer);
-  }, [value, settled, settleMs]);
+  }, [value, settled, settleMs, resetKey]);
   return settled;
 }
 
