@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMapInstance } from './MapView';
 import { useT } from '../i18n';
 import { useOnline } from '../state/AppState';
-import { useAisTraffic, type AisStatus } from '../state/useAisTraffic';
+import { useAisTraffic, useSettledValue, type AisStatus } from '../state/useAisTraffic';
 import AisLayer from './AisLayer';
 import Chip from './Chip';
 import { padBoundingBox, viewportEscapedBbox, type AisBoundingBox } from '../services/aisStream';
@@ -17,6 +17,9 @@ import type { MsgKey } from '../i18n/dict.de';
 
 const AIS_BBOX_PAD = 0.2; // subscribe to the viewport padded 20% each side
 const AIS_RESUBSCRIBE_DEBOUNCE_MS = 2000;
+// #158: how long activeLegIndex must hold one value before the corridor adopts
+// it — sized to the viewport debounce above (a network resend, not a render).
+const AIS_CORRIDOR_LEG_SETTLE_MS = 2000;
 
 const STATUS_KEY: Record<Exclude<AisStatus, 'live'>, MsgKey> = {
   off: 'ais.status.off',
@@ -111,14 +114,22 @@ export default function AisTraffic({
     };
   }, [map]);
 
-  // #146 route corridor: recomputes only on [plan, rig, activeLegIndex] — all
-  // three are stable references / change on leg transitions, never per GPS fix.
+  // #158: activeLegIndex is a hysteresis-free per-fix argmin — near a leg
+  // boundary GPS noise flips it between adjacent indices at fix rate. The
+  // corridor consumes it through the settle gate: a genuine leg advance is
+  // adopted after 2 s; sustained boundary jitter never settles, so the memo
+  // below never recomputes at fix rate.
+  const settledLegIndex = useSettledValue(activeLegIndex, AIS_CORRIDOR_LEG_SETTLE_MS);
+
+  // #146 route corridor: recomputes only on [plan, rig, settledLegIndex] — all
+  // three are stable references / change at leg-transition cadence (#158),
+  // never per GPS fix.
   const corridorBoxes = useMemo<AisBoundingBox[]>(() => {
     if (!plan || !rig) return [];
     const rr = activeRigResult(plan, rig);
     if (!rr) return [];
-    return routeCorridorBoxes(rr.legs, activeLegIndex, AIS_CORRIDOR_HALF_WIDTH_NM);
-  }, [plan, rig, activeLegIndex]);
+    return routeCorridorBoxes(rr.legs, settledLegIndex, AIS_CORRIDOR_HALF_WIDTH_NM);
+  }, [plan, rig, settledLegIndex]);
 
   // Subscription union (corridor ∪ padded viewport), memoized so an unchanged
   // corridor + viewport keeps list identity and the hook's subscription effect

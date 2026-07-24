@@ -1,12 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import type { LatLon } from '../types';
 import type { AisBoundingBox } from '../services/aisStream';
 import {
   boundingBoxAreaNm2,
   countTargetsInCorridor,
   pointInBox,
+  resetCorridorAreaWarning,
   routeCorridorBoxes,
 } from './routeCorridor';
+
+// #158: the area-cap warning dedups per corridor configuration in module
+// state — reset it so each test starts un-warned regardless of order.
+beforeEach(() => {
+  resetCorridorAreaWarning();
+});
 
 // Tiny segment factory: routeCorridorBoxes only reads each segment's endpoints,
 // so bare {start,end} literals stand in for full Legs.
@@ -85,6 +92,34 @@ describe('routeCorridorBoxes', () => {
     // padded ≈ 1.47° lat (≈88 nm) × ≈1.79° lon (≈62 nm) ≈ 5450 nm² > 2000 ⇒ fallback
     expect(boxes).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('warns once per over-cap corridor configuration, not per recompute (#158)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Both legs span most of the region ⇒ far over the 2000 nm² cap (the
+    // existing fallback test derives the ≈5450 nm² figure for legA).
+    const legA = [seg({ lat: 54.0, lon: 9.5 }, { lat: 55.3, lon: 11.0 })];
+    const legB = [seg({ lat: 54.2, lon: 9.5 }, { lat: 55.3, lon: 11.0 })];
+    expect(routeCorridorBoxes(legA, null, 5)).toEqual([]);
+    expect(routeCorridorBoxes(legA, null, 5)).toEqual([]); // same config recomputed
+    expect(routeCorridorBoxes(legA, null, 5)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1); // deduped: once per configuration
+    // A DIFFERENT over-cap configuration is a new fallback event ⇒ warns again.
+    expect(routeCorridorBoxes(legB, null, 5)).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
+  it('re-arms the area-cap warning after an under-cap recompute (#158)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const over = [seg({ lat: 54.0, lon: 9.5 }, { lat: 55.3, lon: 11.0 })];
+    const under = [seg({ lat: 54.5, lon: 10.0 }, { lat: 54.5, lon: 10.2 })]; // ≈10×24 nm ≪ cap
+    routeCorridorBoxes(over, null, 5);
+    expect(warn).toHaveBeenCalledTimes(1);
+    routeCorridorBoxes(under, null, 5); // under cap ⇒ re-arms the warning
+    routeCorridorBoxes(over, null, 5); // same config, new episode ⇒ warns again
+    expect(warn).toHaveBeenCalledTimes(2);
     warn.mockRestore();
   });
 

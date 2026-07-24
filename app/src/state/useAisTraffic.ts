@@ -17,6 +17,26 @@ import { countTargetsInCorridor } from '../lib/routeCorridor';
 
 export type AisStatus = 'off' | 'connecting' | 'live' | 'offline' | 'keyError';
 
+/**
+ * #158: settle gate for jittery inputs. Returns `value` only once it has held
+ * (by Object.is) for `settleMs` UNINTERRUPTED; any change re-arms the window,
+ * and returning to the settled value cancels the pending adoption. AisTraffic
+ * consumes activeLegIndex through it: the index is a hysteresis-free per-fix
+ * nearest-leg argmin that flips between adjacent values at GPS-fix rate near
+ * leg boundaries — RouteLayer absorbs those flips with a cheap setFilter, but
+ * a network resubscription needs this stronger absorption so the corridor
+ * recomputes at leg-transition cadence, never fix rate.
+ */
+export function useSettledValue<T>(value: T, settleMs: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (Object.is(value, settled)) return;
+    const timer = window.setTimeout(() => setSettled(value), settleMs);
+    return () => window.clearTimeout(timer);
+  }, [value, settled, settleMs]);
+  return settled;
+}
+
 export interface AisClientLike {
   start(bboxes: AisBoundingBox[]): void;
   updateSubscription(bboxes: AisBoundingBox[]): void;

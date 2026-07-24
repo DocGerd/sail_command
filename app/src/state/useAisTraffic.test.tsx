@@ -1,6 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAisTraffic, type AisClientLike, type UseAisTrafficInput } from './useAisTraffic';
+import {
+  useAisTraffic,
+  useSettledValue,
+  type AisClientLike,
+  type UseAisTrafficInput,
+} from './useAisTraffic';
 import type { AisBoundingBox, AisStreamCallbacks, ParsedAisData } from '../services/aisStream';
 
 const BBOX: AisBoundingBox = [
@@ -191,5 +196,61 @@ describe('useAisTraffic', () => {
     const { unmount } = renderHook(() => useAisTraffic(base, { createClient }));
     unmount();
     expect(clients[0].stopped).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// #158: the settle gate AisTraffic puts between the per-fix activeLegIndex and
+// the corridor recompute. Semantics pinned here: a change is adopted only after
+// holding UNINTERRUPTED for settleMs; any change re-arms the window; returning
+// to the settled value cancels the pending adoption.
+describe('useSettledValue', () => {
+  it('returns the initial value immediately (no settle delay on mount)', () => {
+    const { result } = renderHook(({ v }) => useSettledValue(v, 2000), {
+      initialProps: { v: 3 },
+    });
+    expect(result.current).toBe(3);
+  });
+
+  it('adopts a changed value only once it has held for settleMs (1999 no, 2000 yes)', () => {
+    const { result, rerender } = renderHook(({ v }) => useSettledValue(v, 2000), {
+      initialProps: { v: 1 },
+    });
+    rerender({ v: 2 });
+    expect(result.current).toBe(1); // not adopted synchronously
+    act(() => vi.advanceTimersByTime(1999));
+    expect(result.current).toBe(1); // settle window still open
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current).toBe(2); // adopted exactly at settleMs
+  });
+
+  it('never adopts under sustained alternation faster than settleMs (12 flips at 1 Hz)', () => {
+    // Derivation: adoption needs 2000 ms uninterrupted at a non-settled value;
+    // flips every 1000 ms cap the dwell at 1000 ms < 2000 ms ⇒ 0 adoptions.
+    const { result, rerender } = renderHook(({ v }) => useSettledValue(v, 2000), {
+      initialProps: { v: 1 },
+    });
+    for (let k = 1; k <= 12; k++) {
+      act(() => vi.advanceTimersByTime(1000));
+      rerender({ v: k % 2 === 1 ? 2 : 1 });
+    }
+    expect(result.current).toBe(1);
+    // The 12th flip returned to the settled value ⇒ no adoption is pending:
+    act(() => vi.advanceTimersByTime(5000));
+    expect(result.current).toBe(1);
+  });
+
+  it('cancels a pending adoption when the value returns to the settled one', () => {
+    const { result, rerender } = renderHook(({ v }) => useSettledValue(v, 2000), {
+      initialProps: { v: 1 },
+    });
+    rerender({ v: 2 });
+    act(() => vi.advanceTimersByTime(1500));
+    rerender({ v: 1 }); // back to settled before the window closed
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(result.current).toBe(1);
+    // …and a later genuine change still adopts on its own full window:
+    rerender({ v: 2 });
+    act(() => vi.advanceTimersByTime(2000));
+    expect(result.current).toBe(2);
   });
 });
