@@ -351,6 +351,12 @@ deviate from it.
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
+- **Right-size agent models per task** (reinforces the global fitness rule): PIN
+  the model when spawning — `sonnet` for standard/mechanical implement + review +
+  docs; reserve `opus`/the heaviest tier for safety-critical or judgment-heavy
+  work (design, adversarial correctness/safety verification, hard solver work);
+  `haiku` for pure transcription. Do NOT let mechanical implementers/reviewers
+  inherit the session's heavy model by default.
 - `offline-pwa-reviewer` is CONDITIONAL, not always-on: invoke it ONLY when the
   change set touches a PWA path (`app/src/sw.ts`, glyph cache/warmup,
   `basemapSource.ts`, Vite PWA config, IndexedDB, offline); non-PWA PRs must NOT
