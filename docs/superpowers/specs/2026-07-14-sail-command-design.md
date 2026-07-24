@@ -307,7 +307,7 @@ routing/solver behavior changes.
   `harbors.json`/`mask.bin`); no chart-authority language in popover, toggle, or About; every new
   user-facing string added to BOTH `dict.de.ts` and `dict.en.ts` maintaining `MsgKey` parity.
 
-- **Coordination note.** #7 (seamarks), #18 (waves, draft), and #25 (AIS, deferred) all add MapLibre
+- **Coordination note.** #7 (seamarks), #18 (waves, draft), and #25 (AIS) all add MapLibre
   overlay layers; whichever lands implementation first may introduce a shared overlay-layer registry
   (z-order + legend + i18n toggle). If #7 lands first it follows `DataLayers.tsx`'s current per-layer
   convention; the registry is a later refactor, not a blocking prerequisite.
@@ -317,14 +317,16 @@ routing/solver behavior changes.
   popover shows type/category/colour (+ light character when tagged); overlay works offline; de/en
   parity; no routing/solver change; no chart-authority copy.
 
-## Addendum 2026-07-22: Ownship marker (standalone) + AIS overlay (deferred) (#25)
+## Addendum 2026-07-22: Ownship marker (standalone) + AIS overlay (#25)
 
 Issue #25 asks for two separable things: a live AIS traffic overlay, and "ownship recognition." A
 2026-07-22 feasibility spike found AIS's only browser-direct, no-backend-compliant live source is
-BYOK-aisstream (a real per-user cost needing explicit go-ahead). The asks are split: **ship the
-ownship marker now**; **defer AIS** with the source decision recorded. Where this addendum and the
-source spec's §3.2 (Live-View GPS marker) / §6 (AIS out of scope) conflict on these two points, this
-addendum wins; on all other behavior the source spec wins.
+BYOK-aisstream (a real per-user cost needing explicit go-ahead). The two asks were split and shipped
+in two steps: the **ownship marker** shipped 2026-07-22 (in v0.3.0); **AIS** shipped in **v0.4.0**
+once the user approved the BYOK-aisstream source — its as-built design lives in
+[`2026-07-23-ais-traffic-overlay-design.md`](2026-07-23-ais-traffic-overlay-design.md). Where this
+addendum and the source spec's §3.2 (Live-View GPS marker) / §6 (AIS out of scope) conflict on these
+two points, this addendum wins; on all other behavior the source spec wins.
 
 - **Ships now — Ownship marker (decoupled from Live View).** A GPS boat marker already exists
   (`services/geolocation.ts` `watchPosition`/`GpsFix`, `BoatMarker.tsx` with its accuracy circle),
@@ -346,28 +348,31 @@ addendum wins; on all other behavior the source spec wins.
   - Size: **S** — a visibility-gate change plus a persisted Settings toggle; no new data model or
     service.
 
-- **Deferred — AIS traffic overlay (decision recorded, NOT built).** For a future session to
-  implement directly once approved:
-  - *Only compliant architecture:* BYOK-aisstream WebSocket client (worker/service), bbox-filtered
-    subscription, target store with age-out, pause when hidden, low-zoom declutter, tap-to-inspect
-    (name/MMSI/type/SOG/COG). aisstream is the ONLY browser-direct source covering this region; a
-    single shipped app key is forbidden (uncappable public secret), so **BYOK — the user pastes their
-    own free key in Settings — is the sole model satisfying both no-backend and no-secrets-in-client**
-    (Digitraffic keyless but Finnish-only; AISHub no-CORS; BarentsWatch Norwegian-EZ; DMA live is
-    paid — do not revisit).
-  - *MMSI ownship-filtering* (the AIS-side "ownship recognition") lives INSIDE this future feature,
-    not the marker above: a user-entered MMSI (Settings, IndexedDB-local, transmitted only inside the
-    aisstream subscription filter) removes the user's own vessel from the traffic layer.
+- **Shipped in v0.4.0 — AIS traffic overlay (BYOK).** Built to the architecture recorded here after
+  the user approved the source; the full as-built spec is
+  [`2026-07-23-ais-traffic-overlay-design.md`](2026-07-23-ais-traffic-overlay-design.md).
+  - *Architecture as built:* a BYOK-aisstream WebSocket client, bbox-filtered subscription, target
+    store with age-out, pause when hidden, low-zoom declutter, and tap-to-inspect
+    (name/MMSI/type/SOG/COG) — extended in the same release to a ±5 nm along-route corridor (#146).
+    aisstream is the ONLY browser-direct source covering this region; a single shipped app key is
+    forbidden (uncappable public secret), so **BYOK — the user pastes their own free key in Options —
+    is the sole model satisfying both no-backend and no-secrets-in-client** (Digitraffic keyless but
+    Finnish-only; AISHub no-CORS; BarentsWatch Norwegian-EZ; DMA live is paid — did not revisit).
+  - *MMSI ownship-filtering* (the AIS-side "ownship recognition") lives INSIDE this feature, not the
+    marker above: a user-entered MMSI (Options, IndexedDB-local, transmitted only inside the aisstream
+    subscription filter) removes the user's own vessel from the traffic layer.
   - *Offline degradation* mirrors planning: feature disabled + honest banner when the socket can't
-    connect; never show an aged snapshot as if live.
-  - *Gated on:* (1) explicit user go-ahead accepting aisstream's BETA/no-SLA feed + per-user signup
-    friction, and (2) a live coverage spot-check over the Flensburg bbox — before any implementation.
+    connect; never shows an aged snapshot as if live. A missing/invalid key stays fully inert (zero
+    sockets); an invalid key is detected via aisstream's bare-1006-close signature.
+  - *Gates satisfied before build:* explicit user go-ahead accepting aisstream's BETA/no-SLA feed, and
+    a live coverage spot-check over the Flensburg bbox (verified with the owner's key).
 
 - **Out of scope.** Any backend/proxy; collision-avoidance/CPA/TCPA logic (nav-device territory,
   incompatible with "aid, not a navigation instrument"); a shipped app-wide AIS key under any
   circumstance.
 
-- **Acceptance (ownship marker only, this addendum).** A Settings "show my position" toggle (default
+- **Acceptance (ownship marker, this addendum).** A Settings "show my position" toggle (default
   off) makes the existing GPS marker + accuracy circle render in any map context once permission is
   granted; Live View route-following is unchanged and shows no duplicate marker; works offline; "aid,
-  not a navigation device" caveat retained; de/en parity. AIS: no code — spec decision recorded only.
+  not a navigation device" caveat retained; de/en parity. AIS shipped separately in v0.4.0 per the
+  2026-07-23 as-built spec.
