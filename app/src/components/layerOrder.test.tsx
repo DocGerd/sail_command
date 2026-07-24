@@ -147,6 +147,18 @@ describe('AIS/overlay layer order across setup timings (#160)', () => {
   });
 });
 
+describe('fakeMaplibre addLayer beforeId parity', () => {
+  it('drops a layer whose beforeId names a missing layer, like real MapLibre', () => {
+    // Real MapLibre fires an ErrorEvent and skips the add — an anchor used
+    // WITHOUT a getLayer guard must therefore fail presence/order pins here
+    // rather than silently landing as an append.
+    const map = makeFakeMap();
+    map.addLayer({ id: 'orphan', type: 'line' }, 'missing-anchor');
+    expect(map.layerOrder).toEqual([]);
+    expect(map.layers.has('orphan')).toBe(false);
+  });
+});
+
 describe('AIS/overlay layer order after a style reload (#160 x #153)', () => {
   // On 'styledata' every installStyleSetup listener re-runs in REGISTRATION
   // order (= mount order), so both mount orders are pinned.

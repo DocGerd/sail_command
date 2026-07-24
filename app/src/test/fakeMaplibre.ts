@@ -92,8 +92,13 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
     }),
     getSource: (id: string) => sources.get(id),
     addLayer: vi.fn((layer: FakeLayer, beforeId?: string) => {
-      layers.set(layer.id, beforeId === undefined ? layer : { ...layer, beforeId });
       const at = beforeId === undefined ? -1 : layerOrder.indexOf(beforeId);
+      // A beforeId that names a MISSING layer is not an append: real MapLibre
+      // fires an ErrorEvent and DROPS the layer (Style#addLayer returns
+      // without adding). Mirror the observable half so an unguarded anchor
+      // turns presence/order assertions red instead of silently passing.
+      if (beforeId !== undefined && at === -1) return;
+      layers.set(layer.id, beforeId === undefined ? layer : { ...layer, beforeId });
       if (at === -1) layerOrder.push(layer.id);
       else layerOrder.splice(at, 0, layer.id);
     }),
