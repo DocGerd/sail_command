@@ -1,0 +1,18 @@
+# Code owners for SailCommand.
+# Matching PRs auto-request a review from the owner(s) below.
+# Later, more specific patterns win. See CONTRIBUTING.md for the review ritual.
+
+# Global owner — everything not matched more specifically.
+*                       @DocGerd
+
+# Routing engine: solver, polars, mask queries.
+/app/src/routing/       @DocGerd
+
+# Service worker / offline PWA invariants.
+/app/src/sw.ts          @DocGerd
+
+# Build-time data pipeline (mask, polars, harbors, basemap).
+/pipeline/              @DocGerd
+
+# CI / CD workflows.
+/.github/workflows/     @DocGerd
