@@ -69,17 +69,28 @@ CMD=$(printf '%s' "$IN" | jq -r '.tool_input.command // empty' 2>/dev/null) \
   || CMD=$(printf '%s' "$IN" | python3 -c "import json,sys;print(json.load(sys.stdin).get('tool_input',{}).get('command',''))" 2>/dev/null) \
   || CMD=""
 
-# Guard `gh pr merge` only; every other command passes through untouched.
+# Fire ONLY when the command is an actual `gh pr merge` INVOCATION - i.e. it
+# begins (after leading whitespace / env-var / sudo / time prefixes) with
+# `gh pr merge`. It must NOT fire when the string merely appears as DATA inside
+# another command (a `git commit -F` message, `printf`/`echo`, a `grep` pattern):
+# those begin with git/printf/grep, not gh, and firing on them spams false
+# approval prompts (#193 self-review).
 case "$CMD" in
-  *gh\ pr\ merge*) : ;;
+  *gh\ pr\ merge*) : ;;                 # cheap substring pre-filter
   *) exit 0 ;;
 esac
+FIRST=$(printf '%s' "$CMD" \
+  | sed -E 's/^[[:space:]]+//' \
+  | sed -E 's/^(sudo[[:space:]]+|command[[:space:]]+|time[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+printf '%s' "$FIRST" | grep -qE '^gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' || exit 0
 
-# A chained command (`gh pr merge 100 && gh pr merge 200`) would let this guard
-# validate only the last PR and vouch for the rest. Merges must be serial, so
-# refuse to auto-approve a chain — surface it for a per-PR check instead.
-MERGES=$(printf '%s' "$CMD" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge' | wc -l | tr -d ' ')
-[ "${MERGES:-0}" -gt 1 ] 2>/dev/null && emit_ask "command chains ${MERGES} 'gh pr merge' invocations - merge strictly serially so each PR's head.sha and check-runs are verified individually (#119)."
+# Within a real merge command, refuse to auto-approve a CHAIN of merges
+# (`gh pr merge 100 && gh pr merge 200`) - merges must be serial so each PR is
+# verified individually. Count only segments that themselves START with the
+# invocation, so a trailing `&& git commit -m '... gh pr merge ...'` (data, not a
+# merge) is correctly ignored.
+REAL=$(printf '%s' "$FIRST" | tr ';&|' '\n\n\n' | grep -cE '^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)')
+[ "${REAL:-0}" -gt 1 ] 2>/dev/null && emit_ask "command chains ${REAL} 'gh pr merge' invocations - merge strictly serially so each PR's head.sha and check-runs are verified individually (#119)."
 
 command -v gh >/dev/null 2>&1 || emit_ask "gh CLI unavailable - cannot verify head.sha/check-runs before merge (#119); confirm by hand."
 
@@ -87,10 +98,9 @@ REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) || REPO=
 [ -n "$REPO" ] || emit_ask "could not resolve owner/repo - cannot verify the merge target (#119); confirm by hand."
 OWNER=${REPO%%/*}
 
-# Explicit PR number = first bare integer after `... gh pr merge`; else resolve
-# from the current branch's open PR (bare `gh pr merge` targets it).
-ARGS=$(printf '%s' "$CMD" | sed -E 's/.*gh[[:space:]]+pr[[:space:]]+merge//')
-PR=$(printf '%s' "$ARGS" | grep -oE '[0-9]+' | head -1)
+# PR number = first bare integer in the invocation itself (the segment up to the
+# first shell separator); else resolve from the current branch's open PR.
+PR=$(printf '%s' "$FIRST" | sed -E 's/[;&|].*$//' | sed -E 's/^gh[[:space:]]+pr[[:space:]]+merge//' | grep -oE '[0-9]+' | head -1)
 if [ -z "$PR" ]; then
   BR=$(git -C "${CLAUDE_PROJECT_DIR:-.}" branch --show-current 2>/dev/null)
   [ -n "$BR" ] || emit_ask "no PR number in the command and no current branch to resolve one - verify head.sha==pushed SHA and check-runs by hand (#119)."
