@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix cardinal-mark seamark icons rendering incorrectly: they now show the correct IALA colour bands (black/yellow) and topmark cones per direction — North two cones up, South two down, East base-to-base diamond, West point-to-point hourglass — so a West mark can no longer be mistaken for a North mark, cones are no longer clipped, and an untagged cardinal shows a neutral marker instead of masquerading as North (#165).
 - Fix unreadable overlapping seamark icons at medium zoom (e.g. Flensburger Förde): dense aids to navigation now thin out by navigational priority (lights before cardinals before laterals, lit before unlit) with zoom-tapered icon sizes, and from zoom 12 on every mark is shown and tappable (#144).
 
 ## [0.3.0] - 2026-07-23
