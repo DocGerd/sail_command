@@ -17,6 +17,37 @@ import { countTargetsInCorridor } from '../lib/routeCorridor';
 
 export type AisStatus = 'off' | 'connecting' | 'live' | 'offline' | 'keyError';
 
+/**
+ * #158: settle gate for jittery inputs. Returns `value` only once it has held
+ * (by Object.is) for `settleMs` UNINTERRUPTED; any change re-arms the window,
+ * and returning to the settled value cancels the pending adoption. AisTraffic
+ * consumes activeLegIndex through it: the index is a hysteresis-free per-fix
+ * nearest-leg argmin that flips between adjacent values at GPS-fix rate near
+ * leg boundaries — RouteLayer absorbs those flips with a cheap setFilter, but
+ * a network resubscription needs this stronger absorption so the corridor
+ * recomputes at leg-transition cadence, never fix rate.
+ *
+ * `resetKey` (#162 review): when its identity changes, the raw `value` is
+ * adopted IN THE SAME RENDER, bypassing the settle window. Only same-key
+ * changes are GPS-fix jitter; a key change (AisTraffic passes plan+rig
+ * identity) means the value's frame of reference moved — holding the old
+ * plan's settled index against a new plan's legs would slice the wrong
+ * corridor for up to settleMs. Uses React's render-time state-adjustment
+ * pattern (not an effect), so consumers never observe the stale pairing.
+ */
+export function useSettledValue<T>(value: T, settleMs: number, resetKey?: unknown): T {
+  const [state, setState] = useState({ settled: value, resetKey });
+  const keyChanged = !Object.is(state.resetKey, resetKey);
+  if (keyChanged) setState({ settled: value, resetKey });
+  const settled = keyChanged ? value : state.settled;
+  useEffect(() => {
+    if (Object.is(value, settled)) return;
+    const timer = window.setTimeout(() => setState({ settled: value, resetKey }), settleMs);
+    return () => window.clearTimeout(timer);
+  }, [value, settled, settleMs, resetKey]);
+  return settled;
+}
+
 export interface AisClientLike {
   start(bboxes: AisBoundingBox[]): void;
   updateSubscription(bboxes: AisBoundingBox[]): void;

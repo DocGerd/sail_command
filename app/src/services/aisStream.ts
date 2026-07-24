@@ -36,6 +36,28 @@ export function padBoundingBox(
   ];
 }
 
+// #158: order-sensitive deep equality over box lists — the resend value gate.
+// Corridor recomputes hand updateSubscription fresh arrays whose VALUES are
+// often unchanged (e.g. an activeLegIndex 0↔1 flip slices the same legs);
+// re-installing an identical server-side filter is pure wire noise.
+export function boundingBoxListsEqual(
+  a: readonly AisBoundingBox[],
+  b: readonly AisBoundingBox[],
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (
+      a[i][0][0] !== b[i][0][0] ||
+      a[i][0][1] !== b[i][0][1] ||
+      a[i][1][0] !== b[i][1][0] ||
+      a[i][1][1] !== b[i][1][1]
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // True once the current viewport pokes outside the padded box we subscribed to,
 // i.e. it's time to re-send the subscription with a fresh padded bbox.
 export function viewportEscapedBbox(
@@ -253,9 +275,14 @@ export class AisStreamClient {
   }
 
   updateSubscription(bboxes: AisBoundingBox[]): void {
+    // #158 value gate: a deep-equal list would re-install the exact filter the
+    // server already holds — skip the send. On an open socket currentBboxes is
+    // always what onOpen/the last update sent, so it IS the last-sent list;
+    // while disconnected the gate is moot (onOpen resends the stored list).
+    const unchanged = boundingBoxListsEqual(bboxes, this.currentBboxes);
     this.currentBboxes = bboxes;
     // Re-sending on an open socket replaces the server-side filter — no reconnect.
-    if (this.socketOpen) this.sendSubscription();
+    if (this.socketOpen && !unchanged) this.sendSubscription();
   }
 
   stop(): void {

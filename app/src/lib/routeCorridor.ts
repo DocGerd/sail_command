@@ -13,6 +13,17 @@ export const AIS_CORRIDOR_HALF_WIDTH_NM = 5;
 export const AIS_CORRIDOR_MAX_BOXES = 8;
 export const AIS_CORRIDOR_MAX_AREA_NM2 = 2000;
 
+// #158: the area-cap fallback warns once per over-cap corridor CONFIGURATION
+// (keyed on the capped box set), not per recompute; an under-cap compute
+// re-arms it, so a route that later re-exceeds the cap warns again. The only
+// module state in this otherwise pure module — it guards the only side effect.
+let lastAreaWarnKey: string | null = null;
+
+/** Reset the once-per-configuration area-cap warning (test isolation). */
+export function resetCorridorAreaWarning(): void {
+  lastAreaWarnKey = null;
+}
+
 function boxesOverlap(a: AisBoundingBox, b: AisBoundingBox): boolean {
   // Inclusive on all edges so touching boxes merge too.
   return a[0][0] <= b[1][0] && b[0][0] <= a[1][0] && a[0][1] <= b[1][1] && b[0][1] <= a[1][1];
@@ -125,12 +136,17 @@ export function routeCorridorBoxes(
 
   const totalArea = boxes.reduce((sum, b) => sum + boundingBoxAreaNm2(b), 0);
   if (totalArea > AIS_CORRIDOR_MAX_AREA_NM2) {
-    console.warn(
-      `AIS route corridor area ${Math.round(totalArea)} nm² exceeds cap ` +
-        `${AIS_CORRIDOR_MAX_AREA_NM2} nm² — falling back to viewport-only subscription`,
-    );
+    const warnKey = JSON.stringify(boxes);
+    if (warnKey !== lastAreaWarnKey) {
+      lastAreaWarnKey = warnKey;
+      console.warn(
+        `AIS route corridor area ${Math.round(totalArea)} nm² exceeds cap ` +
+          `${AIS_CORRIDOR_MAX_AREA_NM2} nm² — falling back to viewport-only subscription`,
+      );
+    }
     return [];
   }
+  lastAreaWarnKey = null; // under cap again — re-arm the warning
   return boxes;
 }
 
