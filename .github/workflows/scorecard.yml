@@ -1,7 +1,7 @@
 name: Scorecard
 on:
   push:
-    branches: [main]
+    branches: [develop]
   schedule:
     - cron: '30 3 * * 1' # weekly, Monday 03:30 UTC
   branch_protection_rule:

@@ -9,7 +9,9 @@ import {
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
 import { useViaReplan } from './state/replan';
+import { useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
+import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
@@ -22,22 +24,24 @@ import PlannerPanel, {
   type PlannerStatus,
   type TapTarget,
 } from './components/PlannerPanel';
-import PlansList from './components/PlansList';
+import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
 import LiveView from './components/LiveView';
+import AisTraffic from './components/AisTraffic';
+import { AIS_VESSEL_LAYER } from './components/AisLayer';
 import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
 import { isStaleForecast } from './lib/plan';
+import { recalcRequest } from './lib/recalc';
 import { useWideLayout } from './lib/useWideLayout';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
-import type { Harbor, LatLon, PickedPoint } from './types';
-
-type Tab = 'plan' | 'routes' | 'live';
+import type { Tab } from './lib/sessionSnapshot';
+import type { Harbor, LatLon, PickedPoint, Plan } from './types';
 
 const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 
@@ -45,7 +49,7 @@ const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
 // #7). Module-level for a stable identity — MapView syncs it into a ref
 // every render.
-const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER];
+const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER, AIS_VESSEL_LAYER];
 
 const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
   origin: 'planner.origin.label',
@@ -131,6 +135,10 @@ function AppShell() {
   // that was only ever *loaded* from PlansList, never run() in this
   // session, still works) rather than spawning a second worker.
   const viaReplan = useViaReplan(ensureClient);
+  // #115: manual "reroute from here" (Live view). Shares the same singleton
+  // RoutingClient via ensureClient and, like a via-replan, reuses the plan's
+  // STORED wind grid — never refetches, so it stays available offline.
+  const liveReroute = useLiveReroute(ensureClient);
   // #25 addendum: standalone "show my position" marker, decoupled from Live
   // View — subscribes to GPS whenever the setting is on, regardless of
   // tab/plan/active state (see useOwnshipGps.ts and OwnshipMarker.tsx).
@@ -188,14 +196,15 @@ function AppShell() {
   // whatever `plan` actually is *then*, can.
   //
   // usePlanFlow.run()'s own setPlan(plan) (usePlanFlow.ts) is deliberately
-  // NOT guarded the same way: run() always mints a brand-new plan.id, so a
-  // completed run is never "the same plan, possibly superseded" — it's a
-  // fresh planning request the user just asked for, which should become
-  // active even if another plan was loaded while it was in flight. Guarding
-  // it by planIdRef would incorrectly block every legitimate run() result
-  // (a new id can never match the ref's pre-existing value). The clobber
-  // this guards against is specific to replans: an edit to a *specific*,
-  // possibly-since-abandoned plan resolving late.
+  // NOT guarded the same way: run() mints a brand-new plan.id (or, for a
+  // #114 replace-recalculation, reuses the id the user explicitly confirmed
+  // overwriting), so a completed run is never "the same plan, possibly
+  // superseded" — it's a fresh planning request the user just asked for,
+  // which should become active even if another plan was loaded while it was
+  // in flight. Guarding it by planIdRef would incorrectly block every
+  // legitimate run() result (a new id can never match the ref's pre-existing
+  // value). The clobber this guards against is specific to replans: an edit
+  // to a *specific*, possibly-since-abandoned plan resolving late.
   const planIdRef = useRef<string | null>(plan?.id ?? null);
   useEffect(() => {
     planIdRef.current = plan?.id ?? null;
@@ -390,6 +399,16 @@ function AppShell() {
     if (next !== 'plan') setTapTarget(null);
   }, []);
 
+  // #113: restores the last session's plan/rig/tab on boot (pure local
+  // replay of PlansList's getPlan→setPlan path) and persists the small
+  // session snapshot on every plan/tab/rig change. Goes through
+  // handleTabChange, not raw setTab: the restore's getPlan is async, so the
+  // user can arm tap-to-pick on the initial Plan tab before it resolves — a
+  // raw setTab would then switch tabs with the pick still armed, letting a
+  // stray map tap overwrite origin/destination from Routes/Live (the exact
+  // state handleTabChange's disarm exists to prevent).
+  useSessionRestore(tab, handleTabChange);
+
   // #64 phase 3: "Details ansehen" from the Plan-tab Ergebnis strip switches to
   // the Routes tab AND moves focus to its Ergebnis heading (user-initiated, so
   // moving focus is correct). The heading only exists once the Routes panel is
@@ -446,18 +465,57 @@ function AppShell() {
     );
   }, [origin, destination, departureMs, settings, run, viaPoints]);
 
+  // #114: recalculate a saved plan with a FRESH forecast — seeds run() from
+  // the plan's own stored request (origin/destination/vias/settings) with the
+  // editor's departure. Sharply distinct from the via-replan above, which
+  // reuses the stored grid and never refetches. Default mode saves a NEW
+  // plan under a derived name; the two-tap-confirmed 'replace' mode persists
+  // under the original id (overwriting it only if the run succeeds).
+  const handleRecalculate = useCallback(
+    (recalcPlan: Plan, departureMs: number, mode: RecalcMode): Promise<void> => {
+      const req = recalcRequest(recalcPlan, departureMs);
+      return mode === 'replace'
+        ? run(req, recalcPlan.name, { replacePlanId: recalcPlan.id })
+        : run(req, t('plansList.recalcName', { name: recalcPlan.name }));
+    },
+    [run, t],
+  );
+
+  // #115: reroute the ACTIVE plan from the current GPS fix (LiveView passes
+  // the fix point). The result is a NEW plan (fresh id, derived name) — the
+  // original stays untouched — and it becomes active unconditionally on
+  // success, following run()'s precedent (a fresh id is never "the same
+  // plan, possibly superseded": it's the routed result the user explicitly
+  // just asked for; planIdRef's clobber guard exists only for replans that
+  // update a specific existing plan in place).
+  const handleLiveReroute = useCallback(
+    (fixPoint: LatLon) => {
+      if (!plan) return;
+      void liveReroute
+        .reroute(plan, fixPoint, t('live.reroute.name', { name: plan.name }))
+        .then((rerouted) => {
+          if (rerouted) setPlan(rerouted);
+        });
+    },
+    [plan, liveReroute, setPlan, t],
+  );
+
   // The Plan button independently guards offline (spec §4) on top of the
   // banner; canPlan also requires both endpoints, an idle/error (not
   // already in-flight) planning phase, and no via-replan in flight — a
   // fresh run() while a replan of the current plan is pending would race
   // the same "which result wins" question planIdRef's guard exists for
   // above, so it's simplest to just not let one start.
-  const canPlan =
-    origin !== null &&
-    destination !== null &&
-    online &&
-    (planning.phase === 'idle' || planning.phase === 'error') &&
-    !viaReplan.state.replanning;
+  // #114: `runBusy` is that same in-flight condition on its own — shared by
+  // canPlan and the PlansList recalc actions, so no two runs can overlap
+  // regardless of which surface starts them.
+  // #115: liveReroute joins the same mutual exclusion — a live reroute is a
+  // solver run on the shared client like any other.
+  const runBusy =
+    !(planning.phase === 'idle' || planning.phase === 'error') ||
+    viaReplan.state.replanning ||
+    liveReroute.state.rerouting;
+  const canPlan = origin !== null && destination !== null && online && !runBusy;
   // §3.5: the primary button always states WHY it's disabled. Offline is the
   // most blocking (nothing can be planned), then a missing endpoint. When both
   // endpoints are set and online, the button is enabled — reason is null.
@@ -518,7 +576,27 @@ function AppShell() {
               `liveSlot` (BoatMarker stays here on the map either way). Only
               mounted while the Live tab is active — switching away stops GPS
               tracking rather than running it in the background. */}
-          {tab === 'live' && <LiveView panelSlot={isWide ? liveSlot : null} />}
+          {tab === 'live' && (
+            <>
+              {/* #25 AIS live traffic overlay — Live tab only, inside MapView's
+                  subtree for the map context. Fully inert without a key. */}
+              <AisTraffic
+                apiKey={settings.aisApiKey}
+                ownMmsi={settings.ownMmsi}
+                plan={plan}
+                rig={rig}
+                activeLegIndex={activeLegIndex}
+              />
+              <LiveView
+                panelSlot={isWide ? liveSlot : null}
+                reroute={{
+                  busy: runBusy,
+                  rerouting: liveReroute.state.rerouting,
+                  onReroute: handleLiveReroute,
+                }}
+              />
+            </>
+          )}
         </MapView>
       </div>
 
@@ -610,7 +688,13 @@ function AppShell() {
           <Banner
             kind={planErrorBannerKind(planning.messageKey)}
             action={
-              planErrorGroup(planning.messageKey) === 'network'
+              // "Try again" re-runs the planner form, so it needs both
+              // endpoints — a #114 recalculation can error without any form
+              // state (handlePlan would silently no-op), in which case the
+              // user retries from the plan row instead.
+              planErrorGroup(planning.messageKey) === 'network' &&
+              origin !== null &&
+              destination !== null
                 ? { label: t('banner.retry'), onClick: handlePlan }
                 : undefined
             }
@@ -630,6 +714,18 @@ function AppShell() {
         {viaReplan.state.error && (
           <Banner kind="error" onDismiss={viaReplan.clearError} dismissLabel={t('banner.dismiss')}>
             {t(viaReplan.state.error)}
+          </Banner>
+        )}
+        {/* #115: live-reroute failures (stale stored forecast, fix outside
+            the region, no route) — honest error, never a truncated route.
+            Mirrors the via-replan banner above. */}
+        {liveReroute.state.error && (
+          <Banner
+            kind="error"
+            onDismiss={liveReroute.clearError}
+            dismissLabel={t('banner.dismiss')}
+          >
+            {t(liveReroute.state.error)}
           </Banner>
         )}
         {viaReplan.state.droppedCount > 0 && (
@@ -719,7 +815,7 @@ function AppShell() {
               {plan && rig && (
                 <DepthProfile plan={plan} rig={rig} safetyDepthM={settings.safetyDepthM} />
               )}
-              <PlansList />
+              <PlansList online={online} busy={runBusy} onRecalculate={handleRecalculate} />
             </>
           )}
           {/* tab === 'live': LiveView is mounted above, inside MapView's

@@ -67,3 +67,13 @@ export function formatDateTime(ms: number, lang: Lang): string {
     hourCycle: 'h23',
   }).format(ms);
 }
+
+// datetime-local reads/writes LOCAL wall-clock time with no offset suffix;
+// the Date getters/constructor operate in local time by design, so
+// ms <-> string round-trips through the browser's own timezone. Shared by
+// PlannerPanel's departure input and PlansList's recalculate editor (#114).
+export function toLocalInputValue(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}

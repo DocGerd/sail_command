@@ -1,0 +1,540 @@
+import { describe, it, expect, vi } from 'vitest';
+import {
+  AIS_AUTH_STABLE_MS,
+  AIS_STREAM_URL,
+  AisStreamClient,
+  boundingBoxListsEqual,
+  buildSubscription,
+  nextReconnectDelayMs,
+  padBoundingBox,
+  parseAisMessage,
+  viewportEscapedBbox,
+  type AisBoundingBox,
+  type AisClientStatus,
+  type AisSocket,
+  type AisSocketHandlers,
+  type ParsedAisData,
+} from './aisStream';
+
+const BBOX: [[number, number], [number, number]] = [
+  [54.6, 9.3],
+  [55.0, 10.1],
+];
+const BOX_A: AisBoundingBox = [
+  [54, 10],
+  [55, 11],
+];
+const BOX_B: AisBoundingBox = [
+  [54.4, 9.8],
+  [54.6, 10.4],
+];
+
+describe('buildSubscription', () => {
+  it('builds the exact aisstream subscription envelope', () => {
+    expect(buildSubscription('KEY', [BBOX])).toEqual({
+      APIKey: 'KEY',
+      BoundingBoxes: [
+        [
+          [54.6, 9.3],
+          [55.0, 10.1],
+        ],
+      ],
+      FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
+    });
+  });
+
+  it('passes a multi-box list through verbatim (#146 corridor ∪ viewport)', () => {
+    expect(buildSubscription('KEY', [BOX_A, BOX_B])).toEqual({
+      APIKey: 'KEY',
+      BoundingBoxes: [BOX_A, BOX_B],
+      FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
+    });
+  });
+});
+
+describe('padBoundingBox', () => {
+  it('pads each side by the given fraction of the span', () => {
+    // span lat = 1.0, lon = 2.0; 20% pad = 0.2 lat / 0.4 lon each side.
+    expect(padBoundingBox({ lat: 54.0, lon: 9.0 }, { lat: 55.0, lon: 11.0 }, 0.2)).toEqual([
+      [53.8, 8.6],
+      [55.2, 11.4],
+    ]);
+  });
+});
+
+describe('viewportEscapedBbox', () => {
+  const subscribed: [[number, number], [number, number]] = [
+    [54.0, 9.0],
+    [55.0, 11.0],
+  ];
+  it('is false when the viewport is fully inside the subscribed box', () => {
+    expect(viewportEscapedBbox(subscribed, { lat: 54.2, lon: 9.2 }, { lat: 54.8, lon: 10.8 })).toBe(
+      false,
+    );
+  });
+  it('is true when the viewport crosses the south or west edge', () => {
+    expect(viewportEscapedBbox(subscribed, { lat: 53.9, lon: 9.2 }, { lat: 54.8, lon: 10.8 })).toBe(
+      true,
+    );
+  });
+  it('is true when the viewport crosses the north or east edge', () => {
+    expect(viewportEscapedBbox(subscribed, { lat: 54.2, lon: 9.2 }, { lat: 54.8, lon: 11.1 })).toBe(
+      true,
+    );
+  });
+});
+
+describe('parseAisMessage', () => {
+  it('parses a PositionReport, converting MMSI to a 9-digit string and carrying MetaData name', () => {
+    const raw = JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 211234560, ShipName: '  ALBATROS  ' },
+      Message: {
+        PositionReport: { Latitude: 54.79, Longitude: 9.43, Sog: 6.3, Cog: 91.4, TrueHeading: 90 },
+      },
+    });
+    expect(parseAisMessage(raw)).toEqual({
+      kind: 'position',
+      mmsi: '211234560',
+      lat: 54.79,
+      lon: 9.43,
+      sogKn: 6.3,
+      cogDeg: 91.4,
+      headingDeg: 90,
+      name: 'ALBATROS',
+    });
+  });
+
+  it('maps sentinel values (heading 511, SOG 102.3, COG 360) to omitted keys', () => {
+    const raw = JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 211234560 },
+      Message: {
+        PositionReport: {
+          Latitude: 54.79,
+          Longitude: 9.43,
+          Sog: 102.3,
+          Cog: 360,
+          TrueHeading: 511,
+        },
+      },
+    });
+    expect(parseAisMessage(raw)).toEqual({
+      kind: 'position',
+      mmsi: '211234560',
+      lat: 54.79,
+      lon: 9.43,
+    });
+  });
+
+  it('zero-pads a short (coast-station) MMSI back to nine digits', () => {
+    const raw = JSON.stringify({
+      MessageType: 'PositionReport',
+      MetaData: { MMSI: 2110000 },
+      Message: { PositionReport: { Latitude: 54.0, Longitude: 9.0 } },
+    });
+    const parsed = parseAisMessage(raw) as ParsedAisData & { kind: 'position' };
+    expect(parsed.mmsi).toBe('002110000');
+  });
+
+  it('parses ShipStaticData name (trimmed) and ship type', () => {
+    const raw = JSON.stringify({
+      MessageType: 'ShipStaticData',
+      MetaData: { MMSI: 211234560 },
+      Message: { ShipStaticData: { Name: 'SEEADLER ', Type: 36 } },
+    });
+    expect(parseAisMessage(raw)).toEqual({
+      kind: 'static',
+      mmsi: '211234560',
+      name: 'SEEADLER',
+      shipType: 36,
+    });
+  });
+
+  it('maps an aisstream error frame to a kind:error message', () => {
+    expect(parseAisMessage(JSON.stringify({ error: 'Invalid API Key' }))).toEqual({
+      kind: 'error',
+      message: 'Invalid API Key',
+    });
+  });
+
+  it('returns null for invalid JSON', () => {
+    expect(parseAisMessage('not json{')).toBeNull();
+  });
+
+  it('returns null for an unknown MessageType', () => {
+    const raw = JSON.stringify({
+      MessageType: 'StaticDataReport',
+      MetaData: { MMSI: 1 },
+      Message: {},
+    });
+    expect(parseAisMessage(raw)).toBeNull();
+  });
+});
+
+describe('nextReconnectDelayMs', () => {
+  it('is full-jittered exponential from a 1 s base, capped at 60 s', () => {
+    const half = () => 0.5;
+    expect(nextReconnectDelayMs(1, half)).toBe(500); // 0.5 * 1000
+    expect(nextReconnectDelayMs(2, half)).toBe(1000); // 0.5 * 2000
+    expect(nextReconnectDelayMs(3, half)).toBe(2000); // 0.5 * 4000
+    // attempt 7 -> base*2^6 = 64000, capped to 60000.
+    expect(nextReconnectDelayMs(7, half)).toBe(30000);
+    expect(nextReconnectDelayMs(100, () => 0.999)).toBe(59940); // floor(0.999 * 60000)
+    expect(nextReconnectDelayMs(5, () => 0)).toBe(0);
+  });
+});
+
+describe('boundingBoxListsEqual', () => {
+  it('is order-sensitive deep equality over box lists', () => {
+    const cloneA: AisBoundingBox = [
+      [54, 10],
+      [55, 11],
+    ];
+    expect(boundingBoxListsEqual([BOX_A, BOX_B], [cloneA, BOX_B])).toBe(true);
+    expect(boundingBoxListsEqual([], [])).toBe(true);
+    expect(boundingBoxListsEqual([BOX_A], [BOX_A, BOX_B])).toBe(false); // length
+    expect(boundingBoxListsEqual([BOX_A, BOX_B], [BOX_B, BOX_A])).toBe(false); // order
+    const nudged: AisBoundingBox = [
+      [54, 10],
+      [55, 11.000001],
+    ];
+    expect(boundingBoxListsEqual([BOX_A], [nudged])).toBe(false); // value
+  });
+});
+
+// ---- state-machine tests: injected fake socket + injected timers ----
+
+function fakeSocket() {
+  const sent: string[] = [];
+  let handlers: AisSocketHandlers | null = null;
+  const socket: AisSocket = {
+    send: (d) => sent.push(d),
+    close: vi.fn(),
+  };
+  return {
+    socket,
+    sent,
+    bind: (h: AisSocketHandlers) => {
+      handlers = h;
+    },
+    open: () => handlers?.onOpen(),
+    message: (raw: string) => handlers?.onMessage(raw),
+    remoteClose: () => handlers?.onClose(),
+    error: () => handlers?.onError(),
+  };
+}
+
+/**
+ * A deterministic timer harness: records scheduled callbacks + delays. The 30 s
+ * auth-stability timer (identified by its AIS_AUTH_STABLE_MS delay — client
+ * tests never reach a backoff attempt that could collide with it) is tracked
+ * separately from the reconnect timers so the reconnect-delay pins stay exact.
+ */
+function fakeTimers() {
+  const scheduled: { fn: () => void; ms: number; cleared: boolean }[] = [];
+  const reconnects = () => scheduled.filter((s) => s.ms !== AIS_AUTH_STABLE_MS);
+  const stability = () => scheduled.filter((s) => s.ms === AIS_AUTH_STABLE_MS && !s.cleared);
+  return {
+    setTimer: (fn: () => void, ms: number): number => {
+      scheduled.push({ fn, ms, cleared: false });
+      return scheduled.length; // 1-based id
+    },
+    clearTimer: (id: number) => {
+      const t = scheduled[id - 1];
+      if (t) t.cleared = true;
+    },
+    /** Reconnect backoff delays only (stability timers excluded). */
+    delays: () => reconnects().map((s) => s.ms),
+    fireLast: () => reconnects()[reconnects().length - 1].fn(),
+    /** Fire the pending auth-stability timer: the socket stayed open 30 s. */
+    fireStability: () => {
+      const st = stability();
+      const t = st[st.length - 1];
+      t.cleared = true; // fired = no longer pending
+      t.fn();
+    },
+    /** Auth-stability timers armed but neither fired nor cleared (leak probe). */
+    pendingStability: () => stability().length,
+  };
+}
+
+function makeClient() {
+  const fs = fakeSocket();
+  const timers = fakeTimers();
+  const statuses: AisClientStatus[] = [];
+  const messages: ParsedAisData[] = [];
+  const client = new AisStreamClient(
+    'KEY',
+    {
+      onMessage: (m) => messages.push(m),
+      onStatus: (s) => statuses.push(s),
+    },
+    {
+      socketFactory: (url, handlers) => {
+        expect(url).toBe(AIS_STREAM_URL);
+        fs.bind(handlers);
+        return fs.socket;
+      },
+      random: () => 0.5,
+      setTimer: timers.setTimer,
+      clearTimer: timers.clearTimer,
+    },
+  );
+  return { client, fs, timers, statuses, messages };
+}
+
+const POSITION_RAW = JSON.stringify({
+  MessageType: 'PositionReport',
+  MetaData: { MMSI: 211234560 },
+  Message: {
+    PositionReport: { Latitude: 54.79, Longitude: 9.43, Sog: 6, Cog: 90, TrueHeading: 90 },
+  },
+});
+
+describe('AisStreamClient', () => {
+  it('sends the subscription envelope on open and reports connecting', () => {
+    const { client, fs, statuses } = makeClient();
+    client.start([BBOX]);
+    expect(statuses).toEqual(['connecting']);
+    fs.open();
+    expect(JSON.parse(fs.sent[0])).toEqual(buildSubscription('KEY', [BBOX]));
+  });
+
+  it('transitions to live on the first inbound message and delivers it', () => {
+    const { client, fs, statuses, messages } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.message(POSITION_RAW);
+    expect(statuses).toEqual(['connecting', 'live']);
+    expect(messages).toEqual([
+      {
+        kind: 'position',
+        mmsi: '211234560',
+        lat: 54.79,
+        lon: 9.43,
+        sogKn: 6,
+        cogDeg: 90,
+        headingDeg: 90,
+      },
+    ]);
+  });
+
+  it('treats an error frame as terminal keyError: closes and schedules NO reconnect', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.message(JSON.stringify({ error: 'Invalid API Key' }));
+    expect(statuses).toEqual(['connecting', 'keyError']);
+    expect(fs.socket.close).toHaveBeenCalledTimes(1);
+    // A subsequent transport close must not arm a retry.
+    fs.remoteClose();
+    expect(timers.delays()).toEqual([]);
+  });
+
+  it('reconnects with capped-exponential backoff on transient closes (no message received)', () => {
+    const { client, fs, timers } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.remoteClose(); // attempt 1 -> 0.5 * 1000
+    expect(timers.delays()).toEqual([500]);
+    timers.fireLast(); // re-open
+    fs.open();
+    fs.remoteClose(); // attempt 2 -> 0.5 * 2000
+    expect(timers.delays()).toEqual([500, 1000]);
+  });
+
+  // Live-verified (#25 Task 8): aisstream signals a bad key with NO error
+  // frame — the socket accepts, takes the subscription, then closes bare
+  // (1006, empty reason). Three consecutive opened-and-subscribed closes with
+  // zero inbound messages are promoted to the terminal keyError state.
+  it('treats repeated bare closes right after subscribing as terminal keyError (wrong-key signature)', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.remoteClose(); // subscribed close 1 -> still transient, timer armed
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 2 -> still transient, timer armed
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 3 -> terminal keyError, NO new timer
+    expect(statuses).toEqual(['connecting', 'keyError']);
+    expect(timers.delays()).toEqual([500, 1000]);
+    // Every per-connect stability timer was cleared by its close (no leak).
+    expect(timers.pendingStability()).toBe(0);
+  });
+
+  // Review F1 (PR #145): a VALID key in a vessel-empty bbox produces zero
+  // messages — silent closes there are network drops. Surviving the 30 s
+  // stability window proves the key, so later silent closes must reconnect
+  // forever and never reach keyError.
+  it('a connection surviving the stability window proves the key: later silent closes stay transient', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    timers.fireStability(); // 30 s open, zero traffic -> key proven, counters reset
+    fs.remoteClose(); // silent close 1
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // silent close 2
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // silent close 3 -> would be keyError were the key unproven
+    // Backoff attempts 1..3 after the stability reset -> 0.5 * (1000, 2000, 4000):
+    // the third close armed a retry instead of going terminal.
+    expect(timers.delays()).toEqual([500, 1000, 2000]);
+    expect(statuses).toEqual(['connecting']); // never keyError, never closed
+  });
+
+  it('stop() clears a pending auth-stability timer (no leak) and arms no reconnect', () => {
+    const { client, fs, timers } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    expect(timers.pendingStability()).toBe(1);
+    client.stop();
+    expect(timers.pendingStability()).toBe(0);
+    expect(timers.delays()).toEqual([]);
+  });
+
+  it('a received message resets the early-close counter (transient blips never reach keyError)', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.remoteClose(); // subscribed close 1
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 2
+    timers.fireLast();
+    fs.open();
+    fs.message(POSITION_RAW); // live -> counter back to 0
+    fs.remoteClose(); // not an early close (a message arrived) -> plain retry
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // early close 1 of a NEW streak -> still transient
+    expect(statuses).toEqual(['connecting', 'live', 'connecting']);
+    // Backoff attempts: 1, 2 (pre-live), reset by the live message, then 1, 2
+    // again -> 0.5*1000, 0.5*2000, 0.5*1000, 0.5*2000.
+    expect(timers.delays()).toEqual([500, 1000, 500, 1000]);
+  });
+
+  it('never counts unopened connection failures toward keyError (offline stays transient)', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start([BBOX]);
+    fs.error(); // connect failed without ever opening (no subscription sent)
+    timers.fireLast();
+    fs.error();
+    timers.fireLast();
+    fs.error();
+    timers.fireLast();
+    fs.error(); // 4th straight failure: still transient, still retrying
+    expect(statuses).toEqual(['connecting']);
+    expect(timers.delays()).toEqual([500, 1000, 2000, 4000]);
+  });
+
+  it('resets backoff after a live subscription (attempt counter returns to 1)', () => {
+    const { client, fs, timers } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.message(POSITION_RAW); // live -> resets attempt
+    fs.remoteClose(); // attempt 1 again -> 0.5 * 1000
+    expect(timers.delays()).toEqual([500]);
+  });
+
+  it('re-sends the subscription on updateSubscription over an open socket without reconnecting', () => {
+    const { client, fs } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    const bbox2: [[number, number], [number, number]] = [
+      [54.7, 9.4],
+      [55.1, 10.2],
+    ];
+    client.updateSubscription([bbox2]);
+    expect(JSON.parse(fs.sent[1])).toEqual(buildSubscription('KEY', [bbox2]));
+    expect(fs.socket.close).not.toHaveBeenCalled();
+  });
+
+  it('skips the resend for a deep-equal updateSubscription and resends on a changed one (#158)', () => {
+    // #158 value gate at the protocol edge: a deep-equal box list would
+    // re-install the exact filter the server already holds — no wire traffic.
+    const { client, fs } = makeClient();
+    client.start([BOX_A, BOX_B]);
+    fs.open();
+    expect(fs.sent).toHaveLength(1);
+    // Fresh arrays, identical values (the recompute-churn shape: new identity,
+    // equal content) — send count must NOT grow.
+    const cloneA: AisBoundingBox = [
+      [54, 10],
+      [55, 11],
+    ];
+    const cloneB: AisBoundingBox = [
+      [54.4, 9.8],
+      [54.6, 10.4],
+    ];
+    client.updateSubscription([cloneA, cloneB]);
+    expect(fs.sent).toHaveLength(1);
+    // A genuinely changed list still resends on the open socket:
+    client.updateSubscription([BOX_A]);
+    expect(fs.sent).toHaveLength(2);
+    expect(JSON.parse(fs.sent[1])).toEqual(buildSubscription('KEY', [BOX_A]));
+    // …and the gate compares against the LAST list, so an equal repeat of the
+    // new list is silent again.
+    client.updateSubscription([cloneA]);
+    expect(fs.sent).toHaveLength(2);
+    expect(fs.socket.close).not.toHaveBeenCalled();
+  });
+
+  it('resends a 2-box list verbatim on reconnect (stored list survives the drop)', () => {
+    const { client, fs, timers } = makeClient();
+    client.start([BOX_A, BOX_B]);
+    fs.open();
+    expect(JSON.parse(fs.sent[0])).toEqual(buildSubscription('KEY', [BOX_A, BOX_B]));
+    fs.remoteClose(); // transient drop -> backoff timer armed
+    timers.fireLast();
+    fs.open();
+    expect(JSON.parse(fs.sent[1])).toEqual(buildSubscription('KEY', [BOX_A, BOX_B]));
+  });
+
+  it('stores an updateSubscription during backoff and sends it only on the next open', () => {
+    const { client, fs, timers } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.remoteClose(); // socket closed, backoff timer pending
+    const sentBefore = fs.sent.length;
+    client.updateSubscription([BOX_A, BOX_B]);
+    expect(fs.sent.length).toBe(sentBefore); // stored, NOT sent while disconnected
+    timers.fireLast();
+    fs.open();
+    expect(JSON.parse(fs.sent[fs.sent.length - 1])).toEqual(
+      buildSubscription('KEY', [BOX_A, BOX_B]),
+    );
+  });
+
+  it('updateSubscription after terminal keyError sends nothing and schedules no timer', () => {
+    const { client, fs, timers, statuses } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    fs.remoteClose(); // subscribed close 1
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 2
+    timers.fireLast();
+    fs.open();
+    fs.remoteClose(); // subscribed close 3 -> terminal keyError
+    expect(statuses).toEqual(['connecting', 'keyError']);
+    const sentBefore = fs.sent.length;
+    const delaysBefore = timers.delays().length;
+    client.updateSubscription([BOX_A, BOX_B]);
+    expect(fs.sent.length).toBe(sentBefore);
+    expect(timers.delays().length).toBe(delaysBefore);
+  });
+
+  it('stop() closes the socket, clears any pending timer, and reports closed', () => {
+    const { client, fs, statuses } = makeClient();
+    client.start([BBOX]);
+    fs.open();
+    client.stop();
+    expect(fs.socket.close).toHaveBeenCalledTimes(1);
+    expect(statuses[statuses.length - 1]).toBe('closed');
+  });
+});

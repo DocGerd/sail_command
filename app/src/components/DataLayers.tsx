@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { Map as MaplibreMap, Popup } from 'maplibre-gl';
-import type { GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl';
+import { Popup } from 'maplibre-gl';
+import type { GeoJSONSource, Map as MaplibreMap, MapLayerMouseEvent } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
-import { seamarkFeatureCollectionWithIcons } from '../lib/seamarkGeoJson';
+import { SEAMARKS_LAYOUT, seamarkFeatureCollectionWithIcons } from '../lib/seamarkGeoJson';
 import { registerSeamarkImages } from '../lib/seamarkGlyphs';
 import { seamarkPopoverRows } from '../lib/seamarkPopover';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
+import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
+import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
 import type { Harbor, MaskMeta, SeamarkProperties } from '../types';
 
 // Always-mounted host for the plan-independent map data layers (#38 harbor
@@ -45,27 +47,26 @@ const SEAMARKS_SOURCE = 'sc-seamarks';
 // never sets origin/destination). (#7)
 export const SEAMARKS_LAYER = 'sc-seamarks';
 
-// Deterministic cross-component layer ordering, anchored on RouteLayer's
-// bottom-most layer (ROUTE_STACK_BOTTOM_LAYER, the shallow casing — the first
-// its setupLayers adds — imported so a rename can't silently drop the
-// ordering). Both components add layers
-// whenever their own prerequisites happen to resolve, so ordering must hold for
-// either interleaving, not by load-order luck:
-// - Route layers exist first (the common case — they only wait for the map
-//   style, while these layers also wait for the assets fetch): everything
-//   here is inserted BEFORE the anchor, i.e. below the whole route stack.
-// - These layers exist first: RouteLayer appends its layers with no beforeId,
-//   which always lands them on top.
-// Either way route/maneuver/barb layers render above, and an active route
-// stays fully visible.
-
-// Same one-shot helper as RouteLayer.tsx's whenStyleReady — see the caveats
-// documented there (map 'load' fires exactly once; only valid for one-time
-// setup, never for repeated updates).
-function whenStyleReady(map: MaplibreMap, fn: () => void): void {
-  if (map.isStyleLoaded()) fn();
-  else map.once('load', fn);
-}
+// Deterministic cross-component layer ordering. Documented invariant (#160,
+// AisLayer's setupLayers): route stack above the AIS stack above these
+// overlays. Each component adds layers whenever its own prerequisites happen
+// to resolve, so the order must hold for EVERY interleaving, not by
+// load-order luck. Anchors, each resolved at add time (both ids imported so
+// a rename can't silently drop the ordering):
+// - This component inserts below the AIS stack's bottom-most layer
+//   (AIS_STACK_BOTTOM_LAYER) when AisLayer set up first (its layers only
+//   wait for the map style, while these also wait for the assets fetch);
+//   otherwise below RouteLayer's bottom-most layer (ROUTE_STACK_BOTTOM_LAYER,
+//   the shallow casing — the first its setupLayers adds); otherwise appended.
+// - AisLayer inserts below ROUTE_STACK_BOTTOM_LAYER, or appends: a
+//   later-arriving AIS stack lands directly under the route anchor — above
+//   overlays already sitting there — or on top of everything so far, and a
+//   later-arriving overlay stack slots in underneath it via the AIS anchor.
+// - RouteLayer appends with no beforeId, which always lands it on top.
+// The same anchor resolution re-runs on every styledata re-add (#153), so a
+// style reload re-establishes the identical order for any listener firing
+// order. Either way route/maneuver/barb layers render above, an active route
+// stays fully visible, and AIS traffic is never buried under seamarks.
 
 // One-time raster build (#39): decode the INTACT main-thread mask buffer
 // (usePlanFlow only ever transfers a .slice(0) copy to the worker, so reading
@@ -86,8 +87,12 @@ function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElemen
 }
 
 function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer): void {
-  // Anchor resolved at add time — see ROUTE_STACK_BOTTOM_LAYER above.
-  const beforeId = map.getLayer(ROUTE_STACK_BOTTOM_LAYER) ? ROUTE_STACK_BOTTOM_LAYER : undefined;
+  // Anchor resolved at add time — see the ordering note above (#160).
+  const beforeId = map.getLayer(AIS_STACK_BOTTOM_LAYER)
+    ? AIS_STACK_BOTTOM_LAYER
+    : map.getLayer(ROUTE_STACK_BOTTOM_LAYER)
+      ? ROUTE_STACK_BOTTOM_LAYER
+      : undefined;
   if (!map.getSource(DEPTH_SOURCE)) {
     const canvas = buildDepthCanvas(meta, maskBuffer);
     if (canvas) {
@@ -180,15 +185,12 @@ function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer):
         type: 'symbol',
         source: SEAMARKS_SOURCE,
         layout: {
-          // Precomputed per feature (seamarkFeatureCollectionWithIcons) —
-          // seamarkType/category alone can't distinguish e.g. a red from a
-          // green lateral buoy, which the glyph fidelity needs (seamarkGlyphs.ts).
-          'icon-image': ['get', 'icon'],
           // ~1,794 points is dense enough that unculled icons would pile up
-          // at low zoom (unlike the 33 harbor markers) — collision-cull like
-          // the harbor labels, not like the sparser route wind barbs.
-          'icon-allow-overlap': false,
-          'icon-size': 0.85,
+          // at low zoom (unlike the 33 harbor markers). #144: the culling is
+          // priority-ordered (symbol-sort-key) with a z>=12 tap-safety
+          // overlap valve and a zoom size taper — expressions pinned in
+          // seamarkGeoJson.test.ts, rationale on SEAMARKS_LAYOUT itself.
+          ...SEAMARKS_LAYOUT,
           // Hidden at creation; the seamarksVisible sync effect (below, same
           // commit) applies the persisted/default state — OFF for a fresh
           // profile (#7, opt-in specialist layer) — before any paint.
@@ -211,14 +213,23 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // harbor markers) that would clutter the map before the user opts in.
   const [seamarksVisible, setSeamarksVisible] = usePersistedToggle('sc-seamarks-visible', false);
   const [assets, setAssets] = useState<RoutingAssets | null>(null);
-  // Same pattern and rationale as RouteLayer's styleReady state. Registered
-  // from a [map]-effect (below) so the whenStyleReady call happens at map
-  // arrival — BEFORE 'load' can have fired. Waiting for the assets fetch
-  // first and only then calling whenStyleReady would race: by then 'load'
-  // may already be history while isStyleLoaded() transiently reads false
-  // (tiles streaming — see RouteLayer's whenStyleReady caveats), stranding a
-  // once('load') that never fires.
-  const [styleReady, setStyleReady] = useState(false);
+  // Same pattern and rationale as RouteLayer's styleEpoch: 0 = this
+  // component's sources/layers don't exist yet; 1 once style AND assets are
+  // first ready; +1 after every style-reload re-add (#153). The downstream
+  // effects depend on it so each pass re-observes the current lang/toggle
+  // state and repaints the freshly re-created sources.
+  const [styleEpoch, setStyleEpoch] = useState(0);
+  // True from the shared hook's first setup invocation on — i.e. once the
+  // style is parsed. A ref, not state: the assets-arrival effect below needs
+  // it synchronously and must not re-render anything itself.
+  const styleReadyRef = useRef(false);
+  // Latest assets, readable from the style setup without re-arming it (the
+  // hook must be installed exactly once per map instance — see below).
+  const assetsRef = useRef<RoutingAssets | null>(null);
+  useEffect(() => {
+    assetsRef.current = assets;
+  });
+  const setupRef = useRef<() => void>(() => {});
 
   // Module-cached promise shared with App.tsx's own eager load — no second
   // fetch. Best-effort like App's: a failed fetch just leaves the layers off
@@ -235,65 +246,91 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     };
   }, []);
 
+  // Style-setup arming. Installed exactly once per map instance per mount,
+  // from this [map]-effect — the installStyleSetup contract (#159): the hook
+  // is safe at any point in the map lifetime, but later dependencies (here
+  // the assets arrival) must invoke the already-armed setup directly instead
+  // of re-installing it (see the arrival effect below). Source/
+  // layer creation is gated on BOTH the style and the assets (unlike
+  // RouteLayer, the data here comes from a fetch, not props): before assets
+  // resolve, setup only records style readiness; the arrival effect below
+  // calls back in. setupLayers keeps its own per-source guards; `missing`
+  // additionally gates the epoch bump so routine 'styledata' firings stay
+  // cheap no-ops (the updater returns the same value and React bails out),
+  // while a style RELOAD (#153) — which wipes this component's sources —
+  // re-creates them and bumps the epoch so the downstream effects repaint.
+  // The `e === 0` half admits a remount that finds the previous instance's
+  // layers still in place (DataLayers never removes them).
   useEffect(() => {
     if (!map) return;
-    whenStyleReady(map, () => setStyleReady(true));
+    const setup = () => {
+      styleReadyRef.current = true;
+      const a = assetsRef.current;
+      if (!a) return; // assets still loading — the arrival effect calls back in
+      const missing = !map.getSource(HARBOR_SOURCE);
+      if (missing) setupLayers(map, a.maskMeta, a.maskBuffer);
+      setStyleEpoch((e) => (missing || e === 0 ? e + 1 : e));
+    };
+    setupRef.current = setup;
+    const dispose = installStyleSetup(map, setup);
+    return () => {
+      styleReadyRef.current = false;
+      setupRef.current = () => {};
+      dispose();
+    };
   }, [map]);
 
-  // Source/layer creation, gated on BOTH the style and the assets (unlike
-  // RouteLayer, the data here comes from a fetch, not props). setupLayers is
-  // idempotent (getSource guards), and every dependency transitions at most
-  // once — this effectively runs once, with no setState of its own: the
-  // downstream effects share these deps and are declared AFTER this one, so
-  // within the commit that finally has map+style+assets they re-run in order
-  // and find the sources/layers already created.
+  // Assets usually resolve AFTER the style is ready. Per the
+  // installStyleSetup contract, the already-armed setup is invoked directly
+  // — gated on the readiness it recorded — rather than the hook being
+  // re-installed.
   useEffect(() => {
-    if (!map || !styleReady || !assets) return;
-    setupLayers(map, assets.maskMeta, assets.maskBuffer);
-  }, [map, styleReady, assets]);
+    if (!map || !assets || !styleReadyRef.current) return;
+    setupRef.current();
+  }, [map, assets]);
 
   // Harbor features follow the active language (#38: relabel on switch) —
   // rebuild the 33-feature collection rather than juggling per-lang fields.
   useEffect(() => {
-    if (!map || !styleReady || !assets) return;
+    if (!map || styleEpoch === 0 || !assets) return;
     (map.getSource(HARBOR_SOURCE) as GeoJSONSource | undefined)?.setData(
       harborFeatureCollection(assets.harbors, lang),
     );
-  }, [map, styleReady, assets, lang]);
+  }, [map, styleEpoch, assets, lang]);
 
   // `assets` is a genuine dependency even though unused in the body: the
   // depth layer only exists once the setup effect (which needs assets) has
   // run, so this must re-sync after that transition, not just on toggles.
   useEffect(() => {
-    if (!map || !styleReady || !assets || !map.getLayer(DEPTH_LAYER)) return;
+    if (!map || styleEpoch === 0 || !assets || !map.getLayer(DEPTH_LAYER)) return;
     map.setLayoutProperty(DEPTH_LAYER, 'visibility', depthVisible ? 'visible' : 'none');
-  }, [map, styleReady, assets, depthVisible]);
+  }, [map, styleEpoch, assets, depthVisible]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the
   // user opts in, no flash of unstyled icons). registerSeamarkImages is
   // idempotent (hasImage guard), so this is safe to re-run.
   useEffect(() => {
-    if (!map || !styleReady || !assets) return;
+    if (!map || styleEpoch === 0 || !assets) return;
     const withIcons = seamarkFeatureCollectionWithIcons(assets.seamarks);
     registerSeamarkImages(
       map,
       withIcons.features.map((f) => f.properties),
     );
     (map.getSource(SEAMARKS_SOURCE) as GeoJSONSource | undefined)?.setData(withIcons);
-  }, [map, styleReady, assets]);
+  }, [map, styleEpoch, assets]);
 
   useEffect(() => {
-    if (!map || !styleReady || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
+    if (!map || styleEpoch === 0 || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
     map.setLayoutProperty(SEAMARKS_LAYER, 'visibility', seamarksVisible ? 'visible' : 'none');
-  }, [map, styleReady, assets, seamarksVisible]);
+  }, [map, styleEpoch, assets, seamarksVisible]);
 
   // Click a seamark glyph -> a small info popover (type/category/colour,
   // light character/colour/period when tagged) — never a route pick (#7):
   // seamarks aren't route-pickable points, unlike harbor markers, so this
   // owns its own popup rather than calling back into App/PlannerPanel state.
   useEffect(() => {
-    if (!map || !styleReady || !assets) return;
+    if (!map || styleEpoch === 0 || !assets) return;
     const handleClick = (e: MapLayerMouseEvent) => {
       const props = e.features?.[0]?.properties as SeamarkProperties | undefined;
       if (!props) return;
@@ -329,7 +366,7 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
       map.off('mouseenter', SEAMARKS_LAYER, handleEnter);
       map.off('mouseleave', SEAMARKS_LAYER, handleLeave);
     };
-  }, [map, styleReady, assets, t]);
+  }, [map, styleEpoch, assets, t]);
 
   // Click-to-pick + hover cursor on the harbor circles. The callback lives in
   // a ref so a re-render of App (new onHarborPick identity) doesn't
@@ -340,7 +377,7 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   });
 
   useEffect(() => {
-    if (!map || !styleReady || !assets) return;
+    if (!map || styleEpoch === 0 || !assets) return;
     const handleClick = (e: MapLayerMouseEvent) => {
       const id: unknown = e.features?.[0]?.properties?.id;
       const harbor = assets.harbors.find((h) => h.id === id);
@@ -360,7 +397,7 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
       map.off('mouseenter', HARBOR_CIRCLE_LAYER, handleEnter);
       map.off('mouseleave', HARBOR_CIRCLE_LAYER, handleLeave);
     };
-  }, [map, styleReady, assets]);
+  }, [map, styleEpoch, assets]);
 
   // Always-mounted control cluster — top-LEFT of the map, so it can never
   // collide with RouteLayer's plan-gated cluster at the top-right (app.css).

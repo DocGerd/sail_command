@@ -101,6 +101,12 @@ export const en = {
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':
     'The route planner could not be started. Try again; if it keeps happening, reload the app.',
+  // #115: manual "reroute from here" (Live view) — honest failures, never a
+  // silently truncated or extrapolated route.
+  'error.rerouteStaleWind':
+    "This plan's stored wind forecast no longer covers the current time — a new route from now cannot be computed from it. Plan the route again to load a current forecast.",
+  'error.rerouteFixOutside':
+    'The current GPS position is outside the covered sea area or not navigable — no route can be computed from here.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
   'route.rigTabs': 'Rig comparison',
@@ -181,6 +187,16 @@ export const en = {
   'plansList.delete': 'Delete plan',
   'plansList.confirmDelete': 'Confirm delete',
   'plansList.actionError': 'Action failed. Please try again.',
+  // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
+  // which reuses the stored grid and stays offline-capable).
+  'plansList.recalc': 'Recalculate',
+  'plansList.recalc.saveNew': 'Recalculate as new plan',
+  'plansList.recalc.replace': 'Replace original',
+  'plansList.recalc.confirmReplace': 'Confirm replace',
+  'plansList.recalc.cancel': 'Cancel',
+  'plansList.recalc.offline':
+    'Recalculation requires a connection — it fetches a fresh wind forecast.',
+  'plansList.recalcName': '{name} (recalculated)',
   'live.toggle': 'Live view',
   'live.noPlan': 'Load or plan a route to use live guidance.',
   'live.hts.label': 'HTS',
@@ -193,6 +209,15 @@ export const en = {
   'live.gpsHint':
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
   'live.gpsHint.dismiss': 'Got it',
+  // #115: manual "replan from here" — planning-aid framing, never navigation
+  // guidance; uses the plan's STORED wind forecast (offline-capable, unlike
+  // the #114 recalculation).
+  'live.reroute.action': 'Replan route from here',
+  'live.reroute.busy': 'Replanning route from current position…',
+  'live.reroute.needFix': 'Needs an active GPS fix — start the live view and wait for a fix.',
+  'live.reroute.hint':
+    'Creates a new plan from the current position to the destination using the stored wind forecast; the original plan is kept. A planning aid, not navigation guidance.',
+  'live.reroute.name': '{name} (replanned from position)',
   'nav.plan': 'Plan',
   'nav.routes': 'Routes',
   'nav.live': 'Live',
@@ -202,6 +227,9 @@ export const en = {
   'about.open': 'About SailCommand',
   'about.title': 'About SailCommand',
   'about.close': 'Close',
+  'about.version': 'Version {version}',
+  'about.changelog.title': "What's new",
+  'about.changelog.langNote': 'The changelog is maintained in English.',
   'about.caveats.heading': 'Important notes',
   'about.caveats.polars':
     'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
@@ -230,4 +258,24 @@ export const en = {
   'pwa.updateAvailable': 'Update available',
   'pwa.reload': 'Reload',
   'pwa.offlineReady': 'App & maps available offline',
+  // #25 AIS overlay — vessel popup + shared disclaimer.
+  'ais.popup.name': 'Name',
+  'ais.popup.mmsi': 'MMSI',
+  'ais.popup.shipType': 'Ship type',
+  'ais.popup.sog': 'SOG',
+  'ais.popup.cog': 'COG',
+  'ais.popup.age': 'Last signal',
+  'ais.disclaimer':
+    'AIS coverage comes from volunteer shore stations and is not guaranteed or complete. This overlay is an awareness aid, not collision avoidance and not a navigation device.',
+  'options.ais.apiKey.label': 'AIS API key (aisstream.io)',
+  'options.ais.mmsi.label': 'Your MMSI (optional)',
+  'options.ais.mmsi.invalid': 'MMSI must be exactly 9 digits.',
+  'options.ais.help':
+    'Shows live surrounding vessel traffic in the Live view only (online only). Create a free API key at aisstream.io and paste it here. Your key and MMSI stay on this device; the key is sent only to aisstream.io as part of the subscription, and the MMSI is used only to filter your own vessel out of the display and is never transmitted. An awareness aid, not a navigation device.',
+  'ais.status.off': 'AIS off — add a key in Options',
+  'ais.status.connecting': 'AIS connecting…',
+  'ais.status.live': 'AIS live · {count} vessels',
+  'ais.status.offline': 'AIS offline',
+  'ais.status.keyError': 'AIS: check your API key',
+  'ais.status.liveRoute': 'AIS live · {count} vessels ({routeCount} along route)',
 } satisfies Record<MsgKey, string>;

@@ -296,6 +296,23 @@ select {
   gap: 0.25rem 0.75rem;
 }
 
+/* #115: manual "reroute from here" action + its hint (needs-a-fix reason
+   while disabled, planning-aid framing while enabled). */
+.live-view-reroute {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--sc-border);
+}
+
+.live-view-reroute-hint {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin: 0;
+}
+
 /* ---- Map-overlay controls (RouteLayer's annotations toggle, barb toggle/time
    slider and collapsible legend, and DataLayers' always-mounted depth toggle) ---- */
 
@@ -362,6 +379,57 @@ select {
 .seamark-popup .maplibregl-popup-tip {
   border-top-color: var(--sc-bg);
   border-bottom-color: var(--sc-bg);
+}
+
+/* AIS vessel popup (#25) — content of a MapLibre Popup's setDOMContent. */
+.ais-popover {
+  font-size: 0.85rem;
+  color: var(--sc-fg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ais-popover-disclaimer {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+/* Theme MapLibre's own popup chrome (it hardcodes a white background with no
+   dark variant); cover both tip directions. Same fix as .seamark-popup. */
+.ais-popup .maplibregl-popup-content {
+  background: var(--sc-bg);
+}
+
+.ais-popup .maplibregl-popup-tip {
+  border-top-color: var(--sc-bg);
+  border-bottom-color: var(--sc-bg);
+}
+
+/* AIS status chip (#25) — a small map overlay on the Live tab, top-centered so
+   it clears the top-left data-layer controls and the top-right route cluster. */
+.ais-status {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.ais-status-chip {
+  background: color-mix(in srgb, var(--sc-bg) 88%, transparent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.ais-status-live {
+  color: #009e73;
+}
+
+.ais-status-offline,
+.ais-status-keyError {
+  color: #d55e00;
 }
 
 .route-layer-time-slider {
@@ -1147,6 +1215,9 @@ select {
 .plans-list-row {
   display: flex;
   align-items: center;
+  /* #114: lets the full-width recalc editor wrap onto its own line below the
+     load/recalc/delete row without changing the row's own layout. */
+  flex-wrap: wrap;
   gap: 0.5rem;
   border-bottom: 1px solid var(--sc-border);
   padding: 0.4rem 0;
@@ -1168,9 +1239,29 @@ select {
 }
 
 .plans-list-created,
+.plans-list-departure,
 .plans-list-eta {
   font-size: 0.8rem;
   opacity: 0.75;
+}
+
+/* #114: per-row recalculate editor — a full-width block under the row's
+   buttons (flex-wrap on .plans-list-row wraps it), token-styled like the
+   planner's own compact inputs. */
+.plans-list-recalc {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+  padding: 0.5rem 0 0.35rem;
+  border-top: 1px dashed var(--sc-border);
+}
+
+.plans-list-recalc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .planner-via-list {
@@ -1332,11 +1423,65 @@ select {
   opacity: 0.75;
 }
 
+/* #125: unobtrusive build-version line under the tagline. */
+.about-version {
+  margin: -0.5rem 0 0.75rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
 .about-disclaimer {
   font-weight: 600;
   padding: 0.5rem;
   border-radius: 6px;
   background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
+}
+
+/* #131: "What's new" changelog disclosure under the version line. The list
+   scrolls internally so the disclaimer and close button stay reachable even
+   with the full release history open. Colors inherit --sc-fg/--sc-border via
+   the dialog and the sc-disclosure primitive. */
+.about-changelog {
+  margin: 0 0 0.75rem;
+}
+
+.changelog-view {
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.changelog-lang-note {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.changelog-release h4 {
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.95rem;
+}
+
+.changelog-date {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.changelog-release h5 {
+  margin: 0.4rem 0 0.15rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.changelog-release ul {
+  margin: 0 0 0.4rem;
+  padding-left: 1.1rem;
+}
+
+.changelog-release li {
+  margin: 0.15rem 0;
 }
 
 /* ---- Wide screens (>=1024px): side-panel layout (#24) ----

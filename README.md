@@ -59,8 +59,15 @@ installs as a standalone icon and works fully offline after the first visit
 - Saved plans, including the wind grid they were computed from, persist
   offline in the browser — a saved route always re-renders against the
   forecast it was planned with, never a re-fetched one.
-- **Live view**: while underway, GPS position, heading-to-steer, and ETA are
-  shown against the active leg of a loaded plan. There is no live re-routing.
+- **Live view**: while underway, GPS position, heading-to-steer, and ETA
+  against the active leg of a loaded plan, plus a short course/speed projection
+  on the boat marker. From the current GPS fix you can reroute to the plan's
+  destination using the plan's stored forecast — fully offline.
+- **AIS traffic** (optional, online-only): paste a personal
+  [aisstream.io](https://aisstream.io/) API key in the options to see
+  surrounding vessels on the Live view — course/heading, names, tap for details
+  — including any within a ±5 nm corridor along the active route. Off by
+  default and fully inert without a key; your own vessel is filtered out by MMSI.
 
 Planning a new route requires an internet connection (wind forecast fetch);
 everything else — viewing/loading saved plans, the map, live GPS guidance —
@@ -172,8 +179,8 @@ data; the code license is covered in the [License](#license) section below.
 
 ## Out of scope (v1)
 
-Currents/tides, wave data, AIS, live re-routing, multi-day passages beyond
-the forecast horizon, route sharing/collaboration, official ENC chart data.
+Currents/tides, wave data, multi-day passages beyond the forecast horizon,
+route sharing/collaboration, official ENC chart data.
 
 ## License
 

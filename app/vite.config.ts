@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
-import { readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -16,6 +17,9 @@ const APP_DIR = dirname(fileURLToPath(import.meta.url));
 // exactly — production's build output is unaffected by this addition.
 const isUat = process.env.SC_DEPLOY_ENV === 'uat';
 const basePath = isUat ? '/sail_command/uat/' : '/sail_command/';
+
+// #131: the one out-of-root file the dev server may serve (see `server` below).
+const changelogPath = resolve(APP_DIR, '..', 'CHANGELOG.md');
 
 // #96: rewrites the two absolute og: URLs to the actual deploy sub-path and,
 // for the UAT build only, marks the page noindex and retitles it — so the
@@ -92,7 +96,30 @@ function glyphManifest(): Plugin {
   };
 }
 
-export default defineConfig({
+// #125: build-time app version shown in the About dialog — baked into the
+// bundle by the `define` below, NEVER runtime-fetched: the whole point is
+// diagnosing stale-service-worker installs, so the string must identify the
+// bundle it ships in. The dev server always shows the literal 'dev' (a baked
+// describe string would go stale between config loads); a build embeds `git
+// describe --tags --always` (e.g. v0.3.0-2-gabc1234) — `--always` degrades
+// shallow/tagless checkouts to a bare short SHA instead of throwing, and
+// deliberately NO `--dirty`: the always-dirty .claude/settings.json would
+// otherwise poison the prod double-build byte-identity verification (#107).
+// If git itself is unavailable (tarball build), fall back to the app's
+// package.json version.
+function appVersion(command: 'build' | 'serve'): string {
+  if (command === 'serve') return 'dev';
+  try {
+    return execFileSync('git', ['describe', '--tags', '--always'], { encoding: 'utf8' }).trim();
+  } catch {
+    const pkg = JSON.parse(readFileSync(resolve(APP_DIR, 'package.json'), 'utf8')) as {
+      version: string;
+    };
+    return pkg.version;
+  }
+}
+
+export default defineConfig(({ command }) => ({
   base: basePath,
   plugins: [
     react(),
@@ -169,8 +196,25 @@ export default defineConfig({
   // dead-code-eliminates the whole
   // UatBadge module graph — the prod bundle stays byte-identical (verified
   // like #96). Vitest inherits this config, so tests see the constant too.
-  define: { __SC_UAT__: JSON.stringify(isUat) },
+  // #125: __SC_APP_VERSION__ — see appVersion() above. JSON.stringify makes
+  // the replacement an exact string literal.
+  define: {
+    __SC_UAT__: JSON.stringify(isUat),
+    __SC_APP_VERSION__: JSON.stringify(appVersion(command)),
+  },
   build: { target: 'es2022' },
+  // #131: AboutDialog bakes the repo-root CHANGELOG.md in via a `?raw` static
+  // import. Builds inline it, but the DEV server (and Vitest's module fetch)
+  // gates served files on server.fs.allow. Setting `allow` replaces the
+  // default [workspaceRoot] (= app/, no workspace markers above), and Vite 8
+  // checks even in-root files (index.html itself 403s without APP_DIR here),
+  // so the narrowed list is the default-equivalent root plus exactly one
+  // out-of-root file. That file needs two entries: Vite 8's
+  // isServerAccessDeniedForTransform checks BOTH cleanUrl(id) and the raw id
+  // including its `?raw` query (query-bypass hardening), and a bare file
+  // path matches by isSameFilePath — it can never prefix-match its own
+  // `?raw` variant the way a directory entry would.
+  server: { fs: { allow: [APP_DIR, changelogPath, `${changelogPath}?raw`] } },
   worker: { format: 'es' },
   test: {
     globals: true,
@@ -178,4 +222,4 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
   },
-});
+}));

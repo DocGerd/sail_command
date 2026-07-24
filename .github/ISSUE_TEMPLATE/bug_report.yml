@@ -1,0 +1,84 @@
+name: Bug report
+description: Report something broken in SailCommand (routing, map, PWA, deploy…).
+title: "[bug]: "
+labels:
+  - "type: bug"
+  - "status: needs-triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. SailCommand is a passage-planning aid, not a
+        navigation device — don't include anything you would rely on for real
+        navigation. Agents triage from the fields below, so please fill in as
+        much as you can.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I plan Flensburg → Marstal the route …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps someone else can follow to see the same result.
+      placeholder: |
+        1. Open the app
+        2. Set start / destination …
+        3. …
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the app is affected?
+      options:
+        - routing
+        - map
+        - pwa
+        - pipeline
+        - deploy
+        - ais
+        - tooling
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: Where did you see this?
+      options:
+        - prod
+        - uat
+        - dev
+        - offline
+    validations:
+      required: true
+  - type: checkboxes
+    id: stale-sw
+    attributes:
+      label: Service worker ruled out
+      description: >
+        The prod and UAT PWAs cache aggressively — a stale service worker
+        routinely masquerades as a bug (#107). Please rule it out before
+        filing.
+      options:
+        - label: I hard-reloaded / unregistered the service worker and the bug persists
+          required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console logs / errors
+      description: Paste any relevant browser-console output. It is automatically formatted, so no backticks needed.
+      render: shell
+  - type: input
+    id: browser
+    attributes:
+      label: Browser / OS
+      placeholder: Chrome 120 on Android 14
+    validations:
+      required: false

@@ -13,6 +13,7 @@ import { formatLatLon, formatNm } from './lib/format';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
+  type Leg,
   type Plan,
   type PlanRequest,
   type PlanResult,
@@ -1370,5 +1371,112 @@ describe('states & motion (§3.5, App tree)', () => {
     // run reaches the router — proving the action re-drove the flow.
     fireEvent.click(screen.getByRole('button', { name: de['banner.retry'] }));
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
+  });
+});
+
+// #113: full-wiring session restore through the real AppShell — the focused
+// snapshot/restore matrix lives in useSessionRestore.test.tsx and
+// sessionSnapshot.test.ts; these two pin the app-level ACs a harness can't:
+// the real tab strip activating from the snapshot with zero wind fetch, and
+// LiveView mounting GPS-silent on a live-tab restore.
+describe('session restore (#113)', () => {
+  // A leg-bearing plan: LiveView's watch effect is gated on `active &&
+  // legs.length > 0`, so the GPS-safety test below must present the one state
+  // where a mount COULD subscribe — an empty-legs fixture would pass vacuously.
+  function savedPlan(id: string): Plan {
+    const now = Date.now();
+    const sailLeg: Leg = {
+      kind: 'sail',
+      board: 'starboard',
+      twaDeg: 50,
+      maneuverAtStart: null,
+      start: ORIGIN_A,
+      end: DEST_A,
+      startTimeMs: now + 3_600_000,
+      endTimeMs: now + 2 * 3_600_000,
+      headingDeg: 90,
+      twsKn: 10,
+      speedKn: 6,
+      distanceNm: 20,
+    };
+    const result = okPlanResult(55);
+    if (!result.genoa) throw new Error('fixture invariant: okPlanResult carries a genoa result');
+    return {
+      id,
+      name: 'Restored Passage',
+      createdAtMs: now - 60_000,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: now + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
+      result: { ...result, genoa: { ...result.genoa, legs: [sailLeg] } },
+    };
+  }
+
+  it('boot-restores the saved plan onto the saved tab from IndexedDB alone — no wind fetch', async () => {
+    vi.mocked(fetchWindGrid).mockClear();
+    await db.savePlan(savedPlan('restore-me'));
+    localStorage.setItem(
+      'sc-session',
+      '{"v":1,"planId":"restore-me","tab":"routes","rig":"genoa"}',
+    );
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // The Routes tab activates and the rig-comparison tablist appears without
+    // ANY user interaction — the snapshot alone drove it.
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: de['nav.routes'] })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    expect(await screen.findByRole('tablist', { name: de['route.rigTabs'] })).toBeInTheDocument();
+    // Pure local replay: the plan rendered from its STORED wind grid — the
+    // (module-mocked) Open-Meteo entry point was never invoked. fetchMock()
+    // (beforeEach) additionally rejects any non-asset URL loudly, so a
+    // sneaked-in direct fetch could not pass either.
+    expect(fetchWindGrid).not.toHaveBeenCalled();
+  });
+
+  it('restoring into the Live tab never starts a GPS watch — tracking stays opt-in', async () => {
+    const geoWatch = vi.fn(() => 1);
+    Object.defineProperty(window.navigator, 'geolocation', {
+      value: { watchPosition: geoWatch, clearWatch: vi.fn() },
+      configurable: true,
+    });
+    try {
+      await db.savePlan(savedPlan('live-restore'));
+      localStorage.setItem(
+        'sc-session',
+        '{"v":1,"planId":"live-restore","tab":"live","rig":"genoa"}',
+      );
+
+      renderApp();
+      await waitFor(() =>
+        expect(screen.getByRole('tab', { name: de['nav.live'] })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        ),
+      );
+
+      // LiveView is mounted with a leg-bearing plan — the one state where its
+      // watch effect could subscribe — yet tracking is off and geolocation was
+      // never touched: GPS starts only via the explicit toggle.
+      expect(screen.getByRole('button', { name: de['live.toggle'] })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      expect(geoWatch).not.toHaveBeenCalled();
+    } finally {
+      delete (window.navigator as { geolocation?: unknown }).geolocation;
+    }
   });
 });

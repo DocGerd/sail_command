@@ -77,6 +77,28 @@ deviate from it.
   Popup needs a `className` plus app.css overrides theming
   `.maplibregl-popup-content` and BOTH popup-tip borders with `--sc-bg`
   (see `.seamark-popup`, #7).
+- Vite `server.fs.allow` REPLACES the default workspace root when set, and the
+  dev-server transform check tests BOTH `cleanUrl(id)` AND the `?raw`-suffixed
+  id — an out-of-root `?raw` import needs `[APP_DIR, file, file + '?raw']`
+  exactly (#131); prove any allowlist change with positive AND negative (403)
+  probes.
+- Map-layer components use `lib/styleReload.ts`'s `installStyleSetup`
+  (idempotent setup + `styledata` re-add + late-install-safe
+  `once('load')`+`once('idle')` deferral) and the shared
+  `test/fakeMaplibre.ts` — never hand-roll `whenStyleReady`. MapLibre's
+  `isStyleLoaded()` means EVERYTHING loaded incl. tiles in flight, never
+  "style present"; a mid-session mount deferring on it via `once('load')`
+  alone strands forever (#159). The fake's `addLayer` DROPS layers on a
+  truthy-but-missing `beforeId` like real MapLibre — keep it strict (#163).
+- Cross-component layer z-order is anchored EXPLICITLY (DataLayers inserts
+  below `AIS_STACK_BOTTOM_LAYER` whenever the AIS stack exists, #160) —
+  never rely on setup timing for ordering; the asset-fetch delay makes
+  timing races real.
+- GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
+  idempotent consumers (RouteLayer's `setFilter`); any network/subscription
+  effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with a
+  `[plan, rig]` resetKey so plan changes bypass it) — GPS noise flips the
+  nearest-leg argmin at fix rate near leg boundaries (#158).
 
 ## PWA / E2E / deploy (Phase F)
 
@@ -93,6 +115,10 @@ deviate from it.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
+- GPS dynamics ARE e2e-testable: `app/e2e/live.spec.ts` (#142) drives
+  deterministic fix sequences via Playwright `context.setGeolocation` +
+  `test.use({ permissions: ['geolocation'] })` against the real solver/mask —
+  extend it rather than claiming live behavior is untestable.
 - `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
@@ -126,12 +152,26 @@ deviate from it.
   plugin + PWA `manifest` block, adds `<meta name="robots" content=
   "noindex, nofollow">` and a distinct manifest `name`/`id` so the UAT build installs
   as a separate PWA rather than colliding with production's). This
-  deliberately couples the two deploys (any push to either branch rebuilds
-  both); the existing `concurrency: { group: pages }` still serializes
-  overlapping main+develop pushes. Develop-triggered runs additionally record a `uat` environment in the
-  Deployments UI (bookkeeping only), giving UAT deploys their own history with
-  the `/uat/` URL; `github-pages` itself still interleaves both branches'
-  entries unchanged.
+  deliberately couples the two deploys; since #117, develop-triggered runs
+  REUSE a cached, validated prod dist keyed on the main SHA instead of
+  rebuilding it (validation BEFORE assembly = full sha256 manifest + sanity +
+  PMTiles magic + cross-check against the main-authored baseline whenever one
+  is retrievable; miss/invalid → loud full rebuild + byte-drift check against
+  that baseline — drift fails the run; main-triggered runs double-build as a
+  determinism proof and publish the baseline as the `prod-manifest`
+  artifact). Cache saves happen only on BASELINE-VERIFIED develop-triggered
+  rebuilds — cache keys are immutable, so caching unverified bytes could
+  permanently shadow a baseline recorded later for the same SHA — and on
+  develop-triggered runs only: develop is the DEFAULT branch, so its cache
+  scope is visible everywhere, while main-scoped saves would be invisible to
+  develop runs — that cache-scope asymmetry is why the drift baseline
+  travels as a workflow ARTIFACT, not a cache. The existing `concurrency: { group: pages }` still serializes
+  overlapping main+develop pushes. Develop-triggered runs additionally
+  record a `uat` environment in the Deployments UI and main-triggered runs a
+  `prod` one (both bookkeeping only, #106/#127); `github-pages` remains the
+  platform-managed mechanical env — never rename it (the Pages OIDC flow
+  owns it; rename is a trap, #127 spike) — and still interleaves both
+  branches' entries unchanged.
   Production:
   `https://docgerd.github.io/sail_command/` (unchanged, verified
   byte-for-byte identical to the pre-#96 build). UAT (unreleased develop
@@ -142,8 +182,10 @@ deviate from it.
   commits, review threads resolved), required checks `app` + `e2e` with
   strict up-to-date policy, no force pushes or deletions.
 - Post-deploy CDN smoke probe (#117, guards the #118 fix class): `deploy.yml`'s
-  `smoke-probe` job probes ONLY the triggering ref's deployment (develop →
-  `/uat/`, main → site root) at the archive filename discovered from that ref's
+  `smoke-probe` job probes BOTH deployments (prod site root AND `/uat/`) on
+  EVERY run — a redeploy evicts prod's CDN edge Range objects even when zero
+  prod bytes changed (measured on #117: develop pushes resurfaced the #118
+  gzip flip on prod) — at archive filenames discovered from each ref's own
   built dist (`data/basemap.pmtiles*`, never hardcoded; zero matches fails the
   job), requiring 200 with no `content-encoding` plus a `Range: bytes=0-15` →
   206 of exactly 16 bytes starting with the `PMTiles` magic, with retries for
@@ -175,13 +217,27 @@ deviate from it.
   `develop`: production at the Pages site root reflects only released
   (`main`) state as before; `develop`'s unreleased state is additionally
   published to the deliberately-labeled, `noindex`ed `/uat/` sub-path in the
-  same run — a UAT preview, not a second production. A HOTFIX branches from `main`, PRs to
+  same run — a UAT preview, not a second production. After a RELEASE, back-merge
+  `main` into `develop` via a TOPIC branch (branch off `develop`, `git merge
+  origin/main` — fast-forwards to the release commit, zero file diff — then PR →
+  `develop`): a DIRECT main→develop PR reads BEHIND under the strict up-to-date
+  policy, and its "Update branch" button would merge develop→main, polluting the
+  released branch (v0.2.0 lesson, reused for v0.3.0). A HOTFIX branches from `main`, PRs to
   `main`, then `main` is merged back into `develop` to keep it ahead. CI
   (`ci.yml`, `codeql.yml`, `verify-mask.yml`) fires on pushes to both `main`
   and `develop` so required checks keep reporting; the single `protect-main`
   ruleset targets both `main` and `develop` via literal refs (never
   `~DEFAULT_BRANCH` — that follows a default-branch flip and would strand the
   non-default branch) and requires `app`+`e2e` on each.
+  Changelog ritual (#131): feature PRs that change user-visible behavior add a
+  `CHANGELOG.md` `[Unreleased]` entry (Keep a Changelog 1.1, baked into the
+  About dialog's "What's new" view at build time); at each RELEASE cut, move
+  `Unreleased` into a new `## [X.Y.Z] - date` section and update the
+  comparison links at the bottom. When 2+ PRs are in flight, do NOT have each
+  edit `CHANGELOG.md`'s `[Unreleased]` section — they conflict on the same
+  region. Add the entry in the LAST PR of the batch or a dedicated changelog
+  PR; a SOLO PR may keep its atomic entry (no conflict possible). Durable fix
+  (changelog fragments) tracked in #189.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -215,7 +271,11 @@ deviate from it.
   reached reviewer approval with three such false-pass holes, caught pre-merge
   only by a mutation-check lens). Pin literal values recomputed from
   pre-change math; the reviewer re-derives them independently — copying
-  current output re-creates the tautology one level up.
+  current output re-creates the tautology one level up. Corollary: an
+  implementer "re-deriving" a pinned literal toward its own implementation in
+  a fix wave is the same tautology one step later — the reviewer hand-derives
+  the value from the state machine before accepting it (how #145's changed
+  backoff literal was validated rather than trusted).
 - CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
   `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
   mime-insensitive, but an `application/xml` parse is inert (no script exec, no
@@ -227,6 +287,12 @@ deviate from it.
   identical `<a>OpenStreetMap</a>` broke plan.spec.ts's strict-mode locator
   (#7); extend the existing anchor's text for new data credits instead of
   adding a link.
+- Cross-PR composition bugs are invisible to per-PR review: after the 7-PR
+  session-7 train, a 5-lens find → 2-refuter adversarial-verify sweep over
+  the CUMULATIVE diff found 3 real bugs (#158/#159/#160) that every
+  individual reviewer had correctly approved past. Run such a sweep after
+  any multi-PR burst touching shared subsystems; expect refuters to kill
+  ~2/3 of candidates — the survivors are load-bearing.
 
 ## Domain rules that are easy to get wrong
 
@@ -254,8 +320,26 @@ deviate from it.
 - Depth byte 254 is reserved but never emitted (the pipeline folds ≥25.4 m
   into byte 255) — `depthInfoM().capped` is the only honest "≥25 m"
   discriminator; never infer the cap from `depthM === 25.4`.
+- Seamark symbology authority: IALA R1001 Ed 2.0 (2022) §2.2 / Tables 5–6
+  (cardinal marks are region-independent). Glyph changes are visually
+  verifiable by capturing the REAL `registerSeamarkImages` output through a
+  fake `map.addImage` on a dev-server scratch page (4× nearest-neighbor) —
+  the #165 evidence technique; hand-derive expected geometry/colours from
+  R1001, never from the renderer's own output.
 - Open-Meteo is called directly from the browser (CORS is open, no API key).
   There is deliberately **no backend** — do not introduce one.
+- **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
+  client, ZERO sockets (the network-free e2e suite depends on this; never add
+  a default key or eager connect). aisstream.io signals an invalid key as bare
+  1006 closes with NO error frame — `aisStream.ts` promotes 3
+  subscribed-but-silent closes to terminal `keyError`, permanently disarmed
+  once a connection survives `AIS_AUTH_STABLE_MS` (30 s, `keyProven`); a key
+  revoked mid-session degrades to honest capped-backoff "connecting" BY
+  DESIGN — don't "simplify" the stability timer away. Per-second AIS data
+  follows the `useOwnshipGps` rule (target Map in a ref, ≤1 Hz publish, never
+  AppState); the 6-min projection geometry lives only in
+  `lib/projectionVector.ts` (`projectionLine`, shared with #141) — never
+  inline it.
 
 ## Working style for this repo
 
@@ -267,6 +351,22 @@ deviate from it.
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
+- **Right-size agent models per task** (reinforces the global fitness rule): PIN
+  the model when spawning — `sonnet` for standard/mechanical implement + review +
+  docs; reserve `opus`/the heaviest tier for safety-critical or judgment-heavy
+  work (design, adversarial correctness/safety verification, hard solver work);
+  `haiku` for pure transcription. Do NOT let mechanical implementers/reviewers
+  inherit the session's heavy model by default.
+- `offline-pwa-reviewer` is CONDITIONAL, not always-on: invoke it ONLY when the
+  change set touches a PWA path (`app/src/sw.ts`, glyph cache/warmup,
+  `basemapSource.ts`, Vite PWA config, IndexedDB, offline); non-PWA PRs must NOT
+  spawn it (#181). When invoked it runs ALONGSIDE `sail-reviewer`, never in
+  place of it.
+- Issues carry a label taxonomy — `type:` (bug/feature/chore/docs) + `priority:`
+  (high/med/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
+  optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
+  apply type+area+priority to every new issue. Taxonomy documented in
+  CONTRIBUTING.md (#167/#168).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
 - PR review threads via API: send bodies containing backticks as JSON `--input`
@@ -276,7 +376,15 @@ deviate from it.
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
-  fallback. Parallel
+  fallback.
+- Agent stall patterns (session 7, 6/6 recoveries): an implementer that stops
+  "waiting on an armed watcher/monitor" while its notification shows NO live
+  background children is asleep forever — nudge it to check the result in the
+  FOREGROUND; a reviewer that idles with zero PR activity may have WRITTEN its
+  report without SENDING it — check the PR's reviews/threads first, then nudge
+  once. Worktree cleanup ritual: agent runs `find app/node_modules -delete`
+  (`rm -rf` is permission-blocked even in the main session; `find -delete` is
+  allowed), then the main session runs `git worktree remove` — force-free. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
 - When the session's OWN cwd is a worktree, `isolation:worktree` agents and
@@ -285,12 +393,27 @@ deviate from it.
   `git commit` to silently absorb. Always `git show --stat <sha>` before trusting
   a commit's file list (a new-file addendum must be 1 file, insertions-only), and
   stage explicit paths — never `git add -A`.
+- Agents pointed at the MAIN checkout can edit a file BETWEEN your Read and
+  your commit (the #140 plan absorbed a half-applied edit exactly that way) —
+  diff the content you are about to stage against what you reviewed, and
+  stand writers down from shared trees once their deliverable is handed over.
+  Reviewer verification worktrees must be cleaned up by their CREATOR
+  (untracked `node_modules` blocks `git worktree remove`; `rm -rf` can be
+  permission-blocked in the main session) — brief reviewers to remove their
+  own worktree or verify without a local install.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
   ask-gate hook must prompt the user) — never through subagents. Use the
   Edit/Write tools for them: the hook does not match Bash appends (`cat >>`),
   which silently skip the user prompt.
 - `.superpowers/` (SDD ledger) is gitignored — append session records
   directly, no PR needed.
+- **Claude Code config placement**: shared config is COMMITTED — `.mcp.json`
+  for MCP servers (secrets via `${ENV_VAR}` interpolation, never hardcoded),
+  `.claude/settings.json` for shared hooks/plugins/permissions; personal +
+  secret + machine-specific config goes in gitignored
+  `.claude/settings.local.json`; global `~/.claude/` is personal cross-project
+  only. Never commit secrets (AIS BYOK stays runtime-supplied). Full convention
+  in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
 - A GitHub **504 during `gh pr merge`** can land the merge (base ref updates,
@@ -306,7 +429,11 @@ deviate from it.
   silently dropped the fix. REST close→reopen resyncs the head but fires TWO
   `pull_request` events whose shared concurrency group can cancel the fresh
   run's jobs — cancel the stale-SHA run first (verify `.head_sha`), then
-  `POST …/actions/runs/<id>/rerun` (#119).
+  `POST …/actions/runs/<id>/rerun` (#119). `mergeable_state: unstable` = only
+  OPTIONAL checks red — mergeable (required checks are `app`+`e2e` only);
+  scorecard's `analysis` job reds EVERY push to `main` by design
+  (default-branch-only action, #124), so release commits carry one cosmetic
+  red check-run — don't chase it.
 - e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
   parallel worktrees contend — serialize them; per-agent dev ports are for
   manual browser passes only. The dirty wind fixture (see E2E section) also
@@ -314,6 +441,9 @@ deviate from it.
 - IDE/LSP diagnostics emit bogus cannot-find-module bursts when worktrees
   churn — trust `npm --prefix app run typecheck` (`tsc -b`), never the
   diagnostics stream.
+- A committed change to the always-dirty `.claude/settings.json` blocks `git
+  switch` between branches until both sides hold the same blob — `git fetch
+  origin develop:develop` (ref update without checkout), then switch.
 
 ## graphify
 
