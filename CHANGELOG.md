@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-24
+
 ### Added
 
 - Extend the live AIS overlay to cover a ±5 nm corridor along the active route, so vessels crossing the track ahead show up without panning there; the status chip splits the count into total and along-route while a plan is active (#146).
@@ -118,7 +120,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/DocGerd/sail_command/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DocGerd/sail_command/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/DocGerd/sail_command/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/DocGerd/sail_command/compare/v0.1.1...v0.1.2

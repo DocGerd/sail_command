@@ -79,8 +79,8 @@ label (and `status: needs-triage` for bug reports) automatically.
 
 **Milestones**
 
-- `v0.4.0` — the next release.
-- `v0.5.0` — the release after next.
+- `v0.5.0` — the next release.
+- `v0.6.0` — the release after next.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
