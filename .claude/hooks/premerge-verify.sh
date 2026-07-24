@@ -75,6 +75,12 @@ case "$CMD" in
   *) exit 0 ;;
 esac
 
+# A chained command (`gh pr merge 100 && gh pr merge 200`) would let this guard
+# validate only the last PR and vouch for the rest. Merges must be serial, so
+# refuse to auto-approve a chain — surface it for a per-PR check instead.
+MERGES=$(printf '%s' "$CMD" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge' | wc -l | tr -d ' ')
+[ "${MERGES:-0}" -gt 1 ] 2>/dev/null && emit_ask "command chains ${MERGES} 'gh pr merge' invocations - merge strictly serially so each PR's head.sha and check-runs are verified individually (#119)."
+
 command -v gh >/dev/null 2>&1 || emit_ask "gh CLI unavailable - cannot verify head.sha/check-runs before merge (#119); confirm by hand."
 
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) || REPO=""
@@ -104,8 +110,11 @@ HEAD_REPO=$(printf '%s' "$INFO" | cut -f3)
 TIP_REPO=${HEAD_REPO:-$REPO}
 TIP_SHA=$(gh api "repos/$TIP_REPO/git/ref/heads/$HEAD_REF" --jq '.object.sha' 2>/dev/null) || TIP_SHA=""
 
-# Check-runs registered for the PR head SHA.
-COUNT=$(gh api "repos/$REPO/commits/$PR_SHA/check-runs" --jq '.total_count' 2>/dev/null) || COUNT=""
+# Check-runs registered for the PR head SHA. A failed API call is "cannot
+# verify" (ask), NOT "zero check-runs" (deny) - only a successful 0 denies.
+if ! COUNT=$(gh api "repos/$REPO/commits/$PR_SHA/check-runs" --jq '.total_count' 2>/dev/null); then
+  emit_ask "PR #$PR: could not read check-runs for head.sha $PR_SHA (API/auth failure) - verify check-runs exist for this exact SHA by hand (#119)."
+fi
 [ -n "$COUNT" ] || COUNT=0
 
 DECISION=$(decide "$PR_SHA" "$TIP_SHA" "$COUNT")
