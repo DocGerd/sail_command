@@ -246,11 +246,11 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     };
   }, []);
 
-  // Style-setup arming. Installed from a [map]-effect so it happens at map
-  // arrival — BEFORE 'load' can have fired (the installStyleSetup contract;
-  // arming it only once assets resolve would race: by then 'load' may
-  // already be history while isStyleLoaded() transiently reads false with
-  // tiles streaming, stranding a once('load') that never fires). Source/
+  // Style-setup arming. Installed exactly once per map instance per mount,
+  // from this [map]-effect — the installStyleSetup contract (#159): the hook
+  // is safe at any point in the map lifetime, but later dependencies (here
+  // the assets arrival) must invoke the already-armed setup directly instead
+  // of re-installing it (see the arrival effect below). Source/
   // layer creation is gated on BOTH the style and the assets (unlike
   // RouteLayer, the data here comes from a fetch, not props): before assets
   // resolve, setup only records style readiness; the arrival effect below
@@ -280,10 +280,10 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     };
   }, [map]);
 
-  // Assets usually resolve AFTER the style is ready. Re-arming the hook at
-  // that point would risk the stranded-once('load') race documented above —
-  // instead the already-armed setup is invoked directly, gated on the
-  // readiness it recorded.
+  // Assets usually resolve AFTER the style is ready. Per the
+  // installStyleSetup contract, the already-armed setup is invoked directly
+  // — gated on the readiness it recorded — rather than the hook being
+  // re-installed.
   useEffect(() => {
     if (!map || !assets || !styleReadyRef.current) return;
     setupRef.current();
