@@ -233,7 +233,11 @@ deviate from it.
   `CHANGELOG.md` `[Unreleased]` entry (Keep a Changelog 1.1, baked into the
   About dialog's "What's new" view at build time); at each RELEASE cut, move
   `Unreleased` into a new `## [X.Y.Z] - date` section and update the
-  comparison links at the bottom.
+  comparison links at the bottom. When 2+ PRs are in flight, do NOT have each
+  edit `CHANGELOG.md`'s `[Unreleased]` section — they conflict on the same
+  region. Add the entry in the LAST PR of the batch or a dedicated changelog
+  PR; a SOLO PR may keep its atomic entry (no conflict possible). Durable fix
+  (changelog fragments) tracked in #189.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -347,6 +351,22 @@ deviate from it.
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
+- **Right-size agent models per task** (reinforces the global fitness rule): PIN
+  the model when spawning — `sonnet` for standard/mechanical implement + review +
+  docs; reserve `opus`/the heaviest tier for safety-critical or judgment-heavy
+  work (design, adversarial correctness/safety verification, hard solver work);
+  `haiku` for pure transcription. Do NOT let mechanical implementers/reviewers
+  inherit the session's heavy model by default.
+- `offline-pwa-reviewer` is CONDITIONAL, not always-on: invoke it ONLY when the
+  change set touches a PWA path (`app/src/sw.ts`, glyph cache/warmup,
+  `basemapSource.ts`, Vite PWA config, IndexedDB, offline); non-PWA PRs must NOT
+  spawn it (#181). When invoked it runs ALONGSIDE `sail-reviewer`, never in
+  place of it.
+- Issues carry a label taxonomy — `type:` (bug/feature/chore/docs) + `priority:`
+  (high/med/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
+  optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
+  apply type+area+priority to every new issue. Taxonomy documented in
+  CONTRIBUTING.md (#167/#168).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
 - PR review threads via API: send bodies containing backticks as JSON `--input`
@@ -387,6 +407,13 @@ deviate from it.
   which silently skip the user prompt.
 - `.superpowers/` (SDD ledger) is gitignored — append session records
   directly, no PR needed.
+- **Claude Code config placement**: shared config is COMMITTED — `.mcp.json`
+  for MCP servers (secrets via `${ENV_VAR}` interpolation, never hardcoded),
+  `.claude/settings.json` for shared hooks/plugins/permissions; personal +
+  secret + machine-specific config goes in gitignored
+  `.claude/settings.local.json`; global `~/.claude/` is personal cross-project
+  only. Never commit secrets (AIS BYOK stays runtime-supplied). Full convention
+  in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
 - A GitHub **504 during `gh pr merge`** can land the merge (base ref updates,
