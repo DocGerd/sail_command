@@ -117,8 +117,8 @@ deviate from it.
   consecutive byte-equal screenshots before byte-comparing frames against them.
 - GPS dynamics ARE e2e-testable: `app/e2e/live.spec.ts` (#142) drives
   deterministic fix sequences via Playwright `context.setGeolocation` +
-  `grantPermissions(['geolocation'])` against the real solver/mask — extend it
-  rather than claiming live behavior is untestable.
+  `test.use({ permissions: ['geolocation'] })` against the real solver/mask —
+  extend it rather than claiming live behavior is untestable.
 - `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
