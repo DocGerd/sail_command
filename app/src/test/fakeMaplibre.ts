@@ -39,6 +39,12 @@ export type FakeMap = ReturnType<typeof makeFakeMap>;
 export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = {}) {
   const sources = new Map<string, FakeSource>();
   const layers = new Map<string, FakeLayer>();
+  // #160: insertion-order model of the style's layer array, bottom → top.
+  // MapLibre's addLayer(layer, beforeId) inserts the layer immediately BELOW
+  // beforeId; with no beforeId it appends on top. The `layers` Map alone only
+  // records each layer's beforeId at add time — ordering tests pin the exact
+  // final stack against this array instead.
+  const layerOrder: string[] = [];
   const images = new Set<string>();
   const listeners = new Map<string, Set<Handler>>();
   const onceListeners = new Map<string, Set<Handler>>();
@@ -57,6 +63,7 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
   return {
     sources,
     layers,
+    layerOrder,
     images,
     setStyleLoaded: (v: boolean) => {
       state.styleLoaded = v;
@@ -85,11 +92,21 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
     }),
     getSource: (id: string) => sources.get(id),
     addLayer: vi.fn((layer: FakeLayer, beforeId?: string) => {
+      const at = beforeId === undefined ? -1 : layerOrder.indexOf(beforeId);
+      // A beforeId that names a MISSING layer is not an append: real MapLibre
+      // fires an ErrorEvent and DROPS the layer (Style#addLayer returns
+      // without adding). Mirror the observable half so an unguarded anchor
+      // turns presence/order assertions red instead of silently passing.
+      if (beforeId !== undefined && at === -1) return;
       layers.set(layer.id, beforeId === undefined ? layer : { ...layer, beforeId });
+      if (at === -1) layerOrder.push(layer.id);
+      else layerOrder.splice(at, 0, layer.id);
     }),
     getLayer: (id: string) => layers.get(id),
     removeLayer: vi.fn((id: string) => {
       layers.delete(id);
+      const at = layerOrder.indexOf(id);
+      if (at !== -1) layerOrder.splice(at, 1);
     }),
     removeSource: vi.fn((id: string) => {
       sources.delete(id);
@@ -130,6 +147,7 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
 export function simulateStyleReload(map: FakeMap): void {
   map.sources.clear();
   map.layers.clear();
+  map.layerOrder.length = 0;
   map.images.clear();
   map.fire('styledata');
 }
