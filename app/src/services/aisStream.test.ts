@@ -3,6 +3,7 @@ import {
   AIS_AUTH_STABLE_MS,
   AIS_STREAM_URL,
   AisStreamClient,
+  boundingBoxListsEqual,
   buildSubscription,
   nextReconnectDelayMs,
   padBoundingBox,
@@ -181,6 +182,24 @@ describe('nextReconnectDelayMs', () => {
     expect(nextReconnectDelayMs(7, half)).toBe(30000);
     expect(nextReconnectDelayMs(100, () => 0.999)).toBe(59940); // floor(0.999 * 60000)
     expect(nextReconnectDelayMs(5, () => 0)).toBe(0);
+  });
+});
+
+describe('boundingBoxListsEqual', () => {
+  it('is order-sensitive deep equality over box lists', () => {
+    const cloneA: AisBoundingBox = [
+      [54, 10],
+      [55, 11],
+    ];
+    expect(boundingBoxListsEqual([BOX_A, BOX_B], [cloneA, BOX_B])).toBe(true);
+    expect(boundingBoxListsEqual([], [])).toBe(true);
+    expect(boundingBoxListsEqual([BOX_A], [BOX_A, BOX_B])).toBe(false); // length
+    expect(boundingBoxListsEqual([BOX_A, BOX_B], [BOX_B, BOX_A])).toBe(false); // order
+    const nudged: AisBoundingBox = [
+      [54, 10],
+      [55, 11.000001],
+    ];
+    expect(boundingBoxListsEqual([BOX_A], [nudged])).toBe(false); // value
   });
 });
 
@@ -432,6 +451,36 @@ describe('AisStreamClient', () => {
     ];
     client.updateSubscription([bbox2]);
     expect(JSON.parse(fs.sent[1])).toEqual(buildSubscription('KEY', [bbox2]));
+    expect(fs.socket.close).not.toHaveBeenCalled();
+  });
+
+  it('skips the resend for a deep-equal updateSubscription and resends on a changed one (#158)', () => {
+    // #158 value gate at the protocol edge: a deep-equal box list would
+    // re-install the exact filter the server already holds — no wire traffic.
+    const { client, fs } = makeClient();
+    client.start([BOX_A, BOX_B]);
+    fs.open();
+    expect(fs.sent).toHaveLength(1);
+    // Fresh arrays, identical values (the recompute-churn shape: new identity,
+    // equal content) — send count must NOT grow.
+    const cloneA: AisBoundingBox = [
+      [54, 10],
+      [55, 11],
+    ];
+    const cloneB: AisBoundingBox = [
+      [54.4, 9.8],
+      [54.6, 10.4],
+    ];
+    client.updateSubscription([cloneA, cloneB]);
+    expect(fs.sent).toHaveLength(1);
+    // A genuinely changed list still resends on the open socket:
+    client.updateSubscription([BOX_A]);
+    expect(fs.sent).toHaveLength(2);
+    expect(JSON.parse(fs.sent[1])).toEqual(buildSubscription('KEY', [BOX_A]));
+    // …and the gate compares against the LAST list, so an equal repeat of the
+    // new list is silent again.
+    client.updateSubscription([cloneA]);
+    expect(fs.sent).toHaveLength(2);
     expect(fs.socket.close).not.toHaveBeenCalled();
   });
 

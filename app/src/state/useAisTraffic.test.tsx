@@ -1,6 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAisTraffic, type AisClientLike, type UseAisTrafficInput } from './useAisTraffic';
+import {
+  useAisTraffic,
+  useSettledValue,
+  type AisClientLike,
+  type UseAisTrafficInput,
+} from './useAisTraffic';
 import type { AisBoundingBox, AisStreamCallbacks, ParsedAisData } from '../services/aisStream';
 
 const BBOX: AisBoundingBox = [
@@ -191,5 +196,90 @@ describe('useAisTraffic', () => {
     const { unmount } = renderHook(() => useAisTraffic(base, { createClient }));
     unmount();
     expect(clients[0].stopped).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// #158: the settle gate AisTraffic puts between the per-fix activeLegIndex and
+// the corridor recompute. Semantics pinned here: a change is adopted only after
+// holding UNINTERRUPTED for settleMs; any change re-arms the window; returning
+// to the settled value cancels the pending adoption.
+describe('useSettledValue', () => {
+  it('returns the initial value immediately (no settle delay on mount)', () => {
+    const { result } = renderHook(({ v }) => useSettledValue(v, 2000), {
+      initialProps: { v: 3 },
+    });
+    expect(result.current).toBe(3);
+  });
+
+  it('adopts a changed value only once it has held for settleMs (1999 no, 2000 yes)', () => {
+    const { result, rerender } = renderHook(({ v }) => useSettledValue(v, 2000), {
+      initialProps: { v: 1 },
+    });
+    rerender({ v: 2 });
+    expect(result.current).toBe(1); // not adopted synchronously
+    act(() => vi.advanceTimersByTime(1999));
+    expect(result.current).toBe(1); // settle window still open
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current).toBe(2); // adopted exactly at settleMs
+  });
+
+  it('never adopts under sustained alternation faster than settleMs (12 flips at 1 Hz)', () => {
+    // Derivation: adoption needs 2000 ms uninterrupted at a non-settled value;
+    // flips every 1000 ms cap the dwell at 1000 ms < 2000 ms ⇒ 0 adoptions.
+    const { result, rerender } = renderHook(({ v }) => useSettledValue(v, 2000), {
+      initialProps: { v: 1 },
+    });
+    for (let k = 1; k <= 12; k++) {
+      act(() => vi.advanceTimersByTime(1000));
+      rerender({ v: k % 2 === 1 ? 2 : 1 });
+    }
+    expect(result.current).toBe(1);
+    // The 12th flip returned to the settled value ⇒ no adoption is pending:
+    act(() => vi.advanceTimersByTime(5000));
+    expect(result.current).toBe(1);
+  });
+
+  it('cancels a pending adoption when the value returns to the settled one', () => {
+    const { result, rerender } = renderHook(({ v }) => useSettledValue(v, 2000), {
+      initialProps: { v: 1 },
+    });
+    rerender({ v: 2 });
+    act(() => vi.advanceTimersByTime(1500));
+    rerender({ v: 1 }); // back to settled before the window closed
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(result.current).toBe(1);
+    // …and a later genuine change still adopts on its own full window:
+    rerender({ v: 2 });
+    act(() => vi.advanceTimersByTime(2000));
+    expect(result.current).toBe(2);
+  });
+
+  // #162 review r3642154768: a plan/rig identity change is NEVER GPS-fix
+  // jitter — it must bypass the settle window entirely, or the corridor
+  // computes the NEW plan's legs against the OLD plan's index for up to 2 s.
+  it('adopts the raw value in the same render when the reset key changes', () => {
+    const { result, rerender } = renderHook(
+      ({ v, k }: { v: number | null; k: string }) => useSettledValue(v, 2000, k),
+      { initialProps: { v: 1, k: 'plan-a' } as { v: number | null; k: string } },
+    );
+    expect(result.current).toBe(1);
+    // plan change batches value→null with a new key: immediate, no timers.
+    rerender({ v: null, k: 'plan-b' });
+    expect(result.current).toBe(null);
+  });
+
+  it('keeps settling same-key changes after a key reset', () => {
+    const { result, rerender } = renderHook(
+      ({ v, k }: { v: number; k: string }) => useSettledValue(v, 2000, k),
+      { initialProps: { v: 1, k: 'plan-a' } },
+    );
+    rerender({ v: 7, k: 'plan-b' }); // key reset: immediate
+    expect(result.current).toBe(7);
+    rerender({ v: 8, k: 'plan-b' }); // same key: full settle window applies
+    expect(result.current).toBe(7);
+    act(() => vi.advanceTimersByTime(1999));
+    expect(result.current).toBe(7);
+    act(() => vi.advanceTimersByTime(1));
+    expect(result.current).toBe(8);
   });
 });
