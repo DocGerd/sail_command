@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
   FREE_SNAP_NORTH_DEG,
+  MAP_MAX_ZOOM,
   SCALE_SAMPLE_PX,
   TRACK_DEADBAND_DEG,
   TRACK_DEADBAND_REDUCED_DEG,
@@ -279,6 +280,21 @@ describe('pickScaleBar — metre branch (the span the approved ladder could not 
     expect(bar?.widthPx).toBeCloseTo(53.9957, 3);
   });
 
+  it('is one metre from a fractional rung at max zoom — the cap is load-bearing', () => {
+    // The integer-rung property has real but finite headroom, and nothing in
+    // the arithmetic enforces it — only MAP_MAX_ZOOM does. Pin BOTH sides so
+    // the dependency is deliberate: integral at the cap, fractional just past
+    // it (where ScaleBar, which formats no decimals, would print "0.5 m").
+    const atCap = pickScaleBar(referenceNm(MAP_MAX_ZOOM, 54.85), SCALE_SAMPLE_PX);
+    expect(atCap?.unit).toBe('m');
+    expect(atCap?.value).toBe(1);
+    expect(Number.isInteger(atCap?.value)).toBe(true);
+
+    const pastCap = pickScaleBar(referenceNm(MAP_MAX_ZOOM + 1, 54.85), SCALE_SAMPLE_PX);
+    expect(Number.isInteger(pastCap?.value)).toBe(false);
+    expect(pastCap?.value).toBe(0.5);
+  });
+
   it('still answers at MapLibre max zoom, where the approved ladder was empty', () => {
     // z = 22 (MapLibre's default maxZoom; the app sets none) at 54.85 N:
     //   m/px  = 40075016.6856 * cos(54.85 deg) / (512 * 2^22) = 0.0107437
@@ -312,11 +328,13 @@ describe('pickScaleBar — unit-selection boundaries', () => {
 describe('pickScaleBar — invariants across the app region and zoom range', () => {
   // The app's chart region is 54.3-55.3 N (CLAUDE.md). Zoom is swept from 4
   // (far below anything MapLibre's maxBounds constraint permits — the narrow
-  // 375x667 viewport bottoms out near z 7.5) up to MapLibre's default maxZoom
-  // of 22, which the app does not override.
+  // 375x667 viewport bottoms out near z 7.5) up to the map's own MAP_MAX_ZOOM.
+  // Sweeping the CONSTANT, not a copy of its value, is what makes the integer-
+  // rung invariant below a live guard: raising the map's max zoom moves this
+  // sweep with it and fails here rather than shipping a "0.5 m" label.
   const arbView = fc.record({
     lat: fc.double({ min: 54.3, max: 55.3, noNaN: true }),
-    zoom: fc.double({ min: 4, max: 22, noNaN: true }),
+    zoom: fc.double({ min: 4, max: MAP_MAX_ZOOM, noNaN: true }),
   });
 
   it('always draws a 40-100 px bar whose label is its true ground length', () => {

@@ -101,18 +101,31 @@ describe('ScaleBar', () => {
     expect(bar()).toHaveAttribute('aria-label', `Maßstab: 2 ${de['map.scale.unit.nm.other']}`);
   });
 
-  it('rewrites the aria-label only once the map settles, never per move frame', () => {
+  it('rewrites the aria-label only once the map settles, never per move frame', async () => {
     render(<ScaleBar />);
-    // Zoom in far enough to land in the metre branch (0.5 m/px -> 50 m span).
+    // Zoom in by 1000x to land in the metre branch. The base span is 3.0021 NM
+    // across the 100 px reference, so this is 0.0030021 NM = 5.560 m, and the
+    // largest 1-2-5 rung at or below that is 5 m. (Pinned exactly, not as
+    // /\d+ Meter/: a loose matcher here accepted any integer and let an
+    // earlier, 10x-wrong derivation comment sit next to a passing assertion.)
     act(() => {
       map.setDegPerPx(DEG_PER_PX / 1000);
       map.fire('move');
     });
-    // The live region must not churn while the user is still dragging.
+    // The visible label is written straight to the DOM under rAF, so the frame
+    // has to be flushed — which also pins that the throttle actually paints.
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+    expect(bar().querySelector('.scale-bar-label')).toHaveTextContent(
+      `5 ${de['map.scale.unit.m']}`,
+    );
+    // The live region, meanwhile, must NOT churn while the user is still
+    // dragging — it still reads the pre-move value.
     expect(bar()).toHaveAttribute('aria-label', `Maßstab: 2 ${de['map.scale.unit.nm.other']}`);
 
     act(() => map.fire('moveend'));
-    expect(bar().getAttribute('aria-label')).toMatch(/^Maßstab: \d+ Meter$/);
+    expect(bar()).toHaveAttribute('aria-label', `Maßstab: 5 ${de['map.scale.unit.m.other']}`);
   });
 
   it('leaves its stylesheet offset alone when nothing is docked over the corner', () => {

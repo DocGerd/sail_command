@@ -15,6 +15,35 @@ import type { GpsFix } from '../services/geolocation';
 
 type Handler = (arg: unknown) => void;
 
+interface EaseOptions {
+  bearing?: number;
+  duration?: number;
+  easeId?: string;
+}
+
+/**
+ * Camera fake that models MapLibre 5.24's INTERRUPTION semantics, which is
+ * where the interesting bug lived. Verified against
+ * `node_modules/maplibre-gl/dist/maplibre-gl-dev.js`:
+ *
+ *   easeTo(options)  -> `this._stop(false, options.easeId)` FIRST (:69468)
+ *   _stop(_, easeId) -> runs the pending `_onEaseEnd(easeId)` synchronously (:69901)
+ *   _afterEase(d,id) -> returns early ONLY when `this._easeId && id &&
+ *                       this._easeId === id` (:69671); otherwise it fires
+ *                       rotateend AND moveend
+ *   ...then `this._easeId = options.easeId` and the new ease starts (:69512)
+ *
+ * So an ease that interrupts another fires the OLD ease's moveend from inside
+ * the new easeTo call — before the new ease emits a frame — unless both carry
+ * the same easeId. An ease that finishes naturally calls `_onEaseEnd` with no
+ * id, so moveend always fires there.
+ *
+ * The bearing is applied immediately (the camera's *target* is what the tests
+ * assert), but the ease stays IN FLIGHT until `finishEase()` or the next
+ * `easeTo` — without that, no ease is ever interruptible and the whole class
+ * of bug is invisible, which is exactly how the first version of this file
+ * missed it.
+ */
 function makeCameraMap(initialBearing = 0) {
   const listeners = new Map<string, Set<Handler>>();
   const bucket = (type: string) => {
@@ -25,15 +54,36 @@ function makeCameraMap(initialBearing = 0) {
     }
     return set;
   };
+  const fire = (type: string, arg: unknown = {}) => {
+    [...bucket(type)].forEach((fn) => fn(arg));
+  };
   const state = { bearing: initialBearing };
+  let pending: { easeId: string | undefined } | null = null;
+
+  const endPending = (interruptingEaseId: string | undefined) => {
+    if (!pending) return;
+    const suppressed =
+      pending.easeId !== undefined &&
+      interruptingEaseId !== undefined &&
+      pending.easeId === interruptingEaseId;
+    pending = null;
+    if (!suppressed) {
+      fire('rotateend');
+      fire('moveend');
+    }
+  };
+
   return {
-    easeTo: vi.fn((options: { bearing?: number; duration?: number }) => {
-      // Real easeTo animates and then settles; the fake settles immediately
-      // and fires the events the component's own bookkeeping listens for.
+    easeTo: vi.fn((options: EaseOptions) => {
+      endPending(options.easeId); // _stop(false, options.easeId)
       if (typeof options.bearing === 'number') state.bearing = options.bearing;
-      bucket('rotate').forEach((fn) => fn({}));
-      bucket('moveend').forEach((fn) => fn({}));
+      pending = { easeId: options.easeId };
+      fire('rotate'); // the new ease's first frame
+      if (options.duration === 0) endPending(undefined); // duration 0 settles at once
     }),
+    /** Let an in-flight ease run to natural completion (no interrupting id). */
+    finishEase: () => endPending(undefined),
+    easeInFlight: () => pending !== null,
     getBearing: () => state.bearing,
     setBearing: (b: number) => {
       state.bearing = b;
@@ -44,9 +94,7 @@ function makeCameraMap(initialBearing = 0) {
     off: vi.fn((type: string, fn: Handler) => {
       bucket(type).delete(fn);
     }),
-    fire: (type: string, arg: unknown = {}) => {
-      [...bucket(type)].forEach((fn) => fn(arg));
-    },
+    fire,
   };
 }
 
@@ -209,6 +257,107 @@ describe('CompassControl', () => {
     });
     expect(compass()).toHaveAttribute('data-orientation', 'free');
     expect(map.getBearing()).toBe(40);
+  });
+
+  // An ease that interrupts another compass ease must not be mistaken for the
+  // user grabbing the chart. MapLibre runs the interrupted ease's moveend
+  // synchronously from inside the next easeTo (see makeCameraMap), so without
+  // a shared easeId the guard is already down when the new ease emits its
+  // first rotate frame — and the controller demotes its OWN animation to
+  // `free`. Both paths below are reachable in ordinary use.
+  describe('interrupted eases (the easeId guard)', () => {
+    it('keeps following the course when fixes arrive faster than the ease lasts', () => {
+      const { rerender } = render(<CompassControl fix={UNDER_WAY} showOwnship />);
+      act(() => compass().click());
+      expect(compass()).toHaveAttribute('data-orientation', 'track-up');
+      expect(map.easeInFlight()).toBe(true);
+
+      // useOwnshipGps applies no throttle, so the fix cadence is the browser's
+      // — two fixes inside EASE_TRACK_MS (900 ms) is normal, not exotic.
+      rerender(<CompassControl fix={{ ...UNDER_WAY, cogDeg: 150 }} showOwnship />);
+      rerender(<CompassControl fix={{ ...UNDER_WAY, cogDeg: 180 }} showOwnship />);
+
+      expect(compass()).toHaveAttribute('data-orientation', 'track-up');
+      expect(compass()).toHaveAttribute('aria-label', de['map.compass.trackUp']);
+      expect(map.getBearing()).toBe(180);
+    });
+
+    it('never reports a hand rotation the user did not make (fast double tap)', () => {
+      render(<CompassControl fix={UNDER_WAY} showOwnship />);
+      // Start in free, at a bearing nowhere near north so the rotateend snap
+      // cannot accidentally rescue the mode.
+      act(() => {
+        map.setBearing(75);
+        map.fire('rotatestart', { originalEvent: new Event('touchstart') });
+        map.fire('rotate', {});
+      });
+      expect(compass()).toHaveAttribute('data-orientation', 'free');
+
+      // free -> north (600 ms ease), then a second tap inside that window.
+      act(() => compass().click());
+      act(() => compass().click());
+
+      expect(compass()).toHaveAttribute('data-orientation', 'track-up');
+      expect(map.getBearing()).toBe(120);
+    });
+
+    it('re-arms the hand-rotation guard once an ease finishes on its own', () => {
+      // The easeId fix must not leave the guard stuck ON: a natural completion
+      // passes no interrupting id, so moveend still fires and the next rotate
+      // is correctly read as the user's.
+      render(<CompassControl fix={UNDER_WAY} showOwnship />);
+      act(() => compass().click());
+      expect(compass()).toHaveAttribute('data-orientation', 'track-up');
+
+      act(() => map.finishEase());
+      act(() => {
+        map.setBearing(40);
+        map.fire('rotate', {});
+      });
+      expect(compass()).toHaveAttribute('data-orientation', 'free');
+    });
+  });
+
+  // The JS half of the reduced-motion contract (the pulse half is CSS-only).
+  // jsdom has no matchMedia and src/test/setup.ts does not stub it, so
+  // usePrefersReducedMotion is hard-wired to "motion allowed" unless a test
+  // supplies one — which is why this branch shipped unverified at first.
+  describe('prefers-reduced-motion', () => {
+    beforeEach(() => {
+      window.matchMedia = vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })) as unknown as typeof window.matchMedia;
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(window, 'matchMedia');
+    });
+
+    it('eases instantly instead of animating the camera', () => {
+      render(<CompassControl fix={UNDER_WAY} showOwnship />);
+      act(() => compass().click());
+      expect(map.easeTo).toHaveBeenLastCalledWith(
+        expect.objectContaining({ bearing: 120, duration: 0 }),
+      );
+    });
+
+    it('widens the follow deadband so the chart moves less often', () => {
+      const { rerender } = render(<CompassControl fix={UNDER_WAY} showOwnship />);
+      act(() => compass().click());
+      map.easeTo.mockClear();
+
+      // 120 -> 123 is 3 deg: past the normal 2 deg deadband, inside the 5 deg
+      // reduced-motion one, so it must NOT move the chart.
+      rerender(<CompassControl fix={{ ...UNDER_WAY, cogDeg: 123 }} showOwnship />);
+      expect(map.easeTo).not.toHaveBeenCalled();
+
+      // 6 deg clears even the widened deadband.
+      rerender(<CompassControl fix={{ ...UNDER_WAY, cogDeg: 126 }} showOwnship />);
+      expect(map.easeTo).toHaveBeenCalledWith(
+        expect.objectContaining({ bearing: 126, duration: 0 }),
+      );
+    });
   });
 
   it('unregisters its map listeners on unmount', () => {

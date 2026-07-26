@@ -445,7 +445,17 @@ export default function RouteLayer({
       bounds.extend([leg.start.lon, leg.start.lat]);
       bounds.extend([leg.end.lon, leg.end.lat]);
     }
-    map.fitBounds(bounds, { padding: 48, duration: 0 });
+    // #155: `bearing` MUST be passed explicitly. cameraForBounds computes
+    // `options?.bearing || 0`, and _fitInternal merges the caller's options on
+    // top of that camera — so omitting it does not mean "keep the current
+    // bearing", it means "rotate to north". Before the compass existed the
+    // bearing was always 0 and that was invisible; now every new plan.id
+    // (first plan, recalc, replanWithVias, and above all a Live-tab
+    // rerouteFromFix under way) would silently un-rotate the chart and knock
+    // track-up out of follow — exactly the "a boat head-to-wind must not spin
+    // the chart" case the hold-last-bearing decision exists for. Passing the
+    // live bearing is also what MapLibre's own fitBounds docstring recommends.
+    map.fitBounds(bounds, { padding: 48, duration: 0, bearing: map.getBearing() });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fit on plan identity, not the (recreated) result object
   }, [map, plan?.id]);
 

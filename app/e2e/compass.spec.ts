@@ -67,6 +67,21 @@ test('compass: north-up cold start, hand rotation drops to free, tap brings the 
     await page.waitForLoadState('networkidle');
     expect(await installMapHandle(page)).toBe(true);
 
+    // The round glass chip, and the >=44 px cockpit touch target the issue
+    // asks for. toBeVisible() alone would pass in the broken state that
+    // shipped mid-review — with .sc-btn-ghost winning at equal specificity the
+    // button still had a box and no visibility:hidden, it was merely
+    // transparent and unsized — so the regression needs computed style, not
+    // visibility.
+    const chrome = await compass.evaluate((el) => ({
+      radius: getComputedStyle(el).borderRadius,
+      width: el.getBoundingClientRect().width,
+      height: el.getBoundingClientRect().height,
+    }));
+    expect(chrome.width).toBeGreaterThanOrEqual(44);
+    expect(chrome.height).toBeGreaterThanOrEqual(44);
+    expect(chrome.radius).toBe('999px');
+
     // Cold start is deterministic north-up (issue #155 decision 3) — the
     // property every canvas-comparing spec in this suite depends on.
     await expect(compass).toHaveAttribute('data-orientation', 'north-up');

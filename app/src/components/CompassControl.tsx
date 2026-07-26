@@ -3,6 +3,7 @@ import Button from './Button';
 import { useMapInstance } from './MapView';
 import { useT } from '../i18n';
 import {
+  COMPASS_EASE_ID,
   COMPASS_STATUS_MS,
   EASE_NORTH_MS,
   EASE_TRACK_MS,
@@ -89,6 +90,21 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
       map.easeTo({
         bearing: bearingDeg,
         duration: reducedMotionRef.current ? 0 : durationMs,
+        // COMPASS_EASE_ID is load-bearing, not cosmetic. easeTo's first act is
+        // `this._stop(false, options.easeId)`, which runs the INTERRUPTED
+        // ease's `_afterEase(eventData, interruptingEaseId)` synchronously,
+        // before the new ease emits a frame. `_afterEase` suppresses its
+        // rotateend/moveend only when `this._easeId === easeId` — so without a
+        // stable id, one compass ease interrupting another fires `moveend`,
+        // clearing `easingRef` mid-flight, and the very next `rotate` frame of
+        // our OWN animation gets mistaken for a hand rotation and demotes the
+        // mode to `free`. That is reachable in ordinary use: `useOwnshipGps`
+        // applies no throttle, so two fixes closer together than EASE_TRACK_MS
+        // chain two follow eases and track-up switches itself off mid-passage;
+        // a fast double-tap does the same with no GPS at all.
+        // Natural completion still passes no id (`finish()` takes none), so
+        // moveend — and the flag reset — survives for the non-interrupted case.
+        easeId: COMPASS_EASE_ID,
         // Linear for the track-up follow only: consecutive ~900 ms eases at
         // the ~1 Hz fix cadence chain into continuous motion, where an
         // ease-in-out would visibly stutter at every fix boundary.

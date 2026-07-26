@@ -70,6 +70,14 @@ export const FREE_SNAP_NORTH_DEG = 1;
 export const COMPASS_STATUS_MS = 3_000;
 
 /**
+ * Stable `easeId` for every camera ease the compass owns, so MapLibre
+ * suppresses the interrupted ease's rotateend/moveend when one compass ease
+ * replaces another. See CompassControl's `easeBearing` for why this is
+ * correctness rather than tidiness.
+ */
+export const COMPASS_EASE_ID = 'sc-compass';
+
+/**
  * Tap transition table (issue #155, "Interaction rules"). Exhaustive over
  * `mode` x `trackAvailable`:
  *
@@ -160,6 +168,24 @@ export function shouldSnapNorth(bearingDeg: number): boolean {
 
 /** Screen span the bar is measured against; the drawn bar is 40–100 px of it. */
 export const SCALE_SAMPLE_PX = 100;
+
+/**
+ * The map's maximum zoom — MapLibre's own default, stated explicitly here and
+ * passed to the Map constructor (MapView.tsx) rather than inherited, because
+ * the scale bar's "every rung is an integer" property depends on it.
+ *
+ * The metre branch feeds `niceStep(maxNm * 1852)`; once that argument falls
+ * below 1 the ladder starts returning 0.5 / 0.2 / 0.1, and ScaleBar renders
+ * the magnitude with no decimal formatting and no locale separator — a German
+ * UI that writes "0,5" everywhere else would print "0.5 m". At 54.85°N the
+ * 100 px reference spans 1.074 m at z=22 (rung 1 m, ~7% of headroom) and drops
+ * under 1 m at about z=22.1.
+ *
+ * So: raising this is not a free change. The property test sweeps up to this
+ * constant and asserts integrality, so a bump to 23 fails the suite loudly
+ * instead of silently producing a fractional label.
+ */
+export const MAP_MAX_ZOOM = 22;
 
 /** Above this fraction of the viewport, a docked Live readout suppresses the bar entirely. */
 export const SCALE_LIFT_MAX_VIEWPORT_FRACTION = 0.4;
