@@ -400,6 +400,11 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
 function recordingContext(log: string[]): CanvasRenderingContext2D {
   const ctx = {
     clearRect: () => log.push('clear'),
+    // #191: drawSeamark scales the logical 24-unit coordinate space onto the
+    // higher-resolution raster canvas — a no-op here since the op log below
+    // only cares about the raw segment coordinates passed to each draw call,
+    // which the scale transform doesn't alter.
+    scale: () => {},
     beginPath: () => log.push('begin'),
     rect: (x: number, y: number, w: number, h: number) => log.push(`R${x},${y},${w},${h}`),
     moveTo: (x: number, y: number) => log.push(`M${x},${y}`),
