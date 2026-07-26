@@ -283,5 +283,29 @@ export const de = {
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: API-Schlüssel prüfen',
   'ais.status.liveRoute': 'AIS live · {count} Schiffe ({routeCount} entlang Route)',
+  // #155: north-arrow / track-up compass. One label per state, carrying both
+  // the current orientation AND the action a tap performs (no aria-pressed:
+  // a tri-state cycle is not a binary toggle). Degrees never appear here.
+  'map.compass.northUp': 'Kartenausrichtung: Norden oben. Kursorientierung aktivieren',
+  'map.compass.northUp.noTrack':
+    'Kartenausrichtung: Norden oben. Kursorientierung ohne GPS-Kurs nicht verfügbar',
+  'map.compass.trackUp': 'Kartenausrichtung: Kurs oben. Auf Norden oben umschalten',
+  'map.compass.trackUp.stale':
+    'Kartenausrichtung: Kurs oben (letzter Kurs wird gehalten). Auf Norden oben umschalten',
+  'map.compass.free': 'Karte manuell gedreht. Auf Norden oben zurücksetzen',
+  'map.compass.unavailableStatus':
+    'Kursorientierung nicht verfügbar – keine GPS-Position in Fahrt',
+  // #155: nautical scale bar. The visible label uses the chart abbreviation;
+  // the aria-label spells the unit out (screen readers mangle "kbl"/"sm").
+  'map.scale.aria': 'Maßstab: {distance} {unit}',
+  'map.scale.unit.nm': 'sm',
+  'map.scale.unit.cbl': 'kbl',
+  'map.scale.unit.m': 'm',
+  'map.scale.unit.nm.one': 'Seemeile',
+  'map.scale.unit.nm.other': 'Seemeilen',
+  'map.scale.unit.cbl.one': 'Kabellänge',
+  'map.scale.unit.cbl.other': 'Kabellängen',
+  'map.scale.unit.m.one': 'Meter',
+  'map.scale.unit.m.other': 'Meter',
 } as const;
 export type MsgKey = keyof typeof de;

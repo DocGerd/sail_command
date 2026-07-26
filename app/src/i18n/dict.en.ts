@@ -278,4 +278,24 @@ export const en = {
   'ais.status.offline': 'AIS offline',
   'ais.status.keyError': 'AIS: check your API key',
   'ais.status.liveRoute': 'AIS live · {count} vessels ({routeCount} along route)',
+  // #155: north-arrow / track-up compass (see dict.de for the label rationale).
+  'map.compass.northUp': 'Map orientation: north up. Activate course-up',
+  'map.compass.northUp.noTrack':
+    'Map orientation: north up. Course-up unavailable without a GPS course',
+  'map.compass.trackUp': 'Map orientation: course up. Switch to north up',
+  'map.compass.trackUp.stale':
+    'Map orientation: course up (holding last course). Switch to north up',
+  'map.compass.free': 'Map rotated by hand. Reset to north up',
+  'map.compass.unavailableStatus': 'Course-up unavailable – no GPS course under way',
+  // #155: nautical scale bar.
+  'map.scale.aria': 'Map scale: {distance} {unit}',
+  'map.scale.unit.nm': 'NM',
+  'map.scale.unit.cbl': 'cbl',
+  'map.scale.unit.m': 'm',
+  'map.scale.unit.nm.one': 'nautical mile',
+  'map.scale.unit.nm.other': 'nautical miles',
+  'map.scale.unit.cbl.one': 'cable',
+  'map.scale.unit.cbl.other': 'cables',
+  'map.scale.unit.m.one': 'metre',
+  'map.scale.unit.m.other': 'metres',
 } satisfies Record<MsgKey, string>;

@@ -318,8 +318,6 @@ select {
 
 .route-layer-controls,
 .data-layer-controls {
-  position: absolute;
-  top: 3.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -329,7 +327,13 @@ select {
   font-size: 0.85rem;
 }
 
+/* NAMED COUPLING: `top: 3.5rem` clears the narrow-layout .app-header, which
+   overlays the map — the wide media query below drops it to 0.75rem because
+   at >=1024px the header lives in the panel column instead. Mirrored exactly
+   by .map-stack-tl's own top (they share the map's top row). */
 .route-layer-controls {
+  position: absolute;
+  top: 3.5rem;
   right: 0.5rem;
 }
 
@@ -342,11 +346,194 @@ select {
   min-height: 44px;
 }
 
-/* Opposite corner from the plan-gated route cluster so the two can never
-   collide when a plan is active — kept terse (dict) to share the map-top row
-   with it even at phone widths. */
-.data-layer-controls {
+/* #155: top-left map-overlay stack — DataLayers' toggles with the compass
+   below them, as ONE absolutely-positioned flex column. Before #155
+   .data-layer-controls positioned itself; it is now a plain static flex child
+   (as is .compass-control), so the stack alone owns the offsets and the two
+   controls can never overlap.
+   Opposite corner from the plan-gated route cluster so the two can never
+   collide when a plan is active — the toggles stay terse (dict) to share the
+   map-top row with it even at phone widths.
+   NAMED COUPLING: `top` mirrors .route-layer-controls above (3.5rem to clear
+   the narrow-layout .app-header, 0.75rem on wide) and `left: 0.5rem` mirrors
+   its `right: 0.5rem`. The 1024px breakpoint that switches them is the SAME
+   value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY — change both together.
+   The column itself is pointer-events:none so the inter-control gap never
+   swallows a map tap; each child re-enables them. */
+.map-stack-tl {
+  position: absolute;
+  top: 3.5rem;
   left: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.map-stack-tl > * {
+  pointer-events: auto;
+}
+
+/* ---- #155 north arrow / track-up toggle ---- */
+
+.compass-control {
+  position: relative;
+  display: flex;
+}
+
+/* Overrides .sc-btn-ghost's transparent box with a 2.75rem round glass chip
+   (matching the >=44px cockpit touch target the bare `button` rule sets).
+   Scoped through .compass-control deliberately: .sc-btn-ghost is declared
+   LATER in this file, so at equal single-class specificity source order would
+   win and the chrome would silently vanish (measured in the browser). The
+   descendant selector makes the override order-independent. */
+.compass-control .compass-btn {
+  position: relative;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sc-bg) 90%, transparent);
+  border: 1px solid var(--sc-border);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  color: var(--sc-fg);
+}
+
+.compass-control .compass-btn:not(:disabled):hover,
+.compass-control .compass-btn:not(:disabled):active {
+  background: color-mix(in srgb, var(--sc-bg) 90%, transparent);
+  color: var(--sc-fg);
+}
+
+/* Track-up wears an accent ring; holding a stale bearing dims that ring to
+   40% rather than dropping it — the mode is still active, it just is not
+   being fed (issue #155 decision 1). */
+.compass-control .compass-btn[data-orientation='track-up'] {
+  box-shadow:
+    0 0 0 1px var(--sc-accent),
+    0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.compass-control .compass-btn[data-orientation='track-up-stale'] {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--sc-accent) 40%, transparent),
+    0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.compass-svg {
+  width: 1.625rem;
+  height: 1.625rem;
+  display: block;
+}
+
+/* The needle group carries the live bearing via an inline style.transform
+   written from CompassControl's rAF loop. `transform-box: view-box` is what
+   makes `50% 50%` resolve to the viewBox centre (12,12) instead of the user-
+   space origin — without it the needle would swing around the corner. */
+.compass-needle {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+
+.compass-ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-opacity: 0.25;
+  stroke-width: 0.9;
+}
+
+.compass-tick {
+  stroke: currentColor;
+  stroke-opacity: 0.25;
+  stroke-width: 0.9;
+  stroke-linecap: round;
+}
+
+.compass-needle-n {
+  fill: var(--sc-accent);
+}
+
+.compass-needle-s {
+  fill: currentColor;
+  opacity: 0.35;
+}
+
+/* Ineligible-tap feedback (issue #155 decision 4): the button is never greyed
+   and never a silent no-op. Remounted via a React key so each rejected tap
+   restarts the animation; `both` fill leaves it invisible when done. */
+.compass-pulse {
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  border: 2px solid var(--sc-accent);
+  animation: sc-compass-pulse 300ms ease-out both;
+  pointer-events: none;
+}
+
+@keyframes sc-compass-pulse {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.28);
+  }
+}
+
+/* ---- #155 nautical scale bar ---- */
+
+/* NAMED COUPLING: the narrow `bottom` clears .app-tabs via the shared
+   --sc-tabbar-h token, and its `0.5rem` term is mirrored by
+   SCALE_LIFT_GAP_PX in lib/mapOrientation.ts. When the Live tab docks a
+   readout over this corner, ScaleBar.tsx REPLACES this offset with an inline
+   `bottom` measured to that readout's top edge (see its own comment); with
+   nothing docked — always the case on wide, where the readout is portaled
+   into the panel column (#31) — this rule stands.
+   pointer-events:none is load-bearing: a map tap must pass straight through
+   the bar. */
+.scale-bar {
+  position: absolute;
+  left: 0.5rem;
+  bottom: calc(var(--sc-tabbar-h) + 0.5rem);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  pointer-events: none;
+  padding: 0.25rem 0.45rem;
+  /* Same tokened glass pill as the other map chrome (.data-layer-controls,
+     .ais-status-chip). Load-bearing for contrast, not decoration: the basemap
+     is ALWAYS the light flavour (MapView pins namedFlavor('light')), so in the
+     dark theme --sc-fg is near-white and both the label and the bracket would
+     otherwise draw white-on-pale. The pill puts --sc-fg back on --sc-bg, which
+     is the contrast pair the tokens actually guarantee. */
+  background: color-mix(in srgb, var(--sc-bg) 90%, transparent);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--sc-fg);
+}
+
+/* A readout tall enough that lifting the bar above it would strand it in the
+   middle of the chart: better no scale than a scale in the wrong place. */
+.scale-bar-suppressed {
+  display: none;
+}
+
+.scale-bar-label {
+  line-height: 1;
+  font-weight: 600;
+}
+
+/* Classic chart bracket — a bottom-open ⊔ whose INNER width is the labelled
+   ground distance (width is written from ScaleBar.tsx). */
+.scale-bar-bracket {
+  height: 6px;
+  border: 2px solid var(--sc-fg);
+  border-top: none;
+  box-sizing: content-box;
 }
 
 /* Seamark info popover (#7) — content of a MapLibre Popup's setDOMContent,
@@ -1147,6 +1334,15 @@ select {
   .sc-disclosure[open] > .sc-disclosure-body {
     animation: none;
   }
+
+  /* #155: the rejected-tap pulse is paint-only feedback, so it goes away
+     entirely here — the role="status" announcement, which carries the actual
+     information, does not. (Camera ease durations and the widened track-up
+     deadband are handled in JS; see lib/usePrefersReducedMotion.ts.) */
+  .compass-pulse {
+    display: none;
+    animation: none;
+  }
 }
 
 /* ---- Depth profile (#45) ---- */
@@ -1593,10 +1789,19 @@ select {
 
   /* Header sits in the left panel column here, so the map's top edge is clear
      — the base top:3.5rem (which clears the narrow-layout header overlaying
-     the map) would otherwise leave a dead gap at the top-right controls. */
+     the map) would otherwise leave a dead gap at the top-right controls.
+     #155: the top-left offset now belongs to .map-stack-tl (the column that
+     owns both the depth toggles and the compass), not to
+     .data-layer-controls, which is a static flex child of it. */
   .route-layer-controls,
-  .data-layer-controls {
+  .map-stack-tl {
     top: 0.75rem;
+  }
+
+  /* #155: no docked Live readout on wide (it portals into the panel column,
+     #31), and no tab strip either — the bar sits on the map's own bottom edge. */
+  .scale-bar {
+    bottom: 0.75rem;
   }
 
   /* The no-plan card keeps its border/padding but flows in the panel too. */

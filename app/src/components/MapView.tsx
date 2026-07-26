@@ -12,6 +12,7 @@ import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useLang } from '../i18n';
 import { BASEMAP_PATH } from '../lib/basemap';
+import { MAP_MAX_ZOOM } from '../lib/mapOrientation';
 import { ensureBasemapProtocolSource } from '../services/basemapSource';
 import { noteMapError } from '../services/swRecovery';
 import type { LatLon } from '../types';
@@ -209,6 +210,12 @@ export default function MapView({
           center: CENTER,
           zoom: ZOOM,
           maxBounds: MAX_BOUNDS,
+          // Same value MapLibre defaults to, but stated rather than inherited:
+          // #155's scale bar only labels whole nautical miles / cables / metres
+          // because 100 px never spans less than a metre at this latitude, and
+          // that holds exactly up to zoom 22. See MAP_MAX_ZOOM's own comment —
+          // raising it needs the label's formatting revisited.
+          maxZoom: MAP_MAX_ZOOM,
           attributionControl: false,
         });
         instance.addControl(new AttributionControl({ compact: true }));

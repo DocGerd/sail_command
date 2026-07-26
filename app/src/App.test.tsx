@@ -145,7 +145,25 @@ vi.mock('maplibre-gl', () => {
       if (event === 'error') mapTestHooks.errorHandler = null;
     }
     getCanvas() {
-      return { style: {} } as HTMLCanvasElement;
+      // #155: ScaleBar measures its 100 px reference span from the canvas's
+      // CSS box, so the fake has to report one (jsdom lays nothing out).
+      return { style: {}, clientWidth: 800, clientHeight: 600 } as HTMLCanvasElement;
+    }
+    // #155 camera surface. The compass reads getBearing() and drives the
+    // camera through easeTo(); ScaleBar unprojects two screen points and
+    // haversines them. A linear equirectangular fake is enough for both: at
+    // this fake's 0.001 deg/px it puts ~0.035 NM under the bar's 100 px
+    // reference (the metre branch), which is a real, in-range answer — the
+    // exact value is pinned in lib/mapOrientation.test.ts, not here.
+    _bearing = 0;
+    getBearing() {
+      return this._bearing;
+    }
+    easeTo(options?: { bearing?: number }) {
+      if (options && typeof options.bearing === 'number') this._bearing = options.bearing;
+    }
+    unproject(p: [number, number]) {
+      return { lng: 9.9 + (p[0] - 400) * 0.001, lat: 54.85 - (p[1] - 300) * 0.001 };
     }
     once(event: string, cb: () => void) {
       if (event === 'load') cb();
