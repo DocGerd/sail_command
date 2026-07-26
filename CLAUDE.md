@@ -144,7 +144,8 @@ deviate from it.
   caches use `sailcommand-glyphs-<slug>@<version>` derived from BASE_URL (#96);
   never add a bare shared cache name or an unscoped cleanup matcher.
 - Deploy (#96, #197): `deploy.yml` fires on push to `main`, `develop`, OR a
-  `v*` TAG. Pages
+  release TAG (`v[0-9]*` — the glob is the narrowing gate; the `github-pages`
+  env tag policy is the permissive `v*`). Pages
   serves a SINGLE deployment artifact, so every run builds BOTH refs into one
   combined artifact regardless of which branch triggered it — `main` → the
   site root (production, `app/vite.config.ts` `base: '/sail_command/'`,
@@ -158,7 +159,8 @@ deviate from it.
   rebuilding it (validation BEFORE assembly = full sha256 manifest + sanity +
   PMTiles magic + cross-check against the main-authored baseline whenever one
   is retrievable; miss/invalid → loud full rebuild + byte-drift check against
-  that baseline — drift fails the run; main-triggered runs double-build as a
+  that baseline — drift fails the run; main-MODE runs (a `main` push, a
+  release-tag push, or a dispatch on `main`) double-build as a
   determinism proof and publish the baseline as the `prod-manifest`
   artifact). Cache saves happen only on BASELINE-VERIFIED develop-triggered
   rebuilds — cache keys are immutable, so caching unverified bytes could
@@ -185,15 +187,26 @@ deviate from it.
   release) and the baseline artifact carries `version.txt`, which the
   develop-side lookup matches alongside `main-sha.txt`. That lookup also has
   NO `branch=main` filter: a tag run's `head_branch` is the TAG name, so the
-  filter would hide exactly the release baseline. The existing `concurrency: { group: pages }` still serializes
-  overlapping main+develop pushes. Develop-triggered runs additionally
+  filter would hide exactly the release baseline. Whenever the baseline FORMAT
+  or the cache key changes, dispatch `gh workflow run deploy.yml --ref main`
+  immediately after the merge: a missing baseline does NOT self-heal (only
+  main-mode runs publish one), so until then EVERY develop deploy rebuilds and
+  republishes prod from unverified bytes — #117a's "a develop push cannot alter
+  production bytes" invariant is suspended for that whole interval.
+  A `push` on a tag also resolves the WORKFLOW FILE from the tag's commit, so a
+  `v[0-9]*` tag on a commit predating #197 silently does not deploy.
+  The existing `concurrency: { group: pages, cancel-in-progress: true }` admits
+  only one deploy run at a time, but it CANCEL-SUPERSEDES rather than queues — a
+  newer run cancels the in-flight one — and release tag runs share that group
+  (see the release ritual under Branching for why that matters).
+  Develop-triggered runs additionally
   record a `uat` environment in the Deployments UI, and main- AND tag-triggered
   runs a `prod` one (both bookkeeping only, #106/#127/#197 — a release cut
   therefore logs two `prod` entries, the tag one being authoritative);
   `github-pages` remains the
   platform-managed mechanical env — never rename it (the Pages OIDC flow
-  owns it; rename is a trap, #127 spike) — and still interleaves both
-  branches' entries unchanged.
+  owns it; rename is a trap, #127 spike) — and still interleaves all three
+  refs' entries unchanged.
   Production:
   `https://docgerd.github.io/sail_command/` (unchanged, verified
   byte-for-byte identical to the pre-#96 build). UAT (unreleased develop
@@ -215,7 +228,9 @@ deviate from it.
   silent user-facing slowdown.
 - The github-pages ENVIRONMENT deployment policy (repo Settings, not YAML)
   gates deploys by triggering REF — branch entries `main`+`develop` (#96) plus
-  a TAG entry `v*` (#197). A new deploying branch or tag pattern needs a policy
+  a TAG entry `v*` (#197; deliberately permissive — `deploy.yml`'s `v[0-9]*`
+  trigger glob is the narrowing gate, so tightening the release shape never
+  needs a Settings change). A new deploying branch or tag pattern needs a policy
   entry (`gh api repos/DocGerd/sail_command/environments/github-pages/deployment-branch-policies
   -f name=<name> -f type=branch|tag`) or the deploy job is rejected with "not
   allowed to deploy" — AFTER the build job has already run, so the run reds
@@ -238,13 +253,21 @@ deviate from it.
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
   up-to-date policy), merged as a merge commit, then tagged on `main`; `main` is
   released-state-only. Pushing that tag is what puts the clean `vX.Y.Z` in the
-  About dialog (#197) — no manual deploy re-run any more — so WAIT for the
-  tag-triggered deploy to go green before merging the back-merge PR: the
-  workflow's `cancel-in-progress` lets a later develop push cancel the tag run,
-  and a cancelled tag run leaves production on the untagged version string with
-  no release baseline recorded (it did cancel the back-merge run at the v0.4.0
-  cut, in the other direction). `deploy.yml` (#96, #197) fires on push to
-  `main`, `develop`, or a `v*` tag:
+  About dialog (#197) — no manual deploy re-run any more — so the runbook's
+  step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
+  pass before the back-merge: the tag-triggered run reached `success` AND prod's
+  About dialog shows the clean tag. Rationale: `cancel-in-progress`
+  cancel-supersedes and tag runs share the `pages` group, so the tag run
+  cancels the still-running merge run, and a back-merge push inside that window
+  cancels the tag run — then NEITHER release run deployed and production keeps
+  serving the PREVIOUS release's bytes, signalled only by a grey "cancelled",
+  never a red. (`cancel-in-progress: false` does not fix it — a merely PENDING
+  run is cancelled too; a ref-conditional group WOULD, and was evaluated and
+  rejected: it lets two runs reach `actions/deploy-pages` concurrently. See the
+  comment above `concurrency:` in `deploy.yml`.) At the v0.4.0 cut this
+  collision already happened in the other direction — the manual re-run
+  cancelled the back-merge run. `deploy.yml` (#96, #197) fires on push to
+  `main`, `develop`, or a release tag (`v[0-9]*`):
   production at the Pages site root reflects only released
   (`main`) state as before; `develop`'s unreleased state is additionally
   published to the deliberately-labeled, `noindex`ed `/uat/` sub-path in the

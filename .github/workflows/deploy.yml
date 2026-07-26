@@ -10,9 +10,18 @@ on:
     # and publishes the clean vX.Y.Z, automating what used to be a manual
     # deploy re-run. Dropping `branches: [main]` in favour of tags alone would
     # open a silent no-deploy hole for any main push that is not tagged
-    # (hotfix, docs fix), so both triggers coexist; the concurrency group
-    # below serializes the two runs a release produces.
-    tags: ['v*']
+    # (hotfix, docs fix), so both triggers coexist.
+    # The glob is the RELEASE SHAPE, not "starts with v": a stray `vendor-spike`
+    # or `verify-baseline` tag would otherwise cost a full ~25 min production
+    # deploy cycle plus a spurious `prod` deployment record. GitHub enforces
+    # this filter BEFORE the run starts, which is why the job guards below can
+    # defer the shape check to it (expressions have no regex) — keep them in
+    # sync if this glob is ever widened.
+    # NOTE: a `push` on a tag resolves the WORKFLOW FILE from the tag's own
+    # commit, so the tag trigger only works for tags placed on a `main` commit
+    # that already contains this workflow. A `v*` tag on an older commit
+    # silently does not deploy.
+    tags: ['v[0-9]*']
   # #117: manual dispatch so the develop-path hardening (prod dist reuse,
   # byte-drift check, dual smoke probe) can be exercised without a code push.
   # Dispatching from any OTHER branch skips cleanly via the build job's ref
@@ -21,17 +30,42 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# One deploy run at a time — but note the semantics: this group
+# CANCEL-SUPERSEDES, it does not queue. A newer run cancels the in-flight one,
+# and `cancel-in-progress: false` would not change the release hazard either
+# (a merely PENDING run is still cancelled when a newer one queues).
+# #197 hazard, since release tag runs share this group: at a cut the tag run
+# cancels the still-running merge run, and a back-merge push landing inside
+# that window cancels the tag run — then NEITHER release run deployed and
+# production keeps serving the PREVIOUS release's bytes, signalled only by a
+# grey "cancelled", never a red. A ref-conditional group
+# (`pages-release` for tag runs) WOULD fix that structurally; it was evaluated
+# and REJECTED, because it lets two runs reach actions/deploy-pages
+# concurrently — Pages can reject an in-flight deployment, and last-writer-wins
+# transiently regresses /uat/ — i.e. it introduces an unproven failure mode
+# into production deploy machinery in the very change that alters its
+# triggers, to protect bytes that are identical either way. The control is the
+# release runbook instead: `.claude/skills/release/SKILL.md` step 5b makes
+# "wait for the tag deploy to go GREEN before back-merging" a mechanical,
+# verified step.
 concurrency: { group: pages, cancel-in-progress: true }
 jobs:
   build:
-    # Ref guard: only main/develop/`v*` tags ever deploy (mirrors the
+    # Ref guard: only main/develop/release tags ever deploy (mirrors the
     # github-pages environment deployment policies — branch entries for
-    # main+develop, #96, plus a TAG entry for `v*`, #197). A
-    # workflow_dispatch from any other ref skips the whole run (dependent
-    # jobs skip with `needs`).
+    # main+develop, #96, plus a TAG entry for `v*`, #197; that policy is
+    # deliberately the permissive one, this guard is the narrowing gate).
+    # The tag clause is `event_name == 'push'` AND the `v` prefix: for a push,
+    # GitHub has ALREADY matched the `v[0-9]*` glob above before starting the
+    # run, so this composite admits exactly the release-shaped tag pushes —
+    # expressions have no regex, and enumerating `refs/tags/v0`..`v9` would be
+    # ten ways to typo a digit. It also declines a workflow_dispatch aimed at a
+    # TAG (no use case: the documented escape hatch is a dispatch on `main`,
+    # which the first clause covers). Any other ref skips the whole run
+    # (dependent jobs skip with `needs`).
     if: >-
       github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-      || startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,8 +80,9 @@ jobs:
       # assembles BOTH refs regardless of which one triggered it: main -> the
       # site root (production, unchanged), develop -> /uat/ (unreleased-state
       # preview). This deliberately couples the two deploys; the concurrency
-      # group above still serializes overlapping main+develop pushes so two
-      # partial artifacts can't race. #197: a `v*` tag-triggered run is no
+      # group above still admits only one run at a time, so two partial
+      # artifacts can't race (it cancels rather than queues — see there).
+      # #197: a release-tag-triggered run is no
       # exception — it assembles the same two refs from their BRANCH tips; the
       # only thing the tag changes is that `git describe` now resolves to the
       # clean release version inside the prod build.
@@ -118,10 +153,14 @@ jobs:
           # #197: a tag ref is a MAIN-mode run — same content (the main branch
           # tip checked out above), same determinism proof, same authoritative
           # drift baseline. Unknown refs fail loudly rather than defaulting
-          # into main mode, which is what the old if/else did.
+          # into main mode, which is what the old if/else did. Shell globs DO
+          # have character classes, so this is where the release shape is
+          # matched exactly: a tag that reached here without matching
+          # `v[0-9]*` means the trigger glob and the guards drifted apart, and
+          # that must fail, not deploy.
           case "$GITHUB_REF" in
             refs/heads/develop) mode=develop ;;
-            refs/heads/main | refs/tags/*) mode=main ;;
+            refs/heads/main | refs/tags/v[0-9]*) mode=main ;;
             *) echo "::error::unexpected ref $GITHUB_REF reached the build job — the ref guard and this case statement disagree"; exit 1 ;;
           esac
           {
@@ -326,12 +365,20 @@ jobs:
           name: prod-manifest
           path: prod-manifest/
       # #117b: a develop-triggered run that DID rebuild the main ref must
-      # prove the rebuild is byte-identical to what the last main-triggered
-      # run built (baseline fetched above) — drift fails the run LOUDLY
-      # instead of silently republishing altered production bytes. No
-      # baseline available (first run after this workflow change, expired
-      # artifact, API error) -> proceed with a loud warning; the next
-      # main-triggered run records a fresh baseline.
+      # prove the rebuild is byte-identical to what the last main-mode run
+      # built (baseline fetched above) — drift fails the run LOUDLY instead
+      # of silently republishing altered production bytes. No baseline
+      # available (none recorded for this (sha, version) yet, expired
+      # artifact, API error) -> proceed with a loud warning.
+      # That state does NOT self-heal: only a MAIN-MODE run publishes a
+      # baseline, and no main-mode run happens on its own between releases.
+      # So every develop deploy until the next main-mode run repeats the same
+      # rebuild-and-publish-unverified cycle (no cache save either, since the
+      # save is gated on baseline-verified), and for that whole interval
+      # #117a's invariant — a develop push is structurally incapable of
+      # altering production bytes — is SUSPENDED. Whenever the baseline
+      # FORMAT or key changes, dispatch a main-mode run immediately:
+      #   gh workflow run deploy.yml --ref main
       - name: Enforce byte-stability vs last main-triggered build
         id: drift
         if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true'
@@ -342,7 +389,7 @@ jobs:
         run: |
           if [ "$BASELINE_FOUND" != "true" ]; then
             echo "baseline-verified=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA at version $PROD_VERSION — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (first run after this workflow change, expired artifact, pre-#197 baseline without version.txt, a release tag whose deploy run never finished, or API error), and NOT caching it. Any main-mode run (a main push, a v* tag push, or a workflow_dispatch on main) records a baseline."
+            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA at version $PROD_VERSION — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (none recorded for this sha+version yet, expired artifact, pre-#197 baseline without version.txt, a release tag whose deploy run never finished, or API error), and NOT caching it. This does NOT self-heal: only a main-mode run publishes a baseline, so EVERY develop deploy until then repeats this and republishes production from unverified rebuilt bytes. Fix it now with: gh workflow run deploy.yml --ref main"
             exit 0
           fi
           if ! diff -u baseline-manifest/manifest.sha256 prod-manifest/manifest.sha256 > drift.diff; then
@@ -475,11 +522,15 @@ jobs:
     # without renaming the platform-managed `github-pages` env (see the
     # semantics comment above). The env auto-creates on the first
     # main-triggered run with no protection rules, like `uat` did.
-    # #197: `v*` tag runs record one too — they are the run that publishes
+    # #197: release-tag runs record one too — they are the run that publishes
     # the RELEASE bytes, so omitting them would leave every release missing
     # from the prod history. A release cut therefore records two prod entries
     # (merge push, then tag push); the tag one is the authoritative version.
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    # Same composite as the build guard — see there for why it is not a
+    # digit enumeration.
+    if: >-
+      github.ref == 'refs/heads/main'
+      || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     environment: { name: prod, url: "https://docgerd.github.io/sail_command/" }
     steps:
       - run: echo "Production deployed to https://docgerd.github.io/sail_command/"
