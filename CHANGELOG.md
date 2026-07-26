@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Map north arrow showing the current chart orientation; tapping it toggles
+  north-up / course-up, holds the last course when the GPS fix drops out, and
+  returns to manual control after a rotation gesture (#155).
+- Nautical scale bar on the map, labelled in nautical miles, cables or metres
+  depending on zoom (#155).
+
+### Fixed
+
+- Seamark/buoy and AIS other-traffic markers were too small and blurry at
+  planning zooms — they now render at higher raster resolution with a matching
+  pixel ratio, with AIS markers sized comparably to the seamarks beside them
+  (#191, #192).
+
 ## [0.4.0] - 2026-07-24
 
 ### Added

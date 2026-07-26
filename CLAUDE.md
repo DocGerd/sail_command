@@ -99,6 +99,22 @@ deviate from it.
   effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with a
   `[plan, rig]` resetKey so plan changes bypass it) — GPS noise flips the
   nearest-leg argmin at fix rate near leg boundaries (#158).
+- MapLibre programmatic eases that can interrupt one another need an
+  `easeId`: 5.24 fires the INTERRUPTED ease's `moveend` synchronously inside
+  the next `easeTo` (`_stop`→`_afterEase`; the guard is skipped without an
+  id), so an "is this my own ease" flag can get cleared mid-flight and the
+  controller misreads its own animation as a user gesture (#155). `easeId` is
+  necessary but NOT sufficient — MapLibre suppresses only when ids MATCH, so
+  a FOREIGN ease (pan inertia, keyboard rotation) still clears the guard; that
+  gap is open bug #203, not a solved invariant.
+- `fitBounds` must pass `bearing: map.getBearing()` explicitly —
+  `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
+  Live reroute under way) silently un-rotates the chart and kills track-up
+  (#155). That default had previously masked a desync bug; preserving bearing
+  is what exposed the #203 north-up dead end above.
+- `icon-padding` (default 2 px/side) is part of MapLibre's collision box, not
+  decoration — it's the lever for offsetting `icon-size` growth without
+  changing the collision footprint (#191).
 
 ## PWA / E2E / deploy (Phase F)
 
@@ -155,8 +171,9 @@ deviate from it.
   "noindex, nofollow">` and a distinct manifest `name`/`id` so the UAT build installs
   as a separate PWA rather than colliding with production's). This
   deliberately couples the two deploys; since #117, develop-triggered runs
-  REUSE a cached, validated prod dist keyed on the main SHA instead of
-  rebuilding it (validation BEFORE assembly = full sha256 manifest + sanity +
+  REUSE a cached, validated prod dist keyed on the composite `(main SHA,
+  git-describe version)` identity instead of rebuilding it (validation
+  BEFORE assembly = full sha256 manifest + sanity +
   PMTiles magic + cross-check against the main-authored baseline whenever one
   is retrievable; miss/invalid → loud full rebuild + byte-drift check against
   that baseline — drift fails the run; main-MODE runs (a `main` push, a
@@ -358,6 +375,20 @@ deviate from it.
   individual reviewer had correctly approved past. Run such a sweep after
   any multi-PR burst touching shared subsystems; expect refuters to kill
   ~2/3 of candidates — the survivors are load-bearing.
+- Enlarging map icons CULLS them below the z12 `icon-overlap` threshold —
+  measure BASE vs. HEAD with `idle`-gated `queryRenderedFeatures`, never by
+  eye; identical feature counts at z≥12 (`overlap:'always'`) is the signature
+  that isolates collision growth from every other explanation (#191, #192,
+  follow-up #200).
+- A green workflow run proves the RUN was healthy, not that the intended
+  VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
+  workflow FILE from X's tip. Verify by inspecting the artifact it produced,
+  not the run's conclusion (#197 — a post-merge remedy dispatch was a no-op,
+  caught only by downloading the baseline and finding `version.txt` absent;
+  see the Deploy bullet above for the underlying mechanism).
+- A test fake that settles eases INSTANTLY makes interruption bugs
+  structurally unreachable, not merely unasserted — camera-guard tests need a
+  fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
 
 ## Domain rules that are easy to get wrong
 
@@ -379,6 +410,12 @@ deviate from it.
 - Angles: wind direction is meteorological (coming FROM, degrees true);
   polars are TWA × TWS → boat speed in knots. Positions are WGS84.
   Distances in nautical miles, speeds in knots.
+- The map scale bar is deliberately THREE-unit (nautical miles ≥1 NM, cables
+  0.1–0.5 NM, round metres <0.1 NM) — the nautical-miles-only rule above
+  governs route/leg distances, not chart chrome. Rungs are picked in the unit
+  being LABELLED (converting an NM rung would print "93 m"), which makes every
+  rung an integer by construction and keeps bar width in 40–100 px; that
+  integer property is pinned to `MAP_MAX_ZOOM` (#155).
 - **Two wind-sampling clocks by design**: map barbs sample the plan's grid at
   the SLIDER hour; the depth profile samples each instant's OWN hour (the map
   is a moment, the profile is a timeline). Don't "unify" them.
@@ -481,6 +518,12 @@ deviate from it.
   in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
+- Bash cwd PERSISTS across calls — a `cd` into a scratchpad earlier in the
+  session makes a later `gh pr merge` fail with "not a git repository", and
+  per the #94 rule below that failure could still have landed the merge, so
+  verify before retrying rather than assuming the error means nothing
+  happened. Prefer `gh pr merge N --repo DocGerd/sail_command` so the command
+  doesn't depend on cwd at all.
 - A GitHub **504 during `gh pr merge`** can land the merge (base ref updates,
   merge commit created) yet leave the PR marked `open` and skip branch-delete /
   `Closes #` auto-close. VERIFY via the develop tip / merge-commit parents before
