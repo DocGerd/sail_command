@@ -108,9 +108,20 @@ gh api "repos/$REPO/actions/runs/<id>/rerun" --method POST
 ```
 
 **Whenever the drift-baseline format or the prod cache key changes** (as in
-#197), also dispatch a main-mode run right after the merge so develop deploys
-regain a usable baseline — otherwise *every* develop deploy rebuilds and
-republishes prod unverified until the next release:
+#197), a main-mode dispatch is what re-establishes a usable baseline for
+develop deploys early — but it is only effective once `main` already contains
+that change: `--ref main` resolves the workflow FILE from `main`'s own tip, so
+dispatched before the change has reached `main` it runs the OLD workflow and
+publishes the OLD baseline shape, changing nothing (measured on #197: a
+dispatch run before this release's merge/tag published a baseline with no
+`version.txt`). Until the change reaches `main` — i.e. until step 4 or 5 above
+completes for the release that carries it — every develop deploy runs a
+known-degraded but GREEN cycle instead: full prod rebuild, a `::warning::`,
+`baseline-verified=false`, no cache save. Production still gets correct bytes
+(the determinism double-build proves that); only the cross-run drift check is
+unavailable for that interval, and it ends on its own once the cut lands. From
+that point on, dispatching seeds the baseline immediately rather than waiting
+for the next develop push to do it:
 
 ```bash
 gh workflow run deploy.yml --ref main

@@ -188,11 +188,22 @@ deviate from it.
   develop-side lookup matches alongside `main-sha.txt`. That lookup also has
   NO `branch=main` filter: a tag run's `head_branch` is the TAG name, so the
   filter would hide exactly the release baseline. Whenever the baseline FORMAT
-  or the cache key changes, dispatch `gh workflow run deploy.yml --ref main`
-  immediately after the merge: a missing baseline does NOT self-heal (only
+  or the cache key changes, a missing baseline does NOT self-heal (only
   main-mode runs publish one), so until then EVERY develop deploy rebuilds and
   republishes prod from unverified bytes — #117a's "a develop push cannot alter
-  production bytes" invariant is suspended for that whole interval.
+  production bytes" invariant is suspended for that whole interval (green, not
+  red: the determinism double-build still guarantees correct prod bytes —
+  only the cross-run drift CHECK is unavailable). Re-establishing the baseline
+  needs `gh workflow run deploy.yml --ref main` — but that dispatch resolves the
+  workflow FILE from `main`'s own tip, so it is only effective once `main`
+  already contains the format/key change. Dispatched earlier — e.g. right
+  after the format-changing PR merges to `develop`, the natural but wrong
+  moment to reach for it — it runs the OLD workflow and publishes the OLD
+  baseline shape, changing nothing (measured on #197: such a dispatch
+  published a baseline with no `version.txt`). The degraded interval therefore
+  really lasts until the change reaches `main` at the next develop→main
+  release cut, and ends on its own at that point; the dispatch is only worth
+  running from then on.
   A `push` on a tag also resolves the WORKFLOW FILE from the tag's commit, so a
   `v[0-9]*` tag on a commit predating #197 silently does not deploy.
   The existing `concurrency: { group: pages, cancel-in-progress: true }` admits
