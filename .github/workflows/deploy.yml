@@ -2,6 +2,26 @@ name: Deploy
 on:
   push:
     branches: [main, develop]
+    # #197: release tags deploy TOO — the branch trigger is kept, never
+    # replaced. A release cut pushes `main` first and the `vX.Y.Z` tag second,
+    # so the merge-triggered build runs BEFORE the tag exists and bakes
+    # `git describe`'s untagged form (vX.(Y-1).Z-N-g<sha>) into
+    # __SC_APP_VERSION__; the tag-triggered run rebuilds with the tag visible
+    # and publishes the clean vX.Y.Z, automating what used to be a manual
+    # deploy re-run. Dropping `branches: [main]` in favour of tags alone would
+    # open a silent no-deploy hole for any main push that is not tagged
+    # (hotfix, docs fix), so both triggers coexist.
+    # The glob is the RELEASE SHAPE, not "starts with v": a stray `vendor-spike`
+    # or `verify-baseline` tag would otherwise cost a full ~25 min production
+    # deploy cycle plus a spurious `prod` deployment record. GitHub enforces
+    # this filter BEFORE the run starts, which is why the job guards below can
+    # defer the shape check to it (expressions have no regex) — keep them in
+    # sync if this glob is ever widened.
+    # NOTE: a `push` on a tag resolves the WORKFLOW FILE from the tag's own
+    # commit, so the tag trigger only works for tags placed on a `main` commit
+    # that already contains this workflow. A `v*` tag on an older commit
+    # silently does not deploy.
+    tags: ['v[0-9]*']
   # #117: manual dispatch so the develop-path hardening (prod dist reuse,
   # byte-drift check, dual smoke probe) can be exercised without a code push.
   # Dispatching from any OTHER branch skips cleanly via the build job's ref
@@ -10,18 +30,47 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# One deploy run at a time — but note the semantics: this group
+# CANCEL-SUPERSEDES, it does not queue. A newer run cancels the in-flight one,
+# and `cancel-in-progress: false` would not change the release hazard either
+# (a merely PENDING run is still cancelled when a newer one queues).
+# #197 hazard, since release tag runs share this group: at a cut the tag run
+# cancels the still-running merge run, and a back-merge push landing inside
+# that window cancels the tag run — then NEITHER release run deployed and
+# production keeps serving the PREVIOUS release's bytes, signalled only by a
+# grey "cancelled", never a red. A ref-conditional group
+# (`pages-release` for tag runs) WOULD fix that structurally; it was evaluated
+# and REJECTED, because it lets two runs reach actions/deploy-pages
+# concurrently — Pages can reject an in-flight deployment, and last-writer-wins
+# transiently regresses /uat/ — i.e. it introduces an unproven failure mode
+# into production deploy machinery in the very change that alters its
+# triggers, to protect bytes that are identical either way. The control is the
+# release runbook instead: `.claude/skills/release/SKILL.md` step 5b makes
+# "wait for the tag deploy to go GREEN before back-merging" a mechanical,
+# verified step.
 concurrency: { group: pages, cancel-in-progress: true }
 jobs:
   build:
-    # Ref guard: only main/develop ever deploy (mirrors the github-pages
-    # environment branch policy, #96). A workflow_dispatch from any other
-    # branch skips the whole run (dependent jobs skip with `needs`).
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    # Ref guard: only main/develop/release tags ever deploy (mirrors the
+    # github-pages environment deployment policies — branch entries for
+    # main+develop, #96, plus a TAG entry for `v*`, #197; that policy is
+    # deliberately the permissive one, this guard is the narrowing gate).
+    # The tag clause is `event_name == 'push'` AND the `v` prefix: for a push,
+    # GitHub has ALREADY matched the `v[0-9]*` glob above before starting the
+    # run, so this composite admits exactly the release-shaped tag pushes —
+    # expressions have no regex, and enumerating `refs/tags/v0`..`v9` would be
+    # ten ways to typo a digit. It also declines a workflow_dispatch aimed at a
+    # TAG (no use case: the documented escape hatch is a dispatch on `main`,
+    # which the first clause covers). Any other ref skips the whole run
+    # (dependent jobs skip with `needs`).
+    if: >-
+      github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+      || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       # actions: read — the byte-stability step (#117b) looks up the last
-      # main-triggered run and downloads its prod-manifest artifact.
+      # main-mode run and downloads its prod-manifest artifact.
       actions: read
     outputs:
       prod-archive-files: ${{ steps.probe-target.outputs.prod-files }}
@@ -31,18 +80,30 @@ jobs:
       # assembles BOTH refs regardless of which one triggered it: main -> the
       # site root (production, unchanged), develop -> /uat/ (unreleased-state
       # preview). This deliberately couples the two deploys; the concurrency
-      # group above still serializes overlapping main+develop pushes so two
-      # partial artifacts can't race.
+      # group above still admits only one run at a time, so two partial
+      # artifacts can't race (it cancels rather than queues — see there).
+      # #197: a release-tag-triggered run is no
+      # exception — it assembles the same two refs from their BRANCH tips; the
+      # only thing the tag changes is that `git describe` now resolves to the
+      # clean release version inside the prod build.
       # #117a: develop-triggered runs no longer REBUILD the main ref by
       # default — they reuse a cached, validated prod dist keyed on the main
       # sha (restore/validate steps below), making a develop push
       # structurally incapable of altering production bytes. Cache miss or
       # failed validation falls back to a full rebuild, loudly, followed by a
       # byte-drift check against the last main-authored manifest (#117b).
-      # #125: fetch-depth: 0 (full history + tags) on BOTH checkouts so each
-      # build's `git describe --tags --always` (app/vite.config.ts, the
-      # __SC_APP_VERSION__ define) yields a tag-relative version rather than
-      # degrading to a bare short SHA on a shallow, tagless checkout.
+      # #125: fetch-depth: 0 (full history + tags — actions/checkout fetches
+      # `+refs/tags/*:refs/tags/*` in the all-history mode) on BOTH checkouts
+      # so each build's `git describe --tags --always` (app/vite.config.ts,
+      # the __SC_APP_VERSION__ define) yields a tag-relative version rather
+      # than degrading to a bare short SHA on a shallow, tagless checkout.
+      # #197: that tag fetch is also what makes the tag trigger work — on a
+      # tag-triggered run the release tag already exists on the remote, so
+      # the `main` checkout below sees it and `git describe` resolves to the
+      # clean vX.Y.Z. Note both checkouts stay pinned to the BRANCH refs even
+      # on a tag-triggered run: the tag is a release MARKER (a timing signal),
+      # never the content selector — building the tag's commit instead of the
+      # main tip would silently roll production back if main had moved on.
       - name: Checkout main (production, site root)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with: { ref: main, path: build-main, fetch-depth: 0 }
@@ -69,19 +130,46 @@ jobs:
           # distinct manifest name/id — the production build below never
           # sets this, so its output stays byte-for-byte unchanged by #96.
           SC_DEPLOY_ENV: uat
-      - name: Resolve run mode and main sha
+      - name: Resolve run mode, main sha and prod version
         id: refs
         working-directory: build-main
         run: |
           main_sha="$(git rev-parse HEAD)"
-          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then
-            mode=develop
-          else
-            mode=main
-          fi
-          echo "main-sha=$main_sha" >> "$GITHUB_OUTPUT"
-          echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "Run mode: $mode (main ref at $main_sha)"
+          # #197: the exact string app/vite.config.ts bakes into
+          # __SC_APP_VERSION__ for the PROD build (same command, same repo,
+          # same HEAD — vite runs it from build-main/app, which resolves to
+          # this repo root). It is a build INPUT that is NOT a function of
+          # main_sha alone: pushing vX.Y.Z at an ALREADY-BUILT main commit
+          # changes `git describe`'s answer for that same commit, so the same
+          # sha legitimately maps to two different prod dists over time.
+          # Every prod-bytes identity below (cache key, drift baseline) is
+          # therefore keyed on (main_sha, prod_version), never main_sha alone
+          # — otherwise a pre-tag cache entry (immutable key!) would either
+          # shadow the release build forever or drift-red every later run.
+          prod_version="$(git describe --tags --always)"
+          # Cache keys are a restricted alphabet; keep the readable version in
+          # the key but strip anything exotic a tag name could carry.
+          version_key="$(printf '%s' "$prod_version" | tr -c 'A-Za-z0-9._-' '_')"
+          # #197: a tag ref is a MAIN-mode run — same content (the main branch
+          # tip checked out above), same determinism proof, same authoritative
+          # drift baseline. Unknown refs fail loudly rather than defaulting
+          # into main mode, which is what the old if/else did. Shell globs DO
+          # have character classes, so this is where the release shape is
+          # matched exactly: a tag that reached here without matching
+          # `v[0-9]*` means the trigger glob and the guards drifted apart, and
+          # that must fail, not deploy.
+          case "$GITHUB_REF" in
+            refs/heads/develop) mode=develop ;;
+            refs/heads/main | refs/tags/v[0-9]*) mode=main ;;
+            *) echo "::error::unexpected ref $GITHUB_REF reached the build job — the ref guard and this case statement disagree"; exit 1 ;;
+          esac
+          {
+            echo "main-sha=$main_sha"
+            echo "mode=$mode"
+            echo "prod-version=$prod_version"
+            echo "version-key=$version_key"
+          } >> "$GITHUB_OUTPUT"
+          echo "Run mode: $mode (ref $GITHUB_REF; main ref at $main_sha; prod version $prod_version)"
       # #117b: fetch the newest main-authored drift baseline for THIS main
       # sha up front (develop-triggered runs only) — BOTH consumers below
       # need it: the REUSE path re-validates the cached dist against it (a
@@ -89,25 +177,44 @@ jobs:
       # a cache can never shadow a later main-authored baseline for the same
       # sha), and the REBUILD path enforces byte-stability with it. Not
       # retrievable -> found=false, handled loudly downstream.
+      # #197: the baseline's identity is (main sha, prod version), see the
+      # refs step — a candidate must match BOTH. At a release cut the merge
+      # push and the tag push each record a baseline for the SAME main sha;
+      # only the one whose version matches what this run's checkout describes
+      # is authoritative. A version mismatch is NOT drift, it is a different
+      # build input, so it must never be diffed as drift.
       - name: Fetch main-authored drift baseline
         id: baseline
         if: steps.refs.outputs.mode == 'develop'
         env:
           GH_TOKEN: ${{ github.token }}
           MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
+          PROD_VERSION: ${{ steps.refs.outputs.prod-version }}
         run: |
           found=false
-          if run_ids="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?branch=main&head_sha=$MAIN_SHA&per_page=10" --jq '.workflow_runs[].id')"; then
+          # #197: no `branch=main` filter — a TAG-triggered run's head_branch
+          # is the tag name, so that filter would hide exactly the run that
+          # recorded the RELEASE baseline. head_sha alone is sound: only
+          # mode==main runs (main push, tag push, main dispatch) ever upload a
+          # prod-manifest, and every candidate is still verified against both
+          # main-sha.txt and version.txt below.
+          if run_ids="$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?head_sha=$MAIN_SHA&per_page=10" --jq '.workflow_runs[].id')"; then
             for rid in $run_ids; do
               art_id="$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$rid/artifacts" --jq '[.artifacts[] | select(.name == "prod-manifest" and .expired == false)][0].id // empty' || true)"
               [ -n "$art_id" ] || continue
+              # Fresh extraction dir per candidate: `unzip -o` overwrites but
+              # never removes, so a previous candidate's version.txt must not
+              # be able to survive into the next candidate's check.
+              rm -rf baseline-manifest
               if gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$art_id/zip" > baseline.zip && unzip -o -q baseline.zip -d baseline-manifest; then
-                if [ "$(cat baseline-manifest/main-sha.txt 2>/dev/null)" = "$MAIN_SHA" ]; then
+                art_sha="$(cat baseline-manifest/main-sha.txt 2>/dev/null || true)"
+                art_version="$(cat baseline-manifest/version.txt 2>/dev/null || true)"
+                if [ "$art_sha" = "$MAIN_SHA" ] && [ "$art_version" = "$PROD_VERSION" ]; then
                   found=true
-                  echo "Drift baseline: prod-manifest artifact of main-triggered run $rid (main@$MAIN_SHA)."
+                  echo "Drift baseline: prod-manifest artifact of main-mode run $rid (main@$MAIN_SHA, version $PROD_VERSION)."
                   break
                 fi
-                echo "run $rid artifact is for a different main sha — skipping"
+                echo "run $rid artifact is for a different main sha/version (sha '$art_sha', version '$art_version') — skipping"
               else
                 echo "run $rid artifact download/unzip failed — skipping"
               fi
@@ -116,7 +223,13 @@ jobs:
             echo "workflow-run lookup failed (API error)"
           fi
           echo "found=$found" >> "$GITHUB_OUTPUT"
-          [ "$found" = "true" ] || echo "No main-authored prod manifest retrievable for main@$MAIN_SHA (none recorded yet, expired, or API error)."
+          if [ "$found" != "true" ]; then
+            # Leave nothing a later consumer could mistake for a baseline: both
+            # consumers gate on found, but a rejected candidate's manifest must
+            # not be lying around on disk for one of them to diff by accident.
+            rm -rf baseline-manifest
+            echo "No main-authored prod manifest retrievable for main@$MAIN_SHA at version $PROD_VERSION (none recorded yet, expired, pre-#197 artifact without version.txt, or API error)."
+          fi
       # #117a: restore the prod dist built at THIS main sha. Saved by earlier
       # develop-triggered runs (below) — develop is the DEFAULT branch, so
       # its cache scope is visible to every run; a main-scoped save would be
@@ -125,13 +238,21 @@ jobs:
       # ARTIFACT instead (#117b). Deliberately NO restore-keys: a prefix
       # match from a DIFFERENT main sha must never be republished as
       # production content.
+      # #197: the key carries the prod VERSION as well (v1 -> v2), because a
+      # tag push changes the prod bytes at an unchanged main sha. Cache keys
+      # are immutable, so a sha-only key would let the pre-tag entry outlive
+      # the release: it could never be replaced, and every later run would
+      # either republish the untagged version (whenever the baseline was
+      # unretrievable) or burn a full rebuild. A version-qualified key turns
+      # that into a clean miss. Pre-#197 `prod-dist-v1-*` entries simply go
+      # unreferenced and age out.
       - name: Restore cached prod dist (develop-triggered runs only)
         id: prod-cache
         if: steps.refs.outputs.mode == 'develop'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: prod-dist-cache
-          key: prod-dist-v1-${{ steps.refs.outputs.main-sha }}
+          key: prod-dist-v2-${{ steps.refs.outputs.main-sha }}-${{ steps.refs.outputs.version-key }}
       # #117a fail-safe: NEVER assemble unverified cached bytes into the
       # production root. Full per-file sha256 manifest verification plus
       # sanity checks (expected top-level entries, no files beyond the
@@ -199,7 +320,7 @@ jobs:
           npm ci
           npm run build
           echo "built=true" >> "$GITHUB_OUTPUT"
-      # #117b: determinism proof on main-triggered runs (releases are rare, a
+      # #117b: determinism proof on main-mode runs (releases are rare, a
       # second build is cheap there). The reuse + drift scheme assumes one
       # commit -> one byte-exact dist (#129's __SC_APP_VERSION__ define is
       # describe-based, no --dirty, deterministic per commit); if two builds
@@ -222,46 +343,62 @@ jobs:
         if: steps.build-main.outputs.built == 'true'
         env:
           MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
+          PROD_VERSION: ${{ steps.refs.outputs.prod-version }}
         run: |
           mkdir -p prod-manifest
           (cd build-main/app/dist && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > prod-manifest/manifest.sha256
           printf '%s\n' "$MAIN_SHA" > prod-manifest/main-sha.txt
-          echo "Recorded $(wc -l < prod-manifest/manifest.sha256) file hashes for main@$MAIN_SHA"
-      # #117b: main-triggered runs publish the manifest as the authoritative
-      # drift baseline (artifacts are branch-agnostic — see the cache-scope
-      # comment above for why this is not a cache).
-      - name: Publish drift baseline (main-triggered runs only)
+          # #197: version.txt completes the baseline's identity — see the refs
+          # step. Consumers require sha AND version to match.
+          printf '%s\n' "$PROD_VERSION" > prod-manifest/version.txt
+          echo "Recorded $(wc -l < prod-manifest/manifest.sha256) file hashes for main@$MAIN_SHA (version $PROD_VERSION)"
+      # #117b: main-MODE runs publish the manifest as the authoritative drift
+      # baseline (artifacts are branch-agnostic — see the cache-scope comment
+      # above for why this is not a cache). #197: that now includes
+      # tag-triggered runs, which is what re-establishes a baseline for the
+      # tagged prod bytes at a release cut — the step the manual post-tag
+      # deploy re-run used to perform by hand.
+      - name: Publish drift baseline (main-mode runs only)
         if: steps.refs.outputs.mode == 'main'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: prod-manifest
           path: prod-manifest/
       # #117b: a develop-triggered run that DID rebuild the main ref must
-      # prove the rebuild is byte-identical to what the last main-triggered
-      # run built (baseline fetched above) — drift fails the run LOUDLY
-      # instead of silently republishing altered production bytes. No
-      # baseline available (first run after this workflow change, expired
-      # artifact, API error) -> proceed with a loud warning; the next
-      # main-triggered run records a fresh baseline.
-      - name: Enforce byte-stability vs last main-triggered build
+      # prove the rebuild is byte-identical to what the last main-mode run
+      # built (baseline fetched above) — drift fails the run LOUDLY instead
+      # of silently republishing altered production bytes. No baseline
+      # available (none recorded for this (sha, version) yet, expired
+      # artifact, API error) -> proceed with a loud warning.
+      # That state does NOT self-heal: only a MAIN-MODE run publishes a
+      # baseline, and no main-mode run happens on its own between releases.
+      # So every develop deploy until the next main-mode run repeats the same
+      # rebuild-and-publish-unverified cycle (no cache save either, since the
+      # save is gated on baseline-verified), and for that whole interval
+      # #117a's invariant — a develop push is structurally incapable of
+      # altering production bytes — is SUSPENDED. Whenever the baseline
+      # FORMAT or key changes, dispatch a main-mode run immediately:
+      #   gh workflow run deploy.yml --ref main
+      - name: Enforce byte-stability vs last main-mode build
         id: drift
         if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true'
         env:
           BASELINE_FOUND: ${{ steps.baseline.outputs.found }}
           MAIN_SHA: ${{ steps.refs.outputs.main-sha }}
+          PROD_VERSION: ${{ steps.refs.outputs.prod-version }}
         run: |
           if [ "$BASELINE_FOUND" != "true" ]; then
             echo "baseline-verified=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (first run after this workflow change, expired artifact, or API error), and NOT caching it. A main-triggered run (release, or a workflow_dispatch on main) records a baseline."
+            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA at version $PROD_VERSION — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (none recorded for this sha+version yet, expired artifact, pre-#197 baseline without version.txt, a release tag whose deploy run never finished, or API error), and NOT caching it. This does NOT self-heal: only a main-mode run publishes a baseline, so EVERY develop deploy until then repeats this and republishes production from unverified rebuilt bytes. Fix it now with: gh workflow run deploy.yml --ref main"
             exit 0
           fi
           if ! diff -u baseline-manifest/manifest.sha256 prod-manifest/manifest.sha256 > drift.diff; then
             head -100 drift.diff
-            echo "::error::#117b PROD BYTE DRIFT: rebuilding main@$MAIN_SHA on this develop-triggered run produced bytes that DIFFER from the last main-triggered production build (diff above). Refusing to publish drifted production content — find the toolchain/dependency nondeterminism first."
+            echo "::error::#117b PROD BYTE DRIFT: rebuilding main@$MAIN_SHA on this develop-triggered run produced bytes that DIFFER from the last main-mode production build (diff above). Refusing to publish drifted production content — find the toolchain/dependency nondeterminism first."
             exit 1
           fi
           echo "baseline-verified=true" >> "$GITHUB_OUTPUT"
-          echo "Byte-stability verified: rebuilt prod dist is identical to the last main-triggered build ($(wc -l < prod-manifest/manifest.sha256) files)."
+          echo "Byte-stability verified: rebuilt prod dist is identical to the last main-mode build ($(wc -l < prod-manifest/manifest.sha256) files)."
       # #117a: cache the rebuild so future develop-triggered runs skip the
       # prod rebuild entirely — but ONLY when it was verified against a
       # main-authored baseline (baseline-verified above). The cache key is
@@ -283,7 +420,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: prod-dist-cache
-          key: prod-dist-v1-${{ steps.refs.outputs.main-sha }}
+          key: prod-dist-v2-${{ steps.refs.outputs.main-sha }}-${{ steps.refs.outputs.version-key }}
       - name: Assemble combined Pages artifact
         id: assemble
         env:
@@ -333,19 +470,24 @@ jobs:
   # --- Deployments-UI semantics (#117c, #127) --------------------------------
   # actions/deploy-pages ALWAYS records into the platform-managed
   # `github-pages` environment with the TRIGGERING ref's sha — Pages serves
-  # one artifact per origin, so that history interleaves main- and
-  # develop-triggered entries and "refreshes" on every develop push. That is
-  # inherent to the Pages single-artifact model, NOT an accidental prod
-  # redeploy (and with #117a a develop-triggered entry's site root is
+  # one artifact per origin, so that history interleaves main-, develop- and
+  # (since #197) tag-triggered entries and "refreshes" on every develop push.
+  # That is inherent to the Pages single-artifact model, NOT an accidental
+  # prod redeploy (and with #117a a develop-triggered entry's site root is
   # assembled from the validated cached prod dist — structurally unchanged
   # bytes). Read deployment history via the bookkeeping environments instead:
   #   uat  (#106) — develop-triggered runs, /uat/ URL
-  #   prod (#127) — main-triggered runs, production URL
+  #   prod (#127, #197) — main- and `v*` tag-triggered runs, production URL
   # Do NOT rename the deploy job's `github-pages` environment to `prod`: that
   # env is auto-created and owned by the Pages settings, and the
   # actions/deploy-pages OIDC flow is tied to it (the #127 spike concluded a
-  # rename is a platform trap). Its BRANCH POLICY (main+develop allowlisted,
-  # repo Settings not YAML, #96) also lives on that env.
+  # rename is a platform trap). Its DEPLOYMENT POLICY (repo Settings, not
+  # YAML) also lives on that env and gates by TRIGGERING REF: branch entries
+  # `main` + `develop` (#96) plus a TAG entry `v*` (#197). Without that tag
+  # entry a `v*`-triggered run builds fine and then has its deploy job
+  # rejected with "not allowed to deploy" — the YAML alone cannot enable it:
+  #   gh api repos/DocGerd/sail_command/environments/github-pages/deployment-branch-policies \
+  #     -f name='v*' -f type=tag
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -363,9 +505,10 @@ jobs:
     # already redeploys /uat/ regardless of which branch triggered it (see
     # the build job's comment). Gating this record to develop-triggered runs
     # keeps the "uat" Deployments-UI history keyed to actual develop pushes —
-    # a main-triggered run rebuilds the SAME develop tip into /uat/ (identical
-    # content) but its run SHA is a main commit, and recording that here would
-    # pollute the uat history with main SHAs for content that didn't change.
+    # a main- or tag-triggered run rebuilds the SAME develop tip into /uat/
+    # (identical content) but its run SHA is a main commit, and recording that
+    # here would pollute the uat history with main SHAs for content that
+    # didn't change.
     if: github.ref == 'refs/heads/develop'
     environment: { name: uat, url: "https://docgerd.github.io/sail_command/uat/" }
     steps:
@@ -374,12 +517,20 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     # #127 (fallback pattern, mirroring uat-environment/#106): bookkeeping
-    # only — main-triggered runs record a `prod` env entry with the
+    # only — main-mode runs record a `prod` env entry with the
     # production URL so production deploy history is legible at a glance,
     # without renaming the platform-managed `github-pages` env (see the
     # semantics comment above). The env auto-creates on the first
-    # main-triggered run with no protection rules, like `uat` did.
-    if: github.ref == 'refs/heads/main'
+    # main-mode run with no protection rules, like `uat` did.
+    # #197: release-tag runs record one too — they are the run that publishes
+    # the RELEASE bytes, so omitting them would leave every release missing
+    # from the prod history. A release cut therefore records two prod entries
+    # (merge push, then tag push); the tag one is the authoritative version.
+    # Same composite as the build guard — see there for why it is not a
+    # digit enumeration.
+    if: >-
+      github.ref == 'refs/heads/main'
+      || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     environment: { name: prod, url: "https://docgerd.github.io/sail_command/" }
     steps:
       - run: echo "Production deployed to https://docgerd.github.io/sail_command/"
