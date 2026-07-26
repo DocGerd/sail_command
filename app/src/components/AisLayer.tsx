@@ -19,8 +19,12 @@ export const AIS_LABEL_LAYER = 'sc-ais-labels';
 // pattern — imported so a rename can't silently drop the ordering).
 export const AIS_STACK_BOTTOM_LAYER = AIS_VECTOR_LAYER;
 
-const ARROW_IMAGE = 'sc-ais-arrow';
-const DOT_IMAGE = 'sc-ais-dot';
+// Exported (alongside registerAisImages below) so the #192 registration
+// contract — canvas size, pixelRatio, and the scale transform, mirroring
+// seamarkGlyphs.ts's registerSeamarkImages coverage — can be unit-tested
+// directly rather than only through the no-canvas-backend component mount.
+export const ARROW_IMAGE = 'sc-ais-arrow';
+export const DOT_IMAGE = 'sc-ais-dot';
 const AIS_COLOR = '#009E73'; // Okabe-Ito green, distinct from BoatMarker's blue
 
 // #192: LOGICAL_SIZE is the coordinate space the arrow/dot geometry below is
@@ -38,7 +42,8 @@ const PIXEL_RATIO = 2;
 // A crisp directional arrow + a neutral dot, registered as map images so the
 // symbol layer can rotate the arrow via icon-rotate. Built on a canvas (no DOM
 // image fetch); skipped where there's no 2D backend (jsdom).
-function registerAisImages(map: MaplibreMap): void {
+// eslint-disable-next-line react-refresh/only-export-components
+export function registerAisImages(map: MaplibreMap): void {
   const scale = CANVAS_SIZE / LOGICAL_SIZE;
   const size = LOGICAL_SIZE;
   if (!map.hasImage(ARROW_IMAGE)) {

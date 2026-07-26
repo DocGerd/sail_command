@@ -66,4 +66,13 @@ describe('SEAMARKS_LAYOUT (#144 priority-culled, zoom-sized seamark icons)', () 
       0.85,
     ]);
   });
+
+  // #191/#192 review: the enlarged raster (24->32 logical px natural
+  // footprint) grows the below-z12 collision box (icon box + icon-padding)
+  // and measurably culls more marks at the same zoom. Zeroing the padding
+  // (MapLibre default 2px/side) claws back part of that growth without
+  // touching the z12 overlap threshold or the icon-size taper.
+  it('drops icon-padding to 0 (MapLibre default 2px/side) to offset the #191 collision-box growth', () => {
+    expect(SEAMARKS_LAYOUT['icon-padding']).toBe(0);
+  });
 });
