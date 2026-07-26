@@ -376,8 +376,22 @@ jobs:
       # rebuild-and-publish-unverified cycle (no cache save either, since the
       # save is gated on baseline-verified), and for that whole interval
       # #117a's invariant — a develop push is structurally incapable of
-      # altering production bytes — is SUSPENDED. Whenever the baseline
-      # FORMAT or key changes, dispatch a main-mode run immediately:
+      # altering production bytes — is SUSPENDED. This is a green,
+      # expected-and-harmless state, not a fault: prod still ships correct
+      # bytes because the main-mode double-build above is the determinism
+      # proof; only the cross-run byte-drift CHECK is unavailable.
+      # Whenever the baseline FORMAT or key changes (as in #197), a
+      # `--ref main` dispatch is what re-establishes a baseline early — but
+      # ONLY once `main` already contains that change: workflow_dispatch
+      # resolves the workflow FILE from the dispatched ref's tip, so
+      # dispatched before the change has reached `main` (e.g. right after the
+      # format-changing PR merges to `develop` — the tempting but wrong
+      # moment), it runs the OLD workflow and publishes the OLD baseline
+      # shape, changing nothing (measured on #197: such a dispatch published
+      # a baseline artifact with no version.txt). The degraded interval above
+      # therefore lasts until the change reaches `main` at the next
+      # develop→main release cut, and ends on its own at that point — only
+      # from then on is this worth running:
       #   gh workflow run deploy.yml --ref main
       - name: Enforce byte-stability vs last main-mode build
         id: drift
@@ -389,7 +403,7 @@ jobs:
         run: |
           if [ "$BASELINE_FOUND" != "true" ]; then
             echo "baseline-verified=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA at version $PROD_VERSION — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (none recorded for this sha+version yet, expired artifact, pre-#197 baseline without version.txt, a release tag whose deploy run never finished, or API error), and NOT caching it. This does NOT self-heal: only a main-mode run publishes a baseline, so EVERY develop deploy until then repeats this and republishes production from unverified rebuilt bytes. Fix it now with: gh workflow run deploy.yml --ref main"
+            echo "::warning::#117b no main-authored prod manifest available for main@$MAIN_SHA at version $PROD_VERSION — proceeding with the freshly built prod dist WITHOUT a byte-drift baseline (none recorded for this sha+version yet, expired artifact, pre-#197 baseline without version.txt, a release tag whose deploy run never finished, or API error), and NOT caching it. This does NOT self-heal: only a main-mode run publishes a baseline, so EVERY develop deploy until then repeats this and republishes production from unverified rebuilt bytes (still correct bytes — the determinism double-build proves that; only the cross-run drift check is unavailable). Dispatching gh workflow run deploy.yml --ref main only fixes this once main already contains whatever changed the baseline format/key — a dispatch resolves the workflow file from its target ref, so run before that it is a no-op. If the change is still only on develop, this is expected and green; it clears itself at the next release cut."
             exit 0
           fi
           if ! diff -u baseline-manifest/manifest.sha256 prod-manifest/manifest.sha256 > drift.diff; then
