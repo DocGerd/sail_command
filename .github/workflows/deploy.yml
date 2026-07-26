@@ -70,7 +70,7 @@ jobs:
     permissions:
       contents: read
       # actions: read — the byte-stability step (#117b) looks up the last
-      # main-triggered run and downloads its prod-manifest artifact.
+      # main-mode run and downloads its prod-manifest artifact.
       actions: read
     outputs:
       prod-archive-files: ${{ steps.probe-target.outputs.prod-files }}
@@ -320,7 +320,7 @@ jobs:
           npm ci
           npm run build
           echo "built=true" >> "$GITHUB_OUTPUT"
-      # #117b: determinism proof on main-triggered runs (releases are rare, a
+      # #117b: determinism proof on main-mode runs (releases are rare, a
       # second build is cheap there). The reuse + drift scheme assumes one
       # commit -> one byte-exact dist (#129's __SC_APP_VERSION__ define is
       # describe-based, no --dirty, deterministic per commit); if two builds
@@ -379,7 +379,7 @@ jobs:
       # altering production bytes — is SUSPENDED. Whenever the baseline
       # FORMAT or key changes, dispatch a main-mode run immediately:
       #   gh workflow run deploy.yml --ref main
-      - name: Enforce byte-stability vs last main-triggered build
+      - name: Enforce byte-stability vs last main-mode build
         id: drift
         if: steps.refs.outputs.mode == 'develop' && steps.build-main.outputs.built == 'true'
         env:
@@ -394,11 +394,11 @@ jobs:
           fi
           if ! diff -u baseline-manifest/manifest.sha256 prod-manifest/manifest.sha256 > drift.diff; then
             head -100 drift.diff
-            echo "::error::#117b PROD BYTE DRIFT: rebuilding main@$MAIN_SHA on this develop-triggered run produced bytes that DIFFER from the last main-triggered production build (diff above). Refusing to publish drifted production content — find the toolchain/dependency nondeterminism first."
+            echo "::error::#117b PROD BYTE DRIFT: rebuilding main@$MAIN_SHA on this develop-triggered run produced bytes that DIFFER from the last main-mode production build (diff above). Refusing to publish drifted production content — find the toolchain/dependency nondeterminism first."
             exit 1
           fi
           echo "baseline-verified=true" >> "$GITHUB_OUTPUT"
-          echo "Byte-stability verified: rebuilt prod dist is identical to the last main-triggered build ($(wc -l < prod-manifest/manifest.sha256) files)."
+          echo "Byte-stability verified: rebuilt prod dist is identical to the last main-mode build ($(wc -l < prod-manifest/manifest.sha256) files)."
       # #117a: cache the rebuild so future develop-triggered runs skip the
       # prod rebuild entirely — but ONLY when it was verified against a
       # main-authored baseline (baseline-verified above). The cache key is
@@ -517,11 +517,11 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     # #127 (fallback pattern, mirroring uat-environment/#106): bookkeeping
-    # only — main-triggered runs record a `prod` env entry with the
+    # only — main-mode runs record a `prod` env entry with the
     # production URL so production deploy history is legible at a glance,
     # without renaming the platform-managed `github-pages` env (see the
     # semantics comment above). The env auto-creates on the first
-    # main-triggered run with no protection rules, like `uat` did.
+    # main-mode run with no protection rules, like `uat` did.
     # #197: release-tag runs record one too — they are the run that publishes
     # the RELEASE bytes, so omitting them would leave every release missing
     # from the prod history. A release cut therefore records two prod entries

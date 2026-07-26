@@ -66,17 +66,34 @@ see the comment above `concurrency:` in `deploy.yml`.)
 Both checks must pass before step 6:
 
 **1. The tag-triggered run reached `success`** — "not failed" is not enough,
-cancelled is the failure mode here. Both release runs share the tag commit's
-SHA, so list them and read the NEWEST one (it is the tag run):
+cancelled is the failure mode here. Several runs share the tag commit's SHA, so
+select the newest **push** run:
 
 ```bash
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 TAG=v0.5.0
 SHA=$(git rev-parse "$TAG^{commit}")
 gh api "repos/$REPO/actions/workflows/deploy.yml/runs?head_sha=$SHA" \
-  --jq '.workflow_runs[] | {id, head_branch, event, created_at, status, conclusion}'
-# newest entry must be: status=completed, conclusion=success
+  --jq '[.workflow_runs[] | select(.event == "push")][0]
+        | {id, head_branch, event, created_at, status, conclusion}'
+# must be: status=completed, conclusion=success — and head_branch == $TAG
 ```
+
+Why `select(.event == "push")` and not simply the newest run at that SHA:
+
+- the **`--ref main` dispatch below shares this SHA** (main's tip *is* the tag
+  commit) and sorts NEWER than the tag run. Reading the newest run would report
+  the dispatch's `success` and green-light the back-merge past a **cancelled
+  tag run** — precisely the failure this step exists to catch. It is
+  `workflow_dispatch`, so the filter excludes it;
+- the **merge-push run** shares the SHA and is also `push`, but it was created
+  before the tag run, so "newest push" still resolves to the tag run;
+- a **re-run** replays the original event, so a re-run tag run stays `push` and
+  stays selectable (its `conclusion` reflects the latest attempt).
+
+`head_branch` is printed as a cross-check, not used for selection: if it is not
+`$TAG`, something else pushed at this SHA — stop and investigate rather than
+back-merging.
 
 **2. Production actually serves the clean tag.** Open
 `https://docgerd.github.io/sail_command/` in a real browser (hard-reload — the
