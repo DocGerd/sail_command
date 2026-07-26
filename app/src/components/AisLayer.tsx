@@ -19,21 +19,40 @@ export const AIS_LABEL_LAYER = 'sc-ais-labels';
 // pattern — imported so a rename can't silently drop the ordering).
 export const AIS_STACK_BOTTOM_LAYER = AIS_VECTOR_LAYER;
 
-const ARROW_IMAGE = 'sc-ais-arrow';
-const DOT_IMAGE = 'sc-ais-dot';
+// Exported (alongside registerAisImages below) so the #192 registration
+// contract — canvas size, pixelRatio, and the scale transform, mirroring
+// seamarkGlyphs.ts's registerSeamarkImages coverage — can be unit-tested
+// directly rather than only through the no-canvas-backend component mount.
+export const ARROW_IMAGE = 'sc-ais-arrow';
+export const DOT_IMAGE = 'sc-ais-dot';
 const AIS_COLOR = '#009E73'; // Okabe-Ito green, distinct from BoatMarker's blue
+
+// #192: LOGICAL_SIZE is the coordinate space the arrow/dot geometry below is
+// expressed in (unchanged, so the arrow's proportions — nose/wings — stay
+// identical). CANVAS_SIZE is the actual raster resolution registered with
+// the map, matched by PIXEL_RATIO so the resulting natural footprint
+// (CANVAS_SIZE / PIXEL_RATIO = 32 logical px) is 2x the pre-#192 16px —
+// comparable to seamarkGlyphs.ts's #191 resize (also natural 32) — while a
+// canvas-transform scale (not just a bigger icon-size multiplier) keeps the
+// glyph crisp instead of an upscaled blur of the old 32px bitmap.
+const LOGICAL_SIZE = 32;
+const CANVAS_SIZE = 64;
+const PIXEL_RATIO = 2;
 
 // A crisp directional arrow + a neutral dot, registered as map images so the
 // symbol layer can rotate the arrow via icon-rotate. Built on a canvas (no DOM
 // image fetch); skipped where there's no 2D backend (jsdom).
-function registerAisImages(map: MaplibreMap): void {
-  const size = 32;
+// eslint-disable-next-line react-refresh/only-export-components
+export function registerAisImages(map: MaplibreMap): void {
+  const scale = CANVAS_SIZE / LOGICAL_SIZE;
+  const size = LOGICAL_SIZE;
   if (!map.hasImage(ARROW_IMAGE)) {
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = CANVAS_SIZE;
+    canvas.height = CANVAS_SIZE;
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      ctx.scale(scale, scale);
       ctx.beginPath();
       ctx.moveTo(size / 2, 3); // bow (points "up" = 0°, rotated by icon-rotate)
       ctx.lineTo(size - 7, size - 5);
@@ -45,15 +64,18 @@ function registerAisImages(map: MaplibreMap): void {
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
-      map.addImage(ARROW_IMAGE, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
+      map.addImage(ARROW_IMAGE, ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE), {
+        pixelRatio: PIXEL_RATIO,
+      });
     }
   }
   if (!map.hasImage(DOT_IMAGE)) {
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = CANVAS_SIZE;
+    canvas.height = CANVAS_SIZE;
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      ctx.scale(scale, scale);
       ctx.beginPath();
       ctx.arc(size / 2, size / 2, 6, 0, 2 * Math.PI);
       ctx.fillStyle = AIS_COLOR;
@@ -61,7 +83,9 @@ function registerAisImages(map: MaplibreMap): void {
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
-      map.addImage(DOT_IMAGE, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
+      map.addImage(DOT_IMAGE, ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE), {
+        pixelRatio: PIXEL_RATIO,
+      });
     }
   }
 }

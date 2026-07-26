@@ -5,6 +5,9 @@ import AisLayer, {
   AIS_SOURCE,
   AIS_VECTOR_LAYER,
   AIS_VESSEL_LAYER,
+  ARROW_IMAGE,
+  DOT_IMAGE,
+  registerAisImages,
 } from './AisLayer';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import type { AisTargetSnapshot } from '../lib/aisTargets';
@@ -147,5 +150,130 @@ describe('AisLayer style reload (#153)', () => {
     simulateStyleReload(map);
     expect(map.sources.size).toBe(0);
     expect(map.layers.size).toBe(0);
+  });
+});
+
+// #192 review (finding 4): registerAisImages had zero contract coverage even
+// though this PR is the one that changed it — jsdom's canvas getContext is
+// globally stubbed to null (src/test/setup.ts), which is why every test above
+// treats image registration as an opaque no-op. Same technique as
+// seamarkGlyphs.test.ts's registerSeamarkImages tests: spy document.createElement
+// so it hands back a recording fake 2D context instead of the real (null) one.
+describe('registerAisImages (#192 canvas/pixelRatio/scale registration contract)', () => {
+  // Hand-derived from AisLayer.tsx's own constants (LOGICAL_SIZE=32,
+  // CANVAS_SIZE=64) — not read back from the implementation. Every
+  // coordinate below is LOGICAL_SIZE=32 geometry (bow/wings for the arrow,
+  // centre+radius for the dot); the scale factor every drawn image must
+  // apply, exactly once, before any path op.
+  const AIS_SCALE = 64 / 32;
+  const EXPECTED_OPS = [
+    // Arrow: moveTo(16,3) -> lineTo(25,27) -> lineTo(16,21) -> lineTo(7,27) -> close -> fill -> stroke.
+    `scale:${AIS_SCALE},${AIS_SCALE}`,
+    'begin',
+    'M16,3',
+    'L25,27',
+    'L16,21',
+    'L7,27',
+    'close',
+    'fill',
+    'stroke',
+    // Dot: arc(16,16,6) -> fill -> stroke.
+    `scale:${AIS_SCALE},${AIS_SCALE}`,
+    'begin',
+    'A16,16,6',
+    'fill',
+    'stroke',
+  ];
+
+  function recordingAisContext(log: string[]): CanvasRenderingContext2D {
+    const ctx = {
+      scale: (x: number, y: number) => log.push(`scale:${x},${y}`),
+      beginPath: () => log.push('begin'),
+      moveTo: (x: number, y: number) => log.push(`M${x},${y}`),
+      lineTo: (x: number, y: number) => log.push(`L${x},${y}`),
+      closePath: () => log.push('close'),
+      arc: (cx: number, cy: number, r: number) => log.push(`A${cx},${cy},${r}`),
+      fill: () => log.push('fill'),
+      stroke: () => log.push('stroke'),
+      getImageData: () => ({}) as ImageData,
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 0,
+    };
+    return ctx as unknown as CanvasRenderingContext2D;
+  }
+
+  it('registers arrow + dot at a 64x64 raster, pixelRatio 2, with one scale(64/32,64/32) transform each', () => {
+    const log: string[] = [];
+    const ctx = recordingAisContext(log);
+    const canvases: { width: number; height: number }[] = [];
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      if (tag === 'canvas') {
+        const canvas = { width: 0, height: 0, getContext: () => ctx };
+        canvases.push(canvas);
+        return canvas as unknown as HTMLCanvasElement;
+      }
+      return document.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement;
+    });
+    const addImage = vi.fn();
+    const map = { hasImage: () => false, addImage } as unknown as Parameters<
+      typeof registerAisImages
+    >[0];
+
+    try {
+      registerAisImages(map);
+    } finally {
+      createSpy.mockRestore();
+    }
+
+    expect(addImage).toHaveBeenCalledTimes(2);
+    expect(addImage.mock.calls[0][0]).toBe(ARROW_IMAGE);
+    expect(addImage.mock.calls[1][0]).toBe(DOT_IMAGE);
+
+    // Registration contract: 64x64 raster, pixelRatio 2 — a regression that
+    // drops pixelRatio (#191's original bug class) or reverts the canvas
+    // size must fail here.
+    expect(canvases).toHaveLength(2);
+    for (const canvas of canvases) {
+      expect(canvas.width).toBe(64);
+      expect(canvas.height).toBe(64);
+    }
+    expect(addImage.mock.calls[0][2]).toEqual({ pixelRatio: 2 });
+    expect(addImage.mock.calls[1][2]).toEqual({ pixelRatio: 2 });
+
+    // Explicit scale-count/factor guard, plus the full ordered op log so a
+    // wrong/missing/duplicated ctx.scale() or a mutated geometry constant
+    // both fail.
+    const scaleCalls = log.filter((op) => op.startsWith('scale:'));
+    expect(scaleCalls).toEqual([
+      `scale:${AIS_SCALE},${AIS_SCALE}`,
+      `scale:${AIS_SCALE},${AIS_SCALE}`,
+    ]);
+    expect(log).toEqual(EXPECTED_OPS);
+  });
+
+  it('skips an image the map already has registered', () => {
+    const log: string[] = [];
+    const ctx = recordingAisContext(log);
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      if (tag === 'canvas') {
+        return { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement;
+      }
+      return document.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement;
+    });
+    const addImage = vi.fn();
+    const map = {
+      hasImage: (id: string) => id === ARROW_IMAGE,
+      addImage,
+    } as unknown as Parameters<typeof registerAisImages>[0];
+
+    try {
+      registerAisImages(map);
+    } finally {
+      createSpy.mockRestore();
+    }
+
+    expect(addImage).toHaveBeenCalledTimes(1);
+    expect(addImage.mock.calls[0][0]).toBe(DOT_IMAGE);
   });
 });

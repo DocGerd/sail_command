@@ -50,6 +50,15 @@ export function seamarkFeatureCollectionWithIcons(
  * - `icon-size` tapers from the pre-#144 constant 0.85 (kept at z13) down
  *   to 0.55 at z8 so survivors overprint less at medium zoom (same
  *   interpolate pattern as AisLayer's vessel icons).
+ * - `icon-padding` is 0 (MapLibre default is 2px/side): the collision box
+ *   fed to the below-z12 culling above is the icon box PLUS this padding,
+ *   and #191's raster resize (24->32 logical px natural footprint) already
+ *   grew that box +33%, which measurably culls MORE marks below z12 for the
+ *   same on-screen crowding (a dense-channel regression, not a design goal —
+ *   see the #191/#192 PR review). Dropping the padding claws back part of
+ *   that growth at zero visual cost (padding is invisible collision margin,
+ *   not rendered pixels) without touching the z12 overlap threshold (#144)
+ *   or re-tuning icon-size (would trade away #191's readability fix).
  * - NO minzoom, NO ['zoom'] filters here — layout expressions only (the
  *   RouteLayer rule).
  */
@@ -61,4 +70,5 @@ export const SEAMARKS_LAYOUT: NonNullable<SymbolLayerSpecification['layout']> = 
   'icon-overlap': ['step', ['zoom'], 'never', 12, 'always'],
   'symbol-sort-key': ['get', 'priority'],
   'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.55, 11, 0.7, 13, 0.85],
+  'icon-padding': 0,
 };
