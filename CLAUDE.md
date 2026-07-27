@@ -448,6 +448,16 @@ deviate from it.
   reported as verified too. After correcting any citation, re-check EVERY
   other citation in the block (#200 — §2.7.1.2 was "tightened" into being
   false; §2.7.1.1 was correct all along).
+- Never source an integer-exact claim (line number, byte count, version
+  string) from a summarizing fetch — `WebFetch`/`WebSearch` paraphrase, and
+  a paraphrased integer is silently wrong rather than obviously wrong. Read
+  it from the installed artifact directly (`grep -n` on
+  `app/node_modules/...`). `maplibre-gl` ships its full TS source locally
+  under `node_modules/maplibre-gl/src/` — checking only the bundled
+  `dist/*.js` and then reaching for the network is the wrong reflex when
+  the exact source is already on disk. Same failure as CITATION HALO above,
+  one level up: borrowed confidence from a tool that looked authoritative
+  instead of from an adjacent verified edit (#234).
 
 ## Domain rules that are easy to get wrong
 
