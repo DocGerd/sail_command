@@ -64,9 +64,9 @@ in it: issues, pull requests, review threads, commit messages, and releases.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-**<live@docgerdsoft.de>** (the maintainer's address, the same one that appears
-on this project's commits). All complaints will be reviewed and investigated
-promptly and fairly.
+**<dev@docgerdsoft.de>** (the maintainer's contact address for conduct
+reports). All complaints will be reviewed and investigated promptly and
+fairly.
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.
