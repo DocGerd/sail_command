@@ -5,7 +5,11 @@ import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
-import { SEAMARKS_LAYOUT, seamarkFeatureCollectionWithIcons } from '../lib/seamarkGeoJson';
+import {
+  SEAMARKS_LAYOUT,
+  pickSeamarkByPriority,
+  seamarkFeatureCollectionWithIcons,
+} from '../lib/seamarkGeoJson';
 import { registerSeamarkImages } from '../lib/seamarkGlyphs';
 import { seamarkPopoverRows } from '../lib/seamarkPopover';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
@@ -332,7 +336,13 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets) return;
     const handleClick = (e: MapLayerMouseEvent) => {
-      const props = e.features?.[0]?.properties as SeamarkProperties | undefined;
+      // NOT features[0] (#200): at z>=12 `icon-overlap` is 'always' and
+      // `symbol-sort-key` then paints the HIGHEST key on top, so the topmost
+      // feature — the one queryRenderedFeatures returns first — is the least
+      // navigationally significant of an overlapping group. Pick by priority
+      // so a cardinal or isolated-danger mark owns the shared pixels. Below
+      // z12 overlapping icons collision-cull, so this is a no-op there.
+      const props = pickSeamarkByPriority(e.features)?.properties as SeamarkProperties | undefined;
       if (!props) return;
       const container = document.createElement('div');
       container.className = 'seamark-popover';
