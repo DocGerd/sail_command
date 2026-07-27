@@ -63,9 +63,12 @@ deviate from it.
   up-to-date policy), so a red `app` no longer skips `e2e`, and both jobs race
   the SAME `setup-node` cache key — a lockfile-changing PR may have `e2e`
   restore a miss and pay an uncached `npm ci`. Both accepted knowingly.
-- `app/package.json`'s `version: 0.1.0` is UNUSED — the About dialog's version
-  string is `__SC_APP_VERSION__`, baked from `git describe` at build time
-  (#125). Don't bump it and don't cite it as the app version.
+- `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
+  dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
+  to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
+  `package.json`'s `version` ONLY when git throws (tarball / git-less build,
+  #125). Don't bump it expecting the About dialog to move; don't delete it
+  either — that fallback is the only thing it is for.
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
 - Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
