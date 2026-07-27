@@ -523,13 +523,17 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
 
     const controls = page.locator('.route-layer-controls');
     await expect(controls).toBeVisible();
+    const liveTab = page.getByRole('tab', { name: 'Live' });
+    const planTab = page.getByRole('tab', { name: 'Planen' });
 
     // #208's original pass ran WITHOUT a plan, so this cluster was empty —
     // 390x844 is the review's own negative control (it does not reach the
-    // sheet even unfixed); 844x390/740x360 are where it did.
+    // sheet, or the tab strip, even unfixed); the other three are the exact
+    // set the round-2 review measured as broken.
     const viewports = [
       { width: 844, height: 390 },
       { width: 740, height: 360 },
+      { width: 667, height: 375 },
       { width: 390, height: 844 },
     ];
     for (const vp of viewports) {
@@ -553,12 +557,30 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
             `.route-layer-controls is not the topmost hit at its lower edge (${vp.width}x${vp.height}): ${JSON.stringify(hitStack)}`,
           );
         }
+
+        // #208 round-2 "R2-1" (the actual Blocker): the cluster being on
+        // top of itself proves nothing about the TAB STRIP surviving next
+        // to it — a real click, not a hit-test, because a timeout (the
+        // strip receiving no events at all) is how this bug actually
+        // surfaced, and `elementsFromPoint` alone would not have caught it.
+        await liveTab.click();
+        await expect(liveTab).toHaveAttribute('aria-selected', 'true');
+        // RouteLayer (and so .route-layer-controls) is NOT tab-gated —
+        // reset to Planen so the next iteration's geometry reads are
+        // against the same tab every time, matching how the cluster is
+        // actually reached in the app.
+        await planTab.click();
+        await expect(planTab).toHaveAttribute('aria-selected', 'true');
       });
     }
 
-    // Real interaction proof at the tightest surviving viewport (390x844):
-    // the cluster's LAST row, the legend disclosure, really receives a
-    // click rather than merely passing a hit-test.
+    // #208 review "R2-3": the only real (non-hit-test) interaction proof in
+    // this spec must run at a viewport where the bug actually existed, not
+    // the 390x844 negative control it originally ran at (which would have
+    // passed identically on the unfixed build — proving nothing). 740x360
+    // is where the review measured the cluster's lower rows landing squarely
+    // in the tab-strip's band pre-fix.
+    await page.setViewportSize({ width: 740, height: 360 });
     const legend = controls.getByText('Legende');
     await expect(legend).toBeVisible();
     const legendDetails = controls.locator('details');

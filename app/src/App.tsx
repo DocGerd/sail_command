@@ -536,27 +536,14 @@ function AppShell() {
           positioned overlays painted on top of it (later in DOM order, same
           stacking context), each occupying only its own natural height, so
           untouched screen area still reaches the map for tap-to-pick. That
-          DOM-order-only assumption is NOT sufficient across this whole set —
-          #208 found `.app-bottom-sheet`'s rendered height (grows with its
-          active tab's content, up to 55vh) reaching up far enough, on a
-          short narrow/landscape viewport, to paint over the map's own
-          top-left chrome stack (.map-stack-tl) and the top-right route
-          cluster (.route-layer-controls). Both — plus .ais-status, top-
-          centre — now carry an explicit z-index (app.css) putting them in a
-          "map-chrome tier" ABOVE the sheet; .app-header/.banner-area carry
-          one of their own putting THEM in a "shell-chrome tier" above map
-          chrome in turn (#208 review finding "Major 2": raising only the map
-          chrome first flipped it against the banners, which had overlapped
-          that same top-left corner by design all along). `.scale-bar`
-          deliberately has NO z-index (review finding "Minor 7" — see its own
-          app.css comment for why one was tried and reverted); its dynamic
-          lift is what keeps it clear of the sheet instead. No other MAP
-          OVERLAY (a sibling of .map-area below, or a child of MapView's own
-          subtree) carries a z-index. `.planner-actions`' z-index:2 is a
-          separate, unrelated concern — a local sticky-positioning offset
-          inside the scrollable bottom-sheet panel content, inert until the
-          wide layout makes it `position: sticky` — it never competes with
-          anything described here. */}
+          DOM-order-only assumption is NOT sufficient across this whole set:
+          #208 found `.app-bottom-sheet` and the tab strip inside it each
+          able to bury (or be buried by) the map's own chrome depending on
+          which one happened to paint last. The full, COMPLETE resolution —
+          every participant, the ordering principle, and why it takes three
+          tiers rather than one more z-index bump — lives in ONE place, the
+          comment above `.app-header` in app.css; read it there rather than
+          here, since duplicating it in two files is how it would drift. */}
       <div className="map-area">
         {/* MapView's label language is baked in at first mount (see
             MapView.tsx's own comment) — a live language switch does not

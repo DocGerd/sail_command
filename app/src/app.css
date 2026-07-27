@@ -83,20 +83,90 @@ select {
   inset: 0;
 }
 
-/* #208 review finding "Major 2": .app-header and .banner-area sit at
-   `top: 0`/`top: 3rem`, overlapping `.map-stack-tl`'s `top: 3.5rem` column BY
-   DESIGN (the banners were always meant to sit ON that space while a
-   compass/toggle stack sits below them) — they only ever WON that overlap
-   because they paint later in DOM order (App.tsx). Giving `.map-stack-tl` its
-   own z-index (below, "map-chrome tier") to escape `.app-bottom-sheet`
-   silently flipped this pair too: without a z-index of their own, these fall
-   back to the default paint-order tier, which the map-chrome tier now sits
-   above. Explicit `z-index: 3` — a "shell-chrome tier", stated to be above
-   the "map-chrome tier" `.map-stack-tl`/`.route-layer-controls`/`.ais-status`
-   share at `2` — restores banners/header as the one thing every map overlay
-   must always yield to: this is the app's only channel for "you are
-   offline"/"this forecast is stale", so losing that text to a toggle button
-   is a worse outcome than the toggle being covered ever was. */
+/* ==== Map-chrome z-index tiers (#208 round 2) — the COMPLETE order ====
+   Every element below that can visually overlap another on the map surface
+   is assigned to exactly one of these tiers. A stacking "fix" that isn't
+   checked against a stated order is how round 2 happened: giving the
+   compass a z-index to escape the sheet buried the banners that used to sit
+   on that same corner by DOM order alone; raising the banners to escape
+   THAT buried the AIS chip the same way; each patch fixed the one pair the
+   previous review measured and created the next. Placing every participant
+   in one list up front is what stops that chain, not one more bump.
+
+   PRINCIPLE: an element outranks another if a user being unable to see or
+   operate it is a worse outcome than the alternative it would otherwise
+   lose to. Concretely, that produces three tiers, in order:
+     "always operable" (navigation, safety alerts) > "operable while this
+     screen is the map" (persistent map-surface controls) > "present unless
+     something more important needs the space" (the sheet's own content, the
+     passive scale bar).
+   Within a tier, elements are kept from spatially competing (opposite
+   corners, centred vs. edge-anchored) rather than given a further order —
+   two same-tier elements genuinely fighting for the same pixels is a
+   LAYOUT bug, not a stacking one. #205's AIS-chip-under-header overlap was
+   exactly that: fixed by moving the chip's row (below), not by another tier.
+
+   Tier 3 — SHELL CHROME (z-index: 3). The user must always be able to read
+   or reach these; nothing on the map ever outranks them:
+     - `.app-header` — app identity + language/about actions.
+     - `.banner-area` — offline / stale-forecast / plan-error / GPS-hint
+       alerts, this app's only channel for "you are offline"; losing the
+       text is worse than covering a toggle.
+     - `.app-tabs` — the tab strip inside `.app-bottom-sheet`. Navigation:
+       without it the user is stuck on whichever tab is active. Deliberately
+       the STRIP only (its own `position: relative` + z-index below), NOT
+       the whole `.app-bottom-sheet` — the sheet's PANEL CONTENT stays
+       untiered (Tier 0) precisely so it keeps losing to map chrome, which
+       is the #208 NEW-1 fix this whole tier system exists to preserve.
+
+   Tier 2 — MAP CHROME (z-index: 2). Controls that live ON the map and must
+   survive the sheet growing under them, but must never cost the user shell
+   chrome:
+     - `.map-stack-tl` — compass + DataLayers' toggles, top-left.
+     - `.route-layer-controls` — barb/annotation toggles, time slider,
+       legend, top-right (plan-gated). Height-bounded (`max-height`, its own
+       rule) so it can never grow tall enough to reach into Tier 3's tab
+       strip in the first place — the tier ORDER stops it from winning a
+       fight there, but only a physical bound stops the fight from being
+       drawn at all, which is what R2-1 needed (see that rule's comment).
+     - `.ais-status` — Live-tab connection chip, top-centre, `top: 3.5rem`
+       (the SAME row as the two clusters above, not `.app-header`'s band —
+       #208 review "R2-2": at `top: 0.5rem` the header's Tier-3 band painted
+       over the chip completely; moving the row, not adding another tier
+       bump, is what fixes it — see that rule's own comment and the #205
+       note there).
+   The MapLibre attribution control carries its OWN `z-index: 2`
+   (maplibre-gl.css, not ours to change) in the same root stacking context
+   (nothing between it and `.app-shell` creates one) — at that tie, DOM
+   order decides, and this tier's elements are later, so they would win a
+   collision. They never spatially overlap the attribution in practice
+   (opposite screen regions), so this is a documented non-issue, not a
+   verified-safe guarantee.
+
+   Tier 0 — UNTIERED (no z-index; the default paint-order layer). Map chrome
+   must be free to draw OVER these:
+     - `.app-bottom-sheet` and its content (`.app-panel`, `.live-view`,
+       `.live-view-no-plan`, …) — the #208 NEW-1 lesson: sheet content must
+       never bury map chrome just by growing tall, which an explicit
+       z-index here would risk reversing.
+     - `.scale-bar` — deliberately untiered (#208 review "Minor 7"): its own
+       JS lift (ScaleBar.tsx) keeps it clear of the sheet; a z-index here
+       would instead fight the attribution's `2` and win by DOM order,
+       covering it — see that rule's own comment.
+
+   OUT OF THIS ORDERING — different stacking context, doesn't compete here:
+     - `.planner-actions` (`z-index: 2`) — a LOCAL sticky-positioning offset
+       inside the scrollable panel content, inert until the wide layout
+       makes it `position: sticky`. Shares Tier 2's numeral by coincidence,
+       not membership.
+     - `.about-dialog-backdrop` (`z-index: 100`) — a true modal; always above
+       everything, including Tier 3, by design.
+
+   Placing a NEW element: pick the tier whose principle it matches (always
+   operable -> 3, persistent map-surface control -> 2, otherwise -> none),
+   use that tier's exact z-index, and if it can spatially overlap something
+   already in the SAME tier, fix the overlap by moving one of them — never
+   by inventing a value between tiers. */
 .app-header {
   position: absolute;
   top: 0;
@@ -218,7 +288,22 @@ select {
   box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.15);
 }
 
+/* #208 review "R2-1": Tier 3 (shell chrome, see the tier-order comment above
+   .app-header) — needs its OWN `position` for `z-index` to apply at all
+   (it was `static` before, which ignores z-index entirely). Deliberately
+   scoped to the strip itself, not `.app-bottom-sheet` as a whole: raising
+   the whole sheet would undo the #208 NEW-1 fix (map chrome must still win
+   against ordinary panel content). Before this, `.route-layer-controls`
+   reaching into the sheet (its Tier-2 z-index, added for #208 round-1 Major
+   3) made the tab strip UNCLICKABLE at every landscape viewport with a plan
+   loaded — `locator.click()` timed out, `aria-selected` never flipped. Worse
+   than the bug it replaced (an unreachable nav control beats a buried
+   toggle), fixed by applying this PR's own banner argument (something the
+   user must always be able to reach outranks map chrome) to the tabs too,
+   not by inventing a one-off exception. */
 .app-tabs {
+  position: relative;
+  z-index: 3;
   display: flex;
   height: var(--sc-tabbar-h);
   border-bottom: 1px solid var(--sc-border);
@@ -344,26 +429,56 @@ select {
   font-size: 0.85rem;
 }
 
+/* #208 round-2 "R2-1" follow-through: `.data-layer-controls` is the ONE flex
+   ITEM of `.map-stack-tl` (below) that is allowed to shrink and scroll when
+   the column is height-bounded — `.compass-control`, the other item, is
+   `flex-shrink: 0` specifically so it never does. `min-height: 0` overrides
+   flexbox's default `min-height: auto`, which would otherwise refuse to
+   shrink this below its own content size and defeat the bound entirely.
+   `flex: 1 1 auto` (grow, shrink, basis auto) plus `overflow-y: auto` is
+   inert on `.route-layer-controls` above (not a flex item of anything —
+   it's independently `position: absolute`), so sharing the base rule stays
+   safe; this second rule only ever applies where it's a flex item. */
+.data-layer-controls {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* NAMED COUPLING: `top: 3.5rem` clears the narrow-layout .app-header, which
    overlays the map — the wide media query below drops it to 0.75rem because
    at >=1024px the header lives in the panel column instead. Mirrored exactly
    by .map-stack-tl's own top (they share the map's top row).
-   #208 review finding "Major 3": this is the mirror image of .map-stack-tl
-   and had the IDENTICAL bug — no z-index, so `.app-bottom-sheet` (which
-   paints later, App.tsx) could grow tall enough on a narrow/landscape
-   viewport WITH A PLAN LOADED to reach up and bury it too (measured: 844x390
-   and 740x360, with a real plan, the cluster's lower rows hit-test to the
-   tab-strip button instead of the barb-toggle/time-slider/legend controls
-   underneath — #208's original pass missed this only because it ran without
-   a plan, so this cluster was empty/absent). Unlike the scale bar these
-   controls are interactive, so this was closer to the compass's bug
-   (untappable) than the scale bar's (merely hidden). Same "map-chrome tier"
-   z-index as .map-stack-tl below — see that comment for the tier story. */
+   #208 round-1 "Major 3": this is the mirror image of .map-stack-tl and had
+   the IDENTICAL bug — no z-index, so `.app-bottom-sheet` could grow tall
+   enough on a narrow/landscape viewport WITH A PLAN LOADED to bury it (the
+   original pass ran without a plan, so this cluster was empty/absent and
+   the bug was invisible). Tier 2 ("map chrome", see the tier-order comment
+   above .app-header) fixes that.
+   #208 round-2 "R2-1": Tier 2 alone was NOT enough — it stopped the SHEET
+   from covering this cluster, but at 213px tall this cluster then reached
+   past the sheet's top edge into the Tier-3 tab strip's own 52px band and
+   made "Live" unclickable at every landscape viewport with a plan loaded
+   (`locator.click()` timed out, `aria-selected` stayed false). `max-height`
+   below is the actual fix: the sheet is capped at 55vh (`.app-bottom-sheet`),
+   so this bound is static, and it keeps the cluster from ever being tall
+   enough to reach the tab strip regardless of which one currently wins a
+   z-index tie — the tier stops it from WINNING that fight, the bound stops
+   the fight from being drawn at all. Internal scroll (not clipping) below
+   the bound, same as #231's "compact the chrome column" follow-up assumes.
+   `.map-stack-tl` needs the SAME max-height for the SAME reason (its own
+   comment, below, covers why a blind copy of this rule would have clipped
+   the compass instead — it uses a shrink-one-child variant, not this
+   plain overflow). */
 .route-layer-controls {
   position: absolute;
   top: 3.5rem;
   right: 0.5rem;
   z-index: 2;
+  /* Sheet caps at 55vh; the tab strip (Tier 3) sits above that, 3.5rem down
+     from the viewport top; 0.5rem breathing room above the sheet's edge. */
+  max-height: calc(100dvh - 3.5rem - 55vh - 0.5rem);
+  overflow-y: auto;
 }
 
 /* Touch targets: each toggle row is a ≥44 px hit area (gloved-hand cockpit
@@ -376,10 +491,7 @@ select {
 }
 
 /* #155: top-left map-overlay stack — DataLayers' toggles with the compass
-   below them, as ONE absolutely-positioned flex column. Before #155
-   .data-layer-controls positioned itself; it is now a plain static flex child
-   (as is .compass-control), so the stack alone owns the offsets and the two
-   controls can never overlap.
+   below them, as ONE absolutely-positioned flex column.
    Opposite corner from the plan-gated route cluster so the two can never
    collide when a plan is active — the toggles stay terse (dict) to share the
    map-top row with it even at phone widths.
@@ -389,35 +501,27 @@ select {
    value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY — change both together.
    The column itself is pointer-events:none so the inter-control gap never
    swallows a map tap; each child re-enables them.
-   #208: `z-index: 2` is load-bearing, not decoration. `.app-bottom-sheet`
-   (App.tsx) is a SIBLING of the whole map, painted LATER in DOM order, and
-   its rendered height is unbounded up to 55vh — on a short narrow/landscape
-   viewport (measured: 844x390, 740x360, 667x375) that reaches all the way up
-   to this corner and, without an explicit z-index, fully buries the compass
-   under the sheet's opaque background: untappable, not just visually
-   crowded. `2` is this app's "map-chrome tier" — shared with
-   .route-layer-controls (same bug, see its own comment) and .ais-status
-   (app.css, kept at the same tier for consistency even though it does not
-   share this corner) — which sits BELOW the shell's own "shell-chrome tier"
-   `3` on .app-header/.banner-area (review finding "Major 2": those overlap
-   this column BY DESIGN at `top: 3rem`/`3.5rem`, and only ever won it by
-   painting later — raising just the map-chrome tier without also raising
-   shell chrome silently buried the banners under this stack instead).
-   The z-index keeps this whole stack on top of the sheet regardless of how
-   tall the sheet's active-tab content grows, so it never needs to track that
-   height itself the way ScaleBar's dynamic lift does below (ScaleBar can't
-   use the same trick — see its own z-index note — because visually
-   overlapping the sheet's TEXT would look broken even though nothing there
-   is unreachable).
-   Trade recorded, not eliminated: on short viewports the compass can overlay
-   the tab strip's left edge and wins the hit test there (measured 844x390:
-   compass occupies x 8-52, the first ("Planen") tab spans the full 281px
-   width) — the tab stays reachable everywhere right of that, which is why
-   the existing `getByRole('tab').click()` (centred by Playwright) is
-   unaffected; only a tap in that specific 44px-wide sliver at the tab's own
-   left edge lands on the compass instead. Accepted: the compass has to be on
-   top of SOMETHING to stay tappable at all, and the sliver is far narrower
-   than the tab itself. */
+   `z-index: 2` is Tier 2 ("map chrome" — see the tier-order comment above
+   .app-header for the full list and principle): load-bearing against
+   `.app-bottom-sheet` (Tier 0), whose rendered height is unbounded up to
+   55vh and, without this, buries the compass under its opaque background on
+   short narrow/landscape viewports (#208 round-1 NEW-2).
+   `max-height` below is a SEPARATE fix for a SEPARATE problem discovered in
+   round 2: Tier 2 stops the SHEET from covering this stack, but does nothing
+   about the stack growing tall enough on its own to reach INTO Tier 3's tab
+   strip — at that point the compass sits entirely inside the tab strip's own
+   52px band (measured 844x390: both span y~177-222) and Tier 3 correctly
+   wins there, which would make the COMPASS untappable instead (an #208
+   round-1 style regression the tier fix would have reintroduced one level
+   up). Unlike `.route-layer-controls`'s bound (plain `overflow-y: auto` on
+   the whole cluster), this one CANNOT just clip the whole column — the
+   compass is the one thing here that must never be the part that shrinks or
+   scrolls out of reach. So only `.data-layer-controls` (its own rule, above)
+   is allowed to shrink/scroll; `.compass-control` is pinned
+   `flex-shrink: 0` and therefore always renders at full size, positioned
+   immediately after however much of the toggle stack fit. At the tightest
+   measured viewport (390 px tall) this squeezes the toggles to a scrollable
+   ~60px and keeps the compass's bottom edge safely above the tab strip. */
 .map-stack-tl {
   position: absolute;
   top: 3.5rem;
@@ -428,6 +532,9 @@ select {
   gap: 0.5rem;
   pointer-events: none;
   z-index: 2;
+  /* Same formula as .route-layer-controls above, and the same reason: the
+     sheet caps at 55vh, so this bound is static. */
+  max-height: calc(100dvh - 3.5rem - 55vh - 0.5rem);
 }
 
 .map-stack-tl > * {
@@ -436,9 +543,13 @@ select {
 
 /* ---- #155 north arrow / track-up toggle ---- */
 
+/* `flex-shrink: 0`: the compass never shrinks or scrolls away when
+   `.map-stack-tl`'s height bound squeezes the column — see that rule's own
+   comment (#208 round-2 follow-through). */
 .compass-control {
   position: relative;
   display: flex;
+  flex-shrink: 0;
 }
 
 /* Overrides .sc-btn-ghost's transparent box with a 2.75rem round glass chip
@@ -673,17 +784,39 @@ select {
 
 /* AIS status chip (#25) — a small map overlay on the Live tab, top-centered so
    it clears the top-left data-layer controls and the top-right route cluster.
-   #208: raised from `1` to `2` to sit in the SAME "map-chrome tier" as
-   .map-stack-tl/.route-layer-controls (see .map-stack-tl's comment) — it
-   never shared their bug (nothing here reaches into .app-bottom-sheet), but
-   leaving it a tier below them was flagged as a #205-adjacent asymmetry: at
-   the narrow widths #205 already covers, any future horizontal overlap
-   between this chip and either corner cluster would have silently lost to
-   them. `pointer-events: none` on this element means the tier only ever
-   decides paint order here, never a tap. */
+   Tier 2 ("map chrome" — see the tier-order comment above .app-header): it
+   never shared .map-stack-tl/.route-layer-controls's sheet-occlusion bug
+   (nothing here reaches into .app-bottom-sheet), but shares their tier for
+   consistency and because leaving it a tier below them was a #205-adjacent
+   stacking asymmetry.
+   #208 round-2 "R2-2": `top` moved from `0.5rem` to `3.5rem` — this chip's
+   OWN corner. At `0.5rem` it sat entirely inside `.app-header`'s 0..61px
+   band (measured), and raising the header to Tier 3 (round-2 "Major 2")
+   meant the header now painted over it completely: the chip was invisible,
+   not faint, on every narrow layout — the only feedback channel for AIS
+   state, including the #25 `keyError` signal aisstream.io reports as a bare
+   1006 close. A z-index bump could not have fixed this: a tier BELOW the
+   header always loses to it, and a tier equal to or above the header (Tier
+   3) would put the chip back on top of the app TITLE, which is #205's other
+   half of the same complaint. This was a LAYOUT collision (two elements
+   wanting the header's 61px band), not a stacking one, so it needed moving,
+   not re-stacking — matching the tier-order comment's own stated principle.
+   Effect on #205: IMPROVES it, not merely avoids worsening it — the chip no
+   longer competes with the app title for the header band at all, which was
+   #205's literal complaint ("AIS chip overlaps the app title on Live").
+   `pointer-events: none` on this element means its tier only ever decides
+   paint order here, never a tap.
+   Known residual, not fixed here: sharing a row with the two corner
+   clusters means this centred, content-width chip can visually overlap
+   `.route-layer-controls`'s left edge at the narrowest measured landscape
+   viewport (667x375, plan loaded, longest status string). Cosmetic only —
+   `pointer-events: none` means it never blocks a tap — and the same #205
+   family this whole tier system explicitly does not attempt to fix (that
+   issue's own "control cards collide at ~320px" is the general case; this
+   is a narrower instance of it, not a new mechanism). */
 .ais-status {
   position: absolute;
-  top: 0.5rem;
+  top: 3.5rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
