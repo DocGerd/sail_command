@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Publish project governance, a forward-looking roadmap, a Code of Conduct,
+  and a security assurance case as new root-level documents (GOVERNANCE.md,
+  ROADMAP.md, CODE_OF_CONDUCT.md, docs/security-assurance-case.md) (#217,
+  #218, #219, #224).
+
+### Changed
+
+- Map scale bar: at short/narrow viewports where the bottom sheet and the
+  top-left control stack (compass + layer toggles) leave no vertical band
+  that clears both — every tab at 740×360; the Plan tab at 844×390, 932×430,
+  and 667×375; and the Plan tab in portrait at 320×568 — the bar is now
+  hidden rather than drawn overlapping that chrome, as it was in v0.5.0.
+  Tracked for improvement in #231 (#208, #228).
+
+### Fixed
+
+- Seamarks: hazard-bearing marks (isolated-danger and cardinal buoys/beacons)
+  now win collision placement below zoom 12 and win taps where icons overlap
+  at zoom 12 and above, instead of surviving or being picked at random.
+  Priority order follows IALA R1001 Ed 2.0. Measured on the Kappeln fairway:
+  isolated-danger retention improved from 50% to 83% at zoom 8 and 50% to
+  100% at zoom 9; safe-water retention improved from 0% to 100% at zoom 10
+  (#200, #225).
+- Compass: track-up no longer drops to free orientation when a foreign
+  camera animation (pan inertia, keyboard rotation, a plan-change
+  fit-to-bounds) interrupts a compass ease; tapping north-up now always
+  reaches north instead of leaving the compass stuck showing an orientation
+  the chart no longer has (#203, #227).
+- Map pitch (tilt) is now locked: it can no longer be reached by a two-finger
+  drag, right-click drag, or Shift+arrow gesture, so the chart can no longer
+  be left tilted with no way to reset it short of a reload (#207, #228).
+- Map chrome (compass, route-layer controls) is no longer hidden or
+  unreachable under the bottom sheet at narrow viewports; the scale bar is
+  lifted clear of the sheet where there is room, and suppressed rather than
+  drawn overlapping it where there is not (see Changed, above) (#208, #228).
+
 ## [0.5.0] - 2026-07-27
 
 ### Added

@@ -180,18 +180,15 @@ data; the code license is covered in the [License](#license) section below.
   language; they don't switch live when you toggle German/English mid-session.
 - The router does not yet account for currents, tides, or sea state (waves)
   in the routing cost.
-- The map chrome introduced in v0.5.0 has known rough edges, tracked for
-  v0.5.1: on any narrow screen the scale bar sits behind the bottom sheet on
-  the planning and routes tabs, and on short/landscape screens the compass can
-  be covered by that sheet and stop responding to taps
-  ([#208](https://github.com/DocGerd/sail_command/issues/208)); an
-  interrupted compass animation can leave the button showing an orientation
-  the chart does not have
-  ([#203](https://github.com/DocGerd/sail_command/issues/203)); seamarks can
-  flicker while a course-up turn is in progress below zoom 12
-  ([#206](https://github.com/DocGerd/sail_command/issues/206)); and the chart
-  can be tilted by gesture with no control to reset it short of a reload
-  ([#207](https://github.com/DocGerd/sail_command/issues/207)).
+- The map chrome introduced in v0.5.0 still has two known rough edges: on an
+  ordinary pan flick, track-up can drop to free orientation whenever the
+  chart's bearing sits inside MapLibre's 7° north-snap window — an everyday
+  heading in the Flensburg Fjord — and does not recover on its own
+  ([#230](https://github.com/DocGerd/sail_command/issues/230)); and on
+  several short phone viewports, both landscape and narrow portrait, the
+  top-left chrome (layer toggles + compass) can leave no room for the scale
+  bar, so it is suppressed rather than drawn over other controls
+  ([#231](https://github.com/DocGerd/sail_command/issues/231)).
 
 ## Out of scope (v1)
 
