@@ -400,6 +400,13 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
 function recordingContext(log: string[]): CanvasRenderingContext2D {
   const ctx = {
     clearRect: () => log.push('clear'),
+    // #191 review: a no-op scale stub can't detect a wrong, missing, or
+    // duplicated ctx.scale() call — exactly the transform that maps the
+    // logical 24-unit coordinate space onto the bigger raster and protects
+    // the R1001 cone/band geometry (#165) at the new resolution. Recording
+    // it into the same op log makes drawSeamark's ordering (clear, scale,
+    // THEN segments) and the exact factor part of what expectedOps() pins.
+    scale: (x: number, y: number) => log.push(`scale:${x},${y}`),
     beginPath: () => log.push('begin'),
     rect: (x: number, y: number, w: number, h: number) => log.push(`R${x},${y},${w},${h}`),
     moveTo: (x: number, y: number) => log.push(`M${x},${y}`),
@@ -416,8 +423,15 @@ function recordingContext(log: string[]): CanvasRenderingContext2D {
   return ctx as unknown as CanvasRenderingContext2D;
 }
 
+// Hand-derived from drawSeamark's own constants (CANVAS_SIZE=64, IMAGE_SIZE=24
+// — not imported/read back from the implementation, same rationale as the
+// segment-geometry literals above): the ratio every drawSeamark() call must
+// scale the canvas by, exactly once, right after clearRect and before any
+// segment is replayed.
+const SEAMARK_SCALE = 64 / 24;
+
 function expectedOps(props: SeamarkProperties): string[] {
-  const ops = ['clear'];
+  const ops = ['clear', `scale:${SEAMARK_SCALE},${SEAMARK_SCALE}`];
   for (const seg of seamarkSegments(props)) {
     ops.push('begin');
     if (seg.kind === 'rect') {
@@ -439,9 +453,15 @@ describe('registerSeamarkImages', () => {
   it('registers one image per distinct seamarkImageId, replaying seamarkSegments onto the canvas', () => {
     const log: string[] = [];
     const ctx = recordingContext(log);
+    // Captures every canvas the production code creates, so the registration
+    // contract below (64x64 raster) is asserted on what registerSeamarkImages
+    // actually did to the element, not a hardcoded assumption.
+    const canvases: { width: number; height: number }[] = [];
     const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
       if (tag === 'canvas') {
-        return { width: 0, height: 0, getContext: () => ctx } as unknown as HTMLCanvasElement;
+        const canvas = { width: 0, height: 0, getContext: () => ctx };
+        canvases.push(canvas);
+        return canvas as unknown as HTMLCanvasElement;
       }
       return document.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement;
     });
@@ -466,6 +486,27 @@ describe('registerSeamarkImages', () => {
     expect(addImage).toHaveBeenCalledTimes(2);
     expect(addImage.mock.calls[0][0]).toBe('seamark-lateral-pillar-red');
     expect(addImage.mock.calls[1][0]).toBe('seamark-light-major');
+
+    // #191 registration contract: a 64x64 raster registered at pixelRatio 2
+    // (dropping pixelRatio was literally #191's original bug, and would
+    // otherwise pass every other assertion here silently).
+    expect(canvases).toHaveLength(2);
+    for (const canvas of canvases) {
+      expect(canvas.width).toBe(64);
+      expect(canvas.height).toBe(64);
+    }
+    expect(addImage.mock.calls[0][2]).toEqual({ pixelRatio: 2 });
+    expect(addImage.mock.calls[1][2]).toEqual({ pixelRatio: 2 });
+
+    // Explicit, order-independent guard on top of the full-log check below:
+    // exactly one scale call per drawn image, at the exact expected factor —
+    // catches a wrong/missing/duplicated ctx.scale() even if some future
+    // change to segment ops made the full-log diff harder to read.
+    const scaleCalls = log.filter((op) => op.startsWith('scale:'));
+    expect(scaleCalls).toEqual([
+      `scale:${SEAMARK_SCALE},${SEAMARK_SCALE}`,
+      `scale:${SEAMARK_SCALE},${SEAMARK_SCALE}`,
+    ]);
 
     const expected = [...expectedOps(props[0]), ...expectedOps(props[2])];
     expect(log).toEqual(expected);

@@ -155,6 +155,27 @@ describe('RouteLayer setup', () => {
   });
 });
 
+// #155: the fit-to-route camera call must not quietly own the map's
+// orientation. MapLibre's cameraForBounds computes `options?.bearing || 0`, so
+// omitting `bearing` does not mean "leave it alone" — it means "rotate to
+// north". With the compass shipping, that would knock track-up out of follow
+// on every new plan.id, including a Live-tab reroute-from-here under way.
+describe('RouteLayer fit-to-route (#155)', () => {
+  it('fits at the CURRENT bearing instead of silently rotating the chart to north', () => {
+    const map = makeFakeMap();
+    map.setBearing(135);
+    renderRouteLayer(map, null);
+    expect(map.fitBounds).toHaveBeenCalledTimes(1);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ bearing: 135 });
+  });
+
+  it('still fits north-up when the chart is north-up', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    expect(map.fitBounds.mock.calls[0][1]).toMatchObject({ bearing: 0 });
+  });
+});
+
 describe('RouteLayer style reload (#153)', () => {
   it('re-adds all sources/layers and repaints the CURRENT plan data', () => {
     const map = makeFakeMap();

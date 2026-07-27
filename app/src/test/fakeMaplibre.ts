@@ -48,7 +48,11 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
   const images = new Set<string>();
   const listeners = new Map<string, Set<Handler>>();
   const onceListeners = new Map<string, Set<Handler>>();
-  const state = { styleLoaded };
+  // #155: the compass owns the map bearing, so any camera call a layer
+  // component makes has to be checkable against a NON-zero one — a fake stuck
+  // at 0 cannot tell "preserves the bearing" from "resets it to north", which
+  // is exactly the bug RouteLayer's fitBounds had.
+  const state = { styleLoaded, bearing: 0 };
   const canvas = { style: {} as Record<string, string> };
   const bucket = (store: Map<string, Set<Handler>>, type: string): Set<Handler> => {
     let set = store.get(type);
@@ -124,6 +128,10 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       if (layer) layer.filter = filter;
     }),
     fitBounds: vi.fn(),
+    getBearing: () => state.bearing,
+    setBearing: (deg: number) => {
+      state.bearing = deg;
+    },
     getCanvas: () => canvas,
     // Fixed app-region viewport + linear projection (the App.test.tsx stubs):
     // keeps RouteLayer's barb rebuild effect deterministic under jsdom; barb

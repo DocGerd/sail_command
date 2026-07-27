@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-27
+
+### Added
+
+- Map north arrow showing the current chart orientation; tapping it toggles
+  north-up / course-up, holds the last course when the GPS fix drops out, and
+  returns to manual control after a rotation gesture (#155).
+- Nautical scale bar on the map, labelled in nautical miles, cables or metres
+  depending on zoom (#155).
+
+### Fixed
+
+- Seamark/buoy and AIS other-traffic markers were too small and blurry at
+  planning zooms — they now render at higher raster resolution with a matching
+  pixel ratio, with AIS markers sized comparably to the seamarks beside them
+  (#191, #192).
+
 ## [0.4.0] - 2026-07-24
 
 ### Added
@@ -120,7 +137,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/DocGerd/sail_command/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/DocGerd/sail_command/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DocGerd/sail_command/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/DocGerd/sail_command/compare/v0.1.2...v0.2.0

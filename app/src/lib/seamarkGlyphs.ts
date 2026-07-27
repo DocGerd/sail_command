@@ -9,8 +9,22 @@ import type { SeamarkProperties } from '../types';
 // browser-only (manual/Playwright verification).
 
 const IMAGE_SIZE = 24; // smaller than windBarbs' 32: seamarks are a much
-// denser point layer (~1,794 vs one barb per route sample)
+// denser point layer (~1,794 vs one barb per route sample). This is the
+// LOGICAL glyph coordinate space every segment below is expressed in — kept
+// at 24 so none of the hand-derived R1001 geometry constants (#165) below
+// need touching. The registered image is drawn at a higher raster
+// resolution (CANVAS_SIZE) via a canvas-transform scale in drawSeamark(), so
+// every offset/line-width in the logical box scales up together instead of
+// only a subset of hardcoded pixels being bumped (#191).
 const CENTER = IMAGE_SIZE / 2;
+// #191: on-screen seamarks were only ~13-20px (IMAGE_SIZE=24 registered at
+// the implicit default pixelRatio 1) — too small to read at planning zooms.
+// Raising the raster resolution with a MATCHING pixelRatio (rather than only
+// widening seamarkGeoJson.ts's icon-size stops, which would upscale/blur the
+// old 24px bitmap) grows the natural footprint from 24 to
+// CANVAS_SIZE/PIXEL_RATIO = 32 logical px while keeping the glyph crisp.
+const CANVAS_SIZE = 64;
+const PIXEL_RATIO = 2;
 const INK = '#1a1a1a'; // standard black used for topmarks/outlines, not data-driven
 // Cardinal-mark yellow: raw CSS `yellow` (#ffff00) is too garish / low-contrast
 // against the yellow-vs-black R1001 banding, so a defined IALA-style amber-yellow
@@ -460,7 +474,12 @@ export function seamarkImageId(props: SeamarkProperties): string {
 }
 
 function drawSeamark(ctx: CanvasRenderingContext2D, props: SeamarkProperties): void {
-  ctx.clearRect(0, 0, IMAGE_SIZE, IMAGE_SIZE);
+  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  // Map the logical 24-unit coordinate space onto the higher-resolution
+  // raster canvas: every segment coordinate/line-width below is expressed in
+  // IMAGE_SIZE (24) units and scales up together (#191), so the R1001 cone
+  // geometry and colour bands (#165) survive the resize unmodified.
+  ctx.scale(CANVAS_SIZE / IMAGE_SIZE, CANVAS_SIZE / IMAGE_SIZE);
   for (const seg of seamarkSegments(props)) {
     ctx.beginPath();
     switch (seg.kind) {
@@ -508,11 +527,11 @@ export function registerSeamarkImages(
     seen.add(id);
     if (map.hasImage(id)) continue;
     const canvas = document.createElement('canvas');
-    canvas.width = IMAGE_SIZE;
-    canvas.height = IMAGE_SIZE;
+    canvas.width = CANVAS_SIZE;
+    canvas.height = CANVAS_SIZE;
     const ctx = canvas.getContext('2d');
     if (!ctx) continue; // no 2d context available (e.g. headless test env) — nothing to register
     drawSeamark(ctx, props);
-    map.addImage(id, ctx.getImageData(0, 0, IMAGE_SIZE, IMAGE_SIZE));
+    map.addImage(id, ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE), { pixelRatio: PIXEL_RATIO });
   }
 }

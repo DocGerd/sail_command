@@ -16,6 +16,8 @@ import { loadRoutingAssets } from './services/assets';
 import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './components/DataLayers';
+import CompassControl from './components/CompassControl';
+import ScaleBar from './components/ScaleBar';
 import RouteLayer from './components/RouteLayer';
 import OwnshipMarker from './components/OwnshipMarker';
 import PlannerPanel, {
@@ -548,9 +550,20 @@ function AppShell() {
           onMapError={handleMapError}
           interactiveLayerIds={INTERACTIVE_MAP_LAYER_IDS}
         >
-          {/* Always-mounted, plan-independent layers (#38/#39) — must NOT
-              live in RouteLayer, which renders null until a plan exists. */}
-          <DataLayers onHarborPick={handleHarborPick} />
+          {/* #155: the top-left map-overlay stack. DataLayers' toggles and the
+              compass are static flex children of one absolutely-positioned
+              column (app.css .map-stack-tl), so neither control carries its
+              own offsets and they can never overlap each other. DOM order is
+              paint order — depth/seamark toggles above, compass below.
+              Always-mounted, plan-independent (#38/#39) — must NOT live in
+              RouteLayer, which renders null until a plan exists. */}
+          <div className="map-stack-tl">
+            <DataLayers onHarborPick={handleHarborPick} />
+            {/* Track-up is available on every tab whenever showOwnship is on
+                (#155 decision 2) — the map is shared chrome, so its
+                orientation must not flip on a tab switch. */}
+            <CompassControl fix={ownshipFix} showOwnship={settings.showOwnship} />
+          </div>
           <RouteLayer
             plan={plan}
             rig={rig}
@@ -597,6 +610,12 @@ function AppShell() {
               />
             </>
           )}
+          {/* #155: passive nautical scale bar, bottom-left. Rendered LAST so
+              its DOM-order paint sits above the map but below nothing that
+              matters; it is pointer-events:none, so map taps pass through it.
+              It discovers the narrow-layout docked Live readout itself (see
+              ScaleBar.tsx) — no layout prop needed. */}
+          <ScaleBar />
         </MapView>
       </div>
 
