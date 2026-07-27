@@ -59,6 +59,10 @@ installs as a standalone icon and works fully offline after the first visit
 - Saved plans, including the wind grid they were computed from, persist
   offline in the browser — a saved route always re-renders against the
   forecast it was planned with, never a re-fetched one.
+- The chart carries a north arrow and a nautical scale bar: tapping the arrow
+  switches between north-up and course-up (course-up follows the GPS course
+  while under way, holding the last course if the fix drops out), and the
+  scale bar re-labels itself in nautical miles, cables, or metres as you zoom.
 - **Live view**: while underway, GPS position, heading-to-steer, and ETA
   against the active leg of a loaded plan, plus a short course/speed projection
   on the boat marker. From the current GPS fix you can reroute to the plan's
@@ -176,6 +180,18 @@ data; the code license is covered in the [License](#license) section below.
   language; they don't switch live when you toggle German/English mid-session.
 - The router does not yet account for currents, tides, or sea state (waves)
   in the routing cost.
+- The map chrome introduced in v0.5.0 has known rough edges, tracked for
+  v0.5.1: on any narrow screen the scale bar sits behind the bottom sheet on
+  the planning and routes tabs, and on short/landscape screens the compass can
+  be covered by that sheet and stop responding to taps
+  ([#208](https://github.com/DocGerd/sail_command/issues/208)); an
+  interrupted compass animation can leave the button showing an orientation
+  the chart does not have
+  ([#203](https://github.com/DocGerd/sail_command/issues/203)); seamarks can
+  flicker while a course-up turn is in progress below zoom 12
+  ([#206](https://github.com/DocGerd/sail_command/issues/206)); and the chart
+  can be tilted by gesture with no control to reset it short of a reload
+  ([#207](https://github.com/DocGerd/sail_command/issues/207)).
 
 ## Out of scope (v1)
 
