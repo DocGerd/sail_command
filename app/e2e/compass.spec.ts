@@ -563,7 +563,11 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
         // to it — a real click, not a hit-test, because a timeout (the
         // strip receiving no events at all) is how this bug actually
         // surfaced, and `elementsFromPoint` alone would not have caught it.
-        await liveTab.click();
+        // #208 review "R3-3": an explicit, short timeout — without one, a
+        // future regression here burns the full default budget (measured:
+        // 2.4 min vs ~25s green) and reds with a bare `locator.click: Test
+        // timeout` naming neither the viewport nor the cause.
+        await liveTab.click({ timeout: 5_000 });
         await expect(liveTab).toHaveAttribute('aria-selected', 'true');
         // RouteLayer (and so .route-layer-controls) is NOT tab-gated —
         // reset to Planen so the next iteration's geometry reads are

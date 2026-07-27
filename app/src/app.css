@@ -100,11 +100,18 @@ select {
      screen is the map" (persistent map-surface controls) > "present unless
      something more important needs the space" (the sheet's own content, the
      passive scale bar).
-   Within a tier, elements are kept from spatially competing (opposite
-   corners, centred vs. edge-anchored) rather than given a further order —
-   two same-tier elements genuinely fighting for the same pixels is a
-   LAYOUT bug, not a stacking one. #205's AIS-chip-under-header overlap was
-   exactly that: fixed by moving the chip's row (below), not by another tier.
+   Within a tier, elements are USUALLY kept clear of each other by occupying
+   different screen regions (opposite corners, centred vs. edge-anchored) —
+   not by a further order, and NOT guaranteed: `.banner-area` (which grows
+   with the queued-banner list) and `.app-tabs` DO spatially compete at short
+   viewports once several banners are up (measured 740x360, 4 banners:
+   48..280 vs the strip's 163..208), and DOM order — not this tier system —
+   decides it; `.app-tabs` happens to be later in App.tsx, so navigation
+   still wins, but that is incidental to source order, not a rule this list
+   enforces. #205's AIS-chip-under-header overlap was the same mechanism
+   with NO favourable DOM order behind it: fixed by moving the chip's row
+   (below), not by inventing a fourth tier — the same fix any REAL same-tier
+   collision needs, since this system has no mechanism to arbitrate one.
 
    Tier 3 — SHELL CHROME (z-index: 3). The user must always be able to read
    or reach these; nothing on the map ever outranks them:
@@ -813,7 +820,17 @@ select {
    `pointer-events: none` means it never blocks a tap — and the same #205
    family this whole tier system explicitly does not attempt to fix (that
    issue's own "control cards collide at ~320px" is the general case; this
-   is a narrower instance of it, not a new mechanism). */
+   is a narrower instance of it, not a new mechanism).
+   #208 review "R3-2", second known residual, also #205-adjacent: this row
+   (56..75px) sits inside `.banner-area`'s own band (48..96px with one
+   banner up, wider with more), and Tier 3 correctly wins there — so the
+   chip is hidden again whenever ANY banner shows, including the offline
+   banner, which is exactly the one state where both messages matter
+   ("you're offline" and "AIS still needs a key/connection"). Still a net
+   improvement over round 2 (visible whenever no banner is up, where before
+   it was invisible unconditionally) — not fixed here, per the same
+   same-tier-collision-needs-a-layout-fix reasoning above, deliberately
+   deferred rather than chased under time pressure. */
 .ais-status {
   position: absolute;
   top: 3.5rem;
@@ -2010,10 +2027,21 @@ select {
      the map) would otherwise leave a dead gap at the top-right controls.
      #155: the top-left offset now belongs to .map-stack-tl (the column that
      owns both the depth toggles and the compass), not to
-     .data-layer-controls, which is a static flex child of it. */
+     .data-layer-controls, which is a static flex child of it.
+     #208 review "R3-1": the narrow-only `max-height` bound (base rule) exists
+     to defend against `.app-bottom-sheet` reaching up from below — on wide,
+     the sheet is `position: static` (a side column, see its own wide-layout
+     rule), so there is nothing to defend against, and the bound was only
+     ever squeezing both clusters for no reason (measured at 1024x600: the
+     route cluster scrolled with its legend closed, and needed 353px for an
+     open legend but only had 349). `max-height: none` restores natural
+     sizing wherever the bound's premise (an overlapping sheet) doesn't hold —
+     general lesson: a bound that exists for ONE layout's hazard must be
+     scoped to that layout, not applied unconditionally. */
   .route-layer-controls,
   .map-stack-tl {
     top: 0.75rem;
+    max-height: none;
   }
 
   /* #155: no docked Live readout on wide (it portals into the panel column,
