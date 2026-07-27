@@ -131,6 +131,12 @@ deviate from it.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
+- Dark mode has NO in-app toggle — it is pure `@media (prefers-color-scheme:
+  dark)` in `app.css`, so a both-themes verification pass needs Playwright
+  `page.emulateMedia({ colorScheme })`, never a UI click.
+- Playwright MCP `page.screenshot({ path: './x.png' })` writes relative to the
+  REPO ROOT — write captures to /tmp (or move them out immediately) so a later
+  `git add` cannot sweep them into a commit.
 - GPS dynamics ARE e2e-testable: `app/e2e/live.spec.ts` (#142) drives
   deterministic fix sequences via Playwright `context.setGeolocation` +
   `test.use({ permissions: ['geolocation'] })` against the real solver/mask —
@@ -319,7 +325,15 @@ deviate from it.
   edit `CHANGELOG.md`'s `[Unreleased]` section — they conflict on the same
   region. Add the entry in the LAST PR of the batch or a dedicated changelog
   PR; a SOLO PR may keep its atomic entry (no conflict possible). Durable fix
-  (changelog fragments) tracked in #189.
+  (changelog fragments) tracked in #189. Rolling `Unreleased` → `[X.Y.Z]` at a
+  cut needs NO test edits: `ChangelogView` filters the now-empty `[Unreleased]`
+  and `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
+  keep new changelog assertions tail-anchored so a cut can never force an
+  assertion edit.
+  `Closes #N` in a RELEASE PR does NOT close the issue: GitHub auto-closes only
+  on merge into the DEFAULT branch, which here is `develop`, not `main` (#132
+  stayed open after #210 merged, v0.5.0). Close release-scoped issues by hand at
+  the cut, or reference them from a develop-side PR instead.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -453,6 +467,12 @@ deviate from it.
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
+- If a session's OWN directives contradict that orchestrate-first mode (e.g. a
+  prompt-level "do not call the Agent tool unless requested"), NAME the conflict
+  in the FIRST response and ask which governs — never silently comply with
+  either side. Silently obeying the restriction cost a full docs sweep plus a
+  ~15-call browser walkthrough of main-session context (2026-07-27); durable
+  enforcement (SessionStart hook or skill) tracked in #211.
 - **Right-size agent models per task** (reinforces the global fitness rule): PIN
   the model when spawning — `sonnet` for standard/mechanical implement + review +
   docs; reserve `opus`/the heaviest tier for safety-critical or judgment-heavy
@@ -551,7 +571,9 @@ deviate from it.
   diagnostics stream.
 - A committed change to the always-dirty `.claude/settings.json` blocks `git
   switch` between branches until both sides hold the same blob — `git fetch
-  origin develop:develop` (ref update without checkout), then switch.
+  origin develop:develop` (ref update without checkout), then switch. That
+  ref-update trick REFUSES while `develop` is itself the checked-out branch —
+  branch straight off the remote instead (`git switch -c <b> origin/develop`).
 
 ## graphify
 
