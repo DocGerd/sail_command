@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Publish project governance, a forward-looking roadmap, a Code of Conduct,
+  and a security assurance case as new root-level documents (GOVERNANCE.md,
+  ROADMAP.md, CODE_OF_CONDUCT.md, docs/security-assurance-case.md) (#217,
+  #218, #219, #224).
+
+### Fixed
+
+- Seamarks: hazard-bearing marks (isolated-danger and cardinal buoys/beacons)
+  now win collision placement below zoom 12 and win taps where icons overlap
+  at zoom 12 and above, instead of surviving or being picked at random.
+  Priority order follows IALA R1001 Ed 2.0. Measured on the Kappeln fairway:
+  isolated-danger retention improved from 50% to 83% at zoom 8 and 50% to
+  100% at zoom 9; safe-water retention improved from 0% to 100% at zoom 10
+  (#200, #225).
+- Compass: track-up no longer drops to free orientation when a foreign
+  camera animation (pan inertia, keyboard rotation, a plan-change
+  fit-to-bounds) interrupts a compass ease; tapping north-up now always
+  reaches north instead of leaving the compass stuck showing an orientation
+  the chart no longer has (#203, #227).
+- Map pitch (tilt) is now locked: it can no longer be reached by a two-finger
+  drag, right-click drag, or Shift+arrow gesture, so the chart can no longer
+  be left tilted with no way to reset it short of a reload (#207, #228).
+- Map chrome (scale bar, compass, route-layer controls) is no longer hidden
+  or unreachable under the bottom sheet at narrow viewports (#208, #228).
+
 ## [0.5.0] - 2026-07-27
 
 ### Added

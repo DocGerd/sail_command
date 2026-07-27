@@ -19,17 +19,20 @@ shipped.
 ## Now — v0.5.1: finish the map chrome
 
 v0.5.0 introduced the compass and scale-bar chrome and shipped it with known
-rough edges. v0.5.1 is a correction release with no new feature surface:
+rough edges. v0.5.1 is a correction release with no new feature surface.
+Fixed: compass mode desyncing from the camera when an ease is interrupted
+([#203](https://github.com/DocGerd/sail_command/issues/203)), chrome occluded
+by the bottom sheet
+([#208](https://github.com/DocGerd/sail_command/issues/208)), map pitch
+reachable by gesture with no reset
+([#207](https://github.com/DocGerd/sail_command/issues/207)), and
+indiscriminate seamark collision culling
+([#200](https://github.com/DocGerd/sail_command/issues/200)). Remaining:
 
-- Compass mode desyncs from the camera when an ease is interrupted
-  ([#203](https://github.com/DocGerd/sail_command/issues/203)).
-- Chrome occluded by the bottom sheet — scale bar buried on Plan/Routes, compass
-  untappable at landscape heights
-  ([#208](https://github.com/DocGerd/sail_command/issues/208)).
-- Map pitch is reachable by gesture with no way to reset it short of a reload
-  ([#207](https://github.com/DocGerd/sail_command/issues/207)).
-- Seamark collision priority, so enlarged hazard marks stop being culled
-  indiscriminately ([#200](https://github.com/DocGerd/sail_command/issues/200)).
+- Track-up still drops to free on an ordinary pan flick whenever the chart's
+  bearing sits inside MapLibre's 7° `bearingSnap` window — an everyday
+  heading in the Flensburg Fjord
+  ([#230](https://github.com/DocGerd/sail_command/issues/230)).
 
 ## Next — v0.6.0
 
@@ -49,13 +52,13 @@ commitment either.
 The project holds the [OpenSSF Best Practices](https://www.bestpractices.dev/projects/13749)
 *passing* badge and is working toward *Silver*. A 2026-07 audit produced a
 concrete, bounded set of gaps, most of which are documents or config rather than
-product work:
+product work. Done: governance, roles, Code of Conduct, this roadmap, and a
+security assurance case
+([#217](https://github.com/DocGerd/sail_command/issues/217),
+[#218](https://github.com/DocGerd/sail_command/issues/218),
+[#219](https://github.com/DocGerd/sail_command/issues/219),
+[#224](https://github.com/DocGerd/sail_command/issues/224)). Remaining:
 
-- Governance, roles, Code of Conduct, this roadmap, and a security assurance
-  case ([#217](https://github.com/DocGerd/sail_command/issues/217),
-  [#218](https://github.com/DocGerd/sail_command/issues/218),
-  [#219](https://github.com/DocGerd/sail_command/issues/219),
-  [#224](https://github.com/DocGerd/sail_command/issues/224)).
 - Named coding standards and automated Python lint/format enforcement for
   `pipeline/` ([#220](https://github.com/DocGerd/sail_command/issues/220)).
 - Statement-coverage measurement and an 80% gate
@@ -103,14 +106,15 @@ revisited, not that it has been lifted.
   prerequisite for confidently changing anything in the Live view.
 - Remaining map-chrome and small-screen issues beyond v0.5.1
   ([#205](https://github.com/DocGerd/sail_command/issues/205),
-  [#187](https://github.com/DocGerd/sail_command/issues/187)).
+  [#187](https://github.com/DocGerd/sail_command/issues/187),
+  [#231](https://github.com/DocGerd/sail_command/issues/231),
+  [#232](https://github.com/DocGerd/sail_command/issues/232)).
 
 ### Development workflow
 
 Not user-visible, but it is where a meaningful share of the effort goes and it
-sets the pace of everything above: CI wall-clock reduction
-([#214](https://github.com/DocGerd/sail_command/issues/214)), a conflict-free
-changelog workflow for parallel pull requests
+sets the pace of everything above: a conflict-free changelog workflow for
+parallel pull requests
 ([#189](https://github.com/DocGerd/sail_command/issues/189)), grouped Dependabot
 updates ([#174](https://github.com/DocGerd/sail_command/issues/174)), path→area
 PR labeling ([#173](https://github.com/DocGerd/sail_command/issues/173)), and

@@ -46,6 +46,12 @@ deviate from it.
   **CI runners are 6–10× slower than dev machines** — never add a per-test
   timeout tighter than the file-level config, and never trust local timing
   margins for CI.
+- vitest's `BaseSequencer` sorts by file SIZE descending when there is no
+  cache — and CI never has one (`npm ci` wipes `node_modules`).
+  `invariants.property.test.ts` is ~4380 bytes but ~463 s, so the
+  smallest-but-slowest file was scheduled LAST and idled ~109 s waiting for
+  faster workers to finish. Fixed with a custom `sequence.sequencer` in
+  `app/vite.config.ts` that schedules known-slow files first (#214).
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
 - Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
@@ -105,8 +111,16 @@ deviate from it.
   id), so an "is this my own ease" flag can get cleared mid-flight and the
   controller misreads its own animation as a user gesture (#155). `easeId` is
   necessary but NOT sufficient — MapLibre suppresses only when ids MATCH, so
-  a FOREIGN ease (pan inertia, keyboard rotation) still clears the guard; that
-  gap is open bug #203, not a solved invariant.
+  a FOREIGN ease (pan inertia, keyboard rotation, a plan-change `fitBounds`)
+  still clears the guard. **Fixed** (#203, #227) by deriving mode from the
+  CAMERA instead of tracking it alongside a flag: every settle re-checks
+  `north` against `map.getBearing()`, and MapLibre's `originalEvent` stamp
+  (present only on events a real user gesture caused) discriminates a hand
+  rotation from a foreign settle, guarded against a settle delivered from
+  inside our OWN `easeTo` and one arriving while `map.isEasing()`. Residual:
+  a pure PAN can still get rewritten into a rotation-to-north by MapLibre's
+  own 7° `bearingSnap` and fires WITH `originalEvent` attached, so track-up
+  still drops whenever `0 < |bearing| < 7` — an everyday heading (#230).
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
   Live reroute under way) silently un-rotates the chart and kills track-up
@@ -115,6 +129,15 @@ deviate from it.
 - `icon-padding` (default 2 px/side) is part of MapLibre's collision box, not
   decoration — it's the lever for offsetting `icon-size` growth without
   changing the collision footprint (#191).
+- `symbol-sort-key` is ONE knob driving TWO opposite behaviours. Below z12
+  (`icon-overlap: 'never'`) a lower key wins placement (culled first); at
+  z≥12 (`'always'`) a **higher** key paints on top, and
+  `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
+  tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
+  `sortFeaturesByKey = false` (`symbol_bucket.ts:391`), disabling the
+  placement priority entirely. Within one symbol layer, placement and paint
+  order cannot be set independently — that needs a second layer (#200,
+  #232).
 
 ## PWA / E2E / deploy (Phase F)
 
@@ -393,7 +416,9 @@ deviate from it.
   measure BASE vs. HEAD with `idle`-gated `queryRenderedFeatures`, never by
   eye; identical feature counts at z≥12 (`overlap:'always'`) is the signature
   that isolates collision growth from every other explanation (#191, #192,
-  follow-up #200).
+  fixed by ranking `symbol-sort-key` per R1001 danger content, #200/#225;
+  four residuals — z≥12 paint-order inversion, cross-tile ordering, unpinned
+  tap wiring, popup anchoring — tracked in #232).
 - A green workflow run proves the RUN was healthy, not that the intended
   VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
   workflow FILE from X's tip. Verify by inspecting the artifact it produced,
@@ -403,6 +428,24 @@ deviate from it.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
+- A verification method that structurally cannot see a regression class will
+  report green through it. Three separate cases in one day:
+  `queryRenderedFeatures` counts are order-independent, so a per-family
+  count check is blind to paint-order inversion (#200); jsdom stubs
+  `offsetHeight`, so a hidden-element measurement bug is unreachable in unit
+  tests (#208); a camera fake that doesn't model `map.resetNorth()` cannot
+  show a settle that never arrives (#203). Ask of any green result: *what
+  class of failure can this method not detect?*
+- `Object.is(-0, 0)` is `false`, and Playwright's `toBe` uses `Object.is`. A
+  counter-rotating needle rounds a −0.11° residual to `-0` and fails
+  `toBe(0)` intermittently — MapLibre's camera lands 0.04–0.18° short after a
+  drag-rotate about half the time. Normalise with `+ 0` (`-0 + 0` is `+0`;
+  every other double is bit-identical) (#203).
+- CITATION HALO: verifying one citation from source lends borrowed
+  confidence to adjacent "tightening" edits made from memory, which then get
+  reported as verified too. After correcting any citation, re-check EVERY
+  other citation in the block (#200 — §2.7.1.2 was "tightened" into being
+  false; §2.7.1.1 was correct all along).
 
 ## Domain rules that are easy to get wrong
 
@@ -491,6 +534,9 @@ deviate from it.
   CONTRIBUTING.md (#167/#168).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
+  It also fires on `gh api -f` alone with NO git command present, and even on
+  a heredoc whose PROSE merely mentions the force flags; `--raw-field` is the
+  escape (#216).
 - PR review threads via API: send bodies containing backticks as JSON `--input`
   files (double-quoted shell interpolation mangles them); inline comments 422
   outside diff hunks — anchor to in-diff lines, put out-of-diff findings in a
@@ -509,6 +555,16 @@ deviate from it.
   allowed), then the main session runs `git worktree remove` — force-free. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
+- Brief reviewers to POST the review to the PR BEFORE reporting back. Three
+  reviewers in one session wrote thorough reviews and reported them without
+  publishing, leaving PRs looking unreviewed — which also erases the
+  code-review evidence OpenSSF criteria depend on. Check the PR's
+  `reviews`/`comments` artifacts, not the agent's claim.
+- When relaying a CI failure to an implementer, paste the RAW assertion
+  output, never a paraphrase — a paraphrase discards the diagnostic. A `-0`
+  root cause was in the log as `Received: -0`, got dropped from a summary,
+  and the assertion's wording then pointed at the wrong suspect entirely
+  (#203).
 - When the session's OWN cwd is a worktree, `isolation:worktree` agents and
   un-isolated reviewers can SHARE it rather than get a separate tree — a reviewer
   that checks PR code in for a RED-check leaves those changes for your next
@@ -538,6 +594,10 @@ deviate from it.
   in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
+- `gh api graphql -F body=@file` posts the FILE as the body — `--input` is
+  REST-only and has no equivalent for `graphql`. Inline the string for a
+  GraphQL call (e.g. a review-thread reply), or repair a bad post with a
+  REST `PATCH`.
 - Bash cwd PERSISTS across calls — a `cd` into a scratchpad earlier in the
   session makes a later `gh pr merge` fail with "not a git repository", and
   per the #94 rule below that failure could still have landed the merge, so
