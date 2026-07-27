@@ -11,6 +11,9 @@ export const en = {
   'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
   'options.safetyDepth.label': 'Safety depth (m)',
+  'options.depthComfortMargin.label': 'Depth comfort margin (m)',
+  'options.depthComfortMargin.help':
+    'Beyond the safety depth, the planner also prefers water at least this much deeper when it costs little extra time — 0 disables the preference. It never allows shallower water than the safety depth allows, and the recommended rig can change as a result.',
   'options.motorSpeed.label': 'Motoring speed (kn)',
   'options.motorThreshold.label': 'Motor threshold (kn)',
   'options.maneuverPenalty.label': 'Maneuver penalty (s)',

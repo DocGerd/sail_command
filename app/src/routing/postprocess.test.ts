@@ -12,13 +12,28 @@ const t0 = Date.UTC(2026, 6, 15, 8, 0, 0);
 // motor arm too — a fixture-only artifact of Leg becoming a discriminated union.
 type SailLeg = Extract<Leg, { kind: 'sail' }>;
 
-function legFrom(start: { lat: number; lon: number }, headingDeg: number, distNm: number, startMs: number, speedKn = 6): SailLeg {
+function legFrom(
+  start: { lat: number; lon: number },
+  headingDeg: number,
+  distNm: number,
+  startMs: number,
+  speedKn = 6,
+): SailLeg {
   const end = destinationPoint(start, headingDeg, distNm);
   const durMs = (distNm / speedKn) * 3_600_000;
   return {
-    kind: 'sail', board: 'starboard', start, end,
-    startTimeMs: startMs, endTimeMs: startMs + durMs,
-    headingDeg, twaDeg: 90, twsKn: 12, speedKn, distanceNm: distNm, maneuverAtStart: null,
+    kind: 'sail',
+    board: 'starboard',
+    start,
+    end,
+    startTimeMs: startMs,
+    endTimeMs: startMs + durMs,
+    headingDeg,
+    twaDeg: 90,
+    twsKn: 12,
+    speedKn,
+    distanceNm: distNm,
+    maneuverAtStart: null,
   };
 }
 
@@ -44,7 +59,12 @@ describe('mergeCollinearLegs', () => {
     expect(mergeCollinearLegs([a, b], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
     const c = { ...legFrom(a.end, 91, 2, a.endTimeMs), board: 'port' as const };
     expect(mergeCollinearLegs([a, c], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
-    const d = { ...legFrom(a.end, 91, 2, a.endTimeMs), kind: 'motor' as const, board: null, maneuverAtStart: null };
+    const d = {
+      ...legFrom(a.end, 91, 2, a.endTimeMs),
+      kind: 'motor' as const,
+      board: null,
+      maneuverAtStart: null,
+    };
     expect(mergeCollinearLegs([a, d], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
   });
 
@@ -69,9 +89,50 @@ describe('mergeCollinearLegs', () => {
     expect(mergeCollinearLegs([a, b], openWaterMask(), windE, DEFAULT_SETTINGS).length).toBe(1);
   });
 
+  // #243 §D.4: mergeCollinearLegs's quality gap — straightening a dogleg can
+  // cut a corner neither original leg touched, silently undoing some of the
+  // depth comfort preference even though the merge stays gate-valid.
+  it('does not merge when the straight chord clips SHALLOWER (but still navigable) water than either leg individually crossed', () => {
+    // Same ridge/gap geometry as the land-clipping test above, but the ridge
+    // is charted 3.2 m (navigable at the 3.0 m gate — segmentNavigable alone
+    // would NOT reject this merge) instead of land. Both legs individually
+    // stay in 20 m water (routed through the gap, exactly like the land
+    // case); only the straight chord actually touches the ridge.
+    const windE = new WindField(uniformWindGrid(12, 90));
+    const ridge = makeMask((r, c) =>
+      r === 90 && c >= 140 && c <= 165 && !(c >= 152 && c <= 156) ? 32 : 200,
+    );
+    const a = { ...legFrom({ lat: 54.6, lon: 10.1525 }, 5, 7, t0), twaDeg: 85 };
+    const b = { ...legFrom(a.end, 355, 7, a.endTimeMs), twaDeg: 95 };
+    // sanity: unlike the land case, the chord IS gate-navigable now — only
+    // the NEW clearance-comparison check can reject this merge.
+    expect(ridge.segmentNavigable(a.start, b.end, 3)).toBe(true);
+    expect(ridge.segmentClearanceM(a.start, a.end, 3)).toBeCloseTo(20, 6);
+    expect(ridge.segmentClearanceM(b.start, b.end, 3)).toBeCloseTo(20, 6);
+    expect(ridge.segmentClearanceM(a.start, b.end, 3)).toBeCloseTo(3.2, 6);
+
+    // Preference active (DEFAULT_SETTINGS.depthComfortMarginM = 2.0): the
+    // merged span's 3.2 m clearance is worse than either leg's own 20 m, so
+    // the merge is rejected.
+    expect(mergeCollinearLegs([a, b], ridge, windE, DEFAULT_SETTINGS, 5.0).length).toBe(2);
+    // Preference OFF (comfortDepthM omitted): byte-identical to the pre-#243
+    // behavior — the hard gate alone governs, and the merge proceeds.
+    expect(mergeCollinearLegs([a, b], ridge, windE, DEFAULT_SETTINGS).length).toBe(1);
+  });
+
   it('merges two adjacent motor legs within tolerance (endTimeMs/distanceNm summed)', () => {
-    const a = { ...legFrom({ lat: 54.7, lon: 10.0 }, 90, 2, t0, 6.5), kind: 'motor' as const, board: null, maneuverAtStart: null };
-    const b = { ...legFrom(a.end, 90, 2, a.endTimeMs, 6.5), kind: 'motor' as const, board: null, maneuverAtStart: null };
+    const a = {
+      ...legFrom({ lat: 54.7, lon: 10.0 }, 90, 2, t0, 6.5),
+      kind: 'motor' as const,
+      board: null,
+      maneuverAtStart: null,
+    };
+    const b = {
+      ...legFrom(a.end, 90, 2, a.endTimeMs, 6.5),
+      kind: 'motor' as const,
+      board: null,
+      maneuverAtStart: null,
+    };
     const merged = mergeCollinearLegs([a, b], openWaterMask(), wind, DEFAULT_SETTINGS);
     expect(merged.length).toBe(1);
     expect(merged[0].start).toEqual(a.start);
@@ -85,6 +146,8 @@ describe('mergeCollinearLegs', () => {
     const bAt10 = legFrom(a.end, 100, 2, a.endTimeMs); // exactly MAX_MERGE_DEG — merges
     expect(mergeCollinearLegs([a, bAt10], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(1);
     const bOver10 = legFrom(a.end, 100.5, 2, a.endTimeMs); // just over — does not merge
-    expect(mergeCollinearLegs([a, bOver10], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(2);
+    expect(mergeCollinearLegs([a, bOver10], openWaterMask(), wind, DEFAULT_SETTINGS).length).toBe(
+      2,
+    );
   });
 });

@@ -33,6 +33,34 @@ describe('OptionsPanel', () => {
     expect(screen.queryByLabelText('Safety depth (m)')).not.toBeInTheDocument();
   });
 
+  // #243: depth comfort margin — rendered separately from the four plain
+  // ADVANCED_FIELDS above (it carries a help paragraph), but still inside
+  // the advanced group, unlike safety depth.
+  it('renders the depth comfort margin field with its default value and a help paragraph', () => {
+    renderPanel();
+    const input = screen.getByLabelText('Depth comfort margin (m)');
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveValue(DEFAULT_SETTINGS.depthComfortMarginM);
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(input).not.toHaveAttribute('title');
+    const help = document.getElementById(describedBy!);
+    expect(help).not.toBeNull();
+    expect(help).toHaveClass('options-help');
+    expect(help).toHaveTextContent(/0 disables the preference/);
+  });
+
+  it('commits the depth comfort margin on blur and clamps to its 0-5 bounds', () => {
+    const onChange = renderPanel();
+    const input = screen.getByLabelText('Depth comfort margin (m)');
+    fireEvent.change(input, { target: { value: '1.5' } });
+    fireEvent.blur(input);
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, depthComfortMarginM: 1.5 });
+    fireEvent.change(input, { target: { value: '99' } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue(5);
+  });
+
   it('clamps a value above the maximum on blur (motoring speed, max 10)', () => {
     const onChange = renderPanel();
     const input = screen.getByLabelText('Motoring speed (kn)');

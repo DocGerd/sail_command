@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Depth comfort preference: beyond the hard safety-depth gate, the router now
+  also prices every candidate segment on its minimum charted clearance —
+  free at/above safety depth + a new "depth comfort margin" setting
+  (default 2.0 m, 0 = off), up to ~1.43× the crossing time right at the gate,
+  linear in between. Routes now prefer deeper water when it costs little
+  extra time, instead of hugging the safety-depth line whenever that saved
+  any time at all. The charge lands on the search's ranking clock, never on
+  route geometry or the displayed ETA/timestamps, and a #53 relaxed-depth
+  solve keeps the preference anchored to the *requested* safety depth, so a
+  relaxed gate no longer makes sub-requested water equally attractive along
+  the whole passage — only where the mask actually forces it. A plan's
+  **recommended rig can change** from before this change as a result (#243).
+
+### Changed
+
+- A preferenced solve that fails to find a route is automatically retried
+  without the depth comfort preference before the plan degrades further, so
+  no passage that routed before this change can fail to route now (#243).
+
 ## [0.5.1] - 2026-07-27
 
 ### Added

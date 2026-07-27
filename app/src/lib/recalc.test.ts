@@ -14,6 +14,7 @@ const ORIGINAL_REQUEST: PlanRequest = {
   departureMs: 1_780_000_000_000,
   settings: {
     safetyDepthM: 2.3,
+    depthComfortMarginM: 2.0,
     motorSpeedKn: 6.5,
     motorThresholdKn: 2.5,
     maneuverPenaltyS: 45,
@@ -66,6 +67,7 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
       departureMs: 1_780_086_400_000, // the edited departure, NOT the stored 1_780_000_000_000
       settings: {
         safetyDepthM: 2.3,
+        depthComfortMarginM: 2.0,
         motorSpeedKn: 6.5,
         motorThresholdKn: 2.5,
         maneuverPenaltyS: 45,

@@ -117,6 +117,28 @@ export class NavMask {
   }
 
   /**
+   * Minimum charted depth over every cell the a→b segment touches, or null
+   * exactly when {@link segmentNavigable} would report false (any touched
+   * cell below `gateM`, land, or out of bounds) — one `walkCells` pass that
+   * shares `cellNavigable`'s gate check, so the set of cells visited and the
+   * abort condition are identical to `segmentNavigable`'s. Used by #243's
+   * depth comfort preference to price a segment's clearance beyond the hard
+   * gate. Deep-capped cells (byte 255) count as 25.4 m, mirroring
+   * `segmentShallowestBelow`'s documented rule — the cap is a floor, not a
+   * reading, never inferred from `depthM === 25.4`.
+   */
+  segmentClearanceM(a: LatLon, b: LatLon, gateM: number): number | null {
+    let min = Infinity;
+    const completed = this.walkCells(a, b, (row, col) => {
+      if (!this.cellNavigable(row, col, gateM)) return false;
+      const depthM = this.byteToDepthM(this.depthByte(row, col));
+      if (depthM < min) min = depthM;
+      return true;
+    });
+    return completed ? min : null;
+  }
+
+  /**
    * Shallowest charted depth among cells the a→b segment touches that are
    * charted strictly below `thresholdM`; null when no touched cell is. Used by
    * #53's per-leg shallow flagging (threshold = the REQUESTED safety depth).
