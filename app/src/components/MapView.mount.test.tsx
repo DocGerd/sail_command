@@ -123,6 +123,14 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
     expect(hoisted.protocolAddCalls.length).toBe(0);
   });
 
+  it('#207: constructs with pitch locked flat (maxPitch: 0), not left to reset later', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));
+    render(<MapView tapActive={false} onTap={() => {}} />);
+    await flushAsyncMount();
+    expect(hoisted.mapCtorCalls.length).toBe(1);
+    expect((hoisted.mapCtorCalls[0] as { maxPitch?: number }).maxPitch).toBe(0);
+  });
+
   it('post-await construction throw routes into the map-error path (console.error + one-shot onMapError)', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));

@@ -7,6 +7,8 @@ import { defineConfig } from 'vite';
 import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { BaseSequencer } from 'vitest/node';
+import type { TestSpecification } from 'vitest/node';
 
 const APP_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -119,6 +121,42 @@ function appVersion(command: 'build' | 'serve'): string {
   }
 }
 
+// #214: with no cache (every CI run — `npm ci` wipes node_modules, so
+// vitest's own results cache never survives to the next run), vitest's
+// BaseSequencer.sort falls back to ordering files by size, descending. The
+// suite's single slowest file, invariants.property.test.ts, is also its
+// smallest (~4.4 KB against a ~66 KB largest file), so it sorts near the
+// BACK of ~97 files and starts ~109s late — becoming the tail of the whole
+// test step even though other workers are free the entire time (measured:
+// https://github.com/DocGerd/sail_command/issues/214). Pinning it (and the
+// next-slowest file) to the FRONT lets their ~680s combined CPU run
+// concurrently with the other ~95 files' ~230s instead of serially after
+// them. Order here is the desired START order (slowest first); add a file
+// to this list if a future addition shows the same
+// small-file/disproportionately-slow-run mismatch.
+const SLOW_TEST_FILES_FIRST = [
+  'src/routing/invariants.property.test.ts',
+  'src/routing/realmask.repro.test.ts',
+];
+
+// Extends BaseSequencer rather than reimplementing it: only `sort` changes
+// (the two known-slow files move to the front, everything else keeps
+// BaseSequencer's default order); `shard` is inherited untouched so sharded
+// runs still work.
+class SlowFileFirstSequencer extends BaseSequencer {
+  override async sort(files: TestSpecification[]): Promise<TestSpecification[]> {
+    const priorityRank = (spec: TestSpecification): number => {
+      const path = spec.moduleId.replace(/\\/g, '/');
+      return SLOW_TEST_FILES_FIRST.findIndex((suffix) => path.endsWith(suffix));
+    };
+    const priority = files
+      .filter((spec) => priorityRank(spec) !== -1)
+      .sort((a, b) => priorityRank(a) - priorityRank(b));
+    const rest = files.filter((spec) => priorityRank(spec) === -1);
+    return [...priority, ...(await super.sort(rest))];
+  }
+}
+
 export default defineConfig(({ command }) => ({
   base: basePath,
   plugins: [
@@ -221,5 +259,7 @@ export default defineConfig(({ command }) => ({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    // #214: see SlowFileFirstSequencer above.
+    sequence: { sequencer: SlowFileFirstSequencer },
   },
 }));

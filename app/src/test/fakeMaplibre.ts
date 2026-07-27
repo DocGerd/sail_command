@@ -149,6 +149,169 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
   };
 }
 
+// ------------------------------------------------------------------ camera
+//
+// A SECOND fake, for the camera surface rather than the style surface (#155,
+// hardened in #203). Kept here rather than inside CompassControl.test.tsx
+// because the #203 sweep found the bugs by copying the file's private fake
+// into a scratch test — a copy that could then drift from the semantics it is
+// supposed to model.
+//
+// Verified line by line against `node_modules/maplibre-gl/dist/
+// maplibre-gl-dev.js` (5.24.0):
+//
+//   easeTo(options, eventData)
+//     -> `this._stop(false, options.easeId)` FIRST                    (:69468)
+//     -> `_stop` runs the pending ease's `_onEaseEnd(easeId)` inline  (:69901)
+//     -> `_afterEase(d, id)` returns early ONLY when `this._easeId && id &&
+//        this._easeId === id`; otherwise it fires rotateend then moveend,
+//        both carrying the INTERRUPTED ease's own eventData            (:69668)
+//     -> then `this._easeId = options.easeId`, `_prepareEase` fires
+//        rotatestart (only when the bearing actually changes and no
+//        rotation was already in progress)                     (:69512/:69530)
+//     -> `_ease` runs `frame(1); finish()` synchronously when duration is 0,
+//        otherwise schedules frames and sets `_easeFrameId`             (:69908)
+//   isEasing() === `!!this._easeFrameId`                                (:69879)
+//
+// Two properties are load-bearing and must NOT be "simplified":
+//
+//   1. An ease stays IN FLIGHT until `finishEase()` or the next `easeTo` —
+//      without that no ease is interruptible and the whole bug class is
+//      structurally unreachable (the CLAUDE.md lesson from #155).
+//   2. The target bearing is applied when the ease SETTLES, never when it
+//      starts. A fake that teleports the camera to the target on `easeTo`
+//      cannot tell "the ease landed" from "the ease was killed half way",
+//      which is exactly the #203 F1 state.
+//
+// Deliberate simplifications, and what they cost:
+//
+//   - Only the bearing is modelled (no centre/zoom/pitch), and frames are not
+//     interpolated — tests choose the partial bearing with `setBearing`.
+//   - `rotating` is tracked per ease rather than as MapLibre's sticky
+//     `_rotating` flag.
+//   - The end-of-gesture `bearingSnap` branch (:68706-68718) is NOT modelled.
+//     In a real browser, a gesture that ends with `0 < |bearing| < bearingSnap`
+//     (default 7) does not merely fire a bare `moveend`: HandlerManager then
+//     calls `map.resetNorth()` — an easeId-less `easeTo` carrying no
+//     eventData — or folds the snap into the inertial ease. So the
+//     snap-affordance tests in CompassControl.test.tsx model the FIRST half of
+//     that sequence only, and are not browser-accurate past the point they
+//     stop: in Chromium the resetNorth ease interrupts the compass's own snap
+//     ease, and the settle reconciler reads the still-partial bearing and
+//     demotes to `free` for about a second before the mode recovers. That
+//     transient predates #203 (develop demotes there too) and is tracked
+//     separately — do not read these tests as proof it cannot happen.
+
+type EventData = { originalEvent?: unknown } | undefined;
+
+export interface FakeEaseOptions {
+  bearing?: number;
+  duration?: number;
+  easeId?: string;
+  easing?: (t: number) => number;
+}
+
+export type FakeCameraMap = ReturnType<typeof makeFakeCameraMap>;
+
+export function makeFakeCameraMap(initialBearing = 0) {
+  const listeners = new Map<string, Set<Handler>>();
+  const bucket = (type: string): Set<Handler> => {
+    let set = listeners.get(type);
+    if (!set) {
+      set = new Set();
+      listeners.set(type, set);
+    }
+    return set;
+  };
+  const fire = (type: string, arg: unknown = {}) => {
+    for (const fn of [...bucket(type)]) fn(arg);
+  };
+  const state = { bearing: initialBearing };
+  let pending: {
+    easeId: string | undefined;
+    target: number | undefined;
+    rotating: boolean;
+    eventData: EventData;
+  } | null = null;
+
+  /**
+   * `_afterEase(eventData, interruptingEaseId)`. `arrived` distinguishes a
+   * natural completion (the camera lands on the target) from an interruption
+   * or an abort (it stays wherever it got to). Returns whether the events were
+   * suppressed, which is what decides `_prepareEase`'s `currently.rotating`.
+   */
+  const afterEase = (interruptingEaseId: string | undefined, arrived: boolean): boolean => {
+    if (!pending) return false;
+    const { easeId, target, rotating, eventData } = pending;
+    const suppressed =
+      easeId !== undefined && interruptingEaseId !== undefined && easeId === interruptingEaseId;
+    pending = null;
+    if (suppressed) return true;
+    if (arrived && typeof target === 'number') state.bearing = target;
+    if (rotating) fire('rotateend', eventData ?? {});
+    fire('moveend', eventData ?? {});
+    return false;
+  };
+
+  const easeTo = vi.fn((options: FakeEaseOptions, eventData?: EventData) => {
+    const stillRotating = afterEase(options.easeId, false);
+    const rotating =
+      typeof options.bearing === 'number' ? options.bearing !== state.bearing : stillRotating;
+    pending = {
+      easeId: options.easeId,
+      target: options.bearing,
+      rotating,
+      eventData,
+    };
+    if (rotating && !stillRotating) fire('rotatestart', eventData ?? {});
+    if (rotating) fire('rotate', eventData ?? {}); // the new ease's first frame
+    if (options.duration === 0) afterEase(undefined, true); // `frame(1); finish()`
+  });
+
+  return {
+    easeTo,
+    /**
+     * `Map#fitBounds` as RouteLayer.tsx calls it on every new `plan.id`:
+     * duration 0 and the CURRENT bearing, which still interrupts whatever ease
+     * is in flight (`_fitInternal` -> `easeTo`).
+     */
+    fitBounds: vi.fn(
+      (_bounds: unknown, options?: { duration?: number; bearing?: number; padding?: number }) => {
+        easeTo({
+          duration: options?.duration ?? 0,
+          ...(options?.bearing === undefined ? {} : { bearing: options.bearing }),
+        });
+      },
+    ),
+    /** Let the in-flight ease run to natural completion: the camera lands. */
+    finishEase: () => afterEase(undefined, true),
+    /**
+     * HandlerManager aborting an animation because the user grabbed the chart:
+     * `map._stop(true)` (:68587/:68346), no interrupting easeId, and the camera
+     * simply stays wherever the ease got to.
+     */
+    stopForGesture: () => afterEase(undefined, false),
+    /** A hand rotation: BOTH events carry the DOM event that caused them. */
+    gestureRotateTo: (bearing: number, originalEvent: unknown = new Event('touchmove')) => {
+      state.bearing = bearing;
+      fire('rotatestart', { originalEvent });
+      fire('rotate', { originalEvent });
+    },
+    isEasing: () => pending !== null,
+    getBearing: () => state.bearing,
+    setBearing: (deg: number) => {
+      state.bearing = deg;
+    },
+    on: vi.fn((type: string, fn: Handler) => {
+      bucket(type).add(fn);
+    }),
+    off: vi.fn((type: string, fn: Handler) => {
+      bucket(type).delete(fn);
+    }),
+    fire,
+  };
+}
+
 // What a mid-session map.setStyle() does to component-added content (#150):
 // every custom source/layer/image is dropped with the old style, then
 // MapLibre fires 'styledata' once the replacement style is in place.

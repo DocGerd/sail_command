@@ -27,8 +27,21 @@ jobs:
       # job's working-directory (app/).
       - run: npm run notices
       - run: git diff --exit-code public/THIRD-PARTY-NOTICES.txt
+  # Deliberately no `needs: app` edge. The e2e job is self-contained: its
+  # `pree2e` hook rebuilds the app from scratch, so no artifact flows from the
+  # `app` job. Running the two jobs concurrently rather than gated saves ~120s
+  # of wall clock on every run, which compounds because `app`+`e2e` are both
+  # required checks under a strict up-to-date branch policy — every merge in a
+  # train pays a full CI cycle. Trade-off: a PR whose unit tests fail in `app`
+  # now also burns e2e runner minutes instead of skipping them.
+  # `app` and `e2e` also share an npm cache key (setup-node's `cache: npm` +
+  # `cache-dependency-path: app/package-lock.json` above): now that the two
+  # jobs start concurrently instead of `e2e` waiting on `app`, a
+  # lockfile-changing PR may have `e2e` restore a cache miss (the two runners
+  # race to populate the same cache key) and pay an uncached `npm ci`
+  # (~5-6s). Accepted knowingly (#214) — the ~120s saved on every run
+  # outweighs a few extra seconds on lockfile-changing PRs only.
   e2e:
-    needs: app
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: app } }
     steps:

@@ -41,15 +41,73 @@ visual check of the actual built state before it ships.
 `docgerd.github.io/sail_command`. There is no staging between merge and live —
 the local walkthrough is the only pre-ship human check.
 
+## 2b. Docs sweep (the #132 ritual) — before opening the PR
+
+The release cut is the moment the project's self-description is refreshed, so
+it cannot drift from the tracker. Do this on a topic branch into `develop`
+(or as the last commit before the release PR), never as a `main`-side fixup:
+
+- **`CHANGELOG.md`** — roll `[Unreleased]` into `## [X.Y.Z] - <date>` (today's
+  date, ISO) and update the two comparison links at the bottom: add
+  `[X.Y.Z]: …/compare/vX.Y.(Z-1)...vX.Y.Z` and re-point `[Unreleased]` at
+  `…/compare/vX.Y.Z...HEAD`. No test edits are needed — `ChangelogView` filters
+  the now-empty `[Unreleased]` and `changelog.test.ts` pins only the released
+  TAIL (`versions.slice(-5)`).
+- **`ROADMAP.md`** — update `Current release:` and promote Now → Next: the
+  shipped milestone's section goes away, the next one becomes "Now". Re-check
+  every issue number named there against the tracker; this file was wrong
+  within a day of being written.
+- **`README.md`** — re-verify the known-limitations section actually still
+  describes the shipped build.
+- **`GOVERNANCE.md`** — it carries a standing release duty and is re-read at
+  each cut; confirm roles and release mechanics still match reality.
+- **`CONTRIBUTING.md`** — the milestone list names the *next* release; roll it.
+- **Milestone** — close the shipped milestone BY HAND and move anything still
+  open in it to the next one.
+
+⚠️ **`Closes #N` in a release PR does NOT close the issue.** GitHub auto-closes
+only on merge into the DEFAULT branch, which here is `develop`, not `main`
+(#132 stayed open after #210 merged for v0.5.0). Close release-scoped issues
+manually at the cut, or reference them from a develop-side PR instead.
+
 ## 3–6. Release sequence
 
 | # | Step | Detail |
 |---|---|---|
 | 3 | Open the RELEASE PR `develop` → `main` | Full CI (`app` + `e2e`) re-runs under the strict up-to-date policy of the `protect-main` ruleset. Merges as a **merge commit** — never squash/rebase. |
 | 4 | USER merges | Merges to `main` are classifier-gated — **the user runs `gh pr merge`, not the assistant.** Wait for green required checks (`app` + `e2e`) first. `gh pr checks --json` is unsupported here — poll `gh api repos/OWNER/REPO/commits/SHA/check-runs` instead. |
-| 5 | Tag + push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a semver tag (e.g. `v0.5.0`) and push it. That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197). |
+| 5 | Tag + push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a semver tag (e.g. `v0.5.0`) and push it. **Assert the ref first — see 5a.** That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197). |
 | 5b | 🛑 **WAIT for the tag deploy, then verify** | **Do not push or merge anything to `develop` until this passes** — see the cancellation hazard below. |
 | 6 | BACK-MERGE `main` → `develop` | Open a `chore/backmerge` PR into `develop` so `develop` stays strictly ahead of `main`. Full CI re-runs. This is a develop-merge — the assistant may merge it directly. |
+
+## 5a. Assert the ref BEFORE tagging — local `main` is routinely stale
+
+Step 5 says "tag `main`", and local `main` is almost never `main`. Sessions
+work on `develop` and in worktrees, so the local branch can sit hundreds of
+commits behind (measured this session: local `main` at `110bb74`, **218
+commits behind `origin/main`**). `git switch main && git tag vX.Y.Z` then tags
+ancient code and **fails silently**: production bytes are still correct (the
+deploy builds from BRANCH TIPS, not the tag's commit), but the tag, `git
+describe` on that ref, and the release compare link are all wrong — and the
+About-dialog check in 5b can pass anyway, so nothing catches it.
+
+Fetch, then assert both equalities before the tag command:
+
+```bash
+REPO=DocGerd/sail_command
+TAG=vX.Y.Z
+MERGE_SHA=<the release PR's merge commit>   # gh api repos/$REPO/pulls/N --jq .merge_commit_sha
+
+git fetch origin main:main                  # ref update, no checkout needed
+[ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || { echo "local main != origin/main"; exit 1; }
+[ "$(git rev-parse main)" = "$MERGE_SHA" ]  || { echo "main is not the release merge commit"; exit 1; }
+
+git tag "$TAG" main && git push origin "$TAG"
+```
+
+`git fetch origin main:main` updates the ref without a checkout; it REFUSES
+while `main` is the currently checked-out branch (it will not be here — the
+cut runs from `develop`).
 
 ## 5b. The tag deploy must go GREEN before the back-merge (#197)
 
