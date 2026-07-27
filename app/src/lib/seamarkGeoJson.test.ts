@@ -38,7 +38,7 @@ describe('seamarkFeatureCollectionWithIcons', () => {
     });
     expect(withIcons.features[1].properties.icon).toBe('seamark-light-major');
     // #200 hand-derived: unlit light_major = 4 (Tier 2 — R1001 §2.7 "other
-    // marks", ranked on §2.7.1.2's stated long/medium range).
+    // marks", ranked on §2.7.1.1's stated long/medium range).
     expect(withIcons.features[1].properties.priority).toBe(4);
   });
 });

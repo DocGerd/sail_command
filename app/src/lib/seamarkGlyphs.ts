@@ -87,18 +87,30 @@ export function classifySeamark(seamarkType: string): SeamarkFamily {
 }
 
 /**
- * Even base rank per family (#200), ordered by how much DANGER information
- * the mark carries at the scale where culling actually happens — `sc-seamarks`
- * only collision-culls below z12. #144 shipped an ordering by on-screen
- * prominence instead, which let 107 minor lights systematically out-place 121
- * cardinals and 6 isolated-danger marks: a mark warning of a hazard was no
- * more likely to survive a collision than a routine one.
+ * Even base rank per family (#200), ordered in four tiers: the marks whose
+ * hazard warning is self-contained come first and are never displaced;
+ * everything below them is ranked on how useful the mark is AT THE SCALE WHERE
+ * CULLING HAPPENS — `sc-seamarks` only collision-culls below z12 — which for
+ * the middle tiers means scarcity and design range, not warning content.
+ *
+ * So this is NOT a pure danger-content ordering, and Tier 2 is where it
+ * departs: a lighthouse and a fairway mark carry no danger information at all
+ * (R1001 is explicit for safe water), yet both outrank the dense lateral
+ * sequence because 6 and 23 in-area marks that anchor a landfall are what a
+ * skipper reads at z8-z10, while an individual lateral out of 828 is not.
+ * The tier boundary above them is the hard one: nothing may displace a
+ * cardinal or isolated-danger mark, whatever its scale-appropriateness.
+ *
+ * #144 shipped a single ordering by on-screen prominence, which let 107 minor
+ * lights systematically out-place 121 cardinals and 6 isolated-danger marks:
+ * a mark warning of a hazard was no more likely to survive a collision than a
+ * routine one.
  *
  * Gaps of 2 leave room for the lit-ness promotion (-1) without families ever
  * interleaving: a lit lateral (7) beats an unlit lateral (8) but never any
  * cardinal (1/2).
  *
- * Derived from IALA R1001 Ed 2.0 (2022), in four tiers:
+ * Tiers, with the IALA R1001 Ed 2.0 (2022) basis for each:
  *
  * TIER 1 — the two marks whose warning is SELF-CONTAINED: one symbol carries
  * the whole message, at any scale, and nothing may displace them.
@@ -111,7 +123,7 @@ export function classifySeamark(seamarkType: string): SeamarkFamily {
  * carries danger information, and both are ranked on a property R1001 states
  * about them plus the fact that culling only happens below z12, where
  * scale-appropriateness is what matters:
- * - `lightMajor` §2.7.1.2 — a lighthouse provides "a long or medium range
+ * - `lightMajor` §2.7.1.1 — a lighthouse provides "a long or medium range
  *   light" and "a significant daymark"; R1001 §2.7 files it under "OTHER
  *   MARKS", outside the six MBS types (§1.2), but range is precisely what
  *   makes a mark usable at small scale. 6 in the forecast area.

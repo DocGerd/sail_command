@@ -547,7 +547,7 @@ describe('registerSeamarkImages', () => {
 //     §2.2.3 cardinal — "the safe side on which to pass a danger".
 //   TIER 2, scarce marks that anchor a passage at planning scale (neither
 //   carries danger information; culling only happens below z12):
-//     §2.7.1.2 lighthouse — "a long or medium range light", "a significant
+//     §2.7.1.1 lighthouse — "a long or medium range light", "a significant
 //       daymark"; §2.7 files it outside the six MBS types (§1.2).
 //     §2.4.1.1 safe water — "channel entrance, port or estuary approach,
 //       landfall, or best point of passage under bridges". §2.4.1 is explicit
@@ -662,7 +662,7 @@ describe('seamarkPriority (#144/#200 symbol-sort-key: lower = placed first = win
 
   // Tier 2: the two scarce, non-danger-bearing marks that anchor a passage at
   // planning scale both sit between the self-contained warnings and the dense
-  // sequence marks. Granting the on-deck argument to lighthouses (§2.7.1.2
+  // sequence marks. Granting the on-deck argument to lighthouses (§2.7.1.1
   // range) but not to fairway marks (§2.4.1.1 channel entrance / landfall /
   // best point of passage) would be an unprincipled asymmetry — raised in
   // review of #200 and accepted. Both must still lose to every cardinal.
