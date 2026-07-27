@@ -102,8 +102,7 @@ label (and `status: needs-triage` for bug reports) automatically.
 
 **Milestones**
 
-- `v0.5.1` — the next release (a patch release closing out v0.5.0's map chrome).
-- `v0.6.0` — the release after next.
+- `v0.6.0` — the next release.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 

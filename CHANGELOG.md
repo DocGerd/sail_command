@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-27
+
 ### Added
 
 - Publish project governance, a forward-looking roadmap, a Code of Conduct,
@@ -175,7 +177,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/DocGerd/sail_command/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/DocGerd/sail_command/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/DocGerd/sail_command/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DocGerd/sail_command/compare/v0.2.0...v0.3.0
