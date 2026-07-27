@@ -204,3 +204,142 @@ test('scale bar: labels the rendered viewport, never swallows a map tap, and cle
     server.kill();
   }
 });
+
+// #208: `.app-bottom-sheet` is opaque and paints AFTER the map (App.tsx), so
+// `toBeVisible()` on the compass/scale bar — which only checks that an
+// element HAS a box and isn't `display:none`/`visibility:hidden` — passes
+// even when the sheet fully covers it. These tests hit-test the real pixel
+// stack (`document.elementsFromPoint`) and drive a REAL click, at the exact
+// viewports the issue measured, on the two tabs a fresh narrow user actually
+// lands on (Plan is the first-load tab).
+const OCCLUSION_VIEWPORTS = [
+  { width: 844, height: 390 },
+  { width: 740, height: 360 },
+  { width: 667, height: 375 },
+];
+const OCCLUSION_TABS = ['Planen', 'Routen'] as const;
+
+/** Every element (tag+class) at a point, front-to-back — used only for the
+ * diagnostic dump attached to a failing assertion below. */
+function elementsAt(page: Page, x: number, y: number): Promise<{ tag: string; cls: string }[]> {
+  return page.evaluate(
+    ([px, py]) =>
+      document.elementsFromPoint(px, py).map((e) => ({
+        tag: e.tagName,
+        cls: typeof e.className === 'string' ? e.className : '',
+      })),
+    [x, y],
+  );
+}
+
+/** True iff the TOPMOST element at (x, y) is `container` itself or one of its
+ * descendants (e.g. the compass button or its needle/ring SVG parts). */
+function topmostIsWithin(
+  page: Page,
+  x: number,
+  y: number,
+  containerSelector: string,
+): Promise<boolean> {
+  const arg: [number, number, string] = [x, y, containerSelector];
+  return page.evaluate(([px, py, sel]) => {
+    const container = document.querySelector(sel);
+    const top = document.elementsFromPoint(px, py)[0];
+    return container != null && top != null && container.contains(top);
+  }, arg);
+}
+
+/** Hand-rotates the chart (right-drag well clear of the bottom sheet/header
+ * at every tested viewport), then clicks the compass at its EXACT rendered
+ * coordinates with a raw `page.mouse.click` — bypassing Playwright's own
+ * actionability pre-check, so a build where the sheet actually intercepts
+ * the click fails on the `data-orientation` assertion below, not on a
+ * generic "element not clickable" timeout. */
+async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['locator']>) {
+  const canvas = page.locator('canvas.maplibregl-canvas');
+  const box = (await canvas.boundingBox())!;
+  const cx = box.x + box.width / 2;
+  // 100px down clears the header above and every measured viewport's sheet
+  // top below (162-176px) — a point the drag can rely on reaching the map.
+  const ry = box.y + 100;
+  await page.mouse.move(cx, ry);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(cx + 150, ry, { steps: 10 });
+  await page.mouse.up({ button: 'right' });
+  await expect(compass).toHaveAttribute('data-orientation', 'free');
+
+  const cbox = (await compass.boundingBox())!;
+  await page.mouse.click(cbox.x + cbox.width / 2, cbox.y + cbox.height / 2);
+  await expect(compass).toHaveAttribute('data-orientation', 'north-up');
+}
+
+test('#208: compass stays tappable and the scale bar never sits under .app-bottom-sheet, at every measured narrow/landscape viewport', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(server.url);
+    await page.waitForLoadState('networkidle');
+    expect(await installMapHandle(page)).toBe(true);
+
+    const compass = page.locator('.compass-btn');
+    const bar = page.locator('.scale-bar');
+
+    for (const viewport of OCCLUSION_VIEWPORTS) {
+      await page.setViewportSize(viewport);
+      for (const tabName of OCCLUSION_TABS) {
+        await test.step(`${viewport.width}x${viewport.height} / ${tabName}`, async () => {
+          await page.getByRole('tab', { name: tabName }).click();
+
+          // --- compass: real occlusion + real interaction ---
+          const cbox = (await compass.boundingBox())!;
+          // Not pushed off-screen or under other chrome (the issue's own
+          // "don't make it worse" bar): fully inside the viewport.
+          expect(cbox.x).toBeGreaterThanOrEqual(0);
+          expect(cbox.y).toBeGreaterThanOrEqual(0);
+          expect(cbox.x + cbox.width).toBeLessThanOrEqual(viewport.width);
+          expect(cbox.y + cbox.height).toBeLessThanOrEqual(viewport.height);
+
+          // The topmost hit at the compass's own centre must be the button
+          // or one of its own icon parts (needle/ring/ticks) — never the tab
+          // strip or the sheet the #208 bug reports showed instead.
+          const compassCx = cbox.x + cbox.width / 2;
+          const compassCy = cbox.y + cbox.height / 2;
+          const compassOnTop = await topmostIsWithin(page, compassCx, compassCy, '.compass-btn');
+          if (!compassOnTop) {
+            const hitStack = await elementsAt(page, compassCx, compassCy);
+            throw new Error(
+              `compass is not the topmost hit at its centre: ${JSON.stringify(hitStack)}`,
+            );
+          }
+
+          await rotateThenTapCompassHome(page, compass);
+
+          // --- scale bar: real occlusion, or an honest, recorded suppression ---
+          const barClass = await bar.getAttribute('class');
+          if (barClass?.includes('scale-bar-suppressed')) {
+            // #208 acceptance: suppression is an accepted, HONEST outcome —
+            // proven honest here by also asserting it, not just assumed.
+            await expect(bar).toBeHidden();
+          } else {
+            const bbox = (await bar.boundingBox())!;
+            expect(bbox.x).toBeGreaterThanOrEqual(0);
+            expect(bbox.y).toBeGreaterThanOrEqual(0);
+            expect(bbox.x + bbox.width).toBeLessThanOrEqual(viewport.width);
+            expect(bbox.y + bbox.height).toBeLessThanOrEqual(viewport.height);
+            const barHit = await elementsAt(
+              page,
+              bbox.x + bbox.width / 2,
+              bbox.y + bbox.height / 2,
+            );
+            expect(
+              barHit.some((e) => e.cls.includes('app-bottom-sheet')),
+              `elements under the scale bar's centre: ${JSON.stringify(barHit)}`,
+            ).toBe(false);
+          }
+        });
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});

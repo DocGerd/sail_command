@@ -216,6 +216,19 @@ export default function MapView({
           // that holds exactly up to zoom 22. See MAP_MAX_ZOOM's own comment —
           // raising it needs the label's formatting revisited.
           maxZoom: MAP_MAX_ZOOM,
+          // #207: pitch is deliberately locked flat. MapLibre's default
+          // maxPitch (60°) is reachable by a two-finger drag, a right-click
+          // drag, or Shift+arrow keys, but nothing in this app ever resets it
+          // — the compass only eases `bearing` (CompassControl.tsx) — so a
+          // tilted chart survived until reload. A tilt also distorts apparent
+          // distance on a chart that's supposed to be read against
+          // ScaleBar's honest ground-distance bar. Locking pitch at
+          // construction (not a later `setMaxPitch`/`setPitch` call, which a
+          // style reload could undo) removes the gesture outright rather than
+          // adding a reset control. Audited before this change: no code in
+          // the app reads/sets pitch, and there is no terrain/sky/3D layer —
+          // don't re-enable this without re-auditing for that.
+          maxPitch: 0,
           attributionControl: false,
         });
         instance.addControl(new AttributionControl({ compact: true }));

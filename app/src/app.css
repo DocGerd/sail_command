@@ -359,7 +359,19 @@ select {
    its `right: 0.5rem`. The 1024px breakpoint that switches them is the SAME
    value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY — change both together.
    The column itself is pointer-events:none so the inter-control gap never
-   swallows a map tap; each child re-enables them. */
+   swallows a map tap; each child re-enables them.
+   #208: `z-index: 2` is load-bearing, not decoration. `.app-bottom-sheet`
+   (App.tsx) is a SIBLING of the whole map, painted LATER in DOM order, and
+   its rendered height is unbounded up to 55vh — on a short narrow/landscape
+   viewport (measured: 844x390, 740x360, 667x375) that reaches all the way up
+   to this corner and, without an explicit z-index, fully buries the compass
+   under the sheet's opaque background: untappable, not just visually
+   crowded. The z-index keeps this whole stack on top regardless of how tall
+   the sheet's active-tab content grows, so it never needs to track that
+   height itself the way ScaleBar's dynamic lift does below (ScaleBar can't
+   use the same trick — see its own z-index note — because visually
+   overlapping the sheet's TEXT would look broken even though nothing there
+   is unreachable). */
 .map-stack-tl {
   position: absolute;
   top: 3.5rem;
@@ -369,6 +381,7 @@ select {
   align-items: flex-start;
   gap: 0.5rem;
   pointer-events: none;
+  z-index: 2;
 }
 
 .map-stack-tl > * {
@@ -486,13 +499,22 @@ select {
 
 /* NAMED COUPLING: the narrow `bottom` clears .app-tabs via the shared
    --sc-tabbar-h token, and its `0.5rem` term is mirrored by
-   SCALE_LIFT_GAP_PX in lib/mapOrientation.ts. When the Live tab docks a
-   readout over this corner, ScaleBar.tsx REPLACES this offset with an inline
-   `bottom` measured to that readout's top edge (see its own comment); with
-   nothing docked — always the case on wide, where the readout is portaled
-   into the panel column (#31) — this rule stands.
+   SCALE_LIFT_GAP_PX in lib/mapOrientation.ts. ScaleBar.tsx REPLACES this
+   offset with an inline `bottom` on every narrow tab — measured to clear
+   whichever of the Live tab's docked readout or `.app-bottom-sheet` itself
+   currently reaches further up this corner (#208 NEW-1; see the component's
+   own comment) — so with nothing rendered yet, or on wide (where
+   `.app-bottom-sheet` is a static grid column, not an overlay, and the
+   readout is portaled into the panel column, #31), this rule stands.
    pointer-events:none is load-bearing: a map tap must pass straight through
-   the bar. */
+   the bar.
+   #208: `z-index: 2` matches `.map-stack-tl`'s — a defence-in-depth backstop
+   for the same "the sheet paints later and can reach this corner" issue, in
+   case the JS lift above ever lags a frame behind a resize. It is NOT the
+   primary fix here the way it is for the compass: the bar's own dynamic lift
+   (not z-index) is what keeps it from visually sitting ON TOP of the sheet's
+   text, which would look broken even though the bar is inert to taps
+   either way. */
 .scale-bar {
   position: absolute;
   left: 0.5rem;
@@ -502,6 +524,7 @@ select {
   align-items: flex-start;
   gap: 0.15rem;
   pointer-events: none;
+  z-index: 2;
   padding: 0.25rem 0.45rem;
   /* Same tokened glass pill as the other map chrome (.data-layer-controls,
      .ais-status-chip). Load-bearing for contrast, not decoration: the basemap

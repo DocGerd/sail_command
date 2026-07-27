@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ScaleBar from './ScaleBar';
 import { de } from '../i18n/dict.de';
 
@@ -7,7 +7,8 @@ import { de } from '../i18n/dict.de';
 // pinned in lib/mapOrientation.test.ts; this file proves the component feeds
 // it a real screen span, keeps the visible bar out of React state, only
 // rewrites the live aria-label on moveend, and applies the narrow-layout
-// occlusion rule against the Live tab's docked readout.
+// occlusion rule against the Live tab's docked readout AND (#208) against
+// `.app-bottom-sheet` itself.
 
 type Handler = (arg: unknown) => void;
 
@@ -80,6 +81,53 @@ function occluder(className: string, topPx: number) {
   Object.defineProperty(el, 'offsetTop', { value: topPx, configurable: true });
   return el;
 }
+
+// #208: `.app-bottom-sheet` is a SIBLING of the map in the real app (App.tsx),
+// not a descendant of the ScaleBar host the way the Live occluders above are
+// — ScaleBar finds it via `document.querySelector`, so the stand-in is
+// appended to `document.body` rather than into the rendered container, and
+// its offsetHeight (not offsetTop — it is flush against the shared bottom
+// edge, see the component's own comment) stands in for its rendered size.
+function stubSheet(heightPx: number) {
+  const el = document.createElement('div');
+  el.className = 'app-bottom-sheet';
+  Object.defineProperty(el, 'offsetHeight', { value: heightPx, configurable: true });
+  document.body.appendChild(el);
+  return el;
+}
+
+/** A stand-in for the top-left compass/toggle stack, `.map-stack-tl`. */
+function stubMapStack(container: HTMLElement, topPx: number, heightPx: number) {
+  const el = document.createElement('div');
+  el.className = 'map-stack-tl';
+  Object.defineProperty(el, 'offsetTop', { value: topPx, configurable: true });
+  Object.defineProperty(el, 'offsetHeight', { value: heightPx, configurable: true });
+  container.appendChild(el);
+  return el;
+}
+
+function setWideLayout(matches: boolean) {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+}
+
+afterEach(() => {
+  // `window.matchMedia` is undefined by default in this jsdom setup (see
+  // lib/useWideLayout.ts's own comment) — every test not explicitly opting
+  // into the wide layout relies on that absence to stay on the narrow
+  // branch, so a wide-layout test must not leak its mock into the next one.
+  // @ts-expect-error -- deliberately restoring the untouched jsdom default
+  delete window.matchMedia;
+  document.querySelectorAll('.app-bottom-sheet').forEach((el) => el.remove());
+});
 
 describe('ScaleBar', () => {
   it('measures a real screen span and writes the bar straight to the DOM', () => {
@@ -184,6 +232,93 @@ describe('ScaleBar', () => {
     });
     expect(bar().className).not.toContain('scale-bar-suppressed');
     expect(bar().style.bottom).toBe('');
+  });
+
+  it('lifts clear of .app-bottom-sheet on tabs with no docked Live readout (#208 NEW-1)', () => {
+    // Plan/Routes never dock a Live readout, so before the fix `liftPx`
+    // stayed null here and the bar sat at the stylesheet's tab-strip-only
+    // offset — buried under the sheet's own (taller, real-content) height.
+    // The sheet must already be in the document at mount: unlike the Live
+    // occluders, ScaleBar finds it once via `document.querySelector`, not
+    // through the MutationObserver that watches its own host.
+    const sheet = stubSheet(200);
+    render(<ScaleBar />);
+    expect(bar().style.bottom).toBe('208px'); // 200 + the 8 px gap
+    expect(bar().className).not.toContain('scale-bar-suppressed');
+    sheet.remove();
+  });
+
+  it('picks whichever of the sheet or a docked Live readout currently reaches further', async () => {
+    const sheet = stubSheet(200);
+    const { container } = render(<ScaleBar />);
+    stubHost(container);
+    await act(async () => {
+      // liveLift = 667 - 620 = 47, well under the sheet's 200 — the sheet
+      // must win, not silently overwrite what the Live-readout rule found.
+      container.insertBefore(occluder('live-view', 620), container.firstChild);
+    });
+    expect(bar().style.bottom).toBe('208px');
+    sheet.remove();
+  });
+
+  it('suppresses rather than overlap .map-stack-tl when no position clears both it and the occluder (#208 NEW-3)', async () => {
+    const { container } = render(<ScaleBar />);
+    stubHost(container);
+    // A tall toggle/compass column: bottom edge at 56 + 400 = 456 px down the
+    // 667 px host.
+    stubMapStack(container, 56, 400);
+    Object.defineProperty(bar(), 'offsetHeight', { value: 40, configurable: true });
+    await act(async () => {
+      // liveLift = 667 - 467 = 200, under the OLD Live-readout heuristic's
+      // threshold (window.innerHeight * 0.4 = 307.2 in jsdom's 768 px
+      // default) — this suppression can only be coming from the geometric
+      // check. floor = 200 + 8 = 208; ceiling = 667 (host) - 40 (bar) - 456
+      // (stack bottom) - 8 (gap) = 163. floor > ceiling: clamping to 163
+      // would draw the bar's bottom edge only 163 px up, well short of what
+      // clearing the occluder needs (208) — i.e. still under it. There is no
+      // single position that clears both, so this must suppress instead of
+      // quietly clamping into a position that still buries the bar (the
+      // #208 NEW-1 regression a naive clamp-only fix would reintroduce).
+      container.insertBefore(occluder('live-view', 467), container.firstChild);
+    });
+    expect(bar().className).toContain('scale-bar-suppressed');
+  });
+
+  it('does NOT suppress a large sheet-driven lift that still clears .map-stack-tl with room to spare', async () => {
+    // Regression guard for the design flaw a live-browser check caught: an
+    // earlier version of this fix reused the Live-readout heuristic
+    // (window.innerHeight * 0.4) for the sheet too, which suppressed the bar
+    // even at ordinary portrait sizes with plenty of headroom (measured live
+    // at 375x667: ~79 px clear between .map-stack-tl and a 55vh-capped
+    // sheet). The geometric ceiling below is what actually governs it.
+    const sheet = stubSheet(400);
+    const { container } = render(<ScaleBar />);
+    stubHost(container);
+    Object.defineProperty(bar(), 'offsetHeight', { value: 30, configurable: true });
+    await act(async () => {
+      // Realistic ~165 px toggle/compass column (mirrors the real 375x667
+      // measurement): bottom edge 56 + 165 = 221, leaving room even against
+      // a tall 400 px sheet lift.
+      stubMapStack(container, 56, 165);
+    });
+    // ceiling = 667 (host) - 30 (bar) - 221 (stack bottom) - 8 (gap) = 408,
+    // exactly meeting floor = 400 + 8 = 408.
+    expect(bar().style.bottom).toBe('408px');
+    expect(bar().className).not.toContain('scale-bar-suppressed');
+    sheet.remove();
+  });
+
+  it('never overrides the wide stylesheet rule, even with a tall .app-bottom-sheet present', () => {
+    // On wide, .app-bottom-sheet is a static grid column beside the map, not
+    // an overlay — measuring it would be wrong, and an inline `bottom` would
+    // beat the wide stylesheet rule (`bottom: 0.75rem`) by specificity
+    // regardless. `matches: true` mirrors app.css's own
+    // `@media (min-width: 1024px)` breakpoint (lib/useWideLayout.ts).
+    setWideLayout(true);
+    const sheet = stubSheet(400);
+    render(<ScaleBar />);
+    expect(bar().style.bottom).toBe('');
+    sheet.remove();
   });
 
   it('unregisters its map listeners on unmount', () => {
