@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
+  BEARING_MATCH_DEG,
   FREE_SNAP_NORTH_DEG,
   MAP_MAX_ZOOM,
   SCALE_SAMPLE_PX,
   TRACK_DEADBAND_DEG,
   TRACK_DEADBAND_REDUCED_DEG,
+  bearingReached,
   compassLabelKey,
   nextOrientation,
   orientationVisual,
@@ -26,25 +28,35 @@ import { OWNSHIP_VECTOR_MIN_SOG_KN } from './ownshipVector';
 // test and copying its output (the #50/#145 tautology trap).
 
 describe('nextOrientation', () => {
-  // Exhaustive: 3 modes x 2 availabilities. Written out row by row rather than
-  // generated, so a table this small can be read against the issue text.
+  // Exhaustive: 3 modes x 2 availabilities x (asserted bearing on/off north).
+  // Written out row by row rather than generated, so a table this small can be
+  // read against the issue text. Only the `north` rows split on the bearing —
+  // `track` and `free` mean "reset me", whatever the chart is doing (#203).
   const TABLE: {
     mode: OrientationMode;
     trackAvailable: boolean;
+    asserted: number;
     mode_: OrientationMode;
     action: string;
   }[] = [
-    { mode: 'north', trackAvailable: true, mode_: 'track', action: 'ease-track' },
-    { mode: 'north', trackAvailable: false, mode_: 'north', action: 'reject' },
-    { mode: 'track', trackAvailable: true, mode_: 'north', action: 'ease-north' },
-    { mode: 'track', trackAvailable: false, mode_: 'north', action: 'ease-north' },
-    { mode: 'free', trackAvailable: true, mode_: 'north', action: 'ease-north' },
-    { mode: 'free', trackAvailable: false, mode_: 'north', action: 'ease-north' },
+    { mode: 'north', trackAvailable: true, asserted: 0, mode_: 'track', action: 'ease-track' },
+    { mode: 'north', trackAvailable: false, asserted: 0, mode_: 'north', action: 'reject' },
+    { mode: 'north', trackAvailable: true, asserted: 40, mode_: 'north', action: 'ease-north' },
+    { mode: 'north', trackAvailable: false, asserted: 40, mode_: 'north', action: 'ease-north' },
+    { mode: 'track', trackAvailable: true, asserted: 0, mode_: 'north', action: 'ease-north' },
+    { mode: 'track', trackAvailable: false, asserted: 0, mode_: 'north', action: 'ease-north' },
+    { mode: 'track', trackAvailable: true, asserted: 40, mode_: 'north', action: 'ease-north' },
+    { mode: 'track', trackAvailable: false, asserted: 40, mode_: 'north', action: 'ease-north' },
+    { mode: 'free', trackAvailable: true, asserted: 0, mode_: 'north', action: 'ease-north' },
+    { mode: 'free', trackAvailable: false, asserted: 0, mode_: 'north', action: 'ease-north' },
+    { mode: 'free', trackAvailable: true, asserted: 40, mode_: 'north', action: 'ease-north' },
+    { mode: 'free', trackAvailable: false, asserted: 40, mode_: 'north', action: 'ease-north' },
   ];
 
   for (const row of TABLE) {
-    it(`${row.mode} + ${row.trackAvailable ? 'available' : 'unavailable'} -> ${row.mode_}/${row.action}`, () => {
-      expect(nextOrientation(row.mode, row.trackAvailable)).toEqual({
+    const at = row.asserted === 0 ? 'at north' : `at ${row.asserted} deg`;
+    it(`${row.mode} + ${row.trackAvailable ? 'available' : 'unavailable'} + ${at} -> ${row.mode_}/${row.action}`, () => {
+      expect(nextOrientation(row.mode, row.trackAvailable, row.asserted)).toEqual({
         mode: row.mode_,
         action: row.action,
       });
@@ -54,7 +66,9 @@ describe('nextOrientation', () => {
   it('never leaves the user stuck in track or free (both always escape to north)', () => {
     for (const mode of ['track', 'free'] as const) {
       for (const available of [true, false]) {
-        expect(nextOrientation(mode, available).mode).toBe('north');
+        for (const asserted of [0, 40, 180, 359]) {
+          expect(nextOrientation(mode, available, asserted).mode).toBe('north');
+        }
       }
     }
   });
@@ -62,7 +76,39 @@ describe('nextOrientation', () => {
   it('is the only path INTO track, and only when a course is available', () => {
     const entering = TABLE.filter((r) => r.mode_ === 'track');
     expect(entering).toHaveLength(1);
-    expect(entering[0]).toMatchObject({ mode: 'north', trackAvailable: true });
+    expect(entering[0]).toMatchObject({ mode: 'north', trackAvailable: true, asserted: 0 });
+  });
+
+  // #203: `reject` used to be reachable while the chart sat rotated, which
+  // made the control a permanent no-op with no GPS. It is now admissible ONLY
+  // when the compass's claim is true.
+  it('only rejects when north-up is honest', () => {
+    for (const asserted of [0, 0.4, -0.4, 359.7]) {
+      expect(nextOrientation('north', false, asserted).action).toBe('reject');
+    }
+    for (const asserted of [0.6, -0.6, 40, 180, 320]) {
+      expect(nextOrientation('north', false, asserted).action).toBe('ease-north');
+    }
+  });
+
+  // The rejection boundary is BEARING_MATCH_DEG (0.5), deliberately tighter
+  // than FREE_SNAP_NORTH_DEG (1) so the snap affordance and the camera-truth
+  // guard can never disagree about the same bearing.
+  it('draws the north boundary at BEARING_MATCH_DEG, wrap-safe', () => {
+    expect(BEARING_MATCH_DEG).toBeLessThan(FREE_SNAP_NORTH_DEG);
+    expect(bearingReached(0.5, 0)).toBe(true);
+    expect(bearingReached(-0.5, 0)).toBe(true);
+    expect(bearingReached(359.5, 0)).toBe(true);
+    expect(bearingReached(0.51, 0)).toBe(false);
+    expect(bearingReached(359.49, 0)).toBe(false);
+    // Non-zero targets: a follow ease's own target is checked the same way.
+    expect(bearingReached(120.3, 120)).toBe(true);
+    expect(bearingReached(121, 120)).toBe(false);
+    // Across the 0/360 seam: 359.9 -> 0.2 is a 0.3 deg turn, 359.0 -> 0.2 a
+    // 1.2 deg one.
+    expect(bearingReached(359.9, 0.2)).toBe(true);
+    expect(bearingReached(359.0, 0.2)).toBe(false);
+    expect(bearingReached(180, -180)).toBe(true);
   });
 });
 

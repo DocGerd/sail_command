@@ -10,6 +10,7 @@ import {
   ORIENTATION_STALE_MS,
   TRACK_DEADBAND_DEG,
   TRACK_DEADBAND_REDUCED_DEG,
+  bearingReached,
   compassLabelKey,
   nextOrientation,
   orientationVisual,
@@ -75,41 +76,53 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
     reducedMotionRef.current = reducedMotion;
   });
 
-  // True only while THIS component's own easeTo is driving the camera;
-  // cleared on 'moveend'. Belt-and-braces companion to the
-  // rotatestart/originalEvent signal below: keyboard rotation reaches the
-  // camera through MapLibre's own handler-driven ease, so a 'rotate' seen
-  // while this flag is false is by definition not ours — i.e. the user turned
-  // the chart and owns the bearing from here (`free`).
-  const easingRef = useRef(false);
+  // #203. The bearing this component last COMMANDED the camera to, held until
+  // a settle reconciles it against `map.getBearing()`; null means the compass
+  // is asserting nothing and the camera is simply wherever the map says.
+  //
+  // This replaces the boolean "am I easing" flag #155 shipped. That flag was
+  // cleared by ANY moveend, and MapLibre suppresses an interrupted ease's
+  // moveend only when the interrupting easeId MATCHES — so every FOREIGN ease
+  // (pan inertia, keyboard rotation, a plan-change fitBounds) cleared it and
+  // the controller mistook its own animation for a hand rotation. A target
+  // bearing reconciled against the camera cannot be corrupted that way: it is
+  // derived from the source of truth instead of tracked alongside it.
+  const commandedBearingRef = useRef<number | null>(null);
+
+  // True ONLY for the synchronous extent of our own map.easeTo() call.
+  // `easeTo`'s first statement is `this._stop(false, options.easeId)`
+  // (maplibre-gl-dev.js:69468), which runs the INTERRUPTED ease's `_afterEase`
+  // inline — so any rotateend/moveend delivered inside this window describes
+  // the camera we are REPLACING, not ours, and must not be reconciled against
+  // our brand-new target.
+  const inOwnEaseCallRef = useRef(false);
 
   const easeBearing = useCallback(
     (bearingDeg: number, durationMs: number, linear = false) => {
       if (!map) return;
-      easingRef.current = true;
-      map.easeTo({
-        bearing: bearingDeg,
-        duration: reducedMotionRef.current ? 0 : durationMs,
-        // COMPASS_EASE_ID is load-bearing, not cosmetic. easeTo's first act is
-        // `this._stop(false, options.easeId)`, which runs the INTERRUPTED
-        // ease's `_afterEase(eventData, interruptingEaseId)` synchronously,
-        // before the new ease emits a frame. `_afterEase` suppresses its
-        // rotateend/moveend only when `this._easeId === easeId` — so without a
-        // stable id, one compass ease interrupting another fires `moveend`,
-        // clearing `easingRef` mid-flight, and the very next `rotate` frame of
-        // our OWN animation gets mistaken for a hand rotation and demotes the
-        // mode to `free`. That is reachable in ordinary use: `useOwnshipGps`
-        // applies no throttle, so two fixes closer together than EASE_TRACK_MS
-        // chain two follow eases and track-up switches itself off mid-passage;
-        // a fast double-tap does the same with no GPS at all.
-        // Natural completion still passes no id (`finish()` takes none), so
-        // moveend — and the flag reset — survives for the non-interrupted case.
-        easeId: COMPASS_EASE_ID,
-        // Linear for the track-up follow only: consecutive ~900 ms eases at
-        // the ~1 Hz fix cadence chain into continuous motion, where an
-        // ease-in-out would visibly stutter at every fix boundary.
-        ...(linear ? { easing: (x: number) => x } : {}),
-      });
+      commandedBearingRef.current = bearingDeg;
+      inOwnEaseCallRef.current = true;
+      try {
+        map.easeTo({
+          bearing: bearingDeg,
+          duration: reducedMotionRef.current ? 0 : durationMs,
+          // COMPASS_EASE_ID keeps one compass ease from cancelling the next
+          // one's start/end bookkeeping: `_afterEase` suppresses the
+          // interrupted ease's rotateend/moveend only when the ids MATCH
+          // (maplibre-gl-dev.js:69671), so a chained follow ease or a fast
+          // double-tap emits no spurious settle at all. It does NOT help
+          // against a foreign ease — the id will not match one we do not own —
+          // which is why the settle path below reconciles against the camera
+          // instead of trusting any single event (#203).
+          easeId: COMPASS_EASE_ID,
+          // Linear for the track-up follow only: consecutive ~900 ms eases at
+          // the ~1 Hz fix cadence chain into continuous motion, where an
+          // ease-in-out would visibly stutter at every fix boundary.
+          ...(linear ? { easing: (x: number) => x } : {}),
+        });
+      } finally {
+        inOwnEaseCallRef.current = false;
+      }
     },
     [map],
   );
@@ -137,14 +150,32 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
     const dropToFree = () => {
       if (modeRef.current !== 'free') applyMode('free');
     };
-    const onRotate = () => {
-      schedulePaint();
-      if (!easingRef.current) dropToFree();
-    };
-    // Primary manual-rotation signal: a gesture-driven rotatestart carries the
-    // originating DOM event; a camera animation's does not.
-    const onRotateStart = (e: { originalEvent?: unknown }) => {
+    // The manual-rotation signal, and the whole of it (#203): MapLibre stamps
+    // `originalEvent` onto the rotate events a USER caused, and onto nothing
+    // else. Gesture rotation goes through HandlerManager, whose
+    // `mergeHandlerResult` records `originalEvent: handlerResult.originalEvent
+    // || e` (:68533) and re-fires it on both `rotatestart` and every `rotate`
+    // (:68659-68677); MapLibre's own keyboard rotation calls
+    // `easeTo({ easeId: 'keyboardHandler', ... }, { originalEvent: e })`
+    // (:67349), so its frames carry it too; rotate inertia is
+    // `easeTo(inertialEase, { originalEvent: originalEndEvent })` (:68712) —
+    // the continuation of the user's flick, and correctly counted as theirs.
+    // A camera animation started by THIS app (or by RouteLayer's fitBounds)
+    // passes no eventData at all, so its frames carry none.
+    //
+    // #155 additionally gated `rotate` on an "am I easing" boolean because it
+    // believed keyboard rotation carried no originalEvent. The MapLibre source
+    // above says otherwise, and that gate is precisely what a foreign ease's
+    // moveend cleared mid-flight — turning our OWN follow animation into a
+    // phantom hand rotation and dropping track-up to free (#203 F2). Both
+    // events are checked, earliest wins, so a gesture is still caught on the
+    // very first frame.
+    const onUserRotation = (e: { originalEvent?: unknown }) => {
       if (e.originalEvent !== undefined) dropToFree();
+    };
+    const onRotate = (e: { originalEvent?: unknown }) => {
+      schedulePaint();
+      onUserRotation(e);
     };
     const onRotateEnd = () => {
       // Chart-plotter affordance: a hand rotation that lands within a degree
@@ -155,19 +186,39 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
         easeBearingRef.current(0, EASE_NORTH_MS);
       }
     };
+    // #203: reconcile the CLAIMED orientation against the camera every time
+    // the map comes to rest. `north` is the only mode with a fixed target, so
+    // it is the only one that can be caught lying — and it is the mode a
+    // half-finished ease strands, because nothing else ever re-asserts 0.
+    // `track` deliberately holds: the follow loop re-eases on the next fix,
+    // and a held bearing with no fix is the documented stale behaviour, not a
+    // desync (#155 decision 1).
     const onMoveEnd = () => {
-      easingRef.current = false;
+      // Delivered from inside our own easeTo: this is the ease we just
+      // replaced coming to rest, describing the OLD camera.
+      if (inOwnEaseCallRef.current) return;
+      // A camera animation is still running (ours, or one that started inside
+      // our rotateend snap) — the target may yet be reached, so judging the
+      // claim now would demote on a bearing that is still in motion.
+      if (map.isEasing()) return;
+      commandedBearingRef.current = null;
+      if (modeRef.current === 'north' && !bearingReached(map.getBearing(), 0)) {
+        // The chart is not north-up and no longer heading there. Falling to
+        // `free` is the honest reading — and it is what makes the next tap an
+        // `ease-north` instead of the `reject` dead end of #203 F1.
+        applyMode('free');
+      }
     };
 
     paint();
     map.on('rotate', onRotate);
-    map.on('rotatestart', onRotateStart);
+    map.on('rotatestart', onUserRotation);
     map.on('rotateend', onRotateEnd);
     map.on('moveend', onMoveEnd);
     return () => {
       if (raf !== 0) cancelAnimationFrame(raf);
       map.off('rotate', onRotate);
-      map.off('rotatestart', onRotateStart);
+      map.off('rotatestart', onUserRotation);
       map.off('rotateend', onRotateEnd);
       map.off('moveend', onMoveEnd);
     };
@@ -224,7 +275,13 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
   );
 
   const handleTap = useCallback(() => {
-    const next = nextOrientation(mode, trackAvailable);
+    // What the compass currently CLAIMS the bearing is: its outstanding ease
+    // target while one is in force (a second tap inside a 600 ms reset-north
+    // must still read as "we are north-up" and advance to track-up), otherwise
+    // the live camera. With no map there is nothing to assert and nothing to
+    // move, and `reject` is the correct outcome either way.
+    const asserted = commandedBearingRef.current ?? map?.getBearing() ?? 0;
+    const next = nextOrientation(mode, trackAvailable, asserted);
     applyMode(next.mode);
     if (next.action === 'ease-north') {
       easeBearing(0, EASE_NORTH_MS);
@@ -243,7 +300,7 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
     setStatusText(t('map.compass.unavailableStatus'));
     window.clearTimeout(statusTimerRef.current);
     statusTimerRef.current = window.setTimeout(() => setStatusText(''), COMPASS_STATUS_MS);
-  }, [mode, trackAvailable, fix, easeBearing, applyMode, t]);
+  }, [map, mode, trackAvailable, fix, easeBearing, applyMode, t]);
 
   const visual = orientationVisual(mode, stale);
 
