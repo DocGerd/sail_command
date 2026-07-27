@@ -249,6 +249,51 @@ describe('#243 depth comfort preference preserves true wall-clock time and geome
     expect(hours).toBeGreaterThan(fastestPossibleHours);
     expect(hours).toBeLessThan(6); // well under any plausible cost-inflated figure
   });
+
+  it('a FORCED single-corridor path (no alternative route) keeps every leg timestamp and etaMs BYTE-IDENTICAL with the preference on vs off', () => {
+    // Same land shape as fixtures.wallMask (wall at col 160, gap rows
+    // 90..99) — origin/destination sit south of the gap so the direct track
+    // is blocked and land forces a detour through the gap, exactly like the
+    // "rounds an island" golden-route test above. UNLIKE that test, the gap
+    // itself is charted 3.1 m (derated under a 3.0 m gate + 2.0 m margin —
+    // factor = 1 - 0.30*(5.0-3.1)/(5.0-3.0) = 0.715, a real, non-trivial
+    // charge) while everywhere else is 20 m. Land blocks every alternative,
+    // so the winning path cannot move regardless of the preference — this is
+    // the strongest available proof that Node.costMs never leaks into
+    // Node.tMs (the exact §D.1 defect §D.5's two-scalar correction exists to
+    // prevent): unlike the loose "still plausible" bound above, an ACTUAL
+    // leak here would inflate every timestamp downstream of the gap by a
+    // measurable, exact amount (dividing by 0.715 instead of not), not just
+    // nudge it — so byte-identical equality is the right assertion, not
+    // "close to".
+    const forcedMask = makeMask((r, c) => {
+      if (c !== 160) return 200;
+      return r >= 90 && r <= 99 ? 31 : 0;
+    });
+    const detourA = { lat: 54.6, lon: 10.0 };
+    const detourB = { lat: 54.6, lon: 10.4 };
+    const wind = new WindField(uniformWindGrid(14, 0));
+    const withoutPref = solve(
+      params({ origin: detourA, destination: detourB, mask: forcedMask, wind }),
+    );
+    const withPref = solve(
+      params({ origin: detourA, destination: detourB, mask: forcedMask, wind, comfortDepthM: 5.0 }),
+    );
+    expect(withoutPref.status).toBe('ok');
+    expect(withPref.status).toBe('ok');
+    if (withoutPref.status !== 'ok' || withPref.status !== 'ok') return;
+    // sanity: the gap is genuinely on the route and genuinely derated (not a
+    // vacuous pass because the corridor was skipped or already free).
+    expect(withoutPref.legs.some((l) => l.start.lon < 10.2 !== l.end.lon < 10.2)).toBe(true);
+    // The plan-level clock.
+    expect(withPref.etaMs).toBe(withoutPref.etaMs);
+    // Every leg's TRUE elapsed timestamps, individually — not just the total.
+    expect(withPref.legs.length).toBe(withoutPref.legs.length);
+    for (let i = 0; i < withoutPref.legs.length; i++) {
+      expect(withPref.legs[i].startTimeMs).toBe(withoutPref.legs[i].startTimeMs);
+      expect(withPref.legs[i].endTimeMs).toBe(withoutPref.legs[i].endTimeMs);
+    }
+  });
 });
 
 // #243 §D.4's residual risk, demonstrated with the REAL solver (no mocks):
