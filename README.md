@@ -181,9 +181,10 @@ data; the code license is covered in the [License](#license) section below.
 - The router does not yet account for currents, tides, or sea state (waves)
   in the routing cost.
 - The map chrome introduced in v0.5.0 has known rough edges, tracked for
-  v0.5.1: on short/landscape screens the compass can be covered by the bottom
-  sheet and the scale bar can sit behind that sheet on the planning and routes
-  tabs ([#208](https://github.com/DocGerd/sail_command/issues/208)); an
+  v0.5.1: on any narrow screen the scale bar sits behind the bottom sheet on
+  the planning and routes tabs, and on short/landscape screens the compass can
+  be covered by that sheet and stop responding to taps
+  ([#208](https://github.com/DocGerd/sail_command/issues/208)); an
   interrupted compass animation can leave the button showing an orientation
   the chart does not have
   ([#203](https://github.com/DocGerd/sail_command/issues/203)); seamarks can
