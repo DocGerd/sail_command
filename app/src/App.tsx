@@ -534,9 +534,16 @@ function AppShell() {
     <div className="app-shell">
       {/* Base layer: full-viewport map. Header/banners/bottom-sheet below are
           positioned overlays painted on top of it (later in DOM order, same
-          stacking context — no z-index needed), each occupying only its own
-          natural height, so untouched screen area still reaches the map for
-          tap-to-pick. */}
+          stacking context), each occupying only its own natural height, so
+          untouched screen area still reaches the map for tap-to-pick. That
+          DOM-order-only assumption is NOT sufficient across this whole set:
+          #208 found `.app-bottom-sheet` and the tab strip inside it each
+          able to bury (or be buried by) the map's own chrome depending on
+          which one happened to paint last. The full, COMPLETE resolution —
+          every participant, the ordering principle, and why it takes three
+          tiers rather than one more z-index bump — lives in ONE place, the
+          comment above `.app-header` in app.css; read it there rather than
+          here, since duplicating it in two files is how it would drift. */}
       <div className="map-area">
         {/* MapView's label language is baked in at first mount (see
             MapView.tsx's own comment) — a live language switch does not
@@ -610,11 +617,18 @@ function AppShell() {
               />
             </>
           )}
-          {/* #155: passive nautical scale bar, bottom-left. Rendered LAST so
-              its DOM-order paint sits above the map but below nothing that
-              matters; it is pointer-events:none, so map taps pass through it.
-              It discovers the narrow-layout docked Live readout itself (see
-              ScaleBar.tsx) — no layout prop needed. */}
+          {/* #155: passive nautical scale bar, bottom-left; pointer-events:none,
+              so map taps pass through it. DOM order alone does NOT keep it
+              clear of everything that matters — #208 found it fully buried
+              under `.app-bottom-sheet` on the Plan/Routes tabs at every
+              narrow viewport, and the expanded MapLibre attribution can still
+              cover it too (that one is pre-existing, low-severity #208 NEW-4,
+              deliberately left as-is — see ScaleBar.tsx's own z-index note
+              for why a z-index here would make it WORSE, not better). It
+              discovers and lifts clear of whichever of the narrow-layout
+              docked Live readout or `.app-bottom-sheet` itself currently
+              occludes this corner (see ScaleBar.tsx's own comment) — no
+              layout prop needed. */}
           <ScaleBar />
         </MapView>
       </div>
