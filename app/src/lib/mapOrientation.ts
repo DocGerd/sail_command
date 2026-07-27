@@ -78,21 +78,52 @@ export const COMPASS_STATUS_MS = 3_000;
 export const COMPASS_EASE_ID = 'sc-compass';
 
 /**
- * Tap transition table (issue #155, "Interaction rules"). Exhaustive over
- * `mode` x `trackAvailable`:
+ * Tolerance for "the camera actually is where the compass says it is" (#203).
  *
- *   north + available   -> track, ease to COG
- *   north + unavailable -> north, reject (pulse + SR status; camera untouched)
- *   track + *           -> north, ease to 0   (track-up is a toggle, and a
- *                          stale/held track must stay escapable)
- *   free  + *           -> north, ease to 0   (reset-north is what the button
- *                          means while the user owns the bearing)
+ * MapLibre's ease lands exactly on the requested bearing (`easeFunc(1)` writes
+ * the target verbatim), so this is a float-noise / wrap-around margin, not a
+ * behavioural knob. Kept well BELOW `FREE_SNAP_NORTH_DEG` so the two
+ * thresholds can never disagree about a bearing: anything the snap affordance
+ * treats as "near enough to north to pull home" is still a bearing the
+ * reconciler regards as NOT north-up until the snap ease has run.
+ */
+export const BEARING_MATCH_DEG = 0.5;
+
+/** True when the camera sits on `targetDeg` (shortest-path, wrap-safe). */
+export function bearingReached(actualDeg: number, targetDeg: number): boolean {
+  return Math.abs(normalizeDeg180(targetDeg - actualDeg)) <= BEARING_MATCH_DEG;
+}
+
+/**
+ * Tap transition table (issue #155, "Interaction rules"), extended in #203 by
+ * the camera-truth guard on the `north` row. Exhaustive over
+ * `mode` x `trackAvailable` x `assertedBearingDeg is north`:
+ *
+ *   north + at north + available   -> track, ease to COG
+ *   north + at north + unavailable -> north, reject (pulse + SR status; camera
+ *                                     untouched)
+ *   north + NOT at north + *       -> north, ease to 0
+ *   track + *                      -> north, ease to 0   (track-up is a toggle,
+ *                                     and a stale/held track must stay escapable)
+ *   free  + *                      -> north, ease to 0   (reset-north is what the
+ *                                     button means while the user owns the bearing)
+ *
+ * `assertedBearingDeg` is the bearing the compass currently CLAIMS: its
+ * outstanding ease target while one is in force, otherwise the live camera
+ * bearing. The `north + NOT at north` row exists because #203 made `reject` an
+ * absorbing dead end — an aborted reset-north left mode `north` with the chart
+ * at, say, 40 degrees, and with no GPS the next tap rejected instead of
+ * re-asserting, so the control refused to correct an orientation it was itself
+ * mis-reporting. `north` is now the one mode whose action depends on the
+ * camera: tapping it always reaches, or re-reaches, bearing 0.
  */
 export function nextOrientation(
   mode: OrientationMode,
   trackAvailable: boolean,
+  assertedBearingDeg: number,
 ): { mode: OrientationMode; action: OrientationAction } {
   if (mode === 'north') {
+    if (!bearingReached(assertedBearingDeg, 0)) return { mode: 'north', action: 'ease-north' };
     return trackAvailable
       ? { mode: 'track', action: 'ease-track' }
       : { mode: 'north', action: 'reject' };

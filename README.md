@@ -198,6 +198,24 @@ data; the code license is covered in the [License](#license) section below.
 Currents/tides, wave data, multi-day passages beyond the forecast horizon,
 route sharing/collaboration, official ENC chart data.
 
+## Project documents
+
+- [**Roadmap**](ROADMAP.md) — what the project intends to do, and what it
+  deliberately will not do. Intent, not commitment.
+- [**Governance**](GOVERNANCE.md) — how decisions are made, who holds which
+  role, and what a successor would need. SailCommand has a single maintainer;
+  the bus factor is 1 and that document says so plainly.
+- [**Contributing**](CONTRIBUTING.md) — ground rules, development commands,
+  labels and milestones. Contributions are inbound-equals-outbound under
+  Apache-2.0 §5; there is no CLA and no DCO sign-off.
+- [**Code of Conduct**](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1.
+- [**Security policy**](SECURITY.md) — what you can and cannot expect in terms
+  of security, how to report a vulnerability, and what happens next. The
+  reasoning behind those claims — threat model, trust boundaries, and the
+  weaknesses walk — is in the
+  [security assurance case](docs/security-assurance-case.md).
+- [**Changelog**](CHANGELOG.md) — what shipped, per release.
+
 ## License
 
 Code is licensed under the [Apache License 2.0](LICENSE). Map tiles and

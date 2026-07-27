@@ -537,25 +537,48 @@ describe('registerSeamarkImages', () => {
   });
 });
 
-// #144: expected values hand-derived from the design formula
-// rank = familyRank - (lit ? 1 : 0) with family ranks
-// lightMajor=0, lightMinor=2, isolatedDanger=4, cardinal=6, safeWater=8,
-// lateral=10, specialPurpose=12, unknown=14 — NOT read back from the
-// implementation (repo tautology lesson).
-describe('seamarkPriority (#144 symbol-sort-key: lower = placed first = wins collisions)', () => {
+// Expected values hand-derived from the design formula
+//   rank = familyRank - (lit ? 1 : 0)
+// with the #200 family ranks, which are read off IALA R1001 Ed 2.0 rather
+// than off the implementation (repo tautology lesson). The R1001 chain is:
+//   TIER 1, the self-contained warnings — one symbol, whole message:
+//     §2.3.1 isolated danger — sits ON a danger with navigable water all
+//       round; safe passing distance "cannot be specified".
+//     §2.2.3 cardinal — "the safe side on which to pass a danger".
+//   TIER 2, scarce marks that anchor a passage at planning scale (neither
+//   carries danger information; culling only happens below z12):
+//     §2.7.1.1 lighthouse — "a long or medium range light", "a significant
+//       daymark"; §2.7 files it outside the six MBS types (§1.2).
+//     §2.4.1.1 safe water — "channel entrance, port or estuary approach,
+//       landfall, or best point of passage under bridges". §2.4.1 is explicit
+//       that it "does not mark a danger", which is why it is not Tier 1.
+//   TIER 3, the dense sequence marks:
+//     §3.1 Table 16 "New Danger" + §3.2.2 + §2.5.2.4 — laterals are
+//       danger-bearing and mark "the limit of safe navigation", so above
+//       Tier 4; but §2.1.1 has them "denote the port and starboard sides of
+//       channels" relative to a conventional direction of buoyage, i.e. one
+//       datum on an edge described by many marks, so below Tiers 1-2.
+//   TIER 4, neither danger-bearing nor scarce:
+//     §2.7 minor lights — short-range, 107 in-area vs 6 lighthouses.
+//     §2.5.1 special marks — "not generally intended to mark channels or
+//       obstructions".
+//     unknown — an unclassifiable mark must not displace a cardinal.
+// giving isolatedDanger=0, cardinal=2, lightMajor=4, safeWater=6, lateral=8,
+// lightMinor=10, specialPurpose=12, unknown=14.
+describe('seamarkPriority (#144/#200 symbol-sort-key: lower = placed first = wins collisions)', () => {
   it('ranks each family at its hand-derived unlit value', () => {
-    expect(seamarkPriority({ seamarkType: 'light_major' })).toBe(0);
-    expect(seamarkPriority({ seamarkType: 'light_minor' })).toBe(2);
-    expect(seamarkPriority({ seamarkType: 'buoy_isolated_danger' })).toBe(4);
-    expect(seamarkPriority({ seamarkType: 'buoy_cardinal' })).toBe(6);
-    expect(seamarkPriority({ seamarkType: 'buoy_safe_water' })).toBe(8);
-    expect(seamarkPriority({ seamarkType: 'buoy_lateral' })).toBe(10);
+    expect(seamarkPriority({ seamarkType: 'buoy_isolated_danger' })).toBe(0);
+    expect(seamarkPriority({ seamarkType: 'buoy_cardinal' })).toBe(2);
+    expect(seamarkPriority({ seamarkType: 'light_major' })).toBe(4);
+    expect(seamarkPriority({ seamarkType: 'buoy_safe_water' })).toBe(6);
+    expect(seamarkPriority({ seamarkType: 'buoy_lateral' })).toBe(8);
+    expect(seamarkPriority({ seamarkType: 'light_minor' })).toBe(10);
     expect(seamarkPriority({ seamarkType: 'buoy_special_purpose' })).toBe(12);
     expect(seamarkPriority({ seamarkType: 'mooring' })).toBe(14);
   });
 
   it('lit-ness (any light field present) promotes by exactly 1 within the family', () => {
-    expect(seamarkPriority({ seamarkType: 'buoy_cardinal', lightCharacter: 'Q' })).toBe(5);
+    expect(seamarkPriority({ seamarkType: 'buoy_cardinal', lightCharacter: 'Q' })).toBe(1);
     expect(
       seamarkPriority({
         seamarkType: 'buoy_lateral',
@@ -563,24 +586,100 @@ describe('seamarkPriority (#144 symbol-sort-key: lower = placed first = wins col
         lightColour: 'red',
         lightPeriod: '4',
       }),
-    ).toBe(9);
+    ).toBe(7);
     // Each light field alone counts as lit — presence, not completeness.
-    expect(seamarkPriority({ seamarkType: 'buoy_lateral', lightColour: 'green' })).toBe(9);
-    expect(seamarkPriority({ seamarkType: 'buoy_lateral', lightPeriod: '6' })).toBe(9);
-    // A lit light_major outranks everything, including its unlit self.
-    expect(seamarkPriority({ seamarkType: 'light_major', lightCharacter: 'Oc' })).toBe(-1);
+    expect(seamarkPriority({ seamarkType: 'buoy_lateral', lightColour: 'green' })).toBe(7);
+    expect(seamarkPriority({ seamarkType: 'buoy_lateral', lightPeriod: '6' })).toBe(7);
+    // A lit isolated-danger mark outranks everything, including its unlit self.
+    expect(seamarkPriority({ seamarkType: 'buoy_isolated_danger', lightCharacter: 'Fl(2)' })).toBe(
+      -1,
+    );
   });
 
   it('never lets a lateral (lit or not) outrank any cardinal', () => {
     const bestLateral = seamarkPriority({ seamarkType: 'buoy_lateral', lightCharacter: 'Fl' });
     const worstCardinal = seamarkPriority({ seamarkType: 'beacon_cardinal' });
-    expect(bestLateral).toBeGreaterThan(worstCardinal); // 9 > 6
+    expect(bestLateral).toBeGreaterThan(worstCardinal); // 7 > 2
+  });
+
+  // The #200 invariant. R1001 §2.3.1/§2.2.3 make isolated-danger and cardinal
+  // marks the two self-contained hazard warnings; nothing else may be placed
+  // ahead of either, however conspicuous. The margin is exactly 1 by design —
+  // worst warning (unlit cardinal, 2) vs best other (lit lightMajor, 3) — so
+  // this also pins the lit promotion as strictly intra-family.
+  it('never lets any other family outrank a cardinal or isolated-danger mark, even when lit', () => {
+    const warnings = ['buoy_isolated_danger', 'beacon_isolated_danger', 'buoy_cardinal'];
+    const others = [
+      'light_major',
+      'buoy_lateral',
+      'buoy_safe_water',
+      'light_minor',
+      'buoy_special_purpose',
+      'mooring',
+    ];
+    const worstWarning = Math.max(
+      ...warnings.map((seamarkType) => seamarkPriority({ seamarkType })),
+    );
+    const bestOther = Math.min(
+      ...others.map((seamarkType) =>
+        seamarkPriority({ seamarkType, lightCharacter: 'Fl', lightColour: 'white' }),
+      ),
+    );
+    expect(worstWarning).toBe(2); // unlit cardinal
+    expect(bestOther).toBe(3); // lit light_major
+    expect(bestOther).toBeGreaterThan(worstWarning);
+  });
+
+  // #200: the #144 ordering ranked by prominence, which put BOTH light
+  // families ahead of every buoyage mark. R1001 §2.7 files lighthouses and
+  // minor lights under "OTHER MARKS", outside the six MBS types, so a minor
+  // light must never displace a mark that reports on navigable water — and no
+  // light of either kind may displace a hazard warning.
+  it('keeps minor lights below every mark that reports on navigable water', () => {
+    const litMinor = seamarkPriority({ seamarkType: 'light_minor', lightCharacter: 'Fl' });
+    for (const seamarkType of [
+      'buoy_isolated_danger',
+      'buoy_cardinal',
+      'buoy_lateral',
+      'buoy_safe_water',
+    ]) {
+      expect(litMinor).toBeGreaterThan(seamarkPriority({ seamarkType }));
+    }
+    // ...and a minor light never outranks a major one.
+    expect(litMinor).toBeGreaterThan(seamarkPriority({ seamarkType: 'light_major' }));
+  });
+
+  // R1001 §2.5.1 — a special mark is "not generally intended to mark channels
+  // or obstructions". #200 suggested ranking special marks ABOVE lateral
+  // marks; §3.1 Table 16's New Danger column lists Lateral and not Special,
+  // and that half of the disagreement stands.
+  it('ranks special marks below lateral marks (R1001 Table 16 / §2.5.1)', () => {
+    const worstLateral = seamarkPriority({ seamarkType: 'beacon_lateral' });
+    expect(
+      seamarkPriority({ seamarkType: 'buoy_special_purpose', lightColour: 'yellow' }),
+    ).toBeGreaterThan(worstLateral);
+  });
+
+  // Tier 2: the two scarce, non-danger-bearing marks that anchor a passage at
+  // planning scale both sit between the self-contained warnings and the dense
+  // sequence marks. Granting the on-deck argument to lighthouses (§2.7.1.1
+  // range) but not to fairway marks (§2.4.1.1 channel entrance / landfall /
+  // best point of passage) would be an unprincipled asymmetry — raised in
+  // review of #200 and accepted. Both must still lose to every cardinal.
+  it('slots major lights and safe-water marks between the warnings and laterals', () => {
+    const worstCardinal = seamarkPriority({ seamarkType: 'beacon_cardinal' });
+    const bestLateral = seamarkPriority({ seamarkType: 'buoy_lateral', lightCharacter: 'Fl' });
+    for (const seamarkType of ['light_major', 'buoy_safe_water']) {
+      const lit = seamarkPriority({ seamarkType, lightCharacter: 'Oc' });
+      expect(lit).toBeGreaterThan(worstCardinal);
+      expect(seamarkPriority({ seamarkType })).toBeLessThan(bestLateral);
+    }
   });
 
   it('classifies buoy_ and beacon_ variants identically (family, not carrier)', () => {
     expect(seamarkPriority({ seamarkType: 'beacon_lateral' })).toBe(
       seamarkPriority({ seamarkType: 'buoy_lateral' }),
     );
-    expect(seamarkPriority({ seamarkType: 'beacon_isolated_danger' })).toBe(4);
+    expect(seamarkPriority({ seamarkType: 'beacon_isolated_danger' })).toBe(0);
   });
 });

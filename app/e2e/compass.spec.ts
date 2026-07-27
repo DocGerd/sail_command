@@ -40,20 +40,45 @@ async function installMapHandle(page: Page): Promise<boolean> {
   });
 }
 
+// `+ 0` for the same negative-zero reason as needleDeg below. Here the residual
+// happens to land positive (`Math.round(0.048)` is `+0`), so this is latent
+// rather than observed — but a rotation the other way would round to `-0` and
+// `expect.poll(...).toBe(0)` would then spin until it timed out instead of
+// failing fast, which is a far worse signal than a red assertion.
 const bearing = (page: Page) =>
-  page.evaluate(() =>
-    Math.round(
-      (window as unknown as Record<string, { getBearing: () => number }>).__scE2eMap.getBearing(),
-    ),
+  page.evaluate(
+    () =>
+      Math.round(
+        (window as unknown as Record<string, { getBearing: () => number }>).__scE2eMap.getBearing(),
+      ) + 0,
   );
 
-/** The bearing the user can actually SEE, read back out of the needle's own matrix. */
+/**
+ * The bearing the user can actually SEE, read back out of the needle's own
+ * matrix, rounded to whole degrees.
+ *
+ * `+ 0` is NOT redundant — it normalises negative zero, and without it this
+ * helper is intermittently unusable. After a drag-rotate gesture MapLibre's
+ * camera does not settle on exactly 0: measured across 42 scripted
+ * rotate-then-tap-home cycles in Chromium it lands 0.04-0.18 deg short about
+ * half the time (identically before #203, on #203's first head, and on its
+ * second — so this is MapLibre's end-of-gesture inertia/`bearingSnap`
+ * behaviour, not the compass's). The camera assertions above survive that
+ * because `Math.round(0.048)` is `+0`, but the needle counter-rotates, so it
+ * paints `rotate(-0.11deg)` and `Math.round` yields `-0` — and `toBe` compares
+ * with `Object.is`, where `Object.is(-0, 0)` is FALSE. The result was a
+ * roughly 1-in-36 red CI run whose message (`Expected: 0, Received: -0`) reads
+ * like the needle never got home when in fact it is a tenth of a degree out
+ * and visually identical. `-0 + 0` is `+0`, while every other value is
+ * unchanged, so the sign of zero stops mattering and a genuinely wrong bearing
+ * still fails. Sub-degree residual: see #230.
+ */
 const needleDeg = (page: Page) =>
   page.evaluate(() => {
     const n = document.querySelector('.compass-needle');
     if (!n) return null;
     const m = new DOMMatrixReadOnly(getComputedStyle(n).transform);
-    return Math.round((Math.atan2(m.b, m.a) * 180) / Math.PI);
+    return Math.round((Math.atan2(m.b, m.a) * 180) / Math.PI) + 0;
   });
 
 test('compass: north-up cold start, hand rotation drops to free, tap brings the chart home', async ({
