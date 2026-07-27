@@ -30,12 +30,16 @@ describe('seamarkFeatureCollectionWithIcons', () => {
     expect(withIcons.features[0].properties).toEqual({
       ...FC.features[0].properties,
       icon: seamarkImageId(FC.features[0].properties),
-      // #144 hand-derived: unlit lateral = 10 (family rank 10, no light fields).
-      priority: 10,
+      // #200 hand-derived: unlit lateral = 6 (danger-bearing per R1001 §3.1
+      // Table 16 "New Danger", but below the two self-contained hazard
+      // warnings and below the long-range lighthouse; no light fields).
+      priority: 6,
     });
     expect(withIcons.features[1].properties.icon).toBe('seamark-light-major');
-    // #144 hand-derived: unlit light_major = family rank 0.
-    expect(withIcons.features[1].properties.priority).toBe(0);
+    // #200 hand-derived: unlit light_major = 4 (R1001 §2.7 "other marks",
+    // ranked on §2.7.1.1's stated long/medium range, below every hazard
+    // warning but above the sequence-redundant laterals).
+    expect(withIcons.features[1].properties.priority).toBe(4);
   });
 });
 

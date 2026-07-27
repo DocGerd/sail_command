@@ -40,8 +40,12 @@ export function seamarkFeatureCollectionWithIcons(
  *
  * - `icon-overlap` supersedes `icon-allow-overlap` in the installed
  *   style-spec. Below z12 near-coincident AtoN pairs collision-cull —
- *   `symbol-sort-key` makes the culling deterministic by navigational
- *   significance (lower `priority` wins) instead of arbitrary source order.
+ *   `symbol-sort-key` makes the culling deterministic by DANGER-information
+ *   content (lower `priority` wins) instead of arbitrary source order; the
+ *   IALA R1001 derivation of that order lives on `FAMILY_RANK` in
+ *   seamarkGlyphs.ts (#144 introduced the mechanism, #200 corrected the
+ *   ordering so hazard-bearing marks are never culled in favour of routine
+ *   ones).
  *   At z>=12 (harbor approach) overlap flips to 'always' so EVERY mark
  *   renders and stays tappable — the #36 extreme-zoom popup-safety valve,
  *   deliberate, not polish. Trade-off: collision-hidden symbols are absent
