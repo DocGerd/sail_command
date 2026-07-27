@@ -25,22 +25,30 @@ Fixed: compass mode desyncing from the camera when an ease is interrupted
 by the bottom sheet
 ([#208](https://github.com/DocGerd/sail_command/issues/208)), map pitch
 reachable by gesture with no reset
-([#207](https://github.com/DocGerd/sail_command/issues/207)), and
+([#207](https://github.com/DocGerd/sail_command/issues/207)), seamarks
+blinking in and out under track-up rotation
+([#206](https://github.com/DocGerd/sail_command/issues/206)), and
 indiscriminate seamark collision culling
-([#200](https://github.com/DocGerd/sail_command/issues/200)). Remaining:
+([#200](https://github.com/DocGerd/sail_command/issues/200)).
 
-- Track-up still drops to free on an ordinary pan flick whenever the chart's
-  bearing sits inside MapLibre's 7° `bearingSnap` window — an everyday
-  heading in the Flensburg Fjord
-  ([#230](https://github.com/DocGerd/sail_command/issues/230)).
+That work is **merged and content-complete**; the milestone is awaiting its
+release cut. Nothing further is planned into it — the one remaining track-up
+defect ([#230](https://github.com/DocGerd/sail_command/issues/230)) was moved
+to v0.6.0 rather than rushed in, because its fix changes user-visible snap
+behavior and warrants its own review round.
 
 ## Next — v0.6.0
 
-The next feature release. Its scope is **not yet decided**; today the milestone
-holds a single tooling item
-([#216](https://github.com/DocGerd/sail_command/issues/216)). Scope will be
-drawn from the themes below when v0.5.1 ships. Saying "undecided" is more useful
-here than inventing a plan.
+The next feature release. Its **product** scope is not yet decided and will be
+drawn from the themes below once v0.5.1 ships — saying "undecided" is more
+useful here than inventing a plan. What the milestone already holds is
+carried-over correction and tooling work: the track-up `bearingSnap` defect
+above, plus anchoring the Bash-matching agent hooks on invocation rather than
+mention ([#216](https://github.com/DocGerd/sail_command/issues/216),
+[#235](https://github.com/DocGerd/sail_command/issues/235), which share one
+helper and so are done together). The
+[milestone](https://github.com/DocGerd/sail_command/milestone/5) is the
+current list; this paragraph describes the intent behind it.
 
 ## Themes for the next year
 

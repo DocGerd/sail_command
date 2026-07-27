@@ -102,14 +102,20 @@ label (and `status: needs-triage` for bug reports) automatically.
 
 **Milestones**
 
-- `v0.5.0` — the next release.
+- `v0.5.1` — the next release (a patch release closing out v0.5.0's map chrome).
 - `v0.6.0` — the release after next.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
+`v0.4.0` and `v0.5.0` are closed. The
+[milestones page](https://github.com/DocGerd/sail_command/milestones) is
+authoritative; this list names the shape, not a live count.
+
 Roll milestones forward at each release cut: the shipped milestone closes, the
 `v0.(N+1).0` scope becomes the next `v0.N.0`, and a fresh `v0.(N+2).0` is
-opened. `Backlog` and `Icebox` persist across releases.
+opened. A PATCH milestone (`vX.Y.Z`, `Z > 0`) is the exception — it closes at
+its own cut and shifts nothing: the pending `vX.(Y+1).0` stays where it is.
+`Backlog` and `Icebox` persist across releases.
 
 The same cut refreshes the documentation that describes project state, so it
 cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
