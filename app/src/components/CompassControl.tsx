@@ -89,19 +89,27 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
   // derived from the source of truth instead of tracked alongside it.
   const commandedBearingRef = useRef<number | null>(null);
 
-  // True ONLY for the synchronous extent of our own map.easeTo() call.
+  // Non-zero ONLY for the synchronous extent of our own map.easeTo() calls.
   // `easeTo`'s first statement is `this._stop(false, options.easeId)`
   // (maplibre-gl-dev.js:69468), which runs the INTERRUPTED ease's `_afterEase`
   // inline — so any rotateend/moveend delivered inside this window describes
   // the camera we are REPLACING, not ours, and must not be reconciled against
   // our brand-new target.
-  const inOwnEaseCallRef = useRef(false);
+  //
+  // A DEPTH counter rather than a boolean: `easeTo` fires events synchronously,
+  // and one of our own listeners could in principle start a second ease from
+  // inside the first (the rotateend snap is one `easeBearing` call away from
+  // doing exactly that). A boolean would be cleared by the inner call's
+  // `finally` and leave the rest of the OUTER call unguarded. Nothing reaches
+  // that today, but the invariant is now enforced by the shape of the code
+  // instead of resting on every future call site preserving it.
+  const ownEaseDepthRef = useRef(0);
 
   const easeBearing = useCallback(
     (bearingDeg: number, durationMs: number, linear = false) => {
       if (!map) return;
       commandedBearingRef.current = bearingDeg;
-      inOwnEaseCallRef.current = true;
+      ownEaseDepthRef.current += 1;
       try {
         map.easeTo({
           bearing: bearingDeg,
@@ -121,7 +129,7 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
           ...(linear ? { easing: (x: number) => x } : {}),
         });
       } finally {
-        inOwnEaseCallRef.current = false;
+        ownEaseDepthRef.current -= 1;
       }
     },
     [map],
@@ -196,7 +204,7 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
     const onMoveEnd = () => {
       // Delivered from inside our own easeTo: this is the ease we just
       // replaced coming to rest, describing the OLD camera.
-      if (inOwnEaseCallRef.current) return;
+      if (ownEaseDepthRef.current > 0) return;
       // A camera animation is still running (ours, or one that started inside
       // our rotateend snap) — the target may yet be reached, so judging the
       // claim now would demote on a bearing that is still in motion.

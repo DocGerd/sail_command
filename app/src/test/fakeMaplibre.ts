@@ -183,10 +183,24 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
 //      cannot tell "the ease landed" from "the ease was killed half way",
 //      which is exactly the #203 F1 state.
 //
-// Deliberate simplifications: only the bearing is modelled (no centre/zoom/
-// pitch), frames are not interpolated (tests choose the partial bearing with
-// `setBearing`), and `rotating` is tracked per ease rather than as MapLibre's
-// sticky `_rotating` flag.
+// Deliberate simplifications, and what they cost:
+//
+//   - Only the bearing is modelled (no centre/zoom/pitch), and frames are not
+//     interpolated — tests choose the partial bearing with `setBearing`.
+//   - `rotating` is tracked per ease rather than as MapLibre's sticky
+//     `_rotating` flag.
+//   - The end-of-gesture `bearingSnap` branch (:68706-68718) is NOT modelled.
+//     In a real browser, a gesture that ends with `0 < |bearing| < bearingSnap`
+//     (default 7) does not merely fire a bare `moveend`: HandlerManager then
+//     calls `map.resetNorth()` — an easeId-less `easeTo` carrying no
+//     eventData — or folds the snap into the inertial ease. So the
+//     snap-affordance tests in CompassControl.test.tsx model the FIRST half of
+//     that sequence only, and are not browser-accurate past the point they
+//     stop: in Chromium the resetNorth ease interrupts the compass's own snap
+//     ease, and the settle reconciler reads the still-partial bearing and
+//     demotes to `free` for about a second before the mode recovers. That
+//     transient predates #203 (develop demotes there too) and is tracked
+//     separately — do not read these tests as proof it cannot happen.
 
 type EventData = { originalEvent?: unknown } | undefined;
 
