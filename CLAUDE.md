@@ -32,6 +32,12 @@ deviate from it.
   `docs/superpowers/specs/2026-07-17-ui-modernization-design.md` §3.2). Reuse the
   primitives and tokens for new UI; don't reinvent buttons/inputs or hardcode
   colors/spacing.
+- Root docs beyond README/CHANGELOG/SECURITY: `GOVERNANCE.md` (roles,
+  decisions, release duties), `ROADMAP.md`, `CODE_OF_CONDUCT.md`, and
+  `docs/security-assurance-case.md` — the OpenSSF Silver document set
+  (#217–#219, #224). **#224 deliberately DECLINED a DCO and a CLA** (Apache-2.0
+  §5 makes inbound = outbound): never add `Signed-off-by` trailers, and nothing
+  checks for them. The #132 release-cut docs sweep covers these four too.
 
 ## Commands
 
@@ -52,6 +58,17 @@ deviate from it.
   smallest-but-slowest file was scheduled LAST and idled ~109 s waiting for
   faster workers to finish. Fixed with a custom `sequence.sequencer` in
   `app/vite.config.ts` that schedules known-slow files first (#214).
+  #214 also REMOVED `needs: app` from `ci.yml`'s `e2e` job: the two now run
+  concurrently (~120 s saved per run, which compounds under the strict
+  up-to-date policy), so a red `app` no longer skips `e2e`, and both jobs race
+  the SAME `setup-node` cache key — a lockfile-changing PR may have `e2e`
+  restore a miss and pay an uncached `npm ci`. Both accepted knowingly.
+- `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
+  dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
+  to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
+  `package.json`'s `version` ONLY when git throws (tarball / git-less build,
+  #125). Don't bump it expecting the About dialog to move; don't delete it
+  either — that fallback is the only thing it is for.
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
 - Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
@@ -100,27 +117,48 @@ deviate from it.
   below `AIS_STACK_BOTTOM_LAYER` whenever the AIS stack exists, #160) —
   never rely on setup timing for ordering; the asset-fetch delay makes
   timing races real.
+- Map-chrome stacking is a DECLARED tier order, written out in full above
+  `.app-header` in `app/src/app.css` (#208): shell chrome (`.app-header`,
+  `.banner-area`, `.app-tabs`) `z-index: 3` > map chrome (`.map-stack-tl`,
+  `.route-layer-controls`, `.ais-status`) `2` > untiered
+  (`.app-bottom-sheet` content, `.scale-bar`). Principle: A outranks B when a
+  user unable to reach or see A is the worse outcome. Place a NEW element by
+  tier — never invent a value between tiers, and fix a same-tier overlap by
+  MOVING one element, not by bumping it. Scope every height/overflow bound to
+  the condition that motivated it: `max-height` defends against the bottom
+  sheet, so it is narrow-only (`none` on wide, where the sheet is a static
+  side column — unscoped it squeezed both clusters for nothing).
+  `.route-layer-controls` bounds the whole cluster with plain `overflow-y`,
+  but `.map-stack-tl` lets only `.data-layer-controls` shrink
+  (`.compass-control` is `flex-shrink: 0`) — DELIBERATE: the plain bound would
+  scroll the compass itself out of reach.
+- `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx` — not via a later
+  `setMaxPitch`/`setPitch`, which a style reload could undo — and pinned by
+  `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
+  Pitch is deliberately unreachable; don't re-enable it without re-auditing
+  for terrain/sky/3D layers and pitch readers (there are none today, #207).
 - GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
   idempotent consumers (RouteLayer's `setFilter`); any network/subscription
   effect keyed on them needs a settle gate (`useSettledValue`, 2 s, with a
   `[plan, rig]` resetKey so plan changes bypass it) — GPS noise flips the
   nearest-leg argmin at fix rate near leg boundaries (#158).
-- MapLibre programmatic eases that can interrupt one another need an
-  `easeId`: 5.24 fires the INTERRUPTED ease's `moveend` synchronously inside
-  the next `easeTo` (`_stop`→`_afterEase`; the guard is skipped without an
-  id), so an "is this my own ease" flag can get cleared mid-flight and the
-  controller misreads its own animation as a user gesture (#155). `easeId` is
-  necessary but NOT sufficient — MapLibre suppresses only when ids MATCH, so
-  a FOREIGN ease (pan inertia, keyboard rotation, a plan-change `fitBounds`)
-  still clears the guard. **Fixed** (#203, #227) by deriving mode from the
-  CAMERA instead of tracking it alongside a flag: every settle re-checks
-  `north` against `map.getBearing()`, and MapLibre's `originalEvent` stamp
-  (present only on events a real user gesture caused) discriminates a hand
-  rotation from a foreign settle, guarded against a settle delivered from
-  inside our OWN `easeTo` and one arriving while `map.isEasing()`. Residual:
-  a pure PAN can still get rewritten into a rotation-to-north by MapLibre's
-  own 7° `bearingSnap` and fires WITH `originalEvent` attached, so track-up
-  still drops whenever `0 < |bearing| < 7` — an everyday heading (#230).
+- Camera MODE is DERIVED from the camera, never tracked alongside it (#203,
+  #227): every settle re-checks `north` against `map.getBearing()`, and
+  MapLibre's `originalEvent` stamp (present only on events a real user gesture
+  caused) discriminates a hand rotation from a foreign settle — guarded
+  against a settle delivered from inside our OWN `easeTo` and one arriving
+  while `map.isEasing()`. The chronology, because the dead ends recur: eases
+  that can interrupt one another need an `easeId` (5.24 fires the INTERRUPTED
+  ease's `moveend` synchronously inside the next `easeTo`,
+  `_stop`→`_afterEase`; the guard is skipped without an id), so an "is this my
+  own ease" FLAG gets cleared mid-flight and the controller misreads its own
+  animation as a user gesture (#155) — and `easeId` is necessary but NOT
+  sufficient, since MapLibre suppresses only when ids MATCH, so a FOREIGN ease
+  (pan inertia, keyboard rotation, a plan-change `fitBounds`) still clears any
+  flag. Residual: a pure PAN can still get rewritten into a rotation-to-north
+  by MapLibre's own 7° `bearingSnap` and fires WITH `originalEvent` attached,
+  so track-up still drops whenever `0 < |bearing| < 7` — an everyday heading
+  (#230).
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
   Live reroute under way) silently un-rotates the chart and kills track-up
@@ -141,7 +179,7 @@ deviate from it.
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
 
-## PWA / E2E / deploy (Phase F)
+## PWA / E2E / deploy
 
 - E2E: `npm --prefix app run e2e` (the `pree2e` hook regenerates
   `app/public/test-fixtures/wind-sw12.json` with fresh timestamps and builds —
@@ -190,91 +228,82 @@ deviate from it.
   ONE origin and `sw.ts`'s activate cleanup enumerates ALL origin caches — glyph
   caches use `sailcommand-glyphs-<slug>@<version>` derived from BASE_URL (#96);
   never add a bare shared cache name or an unscoped cleanup matcher.
-- Deploy (#96, #197): `deploy.yml` fires on push to `main`, `develop`, OR a
-  release TAG (`v[0-9]*` — the glob is the narrowing gate; the `github-pages`
-  env tag policy is the permissive `v*`). Pages
-  serves a SINGLE deployment artifact, so every run builds BOTH refs into one
-  combined artifact regardless of which branch triggered it — `main` → the
-  site root (production, `app/vite.config.ts` `base: '/sail_command/'`,
-  unchanged), `develop` → `/uat/` (`SC_DEPLOY_ENV=uat` env var switches
-  `base` to `/sail_command/uat/` and, via the config's `subPathMeta()`
-  plugin + PWA `manifest` block, adds `<meta name="robots" content=
-  "noindex, nofollow">` and a distinct manifest `name`/`id` so the UAT build installs
-  as a separate PWA rather than colliding with production's). This
-  deliberately couples the two deploys; since #117, develop-triggered runs
-  REUSE a cached, validated prod dist keyed on the composite `(main SHA,
-  git-describe version)` identity instead of rebuilding it (validation
-  BEFORE assembly = full sha256 manifest + sanity +
-  PMTiles magic + cross-check against the main-authored baseline whenever one
-  is retrievable; miss/invalid → loud full rebuild + byte-drift check against
-  that baseline — drift fails the run; main-MODE runs (a `main` push, a
-  release-tag push, or a dispatch on `main`) double-build as a
-  determinism proof and publish the baseline as the `prod-manifest`
-  artifact). Cache saves happen only on BASELINE-VERIFIED develop-triggered
-  rebuilds — cache keys are immutable, so caching unverified bytes could
-  permanently shadow a baseline recorded later for the same SHA — and on
-  develop-triggered runs only: develop is the DEFAULT branch, so its cache
-  scope is visible everywhere, while main-scoped saves would be invisible to
-  develop runs — that cache-scope asymmetry is why the drift baseline
-  travels as a workflow ARTIFACT, not a cache.
-  The `v*` TAG trigger (#197) is ADDITIVE — the branch triggers stay, or an
-  untagged `main` push (hotfix, docs) would silently stop deploying. A release
-  cut thus produces TWO runs: the merge push (builds before the tag exists, so
-  `git describe` bakes the untagged `vX.(Y-1).Z-N-g<sha>` into
-  `__SC_APP_VERSION__`) and the tag push (rebuilds with the tag visible and
-  publishes the clean `vX.Y.Z` — the v0.4.0 cut's manual deploy re-run,
-  automated). A tag run is a MAIN-MODE run in every respect: it builds both
-  refs from their BRANCH tips (the tag is a timing marker, never a content
-  selector — building the tag's commit could roll prod back if `main` moved
-  on), double-builds for the determinism proof, and publishes the
-  authoritative `prod-manifest` baseline. Because a tag push changes the prod
-  bytes at an UNCHANGED main SHA, prod-bytes identity is
-  `(main SHA, git-describe version)` everywhere — never the SHA alone: the
-  cache key carries the version (`prod-dist-v2-<sha>-<version>`; keys are
-  immutable, so a SHA-only key would let the pre-tag entry outlive the
-  release) and the baseline artifact carries `version.txt`, which the
+- **Deploy — one artifact, two refs** (#96, #197): `deploy.yml` fires on push
+  to `main`, `develop`, OR a release TAG (`v[0-9]*` — the glob is the
+  narrowing gate; the `github-pages` env tag policy is the permissive `v*`).
+  Pages serves a SINGLE deployment artifact, so every run builds BOTH refs
+  into one combined artifact regardless of which branch triggered it — `main`
+  → the site root (production, `app/vite.config.ts` `base: '/sail_command/'`,
+  unchanged), `develop` → `/uat/` (`SC_DEPLOY_ENV=uat` env var switches `base`
+  to `/sail_command/uat/` and, via the config's `subPathMeta()` plugin + PWA
+  `manifest` block, adds `<meta name="robots" content="noindex, nofollow">`
+  and a distinct manifest `name`/`id` so the UAT build installs as a separate
+  PWA rather than colliding with production's). This deliberately couples the
+  two deploys. Production: `https://docgerd.github.io/sail_command/`
+  (unchanged, verified byte-for-byte identical to the pre-#96 build). UAT
+  (unreleased develop state — noindex, not chart-authoritative, don't link it
+  from anywhere production-facing):
+  `https://docgerd.github.io/sail_command/uat/`.
+- **Deploy — prod-bytes identity and the cached dist** (#117): develop-triggered
+  runs REUSE a cached, validated prod dist keyed on the composite `(main SHA,
+  git-describe version)` identity instead of rebuilding it (validation BEFORE
+  assembly = full sha256 manifest + sanity + PMTiles magic + cross-check
+  against the main-authored baseline whenever one is retrievable;
+  miss/invalid → loud full rebuild + byte-drift check against that baseline —
+  drift fails the run). Main-MODE runs (a `main` push, a release-tag push, or
+  a dispatch on `main`) double-build as a determinism proof and publish the
+  baseline as the `prod-manifest` artifact. Cache saves happen only on
+  BASELINE-VERIFIED develop-triggered rebuilds — cache keys are immutable, so
+  caching unverified bytes could permanently shadow a baseline recorded later
+  for the same SHA — and on develop-triggered runs only: develop is the
+  DEFAULT branch, so its cache scope is visible everywhere, while main-scoped
+  saves would be invisible to develop runs — that cache-scope asymmetry is why
+  the drift baseline travels as a workflow ARTIFACT, not a cache. Because a
+  tag push changes the prod bytes at an UNCHANGED main SHA, prod-bytes
+  identity is `(main SHA, git-describe version)` EVERYWHERE — never the SHA
+  alone: the cache key carries the version (`prod-dist-v2-<sha>-<version>`;
+  keys are immutable, so a SHA-only key would let the pre-tag entry outlive
+  the release) and the baseline artifact carries `version.txt`, which the
   develop-side lookup matches alongside `main-sha.txt`. That lookup also has
   NO `branch=main` filter: a tag run's `head_branch` is the TAG name, so the
-  filter would hide exactly the release baseline. Whenever the baseline FORMAT
-  or the cache key changes, a missing baseline does NOT self-heal (only
-  main-mode runs publish one), so until then EVERY develop deploy rebuilds and
-  republishes prod from unverified bytes — #117a's "a develop push cannot alter
-  production bytes" invariant is suspended for that whole interval (green, not
-  red: the determinism double-build still guarantees correct prod bytes —
-  only the cross-run drift CHECK is unavailable). Re-establishing the baseline
-  needs `gh workflow run deploy.yml --ref main` — but that dispatch resolves the
-  workflow FILE from `main`'s own tip, so it is only effective once `main`
-  already contains the format/key change. Dispatched earlier — e.g. right
-  after the format-changing PR merges to `develop`, the natural but wrong
-  moment to reach for it — it runs the OLD workflow and publishes the OLD
-  baseline shape, changing nothing (measured on #197: such a dispatch
-  published a baseline with no `version.txt`). The degraded interval therefore
-  really lasts until the change reaches `main` at the next develop→main
-  release cut, and ends on its own at that point; the dispatch is only worth
-  running from then on.
-  A `push` on a tag also resolves the WORKFLOW FILE from the tag's commit, so a
-  `v[0-9]*` tag on a commit predating #197 silently does not deploy.
-  The existing `concurrency: { group: pages, cancel-in-progress: true }` admits
-  only one deploy run at a time, but it CANCEL-SUPERSEDES rather than queues — a
-  newer run cancels the in-flight one — and release tag runs share that group
-  (see the release ritual under Branching for why that matters).
-  Develop-triggered runs additionally
-  record a `uat` environment in the Deployments UI, and main- AND tag-triggered
-  runs a `prod` one (both bookkeeping only, #106/#127/#197 — a release cut
-  therefore logs two `prod` entries, the tag one being authoritative);
-  `github-pages` remains the
-  platform-managed mechanical env — never rename it (the Pages OIDC flow
+  filter would hide exactly the release baseline. **Durable rule:** changing
+  the baseline FORMAT or the cache key suspends #117a's "a develop push cannot
+  alter production bytes" invariant until the change reaches `main` — only
+  main-mode runs publish a baseline and a missing one does NOT self-heal. That
+  interval is green, not red (the determinism double-build still guarantees
+  correct prod bytes; only the cross-run drift CHECK is unavailable) and it
+  ends on its own at the next release cut. `gh workflow run deploy.yml --ref
+  main` helps only AFTER `main` holds the change — dispatched earlier it
+  resolves the workflow FILE from `main`'s old tip and republishes the OLD
+  baseline shape, changing nothing (#197).
+- **Deploy — the tag trigger** (#197): the `v*` TAG trigger is ADDITIVE — the
+  branch triggers stay, or an untagged `main` push (hotfix, docs) would
+  silently stop deploying. A release cut thus produces TWO runs: the merge
+  push (builds before the tag exists, so `git describe` bakes the untagged
+  `vX.(Y-1).Z-N-g<sha>` into `__SC_APP_VERSION__`) and the tag push (rebuilds
+  with the tag visible and publishes the clean `vX.Y.Z` — the v0.4.0 cut's
+  manual deploy re-run, automated). A tag run is a MAIN-MODE run in every
+  respect: it builds both refs from their BRANCH tips (the tag is a timing
+  marker, never a content selector — building the tag's commit could roll prod
+  back if `main` moved on), double-builds for the determinism proof, and
+  publishes the authoritative `prod-manifest` baseline. A `push` on a tag also
+  resolves the WORKFLOW FILE from the tag's commit, so a `v[0-9]*` tag on a
+  commit predating #197 silently does not deploy.
+- **Deploy — concurrency and environments**: `concurrency: { group: pages,
+  cancel-in-progress: true }` admits only one deploy run at a time, but it
+  CANCEL-SUPERSEDES rather than queues — a newer run cancels the in-flight one
+  — and release tag runs share that group (see Release & branching for why
+  that matters). Develop-triggered runs additionally record a `uat`
+  environment in the Deployments UI, and main- AND tag-triggered runs a `prod`
+  one (both bookkeeping only, #106/#127/#197 — a release cut therefore logs
+  two `prod` entries, the tag one being authoritative); `github-pages` remains
+  the platform-managed mechanical env — never rename it (the Pages OIDC flow
   owns it; rename is a trap, #127 spike) — and still interleaves all three
-  refs' entries unchanged.
-  Production:
-  `https://docgerd.github.io/sail_command/` (unchanged, verified
-  byte-for-byte identical to the pre-#96 build). UAT (unreleased develop
-  state — noindex, not chart-authoritative, don't link it from anywhere
-  production-facing): `https://docgerd.github.io/sail_command/uat/`. `main`
-  and `develop` are both guarded by the `protect-main` ruleset (#15 — one
-  ruleset covering both branches via literal refs): PR-only merges (merge
-  commits, review threads resolved), required checks `app` + `e2e` with
-  strict up-to-date policy, no force pushes or deletions.
+  refs' entries unchanged. `main` and `develop` are both guarded by the
+  `protect-main` ruleset (#15 — one ruleset covering both branches via literal
+  refs): PR-only merges (merge commits, review threads resolved), required
+  checks `app` + `e2e` with strict up-to-date policy, no force pushes or
+  deletions.
 - Post-deploy CDN smoke probe (#117, guards the #118 fix class): `deploy.yml`'s
   `smoke-probe` job probes BOTH deployments (prod site root AND `/uat/`) on
   EVERY run — a redeploy evicts prod's CDN edge Range objects even when zero
@@ -307,6 +336,9 @@ deviate from it.
   harbor-combobox false alarm, #107 session). Before filing, verify the
   deployed artifact with a cache-busted browser pass (unregister both origin
   SWs, clear caches, hard-reload) and inspect ARIA/DOM, not pixels.
+
+## Release & branching
+
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
@@ -438,6 +470,12 @@ deviate from it.
   tests (#208); a camera fake that doesn't model `map.resetNorth()` cannot
   show a settle that never arrives (#203). Ask of any green result: *what
   class of failure can this method not detect?*
+- A fix INHERITS its bug's blind spot. #233's hook fix drew six Blockers over
+  two rounds, and all three of round 2's were the same mention-vs-invocation
+  class the fix existed to close, now living inside the fix itself; #228
+  produced four cascading z-index regressions, each caused by the previous
+  fix. Re-run the ORIGINAL defect class against the new code, and treat a
+  passing selftest table as proof only of the shapes it lists.
 - `Object.is(-0, 0)` is `false`, and Playwright's `toBe` uses `Object.is`. A
   counter-rotating needle rounds a −0.11° residual to `-0` and fails
   `toBe(0)` intermittently — MapLibre's camera lands 0.04–0.18° short after a
@@ -482,9 +520,8 @@ deviate from it.
 - The map scale bar is deliberately THREE-unit (nautical miles ≥1 NM, cables
   0.1–0.5 NM, round metres <0.1 NM) — the nautical-miles-only rule above
   governs route/leg distances, not chart chrome. Rungs are picked in the unit
-  being LABELLED (converting an NM rung would print "93 m"), which makes every
-  rung an integer by construction and keeps bar width in 40–100 px; that
-  integer property is pinned to `MAP_MAX_ZOOM` (#155).
+  being LABELLED — which is what makes every rung an integer by construction
+  and keeps bar width in 40–100 px, pinned to `MAP_MAX_ZOOM` (#155).
 - **Two wind-sampling clocks by design**: map barbs sample the plan's grid at
   the SLIDER hour; the depth profile samples each instant's OWN hour (the map
   is a moment, the profile is a timeline). Don't "unify" them.
@@ -544,6 +581,13 @@ deviate from it.
   optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
   apply type+area+priority to every new issue. Taxonomy documented in
   CONTRIBUTING.md (#167/#168).
+- Design a guard around its ASYMMETRY: a BLOCKING guard should fail closed, a
+  NUDGE should fail open. #233's command segmenter exits 0 while emitting
+  confidently-wrong segments, so its fail-closed path covers none of its
+  actual failure modes — the real risk was wrong output, not a crash. When a
+  guard's two failure modes cost very different amounts, make OVER-firing the
+  default and suppress only provably-safe shapes; a parser bug then yields
+  noise, never silence.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
@@ -577,6 +621,8 @@ deviate from it.
   allowed), then the main session runs `git worktree remove` — force-free. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
+  A poll loop on a known-slow job that keeps reporting "no change" is pure
+  overhead — poll for the TRANSITION, not the state.
 - Brief reviewers to POST the review to the PR BEFORE reporting back. Three
   reviewers in one session wrote thorough reviews and reported them without
   publishing, leaving PRs looking unreviewed — which also erases the
@@ -656,14 +702,3 @@ deviate from it.
   origin develop:develop` (ref update without checkout), then switch. That
   ref-update trick REFUSES while `develop` is itself the checked-out branch —
   branch straight off the remote instead (`git switch -c <b> origin/develop`).
-
-## graphify
-
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
-- A Stop hook auto-runs `graphify update`. If it fails it writes `graphify-out/.update-failed` and the nudge hooks switch to a staleness warning — while that marker exists, trust raw files over the graph until `graphify update .` succeeds.
