@@ -86,17 +86,98 @@ export function classifySeamark(seamarkType: string): SeamarkFamily {
   return 'unknown';
 }
 
-/** Even base rank per family — navigational significance ascending (#144).
- * Gaps of 2 leave room for the lit-ness promotion (-1) without families
- * ever interleaving: a lit lateral (9) beats an unlit lateral (10) but
- * never any cardinal (5/6). */
+/**
+ * Even base rank per family (#200), ordered in four tiers: the marks whose
+ * hazard warning is self-contained come first and are never displaced;
+ * everything below them is ranked on how useful the mark is AT THE SCALE WHERE
+ * CULLING HAPPENS — `sc-seamarks` only collision-culls below z12 — which for
+ * the middle tiers means scarcity and design range, not warning content.
+ *
+ * So this is NOT a pure danger-content ordering, and Tier 2 is where it
+ * departs: a lighthouse and a fairway mark carry no danger information at all
+ * (R1001 is explicit for safe water), yet both outrank the dense lateral
+ * sequence because 6 and 23 in-area marks that anchor a landfall are what a
+ * skipper reads at z8-z10, while an individual lateral out of 828 is not.
+ * The tier boundary above them is the hard one: nothing may displace a
+ * cardinal or isolated-danger mark, whatever its scale-appropriateness.
+ *
+ * #144 shipped a single ordering by on-screen prominence, which let 107 minor
+ * lights systematically out-place 121 cardinals and 6 isolated-danger marks:
+ * a mark warning of a hazard was no more likely to survive a collision than a
+ * routine one.
+ *
+ * Gaps of 2 leave room for the lit-ness promotion (-1) without families ever
+ * interleaving: a lit lateral (7) beats an unlit lateral (8) but never any
+ * cardinal (1/2).
+ *
+ * Tiers, with the IALA R1001 Ed 2.0 (2022) basis for each:
+ *
+ * TIER 1 — the two marks whose warning is SELF-CONTAINED: one symbol carries
+ * the whole message, at any scale, and nothing may displace them.
+ * - `isolatedDanger` §2.3.1 — sits on a danger with navigable water all around
+ *   it, and the safe passing distance "cannot be specified", so nothing else
+ *   on screen implies it.
+ * - `cardinal` §2.2.3 — "To indicate the safe side on which to pass a danger."
+ *
+ * TIER 2 — scarce marks that anchor a passage at PLANNING scale. Neither
+ * carries danger information, and both are ranked on a property R1001 states
+ * about them plus the fact that culling only happens below z12, where
+ * scale-appropriateness is what matters:
+ * - `lightMajor` §2.7.1.1 — a lighthouse provides "a long or medium range
+ *   light" and "a significant daymark"; R1001 §2.7 files it under "OTHER
+ *   MARKS", outside the six MBS types (§1.2), but range is precisely what
+ *   makes a mark usable at small scale. 6 in the forecast area.
+ * - `safeWater` §2.4.1.1 — indicates "channel entrance, port or estuary
+ *   approach, landfall, or best point of passage under bridges": the decision
+ *   points of a passage plan. 23 in the forecast area.
+ *   §2.4.1 is explicit that it "does not mark a danger", which is why it
+ *   cannot enter Tier 1 — but the same on-deck reasoning that lifts a
+ *   lighthouse above the dense sequence marks lifts a fairway mark too, and
+ *   granting it to one and not the other would be an unprincipled asymmetry
+ *   (raised in review of #200 and accepted).
+ *
+ * TIER 3 — `lateral`, the dense sequence marks. §3.1 Table 16 has a "New
+ * Danger" column listing Lateral, Cardinal, Isolated Danger and Emergency
+ * Wreck — §3.2.2 spells it out — and §2.5.2.4 says "the limit of safe
+ * navigation ... will continue to be marked by Lateral (or Cardinal) marks",
+ * so laterals ARE danger-bearing and stay above everything below them. They
+ * rank under Tiers 1-2 because a lateral is not a self-contained instruction:
+ * §2.1.1 has them "denote the port and starboard sides of channels" relative
+ * to a conventional direction of buoyage, so a single lateral is one datum on
+ * a channel edge described by many marks, whereas a cardinal or
+ * isolated-danger mark is a complete instruction on its own. 828 in-area.
+ *
+ * TIER 4 — no danger information and not scarce:
+ * - `lightMinor`: §2.7 again, but short-range and dense (107 in-area).
+ * - `specialPurpose`: §2.5.1 — special marks "are not generally intended to
+ *   mark channels or obstructions where the MBS provides suitable
+ *   alternatives".
+ * - `unknown`: an unclassifiable mark must never displace a cardinal, so
+ *   failing to the bottom is the safe direction.
+ *
+ * NOTE for a future pipeline re-pull — where the gaps actually are:
+ * - R1001 §2.6's Emergency Wreck mark would rank above `isolatedDanger` (it
+ *   marks a NEW danger, by definition absent from every chart AND from this
+ *   app's own depth mask). OSM has no `seamark:type` for it; such a buoy is
+ *   mapped as `seamark:type=buoy_special_purpose` with a blue/yellow colour
+ *   tag, which passes the pipeline's `buoy_` prefix filter and then
+ *   classifySeamark's `_special_purpose` suffix rule, landing at
+ *   `specialPurpose` = 12 — the LOWEST real rank. It would not land in
+ *   `unknown`, so a guard must watch classifySeamark, not this table's floor.
+ *   No blue-striped mark (R1001 Table 11) exists in the committed pull.
+ * - `light_vessel` and `light_float` (R1001 §2.7.5 Major Floating Aids) DO
+ *   pass the `light_` prefix filter and then fall through classifySeamark to
+ *   `unknown` = 14 — below `specialPurpose` — despite being the long-range
+ *   aids the `lightMajor` bullet argues should rank high. Neither is in the
+ *   current pull, so nothing is broken today.
+ */
 const FAMILY_RANK: Record<SeamarkFamily, number> = {
-  lightMajor: 0,
-  lightMinor: 2,
-  isolatedDanger: 4,
-  cardinal: 6,
-  safeWater: 8,
-  lateral: 10,
+  isolatedDanger: 0,
+  cardinal: 2,
+  lightMajor: 4,
+  safeWater: 6,
+  lateral: 8,
+  lightMinor: 10,
   specialPurpose: 12,
   unknown: 14,
 };
@@ -108,6 +189,12 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  * data-build time (seamarkFeatureCollectionWithIcons) — never re-derived in
  * a style expression. Lit marks (any light field present) outrank unlit
  * peers of the same family; integers only.
+ *
+ * The lit-ness promotion is deliberately smaller than the family gap, so it
+ * can only ever reorder marks WITHIN a family (#200): a lit lateral (7) still
+ * loses to the worst unlit safe-water mark (6), and a lit lighthouse (3) still
+ * loses to the worst unlit cardinal (2). Lit-ness is a visibility property,
+ * never a reason to reorder the tiers above.
  */
 export function seamarkPriority(props: SeamarkProperties): number {
   const lit =
