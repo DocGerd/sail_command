@@ -134,10 +134,12 @@ deviate from it.
   z≥12 (`'always'`) a **higher** key paints on top, and
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
-  `sortFeaturesByKey = false` (`symbol_bucket.ts:391`), disabling the
-  placement priority entirely. Within one symbol layer, placement and paint
-  order cannot be set independently — that needs a second layer (#200,
-  #232).
+  `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
+  against the exact pinned `maplibre-gl@5.24.0` install AND upstream's
+  `v5.24.0` tag, byte-identical; re-check after any maplibre-gl upgrade),
+  disabling the placement priority entirely. Within one symbol layer,
+  placement and paint order cannot be set independently — that needs a
+  second layer (#200, #232).
 
 ## PWA / E2E / deploy (Phase F)
 
@@ -534,9 +536,19 @@ deviate from it.
   CONTRIBUTING.md (#167/#168).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
-  It also fires on `gh api -f` alone with NO git command present, and even on
-  a heredoc whose PROSE merely mentions the force flags; `--raw-field` is the
-  escape (#216).
+  It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
+  global/personal, unversioned, shared across concurrent sessions) — NOT
+  covered by #216, which is the notices-regen/graphify-nudge hooks; #233
+  audited this guard specifically and declined to touch it. Observed but
+  NOT confirmed as a mechanism: a Bash call was blocked while drafting a
+  heredoc whose PROSE merely mentioned the force flags with no git command
+  invoked, and separately a command containing `gh api -f` was blocked —
+  the precise trigger for the second case is unconfirmed (a reviewer could
+  not reproduce it in isolation). `--raw-field` avoided the block in
+  practice; treat that as an observed workaround, not a documented fix. A
+  recommended fix, and the note that `reset --hard`/`clean -f` share the
+  same shape, are recorded in PR #233's body for the maintainer to apply —
+  it's their global config, not something a repo PR can change.
 - PR review threads via API: send bodies containing backticks as JSON `--input`
   files (double-quoted shell interpolation mangles them); inline comments 422
   outside diff hunks — anchor to in-diff lines, put out-of-diff findings in a
