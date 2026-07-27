@@ -3,11 +3,20 @@
 SailCommand is a small personal project; issues and PRs are welcome but
 review capacity is limited.
 
+By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). How
+decisions get made, who holds which role, and how a change is accepted are
+described in [GOVERNANCE.md](GOVERNANCE.md); where the project is headed is in
+[ROADMAP.md](ROADMAP.md).
+
 ## Ground rules
 
-- **`main` is protected**: PR-only merges (merge commits), required checks
-  `app` + `e2e` must pass, review threads must be resolved, strict
-  up-to-date policy (rebase/merge `main` before merging).
+- **`develop` and `main` are both protected** (one ruleset covers both):
+  PR-only merges (merge commits only), required checks `app` + `e2e` must
+  pass, review threads must be resolved, strict up-to-date policy (merge the
+  base branch before merging), no force pushes, no branch deletion.
+- **Feature PRs target `develop`**, the default branch, never `main`. `main`
+  holds released state only: a release is a `develop` → `main` PR, tagged
+  `vX.Y.Z` after merge. See [GOVERNANCE.md](GOVERNANCE.md#releases).
 - **No backend.** The app is deliberately client-only; features that need a
   server (proxies, token exchanges, databases) will be declined.
 - **Offline first.** Planning a route needs network (wind fetch); everything
@@ -15,6 +24,20 @@ review capacity is limited.
   connectivity is a bug.
 - **Not a navigation device.** User-facing copy must never claim chart
   authority.
+
+## Contribution licensing
+
+The project is [Apache-2.0](LICENSE). Under its §5 ("Submission of
+Contributions"), anything you intentionally submit for inclusion — a pull
+request against this repository — is submitted under that same license unless
+you explicitly say otherwise. Inbound equals outbound; there is nothing extra
+to sign.
+
+**There is deliberately no DCO sign-off and no CLA.** The reasoning, and the
+conditions under which that would be revisited, are recorded in
+[GOVERNANCE.md](GOVERNANCE.md#contribution-licensing--no-dco-or-cla-deliberate).
+Do not add `Signed-off-by:` trailers; no commit in this repository carries one
+and nothing checks for them.
 
 ## Development
 
@@ -87,6 +110,13 @@ label (and `status: needs-triage` for bug reports) automatically.
 Roll milestones forward at each release cut: the shipped milestone closes, the
 `v0.(N+1).0` scope becomes the next `v0.N.0`, and a fresh `v0.(N+2).0` is
 opened. `Backlog` and `Icebox` persist across releases.
+
+The same cut refreshes the documentation that describes project state, so it
+cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
+and themes), [`CHANGELOG.md`](CHANGELOG.md) (roll `[Unreleased]` into the new
+version), [`README.md`](README.md) (known limitations),
+[`GOVERNANCE.md`](GOVERNANCE.md), and
+[`docs/security-assurance-case.md`](docs/security-assurance-case.md).
 
 ## Claude Code config placement
 
