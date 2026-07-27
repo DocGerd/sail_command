@@ -308,6 +308,87 @@ describe('ScaleBar', () => {
     sheet.remove();
   });
 
+  it('caches the last known-good bar height, so a zeroed (display:none/unpainted) reading cannot widen the ceiling (#208 review "Major 1")', async () => {
+    // Reproduces the exact review-measured symptom: a naive LIVE
+    // `rootRef.current.offsetHeight` read is ~18px before the label first
+    // paints and exactly 0 once `.scale-bar-suppressed` (display:none) has
+    // ever applied — both inflate the ceiling and can un-suppress (or
+    // overlap .map-stack-tl by a few px) a position that should stay
+    // suppressed. This pins that a later, ZEROED reading can never override
+    // an earlier, real one.
+    const sheet = stubSheet(412); // floor = 412 + 8 = 420
+    const { container } = render(<ScaleBar />);
+    stubHost(container);
+    // The bar's real rendered height (label painted, bracket drawn).
+    Object.defineProperty(bar(), 'offsetHeight', { value: 30, configurable: true });
+    await act(async () => {
+      // A realistic ~165 px toggle/compass column, mirrors the other #208
+      // NEW-3 tests: bottom edge 56 + 165 = 221.
+      stubMapStack(container, 56, 165);
+    });
+    // Sanity check with the CORRECT height: ceiling = 667 - 30 - 221 - 8 =
+    // 408 < floor (420) -> no position clears both, so this must suppress.
+    expect(bar().className).toContain('scale-bar-suppressed');
+
+    // Now simulate the bar's box having gone display:none (post-suppression)
+    // — a naive live read would see 0 here.
+    Object.defineProperty(bar(), 'offsetHeight', { value: 0, configurable: true });
+    await act(async () => {
+      // Re-trigger apply() via an unrelated mutation (liveLift stays 0 here
+      // — HOST_H - HOST_H — so only the cached-vs-live bar height differs
+      // between this call and the one above).
+      container.insertBefore(occluder('live-view', HOST_H), container.firstChild);
+    });
+    // Must STAY suppressed: with the buggy live-0 reading, ceiling would
+    // widen to 667 - 0 - 221 - 8 = 438 >= floor (420), un-suppressing at
+    // bottom=420px — whose top edge (667 - 420 - 30 = 217) overlaps
+    // .map-stack-tl's bottom (221) by 4px, the exact review-reported number.
+    expect(bar().className).toContain('scale-bar-suppressed');
+    sheet.remove();
+  });
+
+  it('recovers the correct (non-zero) bar height once it repaints, and does not stay stuck on the first reading', async () => {
+    // Companion to the hysteresis test above: once a genuinely fresh,
+    // positive reading arrives, it must become the new cached value (this is
+    // what lets the bar ever correct an initial too-small reading, e.g. the
+    // ~18px pre-label-paint case) — the cache must not get stuck at a stale
+    // value forever either.
+    //
+    // `floor` is pinned CONSTANT at 412 throughout via a fixed sheet lift
+    // (404 + the 8px gap) so `barHeight` is the ONLY thing that changes
+    // between the two measurements — re-triggered by a "poke" live-view
+    // occluder whose OWN liveLift is 0 (topPx = HOST_H), which does two
+    // things deliberately: it re-invokes `apply()` (jsdom has no
+    // ResizeObserver, so this childList mutation is the only re-trigger
+    // available), and it stays far under the UNRELATED liveLift-based
+    // suppression heuristic (`window.innerHeight * 0.4` = 307.2 in jsdom's
+    // 768px default) — an earlier version of this test picked a poke offset
+    // whose liveLift (404) tripped that heuristic on its own, which made the
+    // assertion pass FOR THE WRONG REASON regardless of whether barHeight
+    // caching worked at all.
+    const sheet = stubSheet(404);
+    const { container } = render(<ScaleBar />);
+    stubHost(container);
+    Object.defineProperty(bar(), 'offsetHeight', { value: 18, configurable: true }); // pre-label-paint size
+    await act(async () => {
+      stubMapStack(container, 56, 165); // bottom = 221; this mutation is what first triggers apply().
+    });
+    // ceiling@18 = 667 - 18 - 221 - 8 = 420 >= floor (412) -> visible.
+    expect(bar().className).not.toContain('scale-bar-suppressed');
+    expect(bar().style.bottom).toBe('412px');
+
+    // The label paints; the bar's real height arrives. Poke to re-trigger.
+    Object.defineProperty(bar(), 'offsetHeight', { value: 30, configurable: true });
+    await act(async () => {
+      container.insertBefore(occluder('live-view', HOST_H), container.firstChild);
+    });
+    // With the cache correctly updated to 30 (not stuck at 18): ceiling@30 =
+    // 667 - 30 - 221 - 8 = 408 < floor (412) -> suppressed. A stuck-at-18
+    // cache would wrongly stay visible (412 <= 420).
+    expect(bar().className).toContain('scale-bar-suppressed');
+    sheet.remove();
+  });
+
   it('never overrides the wide stylesheet rule, even with a tall .app-bottom-sheet present', () => {
     // On wide, .app-bottom-sheet is a static grid column beside the map, not
     // an overlay — measuring it would be wrong, and an inline `bottom` would

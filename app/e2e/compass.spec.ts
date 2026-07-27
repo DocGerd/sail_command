@@ -212,10 +212,18 @@ test('scale bar: labels the rendered viewport, never swallows a map tap, and cle
 // stack (`document.elementsFromPoint`) and drive a REAL click, at the exact
 // viewports the issue measured, on the two tabs a fresh narrow user actually
 // lands on (Plan is the first-load tab).
+// `neverSuppress: true` marks the two ordinary PORTRAIT phone sizes the issue
+// itself measured (#208 review "Minor 5") — the exact case the first
+// (40%-of-viewport heuristic) suppression design broke by over-suppressing.
+// There, unlike the three landscape sizes above, suppression is a HARD
+// FAILURE below, not an accepted branch: this is what pins the lift
+// arithmetic end-to-end and would have caught that first design.
 const OCCLUSION_VIEWPORTS = [
-  { width: 844, height: 390 },
-  { width: 740, height: 360 },
-  { width: 667, height: 375 },
+  { width: 844, height: 390, neverSuppress: false },
+  { width: 740, height: 360, neverSuppress: false },
+  { width: 667, height: 375, neverSuppress: false },
+  { width: 375, height: 667, neverSuppress: true },
+  { width: 390, height: 844, neverSuppress: true },
 ];
 const OCCLUSION_TABS = ['Planen', 'Routen'] as const;
 
@@ -267,9 +275,18 @@ async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['lo
   await page.mouse.up({ button: 'right' });
   await expect(compass).toHaveAttribute('data-orientation', 'free');
 
-  const cbox = (await compass.boundingBox())!;
-  await page.mouse.click(cbox.x + cbox.width / 2, cbox.y + cbox.height / 2);
-  await expect(compass).toHaveAttribute('data-orientation', 'north-up');
+  // Bounded retry, not a fixed wait: under full-suite load a single raw
+  // click can occasionally land a frame before the browser has settled the
+  // preceding right-button-up (observed once in a 15-spec full run, never in
+  // isolation) — re-reads the box and re-clicks rather than falling back to
+  // Playwright's own soft `.click()`, which would defeat the point of a raw
+  // coordinate click (see the comment above). Each attempt is still the
+  // exact same real click; only the OUTER wait is a retry, not a sleep.
+  await expect(async () => {
+    const cbox = (await compass.boundingBox())!;
+    await page.mouse.click(cbox.x + cbox.width / 2, cbox.y + cbox.height / 2);
+    await expect(compass).toHaveAttribute('data-orientation', 'north-up', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
 }
 
 test('#208: compass stays tappable and the scale bar never sits under .app-bottom-sheet, at every measured narrow/landscape viewport', async ({
@@ -317,6 +334,15 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
           // --- scale bar: real occlusion, or an honest, recorded suppression ---
           const barClass = await bar.getAttribute('class');
           if (barClass?.includes('scale-bar-suppressed')) {
+            if (viewport.neverSuppress) {
+              // #208 review "Minor 5": this is an ordinary portrait phone
+              // with real headroom between .map-stack-tl and the sheet —
+              // suppressing here is exactly the over-suppression bug the
+              // first (40%-heuristic) design had, not an honest trade.
+              throw new Error(
+                `scale bar unexpectedly suppressed at ${viewport.width}x${viewport.height}/${tabName} — this viewport has real headroom and must show the lifted bar (#208 review "Minor 5")`,
+              );
+            }
             // #208 acceptance: suppression is an accepted, HONEST outcome —
             // proven honest here by also asserting it, not just assumed.
             await expect(bar).toBeHidden();
@@ -339,6 +365,181 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
         });
       }
     }
+  } finally {
+    server.kill();
+  }
+});
+
+test('#208 review "Major 2": the offline banner stays on top of the map-chrome tier, not covered by it', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(server.url);
+    await page.waitForLoadState('networkidle');
+    await page.setViewportSize({ width: 375, height: 667 });
+
+    // `context.setOffline` flips `navigator.onLine`/fires the browser
+    // 'offline' event, which is exactly what the app's own online/offline
+    // state tracks — it does not need to (and per this repo's standing
+    // offline-testing lesson, cannot be trusted to) block real network
+    // fetches, only to flip that UI state, which is all this probe needs.
+    await page.context().setOffline(true);
+    // `hasText: 'Offline'` alone also matches the PWA's unrelated
+    // `ReloadPrompt` "App & Karten offline verfügbar" ready-banner (a
+    // `service worker installed` notice, not this online/offline state) —
+    // 'Planung deaktiviert' ("planning disabled") is unique to this one.
+    const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
+    await expect(banner).toBeVisible();
+
+    const bannerBox = (await banner.boundingBox())!;
+    const stackBox = (await page.locator('.map-stack-tl').boundingBox())!;
+    // Sanity: `.banner-area` (top: 3rem) and `.map-stack-tl` (top: 3.5rem)
+    // overlap BY DESIGN (app.css) — if a layout change ever separates them,
+    // this probe stops meaning anything, so fail loudly instead of silently
+    // passing on an empty overlap.
+    const overlapX = Math.max(bannerBox.x, stackBox.x) + 4;
+    const overlapY = Math.max(bannerBox.y, stackBox.y) + 4;
+    expect(
+      overlapX,
+      'banner and map-stack-tl no longer overlap horizontally — this probe needs updating',
+    ).toBeLessThan(Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width));
+    expect(
+      overlapY,
+      'banner and map-stack-tl no longer overlap vertically — this probe needs updating',
+    ).toBeLessThan(Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height));
+
+    const onTop = await topmostIsWithin(page, overlapX, overlapY, '.banner-area');
+    if (!onTop) {
+      const hitStack = await elementsAt(page, overlapX, overlapY);
+      throw new Error(
+        `offline banner text is covered at the overlap point: ${JSON.stringify(hitStack)}`,
+      );
+    }
+  } finally {
+    await page.context().setOffline(false);
+    server.kill();
+  }
+});
+
+test('#208 review "Minor 7": the scale bar does not cover the expanded attribution (no z-index on .scale-bar)', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(server.url);
+    await page.waitForLoadState('networkidle');
+    // The reviewer's own reproduction viewport — wide enough that the
+    // expanded attribution's left edge reaches the bottom-left scale bar.
+    await page.setViewportSize({ width: 1024, height: 600 });
+
+    await page.locator('.maplibregl-ctrl-attrib-button').click();
+    const attribution = page.locator('details.maplibregl-ctrl-attrib');
+    await expect(attribution).toHaveClass(/maplibregl-compact-show/);
+
+    const bar = page.locator('.scale-bar');
+    const barBox = (await bar.boundingBox())!;
+    const attribBox = (await attribution.boundingBox())!;
+    const overlapX = Math.max(barBox.x, attribBox.x) + 2;
+    const overlapY = Math.max(barBox.y, attribBox.y) + 2;
+    expect(
+      overlapX,
+      'scale bar and the expanded attribution no longer overlap horizontally at this viewport',
+    ).toBeLessThan(Math.min(barBox.x + barBox.width, attribBox.x + attribBox.width));
+    expect(
+      overlapY,
+      'scale bar and the expanded attribution no longer overlap vertically at this viewport',
+    ).toBeLessThan(Math.min(barBox.y + barBox.height, attribBox.y + attribBox.height));
+
+    // `.scale-bar` is `pointer-events: none`, so it never appears in a hit
+    // test on its own — temporarily re-enable it (the review's own isolation
+    // technique) so paint order becomes hit-test order for this one probe.
+    await page.evaluate(() => {
+      (document.querySelector('.scale-bar') as HTMLElement).style.pointerEvents = 'auto';
+    });
+    const onTop = await topmostIsWithin(page, overlapX, overlapY, 'details.maplibregl-ctrl-attrib');
+    if (!onTop) {
+      const hitStack = await elementsAt(page, overlapX, overlapY);
+      throw new Error(
+        `attribution is covered by the scale bar at the overlap point: ${JSON.stringify(hitStack)}`,
+      );
+    }
+  } finally {
+    server.kill();
+  }
+});
+
+test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of .app-bottom-sheet with a real plan loaded', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    // Deterministic wind (E3 escape hatch, mirrors plan.spec.ts) — the wind
+    // grid itself is irrelevant here, only that a real plan/route exists so
+    // RouteLayer actually renders `.route-layer-controls` (plan-gated).
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('tab', { name: 'Planen' }).click();
+
+    // Same harbor pair the review's own reproduction used.
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    await expect(originSection.getByRole('option')).toHaveCount(1);
+    await originSection.getByRole('option').first().click();
+
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    await expect(destSection.getByRole('option')).toHaveCount(1);
+    await destSection.getByRole('option').first().click();
+
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    const controls = page.locator('.route-layer-controls');
+    await expect(controls).toBeVisible();
+
+    // #208's original pass ran WITHOUT a plan, so this cluster was empty —
+    // 390x844 is the review's own negative control (it does not reach the
+    // sheet even unfixed); 844x390/740x360 are where it did.
+    const viewports = [
+      { width: 844, height: 390 },
+      { width: 740, height: 360 },
+      { width: 390, height: 844 },
+    ];
+    for (const vp of viewports) {
+      await test.step(`${vp.width}x${vp.height}`, async () => {
+        await page.setViewportSize(vp);
+        const box = (await controls.boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(vp.width);
+        expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+
+        // The cluster's LOWER edge is the row most likely to reach into the
+        // sheet — the review's own finding was that its lower rows, not its
+        // top, hit-tested to the tab-strip button.
+        const lowerX = box.x + box.width / 2;
+        const lowerY = box.y + box.height - 4;
+        const onTop = await topmostIsWithin(page, lowerX, lowerY, '.route-layer-controls');
+        if (!onTop) {
+          const hitStack = await elementsAt(page, lowerX, lowerY);
+          throw new Error(
+            `.route-layer-controls is not the topmost hit at its lower edge (${vp.width}x${vp.height}): ${JSON.stringify(hitStack)}`,
+          );
+        }
+      });
+    }
+
+    // Real interaction proof at the tightest surviving viewport (390x844):
+    // the cluster's LAST row, the legend disclosure, really receives a
+    // click rather than merely passing a hit-test.
+    const legend = controls.getByText('Legende');
+    await expect(legend).toBeVisible();
+    const legendDetails = controls.locator('details');
+    await expect(legendDetails).not.toHaveAttribute('open');
+    await legend.click();
+    await expect(legendDetails).toHaveAttribute('open', '');
   } finally {
     server.kill();
   }

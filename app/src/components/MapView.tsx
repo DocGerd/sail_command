@@ -227,7 +227,19 @@ export default function MapView({
           // style reload could undo) removes the gesture outright rather than
           // adding a reset control. Audited before this change: no code in
           // the app reads/sets pitch, and there is no terrain/sky/3D layer —
-          // don't re-enable this without re-auditing for that.
+          // don't re-enable this without re-auditing for that. Verified
+          // sufficient (review, installed maplibre-gl 5.24.0): every pitch
+          // path — two-finger touch, right-drag, keyboard — ends at the
+          // transform's `setPitch`, which clamps to `[minPitch, maxPitch]`
+          // unconditionally, so `pitchWithRotate`/`touchPitch` are NOT needed
+          // for correctness here. Deliberately left at their defaults
+          // (`touchPitch: true`): the two-finger-drag handler still runs and
+          // blocks touchPan/touchZoom for that gesture's duration even though
+          // it no longer tilts anything — a pure UX residue (the gesture
+          // accomplishes nothing instead of tilting, same as before this
+          // change for a beat), not a #207 correctness gap, and `touchPitch:
+          // false` to let it fall through to pan/zoom is a separate call this
+          // PR isn't making.
           maxPitch: 0,
           attributionControl: false,
         });

@@ -536,13 +536,27 @@ function AppShell() {
           positioned overlays painted on top of it (later in DOM order, same
           stacking context), each occupying only its own natural height, so
           untouched screen area still reaches the map for tap-to-pick. That
-          DOM-order-only assumption is NOT sufficient for the map's own
-          top-left chrome stack (.map-stack-tl: DataLayers' toggles + the
-          compass) or the scale bar: .app-bottom-sheet's rendered height grows
-          with its active tab's content (up to 55vh) and can reach up far
-          enough, on a short narrow/landscape viewport, to paint over them —
-          #208. Both carry their own explicit z-index for exactly that reason
-          (see their app.css rules); nothing else here does, or needs to. */}
+          DOM-order-only assumption is NOT sufficient across this whole set —
+          #208 found `.app-bottom-sheet`'s rendered height (grows with its
+          active tab's content, up to 55vh) reaching up far enough, on a
+          short narrow/landscape viewport, to paint over the map's own
+          top-left chrome stack (.map-stack-tl) and the top-right route
+          cluster (.route-layer-controls). Both — plus .ais-status, top-
+          centre — now carry an explicit z-index (app.css) putting them in a
+          "map-chrome tier" ABOVE the sheet; .app-header/.banner-area carry
+          one of their own putting THEM in a "shell-chrome tier" above map
+          chrome in turn (#208 review finding "Major 2": raising only the map
+          chrome first flipped it against the banners, which had overlapped
+          that same top-left corner by design all along). `.scale-bar`
+          deliberately has NO z-index (review finding "Minor 7" — see its own
+          app.css comment for why one was tried and reverted); its dynamic
+          lift is what keeps it clear of the sheet instead. No other MAP
+          OVERLAY (a sibling of .map-area below, or a child of MapView's own
+          subtree) carries a z-index. `.planner-actions`' z-index:2 is a
+          separate, unrelated concern — a local sticky-positioning offset
+          inside the scrollable bottom-sheet panel content, inert until the
+          wide layout makes it `position: sticky` — it never competes with
+          anything described here. */}
       <div className="map-area">
         {/* MapView's label language is baked in at first mount (see
             MapView.tsx's own comment) — a live language switch does not
@@ -620,12 +634,14 @@ function AppShell() {
               so map taps pass through it. DOM order alone does NOT keep it
               clear of everything that matters — #208 found it fully buried
               under `.app-bottom-sheet` on the Plan/Routes tabs at every
-              narrow viewport, and the expanded MapLibre attribution can cover
-              it too. It discovers and lifts clear of whichever of the
-              narrow-layout docked Live readout or `.app-bottom-sheet` itself
-              currently occludes this corner (see ScaleBar.tsx's own comment)
-              — no layout prop needed — and carries its own z-index as a
-              backstop (app.css). */}
+              narrow viewport, and the expanded MapLibre attribution can still
+              cover it too (that one is pre-existing, low-severity #208 NEW-4,
+              deliberately left as-is — see ScaleBar.tsx's own z-index note
+              for why a z-index here would make it WORSE, not better). It
+              discovers and lifts clear of whichever of the narrow-layout
+              docked Live readout or `.app-bottom-sheet` itself currently
+              occludes this corner (see ScaleBar.tsx's own comment) — no
+              layout prop needed. */}
           <ScaleBar />
         </MapView>
       </div>

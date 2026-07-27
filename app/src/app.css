@@ -83,6 +83,20 @@ select {
   inset: 0;
 }
 
+/* #208 review finding "Major 2": .app-header and .banner-area sit at
+   `top: 0`/`top: 3rem`, overlapping `.map-stack-tl`'s `top: 3.5rem` column BY
+   DESIGN (the banners were always meant to sit ON that space while a
+   compass/toggle stack sits below them) — they only ever WON that overlap
+   because they paint later in DOM order (App.tsx). Giving `.map-stack-tl` its
+   own z-index (below, "map-chrome tier") to escape `.app-bottom-sheet`
+   silently flipped this pair too: without a z-index of their own, these fall
+   back to the default paint-order tier, which the map-chrome tier now sits
+   above. Explicit `z-index: 3` — a "shell-chrome tier", stated to be above
+   the "map-chrome tier" `.map-stack-tl`/`.route-layer-controls`/`.ais-status`
+   share at `2` — restores banners/header as the one thing every map overlay
+   must always yield to: this is the app's only channel for "you are
+   offline"/"this forecast is stale", so losing that text to a toggle button
+   is a worse outcome than the toggle being covered ever was. */
 .app-header {
   position: absolute;
   top: 0;
@@ -95,6 +109,7 @@ select {
   background: color-mix(in srgb, var(--sc-bg) 88%, transparent);
   backdrop-filter: blur(4px);
   border-bottom: 1px solid var(--sc-border);
+  z-index: 3;
 }
 
 .app-header h1 {
@@ -127,6 +142,8 @@ select {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Same shell-chrome tier as .app-header — see its comment above. */
+  z-index: 3;
 }
 
 .banner {
@@ -330,11 +347,23 @@ select {
 /* NAMED COUPLING: `top: 3.5rem` clears the narrow-layout .app-header, which
    overlays the map — the wide media query below drops it to 0.75rem because
    at >=1024px the header lives in the panel column instead. Mirrored exactly
-   by .map-stack-tl's own top (they share the map's top row). */
+   by .map-stack-tl's own top (they share the map's top row).
+   #208 review finding "Major 3": this is the mirror image of .map-stack-tl
+   and had the IDENTICAL bug — no z-index, so `.app-bottom-sheet` (which
+   paints later, App.tsx) could grow tall enough on a narrow/landscape
+   viewport WITH A PLAN LOADED to reach up and bury it too (measured: 844x390
+   and 740x360, with a real plan, the cluster's lower rows hit-test to the
+   tab-strip button instead of the barb-toggle/time-slider/legend controls
+   underneath — #208's original pass missed this only because it ran without
+   a plan, so this cluster was empty/absent). Unlike the scale bar these
+   controls are interactive, so this was closer to the compass's bug
+   (untappable) than the scale bar's (merely hidden). Same "map-chrome tier"
+   z-index as .map-stack-tl below — see that comment for the tier story. */
 .route-layer-controls {
   position: absolute;
   top: 3.5rem;
   right: 0.5rem;
+  z-index: 2;
 }
 
 /* Touch targets: each toggle row is a ≥44 px hit area (gloved-hand cockpit
@@ -366,12 +395,29 @@ select {
    viewport (measured: 844x390, 740x360, 667x375) that reaches all the way up
    to this corner and, without an explicit z-index, fully buries the compass
    under the sheet's opaque background: untappable, not just visually
-   crowded. The z-index keeps this whole stack on top regardless of how tall
-   the sheet's active-tab content grows, so it never needs to track that
+   crowded. `2` is this app's "map-chrome tier" — shared with
+   .route-layer-controls (same bug, see its own comment) and .ais-status
+   (app.css, kept at the same tier for consistency even though it does not
+   share this corner) — which sits BELOW the shell's own "shell-chrome tier"
+   `3` on .app-header/.banner-area (review finding "Major 2": those overlap
+   this column BY DESIGN at `top: 3rem`/`3.5rem`, and only ever won it by
+   painting later — raising just the map-chrome tier without also raising
+   shell chrome silently buried the banners under this stack instead).
+   The z-index keeps this whole stack on top of the sheet regardless of how
+   tall the sheet's active-tab content grows, so it never needs to track that
    height itself the way ScaleBar's dynamic lift does below (ScaleBar can't
    use the same trick — see its own z-index note — because visually
    overlapping the sheet's TEXT would look broken even though nothing there
-   is unreachable). */
+   is unreachable).
+   Trade recorded, not eliminated: on short viewports the compass can overlay
+   the tab strip's left edge and wins the hit test there (measured 844x390:
+   compass occupies x 8-52, the first ("Planen") tab spans the full 281px
+   width) — the tab stays reachable everywhere right of that, which is why
+   the existing `getByRole('tab').click()` (centred by Playwright) is
+   unaffected; only a tap in that specific 44px-wide sliver at the tab's own
+   left edge lands on the compass instead. Accepted: the compass has to be on
+   top of SOMETHING to stay tappable at all, and the sliver is far narrower
+   than the tab itself. */
 .map-stack-tl {
   position: absolute;
   top: 3.5rem;
@@ -508,13 +554,22 @@ select {
    readout is portaled into the panel column, #31), this rule stands.
    pointer-events:none is load-bearing: a map tap must pass straight through
    the bar.
-   #208: `z-index: 2` matches `.map-stack-tl`'s — a defence-in-depth backstop
-   for the same "the sheet paints later and can reach this corner" issue, in
-   case the JS lift above ever lags a frame behind a resize. It is NOT the
-   primary fix here the way it is for the compass: the bar's own dynamic lift
-   (not z-index) is what keeps it from visually sitting ON TOP of the sheet's
-   text, which would look broken even though the bar is inert to taps
-   either way. */
+   #208 review finding "Minor 7": deliberately NO z-index here (an earlier
+   draft added one to match .map-stack-tl's "defence in depth" reasoning, but
+   that was wrong for this element specifically). MapLibre's own
+   `.maplibregl-ctrl-bottom-*` controls (the attribution among them) carry
+   `z-index: 2` in maplibre-gl.css, and nothing between `.scale-bar` and them
+   creates a new stacking context (verified: .app-shell, .map-area, MapView's
+   wrapper and .maplibregl-map are all `position` without `z-index`) — so a
+   `z-index: 2` here ties with the attribution's own `2` and DOM order (this
+   bar is later) then wins, drawing the bar's opaque pill over the expanded
+   OSM attribution. #208 NEW-4 already filed the REVERSE overlap (attribution
+   over the bar) as an accepted, low-severity, transient/user-initiated quirk
+   — a z-index here doesn't fix that, it trades it for a worse one, since
+   attribution is the one piece of chrome with a licensing reason to stay
+   legible. The bar's own dynamic lift (not z-index) is the actual #208 NEW-1
+   fix; it needs no help staying clear of the sheet, whose z-index (2, on
+   .map-stack-tl) has no bearing on this element at all. */
 .scale-bar {
   position: absolute;
   left: 0.5rem;
@@ -524,7 +579,6 @@ select {
   align-items: flex-start;
   gap: 0.15rem;
   pointer-events: none;
-  z-index: 2;
   padding: 0.25rem 0.45rem;
   /* Same tokened glass pill as the other map chrome (.data-layer-controls,
      .ais-status-chip). Load-bearing for contrast, not decoration: the basemap
@@ -618,13 +672,21 @@ select {
 }
 
 /* AIS status chip (#25) — a small map overlay on the Live tab, top-centered so
-   it clears the top-left data-layer controls and the top-right route cluster. */
+   it clears the top-left data-layer controls and the top-right route cluster.
+   #208: raised from `1` to `2` to sit in the SAME "map-chrome tier" as
+   .map-stack-tl/.route-layer-controls (see .map-stack-tl's comment) — it
+   never shared their bug (nothing here reaches into .app-bottom-sheet), but
+   leaving it a tier below them was flagged as a #205-adjacent asymmetry: at
+   the narrow widths #205 already covers, any future horizontal overlap
+   between this chip and either corner cluster would have silently lost to
+   them. `pointer-events: none` on this element means the tier only ever
+   decides paint order here, never a tap. */
 .ais-status {
   position: absolute;
   top: 0.5rem;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
 }
 

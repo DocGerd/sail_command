@@ -32,6 +32,11 @@ export default function ScaleBar() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const labelRef = useRef<HTMLSpanElement | null>(null);
+  // Last-known-good rendered height of the bar itself, for the #208 NEW-3
+  // ceiling below. Deliberately NOT a live `rootRef.current.offsetHeight`
+  // read at the moment of use — see the effect's own comment for why that
+  // was a real, measured bug (review finding "Major 1").
+  const barHeightRef = useRef(0);
 
   // The aria-label is the ONLY part of the bar in React state, and it is only
   // rewritten on moveend — a live region rewritten at pan/zoom frame rate is
@@ -181,6 +186,7 @@ export default function ScaleBar() {
     const canObserveResize = typeof ResizeObserver === 'function';
     let liveRo: ResizeObserver | null = null;
     let sheetRo: ResizeObserver | null = null;
+    let barRo: ResizeObserver | null = null;
     let liveLift = 0;
     let sheetLift = 0;
 
@@ -214,12 +220,49 @@ export default function ScaleBar() {
       //    high-severity bug and NEW-3 is cosmetic — so this suppresses
       //    instead, the same "no scale is better than a scale in the wrong
       //    place" call the original heuristic already makes.
+      //
+      // Recorded consequence (review finding "Minor 6"): `.map-stack-tl`
+      // alone (the compass/toggle column this guards against) occupies
+      // `top: 3.5rem` to roughly 222px regardless of viewport height — on
+      // landscape phones that is ~46% of the whole screen, which leaves no
+      // room for the bar under EITHER occluder, so it is suppressed on
+      // EVERY tab at those sizes (measured: 740x360 on all three tabs;
+      // 844x390/932x430/667x375 on Plan). Honest per the #208 acceptance
+      // criteria, but the actual constraint is `.map-stack-tl`'s height, not
+      // the sheet — tracked as a compacting-the-chrome-column follow-up in
+      // issue #231 rather than attempted here.
       let suppressed = liveLift > window.innerHeight * SCALE_LIFT_MAX_VIEWPORT_FRACTION;
       const floor = lift + SCALE_LIFT_GAP_PX;
       let bottomPx = floor;
       const mapStack = host.querySelector<HTMLElement>('.map-stack-tl');
       if (mapStack) {
-        const barHeight = rootRef.current?.offsetHeight ?? 0;
+        // Review finding "Major 1": reading `rootRef.current.offsetHeight`
+        // live here is wrong at exactly the two moments this runs. (1) At
+        // the FIRST measurement — this effect runs synchronously after
+        // commit, before the map effect above has painted a real label into
+        // `.scale-bar-label` (it needs a live `map` instance, which arrives
+        // asynchronously) — the empty label contributes no line box, so the
+        // bar reads ~18px instead of its true ~30px. (2) After ANY
+        // suppression episode, `.scale-bar-suppressed` is `display: none`
+        // (app.css), which makes `offsetHeight` exactly 0 — and nothing
+        // previously re-measured the bar itself once hidden. Both inflate
+        // `ceiling`, which both wrongly clears `floor > ceiling` (no
+        // suppression when there should be one) and draws the bar closer to
+        // `.map-stack-tl` than the true height allows — measured overlaps of
+        // 4-13px on real cold loads, and — because the SAME viewport can
+        // land on either a real or a zeroed reading depending on what
+        // resized last — non-deterministic (the same viewport visible after
+        // a plain resize, suppressed after a tab bounce). A live reading is
+        // only ever trusted when it is POSITIVE (never after the CSS itself
+        // has zeroed it); a zero/undersized reading keeps the last one that
+        // wasn't. The `barRo` ResizeObserver below is what re-triggers this
+        // once the label's real text has actually painted, and again every
+        // time the bar's own visibility flips — a live, always-current
+        // reading whenever one is trustworthy, the frozen last-good one
+        // whenever it briefly isn't.
+        const freshBarHeight = rootRef.current?.offsetHeight ?? 0;
+        if (freshBarHeight > 0) barHeightRef.current = freshBarHeight;
+        const barHeight = barHeightRef.current;
         const mapStackBottom = mapStack.offsetTop + mapStack.offsetHeight;
         const ceiling = host.offsetHeight - barHeight - mapStackBottom - SCALE_LIFT_GAP_PX;
         if (floor > ceiling) suppressed = true;
@@ -258,10 +301,23 @@ export default function ScaleBar() {
     rewireLive();
     const mo = new MutationObserver(rewireLive);
     mo.observe(host, { childList: true });
+
+    // Re-applies whenever the BAR's own box changes size — the first real
+    // label paint (async, see the `barHeight` comment inside `apply` above)
+    // and every suppress/un-suppress toggle (`display: none` <-> real box)
+    // both fire this, which is what lets `apply()` ever pick up a corrected,
+    // trustworthy `barHeight` instead of being stuck with whatever the very
+    // first (possibly wrong) reading happened to be.
+    if (canObserveResize && rootRef.current) {
+      barRo = new ResizeObserver(() => apply());
+      barRo.observe(rootRef.current);
+    }
+
     return () => {
       mo.disconnect();
       liveRo?.disconnect();
       sheetRo?.disconnect();
+      barRo?.disconnect();
     };
   }, [isWide]);
 
