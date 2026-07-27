@@ -34,6 +34,8 @@ const GLUECKSBURG: LatLon = { lat: 54.8415, lon: 9.5225 };
 const MARSTAL: LatLon = { lat: 54.8579, lon: 10.528 };
 const SOENDERBORG: LatLon = { lat: 54.9046, lon: 9.7833 };
 const BAGENKOP: LatLon = { lat: 54.753, lon: 10.668 };
+const AEROESKOEBING: LatLon = { lat: 54.8935, lon: 10.416 };
+const DREJOE: LatLon = { lat: 54.9645, lon: 10.439 };
 // Open-water anchors (navigable at 3.0 m in the shipped mask)
 const FJORD_MOUTH: LatLon = { lat: 54.83, lon: 9.9 };
 const OPEN_BALTIC: LatLon = { lat: 54.75, lon: 10.3 };
@@ -414,5 +416,50 @@ describe('#243 depth comfort preference (real mask)', () => {
     expect(res.fock!.etaMs).toBe(1_784_105_958_190.4993);
     expect(res.fock!.legs.length).toBe(19);
     expect(res.fock!.maneuverCount).toBe(2);
+  });
+
+  // Design §D.4 "minimum vs. integral", found in practice (fix-wave item 4):
+  // the preference minimizes total shallow-water exposure along a route
+  // (an integral of shortfall), not the route's single shallowest point, so
+  // the two CAN diverge. Documented beside DEPTH_DERATE_MAX and in
+  // CHANGELOG.md; pinned here with a THRESHOLD (never brittle exact
+  // equality — §E.3: the search is heuristic and non-monotone in the tuning
+  // constant) so a future change to this behavior is a deliberate, reviewed
+  // edit rather than a silent drift. Pre-change (baseline) literal: 3.7 m.
+  // This PR's own measured value: 3.0 m — safety-inert (every leg still
+  // gate-validated below) and exactly what this same passage's OTHER rig
+  // already touches today.
+  it('Aeroeskoebing -> Drejoe at DEFAULT_SETTINGS: the known minimum-clearance non-improvement stays within its documented, safety-inert band', () => {
+    const res = planRoute(
+      {
+        origin: AEROESKOEBING,
+        destination: DREJOE,
+        viaPoints: [],
+        originHarborId: 'aeroeskoebing',
+        destinationHarborId: 'drejoe',
+        departureMs: T0,
+        settings: DEFAULT_SETTINGS,
+      },
+      uniformWindGrid(12, 270),
+      { polarGenoa, polarFock, mask },
+    );
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+    expect(rig).not.toBeNull();
+    expectLegsNavigable(rig!.legs, DEFAULT_SETTINGS.safetyDepthM);
+    let min = Infinity;
+    for (const leg of rig!.legs) {
+      const m = mask.segmentShallowestBelow(leg.start, leg.end, 1e6);
+      min = Math.min(min, m === null ? 25.4 : m);
+    }
+    // Never below the hard gate (redundant with expectLegsNavigable above,
+    // stated explicitly since it's the safety-relevant half of the claim).
+    expect(min).toBeGreaterThanOrEqual(DEFAULT_SETTINGS.safetyDepthM);
+    // The known non-improvement is present (3.0 m), not silently regressed
+    // further, and not silently "fixed" back toward the 3.7 m baseline
+    // without anyone noticing — either would mean this documentation is
+    // stale.
+    expect(min).toBeLessThan(3.5);
   });
 });

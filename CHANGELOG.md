@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   relaxed gate no longer makes sub-requested water equally attractive along
   the whole passage — only where the mask actually forces it. A plan's
   **recommended rig can change** from before this change as a result (#243).
+  The preference minimizes total shallow-water exposure along a route, not
+  its single shallowest point — in rare cases a route's minimum charted
+  clearance can decrease even as its overall exposure to shallow water falls
+  (#243).
 
 ### Changed
 

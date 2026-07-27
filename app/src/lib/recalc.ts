@@ -1,4 +1,4 @@
-import type { Plan, PlanRequest } from '../types';
+import { DEFAULT_SETTINGS, type Plan, type PlanRequest } from '../types';
 
 /**
  * #114 recalculate-with-fresh-forecast: seeds a fresh planning request from a
@@ -14,6 +14,15 @@ import type { Plan, PlanRequest } from '../types';
  * viaPoints/settings are copied, never aliased, so nothing downstream of the
  * run can share mutable references with the saved plan's own request — the
  * original plan must stay untouched regardless of what the run does.
+ *
+ * Settings are backfilled from DEFAULT_SETTINGS before the saved snapshot is
+ * spread on top (#243 fix wave item 3) — mirrors AppState.tsx's own load-time
+ * backfill. A plan saved before a Settings field existed (e.g.
+ * depthComfortMarginM, added #243) has that field simply absent from its
+ * stored snapshot; without this, recalculating it would silently carry
+ * `undefined` forward into a field typed as a required `number`, and for
+ * depthComfortMarginM specifically would silently disable the depth comfort
+ * preference on every recalculation of a pre-#243 plan.
  */
 export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
   return {
@@ -21,7 +30,7 @@ export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
     origin: { ...plan.request.origin },
     destination: { ...plan.request.destination },
     viaPoints: plan.request.viaPoints.map((v) => ({ ...v })),
-    settings: { ...plan.request.settings },
+    settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
     departureMs,
   };
 }

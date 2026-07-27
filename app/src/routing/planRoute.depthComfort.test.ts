@@ -176,6 +176,30 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
     expect(solveMock).toHaveBeenCalledTimes(4);
     expect(res).toEqual({ status: 'error', reason: 'calm-motor-off' });
   });
+
+  // #243 fix-wave item 5: the retry is triggered by ONE rig failing, but
+  // that doesn't guarantee the retry succeeds — the search is heuristic, so
+  // a rig that succeeded WITH the preference can fail once retried without
+  // it. The plan must not discard tier 1's genuinely successful rig just
+  // because the retry it triggered came up empty on BOTH rigs.
+  it("falls back to tier 1's successful rig when tier 2 fails on BOTH rigs (does not discard a working route)", () => {
+    solveMock.mockReturnValueOnce(ok(41)); // tier1 genoa: succeeds
+    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier1 fock: fails, triggers retry
+    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier2 genoa: retry fails too
+    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier2 fock: retry fails too
+
+    const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 2.0, safetyDepthM: 2.1 }; // at BOAT_DRAFT_M: relaxation never fires, isolates this stage
+    const res = planRoute({ ...req, settings }, windGrid, deps);
+
+    expect(solveMock).toHaveBeenCalledTimes(4);
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    // Tier 1's genoa (preference on), not an error — genoa/fock both come
+    // from the SAME tier, so the rig comparison stays apples-to-apples.
+    expect(res.genoa?.distanceNm).toBe(41);
+    expect(res.fock).toBeNull();
+    expect(res.fockReason).toBe('unreachable');
+  });
 });
 
 describe('#243 planRoute tier ladder (relaxed gate: tier 3 -> tier 4)', () => {
@@ -221,6 +245,32 @@ describe('#243 planRoute tier ladder (relaxed gate: tier 3 -> tier 4)', () => {
     // NOT pinned here — flagShallowLegs derives it from these mocked legs'
     // fixed (unrelated-to-this-mask) coordinates, so it carries no meaning
     // in this control-flow test; the real-mask G.4 test pins it precisely.
+    expect(res.shallow?.requestedDepthM).toBe(3.0);
+    expect(res.shallow?.usedDepthM).toBe(2.5);
+  });
+
+  // #243 fix-wave item 5, mirrored at the relaxed gate: tier 4 failing on
+  // both rigs must not discard tier 3's genuinely successful rig.
+  it("falls back to tier 3's successful rig when tier 4 fails on BOTH rigs (does not discard a working relaxed-gate route)", () => {
+    solveMock.mockReturnValueOnce(ok(51)); // tier3 genoa: succeeds
+    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier3 fock: fails, triggers retry
+    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier4 genoa: retry fails too
+    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier4 fock: retry fails too
+
+    const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 2.0 };
+    const res = planRoute(
+      { ...relaxedReq, settings },
+      windGrid,
+      { ...deps, mask: corridorGapMask(25) }, // gap charted 2.5 m
+    );
+
+    expect(solveMock).toHaveBeenCalledTimes(4);
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    expect(res.genoa?.distanceNm).toBe(51);
+    expect(res.fock).toBeNull();
+    expect(res.fockReason).toBe('unreachable');
+    // Tier 3's shallow flag still applies to the fallback result.
     expect(res.shallow?.requestedDepthM).toBe(3.0);
     expect(res.shallow?.usedDepthM).toBe(2.5);
   });

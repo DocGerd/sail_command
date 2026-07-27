@@ -90,6 +90,20 @@ const MOTOR_TWAS = [0, 20, 35];
 // exposing it invites the search-capacity regime the parameter sweep found
 // past ~0.5). Re-validated by the §E.3-equivalent sweep on this
 // implementation before being locked at 0.30 (see PR description).
+//
+// Known residual (design §D.4 "minimum vs. integral"): the factor prices
+// each edge's OWN clearance, but the search optimizes the resulting COST,
+// which composes over the whole route — so this is closer to minimizing an
+// integral of shortfall than the route's minimum clearance, and the two can
+// diverge. Measured case: Ærøskøbing → Drejø, 270°, DEFAULT_SETTINGS — the
+// recommended rig's minimum clearance settles at 3.0 m instead of the
+// pre-#243 3.7 m, even though total shallow exposure elsewhere improves.
+// Derate-insensitive (present identically at every tested value 0.15-0.40 —
+// retuning this constant does not fix it) and margin-sensitive (absent at
+// margin 1.0 m, present at >= 1.5 m). Safety-inert: every leg is still
+// gate-validated, and 3.0 m is exactly what this same passage's OTHER rig
+// already touches today. Not eliminated by any tested parameter combination
+// — see realmask.repro.test.ts's pinned threshold test and CHANGELOG.md.
 const DEPTH_DERATE_MAX = 0.3;
 
 /**

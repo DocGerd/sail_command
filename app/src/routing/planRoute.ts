@@ -234,6 +234,18 @@ export function planRoute(
       const tier2 = runBoth(s, undefined);
       if (tier2.genoa.rigResult || tier2.fock.rigResult)
         return assemble(tier2.genoa, tier2.fock, null);
+      // #243 fix-wave item 5: tier 2 failed on BOTH rigs, but tier 1 may
+      // still hold a genuinely successful rig (the retry was triggered by
+      // the OTHER rig failing, per needsUnpreferencedRetry's per-rig check —
+      // the search is heuristic, so a rig that succeeded WITH the
+      // preference is not guaranteed to also succeed once retried without
+      // it). Don't discard a working, internally-consistent (both legs from
+      // the SAME preference-on tier, so still apples-to-apples) route just
+      // because the retry didn't pan out — that would be strictly worse
+      // than what tier 1 already had.
+      if (tier1.genoa.rigResult || tier1.fock.rigResult) {
+        return assemble(tier1.genoa, tier1.fock, null);
+      }
       // Arbitrary tie-break: report genoa's reason (checked first); both rigs
       // solve identical mask/wind/waypoints and differ only in polar table,
       // so their failure reasons rarely differ in practice. Matches tier 1's
@@ -275,6 +287,16 @@ export function planRoute(
         if (tier4.genoa.rigResult || tier4.fock.rigResult) {
           const shallow = flagShallowLegs(mask, tier4, s.safetyDepthM, usedDepthM);
           return assemble(tier4.genoa, tier4.fock, shallow);
+        }
+        // #243 fix-wave item 5 (mirrors the tier 1/2 fallback above): tier 4
+        // failed on BOTH rigs, but tier 3 may still hold a genuinely
+        // successful rig — fall back to it rather than discarding a working
+        // route. Both legs of the fallback still come from the SAME
+        // preference-on, SAME relaxed-gate tier, so the rig comparison
+        // stays apples-to-apples.
+        if (tier3.genoa.rigResult || tier3.fock.rigResult) {
+          const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
+          return assemble(tier3.genoa, tier3.fock, shallow);
         }
         // #68: relaxation FOUND a connected gate but both rigs still failed to
         // solve there even without the preference, so this is no longer a
