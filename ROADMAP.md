@@ -13,38 +13,22 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.5.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.5.1**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.5.1: finish the map chrome
-
-v0.5.0 introduced the compass and scale-bar chrome and shipped it with known
-rough edges. v0.5.1 is a correction release with no new feature surface.
-Fixed: compass mode desyncing from the camera when an ease is interrupted
-([#203](https://github.com/DocGerd/sail_command/issues/203)), chrome occluded
-by the bottom sheet
-([#208](https://github.com/DocGerd/sail_command/issues/208)), map pitch
-reachable by gesture with no reset
-([#207](https://github.com/DocGerd/sail_command/issues/207)), seamarks
-blinking in and out under track-up rotation
-([#206](https://github.com/DocGerd/sail_command/issues/206)), and
-indiscriminate seamark collision culling
-([#200](https://github.com/DocGerd/sail_command/issues/200)).
-
-That work is **merged and content-complete**; the milestone is awaiting its
-release cut. Nothing further is planned into it — the one remaining track-up
-defect ([#230](https://github.com/DocGerd/sail_command/issues/230)) was moved
-to v0.6.0 rather than rushed in, because its fix changes user-visible snap
-behavior and warrants its own review round.
-
-## Next — v0.6.0
+## Now — v0.6.0
 
 The next feature release. Its **product** scope is not yet decided and will be
-drawn from the themes below once v0.5.1 ships — saying "undecided" is more
-useful here than inventing a plan. What the milestone already holds is
-carried-over correction and tooling work: the track-up `bearingSnap` defect
-above, plus anchoring the Bash-matching agent hooks on invocation rather than
-mention ([#216](https://github.com/DocGerd/sail_command/issues/216),
+drawn from the themes below — saying "undecided" is more useful here than
+inventing a plan. What the milestone already holds is carried-over correction
+and tooling work: the one remaining track-up defect from v0.5.1's map-chrome
+work, where a pan flick inside MapLibre's ±7° `bearingSnap` window can still
+drop track-up to free orientation
+([#230](https://github.com/DocGerd/sail_command/issues/230), moved here
+rather than rushed into v0.5.1 because its fix changes user-visible snap
+behavior and warrants its own review round), plus anchoring the
+Bash-matching agent hooks on invocation rather than mention
+([#216](https://github.com/DocGerd/sail_command/issues/216),
 [#235](https://github.com/DocGerd/sail_command/issues/235), which share one
 helper and so are done together). The
 [milestone](https://github.com/DocGerd/sail_command/milestone/5) is the
