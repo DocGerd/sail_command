@@ -94,10 +94,18 @@ app runtime.
     2.0 m above the safety depth, user-tunable, 0 = off)*: beyond the hard
     navigability gate, every candidate segment is also *priced* on its minimum
     charted clearance. Clearance at or above `safety depth + margin` is free;
-    at the gate itself the segment costs ≈1.43× its time to cross, linearly in
-    between. The charge lands on the candidate's arrival **clock**, never on
-    its geometry — step lengths, fit tests and the substep ladder are
-    unchanged. Evaluated at query time against the **requested** safety depth,
+    at the gate itself the segment is *ranked* as if it took ≈1.43× its true
+    time to cross, linearly in between. The charge lands on a dedicated
+    **ranking scalar** — never on geometry, and never on the wall clock. Each
+    frontier node carries true elapsed time `tMs`, which alone drives wind
+    sampling, both forecast-horizon guards, `backtrack`'s leg timestamps and
+    the reported ETA; a separate `costMs` advances by `Δt / factor` and drives
+    **only** dominance, ranking and the arrival comparison. Step lengths, fit
+    tests and the substep ladder are therefore unchanged, the frontier stays
+    time-synchronised, and every user-visible time remains real wall-clock.
+    (Spending the charge on `tMs` itself was designed, then rejected: it
+    corrupts the model clock, so a node that crossed shallow water samples the
+    forecast at the wrong hour from then on and the displayed ETA inflates.) Evaluated at query time against the **requested** safety depth,
     so it never regenerates data and stays anchored even when the #53 relaxed
     gate is in force. Rationale for the 2.0 m default: it is the pipeline's own
     stated depth uncertainty (`build_mask.py` `TOLERANCE_M`), so a cell reading
