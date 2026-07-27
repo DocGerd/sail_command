@@ -184,10 +184,10 @@ data; the code license is covered in the [License](#license) section below.
   ordinary pan flick, track-up can drop to free orientation whenever the
   chart's bearing sits inside MapLibre's 7° north-snap window — an everyday
   heading in the Flensburg Fjord — and does not recover on its own
-  ([#230](https://github.com/DocGerd/sail_command/issues/230)); and on short
-  landscape phone viewports, the top-left chrome (layer toggles + compass)
-  can leave no room for the scale bar, so it is suppressed rather than drawn
-  over other controls
+  ([#230](https://github.com/DocGerd/sail_command/issues/230)); and on
+  several short phone viewports, both landscape and narrow portrait, the
+  top-left chrome (layer toggles + compass) can leave no room for the scale
+  bar, so it is suppressed rather than drawn over other controls
   ([#231](https://github.com/DocGerd/sail_command/issues/231)).
 
 ## Out of scope (v1)

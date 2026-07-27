@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ROADMAP.md, CODE_OF_CONDUCT.md, docs/security-assurance-case.md) (#217,
   #218, #219, #224).
 
+### Changed
+
+- Map scale bar: at short/narrow viewports where the bottom sheet and the
+  top-left control stack (compass + layer toggles) leave no vertical band
+  that clears both — every tab at 740×360; the Plan tab at 844×390, 932×430,
+  and 667×375; and the Plan tab in portrait at 320×568 — the bar is now
+  hidden rather than drawn overlapping that chrome, as it was in v0.5.0.
+  Tracked for improvement in #231 (#208, #228).
+
 ### Fixed
 
 - Seamarks: hazard-bearing marks (isolated-danger and cardinal buoys/beacons)
@@ -31,8 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Map pitch (tilt) is now locked: it can no longer be reached by a two-finger
   drag, right-click drag, or Shift+arrow gesture, so the chart can no longer
   be left tilted with no way to reset it short of a reload (#207, #228).
-- Map chrome (scale bar, compass, route-layer controls) is no longer hidden
-  or unreachable under the bottom sheet at narrow viewports (#208, #228).
+- Map chrome (compass, route-layer controls) is no longer hidden or
+  unreachable under the bottom sheet at narrow viewports; the scale bar is
+  lifted clear of the sheet where there is room, and suppressed rather than
+  drawn overlapping it where there is not (see Changed, above) (#208, #228).
 
 ## [0.5.0] - 2026-07-27
 
