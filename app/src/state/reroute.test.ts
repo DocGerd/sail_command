@@ -155,8 +155,11 @@ describe('rerouteFromFix', () => {
   // #254: same mechanism as the depthComfortMarginM case above. A plan saved
   // before sailPreferenceKn existed has the field absent from its snapshot;
   // without the DEFAULT_SETTINGS backfill, rerouteFromFix would carry
-  // `undefined` into a required `number` and the floor computation in
-  // isochrone.ts would evaluate to NaN, silently disabling every motor leg.
+  // `undefined` into a required `number`, and the floor computation in
+  // isochrone.ts (`Math.max(motorThresholdKn, motorSpeedKn - undefined)`)
+  // would evaluate to NaN. Every `sailSpeed >= NaN` comparison is false, so
+  // the decision falls through to the motor branch unconditionally — the
+  // route would silently go all-motor, not lose its motor legs.
   it('backfills sailPreferenceKn from DEFAULT_SETTINGS on a pre-#254-shaped saved plan', async () => {
     const oldShapedSettings = { ...DEFAULT_SETTINGS } as Partial<typeof DEFAULT_SETTINGS>;
     delete oldShapedSettings.sailPreferenceKn;

@@ -61,6 +61,34 @@ describe('OptionsPanel', () => {
     expect(input).toHaveValue(5);
   });
 
+  // #254: sail preference margin — rendered separately from the four plain
+  // ADVANCED_FIELDS, like DEPTH_COMFORT_MARGIN_FIELD above, because it
+  // carries its own help paragraph.
+  it('renders the sail preference field with its default value and a help paragraph', () => {
+    renderPanel();
+    const input = screen.getByLabelText('Sail preference (kn)');
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveValue(DEFAULT_SETTINGS.sailPreferenceKn);
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(input).not.toHaveAttribute('title');
+    const help = document.getElementById(describedBy!);
+    expect(help).not.toBeNull();
+    expect(help).toHaveClass('options-help');
+    expect(help).toHaveTextContent(/give up to keep sailing/);
+  });
+
+  it('commits the sail preference on blur and clamps to its 0-10 bounds', () => {
+    const onChange = renderPanel();
+    const input = screen.getByLabelText('Sail preference (kn)');
+    fireEvent.change(input, { target: { value: '1.5' } });
+    fireEvent.blur(input);
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, sailPreferenceKn: 1.5 });
+    fireEvent.change(input, { target: { value: '99' } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue(10);
+  });
+
   it('clamps a value above the maximum on blur (motoring speed, max 10)', () => {
     const onChange = renderPanel();
     const input = screen.getByLabelText('Motoring speed (kn)');

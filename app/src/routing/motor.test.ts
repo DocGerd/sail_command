@@ -59,19 +59,22 @@ describe('motor fallback', () => {
     // Assert the kind SEQUENCE, so a failure prints both arrays.
     expect(r.legs.map((l) => l.kind)).toContain('motor');
 
-    // Every motor leg must be one the rule actually permits: its sailing speed
-    // at that leg's own TWA must be below the floor. Mapping to objects keeps
-    // the offending leg visible in the failure message.
+    // Every motor leg must be one the rule actually permits: its sailing
+    // speed at that leg's own TWA must be below the floor. Motor legs carry
+    // board: null and no twaDeg, so the TWA is recovered from headingDeg and
+    // the known uniform wind direction (0, i.e. wind FROM north):
+    // twa = 0 - headingDeg. polar.speedKn normalizes internally, so the raw
+    // subtraction (any sign, any range) is safe to pass straight through.
     const floorKn = DEFAULT_SETTINGS.motorSpeedKn - DEFAULT_SETTINGS.sailPreferenceKn;
+    expect(floorKn).toBeCloseTo(3.7, 10);
     const offenders = r.legs
       .filter((l) => l.kind === 'motor')
-      .map((l) => ({ heading: l.headingDeg, speed: l.speedKn }))
-      // Motor legs pick up floating-point drift from geometry/leg-merging
-      // (observed 6.500000000000744 / 6.499999999951773), so compare with a
-      // tight tolerance rather than exact equality against motorSpeedKn.
-      .filter((l) => Math.abs(l.speed - DEFAULT_SETTINGS.motorSpeedKn) > 1e-6);
+      .map((l) => ({
+        heading: l.headingDeg,
+        sailSpeedAtTwa: base.polar.speedKn(-l.headingDeg, 6),
+      }))
+      .filter((l) => l.sailSpeedAtTwa >= floorKn);
     expect(offenders).toEqual([]);
-    expect(floorKn).toBeCloseTo(3.7, 10);
 
     // And it must be FASTER than the all-sail baseline, which is hand-derived:
     // TWA 90 at TWS 6 is the mean of TEST_POLAR's tws-4 (3.0) and tws-8 (5.6)
@@ -100,23 +103,44 @@ describe('motor fallback', () => {
 
   // #254: motorThresholdKn survives as the seaworthiness floor. With a small
   // engine, motorSpeedKn - sailPreferenceKn = 3.0 - 2.8 = 0.2, well below the
-  // 2.5 threshold, so Math.max must clamp the floor to 2.5. Without the clamp
-  // the floor would be 0.2 and nothing would ever motor; worse, a floor above
-  // motorSpeedKn would hand out motor legs SLOWER than sailing.
+  // 2.5 threshold, so Math.max must clamp the floor to 2.5.
+  //
+  // Wind FROM the west (uniformWindGrid(4, 270)), route A->B due east: the
+  // direct heading is a dead run, TWA 180, TEST_POLAR TWS-4/TWA-180 = 1.6 kn
+  // (an exact table cell, no interpolation) -- below the clamped floor (2.5)
+  // but above the unclamped one (0.2). At TWS 6 (the other tests' wind) the
+  // direct heading sails at 4.3 kn either way, so that fixture cannot tell
+  // the clamped and unclamped worlds apart; TWS 4/270 was chosen because it
+  // can.
+  //
+  // Mutation-checked directly against isochrone.ts: removing the Math.max
+  // clamp (`sailFloorKn = settings.motorSpeedKn - settings.sailPreferenceKn`)
+  // makes the solver reject the 1.6 kn dead run for sail (1.6 >= 0.2) and
+  // hunt for a faster angle, producing a long all-sail gybing zigzag at
+  // 8.03 h; restoring the clamp returns the single 4.62 h motor leg below.
+  // Both were measured on this exact fixture (PR #260 review thread).
   it('small engine: the floor never drops below motorThresholdKn', () => {
-    const settings = { ...DEFAULT_SETTINGS, motorSpeedKn: 3.0 };
-    const r = solve({ ...base, settings, wind: new WindField(uniformWindGrid(6, 0)) });
+    const settings = { ...DEFAULT_SETTINGS, motorSpeedKn: 3.0, sailPreferenceKn: 2.8 };
+    const r = solve({ ...base, settings, wind: new WindField(uniformWindGrid(4, 270)) });
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
 
-    // At TWS 6 the direct heading sails at 4.3 kn, faster than this 3.0 kn
-    // engine, so the route is all sail -- exactly as before #254.
-    expect(r.legs.map((l) => l.kind)).toEqual(['sail']);
+    expect(r.legs.map((l) => l.kind)).toEqual(['motor']);
+    const hours = (r.etaMs - dep) / 3_600_000;
+    expect(hours).toBeCloseTo(haversineNm(A, B) / 3.0, 1);
 
-    // And no emitted motor leg anywhere may be slower than sailing would be.
+    // spec §7 item 3: no emitted motor leg anywhere may be slower than
+    // sailing would be, on that leg's own TWA. Motor legs carry board: null
+    // and no twaDeg, so the TWA is recovered from headingDeg and the known
+    // uniform wind direction (270): twa = 270 - headingDeg.
     const slowerThanSailing = r.legs
       .filter((l) => l.kind === 'motor')
-      .map((l) => ({ heading: l.headingDeg, motorSpeed: l.speedKn }));
+      .map((l) => ({
+        heading: l.headingDeg,
+        motorSpeed: l.speedKn,
+        sailSpeedAtTwa: base.polar.speedKn(270 - l.headingDeg, 4),
+      }))
+      .filter((l) => l.sailSpeedAtTwa > l.motorSpeed);
     expect(slowerThanSailing).toEqual([]);
   });
 });

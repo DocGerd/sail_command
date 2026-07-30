@@ -16,7 +16,7 @@ export const de = {
   'options.motorThreshold.label': 'Motor-Schwellenwert (kn)',
   'options.sailPreference.label': 'Segelvorzug (kn)',
   'options.sailPreference.help':
-    'Wie viel Fahrt die Planung aufgibt, um weiter zu segeln. Sie segelt weiter, solange die Segelfahrt höchstens um diesen Wert unter der Motorfahrtgeschwindigkeit liegt, und motort sonst — ein höherer Wert bedeutet also mehr Segeln und spätere Ankunft. Auf Motorfahrtgeschwindigkeit minus Motor-Schwellenwert gesetzt, wird nur noch im Rückfall motort.',
+    'Wie viel Fahrt die Planung aufgibt, um weiter zu segeln. Sie segelt weiter, solange die Segelfahrt höchstens um diesen Wert unter der Motorfahrtgeschwindigkeit liegt, und motort sonst — ein höherer Wert bedeutet also mehr Segeln und spätere Ankunft. Auf Motorfahrtgeschwindigkeit minus Motor-Schwellenwert gesetzt, motort die Planung nur noch im Rückfall.',
   'options.maneuverPenalty.label': 'Wende-/Halsenstrafzeit (s)',
   'options.performanceFactor.label': 'Leistungsfaktor (×)',
   'options.motorEnabled.label': 'Motor aktiviert',

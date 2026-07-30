@@ -69,8 +69,8 @@ export const SAIL_PREFERENCE_FIELD: FieldSpec = {
 };
 
 // The four plain advanced numeric inputs that live behind the "Erweitert"
-// disclosure (DEPTH_COMFORT_MARGIN_FIELD above renders separately, with a
-// help paragraph, ahead of these).
+// disclosure (DEPTH_COMFORT_MARGIN_FIELD and SAIL_PREFERENCE_FIELD above
+// render separately, each with its own help paragraph, ahead of these).
 const ADVANCED_FIELDS: FieldSpec[] = [
   { key: 'motorSpeedKn', labelKey: 'options.motorSpeed.label', min: 1, max: 10, step: 0.1 },
   { key: 'motorThresholdKn', labelKey: 'options.motorThreshold.label', min: 0, max: 5, step: 0.1 },
