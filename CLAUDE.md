@@ -71,6 +71,13 @@ deviate from it.
   either — that fallback is the only thing it is for.
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
+  This makes EVERY Dependabot bump of one of the 11 runtime packages listed in
+  `gen-third-party-notices.mjs` (react, react-dom, maplibre-gl, pmtiles, idb,
+  @protomaps/basemaps, workbox-*) red on `app` — Dependabot cannot run project
+  scripts, so it can never fix this itself. Signature: `app` fails at the
+  `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
+  CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
+  commit the regenerated file (#248's entire real diff was two version strings).
 - Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
@@ -496,6 +503,17 @@ deviate from it.
   the exact source is already on disk. Same failure as CITATION HALO above,
   one level up: borrowed confidence from a tool that looked authoritative
   instead of from an adjacent verified edit (#234).
+- A Playwright `expect.poll` predicate that returns a BOOLEAN discards the
+  diagnostic. `return deg >= 330 || deg <= 30` + `.toBe(true)` can only report
+  `Expected: true / Received: false` plus a timeout — and a Playwright timeout
+  means BOTH "too slow" and "never going to happen". #243's relocated dogleg
+  made the readout `045`; the predicate computed that number and threw it away,
+  costing a 9-agent root-cause hunt for a value that would have been in the CI
+  log. Poll the VALUE, assert the condition on it. Sibling of the blindness rule
+  above: a method that structurally cannot SEE a regression reports green
+  through it, and a method that cannot DESCRIBE a failure reports it uselessly.
+  Ask of any assertion: at 3am in CI, does the message name the actual value?
+  (#252 tracks auditing the remaining specs.)
 
 ## Domain rules that are easy to get wrong
 
@@ -514,6 +532,24 @@ deviate from it.
 - **Motor legs are first-class**: planned when sailing speed < threshold
   (default 2.5 kn) at motor speed (default 6.5 kn), and always flagged as
   motor in the result.
+  KNOWN DEFECT (#254, open): `isochrone.ts:297` decides `kind` from
+  `sailSpeed >= motorThresholdKn` ALONE and never compares `motorSpeedKn`, so
+  in light air most of the compass is sail-locked even where motoring is
+  faster. At TWS 3.6 (polar peak 3.82 kn) the motorable set is
+  `000–094° ∪ 185–265°`; a destination bearing inside the locked hole makes the
+  solver alternate two motorable headings — a zigzag that looks like tacking
+  under engine, and is really the search steering around a hole in its own set
+  of motorable headings. Candidate headings and frontier pruning were both
+  cleared by measurement; a scratch fix saved 35 min on Flensburg→Marstal but
+  converts light-air sail legs into engine hours, so it needs a product
+  decision (a margin, not a bare `max()`), not a patch.
+- `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
+  threshold" AND "the walk left the grid / tripped its iteration guard" — it
+  cannot distinguish clear water from no coverage. Anything that renders a
+  safety state from it must bound-check both endpoints against the public
+  `mask.meta` rectangle FIRST; only then is a `null` trustworthy as "clear"
+  (#251/#255 — reversing those two steps is a silent false all-clear, and the
+  natural-looking implementation is the wrong one).
 - Angles: wind direction is meteorological (coming FROM, degrees true);
   polars are TWA × TWS → boat speed in knots. Positions are WGS84.
   Distances in nautical miles, speeds in knots.
@@ -672,6 +708,15 @@ deviate from it.
   verify before retrying rather than assuming the error means nothing
   happened. Prefer `gh pr merge N --repo DocGerd/sail_command` so the command
   doesn't depend on cwd at all.
+  Quieter variant: with `--repo` the MERGE succeeds but the
+  `premerge-verify.sh` guard degrades. It resolves the repo with a bare
+  `gh repo view` (cwd's git remote) and never parses `--repo` from the command,
+  so a stale scratchpad cwd makes it emit `ask` ("could not resolve owner/repo")
+  every time — and a guard that always asks trains you to click through,
+  eroding the #119 protection it exists to provide. `cd` back to the repo before
+  merging; the durable fix is to have the hook parse `--repo`/`-R` or run
+  `gh repo view` against `$CLAUDE_PROJECT_DIR`, which it already uses for its
+  branch lookup.
 - A GitHub **504 during `gh pr merge`** can land the merge (base ref updates,
   merge commit created) yet leave the PR marked `open` and skip branch-delete /
   `Closes #` auto-close. VERIFY via the develop tip / merge-commit parents before
