@@ -78,6 +78,16 @@ user-editable (1–10 kn). Without the `Math.max`, a user setting `motorSpeedKn:
 3.0` against a fixed floor would be handed motor legs **slower than sailing**.
 With it, `max(2.5, 3.0 − 2.8) = max(2.5, 0.2) = 2.5` and the guard binds.
 
+**Bound on that guarantee.** It holds only while `motorThresholdKn <= motorSpeedKn`.
+The Options UI permits `motorThresholdKn` up to 5 and `motorSpeedKn` down to 1, so a
+user can configure threshold 5 against motor speed 1; the floor is then 5, above
+motor speed, and headings sailing between 1 and 5 kn would be motored at 1 kn —
+slower than sailing. This is **pre-existing and unchanged** by this spec: the old
+rule used `motorThresholdKn` as the floor directly and produced exactly the same
+configuration, and the synthetic fixture returns `no-route` there. Recorded as a
+known bound rather than fixed, because constraining the two settings against each
+other is a separate UI-validation change with its own failure modes.
+
 ### 3.2 Rejected alternative: a per-TWS blanket rule
 
 Considered and rejected: "if `motorSpeed > maxSailSpeed(TWS) + margin`, make the
