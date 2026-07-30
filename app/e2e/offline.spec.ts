@@ -87,26 +87,40 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // must then hold every range (the SW's CacheFirst route finishes its
     // cache.put moments after the warm-up's fetch resolves, hence the
     // second wait instead of a one-shot count assertion).
-    await page.waitForFunction(
-      () => (window as { __sailGlyphWarmup?: string }).__sailGlyphWarmup === 'done',
-      undefined,
-      { timeout: 90_000 },
-    );
+    // #252: poll the VALUE, not a collapsed boolean — GlyphWarmupOutcome
+    // (src/services/glyphWarmup.ts) is 'done' | 'partial' | 'skipped', so a
+    // predicate returning a bare `=== 'done'` boolean would report a
+    // 'partial' settle identically to a warm-up that never ran at all.
+    await expect
+      .poll(
+        () => page.evaluate(() => (window as { __sailGlyphWarmup?: string }).__sailGlyphWarmup),
+        { timeout: 90_000 },
+      )
+      .toBe('done');
     const glyphManifest = JSON.parse(
       readFileSync(resolve(DIST_DIR, 'glyph-manifest.json'), 'utf8'),
     ) as string[];
-    await page.waitForFunction(
-      async ({ cacheName, expected }) => {
-        const cache = await caches.open(cacheName);
-        return (await cache.keys()).length >= expected;
-      },
-      // Cache name literal mirrors GLYPH_CACHE_NAME (src/lib/glyphs.ts) — this
-      // tsconfig project can't import app source. #96: the name is now scoped
-      // to the build's BASE_URL; the e2e build is the production build
-      // (base `/sail_command/` — no SC_DEPLOY_ENV), whose slug is `sail_command`.
-      { cacheName: 'sailcommand-glyphs-sail_command@v1', expected: glyphManifest.length },
-      { timeout: 30_000 },
-    );
+    // #252: poll the actual cache count, not a collapsed boolean — a partial
+    // fill (e.g. 700 of 768 ranges) must be distinguishable in the failure
+    // message from a total failure (0 of 768), not both timing out identically.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            // Cache name literal mirrors GLYPH_CACHE_NAME (src/lib/glyphs.ts) —
+            // this tsconfig project can't import app source. #96: the name is
+            // now scoped to the build's BASE_URL; the e2e build is the
+            // production build (base `/sail_command/` — no SC_DEPLOY_ENV),
+            // whose slug is `sail_command`.
+            async (cacheName) => {
+              const cache = await caches.open(cacheName);
+              return (await cache.keys()).length;
+            },
+            'sailcommand-glyphs-sail_command@v1',
+          ),
+        { timeout: 30_000 },
+      )
+      .toBeGreaterThanOrEqual(glyphManifest.length);
 
     server.kill();
     await context.setOffline(true);
