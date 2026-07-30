@@ -321,6 +321,15 @@ deviate from it.
   206 of exactly 16 bytes starting with the `PMTiles` magic, with retries for
   CDN propagation — a CDN gzip/range flip becomes a red deploy run, not a
   silent user-facing slowdown.
+- After a BATCH of develop merges, verify the LAST deploy run before trusting
+  either deployment — `gh run list --workflow=deploy.yml --limit 6 --json
+  headSha,conclusion` then check that run's `smoke-probe` job. `concurrency:
+  pages` CANCEL-supersedes, so a rapid merge train legitimately leaves several
+  grey "cancelled" runs and only the final one matters; a cancelled LAST run
+  means nothing deployed and looks identical to nothing happening. This is not
+  bookkeeping: a develop push redeploys and evicts PRODUCTION's CDN edge Range
+  objects even when zero prod bytes changed (measured on #117), and it is also
+  the only thing that makes "check the About dialog on UAT" a meaningful request.
 - The github-pages ENVIRONMENT deployment policy (repo Settings, not YAML)
   gates deploys by triggering REF — branch entries `main`+`develop` (#96) plus
   a TAG entry `v*` (#197; deliberately permissive — `deploy.yml`'s `v[0-9]*`
@@ -540,6 +549,17 @@ deviate from it.
   blindness rules above, one level earlier: before asking whether the
   measurement can see the failure, ask whether the thing it measures AGAINST
   is reachable at all. The tell was already in the log.
+- Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
+  reading the raw numbers it summarises. #264's agent wrote a uniform field
+  "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
+  vs 14, ~9 min of ETA — *differently*. That one word travelled into a CLAUDE.md
+  rule and a spec retiring a documented evidential gap with "do not re-open it",
+  and was caught only by a review told to audit for OVERSTATEMENT specifically.
+  "Not necessary for X" and "irrelevant to X" are different claims and the second
+  is far stronger. Cheapest guard: when a finding will become a durable
+  instruction, brief the reviewer to check claim STRENGTH against the evidence,
+  not just claim correctness — and prefer "narrowed" to "closed" unless the
+  measurement really covers the whole space.
 
 ## Domain rules that are easy to get wrong
 
@@ -737,6 +757,21 @@ deviate from it.
   Playwright MCP browser is contested — verify the URL before every screenshot.
   A poll loop on a known-slow job that keeps reporting "no change" is pure
   overhead — poll for the TRANSITION, not the state.
+- BRIEFS ARE WRONG SOMETIMES — say so in the brief, and reward the pushback.
+  In one session an implementer refused to build the shell parser its brief
+  asked for (#235 is the false-POSITIVE direction, unreachable by globs, and
+  PR #233 was closed for exactly that road) and split the scope instead; another
+  measured that a reviewer's suggested `cdp.detach()` tears down the geolocation
+  override with the session, and took the alternative the same comment offered.
+  Both were right, and neither would have surfaced from a brief demanding
+  compliance. Tell agents to report a contradiction with evidence rather than
+  implement around it — and verify the pushback yourself against the issue text
+  before accepting it, since the brief's author is usually the one who is wrong.
+- Every self-review here posts as `COMMENTED`, not `APPROVED` — GitHub rejects
+  approving your own PR and the `gh` token owns them all. That is expected, not
+  a bypass: `protect-main` requires `app` + `e2e` and RESOLVED THREADS, never a
+  second party's approval. Don't let an agent retry it as an approval, and don't
+  read a COMMENTED self-review as an unreviewed PR.
 - Brief reviewers to POST the review to the PR BEFORE reporting back. Three
   reviewers in one session wrote thorough reviews and reported them without
   publishing, leaving PRs looking unreviewed — which also erases the
@@ -785,7 +820,13 @@ deviate from it.
   per the #94 rule below that failure could still have landed the merge, so
   verify before retrying rather than assuming the error means nothing
   happened. Prefer `gh pr merge N --repo DocGerd/sail_command` so the command
-  doesn't depend on cwd at all.
+  doesn't depend on cwd at all. It bites TWO more things that give no hint about
+  cwd: spawning an `isolation: worktree` agent fails with "Cannot create agent
+  worktree: not in a git repository" (worktree creation resolves from cwd), and
+  `git worktree remove <abs-path>` fails "not a git repository" even though the
+  path is absolute. `cd /home/pkuhn/sail_command` before any worktree or merge
+  operation; a heredoc-heavy `python3 - <<PY` block earlier in the session is
+  enough to leave you somewhere else.
   Quieter variant: with `--repo` the MERGE succeeds but the
   `premerge-verify.sh` guard degrades. It resolves the repo with a bare
   `gh repo view` (cwd's git remote) and never parses `--repo` from the command,
