@@ -328,34 +328,41 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     // Over-correcting here (a compass gone deaf to a real gesture) would be a
     // worse bug than the one above, so it is asserted in the same test rather
     // than left to the #155 spec.
-    await armCameraRest(page);
-    await page.mouse.move(cx, cy);
-    await page.mouse.down({ button: 'right' });
-    // Frame-spread for the same reason the pan above is: Chromium coalesces
-    // mousemoves that arrive faster than it paints, and a rotate dispatched as
-    // one instantaneous burst lost most of its delta (measured: an 8° turn from
-    // a 150 px drag on one run in three). One chunk per frame makes the turn
-    // the gesture's own size every time.
-    for (const dx of [50, 100, 150, 200]) {
-      await page.mouse.move(cx + dx, cy, { steps: 2 });
-      await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
-    }
-    await page.mouse.up({ button: 'right' });
-    await expect
-      .poll(() => cameraState(page), { message: 'camera settles after the hand rotation' })
-      .toBe('at-rest');
-
-    const rotated = await bearing(page);
     const norm180 = (d: number) => {
       const x = ((d % 360) + 360) % 360;
       return x > 180 ? x - 360 : x;
     };
-    // Well clear of both the parked course AND FREE_SNAP_NORTH_DEG (1), so the
-    // demotion below cannot be explained away by the chart barely having moved.
-    expect(
-      Math.abs(norm180(rotated - SNAP_WINDOW_BEARING)),
-      'the right-drag really rotated the camera',
-    ).toBeGreaterThan(10);
+    // BOUNDED RETRY on the GESTURE, the same device (and for the same reason)
+    // as `rotateThenTapCompassHome` below: a right-button drag issued straight
+    // after another gesture's mouseup is occasionally swallowed whole under
+    // full-suite load — measured twice here, an 8° turn from a 150 px drag on
+    // one run, and no turn at all (bearing still 003) on a full-suite run.
+    // Each attempt is the same real drag; only the OUTER wait retries, and the
+    // inner assertion still names the actual number, so a genuine
+    // over-correction regression reds with `Received: 0` rather than a bare
+    // timeout. Each chunk is frame-spread because Chromium coalesces mousemoves
+    // that arrive faster than it paints, which is what shrank the 8° attempt.
+    await expect(async () => {
+      await armCameraRest(page);
+      await page.mouse.move(cx, cy);
+      await page.mouse.down({ button: 'right' });
+      for (const dx of [50, 100, 150, 200]) {
+        await page.mouse.move(cx + dx, cy, { steps: 2 });
+        await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+      }
+      await page.mouse.up({ button: 'right' });
+      await expect
+        .poll(() => cameraState(page), { message: 'camera settles after the hand rotation' })
+        .toBe('at-rest');
+      // Well clear of both the parked course AND FREE_SNAP_NORTH_DEG (1), so
+      // the demotion below cannot be explained away by the chart barely having
+      // moved.
+      expect(
+        Math.abs(norm180((await bearing(page)) - SNAP_WINDOW_BEARING)),
+        'the right-drag really rotated the camera',
+      ).toBeGreaterThan(10);
+    }).toPass({ timeout: 30_000 });
+
     expect(
       await compass.getAttribute('data-orientation'),
       'a genuine hand rotation must still hand the bearing to the user (#230 over-correction guard)',
