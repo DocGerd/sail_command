@@ -17,12 +17,13 @@ import {
   type HeadingDepthCheck,
   type HeadingDepthHold,
 } from '../lib/headingDepth';
+import type { NavMask } from '../lib/mask';
 import { useNavMask } from '../state/useNavMask';
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { claimGpsHintOnce } from '../lib/gpsHint';
 import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
 import Button from './Button';
-import type { LatLon, ManeuverKind } from '../types';
+import type { LatLon, Leg, ManeuverKind } from '../types';
 
 // #115 manual "reroute from here": wiring provided by App.tsx (which owns the
 // useLiveReroute hook — it needs usePlanFlow's ensureClient). `busy` disables
@@ -101,17 +102,45 @@ export default function LiveView({
 
   // Asymmetric hysteresis: engages instantly, drops only after a sustained
   // clear run. Folded on each REAL GPS fix, inside the watchPosition
-  // callback below, NOT via a separate effect reacting to derived state —
-  // this project's lint config (eslint-plugin-react-hooks's React Compiler
+  // callback below, NOT via an effect reacting to every derived-state change
+  // — this project's lint config (eslint-plugin-react-hooks's React Compiler
   // rules) rejects both mutating a ref during render and calling a useState
-  // setter synchronously in a plain effect body ("can trigger cascading
+  // setter UNCONDITIONALLY in a plain effect body ("can trigger cascading
   // renders"). Folding inside the same imperative callback that already
   // sets fix/fixAtMs sidesteps both restrictions — it is an event handler,
-  // not a render-phase or bare-effect write.
+  // not a render-phase or bare-effect write. (The one exception is the
+  // mask-arrival re-probe below, which is guarded to fire at most once per
+  // mask identity and passes the rule on that basis — verified against the
+  // installed eslint-plugin-react-hooks@7, not assumed.)
   const [hold, setHold] = useState<{ hold: HeadingDepthHold; key: string }>({
     hold: initialHold(),
     key: holdKey,
   });
+
+  // Folding one probe observation into the hysteresis, shared by the fix
+  // callback and the mask-arrival re-probe below. `nowMs` is
+  // performance.now(), NOT Date.now(): the clear-timer must not be able to
+  // bank a forward wall-clock jump, which would drop a caution early (see
+  // HEADING_DEPTH_CLEAR_MS). Date.now() is still what `fixAtMs` records —
+  // the ETA projection genuinely wants wall-clock time.
+  const foldProbe = (
+    maskNow: NavMask | null,
+    legsNow: Leg[],
+    safetyNow: number | null,
+    keyNow: string,
+    point: LatLon,
+  ) => {
+    const idx = legsNow.length > 0 ? computeActiveLegIndex(legsNow, point) : null;
+    const raw =
+      idx !== null && safetyNow !== null
+        ? checkHeadingDepth(maskNow, legsNow, idx, point, safetyNow)
+        : null;
+    const nowMs = performance.now();
+    setHold((prev) => {
+      const base = prev.key === keyNow ? prev.hold : initialHold();
+      return { hold: raw ? advanceHold(base, raw, nowMs) : base, key: keyNow };
+    });
+  };
 
   // Keeps a ref mirror of everything the fix callback needs, so that
   // long-lived callback (recreated only when [active, legs.length,
@@ -123,29 +152,46 @@ export default function LiveView({
     latestRef.current = { mask, legs, safetyDepthM, holdKey };
   });
 
+  // Which mask identity the displayed hold was last folded against. Written
+  // from the fix callback and the re-probe effect below (both post-render), so
+  // the effect can tell "already probed with this mask" from "the mask only
+  // just arrived". null is a real value here — it records a fold that ran with
+  // no mask at all.
+  const probedMaskRef = useRef<NavMask | null>(null);
+
   useEffect(() => {
     if (!active || legs.length === 0) return;
     return watchPosition((f) => {
       setFix(f);
       setFixAtMs(Date.now());
 
-      // The hysteresis clock is performance.now(), NOT the Date.now() above:
-      // a forward wall-clock jump must not be bankable as observed clear time
-      // (see HEADING_DEPTH_CLEAR_MS). fixAtMs stays wall-clock — the ETA
-      // projection genuinely wants that.
-      const nowMs = performance.now();
       const cur = latestRef.current;
-      const idx = cur.legs.length > 0 ? computeActiveLegIndex(cur.legs, f.point) : null;
-      const raw =
-        idx !== null && cur.safetyDepthM !== null
-          ? checkHeadingDepth(cur.mask, cur.legs, idx, f.point, cur.safetyDepthM)
-          : null;
-      setHold((prev) => {
-        const base = prev.key === cur.holdKey ? prev.hold : initialHold();
-        return { hold: raw ? advanceHold(base, raw, nowMs) : base, key: cur.holdKey };
-      });
+      probedMaskRef.current = cur.mask;
+      foldProbe(cur.mask, cur.legs, cur.safetyDepthM, cur.holdKey, f.point);
     }, markGpsHintShownOnce);
   }, [active, legs.length, watchPosition]);
+
+  // The probe otherwise runs only inside the fix callback above, so a mask
+  // that resolves AFTER the last fix — a slow first load, or simply GPS having
+  // gone quiet — would pin the readout at "Depth not checked" indefinitely
+  // even though the bearing is now checkable. Re-fold once per mask identity
+  // whenever a fix is already held.
+  //
+  // Shape matters: the setState is reachable only past two guarded early
+  // returns and the once-per-mask ref gate, which is what keeps it clear of
+  // react-hooks/set-state-in-effect (an UNCONDITIONAL setState in an effect
+  // body is what that rule rejects; verified against the installed plugin).
+  // The ref is written here in the effect, never during render.
+  useEffect(() => {
+    if (mask === null || fix === null) return;
+    if (probedMaskRef.current === mask) return;
+    probedMaskRef.current = mask;
+    // Same latestRef mirror the fix callback reads, for the same reason and
+    // with the same guarantee: the effect that writes it is declared above
+    // this one, so it has already committed this render's values.
+    const cur = latestRef.current;
+    foldProbe(cur.mask, cur.legs, cur.safetyDepthM, cur.holdKey, fix.point);
+  }, [mask, fix]);
 
   const legIdx = fix && legs.length > 0 ? computeActiveLegIndex(legs, fix.point) : null;
 

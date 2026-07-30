@@ -553,6 +553,37 @@ describe('LiveView', () => {
       ).toBeInTheDocument();
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     });
+
+    it('#251 F2: a mask that resolves AFTER the last fix re-probes on arrival — no further fix required', async () => {
+      // `never` for the same reason the sibling tests cast their resolved
+      // value `as never`: the assets module is vi.mock'd, so its real
+      // RoutingAssets type is not what this fixture needs to satisfy.
+      let resolveAssets: (v: never) => void = () => {};
+      vi.mocked(loadRoutingAssets).mockReturnValue(
+        new Promise<never>((res) => {
+          resolveAssets = res;
+        }),
+      );
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+
+      // Pre-condition: the ONLY fix this test ever emits landed while the mask
+      // was still pending, so the readout is honestly "not checked".
+      await screen.findByText('Depth not checked');
+
+      await act(async () => {
+        resolveAssets({ maskMeta: MASK_META, maskBuffer: fullyDeepMaskBuffer() } as never);
+      });
+
+      await screen.findByText(/Bearing crosses 2\.1 m/);
+      expect(screen.queryByText('Depth not checked')).not.toBeInTheDocument();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
   });
 
   // #115 manual "reroute from here" — only rendered when App wires the
