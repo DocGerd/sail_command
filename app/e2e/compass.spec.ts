@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { startPreview } from './helpers';
 
 // #155 map orientation chrome: the north arrow / track-up toggle and the
@@ -166,6 +166,200 @@ test('compass: north-up cold start, hand rotation drops to free, tap brings the 
       .toBe(0);
     await expect(compass).toHaveAttribute('data-orientation', 'north-up');
     expect(await needleDeg(page)).toBe(0);
+  } finally {
+    server.kill();
+  }
+});
+
+// --------------------------------------------------------------------- #230
+//
+// The bearing track-up is parked on for the #230 probe. It must sit strictly
+// inside MapLibre's DEFAULT `bearingSnap` window (7) and outside the app's own
+// FREE_SNAP_NORTH_DEG (1), so the only thing that can pull the chart to north
+// here is MapLibre's end-of-gesture snap — which `bearingSnap: 0`
+// (MapView.tsx) is what removes. It must also clear TRACK_DEADBAND_DEG (2) so
+// the follow loop actually eases there from the north-up cold start.
+const SNAP_WINDOW_BEARING = 3;
+// 2 m/s = 3.89 kn, comfortably over OWNSHIP_VECTOR_MIN_SOG_KN (0.5) so
+// `trackUpAvailable` is true and the compass tap engages course-up.
+const TRACK_SPEED_MS = 2;
+
+/**
+ * Playwright's own `Geolocation` type carries latitude/longitude/accuracy
+ * ONLY, so `context.setGeolocation` can never produce a fix with a course —
+ * which is exactly why live.spec.ts documents cog/sog rendering as en-dashes.
+ * Course-up needs one, so this drives Chromium's geolocation override through
+ * CDP instead, which does accept `heading`/`speed`. The app still reads the
+ * REAL `navigator.geolocation.watchPosition` (services/geolocation.ts) — only
+ * the device behind it is emulated, same as live.spec.ts.
+ */
+async function setCourseFix(page: Page, context: BrowserContext, headingDeg: number) {
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setGeolocationOverride', {
+    latitude: 54.8237,
+    longitude: 9.6524,
+    accuracy: 5,
+    heading: headingDeg,
+    speed: TRACK_SPEED_MS,
+  });
+}
+
+/** Arms the moveend counter `cameraState` reads. Call once, before the gesture. */
+function armCameraRest(page: Page) {
+  return page.evaluate(() => {
+    const w = window as unknown as {
+      __scE2eMap: { on: (t: string, cb: () => void) => void };
+      __scMoveEnds: number;
+    };
+    w.__scMoveEnds = 0;
+    w.__scE2eMap.on('moveend', () => {
+      w.__scMoveEnds += 1;
+    });
+  });
+}
+
+/**
+ * A DESCRIPTIVE camera-rest state, not a boolean — a settle gate that times out
+ * on a bare `false` names neither what the camera was doing nor whether the
+ * gesture ever reached it (the #243/#252 lesson).
+ *
+ * "At rest" needs the moveend COUNT, not just `isMoving`/`isEasing`: a gesture's
+ * end-of-gesture ease is started from a later render frame, so between
+ * `mouse.up()` returning and that ease beginning the map is momentarily idle —
+ * a poll on the flags alone would pass through that window and read a bearing
+ * that is about to change.
+ */
+function cameraState(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const w = window as unknown as {
+      __scE2eMap: { isMoving: () => boolean; isEasing: () => boolean };
+      __scMoveEnds: number;
+    };
+    const moving = w.__scE2eMap.isMoving();
+    const easing = w.__scE2eMap.isEasing();
+    if (w.__scMoveEnds > 0 && !moving && !easing) return 'at-rest';
+    return `busy(moveends=${w.__scMoveEnds}, moving=${moving}, easing=${easing})`;
+  });
+}
+
+test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps track-up, and a real hand rotation still drops to free', async ({
+  page,
+  context,
+}) => {
+  const server = await startPreview();
+  try {
+    // MapLibre's end-of-gesture branch is gated on `!browser.prefersReducedMotion`
+    // (handler_manager.ts): a reduce preference would take the OTHER branch and
+    // silently move this test off the code path it exists to cover.
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await context.grantPermissions(['geolocation'], { origin: new URL(server.url).origin });
+    await setCourseFix(page, context, SNAP_WINDOW_BEARING);
+
+    await page.goto(server.url);
+    await page.waitForLoadState('networkidle');
+    expect(await installMapHandle(page)).toBe(true);
+
+    // --- engage course-up: "show my position" is what feeds the compass a fix ---
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    await page.getByText('Erweitert').click();
+    await page.getByLabel('Meine Position anzeigen').check();
+
+    const compass = page.locator('.compass-btn');
+    // Wait for the fix to reach the compass: the aria-label is the app's own
+    // statement that course-up is now available, so gating on it means the tap
+    // below can never land while `nextOrientation` would still `reject`.
+    await expect(compass).toHaveAttribute(
+      'aria-label',
+      'Kartenausrichtung: Norden oben. Kursorientierung aktivieren',
+    );
+    await compass.click();
+    await expect(compass).toHaveAttribute('data-orientation', 'track-up');
+    await expect
+      .poll(() => bearing(page), { message: 'course-up eased the chart onto the emulated COG' })
+      .toBe(SNAP_WINDOW_BEARING);
+
+    // --- the bug: an ordinary LEFT-button pan flick, nothing to do with rotation ---
+    await armCameraRest(page);
+    const canvas = page.locator('canvas.maplibregl-canvas');
+    const box = (await canvas.boundingBox())!;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    // Spread across ANIMATION FRAMES, not wall-clock sleeps. HandlerInertia
+    // records one buffer entry per applied frame and `_onMoveEnd` bails with
+    // fewer than two inside its 160 ms window (handler_inertia.ts) — a burst of
+    // moves inside a single frame produces one entry and no inertial ease at
+    // all. Gating each batch on a real frame is the state signal that decides
+    // which of the two branches below the release takes.
+    for (const dx of [40, 80, 120, 160]) {
+      await page.mouse.move(cx - dx, cy - dx / 3, { steps: 2 });
+      await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+    }
+    await page.mouse.up();
+
+    // Settle FIRST. Both assertions below are auto-retrying and both would
+    // otherwise be satisfiable mid-flight — measured, not theorised: on the
+    // unfixed build one run reds on the bearing (already snapped to 0) and
+    // another on the attribute (bearing still passing through 3 while the mode
+    // has already gone). Reading a settled camera makes the outcome the state
+    // the USER is left in, which is what the issue is about.
+    await expect
+      .poll(() => cameraState(page), { message: 'camera settles after the pan flick' })
+      .toBe('at-rest');
+
+    // BOTH halves, because the two pre-fix paths fail differently and either
+    // assertion alone is blind to one of them (handler_manager.ts):
+    //   - inertial ease present -> `easeTo({bearing: 0}, {originalEvent})`, so
+    //     the compass sees a hand rotation and demotes to `free`; its own 1°
+    //     snap then pulls it on to `north-up`. The ATTRIBUTE catches this.
+    //   - no inertia -> bare moveend then `map.resetNorth()`, which carries NO
+    //     eventData: the mode stays `track-up` while the chart silently
+    //     un-rotates, so only the BEARING catches it.
+    expect(await bearing(page), 'a pan flick must not rotate the chart (#230)').toBe(
+      SNAP_WINDOW_BEARING,
+    );
+    expect(
+      await compass.getAttribute('data-orientation'),
+      'a pan flick must not drop course-up (#230)',
+    ).toBe('track-up');
+
+    // --- the other direction: a genuine hand rotation MUST still demote ---
+    // Over-correcting here (a compass gone deaf to a real gesture) would be a
+    // worse bug than the one above, so it is asserted in the same test rather
+    // than left to the #155 spec.
+    await armCameraRest(page);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down({ button: 'right' });
+    // Frame-spread for the same reason the pan above is: Chromium coalesces
+    // mousemoves that arrive faster than it paints, and a rotate dispatched as
+    // one instantaneous burst lost most of its delta (measured: an 8° turn from
+    // a 150 px drag on one run in three). One chunk per frame makes the turn
+    // the gesture's own size every time.
+    for (const dx of [50, 100, 150, 200]) {
+      await page.mouse.move(cx + dx, cy, { steps: 2 });
+      await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+    }
+    await page.mouse.up({ button: 'right' });
+    await expect
+      .poll(() => cameraState(page), { message: 'camera settles after the hand rotation' })
+      .toBe('at-rest');
+
+    const rotated = await bearing(page);
+    const norm180 = (d: number) => {
+      const x = ((d % 360) + 360) % 360;
+      return x > 180 ? x - 360 : x;
+    };
+    // Well clear of both the parked course AND FREE_SNAP_NORTH_DEG (1), so the
+    // demotion below cannot be explained away by the chart barely having moved.
+    expect(
+      Math.abs(norm180(rotated - SNAP_WINDOW_BEARING)),
+      'the right-drag really rotated the camera',
+    ).toBeGreaterThan(10);
+    expect(
+      await compass.getAttribute('data-orientation'),
+      'a genuine hand rotation must still hand the bearing to the user (#230 over-correction guard)',
+    ).toBe('free');
   } finally {
     server.kill();
   }

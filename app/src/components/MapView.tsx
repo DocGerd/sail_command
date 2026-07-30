@@ -241,6 +241,32 @@ export default function MapView({
           // false` to let it fall through to pan/zoom is a separate call this
           // PR isn't making.
           maxPitch: 0,
+          // #230: MapLibre's default `bearingSnap` (7) makes the END of any
+          // gesture pull the chart to north whenever `0 < |bearing| < 7`
+          // (handler_manager.ts's `shouldSnapToNorth`). That is not limited to
+          // rotations: a pure PAN flick produces an inertial ease with no
+          // bearing of its own, so `inertialEase.bearing || getBearing()` falls
+          // through to the LIVE bearing, the pan is rewritten into a rotation
+          // to north, and it is fired WITH `originalEvent` — exactly the stamp
+          // CompassControl uses to recognise a hand rotation (#203/#227). So an
+          // ordinary pan on a northerly course silently dropped track-up, and
+          // the follow loop stayed off until the user tapped the compass twice.
+          // 0 makes `shouldSnapToNorth` unsatisfiable, closing BOTH of its
+          // branches (the inertial rewrite above and the `else` branch's
+          // eventData-less `map.resetNorth()`, which un-rotated the chart while
+          // the compass still claimed course-up).
+          //
+          // ACCEPTED, user-visible consequence: releasing a hand rotation
+          // within 7° of north no longer auto-straightens. The app has its own,
+          // deliberately tighter affordance for that — `FREE_SNAP_NORTH_DEG`
+          // (1°, mapOrientation.ts), applied on `rotateend` — which MapLibre's
+          // wider window had been pre-empting, so the app's setting only now
+          // takes effect as designed.
+          //
+          // Set at CONSTRUCTION, like `maxPitch` above: there is no public
+          // setter, and the value is read straight into HandlerManager's own
+          // `_bearingSnap` when the map is built.
+          bearingSnap: 0,
           attributionControl: false,
         });
         instance.addControl(new AttributionControl({ compact: true }));
