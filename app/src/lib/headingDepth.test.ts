@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NavMask } from './mask';
-import { advanceHold, checkHeadingDepth, initialHold, maskCellKey } from './headingDepth';
+import { advanceHold, checkHeadingDepth, initialHold } from './headingDepth';
 import type { LatLon, Leg, MaskMeta } from '../types';
 
 // 10x10 cells of 0.01 deg over 54.00-54.10 N, 9.00-9.10 E.
@@ -106,23 +106,6 @@ describe('checkHeadingDepth', () => {
     expect(checkHeadingDepth(maskWith([]), [legTo(from, to)], 5, from, 3.0)).toEqual({
       state: 'unavailable',
     });
-  });
-});
-
-describe('maskCellKey', () => {
-  it('is stable within a cell and changes between cells', () => {
-    const a = { lat: 54.0 + 0.001, lon: 9.0 + 0.001 };
-    const b = { lat: 54.0 + 0.009, lon: 9.0 + 0.009 };
-    const c = { lat: 54.0 + 0.011, lon: 9.0 + 0.001 };
-    expect(maskCellKey(META, a)).toBe(maskCellKey(META, b));
-    expect(maskCellKey(META, a)).not.toBe(maskCellKey(META, c));
-    expect(maskCellKey(META, a)).toBe('0:0');
-    expect(maskCellKey(META, c)).toBe('1:0');
-  });
-
-  it('collapses every out-of-coverage point to one key', () => {
-    expect(maskCellKey(META, { lat: 53.0, lon: 8.0 })).toBe('out');
-    expect(maskCellKey(META, { lat: 55.0, lon: 10.0 })).toBe('out');
   });
 });
 

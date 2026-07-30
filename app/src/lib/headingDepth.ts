@@ -40,19 +40,6 @@ export function checkHeadingDepth(
 }
 
 /**
- * Identity of the mask cell containing `p`, for memoising the probe: a boat
- * that has not left its cell cannot have changed the answer. Returns a stable
- * string; points outside coverage collapse to a single 'out' key, which is
- * correct because they all yield 'unavailable'.
- */
-export function maskCellKey(meta: MaskMeta, p: LatLon): string {
-  if (!withinMask(meta, p)) return 'out';
-  const row = Math.floor(((p.lat - meta.south) / (meta.north - meta.south)) * meta.rows);
-  const col = Math.floor(((p.lon - meta.west) / (meta.east - meta.west)) * meta.cols);
-  return `${row}:${col}`;
-}
-
-/**
  * How long the probe must read 'clear' before a displayed caution drops.
  * ~5 GPS fixes at the ~1 Hz fix rate. Deliberately asymmetric: a caution
  * appears instantly and leaves slowly, because a missed shallow warning costs
