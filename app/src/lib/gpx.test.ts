@@ -19,6 +19,7 @@ const plan: Plan = {
       depthComfortMarginM: 2.0,
       motorSpeedKn: 6.5,
       motorThresholdKn: 2.5,
+      sailPreferenceKn: 2.8,
       maneuverPenaltyS: 45,
       performanceFactor: 0.9,
       motorEnabled: true,
