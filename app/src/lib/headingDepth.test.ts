@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NavMask } from './mask';
-import { checkHeadingDepth, maskCellKey } from './headingDepth';
+import { advanceHold, checkHeadingDepth, initialHold, maskCellKey } from './headingDepth';
 import type { LatLon, Leg, MaskMeta } from '../types';
 
 // 10x10 cells of 0.01 deg over 54.00-54.10 N, 9.00-9.10 E.
@@ -123,5 +123,57 @@ describe('maskCellKey', () => {
   it('collapses every out-of-coverage point to one key', () => {
     expect(maskCellKey(META, { lat: 53.0, lon: 8.0 })).toBe('out');
     expect(maskCellKey(META, { lat: 55.0, lon: 10.0 })).toBe('out');
+  });
+});
+
+describe('advanceHold', () => {
+  const CAUTION = { state: 'caution', shallowestM: 2.0 } as const;
+  const CLEAR = { state: 'clear' } as const;
+  const UNAVAIL = { state: 'unavailable' } as const;
+
+  it('engages a caution on the very first detecting observation', () => {
+    const hold = advanceHold(initialHold(), CAUTION, 0);
+    expect(hold.shown).toEqual(CAUTION);
+  });
+
+  it('keeps showing the caution through a single clear observation', () => {
+    let hold = advanceHold(initialHold(), CAUTION, 0);
+    hold = advanceHold(hold, CLEAR, 1000);
+    expect(hold.shown).toEqual(CAUTION);
+  });
+
+  it('clears only once clear has held for the full window', () => {
+    let hold = advanceHold(initialHold(), CAUTION, 0);
+    hold = advanceHold(hold, CLEAR, 1000);
+    hold = advanceHold(hold, CLEAR, 5900);
+    expect(hold.shown).toEqual(CAUTION);
+    hold = advanceHold(hold, CLEAR, 6000);
+    expect(hold.shown).toEqual(CLEAR);
+  });
+
+  it('re-arms the caution when shallow water reappears mid-window', () => {
+    let hold = advanceHold(initialHold(), CAUTION, 0);
+    hold = advanceHold(hold, CLEAR, 1000);
+    hold = advanceHold(hold, CAUTION, 2000);
+    hold = advanceHold(hold, CLEAR, 3000);
+    hold = advanceHold(hold, CLEAR, 7500);
+    expect(hold.shown).toEqual(CAUTION);
+  });
+
+  it('freezes the timer across an unavailable gap instead of counting it', () => {
+    let hold = advanceHold(initialHold(), CAUTION, 0);
+    hold = advanceHold(hold, CLEAR, 1000);
+    hold = advanceHold(hold, CLEAR, 3000); // 2000 ms accumulated
+    hold = advanceHold(hold, UNAVAIL, 4000);
+    expect(hold.shown).toEqual(CAUTION);
+    hold = advanceHold(hold, CLEAR, 20000); // gap must not count
+    expect(hold.shown).toEqual(CAUTION);
+    hold = advanceHold(hold, CLEAR, 23100); // +3100 -> 5100 total
+    expect(hold.shown).toEqual(CLEAR);
+  });
+
+  it('passes unavailable straight through when no caution is held', () => {
+    const hold = advanceHold(initialHold(), UNAVAIL, 0);
+    expect(hold.shown).toEqual(UNAVAIL);
   });
 });

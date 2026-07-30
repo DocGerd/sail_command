@@ -51,3 +51,44 @@ export function maskCellKey(meta: MaskMeta, p: LatLon): string {
   const col = Math.floor(((p.lon - meta.west) / (meta.east - meta.west)) * meta.cols);
   return `${row}:${col}`;
 }
+
+/**
+ * How long the probe must read 'clear' before a displayed caution drops.
+ * ~5 GPS fixes at the ~1 Hz fix rate. Deliberately asymmetric: a caution
+ * appears instantly and leaves slowly, because a missed shallow warning costs
+ * more than a redundant one.
+ */
+export const HEADING_DEPTH_CLEAR_MS = 5000;
+
+export interface HeadingDepthHold {
+  shown: HeadingDepthCheck;
+  /** Cumulative time the probe has read 'clear' while a caution is displayed. */
+  clearAccumMs: number;
+  /** Timestamp of the previous 'clear' observation, or null if the run is broken. */
+  lastClearMs: number | null;
+}
+
+export function initialHold(): HeadingDepthHold {
+  return { shown: { state: 'unavailable' }, clearAccumMs: 0, lastClearMs: null };
+}
+
+/**
+ * Fold one probe result into the displayed state.
+ *
+ * 'unavailable' is deliberately NOT treated as evidence the hazard is gone: it
+ * holds the caution and breaks the accrual run without discarding the time
+ * already banked, so an asset failure can never time out a warning.
+ */
+export function advanceHold(
+  prev: HeadingDepthHold,
+  raw: HeadingDepthCheck,
+  nowMs: number,
+  clearMs: number = HEADING_DEPTH_CLEAR_MS,
+): HeadingDepthHold {
+  if (raw.state === 'caution') return { shown: raw, clearAccumMs: 0, lastClearMs: null };
+  if (prev.shown.state !== 'caution') return { shown: raw, clearAccumMs: 0, lastClearMs: null };
+  if (raw.state === 'unavailable') return { ...prev, lastClearMs: null };
+  const accum = prev.clearAccumMs + (prev.lastClearMs === null ? 0 : nowMs - prev.lastClearMs);
+  if (accum >= clearMs) return { shown: raw, clearAccumMs: 0, lastClearMs: null };
+  return { shown: prev.shown, clearAccumMs: accum, lastClearMs: nowMs };
+}
