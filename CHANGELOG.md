@@ -62,10 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rotation within 7° of north. That automatic straightening came from the map
   library's own default and was what caused the course-up bug fixed below; the
   app has always had its own, deliberately tighter version of the same
-  affordance — release a rotation within **1°** of north and the chart still
-  snaps the rest of the way home — which the wider default had been
-  pre-empting. Tapping the compass still returns the chart to exactly north
-  from any bearing (#230).
+  affordance — ease a rotation to a stop within **1°** of north and the chart
+  still settles the rest of the way home — which the wider default had been
+  pre-empting. Let go with a flick instead and the chart keeps turning a
+  little, so it can come to rest a couple of degrees off north: the spin of
+  the flick outlasts the snap. Tapping the compass still returns the chart to
+  exactly north from any bearing, and is the reliable way to get there (#230).
 
 ### Fixed
 

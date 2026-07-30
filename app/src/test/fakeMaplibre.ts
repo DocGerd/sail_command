@@ -190,17 +190,28 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
 //   - `rotating` is tracked per ease rather than as MapLibre's sticky
 //     `_rotating` flag.
 //   - The end-of-gesture `bearingSnap` branch (:68706-68718) is NOT modelled.
-//     In a real browser, a gesture that ends with `0 < |bearing| < bearingSnap`
-//     (default 7) does not merely fire a bare `moveend`: HandlerManager then
-//     calls `map.resetNorth()` — an easeId-less `easeTo` carrying no
-//     eventData — or folds the snap into the inertial ease. So the
-//     snap-affordance tests in CompassControl.test.tsx model the FIRST half of
-//     that sequence only, and are not browser-accurate past the point they
-//     stop: in Chromium the resetNorth ease interrupts the compass's own snap
-//     ease, and the settle reconciler reads the still-partial bearing and
-//     demotes to `free` for about a second before the mode recovers. That
-//     transient predates #203 (develop demotes there too) and is tracked
-//     separately — do not read these tests as proof it cannot happen.
+//     KEEP THIS WARNING: it is exactly why no test in this file can prove
+//     anything about that branch, and it is what forced #230's fix to be
+//     proven in a real browser (e2e/compass.spec.ts) instead of here.
+//
+//     What the un-modelled branch does depends on the `bearingSnap` value, and
+//     this app now passes 0 at map construction (MapView.tsx, #230), which
+//     makes `shouldSnapToNorth` unsatisfiable and takes BOTH of its arms out of
+//     reach: neither the `map.resetNorth()` call nor the folding of a snap into
+//     the inertial ease can happen any more. So the snap-affordance tests in
+//     CompassControl.test.tsx now model the whole of the app's OWN snap
+//     (`FREE_SNAP_NORTH_DEG`, mapOrientation.ts) rather than the first half of
+//     a sequence MapLibre finished differently.
+//
+//     What is still un-modelled, and still costs these tests accuracy: the
+//     ROTATE INERTIA ease. A flick released near north fires
+//     `easeTo(inertialEase, {originalEvent})` whose first act is
+//     `_stop(false, undefined)` — killing the compass's snap ease, since no
+//     easeId matches — and whose own frames carry `originalEvent`, so the
+//     camera ends in `free` a couple of degrees off north. A CONTROLLED
+//     release (inertia buffer under two entries) has no such ease, the snap
+//     survives, and the chart lands at exactly 0 in mode `north`, which is
+//     what these tests model. Do not read them as proof about a flick.
 
 type EventData = { originalEvent?: unknown } | undefined;
 

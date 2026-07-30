@@ -261,7 +261,19 @@ export default function MapView({
           // deliberately tighter affordance for that — `FREE_SNAP_NORTH_DEG`
           // (1°, mapOrientation.ts), applied on `rotateend` — which MapLibre's
           // wider window had been pre-empting, so the app's setting only now
-          // takes effect as designed.
+          // takes effect as designed ON A CONTROLLED RELEASE. A FLICK still
+          // carries the chart past north: `rotateend` fires first, so the
+          // compass starts its snap ease, but the `finishedMoving` block then
+          // runs `easeTo(inertialEase, {originalEvent})` whose first act is
+          // `_stop(false, undefined)` — no easeId matches, so our snap ease is
+          // killed — and whose own frames carry `originalEvent`, so the camera
+          // ends in `free` around 2-3°. `bearingSnap` never entered that path
+          // (a drag-ROTATE records its own bearing deltas, so `inertialEase`
+          // has a bearing of its own), which is why this is a pre-existing
+          // limit of the 1° affordance and not something this change caused:
+          // pre-fix that same flick landed at exactly 0 but was still labelled
+          // `free`, i.e. straightened-but-mislabelled. The trade is that for
+          // unstraightened-but-honest.
           //
           // Set at CONSTRUCTION, like `maxPitch` above: there is no public
           // setter, and the value is read straight into HandlerManager's own

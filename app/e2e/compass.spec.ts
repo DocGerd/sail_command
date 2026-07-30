@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type CDPSession, type Page } from '@playwright/test';
 import { startPreview } from './helpers';
 
 // #155 map orientation chrome: the north arrow / track-up toggle and the
@@ -62,8 +62,8 @@ const bearing = (page: Page) =>
  * camera does not settle on exactly 0: measured across 42 scripted
  * rotate-then-tap-home cycles in Chromium it lands 0.04-0.18 deg short about
  * half the time (identically before #203, on #203's first head, and on its
- * second — so this is MapLibre's end-of-gesture inertia/`bearingSnap`
- * behaviour, not the compass's). The camera assertions above survive that
+ * second — so this is MapLibre's own end-of-gesture behaviour, not the
+ * compass's). The camera assertions above survive that
  * because `Math.round(0.048)` is `+0`, but the needle counter-rotates, so it
  * paints `rotate(-0.11deg)` and `Math.round` yields `-0` — and `toBe` compares
  * with `Object.is`, where `Object.is(-0, 0)` is FALSE. The result was a
@@ -71,7 +71,15 @@ const bearing = (page: Page) =>
  * like the needle never got home when in fact it is a tenth of a degree out
  * and visually identical. `-0 + 0` is `+0`, while every other value is
  * unchanged, so the sign of zero stops mattering and a genuinely wrong bearing
- * still fails. Sub-degree residual: see #230.
+ * still fails.
+ *
+ * The residual's cause is ROTATE INERTIA, and only that. Those 42 cycles were
+ * measured while MapLibre's `bearingSnap` was still at its default 7, so the
+ * snap was a candidate explanation at the time; #230 set `bearingSnap: 0`
+ * (MapView.tsx), which removes that candidate outright and leaves the flick's
+ * own inertia carrying the camera a fraction of a degree past its target.
+ * The normalisation below is unaffected either way — it is about the sign of
+ * zero, not about where the residual comes from.
  */
 const needleDeg = (page: Page) =>
   page.evaluate(() => {
@@ -192,9 +200,32 @@ const TRACK_SPEED_MS = 2;
  * CDP instead, which does accept `heading`/`speed`. The app still reads the
  * REAL `navigator.geolocation.watchPosition` (services/geolocation.ts) — only
  * the device behind it is emulated, same as live.spec.ts.
+ *
+ * REPEAT-CALLABLE, because `newCDPSession` allocates a NEW session on every
+ * call and a second course-up probe added to this file later would otherwise
+ * stack sessions silently on the same page. The session is therefore created
+ * once per page and REUSED.
+ *
+ * It is deliberately NOT detached. Measured: `cdp.detach()` after the send
+ * tears the override down with the session, the app's `watchPosition` never
+ * receives a fix carrying a course, and the compass sits on
+ * "Kursorientierung ohne GPS-Kurs nicht verfügbar" until the test times out.
+ * The session is left attached and dies with the per-test `context` fixture
+ * (`workers: 1`, `fullyParallel: false`), so nothing leaks across tests.
+ *
+ * ORDERING IS LOAD-BEARING at the call site: `grantPermissions` first, then
+ * this override, and both BEFORE `page.goto` — Playwright clears the override
+ * during page initialisation when the context carries no geolocation of its
+ * own. Do not reshuffle.
  */
+const courseFixSessions = new WeakMap<Page, CDPSession>();
+
 async function setCourseFix(page: Page, context: BrowserContext, headingDeg: number) {
-  const cdp = await context.newCDPSession(page);
+  let cdp = courseFixSessions.get(page);
+  if (!cdp) {
+    cdp = await context.newCDPSession(page);
+    courseFixSessions.set(page, cdp);
+  }
   await cdp.send('Emulation.setGeolocationOverride', {
     latitude: 54.8237,
     longitude: 9.6524,
@@ -248,6 +279,44 @@ function cameraState(page: Page): Promise<string> {
     if (w.__scMoveEnds > 0 && !moving && !easing) return 'at-rest';
     return `busy(moveends=${w.__scMoveEnds}, moving=${moving}, easing=${easing})`;
   });
+}
+
+/**
+ * WHICH end-of-gesture branch `handler_manager` took on the release, sampled
+ * two animation frames after the mouse-up — before the settle poll, which would
+ * consume the evidence.
+ *
+ * `_onMoveEnd` prunes inertia-buffer entries older than 160 ms and bails below
+ * two of them (handler_inertia.ts), so a runner that stalls frames under the
+ * concurrent preview-server build can drop the release onto the `else` branch
+ * (bare `moveend`, then `resetNorth`) instead of the inertial one. The test
+ * still passes there — pre-fix the `else` branch snapped to north too, so both
+ * arms of `shouldSnapToNorth` are genuinely covered by the assertions below —
+ * but it has quietly stopped exercising the branch the bug was REPORTED on, and
+ * nothing said so.
+ *
+ * This is a NUDGE, not a gate, and is therefore deliberately not asserted: the
+ * degradation is a coverage gap, not a false pass, and turning a rare stalled
+ * frame into a red run on a `retries: 0` suite would cost more than it buys.
+ * Instead the branch is recorded as a test annotation (visible in the HTML
+ * report on a GREEN run) and named in every failure message below, so it can
+ * never again be invisible.
+ *
+ * Discriminator: only the inertial branch starts an `easeTo`, so only it leaves
+ * the camera easing after the release.
+ */
+function releaseBranch(page: Page): Promise<'inertial' | 'non-inertial'> {
+  return page.evaluate(
+    () =>
+      new Promise<'inertial' | 'non-inertial'>((resolve) => {
+        const w = window as unknown as { __scE2eMap: { isEasing: () => boolean } };
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() =>
+            resolve(w.__scE2eMap.isEasing() ? 'inertial' : 'non-inertial'),
+          ),
+        );
+      }),
+  );
 }
 
 test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps track-up, and a real hand rotation still drops to free', async ({
@@ -306,6 +375,17 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     }
     await page.mouse.up();
 
+    // Sampled BEFORE the settle poll, which would consume the evidence. Not
+    // asserted on purpose — see `releaseBranch`: a stalled runner degrading to
+    // the `else` branch is a coverage gap, not a false pass, so it is made
+    // legible (report annotation + every failure message below) rather than
+    // turned into a red run.
+    const branch = await releaseBranch(page);
+    test.info().annotations.push({
+      type: '#230 pan-flick release branch',
+      description: `${branch} (handler_manager end-of-gesture; 'inertial' is the branch the bug was reported on)`,
+    });
+
     // Settle FIRST. Both assertions below are auto-retrying and both would
     // otherwise be satisfiable mid-flight — measured, not theorised: on the
     // unfixed build one run reds on the bearing (already snapped to 0) and
@@ -313,7 +393,9 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     // has already gone). Reading a settled camera makes the outcome the state
     // the USER is left in, which is what the issue is about.
     await expect
-      .poll(() => cameraState(page), { message: 'camera settles after the pan flick' })
+      .poll(() => cameraState(page), {
+        message: `camera settles after the pan flick (${branch} release)`,
+      })
       .toBe('at-rest');
 
     // BOTH halves, because the two pre-fix paths fail differently and either
@@ -324,12 +406,18 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     //   - no inertia -> bare moveend then `map.resetNorth()`, which carries NO
     //     eventData: the mode stays `track-up` while the chart silently
     //     un-rotates, so only the BEARING catches it.
-    expect(await bearing(page), 'a pan flick must not rotate the chart (#230)').toBe(
-      SNAP_WINDOW_BEARING,
-    );
+    expect(
+      await bearing(page),
+      `a pan flick must not rotate the chart (#230; ${branch} release)`,
+    ).toBe(SNAP_WINDOW_BEARING);
     expect(
       await compass.getAttribute('data-orientation'),
-      'a pan flick must not drop course-up (#230)',
+      // ONE-SHOT ON PURPOSE, unlike the `free` assertion at the end of this
+      // test: this asserts a state that must be UNCHANGED, and `toHaveAttribute`
+      // would pass on its first poll and be blind to a demotion arriving a
+      // moment later. The explicit settle above is what makes the one-shot the
+      // stronger instrument here.
+      `a pan flick must not drop course-up (#230; ${branch} release)`,
     ).toBe('track-up');
 
     // --- the other direction: a genuine hand rotation MUST still demote ---
@@ -360,6 +448,15 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     // swallowed) or >=24°, so accumulation never creeps past the bound in
     // small steps. The `data-orientation` assertion after the loop carries this
     // direction regardless, and is immune to accumulation entirely.
+    //
+    // 60 s, not 30: the measured worst case was 3 attempts on a DEV machine,
+    // CI runners are 6-10x slower, and this suite is `retries: 0`, so an
+    // exhausted budget is a red run with no second chance. Each attempt can
+    // additionally burn the full default 5 s `expect` timeout inside the settle
+    // poll before `toPass` even retries. The headroom is free — everything else
+    // in this test (preview start, goto, tab clicks, one tap, one flick) is far
+    // inside `playwright.config.ts`'s 120 s per-test budget — and this is a
+    // retry budget, not a per-test timeout tightened below the file config.
     await expect(async () => {
       await armCameraRest(page);
       await page.mouse.move(cx, cy);
@@ -376,12 +473,21 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
         Math.abs(norm180((await bearing(page)) - SNAP_WINDOW_BEARING)),
         'the right-drag really rotated the camera',
       ).toBeGreaterThan(10);
-    }).toPass({ timeout: 30_000 });
+    }).toPass({ timeout: 60_000 });
 
-    expect(
-      await compass.getAttribute('data-orientation'),
+    // RETRYING form, unlike the one-shot `track-up` read above, and the
+    // asymmetry is deliberate: that one asserts a state which must be
+    // UNCHANGED (where a first-poll pass would be blind to a later demotion),
+    // this one asserts a state which must have ARRIVED. `dropToFree()` is
+    // written from a `rotate` handler mid-gesture, so React has near-certainly
+    // flushed by now — but on a 6-10x slower runner with `retries: 0` the
+    // retrying form is strictly cheaper, it is what the #155 test uses for this
+    // identical assertion, and `toHaveAttribute` still reports the actual
+    // attribute value on timeout, so the 3am diagnostic is unchanged.
+    await expect(
+      compass,
       'a genuine hand rotation must still hand the bearing to the user (#230 over-correction guard)',
-    ).toBe('free');
+    ).toHaveAttribute('data-orientation', 'free');
   } finally {
     server.kill();
   }
