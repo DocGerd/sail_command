@@ -46,9 +46,13 @@
     --sc-banner-warning-fg: #d6a23e;
     --sc-banner-error-bg: #2e1714;
     --sc-banner-error-fg: #e0726a;
-    /* #251: same warning colour, higher-opacity background for dark mode. */
+    /* #251: the warning colour and its wash are IDENTICAL in both modes —
+       .shallow-warning hardcoded one value for both before the token
+       extraction, and the extraction is a no-op by construction. Restated here
+       rather than omitted so the dark block stays a complete mirror of :root.
+       Only the TEXT colour differs per mode (contrast, see :root). */
     --sc-depth-warning-fg: #e69f00;
-    --sc-depth-warning-bg: rgba(230, 159, 0, 0.22);
+    --sc-depth-warning-bg: rgba(230, 159, 0, 0.16);
     --sc-depth-warning-text: #d6a23e;
     /* Same value in both modes; still a documentary mirror — the real #10243D
        lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
