@@ -117,6 +117,43 @@ export class NavMask {
   }
 
   /**
+   * Minimum charted depth over every cell the a→b segment touches, or null
+   * exactly when {@link segmentNavigable} would report false (any touched
+   * cell below `gateM`, land, or out of bounds) — one `walkCells` pass with
+   * the SAME gate check as `segmentNavigable`'s, inlined here (rather than
+   * calling `cellNavigable`, which would decode the same byte a second
+   * time per cell — this is a hot path, walked for every candidate edge the
+   * solver considers) so the set of cells visited and the abort condition
+   * stay identical to `segmentNavigable`'s. Used by #243's depth comfort
+   * preference to price a segment's clearance beyond the hard gate.
+   *
+   * UNLIKE {@link segmentShallowestBelow}, deep-capped cells (byte 255)
+   * count as a finite 25.4 m in the minimum here, NOT excluded —
+   * `segmentShallowestBelow` answers "how shallow" (a "≥25.4 m, actual
+   * unknown" reading is correctly never a shallow one), this method answers
+   * "how deep" (25.4 m is the honest floor a deep-capped cell guarantees,
+   * so it can legitimately BE the segment's minimum). Inert today only
+   * because OptionsPanel bounds `safetyDepthM` (max 10) and
+   * `depthComfortMarginM` (max 5) so the comfort target never exceeds
+   * 15 m — a 25.4 m cell can never end up the binding minimum. Revisit this
+   * if either bound widens past 25.4 m.
+   */
+  segmentClearanceM(a: LatLon, b: LatLon, gateM: number): number | null {
+    let min = Infinity;
+    const { rows, cols } = this.meta;
+    const completed = this.walkCells(a, b, (row, col) => {
+      if (row < 0 || row >= rows || col < 0 || col >= cols) return false;
+      const byte = this.depthByte(row, col);
+      if (byte === LAND) return false;
+      const depthM = this.byteToDepthM(byte);
+      if (depthM < gateM) return false;
+      if (depthM < min) min = depthM;
+      return true;
+    });
+    return completed ? min : null;
+  }
+
+  /**
    * Shallowest charted depth among cells the a→b segment touches that are
    * charted strictly below `thresholdM`; null when no touched cell is. Used by
    * #53's per-leg shallow flagging (threshold = the REQUESTED safety depth).

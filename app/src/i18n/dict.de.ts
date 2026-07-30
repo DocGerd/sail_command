@@ -9,6 +9,9 @@ export const de = {
   'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
+  'options.depthComfortMargin.label': 'Tiefenkomfort-Spanne (m)',
+  'options.depthComfortMargin.help':
+    'Über die Sicherheitstiefe hinaus bevorzugt die Planung zusätzlich Wasser, das mindestens um diesen Wert tiefer ist, sofern das kaum zusätzliche Zeit kostet — 0 deaktiviert die Präferenz. Sie erlaubt niemals flacheres Wasser, als die Sicherheitstiefe zulässt, und die empfohlene Besegelung kann sich dadurch ändern.',
   'options.motorSpeed.label': 'Motorfahrtgeschwindigkeit (kn)',
   'options.motorThreshold.label': 'Motor-Schwellenwert (kn)',
   'options.maneuverPenalty.label': 'Wende-/Halsenstrafzeit (s)',
@@ -293,8 +296,7 @@ export const de = {
   'map.compass.trackUp.stale':
     'Kartenausrichtung: Kurs oben (letzter Kurs wird gehalten). Auf Norden oben umschalten',
   'map.compass.free': 'Karte manuell gedreht. Auf Norden oben zurücksetzen',
-  'map.compass.unavailableStatus':
-    'Kursorientierung nicht verfügbar – keine GPS-Position in Fahrt',
+  'map.compass.unavailableStatus': 'Kursorientierung nicht verfügbar – keine GPS-Position in Fahrt',
   // #155: nautical scale bar. The visible label uses the chart abbreviation;
   // the aria-label spells the unit out (screen readers mangle "kbl"/"sm").
   'map.scale.aria': 'Maßstab: {distance} {unit}',

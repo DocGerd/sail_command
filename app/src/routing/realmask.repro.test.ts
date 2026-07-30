@@ -32,6 +32,10 @@ const polarFock = JSON.parse(
 const FLENSBURG: LatLon = { lat: 54.798, lon: 9.4335 };
 const GLUECKSBURG: LatLon = { lat: 54.8415, lon: 9.5225 };
 const MARSTAL: LatLon = { lat: 54.8579, lon: 10.528 };
+const SOENDERBORG: LatLon = { lat: 54.9046, lon: 9.7833 };
+const BAGENKOP: LatLon = { lat: 54.753, lon: 10.668 };
+const AEROESKOEBING: LatLon = { lat: 54.8935, lon: 10.416 };
+const DREJOE: LatLon = { lat: 54.9645, lon: 10.439 };
 // Open-water anchors (navigable at 3.0 m in the shipped mask)
 const FJORD_MOUTH: LatLon = { lat: 54.83, lon: 9.9 };
 const OPEN_BALTIC: LatLon = { lat: 54.75, lon: 10.3 };
@@ -67,6 +71,33 @@ function expectLegsNavigable(legs: Leg[], safetyDepthM: number) {
       mask.segmentNavigable(leg.start, leg.end, safetyDepthM),
       `leg ${JSON.stringify(leg.start)} -> ${JSON.stringify(leg.end)} crosses non-navigable water`,
     ).toBe(true);
+}
+
+/**
+ * #243 §E's EXACT sub-threshold exposure metric: sample each leg every
+ * ~15 m (well under the 46 m cell) and sum the sampled length whose cell is
+ * charted below `thresholdM`. A whole-leg ("charge the leg if any cell is
+ * shallow") metric over-states exposure by 3-4x and is not comparable across
+ * routes with different leg counts — never use one for this feature.
+ */
+function exposureNm(legs: Leg[], thresholdM: number): number {
+  const STEP_NM = 15 / 1852;
+  let nm = 0;
+  for (const leg of legs) {
+    const n = Math.max(2, Math.ceil(leg.distanceNm / STEP_NM));
+    const seg = leg.distanceNm / n;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const p: LatLon = {
+        lat: leg.start.lat + (leg.end.lat - leg.start.lat) * t,
+        lon: leg.start.lon + (leg.end.lon - leg.start.lon) * t,
+      };
+      const info = mask.depthInfoM(p);
+      const d = info.capped ? 25.4 : info.depthM;
+      if (d < thresholdM) nm += seg;
+    }
+  }
+  return nm;
 }
 
 describe('real mask routing (issue #20)', () => {
@@ -227,4 +258,208 @@ describe('real mask routing (issue #20)', () => {
       }
     },
   );
+});
+
+describe('#243 depth comfort preference (real mask)', () => {
+  // Pre-change (baseline, before #243) literals for Flensburg -> Sonderborg
+  // at 270 deg / DEFAULT_SETTINGS, measured independently by running the
+  // PRE-#243 planRoute (git show 14fea97:app/src/routing/planRoute.ts)
+  // against this exact mask/polar/wind fixture — never copied from this PR's
+  // own implementation output (the #50 tautology rule).
+  const BASELINE_DURATION_MS = 10_724_310.589355469; // genoa, 2.9790 h
+
+  it('Flensburg -> Sonderborg 270: pins the min-clearance and shallow-exposure change against pre-change literals (G.1)', () => {
+    const res = planRoute(
+      {
+        origin: FLENSBURG,
+        destination: SOENDERBORG,
+        viaPoints: [],
+        originHarborId: 'flensburg',
+        destinationHarborId: 'soenderborg',
+        departureMs: T0,
+        settings: DEFAULT_SETTINGS,
+      },
+      uniformWindGrid(12, 270),
+      { polarGenoa, polarFock, mask },
+    );
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+    expect(rig).not.toBeNull();
+    expectLegsNavigable(rig!.legs, DEFAULT_SETTINGS.safetyDepthM);
+
+    // Today's (pre-#243) route measures 3.1 m minimum and 1.32 nm below
+    // 4.0 m. Both thresholds sit far from that baseline AND far from this
+    // PR's own measured value (4.1 m / 0.00 nm) — pinning the CHANGE, not
+    // either implementation's exact arithmetic (§E.3: the search is
+    // heuristic and non-monotone in the tuning constant, so pinning an exact
+    // value would convert any future retune into a test edit).
+    let min = Infinity;
+    for (const leg of rig!.legs) {
+      const m = mask.segmentShallowestBelow(leg.start, leg.end, 1e6);
+      min = Math.min(min, m === null ? 25.4 : m);
+    }
+    expect(min).toBeGreaterThan(3.5);
+    expect(exposureNm(rig!.legs, 4.0)).toBeLessThan(0.4);
+
+    // Time envelope from independent arithmetic: the pre-change baseline is
+    // 2.9790 h; a gate-only (different mechanism) alternative independently
+    // measures +1.55%, this PR's own measurement +1.39%. 8% sits far above
+    // every measured cost and far below anything indicating the solver
+    // started padding.
+    expect(rig!.durationMs).toBeGreaterThan(BASELINE_DURATION_MS * 0.92);
+    expect(rig!.durationMs).toBeLessThan(BASELINE_DURATION_MS * 1.08);
+  });
+
+  // #243 §C.1's regression guard — the most important test in this plan. An
+  // earlier (superseded) distance-encoded form of this fix turned this exact
+  // passage into 'unreachable': reshuffling which candidate wins a prune
+  // bucket in Bagenkop's approach pocket stranded the only surviving path.
+  // The shipped (pre-#243) solver itself already only finds genoa here (fock
+  // dies) — this test pins the REQUIRED property (still routes, #53's
+  // contract intact), not the bonus (this implementation, measured,
+  // recovers fock too).
+  it(
+    'Bagenkop -> Marstal at DEFAULT_SETTINGS still routes (the regression a superseded encoding introduced)',
+    { timeout: 600_000 },
+    () => {
+      const res = planRoute(
+        {
+          origin: BAGENKOP,
+          destination: MARSTAL,
+          viaPoints: [],
+          originHarborId: 'bagenkop',
+          destinationHarborId: 'marstal',
+          departureMs: T0,
+          settings: DEFAULT_SETTINGS,
+        },
+        uniformWindGrid(12, 270),
+        { polarGenoa, polarFock, mask },
+      );
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+      expect(res.shallow).toBeDefined();
+      expect(res.shallow!.usedDepthM).toBeCloseTo(2.3, 6);
+      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      expect(rig).not.toBeNull();
+      expectLegsNavigable(rig!.legs, res.shallow!.usedDepthM);
+    },
+  );
+
+  // #243 mechanism-2 assertion (G.4): the relaxed gate no longer licenses
+  // sub-requested-depth water along the WHOLE passage — only where the pinch
+  // actually forces it. usedDepthM===2.3 proves the relaxation was not
+  // removed; the tightened exposure bound proves it was localized.
+  // Pre-change literal (measured on develop before #243 existed): 1.33 nm.
+  // This PR's own measured value: ~0.23 nm. The 0.6 nm threshold sits
+  // strictly between the two.
+  it(
+    'Flensburg -> Marstal at DEFAULT_SETTINGS: the relaxed gate is localized to the pinch, not the whole passage (G.4, #243 mechanism 2)',
+    { timeout: 600_000 },
+    () => {
+      const res = planRoute(
+        {
+          origin: FLENSBURG,
+          destination: MARSTAL,
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'marstal',
+          departureMs: T0,
+          settings: DEFAULT_SETTINGS,
+        },
+        uniformWindGrid(12, 270),
+        { polarGenoa, polarFock, mask },
+      );
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+      expect(res.shallow).toBeDefined();
+      expect(res.shallow!.usedDepthM).toBeCloseTo(2.3, 6);
+      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      expect(rig).not.toBeNull();
+      expect(exposureNm(rig!.legs, 3.0)).toBeLessThan(0.6);
+    },
+  );
+
+  // §G.5: the strongest available guard against the preference leaking into
+  // the no-preference path. Literals captured independently from the
+  // baseline (pre-#243) solver on this exact mask/polar/wind fixture — never
+  // from this PR's own implementation.
+  it('depthComfortMarginM: 0 produces a route BYTE-IDENTICAL to the pre-#243 solver (feature-off identity, G.5)', () => {
+    const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 };
+    const res = planRoute(
+      {
+        origin: FLENSBURG,
+        destination: SOENDERBORG,
+        viaPoints: [],
+        originHarborId: 'flensburg',
+        destinationHarborId: 'soenderborg',
+        departureMs: T0,
+        settings,
+      },
+      uniformWindGrid(12, 270),
+      { polarGenoa, polarFock, mask },
+    );
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    expect(res.recommended).toBe('genoa');
+    expect('shallow' in res).toBe(false);
+    // Pinned to the exact pre-#243 baseline (git show 14fea97), full float
+    // precision — this is what "byte-identical" means for a plan whose
+    // geometry and clock are provably factor-independent at margin 0.
+    expect(res.genoa!.durationMs).toBe(10_724_310.589355469);
+    expect(res.genoa!.distanceNm).toBe(19.08677244874192);
+    expect(res.genoa!.etaMs).toBe(1_784_105_924_310.5894);
+    expect(res.genoa!.legs.length).toBe(16);
+    expect(res.genoa!.maneuverCount).toBe(2);
+    expect(res.fock!.durationMs).toBe(10_758_190.499267578);
+    expect(res.fock!.distanceNm).toBe(18.805359745715304);
+    expect(res.fock!.etaMs).toBe(1_784_105_958_190.4993);
+    expect(res.fock!.legs.length).toBe(19);
+    expect(res.fock!.maneuverCount).toBe(2);
+  });
+
+  // Design §D.4 "minimum vs. integral", found in practice (fix-wave item 4):
+  // the preference minimizes total shallow-water exposure along a route
+  // (an integral of shortfall), not the route's single shallowest point, so
+  // the two CAN diverge. Documented beside DEPTH_DERATE_MAX and in
+  // CHANGELOG.md; pinned here with a THRESHOLD (never brittle exact
+  // equality — §E.3: the search is heuristic and non-monotone in the tuning
+  // constant) so a future change to this behavior is a deliberate, reviewed
+  // edit rather than a silent drift. Pre-change (baseline) literal: 3.7 m.
+  // This PR's own measured value: 3.0 m — safety-inert (every leg still
+  // gate-validated below) and exactly what this same passage's OTHER rig
+  // already touches today.
+  it('Aeroeskoebing -> Drejoe at DEFAULT_SETTINGS: the known minimum-clearance non-improvement stays within its documented, safety-inert band', () => {
+    const res = planRoute(
+      {
+        origin: AEROESKOEBING,
+        destination: DREJOE,
+        viaPoints: [],
+        originHarborId: 'aeroeskoebing',
+        destinationHarborId: 'drejoe',
+        departureMs: T0,
+        settings: DEFAULT_SETTINGS,
+      },
+      uniformWindGrid(12, 270),
+      { polarGenoa, polarFock, mask },
+    );
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+    expect(rig).not.toBeNull();
+    expectLegsNavigable(rig!.legs, DEFAULT_SETTINGS.safetyDepthM);
+    let min = Infinity;
+    for (const leg of rig!.legs) {
+      const m = mask.segmentShallowestBelow(leg.start, leg.end, 1e6);
+      min = Math.min(min, m === null ? 25.4 : m);
+    }
+    // Never below the hard gate (redundant with expectLegsNavigable above,
+    // stated explicitly since it's the safety-relevant half of the claim).
+    expect(min).toBeGreaterThanOrEqual(DEFAULT_SETTINGS.safetyDepthM);
+    // The known non-improvement is present (3.0 m), not silently regressed
+    // further, and not silently "fixed" back toward the 3.7 m baseline
+    // without anyone noticing — either would mean this documentation is
+    // stale.
+    expect(min).toBeLessThan(3.5);
+  });
 });

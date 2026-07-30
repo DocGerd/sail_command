@@ -3,7 +3,14 @@ import { savePlan } from '../services/db';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { ReplanError, type ReplanClient, type ReplanDeps } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
-import type { LatLon, Plan, PlanRequest, PlanResult, WindGrid } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type LatLon,
+  type Plan,
+  type PlanRequest,
+  type PlanResult,
+  type WindGrid,
+} from '../types';
 
 /**
  * Deep copy of a wind grid (arrays and typed arrays re-allocated). The
@@ -81,7 +88,13 @@ export async function rerouteFromFix(
   }
 
   // Copied, never aliased (mirrors lib/recalc.ts): nothing downstream may
-  // share mutable references with the original plan's request.
+  // share mutable references with the original plan's request. Settings are
+  // backfilled from DEFAULT_SETTINGS before the saved snapshot is spread on
+  // top (#243 fix wave item 3, mirrors lib/recalc.ts and AppState.tsx's own
+  // load-time backfill) — without it, rerouting a plan saved before a
+  // Settings field existed would silently carry `undefined` forward into a
+  // required field, and for depthComfortMarginM specifically would silently
+  // disable the depth comfort preference on every reroute of a pre-#243 plan.
   const request: PlanRequest = {
     origin: { ...fixPoint },
     destination: { ...plan.request.destination },
@@ -89,7 +102,7 @@ export async function rerouteFromFix(
     originHarborId: null,
     destinationHarborId: plan.request.destinationHarborId,
     departureMs: nowMs,
-    settings: { ...plan.request.settings },
+    settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
   };
 
   let result: PlanResult;
