@@ -11,7 +11,12 @@ export interface OptionsPanelProps {
 }
 
 export type NumericKey =
-  'safetyDepthM' | 'motorSpeedKn' | 'motorThresholdKn' | 'maneuverPenaltyS' | 'performanceFactor';
+  | 'safetyDepthM'
+  | 'depthComfortMarginM'
+  | 'motorSpeedKn'
+  | 'motorThresholdKn'
+  | 'maneuverPenaltyS'
+  | 'performanceFactor';
 
 export interface FieldSpec {
   key: NumericKey;
@@ -35,7 +40,23 @@ export const SAFETY_DEPTH_FIELD: FieldSpec = {
   step: 0.1,
 };
 
-// The five advanced numeric inputs that live behind the "Erweitert" disclosure.
+// #243: depth comfort preference margin, rendered first inside the advanced
+// group (with its own help paragraph, unlike the four plain ADVANCED_FIELDS
+// below) — kept separate from SAFETY_DEPTH_FIELD's compact-row treatment
+// because the spec lists it alongside the other advanced settings, not as a
+// second most-changed input. 0 = feature off (byte-identical solve).
+// eslint-disable-next-line react-refresh/only-export-components
+export const DEPTH_COMFORT_MARGIN_FIELD: FieldSpec = {
+  key: 'depthComfortMarginM',
+  labelKey: 'options.depthComfortMargin.label',
+  min: 0,
+  max: 5,
+  step: 0.1,
+};
+
+// The four plain advanced numeric inputs that live behind the "Erweitert"
+// disclosure (DEPTH_COMFORT_MARGIN_FIELD above renders separately, with a
+// help paragraph, ahead of these).
 const ADVANCED_FIELDS: FieldSpec[] = [
   { key: 'motorSpeedKn', labelKey: 'options.motorSpeed.label', min: 1, max: 10, step: 0.1 },
   { key: 'motorThresholdKn', labelKey: 'options.motorThreshold.label', min: 0, max: 5, step: 0.1 },
@@ -69,6 +90,26 @@ export default function OptionsPanel({ value, onChange }: OptionsPanelProps) {
 
   return (
     <div className="options-panel">
+      {/* #243: rendered separately from ADVANCED_FIELDS so it can carry a
+          help paragraph (aria-describedby, visible text, never a title
+          tooltip — gloved touch) explaining what the margin does. */}
+      <div className="options-field">
+        <label htmlFor={`options-${DEPTH_COMFORT_MARGIN_FIELD.key}`}>
+          {t(DEPTH_COMFORT_MARGIN_FIELD.labelKey)}
+        </label>
+        <NumberInput
+          id={`options-${DEPTH_COMFORT_MARGIN_FIELD.key}`}
+          value={value[DEPTH_COMFORT_MARGIN_FIELD.key]}
+          min={DEPTH_COMFORT_MARGIN_FIELD.min}
+          max={DEPTH_COMFORT_MARGIN_FIELD.max}
+          step={DEPTH_COMFORT_MARGIN_FIELD.step}
+          aria-describedby="options-depthComfortMarginM-help"
+          onCommit={(n) => commitSetting(value, DEPTH_COMFORT_MARGIN_FIELD.key, n, onChange)}
+        />
+      </div>
+      <p className="options-help" id="options-depthComfortMarginM-help">
+        {t('options.depthComfortMargin.help')}
+      </p>
       {ADVANCED_FIELDS.map((f) => (
         <div key={f.key} className="options-field">
           <label htmlFor={`options-${f.key}`}>{t(f.labelKey)}</label>

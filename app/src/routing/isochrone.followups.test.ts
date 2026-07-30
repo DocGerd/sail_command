@@ -44,25 +44,29 @@ const settings = { ...DEFAULT_SETTINGS, motorEnabled: false };
 describe('issue #21 gap 1: visited pruning is clock-aware', () => {
   // A later-clock full-step arrival must not prune a later-ring but
   // earlier-clock substepped thread that reaches the same prune cell.
+  // #243 §D.5: VisitedStamp's clock field is `costMs` (the ranking clock),
+  // not true elapsed time — see the doc comment on visitedDominates. The
+  // dominance/stamping logic itself is agnostic to which clock it ranks on,
+  // so these numbers are unchanged, only the field name.
   it('visitedDominates prunes only when the stamp is no later AND no more maneuvers', () => {
-    const seen: VisitedStamp = { tMs: 1_200_000, maneuvers: 1 };
-    expect(visitedDominates(seen, { tMs: 1_200_000, maneuvers: 1 })).toBe(true);
-    expect(visitedDominates(seen, { tMs: 1_500_000, maneuvers: 2 })).toBe(true);
+    const seen: VisitedStamp = { costMs: 1_200_000, maneuvers: 1 };
+    expect(visitedDominates(seen, { costMs: 1_200_000, maneuvers: 1 })).toBe(true);
+    expect(visitedDominates(seen, { costMs: 1_500_000, maneuvers: 2 })).toBe(true);
     // The desynchronized-clock case the maneuvers-only rule got wrong:
     // an earlier arrival survives even with more maneuvers.
-    expect(visitedDominates(seen, { tMs: 450_000, maneuvers: 3 })).toBe(false);
+    expect(visitedDominates(seen, { costMs: 450_000, maneuvers: 3 })).toBe(false);
     // Fewer maneuvers survives even when it arrives later.
-    expect(visitedDominates(seen, { tMs: 1_500_000, maneuvers: 0 })).toBe(false);
+    expect(visitedDominates(seen, { costMs: 1_500_000, maneuvers: 0 })).toBe(false);
   });
 
   it('stampVisited keeps componentwise minima and never raises either one', () => {
     const visited = new Map<string, VisitedStamp>();
-    stampVisited(visited, 'k', { tMs: 1_200_000, maneuvers: 0 });
-    expect(visited.get('k')).toEqual({ tMs: 1_200_000, maneuvers: 0 });
-    stampVisited(visited, 'k', { tMs: 450_000, maneuvers: 2 });
-    expect(visited.get('k')).toEqual({ tMs: 450_000, maneuvers: 0 });
-    stampVisited(visited, 'k', { tMs: 2_000_000, maneuvers: 5 });
-    expect(visited.get('k')).toEqual({ tMs: 450_000, maneuvers: 0 });
+    stampVisited(visited, 'k', { costMs: 1_200_000, maneuvers: 0 });
+    expect(visited.get('k')).toEqual({ costMs: 1_200_000, maneuvers: 0 });
+    stampVisited(visited, 'k', { costMs: 450_000, maneuvers: 2 });
+    expect(visited.get('k')).toEqual({ costMs: 450_000, maneuvers: 0 });
+    stampVisited(visited, 'k', { costMs: 2_000_000, maneuvers: 5 });
+    expect(visited.get('k')).toEqual({ costMs: 450_000, maneuvers: 0 });
     expect(visited.size).toBe(1);
   });
 });

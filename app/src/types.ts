@@ -10,6 +10,15 @@ export type ManeuverKind = 'tack' | 'gybe';
 
 export interface Settings {
   safetyDepthM: number; // default 3.0
+  // #243 depth comfort preference: beyond the hard safetyDepthM gate, the
+  // solver also PRICES every candidate segment on its minimum charted
+  // clearance — free at/above safetyDepthM + this margin, up to ~1.43x the
+  // crossing time right at the gate itself, linear in between. 0 disables the
+  // preference entirely (the solver's SolveParams.comfortDepthM stays
+  // undefined, taking the byte-identical pre-#243 path). Always anchored to
+  // the REQUESTED safetyDepthM, even during a #53 relaxed-gate solve — see
+  // planRoute.ts.
+  depthComfortMarginM: number; // default 2.0
   motorSpeedKn: number; // default 6.5
   motorThresholdKn: number; // default 2.5
   maneuverPenaltyS: number; // default 45
@@ -33,6 +42,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   safetyDepthM: 3.0,
+  depthComfortMarginM: 2.0,
   motorSpeedKn: 6.5,
   motorThresholdKn: 2.5,
   maneuverPenaltyS: 45,

@@ -41,6 +41,7 @@ describe('IndexedDB persistence', () => {
         departureMs: 1626340800000,
         settings: {
           safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
           motorSpeedKn: 6.5,
           motorThresholdKn: 2.5,
           maneuverPenaltyS: 45,
@@ -130,6 +131,7 @@ describe('IndexedDB persistence', () => {
         departureMs: 1626340800000,
         settings: {
           safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
           motorSpeedKn: 6.5,
           motorThresholdKn: 2.5,
           maneuverPenaltyS: 45,
@@ -216,6 +218,7 @@ describe('IndexedDB persistence', () => {
         departureMs: 1000,
         settings: {
           safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
           motorSpeedKn: 6.5,
           motorThresholdKn: 2.5,
           maneuverPenaltyS: 45,
@@ -258,6 +261,7 @@ describe('IndexedDB persistence', () => {
         departureMs: 2000,
         settings: {
           safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
           motorSpeedKn: 6.5,
           motorThresholdKn: 2.5,
           maneuverPenaltyS: 45,
@@ -341,6 +345,7 @@ describe('IndexedDB persistence', () => {
         departureMs: 1000,
         settings: {
           safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
           motorSpeedKn: 6.5,
           motorThresholdKn: 2.5,
           maneuverPenaltyS: 45,
@@ -409,6 +414,7 @@ describe('IndexedDB persistence', () => {
         departureMs: 1000,
         settings: {
           safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
           motorSpeedKn: 6.5,
           motorThresholdKn: 2.5,
           maneuverPenaltyS: 45,
@@ -451,6 +457,7 @@ describe('IndexedDB persistence', () => {
         departureMs: 1500,
         settings: {
           safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
           motorSpeedKn: 6.5,
           motorThresholdKn: 2.5,
           maneuverPenaltyS: 45,
@@ -518,6 +525,7 @@ describe('IndexedDB persistence', () => {
         departureMs: 1000,
         settings: {
           safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
           motorSpeedKn: 6.5,
           motorThresholdKn: 2.5,
           maneuverPenaltyS: 45,
@@ -559,6 +567,10 @@ describe('IndexedDB persistence', () => {
   it('settings roundtrip preserves all values', async () => {
     const settings: Settings = {
       safetyDepthM: 2.5,
+      // Non-default (DEFAULT_SETTINGS.depthComfortMarginM is 2.0): same
+      // "distinguishes roundtrip from happens-to-equal-default" rationale as
+      // showOwnship below.
+      depthComfortMarginM: 1.5,
       motorSpeedKn: 7.0,
       motorThresholdKn: 3.0,
       maneuverPenaltyS: 50,
@@ -579,6 +591,7 @@ describe('IndexedDB persistence', () => {
   it('settings roundtrip preserves the #25 AIS fields (aisApiKey, ownMmsi)', async () => {
     const settings: Settings = {
       safetyDepthM: 3.0,
+      depthComfortMarginM: 2.0,
       motorSpeedKn: 6.5,
       motorThresholdKn: 2.5,
       maneuverPenaltyS: 45,
