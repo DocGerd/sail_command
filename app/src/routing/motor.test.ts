@@ -56,17 +56,23 @@ describe('motor fallback', () => {
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
 
-    // Assert the kind SEQUENCE, so a failure prints both arrays. NOT
-    // toContain('motor'): membership passes for an all-motor route too, which
-    // left the floor's LOWER edge unguarded — at floor 3.6 this route is
-    // [motor, motor, motor, motor] and a membership check cannot tell that from
-    // the correct [motor, sail, motor]. The lower edge is the direction of the
-    // original #254 defect and the direction spec section 9.2 calls the trap
-    // (floor 3.5: 135 deg max turn, worse than the 100 that filed the issue).
-    // Every leg here is hand-checkable against TEST_POLAR at TWS 6: the two
-    // motor legs sail 3.600 and 3.699 kn, below the 3.7 floor; the sail leg
-    // makes 4.250, above it.
-    expect(r.legs.map((l) => l.kind)).toEqual(['motor', 'sail', 'motor']);
+    // The property under test is that the route is MIXED, and it guards BOTH
+    // edges of the floor: at 3.6 this route collapses to [motor x4] and at 3.8
+    // to [motor x2], so "a sail leg survives" is the single assertion covering
+    // both. Deliberately NOT toContain('motor') alone — membership of 'motor'
+    // passes for an all-motor route, which left the LOWER edge unguarded, and
+    // that is the direction of the original #254 defect (spec 9.2 calls floor
+    // 3.5 the trap: 135 deg max turn, worse than the 100 that filed the issue).
+    // Deliberately NOT toEqual on the exact sequence either: leg COUNT and
+    // ORDER are products of the collinear merge (MAX_MERGE_DEG) and geometry,
+    // not of the floor rule, so a merge or polar change could break it without
+    // any kind decision changing — and the failure would point at the wrong
+    // subsystem. Both kinds are hand-checkable against TEST_POLAR at TWS 6:
+    // motor legs sail 3.600 and 3.699 kn below the 3.7 floor, the sail leg
+    // makes 4.250 above it.
+    const kinds = r.legs.map((l) => l.kind);
+    expect(kinds).toContain('motor');
+    expect(kinds).toContain('sail');
 
     // Every motor leg must be one the rule actually permits: its sailing
     // speed at that leg's own TWA must be below the floor. Motor legs carry
