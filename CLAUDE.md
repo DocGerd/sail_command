@@ -577,11 +577,16 @@ deviate from it.
   discriminating metric is the reversal count, not the turn maximum.
   ACCEPTED COSTS, do not re-litigate: marginal air moves to engine (synthetic
   uniform TWS 6 goes all-sail → 83% motor); the floor has a knife-edge wherever
-  it sits (a measured 3.699 kn leg motors against a 3.700 floor). The former
-  EVIDENTIAL GAP — every cell measured on UNIFORM wind fields, so TWS-gradient
-  behaviour untested — is CLOSED IN THE NEGATIVE (#264, measured on a real
-  Open-Meteo forecast): a uniform TWS-4 field weaves IDENTICALLY to the gradient
-  field, so gradients contribute nothing. Do not re-open it. That gap was also
+  it sits (a measured 3.699 kn leg motors against a 3.700 floor). EVIDENTIAL
+  GAP — every cell measured on UNIFORM wind fields, so TWS-gradient behaviour
+  untested — is NARROWED, NOT CLOSED (#264, one real Open-Meteo forecast).
+  What is established: a gradient is NOT NECESSARY for a weave, because a
+  uniform TWS-4 field weaves too — so a weave alone does not implicate the
+  gradient. What is NOT established: that gradients are harmless. The same
+  comparison shows the gradient field weaving DIFFERENTLY — 5 turns ≥45° vs
+  2-3, 26 legs vs 14, ~9 min of ETA — so the gradient demonstrably shapes the
+  result even though it does not cause it. One route, one forecast; treat
+  gradient behaviour as still open. That gap was also
   why the per-TWS "blanket motor" alternative was REJECTED (it is discontinuous
   in TWS, replacing a heading-space hole with a wind-space cliff a real forecast
   crosses hourly, and it preserves today's 309-heading hole rather than the
@@ -595,8 +600,10 @@ deviate from it.
   sail-locked arc is best served by tacking under engine around it — 85.4° and
   141.8° each make 5.728 kn VMG along 113.6°, 44% more than steering it. Measured:
   the weave beats the direct chord by 98-527 s per joint, no heading in a
-  0-355° sweep beats it at any of 10 joints on either rig, and on the reported
-  route the chord is not even navigable at 3.0 m. A motor-turn penalty and a
+  0-355° step-5 sweep beats it at any of 10 joints on either rig (a one-ring
+  node comparison on progress-to-destination — local optimality, not a full
+  path-cost proof), and on the reported route the chord is not even navigable
+  at 3.0 m. A motor-turn penalty and a
   heading-continuity tie-break were both evaluated and are COUNTER-PRODUCTIVE
   (each forfeits those seconds by steering the slower sail-locked heading), and
   `better()` cannot arbitrate anyway — prune cells are ~223 x 192 m while a
