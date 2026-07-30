@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null); FIX=\"app/public/test-fixtures/wind-sw12.json\"; case \"$CMD\" in *git\\ commit*|*git\\ -C*commit*|*git\\ -c*commit*) [ -n \"$(git -C \"$CLAUDE_PROJECT_DIR\" status --porcelain -- \"$FIX\")\" ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"wind-sw12.json has uncommitted changes (git commit -a would include them). pree2e regenerates this fixture with fresh timestamps - CLAUDE.md says restore it, not commit it (git restore app/public/test-fixtures/wind-sw12.json). Proceed only if the fixture change is intentional (generator changed).\"}}' ;; *git\\ add*) [ -n \"$(git -C \"$CLAUDE_PROJECT_DIR\" status --porcelain -- \"$FIX\")\" ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"wind-sw12.json is dirty - expected pree2e churn per CLAUDE.md. Restore with: git restore app/public/test-fixtures/wind-sw12.json instead of staging it, unless the change is intentional.\"}}' ;; esac; exit 0",
+            "command": "CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null); FIX=\"app/public/test-fixtures/wind-sw12.json\"; case \"$CMD\" in *git\\ commit*|*git\\ -C*commit*|*git\\ -c*commit*) [ -n \"$(git -C \"$CLAUDE_PROJECT_DIR\" status --porcelain -- \"$FIX\")\" ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"wind-sw12.json has uncommitted changes (git commit -a would include them). pree2e regenerates this fixture with fresh timestamps - CLAUDE.md says restore it, not commit it (git restore app/public/test-fixtures/wind-sw12.json). Proceed only if the fixture change is intentional (generator changed).\"}}' ;; *git\\ add*|*git\\ -C*add*|*git\\ -c*add*) [ -n \"$(git -C \"$CLAUDE_PROJECT_DIR\" status --porcelain -- \"$FIX\")\" ] && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"wind-sw12.json is dirty - expected pree2e churn per CLAUDE.md. Restore with: git restore app/public/test-fixtures/wind-sw12.json instead of staging it, unless the change is intentional.\"}}' ;; esac; exit 0",
             "timeout": 10
           },
           {
@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null); case \"$CMD\" in *npm*install*|*npm*uninstall*|*npm*update*) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"npm changed dependencies. Regenerate third-party notices: npm --prefix app run notices - CI fails on any drift in app/public/THIRD-PARTY-NOTICES.txt. Run it before committing.\"}}' ;; esac",
+            "command": "CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null); case \"$CMD\" in *npm*install*|*npm*uninstall*|*npm*update*|*npm*\\ ci|*npm*\\ ci\\ *|*npm*\\ add|*npm*\\ add\\ *|*npm*\\ i|*npm*\\ i\\ *|*npm*\\ rm|*npm*\\ rm\\ *|*npm*\\ remove|*npm*\\ remove\\ *|*npm*\\ up|*npm*\\ up\\ *) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"npm changed dependencies. Regenerate third-party notices: npm --prefix app run notices - CI fails on any drift in app/public/THIRD-PARTY-NOTICES.txt. Run it before committing.\"}}' ;; esac",
             "timeout": 5
           }
         ]
