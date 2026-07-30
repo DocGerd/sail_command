@@ -469,7 +469,7 @@ describe('LiveView', () => {
       // this isn't a vacuous pass (e.g. a null mask collapsing to
       // 'unavailable', which renders a different, depth-free string).
       await screen.findByText(/Bearing crosses 2\.1 m/);
-      expect(screen.getByText(/shallower than your safety depth \(3 m\)/)).toBeInTheDocument();
+      expect(screen.getByText(/shallower than your safety depth \(3\.0 m\)/)).toBeInTheDocument();
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     });
 

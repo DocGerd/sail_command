@@ -229,7 +229,11 @@ export default function LiveView({
             <p className="live-view-hts-note">
               {t('live.hts.depthCaution', {
                 depth: depthCheck.shallowestM.toFixed(1),
-                safety: safetyDepthM,
+                // Same one-decimal form the sibling route-level shallow
+                // banner uses for both of its depths (RouteSummary.tsx), so
+                // the two depth warnings never render the same number
+                // differently.
+                safety: safetyDepthM.toFixed(1),
               })}
             </p>
           )}
