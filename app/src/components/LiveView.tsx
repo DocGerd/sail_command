@@ -182,9 +182,13 @@ export default function LiveView({
   // Which mask identity the displayed hold was last folded against. Written
   // from the fix callback and the re-probe effect below (both post-render), so
   // the effect can tell "already probed with this mask" from "the mask only
-  // just arrived". null is a real value here — it records a fold that ran with
-  // no mask at all.
-  const probedMaskRef = useRef<NavMask | null>(null);
+  // just arrived". A null mask is a real value here — it records a fold that
+  // ran with no mask at all — so the "nothing folded yet" sentinel is the null
+  // KEY, which no holdKey can equal (it is always a `${id}:${rig}` string).
+  const probedRef = useRef<{ mask: NavMask | null; key: string | null }>({
+    mask: null,
+    key: null,
+  });
 
   useEffect(() => {
     if (!active || legs.length === 0) return;
@@ -193,32 +197,45 @@ export default function LiveView({
       setFixAtMs(Date.now());
 
       const cur = latestRef.current;
-      probedMaskRef.current = cur.mask;
+      probedRef.current = { mask: cur.mask, key: cur.holdKey };
       foldProbe(cur.mask, cur.legs, cur.safetyDepthM, cur.holdKey, f.point);
     }, markGpsHintShownOnce);
   }, [active, legs.length, watchPosition]);
 
-  // The probe otherwise runs only inside the fix callback above, so a mask
-  // that resolves AFTER the last fix — a slow first load, or simply GPS having
-  // gone quiet — would pin the readout at "Depth not checked" indefinitely
-  // even though the bearing is now checkable. Re-fold once per mask identity
-  // whenever a fix is already held.
+  // The probe otherwise runs only inside the fix callback above, which leaves
+  // two ways for a held fix to sit on a stale answer, both of them the same
+  // shape — the inputs became checkable but nothing re-checked them:
+  //
+  //   1. the mask resolves AFTER the last fix (slow first load, or GPS having
+  //      gone quiet), so the readout claims "Depth not checked" for a bearing
+  //      that is now checkable;
+  //   2. the plan or rig changes, which resets the hysteresis by design (spec
+  //      §3.2) and falls back to "Depth not checked" — honest, but stale the
+  //      instant we could simply probe the NEW route's bearing from the fix we
+  //      already hold.
+  //
+  // Both are permanent if fixes have stopped. So the gate is the (mask
+  // identity, holdKey) PAIR: re-fold once per distinct pair whenever a fix is
+  // held. `legs`/`safetyDepthM` need no gate of their own — both are functions
+  // of (plan, rig), so holdKey already covers them.
   //
   // Shape matters: the setState is reachable only past two guarded early
-  // returns and the once-per-mask ref gate, which is what keeps it clear of
+  // returns and the once-per-pair ref gate, which is what keeps it clear of
   // react-hooks/set-state-in-effect (an UNCONDITIONAL setState in an effect
   // body is what that rule rejects; verified against the installed plugin).
   // The ref is written here in the effect, never during render.
   useEffect(() => {
     if (mask === null || fix === null) return;
-    if (probedMaskRef.current === mask) return;
-    probedMaskRef.current = mask;
-    // Same latestRef mirror the fix callback reads, for the same reason and
-    // with the same guarantee: the effect that writes it is declared above
-    // this one, so it has already committed this render's values.
+    const probed = probedRef.current;
+    if (probed.mask === mask && probed.key === holdKey) return;
+    probedRef.current = { mask, key: holdKey };
+    // legs/safetyDepthM come from the same latestRef mirror the fix callback
+    // reads, for the same reason and with the same guarantee: the effect that
+    // writes it is declared above this one, so it has already committed this
+    // render's values.
     const cur = latestRef.current;
-    foldProbe(cur.mask, cur.legs, cur.safetyDepthM, cur.holdKey, fix.point);
-  }, [mask, fix]);
+    foldProbe(mask, cur.legs, cur.safetyDepthM, holdKey, fix.point);
+  }, [mask, fix, holdKey]);
 
   const legIdx = fix && legs.length > 0 ? computeActiveLegIndex(legs, fix.point) : null;
 
