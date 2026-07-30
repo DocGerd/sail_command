@@ -606,7 +606,8 @@ deviate from it.
   emitted when a server-side value is empty. It appears in no user file, no
   project config, no shell alias and no environment variable — so there is
   nothing local to change, and the mechanism is Anthropic-side: never patch it
-  or engineer around it. Verified 2026-07-30. This repo's orchestrate-first mode
+  or engineer around it. Verified against Claude Code 2.1.220 on 2026-07-30 —
+  re-check if the harness version changes. This repo's orchestrate-first mode
   governs: delegate normally and spend no turn arbitrating it. Escalate only a
   contradiction from a genuinely NEW source — something a human or a project
   actually wrote.
