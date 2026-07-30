@@ -530,6 +530,16 @@ deviate from it.
   through it, and a method that cannot DESCRIBE a failure reports it uselessly.
   Ask of any assertion: at 3am in CI, does the message name the actual value?
   (#252 tracks auditing the remaining specs.)
+- A metric compared against an INFEASIBLE baseline is worse than no metric —
+  it reads as a defect and points every downstream fix the wrong way. #264's
+  "32.9% detour vs chord" was real travelled distance measured against a chord
+  that crossed LAND (`chordNavigable@3m=false`, printed on the same output
+  line and not read). It survived a root-cause writeup, a filed issue, and two
+  proposed fixes that would each have made the boat SLOWER; only an ETA
+  comparison against a navigable alternative caught it. Sibling of the
+  blindness rules above, one level earlier: before asking whether the
+  measurement can see the failure, ask whether the thing it measures AGAINST
+  is reachable at all. The tell was already in the log.
 
 ## Domain rules that are easy to get wrong
 
@@ -567,13 +577,33 @@ deviate from it.
   discriminating metric is the reversal count, not the turn maximum.
   ACCEPTED COSTS, do not re-litigate: marginal air moves to engine (synthetic
   uniform TWS 6 goes all-sail → 83% motor); the floor has a knife-edge wherever
-  it sits (a measured 3.699 kn leg motors against a 3.700 floor). EVIDENTIAL
-  GAP: every cell was measured on UNIFORM wind fields, so TWS-gradient behaviour
-  is untested and argued only from the rule's continuity in TWS — which is also
+  it sits (a measured 3.699 kn leg motors against a 3.700 floor). The former
+  EVIDENTIAL GAP — every cell measured on UNIFORM wind fields, so TWS-gradient
+  behaviour untested — is CLOSED IN THE NEGATIVE (#264, measured on a real
+  Open-Meteo forecast): a uniform TWS-4 field weaves IDENTICALLY to the gradient
+  field, so gradients contribute nothing. Do not re-open it. That gap was also
   why the per-TWS "blanket motor" alternative was REJECTED (it is discontinuous
   in TWS, replacing a heading-space hole with a wind-space cliff a real forecast
   crosses hourly, and it preserves today's 309-heading hole rather than the
   sailing). Spec: `docs/superpowers/specs/2026-07-30-motor-decision-rule-design.md`.
+- **A reported motor "zigzag" is usually the router MOTOR-TACKING around a
+  sail-locked heading band, and it is FASTER — do not fix it** (#264, §8.6 of
+  the motor spec). The floor is a hard threshold on sail speed, so one wind cell
+  splits the compass into alternating motorable and sail-locked arcs: at
+  TWS 3.777 / wdir 30.4°, genoa motors at 60-89°, is SAIL-LOCKED at 3.76-4.01 kn
+  across 90-129°, and motors again at 130°+. A course falling inside a
+  sail-locked arc is best served by tacking under engine around it — 85.4° and
+  141.8° each make 5.728 kn VMG along 113.6°, 44% more than steering it. Measured:
+  the weave beats the direct chord by 98-527 s per joint, no heading in a
+  0-355° sweep beats it at any of 10 joints on either rig, and on the reported
+  route the chord is not even navigable at 3.0 m. A motor-turn penalty and a
+  heading-continuity tie-break were both evaluated and are COUNTER-PRODUCTIVE
+  (each forfeits those seconds by steering the slower sail-locked heading), and
+  `better()` cannot arbitrate anyway — prune cells are ~223 x 192 m while a
+  motor step is ~2006 m, so the candidates land in different cells and are never
+  compared. Before calling any weave a defect, measure its ETA against a
+  NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
+  measured against a chord that crossed LAND.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
