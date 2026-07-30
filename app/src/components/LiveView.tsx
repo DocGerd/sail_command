@@ -55,6 +55,33 @@ const MANEUVER_LABEL_KEY: Record<ManeuverKind, MsgKey> = {
   gybe: 'route.maneuver.gybe',
 };
 
+// #251, spec §3.4: the depth caution is carried by text + icon + colour, so
+// colour is never the sole signal (WCAG 1.4.1). Purely decorative — the note's
+// own text states the hazard — hence aria-hidden, and NOT an aria-live/alert
+// region (see the §3.4 note on 1 Hz re-announcement). Inline SVG rather than a
+// "⚠" glyph on purpose: many platforms substitute a colour emoji for that
+// codepoint, which ignores `color` and would break the colour signal in dark
+// mode; `fill: currentColor` inherits --sc-depth-warning-text in both themes.
+function WarningIcon() {
+  return (
+    <svg
+      className="live-view-hts-note-icon"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+      fill="currentColor"
+    >
+      {/* evenodd so the bar and dot subpaths punch OUT of the triangle
+          instead of being filled in the same colour (nonzero would render a
+          solid triangle with no readable mark). */}
+      <path
+        fillRule="evenodd"
+        d="M8 1.5 15 14H1L8 1.5ZM7.25 6h1.5v4h-1.5V6Zm-.1 5.3h1.7V13h-1.7v-1.7Z"
+      />
+    </svg>
+  );
+}
+
 // GPS fix/error state is intentionally local to this component (not
 // AppState) — see AppState.tsx's docstring: 1 Hz position updates must not
 // re-render the whole app. Only the much-lower-frequency derived
@@ -289,6 +316,7 @@ export default function LiveView({
           </div>
           {depthCheck.state === 'caution' && (
             <p className="live-view-hts-note live-view-hts-note--caution">
+              <WarningIcon />
               {depthCheck.hazard === 'land'
                 ? t('live.hts.landCaution')
                 : t('live.hts.depthCaution', {
