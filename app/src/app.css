@@ -16,6 +16,16 @@
   --sc-banner-warning-fg: #7a5414;
   --sc-banner-error-bg: #f9e9e7;
   --sc-banner-error-fg: #9e3529;
+  /* #251: shared depth-warning colour family (#E69F00) — matches the map
+     casing and the depth profile emphasis. Same family the Live view's
+     heading caution uses (below); .shallow-warning was hardcoded before.
+     -fg is a BORDER/WASH colour only: #E69F00 as text is 2.18:1 on the light
+     --sc-bg, far under WCAG 1.4.3's 4.5:1. Depth-warning TEXT uses
+     --sc-depth-warning-text, which carries the --sc-banner-warning-fg values
+     already designed for that job (6.54:1 light, 8.37:1 dark). */
+  --sc-depth-warning-fg: #e69f00;
+  --sc-depth-warning-bg: rgba(230, 159, 0, 0.16);
+  --sc-depth-warning-text: #7a5414;
   /* Documentary mirror only — nothing consumes this token. icon.svg's bg rect,
      index.html's theme-color, and the manifest theme_color/background_color each
      HARDCODE #10243D and must be hand-synced with this value. */
@@ -36,6 +46,14 @@
     --sc-banner-warning-fg: #d6a23e;
     --sc-banner-error-bg: #2e1714;
     --sc-banner-error-fg: #e0726a;
+    /* #251: the warning colour and its wash are IDENTICAL in both modes —
+       .shallow-warning hardcoded one value for both before the token
+       extraction, and the extraction is a no-op by construction. Restated here
+       rather than omitted so the dark block stays a complete mirror of :root.
+       Only the TEXT colour differs per mode (contrast, see :root). */
+    --sc-depth-warning-fg: #e69f00;
+    --sc-depth-warning-bg: rgba(230, 159, 0, 0.16);
+    --sc-depth-warning-text: #d6a23e;
     /* Same value in both modes; still a documentary mirror — the real #10243D
        lives hardcoded in icon.svg/index.html/manifest, not sourced from here. */
     --sc-brand: #10243d;
@@ -420,6 +438,46 @@ select {
   font-size: 0.8rem;
   opacity: 0.75;
   margin: 0;
+}
+
+/* #251: heading-to-steer depth check. Colour is never the only signal — the
+   note carries an icon and its own text, and there is deliberately no
+   aria-live region here (the readout updates at ~1 Hz, so announcing every fix
+   would be hostile). Text uses --sc-depth-warning-text, not the -fg
+   border/wash colour, which fails WCAG 1.4.3 as text on the light theme. */
+.live-view-hts--caution .live-view-hts-value {
+  color: var(--sc-depth-warning-text);
+}
+
+.live-view-hts-note {
+  margin: 0.15rem 0 0;
+  font-size: 0.85em;
+}
+
+/* The two note variants are SIBLING modifiers and the base class is
+   deliberately colour-free, so neither has to out-rank the other. An earlier
+   revision coloured the base warning-orange and relied on --muted appearing
+   LATER in this file to win at equal specificity — a reorder would silently
+   have turned "Depth not checked" into a caution. */
+.live-view-hts-note--caution {
+  color: var(--sc-depth-warning-text);
+}
+
+/* No --sc-muted token exists in app.css (checked the :root token block) — the
+   nearest existing muted-text convention is local to this very component
+   (.live-view-label, .live-view-reroute-hint above): opacity 0.75 over the
+   default foreground. */
+.live-view-hts-note--muted {
+  color: var(--sc-fg);
+  opacity: 0.75;
+}
+
+.live-view-hts-note-icon {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  margin-right: 0.35em;
+  vertical-align: -0.125em;
 }
 
 /* ---- Map-overlay controls (RouteLayer's annotations toggle, barb toggle/time
@@ -1148,13 +1206,14 @@ select {
 
 /* #53: prominent shallow-water warning on the route summary (both rig tabs).
    Safety-depth warning color family (#E69F00) — matches the map casing and
-   the depth profile emphasis. */
+   the depth profile emphasis. #251 moved the family into --sc-depth-warning-*
+   so the Live view's heading caution uses the same one. */
 .shallow-warning {
   margin: 0;
   padding: 0.6rem 0.75rem;
-  border-left: 4px solid #e69f00;
+  border-left: 4px solid var(--sc-depth-warning-fg);
   border-radius: 4px;
-  background: rgba(230, 159, 0, 0.16);
+  background: var(--sc-depth-warning-bg);
   font-weight: 500;
 }
 

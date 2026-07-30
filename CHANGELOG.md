@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clearance can decrease even as its overall exposure to shallow water falls
   (#243).
 
+- Live view: the heading-to-steer readout now says when the bearing to the
+  active waypoint crosses water charted shallower than the plan's safety
+  depth, naming the shallowest charted depth along that bearing. The heading
+  is a straight bearing to the next waypoint, not a depth-validated course,
+  and it was previously shown with nothing to indicate that. A bearing that
+  crosses charted *land* is called out as land, not as a 0.0 m depth reading.
+  When the depth data cannot be checked at all — no mask yet, a position
+  outside chart coverage, or the plan having just changed — the readout says
+  so explicitly ("Depth not checked") rather than staying silent: an absent
+  warning never means "checked and clear" (#251).
+
 ### Changed
 
 - A preferenced solve that fails to find a route is automatically retried
