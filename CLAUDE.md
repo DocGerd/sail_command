@@ -404,13 +404,16 @@ deviate from it.
   triggers it (PR #257 hit this on 2026-07-30 and #211 had to be reopened by
   hand). Keywords are `close/closes/closed`, `fix/fixes/fixed`,
   `resolve/resolves/resolved`; never put one adjacent to an issue reference in a
-  PR body, PR title, or commit message unless you mean it — not negated, not
-  quoted, not while explaining what the PR does NOT do. Phrase it without a
+  PR body or commit message unless you mean it — not negated, not quoted, not
+  while explaining what the PR does NOT do (GitHub documents those two places;
+  keeping the PR title clean as well costs nothing). Phrase it without a
   keyword ("#N stays open after this PR"); `Refs #N` is the safe reference form.
   VERIFY issue state after every merge (`gh api repos/OWNER/REPO/issues/N --jq
-  .state`): the auto-close is silent, nothing in the merge output mentions it,
-  and the `issues/N/timeline` `closed` event carries `commit_id: null` so the
-  timeline does not name its cause either.
+  .state`): the auto-close is silent and nothing in the merge output mentions it. For a
+  BODY-triggered close the `issues/N/timeline` `closed` event carried
+  `commit_id: null` (measured on the #257 incident), so the timeline did not name
+  its cause either; a commit-message-triggered close may instead record a real
+  SHA.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
