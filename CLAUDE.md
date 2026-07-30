@@ -545,20 +545,35 @@ deviate from it.
   allowed post-processing is merging near-collinear legs with re-validation.
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible.
-- **Motor legs are first-class**: planned when sailing speed < threshold
-  (default 2.5 kn) at motor speed (default 6.5 kn), and always flagged as
-  motor in the result.
-  KNOWN DEFECT (#254, open): `isochrone.ts:297` decides `kind` from
-  `sailSpeed >= motorThresholdKn` ALONE and never compares `motorSpeedKn`, so
-  in light air most of the compass is sail-locked even where motoring is
-  faster. At TWS 3.6 (polar peak 3.82 kn) the motorable set is
-  `000–094° ∪ 185–265°`; a destination bearing inside the locked hole makes the
-  solver alternate two motorable headings — a zigzag that looks like tacking
-  under engine, and is really the search steering around a hole in its own set
-  of motorable headings. Candidate headings and frontier pruning were both
-  cleared by measurement; a scratch fix saved 35 min on Flensburg→Marstal but
-  converts light-air sail legs into engine hours, so it needs a product
-  decision (a margin, not a bare `max()`), not a patch.
+- **Motor legs are first-class**: planned where sailing speed falls below the
+  SAIL-SPEED FLOOR `max(motorThresholdKn, motorSpeedKn - sailPreferenceKn)`
+  (defaults 2.5 / 6.5 / 2.8 → floor 3.7 kn), run at motor speed, always flagged
+  as motor. Computed ONCE per solve in `isochrone.ts`, never per candidate.
+  The engine is a term in the time optimisation, not a fallback — that is a
+  deliberate product position (#254), and the margin is what bounds it: any
+  heading left sail-locked satisfies `sailSpeed >= motorSpeed - margin`, so the
+  margin is a hard upper bound on how much boat speed a sail-locked heading can
+  be losing. Only `margin = 0` is fully hole-free. `motorThresholdKn` SURVIVES
+  underneath the `Math.max` as the seaworthiness floor — without it a
+  user-lowered `motorSpeedKn` (settable to 1 kn) would yield motor legs SLOWER
+  than sailing; a margin at or above `motorSpeedKn - motorThresholdKn` (4.0 at
+  defaults, and it MOVES with `motorSpeedKn` — never hardcode it) collapses the
+  floor back and restores the pre-#254 path byte-for-byte.
+  3.7 is MEASURED, not chosen: window [3.7, 3.8] is the only band that closes
+  the light-air weave on BOTH rigs while leaving TWS 9 entirely under sail, and
+  3.8 lost on a 2.5-SECOND rig-recommendation knife-edge (#259). Floor 3.5 is
+  the trap — it saves 32 min while making max motor turn 135°, WORSE than the
+  100° it was meant to fix: time saved is not weave closed, and the
+  discriminating metric is the reversal count, not the turn maximum.
+  ACCEPTED COSTS, do not re-litigate: marginal air moves to engine (synthetic
+  uniform TWS 6 goes all-sail → 83% motor); the floor has a knife-edge wherever
+  it sits (a measured 3.699 kn leg motors against a 3.700 floor). EVIDENTIAL
+  GAP: every cell was measured on UNIFORM wind fields, so TWS-gradient behaviour
+  is untested and argued only from the rule's continuity in TWS — which is also
+  why the per-TWS "blanket motor" alternative was REJECTED (it is discontinuous
+  in TWS, replacing a heading-space hole with a wind-space cliff a real forecast
+  crosses hourly, and it preserves today's 309-heading hole rather than the
+  sailing). Spec: `docs/superpowers/specs/2026-07-30-motor-decision-rule-design.md`.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
