@@ -131,6 +131,21 @@ describe('MapView async mount (#118 cancelled-flag window)', () => {
     expect((hoisted.mapCtorCalls[0] as { maxPitch?: number }).maxPitch).toBe(0);
   });
 
+  // Scope, stated so nobody mistakes this for behavioural proof: this asserts
+  // only that the OPTION is passed at construction (there is no public setter,
+  // and a post-hoc one could be undone by a style reload). It CANNOT show that
+  // the end-of-gesture snap is gone — `test/fakeMaplibre.ts` documents that it
+  // does not model MapLibre's `bearingSnap` branch at all, so this file behaves
+  // identically with and without the fix. The behaviour is proven in a real
+  // browser by `e2e/compass.spec.ts`'s '#230' test.
+  it('#230: constructs with bearingSnap: 0 (option passed; behaviour proven in compass.spec.ts)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));
+    render(<MapView tapActive={false} onTap={() => {}} />);
+    await flushAsyncMount();
+    expect(hoisted.mapCtorCalls.length).toBe(1);
+    expect((hoisted.mapCtorCalls[0] as { bearingSnap?: number }).bearingSnap).toBe(0);
+  });
+
   it('post-await construction throw routes into the map-error path (console.error + one-shot onMapError)', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok206()));

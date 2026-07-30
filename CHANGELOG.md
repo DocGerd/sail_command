@@ -58,6 +58,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without the depth comfort preference before the plan degrades further, so
   no passage that routed before this change can fail to route now (#243).
 
+- The chart no longer straightens itself to north when you let go of a
+  rotation within 7° of north. That automatic straightening came from the map
+  library's own default and was what caused the course-up bug fixed below; the
+  app has always had its own, deliberately tighter version of the same
+  affordance — ease a rotation to a stop within **1°** of north and the chart
+  still settles the rest of the way home — which the wider default had been
+  pre-empting. Let go with a flick instead and the chart keeps turning a
+  little, so it can come to rest a couple of degrees off north: the spin of
+  the flick outlasts the snap. Tapping the compass still returns the chart to
+  exactly north from any bearing, and is the reliable way to get there (#230).
+
+### Fixed
+
+- Course-up orientation no longer drops to manual on an ordinary pan. While
+  the chart was rotated to a bearing within 7° of north — an everyday
+  northerly course in the Flensburg Fjord — flicking the map to pan it was
+  rewritten by the map library into a rotation back to north, which the
+  compass read as a hand rotation and answered by handing the bearing back to
+  you. The chart then quietly stopped following the course for the rest of the
+  passage, and only two taps on the compass brought it back. A real hand
+  rotation still hands the bearing over, as before (#230).
+
 ## [0.5.1] - 2026-07-27
 
 ### Added
