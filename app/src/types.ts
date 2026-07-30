@@ -21,6 +21,17 @@ export interface Settings {
   depthComfortMarginM: number; // default 2.0
   motorSpeedKn: number; // default 6.5
   motorThresholdKn: number; // default 2.5
+  // #254 sailing preference: the solver motors a candidate heading whenever
+  // sailing it would be more than this many knots slower than motoring, i.e.
+  // the effective sail-speed floor is
+  //   max(motorThresholdKn, motorSpeedKn - sailPreferenceKn).
+  // The margin is therefore a hard upper bound on how much boat speed a
+  // sail-locked heading can be losing. motorThresholdKn survives underneath as
+  // the seaworthiness floor, which is what stops a user-lowered motorSpeedKn
+  // from producing motor legs SLOWER than sailing. At or above
+  // motorSpeedKn - motorThresholdKn (4.0 at defaults) the floor collapses back
+  // to motorThresholdKn, taking the byte-identical pre-#254 path.
+  sailPreferenceKn: number; // default 2.8
   maneuverPenaltyS: number; // default 45
   performanceFactor: number; // default 0.9
   motorEnabled: boolean; // default true
@@ -45,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   depthComfortMarginM: 2.0,
   motorSpeedKn: 6.5,
   motorThresholdKn: 2.5,
+  sailPreferenceKn: 2.8,
   maneuverPenaltyS: 45,
   performanceFactor: 0.9,
   motorEnabled: true,
