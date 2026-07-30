@@ -155,6 +155,28 @@ describe('advanceHold', () => {
     expect(hold.shown).toEqual(CLEAR);
   });
 
+  it('banks nothing across a step longer than the clear window, and still clears afterwards', () => {
+    // A backgrounded tab or a sleeping device advances even a monotonic clock
+    // while GPS delivers nothing. Banking that gap would let one post-wake
+    // clear observation satisfy the whole 5000 ms window — the unsafe
+    // direction. Hand-derived: the 59 000 ms step banks 0, then 2000 + 3000
+    // observed milliseconds reach the window exactly.
+    let hold = advanceHold(initialHold(), CAUTION, 0);
+    hold = advanceHold(hold, CLEAR, 1000);
+    expect(hold.clearAccumMs).toBe(0);
+
+    hold = advanceHold(hold, CLEAR, 60000);
+    expect(hold.shown).toEqual(CAUTION);
+    expect(hold.clearAccumMs).toBe(0);
+
+    hold = advanceHold(hold, CLEAR, 62000);
+    expect(hold.shown).toEqual(CAUTION);
+    expect(hold.clearAccumMs).toBe(2000);
+
+    hold = advanceHold(hold, CLEAR, 65000);
+    expect(hold.shown).toEqual(CLEAR);
+  });
+
   it('passes unavailable straight through when no caution is held', () => {
     const hold = advanceHold(initialHold(), UNAVAIL, 0);
     expect(hold.shown).toEqual(UNAVAIL);

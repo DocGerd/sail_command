@@ -126,9 +126,13 @@ export default function LiveView({
     if (!active || legs.length === 0) return;
     return watchPosition((f) => {
       setFix(f);
-      const nowMs = Date.now();
-      setFixAtMs(nowMs);
+      setFixAtMs(Date.now());
 
+      // The hysteresis clock is performance.now(), NOT the Date.now() above:
+      // a forward wall-clock jump must not be bankable as observed clear time
+      // (see HEADING_DEPTH_CLEAR_MS). fixAtMs stays wall-clock — the ETA
+      // projection genuinely wants that.
+      const nowMs = performance.now();
       const cur = latestRef.current;
       const idx = cur.legs.length > 0 ? computeActiveLegIndex(cur.legs, f.point) : null;
       const raw =

@@ -44,6 +44,11 @@ export function checkHeadingDepth(
  * ~5 GPS fixes at the ~1 Hz fix rate. Deliberately asymmetric: a caution
  * appears instantly and leaves slowly, because a missed shallow warning costs
  * more than a redundant one.
+ *
+ * The `nowMs` callers feed {@link advanceHold} must come from a MONOTONIC
+ * source (`performance.now()`), never `Date.now()`: a forward wall-clock jump
+ * — an NTP correction, the user setting the clock — would otherwise bank time
+ * nobody observed and drop a caution early, which is the unsafe direction.
  */
 export const HEADING_DEPTH_CLEAR_MS = 5000;
 
@@ -65,17 +70,28 @@ export function initialHold(): HeadingDepthHold {
  * 'unavailable' is deliberately NOT treated as evidence the hazard is gone: it
  * holds the caution and breaks the accrual run without discarding the time
  * already banked, so an asset failure can never time out a warning.
+ *
+ * `nowMs` must be monotonic — see {@link HEADING_DEPTH_CLEAR_MS}. A monotonic
+ * source still advances across a suspended tab or a sleeping device, though,
+ * while GPS delivers nothing, so `maxStepMs` additionally caps how much a
+ * SINGLE step may bank: a gap longer than the window the run is accruing
+ * towards is by definition not evidence of a continuous clear run, so it banks
+ * nothing and restarts the step clock. The bound can only ever lengthen a
+ * caution, never shorten it.
  */
 export function advanceHold(
   prev: HeadingDepthHold,
   raw: HeadingDepthCheck,
   nowMs: number,
   clearMs: number = HEADING_DEPTH_CLEAR_MS,
+  maxStepMs: number = clearMs,
 ): HeadingDepthHold {
   if (raw.state === 'caution') return { shown: raw, clearAccumMs: 0, lastClearMs: null };
   if (prev.shown.state !== 'caution') return { shown: raw, clearAccumMs: 0, lastClearMs: null };
   if (raw.state === 'unavailable') return { ...prev, lastClearMs: null };
-  const accum = prev.clearAccumMs + (prev.lastClearMs === null ? 0 : nowMs - prev.lastClearMs);
+  const stepMs = prev.lastClearMs === null ? 0 : nowMs - prev.lastClearMs;
+  if (stepMs > maxStepMs) return { ...prev, lastClearMs: nowMs };
+  const accum = prev.clearAccumMs + stepMs;
   if (accum >= clearMs) return { shown: raw, clearAccumMs: 0, lastClearMs: null };
   return { shown: prev.shown, clearAccumMs: accum, lastClearMs: nowMs };
 }
