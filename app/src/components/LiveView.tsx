@@ -288,7 +288,7 @@ export default function LiveView({
             <span className="live-view-hts-value">{formatHeading(steerable.hts)}</span>
           </div>
           {depthCheck.state === 'caution' && (
-            <p className="live-view-hts-note">
+            <p className="live-view-hts-note live-view-hts-note--caution">
               {depthCheck.hazard === 'land'
                 ? t('live.hts.landCaution')
                 : t('live.hts.depthCaution', {

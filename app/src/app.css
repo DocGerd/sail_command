@@ -441,19 +441,24 @@ select {
 .live-view-hts-note {
   margin: 0.15rem 0 0;
   font-size: 0.85em;
+}
+
+/* The two note variants are SIBLING modifiers and the base class is
+   deliberately colour-free, so neither has to out-rank the other. An earlier
+   revision coloured the base warning-orange and relied on --muted appearing
+   LATER in this file to win at equal specificity — a reorder would silently
+   have turned "Depth not checked" into a caution. */
+.live-view-hts-note--caution {
   color: var(--sc-depth-warning-fg);
 }
 
 /* No --sc-muted token exists in app.css (checked the :root token block) — the
    nearest existing muted-text convention is local to this very component
    (.live-view-label, .live-view-reroute-hint above): opacity 0.75 over the
-   default foreground. Needs an explicit color override too, not opacity
-   alone, since this stacks with .live-view-hts-note's warning colour above
-   and must actually neutralize it for the "unavailable" state. */
+   default foreground. */
 .live-view-hts-note--muted {
   color: var(--sc-fg);
   opacity: 0.75;
-  font-weight: 400;
 }
 
 /* ---- Map-overlay controls (RouteLayer's annotations toggle, barb toggle/time
