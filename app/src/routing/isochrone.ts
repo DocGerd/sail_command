@@ -332,10 +332,18 @@ export function solve(p: SolveParams): SolveResult {
             const penaltyS = dtS - effS;
             // TRUE elapsed time for this hop — unaffected by the depth
             // comfort factor (#243 §D.5: geometry and true time stay honest;
-            // only the ranking cost below is scaled).
-            const durMs = (penaltyS + (node.distToDestNm / speed) * 3600) * 1000;
+            // only the ranking cost below is scaled). Split into the
+            // maneuver-penalty term and the travel term because only the
+            // LATTER gets re-priced below (fix-wave item 5: the design
+            // prices water crossed, not maneuvers executed — a tack/gybe
+            // costs the same real seconds regardless of what's under the
+            // keel at that instant).
+            const travelMs = (node.distToDestNm / speed) * 3600 * 1000;
+            const durMs = penaltyS * 1000 + travelMs;
             const etaMs = node.tMs + durMs;
-            const candCostMs = node.costMs + durMs / directFactor;
+            // Only the travel term is divided by the factor — the maneuver
+            // penalty is charged at its real cost on both tMs and costMs.
+            const candCostMs = node.costMs + penaltyS * 1000 + travelMs / directFactor;
             if (etaMs <= horizonMs && (!best || candCostMs < best.costMs)) {
               const last: Node = {
                 lat: destination.lat,
