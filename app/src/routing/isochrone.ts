@@ -209,6 +209,14 @@ export function solve(p: SolveParams): SolveResult {
   const maxFrontier = p.maxFrontier ?? MAX_FRONTIER;
   const horizonMs = wind.horizonMs();
   const comfortDepthM = p.comfortDepthM;
+  // #254: the sail-speed floor. A heading motors when sailing it would be more
+  // than settings.sailPreferenceKn slower than motoring. motorThresholdKn is the
+  // seaworthiness floor underneath, so a small engine can never be handed legs
+  // slower than sailing. When motoring is disabled the floor is the bare
+  // threshold and the branch below falls through to the MIN_SAIL_KN path.
+  const sailFloorKn = settings.motorEnabled
+    ? Math.max(settings.motorThresholdKn, settings.motorSpeedKn - settings.sailPreferenceKn)
+    : settings.motorThresholdKn;
 
   const start: Node = {
     lat: p.origin.lat,
@@ -294,7 +302,7 @@ export function solve(p: SolveParams): SolveResult {
         const sailSpeed = polar.speedKn(twa, w.speedKn);
         let kind: LegKind;
         let speed: number;
-        if (sailSpeed >= settings.motorThresholdKn) {
+        if (sailSpeed >= sailFloorKn) {
           kind = 'sail';
           speed = sailSpeed;
         } else if (settings.motorEnabled) {
