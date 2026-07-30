@@ -204,14 +204,22 @@ async function setCourseFix(page: Page, context: BrowserContext, headingDeg: num
   });
 }
 
-/** Arms the moveend counter `cameraState` reads. Call once, before the gesture. */
+/**
+ * Zeroes the moveend counter `cameraState` reads; call immediately before each
+ * gesture. IDEMPOTENT in the listener it installs — this is called again on
+ * every `toPass` retry below, and re-subscribing each time would accumulate
+ * handlers on the app's own live map for the whole retry budget.
+ */
 function armCameraRest(page: Page) {
   return page.evaluate(() => {
     const w = window as unknown as {
       __scE2eMap: { on: (t: string, cb: () => void) => void };
       __scMoveEnds: number;
+      __scRestArmed?: boolean;
     };
     w.__scMoveEnds = 0;
+    if (w.__scRestArmed) return;
+    w.__scRestArmed = true;
     w.__scE2eMap.on('moveend', () => {
       w.__scMoveEnds += 1;
     });
@@ -332,24 +340,31 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
       const x = ((d % 360) + 360) % 360;
       return x > 180 ? x - 360 : x;
     };
-    // BOUNDED RETRY on the GESTURE, the same device (and for the same reason)
-    // as `rotateThenTapCompassHome` below: a right-button drag issued straight
-    // after another gesture's mouseup is occasionally swallowed whole under
-    // full-suite load — measured twice here, an 8° turn from a 150 px drag on
-    // one run, and no turn at all (bearing still 003) on a full-suite run.
-    // Each attempt is the same real drag; only the OUTER wait retries, and the
-    // inner assertion still names the actual number, so a genuine
-    // over-correction regression reds with `Received: 0` rather than a bare
-    // timeout. Each chunk is frame-spread because Chromium coalesces mousemoves
-    // that arrive faster than it paints, which is what shrank the 8° attempt.
+    // DELIBERATELY the #155 test's own burst form (one `mouse.move` with
+    // `steps`), NOT the frame-spread form the pan above uses. Measured on a
+    // scratch spec: a frame-spread right-drag rotates the camera by exactly 0°,
+    // every time, in both motion modes — MapLibre's rotate handler does not
+    // survive a gesture stretched across frames the way its pan handler does.
+    // 300 px turns at LEAST 24° here (MapLibre's drag-rotate is far coarser
+    // than 1°/px; inertia carried it to 72° and 120° on other runs), which is
+    // the margin the 10° bound below is drawn against.
+    //
+    // The bounded retry is the same device, for the same reason, as
+    // `rotateThenTapCompassHome` further down: a right-drag issued straight
+    // after another gesture's mouseup is occasionally swallowed whole (measured
+    // over 4 instrumented runs — one needed 3 attempts, the other three landed
+    // first try). Each attempt is the same real drag and the inner assertion
+    // still names the actual number, so a genuine over-correction regression
+    // reds with `Received: 0` and not a bare timeout. The retry cannot inflate
+    // a weak result into a pass: measured, an attempt either turns 0° (fully
+    // swallowed) or >=24°, so accumulation never creeps past the bound in
+    // small steps. The `data-orientation` assertion after the loop carries this
+    // direction regardless, and is immune to accumulation entirely.
     await expect(async () => {
       await armCameraRest(page);
       await page.mouse.move(cx, cy);
       await page.mouse.down({ button: 'right' });
-      for (const dx of [50, 100, 150, 200]) {
-        await page.mouse.move(cx + dx, cy, { steps: 2 });
-        await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
-      }
+      await page.mouse.move(cx + 300, cy, { steps: 20 });
       await page.mouse.up({ button: 'right' });
       await expect
         .poll(() => cameraState(page), { message: 'camera settles after the hand rotation' })
