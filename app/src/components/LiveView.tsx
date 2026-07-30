@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLang, useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
@@ -10,6 +10,13 @@ import {
   headingToSteerDeg,
   projectedEtaMs,
 } from '../lib/live';
+import {
+  advanceHold,
+  checkHeadingDepth,
+  initialHold,
+  type HeadingDepthHold,
+} from '../lib/headingDepth';
+import { useNavMask } from '../state/useNavMask';
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { claimGpsHintOnce } from '../lib/gpsHint';
 import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
@@ -81,11 +88,57 @@ export default function LiveView({
     if (claimGpsHintOnce()) setHintVisible(true);
   };
 
+  // #251: heading-to-steer depth check. useNavMask is a hook and must run on
+  // every render, so it (and the rest of this block) lives here — BEFORE the
+  // early "no plan" return below — rather than after it (a call site a
+  // conditional return can skip breaks the Rules of Hooks: mounting with no
+  // plan, then getting one, would render a different number of hooks across
+  // renders).
+  const mask = useNavMask();
+  const safetyDepthM = plan?.request.settings.safetyDepthM ?? null;
+  const holdKey = `${plan?.id ?? ''}:${rig ?? ''}`;
+
+  // Asymmetric hysteresis: engages instantly, drops only after a sustained
+  // clear run. Folded on each REAL GPS fix, inside the watchPosition
+  // callback below, NOT via a separate effect reacting to derived state —
+  // this project's lint config (eslint-plugin-react-hooks's React Compiler
+  // rules) rejects both mutating a ref during render and calling a useState
+  // setter synchronously in a plain effect body ("can trigger cascading
+  // renders"). Folding inside the same imperative callback that already
+  // sets fix/fixAtMs sidesteps both restrictions — it is an event handler,
+  // not a render-phase or bare-effect write.
+  const [hold, setHold] = useState<{ hold: HeadingDepthHold; key: string }>({
+    hold: initialHold(),
+    key: holdKey,
+  });
+
+  // Keeps a ref mirror of everything the fix callback needs, so that
+  // long-lived callback (recreated only when [active, legs.length,
+  // watchPosition] change, not on every render) always reads the LATEST
+  // mask/legs/safetyDepthM/holdKey rather than a stale closure. Written only
+  // inside an effect (post-commit) — never assigned during render.
+  const latestRef = useRef({ mask, legs, safetyDepthM, holdKey });
+  useEffect(() => {
+    latestRef.current = { mask, legs, safetyDepthM, holdKey };
+  });
+
   useEffect(() => {
     if (!active || legs.length === 0) return;
     return watchPosition((f) => {
       setFix(f);
-      setFixAtMs(Date.now());
+      const nowMs = Date.now();
+      setFixAtMs(nowMs);
+
+      const cur = latestRef.current;
+      const idx = cur.legs.length > 0 ? computeActiveLegIndex(cur.legs, f.point) : null;
+      const raw =
+        idx !== null && cur.safetyDepthM !== null
+          ? checkHeadingDepth(cur.mask, cur.legs, idx, f.point, cur.safetyDepthM)
+          : null;
+      setHold((prev) => {
+        const base = prev.key === cur.holdKey ? prev.hold : initialHold();
+        return { hold: raw ? advanceHold(base, raw, nowMs) : base, key: cur.holdKey };
+      });
     }, markGpsHintShownOnce);
   }, [active, legs.length, watchPosition]);
 
@@ -99,6 +152,12 @@ export default function LiveView({
     return () => setActiveLegIndex(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount-only reset, not on every setActiveLegIndex identity change
   }, []);
+
+  // Gated on hold.key matching the CURRENT holdKey: between a plan/rig
+  // change and the next real GPS fix folding a fresh observation, this
+  // renders nothing rather than a stale caution from the superseded route
+  // (#158 convention — a caution must not survive a reroute).
+  const depthCheck = hold.key === holdKey ? hold.hold.shown : null;
 
   if (!result || legs.length === 0) {
     const noPlan = <p className="live-view-no-plan">{t('live.noPlan')}</p>;
@@ -156,10 +215,29 @@ export default function LiveView({
 
       {steerable && (
         <div className="live-view-data">
-          <div className="live-view-hts">
+          <div
+            className={
+              depthCheck?.state === 'caution'
+                ? 'live-view-hts live-view-hts--caution'
+                : 'live-view-hts'
+            }
+          >
             <span className="live-view-label">{t('live.hts.label')}</span>
             <span className="live-view-hts-value">{formatHeading(steerable.hts)}</span>
           </div>
+          {depthCheck?.state === 'caution' && safetyDepthM !== null && (
+            <p className="live-view-hts-note">
+              {t('live.hts.depthCaution', {
+                depth: depthCheck.shallowestM.toFixed(1),
+                safety: safetyDepthM,
+              })}
+            </p>
+          )}
+          {depthCheck?.state === 'unavailable' && (
+            <p className="live-view-hts-note live-view-hts-note--muted">
+              {t('live.hts.depthUnchecked')}
+            </p>
+          )}
 
           <dl className="live-view-cogsog">
             <dt>{t('live.cog.label')}</dt>

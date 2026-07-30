@@ -209,6 +209,11 @@ export const en = {
   'live.nextEvent.motorStart': 'Motor on',
   'live.nextEvent.none': 'No more maneuvers on this route',
   'live.eta.label': 'Projected ETA',
+  // #251: the heading-to-steer is a bearing to the active waypoint, not a
+  // depth-validated course. Never claims the course is safe.
+  'live.hts.depthCaution':
+    'Bearing crosses {depth} m — shallower than your safety depth ({safety} m)',
+  'live.hts.depthUnchecked': 'Depth not checked',
   'live.gpsHint':
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
   'live.gpsHint.dismiss': 'Got it',

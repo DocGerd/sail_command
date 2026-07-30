@@ -213,6 +213,11 @@ export const de = {
   'live.nextEvent.motorStart': 'Motor an',
   'live.nextEvent.none': 'Keine weiteren Manöver auf dieser Route',
   'live.eta.label': 'Voraussichtliche Ankunft',
+  // #251: der Steuerkurs ist eine Peilung zum aktiven Wegpunkt, kein
+  // tiefengeprüfter Kurs. Behauptet nie, der Kurs sei sicher.
+  'live.hts.depthCaution':
+    'Peilung kreuzt {depth} m — flacher als deine Sicherheitstiefe ({safety} m)',
+  'live.hts.depthUnchecked': 'Tiefe nicht geprüft',
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
   'live.gpsHint.dismiss': 'Verstanden',
