@@ -63,7 +63,7 @@ them keeps `live.ts` pure and gives the new logic its own test surface.
 ```ts
 export type HeadingDepthCheck =
   | { state: 'clear' }
-  | { state: 'caution'; shallowestM: number }
+  | { state: 'caution'; hazard: 'shallow' | 'land'; shallowestM: number }
   | { state: 'unavailable' }
 
 export function checkHeadingDepth(
@@ -82,6 +82,17 @@ Behaviour:
   `segmentShallowestBelow` at `safetyDepthM`.
 - Nothing below the threshold → `clear`.
 - Something below → `caution` with that depth.
+- **Amended during implementation (#255):** a bearing crossing charted LAND
+  must be reported as land, not as a depth reading. `byteToDepthM` maps the
+  LAND byte (0) to 0.0 m, so an uncorrected implementation renders "Bearing
+  crosses 0.0 m" — technically derived from the data, but land is not a
+  shallow depth and reads as a sensor glitch. Byte 0 is the only byte that
+  decodes to exactly 0.0 m, so `shallowestM === 0` is an exact land test
+  rather than a heuristic. `caution` therefore carries a `hazard`
+  discriminator (`'shallow' | 'land'`) with its own copy in both dictionaries.
+  `state` keeps the three values §2 defines — the discriminator refines the
+  caution, it does not add a fourth state. Land outranks shallow when a single
+  bearing crosses both.
 - **Out-of-coverage must yield `unavailable`, never `clear`.** The implementer
   must verify how `segmentShallowestBelow` and the underlying `walkCells`
   behave for cells outside the mask bounds and adapt accordingly. Do not assume
@@ -115,6 +126,12 @@ shallow warning costs more than a redundant one.
   `shallowestM`, which is the value that justified it.
 - The hysteresis resets on a `[plan.id, rig]` change, matching the #158
   convention, so a caution from a superseded route cannot survive a reroute.
+  **Between that reset and the next fix the readout must show `unavailable`,
+  never nothing.** Rendering no note produces DOM identical to `clear`, so
+  "we have not re-checked yet" would read to the user as "checked, and clear"
+  — the precise false all-clear this three-state design exists to prevent, and
+  permanent if fixes stop arriving. There is no fourth, unnamed state: every
+  path the readout can reach is one of the three, and all three are rendered.
 
 ### 3.3 Mask acquisition and cost
 
@@ -128,12 +145,20 @@ Until the asset resolves, the state is `unavailable`.
 
 Cost is one bounded `walkCells` traversal per fix (Amanatides–Woo, bounded by
 `rows + cols + 4`). That qualifies as the cheap idempotent consumer CLAUDE.md
-permits for GPS-derived per-fix signals. The result is additionally memoised on
-`(plan.id, rig, legIndex, fix cell, safetyDepthM)` so a stationary or slow-moving
-boat does not re-walk the same segment every second. `plan.id` and `rig` are part
-of the key deliberately: `legIndex` alone does not identify a waypoint, so a
-reroute that keeps the same index while moving `legs[legIndex].end` would
-otherwise serve a stale result from the previous route.
+permits for GPS-derived per-fix signals.
+
+**Amended during implementation (#255):** this section originally specified
+memoising the result on `(plan.id, rig, legIndex, fix cell, safetyDepthM)` to
+avoid re-walking the same segment on every render. That memoisation is not
+needed and is not implemented. The probe runs inside the `watchPosition` fix
+callback rather than during render, so it already executes exactly once per
+real GPS fix — roughly 1 Hz — not once per render. Adding a cache on top of a
+once-per-fix call would be complexity with no work to save.
+
+The probe must additionally re-run when the mask becomes available while a fix
+is already held. Without that, a mask resolving after the last fix leaves the
+readout claiming `unavailable` indefinitely, which is a false negative: it
+reports "not checked" when the check is in fact possible.
 
 ### 3.4 Rendering — `app/src/components/LiveView.tsx`
 
@@ -162,6 +187,25 @@ Two consequences worth stating explicitly:
 
 Colour reuses the safety-depth warning family (`#E69F00`) that
 `.shallow-warning` already uses, so the two depth warnings look like one system.
+
+**Amended during implementation (#255) — the accent colour is not a text
+colour.** `.shallow-warning` uses `#E69F00` as a border and a background wash,
+never as text, and reusing it for text fails WCAG 1.4.3: measured **2.18:1**
+against the light background where 4.5:1 is required (dark mode passes at
+8.6:1, which is exactly how a light-mode-only failure hides). Two tokens are
+therefore required and must not be conflated:
+
+- `--sc-depth-warning-fg` (`#E69F00`) — borders and washes only.
+- `--sc-depth-warning-text` (light `#7a5414`, dark `#d6a23e`) — the note text
+  and the cautioned heading value. Measured **6.54:1** light, **8.37:1** dark.
+
+The icon is an inline SVG, not a `⚠` glyph: many platforms substitute a colour
+emoji for that codepoint, which ignores `color` and would silently break the
+colour signal in dark mode. It is `aria-hidden` decoration — the note text
+already states the hazard.
+
+Any future change to either token must be re-measured against the light
+background, not assumed from the dark one.
 As a targeted improvement to the code being touched, that family is factored
 into `--sc-depth-warning-*` tokens in `app/src/app.css`; `.shallow-warning`
 currently hardcodes the values and bypasses the token layer, and is updated to
