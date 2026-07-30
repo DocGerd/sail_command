@@ -46,7 +46,7 @@
     "fake-indexeddb": "^6.2.5",
     "fast-check": "4.9.0",
     "globals": "^17.8.0",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.1",
     "prettier": "3.9.6",
     "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",

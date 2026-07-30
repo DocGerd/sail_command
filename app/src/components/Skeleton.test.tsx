@@ -32,6 +32,13 @@ describe('Skeleton', () => {
 
   it('forwards inline sizing style', () => {
     const { container } = render(<Skeleton style={{ width: '4rem' }} />);
-    expect(container.querySelector('span')).toHaveStyle({ width: '4rem' });
+    const el = container.querySelector('span') as HTMLSpanElement;
+    // Read the raw inline style rather than `toHaveStyle` (which diffs
+    // getComputedStyle): jsdom 30 resolves `rem` to `px` in computed style
+    // (jsdom 29 left it as `4rem`), so asserting the computed value would
+    // pin jsdom's unit-resolution behavior instead of the actual contract
+    // under test — that Skeleton forwards the caller's `style` prop
+    // verbatim to the rendered span.
+    expect(el.style.width).toBe('4rem');
   });
 });
