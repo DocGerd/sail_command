@@ -334,7 +334,7 @@ describe('advanceHold', () => {
 });
 ```
 
-Add `HEADING_DEPTH_CLEAR_MS`, `advanceHold`, `initialHold` to the test file's import from `./headingDepth`.
+Add `advanceHold` and `initialHold` to the test file's import from `./headingDepth`. Do **not** import `HEADING_DEPTH_CLEAR_MS` — these tests rely on its default value rather than referencing it, so importing it would trip `@typescript-eslint/no-unused-vars`. (Corrected during execution; the original instruction listed it.)
 
 - [ ] **Step 2: Run the test to verify it fails**
 
