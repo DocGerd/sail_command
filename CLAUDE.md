@@ -398,6 +398,19 @@ deviate from it.
   on merge into the DEFAULT branch, which here is `develop`, not `main` (#132
   stayed open after #210 merged, v0.5.0). Close release-scoped issues by hand at
   the cut, or reference them from a develop-side PR instead.
+  The MIRROR trap on the develop side: GitHub's closing-keyword parser has NO
+  negation awareness, so a PR-body sentence such as "this PR does NOT close #N"
+  auto-closes #N on merge — the disclaimer written to PREVENT the close is what
+  triggers it (PR #257 hit this on 2026-07-30 and #211 had to be reopened by
+  hand). Keywords are `close/closes/closed`, `fix/fixes/fixed`,
+  `resolve/resolves/resolved`; never put one adjacent to an issue reference in a
+  PR body, PR title, or commit message unless you mean it — not negated, not
+  quoted, not while explaining what the PR does NOT do. Phrase it without a
+  keyword ("#N stays open after this PR"); `Refs #N` is the safe reference form.
+  VERIFY issue state after every merge (`gh api repos/OWNER/REPO/issues/N --jq
+  .state`): the auto-close is silent, nothing in the merge output mentions it,
+  and the `issues/N/timeline` `closed` event carries `commit_id: null` so the
+  timeline does not name its cause either.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
