@@ -16,6 +16,7 @@ const plan: Plan = {
     departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
     settings: {
       safetyDepthM: 3,
+      depthComfortMarginM: 2.0,
       motorSpeedKn: 6.5,
       motorThresholdKn: 2.5,
       maneuverPenaltyS: 45,
