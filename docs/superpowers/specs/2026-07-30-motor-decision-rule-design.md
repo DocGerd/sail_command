@@ -204,8 +204,20 @@ Stated here deliberately, so they are not discovered later as defects.
    accepted rather than softened, because softening it reintroduces the pricing
    ambiguity the rule exists to remove.
 2. **All measurement used uniform wind fields.** The rule's behaviour across a
-   TWS *gradient* is untested and argued only from its continuity in TWS (§3.2).
-   This is the main evidential gap in this spec.
+   TWS *gradient* is argued mainly from its continuity in TWS (§3.2). This
+   remains the main evidential gap in this spec, but it is **NARROWED, not
+   closed**, by one measurement on a real Open-Meteo forecast (Flensburg →
+   Bagenkop, 2026-07-31, icon_seamless; #264):
+   - **Established:** a gradient is **not necessary** for a weave. A perfectly
+     uniform TWS-4 field weaves too, so observing a weave does not by itself
+     implicate the gradient — which retires the gradient as the *presumed
+     cause* of the #264 report.
+   - **NOT established:** that gradients are harmless. The same comparison
+     shows the gradient field weaving **differently** — 5 turns ≥45° vs 2-3,
+     26 legs vs 14, and about 9 minutes of ETA — so the gradient measurably
+     *shapes* the outcome even though it does not *cause* the weave.
+   One route, one forecast, one departure time. Gradient behaviour across the
+   admissible band is still untested. See §8.6 for what the weave itself is.
 3. **TWS 12 in band is bracketed, not measured** — 0% motor at floors 3.5 and 4.5,
    so 3.7 is expected to leave it under sail, but no cell was run at 3.7/TWS 12.
 4. **Moderate air moves to engine.** At a synthetic uniform TWS 6, floor 3.7 gives
@@ -222,6 +234,36 @@ Stated here deliberately, so they are not discovered later as defects.
    knife-edge at floor 3.8. **Disclosed, not fixed here** — tracked as #259.
    At the shipped default (floor 3.7) no vacuous tie was measured on this route,
    so it is a latent sharp edge rather than a live defect.
+6. **The floor is a step function in HEADING space, so the router motor-tacks
+   around sail-locked bands.** Measured 2026-07-30 (#264) on the real forecast.
+   Because the floor is a hard threshold on sail speed, a single wind cell
+   splits the compass into alternating motorable and sail-locked arcs. At
+   TWS 3.777 / wdir 30.4°, genoa crosses the 3.7 floor twice: headings 60-89°
+   motor at 6.5 kn, **90-129° are sail-locked at 3.76-4.01 kn**, 130°+ motor
+   again. When the desired course falls inside a sail-locked arc, the
+   time-optimal move is to **tack under engine around it** — headings 85.4°
+   and 141.8° each yield 5.728 kn VMG along a 113.6° course, **44% more than
+   steering it directly**. The visible result is a zigzag.
+   **This is correct, and it is faster**: per joint the weave beats the direct
+   chord by 98-527 s, a sustained-heading sweep (0-355°, step 5) finds no
+   heading beating it at any of 10 joints on either rig, and on this route the
+   chord is not even navigable at 3.0 m. Bound on that sweep, stated so it is
+   not over-read: it compares *nodes at one ring* on progress-to-destination
+   (what `better()` reads), at 5° granularity, among the 30-70 of 72 headings
+   the mask admits. It does not prove those candidates' descendants would
+   survive pruning, so it is strong evidence of local optimality, not a
+   full path-cost proof. It is the §3.2 hole made visible —
+   the sail-locked heading loses 2.52 kn, inside the 2.8 margin, and only
+   `margin = 0` removes such bands entirely.
+   **Do not "fix" it with a motor-turn penalty or a heading-continuity
+   tie-break.** Both were evaluated and are counter-productive: each pushes the
+   boat onto the slower sail-locked heading, forfeiting the measured 98-527 s,
+   and `better()` cannot arbitrate between the alternatives anyway (prune cells
+   are ~223 x 192 m while a motor step is ~2006 m, so the candidates land in
+   different cells and are never compared). If the zigzag is to be addressed at
+   all it is a **presentation** question, bounded by the standing rule that the
+   only allowed post-processing is merging near-collinear legs with
+   re-validation. Evidence: `/home/pkuhn/sail-evidence/264-eta/`.
 
 ## 9. Evidence
 
