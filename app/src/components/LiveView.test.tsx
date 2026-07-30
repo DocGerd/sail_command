@@ -109,6 +109,12 @@ const TEST_PLAN: Plan = {
   },
 };
 
+// #251 review F1: a distinct plan.id with IDENTICAL legs. Identical geometry
+// is the point — the readout keeps rendering the same heading, so the test
+// isolates "what happened to the depth annotation" from "did the readout
+// survive the plan swap at all".
+const REROUTED_PLAN: Plan = { ...TEST_PLAN, id: 'live-plan-2', name: 'Live Test Plan (rerouted)' };
+
 const FIX_POINT = destinationPoint(P0, 90, 2); // 2 nm into leg 0 (of 5)
 
 // #251: generous mask coverage that actually CONTAINS the fixture points —
@@ -508,6 +514,44 @@ describe('LiveView', () => {
       await screen.findByText('Depth not checked');
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
       expect(warn).toHaveBeenCalled();
+    });
+
+    it('#251 F1: a plan change while a caution is displayed falls back to "Depth not checked" — an unannotated heading is DOM-identical to checked-and-clear', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      localStorage.setItem('sc-lang', 'en');
+      const ui = (plan: Plan) => (
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={plan} />
+            <LiveView watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>
+      );
+      const { rerender } = render(ui(TEST_PLAN));
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+      await screen.findByText(/Bearing crosses 2\.1 m/);
+
+      // A reroute supersedes the route the caution was measured against, so
+      // the hysteresis resets (spec §3.2). No new fix follows — and none may
+      // be required for the readout to stay honest.
+      rerender(ui(REROUTED_PLAN));
+
+      await screen.findByText('Depth not checked');
+      expect(screen.queryByText(/Bearing crosses/)).not.toBeInTheDocument();
+      // The heading is still on screen: the requirement is that it is
+      // ANNOTATED, not that the readout vanishes.
+      expect(
+        screen.getByText(formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT))),
+      ).toBeInTheDocument();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     });
   });
 

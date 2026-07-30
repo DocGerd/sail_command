@@ -14,6 +14,7 @@ import {
   advanceHold,
   checkHeadingDepth,
   initialHold,
+  type HeadingDepthCheck,
   type HeadingDepthHold,
 } from '../lib/headingDepth';
 import { useNavMask } from '../state/useNavMask';
@@ -157,13 +158,24 @@ export default function LiveView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount-only reset, not on every setActiveLegIndex identity change
   }, []);
 
-  // Gated on hold.key matching the CURRENT holdKey: between a plan/rig
-  // change and the next real GPS fix folding a fresh observation, this
-  // renders nothing rather than a stale caution from the superseded route
-  // (#158 convention — a caution must not survive a reroute).
-  const depthCheck = hold.key === holdKey ? hold.hold.shown : null;
+  // Gated on hold.key matching the CURRENT holdKey: between a plan/rig change
+  // and the next real GPS fix folding a fresh observation, the stale caution
+  // from the superseded route must not be shown (#158 convention — a caution
+  // must not survive a reroute).
+  //
+  // The reset lands on an explicit 'unavailable', NEVER on "render no note":
+  // a note-less heading is DOM-identical to a checked-and-clear one, so an
+  // absent note reads as "checked, and clear" — the exact false all-clear this
+  // feature exists to prevent, and permanent if fixes have stopped. Spec §4:
+  // every degraded path lands on a RENDERED state.
+  const depthCheck: HeadingDepthCheck =
+    hold.key === holdKey ? hold.hold.shown : { state: 'unavailable' };
 
-  if (!result || legs.length === 0) {
+  // `!plan` is redundant with `!result` (result is derived from plan) — it is
+  // here purely so TypeScript narrows `plan` for the caution note below, which
+  // must render its safety depth WITHOUT a `safetyDepthM !== null` guard: a
+  // guard that can suppress the note is the same false all-clear as above.
+  if (!plan || !result || legs.length === 0) {
     const noPlan = <p className="live-view-no-plan">{t('live.noPlan')}</p>;
     return panelSlot ? createPortal(noPlan, panelSlot) : noPlan;
   }
@@ -221,7 +233,7 @@ export default function LiveView({
         <div className="live-view-data">
           <div
             className={
-              depthCheck?.state === 'caution'
+              depthCheck.state === 'caution'
                 ? 'live-view-hts live-view-hts--caution'
                 : 'live-view-hts'
             }
@@ -229,7 +241,7 @@ export default function LiveView({
             <span className="live-view-label">{t('live.hts.label')}</span>
             <span className="live-view-hts-value">{formatHeading(steerable.hts)}</span>
           </div>
-          {depthCheck?.state === 'caution' && safetyDepthM !== null && (
+          {depthCheck.state === 'caution' && (
             <p className="live-view-hts-note">
               {t('live.hts.depthCaution', {
                 depth: depthCheck.shallowestM.toFixed(1),
@@ -237,11 +249,11 @@ export default function LiveView({
                 // banner uses for both of its depths (RouteSummary.tsx), so
                 // the two depth warnings never render the same number
                 // differently.
-                safety: safetyDepthM.toFixed(1),
+                safety: plan.request.settings.safetyDepthM.toFixed(1),
               })}
             </p>
           )}
-          {depthCheck?.state === 'unavailable' && (
+          {depthCheck.state === 'unavailable' && (
             <p className="live-view-hts-note live-view-hts-note--muted">
               {t('live.hts.depthUnchecked')}
             </p>
