@@ -209,8 +209,9 @@ Stated here deliberately, so they are not discovered later as defects.
    A higher floor makes both rigs near-all-motor in light air, converging their
    ETAs and making the badge arbitrary exactly when it means least — measured
    vacuous ties at TWS 3.6 floors ≥ 4.5 and TWS 6 floor 6.5, and a 2.5-second
-   knife-edge at floor 3.8. **Disclosed, not fixed here**; follow-up issue to be
-   filed.
+   knife-edge at floor 3.8. **Disclosed, not fixed here** — tracked as #259.
+   At the shipped default (floor 3.7) no vacuous tie was measured on this route,
+   so it is a latent sharp edge rather than a live defect.
 
 ## 9. Evidence
 
@@ -326,6 +327,6 @@ Session scratch (not committed; cite before relying, they are not durable):
   turns being uncharged is real and separate; it is not fixed here.
 - Widening the collinear merge (`MAX_MERGE_DEG = 10`) — rejected as fabricating
   geometry the solver never validated.
-- Redesigning the rig recommendation (§8.5) — disclosed, follow-up issue.
+- Redesigning the rig recommendation (§8.5) — disclosed, tracked as #259.
 - Resolving the TWS 6 motor onset, which lies in (2.5, 3.5), below the admissible
   band and therefore not decision-relevant.
