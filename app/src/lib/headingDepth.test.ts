@@ -54,7 +54,39 @@ describe('checkHeadingDepth', () => {
       { row: 0, col: 6, byte: 20 },
     ]);
     const result = checkHeadingDepth(mask, [legTo(from, to)], 0, from, 3.0);
-    expect(result).toEqual({ state: 'caution', shallowestM: 2.0 });
+    expect(result).toEqual({ state: 'caution', hazard: 'shallow', shallowestM: 2.0 });
+  });
+
+  it('reports a land crossing as its own hazard, never as a 0.0 m sounding', () => {
+    const from = centreOf(0, 0);
+    const to = centreOf(0, 9);
+    // Byte 0 is LAND, and NavMask.byteToDepthM maps ONLY byte 0 to 0.0 m
+    // (byte 1 is already 0.1 m), so segmentShallowestBelow returning 0 is an
+    // exact land signal. Rendering it as "crosses 0.0 m" would present land as
+    // a depth reading.
+    const result = checkHeadingDepth(
+      maskWith([{ row: 0, col: 5, byte: 0 }]),
+      [legTo(from, to)],
+      0,
+      from,
+      3.0,
+    );
+    expect(result).toEqual({ state: 'caution', hazard: 'land' });
+  });
+
+  it('land wins over shallow water on the same bearing', () => {
+    const from = centreOf(0, 0);
+    const to = centreOf(0, 9);
+    // byte 20 -> 2.0 m (shallow) and byte 0 -> land. The minimum collapses to
+    // 0 either way, so the only honest report is the land one.
+    const mask = maskWith([
+      { row: 0, col: 3, byte: 20 },
+      { row: 0, col: 7, byte: 0 },
+    ]);
+    expect(checkHeadingDepth(mask, [legTo(from, to)], 0, from, 3.0)).toEqual({
+      state: 'caution',
+      hazard: 'land',
+    });
   });
 
   it('ignores shallow cells that the bearing does not cross', () => {
@@ -75,7 +107,7 @@ describe('checkHeadingDepth', () => {
     ).toEqual({ state: 'clear' });
     expect(
       checkHeadingDepth(maskWith([{ row: 0, col: 5, byte: 29 }]), [legTo(from, to)], 0, from, 3.0),
-    ).toEqual({ state: 'caution', shallowestM: 2.9 });
+    ).toEqual({ state: 'caution', hazard: 'shallow', shallowestM: 2.9 });
   });
 
   it('reports unavailable when there is no mask', () => {
@@ -110,7 +142,7 @@ describe('checkHeadingDepth', () => {
 });
 
 describe('advanceHold', () => {
-  const CAUTION = { state: 'caution', shallowestM: 2.0 } as const;
+  const CAUTION = { state: 'caution', hazard: 'shallow', shallowestM: 2.0 } as const;
   const CLEAR = { state: 'clear' } as const;
   const UNAVAIL = { state: 'unavailable' } as const;
 

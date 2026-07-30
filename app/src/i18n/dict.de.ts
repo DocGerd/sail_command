@@ -217,6 +217,9 @@ export const de = {
   // tiefengeprüfter Kurs. Behauptet nie, der Kurs sei sicher.
   'live.hts.depthCaution':
     'Peilung kreuzt {depth} m — flacher als deine Sicherheitstiefe ({safety} m)',
+  // Land ist eine andere Gefahr als flaches Wasser, und die Maske kodiert es
+  // als Tiefe 0,0 m — „kreuzt 0.0 m“ würde es als Lotung ausgeben.
+  'live.hts.landCaution': 'Peilung kreuzt kartiertes Land',
   'live.hts.depthUnchecked': 'Tiefe nicht geprüft',
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',

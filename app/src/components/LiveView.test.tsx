@@ -584,6 +584,26 @@ describe('LiveView', () => {
       expect(screen.queryByText('Depth not checked')).not.toBeInTheDocument();
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     });
+
+    it('#251 F6: a bearing across charted land is reported as land, not as a 0.0 m sounding', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      // NavMask maps the LAND byte (0) to 0.0 m, so this is exactly what a
+      // land crossing looks like coming out of segmentShallowestBelow.
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(0);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+
+      await screen.findByText('Bearing crosses charted land');
+      expect(screen.queryByText(/crosses 0\.0 m/)).not.toBeInTheDocument();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
   });
 
   // #115 manual "reroute from here" — only rendered when App wires the

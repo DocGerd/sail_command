@@ -5,8 +5,15 @@
 import type { LatLon, Leg, MaskMeta } from '../types';
 import type { NavMask } from './mask';
 
+// `state` stays the three-valued vocabulary of spec §2. `caution`
+// additionally names WHICH hazard was found, because the mask encodes land and
+// shallow water in the same byte range and they are not the same warning (see
+// checkHeadingDepth below).
 export type HeadingDepthCheck =
-  { state: 'clear' } | { state: 'caution'; shallowestM: number } | { state: 'unavailable' };
+  | { state: 'clear' }
+  | { state: 'caution'; hazard: 'shallow'; shallowestM: number }
+  | { state: 'caution'; hazard: 'land' }
+  | { state: 'unavailable' };
 
 // The mask is a lat/lon rectangle (MaskMeta west/south/east/north), so testing
 // both endpoints is enough to know the whole segment stays inside coverage.
@@ -36,7 +43,17 @@ export function checkHeadingDepth(
   if (!leg) return { state: 'unavailable' };
   if (!withinMask(mask.meta, p) || !withinMask(mask.meta, leg.end)) return { state: 'unavailable' };
   const shallowestM = mask.segmentShallowestBelow(p, leg.end, safetyDepthM);
-  return shallowestM === null ? { state: 'clear' } : { state: 'caution', shallowestM };
+  if (shallowestM === null) return { state: 'clear' };
+  // A LAND cell is byte 0, and byte 0 is the ONLY byte NavMask.byteToDepthM
+  // maps to 0.0 m (byte 1 already decodes to 0.1 m). So `shallowestM === 0` is
+  // an exact test for "the bearing crosses charted land", not a heuristic on a
+  // rounded depth. Land is reported as its own hazard rather than as a
+  // "crosses 0.0 m" sounding: dressing land up as a depth reading understates
+  // it, and 0.0 m is not a depth anyone can compare against a safety depth.
+  // Land also wins over any shallow cell on the same bearing — it is both the
+  // more severe hazard and the value the minimum already collapsed to.
+  if (shallowestM === 0) return { state: 'caution', hazard: 'land' };
+  return { state: 'caution', hazard: 'shallow', shallowestM };
 }
 
 /**

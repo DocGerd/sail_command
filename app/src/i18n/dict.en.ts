@@ -213,6 +213,9 @@ export const en = {
   // depth-validated course. Never claims the course is safe.
   'live.hts.depthCaution':
     'Bearing crosses {depth} m — shallower than your safety depth ({safety} m)',
+  // Land is a different hazard from shallow water, and the mask encodes it as
+  // depth 0.0 m — reporting "crosses 0.0 m" would dress it up as a sounding.
+  'live.hts.landCaution': 'Bearing crosses charted land',
   'live.hts.depthUnchecked': 'Depth not checked',
   'live.gpsHint':
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",

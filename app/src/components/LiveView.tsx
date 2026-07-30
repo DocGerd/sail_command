@@ -289,14 +289,16 @@ export default function LiveView({
           </div>
           {depthCheck.state === 'caution' && (
             <p className="live-view-hts-note">
-              {t('live.hts.depthCaution', {
-                depth: depthCheck.shallowestM.toFixed(1),
-                // Same one-decimal form the sibling route-level shallow
-                // banner uses for both of its depths (RouteSummary.tsx), so
-                // the two depth warnings never render the same number
-                // differently.
-                safety: plan.request.settings.safetyDepthM.toFixed(1),
-              })}
+              {depthCheck.hazard === 'land'
+                ? t('live.hts.landCaution')
+                : t('live.hts.depthCaution', {
+                    depth: depthCheck.shallowestM.toFixed(1),
+                    // Same one-decimal form the sibling route-level shallow
+                    // banner uses for both of its depths (RouteSummary.tsx),
+                    // so the two depth warnings never render the same number
+                    // differently.
+                    safety: plan.request.settings.safetyDepthM.toFixed(1),
+                  })}
             </p>
           )}
           {depthCheck.state === 'unavailable' && (
