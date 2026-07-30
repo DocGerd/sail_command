@@ -15,6 +15,7 @@ export type NumericKey =
   | 'depthComfortMarginM'
   | 'motorSpeedKn'
   | 'motorThresholdKn'
+  | 'sailPreferenceKn'
   | 'maneuverPenaltyS'
   | 'performanceFactor';
 
@@ -54,9 +55,22 @@ export const DEPTH_COMFORT_MARGIN_FIELD: FieldSpec = {
   step: 0.1,
 };
 
+// #254: sailing preference margin. Rendered with its own help paragraph like
+// DEPTH_COMFORT_MARGIN_FIELD above, because the behaviour it controls is not
+// guessable from the label. max 10 so the disabling value stays reachable at
+// any motorSpeedKn (which itself maxes at 10).
+// eslint-disable-next-line react-refresh/only-export-components
+export const SAIL_PREFERENCE_FIELD: FieldSpec = {
+  key: 'sailPreferenceKn',
+  labelKey: 'options.sailPreference.label',
+  min: 0,
+  max: 10,
+  step: 0.1,
+};
+
 // The four plain advanced numeric inputs that live behind the "Erweitert"
-// disclosure (DEPTH_COMFORT_MARGIN_FIELD above renders separately, with a
-// help paragraph, ahead of these).
+// disclosure (DEPTH_COMFORT_MARGIN_FIELD and SAIL_PREFERENCE_FIELD above
+// render separately, each with its own help paragraph, ahead of these).
 const ADVANCED_FIELDS: FieldSpec[] = [
   { key: 'motorSpeedKn', labelKey: 'options.motorSpeed.label', min: 1, max: 10, step: 0.1 },
   { key: 'motorThresholdKn', labelKey: 'options.motorThreshold.label', min: 0, max: 5, step: 0.1 },
@@ -109,6 +123,23 @@ export default function OptionsPanel({ value, onChange }: OptionsPanelProps) {
       </div>
       <p className="options-help" id="options-depthComfortMarginM-help">
         {t('options.depthComfortMargin.help')}
+      </p>
+      <div className="options-field">
+        <label htmlFor={`options-${SAIL_PREFERENCE_FIELD.key}`}>
+          {t(SAIL_PREFERENCE_FIELD.labelKey)}
+        </label>
+        <NumberInput
+          id={`options-${SAIL_PREFERENCE_FIELD.key}`}
+          value={value[SAIL_PREFERENCE_FIELD.key]}
+          min={SAIL_PREFERENCE_FIELD.min}
+          max={SAIL_PREFERENCE_FIELD.max}
+          step={SAIL_PREFERENCE_FIELD.step}
+          aria-describedby="options-sailPreferenceKn-help"
+          onCommit={(n) => commitSetting(value, SAIL_PREFERENCE_FIELD.key, n, onChange)}
+        />
+      </div>
+      <p className="options-help" id="options-sailPreferenceKn-help">
+        {t('options.sailPreference.help')}
       </p>
       {ADVANCED_FIELDS.map((f) => (
         <div key={f.key} className="options-field">

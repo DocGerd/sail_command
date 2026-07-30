@@ -14,11 +14,14 @@ export const de = {
     'Über die Sicherheitstiefe hinaus bevorzugt die Planung zusätzlich Wasser, das mindestens um diesen Wert tiefer ist, sofern das kaum zusätzliche Zeit kostet — 0 deaktiviert die Präferenz. Sie erlaubt niemals flacheres Wasser, als die Sicherheitstiefe zulässt, und die empfohlene Besegelung kann sich dadurch ändern.',
   'options.motorSpeed.label': 'Motorfahrtgeschwindigkeit (kn)',
   'options.motorThreshold.label': 'Motor-Schwellenwert (kn)',
+  'options.sailPreference.label': 'Segelvorzug (kn)',
+  'options.sailPreference.help':
+    'Wie viel Fahrt die Planung aufgibt, um weiter zu segeln. Sie segelt weiter, solange die Segelfahrt höchstens um diesen Wert unter der Motorfahrtgeschwindigkeit liegt, und motort sonst — ein höherer Wert bedeutet also mehr Segeln und spätere Ankunft. Auf Motorfahrtgeschwindigkeit minus Motor-Schwellenwert gesetzt, motort die Planung nur noch im Rückfall.',
   'options.maneuverPenalty.label': 'Wende-/Halsenstrafzeit (s)',
   'options.performanceFactor.label': 'Leistungsfaktor (×)',
   'options.motorEnabled.label': 'Motor aktiviert',
   'options.motorEnabled.help':
-    'Motor nur als Rückfall: Motorabschnitte werden geplant, wenn die berechnete Segelfahrt unter den Schwellenwert fällt, und mit Motorfahrtgeschwindigkeit gefahren.',
+    'Motorabschnitte erlauben: Die Planung motort, wo Segeln um mehr als den Segelvorzug langsamer wäre als Motorfahrt, und immer unterhalb des Motor-Schwellenwerts. Motorabschnitte laufen mit Motorfahrtgeschwindigkeit und werden als Motor gekennzeichnet.',
   'options.showOwnship.label': 'Meine Position anzeigen',
   'options.showOwnship.help':
     'Zeigt deine GPS-Position und den Genauigkeitskreis überall auf der Karte an — beim Planen, ohne Plan oder in der Live-Ansicht, nicht nur während der Live-Führung. Consumer-GPS-Genauigkeit, keine kartengenaue Positionsbestimmung; dies ist eine Törnplanungshilfe, kein Navigationsgerät. Das Aktivieren fragt nach dem Standortzugriff.',
@@ -213,6 +216,14 @@ export const de = {
   'live.nextEvent.motorStart': 'Motor an',
   'live.nextEvent.none': 'Keine weiteren Manöver auf dieser Route',
   'live.eta.label': 'Voraussichtliche Ankunft',
+  // #251: der Steuerkurs ist eine Peilung zum aktiven Wegpunkt, kein
+  // tiefengeprüfter Kurs. Behauptet nie, der Kurs sei sicher.
+  'live.hts.depthCaution':
+    'Peilung kreuzt {depth} m — flacher als deine Sicherheitstiefe ({safety} m)',
+  // Land ist eine andere Gefahr als flaches Wasser, und die Maske kodiert es
+  // als Tiefe 0,0 m — „kreuzt 0.0 m“ würde es als Lotung ausgeben.
+  'live.hts.landCaution': 'Peilung kreuzt kartiertes Land',
+  'live.hts.depthUnchecked': 'Tiefe nicht geprüft',
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
   'live.gpsHint.dismiss': 'Verstanden',

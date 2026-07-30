@@ -26,7 +26,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clearance can decrease even as its overall exposure to shallow water falls
   (#243).
 
+- Live view: the heading-to-steer readout now says when the bearing to the
+  active waypoint crosses water charted shallower than the plan's safety
+  depth, naming the shallowest charted depth along that bearing. The heading
+  is a straight bearing to the next waypoint, not a depth-validated course,
+  and it was previously shown with nothing to indicate that. A bearing that
+  crosses charted *land* is called out as land, not as a 0.0 m depth reading.
+  When the depth data cannot be checked at all — no mask yet, a position
+  outside chart coverage, or the plan having just changed — the readout says
+  so explicitly ("Depth not checked") rather than staying silent: an absent
+  warning never means "checked and clear" (#251).
+
 ### Changed
+
+- The planner now uses the engine wherever motoring would be meaningfully
+  faster than sailing, instead of only where sailing speed fell below the motor
+  threshold. A new **Sail preference** setting (default 2.8 kn) controls how
+  much boat speed the planner will give up in order to keep sailing: it keeps
+  sailing while sailing speed is within that many knots of motoring speed.
+  Raising it to motoring speed minus the motor threshold restores the previous
+  behaviour exactly. This removes the light-air zigzag in which a route wove
+  under engine as if beating to windward — the old rule left most of the
+  compass locked to sail even where motoring was nearly twice as fast, so the
+  route had to weave between the few headings it was allowed to motor. The
+  trade is deliberate: in marginal wind the planner will now start the engine
+  where that is faster, so passages in light-to-moderate air may show
+  substantially more motoring than before, and arrive earlier. Raise the sail
+  preference if you would rather sail and arrive later (#254).
 
 - A preferenced solve that fails to find a route is automatically retried
   without the depth comfort preference before the plan degrades further, so
