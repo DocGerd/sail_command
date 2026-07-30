@@ -112,8 +112,8 @@ describe('OptionsPanel', () => {
     const help = document.getElementById(describedBy!);
     expect(help).not.toBeNull();
     expect(help).toHaveClass('options-help');
-    expect(help).toHaveTextContent(/Engine as fallback only/);
-    expect(help).toHaveTextContent(/motor speed/);
+    expect(help).toHaveTextContent(/Allow engine legs/);
+    expect(help).toHaveTextContent(/motoring speed/);
   });
 
   // #25 addendum: standalone "show my position" ownship marker toggle.

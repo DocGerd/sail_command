@@ -16,11 +16,14 @@ export const en = {
     'Beyond the safety depth, the planner also prefers water at least this much deeper when it costs little extra time — 0 disables the preference. It never allows shallower water than the safety depth allows, and the recommended rig can change as a result.',
   'options.motorSpeed.label': 'Motoring speed (kn)',
   'options.motorThreshold.label': 'Motor threshold (kn)',
+  'options.sailPreference.label': 'Sail preference (kn)',
+  'options.sailPreference.help':
+    'How much boat speed the planner will give up to keep sailing. It keeps sailing while sailing speed is within this many knots of motoring speed, and motors otherwise — so a higher value means more sailing and later arrivals. Raise it to motoring speed minus the motor threshold to motor only as a fallback.',
   'options.maneuverPenalty.label': 'Maneuver penalty (s)',
   'options.performanceFactor.label': 'Performance factor (×)',
   'options.motorEnabled.label': 'Motor enabled',
   'options.motorEnabled.help':
-    'Engine as fallback only: motor legs are planned where predicted sailing speed drops below the threshold, and run at motor speed.',
+    'Allow engine legs: the planner motors where sailing would be slower than motoring by more than the sail preference, and always below the motor threshold. Motor legs run at motoring speed and are marked as motor.',
   'options.showOwnship.label': 'Show my position',
   'options.showOwnship.help':
     'Shows your GPS position and accuracy circle on the map wherever it is open — planning, no plan, or Live view — not just during Live guidance. Consumer-GPS accuracy, not chart-grade positioning; this is a passage-planning aid, not a navigation device. Turning this on will ask for location permission.',
