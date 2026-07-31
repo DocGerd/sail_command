@@ -69,6 +69,14 @@
 #     and `` `...` `` by the backtick, and a bare `${VAR}` cannot invoke
 #     anything. Kept as defence in depth, so a mutation removing it alone does
 #     not fail the self-test - that is expected, not an untested gap.
+#   * What the self-test's mutation coverage actually is, so the header does
+#     not claim more than it delivers: dropping `\n`, `&`, `;`, `|` or the
+#     backtick from the exclusion set each FAILS the self-test, as does adding
+#     any of grep/rg/sed/find/xargs/awk to the allowlist. Dropping `$`, or any
+#     ONE of `(` `)` `<` `>`, does NOT - `$` is redundant (above), and those
+#     four are MUTUALLY redundant, since process substitution needs both a
+#     paren and an angle bracket, so removing one leaves the other covering it.
+#     Genuine redundancy, not a hole; dropping the whole group would fail.
 #   * Suppression covers the `echo`/`cat` mention shapes only. It does NOT
 #     suppress the misfire actually reported in #216 (a multi-line `gh api`
 #     call whose heredoc PROSE mentioned npm and install). Suppressing that
@@ -274,9 +282,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # the superset claim can be re-checked by anyone, later, without the PR.
   #
   # What they do NOT cover, stated so the table is not over-read:
-  #   * The DEGRADED paths (no `jq`, no `python3`, unparseable stdin) and the
-  #     stdin->JSON->stdout production wrapper. `decide()` is pure; these
-  #     loops call it directly. Those paths are exercised by hand only.
+  #   * Loops A-C drive the PURE `decide()`. The stdin->JSON->stdout wrapper
+  #     and the degraded no-`jq`/no-`python3` path get four smoke rows in D,
+  #     enough to kill an `IN=$(cat)` regression - not a full matrix. An
+  #     unparseable-stdin payload is covered by hand only.
   #   * TAB as a separator before a short subcommand (see the residual above).
   #   * Nothing runs `--selftest` in CI - `.claude/` is outside ci.yml's
   #     scope - so this is a maintainer-run check, not a gate.
@@ -331,9 +340,21 @@ if [ "${1:-}" = "--selftest" ]; then
     # that CAN execute a program (rg --pre, find -exec, sed`s `e`, awk`s
     # system(), xargs), which is exactly why none is on the allowlist. Without
     # these rows, adding any of them survives the whole table.
+    #
+    # Each row must carry NO character from _provably_inert's exclusion set, or
+    # it kills the mutant for the wrong reason: the exclusion does the work and
+    # allowlist membership is never exercised. `xargs npm install < pkgs.txt`
+    # had exactly that bug - the `<` alone disqualified it, so adding `xargs`
+    # to the allowlist survived the whole battery while a real, metachar-free
+    # `xargs npm install` would have been silently suppressed.
+    #
+    # `awk` is the same trap one step further: an INLINE program
+    # (`awk "BEGIN{system(...)}"`) always carries parens, so such a row can
+    # never test membership either. `-f progfile` is the honest vector - the
+    # `system()` call lives in the FILE, and the command line is metachar-free.
     'grep -rn "npm install" .'      'rg --pre npm install .'
     'sed -e "e npm ci" notes.txt'   'find . -name x -exec npm install {} +'
-    'xargs npm install < pkgs.txt'  'awk "BEGIN{system(\"npm ci\")}"'
+    'xargs npm install'             'awk -f run-npm-install.awk pkgs.txt'
   )
   for cm in "${nearmiss[@]}"; do
     if [ "$(decide "$cm")" != fire ]; then
@@ -375,6 +396,32 @@ if [ "${1:-}" = "--selftest" ]; then
       done
     done
   done
+
+  # ---- D. the production WRAPPER, not just decide() ----------------------
+  # Small but load-bearing: the one bug that actually shipped in this file was
+  # `IN=$(cat)`, which needs an external `cat` and so read NOTHING when PATH
+  # could not resolve it - a real `npm install` silently stopped firing. That
+  # lives in the stdin->JSON->stdout wrapper, which loops A-C never touch, so
+  # a mutation reintroducing it survives the entire battery above. These four
+  # rows are the guard for exactly that regression class.
+  wrapper_check() { # want-fire(0|1)  desc  json-payload  [runner...]
+    local want="$1" desc="$2" payload="$3"; shift 3
+    local out got=1
+    out=$(printf '%s' "$payload" | "$@" "$0" 2>/dev/null)
+    [ -n "$out" ] && got=0
+    if [ "$got" != "$want" ]; then
+      echo "SELFTEST FAIL [wrapper]: $desc -> fired=$got want=$want"
+      fail=1
+    fi
+  }
+  wrapper_check 0 "real invocation through the wrapper" '{"tool_input":{"command":"npm install left-pad"}}' bash
+  wrapper_check 1 "inert command through the wrapper"   '{"tool_input":{"command":"git status"}}' bash
+  if [ -x /bin/bash ]; then
+    # Degraded: neither jq nor python3 (nor `cat`) resolvable. Must still fire
+    # on a real invocation, and must NOT nudge on every Bash call.
+    wrapper_check 0 "degraded: npm ci still fires" '{"tool_input":{"command":"npm ci"}}' env PATH=/nonexistent /bin/bash
+    wrapper_check 1 "degraded: git status quiet"   '{"tool_input":{"command":"git status"}}' env PATH=/nonexistent /bin/bash
+  fi
 
   if [ "$fail" -eq 0 ]; then
     echo "generated: ${gen_a} invocation shapes, ${#nearmiss[@]} near-misses, ${gen_c} differential inputs (legacy-only=${only_legacy}, newly-fired=${added})"
