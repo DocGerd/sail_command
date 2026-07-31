@@ -9,13 +9,19 @@ export const de = {
   'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
+  'options.depthComfortMargin.label': 'Tiefenkomfort-Spanne (m)',
+  'options.depthComfortMargin.help':
+    'Über die Sicherheitstiefe hinaus bevorzugt die Planung zusätzlich Wasser, das mindestens um diesen Wert tiefer ist, sofern das kaum zusätzliche Zeit kostet — 0 deaktiviert die Präferenz. Sie erlaubt niemals flacheres Wasser, als die Sicherheitstiefe zulässt, und die empfohlene Besegelung kann sich dadurch ändern.',
   'options.motorSpeed.label': 'Motorfahrtgeschwindigkeit (kn)',
   'options.motorThreshold.label': 'Motor-Schwellenwert (kn)',
+  'options.sailPreference.label': 'Segelvorzug (kn)',
+  'options.sailPreference.help':
+    'Wie viel Fahrt die Planung aufgibt, um weiter zu segeln. Sie segelt weiter, solange die Segelfahrt höchstens um diesen Wert unter der Motorfahrtgeschwindigkeit liegt, und motort sonst — ein höherer Wert bedeutet also mehr Segeln und spätere Ankunft. Auf Motorfahrtgeschwindigkeit minus Motor-Schwellenwert gesetzt, motort die Planung nur noch im Rückfall.',
   'options.maneuverPenalty.label': 'Wende-/Halsenstrafzeit (s)',
   'options.performanceFactor.label': 'Leistungsfaktor (×)',
   'options.motorEnabled.label': 'Motor aktiviert',
   'options.motorEnabled.help':
-    'Motor nur als Rückfall: Motorabschnitte werden geplant, wenn die berechnete Segelfahrt unter den Schwellenwert fällt, und mit Motorfahrtgeschwindigkeit gefahren.',
+    'Motorabschnitte erlauben: Die Planung motort, wo Segeln um mehr als den Segelvorzug langsamer wäre als Motorfahrt, und immer unterhalb des Motor-Schwellenwerts. Motorabschnitte laufen mit Motorfahrtgeschwindigkeit und werden als Motor gekennzeichnet.',
   'options.showOwnship.label': 'Meine Position anzeigen',
   'options.showOwnship.help':
     'Zeigt deine GPS-Position und den Genauigkeitskreis überall auf der Karte an — beim Planen, ohne Plan oder in der Live-Ansicht, nicht nur während der Live-Führung. Consumer-GPS-Genauigkeit, keine kartengenaue Positionsbestimmung; dies ist eine Törnplanungshilfe, kein Navigationsgerät. Das Aktivieren fragt nach dem Standortzugriff.',
@@ -114,6 +120,11 @@ export const de = {
   'route.rigTabs': 'Riggvergleich',
   'route.recommended': 'Empfohlen',
   'route.fasterRig': 'Schneller: {rig}',
+  // #259: honest copy for the two cases where badging one rig as
+  // "recommended" would be misleading — an ETA tie (too close to call) and
+  // an all-motor route (the polar never drove a leg, so rig choice is moot).
+  'route.rigTie': 'Genua und Fock liegen für diese Passage praktisch gleichauf',
+  'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
   // #53: honest passage-planning-aid copy — charted data may under- OR
@@ -210,6 +221,14 @@ export const de = {
   'live.nextEvent.motorStart': 'Motor an',
   'live.nextEvent.none': 'Keine weiteren Manöver auf dieser Route',
   'live.eta.label': 'Voraussichtliche Ankunft',
+  // #251: der Steuerkurs ist eine Peilung zum aktiven Wegpunkt, kein
+  // tiefengeprüfter Kurs. Behauptet nie, der Kurs sei sicher.
+  'live.hts.depthCaution':
+    'Peilung kreuzt {depth} m — flacher als deine Sicherheitstiefe ({safety} m)',
+  // Land ist eine andere Gefahr als flaches Wasser, und die Maske kodiert es
+  // als Tiefe 0,0 m — „kreuzt 0.0 m“ würde es als Lotung ausgeben.
+  'live.hts.landCaution': 'Peilung kreuzt kartiertes Land',
+  'live.hts.depthUnchecked': 'Tiefe nicht geprüft',
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
   'live.gpsHint.dismiss': 'Verstanden',
@@ -293,8 +312,7 @@ export const de = {
   'map.compass.trackUp.stale':
     'Kartenausrichtung: Kurs oben (letzter Kurs wird gehalten). Auf Norden oben umschalten',
   'map.compass.free': 'Karte manuell gedreht. Auf Norden oben zurücksetzen',
-  'map.compass.unavailableStatus':
-    'Kursorientierung nicht verfügbar – keine GPS-Position in Fahrt',
+  'map.compass.unavailableStatus': 'Kursorientierung nicht verfügbar – keine GPS-Position in Fahrt',
   // #155: nautical scale bar. The visible label uses the chart abbreviation;
   // the aria-label spells the unit out (screen readers mangle "kbl"/"sm").
   'map.scale.aria': 'Maßstab: {distance} {unit}',

@@ -20,14 +20,14 @@ Android as an offline-capable PWA.
 |---|---|
 | Platform | Pure client-side PWA (Vite + React + TypeScript), no backend |
 | Wind model | Time-evolving hourly forecast (isochrone routing), Open-Meteo (DWD ICON), fetched directly from browser |
-| Obstacles | Land **and** depth aware; safety depth configurable, default 3.0 m (draft 2.1 m) |
+| Obstacles | Land **and** depth aware; safety depth configurable, default 3.0 m (draft 2.1 m); depth beyond the gate is a *preference*, not just a gate — comfort margin default 2.0 m (#243) |
 | Departure time | Selectable within forecast horizon (~6 days) |
 | Port entry | Searchable curated harbor list **plus** tap-anywhere on map |
 | Offline scope | Planning requires internet; following/viewing planned routes fully offline (route + wind used + map data persisted) |
 | Sail choice | Router evaluates both rigs (main+genoa, main+fock) and recommends the faster; routes with recommendation |
 | Live guidance | GPS position + active leg, heading to steer, distance to next maneuver, ETA. No live re-routing in v1 |
 | Area | 54.3–55.3°N, 9.4–11.0°E (Flensburg Fjord, Als, Schlei, Kiel Bight, Ærø, Fyn archipelago to Svendborg/Faaborg, southern Little Belt) |
-| Engine | Motor fallback: configurable motoring speed (default 6.5 kn); router may plan engine legs when sailing speed < threshold (default 2.5 kn), clearly marked |
+| Engine | Configurable motoring speed (default 6.5 kn); router may plan engine legs where sailing would be slower than motoring by more than the sail preference margin (default 2.8 kn), and always below the motor threshold (default 2.5 kn), clearly marked. Amended by `2026-07-30-motor-decision-rule-design.md` (#254) — was "motor fallback … when sailing speed < threshold" |
 | Language | German + English, UI toggle |
 | Hosting | GitHub Pages via GitHub Actions (static site, HTTPS) |
 
@@ -72,8 +72,9 @@ app runtime.
   client-side from the committed mask (absolute depth only — never a
   navigability view; safety depth stays a query-time setting).
 - **Planner UI** — origin/destination picker (searchable harbor list + map
-  tap), departure time picker, options panel: safety depth, motor speed,
-  motor threshold, maneuver penalty, performance factor. "Plan route" button.
+  tap), departure time picker, options panel: safety depth, depth comfort
+  margin, motor speed, motor threshold, maneuver penalty, performance factor.
+  "Plan route" button.
 - **Wind service** — Open-Meteo forecast API, hourly `wind_speed_10m`,
   `wind_direction_10m`, `wind_gusts_10m` at grid points ~0.05–0.1° spacing
   over the bbox (batched multi-point requests), covering departure → forecast
@@ -89,8 +90,38 @@ app runtime.
     tack/gybe minimization mechanism.
   - Land/depth mask collision test along every candidate segment (grid
     traversal).
-  - **Motor fallback**: where best sailing VMG toward candidate directions
-    yields boat speed < threshold, add motor edges at motor speed, flagged.
+  - **Depth comfort preference** *(Addendum 2026-07-27, #243; default margin
+    2.0 m above the safety depth, user-tunable, 0 = off)*: beyond the hard
+    navigability gate, every candidate segment is also *priced* on its minimum
+    charted clearance. Clearance at or above `safety depth + margin` is free;
+    at the gate itself the segment is *ranked* as if it took ≈1.43× its true
+    time to cross, linearly in between. The charge lands on a dedicated
+    **ranking scalar** — never on geometry, and never on the wall clock. Each
+    frontier node carries true elapsed time `tMs`, which alone drives wind
+    sampling, both forecast-horizon guards, `backtrack`'s leg timestamps and
+    the reported ETA; a separate `costMs` advances by `Δt / factor` and drives
+    **only** dominance, ranking and the arrival comparison. Step lengths, fit
+    tests and the substep ladder are therefore unchanged, the frontier stays
+    time-synchronised, and every user-visible time remains real wall-clock.
+    (Spending the charge on `tMs` itself was designed, then rejected: it
+    corrupts the model clock, so a node that crossed shallow water samples the
+    forecast at the wrong hour from then on and the displayed ETA inflates.) Evaluated at query time against the **requested** safety depth,
+    so it never regenerates data and stays anchored even when the #53 relaxed
+    gate is in force. Rationale for the 2.0 m default: it is the pipeline's own
+    stated depth uncertainty (`build_mask.py` `TOLERANCE_M`), so a cell reading
+    *D* may correspond to a shallowest contributing source reading *D* − 2.0 m.
+    Because the isochrone expansion prunes per spatial bucket, a preference can
+    in principle change search *success* as well as route choice: whenever a
+    preferenced solve fails with mask unreachability **or beyond-horizon**, the
+    identical un-preferenced solve is retried before the plan degrades further,
+    so no passage that plans without the preference can fail with it, and no
+    plan can be slower-classified because of it.
+  - **Motor edges**: for each candidate direction, add a motor edge at motor
+    speed where the sailing speed falls below the sail-speed floor
+    `max(motorThresholdKn, motorSpeedKn - sailPreferenceKn)`, flagged. Amended
+    by `2026-07-30-motor-decision-rule-design.md` (#254): the original
+    threshold-only rule left headings locked to sail where motoring was
+    strictly faster, which produced a light-air zigzag under engine.
   - Post-processing: merge near-collinear legs; re-validate merged legs
     against mask and wind.
   - Runs twice (genoa polar, fock polar); recommend faster rig; show both ETAs.
@@ -133,7 +164,9 @@ Android install via browser "Add to Home Screen".
 - **Golden routes** (synthetic wind fields): dead upwind in open water →
   small tack count (bounded, not 20); beam reach → 0 maneuvers; island
   between ports → clean rounding; calm + motor on → straight motor leg;
-  calm + motor off → "no route" with reason.
+  calm + motor off → "no route" with reason; shoal shortcut available but a
+  deeper route costs little → route prefers the deeper water; a passage that
+  only exists through a shoal pinch still routes (#243).
 - **Property tests**: no leg crosses land/shallow mask; leg times strictly
   increasing; legs geometrically continuous.
 - **E2E (Playwright)**: plan → save → offline reload → plan still visible;
@@ -188,8 +221,9 @@ plan's stored grid and the committed mask (offline-safe, never re-fetched).
   features with ribbon priority, and viewport-clipped so the cap budget is spent in view (amended
   after an empirically-proven cap-starvation failure at deep zoom on long routes). Wind is sampled
   at the slider hour from the plan's stored grid; barb icon conventions unchanged.
-- **Motor semantics legibility (#46a).** The motor option carries visible help text (fallback
-  semantics: motor only where predicted sailing speed < threshold, at motor speed) via
+- **Motor semantics legibility (#46a).** The motor option carries visible help text (motor where
+  predicted sailing speed falls below the sail-speed floor, at motor speed — trigger amended by
+  `2026-07-30-motor-decision-rule-design.md`, #254; the help copy is no longer "fallback only") via
   aria-describedby; RouteSummary chips name the displayed rig per sail leg and a footnote states
   that motor legs model engine only (no sail contribution); a collapsed-by-default map legend in
   the route controls names all route marks. No motorsailing claims — the model remains sail XOR
@@ -235,6 +269,18 @@ at gate depths ≤ 2.3 m.
   solves are skipped and classification starts as `unreachable`; if the relaxed solve then fails
   for a non-mask reason, that reason is reported per the propagation rule above. On connected
   masks the solver runs and its failure reason is used verbatim.
+  *Amendment (2026-07-27, #243):* the relaxed solve keeps the depth **comfort preference** anchored
+  to the REQUESTED safety depth, not the relaxed gate. The relaxed gate therefore only widens what
+  is *possible*; it no longer makes sub-requested water equally *attractive* along the whole
+  passage. Measured on Flensburg → Marstal at `DEFAULT_SETTINGS`: same relaxed gate (2.3 m), same
+  warnings, same both-rig result, sub-requested-depth exposure **1.33 nm → 0.23 nm for +1.6 % ETA**.
+  The relaxation is thus localized to the pinch that forced it, in the cost function — not in a
+  post-hoc pass. "Runs ONCE per rig" becomes "runs once per rig per preference tier": an
+  un-preferenced retry happens only when the preferenced solve fails with `unreachable` or
+  `beyond-horizon`, and the un-preferenced tiers are bit-identical to the pre-#243 solves, so the
+  relaxation contract above (single rig-independent gate, never below draft, `safetyDepthM` never
+  mutated, genoa/fock apples-to-apples) is preserved exactly. The DEPTH relaxation itself continues
+  to trigger on `unreachable` only — a relaxed gate cannot cure a horizon failure.
 - **Result contract (structured-clone-safe).** Plan-level `shallow?: { requestedDepthM,
   usedDepthM, minGateDepthM }` (minGateDepthM = shallowest charted cell actually traversed below
   the requested depth). Per-leg flagging of legs whose geometry crosses cells below the requested

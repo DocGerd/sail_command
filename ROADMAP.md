@@ -13,25 +13,21 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.5.1**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.6.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.6.0
+## Now — v0.7.0
 
 The next feature release. Its **product** scope is not yet decided and will be
 drawn from the themes below — saying "undecided" is more useful here than
-inventing a plan. What the milestone already holds is carried-over correction
-and tooling work: the one remaining track-up defect from v0.5.1's map-chrome
-work, where a pan flick inside MapLibre's ±7° `bearingSnap` window can still
-drop track-up to free orientation
-([#230](https://github.com/DocGerd/sail_command/issues/230), moved here
-rather than rushed into v0.5.1 because its fix changes user-visible snap
-behavior and warrants its own review round), plus anchoring the
-Bash-matching agent hooks on invocation rather than mention
+inventing a plan. What the milestone already holds is carried-over tooling
+work that did not land in v0.6.0: anchoring the Bash-matching agent hooks on
+invocation rather than mention
 ([#216](https://github.com/DocGerd/sail_command/issues/216),
 [#235](https://github.com/DocGerd/sail_command/issues/235), which share one
-helper and so are done together). The
-[milestone](https://github.com/DocGerd/sail_command/milestone/5) is the
+helper and so are done together — #216 was only partially addressed in
+v0.6.0 and #235 is blocked on a design decision). The
+[milestone](https://github.com/DocGerd/sail_command/milestone/7) is the
 current list; this paragraph describes the intent behind it.
 
 ## Themes for the next year
@@ -96,10 +92,8 @@ revisited, not that it has been lifted.
   behavior can be tested without sailing
   ([#143](https://github.com/DocGerd/sail_command/issues/143)). This is the
   prerequisite for confidently changing anything in the Live view.
-- Remaining map-chrome and small-screen issues beyond v0.5.1
-  ([#205](https://github.com/DocGerd/sail_command/issues/205),
-  [#187](https://github.com/DocGerd/sail_command/issues/187),
-  [#231](https://github.com/DocGerd/sail_command/issues/231),
+- Remaining map-chrome and small-screen issues beyond v0.6.0
+  ([#231](https://github.com/DocGerd/sail_command/issues/231),
   [#232](https://github.com/DocGerd/sail_command/issues/232)).
 
 ### Development workflow
@@ -107,14 +101,15 @@ revisited, not that it has been lifted.
 Not user-visible, but it is where a meaningful share of the effort goes and it
 sets the pace of everything above: a conflict-free changelog workflow for
 parallel pull requests
-([#189](https://github.com/DocGerd/sail_command/issues/189)), grouped Dependabot
-updates ([#174](https://github.com/DocGerd/sail_command/issues/174)), path→area
-PR labeling ([#173](https://github.com/DocGerd/sail_command/issues/173)), and
+([#189](https://github.com/DocGerd/sail_command/issues/189)) and
 agent-workflow guardrails
 ([#211](https://github.com/DocGerd/sail_command/issues/211),
 [#183](https://github.com/DocGerd/sail_command/issues/183),
 [#178](https://github.com/DocGerd/sail_command/issues/178),
-[#179](https://github.com/DocGerd/sail_command/issues/179)).
+[#179](https://github.com/DocGerd/sail_command/issues/179)). Grouped
+Dependabot updates and path→area PR labeling shipped in v0.6.0
+([#174](https://github.com/DocGerd/sail_command/issues/174),
+[#173](https://github.com/DocGerd/sail_command/issues/173)).
 
 ### Deferred (Icebox)
 

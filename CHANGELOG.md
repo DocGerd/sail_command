@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-31
+
+### Added
+
+- Depth comfort preference: beyond the hard safety-depth gate, the router now
+  also prices every candidate segment on its minimum charted clearance —
+  free at/above safety depth + a new "depth comfort margin" setting
+  (default 2.0 m, 0 = off), up to ~1.43× the crossing time right at the gate,
+  linear in between. Routes now prefer deeper water when it costs little
+  extra time, instead of hugging the safety-depth line whenever that saved
+  any time at all. The charge lands on the search's ranking clock, never on
+  route geometry or the displayed ETA/timestamps, and a #53 relaxed-depth
+  solve keeps the preference anchored to the *requested* safety depth, so a
+  relaxed gate no longer makes sub-requested water equally attractive along
+  the whole passage — only where the mask actually forces it. A plan's
+  **recommended rig can change** from before this change as a result (#243).
+  The preference minimizes total shallow-water exposure along a route, not
+  its single shallowest point — in rare cases a route's minimum charted
+  clearance can decrease even as its overall exposure to shallow water falls
+  (#243).
+
+- Live view: the heading-to-steer readout now says when the bearing to the
+  active waypoint crosses water charted shallower than the plan's safety
+  depth, naming the shallowest charted depth along that bearing. The heading
+  is a straight bearing to the next waypoint, not a depth-validated course,
+  and it was previously shown with nothing to indicate that. A bearing that
+  crosses charted *land* is called out as land, not as a 0.0 m depth reading.
+  When the depth data cannot be checked at all — no mask yet, a position
+  outside chart coverage, or the plan having just changed — the readout says
+  so explicitly ("Depth not checked") rather than staying silent: an absent
+  warning never means "checked and clear" (#251).
+
+### Changed
+
+- About dialog: the "Data sources" section now starts collapsed, tapping it
+  open like the "What's new" changelog section above it, instead of always
+  showing its full text (#187).
+
+- Rig recommendation: an ETA difference between genoa and fock under one
+  minute is now reported as a tie rather than silently badging one rig as
+  "recommended." A route that motors the whole way now says the rig choice
+  doesn't matter for that passage, since the polar never came into play. This
+  changes what the app's own demo route shows: Langballigau → Sønderborg
+  (genoa and fock about 14 seconds apart over an 81-minute passage) now
+  reports a tie instead of a recommended rig (#259).
+
+- The planner now uses the engine wherever motoring would be meaningfully
+  faster than sailing, instead of only where sailing speed fell below the motor
+  threshold. A new **Sail preference** setting (default 2.8 kn) controls how
+  much boat speed the planner will give up in order to keep sailing: it keeps
+  sailing while sailing speed is within that many knots of motoring speed.
+  Raising it to motoring speed minus the motor threshold restores the previous
+  behaviour exactly. This removes the light-air zigzag in which a route wove
+  under engine as if beating to windward — the old rule left most of the
+  compass locked to sail even where motoring was nearly twice as fast, so the
+  route had to weave between the few headings it was allowed to motor. The
+  trade is deliberate: in marginal wind the planner will now start the engine
+  where that is faster, so passages in light-to-moderate air may show
+  substantially more motoring than before, and arrive earlier. Raise the sail
+  preference if you would rather sail and arrive later (#254).
+
+- A preferenced solve that fails to find a route is automatically retried
+  without the depth comfort preference before the plan degrades further, so
+  no passage that routed before this change can fail to route now (#243).
+
+- The chart no longer straightens itself to north when you let go of a
+  rotation within 7° of north. That automatic straightening came from the map
+  library's own default and was what caused the course-up bug fixed below; the
+  app has always had its own, deliberately tighter version of the same
+  affordance — ease a rotation to a stop within **1°** of north and the chart
+  still settles the rest of the way home — which the wider default had been
+  pre-empting. Let go with a flick instead and the chart keeps turning a
+  little, so it can come to rest a couple of degrees off north: the spin of
+  the flick outlasts the snap. Tapping the compass still returns the chart to
+  exactly north from any bearing, and is the reliable way to get there (#230).
+
+### Fixed
+
+- Map chrome: at the narrowest phone widths (around 320 px), the route-layer
+  controls card (route legend, time slider, legs) no longer overlaps the
+  data-layer toggles (wind barbs, water depth) in the top-left corner of the
+  map. A second, unrelated narrow-width overlap reported alongside this one
+  had already been fixed earlier; short landscape viewports remain a known
+  issue, tracked separately (#231) (#205).
+
+- Course-up orientation no longer drops to manual on an ordinary pan. While
+  the chart was rotated to a bearing within 7° of north — an everyday
+  northerly course in the Flensburg Fjord — flicking the map to pan it was
+  rewritten by the map library into a rotation back to north, which the
+  compass read as a hand rotation and answered by handing the bearing back to
+  you. The chart then quietly stopped following the course for the rest of the
+  passage, and only two taps on the compass brought it back. A real hand
+  rotation still hands the bearing over, as before (#230).
+
 ## [0.5.1] - 2026-07-27
 
 ### Added
@@ -177,7 +271,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/DocGerd/sail_command/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/DocGerd/sail_command/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/DocGerd/sail_command/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/DocGerd/sail_command/compare/v0.3.0...v0.4.0

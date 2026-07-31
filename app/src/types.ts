@@ -10,8 +10,28 @@ export type ManeuverKind = 'tack' | 'gybe';
 
 export interface Settings {
   safetyDepthM: number; // default 3.0
+  // #243 depth comfort preference: beyond the hard safetyDepthM gate, the
+  // solver also PRICES every candidate segment on its minimum charted
+  // clearance — free at/above safetyDepthM + this margin, up to ~1.43x the
+  // crossing time right at the gate itself, linear in between. 0 disables the
+  // preference entirely (the solver's SolveParams.comfortDepthM stays
+  // undefined, taking the byte-identical pre-#243 path). Always anchored to
+  // the REQUESTED safetyDepthM, even during a #53 relaxed-gate solve — see
+  // planRoute.ts.
+  depthComfortMarginM: number; // default 2.0
   motorSpeedKn: number; // default 6.5
   motorThresholdKn: number; // default 2.5
+  // #254 sailing preference: the solver motors a candidate heading whenever
+  // sailing it would be more than this many knots slower than motoring, i.e.
+  // the effective sail-speed floor is
+  //   max(motorThresholdKn, motorSpeedKn - sailPreferenceKn).
+  // The margin is therefore a hard upper bound on how much boat speed a
+  // sail-locked heading can be losing. motorThresholdKn survives underneath as
+  // the seaworthiness floor, which is what stops a user-lowered motorSpeedKn
+  // from producing motor legs SLOWER than sailing. At or above
+  // motorSpeedKn - motorThresholdKn (4.0 at defaults) the floor collapses back
+  // to motorThresholdKn, taking the byte-identical pre-#254 path.
+  sailPreferenceKn: number; // default 2.8
   maneuverPenaltyS: number; // default 45
   performanceFactor: number; // default 0.9
   motorEnabled: boolean; // default true
@@ -33,8 +53,10 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   safetyDepthM: 3.0,
+  depthComfortMarginM: 2.0,
   motorSpeedKn: 6.5,
   motorThresholdKn: 2.5,
+  sailPreferenceKn: 2.8,
   maneuverPenaltyS: 45,
   performanceFactor: 0.9,
   motorEnabled: true,
@@ -111,6 +133,15 @@ export interface RigResult {
   motorDistanceNm: number;
 }
 
+// #259: the honest rig-comparison outcome, distinct from the plain
+// `recommended` pick on PlanResultOk below. 'decided' names a genuine faster
+// rig; 'tie' means the ETA gap between the two rigs is inside planRoute's tie
+// band (RIG_TIE_BAND_MS) — too close to call, not a ranking; 'moot' means
+// neither rig's polar drove a single leg (both routes are entirely motor), so
+// the polar comparison itself is meaningless — a STRONGER statement than
+// 'tie'. `erasableSyntaxOnly` forbids enums, hence the string-literal union.
+export type RigRecommendation = { kind: 'decided'; rig: Rig } | { kind: 'tie' } | { kind: 'moot' };
+
 export type NoRouteReason =
   | 'unreachable' // frontier died against land/depth everywhere
   | 'beyond-horizon' // forecast horizon exceeded before arrival
@@ -154,6 +185,14 @@ export interface PlanResultOk {
   genoaReason: NoRouteReason | null;
   fockReason: NoRouteReason | null;
   recommended: Rig;
+  // #259: present whenever planRoute computed the honest comparison (every
+  // plan solved after #259 landed). Optional so pre-#259 PlanResultOk
+  // literals across the test suite keep typechecking unchanged.
+  // exactOptionalPropertyTypes: omitted entirely when absent, never assigned
+  // undefined. Absence is resolved via a single fallback,
+  // `rigRecommendationOf()` in lib/resultSummary.ts — never re-derive it
+  // ad hoc at a call site.
+  rigRecommendation?: RigRecommendation;
   snappedOrigin: LatLon;
   snappedDestination: LatLon;
 }

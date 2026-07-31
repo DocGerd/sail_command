@@ -125,6 +125,61 @@ describe('rerouteFromFix', () => {
     expect(windGrid).toBe(plan.windGrid);
   });
 
+  // #243 fix wave item 3: a plan saved before depthComfortMarginM existed on
+  // Settings has that field simply absent from its stored snapshot (an old
+  // IndexedDB record, never migrated). Without backfilling from
+  // DEFAULT_SETTINGS first, rerouteFromFix would carry `undefined` forward
+  // into a field typed as a required `number`, and — because
+  // planRoute.ts:133 treats "not > 0" as "off" — would silently disable the
+  // depth comfort preference on every reroute of that old plan.
+  it('backfills depthComfortMarginM (and any other newer field) from DEFAULT_SETTINGS on a pre-#243-shaped saved plan', async () => {
+    const oldShapedSettings = { ...DEFAULT_SETTINGS } as Partial<typeof DEFAULT_SETTINGS>;
+    delete oldShapedSettings.depthComfortMarginM;
+    const plan = makePlan({
+      request: {
+        ...makePlan().request,
+        settings: oldShapedSettings as typeof DEFAULT_SETTINGS,
+      },
+    });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.settings.depthComfortMarginM).toBe(DEFAULT_SETTINGS.depthComfortMarginM);
+  });
+
+  // #254: same mechanism as the depthComfortMarginM case above. A plan saved
+  // before sailPreferenceKn existed has the field absent from its snapshot;
+  // without the DEFAULT_SETTINGS backfill, rerouteFromFix would carry
+  // `undefined` into a required `number`, and the floor computation in
+  // isochrone.ts (`Math.max(motorThresholdKn, motorSpeedKn - undefined)`)
+  // would evaluate to NaN. Every `sailSpeed >= NaN` comparison is false, so
+  // the decision falls through to the motor branch unconditionally — the
+  // route would silently go all-motor, not lose its motor legs.
+  it('backfills sailPreferenceKn from DEFAULT_SETTINGS on a pre-#254-shaped saved plan', async () => {
+    const oldShapedSettings = { ...DEFAULT_SETTINGS } as Partial<typeof DEFAULT_SETTINGS>;
+    delete oldShapedSettings.sailPreferenceKn;
+    const plan = makePlan({
+      request: {
+        ...makePlan().request,
+        settings: oldShapedSettings as typeof DEFAULT_SETTINGS,
+      },
+    });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.settings.sailPreferenceKn).toBe(DEFAULT_SETTINGS.sailPreferenceKn);
+  });
+
   it('never fetches: zero network calls and no fetchWindGrid, even with navigator.onLine === false', async () => {
     const plan = makePlan();
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };

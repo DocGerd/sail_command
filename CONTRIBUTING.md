@@ -98,15 +98,18 @@ prefixes are the mechanism.
 
 Every open issue should carry a `type:` and, once triaged, an `area:` and a
 `priority:`. The issue forms in `.github/ISSUE_TEMPLATE/` apply the `type:`
-label (and `status: needs-triage` for bug reports) automatically.
+label (and `status: needs-triage` for bug reports) automatically. `area:`
+labels on **pull requests** are applied automatically from changed paths by
+`actions/labeler` (`.github/workflows/labeler.yml`, path map in
+`.github/labeler.yml`) — update the path map alongside any directory move.
 
 **Milestones**
 
-- `v0.6.0` — the next release.
+- `v0.7.0` — the next release.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` and `v0.5.0` are closed. The
+`v0.4.0`, `v0.5.0`, and `v0.6.0` are closed. The
 [milestones page](https://github.com/DocGerd/sail_command/milestones) is
 authoritative; this list names the shape, not a live count.
 

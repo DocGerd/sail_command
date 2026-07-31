@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { recalcRequest } from './recalc';
 import { uniformWindGrid } from '../test/fixtures';
-import type { Plan, PlanRequest } from '../types';
+import { DEFAULT_SETTINGS, type Plan, type PlanRequest, type Settings } from '../types';
 
 // Literal request values (mutation-check rule: expectations are pinned
 // literals, never derived from the function under test).
@@ -14,8 +14,10 @@ const ORIGINAL_REQUEST: PlanRequest = {
   departureMs: 1_780_000_000_000,
   settings: {
     safetyDepthM: 2.3,
+    depthComfortMarginM: 2.0,
     motorSpeedKn: 6.5,
     motorThresholdKn: 2.5,
+    sailPreferenceKn: 2.8,
     maneuverPenaltyS: 45,
     performanceFactor: 0.9,
     motorEnabled: false,
@@ -66,8 +68,10 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
       departureMs: 1_780_086_400_000, // the edited departure, NOT the stored 1_780_000_000_000
       settings: {
         safetyDepthM: 2.3,
+        depthComfortMarginM: 2.0,
         motorSpeedKn: 6.5,
         motorThresholdKn: 2.5,
+        sailPreferenceKn: 2.8,
         maneuverPenaltyS: 45,
         performanceFactor: 0.9,
         motorEnabled: false,
@@ -93,5 +97,27 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
     expect(plan.request.departureMs).toBe(1_780_000_000_000);
     expect(plan.request.viaPoints).toEqual([{ lat: 54.83, lon: 9.9 }]);
     expect(plan.request.settings.safetyDepthM).toBe(2.3);
+  });
+
+  // #243 fix wave item 3: a plan saved before depthComfortMarginM existed on
+  // Settings has that field simply absent from its stored snapshot (an old
+  // IndexedDB record, never migrated). Without backfilling from
+  // DEFAULT_SETTINGS first, recalcRequest would carry `undefined` forward
+  // into a field typed as a required `number`, and — because
+  // planRoute.ts:133 treats "not > 0" as "off" — would silently disable the
+  // depth comfort preference on every recalculation of that old plan.
+  it('backfills depthComfortMarginM (and any other newer field) from DEFAULT_SETTINGS on a pre-#243-shaped saved plan', () => {
+    const oldShapedSettings = { ...ORIGINAL_REQUEST.settings } as Partial<Settings>;
+    delete oldShapedSettings.depthComfortMarginM;
+    const plan = makePlan();
+    plan.request = { ...plan.request, settings: oldShapedSettings as Settings };
+
+    const seeded = recalcRequest(plan, 1_780_086_400_000);
+
+    expect(seeded.settings.depthComfortMarginM).toBe(DEFAULT_SETTINGS.depthComfortMarginM);
+    // Every field the old plan DID have is still preserved verbatim, not
+    // silently overwritten by the default.
+    expect(seeded.settings.safetyDepthM).toBe(2.3);
+    expect(seeded.settings.motorEnabled).toBe(false);
   });
 });

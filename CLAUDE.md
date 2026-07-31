@@ -71,6 +71,14 @@ deviate from it.
   either — that fallback is the only thing it is for.
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
+  This makes EVERY Dependabot bump of one of the 11 runtime packages listed in
+  `app/scripts/gen-third-party-notices.mjs`'s `PACKAGES` array (react,
+  react-dom, maplibre-gl, pmtiles, idb, @protomaps/basemaps, workbox-*) red on
+  `app` — Dependabot cannot run project
+  scripts, so it can never fix this itself. Signature: `app` fails at the
+  `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
+  CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
+  commit the regenerated file (#248's entire real diff was two version strings).
 - Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
@@ -314,6 +322,15 @@ deviate from it.
   206 of exactly 16 bytes starting with the `PMTiles` magic, with retries for
   CDN propagation — a CDN gzip/range flip becomes a red deploy run, not a
   silent user-facing slowdown.
+- After a BATCH of develop merges, verify the LAST deploy run before trusting
+  either deployment — `gh run list --workflow=deploy.yml --limit 6 --json
+  headSha,conclusion` then check that run's `smoke-probe` job. `concurrency:
+  pages` CANCEL-supersedes, so a rapid merge train legitimately leaves several
+  grey "cancelled" runs and only the final one matters; a cancelled LAST run
+  means nothing deployed and looks identical to nothing happening. This is not
+  bookkeeping: a develop push redeploys and evicts PRODUCTION's CDN edge Range
+  objects even when zero prod bytes changed (measured on #117), and it is also
+  the only thing that makes "check the About dialog on UAT" a meaningful request.
 - The github-pages ENVIRONMENT deployment policy (repo Settings, not YAML)
   gates deploys by triggering REF — branch entries `main`+`develop` (#96) plus
   a TAG entry `v*` (#197; deliberately permissive — `deploy.yml`'s `v[0-9]*`
@@ -391,6 +408,38 @@ deviate from it.
   on merge into the DEFAULT branch, which here is `develop`, not `main` (#132
   stayed open after #210 merged, v0.5.0). Close release-scoped issues by hand at
   the cut, or reference them from a develop-side PR instead.
+  The MIRROR trap on the develop side: GitHub's closing-keyword parser has NO
+  negation awareness, so a PR-body sentence such as "this PR does NOT close #N"
+  auto-closes #N on merge — the disclaimer written to PREVENT the close is what
+  triggers it (PR #257 hit this on 2026-07-30 and #211 had to be reopened by
+  hand). Keywords are `close/closes/closed`, `fix/fixes/fixed`,
+  `resolve/resolves/resolved`; never put one adjacent to an issue reference in a
+  PR body or commit message unless you mean it — not negated, not quoted, not
+  while explaining what the PR does NOT do (GitHub documents those two places;
+  keeping the PR title clean as well costs nothing). Phrase it without a
+  keyword ("#N stays open after this PR"); `Refs #N` is the safe reference form.
+  VERIFY issue state after every merge (`gh api repos/OWNER/REPO/issues/N --jq
+  .state`): the auto-close is silent and nothing in the merge output mentions it. For a
+  BODY-triggered close the `issues/N/timeline` `closed` event carried
+  `commit_id: null` (measured on the #257 incident), so the timeline did not name
+  its cause either; a commit-message-triggered close may instead record a real
+  SHA.
+  Mirror check in the OTHER direction: after a merge that deliberately used
+  `Refs #N` rather than a closing keyword because N's specified fix was NOT
+  implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
+  as you'd verify the others closed — the auto-close mechanism is silent
+  either way, so only an explicit `gh api …/issues/N --jq .state` check
+  distinguishes "correctly left open" from "silently closed."
+  That check is what caught a further sub-case (#279 → #265): the COMMIT had
+  already been corrected to `Refs #265`, but a stale `Closes #265` survived as
+  the PR BODY's last line from an earlier revision, and GitHub parses the
+  body independently — the merge closed #265 anyway (`commit_id: null` on the
+  timeline `closed` event, the same body-triggered signature as above).
+  Fixing the commit message does NOT fix the body, or vice versa — an agent
+  can truthfully report "changed it to Refs" while the other copy still says
+  `Closes`. Before merging, grep the PR BODY ITSELF for a closing keyword
+  adjacent to an issue number; never infer its content from the commit
+  message or from a report that it was fixed.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -429,6 +478,15 @@ deviate from it.
   a fix wave is the same tautology one step later — the reviewer hand-derives
   the value from the state machine before accepting it (how #145's changed
   backoff literal was validated rather than trusted).
+- A mutation battery can pass for the WRONG reason when a test row carries
+  MORE THAN ONE trigger for the same expected outcome. A near-miss row meant
+  to pin allowlist MEMBERSHIP was written as `xargs npm install < pkgs.txt` —
+  the `<` redirect alone already disqualifies the command via the exclusion
+  set, so membership was never exercised; a real, metachar-free
+  `xargs npm install` would have been silently suppressed with no test
+  catching it (#216, `.claude/hooks/notices-nudge.sh`). General form: when a
+  row's purpose is to isolate ONE condition, strip every other
+  character/construct that could independently cause the same pass/fail.
 - CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
   `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
   mime-insensitive, but an `application/xml` parse is inert (no script exec, no
@@ -496,6 +554,38 @@ deviate from it.
   the exact source is already on disk. Same failure as CITATION HALO above,
   one level up: borrowed confidence from a tool that looked authoritative
   instead of from an adjacent verified edit (#234).
+- A Playwright `expect.poll` predicate that returns a BOOLEAN discards the
+  diagnostic. `return deg >= 330 || deg <= 30` + `.toBe(true)` can only report
+  `Expected: true / Received: false` plus a timeout — and a Playwright timeout
+  means BOTH "too slow" and "never going to happen". #243's relocated dogleg
+  made the readout `045`; the predicate computed that number and threw it away,
+  costing a 9-agent root-cause hunt for a value that would have been in the CI
+  log. Poll the VALUE, assert the condition on it. Sibling of the blindness rule
+  above: a method that structurally cannot SEE a regression reports green
+  through it, and a method that cannot DESCRIBE a failure reports it uselessly.
+  Ask of any assertion: at 3am in CI, does the message name the actual value?
+  (#252 tracks auditing the remaining specs.)
+- A metric compared against an INFEASIBLE baseline is worse than no metric —
+  it reads as a defect and points every downstream fix the wrong way. #264's
+  "32.9% detour vs chord" was real travelled distance measured against a chord
+  that crossed LAND (`chordNavigable@3m=false`, printed on the same output
+  line and not read). It survived a root-cause writeup, a filed issue, and two
+  proposed fixes that would each have made the boat SLOWER; only an ETA
+  comparison against a navigable alternative caught it. Sibling of the
+  blindness rules above, one level earlier: before asking whether the
+  measurement can see the failure, ask whether the thing it measures AGAINST
+  is reachable at all. The tell was already in the log.
+- Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
+  reading the raw numbers it summarises. #264's agent wrote a uniform field
+  "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
+  vs 14, ~9 min of ETA — *differently*. That one word travelled into a CLAUDE.md
+  rule and a spec retiring a documented evidential gap with "do not re-open it",
+  and was caught only by a review told to audit for OVERSTATEMENT specifically.
+  "Not necessary for X" and "irrelevant to X" are different claims and the second
+  is far stronger. Cheapest guard: when a finding will become a durable
+  instruction, brief the reviewer to check claim STRENGTH against the evidence,
+  not just claim correctness — and prefer "narrowed" to "closed" unless the
+  measurement really covers the whole space.
 
 ## Domain rules that are easy to get wrong
 
@@ -511,9 +601,83 @@ deviate from it.
   allowed post-processing is merging near-collinear legs with re-validation.
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible.
-- **Motor legs are first-class**: planned when sailing speed < threshold
-  (default 2.5 kn) at motor speed (default 6.5 kn), and always flagged as
-  motor in the result.
+- **Motor legs are first-class**: planned where sailing speed falls below the
+  SAIL-SPEED FLOOR `max(motorThresholdKn, motorSpeedKn - sailPreferenceKn)`
+  (defaults 2.5 / 6.5 / 2.8 → floor 3.7 kn), run at motor speed, always flagged
+  as motor. Computed ONCE per solve in `isochrone.ts`, never per candidate.
+  The engine is a term in the time optimisation, not a fallback — that is a
+  deliberate product position (#254), and the margin is what bounds it: any
+  heading left sail-locked satisfies `sailSpeed >= motorSpeed - margin`, so the
+  margin is a hard upper bound on how much boat speed a sail-locked heading can
+  be losing. Only `margin = 0` is fully hole-free. `motorThresholdKn` SURVIVES
+  underneath the `Math.max` as the seaworthiness floor — without it a
+  user-lowered `motorSpeedKn` (settable to 1 kn) would yield motor legs SLOWER
+  than sailing; a margin at or above `motorSpeedKn - motorThresholdKn` (4.0 at
+  defaults, and it MOVES with `motorSpeedKn` — never hardcode it) collapses the
+  floor back and restores the pre-#254 path byte-for-byte.
+  3.7 is MEASURED, not chosen: window [3.7, 3.8] is the only band that closes
+  the light-air weave on BOTH rigs while leaving TWS 9 entirely under sail, and
+  3.8 lost on a 2.5-SECOND rig-recommendation knife-edge (#259). Floor 3.5 is
+  the trap — it saves 32 min while making max motor turn 135°, WORSE than the
+  100° it was meant to fix: time saved is not weave closed, and the
+  discriminating metric is the reversal count, not the turn maximum.
+  ACCEPTED COSTS, do not re-litigate: marginal air moves to engine (synthetic
+  uniform TWS 6 goes all-sail → 83% motor); the floor has a knife-edge wherever
+  it sits (a measured 3.699 kn leg motors against a 3.700 floor). EVIDENTIAL
+  GAP — every cell measured on UNIFORM wind fields, so TWS-gradient behaviour
+  untested — is NARROWED, NOT CLOSED (#264, one real Open-Meteo forecast).
+  What is established: a gradient is NOT NECESSARY for a weave, because a
+  uniform TWS-4 field weaves too — so a weave alone does not implicate the
+  gradient. What is NOT established: that gradients are harmless. The same
+  comparison shows the gradient field weaving DIFFERENTLY — 5 turns ≥45° vs
+  2-3, 26 legs vs 14, ~9 min of ETA — so the gradient demonstrably shapes the
+  result even though it does not cause it. One route, one forecast; treat
+  gradient behaviour as still open. That gap was also
+  why the per-TWS "blanket motor" alternative was REJECTED (it is discontinuous
+  in TWS, replacing a heading-space hole with a wind-space cliff a real forecast
+  crosses hourly, and it preserves today's 309-heading hole rather than the
+  sailing). Spec: `docs/superpowers/specs/2026-07-30-motor-decision-rule-design.md`.
+- **A reported motor "zigzag" is usually the router MOTOR-TACKING around a
+  sail-locked heading band, and it is FASTER — do not fix it** (#264, §8.6 of
+  the motor spec). The floor is a hard threshold on sail speed, so one wind cell
+  splits the compass into alternating motorable and sail-locked arcs: at
+  TWS 3.777 / wdir 30.4°, genoa motors at 60-89°, is SAIL-LOCKED at 3.76-4.01 kn
+  across 90-129°, and motors again at 130°+. A course falling inside a
+  sail-locked arc is best served by tacking under engine around it — 85.4° and
+  141.8° each make 5.728 kn VMG along 113.6°, 44% more than steering it. Measured:
+  the weave beats the direct chord by 98-527 s per joint, no heading in a
+  0-355° step-5 sweep beats it at any of 10 joints on either rig (a one-ring
+  node comparison on progress-to-destination — local optimality, not a full
+  path-cost proof), and on the reported route the chord is not even navigable
+  at 3.0 m. A motor-turn penalty and a
+  heading-continuity tie-break were both evaluated and are COUNTER-PRODUCTIVE
+  (each forfeits those seconds by steering the slower sail-locked heading), and
+  `better()` cannot arbitrate anyway — prune cells are ~223 x 192 m while a
+  motor step is ~2006 m, so the candidates land in different cells and are never
+  compared. Before calling any weave a defect, measure its ETA against a
+  NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
+  measured against a chord that crossed LAND.
+- **No-route `reason` is a CONTROL INPUT, not just a status label** (#282,
+  open): `needsUnpreferencedRetry` (`planRoute.ts:67-71`) branches on
+  `r.reason === 'unreachable' || r.reason === 'beyond-horizon'`, and the #53
+  relaxation gate (`planRoute.ts:273`) branches on `reason === 'unreachable'`
+  (plus a depth-floor guard). So ANY change to no-route classification —
+  including a strictly more accurate one — changes which retry tiers run and
+  can return a SLOWER route, not merely a differently-labeled one. Measured
+  against a candidate reclassification patch that was REVERTED and never
+  merged — these are not reproducible from current `develop` — on a
+  Flensburg→all-harbours sweep (uniform TWS 3/dir 0, motor off, real
+  mask+polars): Bagenkop +515.2 s, Wackerballig +499.4 s, Gelting-Mole
+  +353.2 s, while 11 of 14 plans stayed byte-identical — which is what made it
+  easy to miss. Still OPEN; treat any reason-classification change as a
+  routing-behavior change needing the same sweep, never a labeling-only fix.
+- `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
+  threshold" AND "the walk left the grid / tripped its iteration guard" — it
+  cannot distinguish clear water from no coverage. Anything that renders a
+  safety state from it must bound-check both endpoints against the public
+  `mask.meta` rectangle FIRST; only then is a `null` trustworthy as "clear"
+  (#251/#255 — reversing those two steps is a silent false all-clear, and the
+  natural-looking implementation is the wrong one).
 - Angles: wind direction is meteorological (coming FROM, degrees true);
   polars are TWA × TWS → boat speed in knots. Positions are WGS84.
   Distances in nautical miles, speeds in knots.
@@ -559,12 +723,22 @@ deviate from it.
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
-- If a session's OWN directives contradict that orchestrate-first mode (e.g. a
-  prompt-level "do not call the Agent tool unless requested"), NAME the conflict
-  in the FIRST response and ask which governs — never silently comply with
-  either side. Silently obeying the restriction cost a full docs sweep plus a
-  ~15-call browser walkthrough of main-session context (2026-07-27); durable
+- If a session's OWN directives contradict that orchestrate-first mode, NAME the
+  conflict in the FIRST response and ask which governs — never silently comply
+  with either side. Silently obeying the restriction cost a full docs sweep plus
+  a ~15-call browser walkthrough of main-session context (2026-07-27); durable
   enforcement (SessionStart hook or skill) tracked in #211.
+  EXCEPTION — one case is SETTLED; do not re-raise it. A session-level "do not
+  call the AgentTool / do not use workflows or deep-research unless the user
+  requested it" is a hardcoded FALLBACK constant inside the Claude Code binary,
+  emitted when a server-side value is empty. It appears in no user file, no
+  project config, no shell alias and no environment variable — so there is
+  nothing local to change, and the mechanism is Anthropic-side: never patch it
+  or engineer around it. Verified against Claude Code 2.1.220 on 2026-07-30 —
+  re-check if the harness version changes. This repo's orchestrate-first mode
+  governs: delegate normally and spend no turn arbitrating it. Escalate only a
+  contradiction from a genuinely NEW source — something a human or a project
+  actually wrote.
 - **Right-size agent models per task** (reinforces the global fitness rule): PIN
   the model when spawning — `sonnet` for standard/mechanical implement + review +
   docs; reserve `opus`/the heaviest tier for safety-critical or judgment-heavy
@@ -616,13 +790,33 @@ deviate from it.
   background children is asleep forever — nudge it to check the result in the
   FOREGROUND; a reviewer that idles with zero PR activity may have WRITTEN its
   report without SENDING it — check the PR's reviews/threads first, then nudge
-  once. Worktree cleanup ritual: agent runs `find app/node_modules -delete`
+  once. A further reviewer variant: several this session POSTED their review
+  to the PR correctly and then went idle WITHOUT sending the summary back — a
+  clean review leaves nothing new on the PR to read, so that silence is
+  indistinguishable from a check that never ran. Read the verdict from the
+  PR's reviews/comments artifacts FIRST; nudge only if genuinely absent.
+  Worktree cleanup ritual: agent runs `find app/node_modules -delete`
   (`rm -rf` is permission-blocked even in the main session; `find -delete` is
   allowed), then the main session runs `git worktree remove` — force-free. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
   Playwright MCP browser is contested — verify the URL before every screenshot.
   A poll loop on a known-slow job that keeps reporting "no change" is pure
   overhead — poll for the TRANSITION, not the state.
+- BRIEFS ARE WRONG SOMETIMES — say so in the brief, and reward the pushback.
+  In one session an implementer refused to build the shell parser its brief
+  asked for (#235 is the false-POSITIVE direction, unreachable by globs, and
+  PR #233 was closed for exactly that road) and split the scope instead; another
+  measured that a reviewer's suggested `cdp.detach()` tears down the geolocation
+  override with the session, and took the alternative the same comment offered.
+  Both were right, and neither would have surfaced from a brief demanding
+  compliance. Tell agents to report a contradiction with evidence rather than
+  implement around it — and verify the pushback yourself against the issue text
+  before accepting it, since the brief's author is usually the one who is wrong.
+- Every self-review here posts as `COMMENTED`, not `APPROVED` — GitHub rejects
+  approving your own PR and the `gh` token owns them all. That is expected, not
+  a bypass: `protect-main` requires `app` + `e2e` and RESOLVED THREADS, never a
+  second party's approval. Don't let an agent retry it as an approval, and don't
+  read a COMMENTED self-review as an unreviewed PR.
 - Brief reviewers to POST the review to the PR BEFORE reporting back. Three
   reviewers in one session wrote thorough reviews and reported them without
   publishing, leaving PRs looking unreviewed — which also erases the
@@ -666,12 +860,32 @@ deviate from it.
   REST-only and has no equivalent for `graphql`. Inline the string for a
   GraphQL call (e.g. a review-thread reply), or repair a bad post with a
   REST `PATCH`.
+- GitHub links a code-scanning alert to an issue only when the alert URL
+  appears as a TASK-LIST item (`- [ ] <url>`) in the issue body — a plain
+  markdown link does nothing, and the REST alert object exposes no tracking
+  field, so the link can't be confirmed via API either; write it as a
+  checklist line if the link needs to exist at all.
 - Bash cwd PERSISTS across calls — a `cd` into a scratchpad earlier in the
   session makes a later `gh pr merge` fail with "not a git repository", and
   per the #94 rule below that failure could still have landed the merge, so
   verify before retrying rather than assuming the error means nothing
   happened. Prefer `gh pr merge N --repo DocGerd/sail_command` so the command
-  doesn't depend on cwd at all.
+  doesn't depend on cwd at all. It bites TWO more things that give no hint about
+  cwd: spawning an `isolation: worktree` agent fails with "Cannot create agent
+  worktree: not in a git repository" (worktree creation resolves from cwd), and
+  `git worktree remove <abs-path>` fails "not a git repository" even though the
+  path is absolute. `cd /home/pkuhn/sail_command` before any worktree or merge
+  operation; a heredoc-heavy `python3 - <<PY` block earlier in the session is
+  enough to leave you somewhere else.
+  Quieter variant: with `--repo` the MERGE succeeds but the
+  `premerge-verify.sh` guard degrades. It resolves the repo with a bare
+  `gh repo view` (cwd's git remote) and never parses `--repo` from the command,
+  so a stale scratchpad cwd makes it emit `ask` ("could not resolve owner/repo")
+  every time — and a guard that always asks trains you to click through,
+  eroding the #119 protection it exists to provide. `cd` back to the repo before
+  merging; the durable fix is to have the hook parse `--repo`/`-R` or run
+  `gh repo view` against `$CLAUDE_PROJECT_DIR`, which it already uses for its
+  branch lookup.
 - A GitHub **504 during `gh pr merge`** can land the merge (base ref updates,
   merge commit created) yet leave the PR marked `open` and skip branch-delete /
   `Closes #` auto-close. VERIFY via the develop tip / merge-commit parents before

@@ -13,6 +13,7 @@ import {
   type PickedPoint,
   type Plan,
   type Rig,
+  type RigRecommendation,
   type RigResult,
 } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
@@ -63,7 +64,9 @@ const GENOA_RESULT: RigResult = {
   legs: GENOA_LEGS,
 };
 
-function makePlan(over: { id?: string; distanceNm?: number } = {}): Plan {
+function makePlan(
+  over: { id?: string; distanceNm?: number; rigRecommendation?: RigRecommendation } = {},
+): Plan {
   const distanceNm = over.distanceNm ?? GENOA_RESULT.distanceNm;
   return {
     id: over.id ?? 'plan-1',
@@ -88,6 +91,9 @@ function makePlan(over: { id?: string; distanceNm?: number } = {}): Plan {
       recommended: 'genoa',
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
+      // #259: only set when a test explicitly asks for it — most tests
+      // exercise rigRecommendationOf's fallback (absent field).
+      ...(over.rigRecommendation ? { rigRecommendation: over.rigRecommendation } : {}),
     },
   };
 }
@@ -721,6 +727,28 @@ describe('PlannerPanel', () => {
       expect(container.querySelector('.planner-result-skeleton')).toBeNull();
       // The real card (its faster-rig chip only exists on the real Ergebnis card).
       expect(container.querySelector('.chip-faster-rig')).not.toBeNull();
+    });
+
+    it('#259: a tie comparison renders the honest tie chip, not "Faster: X"', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan: makePlan({ rigRecommendation: { kind: 'tie' } }),
+        rig: 'genoa',
+      });
+      const chip = container.querySelector('.chip-faster-rig');
+      expect(chip?.textContent).toBe('Genoa and Fock are effectively tied for this passage');
+    });
+
+    it('#259: a moot (all-motor) comparison renders the honest moot chip, not "Faster: X"', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan: makePlan({ rigRecommendation: { kind: 'moot' } }),
+        rig: 'genoa',
+      });
+      const chip = container.querySelector('.chip-faster-rig');
+      expect(chip?.textContent).toBe(
+        'Rig does not matter here — this passage runs entirely under engine',
+      );
     });
   });
 });

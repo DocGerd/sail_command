@@ -143,6 +143,41 @@ describe('NavMask.segmentShallowestBelow (#53)', () => {
   });
 });
 
+describe('NavMask.segmentClearanceM (#243)', () => {
+  // Same shoal-line fixture as segmentShallowestBelow above: col 160 charted
+  // 2.5 m, col 162 charted 2.8 m, rest 20 m.
+  const m = makeMask((_, c) => (c === 160 ? 25 : c === 162 ? 28 : 200));
+  const a = { lat: 54.7525, lon: 10.1925 }; // col 158
+  const b = { lat: 54.7525, lon: 10.2225 }; // col 164
+
+  it('reports the minimum charted depth over every touched cell (not just below-threshold ones)', () => {
+    // segmentShallowestBelow(a, b, 3.0) reports 2.5 (the shallowest sub-3.0
+    // cell); segmentClearanceM reports the same minimum for a gate of 2.0 —
+    // both are "min depth actually crossed", the difference is the threshold
+    // semantics (shallowestBelow filters below a threshold; clearance is
+    // gated by navigability and returns the true minimum).
+    expect(m.segmentClearanceM(a, b, 2.0)).toBeCloseTo(2.5, 6);
+  });
+
+  it('returns null exactly when segmentNavigable would (any touched cell below the gate)', () => {
+    expect(m.segmentNavigable(a, b, 2.6)).toBe(false); // the 2.5 m cell fails a 2.6 m gate
+    expect(m.segmentClearanceM(a, b, 2.6)).toBeNull();
+    expect(m.segmentNavigable(a, b, 2.5)).toBe(true); // 2.5 m cell passes an exact 2.5 m gate
+    expect(m.segmentClearanceM(a, b, 2.5)).toBeCloseTo(2.5, 6);
+  });
+
+  it('deep-capped cells (byte 255) contribute 25.4 m, never a lower "reading"', () => {
+    const deep = makeMask(() => 255);
+    expect(deep.segmentClearanceM(a, b, 3.0)).toBeCloseTo(25.4, 6);
+  });
+
+  it('is null out of bounds or on land, like segmentNavigable', () => {
+    const land = makeMask(() => 0);
+    expect(land.segmentClearanceM(a, b, 1.0)).toBeNull();
+    expect(m.segmentClearanceM({ lat: 60, lon: 20 }, b, 2.0)).toBeNull();
+  });
+});
+
 describe('NavMask.depthInfoM', () => {
   const inBounds = { lat: 54.75, lon: 10.2 };
 

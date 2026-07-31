@@ -21,11 +21,27 @@ import { startPreview } from './helpers';
 //   documents as navigable — mid-route between the two harbors. (The naive
 //   geometric midpoint of the pair is LAND — Broager peninsula — which is
 //   exactly why the reroute has a real route to find from here.)
-// - FIX_OFF_SOENDERBORG: ~0.5 nm due south of Sønderborg's harbor snap
-//   (54.9046, 9.7833), in Sønderborg Bay on the final approach track.
+// - FIX_OFF_SOENDERBORG: on Sønderborg Bay's final approach track, chosen
+//   for margin against the leg-0/leg-1 selection boundary near the #243
+//   depth-comfort dogleg — see the comment at its definition below for the
+//   measured margin and the re-validation rule if that dogleg ever moves.
 const FIX_ORIGIN = { latitude: 54.8237, longitude: 9.6524, accuracy: 5 };
 const FIX_FJORD_MOUTH = { latitude: 54.83, longitude: 9.9, accuracy: 5 };
-const FIX_OFF_SOENDERBORG = { latitude: 54.8963, longitude: 9.7833, accuracy: 5 };
+// #243's depth-comfort derate relocated the rerouted plan's dogleg joint from
+// (54.896694, 9.790585) [3.5 m water] to (54.898574, 9.787321) [17.0 m],
+// buying leg-1 minimum clearance 3.5 m -> 14.3 m — correct, intended routing
+// behaviour, not a regression. The PREVIOUS probe point (54.8963, 9.7833)
+// sat almost exactly on the perpendicular through that joint: leg 0 vs. leg
+// 1 selection ties there, so the fixture had ZERO margin and flipped from
+// passing (pre-#243 base) to failing (this HEAD) purely from the joint
+// moving. This point sits ~230 m ENE of the old one (13.3 m water) and was
+// re-measured against the real mask/polars: a ~80 m margin to the nearest
+// heading pass/fail boundary (106 m on this HEAD, 80 m on the pre-#243
+// base — the tighter of the two is what's quoted). A FUTURE routing change
+// that moves the Sønderborg dogleg can invalidate this fixture again just
+// the same way — the fix is to RE-MEASURE and relocate the probe point,
+// never to widen the [330°, 030°] sector or raise the timeout below.
+const FIX_OFF_SOENDERBORG = { latitude: 54.8963, longitude: 9.7869, accuracy: 5 };
 
 // Wide (default 1280x720) viewport: the readout portals into the panel column
 // (#31) — this also gives the wide with-plan+with-fix state its first e2e
@@ -139,25 +155,36 @@ test('live view: emulated GPS drives readout, reroute-from-here, and leg advance
     await expect(hts).toHaveText(/^\d{3}°$/, { timeout: 30_000 });
 
     // --- Leg advance: jump to the final approach off Sønderborg ---
-    // Hand-derived expectation: the fix sits ~0.5 nm due SOUTH of the
-    // destination snap on the bay approach, so once the active leg advances
-    // to the final leg(s), heading-to-steer points at the harbor — within the
-    // northerly sector [330°..030°]. Were the projection stuck on leg 0 (the
-    // fjord mouth, ~7 nm to the SW), HTS would read ~200-260° instead, so
-    // this sector check is genuine leg-advance evidence, not a formatting
-    // assertion.
+    // Hand-derived expectation: heading-to-steer from this fix points toward
+    // the #243 depth-comfort dogleg joint / the harbor beyond it, both
+    // effectively due north from here — within the sector [330°..030°].
+    // (See the FIX_OFF_SOENDERBORG comment above for why this specific point
+    // carries margin on that check regardless of which leg — 0 or 1 — the
+    // live projection currently has active.) The FAILURE signature this
+    // guards against: a projection stuck on leg 0 at a point that sits on
+    // the leg-0/leg-1 boundary reads the bearing back toward the dogleg
+    // joint, ~045° — outside the sector (the old, zero-margin fixture's
+    // observed failure on this HEAD; NOT the stale "~200-260°" this comment
+    // used to claim, which described a different, pre-reroute leg 0).
     await context.setGeolocation(FIX_OFF_SOENDERBORG);
     await expect
       .poll(
         async () => {
           const text = (await hts.textContent()) ?? '';
           const deg = Number.parseInt(text, 10);
-          if (Number.isNaN(deg)) return false;
-          return deg >= 330 || deg <= 30;
+          // Not yet rendered / mid-transition text: never pass, never throw —
+          // +Infinity fails the bound below exactly like the old `false` did,
+          // so the poll keeps retrying instead of asserting prematurely.
+          if (Number.isNaN(deg)) return Number.POSITIVE_INFINITY;
+          // Re-center on north (range (-180, 180]) and take the absolute
+          // value so the wrap-around sector [330°, 030°] collapses to one
+          // symmetric bound — and, crucially, a failure now reports the
+          // actual offset in degrees (e.g. 45) instead of a bare `false`.
+          return Math.abs(((((deg + 180) % 360) + 360) % 360) - 180);
         },
         { timeout: 60_000 },
       )
-      .toBe(true);
+      .toBeLessThanOrEqual(30);
     // The next-event readout is present in its terminal-or-upcoming state
     // (its exact text depends on the solved route's remaining maneuvers).
     await expect(page.locator('.live-view-next-event')).toBeVisible();

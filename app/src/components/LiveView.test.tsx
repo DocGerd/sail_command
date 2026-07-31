@@ -9,7 +9,7 @@ import { destinationPoint } from '../lib/geo';
 import { distanceToNextManeuverNm, headingToSteerDeg } from '../lib/live';
 import { formatHeading, formatNm } from '../lib/format';
 import type { GpsErrorKind, GpsFix } from '../services/geolocation';
-import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
+import { DEFAULT_SETTINGS, type Leg, type MaskMeta, type Plan } from '../types';
 import LiveView from './LiveView';
 // #25 addendum: LiveView no longer renders BoatMarker at all (that moved to
 // the standalone OwnshipMarker) — mocked here purely so the dedupe test
@@ -17,6 +17,16 @@ import LiveView from './LiveView';
 // file happens not to exercise it.
 vi.mock('./BoatMarker', () => ({ default: vi.fn(() => null) }));
 import BoatMarker from './BoatMarker';
+// #251: the heading-to-steer depth check needs the routing assets (for the
+// NavMask) on the main thread. Mocked the same way as BoatMarker above so
+// each depth-check test controls exactly what the mask resolves to, rather
+// than relying on jsdom's real (failing) fetch — every OTHER test in this
+// file gets a never-resolving default (set in beforeEach below), which
+// renders the same as an unmocked jsdom fetch (mask stays null) without the
+// console.warn noise a rejection would add to every one of them.
+vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
+import { loadRoutingAssets } from '../services/assets';
+import * as NavMaskModule from '../lib/mask';
 
 const ORIGIN = { lat: 54.7, lon: 9.5 };
 const T0 = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -99,7 +109,29 @@ const TEST_PLAN: Plan = {
   },
 };
 
+// #251 review F1: a distinct plan.id with IDENTICAL legs. Identical geometry
+// is the point — the readout keeps rendering the same heading, so the test
+// isolates "what happened to the depth annotation" from "did the readout
+// survive the plan swap at all".
+const REROUTED_PLAN: Plan = { ...TEST_PLAN, id: 'live-plan-2', name: 'Live Test Plan (rerouted)' };
+
 const FIX_POINT = destinationPoint(P0, 90, 2); // 2 nm into leg 0 (of 5)
+
+// #251: generous mask coverage that actually CONTAINS the fixture points —
+// ORIGIN (P0), FIX_POINT, and both leg endpoints P1/P2 (legs run 10 nm due
+// east of ORIGIN, ~0.29° of longitude at this latitude). checkHeadingDepth's
+// coverage pre-check reports 'unavailable' for any endpoint outside this
+// rectangle, so a too-small META would collapse every depth-check test to
+// 'unavailable' regardless of what segmentShallowestBelow is mocked to
+// return — proving nothing.
+const MASK_META: MaskMeta = { west: 9.0, south: 54.5, east: 10.0, north: 55.0, cols: 10, rows: 10 };
+
+// The mask BUFFER content is irrelevant in the depth-check tests below: they
+// spy on NavMask.prototype.segmentShallowestBelow directly, so this all-deep
+// (byte 255) fill is only here to satisfy NavMask's constructor length check.
+function fullyDeepMaskBuffer(): ArrayBuffer {
+  return new Uint8Array(MASK_META.rows * MASK_META.cols).fill(255).buffer;
+}
 
 function TestSetPlan({ plan }: { plan: Plan }) {
   const { setPlan } = useActivePlan();
@@ -163,6 +195,13 @@ afterEach(() => {
 describe('LiveView', () => {
   beforeEach(async () => {
     await __resetDbForTests();
+    // #251: default for every test that doesn't care about the depth check —
+    // a promise that never settles, so the mask stays null (same rendered
+    // result as jsdom's real failing fetch: 'unavailable'), quietly (no
+    // console.warn, since neither resolve nor reject ever fires). The three
+    // depth-check tests below override this with their own
+    // mockResolvedValue/mockRejectedValue before rendering.
+    vi.mocked(loadRoutingAssets).mockReturnValue(new Promise(() => {}));
   });
 
   it('shows a prompt to load/plan a route, and no toggle, when there is no active plan', async () => {
@@ -413,6 +452,236 @@ describe('LiveView', () => {
 
     fireEvent.click(toggle); // off
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  describe('heading depth check (#251)', () => {
+    // The #251 invariant is STRUCTURAL, not any particular string: whenever
+    // the heading-to-steer renders it must carry a depth annotation. Absence
+    // is the failure mode, because a bare heading is DOM-identical to a
+    // checked-and-clear one — so the user reads "checked, and clear" when
+    // nothing was checked. Returns null exactly when no note is rendered.
+    const depthAnnotation = () =>
+      document.querySelector('.live-view-hts-note')?.textContent?.trim() ?? null;
+
+    // A plan swap needs the provider tree kept mounted across the change, so
+    // the GPS fix and the depth hold survive it — that is the state the two
+    // reset tests below are about.
+    function renderSwappable(wp: ReturnType<typeof fakeWatchPosition>['wp']) {
+      localStorage.setItem('sc-lang', 'en');
+      const ui = (plan: Plan) => (
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={plan} />
+            <LiveView watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>
+      );
+      const { rerender } = render(ui(TEST_PLAN));
+      return { swapPlan: (plan: Plan) => rerender(ui(plan)) };
+    }
+
+    it('shows the depth caution with the measured depth when the bearing crosses shallow water', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      // The literal measured depth (2.1) can only appear in the DOM if the
+      // mocked mask actually loaded AND the probe actually ran — proving
+      // this isn't a vacuous pass (e.g. a null mask collapsing to
+      // 'unavailable', which renders a different, depth-free string).
+      await screen.findByText(/Bearing crosses 2\.1 m/);
+      expect(screen.getByText(/shallower than your safety depth \(3\.0 m\)/)).toBeInTheDocument();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
+
+    it('shows no depth note when the bearing is clear', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(null);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      await screen.findByText(formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT)));
+      expect(screen.queryByText(/Bearing crosses/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Depth not checked')).not.toBeInTheDocument();
+    });
+
+    it('shows "Depth not checked" while the mask is unavailable', async () => {
+      vi.mocked(loadRoutingAssets).mockRejectedValue(new Error('offline'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      await screen.findByText('Depth not checked');
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+      expect(warn).toHaveBeenCalled();
+    });
+
+    it("#251 F1: a plan change re-probes the NEW route from the held fix — the heading is never left unannotated, and never keeps the superseded route's depth", async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      const probe = vi
+        .spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow')
+        .mockReturnValue(2.1);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      const { swapPlan } = renderSwappable(wp);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+      await screen.findByText(/Bearing crosses 2\.1 m/);
+
+      // The rerouted plan's bearing measures a DIFFERENT depth. Two distinct
+      // values are what let this test tell a fresh probe from a surviving
+      // stale one at all — with the same number, both outcomes render
+      // identical DOM and the assertion would prove nothing.
+      probe.mockReturnValue(1.4);
+
+      // A reroute supersedes the route the caution was measured against, so
+      // the hysteresis resets (spec §3.2). NO new fix follows: the held fix
+      // plus the loaded mask are enough to answer the new route's bearing, and
+      // needing a fix that may never come is what left this stale.
+      swapPlan(REROUTED_PLAN);
+
+      // The invariant, at every point it can be observed.
+      expect(depthAnnotation()).not.toBeNull();
+
+      await screen.findByText(/Bearing crosses 1\.4 m/);
+      expect(screen.queryByText(/Bearing crosses 2\.1 m/)).not.toBeInTheDocument();
+      // Settles on a real measurement, not on the honest-but-stale fallback.
+      expect(screen.queryByText('Depth not checked')).not.toBeInTheDocument();
+      // The heading is still on screen: the requirement is that it is
+      // ANNOTATED, not that the readout vanishes.
+      expect(
+        screen.getByText(formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT))),
+      ).toBeInTheDocument();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
+
+    it('#251 F1: a plan change with NO mask keeps the heading annotated with "Depth not checked" — the hold-key reset fallback', async () => {
+      // The re-probe cannot run here (no mask), so this is the one path that
+      // still exercises the hold-key reset itself. It must land on a rendered
+      // state; before F1 it rendered no note at all.
+      vi.mocked(loadRoutingAssets).mockRejectedValue(new Error('offline'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { wp, emitFix } = fakeWatchPosition();
+      const { swapPlan } = renderSwappable(wp);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+      await screen.findByText('Depth not checked');
+
+      swapPlan(REROUTED_PLAN);
+
+      expect(depthAnnotation()).toBe('Depth not checked');
+      expect(
+        screen.getByText(formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT))),
+      ).toBeInTheDocument();
+      expect(warn).toHaveBeenCalled();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
+
+    it('#251: a fix outside mask coverage reports "Depth not checked" — never clear', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      // Deliberately NOT stubbed: checkHeadingDepth's coverage pre-check must
+      // reject the fix before the grid walk is ever reached, so a never-called
+      // spy is the assertion. An out-of-coverage walk returns null, which is
+      // indistinguishable from "nothing shallow" — that is why the pre-check
+      // exists rather than trusting the walk.
+      const probe = vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow');
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      // MASK_META covers 54.5–55.0 N / 9.0–10.0 E; this is well south-west.
+      act(() => emitFix({ point: { lat: 53.0, lon: 8.0 }, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
+
+      await screen.findByText('Depth not checked');
+      expect(probe).not.toHaveBeenCalled();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
+
+    it('#251 F2: a mask that resolves AFTER the last fix re-probes on arrival — no further fix required', async () => {
+      // `never` for the same reason the sibling tests cast their resolved
+      // value `as never`: the assets module is vi.mock'd, so its real
+      // RoutingAssets type is not what this fixture needs to satisfy.
+      let resolveAssets: (v: never) => void = () => {};
+      vi.mocked(loadRoutingAssets).mockReturnValue(
+        new Promise<never>((res) => {
+          resolveAssets = res;
+        }),
+      );
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+
+      // Pre-condition: the ONLY fix this test ever emits landed while the mask
+      // was still pending, so the readout is honestly "not checked".
+      await screen.findByText('Depth not checked');
+
+      await act(async () => {
+        resolveAssets({ maskMeta: MASK_META, maskBuffer: fullyDeepMaskBuffer() } as never);
+      });
+
+      await screen.findByText(/Bearing crosses 2\.1 m/);
+      expect(screen.queryByText('Depth not checked')).not.toBeInTheDocument();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
+
+    it('#251 F6: a bearing across charted land is reported as land, not as a 0.0 m sounding', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      // NavMask maps the LAND byte (0) to 0.0 m, so this is exactly what a
+      // land crossing looks like coming out of segmentShallowestBelow.
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(0);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+
+      await screen.findByText('Bearing crosses charted land');
+      expect(screen.queryByText(/crosses 0\.0 m/)).not.toBeInTheDocument();
+      expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
   });
 
   // #115 manual "reroute from here" — only rendered when App wires the
