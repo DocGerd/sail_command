@@ -514,7 +514,15 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
         uniformWindGrid(3, 0),
         { polarGenoa, polarFock, mask },
       );
-      expect(res).toEqual({ status: 'error', reason: 'unreachable' });
+      // Split so a red run names WHICH fact broke: `status` is the
+      // solver-capability/mask-connectivity fact (would flip to 'ok' if
+      // either the mask reconnects at 3.0 m OR the relaxed 2.3 m re-solve
+      // starts succeeding — both "good news", neither a classification
+      // regression), while `reason` is the actual classification guard this
+      // test exists to protect. A single `toEqual` would report both as one
+      // failure and couldn't tell them apart.
+      expect(res.status).toBe('error');
+      if (res.status === 'error') expect(res.reason).toBe('unreachable');
     },
   );
 });
