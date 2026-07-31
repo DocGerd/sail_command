@@ -65,7 +65,13 @@ after an uncommitted tweak). Pair it with Vite's content-hashed entry chunk,
 which changes whenever any bundled module changes, commit or not.
 
 Do this **every time**, before capturing any screenshot used as pre-release
-evidence, right after the preview server is up:
+evidence, right after the preview server is up. **Do not rebuild `dist/` (or
+trigger any page reload) mid-walkthrough without re-running steps 3-5** — the
+checks below only cover the state at the moment they run; issue #240's own
+suggested fix says the same thing, and this skill's own negative-probe dry
+run (#240) reproduced exactly this failure by rebuilding in place under a
+live server. If a rebuild happens mid-walkthrough, treat every screenshot
+captured before re-running the preflight as unverified.
 
 1. Capture the expected commit label right before building (same repo state
    the build will embed):
@@ -128,10 +134,19 @@ retry from step 3.
 `page.emulateMedia({ colorScheme })` is a Playwright *test-spec* API with no
 Playwright-MCP tool equivalent. The MCP-driven equivalent is
 `mcp__chrome-devtools__emulate` with `colorScheme: 'dark' | 'light'`. Run the
-dark-mode capture as its own chrome-devtools-MCP pass (steps 3-6 above, with
-`emulate` called right after step 3) — do not interleave it with the
-Playwright-MCP flow in the next section; the two MCP servers drive separate
-browser sessions and neither can change color scheme on the other's page.
+dark-mode capture as its own chrome-devtools-MCP pass — do not interleave it
+with the Playwright-MCP flow in the next section; the two MCP servers drive
+separate browser sessions and neither can change color scheme on the other's
+page. Steps 3-6 above translate to chrome-devtools MCP tool names as follows
+(the JS `function` bodies are reused as-is):
+
+| Step | Playwright MCP | chrome-devtools MCP |
+|---|---|---|
+| 3, navigate | `browser_navigate` | `navigate_page` (`type: 'url'`) |
+| 3.5, set theme | — | `emulate` with `colorScheme: 'dark'` (call once, right after the first navigate) |
+| 4, preflight eval | `browser_evaluate` | `evaluate_script` |
+| 5, chunk/version eval | `browser_evaluate` | `evaluate_script` |
+| 5, click About button | `browser_click` | `click` |
 
 ## Deterministic wind (no live Open-Meteo)
 
