@@ -173,4 +173,39 @@ describe('compareRigs (#259 tie band)', () => {
       rig: 'fock',
     });
   });
+
+  // Distinct from the 0 ms-gap full-solve moot test above (planRoute.ts's
+  // TWS-0 case is ALSO a 0 ms tie by construction, so that test alone cannot
+  // show moot outranking a genuine gap): a large ETA gap between two
+  // all-motor results must still classify as moot, not decided, proving the
+  // isAllMotor check is checked first and does not merely coincide with the
+  // tie band.
+  it('classifies an all-motor comparison as moot even with a large ETA gap (moot outranks decided)', () => {
+    const makeMotorResult = (etaMs: number): RigResult => ({
+      rig: 'genoa',
+      etaMs,
+      durationMs: etaMs,
+      distanceNm: 10,
+      maneuverCount: 0,
+      motorDistanceNm: 10,
+      legs: [
+        {
+          kind: 'motor',
+          board: null,
+          start: { lat: 54.75, lon: 10.0 },
+          end: { lat: 54.75, lon: 10.2 },
+          startTimeMs: 0,
+          endTimeMs: etaMs,
+          headingDeg: 90,
+          twsKn: 0,
+          speedKn: 6.5,
+          distanceNm: 10,
+          maneuverAtStart: null,
+        },
+      ],
+    });
+    expect(compareRigs(makeMotorResult(0), makeMotorResult(10 * 60_000))).toEqual({
+      kind: 'moot',
+    });
+  });
 });
