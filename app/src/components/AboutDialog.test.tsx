@@ -164,7 +164,22 @@ describe('AboutDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the static attributions and the mask.meta.json sources fetched on open', async () => {
+  it('starts the Data sources section collapsed, matching the changelog Disclosure (#187)', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    const { container } = render(
+      <I18nProvider>
+        <AboutDialog open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    await screen.findByRole('dialog');
+    const details = Array.from(container.querySelectorAll('details')).find((d) =>
+      d.textContent?.includes(de['about.sources.heading']),
+    );
+    expect(details?.hasAttribute('open')).toBe(false);
+  });
+
+  it('renders the static attributions and the mask.meta.json sources fetched on open, once the Data sources disclosure is expanded (#187)', async () => {
     const mock = fetchMock([
       'EMODnet Bathymetry Consortium (2024) doi:10.12770/test',
       'OSM land polygons (ODbL)',
@@ -175,6 +190,10 @@ describe('AboutDialog', () => {
         <AboutDialog open onClose={() => {}} />
       </I18nProvider>,
     );
+
+    // #187: Data sources starts collapsed, same as the changelog — expand it
+    // before asserting on its content.
+    fireEvent.click(await screen.findByText(de['about.sources.heading']));
 
     expect(await screen.findByText(/EMODnet Bathymetry Consortium/)).toBeInTheDocument();
     expect(screen.getByText(/OSM land polygons/)).toBeInTheDocument();
@@ -193,6 +212,7 @@ describe('AboutDialog', () => {
       </I18nProvider>,
     );
 
+    fireEvent.click(await screen.findByText(de['about.sources.heading']));
     expect(await screen.findByText(de['about.sources.protomaps'])).toBeInTheDocument();
   });
 
@@ -208,6 +228,7 @@ describe('AboutDialog', () => {
     // Static attributions still render; the malformed dynamic sources are
     // dropped instead of being handed to .map() (which would throw/render
     // garbage for a non-array).
+    fireEvent.click(await screen.findByText(de['about.sources.heading']));
     expect(await screen.findByText(de['about.sources.protomaps'])).toBeInTheDocument();
   });
 
