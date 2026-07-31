@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-31
+
 ### Added
 
 - Depth comfort preference: beyond the hard safety-depth gate, the router now
@@ -269,7 +271,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/DocGerd/sail_command/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/DocGerd/sail_command/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/DocGerd/sail_command/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/DocGerd/sail_command/compare/v0.3.0...v0.4.0
