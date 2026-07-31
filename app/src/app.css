@@ -544,6 +544,33 @@ select {
      from the viewport top; 0.5rem breathing room above the sheet's edge. */
   max-height: calc(100dvh - 3.5rem - 55vh - 0.5rem);
   overflow-y: auto;
+  /* #205: this cluster is unsized (shrink-to-fit), so its content width is
+     constant regardless of viewport — measured 233.86px (DE) / 194.58px (EN)
+     at BOTH 320px and 390px, unaffected by viewport. `.map-stack-tl`'s
+     opposite-corner DataLayers toggles reach ~135px (`.data-layer-controls`
+     right edge, worst-measured across DE/EN) at `left: 0.5rem`. Below
+     ~382px viewport width the two shrink-to-fit corners' natural widths sum
+     wider than the space between them, so they visually overlap — a
+     PRE-EXISTING collision (confirmed byte-identical on the pre-#201
+     baseline commit d00282d, not something #201's `.map-stack-tl` refactor
+     introduced). Deliberately NOT touching `top`/`max-height` above: those
+     are a matched pair (max-height is DERIVED from top; see that rule's own
+     comment) and changing one without the other reopens #208 round-2 R2-1
+     (the sheet-vs-tab-strip collision) — a horizontal-only bound leaves that
+     pairing untouched. `max-width` is expressed against the containing
+     block's width (the full-bleed map wrapper, confirmed equal to viewport
+     width), not a `@media` breakpoint, so it degrades continuously as the
+     viewport narrows instead of jumping at one picked width: 100% minus
+     0.5rem (this cluster's own right anchor) minus ~135px worst-measured
+     `.data-layer-controls` right edge minus 0.5rem clearance, rounded up
+     for margin = `9.5rem`. At 390px this resolves to 238px, above both
+     measured natural widths (inert — no visual change at the existing
+     baseline); at 320px it clips to 168px, which still clears
+     `.data-layer-controls` by ~9-12px in both languages. Below the clip
+     threshold the toggle/slider/legend column wraps and scrolls internally
+     via the existing `overflow-y: auto` above — sanctioned by the same
+     design as the height bound. */
+  max-width: calc(100% - 9.5rem);
 }
 
 /* Touch targets: each toggle row is a ≥44 px hit area (gloved-hand cockpit
@@ -916,6 +943,19 @@ select {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+/* #205 follow-through: the new `.route-layer-controls` `max-width` (above)
+   can clip this row narrower than the range input's unstyled intrinsic
+   width, which otherwise neither shrinks (flex's default `min-width: auto`
+   floors it at that intrinsic size) nor wraps — the "10:00" label was
+   measured overflowing past the card's own right edge and off the 320px
+   viewport entirely before this rule. `min-width: 0` overrides the
+   auto-floor so the track can shrink with the card; the time label keeps
+   its natural (unshrunk) size since it's the more important fixed content. */
+.route-layer-time-slider input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Collapsible route legend (#46a), rendered inside .route-layer-controls. */
