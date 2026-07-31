@@ -134,9 +134,36 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
     });
     const slider = page.getByRole('slider', { name: 'Vorhersagezeitpunkt' });
     await expect(slider).toBeVisible();
+    // The slider's own readout (RouteLayer.tsx's `<span>{formatTime(tMs,
+    // lang)}</span>` beside the range input) is the concrete UI signal that
+    // ArrowRight actually moved the forecast hour — `networkidle` never
+    // settles under maplibre-gl 6 (no `requestfinished` for its
+    // module-worker fetch) and was never the right readiness signal for
+    // "did the debounced hour-change effect fire" anyway. A literal clock
+    // string would be a false-precise assertion: the wind fixture's
+    // timestamps are regenerated fresh by the `pree2e` hook on every e2e
+    // run, so only "the readout moved off its pre-keypress value" is stable
+    // across runs.
+    const timeReadout = page.locator('.route-layer-time-slider span');
+    const timeBeforeArrow = await timeReadout.textContent();
     await slider.focus();
     await page.keyboard.press('ArrowRight');
-    await page.waitForLoadState('networkidle');
+    await expect.poll(() => timeReadout.textContent()).not.toBe(timeBeforeArrow);
+
+    // The readout poll above only proves the ArrowRight keypress landed — it
+    // says nothing about the `panBy` a few lines up, which feeds RouteLayer's
+    // viewport-scoped barb rebuild (RouteLayer.tsx:476) through a debounced
+    // `moveend` listener (a `requestAnimationFrame` coalescing rapid
+    // move/zoom events, not a network trigger today). Proving the ABSENCE of
+    // a network call cannot be done with `expect.poll` — there is no state to
+    // poll for "nothing happened yet" vs. "nothing will ever happen". This
+    // fixed wait is the documented exception to the no-fixed-timeout house
+    // rule (see `settledCanvas` in datalayers.spec.ts for the same
+    // reasoning): 500ms comfortably exceeds the single-rAF (~16ms) rebuild
+    // this listener does today, with wide margin for a future regression
+    // that replaced it with a genuinely debounced network refetch. Do not
+    // "fix" this back into a poll — there is nothing to poll on.
+    await page.waitForTimeout(500);
     expect(
       openMeteoRequests,
       `expected zero Open-Meteo requests, got: ${openMeteoRequests.join(', ')}`,

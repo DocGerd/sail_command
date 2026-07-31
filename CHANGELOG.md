@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded maplibre-gl 5.24.0 -> 6.0.0. `Map` no longer exposes `isEasing()`
+  (it moved onto the internal `Camera` object `Map` now holds instead of
+  extends); the compass control's camera-settle guard was rewritten to derive
+  the same "our own ease is still in flight" signal from state the app
+  already owns, narrower than before but with no reachable behavioral change
+  in this app today (#253). The upgrade also broke the vector basemap in
+  production: v6 loads its worker via an internal `new URL(...,
+  import.meta.url)` Vite cannot see through, so the worker chunk was never
+  emitted into the build and the map never loaded outside `vite preview`'s
+  SPA-fallback masking. Fixed via maplibre's own `setWorkerUrl` escape hatch,
+  fed a Vite `?worker&url` import so the worker ships as a hashed, precached
+  asset. The `worker` half of that suffix is load-bearing: v6 splits its
+  worker across two files, and a plain `?url` copies only the entry file
+  verbatim, leaving an unresolved `./maplibre-gl-shared.mjs` import that 404s
+  at runtime — `?worker&url` bundles the pair into one self-contained chunk
+  (#253).
+
 ## [0.6.0] - 2026-07-31
 
 ### Added

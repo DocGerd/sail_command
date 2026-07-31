@@ -154,8 +154,40 @@ deviate from it.
   #227): every settle re-checks `north` against `map.getBearing()`, and
   MapLibre's `originalEvent` stamp (present only on events a real user gesture
   caused) discriminates a hand rotation from a foreign settle — guarded
-  against a settle delivered from inside our OWN `easeTo` and one arriving
-  while `map.isEasing()`. The chronology, because the dead ends recur: eases
+  against a settle delivered from inside our OWN `easeTo`. **Post-maplibre-gl-6
+  (#253): `map.isEasing()` is GONE from `Map`** — v6's `Map extends Evented`,
+  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:576` vs
+  `ui/camera.ts:284`; they are siblings), and the method survives only on the
+  private `_camera` field. `CompassControl.tsx`'s `onMoveEnd` guard is now a
+  TWO-TERM derivation: `e.originalEvent !== undefined &&
+  commandedBearingRef.current !== null &&
+  !bearingReached(map.getBearing(), commandedBearingRef.current)`. Both terms
+  are load-bearing: a `commandedBearingRef`-only guard regresses the three
+  #203 F1 aborted-ease tests (MEASURED, not predicted), because F1 (aborted
+  ease, MUST demote) and F2
+  (foreign ease still live, must NOT demote) are bit-identical in
+  `(commandedBearingRef, getBearing())` — no predicate over only those two can
+  separate them. Term 2 does NOT stand alone — `e.originalEvent !== undefined`
+  is true for EVERY handler `moveend` whether or not an ease is live; it is
+  only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
+  gave us on the reachable paths. What makes that conjunction sound: `_stop`
+  (`camera.ts:1197-1211`) deletes `_easeFrameId` and only THEN invokes
+  `_onEaseEnd` at `:1211` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
+  bound in `_ease` (`:1234`) — so `isEasing()` was already false at every
+  ease-emitted `moveend` even in v5, which is why the absence of
+  `originalEvent` discriminates a camera-internal ease termination from a
+  handler-gesture settle. ACCEPTED NARROWING: the new
+  guard is ease-source-SPECIFIC where `isEasing()` was ease-source-AGNOSTIC —
+  a foreign, bearing-changing ease carrying no `originalEvent` would now demote
+  where v5 did not. No producer exists in the app today
+  (`RouteLayer.tsx:458`'s `fitBounds` passes `duration: 0` and the current
+  bearing; keyboard rotation and drag inertia always carry `originalEvent`;
+  `resetNorth` has no call site; `bearingSnap: 0` makes MapLibre's internal
+  snap unsatisfiable), and the gap is pinned by a regression test AND by
+  `app/src/test/cameraAnimationCallSites.test.ts` (a structural test that
+  fails loudly if a new camera-animating call site appears outside the
+  allowlist) — call this "narrowed and pinned", not "closed". The chronology,
+  because the dead ends recur: eases
   that can interrupt one another need an `easeId` (5.24 fires the INTERRUPTED
   ease's `moveend` synchronously inside the next `easeTo`,
   `_stop`→`_afterEase`; the guard is skipped without an id), so an "is this my
@@ -181,8 +213,10 @@ deviate from it.
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
   `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
-  against the exact pinned `maplibre-gl@5.24.0` install AND upstream's
-  `v5.24.0` tag, byte-identical; re-check after any maplibre-gl upgrade),
+  against the exact pinned `maplibre-gl@6.0.0` install, re-checked after the
+  #253 v6 upgrade: still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
+  !sortKey.isConstant();` at the same line; re-check again after any future
+  maplibre-gl upgrade),
   disabling the placement priority entirely. Within one symbol layer,
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
@@ -212,6 +246,26 @@ deviate from it.
   deterministic fix sequences via Playwright `context.setGeolocation` +
   `test.use({ permissions: ['geolocation'] })` against the real solver/mask —
   extend it rather than claiming live behavior is untestable.
+- **maplibre-gl 6's worker must be BUNDLED, not copied** (#253): v6 loads its
+  worker via `new Worker(url, {type:'module'})` from a URL built dynamically
+  inside the library, which Vite cannot see — so nothing is emitted and the
+  basemap silently does not render. The fix is `setWorkerUrl` fed by
+  `import ... from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'` in
+  `MapView.tsx`. The `worker: { format: 'es' }` in `vite.config.ts` that keeps
+  the module-type `Worker` construction valid was ALREADY there — it predates
+  #253 and is not part of the fix; don't go looking for it in that diff.
+  **`?url`
+  is the trap**: it copies the file VERBATIM without resolving its imports,
+  and maplibre ships the worker split — `maplibre-gl-worker.mjs` opens with
+  `import{...}from"./maplibre-gl-shared.mjs"`, whose sibling never gets
+  emitted, so the worker 404s on its own dependency. The signature of the
+  broken form is a ~19 KB emitted chunk that still contains a
+  `from"./maplibre-gl-shared.mjs"`; the correct form emits a ~468 KB
+  self-contained chunk with NO import specifiers at all. Verify with
+  `grep -o 'from"[^"]*"'` on the emitted chunk — existence, correct name,
+  hashing, and a 200 response all look right in the broken case. No
+  `globPatterns` change is needed: Vite's worker pipeline emits `.js`, which
+  the existing precache token already covers.
 - `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
@@ -461,6 +515,29 @@ deviate from it.
 
 ## Verification lessons (hard-won)
 
+- A suite that goes green only after its readiness wait is weakened — the
+  weakened wait is the finding (#253). While the maplibre-gl 6 worker bundling
+  was broken (see the PWA/deploy bullet above), `map.loaded()` could never
+  become true, so all 7 `compass.spec.ts` sites had their
+  `waitForLoadState('networkidle')` replaced with a bare `installMapHandle`
+  check that does NOT require tiles, and the suite reported 15/16 green; the
+  single remaining red test (`annotations.spec.ts`'s barb-density test, the
+  only one still asserting that anything RENDERS) was written off as
+  "structurally unpassable under Playwright Chromium". Both readings were
+  wrong — the broken worker was the cause, not the runner. `mapReady()` is
+  now a genuinely NEW gate at those sites (there was never a `map.loaded()`
+  gate to "restore"), it polls a descriptive string naming the pending
+  sources rather than collapsing to a boolean, and it is MUTATION-CHECKED:
+  reverting only the one-line `?worker&url` import suffix turns all 7 red
+  with `Received: not-loaded (pending sources: protomaps, sc-harbors, …)`,
+  so the gate has teeth and the suffix is causally what makes it green.
+  Suite is 16/16 in 58.7 s. Durable rule: a lone red test contradicting a
+  green suite deserves MORE weight than the suite, not less — and "the test
+  runner can't do this" is the conclusion to distrust first. Related:
+  `waitForLoadState('networkidle')` was always the wrong
+  signal for a map app that streams tiles forever — v6 merely made the latent
+  fragility deterministic; a `@playwright/test` bump to 1.62.1 was tested and
+  does NOT help.
 - Synthetic-mask tests missed a product-blocking solver bug that the FIRST
   real-data browser run found in minutes (#20: step length vs. real channel
   width). UI tasks should end with a real-browser pass (dev server +
