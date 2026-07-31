@@ -12,7 +12,13 @@
 #                   `git diff --exit-code`. Expensive, and it is the exact
 #                   thing this hook exists to prevent.
 #
-# Therefore: FIRE BY DEFAULT. The trigger below is deliberately the same broad,
+# Therefore this hook FAILS OPEN in CLAUDE.md's sense ("a BLOCKING guard should
+# fail closed, a NUDGE should fail open"): whenever it cannot establish that a
+# command is inert, it FIRES. Every degraded path in this file - unparseable
+# input, no `jq`, no `python3` - fires rather than going silent. That is the
+# only vocabulary used here; "fail closed" would mean the opposite.
+#
+# Concretely: FIRE BY DEFAULT. The trigger below is deliberately the same broad,
 # unanchored substring soup it has always been. What is new is a SUPPRESSION
 # allowlist of a few command shapes that are *provably* incapable of running
 # npm at all. Anything not provably inert still fires.
@@ -58,7 +64,11 @@
 #     that itself runs npm, the proof does not hold. Accepted: the hook only
 #     ever sees command TEXT, and a machine in that state has larger problems.
 #   * A `$`-containing `echo` (e.g. `echo "$FOO"`) is NOT suppressed. That is
-#     deliberate - it fires, which is the cheap direction.
+#     deliberate - it fires, which is the cheap direction. `$` is also the one
+#     REDUNDANT member of the exclusion set: `$(...)` is already caught by `(`
+#     and `` `...` `` by the backtick, and a bare `${VAR}` cannot invoke
+#     anything. Kept as defence in depth, so a mutation removing it alone does
+#     not fail the self-test - that is expected, not an untested gap.
 #   * Suppression covers the `echo`/`cat` mention shapes only. It does NOT
 #     suppress the misfire actually reported in #216 (a multi-line `gh api`
 #     call whose heredoc PROSE mentioned npm and install). Suppressing that
@@ -67,11 +77,17 @@
 # ---------------------------------------------------------------------------
 # TWO CONSTRAINTS ON MOVING THIS CODE:
 #
-#   * BASH, not sh. `_provably_inert` uses `[[ ... ]]` with an ANSI-C bracket
-#     set, and `_triggers` uses `[!a-zA-Z0-9]` negation inside a `case`
-#     pattern. settings.json invokes this file directly, so the shebang wins.
-#     Do NOT paste these patterns back inline into settings.json, where the
-#     hook command may run under `sh`.
+#   * BASH, not sh - for EXACTLY ONE reason: `_provably_inert` uses `[[ ... ]]`
+#     with an ANSI-C `$'...'` bracket set. `_triggers`' `[!a-zA-Z0-9]` is NOT a
+#     reason: bracket negation with `!` is POSIX and works in dash
+#     (`[^...]` would be the bashism). Verified:
+#         $ dash -c 'case "npm ci;x" in *npm*\ ci[!a-zA-Z0-9]*) echo FIRE;; esac'
+#         FIRE
+#         $ dash -c '[[ "a;b" == *[";"]* ]]'
+#         dash: 1: [[: not found
+#     settings.json invokes this file directly, so the shebang wins. Do NOT
+#     paste `_provably_inert` back inline into settings.json, where the hook
+#     command may run under `sh`.
 #   * settings.json resolves this script through $CLAUDE_PROJECT_DIR (same as
 #     premerge-verify.sh). settings.json and this file travel in the SAME
 #     commit, so a checkout can never have one without the other - but a
@@ -105,6 +121,33 @@ emit() { printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additiona
 # one for every subcommand - the change can only ever add fires, never remove
 # one. The install/uninstall/update alternatives are already maximally broad
 # and are untouched.
+#
+# THE COST OF THAT WIDENING, NAMED (it is not free):
+# `[!a-zA-Z0-9]` also admits `.` `-` `_` `/` `,`, so any ` i`/` ci`/` rm`/
+# ` up`/` add` token followed by punctuation now fires. Measured, old vs new:
+#     npm --prefix app run test -- rm.test.ts       old=skip  new=FIRE
+#     npm --prefix app run test -- i.test.ts        old=skip  new=FIRE
+#     npm --prefix app run test -- ci.spec.ts       old=skip  new=FIRE
+#     npm --prefix app run build 2>&1 | tee i.log   old=skip  new=FIRE
+# CLAUDE.md's per-file filter convention (`npm --prefix app run test --
+# <filter>`) makes that the single most common Bash command in this repo, so
+# this lands on a hot path. Accepted within the asymmetry - a false nudge costs
+# a line, a missed `npm ci` costs a red CI - but recorded rather than left for
+# someone to rediscover.
+#
+# Do NOT "fix" it by suppressing `npm ... run ...`: an npm script, or a
+# `pre`/`post` hook, can itself shell out to `npm install`, so that suppression
+# would manufacture exactly the under-fire class this file spends its budget
+# proving absent.
+#
+# KNOWN RESIDUAL, deliberately not fixed: the separator BEFORE a short
+# subcommand is still a literal space, so a TAB does not fire -
+#     $'npm\tci'  ->  skip        ($'npm\tinstall' still fires, via *npm*install*)
+# Pre-existing (the old inline pattern missed it too), so the hard invariant is
+# untouched. The available fix, `*npm*[!a-zA-Z0-9]ci[!a-zA-Z0-9]*`, widens the
+# LEADING separator too and would newly fire on ordinary paths like
+# `run test -- foo.ci.ts`; given nobody in this repo types a tab inside a
+# command, that trade buys nothing on the hot path already named above.
 _triggers() {
   # SC2221/SC2222: several alternatives subsume each other (*npm*install* also
   # matches *npm*uninstall*). Harmless - every alternative has the same body -
@@ -140,6 +183,7 @@ decide() {
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
   nl=$'\n'
+  tab=$'\t'
   check() { # want  desc  cmd
     local got; got=$(decide "$3")
     if [ "$got" != "$1" ]; then
@@ -203,19 +247,172 @@ if [ "${1:-}" = "--selftest" ]; then
   # --- mentioning the newly-reachable shapes is still suppressed.
   check skip "echo mentioning npm ci; ..."     'echo "step 1: npm ci"'
 
-  [ "$fail" -eq 0 ] && echo "SELFTEST OK"
+  # --- The two shapes the hand-written table above structurally cannot see.
+  # --- Every other newline case here also contains `<` or leads with a word
+  # --- that is not on the allowlist, so `$'\n'` inside _provably_inert's
+  # --- bracket set was pinned by NOTHING: deleting it left SELFTEST OK while
+  # --- introducing an under-fire on multi-line Bash calls, the most common
+  # --- shape in this repo. Same for a bare `&`.
+  check fire "newline is the ONLY metachar, echo first" "echo starting build${nl}npm ci"
+  check fire "bare & is the ONLY metachar, echo first"  "echo a & npm ci"
+
+  # --- The widening's named over-fire class, pinned so it stays a KNOWN cost
+  # --- rather than drifting into an unnoticed one (see the header block).
+  check fire "OVER-FIRE (accepted): run test -- rm.test.ts" "npm --prefix app run test -- rm.test.ts"
+  check fire "OVER-FIRE (accepted): run test -- i.test.ts"  "npm --prefix app run test -- i.test.ts"
+  check skip "hot path WITHOUT punctuation still quiet"     "npm --prefix app run test -- invariants"
+
+  # --- Known residual: tab before a short subcommand does not fire (header).
+  check skip "RESIDUAL: tab before ci"         "npm${tab}ci"
+  check fire "tab before install still fires"  "npm${tab}install"
+
+  # =========================================================================
+  # GENERATED CORPORA - the load-bearing evidence, made re-runnable.
+  #
+  # These were originally throwaway scripts whose results lived only in a PR
+  # description. The generators are folded in here so the hard invariant and
+  # the superset claim can be re-checked by anyone, later, without the PR.
+  #
+  # What they do NOT cover, stated so the table is not over-read:
+  #   * The DEGRADED paths (no `jq`, no `python3`, unparseable stdin) and the
+  #     stdin->JSON->stdout production wrapper. `decide()` is pure; these
+  #     loops call it directly. Those paths are exercised by hand only.
+  #   * TAB as a separator before a short subcommand (see the residual above).
+  #   * Nothing runs `--selftest` in CI - `.claude/` is outside ci.yml's
+  #     scope - so this is a maintainer-run check, not a gate.
+  # =========================================================================
+
+  # ---- A. hard invariant: a real invocation always fires, in any context ----
+  invocations=(
+    "npm install" "npm i" "npm ci" "npm add left-pad" "npm uninstall left-pad"
+    "npm remove left-pad" "npm rm left-pad" "npm update" "npm up"
+    "npm --prefix app install" "npm --prefix app ci" "npm -w app install"
+    "npm install --save-dev vitest" "npm ci --omit=dev"
+  )
+  # shellcheck disable=SC2016  # literal $( ) and backticks ARE the test data
+  wrappers=(
+    "%s" "  %s" "sudo %s" "CI=1 %s" "(%s)" "{ %s; }"
+    "git status && %s" "%s && git status" "git status; %s" "%s; git status"
+    "false || %s" "%s | tee /tmp/log" "%s &"
+    $'git status\n%s' $'%s\ngit status'
+    $'cat > /tmp/n.md <<EOF\nprose\nEOF\n%s'
+    $'cat > /tmp/n.md <<\\EOF\nprose\nEOF\n%s'
+    $'cat > /tmp/n.md <<\'EOF\'\nprose\nEOF\n%s'
+    $'cat > /tmp/n.md <<-EOF\n\tprose\n\tEOF\n%s'
+    "echo starting && %s" "cat /etc/hostname && %s"
+    'echo "$(%s)"' 'echo `%s`' "cat <(%s)" "printf '%%s' hi; %s"
+    "%s > /tmp/out 2>&1" "time %s" "npx foo; %s"
+  )
+  gen_a=0
+  for inv in "${invocations[@]}"; do
+    for w in "${wrappers[@]}"; do
+      # shellcheck disable=SC2059  # $w IS the format string, by construction
+      cmd=$(printf "$w" "$inv")
+      gen_a=$((gen_a + 1))
+      if [ "$(decide "$cmd")" != fire ]; then
+        echo "SELFTEST FAIL [hard invariant]: real invocation did not fire -> <<$(printf '%s' "$cmd" | tr '\n\t' '~>')>>"
+        fail=1
+      fi
+    done
+  done
+
+  # ---- B. near-misses: shapes that LOOK suppressible but must still fire ----
+  # This is where a mention-vs-invocation error in THIS fix's own first-word
+  # matcher would show up - the defect class the fix exists to close.
+  # shellcheck disable=SC2016  # literal $( ) and backticks ARE the test data
+  nearmiss=(
+    'echo hi; npm install'          'echo hi && npm ci'      'echo hi | npm install'
+    'echo "$(npm ci)"'              'echo `npm ci`'          'cat <(npm ci)'
+    'cat /tmp/x > /tmp/y; npm ci'   $'echo hi\nnpm ci'       '(echo hi) && npm ci'
+    'ECHO=1 echo npm install; npm ci'
+    'echoes npm install'            'cats npm install'
+    './echo npm install'            '/bin/echo npm install'  'FOO=bar echo npm install'
+    # Allowlist MEMBERSHIP, pinned: every one of these is a text-search tool
+    # that CAN execute a program (rg --pre, find -exec, sed`s `e`, awk`s
+    # system(), xargs), which is exactly why none is on the allowlist. Without
+    # these rows, adding any of them survives the whole table.
+    'grep -rn "npm install" .'      'rg --pre npm install .'
+    'sed -e "e npm ci" notes.txt'   'find . -name x -exec npm install {} +'
+    'xargs npm install < pkgs.txt'  'awk "BEGIN{system(\"npm ci\")}"'
+  )
+  for cm in "${nearmiss[@]}"; do
+    if [ "$(decide "$cm")" != fire ]; then
+      echo "SELFTEST FAIL [near-miss]: suppressed something not provably inert -> <<$(printf '%s' "$cm" | tr '\n' '~')>>"
+      fail=1
+    fi
+  done
+
+  # ---- C. differential: the widened trigger is a SUPERSET of the legacy one --
+  # The legacy pattern is reproduced verbatim from the inline hook this script
+  # replaced. If any input fires LEGACY but not the current `_triggers`, the
+  # widening stopped being widening-only and the hard invariant is at risk.
+  _triggers_legacy() {
+    # shellcheck disable=SC2221,SC2222
+    case "$1" in
+      *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci\ *|*npm*\ add|*npm*\ add\ *|*npm*\ i|*npm*\ i\ *|*npm*\ rm|*npm*\ rm\ *|*npm*\ remove|*npm*\ remove\ *|*npm*\ up|*npm*\ up\ *) return 0 ;;
+    esac
+    return 1
+  }
+  d_subs=(ci add i rm remove up install uninstall update run test build x "")
+  d_pres=("npm" "npm --prefix app" "sudo npm" "  npm" "echo npm" "git status && npm" "xnpm")
+  d_tails=("" " " ";" ")" "|" "&&" "$nl" " left-pad" "x" "1" "-g" "$tab" "'" '"')
+  gen_c=0; only_legacy=0; added=0
+  for p in "${d_pres[@]}"; do
+    for s in "${d_subs[@]}"; do
+      for t in "${d_tails[@]}"; do
+        for sfx in "" " git status" "${nl}npm run build"; do
+          cmd="$p $s$t$sfx"
+          gen_c=$((gen_c + 1))
+          if _triggers_legacy "$cmd"; then
+            _triggers "$cmd" || {
+              echo "SELFTEST FAIL [superset]: legacy fires, current does not -> <<$(printf '%s' "$cmd" | tr '\n\t' '~>')>>"
+              fail=1; only_legacy=$((only_legacy + 1))
+            }
+          elif _triggers "$cmd"; then
+            added=$((added + 1))
+          fi
+        done
+      done
+    done
+  done
+
+  if [ "$fail" -eq 0 ]; then
+    echo "generated: ${gen_a} invocation shapes, ${#nearmiss[@]} near-misses, ${gen_c} differential inputs (legacy-only=${only_legacy}, newly-fired=${added})"
+    echo "SELFTEST OK"
+  fi
   exit "$fail"
 fi
 
 # ---- production path ----
-IN=$(cat)
+# Slurp stdin with the `read` BUILTIN, never `IN=$(cat)`. `cat` is external, so
+# on a machine whose PATH cannot resolve it the command substitution yields an
+# empty string and this hook silently decides on nothing - an under-fire, the
+# one direction that is out of bounds. Measured: with PATH unset, `IN=$(cat)`
+# made a real `npm install` stop firing. `read -d ''` has no such dependency.
+IN=""
+IFS= read -r -d '' IN || true
 if CMD=$(printf '%s' "$IN" | jq -r '.tool_input.command // empty' 2>/dev/null); then
   :
 elif CMD=$(printf '%s' "$IN" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("tool_input",{}).get("command") or "")' 2>/dev/null); then
   :
 else
-  # Fail CLOSED: could not read the command at all, so nudge unconditionally.
-  emit "$NUDGE (Note: the notices guard could not parse this tool input - neither jq nor python3 is usable - so it is nudging unconditionally. Install jq to restore precision.)"
+  # FAIL OPEN (CLAUDE.md: "a BLOCKING guard should fail closed, a NUDGE should
+  # fail open"). This hook is a nudge, so failing open means it KEEPS FIRING
+  # when it cannot verify - it never goes silent on a possible dependency
+  # change. That is the one direction used throughout this file; the words
+  # "fail closed" appear nowhere, because they would describe the opposite.
+  #
+  # Degrade with the information still on hand rather than throwing it away:
+  # decide on the RAW stdin blob. This stays a strict superset of the parsed
+  # path - the blob contains the command text verbatim (JSON escaping only ever
+  # INSERTS backslashes, which are themselves `[!a-zA-Z0-9]`, so a trigger can
+  # only become easier to match), and the blob's first word is `{"tool_input"`,
+  # never echo/printf/cat, so `_provably_inert` can never suppress it. It
+  # cannot introduce an under-fire, and it stops the hook nudging on 100% of
+  # Bash calls (`git status` included) on a machine with neither tool.
+  if [ "$(decide "$IN")" = fire ]; then
+    emit "$NUDGE (Note: the notices guard could not parse this tool input - neither jq nor python3 is usable - so it matched the raw input instead. Install jq to restore precision.)"
+  fi
   exit 0
 fi
 
