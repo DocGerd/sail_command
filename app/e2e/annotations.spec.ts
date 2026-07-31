@@ -149,6 +149,21 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
     await slider.focus();
     await page.keyboard.press('ArrowRight');
     await expect.poll(() => timeReadout.textContent()).not.toBe(timeBeforeArrow);
+
+    // The readout poll above only proves the ArrowRight keypress landed — it
+    // says nothing about the `panBy` a few lines up, which feeds RouteLayer's
+    // viewport-scoped barb rebuild (RouteLayer.tsx:476) through a debounced
+    // `moveend` listener (a `requestAnimationFrame` coalescing rapid
+    // move/zoom events, not a network trigger today). Proving the ABSENCE of
+    // a network call cannot be done with `expect.poll` — there is no state to
+    // poll for "nothing happened yet" vs. "nothing will ever happen". This
+    // fixed wait is the documented exception to the no-fixed-timeout house
+    // rule (see `settledCanvas` in datalayers.spec.ts for the same
+    // reasoning): 500ms comfortably exceeds the single-rAF (~16ms) rebuild
+    // this listener does today, with wide margin for a future regression
+    // that replaced it with a genuinely debounced network refetch. Do not
+    // "fix" this back into a poll — there is nothing to poll on.
+    await page.waitForTimeout(500);
     expect(
       openMeteoRequests,
       `expected zero Open-Meteo requests, got: ${openMeteoRequests.join(', ')}`,

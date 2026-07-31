@@ -297,4 +297,51 @@ test('built output guards: og:image card present, precache excludes brand/ + tes
       true,
     );
   }
+
+  // #253 regression guard: maplibre-gl 6 loads its worker via `new Worker(new
+  // URL(...))` inside the library itself, a pattern Vite can only see through
+  // the `?worker&url` suffix (MapView.tsx's import comment has the full
+  // story). Get that suffix wrong (e.g. a bare `?url`) and the worker chunk
+  // is copied verbatim with its own `./maplibre-gl-shared.mjs` import left
+  // unresolved, so it 404s on its own dependency at runtime and the basemap
+  // never renders — and the RUNTIME pass in this very spec (`startPreview`,
+  // i.e. `vite preview`) is exactly the mode that DISGUISES the 404, since
+  // its SPA fallback answers the missing chunk with a 200 `text/html`
+  // index.html instead of a visible error (the reason this bug shipped
+  // silently under manual `vite preview` testing in the first place). The
+  // 19 KB-vs-468 KB size signature from the #253 investigation, turned into a
+  // built-output assertion: the precache manifest must list a
+  // `maplibre-gl-worker` entry, and the file it points at must be fully
+  // self-contained (bundled, not split).
+  const workerEntry = precacheUrls.find((u) => u.includes('maplibre-gl-worker'));
+  expect(
+    workerEntry,
+    `no maplibre-gl-worker entry in the precache manifest — MapView.tsx's ` +
+      `?worker&url import may have regressed (see #253)`,
+  ).toBeDefined();
+  const workerPath = resolve(DIST_DIR, workerEntry!);
+  expect(
+    existsSync(workerPath),
+    `precached maplibre-gl-worker file missing on disk: ${workerEntry}`,
+  ).toBe(true);
+  const workerSource = readFileSync(workerPath, 'utf8');
+  // Matches `importScripts(`, `new URL(`, and a STATIC `import` declaration
+  // (`import{...}from"..."`, `import*as x from"..."`, `import"sideEffect"`) —
+  // deliberately NOT a bare `\bimport\b`, which also matches maplibre-gl's
+  // own legitimate `import(...)` (a dynamic, parenthesized call the library
+  // uses at runtime to lazy-load an optional RTL text plugin URL the host
+  // page supplies). A naive substring/word match on "import" false-positives
+  // on that dynamic call even in a CORRECTLY bundled worker — mutation-tested
+  // against both the real bundled file (0 matches) and the broken `?url`
+  // rebuild (real static imports present) before landing on this shape.
+  const splitMarkers = [...workerSource.matchAll(/importScripts\(|new URL\(|import\s*[*{"']/g)].map(
+    (m) => m[0],
+  );
+  expect(
+    splitMarkers,
+    `${workerEntry} is not self-contained (found: ${splitMarkers.join(', ')}) — the ` +
+      `maplibre-gl 6 worker chunk split across an import of a sibling chunk, which 404s ` +
+      `at runtime (no bundler serves it) and means the basemap silently will not render. ` +
+      `MapView.tsx must import the worker with '?worker&url', not a bare '?url' (#253).`,
+  ).toEqual([]);
 });

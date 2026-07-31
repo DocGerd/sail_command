@@ -36,8 +36,12 @@ import { describe, expect, it } from 'vitest';
 // these methods without being a PRODUCTION camera call site. `eager: true`
 // resolves everything at collection time, matching how vitest already reads
 // the rest of this suite.
+// Includes .js/.jsx alongside .ts/.tsx (closing one of the #253 residual
+// scanner holes below): none exist in this tree today (checked with a
+// repo-wide find), but a future non-TS file would otherwise be invisible to
+// this scan by construction, not merely unlikely.
 const sourceFiles = import.meta.glob<string>(
-  ['../**/*.{ts,tsx}', '!../test/**', '!../**/*.test.{ts,tsx}'],
+  ['../**/*.{ts,tsx,js,jsx}', '!../test/**', '!../**/*.test.{ts,tsx,js,jsx}'],
   { query: '?raw', import: 'default', eager: true },
 );
 
@@ -53,6 +57,17 @@ const sourceFiles = import.meta.glob<string>(
 // panBy/zoomIn/zoomOut (each routes through panTo/zoomTo) round out every
 // method on Camera that can move or re-bear the map outside a plain user
 // drag/scroll gesture.
+//
+// By that same "fires moveend with no originalEvent" criterion, six more
+// methods belong here (verified against the installed v6
+// node_modules/maplibre-gl/src/ui/camera.ts): setCenter (:415),
+// setCenterElevation (:421), setZoom (:445), setPadding (:496),
+// setPitch (:531) and setRoll (:538) are each a thin wrapper that calls
+// jumpTo({...}) directly, and jumpTo (:708) fires 'moveend' unconditionally
+// at the end of the function regardless of which fields actually changed —
+// so every one of these is just as capable of tripping the guard as
+// setBearing already was. No app source calls any of the six today (checked
+// with a repo-wide grep), so adding them needed no new ALLOWED_FILES entry.
 const CAMERA_METHODS = [
   'easeTo',
   'flyTo',
@@ -64,6 +79,12 @@ const CAMERA_METHODS = [
   'fitScreenCoordinates',
   'jumpTo',
   'setBearing',
+  'setCenter',
+  'setCenterElevation',
+  'setZoom',
+  'setPadding',
+  'setPitch',
+  'setRoll',
   'panTo',
   'zoomTo',
   'panBy',
@@ -97,6 +118,18 @@ const ALLOWED_FILES = new Set(['../components/CompassControl.tsx', '../component
 // a FALSE GREEN — the guard would silently miss a genuine new call site —
 // which is worse than the reverse, so this tracks string state explicitly
 // and only treats `//`/`/*` as a comment opener outside of one.
+//
+// KNOWN RESIDUAL, latent not live (verified: zero differences in the scan
+// results across all 100 non-test source files as of #253's fix-up pass) —
+// documented rather than fixed because closing it needs a real tokenizer:
+// this state machine has no notion of a regex literal, so a quote character
+// that is actually inside one (e.g. `/['"]/`) is read as an ordinary string
+// opener. The scanner would then stay "in string" past the literal's closing
+// `/`, and a real camera call on the same line after such a regex could be
+// swallowed — a FALSE GREEN (the new call site goes unreported), the same
+// dangerous direction as the comment-truncation bug above. Distinguishing a
+// regex literal from a division expression requires tracking the preceding
+// token, which this character-only scanner does not do.
 function stripComments(source: string): string {
   let out = '';
   let i = 0;
@@ -140,18 +173,41 @@ function stripComments(source: string): string {
   return out;
 }
 
+// Matches both dot dispatch (`map.easeTo(...)`) and bracket dispatch with a
+// literal string key (`map['easeTo'](...)`, `` map[`easeTo`](...) ``) — the
+// latter closes one of the #253 residual scanner holes cheaply, since the
+// method name is still a static string. A genuinely DYNAMIC bracket key
+// (`map[m]()`, `map[someExpr()]()`) is NOT closable this way — the method
+// name isn't in the source text at all, only a variable — and is left as a
+// documented residual below; no such call exists anywhere in this codebase
+// today (checked), and closing it for real would require type information
+// this text-scanning approach doesn't have.
+const CAMERA_METHOD_PATTERN = (() => {
+  const alt = CAMERA_METHODS.join('|');
+  return new RegExp(`\\.(${alt})\\(|\\[\\s*['"\`](${alt})['"\`]\\s*\\]\\s*\\(`, 'g');
+})();
+
 /** full glob path -> the camera calls found in it (for a legible failure). */
 function findCameraCallSites(): Map<string, string[]> {
   const hits = new Map<string, string[]>();
-  const pattern = new RegExp(`\\.(${CAMERA_METHODS.join('|')})\\(`, 'g');
   for (const [path, source] of Object.entries(sourceFiles)) {
     const stripped = stripComments(source);
-    const matches = [...stripped.matchAll(pattern)].map((m) => m[1]!);
+    const matches = [...stripped.matchAll(CAMERA_METHOD_PATTERN)].map((m) => (m[1] ?? m[2])!);
     if (matches.length === 0) continue;
     hits.set(path, [...(hits.get(path) ?? []), ...matches]);
   }
   return hits;
 }
+
+// KNOWN RESIDUAL, latent not live (verified: zero differences in scan results
+// across all 100 non-test source files): a dynamic bracket key —
+// `map[methodNameVariable]()` — cannot be matched by this or any text-only
+// scanner, since the actual method name never appears as a literal in the
+// source. This scanner is a structural guard against ACCIDENTAL new call
+// sites written the ordinary way, not an exhaustive proof against deliberate
+// obfuscation; both the regex-literal hole documented above stripComments and
+// this one fail in the same direction — a missed call site reads as green,
+// never as a false failure.
 
 describe('#253 structural guard: camera-animating call sites', () => {
   it('finds every currently-known call site (proves the scan itself works)', () => {
