@@ -4,13 +4,23 @@
 # that's genuinely dual-purpose (e.g. vite.config.ts) is intentionally listed
 # under more than one area below.
 #
-# Deliberately left OUT of every area (cross-cutting / generic, not
-# domain-specific — assigning one would be an arbitrary, misleading label):
-# UI primitives (Button, Card, Chip, Disclosure, Field, NumberInput, Skeleton),
-# AboutDialog/ChangelogView + lib/changelog.ts, Banner, OptionsPanel, AppState,
-# App.tsx/main.tsx, i18n dict files, lib/format.ts, lib/geo.ts,
-# lib/copyrightHolder, usePersistedToggle/usePrefersReducedMotion/useWideLayout,
-# test/fixtures.ts, test/setup.ts, types.ts, vite-env.d.ts, app.css.
+# Deliberately left OUT of every area (verified cross-cutting / generic by
+# reading the file and, for the two non-obvious cases, its importers — not
+# just "hard to classify"): UI primitives (Button, Card, Chip, Disclosure,
+# Field, NumberInput, Skeleton), AboutDialog/ChangelogView + lib/changelog.ts,
+# Banner (generic info/warning/error banner, no PWA-specific logic), AppState
+# (the umbrella container: Settings + Plan + Rig + activeLegIndex together —
+# assigning it one area would misrepresent it), App.tsx/main.tsx, i18n dict
+# files, lib/format.ts and lib/geo.ts (both confirmed by grepping importers:
+# format.ts is used by both map components (DepthProfile, RouteLayer) and
+# routing components (PlannerPanel, PlansList, RouteSummary); geo.ts by
+# routing (isochrone/mask/polar/wind/replan), map (BoatMarker/ScaleBar/
+# mapOrientation/routeCorridor) AND ais (aisGeoJson/projectionVector) — a
+# genuine 3-area shared utility, not a routing file hiding as "generic"),
+# lib/copyrightHolder (test-only, no source file), usePersistedToggle (a
+# generic keyed localStorage-backed toggle, reused by unrelated overlays) /
+# usePrefersReducedMotion/useWideLayout, test/fixtures.ts, test/setup.ts,
+# types.ts, vite-env.d.ts, app.css.
 
 'area: routing':
   - changed-files:
@@ -36,6 +46,9 @@
           - 'app/src/components/PlannerPanel*'
           - 'app/src/components/RouteSummary*'
           - 'app/src/components/PlansList*'
+          - 'app/src/components/OptionsPanel*'
+          - 'app/src/components/LiveView*'
+          - 'app/src/services/assets*'
 
 'area: map':
   - changed-files:
@@ -68,6 +81,7 @@
           - 'app/src/lib/routeProfile*'
           - 'app/src/lib/useRecentHarbors*'
           - 'app/src/services/geolocation*'
+          - 'app/src/services/assets*'
           - 'app/src/state/useOwnshipGps*'
           - 'app/src/test/fakeMaplibre.ts'
 
@@ -79,7 +93,6 @@
           - 'app/src/services/glyphWarmup*'
           - 'app/src/services/swRecovery*'
           - 'app/src/services/db*'
-          - 'app/src/services/assets*'
           - 'app/src/lib/glyphs*'
           - 'app/src/lib/sessionSnapshot*'
           - 'app/src/lib/storage*'
