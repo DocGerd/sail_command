@@ -82,7 +82,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "CMD=$(jq -r '.tool_input.command // empty' 2>/dev/null); case \"$CMD\" in *npm*install*|*npm*uninstall*|*npm*update*|*npm*\\ ci|*npm*\\ ci\\ *|*npm*\\ add|*npm*\\ add\\ *|*npm*\\ i|*npm*\\ i\\ *|*npm*\\ rm|*npm*\\ rm\\ *|*npm*\\ remove|*npm*\\ remove\\ *|*npm*\\ up|*npm*\\ up\\ *) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"npm changed dependencies. Regenerate third-party notices: npm --prefix app run notices - CI fails on any drift in app/public/THIRD-PARTY-NOTICES.txt. Run it before committing.\"}}' ;; esac",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/notices-nudge.sh",
             "timeout": 5
           }
         ]
