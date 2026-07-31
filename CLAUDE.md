@@ -167,11 +167,16 @@ deviate from it.
   ease, MUST demote) and F2
   (foreign ease still live, must NOT demote) are bit-identical in
   `(commandedBearingRef, getBearing())` — no predicate over only those two can
-  separate them. `originalEvent` is an EXACT proxy for `isEasing()` here, not
-  an approximation: `_afterEase` deletes `_easeFrameId` (`camera.ts:1198-1202`)
-  BEFORE calling `_onEaseEnd`, so `isEasing()` was already false at every
-  ease-emitted `moveend` even in v5 — the signal discriminates handler-gesture
-  settles from camera-internal ease terminations. ACCEPTED NARROWING: the new
+  separate them. Term 2 does NOT stand alone — `e.originalEvent !== undefined`
+  is true for EVERY handler `moveend` whether or not an ease is live; it is
+  only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
+  gave us on the reachable paths. What makes that conjunction sound: `_stop`
+  (`camera.ts:1197-1211`) deletes `_easeFrameId` and only THEN invokes
+  `_onEaseEnd` at `:1211` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
+  bound in `_ease` (`:1234`) — so `isEasing()` was already false at every
+  ease-emitted `moveend` even in v5, which is why the absence of
+  `originalEvent` discriminates a camera-internal ease termination from a
+  handler-gesture settle. ACCEPTED NARROWING: the new
   guard is ease-source-SPECIFIC where `isEasing()` was ease-source-AGNOSTIC —
   a foreign, bearing-changing ease carrying no `originalEvent` would now demote
   where v5 did not. No producer exists in the app today
@@ -246,7 +251,10 @@ deviate from it.
   inside the library, which Vite cannot see — so nothing is emitted and the
   basemap silently does not render. The fix is `setWorkerUrl` fed by
   `import ... from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'` in
-  `MapView.tsx`, plus `worker: { format: 'es' }` in `vite.config.ts`. **`?url`
+  `MapView.tsx`. The `worker: { format: 'es' }` in `vite.config.ts` that keeps
+  the module-type `Worker` construction valid was ALREADY there — it predates
+  #253 and is not part of the fix; don't go looking for it in that diff.
+  **`?url`
   is the trap**: it copies the file VERBATIM without resolving its imports,
   and maplibre ships the worker split — `maplibre-gl-worker.mjs` opens with
   `import{...}from"./maplibre-gl-shared.mjs"`, whose sibling never gets
