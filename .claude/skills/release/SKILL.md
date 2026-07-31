@@ -78,6 +78,7 @@ manually at the cut, or reference them from a develop-side PR instead.
 | 4 | USER merges | Merges to `main` are classifier-gated — **the user runs `gh pr merge`, not the assistant.** Wait for green required checks (`app` + `e2e`) first. `gh pr checks --json` is unsupported here — poll `gh api repos/OWNER/REPO/commits/SHA/check-runs` instead. |
 | 5 | Tag + push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a semver tag (e.g. `v0.5.0`) and push it. **Assert the ref first — see 5a.** That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197). |
 | 5b | 🛑 **WAIT for the tag deploy, then verify** | **Do not push or merge anything to `develop` until this passes** — see the cancellation hazard below. |
+| 5c | Create the GitHub Release | Manual today (#175). Triggers no workflow, so it cannot collide with 5b's cancellation hazard — do it any time after 5b is green, alongside or just before step 6. See 5c below. |
 | 6 | BACK-MERGE `main` → `develop` | Open a `chore/backmerge` PR into `develop` so `develop` stays strictly ahead of `main`. Full CI re-runs. This is a develop-merge — the assistant may merge it directly. |
 
 ## 5a. Assert the ref BEFORE tagging — local `main` is routinely stale
@@ -184,6 +185,45 @@ for the next develop push to do it:
 ```bash
 gh workflow run deploy.yml --ref main
 ```
+
+## 5c. Create the GitHub Release (manual, #175)
+
+A git tag and a GitHub Release are different objects. The tag push in step 5
+triggers `deploy.yml` and ships to production — it does **not** create a
+Release. Production being live is not evidence the Release exists: the v0.6.0
+cut followed this runbook exactly and still shipped without one, caught only
+when the maintainer noticed it missing from the GitHub project page.
+
+Creating it is manual today — Refs #175 (Icebox) tracks automating tag →
+Release from `CHANGELOG.md`. This step triggers no workflow, so it cannot
+endanger 5b's cancellation hazard; do it any time after 5b is green.
+
+Notes come from the released `CHANGELOG.md` section for this version, read
+from the **tag**, not the working tree, so they match what actually shipped:
+
+```bash
+TAG=vX.Y.Z
+git show "$TAG:CHANGELOG.md" | awk "/^## \[${TAG#v}\]/{p=1;print;next} /^## \[/{p=0} p" \
+  | tail -n +2 > /tmp/release-notes.md
+
+gh release create "$TAG" --repo "$REPO" \
+  --title "$TAG" \
+  --notes-file /tmp/release-notes.md \
+  --latest --verify-tag
+```
+
+`--verify-tag` makes the command **fail** rather than silently create the tag
+itself if `$TAG` is missing from the remote. `--latest` is what moves the
+"Latest" badge to this release — without it the previous version keeps it.
+
+Title convention: existing releases mix bare tags (`v0.5.1`, `v0.4.0`) and
+themed titles (`v0.5.0 — chart orientation and scale`, `v0.6.0 — depth
+comfort and honest recommendations`) — feature releases have tended to carry
+a theme, but nothing mandates one; use judgement per cut.
+
+**Verify:** `gh release list --repo $REPO` shows `$TAG` marked `Latest`. A
+tag existing (5b passing) is not sufficient evidence — that only proves the
+deploy, not the Release object.
 
 ## Gotchas
 
