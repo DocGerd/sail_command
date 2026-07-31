@@ -6,6 +6,7 @@ import type {
   PlanResult,
   PolarTable,
   Rig,
+  RigRecommendation,
   RigResult,
   Settings,
   ShallowInfo,
@@ -45,6 +46,35 @@ function combineNoRouteReason(a: NoRouteReason | null, b: NoRouteReason | null):
   if (a === 'beyond-horizon' || b === 'beyond-horizon') return 'beyond-horizon';
   if (a === 'calm-motor-off' || b === 'calm-motor-off') return 'calm-motor-off';
   return 'unreachable';
+}
+
+// #259: an ETA gap smaller than this is measurement noise, not a genuine
+// speed difference between rigs — 24x the worst knife-edge measured to date
+// (2.5 s at the sail-speed floor's 3.8 kn boundary, see the motor-decision-rule
+// spec and issue #264) so it comfortably absorbs solver-level noise from a
+// user-adjusted floor without swallowing a genuinely different route: 60 s is
+// well under 1% of a typical multi-hour Flensburg Fjord passage (e.g. 0.4% of
+// a 4 h ETA), so it cannot misclassify two routes that actually differ.
+export const RIG_TIE_BAND_MS = 60_000;
+
+/** True when every leg of a RigResult is a motor leg (vacuously true for zero legs). */
+function isAllMotor(result: RigResult): boolean {
+  return result.legs.every((leg) => leg.kind === 'motor');
+}
+
+/**
+ * #259: the honest rig comparison, distinct from the plain `recommended` pick
+ * in `assemble` below. Checked in this order because 'moot' is the STRONGER
+ * statement: an all-motor result on both rigs means neither polar drove a
+ * single leg, so the comparison is meaningless regardless of the ETA gap —
+ * motor legs run at the same settings.motorSpeedKn on both rigs, so this case
+ * commonly coincides with an exact tie, but the check does not depend on
+ * that. Exported for direct unit testing of the tie-band boundary.
+ */
+export function compareRigs(genoa: RigResult, fock: RigResult): RigRecommendation {
+  if (isAllMotor(genoa) && isAllMotor(fock)) return { kind: 'moot' };
+  if (Math.abs(genoa.etaMs - fock.etaMs) < RIG_TIE_BAND_MS) return { kind: 'tie' };
+  return { kind: 'decided', rig: genoa.etaMs < fock.etaMs ? 'genoa' : 'fock' };
 }
 
 /**
@@ -180,14 +210,26 @@ export function planRoute(
   });
 
   const assemble = (genoa: RunOut, fock: RunOut, shallow: ShallowInfo | null): PlanResult => {
-    const recommended: Rig =
+    const rigRecommendation: RigRecommendation =
       genoa.rigResult && fock.rigResult
-        ? genoa.rigResult.etaMs <= fock.rigResult.etaMs
-          ? 'genoa'
-          : 'fock'
-        : genoa.rigResult
-          ? 'genoa'
-          : 'fock';
+        ? compareRigs(genoa.rigResult, fock.rigResult)
+        : { kind: 'decided', rig: genoa.rigResult ? 'genoa' : 'fock' };
+    // #259: `recommended` stays a plain Rig for consumers that only ever need
+    // a single pick (tab-seeding in AppState, the saved-plan chip in
+    // PlansList, recommendedResult()'s invariant) — it always names a rig
+    // with a non-null result. It names the same rig as a 'decided'
+    // rigRecommendation; for 'tie'/'moot' it falls back to the pre-#259`<=`
+    // tie-break, since those consumers need *a* rig, not a qualified answer.
+    const recommended: Rig =
+      rigRecommendation.kind === 'decided'
+        ? rigRecommendation.rig
+        : genoa.rigResult && fock.rigResult
+          ? genoa.rigResult.etaMs <= fock.rigResult.etaMs
+            ? 'genoa'
+            : 'fock'
+          : genoa.rigResult
+            ? 'genoa'
+            : 'fock';
     return {
       status: 'ok',
       genoa: genoa.rigResult,
@@ -195,6 +237,7 @@ export function planRoute(
       genoaReason: genoa.rigResult ? null : genoa.reason,
       fockReason: fock.rigResult ? null : fock.reason,
       recommended,
+      rigRecommendation,
       snappedOrigin: origin,
       snappedDestination: destination,
       // exactOptionalPropertyTypes: omit the key entirely when there is no

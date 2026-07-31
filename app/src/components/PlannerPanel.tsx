@@ -12,7 +12,7 @@ import {
 } from '../lib/format';
 import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
-import { resultSummary } from '../lib/resultSummary';
+import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
 import OptionsPanel, { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
@@ -542,8 +542,14 @@ export default function PlannerPanel({
           ansehen" jumps to the full card. */}
       {summary && (
         <Card title={t('planner.card.result')} className="planner-result">
+          {/* #259: mirrors RouteSummary's rig-comparison chip — an ETA tie or
+              an all-motor comparison must not silently badge one rig as
+              recommended here either (this strip is the FIRST surface a user
+              sees a result on). */}
           <Chip className="chip-faster-rig">
-            {t('route.fasterRig', { rig: t(summary.recommendedRigLabelKey) })}
+            {summary.rigRecommendation.kind === 'decided'
+              ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[summary.rigRecommendation.rig]) })
+              : t(summary.rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
           </Chip>
           <div className="planner-result-primary">
             <div className="ergebnis-stat ergebnis-stat-lg">

@@ -4,7 +4,7 @@
 // two never drift. Pure: reads the in-memory plan + the active rig's result
 // only (no re-fetch, no wind-grid sampling, offline-safe).
 import type { MsgKey } from '../i18n/dict.de';
-import type { Plan, Rig, RigResult } from '../types';
+import type { Plan, PlanResultOk, Rig, RigRecommendation, RigResult } from '../types';
 import { formatDateTime, formatDuration, formatKn, formatNm, type Lang } from './format';
 
 // Rig -> its display label key. Shared so RouteSummary and the planner strip
@@ -27,6 +27,10 @@ export interface ResultSummary {
   // currently displayed.
   recommendedRig: Rig;
   recommendedRigLabelKey: MsgKey;
+  // #259: the honest rig comparison — a 'decided' pick names the same rig as
+  // recommendedRig above; 'tie'/'moot' mean neither rig should be badged as
+  // recommended. See rigRecommendationOf below for the resolution rule.
+  rigRecommendation: RigRecommendation;
   // Sail/motor split (motor legs are first-class per the source spec).
   sailNm: number;
   motorNm: number;
@@ -34,6 +38,21 @@ export interface ResultSummary {
   motorFraction: number; // 0..1
   sailPct: number; // integer percent, sailPct + motorPct === 100 when distance > 0
   motorPct: number;
+}
+
+/**
+ * #259: the honest rig comparison for a plan. Falls back to a plain
+ * 'decided' pick of the recorded `recommended` rig when `rigRecommendation`
+ * is absent — pre-#259 PlanResultOk literals across the test suite (and any
+ * plan solved before this field existed) never set it, and a bare
+ * `recommended: Rig` is exactly what those literals always meant. Exported so
+ * both display surfaces (this file's resultSummary() below, and RouteSummary
+ * directly for the plan-level tab star that renders even when the active
+ * rig's own result is null) resolve it identically — see the file banner on
+ * why the two must never drift.
+ */
+export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
+  return result.rigRecommendation ?? { kind: 'decided', rig: result.recommended };
 }
 
 /** Average speed in knots over the whole passage; 0 for a zero-duration result. */
@@ -54,6 +73,7 @@ export function resultSummary(plan: Plan, result: RigResult, lang: Lang): Result
   const motorPct = total > 0 ? Math.round(motorFraction * 100) : 0;
   const sailPct = total > 0 ? 100 - motorPct : 0;
   const recommendedRig = plan.result.recommended;
+  const rigRecommendation = rigRecommendationOf(plan.result);
 
   return {
     arrivalText: formatDateTime(result.etaMs, lang),
@@ -63,6 +83,7 @@ export function resultSummary(plan: Plan, result: RigResult, lang: Lang): Result
     avgSpeedText: formatKn(avgSpeedKn),
     recommendedRig,
     recommendedRigLabelKey: RIG_LABEL_KEY[recommendedRig],
+    rigRecommendation,
     sailNm,
     motorNm,
     sailFraction,
