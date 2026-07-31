@@ -151,14 +151,11 @@ describe('resultSummary', () => {
     expect(summary.avgSpeedKn).toBe(0);
   });
 
-  it('reports the recommended (faster) rig and its label key, independent of the shown result', () => {
+  it('#259: falls back to a decided pick of `recommended` when rigRecommendation is absent, independent of the shown result', () => {
     // The shown result is a genoa RigResult, but the plan recommends fock.
-    const summary = resultSummary(makePlan('fock'), rigResult({}), 'en');
-    expect(summary.recommendedRig).toBe('fock');
-    expect(summary.recommendedRigLabelKey).toBe('route.rig.fock');
-  });
-
-  it('#259: falls back to a decided pick of `recommended` when rigRecommendation is absent', () => {
+    // (#275 review, Minor 6: this replaces a prior test of the now-removed
+    // unqualified `recommendedRig`/`recommendedRigLabelKey` pair — the
+    // qualified `rigRecommendation` is the only rig-comparison field now.)
     const summary = resultSummary(makePlan('fock'), rigResult({}), 'en');
     expect(summary.rigRecommendation).toEqual({ kind: 'decided', rig: 'fock' });
   });

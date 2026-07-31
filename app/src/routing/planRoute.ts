@@ -49,12 +49,27 @@ function combineNoRouteReason(a: NoRouteReason | null, b: NoRouteReason | null):
 }
 
 // #259: an ETA gap smaller than this is measurement noise, not a genuine
-// speed difference between rigs — 24x the worst knife-edge measured to date
-// (2.5 s at the sail-speed floor's 3.8 kn boundary, see the motor-decision-rule
+// speed difference between rigs — 23.8x the worst knife-edge measured to date
+// (2.52 s at the sail-speed floor's 3.8 kn boundary, see the motor-decision-rule
 // spec and issue #264) so it comfortably absorbs solver-level noise from a
 // user-adjusted floor without swallowing a genuinely different route: 60 s is
-// well under 1% of a typical multi-hour Flensburg Fjord passage (e.g. 0.4% of
-// a 4 h ETA), so it cannot misclassify two routes that actually differ.
+// 0.417% of a typical 4 h multi-hour Flensburg Fjord passage, so it cannot
+// misclassify two routes that actually differ AT THAT LENGTH.
+//
+// Known trade-off, assessed and NOT acted on: this is an ABSOLUTE band, so it
+// grows proportionally larger as the passage gets shorter — 60 s stops being
+// under 1% below a 1 h 40 min passage and reaches 5% at 20 min, and a harbour
+// hop inside Flensburg Fjord is routinely an hour or less. No misclassification
+// has been MEASURED on this app's real in-domain route (Langballigau ->
+// Sønderborg, uniform 12 kn/225°, real mask+polars, #275 review): an 81 min
+// passage where 60 s is 1.23% of duration, and the true genoa/fock gap is
+// 13.57 s (0.28%) — noise, correctly absorbed as a tie. So this is a bound
+// worth recording, not an observed defect, and the value is NOT changed here
+// on that basis alone. If a real short-passage misclassification is ever
+// measured, the fix shape is a relative term floored at the noise level
+// (e.g. `Math.max(NOISE_FLOOR_MS, Math.min(RIG_TIE_BAND_MS, 0.005 *
+// durationMs))`), never a bare percentage — a purely relative band would fall
+// under the 2.52 s knife-edge on a 20 min hop and start ranking noise again.
 export const RIG_TIE_BAND_MS = 60_000;
 
 /** True when every leg of a RigResult is a motor leg (vacuously true for zero legs). */
@@ -210,26 +225,34 @@ export function planRoute(
   });
 
   const assemble = (genoa: RunOut, fock: RunOut, shallow: ShallowInfo | null): PlanResult => {
-    const rigRecommendation: RigRecommendation =
-      genoa.rigResult && fock.rigResult
-        ? compareRigs(genoa.rigResult, fock.rigResult)
-        : { kind: 'decided', rig: genoa.rigResult ? 'genoa' : 'fock' };
     // #259: `recommended` stays a plain Rig for consumers that only ever need
     // a single pick (tab-seeding in AppState, the saved-plan chip in
     // PlansList, recommendedResult()'s invariant) — it always names a rig
     // with a non-null result. It names the same rig as a 'decided'
-    // rigRecommendation; for 'tie'/'moot' it falls back to the pre-#259`<=`
+    // rigRecommendation; for 'tie'/'moot' it falls back to the pre-#259 `<=`
     // tie-break, since those consumers need *a* rig, not a qualified answer.
-    const recommended: Rig =
-      rigRecommendation.kind === 'decided'
-        ? rigRecommendation.rig
-        : genoa.rigResult && fock.rigResult
-          ? genoa.rigResult.etaMs <= fock.rigResult.etaMs
-            ? 'genoa'
-            : 'fock'
-          : genoa.rigResult
+    //
+    // Branched on `genoa.rigResult && fock.rigResult` directly (rather than
+    // switching on rigRecommendation.kind with a same-shaped single-rig tail
+    // repeated below it) so the single-rig fallback is written exactly once:
+    // when rigRecommendation.kind is 'tie'/'moot', compareRigs was called,
+    // which only happens in this branch, so both rigResults are already
+    // narrowed non-null here — an equivalent tail in the other branch would
+    // be unreachable dead code (#275 review).
+    let rigRecommendation: RigRecommendation;
+    let recommended: Rig;
+    if (genoa.rigResult && fock.rigResult) {
+      rigRecommendation = compareRigs(genoa.rigResult, fock.rigResult);
+      recommended =
+        rigRecommendation.kind === 'decided'
+          ? rigRecommendation.rig
+          : genoa.rigResult.etaMs <= fock.rigResult.etaMs
             ? 'genoa'
             : 'fock';
+    } else {
+      recommended = genoa.rigResult ? 'genoa' : 'fock';
+      rigRecommendation = { kind: 'decided', rig: recommended };
+    }
     return {
       status: 'ok',
       genoa: genoa.rigResult,

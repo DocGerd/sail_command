@@ -4,7 +4,7 @@
 // two never drift. Pure: reads the in-memory plan + the active rig's result
 // only (no re-fetch, no wind-grid sampling, offline-safe).
 import type { MsgKey } from '../i18n/dict.de';
-import type { Plan, PlanResultOk, Rig, RigRecommendation, RigResult } from '../types';
+import type { Plan, PlanResultOk, Rig, RigResult, RigRecommendation } from '../types';
 import { formatDateTime, formatDuration, formatKn, formatNm, type Lang } from './format';
 
 // Rig -> its display label key. Shared so RouteSummary and the planner strip
@@ -23,13 +23,20 @@ export interface ResultSummary {
   // avgSpeed field, so it is computed here once for both surfaces.
   avgSpeedKn: number;
   avgSpeedText: string;
-  // The recommended (= faster) rig, plan-level, independent of which rig is
-  // currently displayed.
-  recommendedRig: Rig;
-  recommendedRigLabelKey: MsgKey;
-  // #259: the honest rig comparison — a 'decided' pick names the same rig as
-  // recommendedRig above; 'tie'/'moot' mean neither rig should be badged as
-  // recommended. See rigRecommendationOf below for the resolution rule.
+  // #259: the honest rig comparison, plan-level, independent of which rig is
+  // currently displayed. A 'decided' pick names the faster rig; 'tie'/'moot'
+  // mean neither rig should be badged as recommended. See rigRecommendationOf
+  // below for the resolution rule. This is deliberately the ONLY
+  // rig-comparison field on ResultSummary (#275 review, Minor 6): an earlier
+  // draft also carried an unqualified `recommendedRig`/`recommendedRigLabelKey`
+  // pair with zero production consumers once PlannerPanel switched to this
+  // field, and keeping an unqualified duplicate right next to the qualified
+  // one is the exact ambiguity #259 was filed to remove — a future component
+  // reaching for the obvious-looking unqualified pick would reintroduce the
+  // silent-genoa badge with no test failing. If a consumer ever needs *a*
+  // rig unconditionally again, derive it from `rigRecommendation` at the call
+  // site (`kind === 'decided' ? rig : <fallback>`) rather than re-adding an
+  // unqualified field here.
   rigRecommendation: RigRecommendation;
   // Sail/motor split (motor legs are first-class per the source spec).
   sailNm: number;
@@ -72,7 +79,6 @@ export function resultSummary(plan: Plan, result: RigResult, lang: Lang): Result
   // sum to 100 (a proportional two-segment bar must not show 99/2 etc.).
   const motorPct = total > 0 ? Math.round(motorFraction * 100) : 0;
   const sailPct = total > 0 ? 100 - motorPct : 0;
-  const recommendedRig = plan.result.recommended;
   const rigRecommendation = rigRecommendationOf(plan.result);
 
   return {
@@ -81,8 +87,6 @@ export function resultSummary(plan: Plan, result: RigResult, lang: Lang): Result
     durationText: formatDuration(result.durationMs),
     avgSpeedKn,
     avgSpeedText: formatKn(avgSpeedKn),
-    recommendedRig,
-    recommendedRigLabelKey: RIG_LABEL_KEY[recommendedRig],
     rigRecommendation,
     sailNm,
     motorNm,
