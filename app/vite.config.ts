@@ -180,7 +180,11 @@ export default defineConfig(({ command }) => ({
         // range workaround, see src/lib/basemap.ts) — it is matched by the
         // `png` token below, so no dedicated `pmtiles` token remains.
         maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,pbf}'],
+        // #253: 'mjs' precaches the maplibre-gl worker chunk (emitted via
+        // the `?url` import in MapView.tsx) — without it the vector basemap
+        // works online but breaks OFFLINE, since Workbox never precaches it
+        // and `setWorkerUrl`'s hashed asset URL has no runtime-cache route.
+        globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,json,bin,pbf}'],
         // brand/social-card.png is an og:image served over HTTP, not part of
         // the offline app — keep it out of the precache so the install
         // budget (#28) doesn't grow.

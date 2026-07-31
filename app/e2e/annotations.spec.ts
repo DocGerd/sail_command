@@ -134,9 +134,21 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
     });
     const slider = page.getByRole('slider', { name: 'Vorhersagezeitpunkt' });
     await expect(slider).toBeVisible();
+    // The slider's own readout (RouteLayer.tsx's `<span>{formatTime(tMs,
+    // lang)}</span>` beside the range input) is the concrete UI signal that
+    // ArrowRight actually moved the forecast hour — `networkidle` never
+    // settles under maplibre-gl 6 (no `requestfinished` for its
+    // module-worker fetch) and was never the right readiness signal for
+    // "did the debounced hour-change effect fire" anyway. A literal clock
+    // string would be a false-precise assertion: the wind fixture's
+    // timestamps are regenerated fresh by the `pree2e` hook on every e2e
+    // run, so only "the readout moved off its pre-keypress value" is stable
+    // across runs.
+    const timeReadout = page.locator('.route-layer-time-slider span');
+    const timeBeforeArrow = await timeReadout.textContent();
     await slider.focus();
     await page.keyboard.press('ArrowRight');
-    await page.waitForLoadState('networkidle');
+    await expect.poll(() => timeReadout.textContent()).not.toBe(timeBeforeArrow);
     expect(
       openMeteoRequests,
       `expected zero Open-Meteo requests, got: ${openMeteoRequests.join(', ')}`,

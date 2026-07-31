@@ -41,30 +41,106 @@ const sourceFiles = import.meta.glob<string>(
   { query: '?raw', import: 'default', eager: true },
 );
 
-const CAMERA_METHODS = ['easeTo', 'flyTo', 'rotateTo', 'resetNorth', 'snapToNorth', 'fitBounds'];
+// v6's camera.ts: easeTo/flyTo/rotateTo/resetNorth/fitBounds are genuinely
+// animated; fitScreenCoordinates (:613) is too and, like rotateTo, takes an
+// explicit bearing. jumpTo (:637) and setBearing (:489, which just calls
+// jumpTo) are instant rather than eased, but still change the camera and
+// fire 'moveend' with no `originalEvent` — exactly the signal
+// CompassControl's onMoveEnd guard reads to decide "was this MY ease" (see
+// its comment), so an instant foreign bearing change is just as capable of
+// tripping a spurious north-up -> free demotion as an eased one. resetNorthPitch
+// (:512) is an easeTo wrapper. panTo/zoomTo (each an easeTo wrapper) and
+// panBy/zoomIn/zoomOut (each routes through panTo/zoomTo) round out every
+// method on Camera that can move or re-bear the map outside a plain user
+// drag/scroll gesture.
+const CAMERA_METHODS = [
+  'easeTo',
+  'flyTo',
+  'rotateTo',
+  'resetNorth',
+  'resetNorthPitch',
+  'snapToNorth',
+  'fitBounds',
+  'fitScreenCoordinates',
+  'jumpTo',
+  'setBearing',
+  'panTo',
+  'zoomTo',
+  'panBy',
+  'zoomIn',
+  'zoomOut',
+];
 
 /**
  * Files allowed to call a camera-animating MapLibre method, and WHY each one
- * is safe under the #253 narrowing:
+ * is safe under the #253 narrowing. Keyed on the full glob path (as returned
+ * by `import.meta.glob`, e.g. `../components/CompassControl.tsx`) rather
+ * than a bare basename — a basename key would let a same-named file dropped
+ * anywhere else in the tree (`components/legacy/RouteLayer.tsx`) silently
+ * inherit the allowlist:
  *
- *   - CompassControl.tsx: `easeTo` only, always through `easeBearing`, which
- *     is the one call site `commandedBearingRef` tracks. This is the file the
- *     narrowing was written for.
- *   - RouteLayer.tsx: `fitBounds` only, always with `duration: 0` — never
- *     actually in flight, so it can never trip the "commanded bearing not yet
- *     reached" half of the guard no matter what bearing it passes.
+ *   - components/CompassControl.tsx: `easeTo` only, always through
+ *     `easeBearing`, which is the one call site `commandedBearingRef`
+ *     tracks. This is the file the narrowing was written for.
+ *   - components/RouteLayer.tsx: `fitBounds` only, always with
+ *     `duration: 0` — never actually in flight, so it can never trip the
+ *     "commanded bearing not yet reached" half of the guard no matter what
+ *     bearing it passes.
  */
-const ALLOWED_FILES = new Set(['CompassControl.tsx', 'RouteLayer.tsx']);
+const ALLOWED_FILES = new Set(['../components/CompassControl.tsx', '../components/RouteLayer.tsx']);
 
+// Strips comments with a small character-scanning state machine rather than
+// a `//`-to-end-of-line regex: the naive regex truncates a line at the FIRST
+// `//` it sees, including one that is actually inside a string or template
+// literal (e.g. `` fetch(`https://x/y`); map.flyTo({...}) ``), which erases
+// the real call that followed it on the same line. That failure direction is
+// a FALSE GREEN — the guard would silently miss a genuine new call site —
+// which is worse than the reverse, so this tracks string state explicitly
+// and only treats `//`/`/*` as a comment opener outside of one.
 function stripComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n')
-    .map((line) => line.replace(/\/\/.*$/, ''))
-    .join('\n');
+  let out = '';
+  let i = 0;
+  let inString: '"' | "'" | '`' | null = null;
+  while (i < source.length) {
+    const c = source[i]!;
+    const c2 = source[i + 1];
+    if (inString) {
+      out += c;
+      if (c === '\\') {
+        out += c2 ?? '';
+        i += 2;
+        continue;
+      }
+      if (c === inString) inString = null;
+      i += 1;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      inString = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === '/' && c2 === '/') {
+      while (i < source.length && source[i] !== '\n') i += 1;
+      continue;
+    }
+    if (c === '/' && c2 === '*') {
+      i += 2;
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        if (source[i] === '\n') out += '\n';
+        i += 1;
+      }
+      i += 2;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
 }
 
-/** file basename -> the camera calls found in it (for a legible failure). */
+/** full glob path -> the camera calls found in it (for a legible failure). */
 function findCameraCallSites(): Map<string, string[]> {
   const hits = new Map<string, string[]>();
   const pattern = new RegExp(`\\.(${CAMERA_METHODS.join('|')})\\(`, 'g');
@@ -72,8 +148,7 @@ function findCameraCallSites(): Map<string, string[]> {
     const stripped = stripComments(source);
     const matches = [...stripped.matchAll(pattern)].map((m) => m[1]!);
     if (matches.length === 0) continue;
-    const base = path.split('/').pop()!;
-    hits.set(base, [...(hits.get(base) ?? []), ...matches]);
+    hits.set(path, [...(hits.get(path) ?? []), ...matches]);
   }
   return hits;
 }
@@ -81,8 +156,8 @@ function findCameraCallSites(): Map<string, string[]> {
 describe('#253 structural guard: camera-animating call sites', () => {
   it('finds every currently-known call site (proves the scan itself works)', () => {
     const hits = findCameraCallSites();
-    expect(hits.get('CompassControl.tsx')).toEqual(['easeTo']);
-    expect(hits.get('RouteLayer.tsx')).toEqual(['fitBounds']);
+    expect(hits.get('../components/CompassControl.tsx')).toEqual(['easeTo']);
+    expect(hits.get('../components/RouteLayer.tsx')).toEqual(['fitBounds']);
   });
 
   it('never gains a NEW camera-animating call site outside the #253 allowlist', () => {

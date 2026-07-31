@@ -492,6 +492,45 @@ describe('CompassControl', () => {
 
       expect(compass()).toHaveAttribute('data-orientation', 'free');
     });
+
+    // #253 review follow-up: the test above sets up NO commanded ease at all
+    // (`commandedBearingRef.current` stays at its initial `null` throughout),
+    // so it passes under a `commandedBearingRef`-only guard, an
+    // `originalEvent`-only guard, and with the guard's `if` deleted entirely —
+    // it never actually exercises the interaction of BOTH terms, only that
+    // `commandedBearingRef === null` alone is enough to demote. This row
+    // closes that gap: `commandedBearingRef` IS set-and-unreached (our own
+    // rotateend snap is genuinely mid-flight, exactly like "does not demote
+    // on a handler settle fired while its own ease still runs" above), and
+    // ONLY the missing `originalEvent` distinguishes this from that test —
+    // proving it is specifically the `e.originalEvent !== undefined` term
+    // that lets a foreign settle through while a commanded ease is still
+    // unreached. A `commandedBearingRef`-only guard would wrongly suppress
+    // this one (still-unreached commanded bearing blocks regardless of
+    // `originalEvent`), which is exactly the failure mode this row exists to
+    // catch.
+    it('#253: a foreign settle with no eventData still demotes even while our OWN commanded ease is unreached', () => {
+      render(<CompassControl fix={null} showOwnship={false} />);
+      act(() => {
+        // Our own rotateend snap: commands 0, genuinely in flight (the fake
+        // only applies the target bearing when the ease SETTLES).
+        map.gestureRotateTo(0.6);
+        map.fire('rotateend', { originalEvent: new Event('touchend') });
+      });
+      expect(map.getBearing()).toBe(0.6);
+      expect(compass()).toHaveAttribute('data-orientation', 'north-up');
+
+      act(() => {
+        // A genuinely foreign moveend — NOT routed through the fake's
+        // `easeTo`/`pending` machinery at all, so it neither touches nor
+        // resolves our still-in-flight commanded ease — carrying no
+        // `originalEvent`, indistinguishable (on this signal) from our own
+        // ease's eventual natural settle.
+        map.fire('moveend');
+      });
+
+      expect(compass()).toHaveAttribute('data-orientation', 'free');
+    });
   });
 
   // The other direction of the same guard, and the one a false-positive fix is

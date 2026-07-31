@@ -34,7 +34,12 @@ vi.mock('maplibre-gl', () => {
     }
   }
   class FakeAttributionControl {}
-  return { Map: FakeMap, AttributionControl: FakeAttributionControl, addProtocol: vi.fn() };
+  return {
+    Map: FakeMap,
+    AttributionControl: FakeAttributionControl,
+    addProtocol: vi.fn(),
+    setWorkerUrl: vi.fn(),
+  };
 });
 
 vi.mock('pmtiles', () => {

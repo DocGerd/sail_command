@@ -14,7 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extends); the compass control's camera-settle guard was rewritten to derive
   the same "our own ease is still in flight" signal from state the app
   already owns, narrower than before but with no reachable behavioral change
-  in this app today (#253).
+  in this app today (#253). The upgrade also broke the vector basemap in
+  production: v6 loads its worker via an internal `new URL(...,
+  import.meta.url)` Vite cannot see through, so the worker chunk was never
+  emitted into the build and the map never loaded outside `vite preview`'s
+  SPA-fallback masking. Fixed via maplibre's own `setWorkerUrl` escape hatch,
+  fed a Vite `?url` import of the worker so it ships as a hashed asset (and
+  is precached for offline — the Workbox glob pattern gained `mjs`) (#253).
 
 ## [0.6.0] - 2026-07-31
 

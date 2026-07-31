@@ -297,6 +297,7 @@ vi.mock('maplibre-gl', () => {
     LngLatBounds: FakeLngLatBounds,
     Popup: FakePopup,
     addProtocol: vi.fn(),
+    setWorkerUrl: vi.fn(),
   };
 });
 

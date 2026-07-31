@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Map as MaplibreMap, addProtocol, AttributionControl } from 'maplibre-gl';
+import { Map as MaplibreMap, addProtocol, setWorkerUrl, AttributionControl } from 'maplibre-gl';
 import type {
   StyleSpecification,
   MapMouseEvent,
@@ -10,6 +10,7 @@ import type {
 import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { useLang } from '../i18n';
 import { BASEMAP_PATH } from '../lib/basemap';
 import { MAP_MAX_ZOOM } from '../lib/mapOrientation';
@@ -21,6 +22,23 @@ import type { LatLon } from '../types';
 // are process-global; re-registering per mount would be redundant, not wrong).
 const pmtilesProtocol = new Protocol();
 addProtocol('pmtiles', pmtilesProtocol.tile);
+
+// #253: maplibre-gl 6 loads its worker via `new Worker(new URL(...,
+// import.meta.url), {type:'module'})` INSIDE the library itself
+// (util/web_worker.ts's defaultWorkerUrl()) — a pattern Vite cannot see
+// through, so the worker chunk was never emitted into the build and the map
+// never loaded in production (it "worked" under `vite preview` only because
+// the request 404s into the SPA fallback, `index.html`, which the worker
+// then silently fails to execute as JS). The library's own escape hatch is
+// `setWorkerUrl`, which must run before any `Map` is constructed — module
+// scope here, alongside the pmtiles protocol registration above, since both
+// must be set up exactly once and before the first `Map` this module
+// constructs. The `?url` import makes Vite emit the worker as a hashed
+// asset and hands back a URL prefixed with the active `base` (works under
+// both the prod root and the `/uat/` sub-path); `new URL('maplibre-gl/dist/
+// ...', import.meta.url)` does NOT work here since `new URL` cannot resolve
+// bare package specifiers.
+setWorkerUrl(maplibreWorkerUrl);
 
 const MAX_BOUNDS: LngLatBoundsLike = [
   [8.9, 54.05],

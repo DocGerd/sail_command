@@ -40,6 +40,30 @@ async function installMapHandle(page: Page): Promise<boolean> {
   });
 }
 
+// #253: `networkidle` never settles under maplibre-gl 6 — Chromium/Playwright
+// never emit `requestfinished` for the module-worker fetch that
+// `setWorkerUrl` triggers — and it was the wrong readiness signal anyway for
+// a map that streams tiles indefinitely. `installMapHandle`'s own poll (it
+// retries until `window.__scE2eMap` exists) is the replacement state gate.
+//
+// A `map.loaded()` gate was tried and measured to be WORSE than no gate at
+// all: under `@playwright/test`'s Chromium, maplibre-gl 6's module worker
+// never completes (the exact "one permanently-pending request on every page
+// load" the #253 migration commit already documented), so EVERY vector/
+// GeoJSON `tileManager` (`protomaps`, `sc-harbors`, `sc-seamarks`,
+// `sc-route`, `sc-maneuvers`, `sc-barbs`) reports `loaded()===false`
+// forever — measured out to 80s with zero progress, only the raster
+// `sc-depth` source ever loads. Since `Map`'s own `load`/`idle` events fire
+// only from inside `if (this.loaded() && !this._loaded)`
+// (`ui/map.ts:4286`), they never fire either in this environment. None of
+// this file's assertions actually need a tile to have rendered, though:
+// bearing/camera state (`getBearing`, `easeTo`, `rotate`/`moveend`) and
+// `unproject()` all work off the transform, which the constructor
+// initialises synchronously — well before any tile request, worker-broken
+// or not, could resolve. Each test's own claim is already guarded by its
+// own retrying `expect`/`expect.poll`, so `installMapHandle` succeeding is
+// sufficient here.
+
 // `+ 0` for the same negative-zero reason as needleDeg below. Here the residual
 // happens to land positive (`Math.round(0.048)` is `+0`), so this is latent
 // rather than observed — but a rotation the other way would round to `-0` and
@@ -97,8 +121,7 @@ test('compass: north-up cold start, hand rotation drops to free, tap brings the 
     await page.goto(server.url);
     const compass = page.locator('.compass-btn');
     await expect(compass).toBeVisible();
-    await page.waitForLoadState('networkidle');
-    expect(await installMapHandle(page)).toBe(true);
+    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
 
     // The round glass chip, and the >=44 px cockpit touch target the issue
     // asks for. toBeVisible() alone would pass in the broken state that
@@ -372,8 +395,7 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     await setCourseFix(page, context, SNAP_WINDOW_BEARING);
 
     await page.goto(server.url);
-    await page.waitForLoadState('networkidle');
-    expect(await installMapHandle(page)).toBe(true);
+    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
 
     // --- engage course-up: "show my position" is what feeds the compass a fix ---
     await page.getByRole('tab', { name: 'Planen' }).click();
@@ -540,7 +562,7 @@ test('scale bar: labels the rendered viewport, never swallows a map tap, and cle
     await page.goto(server.url);
     const bar = page.locator('.scale-bar');
     await expect(bar).toBeVisible();
-    await page.waitForLoadState('networkidle');
+    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
 
     // An integer magnitude and one of the three chart units — never a
     // decimal, and never an empty bar.
@@ -681,8 +703,7 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await page.waitForLoadState('networkidle');
-    expect(await installMapHandle(page)).toBe(true);
+    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
 
     const compass = page.locator('.compass-btn');
     const bar = page.locator('.scale-bar');
@@ -762,7 +783,7 @@ test('#208 review "Major 2": the offline banner stays on top of the map-chrome t
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await page.waitForLoadState('networkidle');
+    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
     await page.setViewportSize({ width: 375, height: 667 });
 
     // `context.setOffline` flips `navigator.onLine`/fires the browser
@@ -814,7 +835,7 @@ test('#208 review "Minor 7": the scale bar does not cover the expanded attributi
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await page.waitForLoadState('networkidle');
+    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
     // The reviewer's own reproduction viewport — wide enough that the
     // expanded attribution's left edge reaches the bottom-left scale bar.
     await page.setViewportSize({ width: 1024, height: 600 });
@@ -864,7 +885,7 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     // grid itself is irrelevant here, only that a real plan/route exists so
     // RouteLayer actually renders `.route-layer-controls` (plan-gated).
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
-    await page.waitForLoadState('networkidle');
+    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
     await page.getByRole('tab', { name: 'Planen' }).click();
 
     // Same harbor pair the review's own reproduction used.

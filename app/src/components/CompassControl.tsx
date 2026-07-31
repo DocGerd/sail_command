@@ -241,11 +241,26 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
       // bare `moveend` (the one #203 F2 exists for) carries the gesture's
       // own `originalEvent`, so this guard correctly holds off while our
       // separately-still-running ease has yet to report its own settle.
-      // (Degenerate case, not a new failure: `originalEndEvent` at that
-      // `:707` call site can itself be `undefined` when no handler is found
-      // deactivated in the loop above it — that moveend then falls through
-      // to being judged too, which is the SAME accepted narrowing below, not
-      // a different one.)
+      // (Degenerate case, corrected #253 review: an end-of-gesture moveend
+      // with NO `originalEvent` is NOT reachable in 6.0.0 the way an earlier
+      // draft of this comment claimed. "No handler deactivated" does not
+      // reach `:707` at all — `finishedMoving` there is derived from
+      // `!stillMoving` after the `isActive()` check a few lines above (not
+      // from an empty `deactivatedHandlers`), so a genuinely undefined
+      // `originalEndEvent` needs `deactivatedHandlers[handlerName]` itself to
+      // be falsy on a `renderFrame` pass (`:406`, whose synthetic event has
+      // no `originalEvent` to record), falling back to a STORED `originalEvent`
+      // (`:486`) that is itself `undefined`. That fallback is unreachable in
+      // 6.0.0: `scroll_zoom.ts:266` is the only handler implementing
+      // `renderFrame()`, and its returned `originalEvent` is always
+      // `this._lastWheelEvent` — never `undefined` while it is active. And
+      // even if it did occur, it would NOT be "the SAME accepted narrowing"
+      // as the foreign-ease paragraph below: that paragraph is about a
+      // FOREIGN ease v5 also blocked on via `isEasing()`'s ease-source-
+      // agnostic check; a gesture-handler degenerate case would instead
+      // coincide with OUR OWN ease still being in flight, which v5's
+      // `isEasing()` also blocked on — so v6 demoting there is a DISTINCT
+      // divergence from v5, not a restatement of the one below.)
       //
       // This is still narrower than v5's `isEasing()`, which was ease-
       // SOURCE-AGNOSTIC: it blocked on ANY ease in flight, ours or foreign,

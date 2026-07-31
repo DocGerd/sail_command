@@ -45,7 +45,6 @@ test('depth toggle is available pre-plan, defaults ON (#63), flips the rendered 
 
     const canvas = page.locator('canvas.maplibregl-canvas');
     await expect(canvas).toBeVisible();
-    await page.waitForLoadState('networkidle');
 
     // Baseline: the settled default frame (overlay ON). Because it's stable,
     // a later byte difference against it is a real rendering delta (the
@@ -71,7 +70,6 @@ test('depth toggle is available pre-plan, defaults ON (#63), flips the rendered 
     await page.reload();
     await expect(depthToggle).toBeVisible();
     await expect(depthToggle).not.toBeChecked();
-    await page.waitForLoadState('networkidle');
 
     // ON must draw the raster again. Compare against the settled OFF frame
     // (not byte-equality with `overlayOn` — tile/label rendering isn't
