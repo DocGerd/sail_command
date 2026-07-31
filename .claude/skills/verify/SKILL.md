@@ -19,10 +19,119 @@ Range support** — pmtiles' FetchSource throws on full-body 200 responses.
 | Pass | Command | URL |
 |---|---|---|
 | Fast visual (dev) | `npm --prefix app run dev` (background) | `http://localhost:5173/sail_command/` |
-| Production bundle | `npm --prefix app run build`, then `npm --prefix app run preview -- --port 4173 --strictPort` (background) | `http://localhost:4173/sail_command/` |
+| Production bundle | `npm --prefix app run build`, then `npm --prefix app run preview -- --port <PORT> --strictPort` (background) | `http://localhost:<PORT>/sail_command/` |
 
 Prefer the production-bundle pass for anything that could differ minified
 (SW, worker, chunking); it is much faster than running the full e2e suite.
+
+**Pick `<PORT>` explicitly — never 4173.** 4173 is e2e's fixed preview port
+(`app/e2e/helpers.ts`); sharing it with a concurrent e2e run means you can't
+be sure which process is answering. Always pass `--strictPort`: without it,
+a taken port makes vite silently fall back to a different one, which is
+exactly the "which server am I looking at" failure this skill exists to
+prevent — let it fail loudly and pick a free port instead. Reusing the same
+port across two successive walkthroughs also reuses that origin's service-
+worker registration scope (origin = protocol + host + port); prefer a fresh
+port per pre-release walkthrough, and run the preflight below regardless.
+
+## #240: clean PWA state + build-identity assertion (production bundle only)
+
+A local production preview can show "Update verfügbar" / render stale
+content while looking correct, for two same-origin reasons (both reproduced
+in #240 — no application-code defect in either; `registerType: 'prompt'`,
+the focus-gated update check, and the message-gated `skipWaiting()` below
+are all deliberate):
+
+- **A — served bytes changed under a live page.** `ReloadPrompt.tsx` re-checks
+  `registration.update()` on every window focus while online
+  (`app/src/components/ReloadPrompt.tsx:26-30`). If `dist/` was rebuilt while
+  the previewed page stayed open (another agent's build, a `pree2e` rebuild),
+  the next focus installs the new worker into `waiting` — while the page
+  still correctly shows the build it loaded.
+- **B — a stale service worker from an earlier preview on the same
+  origin+port survives.** `app/src/sw.ts:54` calls `clientsClaim()`
+  unconditionally, but `self.skipWaiting()` (`sw.ts:81`) only fires inside the
+  `message` handler, gated on an explicit `SKIP_WAITING` postMessage (sent
+  when the Reload button calls `updateServiceWorker(true)`) — never
+  automatically on install. An old worker's precache keeps serving
+  `index.html` for every navigation until that message arrives, so a plain
+  reload can render the OLD build while the banner correctly reports a newer
+  one waiting in the background.
+
+A version string alone (`git describe --tags --always`, no `--dirty` flag —
+see `appVersion()` in `app/vite.config.ts:112-122`) does not distinguish two
+builds of the SAME commit, which is exactly the pre-release case (rebuild
+after an uncommitted tweak). Pair it with Vite's content-hashed entry chunk,
+which changes whenever any bundled module changes, commit or not.
+
+Do this **every time**, before capturing any screenshot used as pre-release
+evidence, right after the preview server is up:
+
+1. Capture the expected commit label right before building (same repo state
+   the build will embed):
+   ```bash
+   EXPECTED_VERSION=$(git describe --tags --always)
+   echo "$EXPECTED_VERSION"
+   ```
+2. Build and record the entry-chunk hash actually on disk:
+   ```bash
+   npm --prefix app run build
+   EXPECTED_CHUNK=$(grep -o 'assets/index-[^"]*\.js' app/dist/index.html)
+   echo "$EXPECTED_CHUNK"
+   ```
+3. Start the preview on `<PORT>` and navigate once (Playwright MCP:
+   `browser_navigate` → `http://localhost:<PORT>/sail_command/`).
+4. **Preflight — force a clean PWA state** (`browser_evaluate`, no target
+   element):
+   ```js
+   () => Promise.all([
+     navigator.serviceWorker.getRegistrations()
+       .then((regs) => Promise.all(regs.map((r) => r.unregister()))),
+     caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))),
+   ])
+   ```
+   Then `browser_navigate` to the same URL again — a fresh navigation, not a
+   SW-served cache — so the CURRENT `dist/` registers its own worker with
+   nothing stale beneath it.
+5. **Assert build identity — two checks, each closes a different gap.**
+   (`navigator.serviceWorker.controller === null` is NOT one of them —
+   dry-run-verified during this skill's own #240 fix: `sw.ts:54` calls
+   `clientsClaim()` unconditionally, so a brand-new worker can already be
+   `controller` moments after a clean reload with no old registration in
+   sight. Controller nullity tests timing, not staleness; don't use it.)
+   - Entry chunk on the loaded page matches what's on disk
+     (`browser_evaluate`):
+     `() => document.querySelector('script[type="module"]').getAttribute('src')`
+     → must contain `$EXPECTED_CHUNK` from step 2. This is the check that
+     catches mechanism B even when the commit hasn't changed — reproduced
+     live: with an old worker left registered, this returned the OLD hash
+     while the server already had a new one on disk, correctly failing.
+   - About dialog matches the target commit: click the button whose
+     accessible name is `Über SailCommand` (German UI default) or
+     `About SailCommand` (English), then read the `.about-version` element
+     (i18n key `about.version`, renders e.g. `Version v0.5.1-79-gef53156`)
+     → must contain `$EXPECTED_VERSION` from step 1. This is the one a
+     screenshot actually shows a human reviewer — capture it alongside the
+     UI screenshots as corroborating evidence. Note this check alone is
+     insufficient: two builds of the same uncommitted commit share the same
+     `git describe` output, so it cannot tell them apart — that's what the
+     chunk-hash check above is for.
+6. Only once both checks pass, proceed with the walkthrough below.
+
+If either check fails: repeat steps 3-5 from a fresh navigation first (rules
+out mechanism A, a mid-flight rebuild). If it still fails, something on that
+origin+port is holding a stale registration alive past the unregister call
+(commonly a second open tab) — close it, or switch to an unused port and
+retry from step 3.
+
+**Both-themes pass needs chrome-devtools MCP, not Playwright MCP.**
+`page.emulateMedia({ colorScheme })` is a Playwright *test-spec* API with no
+Playwright-MCP tool equivalent. The MCP-driven equivalent is
+`mcp__chrome-devtools__emulate` with `colorScheme: 'dark' | 'light'`. Run the
+dark-mode capture as its own chrome-devtools-MCP pass (steps 3-6 above, with
+`emulate` called right after step 3) — do not interleave it with the
+Playwright-MCP flow in the next section; the two MCP servers drive separate
+browser sessions and neither can change color scheme on the other's page.
 
 ## Deterministic wind (no live Open-Meteo)
 
