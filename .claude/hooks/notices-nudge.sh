@@ -64,6 +64,21 @@
 #     call whose heredoc PROSE mentioned npm and install). Suppressing that
 #     safely needs heredoc awareness, i.e. the parser that sank PR #233.
 #
+# ---------------------------------------------------------------------------
+# TWO CONSTRAINTS ON MOVING THIS CODE:
+#
+#   * BASH, not sh. `_provably_inert` uses `[[ ... ]]` with an ANSI-C bracket
+#     set, and `_triggers` uses `[!a-zA-Z0-9]` negation inside a `case`
+#     pattern. settings.json invokes this file directly, so the shebang wins.
+#     Do NOT paste these patterns back inline into settings.json, where the
+#     hook command may run under `sh`.
+#   * settings.json resolves this script through $CLAUDE_PROJECT_DIR (same as
+#     premerge-verify.sh). settings.json and this file travel in the SAME
+#     commit, so a checkout can never have one without the other - but a
+#     LOCALLY DIRTY settings.json pointing here from a branch that predates
+#     this script would make the hook silently do nothing. If you ever split
+#     them, restore an inline fallback first.
+#
 # Offline self-test of the pure decision logic:
 #   .claude/hooks/notices-nudge.sh --selftest
 # ---------------------------------------------------------------------------
