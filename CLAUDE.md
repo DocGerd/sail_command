@@ -364,7 +364,19 @@ deviate from it.
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
   pass before the back-merge: the tag-triggered run reached `success` AND prod's
-  About dialog shows the clean tag. Rationale: `cancel-in-progress`
+  About dialog shows the clean tag. A green step 5b is not the whole cut,
+  though — a git tag and a GitHub Release are different objects, and pushing
+  the tag ships production without creating one. The v0.6.0 cut (2026-07-31)
+  followed this runbook exactly — tag pushed, deploy `success`, About dialog
+  showing the clean `v0.6.0`, production verified serving it, every signal
+  green — and still shipped with no Release object; none of those signals is
+  evidence a Release exists, and it surfaced only when the maintainer noticed
+  it missing from the GitHub project page. The runbook's step 5c
+  (`.claude/skills/release/SKILL.md`, manual today, automation tracked in
+  #175) is what creates one, and it closes with `gh release list` showing the
+  tag marked `Latest` — `--latest` is load-bearing on creation, since without
+  it the previous version keeps the badge, a silent wrong state rather than
+  an error. Rationale: `cancel-in-progress`
   cancel-supersedes and tag runs share the `pages` group, so the tag run
   cancels the still-running merge run, and a back-merge push inside that window
   cancels the tag run — then NEITHER release run deployed and production keeps
