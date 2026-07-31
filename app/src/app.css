@@ -1935,6 +1935,12 @@ select {
   margin: 0 0 0.75rem;
 }
 
+/* #187: Data sources — collapsed by default via the same sc-disclosure
+   primitive, same spacing rhythm as .about-changelog above. */
+.about-sources {
+  margin: 0 0 0.75rem;
+}
+
 .changelog-view {
   max-height: 40vh;
   overflow-y: auto;
