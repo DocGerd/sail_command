@@ -463,3 +463,49 @@ describe('#243 depth comfort preference (real mask)', () => {
     expect(min).toBeLessThan(3.5);
   });
 });
+
+describe('issue #265: calm-with-motor-off must not report unreachable', () => {
+  // Flensburg -> Bagenkop, motorEnabled:false, light air (TWS 3 kn) — the
+  // #265 real-forecast repro (TWS 2.5-5 kn for the first ~3 h). Ground truth
+  // for the expected reason comes from TWO independent oracles, neither of
+  // which is the solver under test:
+  //   1. mask.cellsConnected proves a navigable 4-connected cell chain exists
+  //      between the snapped points at this safety depth — so the mask is
+  //      NOT the obstacle, and 'unreachable' ("nothing the user can change")
+  //      would be a false claim.
+  //   2. The pre-fix/post-fix contrast recorded below was measured directly
+  //      (a TWS/direction sweep against this same real mask+polar, see PR
+  //      description) — pinned here as a literal, not re-derived from
+  //      solve()'s own output.
+  const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 3, motorEnabled: false };
+
+  it('destination is mask-reachable at this safety depth (independent oracle)', () => {
+    const o = mask.snapToNavigable(FLENSBURG, settings.safetyDepthM);
+    const d = mask.snapToNavigable(BAGENKOP, settings.safetyDepthM);
+    expect(o).not.toBeNull();
+    expect(d).not.toBeNull();
+    expect(mask.cellsConnected(o!, d!, settings.safetyDepthM)).toBe(true);
+  });
+
+  it('reports calm-motor-off, not unreachable, for a light-air motor-off solve', () => {
+    // Measured against this exact scenario (uniformWindGrid(3, 0), same
+    // settings): before the #265 fix, solve() returned 'unreachable' (the
+    // per-node sawBlocked/sawCalm boolean OR let a single masked-but-fast
+    // heading veto the calm signal at almost every dead-end node near the
+    // harbor mouth, even though the majority of dead headings there were
+    // sub-floor/calm). After the fix (heading-count totals, not per-node
+    // booleans) it returns 'calm-motor-off'.
+    const o = mask.snapToNavigable(FLENSBURG, settings.safetyDepthM)!;
+    const d = mask.snapToNavigable(BAGENKOP, settings.safetyDepthM)!;
+    const res = solve({
+      origin: o,
+      destination: d,
+      departureMs: T0,
+      polar: new Polar(polarGenoa, settings.performanceFactor),
+      wind: new WindField(uniformWindGrid(3, 0)),
+      mask,
+      settings,
+    });
+    expect(res).toEqual({ status: 'no-route', reason: 'calm-motor-off' });
+  });
+});
