@@ -138,15 +138,26 @@ dark-mode capture as its own chrome-devtools-MCP pass — do not interleave it
 with the Playwright-MCP flow in the next section; the two MCP servers drive
 separate browser sessions and neither can change color scheme on the other's
 page. Steps 3-6 above translate to chrome-devtools MCP tool names as follows
-(the JS `function` bodies are reused as-is):
+(the JS `function` bodies are reused as-is, except the click — see below):
 
 | Step | Playwright MCP | chrome-devtools MCP |
 |---|---|---|
-| 3, navigate | `browser_navigate` | `navigate_page` (`type: 'url'`) |
+| 3, navigate | `browser_navigate` | `navigate_page` (`type: 'url'`, `url: …`) |
 | 3.5, set theme | — | `emulate` with `colorScheme: 'dark'` (call once, right after the first navigate) |
-| 4, preflight eval | `browser_evaluate` | `evaluate_script` |
-| 5, chunk/version eval | `browser_evaluate` | `evaluate_script` |
-| 5, click About button | `browser_click` | `click` |
+| 4, preflight eval | `browser_evaluate` | `evaluate_script` (same zero-arg `function`) |
+| 5, chunk/version eval | `browser_evaluate` | `evaluate_script` (same zero-arg `function`) |
+| 5, take a snapshot | — | `take_snapshot` (required before the click below) |
+| 5, click About button | `browser_click` (`target`: ref or selector) | `click` (`uid` ONLY — no selector fallback) |
+
+**The click row is not a name substitution — the parameter contract
+differs.** `browser_click`'s `target` accepts either a Playwright snapshot
+ref or a plain selector string. chrome-devtools MCP's `click` accepts
+**only** a `uid`, and a `uid` exists only by first calling `take_snapshot`
+(its accessibility-tree output lists each element's `uid`) and reading the
+About button's `uid` off that snapshot. There is no selector-string path on
+this tool — do `take_snapshot` → find the About button's `uid` in the
+result → `click({ uid })`. Skipping the snapshot leaves nothing to pass as
+`uid` and the click cannot be issued.
 
 ## Deterministic wind (no live Open-Meteo)
 
