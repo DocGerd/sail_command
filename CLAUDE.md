@@ -430,6 +430,16 @@ deviate from it.
   as you'd verify the others closed — the auto-close mechanism is silent
   either way, so only an explicit `gh api …/issues/N --jq .state` check
   distinguishes "correctly left open" from "silently closed."
+  That check is what caught a further sub-case (#279 → #265): the COMMIT had
+  already been corrected to `Refs #265`, but a stale `Closes #265` survived as
+  the PR BODY's last line from an earlier revision, and GitHub parses the
+  body independently — the merge closed #265 anyway (`commit_id: null` on the
+  timeline `closed` event, the same body-triggered signature as above).
+  Fixing the commit message does NOT fix the body, or vice versa — an agent
+  can truthfully report "changed it to Refs" while the other copy still says
+  `Closes`. Before merging, grep the PR BODY ITSELF for a closing keyword
+  adjacent to an issue number; never infer its content from the commit
+  message or from a report that it was fixed.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -653,8 +663,10 @@ deviate from it.
   relaxation gate (`planRoute.ts:273`) branches on `reason === 'unreachable'`
   (plus a depth-floor guard). So ANY change to no-route classification —
   including a strictly more accurate one — changes which retry tiers run and
-  can return a SLOWER route, not merely a differently-labeled one. Measured on
-  a Flensburg→all-harbours sweep (uniform TWS 3/dir 0, motor off, real
+  can return a SLOWER route, not merely a differently-labeled one. Measured
+  against a candidate reclassification patch that was REVERTED and never
+  merged — these are not reproducible from current `develop` — on a
+  Flensburg→all-harbours sweep (uniform TWS 3/dir 0, motor off, real
   mask+polars): Bagenkop +515.2 s, Wackerballig +499.4 s, Gelting-Mole
   +353.2 s, while 11 of 14 plans stayed byte-identical — which is what made it
   easy to miss. Still OPEN; treat any reason-classification change as a
