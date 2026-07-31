@@ -120,6 +120,11 @@ export const de = {
   'route.rigTabs': 'Riggvergleich',
   'route.recommended': 'Empfohlen',
   'route.fasterRig': 'Schneller: {rig}',
+  // #259: honest copy for the two cases where badging one rig as
+  // "recommended" would be misleading — an ETA tie (too close to call) and
+  // an all-motor route (the polar never drove a leg, so rig choice is moot).
+  'route.rigTie': 'Genua und Fock liegen für diese Passage praktisch gleichauf',
+  'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
   // #53: honest passage-planning-aid copy — charted data may under- OR
