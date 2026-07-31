@@ -180,11 +180,7 @@ data; the code license is covered in the [License](#license) section below.
   language; they don't switch live when you toggle German/English mid-session.
 - The router does not yet account for currents, tides, or sea state (waves)
   in the routing cost.
-- The map chrome introduced in v0.5.0 still has two known rough edges: on an
-  ordinary pan flick, track-up can drop to free orientation whenever the
-  chart's bearing sits inside MapLibre's 7° north-snap window — an everyday
-  heading in the Flensburg Fjord — and does not recover on its own
-  ([#230](https://github.com/DocGerd/sail_command/issues/230)); and on
+- The map chrome introduced in v0.5.0 still has one known rough edge: on
   several short phone viewports, both landscape and narrow portrait, the
   top-left chrome (layer toggles + compass) can leave no room for the scale
   bar, so it is suppressed rather than drawn over other controls
