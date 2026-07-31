@@ -1,0 +1,76 @@
+# Path -> area: label map for actions/labeler (see .github/workflows/labeler.yml).
+# Label names and scope come from the taxonomy in CONTRIBUTING.md; keep both in
+# sync if the taxonomy changes. Multiple labels can apply to one PR — a file
+# that's genuinely dual-purpose (e.g. vite.config.ts) is intentionally listed
+# under more than one area below.
+
+'area: routing':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'app/src/routing/**'
+          - 'app/src/lib/mask*'
+          - 'app/src/lib/polar*'
+          - 'app/src/lib/wind.ts'
+          - 'app/src/lib/wind.test.ts'
+
+'area: map':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'app/src/components/MapView*'
+          - 'app/src/components/DataLayers*'
+          - 'app/src/components/RouteLayer*'
+          - 'app/src/components/BoatMarker*'
+          - 'app/src/components/OwnshipMarker*'
+          - 'app/src/components/CompassControl*'
+          - 'app/src/components/ViaMarkers*'
+          - 'app/src/components/layerOrder*'
+          - 'app/src/components/DepthProfile*'
+          - 'app/src/lib/seamark*'
+          - 'app/src/lib/windBarbs*'
+          - 'app/src/lib/basemap.ts'
+          - 'app/src/lib/basemap.test.ts'
+          - 'app/src/lib/styleReload*'
+          - 'app/src/lib/mapOrientation*'
+          - 'app/src/lib/routeGeoJson*'
+          - 'app/src/lib/routeCorridor*'
+          - 'app/src/lib/harborGeoJson*'
+          - 'app/src/test/fakeMaplibre.ts'
+
+'area: pwa':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'app/src/sw.ts'
+          - 'app/src/services/basemapSource*'
+          - 'app/src/services/glyphWarmup*'
+          - 'app/src/services/swRecovery*'
+          - 'app/src/services/db*'
+          - 'app/src/lib/glyphs*'
+          - 'app/vite.config.ts'
+
+'area: ais':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'app/src/services/aisStream*'
+          - 'app/src/lib/aisTargets*'
+          - 'app/src/lib/aisGeoJson*'
+          - 'app/src/lib/mmsi*'
+          - 'app/src/lib/projectionVector*'
+          - 'app/src/components/AisLayer*'
+          - 'app/src/components/AisTraffic*'
+          - 'app/src/state/useAisTraffic*'
+
+'area: pipeline':
+  - changed-files:
+      - any-glob-to-any-file: 'pipeline/**'
+
+'area: deploy':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/deploy.yml'
+          - 'app/vite.config.ts'
+
+'area: tooling':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - '.claude/**'
