@@ -558,18 +558,53 @@ select {
      comment) and changing one without the other reopens #208 round-2 R2-1
      (the sheet-vs-tab-strip collision) — a horizontal-only bound leaves that
      pairing untouched. `max-width` is expressed against the containing
-     block's width (the full-bleed map wrapper, confirmed equal to viewport
-     width), not a `@media` breakpoint, so it degrades continuously as the
-     viewport narrows instead of jumping at one picked width: 100% minus
-     0.5rem (this cluster's own right anchor) minus ~135px worst-measured
-     `.data-layer-controls` right edge minus 0.5rem clearance, rounded up
-     for margin = `9.5rem`. At 390px this resolves to 238px, above both
-     measured natural widths (inert — no visual change at the existing
-     baseline); at 320px it clips to 168px, which still clears
-     `.data-layer-controls` by ~9-12px in both languages. Below the clip
-     threshold the toggle/slider/legend column wraps and scrolls internally
-     via the existing `overflow-y: auto` above — sanctioned by the same
-     design as the height bound. */
+     block's width — the full-bleed map wrapper, equal to the viewport width
+     in the narrow (<1024px) layout this rule targets. At >=1024px the wide
+     layout's side-panel column narrows that same containing block (measured
+     853.34px at a 1280px viewport, not the 1280px viewport itself) — that
+     only makes this bound MORE inert there (natural width 194.58px vs. a
+     ~701px resolved max-width), never less, so it isn't re-derived for wide.
+     Not a `@media` breakpoint either way, so it degrades continuously as the
+     viewport narrows instead of jumping at one picked width.
+
+     `9.5rem` DERIVATION — the one number here a content change can silently
+     invalidate; read this before touching it:
+       - Reserves: 0.5rem (this cluster's own `right` anchor) + the ~135px
+         worst-measured `.data-layer-controls` right edge (DE 132.27px / EN
+         135.16px at 320px — EN's "Water depths"/"Seamarks" run slightly
+         wider than DE's "Wassertiefen"/"Seezeichen") + a clearance margin.
+       - MEASURED clearance this constant buys at 320px: DE 11.7px, EN
+         8.8px (EN is the tighter case). The clipped left edge is
+         viewport-INVARIANT below the inertness threshold below, so this
+         margin holds across the whole clipped range, not just 320px.
+       - MEASURED ceiling: 390px is the actively-tested narrow baseline
+         (see CLAUDE.md) and must stay unclipped there. Live-overriding
+         this property in devtools across 9.5–10rem in 0.01rem steps: DE's
+         natural width (233.86px, the larger of the two languages) stays
+         fully unclipped through 9.75rem and starts clipping at 9.759rem —
+         so `9.5rem` has ~4.1px (0.26rem) of total headroom before it costs
+         a VISIBLE regression at the 390px baseline.
+       - Increasing this constant trades directly against that headroom:
+         +1px of 320px clearance costs exactly 1px of 390px inertness
+         margin (both derive from the same viewport-independent term, and
+         the pool is only ~4px wide). This PR keeps `9.5rem` rather than
+         spend it: 320px is a width this issue's own acceptance criteria
+         left an open question ("worth deciding whether 320px is even
+         supported at all"), while 390px is the width this repo actually
+         commits to testing — its slack is worth more.
+       - NOT invalidated lightly, but DOES get invalidated: adding a
+         DataLayers toggle, or either dictionary's `waterDepths.toggle` /
+         `seamarks.toggle` growing past today's measured widths, raises the
+         ~135px term this constant reserves against and eats into the SAME
+         ~4px headroom — re-run the live-override measurement above before
+         accepting a longer string or a new toggle in that cluster.
+     At 390px this resolves to 238px, above both measured natural widths
+     (inert — no visual change at the existing baseline); at 320px it clips
+     to 168px, which still clears `.data-layer-controls` by the margins
+     above in both languages. Below the clip threshold the toggle/
+     slider/legend column wraps and scrolls internally via the existing
+     `overflow-y: auto` above — sanctioned by the same design as the height
+     bound. */
   max-width: calc(100% - 9.5rem);
 }
 
