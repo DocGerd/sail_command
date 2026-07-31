@@ -201,14 +201,72 @@ export default function CompassControl({ fix, showOwnship }: CompassControlProps
     // `track` deliberately holds: the follow loop re-eases on the next fix,
     // and a held bearing with no fix is the documented stale behaviour, not a
     // desync (#155 decision 1).
-    const onMoveEnd = () => {
+    const onMoveEnd = (e: { originalEvent?: unknown }) => {
       // Delivered from inside our own easeTo: this is the ease we just
       // replaced coming to rest, describing the OLD camera.
       if (ownEaseDepthRef.current > 0) return;
-      // A camera animation is still running (ours, or one that started inside
-      // our rotateend snap) — the target may yet be reached, so judging the
-      // claim now would demote on a bearing that is still in motion.
-      if (map.isEasing()) return;
+      // maplibre-gl 6 dropped `Map#isEasing()` (Map no longer extends Camera;
+      // it now HOLDS one — `ui/map.ts:576`/`ui/camera.ts:284` — and the method
+      // lives only on the private `_camera`, which production code must not
+      // reach for). This derives the same "still in flight, don't judge yet"
+      // signal from TWO pieces of state we already own — NEITHER alone is
+      // enough, proven by running each in isolation against this file's own
+      // pinned tests (#253):
+      //
+      //   1. `commandedBearingRef` unreached: a target we asserted that the
+      //      camera has not yet reached.
+      //   2. `e.originalEvent === undefined`: MapLibre's OWN discriminator
+      //      (the same one `onUserRotation` above uses) for "this moveend
+      //      belongs to a camera-internal ease's own termination", never a
+      //      handler-level gesture-end event.
+      //
+      // Term 1 ALONE over-blocks: an ABORTED ease (the user grabs the chart
+      // mid reset-north, or a plan-change `fitBounds` interrupts our own
+      // ease) also leaves the target unreached, but that ease is DEAD, not
+      // merely delayed — `#203 F1`'s three tests demote there, and a
+      // commandedBearingRef-only guard wrongly keeps blocking forever
+      // (measured: reintroducing it regresses exactly those three).
+      //
+      // Term 2 alone over-blocks too: it would treat every commanded-but-
+      // unreached ease exactly like `onUserRotation` already does for
+      // rotate/rotatestart, which is correct for a real gesture but says
+      // nothing about whether OUR OWN tracked ease is still alive.
+      //
+      // Together they separate the two cases MapLibre itself does NOT mark
+      // differently at the API surface: `_afterEase(eventData, easeId)`
+      // fires the interrupted/aborted ease's own `eventData` (`camera.ts:
+      // 982-1009`) — our own eases never pass any, so an abort's moveend
+      // carries no `originalEvent`, and this guard correctly lets it through
+      // to judge/demote — while `handler_manager.ts:707`'s end-of-gesture
+      // bare `moveend` (the one #203 F2 exists for) carries the gesture's
+      // own `originalEvent`, so this guard correctly holds off while our
+      // separately-still-running ease has yet to report its own settle.
+      // (Degenerate case, not a new failure: `originalEndEvent` at that
+      // `:707` call site can itself be `undefined` when no handler is found
+      // deactivated in the loop above it — that moveend then falls through
+      // to being judged too, which is the SAME accepted narrowing below, not
+      // a different one.)
+      //
+      // This is still narrower than v5's `isEasing()`, which was ease-
+      // SOURCE-AGNOSTIC: it blocked on ANY ease in flight, ours or foreign,
+      // regardless of eventData. A foreign ease that changes the bearing with
+      // NO `originalEvent` at all (indistinguishable, on this signal, from
+      // one of our own) still demotes here where v5 did not (pinned in
+      // CompassControl.test.tsx's "#253: a foreign ease..." regression test).
+      // Reachability today: none. RouteLayer.tsx's `fitBounds` always passes
+      // `duration: 0` (never in flight to begin with); keyboard rotation and
+      // drag inertia always carry `originalEvent`, so `onUserRotation` demotes
+      // to `free` before this branch is ever reached; `map.resetNorth()` has
+      // no call site in this app, and `bearingSnap: 0` (MapView.tsx, #230)
+      // makes MapLibre's own internal snap unsatisfiable. So the narrowing is
+      // accepted rather than closed (#253).
+      if (
+        e.originalEvent !== undefined &&
+        commandedBearingRef.current !== null &&
+        !bearingReached(map.getBearing(), commandedBearingRef.current)
+      ) {
+        return;
+      }
       commandedBearingRef.current = null;
       if (modeRef.current === 'north' && !bearingReached(map.getBearing(), 0)) {
         // The chart is not north-up and no longer heading there. Falling to

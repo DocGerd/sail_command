@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded maplibre-gl 5.24.0 -> 6.0.0. `Map` no longer exposes `isEasing()`
+  (it moved onto the internal `Camera` object `Map` now holds instead of
+  extends); the compass control's camera-settle guard was rewritten to derive
+  the same "our own ease is still in flight" signal from state the app
+  already owns, narrower than before but with no reachable behavioral change
+  in this app today (#253).
+
 ## [0.6.0] - 2026-07-31
 
 ### Added

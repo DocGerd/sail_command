@@ -268,14 +268,42 @@ function armCameraRest(page: Page) {
  * a poll on the flags alone would pass through that window and read a bearing
  * that is about to change.
  */
+// `map._camera.isEasing()` below (here and in `releaseBranch`) reaches for
+// the PRIVATE field, not a public API call.
+//
+// maplibre-gl 6 removed `Map#isEasing()`: `Map` no longer extends `Camera`, it
+// now HOLDS one (`_camera`, `ui/map.ts:576`), and `isEasing()` lives only on
+// that `Camera` (`ui/camera.ts:1189-1191`). CompassControl.tsx's production
+// guard was rewritten to avoid this private field entirely (#253) — this e2e
+// harness is the ONE deliberate exception, and the asymmetry is intentional:
+// this is test-only instrumentation that needs the camera's true animation
+// state (not merely a proxy for it) to tell "the gesture's end-of-gesture
+// ease has not started yet" apart from "there is nothing left to settle" (see
+// the comment above `cameraState`), and shipping code has no such need — it
+// only ever has to judge ITS OWN commanded eases, which `commandedBearingRef`
+// already tracks without touching `_camera`.
+//
+// Both call sites below guard the read rather than trust it blindly: if a
+// future maplibre-gl release drops `_camera` too (or renames it), the probe
+// throws a clear, named error instead of silently reading
+// `undefined.isEasing` as falsy and reporting "at rest"/"non-inertial"
+// forever — exactly the kind of structurally-invisible false green this
+// repo's CLAUDE.md warns against. The check is duplicated (not shared via an
+// outer helper) because `page.evaluate` serialises its callback by source
+// text alone — it cannot close over a Node-side function.
+type E2eMapWithCamera = { isMoving: () => boolean; _camera?: { isEasing?: () => boolean } };
+
 function cameraState(page: Page): Promise<string> {
   return page.evaluate(() => {
-    const w = window as unknown as {
-      __scE2eMap: { isMoving: () => boolean; isEasing: () => boolean };
-      __scMoveEnds: number;
-    };
+    const w = window as unknown as { __scE2eMap: E2eMapWithCamera; __scMoveEnds: number };
     const moving = w.__scE2eMap.isMoving();
-    const easing = w.__scE2eMap.isEasing();
+    const camera = w.__scE2eMap._camera;
+    if (!camera || typeof camera.isEasing !== 'function') {
+      throw new Error(
+        'maplibre-gl Map no longer exposes a working _camera.isEasing() — update this e2e probe for the new internal shape',
+      );
+    }
+    const easing = camera.isEasing();
     if (w.__scMoveEnds > 0 && !moving && !easing) return 'at-rest';
     return `busy(moveends=${w.__scMoveEnds}, moving=${moving}, easing=${easing})`;
   });
@@ -308,12 +336,23 @@ function cameraState(page: Page): Promise<string> {
 function releaseBranch(page: Page): Promise<'inertial' | 'non-inertial'> {
   return page.evaluate(
     () =>
-      new Promise<'inertial' | 'non-inertial'>((resolve) => {
-        const w = window as unknown as { __scE2eMap: { isEasing: () => boolean } };
+      new Promise<'inertial' | 'non-inertial'>((resolve, reject) => {
+        // See the comment above `cameraState` for why `_camera.isEasing()`
+        // (private field) is used here and nowhere in production code.
+        const w = window as unknown as { __scE2eMap: E2eMapWithCamera };
         requestAnimationFrame(() =>
-          requestAnimationFrame(() =>
-            resolve(w.__scE2eMap.isEasing() ? 'inertial' : 'non-inertial'),
-          ),
+          requestAnimationFrame(() => {
+            const camera = w.__scE2eMap._camera;
+            if (!camera || typeof camera.isEasing !== 'function') {
+              reject(
+                new Error(
+                  'maplibre-gl Map no longer exposes a working _camera.isEasing() — update this e2e probe for the new internal shape',
+                ),
+              );
+              return;
+            }
+            resolve(camera.isEasing() ? 'inertial' : 'non-inertial');
+          }),
         );
       }),
   );

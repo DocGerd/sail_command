@@ -196,7 +196,10 @@ describe('CompassControl', () => {
       const { rerender } = render(<CompassControl fix={UNDER_WAY} showOwnship />);
       act(() => compass().click());
       expect(compass()).toHaveAttribute('data-orientation', 'track-up');
-      expect(map.isEasing()).toBe(true);
+      // Precondition: the ease to 120 has started but not settled (the fake
+      // only applies the target bearing when the ease finishes), so the
+      // camera is still mid-flight when the next fixes below interrupt it.
+      expect(map.getBearing()).toBe(0);
 
       // useOwnshipGps applies no throttle, so the fix cadence is the browser's
       // — two fixes inside EASE_TRACK_MS (900 ms) is normal, not exotic.
@@ -259,7 +262,10 @@ describe('CompassControl', () => {
 
       act(() => compass().click());
       expect(compass()).toHaveAttribute('data-orientation', 'north-up');
-      expect(map.isEasing()).toBe(true);
+      // Precondition: the reset-north ease is mid-flight — the camera is
+      // still at the gesture's 75, not yet home at 0 — which is exactly what
+      // lets the grab below interrupt it before it lands.
+      expect(map.getBearing()).toBe(75);
 
       // The user grabs the chart 200 ms in. HandlerManager calls
       // `map._stop(true)` with no easeId, so the ease dies where it got to and
@@ -380,7 +386,9 @@ describe('CompassControl', () => {
     it('survives a plan-change fitBounds landing mid-follow', () => {
       const { rerender } = enterTrackUp();
       act(() => rerender(<CompassControl fix={{ ...UNDER_WAY, cogDeg: 150 }} showOwnship />));
-      expect(map.isEasing()).toBe(true);
+      // Precondition: the follow ease to 150 has started but not settled —
+      // the camera is still sitting on the prior course.
+      expect(map.getBearing()).toBe(120);
 
       // The Live tab reroutes from a fix while the follow ease is running.
       act(() => fitBoundsLikeRouteLayer(map));
@@ -412,9 +420,11 @@ describe('CompassControl', () => {
 
     it('does not demote on a handler settle fired while its own ease still runs', () => {
       // HandlerManager fires a bare `moveend` at the end of a gesture
-      // (:68716). When the gesture ended near north, our rotateend snap has
-      // already started an ease toward 0 by then, so the camera is legitimately
-      // mid-flight and the claim must not be judged yet.
+      // (node_modules/maplibre-gl/src/ui/handler_manager.ts:707, `_fireEvents`
+      // non-inertial branch; unchanged in v6 other than the line number). When
+      // the gesture ended near north, our rotateend snap has already started
+      // an ease toward 0 by then, so the camera is legitimately mid-flight and
+      // the claim must not be judged yet.
       render(<CompassControl fix={null} showOwnship={false} />);
       const originalEvent = new Event('touchend');
       act(() => {
@@ -423,11 +433,64 @@ describe('CompassControl', () => {
         map.fire('moveend', { originalEvent });
       });
 
-      expect(map.isEasing()).toBe(true);
+      // The guard (CompassControl.tsx) derives "still in flight" from the
+      // camera not yet having reached the commanded 0 — which is exactly
+      // this: the rotateend snap started an ease, but the fake only applies
+      // the target bearing when that ease SETTLES, so the camera is still at
+      // the gesture's 0.6 here. This is the precise fact the guard's
+      // `!bearingReached(map.getBearing(), commandedBearingRef.current)`
+      // check reads to decide the moveend above must not be treated as a
+      // settle.
+      expect(map.getBearing()).toBe(0.6);
       expect(compass()).toHaveAttribute('data-orientation', 'north-up');
       act(() => map.finishEase());
       expect(map.getBearing()).toBe(0);
       expect(compass()).toHaveAttribute('data-orientation', 'north-up');
+    });
+
+    // #253 (maplibre-gl 6 migration): v5's `map.isEasing()` was ease-SOURCE-
+    // AGNOSTIC — it blocked the moveend settle-check on ANY ease in flight,
+    // ours or foreign. v6 dropped `Map#isEasing()`, and the replacement guard
+    // (CompassControl.tsx's `onMoveEnd`) derives "still in flight" from
+    // `commandedBearingRef` instead — the bearing THIS component last
+    // commanded, reconciled against the camera. That only recognises an ease
+    // this component itself started via `easeBearing`.
+    //
+    // This is a DELIBERATE, ACCEPTED narrowing, not a bug: a foreign ease that
+    // changes the bearing without ever going through `easeBearing` leaves
+    // `commandedBearingRef` null or stale, so the guard does not suppress its
+    // settle, and a north-up claim demotes to `free` even though a real
+    // MapLibre camera might still be mid-flight toward that foreign ease's
+    // target.
+    //
+    // Reachability today: NONE. `RouteLayer.tsx`'s `fitBounds` call always
+    // passes `duration: 0` (never in flight to begin with); a hand rotation
+    // and drag inertia both always carry `originalEvent`, so `onUserRotation`
+    // demotes to `free` on the very first frame, before this branch is ever
+    // reached; `map.resetNorth()` has no call site anywhere in this app, and
+    // `bearingSnap: 0` (MapView.tsx, #230) makes MapLibre's own internal snap
+    // unsatisfiable, so it can never call it either. This test exists to PIN
+    // the accepted tradeoff so a future change can see it, not to describe a
+    // live bug.
+    it('#253: a foreign ease with no eventData at all still demotes north-up on its bare settle (accepted narrowing)', () => {
+      render(<CompassControl fix={null} showOwnship={false} />);
+      expect(compass()).toHaveAttribute('data-orientation', 'north-up');
+
+      act(() => {
+        // A hypothetical foreign caller (a library this app does not control)
+        // eases the bearing under its OWN easeId, with no eventData — exactly
+        // as indistinguishable, by MapLibre's own instrumentation, as a
+        // programmatic call this app might make itself.
+        map.easeTo({ bearing: 45, duration: 300, easeId: 'someOtherLibrary' });
+        // Simulate that foreign ease having reached 45 by the time its own
+        // (bare, eventData-less) moveend arrives — `commandedBearingRef`
+        // never learned about this ease at all, so it has nothing to
+        // reconcile against and does not suppress the settle below.
+        map.setBearing(45);
+        map.fire('moveend');
+      });
+
+      expect(compass()).toHaveAttribute('data-orientation', 'free');
     });
   });
 
@@ -526,8 +589,19 @@ describe('CompassControl', () => {
       );
       // A duration-0 ease settles inside the easeTo call, so the camera is
       // already there and nothing is left in flight to reconcile.
+      //
+      // #253: this used to also assert `map.isEasing()` is false, i.e. that
+      // the FAKE's own pending-ease bookkeeping was cleared. That pinned the
+      // fake's internal primitive, not CompassControl's behaviour — the
+      // moveend this duration-0 ease fires arrives synchronously from inside
+      // our own `map.easeTo()` call, so it is caught by `onMoveEnd`'s
+      // `ownEaseDepthRef.current > 0` guard before the bearing-reached check
+      // this task rewired is ever reached, and mode is `track` here anyway
+      // (the north-demote branch that check guards never applies). With
+      // `isEasing()` gone from the fake there is no honest behavioural
+      // stand-in for it, so the assertion is dropped rather than replaced
+      // with something that would not actually exercise the guard.
       expect(map.getBearing()).toBe(120);
-      expect(map.isEasing()).toBe(false);
     });
 
     it('widens the follow deadband so the chart moves less often', () => {
