@@ -72,8 +72,9 @@ deviate from it.
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
   This makes EVERY Dependabot bump of one of the 11 runtime packages listed in
-  `gen-third-party-notices.mjs` (react, react-dom, maplibre-gl, pmtiles, idb,
-  @protomaps/basemaps, workbox-*) red on `app` — Dependabot cannot run project
+  `app/scripts/gen-third-party-notices.mjs`'s `PACKAGES` array (react,
+  react-dom, maplibre-gl, pmtiles, idb, @protomaps/basemaps, workbox-*) red on
+  `app` — Dependabot cannot run project
   scripts, so it can never fix this itself. Signature: `app` fails at the
   `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
   CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
@@ -423,6 +424,12 @@ deviate from it.
   `commit_id: null` (measured on the #257 incident), so the timeline did not name
   its cause either; a commit-message-triggered close may instead record a real
   SHA.
+  Mirror check in the OTHER direction: after a merge that deliberately used
+  `Refs #N` rather than a closing keyword because N's specified fix was NOT
+  implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
+  as you'd verify the others closed — the auto-close mechanism is silent
+  either way, so only an explicit `gh api …/issues/N --jq .state` check
+  distinguishes "correctly left open" from "silently closed."
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -461,6 +468,15 @@ deviate from it.
   a fix wave is the same tautology one step later — the reviewer hand-derives
   the value from the state machine before accepting it (how #145's changed
   backoff literal was validated rather than trusted).
+- A mutation battery can pass for the WRONG reason when a test row carries
+  MORE THAN ONE trigger for the same expected outcome. A near-miss row meant
+  to pin allowlist MEMBERSHIP was written as `xargs npm install < pkgs.txt` —
+  the `<` redirect alone already disqualifies the command via the exclusion
+  set, so membership was never exercised; a real, metachar-free
+  `xargs npm install` would have been silently suppressed with no test
+  catching it (#216, `.claude/hooks/notices-nudge.sh`). General form: when a
+  row's purpose is to isolate ONE condition, strip every other
+  character/construct that could independently cause the same pass/fail.
 - CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
   `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
   mime-insensitive, but an `application/xml` parse is inert (no script exec, no
@@ -631,6 +647,18 @@ deviate from it.
   compared. Before calling any weave a defect, measure its ETA against a
   NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
   measured against a chord that crossed LAND.
+- **No-route `reason` is a CONTROL INPUT, not just a status label** (#282,
+  open): `needsUnpreferencedRetry` (`planRoute.ts:67-71`) branches on
+  `r.reason === 'unreachable' || r.reason === 'beyond-horizon'`, and the #53
+  relaxation gate (`planRoute.ts:273`) branches on `reason === 'unreachable'`
+  (plus a depth-floor guard). So ANY change to no-route classification —
+  including a strictly more accurate one — changes which retry tiers run and
+  can return a SLOWER route, not merely a differently-labeled one. Measured on
+  a Flensburg→all-harbours sweep (uniform TWS 3/dir 0, motor off, real
+  mask+polars): Bagenkop +515.2 s, Wackerballig +499.4 s, Gelting-Mole
+  +353.2 s, while 11 of 14 plans stayed byte-identical — which is what made it
+  easy to miss. Still OPEN; treat any reason-classification change as a
+  routing-behavior change needing the same sweep, never a labeling-only fix.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
@@ -750,7 +778,12 @@ deviate from it.
   background children is asleep forever — nudge it to check the result in the
   FOREGROUND; a reviewer that idles with zero PR activity may have WRITTEN its
   report without SENDING it — check the PR's reviews/threads first, then nudge
-  once. Worktree cleanup ritual: agent runs `find app/node_modules -delete`
+  once. A further reviewer variant: several this session POSTED their review
+  to the PR correctly and then went idle WITHOUT sending the summary back — a
+  clean review leaves nothing new on the PR to read, so that silence is
+  indistinguishable from a check that never ran. Read the verdict from the
+  PR's reviews/comments artifacts FIRST; nudge only if genuinely absent.
+  Worktree cleanup ritual: agent runs `find app/node_modules -delete`
   (`rm -rf` is permission-blocked even in the main session; `find -delete` is
   allowed), then the main session runs `git worktree remove` — force-free. Parallel
   implementers: assign distinct dev ports; retry e2e on EADDRINUSE; the shared
@@ -815,6 +848,11 @@ deviate from it.
   REST-only and has no equivalent for `graphql`. Inline the string for a
   GraphQL call (e.g. a review-thread reply), or repair a bad post with a
   REST `PATCH`.
+- GitHub links a code-scanning alert to an issue only when the alert URL
+  appears as a TASK-LIST item (`- [ ] <url>`) in the issue body — a plain
+  markdown link does nothing, and the REST alert object exposes no tracking
+  field, so the link can't be confirmed via API either; write it as a
+  checklist line if the link needs to exist at all.
 - Bash cwd PERSISTS across calls — a `cd` into a scratchpad earlier in the
   session makes a later `gh pr merge` fail with "not a git repository", and
   per the #94 rule below that failure could still have landed the merge, so
