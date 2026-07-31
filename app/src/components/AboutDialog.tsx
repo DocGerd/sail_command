@@ -118,8 +118,12 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           </ul>
         </section>
 
-        <section>
-          <h3>{t('about.sources.heading')}</h3>
+        {/* #187: collapsed by default, matching the changelog Disclosure
+            above. Licensing is unaffected — every ODbL/CC-BY credit here is
+            independently satisfied by the persistent on-map MapLibre
+            attribution (MapView.tsx's ATTRIBUTION string), which is visible
+            regardless of this dialog's (or its disclosure's) state. */}
+        <Disclosure summary={t('about.sources.heading')} className="about-sources">
           <ul>
             <li>{t('about.sources.protomaps')}</li>
             <li>{t('about.sources.osm')}</li>
@@ -131,7 +135,7 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
               <li key={s}>{s}</li>
             ))}
           </ul>
-        </section>
+        </Disclosure>
 
         <button type="button" ref={closeButtonRef} onClick={onClose}>
           {t('about.close')}
