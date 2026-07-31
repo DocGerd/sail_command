@@ -19,8 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   import.meta.url)` Vite cannot see through, so the worker chunk was never
   emitted into the build and the map never loaded outside `vite preview`'s
   SPA-fallback masking. Fixed via maplibre's own `setWorkerUrl` escape hatch,
-  fed a Vite `?url` import of the worker so it ships as a hashed asset (and
-  is precached for offline — the Workbox glob pattern gained `mjs`) (#253).
+  fed a Vite `?worker&url` import so the worker ships as a hashed, precached
+  asset. The `worker` half of that suffix is load-bearing: v6 splits its
+  worker across two files, and a plain `?url` copies only the entry file
+  verbatim, leaving an unresolved `./maplibre-gl-shared.mjs` import that 404s
+  at runtime — `?worker&url` bundles the pair into one self-contained chunk
+  (#253).
 
 ## [0.6.0] - 2026-07-31
 

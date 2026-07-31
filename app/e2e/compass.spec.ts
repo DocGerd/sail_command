@@ -40,29 +40,51 @@ async function installMapHandle(page: Page): Promise<boolean> {
   });
 }
 
-// #253: `networkidle` never settles under maplibre-gl 6 — Chromium/Playwright
-// never emit `requestfinished` for the module-worker fetch that
-// `setWorkerUrl` triggers — and it was the wrong readiness signal anyway for
-// a map that streams tiles indefinitely. `installMapHandle`'s own poll (it
-// retries until `window.__scE2eMap` exists) is the replacement state gate.
+// #253: `networkidle` is NOT the readiness signal here — it never settles for
+// a map that streams tiles indefinitely, and under maplibre-gl 6 the module
+// worker's fetch does not produce a `requestfinished` Playwright will count
+// either. `mapReady` below replaces it: it waits for the map handle AND for
+// `map.loaded()`, which is the only signal that actually proves the tile
+// pipeline — and therefore the worker — is alive.
 //
-// A `map.loaded()` gate was tried and measured to be WORSE than no gate at
-// all: under `@playwright/test`'s Chromium, maplibre-gl 6's module worker
-// never completes (the exact "one permanently-pending request on every page
-// load" the #253 migration commit already documented), so EVERY vector/
-// GeoJSON `tileManager` (`protomaps`, `sc-harbors`, `sc-seamarks`,
-// `sc-route`, `sc-maneuvers`, `sc-barbs`) reports `loaded()===false`
-// forever — measured out to 80s with zero progress, only the raster
-// `sc-depth` source ever loads. Since `Map`'s own `load`/`idle` events fire
-// only from inside `if (this.loaded() && !this._loaded)`
-// (`ui/map.ts:4286`), they never fire either in this environment. None of
-// this file's assertions actually need a tile to have rendered, though:
-// bearing/camera state (`getBearing`, `easeTo`, `rotate`/`moveend`) and
-// `unproject()` all work off the transform, which the constructor
-// initialises synchronously — well before any tile request, worker-broken
-// or not, could resolve. Each test's own claim is already guarded by its
-// own retrying `expect`/`expect.poll`, so `installMapHandle` succeeding is
-// sufficient here.
+// Keeping the `map.loaded()` half is deliberate. During the maplibre-gl 6
+// upgrade this gate went red, and the cause was a REAL product bug: the
+// worker chunk shipped with an unresolved `./maplibre-gl-shared.mjs` import
+// and 404'd on its own dependency, so no vector/GeoJSON source ever loaded.
+// The gate was correctly reporting a broken map. It is fixed at source
+// (MapView.tsx's `?worker&url` import); this gate is what keeps that fix
+// honest, so do not weaken it back to "the handle exists" — that would pass
+// against a map rendering nothing at all.
+//
+// It returns a descriptive STRING rather than a boolean on purpose (see
+// CLAUDE.md's e2e assertion convention): a boolean collapsed into
+// `.toBe(true)` can only ever report `Expected: true / Received: false` plus
+// a timeout, which is indistinguishable between "slow" and "never". The
+// string names the pending sources, so a CI failure says which part of the
+// pipeline stalled.
+type ReadyMap = {
+  loaded: () => boolean;
+  getStyle: () => { sources: Record<string, unknown> };
+  isSourceLoaded: (id: string) => boolean;
+};
+
+async function mapReadyState(page: Page): Promise<string> {
+  if (!(await installMapHandle(page))) return 'no-map-handle';
+  return page.evaluate(() => {
+    const map = (window as unknown as { __scE2eMap?: ReadyMap }).__scE2eMap;
+    if (!map) return 'handle-lost';
+    if (!map.loaded()) {
+      const pending = Object.keys(map.getStyle().sources).filter((id) => !map.isSourceLoaded(id));
+      return `not-loaded (pending sources: ${pending.join(', ') || 'none — style still parsing'})`;
+    }
+    return 'loaded';
+  });
+}
+
+/** Gate a spec on a map that has actually rendered, reporting WHY if it hasn't. */
+async function mapReady(page: Page): Promise<void> {
+  await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
+}
 
 // `+ 0` for the same negative-zero reason as needleDeg below. Here the residual
 // happens to land positive (`Math.round(0.048)` is `+0`), so this is latent
@@ -121,7 +143,7 @@ test('compass: north-up cold start, hand rotation drops to free, tap brings the 
     await page.goto(server.url);
     const compass = page.locator('.compass-btn');
     await expect(compass).toBeVisible();
-    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
+    await mapReady(page);
 
     // The round glass chip, and the >=44 px cockpit touch target the issue
     // asks for. toBeVisible() alone would pass in the broken state that
@@ -395,7 +417,7 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     await setCourseFix(page, context, SNAP_WINDOW_BEARING);
 
     await page.goto(server.url);
-    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
+    await mapReady(page);
 
     // --- engage course-up: "show my position" is what feeds the compass a fix ---
     await page.getByRole('tab', { name: 'Planen' }).click();
@@ -562,7 +584,7 @@ test('scale bar: labels the rendered viewport, never swallows a map tap, and cle
     await page.goto(server.url);
     const bar = page.locator('.scale-bar');
     await expect(bar).toBeVisible();
-    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
+    await mapReady(page);
 
     // An integer magnitude and one of the three chart units — never a
     // decimal, and never an empty bar.
@@ -703,7 +725,7 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
+    await mapReady(page);
 
     const compass = page.locator('.compass-btn');
     const bar = page.locator('.scale-bar');
@@ -783,7 +805,7 @@ test('#208 review "Major 2": the offline banner stays on top of the map-chrome t
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
+    await mapReady(page);
     await page.setViewportSize({ width: 375, height: 667 });
 
     // `context.setOffline` flips `navigator.onLine`/fires the browser
@@ -835,7 +857,7 @@ test('#208 review "Minor 7": the scale bar does not cover the expanded attributi
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
+    await mapReady(page);
     // The reviewer's own reproduction viewport — wide enough that the
     // expanded attribution's left edge reaches the bottom-left scale bar.
     await page.setViewportSize({ width: 1024, height: 600 });
@@ -885,7 +907,7 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     // grid itself is irrelevant here, only that a real plan/route exists so
     // RouteLayer actually renders `.route-layer-controls` (plan-gated).
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
-    await expect.poll(() => installMapHandle(page), { timeout: 30_000 }).toBe(true);
+    await mapReady(page);
     await page.getByRole('tab', { name: 'Planen' }).click();
 
     // Same harbor pair the review's own reproduction used.

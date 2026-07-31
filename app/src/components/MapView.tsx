@@ -10,7 +10,7 @@ import type {
 import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { useLang } from '../i18n';
 import { BASEMAP_PATH } from '../lib/basemap';
 import { MAP_MAX_ZOOM } from '../lib/mapOrientation';
@@ -33,11 +33,25 @@ addProtocol('pmtiles', pmtilesProtocol.tile);
 // `setWorkerUrl`, which must run before any `Map` is constructed — module
 // scope here, alongside the pmtiles protocol registration above, since both
 // must be set up exactly once and before the first `Map` this module
-// constructs. The `?url` import makes Vite emit the worker as a hashed
-// asset and hands back a URL prefixed with the active `base` (works under
-// both the prod root and the `/uat/` sub-path); `new URL('maplibre-gl/dist/
-// ...', import.meta.url)` does NOT work here since `new URL` cannot resolve
-// bare package specifiers.
+// constructs.
+//
+// The suffix must be `?worker&url`, NOT a bare `?url`. A bare `?url` copies
+// the target file VERBATIM into `dist/assets/` without resolving its OWN
+// imports, and maplibre-gl 6 ships its worker split across two files:
+// `maplibre-gl-worker.mjs` opens with `import{...}from"./maplibre-gl-shared
+// .mjs"`. The verbatim copy therefore keeps that relative specifier while no
+// such sibling is ever emitted, so the worker 404s on its own dependency and
+// never starts — the map then never loads, which `vite preview`'s SPA
+// fallback disguises by answering the 404 with a 200 `text/html` index.html.
+// `?worker&url` instead runs the file through Vite's worker pipeline, which
+// BUNDLES `./maplibre-gl-shared.mjs` into the emitted chunk (self-contained,
+// zero relative imports left) and hands back its `base`-prefixed URL — so it
+// works under both the prod root and the `/uat/` sub-path. The ES output
+// format that keeps `new Worker(url, {type:'module'})` valid comes from the
+// pre-existing `worker: { format: 'es' }` in vite.config.ts.
+//
+// `new URL('maplibre-gl/dist/...', import.meta.url)` is not an option here
+// either way, since `new URL` cannot resolve bare package specifiers.
 setWorkerUrl(maplibreWorkerUrl);
 
 const MAX_BOUNDS: LngLatBoundsLike = [
