@@ -242,21 +242,8 @@ export function solve(p: SolveParams): SolveResult {
   // exactly when comfortDepthM is absent.
   let best: { costMs: number; etaMs: number; last: Node } | null = null;
   const visited = new Map<string, VisitedStamp>(); // pruneKey → min cost + min maneuvers seen
-  // #265: unreachable-vs-calm-motor-off attribution. Counted per HEADING
-  // (across the whole doomed search), not per dead node — a per-node boolean
-  // OR was measured to misclassify the real repro (Flensburg→Bagenkop,
-  // motorEnabled:false, TWS 2.5-5 kn): most dead-end nodes near the harbor
-  // mouth have AT LEAST ONE heading that clears the sail-speed floor and gets
-  // masked by nearby land, alongside several sub-floor headings that never
-  // reach the mask check at all — so a boolean "did any heading get masked"
-  // signal calls almost every dead node "blocked" even when the search is
-  // dominated by calm. Counting instances instead of nodes and comparing
-  // totals correctly reads that repro as calm (measured: 49 calm-heading
-  // deaths vs 31 blocked-heading deaths) while leaving a genuinely blocked
-  // destination (good wind, no sub-floor headings at all) unchanged, since
-  // calmHeadingDeaths stays at 0 there regardless of counting granularity.
-  let blockedHeadingDeaths = 0;
-  let calmHeadingDeaths = 0;
+  let blockedDeaths = 0;
+  let calmDeaths = 0;
 
   while (frontier.length > 0) {
     // Substepped nodes lag the global clock, so the termination guards use the
@@ -307,29 +294,14 @@ export function solve(p: SolveParams): SolveResult {
       if (!twas.some((x) => Math.abs(x - directTwa) < 0.5)) twas.push(directTwa);
 
       let produced = 0;
-      // #265: per-node heading tallies, folded into the solve-wide totals
-      // above only if this node dies (produced === 0) — see the comment on
-      // those totals for why counting instances beats a per-node boolean.
-      let nodeBlockedHeadings = 0;
-      let nodeCalmHeadings = 0;
+      let sawBlocked = false;
+      let sawCalm = false;
 
       for (const twa of twas) {
         const headingDeg = (((w.dirFromDeg - twa) % 360) + 360) % 360;
         const sailSpeed = polar.speedKn(twa, w.speedKn);
         let kind: LegKind;
         let speed: number;
-        // #265: whether THIS heading is sailing below the seaworthiness floor
-        // because the motor is off (not merely because it's slow — a
-        // sub-floor heading can still be masked, and #265's real-forecast
-        // repro shows it usually is: at TWS 2.5-5 kn almost every candidate
-        // clears MIN_SAIL_KN, so the mask-fail below fires on headings that
-        // were never going to be a floor-worthy route regardless of
-        // geometry). Drives the blocked/calm attribution below instead of the
-        // old <MIN_SAIL_KN test, which real winds this light almost never
-        // trip (#265 measured calmHeadingDeaths stuck at 0 for the whole
-        // solve while blocked-heading deaths climbed on exactly these
-        // headings).
-        const subFloor = !settings.motorEnabled && sailSpeed < sailFloorKn;
         if (sailSpeed >= sailFloorKn) {
           kind = 'sail';
           speed = sailSpeed;
@@ -340,7 +312,7 @@ export function solve(p: SolveParams): SolveResult {
           kind = 'sail';
           speed = sailSpeed;
         } else {
-          nodeCalmHeadings++;
+          sawCalm = true;
           continue;
         }
 
@@ -439,8 +411,7 @@ export function solve(p: SolveParams): SolveResult {
             }
           }
           if (fitted === null) {
-            if (subFloor) nodeCalmHeadings++;
-            else nodeBlockedHeadings++;
+            sawBlocked = true;
             continue;
           }
           factor = fitted;
@@ -514,13 +485,9 @@ export function solve(p: SolveParams): SolveResult {
         produced++;
       }
 
-      // Fold this node's tallies into the solve-wide totals only if the node
-      // fully died (produced === 0) — a node that produced at least one
-      // child is not a dead end, so its OTHER (unused) headings don't belong
-      // in either total (mirrors the pre-#265 sawBlocked/sawCalm scoping).
       if (produced === 0) {
-        blockedHeadingDeaths += nodeBlockedHeadings;
-        calmHeadingDeaths += nodeCalmHeadings;
+        if (sawBlocked) blockedDeaths++;
+        if (sawCalm && !sawBlocked) calmDeaths++;
       }
     }
 
@@ -561,10 +528,7 @@ export function solve(p: SolveParams): SolveResult {
     // plus a handful of consumed-without-registering paths (a blocked direct-arrival attempt; a zero-effective-speed candidate after a maneuver penalty).
     return {
       status: 'no-route',
-      reason:
-        blockedHeadingDeaths >= calmHeadingDeaths && blockedHeadingDeaths > 0
-          ? 'unreachable'
-          : 'calm-motor-off',
+      reason: blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'unreachable' : 'calm-motor-off',
     };
   }
   return { status: 'ok', legs: backtrack(best.last, p.departureMs), etaMs: best.etaMs };

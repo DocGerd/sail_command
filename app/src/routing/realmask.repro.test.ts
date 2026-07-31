@@ -464,48 +464,57 @@ describe('#243 depth comfort preference (real mask)', () => {
   });
 });
 
-describe('issue #265: calm-with-motor-off must not report unreachable', () => {
-  // Flensburg -> Bagenkop, motorEnabled:false, light air (TWS 3 kn) — the
-  // #265 real-forecast repro (TWS 2.5-5 kn for the first ~3 h). Ground truth
-  // for the expected reason comes from TWO independent oracles, neither of
-  // which is the solver under test:
-  //   1. mask.cellsConnected proves a navigable 4-connected cell chain exists
-  //      between the snapped points at this safety depth — so the mask is
-  //      NOT the obstacle, and 'unreachable' ("nothing the user can change")
-  //      would be a false claim.
-  //   2. The pre-fix/post-fix contrast recorded below was measured directly
-  //      (a TWS/direction sweep against this same real mask+polar, see PR
-  //      description) — pinned here as a literal, not re-derived from
-  //      solve()'s own output.
+describe('issue #265: the mirror case — genuinely mask-limited must stay unreachable', () => {
+  // Flensburg -> Marstal at the REQUESTED 3.0 m gate is genuinely
+  // mask-disconnected (documented in this file's DEFAULT_SETTINGS test above
+  // and in issue #9): the shipped mask only 4-connects Flensburg to Marstal
+  // at gates <= 2.3 m. This is the #265 review's Blocker-2 concern in
+  // concrete form — a light-air, motor-off plan against a destination that
+  // is disconnected for reasons having NOTHING to do with wind. A
+  // reclassification that makes masked-but-slow headings read as "calm"
+  // (the subFloor idea evaluated and REJECTED in this PR — see the PR
+  // description) would make this exact case regress to 'calm-motor-off',
+  // telling the user to wait for wind that can never help. Ground truth
+  // comes from an independent oracle (mask.cellsConnected), not from
+  // solve()/planRoute() itself.
   const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 3, motorEnabled: false };
 
-  it('destination is mask-reachable at this safety depth (independent oracle)', () => {
+  it('is mask-disconnected at the requested 3.0 m gate but connected at 2.3 m (independent oracle)', () => {
     const o = mask.snapToNavigable(FLENSBURG, settings.safetyDepthM);
-    const d = mask.snapToNavigable(BAGENKOP, settings.safetyDepthM);
+    const d = mask.snapToNavigable(MARSTAL, settings.safetyDepthM);
     expect(o).not.toBeNull();
     expect(d).not.toBeNull();
-    expect(mask.cellsConnected(o!, d!, settings.safetyDepthM)).toBe(true);
+    expect(mask.cellsConnected(o!, d!, 3.0)).toBe(false);
+    expect(mask.cellsConnected(o!, d!, 2.3)).toBe(true);
   });
 
-  it('reports calm-motor-off, not unreachable, for a light-air motor-off solve', () => {
-    // Measured against this exact scenario (uniformWindGrid(3, 0), same
-    // settings): before the #265 fix, solve() returned 'unreachable' (the
-    // per-node sawBlocked/sawCalm boolean OR let a single masked-but-fast
-    // heading veto the calm signal at almost every dead-end node near the
-    // harbor mouth, even though the majority of dead headings there were
-    // sub-floor/calm). After the fix (heading-count totals, not per-node
-    // booleans) it returns 'calm-motor-off'.
-    const o = mask.snapToNavigable(FLENSBURG, settings.safetyDepthM)!;
-    const d = mask.snapToNavigable(BAGENKOP, settings.safetyDepthM)!;
-    const res = solve({
-      origin: o,
-      destination: d,
-      departureMs: T0,
-      polar: new Polar(polarGenoa, settings.performanceFactor),
-      wind: new WindField(uniformWindGrid(3, 0)),
-      mask,
-      settings,
-    });
-    expect(res).toEqual({ status: 'no-route', reason: 'calm-motor-off' });
-  });
+  it(
+    'a light-air, motor-off plan reports unreachable, not calm-motor-off, even though #53 relaxation is attempted',
+    { timeout: 600_000 },
+    () => {
+      // Measured directly (not derived from this PR's own reasoning): #53's
+      // relaxed-gate mechanism DOES fire here (reason defaults to
+      // 'unreachable' from the disconnected-at-3.0m fast path, which is the
+      // relaxation trigger), finds the same 2.3 m gate as the DEFAULT_SETTINGS
+      // test above, and re-solves both rigs there under this scenario's
+      // light air + motor-off settings — which still fails (the pinch is
+      // narrow enough that the solver can't thread it at this wind/motor
+      // combination), so the plan correctly falls through to 'unreachable'
+      // rather than being coerced into 'calm-motor-off'.
+      const res = planRoute(
+        {
+          origin: FLENSBURG,
+          destination: MARSTAL,
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'marstal',
+          departureMs: T0,
+          settings,
+        },
+        uniformWindGrid(3, 0),
+        { polarGenoa, polarFock, mask },
+      );
+      expect(res).toEqual({ status: 'error', reason: 'unreachable' });
+    },
+  );
 });
