@@ -1,4 +1,13 @@
 name: Labeler
+# pull_request_target (not pull_request) because Dependabot-triggered
+# pull_request runs get a forced READ-ONLY GITHUB_TOKEN regardless of the
+# permissions: block below (GitHub treats them like fork PRs) — and
+# Dependabot is this repo's dominant PR source, so plain pull_request would
+# silently label almost nothing. Safe here specifically because this
+# workflow never checks out or executes PR-head-controlled code (no
+# actions/checkout step; actions/labeler reads the changed-file list via the
+# GitHub API), so running with base-repo permissions/secrets carries none of
+# pull_request_target's usual "runs attacker code with write access" risk.
 on:
   pull_request_target:
     types: [opened, synchronize]

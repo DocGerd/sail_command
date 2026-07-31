@@ -3,6 +3,14 @@
 # sync if the taxonomy changes. Multiple labels can apply to one PR — a file
 # that's genuinely dual-purpose (e.g. vite.config.ts) is intentionally listed
 # under more than one area below.
+#
+# Deliberately left OUT of every area (cross-cutting / generic, not
+# domain-specific — assigning one would be an arbitrary, misleading label):
+# UI primitives (Button, Card, Chip, Disclosure, Field, NumberInput, Skeleton),
+# AboutDialog/ChangelogView + lib/changelog.ts, Banner, OptionsPanel, AppState,
+# App.tsx/main.tsx, i18n dict files, lib/format.ts, lib/geo.ts,
+# lib/copyrightHolder, usePersistedToggle/usePrefersReducedMotion/useWideLayout,
+# test/fixtures.ts, test/setup.ts, types.ts, vite-env.d.ts, app.css.
 
 'area: routing':
   - changed-files:
@@ -12,6 +20,22 @@
           - 'app/src/lib/polar*'
           - 'app/src/lib/wind.ts'
           - 'app/src/lib/wind.test.ts'
+          - 'app/src/lib/headingDepth*'
+          - 'app/src/lib/live.ts'
+          - 'app/src/lib/live.test.ts'
+          - 'app/src/lib/plan.ts'
+          - 'app/src/lib/plan.test.ts'
+          - 'app/src/lib/recalc*'
+          - 'app/src/lib/resultSummary*'
+          - 'app/src/lib/gpx*'
+          - 'app/src/services/openMeteo*'
+          - 'app/src/state/replan*'
+          - 'app/src/state/reroute*'
+          - 'app/src/state/useNavMask*'
+          - 'app/src/state/usePlanFlow*'
+          - 'app/src/components/PlannerPanel*'
+          - 'app/src/components/RouteSummary*'
+          - 'app/src/components/PlansList*'
 
 'area: map':
   - changed-files:
@@ -25,6 +49,10 @@
           - 'app/src/components/ViaMarkers*'
           - 'app/src/components/layerOrder*'
           - 'app/src/components/DepthProfile*'
+          - 'app/src/components/ScaleBar*'
+          - 'app/src/components/HarborPicker*'
+          - 'app/src/components/LiveView*'
+          - 'app/src/components/RouteLegend*'
           - 'app/src/lib/seamark*'
           - 'app/src/lib/windBarbs*'
           - 'app/src/lib/basemap.ts'
@@ -34,6 +62,13 @@
           - 'app/src/lib/routeGeoJson*'
           - 'app/src/lib/routeCorridor*'
           - 'app/src/lib/harborGeoJson*'
+          - 'app/src/lib/depthColor*'
+          - 'app/src/lib/gpsHint*'
+          - 'app/src/lib/ownshipVector*'
+          - 'app/src/lib/routeProfile*'
+          - 'app/src/lib/useRecentHarbors*'
+          - 'app/src/services/geolocation*'
+          - 'app/src/state/useOwnshipGps*'
           - 'app/src/test/fakeMaplibre.ts'
 
 'area: pwa':
@@ -44,7 +79,12 @@
           - 'app/src/services/glyphWarmup*'
           - 'app/src/services/swRecovery*'
           - 'app/src/services/db*'
+          - 'app/src/services/assets*'
           - 'app/src/lib/glyphs*'
+          - 'app/src/lib/sessionSnapshot*'
+          - 'app/src/lib/storage*'
+          - 'app/src/state/useSessionRestore*'
+          - 'app/src/components/ReloadPrompt*'
           - 'app/vite.config.ts'
 
 'area: ais':
@@ -68,6 +108,7 @@
       - any-glob-to-any-file:
           - '.github/workflows/deploy.yml'
           - 'app/vite.config.ts'
+          - 'app/src/components/UatBadge*'
 
 'area: tooling':
   - changed-files:
