@@ -517,6 +517,23 @@ deviate from it.
   not the run's conclusion (#197 — a post-merge remedy dispatch was a no-op,
   caught only by downloading the baseline and finding `version.txt` absent;
   see the Deploy bullet above for the underlying mechanism).
+- Sharper case of the bullet above: a CI poll keyed on the CHECK NAME, not the
+  RUN, misreports whenever two workflow runs attach same-named check-runs to
+  one commit. Bit TWICE in the v0.6.0 cut. PR #286 (`develop`→`main`) had
+  `develop`'s own tip as its head SHA, so the earlier develop-push run's
+  finished `app`/`e2e` sat on that commit alongside the PR's own still-running
+  ones — a poll matching `name == "app"/"e2e"` + completed declared green
+  while the gating run was still in flight. PR #289 (the back-merge) had
+  `main`'s tip — also the release tag commit — as its head SHA, so two `e2e`
+  successes from two different runs read as "app + e2e" done while both `app`
+  jobs were still running. Both times `mergeable_state: blocked` contradicted
+  the poll — that disagreement is the cross-check, not a fluke
+  (`mergeable_state` is also the merge-time tell in the #119 note under
+  Working style). Fix: key the poll on the RUN, not the name — `gh api
+  repos/OWNER/REPO/actions/runs/<id>/jobs` — and when a SHA might carry more
+  than one run, select it explicitly rather than assume there is only one;
+  the release skill's §5b already does this, picking the newest
+  `event == "push"` run for the same reason.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
