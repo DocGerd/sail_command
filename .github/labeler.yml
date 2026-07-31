@@ -1,0 +1,130 @@
+# Path -> area: label map for actions/labeler (see .github/workflows/labeler.yml).
+# Label names and scope come from the taxonomy in CONTRIBUTING.md; keep both in
+# sync if the taxonomy changes. Multiple labels can apply to one PR — a file
+# that's genuinely dual-purpose (e.g. vite.config.ts) is intentionally listed
+# under more than one area below.
+#
+# Deliberately left OUT of every area (verified cross-cutting / generic by
+# reading the file and, for the two non-obvious cases, its importers — not
+# just "hard to classify"): UI primitives (Button, Card, Chip, Disclosure,
+# Field, NumberInput, Skeleton), AboutDialog/ChangelogView + lib/changelog.ts,
+# Banner (generic info/warning/error banner, no PWA-specific logic), AppState
+# (the umbrella container: Settings + Plan + Rig + activeLegIndex together —
+# assigning it one area would misrepresent it), App.tsx/main.tsx, i18n dict
+# files, lib/format.ts and lib/geo.ts (both confirmed by grepping importers:
+# format.ts is used by both map components (DepthProfile, RouteLayer) and
+# routing components (PlannerPanel, PlansList, RouteSummary); geo.ts by
+# routing (isochrone/mask/polar/wind/replan), map (BoatMarker/ScaleBar/
+# mapOrientation/routeCorridor) AND ais (aisGeoJson/projectionVector) — a
+# genuine 3-area shared utility, not a routing file hiding as "generic"),
+# lib/copyrightHolder (test-only, no source file), usePersistedToggle (a
+# generic keyed localStorage-backed toggle, reused by unrelated overlays) /
+# usePrefersReducedMotion/useWideLayout, test/fixtures.ts, test/setup.ts,
+# types.ts, vite-env.d.ts, app.css.
+
+'area: routing':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'app/src/routing/**'
+          - 'app/src/lib/mask*'
+          - 'app/src/lib/polar*'
+          - 'app/src/lib/wind.ts'
+          - 'app/src/lib/wind.test.ts'
+          - 'app/src/lib/headingDepth*'
+          - 'app/src/lib/live.ts'
+          - 'app/src/lib/live.test.ts'
+          - 'app/src/lib/plan.ts'
+          - 'app/src/lib/plan.test.ts'
+          - 'app/src/lib/recalc*'
+          - 'app/src/lib/resultSummary*'
+          - 'app/src/lib/gpx*'
+          - 'app/src/services/openMeteo*'
+          - 'app/src/state/replan*'
+          - 'app/src/state/reroute*'
+          - 'app/src/state/useNavMask*'
+          - 'app/src/state/usePlanFlow*'
+          - 'app/src/components/PlannerPanel*'
+          - 'app/src/components/RouteSummary*'
+          - 'app/src/components/PlansList*'
+          - 'app/src/components/OptionsPanel*'
+          - 'app/src/components/LiveView*'
+          - 'app/src/services/assets*'
+
+'area: map':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'app/src/components/MapView*'
+          - 'app/src/components/DataLayers*'
+          - 'app/src/components/RouteLayer*'
+          - 'app/src/components/BoatMarker*'
+          - 'app/src/components/OwnshipMarker*'
+          - 'app/src/components/CompassControl*'
+          - 'app/src/components/ViaMarkers*'
+          - 'app/src/components/layerOrder*'
+          - 'app/src/components/DepthProfile*'
+          - 'app/src/components/ScaleBar*'
+          - 'app/src/components/HarborPicker*'
+          - 'app/src/components/LiveView*'
+          - 'app/src/components/RouteLegend*'
+          - 'app/src/lib/seamark*'
+          - 'app/src/lib/windBarbs*'
+          - 'app/src/lib/basemap.ts'
+          - 'app/src/lib/basemap.test.ts'
+          - 'app/src/lib/styleReload*'
+          - 'app/src/lib/mapOrientation*'
+          - 'app/src/lib/routeGeoJson*'
+          - 'app/src/lib/routeCorridor*'
+          - 'app/src/lib/harborGeoJson*'
+          - 'app/src/lib/depthColor*'
+          - 'app/src/lib/gpsHint*'
+          - 'app/src/lib/ownshipVector*'
+          - 'app/src/lib/routeProfile*'
+          - 'app/src/lib/useRecentHarbors*'
+          - 'app/src/services/geolocation*'
+          - 'app/src/services/assets*'
+          - 'app/src/state/useOwnshipGps*'
+          - 'app/src/test/fakeMaplibre.ts'
+
+'area: pwa':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'app/src/sw.ts'
+          - 'app/src/services/basemapSource*'
+          - 'app/src/services/glyphWarmup*'
+          - 'app/src/services/swRecovery*'
+          - 'app/src/services/db*'
+          - 'app/src/lib/glyphs*'
+          - 'app/src/lib/sessionSnapshot*'
+          - 'app/src/lib/storage*'
+          - 'app/src/state/useSessionRestore*'
+          - 'app/src/components/ReloadPrompt*'
+          - 'app/vite.config.ts'
+
+'area: ais':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'app/src/services/aisStream*'
+          - 'app/src/lib/aisTargets*'
+          - 'app/src/lib/aisGeoJson*'
+          - 'app/src/lib/mmsi*'
+          - 'app/src/lib/projectionVector*'
+          - 'app/src/components/AisLayer*'
+          - 'app/src/components/AisTraffic*'
+          - 'app/src/state/useAisTraffic*'
+
+'area: pipeline':
+  - changed-files:
+      - any-glob-to-any-file: 'pipeline/**'
+
+'area: deploy':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/deploy.yml'
+          - 'app/vite.config.ts'
+          - 'app/src/components/UatBadge*'
+
+'area: tooling':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+          - '.claude/**'
