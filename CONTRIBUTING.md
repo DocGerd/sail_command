@@ -98,7 +98,10 @@ prefixes are the mechanism.
 
 Every open issue should carry a `type:` and, once triaged, an `area:` and a
 `priority:`. The issue forms in `.github/ISSUE_TEMPLATE/` apply the `type:`
-label (and `status: needs-triage` for bug reports) automatically.
+label (and `status: needs-triage` for bug reports) automatically. `area:`
+labels on **pull requests** are applied automatically from changed paths by
+`actions/labeler` (`.github/workflows/labeler.yml`, path map in
+`.github/labeler.yml`) — update the path map alongside any directory move.
 
 **Milestones**
 

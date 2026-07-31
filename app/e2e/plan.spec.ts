@@ -114,8 +114,20 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     const fockTab = rigTabs.getByRole('tab', { name: /Fock/ });
     await expect(genoaTab).toBeVisible();
     await expect(fockTab).toBeVisible();
-    // Exactly one rig is marked recommended (★, aria-label "Empfohlen").
-    await expect(rigTabs.getByLabel('Empfohlen')).toHaveCount(1);
+    // #259/#275: this exact demo route (Langballigau -> Sønderborg, uniform
+    // 12 kn / 225° fixture wind) measures a genoa/fock ETA gap of ~13.6 s on
+    // an ~81 min passage — comfortably inside the 60 s tie band
+    // (RIG_TIE_BAND_MS, planRoute.ts) — so the router honestly reports a tie
+    // rather than badging either rig as recommended. Assert that POSITIVELY
+    // (no ★ on EITHER tab, and the tie chip's own text) rather than a bare
+    // `toHaveCount(0)`, so a future regression to a silent single-rig badge
+    // fails loudly instead of this assertion just flipping back to passing.
+    // This route no longer exercises the 'decided' ★ path end-to-end (it's
+    // still covered at the unit/component level) — follow-up filed as #278.
+    await expect(rigTabs.getByLabel('Empfohlen')).toHaveCount(0);
+    await expect(page.locator('.route-summary .chip-faster-rig')).toHaveText(
+      'Genua und Fock liegen für diese Passage praktisch gleichauf',
+    );
 
     // Both rigs must have actually found a route (an ETA, not a no-route
     // alert) — a broad reach in 12 kn should always be sailable for either

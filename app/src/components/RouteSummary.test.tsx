@@ -3,7 +3,14 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { uniformWindGrid } from '../test/fixtures';
 import { formatDateTime } from '../lib/format';
-import { DEFAULT_SETTINGS, type Leg, type Plan, type Rig, type RigResult } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type Leg,
+  type Plan,
+  type Rig,
+  type RigRecommendation,
+  type RigResult,
+} from '../types';
 import RouteSummary from './RouteSummary';
 
 const FETCHED_AT_MS = Date.UTC(2026, 6, 15, 6, 0, 0);
@@ -88,7 +95,16 @@ const FOCK_RESULT: RigResult = {
   ],
 };
 
-function makePlan(overrides: { departureMs?: number; recommended?: Rig } = {}): Plan {
+function makePlan(
+  overrides: {
+    departureMs?: number;
+    recommended?: Rig;
+    // #259: omitted by default so most tests exercise rigRecommendationOf's
+    // fallback (absent field -> `{ kind: 'decided', rig: recommended }`),
+    // matching every pre-#259 PlanResultOk literal elsewhere in the suite.
+    rigRecommendation?: RigRecommendation;
+  } = {},
+): Plan {
   return {
     id: 'plan-1',
     name: 'Flensburg to Marstal',
@@ -112,6 +128,7 @@ function makePlan(overrides: { departureMs?: number; recommended?: Rig } = {}): 
       recommended: overrides.recommended ?? 'genoa',
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
+      ...(overrides.rigRecommendation ? { rigRecommendation: overrides.rigRecommendation } : {}),
     },
   };
 }
@@ -163,6 +180,41 @@ describe('RouteSummary', () => {
   it('renders an additive faster-rig chip for the recommended rig', () => {
     renderSummary({ rig: 'genoa' });
     expect(screen.getByText('Faster: Genoa')).toBeInTheDocument();
+  });
+
+  it('#259: a tie comparison shows neither ★ and an honest tie chip instead of "Faster"', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'tie' } });
+    renderSummary({ plan, rig: 'genoa' });
+    const tablist = screen.getByRole('tablist', { name: 'Rig comparison' });
+    expect(within(tablist).queryAllByLabelText('Recommended')).toHaveLength(0);
+    expect(
+      screen.getByText('Genoa and Fock are effectively tied for this passage'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
+  });
+
+  it('#259: a moot comparison (all-motor) shows neither ★ and an honest moot chip', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'moot' } });
+    renderSummary({ plan, rig: 'fock' });
+    const tablist = screen.getByRole('tablist', { name: 'Rig comparison' });
+    expect(within(tablist).queryAllByLabelText('Recommended')).toHaveLength(0);
+    expect(
+      screen.getByText('Rig does not matter here — this passage runs entirely under engine'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
+  });
+
+  it('#259: a decided comparison for fock badges the fock tab, not genoa', () => {
+    const plan = makePlan({
+      recommended: 'fock',
+      rigRecommendation: { kind: 'decided', rig: 'fock' },
+    });
+    renderSummary({ plan, rig: 'genoa' });
+    const genoaTab = screen.getByRole('tab', { name: /Genoa/ });
+    const fockTab = screen.getByRole('tab', { name: /Fock/ });
+    expect(within(fockTab).getByLabelText('Recommended')).toBeInTheDocument();
+    expect(within(genoaTab).queryByLabelText('Recommended')).not.toBeInTheDocument();
+    expect(screen.getByText('Faster: Fock')).toBeInTheDocument();
   });
 
   it('clicking a non-active tab calls onRigChange with that rig', () => {

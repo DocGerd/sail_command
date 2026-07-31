@@ -3,7 +3,7 @@ import { useT, useLang } from '../i18n';
 import { formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
+import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, Rig } from '../types';
 import Card from './Card';
@@ -91,6 +91,10 @@ export default function RouteSummary({
   const stale = isStaleForecast(plan);
   const reason = !result ? reasonForRig(plan, rig) : null;
   const summary = result ? resultSummary(plan, result, lang) : null;
+  // #259: plan-level, independent of `result`/`summary` — must still resolve
+  // correctly when viewing a tab whose own rig failed to solve (star/chip
+  // render unconditionally below, matching the pre-#259 architecture).
+  const rigRecommendation = rigRecommendationOf(plan.result);
 
   return (
     <Card
@@ -111,7 +115,7 @@ export default function RouteSummary({
             }}
           >
             {t(RIG_LABEL_KEY[r])}
-            {plan.result.recommended === r && (
+            {rigRecommendation.kind === 'decided' && rigRecommendation.rig === r && (
               <span aria-label={t('route.recommended')} title={t('route.recommended')}>
                 {' '}
                 ★
@@ -121,9 +125,14 @@ export default function RouteSummary({
         ))}
       </div>
 
-      {/* Additive faster-rig chip (the ★ on the tab stays — e2e depends on it). */}
+      {/* Additive rig-comparison chip (the ★ on the tab stays for a 'decided'
+          comparison — e2e depends on it). #259: an ETA tie or an all-motor
+          comparison must not silently badge one rig as recommended — say so
+          honestly instead of picking a winner. */}
       <Chip className="chip-faster-rig">
-        {t('route.fasterRig', { rig: t(RIG_LABEL_KEY[plan.result.recommended]) })}
+        {rigRecommendation.kind === 'decided'
+          ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[rigRecommendation.rig]) })
+          : t(rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
       </Chip>
 
       {stale && <p role="alert">{t('route.staleForecast')}</p>}

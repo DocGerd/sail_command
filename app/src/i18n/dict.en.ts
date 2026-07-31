@@ -118,6 +118,11 @@ export const en = {
   'route.rigTabs': 'Rig comparison',
   'route.recommended': 'Recommended',
   'route.fasterRig': 'Faster: {rig}',
+  // #259: honest copy for the two cases where badging one rig as
+  // "recommended" would be misleading — an ETA tie (too close to call) and
+  // an all-motor route (the polar never drove a leg, so rig choice is moot).
+  'route.rigTie': 'Genoa and Fock are effectively tied for this passage',
+  'route.rigMoot': 'Rig does not matter here — this passage runs entirely under engine',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
   // #53: honest passage-planning-aid copy — charted data may under- OR

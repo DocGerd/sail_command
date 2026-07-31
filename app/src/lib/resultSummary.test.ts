@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_SETTINGS, type Plan, type Rig, type RigResult } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type Plan,
+  type Rig,
+  type RigRecommendation,
+  type RigResult,
+} from '../types';
 import { uniformWindGrid } from '../test/fixtures';
 import { formatDateTime } from './format';
-import { averageSpeedKn, resultSummary } from './resultSummary';
+import { averageSpeedKn, resultSummary, rigRecommendationOf } from './resultSummary';
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 
-function makePlan(recommended: Rig): Plan {
+function makePlan(recommended: Rig, rigRecommendation?: RigRecommendation): Plan {
   return {
     id: 'plan-1',
     name: 'Test',
@@ -30,6 +36,9 @@ function makePlan(recommended: Rig): Plan {
       recommended,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
+      // #259: only set when the test explicitly asks for it — most tests
+      // exercise rigRecommendationOf's fallback (absent field).
+      ...(rigRecommendation ? { rigRecommendation } : {}),
     },
   };
 }
@@ -142,10 +151,34 @@ describe('resultSummary', () => {
     expect(summary.avgSpeedKn).toBe(0);
   });
 
-  it('reports the recommended (faster) rig and its label key, independent of the shown result', () => {
+  it('#259: falls back to a decided pick of `recommended` when rigRecommendation is absent, independent of the shown result', () => {
     // The shown result is a genoa RigResult, but the plan recommends fock.
+    // (#275 review, Minor 6: this replaces a prior test of the now-removed
+    // unqualified `recommendedRig`/`recommendedRigLabelKey` pair — the
+    // qualified `rigRecommendation` is the only rig-comparison field now.)
     const summary = resultSummary(makePlan('fock'), rigResult({}), 'en');
-    expect(summary.recommendedRig).toBe('fock');
-    expect(summary.recommendedRigLabelKey).toBe('route.rig.fock');
+    expect(summary.rigRecommendation).toEqual({ kind: 'decided', rig: 'fock' });
+  });
+
+  it('#259: passes through an explicit tie comparison unchanged', () => {
+    const summary = resultSummary(makePlan('genoa', { kind: 'tie' }), rigResult({}), 'en');
+    expect(summary.rigRecommendation).toEqual({ kind: 'tie' });
+  });
+
+  it('#259: passes through an explicit moot comparison unchanged', () => {
+    const summary = resultSummary(makePlan('genoa', { kind: 'moot' }), rigResult({}), 'en');
+    expect(summary.rigRecommendation).toEqual({ kind: 'moot' });
+  });
+});
+
+describe('rigRecommendationOf (#259)', () => {
+  it('returns the stored comparison when present', () => {
+    const plan = makePlan('genoa', { kind: 'moot' });
+    expect(rigRecommendationOf(plan.result)).toEqual({ kind: 'moot' });
+  });
+
+  it('falls back to a decided pick of `recommended` when absent', () => {
+    const plan = makePlan('fock');
+    expect(rigRecommendationOf(plan.result)).toEqual({ kind: 'decided', rig: 'fock' });
   });
 });

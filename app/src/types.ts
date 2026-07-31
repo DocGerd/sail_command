@@ -133,6 +133,15 @@ export interface RigResult {
   motorDistanceNm: number;
 }
 
+// #259: the honest rig-comparison outcome, distinct from the plain
+// `recommended` pick on PlanResultOk below. 'decided' names a genuine faster
+// rig; 'tie' means the ETA gap between the two rigs is inside planRoute's tie
+// band (RIG_TIE_BAND_MS) — too close to call, not a ranking; 'moot' means
+// neither rig's polar drove a single leg (both routes are entirely motor), so
+// the polar comparison itself is meaningless — a STRONGER statement than
+// 'tie'. `erasableSyntaxOnly` forbids enums, hence the string-literal union.
+export type RigRecommendation = { kind: 'decided'; rig: Rig } | { kind: 'tie' } | { kind: 'moot' };
+
 export type NoRouteReason =
   | 'unreachable' // frontier died against land/depth everywhere
   | 'beyond-horizon' // forecast horizon exceeded before arrival
@@ -176,6 +185,14 @@ export interface PlanResultOk {
   genoaReason: NoRouteReason | null;
   fockReason: NoRouteReason | null;
   recommended: Rig;
+  // #259: present whenever planRoute computed the honest comparison (every
+  // plan solved after #259 landed). Optional so pre-#259 PlanResultOk
+  // literals across the test suite keep typechecking unchanged.
+  // exactOptionalPropertyTypes: omitted entirely when absent, never assigned
+  // undefined. Absence is resolved via a single fallback,
+  // `rigRecommendationOf()` in lib/resultSummary.ts — never re-derive it
+  // ad hoc at a call site.
+  rigRecommendation?: RigRecommendation;
   snappedOrigin: LatLon;
   snappedDestination: LatLon;
 }
