@@ -39,6 +39,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- About dialog: the "Data sources" section now starts collapsed, tapping it
+  open like the "What's new" changelog section above it, instead of always
+  showing its full text (#187).
+
+- Rig recommendation: an ETA difference between genoa and fock under one
+  minute is now reported as a tie rather than silently badging one rig as
+  "recommended." A route that motors the whole way now says the rig choice
+  doesn't matter for that passage, since the polar never came into play. This
+  changes what the app's own demo route shows: Langballigau → Sønderborg
+  (genoa and fock about 14 seconds apart over an 81-minute passage) now
+  reports a tie instead of a recommended rig (#259).
+
 - The planner now uses the engine wherever motoring would be meaningfully
   faster than sailing, instead of only where sailing speed fell below the motor
   threshold. A new **Sail preference** setting (default 2.8 kn) controls how
@@ -70,6 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exactly north from any bearing, and is the reliable way to get there (#230).
 
 ### Fixed
+
+- Map chrome: at the narrowest phone widths (around 320 px), the route-layer
+  controls card (route legend, time slider, legs) no longer overlaps the
+  data-layer toggles (wind barbs, water depth) in the top-left corner of the
+  map. A second, unrelated narrow-width overlap reported alongside this one
+  had already been fixed earlier; short landscape viewports remain a known
+  issue, tracked separately (#231) (#205).
 
 - Course-up orientation no longer drops to manual on an ordinary pan. While
   the chart was rotated to a bearing within 7° of north — an everyday
