@@ -76,15 +76,27 @@ emit() { printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additiona
 
 # ---- pure decision logic (no I/O, unit-testable via --selftest) ----
 
-# Broad, deliberately unanchored trigger. UNCHANGED from the inline hook this
-# script replaces. Never narrow it; widening it is always safe.
+# Broad, deliberately unanchored trigger. Never narrow it; widening it is
+# always safe (over-firing is the cheap direction).
+#
+# Widened once, relative to the inline hook this script replaced: the
+# short-subcommand alternatives used to be `*npm*\ ci|*npm*\ ci\ *`, i.e. they
+# required end-of-string or a literal SPACE after the subcommand. Measured
+# consequence - these REAL invocations did not fire:
+#     "npm ci\ngit status"   "npm ci; git status"   "(npm ci)"
+# The trailing `\ *` alternative is now `[!a-zA-Z0-9]*`, which accepts any
+# non-word character (newline, ; ) | & etc.) as well as a space. Space is a
+# member of that class, so the new alternative is a strict SUPERSET of the old
+# one for every subcommand - the change can only ever add fires, never remove
+# one. The install/uninstall/update alternatives are already maximally broad
+# and are untouched.
 _triggers() {
   # SC2221/SC2222: several alternatives subsume each other (*npm*install* also
   # matches *npm*uninstall*). Harmless - every alternative has the same body -
   # and kept verbatim so the trigger is byte-identical to the inline hook.
   # shellcheck disable=SC2221,SC2222
   case "$1" in
-    *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci\ *|*npm*\ add|*npm*\ add\ *|*npm*\ i|*npm*\ i\ *|*npm*\ rm|*npm*\ rm\ *|*npm*\ remove|*npm*\ remove\ *|*npm*\ up|*npm*\ up\ *) return 0 ;;
+    *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci[!a-zA-Z0-9]*|*npm*\ add|*npm*\ add[!a-zA-Z0-9]*|*npm*\ i|*npm*\ i[!a-zA-Z0-9]*|*npm*\ rm|*npm*\ rm[!a-zA-Z0-9]*|*npm*\ remove|*npm*\ remove[!a-zA-Z0-9]*|*npm*\ up|*npm*\ up[!a-zA-Z0-9]*) return 0 ;;
   esac
   return 1
 }
@@ -160,12 +172,21 @@ if [ "${1:-}" = "--selftest" ]; then
   check skip "npm test with a filter"          "npm --prefix app run test -- invariants"
   check skip "empty command"                   ""
 
-  # --- KNOWN GAP, pre-existing and NOT introduced here: the short-subcommand
-  # --- trigger alternatives require a literal space or end-of-string after the
-  # --- subcommand, so `npm ci` followed by a newline or `;` does not match.
-  # --- Pinned so the gap is visible rather than implicit.
-  check skip "PRE-EXISTING GAP: npm ci then newline" "npm ci${nl}git status"
-  check skip "PRE-EXISTING GAP: npm ci then ;"       "npm ci; git status"
+  # --- MUST FIRE: real invocations the pre-widening trigger MISSED, because it
+  # --- demanded a literal space or end-of-string after a short subcommand.
+  check fire "npm ci then newline"             "npm ci${nl}git status"
+  check fire "npm ci then ;"                   "npm ci; git status"
+  check fire "npm ci in a subshell"            "(npm ci)"
+  check fire "npm ci piped"                    "npm ci | tee /tmp/log"
+  check fire "npm rm then newline"             "npm rm left-pad${nl}git status"
+  check fire "npm add then ;"                  "npm add left-pad; git status"
+  check fire "npm up then newline"             "npm up${nl}git status"
+  check fire "npm i then newline"              "npm i left-pad${nl}git status"
+  check fire "npm remove then )"               "(npm remove left-pad)"
+
+  # --- The widening must not turn a mention into a fire on its own: an echo
+  # --- mentioning the newly-reachable shapes is still suppressed.
+  check skip "echo mentioning npm ci; ..."     'echo "step 1: npm ci"'
 
   [ "$fail" -eq 0 ] && echo "SELFTEST OK"
   exit "$fail"
