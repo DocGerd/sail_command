@@ -12,12 +12,12 @@ import pathlib
 import sys
 import urllib.request
 
-import numpy as np
 import geopandas as gpd
+import numpy as np
 import rasterio
 from rasterio import features
 from rasterio.transform import from_origin
-from rasterio.warp import reproject, Resampling
+from rasterio.warp import Resampling, reproject
 
 HERE = pathlib.Path(__file__).parent
 SRC = HERE / "data-src"
@@ -42,10 +42,7 @@ LAND_URL = "https://osmdata.openstreetmap.de/download/land-polygons-split-4326.z
 # excluding it from the land mask. Discovered while debugging verify_mask.py
 # probe failures at every Schlei-side harbor (Kappeln, Arnis, Maasholm).
 SCHLEI_RELATION_ID = 2340930
-SCHLEI_URL = (
-    "https://nominatim.openstreetmap.org/lookup"
-    f"?osm_ids=R{SCHLEI_RELATION_ID}&format=jsonv2&polygon_geojson=1"
-)
+SCHLEI_URL = f"https://nominatim.openstreetmap.org/lookup?osm_ids=R{SCHLEI_RELATION_ID}&format=jsonv2&polygon_geojson=1"
 
 
 def fetch(url: str, dest: pathlib.Path, headers: dict | None = None) -> None:
@@ -256,14 +253,18 @@ def main() -> None:
     (OUT).mkdir(parents=True, exist_ok=True)
     (OUT / "mask.bin").write_bytes(code_south_first.tobytes())
     meta = {
-        "west": WEST, "south": SOUTH, "east": EAST, "north": NORTH,
-        "cols": COLS, "rows": ROWS,
+        "west": WEST,
+        "south": SOUTH,
+        "east": EAST,
+        "north": NORTH,
+        "cols": COLS,
+        "rows": ROWS,
         "encoding": "uint8 row-major, row 0 = south; 0=land/unknown, 1-254=depth dm floored, 255=deep(>=25.4m)",
         "verticalDatum": "LAT (EMODnet DTM 2024)",
         "sources": [
-            "EMODnet Bathymetry Consortium (2024). EMODnet Digital Bathymetry (DTM 2024). doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1 (CC-BY 4.0)",
+            "EMODnet Bathymetry Consortium (2024). EMODnet Digital Bathymetry (DTM 2024). doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1 (CC-BY 4.0)",  # noqa: E501 -- DOI citation, not code; unwrappable
             "Land polygons (c) OpenStreetMap contributors (ODbL), osmdata.openstreetmap.de",
-            "Schlei fjord water body (c) OpenStreetMap contributors (ODbL), relation 2340930 via nominatim.openstreetmap.org",
+            "Schlei fjord water body (c) OpenStreetMap contributors (ODbL), relation 2340930 via nominatim.openstreetmap.org",  # noqa: E501 -- attribution string, not code; unwrappable
             # NOTE: the About dialog currently shows this ODbL statement as a
             # static i18n item (about.sources.osmMask) because the committed
             # mask.meta.json predates this entry. When the mask is next
@@ -271,7 +272,7 @@ def main() -> None:
             # which the About dialog also renders dynamically), remove the
             # static about.sources.osmMask item from AboutDialog + both i18n
             # dicts (or dedupe) to avoid showing the statement twice.
-            "The land/depth mask (mask.bin) is a Derivative Database of OpenStreetMap data and is made available under the Open Database License (ODbL). (c) OpenStreetMap contributors.",
+            "The land/depth mask (mask.bin) is a Derivative Database of OpenStreetMap data and is made available under the Open Database License (ODbL). (c) OpenStreetMap contributors.",  # noqa: E501 -- license statement, not code; unwrappable
         ],
     }
     (OUT / "mask.meta.json").write_text(json.dumps(meta, indent=1))

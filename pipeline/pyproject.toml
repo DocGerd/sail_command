@@ -1,0 +1,17 @@
+[tool.ruff]
+# #220: the pipeline's Python style guide, in lieu of a prose doc — this file
+# IS the style guide. CONTRIBUTING.md should link here (see the CI job in
+# .github/workflows/python-lint.yml for how it's enforced); JS/TS style is
+# ESLint (see app/eslint.config.js), enforced by the `app` required check.
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# Deliberately narrow: pycodestyle errors/warnings, pyflakes (unused
+# imports/vars, undefined names), isort (import order), and pyupgrade
+# (modern syntax). No pydocstyle/ANN/D — these are two build-time scripts,
+# not a public library; a docstring-coverage rule would be noise here.
+select = ["E", "F", "I", "UP", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = []
