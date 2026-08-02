@@ -316,7 +316,7 @@ export const de = {
   // (they are all beacons), where "Richtfeuer" would be wrong for those 11.
   //
   // KNOWN FORM INCONSISTENCY (see `clearing` above): this is a mark NOUN,
-  // while `clearing`'s "Deckpeilung" is BSH's gloss for a line/method —
+  // while `clearing`'s "Gefahrenpeilung" names a bearing/concept —
   // deliberate, not an oversight; German has no attested clearing-mark
   // noun to make the two forms uniform.
   'seamark.value.category.leading': 'Richtbake',
