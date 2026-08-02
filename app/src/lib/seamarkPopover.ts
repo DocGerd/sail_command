@@ -58,7 +58,7 @@ function humanize(raw: string): string {
 }
 
 // Hand-curated from the values actually present in the committed
-// `app/public/data/seamarks.json` (#300 measured 11 seamarkType / 29 category
+// `app/public/data/seamarks.json` (#300 measured 11 seamarkType / 30 category
 // / 7 base colour values — see the issue for the full count). Deliberately
 // NOT closed over the full IALA tagging scheme: `tokenFor` below falls back
 // to humanize() for anything missing here, which is what makes adding a
