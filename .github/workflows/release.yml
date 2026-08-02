@@ -1,0 +1,87 @@
+name: Release
+
+# #175: cut a GitHub Release object automatically from a release tag, pulling
+# CHANGELOG.md as the single source of the release notes. Motivation: at the
+# v0.6.0 cut, the tag push, the deploy, and the About dialog were all green —
+# and no GitHub Release object was ever created. Nobody noticed until the
+# maintainer found it missing from the project page; none of the other green
+# signals was evidence a Release existed, because a git tag and a GitHub
+# Release are different objects. See `.claude/skills/release/SKILL.md` §5c.
+on:
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: read
+
+# Deliberately NO shared `concurrency:` group with `deploy.yml` (`group:
+# pages`, cancel-in-progress). That group cancel-SUPERSEDES — a release tag
+# run already shares it with the merge-push run (see deploy.yml and SKILL.md
+# 5b) — and a second workflow joining it could cancel an in-flight production
+# deploy. This workflow is fully independent: no group declared here means it
+# can neither cancel, nor be cancelled by, the deploy run.
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Extract the matching CHANGELOG.md section
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          # Keep-a-Changelog-1.1 subset this repo commits to (see
+          # app/src/lib/changelog.ts, which parses the same shape for the
+          # in-app About dialog): find the `## [VERSION]` heading, print
+          # everything up to the NEXT `## [` heading or the trailing
+          # `[label]: url` link-reference block, whichever comes first —
+          # both terminators mark the end of a release's own content, and
+          # the heading line itself is excluded (the release body starts
+          # after it).
+          awk -v ver="$VERSION" '
+            /^## \[/ { if (f) exit; if (index($0, "## [" ver "]") == 1) f = 1; next }
+            /^\[[^]]*\]: / { if (f) exit }
+            f        { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+
+          # grep, not [ ! -s ]: a heading present with nothing under it
+          # emits a single newline, which is 1 byte and would pass a bare
+          # size check — yielding a Release with a whitespace-only body,
+          # a silent wrong state rather than a loud error.
+          if ! grep -q '[^[:space:]]' /tmp/release-notes.md; then
+            echo "::error::No CHANGELOG.md section found for [$VERSION] — add the '## [$VERSION] - <date>' heading before tagging, or create the GitHub Release by hand (SKILL.md §5c)."
+            exit 1
+          fi
+
+      - name: Skip if a Release already exists for this tag
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the GitHub Release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # --latest: without it, the PREVIOUS version keeps the "Latest"
+          #   badge — a silent wrong state, not an error.
+          # --verify-tag: aborts if the tag isn't actually on the remote yet.
+          #   This does NOT check a cryptographic signature (unrelated to
+          #   #222 — release tags are not signed yet).
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${{ github.repository }}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file /tmp/release-notes.md \
+            --latest \
+            --verify-tag
