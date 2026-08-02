@@ -518,6 +518,28 @@ function safeWaterSegments(props: SeamarkProperties): SeamarkSegment[] {
 // yellow body is no mark at all). Its lower tips used to reach y10 against a
 // body starting at y9 — an overlap, though a cross-colour one — and now clear
 // the body by 1.25 units allowing for the 1.5-wide stroke (#298).
+//
+// Opening that gap is exactly why the X needs the keyline its INK siblings
+// already carry: on base its lower ~1 unit still overlapped the yellow body,
+// so a fraction of it had a contrasting backdrop; now that it clears the body
+// entirely, 100% of it sits on transparent canvas, where INK '#1a1a1a' is
+// unreadable against the dark-theme basemap. A stroked glyph takes that
+// keyline as a wider near-white UNDERLAY on the same points rather than an
+// outline path — which also leaves the S1/S2 measurements untouched, since
+// they read a line's extent from its POINTS and never expand by stroke width.
+const SPECIAL_X_STROKES: readonly (readonly Point2D[])[] = [
+  [
+    { x: 9, y: 1 },
+    { x: 15, y: 7 },
+  ],
+  [
+    { x: 15, y: 1 },
+    { x: 9, y: 7 },
+  ],
+];
+const SPECIAL_X_WIDTH = 1.5;
+const SPECIAL_X_KEYLINE_WIDTH = 3;
+
 function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
   const tokens = colourTokens(props.colour);
   const bands = bandSegments(tokens.length > 0 ? tokens : ['yellow'], 'horizontal', {
@@ -528,24 +550,20 @@ function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
   });
   return [
     ...bands,
-    {
+    // Both keyline underlays first, so neither can paint over the other
+    // stroke's INK where the two cross at the centre of the X.
+    ...SPECIAL_X_STROKES.map((points): SeamarkSegment => ({
       kind: 'line',
-      points: [
-        { x: 9, y: 1 },
-        { x: 15, y: 7 },
-      ],
-      stroke: INK,
-      width: 1.5,
-    },
-    {
+      points,
+      stroke: OUTLINE,
+      width: SPECIAL_X_KEYLINE_WIDTH,
+    })),
+    ...SPECIAL_X_STROKES.map((points): SeamarkSegment => ({
       kind: 'line',
-      points: [
-        { x: 15, y: 1 },
-        { x: 9, y: 7 },
-      ],
+      points,
       stroke: INK,
-      width: 1.5,
-    },
+      width: SPECIAL_X_WIDTH,
+    })),
   ];
 }
 
@@ -657,11 +675,15 @@ export function seamarkImageId(props: SeamarkProperties): string {
       // id must carry the category too, or the cache under-keys and one
       // registered image serves both sides of the channel. It is not
       // hypothetical: 7 of the 14 lateral ids in the committed pull cover more
-      // than one category (571 marks), including `pillar-red` = {port 49,
-      // preferred_channel_starboard 1} and `pillar-grey` = {port 7,
-      // starboard 4}. The other buckets keep their existing ids, per this
-      // function's rule of keying only on what the glyph actually varies on —
-      // extend this if a topmark is ever added to another bucket.
+      // than one category, spanning 571 marks. The 2 of those in the `pillar`
+      // bucket are the ones this suffix actually separates and account for 61
+      // of them: `pillar-red` = {port 49, preferred_channel_starboard 1} and
+      // `pillar-grey` = {port 7, starboard 4}. The other 5 ids (510 marks —
+      // spar-green 247, spar-red 238, spar-grey 13, can-green 6,
+      // spar-#888888 6) stay deliberately unsuffixed, because those buckets
+      // draw no topmark and so their glyph does not vary on category — this
+      // function's rule is to key only on what the glyph actually varies on.
+      // Extend the condition if a topmark is ever added to another bucket.
       return shape === 'pillar' ? `${base}-${props.category ?? 'unknown'}` : base;
     }
     case 'cardinal':

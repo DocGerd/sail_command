@@ -26,6 +26,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at runtime — `?worker&url` bundles the pair into one self-contained chunk
   (#253).
 
+### Fixed
+
+- Buoy and beacon symbols no longer merge their topmark into the body below
+  it. A port-hand mark used to render as a single red box with a barely
+  visible bump on top; it now carries a clearly separated topmark, and the
+  topmark is the shape IALA R1001 actually specifies for that side of the
+  channel — a can for port-hand marks, a cone for starboard-hand ones,
+  instead of the ball both used to get (a ball is the safe-water mark's
+  topmark). Which side a mark belongs to is now read from its category rather
+  than inferred from its colour, so the ~45 marks in the chart area tagged an
+  unexpected colour are no longer shown with the wrong side, and a mark with
+  no category shows no topmark at all rather than a guessed one. Isolated
+  danger marks again read as the two separate spheres that distinguish them,
+  where before the pair merged into one blob against a black body, and the
+  safe-water sphere and special mark's cross now stand clear of the bodies
+  they sit on and stay legible in dark mode (#298).
+- Seamark detail popovers are now fully localized: field values such as the
+  mark's type, category and colours appear in the selected language instead
+  of staying raw English data words, so a German UI no longer shows
+  `Kategorie: port` or `Farbe: green`. Any value not covered by the
+  translation falls back to the previous readable form, so unusual tags still
+  display sensibly (#300).
+
 ## [0.6.0] - 2026-07-31
 
 ### Added

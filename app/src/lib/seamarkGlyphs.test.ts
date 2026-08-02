@@ -511,28 +511,25 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   // sphere (yellow on a yellow body is no mark). Raised to y1..7 so the
   // 1.5-wide stroke clears the body at y9 — its lower tips used to reach y10,
   // one unit INTO the body.
-  it('special-purpose with no colour tag: single yellow-fallback band + X topmark', () => {
+  it('special-purpose with no colour tag: single yellow-fallback band + keylined X topmark', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_special_purpose' });
+    // A stroked glyph takes its keyline as a wider near-white UNDERLAY on the
+    // same points, not an outline path. Both underlays precede both INK
+    // strokes so neither can paint over the other's ink where the X crosses.
+    const stroke1 = [
+      { x: 9, y: 1 },
+      { x: 15, y: 7 },
+    ];
+    const stroke2 = [
+      { x: 15, y: 1 },
+      { x: 9, y: 7 },
+    ];
     expect(segs).toEqual([
       { kind: 'rect', x: 7, y: 9, w: 10, h: 12, fill: 'yellow' },
-      {
-        kind: 'line',
-        points: [
-          { x: 9, y: 1 },
-          { x: 15, y: 7 },
-        ],
-        stroke: '#1a1a1a',
-        width: 1.5,
-      },
-      {
-        kind: 'line',
-        points: [
-          { x: 15, y: 1 },
-          { x: 9, y: 7 },
-        ],
-        stroke: '#1a1a1a',
-        width: 1.5,
-      },
+      { kind: 'line', points: stroke1, stroke: OUT, width: 3 },
+      { kind: 'line', points: stroke2, stroke: OUT, width: 3 },
+      { kind: 'line', points: stroke1, stroke: INK, width: 1.5 },
+      { kind: 'line', points: stroke2, stroke: INK, width: 1.5 },
     ]);
   });
 
@@ -602,9 +599,32 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     const ys = seg.points.map((p) => p.y);
     return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
   };
-  /** Widest empty horizontal band in the glyph, plus the widths of the ink
-   * above and below it — computed only from the returned segments, so it is
-   * independent of how any family happens to order or name them. */
+  /**
+   * The LOWEST empty horizontal band in the glyph — the one adjacent to the
+   * body — plus the widths of the ink above and below it. Computed only from
+   * the returned segments, so it is independent of how any family happens to
+   * order or name them.
+   *
+   * "Lowest", not "widest", is load-bearing. A multi-part topmark has more
+   * than one candidate band, and for the isolated-danger mark the two are the
+   * SAME size (sphere-to-sphere [5..6.5] and topmark-to-body [10.5..12], both
+   * 1.5), so a widest-band rule kept the sphere-to-sphere one: S1 then
+   * measured a gap INTERNAL to the topmark and S2 compared one sphere (4)
+   * against the other sphere plus the body (10) — neither ever compared the
+   * topmark to the body, and shrinking the real topmark/body gap to 0.5 left
+   * both rules green. Second instance of the degenerate-pass class already
+   * fixed once below in S2, so it is spelled out rather than quietly patched.
+   *
+   * Why the lowest band is ALWAYS the topmark/body boundary, for any topmark
+   * part count: a body is emitted by `bandSegments`, whose rects abut exactly
+   * (`box.y + i*bandH` with height `bandH`) and tile the box with no
+   * clearance, plus a `bodyOutline` inset 0.5 INSIDE it. So no body can
+   * contain an internal empty band, every internal band belongs to the
+   * topmark, and the lowest band is the boundary. The failure direction is
+   * also the safe one: were a future body ever to gain an internal gap, this
+   * rule would measure that SMALLER gap and fail, where the widest-band rule
+   * would have measured a larger one and passed.
+   */
   const separation = (props: SeamarkProperties) => {
     const extents = seamarkSegments(props)
       .map(extentOf)
@@ -613,7 +633,8 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     let gap = 0;
     let gapTop = extents[0].y1;
     for (const e of extents.slice(1)) {
-      if (e.y0 - covered > gap) {
+      // Assign on EVERY band, so the last (lowest) one wins.
+      if (e.y0 - covered > 0) {
         gap = e.y0 - covered;
         gapTop = covered;
       }
@@ -811,6 +832,11 @@ describe('registerSeamarkImages', () => {
       // same image id — must draw only once
       { seamarkType: 'beacon_lateral', colour: 'red', category: 'port' },
       { seamarkType: 'light_major' },
+      // #298: the ONLY family here that emits a `ring` segment. Without it the
+      // `case 'ring'` arm added to drawSeamark — this change's only new canvas
+      // code path — is never driven through the recorder, and expectedOps'
+      // matching branch is never taken either.
+      { seamarkType: 'buoy_isolated_danger', colour: 'black;red;black' },
     ];
 
     try {
@@ -819,21 +845,33 @@ describe('registerSeamarkImages', () => {
       createSpy.mockRestore();
     }
 
-    // 2 distinct ids (lateral-pillar-red, light-major) -> 2 draws, not 3.
-    expect(addImage).toHaveBeenCalledTimes(2);
+    // 3 distinct ids (lateral-pillar-red-port, light-major, isolated) -> 3
+    // draws, not 4: the beacon_lateral duplicate must still collapse.
+    expect(addImage).toHaveBeenCalledTimes(3);
     expect(addImage.mock.calls[0][0]).toBe('seamark-lateral-pillar-red-port');
     expect(addImage.mock.calls[1][0]).toBe('seamark-light-major');
+    expect(addImage.mock.calls[2][0]).toBe('seamark-isolated-black-red-black');
+
+    // The ring arm actually ran: a stroked arc appears in the op stream, which
+    // no other prop in this set can produce.
+    expect(log.filter((op) => op.startsWith('A')).length).toBeGreaterThan(0);
+    const arcIndexes = log.map((op, i) => (op.startsWith('A') ? i : -1)).filter((i) => i >= 0);
+    expect(
+      arcIndexes.some((i) => log[i + 1] === 'stroke'),
+      `an arc followed by stroke (the ring path) in: ${log.join(' ')}`,
+    ).toBe(true);
 
     // #191 registration contract: a 64x64 raster registered at pixelRatio 2
     // (dropping pixelRatio was literally #191's original bug, and would
     // otherwise pass every other assertion here silently).
-    expect(canvases).toHaveLength(2);
+    expect(canvases).toHaveLength(3);
     for (const canvas of canvases) {
       expect(canvas.width).toBe(64);
       expect(canvas.height).toBe(64);
     }
     expect(addImage.mock.calls[0][2]).toEqual({ pixelRatio: 2 });
     expect(addImage.mock.calls[1][2]).toEqual({ pixelRatio: 2 });
+    expect(addImage.mock.calls[2][2]).toEqual({ pixelRatio: 2 });
 
     // Explicit, order-independent guard on top of the full-log check below:
     // exactly one scale call per drawn image, at the exact expected factor —
@@ -843,9 +881,10 @@ describe('registerSeamarkImages', () => {
     expect(scaleCalls).toEqual([
       `scale:${SEAMARK_SCALE},${SEAMARK_SCALE}`,
       `scale:${SEAMARK_SCALE},${SEAMARK_SCALE}`,
+      `scale:${SEAMARK_SCALE},${SEAMARK_SCALE}`,
     ]);
 
-    const expected = [...expectedOps(props[0]), ...expectedOps(props[2])];
+    const expected = [...expectedOps(props[0]), ...expectedOps(props[2]), ...expectedOps(props[3])];
     expect(log).toEqual(expected);
   });
 
