@@ -78,21 +78,33 @@ as a normal issue.
 
 Release tags in this repository are **not cryptographically signed yet**
 (tracked in [#222](https://github.com/DocGerd/sail_command/issues/222)).
-`v0.1.0` through `v0.7.0` are ordinary tags with no signature to check —
-running `git verify-tag` or `git tag -v` against any of them will correctly
-report "no signature," not an error. This section is written down ahead of
-the feature itself: the OpenSSF Best Practices Silver `signed_releases`
-criterion requires the verification process to be *documented*, whether or
-not signing is active yet, so this is not deferred until signing lands.
+`v0.1.0` through `v0.7.0` carry no signature, so `git verify-tag` / `git tag
+-v` **fail** against them (exit 1) rather than succeed — the message differs
+by tag kind: annotated-but-unsigned tags (`v0.1.0`, `v0.5.0`) report `error:
+no signature found`, while the lightweight tags — the majority of the
+shipped set — report `error: ... cannot verify a non-tag object of type
+commit`, because a lightweight tag is a bare ref that cannot carry a
+signature at all. Both outcomes are expected for these versions, not a sign
+of tampering.
+
+The Silver `signed_releases` criterion requires **both** cryptographic
+signing **and** a documented process for obtaining the public keys and
+verifying signatures — they are conjuncts, not alternatives. This section
+delivers the documentation half ahead of the signing half, so the process is
+settled before the first signed tag; the criterion itself is **not met**
+until signing is live at `v0.8.0`.
 
 **Planned, starting at `v0.8.0`:** release tags will be signed with the
 maintainer's SSH signing key (`gpg.format = ssh` — GitHub's lowest-friction
 signing option, requiring no GPG toolchain). Once active:
 
-- The public key will be retrievable from the maintainer's GitHub account at
-  `https://github.com/DocGerd.keys` (GitHub publishes SSH signing keys there
-  the same way it does authentication keys), and/or committed to this
-  repository so verification does not depend on GitHub's availability.
+- The public key is planned to be published at GitHub's dedicated SSH
+  *signing*-key endpoint, `https://api.github.com/users/DocGerd/ssh_signing_keys`
+  — **not** `https://github.com/<user>.keys`, which serves *authentication*
+  keys from a separate registry and is not the correct source for verifying
+  a signature — and/or committed to this repository so verification does not
+  depend on GitHub's availability at all (the stronger option, and the one
+  this repo defaults to if the two ever diverge).
 - Verify a tag locally with either of the equivalent commands:
 
   ```bash

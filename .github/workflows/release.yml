@@ -43,11 +43,15 @@ jobs:
           # after it).
           awk -v ver="$VERSION" '
             /^## \[/ { if (f) exit; if (index($0, "## [" ver "]") == 1) f = 1; next }
-            /^\[/    { if (f) exit }
+            /^\[[^]]*\]: / { if (f) exit }
             f        { print }
           ' CHANGELOG.md > /tmp/release-notes.md
 
-          if [ ! -s /tmp/release-notes.md ]; then
+          # grep, not [ ! -s ]: a heading present with nothing under it
+          # emits a single newline, which is 1 byte and would pass a bare
+          # size check — yielding a Release with a whitespace-only body,
+          # a silent wrong state rather than a loud error.
+          if ! grep -q '[^[:space:]]' /tmp/release-notes.md; then
             echo "::error::No CHANGELOG.md section found for [$VERSION] — add the '## [$VERSION] - <date>' heading before tagging, or create the GitHub Release by hand (SKILL.md §5c)."
             exit 1
           fi

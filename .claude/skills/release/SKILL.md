@@ -236,13 +236,23 @@ be cancelled by `deploy.yml`'s `pages` group (see 5b) — the two runs are
 fully independent.
 
 **Verify it actually ran** — a green workflow run is not proof either,
-per the same lesson as 5b:
+per the same lesson as 5b. **`gh release view` has no `isLatest` field**
+(measured: `gh release view "$TAG" --json tagName,isLatest` →
+`Unknown JSON field: "isLatest"` — `isLatest` exists only on `gh release
+list`). Using `view` here would fail on the very first execution of this
+step (the v0.7.0 cut) with a message indistinguishable from "no Release was
+created" — exactly the defect this step exists to catch. Use `list`,
+filtered to the tag, which checks existence and the Latest badge together:
 
 ```bash
-gh release view "$TAG" --json tagName,isLatest,createdAt
+REPO=DocGerd/sail_command
+gh release list --repo "$REPO" --json tagName,isLatest \
+  --jq '.[] | select(.tagName == "'"$TAG"'")'
 ```
 
-Confirm the release exists **and** `isLatest` is `true`.
+Empty output = no Release (fall back below). A line with `"isLatest":false`
+means the Release exists but the badge is on the wrong version. Confirm the
+release exists **and** `isLatest` is `true`.
 
 The automated title is the bare tag (`--title "$TAG"`); existing releases mix
 bare tags (`v0.5.1`, `v0.4.0`) and themed titles (`v0.5.0 — chart orientation
@@ -255,21 +265,28 @@ commit** — so `release.yml` only fires if that file is already present on
 `main` by the time the tag is pushed. The PR that adds `release.yml` (#175)
 must reach `main` (merge + back-merge, or be included in the same release
 PR) before its own tag can trigger it; a tag pushed earlier silently gets no
-automated Release, same failure class the step exists to close. If
-`gh release view` above comes back empty, create it by hand instead of
+automated Release, same failure class the step exists to close. If the
+`gh release list` check above comes back empty, create it by hand instead of
 treating the gap as done — read `CHANGELOG.md` from the **tag**, not the
 local working tree, so the notes match exactly what shipped even if the
-local checkout is on a different branch:
+local checkout is on a different branch. `--repo "$REPO"` is bound
+explicitly in this block: Bash cwd persists across a session, and this
+snippet runs only after something has already gone wrong — a stale scratchpad
+cwd turning into a spurious `not a git repository` here costs the operator
+the wrong diagnosis mid-incident. The `awk` terminator is anchored to the
+link-reference shape (`[label]: url`), matching `release.yml`'s extractor —
+the two copies are each other's only cross-check, so they must not diverge:
 
 ```bash
 TAG=vX.Y.Z
+REPO=DocGerd/sail_command
 VERSION=${TAG#v}
 git show "$TAG:CHANGELOG.md" | awk -v ver="$VERSION" '
   /^## \[/ { if (f) exit; if (index($0, "## [" ver "]") == 1) f = 1; next }
-  /^\[/    { if (f) exit }
+  /^\[[^]]*\]: / { if (f) exit }
   f        { print }
 ' > /tmp/release-notes.md
-gh release create "$TAG" --notes-file /tmp/release-notes.md --latest --verify-tag
+gh release create "$TAG" --repo "$REPO" --notes-file /tmp/release-notes.md --latest --verify-tag
 ```
 
 ## Gotchas
