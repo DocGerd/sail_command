@@ -2,37 +2,11 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <!-- #223: GitHub Pages cannot set response headers, so this `<meta http-equiv>`
-         form is the only CSP mechanism available to a static-hosted PWA. Known,
-         accepted limitation of that form: it cannot express `frame-ancestors` or
-         `report-uri` — neither matters here (static host, no framing threat
-         model in play, no collector to report to). Directives, and why each is
-         present (verified against a fresh maplibre-gl 6 build, #253):
-         - worker-src 'self' blob: — the routing engine's own worker
-           (workerClient.ts) is same-origin ('self'), but maplibre-gl 6 ships a
-           blob-URL worker fallback (node_modules/maplibre-gl/src/util/web_worker.ts,
-           src/source/worker.ts) that can win depending on load order, so `blob:`
-           stays.
-         - img-src 'self' data: blob: — maplibre creates object URLs for raster
-           images/glyphs (util.ts) and the PMTiles basemap source does the same;
-           `data:` covers inline icons.
-         - connect-src 'self' https://api.open-meteo.com wss://stream.aisstream.io
-           — the two outbound third-party feeds (Open-Meteo forecasts over HTTPS,
-           optional BYOK AIS over WSS) plus same-origin XHR/fetch (PMTiles range
-           reads, SW, IndexedDB-adjacent fetches).
-         - script-src 'self', style-src 'self' — no inline script or injected
-           `<style>` anywhere in the app or its maplibre-gl/pmtiles dependencies
-           (grepped); React's `style` prop sets CSSOM properties individually,
-           which CSP style-src does not gate.
-         - 'wasm-unsafe-eval' is deliberately OMITTED: no WebAssembly and no
-           `new Function(`/`eval(` in the built bundle or the maplibre-gl worker
-           chunk (re-verified against this build, not assumed from an older one).
-         - base-uri 'none', object-src 'none', form-action 'none' — the app has
-           no <base>, no plugins/embeds, and no forms that submit anywhere. -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' https://api.open-meteo.com wss://stream.aisstream.io; img-src 'self' data: blob:; style-src 'self'; font-src 'self'; manifest-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'"
-    />
+    <!-- #223: the Content-Security-Policy <meta http-equiv> is injected here at
+         BUILD time only — see cspMeta() in vite.config.ts for the full
+         directive list and rationale, including why it is build-only
+         (PR #316 review B2: it would break `vite dev`'s unstyled CSS
+         injection otherwise). -->
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10243D" />

