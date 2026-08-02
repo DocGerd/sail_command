@@ -246,6 +246,8 @@ filtered to the tag, which checks existence and the Latest badge together:
 
 ```bash
 REPO=DocGerd/sail_command
+TAG=vX.Y.Z
+: "${TAG:?bind TAG=vX.Y.Z first}"
 gh release list --repo "$REPO" --json tagName,isLatest \
   --jq '.[] | select(.tagName == "'"$TAG"'")'
 ```
