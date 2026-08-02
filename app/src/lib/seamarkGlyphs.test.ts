@@ -505,8 +505,9 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   // R1001 §2.4: red/white VERTICAL stripes, single sphere topmark. The sphere
   // is INK rather than the specified red by design — a red sphere over red
   // stripes is the very merge #298 closes, and chart practice (INT-1) draws
-  // topmarks as black shapes. cy 4 (was 6) puts it 2 units clear of the body,
-  // which it used to touch exactly.
+  // topmarks as black shapes. cy 4 (was 6) puts it 2 units clear of the body
+  // outline — 1.5 in rendered ink, once its keyline is counted — where it used
+  // to touch the body exactly.
   it('safe-water: vertical colour bands + a sphere topmark clear of the body', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_safe_water', colour: 'red;white' });
     expect(segs).toEqual([
@@ -549,12 +550,16 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   });
 
   // R1001 §2.3: black body with broad red band(s), topmark TWO black spheres
-  // "vertically disposed". Hand-derived: r 2 at cy 3 and cy 8.5 gives
-  // 1.5 units between the spheres and 1.5 above a body that takes the
-  // cardinal's y12 origin (a two-element topmark needs the cardinal's vertical
-  // budget). Each sphere is ringed with the same near-white keyline the
-  // cardinal cones use — before #298 the two spheres OVERLAPPED each other by
-  // 0.5 in one fill and sat 0.5 above a black body band, i.e. one lozenge.
+  // "vertically disposed". Hand-derived: r 2 at cy 3 and cy 8.5 gives 1.5
+  // units between the spheres and 1.5 above a body that takes the cardinal's
+  // y12 origin (a two-element topmark needs the cardinal's vertical budget) —
+  // both measured between the CIRCLES, which is what the literals below pin.
+  // Each keyline is stroked ON its circle and eats 0.5 per ring facing a gap,
+  // so in rendered ink those become 0.5 between the spheres (a ring on each
+  // side) and 1.0 above the body (one ring; the body outline is inset). See
+  // the docblock on ISOLATED_DANGER_BODY for why both are intended.
+  // Before #298 the two spheres OVERLAPPED each other by 0.5 in one fill and
+  // sat 0.5 above a black body band, i.e. one lozenge.
   it('isolated-danger: horizontal colour bands + two separated, ringed sphere topmarks', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_isolated_danger', colour: 'black;red' });
     expect(segs).toEqual([

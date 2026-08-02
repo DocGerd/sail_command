@@ -305,10 +305,20 @@ function bandSegments(
  * leave the mark to starboard — it is a modified STARBOARD-hand mark and
  * carries a cone. Hence the explicit table.
  *
- * Category is the only sound source: in the committed pull, `colour` labels 18
- * port marks black, 15 port and 9 starboard marks grey, 2 starboard marks
- * white, and one PORT mark green — deriving the side from the colour would put
- * the wrong side indication on ~45 marks (#298).
+ * Category is the only sound source: in the committed pull, **51** laterals
+ * carry a colour that contradicts their category, and deriving the side from
+ * the colour would put the wrong side indication on every one of them. 45 of
+ * the 51 carry a colour naming the wrong side or no side at all — 18 port
+ * marks tagged black, 15 port and 9 starboard grey, 2 starboard white, and one
+ * PORT mark green — and the remaining 6 (4 starboard, 2 port) carry NO colour
+ * tag at all, so `primaryColour` resolves them to the neutral grey fallback.
+ * (Measured: no lateral carries an unrecognized colour token; the fallback is
+ * reached only by absence.) 51 is the canonical figure and the one the
+ * CHANGELOG uses — quote it, not the 45-mark enumeration above (#298).
+ *
+ * Reach: only the 11 of those 51 in the PILLAR bucket are corrected here,
+ * pillar being the only bucket that draws a topmark. The other 40 are spars
+ * and one can, still carry no topmark, and still rest on colour (#307).
  */
 const LATERAL_TOPMARK: Record<string, 'can' | 'cone'> = {
   port: 'can',
@@ -536,8 +546,15 @@ function safeWaterSegments(props: SeamarkProperties): SeamarkSegment[] {
 // bound what is actually rendered: `extentOf` measures a line by its POINTS
 // and never expands by stroke width, so S1 reads this gap as 2. The mark still
 // clears the body and there is no merge — but the honest number is 0.94, and
-// the limitation is recorded in the PR's blind-spot list rather than implied
-// away. Raising the X would restore a true ≥1 without touching S1's reading.
+// the limitation is recorded rather than implied away.
+//
+// If a true ≥1 is ever wanted, NARROW THE KEYLINE — do not raise the X. The
+// same 0.354·w relation runs in both directions, so the top tips already sit
+// at y = 1 − 1.061 = −0.061, marginally off-canvas; lifting the glyph to buy
+// 0.061 at the bottom would push the top to ≈ −0.12 and trade one end for the
+// other. Solving (w/2)·sin45° ≤ 1 gives w ≤ 2.828, and w = 2.8 yields a
+// clearance of 1.010 while ALSO returning the top tip on-canvas at +0.010 —
+// no glyph movement, and S1's reading is unchanged either way.
 //
 // Opening that gap is exactly why the X needs the keyline its INK siblings
 // already carry: on base its lower ~1 unit still overlapped the yellow body,
@@ -597,9 +614,12 @@ function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
  * black — so the pair read as a single lozenge on a black box, losing the
  * "two spheres" that distinguish this mark from a safe-water one. Separated
  * here by 1.5 units both sphere-to-sphere and sphere-to-body, measured between
- * the circles themselves; the keylines then take 0.5 of each back, leaving
- * 0.5 and 1.0 of actual transparent canvas — which is the intent, since two
- * white rings meeting still read as two spheres where two black fills do not.
+ * the circles themselves. Each keyline is stroked ON its circle, so it eats
+ * 0.5 per ring FACING the gap: the sphere-to-sphere gap has a ring on BOTH
+ * sides and loses 1.0, leaving 0.5, while the sphere-to-body gap has only the
+ * lower sphere's ring — the body outline is inset — and loses 0.5, leaving
+ * 1.0. Both are intended: two white rings meeting still read as two spheres
+ * where two black fills do not.
  * The body takes the cardinal's y12 origin because a two-element topmark needs
  * the same vertical budget the cardinal's two cones do.
  */
