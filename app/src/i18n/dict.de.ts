@@ -222,44 +222,65 @@ export const de = {
   'seamark.value.type.light_minor': 'Nebenfeuer',
   'seamark.value.category.anchorage': 'Ankerplatz',
   'seamark.value.category.cable': 'Kabel',
-  // #300 F2/F9: NOT "Freizeichen" (telephone dial tone, Duden) and NOT the
-  // invented compound "Deckpeilungszeichen" (F9 correctly called out that
-  // "Deckpeilungszeichen" was cited to a source that doesn't say that: the
-  // BSH legend pairs "Deckpeilung" with "Clearing line" as a two-column
-  // list, not a definition of a clearing MARK). "Deckpeilung" itself is a
-  // *method* — a transit/bearing technique, de.wikipedia:
-  // "Die Deckpeilung ist ein Verfahren zur Bestimmung des eigenen
-  // geografischen Standortes" — shared by leading AND clearing lines, so it
-  // is NOT a clearing-mark noun and must never be glossed as one. It is
-  // used here bare (not "Bake einer Deckpeilung"/"Zeichen einer
-  // Deckpeilung" — neither is attested, and the first duplicates the Typ
-  // row) because this row renders under a SEPARATE "Kategorie" line below
-  // "Typ": all 3 shipped `clearing` features are beacon_special_purpose, so
-  // the popover reads "Typ: Sonderbake" / "Kategorie: Deckpeilung" —
-  // correct because the category row is naming the LINE-FIXING SYMBOL this
-  // mark establishes, not making a type claim; stays correct even if a
-  // future pipeline run tags a buoy with this category.
+  // #300 F2/F9: NOT "Freizeichen" (telephone dial tone, Duden). Two further
+  // candidates were considered and REJECTED before landing on
+  // "Gefahrenpeilung" below — recorded so a future maintainer who
+  // rediscovers either attestation doesn't read the choice as sloppiness:
   //
-  // Citation, verbatim from the PDF TEXT LAYER (not a summarizing fetch):
-  // "Wichtige Zeichen und Abkürzungen für Klein- und Sportschifffahrtskarten
-  // aus Karte 1 / INT 1", © 2013 BSH, page 1, "Hydrographie / Hydrography"
-  // section — the legend runs in sequence: "Richtlinie" / "Leading line" /
-  // "Deckpeilung" / "Clearing line" / "Empfohlener Kurs" / "Recommended
-  // track". CRITICAL EDITION NOTE: the copy served at the bsh.de URL TODAY
-  // is a different, re-laid-out 4-page edition that does NOT contain
-  // "Deckpeilung" anywhere (verified by grepping the extracted text of all
-  // 4 pages) — its legend jumps "Richtlinie / Leading line" straight to
-  // "Empfohlener Kurs / Recommended track". A future re-check against the
-  // live URL will find this citation apparently missing; cite the 2013
-  // edition specifically, not "the BSH site". Working mirror used to
-  // extract this: https://www.segelschule-bensberg.de/pdf/Kartenzeichen1_Copy.pdf
+  // 1. "Deckpeilung" — genuinely attested (see citation below), F9's
+  //    Blocker is UPHELD on this one, not overturned: "Deckpeilung" names
+  //    the transit/bearing METHOD, and that method is shared by leading
+  //    AND clearing lines (`category.leading` below is glossed via the
+  //    SAME BSH legend row, "Richtlinie"), so it cannot distinguish the two
+  //    and was rejected as the value here. Citation, verbatim from the PDF
+  //    TEXT LAYER (not a summarizing fetch): "Wichtige Zeichen und
+  //    Abkürzungen für Klein- und Sportschifffahrtskarten aus Karte 1 /
+  //    INT 1", © 2013 BSH, page 1, "Hydrographie / Hydrography" section —
+  //    the legend runs in sequence: "Richtlinie" / "Leading line" /
+  //    "Deckpeilung" / "Clearing line" / "Empfohlener Kurs" / "Recommended
+  //    track". EDITION NOTE (kept because it now documents a REJECTED
+  //    candidate, which makes it more useful, not less — it stops a future
+  //    maintainer from "restoring" Deckpeilung on the strength of the real
+  //    BSH pairing without knowing why it was passed over): the copy
+  //    served at the bsh.de URL TODAY is a different, re-laid-out 4-page
+  //    edition containing neither "Deckpeilung" nor "Clearing" (verified by
+  //    grepping the extracted text of all 4 pages) — its legend jumps
+  //    "Richtlinie / Leading line" straight to "Empfohlener Kurs /
+  //    Recommended track". Cite the 2013 edition specifically, not "the
+  //    BSH site". Working mirror:
+  //    https://www.segelschule-bensberg.de/pdf/Kartenzeichen1_Copy.pdf
+  // 2. "Klarierungsmarke" — the only class-(a) German MARK noun found for
+  //    "clearing mark" (ULTRAMARIN schifffahrtslexikon.de gives literally
+  //    "veiligheidsbaken" / "Klarierungsmarke" / "clearing mark"), also
+  //    rejected: its sibling entries all gloss *safety mark*, indicating a
+  //    calque rather than settled usage, and "Klarierung" reads as customs
+  //    clearance to a German mariner — the misreading direction matters
+  //    more than attestation rank here (a "Gefahren-" root misreads toward
+  //    "danger", the right half of the actual concept; a "Klarierungs-"
+  //    root misreads toward customs, unrelated to it).
+  //
+  // CHOSEN: "Gefahrenpeilung" is attested as a TERM — ULTRAMARIN
+  // schifffahrtslexikon.de: "gevarenpeiling" / "Gefahrenpeilung" /
+  // "danger bearing" (https://www.schifffahrtslexikon.de/d/gefahrenpeilung_de.php)
+  // — a danger bearing IS the clearing-bearing concept, so unlike
+  // "Deckpeilung" it carries the distinguishing semantics. This is
+  // evidence class (a): attested AS A TERM, NOT as a pairing with "clearing
+  // mark" — no source pairs "Gefahrenpeilung" with that phrase, and it must
+  // never be cited as INT 1 or S-57. Used bare, no "Bake einer" prefix
+  // (that shape existed only to satisfy a mark-noun constraint the row
+  // doesn't need — the popover's separate Typ row already supplies
+  // mark-ness): all 3 shipped `clearing` features are beacon_special_
+  // purpose, so the popover reads "Typ: Sonderbake" / "Kategorie:
+  // Gefahrenpeilung" — naming the bearing this mark establishes, not
+  // re-asserting mark-ness; stays correct even if a future pipeline run
+  // tags a buoy with this category.
   //
   // KNOWN FORM INCONSISTENCY (deliberate, not an oversight): `leading`
-  // below is a mark NOUN ("Richtbake"), but this entry is BSH's gloss for
-  // the LINE/method, not a mark noun — German has no attested clearing-mark
-  // noun to make the two forms uniform, and each is independently the
+  // below is a mark NOUN ("Richtbake"), while this entry names a bearing/
+  // concept, not a mark noun — German has no attested clearing-mark noun to
+  // make the two forms uniform, and each is independently the
   // best-attested option for what it tags. Do not "harmonise" them.
-  'seamark.value.category.clearing': 'Deckpeilung',
+  'seamark.value.category.clearing': 'Gefahrenpeilung',
   'seamark.value.category.degaussing_range': 'Entmagnetisierungsstrecke',
   'seamark.value.category.east': 'Ost',
   // #300: verbatim BSH gloss, same citation as `clearing` above —
