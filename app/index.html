@@ -2,6 +2,12 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
+    <!-- #223: the Content-Security-Policy <meta http-equiv> is injected here at
+         BUILD time only — see cspMeta() in vite.config.ts for the full
+         directive list and rationale, including why it is build-only
+         (PR #316 review B2: it would break `vite dev`'s unstyled CSS
+         injection otherwise). -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10243D" />
     <meta
