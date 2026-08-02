@@ -11,7 +11,7 @@ import {
   seamarkFeatureCollectionWithIcons,
 } from '../lib/seamarkGeoJson';
 import { registerSeamarkImages } from '../lib/seamarkGlyphs';
-import { seamarkPopoverRows } from '../lib/seamarkPopover';
+import { resolveSeamarkPopoverValue, seamarkPopoverRows } from '../lib/seamarkPopover';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
@@ -350,7 +350,9 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
         const line = document.createElement('div');
         const label = document.createElement('strong');
         label.textContent = `${t(row.labelKey)}: `;
-        line.append(label, document.createTextNode(row.value));
+        // resolveSeamarkPopoverValue is the join/translate logic under direct
+        // unit test with a stub t (#300 F4) — this call is a thin DOM wrapper.
+        line.append(label, document.createTextNode(resolveSeamarkPopoverValue(row, t)));
         container.append(line);
       }
       const disclaimer = document.createElement('p');
