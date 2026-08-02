@@ -36,9 +36,14 @@ describe('classifySeamark (family bucketing by seamark:type suffix)', () => {
 
 describe('seamarkImageId (family + the fields the glyph actually varies on)', () => {
   it('lateral: keys off shape bucket + primary colour, not just seamarkType', () => {
-    expect(seamarkImageId({ seamarkType: 'buoy_lateral', shape: 'pillar', colour: 'red' })).toBe(
-      'seamark-lateral-pillar-red',
-    );
+    expect(
+      seamarkImageId({
+        seamarkType: 'buoy_lateral',
+        shape: 'pillar',
+        colour: 'red',
+        category: 'port',
+      }),
+    ).toBe('seamark-lateral-pillar-red-port');
     expect(seamarkImageId({ seamarkType: 'beacon_lateral', shape: 'can', colour: 'green' })).toBe(
       'seamark-lateral-can-green',
     );
@@ -47,6 +52,40 @@ describe('seamarkImageId (family + the fields the glyph actually varies on)', ()
     expect(seamarkImageId({ seamarkType: 'buoy_lateral', colour: 'red' })).toBe(
       seamarkImageId({ seamarkType: 'beacon_lateral', colour: 'red' }),
     );
+  });
+
+  // #298: the pillar/default bucket's topmark is derived from `category`, so
+  // the id must separate categories or one registered image serves both sides
+  // of the channel. In the committed pull `seamark-lateral-pillar-red` alone
+  // covers {port: 49, preferred_channel_starboard: 1} and
+  // `seamark-lateral-pillar-grey` covers {port: 7, starboard: 4}.
+  it('lateral pillar: separates categories, because the topmark differs by side', () => {
+    const port = seamarkImageId({ seamarkType: 'buoy_lateral', colour: 'grey', category: 'port' });
+    const stbd = seamarkImageId({
+      seamarkType: 'buoy_lateral',
+      colour: 'grey',
+      category: 'starboard',
+    });
+    expect(port).not.toBe(stbd);
+    // Untagged category still resolves to a stable id (it draws a bare body).
+    expect(seamarkImageId({ seamarkType: 'buoy_lateral', colour: 'grey' })).toBe(
+      'seamark-lateral-pillar-grey-unknown',
+    );
+  });
+
+  // The other buckets draw no topmark, so their glyph does not vary on
+  // category and their ids must not fragment the image cache by it.
+  it('lateral can/conical/spar/spherical ids stay category-independent', () => {
+    for (const shape of ['can', 'conical', 'spar', 'spherical']) {
+      const a = seamarkImageId({ seamarkType: 'buoy_lateral', shape, colour: 'red' });
+      const b = seamarkImageId({
+        seamarkType: 'buoy_lateral',
+        shape,
+        colour: 'red',
+        category: 'port',
+      });
+      expect(a, `${shape} id`).toBe(b);
+    }
   });
 
   it('cardinal: keys off category, defaulting to "unknown" when untagged', () => {
@@ -85,12 +124,118 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   // calling seamarkSegments() itself — a wrong offset/orientation mutation
   // must fail here (mirrors windBarbs.test.ts's literal-pinning rationale).
 
-  it('lateral pillar (default/unknown shape): body rect + ball topmark, both the primary colour', () => {
+  // #298 — every literal below is hand-derived from IALA R1001 Ed 2.0 §2.2
+  // Tables 5-6 plus the §B/§C separation budget, NOT from the renderer:
+  //   * a PORT-hand mark carries a single CAN, a STARBOARD-hand mark a single
+  //     CONE point up. A single SPHERE is the SAFE-WATER topmark, so the ball
+  //     this glyph used to draw was wrong symbology as well as illegible.
+  //   * that shape mapping is region-independent (Region B swaps the colours,
+  //     not the shapes) and INVERTS for the preferred-channel categories: a
+  //     `preferred_channel_port` mark is a modified STARBOARD-hand mark.
+  //   * body {8,9,8,12}; topmarks 6 wide against an 8-wide body (width
+  //     contrast 2) and clearing it by 1.5 units of ink; near-white keyline
+  //     'f2f2f2' on both, as the compliant cardinal glyph already does.
+  const LATERAL_BODY = (fill: string) =>
+    [
+      { kind: 'rect', x: 8, y: 9, w: 8, h: 12, fill },
+      {
+        kind: 'line',
+        points: [
+          { x: 8.5, y: 9.5 },
+          { x: 15.5, y: 9.5 },
+          { x: 15.5, y: 20.5 },
+          { x: 8.5, y: 20.5 },
+          { x: 8.5, y: 9.5 },
+        ],
+        stroke: '#f2f2f2',
+        width: 1,
+      },
+    ] as const;
+  const CAN_TOPMARK = (fill: string) =>
+    [
+      { kind: 'rect', x: 9, y: 2, w: 6, h: 5, fill },
+      {
+        kind: 'line',
+        points: [
+          { x: 9.5, y: 2.5 },
+          { x: 14.5, y: 2.5 },
+          { x: 14.5, y: 6.5 },
+          { x: 9.5, y: 6.5 },
+          { x: 9.5, y: 2.5 },
+        ],
+        stroke: '#f2f2f2',
+        width: 1,
+      },
+    ] as const;
+  const CONE_POINTS = [
+    { x: 12, y: 1 },
+    { x: 15, y: 7 },
+    { x: 9, y: 7 },
+  ];
+  const CONE_TOPMARK = (fill: string) =>
+    [
+      { kind: 'polygon', points: CONE_POINTS, fill },
+      {
+        kind: 'line',
+        points: [...CONE_POINTS, CONE_POINTS[0]],
+        stroke: '#f2f2f2',
+        width: 1,
+      },
+    ] as const;
+
+  it('lateral pillar, port: R1001 CAN topmark clear of the body (not a same-width ball)', () => {
+    const segs = seamarkSegments({ seamarkType: 'buoy_lateral', colour: 'red', category: 'port' });
+    expect(segs).toEqual([...LATERAL_BODY('red'), ...CAN_TOPMARK('red')]);
+  });
+
+  it('lateral pillar, starboard: R1001 CONE point up', () => {
+    const segs = seamarkSegments({
+      seamarkType: 'buoy_lateral',
+      colour: 'green',
+      category: 'starboard',
+    });
+    expect(segs).toEqual([...LATERAL_BODY('green'), ...CONE_TOPMARK('green')]);
+  });
+
+  // The inversion an `endsWith('port')` shortcut gets wrong in both
+  // directions: "preferred channel to port" means leave the mark to
+  // starboard, so it is a modified STARBOARD-hand mark and takes the cone.
+  it('preferred-channel categories invert: to-port takes the cone, to-starboard the can', () => {
+    const toPort = seamarkSegments({
+      seamarkType: 'buoy_lateral',
+      colour: 'green;red;green',
+      category: 'preferred_channel_port',
+    });
+    expect(toPort).toEqual([...LATERAL_BODY('green'), ...CONE_TOPMARK('green')]);
+    const toStarboard = seamarkSegments({
+      seamarkType: 'buoy_lateral',
+      colour: 'red;green;red',
+      category: 'preferred_channel_starboard',
+    });
+    expect(toStarboard).toEqual([...LATERAL_BODY('red'), ...CAN_TOPMARK('red')]);
+  });
+
+  // Same nav-safety rule the cardinal path applies to an unknown category:
+  // showing the wrong side is worse than showing none.
+  it('lateral pillar with an untagged category draws NO topmark (never a guessed side)', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_lateral', colour: 'red' });
-    expect(segs).toEqual([
-      { kind: 'rect', x: 9, y: 10, w: 6, h: 11, fill: 'red' },
-      { kind: 'circle', cx: 12, cy: 8, r: 3, fill: 'red' },
-    ]);
+    expect(segs).toEqual([...LATERAL_BODY('red')]);
+    expect(segs.some((s) => s.kind === 'polygon')).toBe(false);
+    expect(segs).not.toEqual(
+      seamarkSegments({ seamarkType: 'buoy_lateral', colour: 'red', category: 'port' }),
+    );
+  });
+
+  // The topmark is keyed off `category`, never off `colour`: the committed
+  // pull labels 18 port marks black, 15 port and 9 starboard marks grey, and
+  // one PORT mark green — ~45 marks whose side a colour rule would get wrong.
+  it('derives the topmark from category, not colour (a green PORT mark still gets a can)', () => {
+    const segs = seamarkSegments({
+      seamarkType: 'buoy_lateral',
+      colour: 'green',
+      category: 'port',
+    });
+    expect(segs).toEqual([...LATERAL_BODY('green'), ...CAN_TOPMARK('green')]);
   });
 
   it('lateral can shape: flat-top rect only', () => {
@@ -231,9 +376,39 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     ]);
   });
 
-  it('every cardinal segment stays on-canvas 0..24 (guards the #2 top-cone clip)', () => {
-    for (const cat of ['north', 'south', 'east', 'west']) {
-      const segs = seamarkSegments({ seamarkType: 'buoy_cardinal', category: cat });
+  // Generalized from cardinal-only in #298: moving a topmark up to open a gap
+  // is exactly the edit that can push it off the top of the canvas, so every
+  // family is swept, not just the one whose cones clipped in #165.
+  const ON_CANVAS_CASES: { label: string; props: SeamarkProperties }[] = [
+    ...['north', 'south', 'east', 'west'].map((category) => ({
+      label: `cardinal ${category}`,
+      props: { seamarkType: 'buoy_cardinal', category },
+    })),
+    { label: 'cardinal untagged', props: { seamarkType: 'buoy_cardinal' } },
+    ...['port', 'starboard', 'preferred_channel_port', 'preferred_channel_starboard'].map(
+      (category) => ({
+        label: `lateral pillar ${category}`,
+        props: { seamarkType: 'buoy_lateral', colour: 'red', category },
+      }),
+    ),
+    ...['can', 'conical', 'spar', 'spherical'].map((shape) => ({
+      label: `lateral ${shape}`,
+      props: { seamarkType: 'buoy_lateral', shape, colour: 'green', category: 'starboard' },
+    })),
+    { label: 'safe water', props: { seamarkType: 'buoy_safe_water', colour: 'red;white' } },
+    { label: 'special purpose', props: { seamarkType: 'buoy_special_purpose', colour: 'yellow' } },
+    {
+      label: 'isolated danger',
+      props: { seamarkType: 'buoy_isolated_danger', colour: 'black;red;black' },
+    },
+    { label: 'light major', props: { seamarkType: 'light_major' } },
+    { label: 'light minor', props: { seamarkType: 'light_minor' } },
+    { label: 'unknown', props: { seamarkType: 'mooring' } },
+  ];
+
+  it('every segment of every family stays on-canvas 0..24 (guards the #2 top-cone clip)', () => {
+    for (const { label: cat, props } of ON_CANVAS_CASES) {
+      const segs = seamarkSegments(props);
       const pts: { x: number; y: number }[] = [];
       for (const seg of segs) {
         if (seg.kind === 'rect') {
@@ -315,15 +490,27 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     expect(segs.some((s) => s.kind === 'polygon')).toBe(false);
   });
 
-  it('safe-water: vertical colour bands + a sphere topmark', () => {
+  // R1001 §2.4: red/white VERTICAL stripes, single sphere topmark. The sphere
+  // is INK rather than the specified red by design — a red sphere over red
+  // stripes is the very merge #298 closes, and chart practice (INT-1) draws
+  // topmarks as black shapes. cy 4 (was 6) puts it 2 units clear of the body,
+  // which it used to touch exactly.
+  it('safe-water: vertical colour bands + a sphere topmark clear of the body', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_safe_water', colour: 'red;white' });
     expect(segs).toEqual([
       { kind: 'rect', x: 7, y: 9, w: 5, h: 12, fill: 'red' },
       { kind: 'rect', x: 12, y: 9, w: 5, h: 12, fill: 'white' },
-      { kind: 'circle', cx: 12, cy: 6, r: 3, fill: '#1a1a1a' },
+      { kind: 'circle', cx: 12, cy: 4, r: 3, fill: '#1a1a1a' },
+      // Same keyline every other topmark carries: an INK sphere is otherwise
+      // near-invisible against the dark-theme basemap (#165, §2.4).
+      { kind: 'ring', cx: 12, cy: 4, r: 3, stroke: '#f2f2f2', width: 1 },
     ]);
   });
 
+  // R1001 §2.5: single X topmark, INK for the same reason as the safe-water
+  // sphere (yellow on a yellow body is no mark). Raised to y1..7 so the
+  // 1.5-wide stroke clears the body at y9 — its lower tips used to reach y10,
+  // one unit INTO the body.
   it('special-purpose with no colour tag: single yellow-fallback band + X topmark', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_special_purpose' });
     expect(segs).toEqual([
@@ -331,8 +518,8 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
       {
         kind: 'line',
         points: [
-          { x: 9, y: 4 },
-          { x: 15, y: 10 },
+          { x: 9, y: 1 },
+          { x: 15, y: 7 },
         ],
         stroke: '#1a1a1a',
         width: 1.5,
@@ -340,8 +527,8 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
       {
         kind: 'line',
         points: [
-          { x: 15, y: 4 },
-          { x: 9, y: 10 },
+          { x: 15, y: 1 },
+          { x: 9, y: 7 },
         ],
         stroke: '#1a1a1a',
         width: 1.5,
@@ -349,14 +536,161 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     ]);
   });
 
-  it('isolated-danger: horizontal colour bands + two sphere topmarks', () => {
+  // R1001 §2.3: black body with broad red band(s), topmark TWO black spheres
+  // "vertically disposed". Hand-derived from §C: r 2 at cy 3 and cy 8.5 gives
+  // 1.5 units between the spheres and 1.5 above a body that takes the
+  // cardinal's y12 origin (a two-element topmark needs the cardinal's vertical
+  // budget). Each sphere is ringed with the same near-white keyline the
+  // cardinal cones use — before #298 the two spheres OVERLAPPED each other by
+  // 0.5 in one fill and sat 0.5 above a black body band, i.e. one lozenge.
+  it('isolated-danger: horizontal colour bands + two separated, ringed sphere topmarks', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_isolated_danger', colour: 'black;red' });
     expect(segs).toEqual([
-      { kind: 'rect', x: 7, y: 10, w: 10, h: 5.5, fill: 'black' },
-      { kind: 'rect', x: 7, y: 15.5, w: 10, h: 5.5, fill: 'red' },
-      { kind: 'circle', cx: 12, cy: 7, r: 2.5, fill: '#1a1a1a' },
-      { kind: 'circle', cx: 12, cy: 2.5, r: 2.5, fill: '#1a1a1a' },
+      { kind: 'rect', x: 7, y: 12, w: 10, h: 5.5, fill: 'black' },
+      { kind: 'rect', x: 7, y: 17.5, w: 10, h: 5.5, fill: 'red' },
+      {
+        kind: 'line',
+        points: [
+          { x: 7.5, y: 12.5 },
+          { x: 16.5, y: 12.5 },
+          { x: 16.5, y: 22.5 },
+          { x: 7.5, y: 22.5 },
+          { x: 7.5, y: 12.5 },
+        ],
+        stroke: OUT,
+        width: 1,
+      },
+      { kind: 'circle', cx: 12, cy: 3, r: 2, fill: INK },
+      { kind: 'ring', cx: 12, cy: 3, r: 2, stroke: OUT, width: 1 },
+      { kind: 'circle', cx: 12, cy: 8.5, r: 2, fill: INK },
+      { kind: 'ring', cx: 12, cy: 8.5, r: 2, stroke: OUT, width: 1 },
     ]);
+  });
+
+  // ---------------------------------------------------------------------
+  // #298 structural rules. R1001 says WHAT is drawn, not pixels; these two
+  // properties are hand-derived from what a reader must be able to
+  // discriminate at native size, and they hold across every family that
+  // carries a topmark rather than per-family coordinates:
+  //
+  //   S1 BOUNDARY      an empty horizontal band of >= 1 unit separates the
+  //                    topmark from the body, so the two can never form one
+  //                    contiguous silhouette.
+  //   S2 WIDTH CONTRAST |topmark width - body width| >= 2. Equal width IS the
+  //                    defect: a shape the same width as the body reads as a
+  //                    cap on it. (Direction is shape-dependent and both are
+  //                    valid symbology — a narrow topmark on a broad pillar, a
+  //                    wide topmark on a slender spar.)
+  //
+  // Extents are taken from each segment's geometry, keylines included but
+  // stroke width not expanded — a keyline is the separator, not the thing
+  // being separated.
+  interface Extent {
+    x0: number;
+    x1: number;
+    y0: number;
+    y1: number;
+  }
+  const extentOf = (seg: SeamarkSegment): Extent => {
+    if (seg.kind === 'rect') {
+      return { x0: seg.x, x1: seg.x + seg.w, y0: seg.y, y1: seg.y + seg.h };
+    }
+    if (seg.kind === 'circle' || seg.kind === 'ring') {
+      return { x0: seg.cx - seg.r, x1: seg.cx + seg.r, y0: seg.cy - seg.r, y1: seg.cy + seg.r };
+    }
+    const xs = seg.points.map((p) => p.x);
+    const ys = seg.points.map((p) => p.y);
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  };
+  /** Widest empty horizontal band in the glyph, plus the widths of the ink
+   * above and below it — computed only from the returned segments, so it is
+   * independent of how any family happens to order or name them. */
+  const separation = (props: SeamarkProperties) => {
+    const extents = seamarkSegments(props)
+      .map(extentOf)
+      .sort((a, b) => a.y0 - b.y0);
+    let covered = extents[0].y1;
+    let gap = 0;
+    let gapTop = extents[0].y1;
+    for (const e of extents.slice(1)) {
+      if (e.y0 - covered > gap) {
+        gap = e.y0 - covered;
+        gapTop = covered;
+      }
+      covered = Math.max(covered, e.y1);
+    }
+    const width = (group: Extent[]) =>
+      group.length === 0
+        ? 0
+        : Math.max(...group.map((e) => e.x1)) - Math.min(...group.map((e) => e.x0));
+    return {
+      gap,
+      topmarkWidth: width(extents.filter((e) => e.y1 <= gapTop)),
+      bodyWidth: width(extents.filter((e) => e.y0 >= gapTop + gap)),
+    };
+  };
+
+  // Every family that R1001 gives a topmark. The cardinal row is the shipped
+  // precedent this generalizes and must stay green untouched.
+  const TOPMARK_GLYPHS: { label: string; props: SeamarkProperties }[] = [
+    {
+      label: 'lateral pillar port (can)',
+      props: { seamarkType: 'buoy_lateral', colour: 'red', category: 'port' },
+    },
+    {
+      label: 'lateral pillar starboard (cone)',
+      props: { seamarkType: 'buoy_lateral', colour: 'green', category: 'starboard' },
+    },
+    { label: 'cardinal north', props: { seamarkType: 'buoy_cardinal', category: 'north' } },
+    { label: 'cardinal west', props: { seamarkType: 'buoy_cardinal', category: 'west' } },
+    { label: 'safe water', props: { seamarkType: 'buoy_safe_water', colour: 'red;white' } },
+    { label: 'special purpose', props: { seamarkType: 'buoy_special_purpose', colour: 'yellow' } },
+    {
+      label: 'isolated danger',
+      props: { seamarkType: 'buoy_isolated_danger', colour: 'black;red;black' },
+    },
+  ];
+
+  it('S1: every topmark clears its body by at least one unit of empty canvas', () => {
+    for (const { label, props } of TOPMARK_GLYPHS) {
+      expect(
+        separation(props).gap,
+        `${label}: empty band between topmark and body`,
+      ).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('S2: no topmark is the same width as the body it sits on (>= 2 units of contrast)', () => {
+    for (const { label, props } of TOPMARK_GLYPHS) {
+      const { topmarkWidth, bodyWidth } = separation(props);
+      // Without this the rule can pass DEGENERATELY: where no gap exists the
+      // partition puts everything on one side, the empty side measures 0, and
+      // |w - 0| clears the threshold while nothing was ever compared. That is
+      // the shape #216 warns about — a row passing for a second reason — and
+      // it is exactly what a same-width, touching topmark produces.
+      expect(
+        Math.min(topmarkWidth, bodyWidth),
+        `${label}: topmark ${topmarkWidth} / body ${bodyWidth} — both groups must be non-empty`,
+      ).toBeGreaterThan(0);
+      expect(
+        Math.abs(topmarkWidth - bodyWidth),
+        `${label}: |topmark ${topmarkWidth} - body ${bodyWidth}|`,
+      ).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('S1/S2 also hold for the two spheres of an isolated-danger topmark', () => {
+    // The pair must read as two spheres, not one lozenge: measured between the
+    // two circles alone, ignoring the body below them.
+    const spheres = seamarkSegments({
+      seamarkType: 'buoy_isolated_danger',
+      colour: 'black;red;black',
+    })
+      .filter((s): s is Extract<SeamarkSegment, { kind: 'circle' }> => s.kind === 'circle')
+      .map(extentOf)
+      .sort((a, b) => a.y0 - b.y0);
+    expect(spheres).toHaveLength(2);
+    expect(spheres[1].y0 - spheres[0].y1, 'gap between the two spheres').toBeGreaterThanOrEqual(1);
   });
 
   it('lights: a ray/star burst, major strictly larger than minor', () => {
@@ -438,6 +772,8 @@ function expectedOps(props: SeamarkProperties): string[] {
       ops.push(`R${seg.x},${seg.y},${seg.w},${seg.h}`, 'fill');
     } else if (seg.kind === 'circle') {
       ops.push(`A${seg.cx},${seg.cy},${seg.r}`, 'fill');
+    } else if (seg.kind === 'ring') {
+      ops.push(`A${seg.cx},${seg.cy},${seg.r}`, 'stroke');
     } else if (seg.kind === 'polygon') {
       seg.points.forEach((p, i) => ops.push(`${i === 0 ? 'M' : 'L'}${p.x},${p.y}`));
       ops.push('close', 'fill');
@@ -471,8 +807,9 @@ describe('registerSeamarkImages', () => {
     >[0];
 
     const props: SeamarkProperties[] = [
-      { seamarkType: 'buoy_lateral', colour: 'red' },
-      { seamarkType: 'beacon_lateral', colour: 'red' }, // same image id — must draw only once
+      { seamarkType: 'buoy_lateral', colour: 'red', category: 'port' },
+      // same image id — must draw only once
+      { seamarkType: 'beacon_lateral', colour: 'red', category: 'port' },
       { seamarkType: 'light_major' },
     ];
 
@@ -484,7 +821,7 @@ describe('registerSeamarkImages', () => {
 
     // 2 distinct ids (lateral-pillar-red, light-major) -> 2 draws, not 3.
     expect(addImage).toHaveBeenCalledTimes(2);
-    expect(addImage.mock.calls[0][0]).toBe('seamark-lateral-pillar-red');
+    expect(addImage.mock.calls[0][0]).toBe('seamark-lateral-pillar-red-port');
     expect(addImage.mock.calls[1][0]).toBe('seamark-light-major');
 
     // #191 registration contract: a 64x64 raster registered at pixelRatio 2

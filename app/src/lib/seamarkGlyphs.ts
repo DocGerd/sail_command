@@ -51,6 +51,7 @@ export type SeamarkSegment =
   | { kind: 'rect'; x: number; y: number; w: number; h: number; fill: string }
   | { kind: 'polygon'; points: readonly Point2D[]; fill: string }
   | { kind: 'circle'; cx: number; cy: number; r: number; fill: string }
+  | { kind: 'ring'; cx: number; cy: number; r: number; stroke: string; width: number }
   | { kind: 'line'; points: readonly Point2D[]; stroke: string; width: number };
 
 /** Which glyph family a seamark:type resolves to. 'unknown' is a safety net
@@ -291,6 +292,51 @@ function bandSegments(
   });
 }
 
+/**
+ * R1001 Ed 2.0 §2.2 Tables 5–6: a lateral mark's topmark SHAPE is tied to the
+ * side of the channel, never to its colour — a port-hand mark carries a single
+ * CAN, a starboard-hand mark a single CONE point up. That mapping is
+ * region-independent (Region B swaps the colours and keeps the shapes), so it
+ * is a fixed convention here rather than anything data-driven beyond category.
+ *
+ * The two preferred-channel categories INVERT relative to their name, and an
+ * `endsWith('port')` test would get both of them wrong: a
+ * `preferred_channel_port` mark says the preferred channel lies to port, i.e.
+ * leave the mark to starboard — it is a modified STARBOARD-hand mark and
+ * carries a cone. Hence the explicit table.
+ *
+ * Category is the only sound source: in the committed pull, `colour` labels 18
+ * port marks black, 15 port and 9 starboard marks grey, 2 starboard marks
+ * white, and one PORT mark green — deriving the side from the colour would put
+ * the wrong side indication on ~45 marks (#298).
+ */
+const LATERAL_TOPMARK: Record<string, 'can' | 'cone'> = {
+  port: 'can',
+  preferred_channel_starboard: 'can', // modified port-hand mark (red, green band)
+  starboard: 'cone',
+  preferred_channel_port: 'cone', // modified starboard-hand mark (green, red band)
+};
+
+/**
+ * Pillar/unknown-shape lateral budget in the 24×24 box (#298). Before this,
+ * the body (x 9..15) and a ball topmark (cx 12, r 3 -> x 9..15) were the SAME
+ * WIDTH, overlapped by 1px and shared one fill, so the pair rendered as a
+ * single rounded-top box rather than a topmark above a body.
+ *
+ * The three separators are the ones the compliant cardinal glyph already uses:
+ * a background GAP (1.5 units of ink clearance here vs. the cardinal's 1),
+ * a WIDTH CONTRAST (topmark 6 vs. body 8 — the cardinal runs 8 vs. 10), and
+ * the near-white KEYLINE. Equal width is what actually reads as "one shape",
+ * so the contrast is not decoration.
+ */
+const LATERAL_PILLAR_BODY: Box = { x: 8, y: 9, w: 8, h: 12 };
+const LATERAL_CAN_TOPMARK: Box = { x: 9, y: 2, w: 6, h: 5 };
+const LATERAL_CONE_TOPMARK: readonly Point2D[] = [
+  { x: 12, y: 1 },
+  { x: 15, y: 7 },
+  { x: 9, y: 7 },
+];
+
 function lateralSegments(props: SeamarkProperties): SeamarkSegment[] {
   const fill = primaryColour(props.colour);
   switch (bucketShape(props.shape)) {
@@ -313,11 +359,34 @@ function lateralSegments(props: SeamarkProperties): SeamarkSegment[] {
     case 'spherical':
       return [{ kind: 'circle', cx: 12, cy: 13, r: 6, fill }];
     case 'pillar':
-    default:
-      return [
-        { kind: 'rect', x: 9, y: 10, w: 6, h: 11, fill },
-        { kind: 'circle', cx: 12, cy: 8, r: 3, fill },
+    default: {
+      // A pillar (and every unrecognized shape falling back to it) has no
+      // silhouette of its own that carries the side, so R1001 makes the
+      // topmark the whole message here — unlike a can or conical body, where
+      // the topmark is "if any" because the body already says it.
+      const segments: SeamarkSegment[] = [
+        { kind: 'rect', ...LATERAL_PILLAR_BODY, fill },
+        bodyOutline(LATERAL_PILLAR_BODY),
       ];
+      // An untagged/unrecognized category draws NO topmark rather than a
+      // guessed one: showing the wrong side is worse than showing none — the
+      // same nav-safety rule the cardinal path applies to an unknown category.
+      switch (LATERAL_TOPMARK[props.category ?? '']) {
+        case 'can':
+          segments.push(
+            { kind: 'rect', ...LATERAL_CAN_TOPMARK, fill },
+            bodyOutline(LATERAL_CAN_TOPMARK),
+          );
+          break;
+        case 'cone':
+          segments.push(
+            { kind: 'polygon', points: LATERAL_CONE_TOPMARK, fill },
+            coneOutline(LATERAL_CONE_TOPMARK),
+          );
+          break;
+      }
+      return segments;
+    }
   }
 }
 
@@ -397,6 +466,14 @@ function coneOutline(points: readonly Point2D[]): SeamarkSegment {
   return { kind: 'line', points: [...points, points[0]], stroke: OUTLINE, width: 1 };
 }
 
+// The same keyline for a sphere topmark, stroked ON the circle just as
+// coneOutline strokes on a cone's edges. Needed wherever a black sphere sits
+// over a black body band or above another sphere (#298, isolated danger) —
+// without it, "two spheres, vertically disposed" renders as one lozenge.
+function sphereOutline(cx: number, cy: number, r: number): SeamarkSegment {
+  return { kind: 'ring', cx, cy, r, stroke: OUTLINE, width: 1 };
+}
+
 function cardinalSegments(props: SeamarkProperties): SeamarkSegment[] {
   const cat = props.category ?? '';
   const cones = CARDINAL_CONES[cat];
@@ -419,6 +496,12 @@ function cardinalSegments(props: SeamarkProperties): SeamarkSegment[] {
   ];
 }
 
+// R1001 §2.4 specifies a single sphere topmark, and specifies it RED. It is
+// drawn in INK here instead, deliberately: the body is red/white VERTICALLY
+// striped, so a red sphere resting on it would recreate exactly the
+// same-colour merge #298 exists to close. Chart practice (INT-1) likewise
+// renders topmarks as black shapes whatever the mark's colour. The sphere sits
+// 2 units clear of the body — it used to be tangent to it (#298).
 function safeWaterSegments(props: SeamarkProperties): SeamarkSegment[] {
   const tokens = colourTokens(props.colour);
   const bands = bandSegments(tokens.length > 0 ? tokens : ['red', 'white'], 'vertical', {
@@ -427,9 +510,14 @@ function safeWaterSegments(props: SeamarkProperties): SeamarkSegment[] {
     w: 10,
     h: 12,
   });
-  return [...bands, { kind: 'circle', cx: 12, cy: 6, r: 3, fill: INK }];
+  return [...bands, { kind: 'circle', cx: CX, cy: 4, r: 3, fill: INK }, sphereOutline(CX, 4, 3)];
 }
 
+// R1001 §2.5 specifies a single X topmark; INK rather than the specified
+// yellow for the same reason as the safe-water sphere above (yellow on a
+// yellow body is no mark at all). Its lower tips used to reach y10 against a
+// body starting at y9 — an overlap, though a cross-colour one — and now clear
+// the body by 1.25 units allowing for the 1.5-wide stroke (#298).
 function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
   const tokens = colourTokens(props.colour);
   const bands = bandSegments(tokens.length > 0 ? tokens : ['yellow'], 'horizontal', {
@@ -443,8 +531,8 @@ function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
     {
       kind: 'line',
       points: [
-        { x: 9, y: 4 },
-        { x: 15, y: 10 },
+        { x: 9, y: 1 },
+        { x: 15, y: 7 },
       ],
       stroke: INK,
       width: 1.5,
@@ -452,8 +540,8 @@ function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
     {
       kind: 'line',
       points: [
-        { x: 15, y: 4 },
-        { x: 9, y: 10 },
+        { x: 15, y: 1 },
+        { x: 9, y: 7 },
       ],
       stroke: INK,
       width: 1.5,
@@ -461,18 +549,38 @@ function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
   ];
 }
 
+/**
+ * R1001 §2.3: black body with one or more broad red horizontal bands, topmark
+ * TWO black spheres vertically disposed.
+ *
+ * The same #298 defect as the lateral pillar, in its worst form: the two
+ * spheres (r 2.5 at cy 2.5 and cy 7) overlapped EACH OTHER by 0.5 units in one
+ * INK fill, and the lower one came within 0.5 of a body whose top band is also
+ * black — so the pair read as a single lozenge on a black box, losing the
+ * "two spheres" that distinguish this mark from a safe-water one. Separated
+ * here by 1.5 units sphere-to-sphere and sphere-to-body, plus the keylines the
+ * cardinal glyph already uses for its black-on-dark-basemap problem. The body
+ * takes the cardinal's y12 origin because a two-element topmark needs the same
+ * vertical budget the cardinal's two cones do.
+ */
+const ISOLATED_DANGER_BODY: Box = { x: 7, y: 12, w: 10, h: 11 };
+const ISOLATED_DANGER_SPHERE_R = 2;
+const ISOLATED_DANGER_SPHERE_CY = [3, 8.5] as const;
+
 function isolatedDangerSegments(props: SeamarkProperties): SeamarkSegment[] {
   const tokens = colourTokens(props.colour);
-  const bands = bandSegments(tokens.length > 0 ? tokens : ['black', 'red', 'black'], 'horizontal', {
-    x: 7,
-    y: 10,
-    w: 10,
-    h: 11,
-  });
+  const bands = bandSegments(
+    tokens.length > 0 ? tokens : ['black', 'red', 'black'],
+    'horizontal',
+    ISOLATED_DANGER_BODY,
+  );
   return [
     ...bands,
-    { kind: 'circle', cx: 12, cy: 7, r: 2.5, fill: INK },
-    { kind: 'circle', cx: 12, cy: 2.5, r: 2.5, fill: INK },
+    bodyOutline(ISOLATED_DANGER_BODY),
+    ...ISOLATED_DANGER_SPHERE_CY.flatMap((cy): SeamarkSegment[] => [
+      { kind: 'circle', cx: CX, cy, r: ISOLATED_DANGER_SPHERE_R, fill: INK },
+      sphereOutline(CX, cy, ISOLATED_DANGER_SPHERE_R),
+    ]),
   ];
 }
 
@@ -541,8 +649,21 @@ export function seamarkSegments(props: SeamarkProperties): SeamarkSegment[] {
 export function seamarkImageId(props: SeamarkProperties): string {
   const family = classifySeamark(props.seamarkType);
   switch (family) {
-    case 'lateral':
-      return `seamark-lateral-${bucketShape(props.shape)}-${primaryColour(props.colour)}`;
+    case 'lateral': {
+      const shape = bucketShape(props.shape);
+      const base = `seamark-lateral-${shape}-${primaryColour(props.colour)}`;
+      // The pillar/default silhouette is the only lateral bucket that draws a
+      // topmark, and that topmark is derived from `category` (#298) — so this
+      // id must carry the category too, or the cache under-keys and one
+      // registered image serves both sides of the channel. It is not
+      // hypothetical: 7 of the 14 lateral ids in the committed pull cover more
+      // than one category (571 marks), including `pillar-red` = {port 49,
+      // preferred_channel_starboard 1} and `pillar-grey` = {port 7,
+      // starboard 4}. The other buckets keep their existing ids, per this
+      // function's rule of keying only on what the glyph actually varies on —
+      // extend this if a topmark is ever added to another bucket.
+      return shape === 'pillar' ? `${base}-${props.category ?? 'unknown'}` : base;
+    }
     case 'cardinal':
       return `seamark-cardinal-${props.category ?? 'unknown'}`;
     case 'safeWater':
@@ -579,6 +700,12 @@ function drawSeamark(ctx: CanvasRenderingContext2D, props: SeamarkProperties): v
         ctx.fillStyle = seg.fill;
         ctx.arc(seg.cx, seg.cy, seg.r, 0, Math.PI * 2);
         ctx.fill();
+        break;
+      case 'ring':
+        ctx.strokeStyle = seg.stroke;
+        ctx.lineWidth = seg.width;
+        ctx.arc(seg.cx, seg.cy, seg.r, 0, Math.PI * 2);
+        ctx.stroke();
         break;
       case 'polygon':
         ctx.fillStyle = seg.fill;
