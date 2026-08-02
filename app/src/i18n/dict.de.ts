@@ -197,6 +197,165 @@ export const de = {
   'seamark.popover.lightCharacter': 'Kennung',
   'seamark.popover.lightColour': 'Lichtfarbe',
   'seamark.popover.lightPeriod': 'Wiederkehr',
+  // {value} s — same text in both languages, but still routed through the
+  // dict (#300) rather than hardcoded, per repo convention.
+  'seamark.popover.lightPeriodUnit': '{value} s',
+  // Seezeichen-Popover-WERTE (#300): übersetzt aus den in
+  // app/public/data/seamarks.json tatsächlich vorkommenden OSM-Tag-Werten
+  // (nicht aus dem vollen IALA-Tagging-Schema) — seamarkPopover.coverage.test.ts
+  // sichert die Abdeckung ab. `seamark.popover.lightCharacter`-Werte (Fl, Oc, …)
+  // bleiben bewusst unübersetzt, siehe seamarkPopover.ts.
+  'seamark.value.type.beacon_cardinal': 'Kardinalbake',
+  'seamark.value.type.beacon_isolated_danger': 'Einzelgefahrenbake',
+  'seamark.value.type.beacon_lateral': 'Lateralbake',
+  'seamark.value.type.beacon_special_purpose': 'Sonderbake',
+  'seamark.value.type.buoy_cardinal': 'Kardinaltonne',
+  'seamark.value.type.buoy_isolated_danger': 'Einzelgefahrentonne',
+  'seamark.value.type.buoy_lateral': 'Lateraltonne',
+  // #300 F1: NOT "Fahrwassertonne" — that names any lateral fairway buoy, not
+  // the IALA safe-water class. "Mitte-Fahrwasser-Zeichen" = "Safe Water
+  // Marks" per the BSH/INT-1 chart-symbols legend (Karte 1 / INT 1), matching
+  // the Kardinaltonne/Lateraltonne naming pattern already used in this table.
+  'seamark.value.type.buoy_safe_water': 'Mitte-Fahrwasser-Tonne',
+  'seamark.value.type.buoy_special_purpose': 'Sondertonne',
+  'seamark.value.type.light_major': 'Hauptfeuer',
+  'seamark.value.type.light_minor': 'Nebenfeuer',
+  'seamark.value.category.anchorage': 'Ankerplatz',
+  'seamark.value.category.cable': 'Kabel',
+  // #300 F2/F9: NOT "Freizeichen" (telephone dial tone, Duden). Two further
+  // candidates were considered and REJECTED before landing on
+  // "Gefahrenpeilung" below — recorded so a future maintainer who
+  // rediscovers either attestation doesn't read the choice as sloppiness:
+  //
+  // 1. "Deckpeilung" — genuinely attested (see citation below), F9's
+  //    Blocker is UPHELD on this one, not overturned: "Deckpeilung" names
+  //    the transit/bearing METHOD, and that method is shared by leading
+  //    AND clearing lines (`category.leading` below is glossed via the
+  //    SAME BSH legend row, "Richtlinie"), so it cannot distinguish the two
+  //    and was rejected as the value here. Citation, verbatim from the PDF
+  //    TEXT LAYER (not a summarizing fetch): "Wichtige Zeichen und
+  //    Abkürzungen für Klein- und Sportschifffahrtskarten aus Karte 1 /
+  //    INT 1", © 2013 BSH, page 1, "Hydrographie / Hydrography" section —
+  //    the legend runs in sequence: "Richtlinie" / "Leading line" /
+  //    "Deckpeilung" / "Clearing line" / "Empfohlener Kurs" / "Recommended
+  //    track". EDITION NOTE (kept because it now documents a REJECTED
+  //    candidate, which makes it more useful, not less — it stops a future
+  //    maintainer from "restoring" Deckpeilung on the strength of the real
+  //    BSH pairing without knowing why it was passed over): the copy
+  //    served at the bsh.de URL TODAY is a different, re-laid-out 4-page
+  //    edition containing neither "Deckpeilung" nor "Clearing" (verified by
+  //    grepping the extracted text of all 4 pages) — its legend jumps
+  //    "Richtlinie / Leading line" straight to "Empfohlener Kurs /
+  //    Recommended track". Cite the 2013 edition specifically, not "the
+  //    BSH site". Working mirror:
+  //    https://www.segelschule-bensberg.de/pdf/Kartenzeichen1_Copy.pdf
+  // 2. "Klarierungsmarke" — the only class-(a) German MARK noun found for
+  //    "clearing mark" (ULTRAMARIN schifffahrtslexikon.de gives literally
+  //    "veiligheidsbaken" / "Klarierungsmarke" / "clearing mark"), also
+  //    rejected: its sibling entries all gloss *safety mark*, indicating a
+  //    calque rather than settled usage, and "Klarierung" reads as customs
+  //    clearance to a German mariner — the misreading direction matters
+  //    more than attestation rank here (a "Gefahren-" root misreads toward
+  //    "danger", the right half of the actual concept; a "Klarierungs-"
+  //    root misreads toward customs, unrelated to it).
+  //
+  // CHOSEN: "Gefahrenpeilung" is attested as a TERM — ULTRAMARIN
+  // schifffahrtslexikon.de: "gevarenpeiling" / "Gefahrenpeilung" /
+  // "danger bearing" (https://www.schifffahrtslexikon.de/d/gefahrenpeilung_de.php)
+  // — a danger bearing IS the clearing-bearing concept, so unlike
+  // "Deckpeilung" it carries the distinguishing semantics. This is
+  // evidence class (a): attested AS A TERM, NOT as a pairing with "clearing
+  // mark" — no source pairs "Gefahrenpeilung" with that phrase, and it must
+  // never be cited as INT 1 or S-57. Used bare, no "Bake einer" prefix
+  // (that shape existed only to satisfy a mark-noun constraint the row
+  // doesn't need — the popover's separate Typ row already supplies
+  // mark-ness): all 3 shipped `clearing` features are beacon_special_
+  // purpose, so the popover reads "Typ: Sonderbake" / "Kategorie:
+  // Gefahrenpeilung" — naming the bearing this mark establishes, not
+  // re-asserting mark-ness; stays correct even if a future pipeline run
+  // tags a buoy with this category.
+  //
+  // KNOWN FORM INCONSISTENCY (deliberate, not an oversight): `leading`
+  // below is a mark NOUN ("Richtbake"), while this entry names a bearing/
+  // concept, not a mark noun — German has no attested clearing-mark noun to
+  // make the two forms uniform, and each is independently the
+  // best-attested option for what it tags. Do not "harmonise" them.
+  'seamark.value.category.clearing': 'Gefahrenpeilung',
+  'seamark.value.category.degaussing_range': 'Entmagnetisierungsstrecke',
+  'seamark.value.category.east': 'Ost',
+  // #300: verbatim BSH gloss, same citation as `clearing` above —
+  // "Wichtige Zeichen und Abkürzungen für Klein- und Sportschifffahrtskarten
+  // aus Karte 1 / INT 1", © 2013 BSH, page 1, "Hydrographie / Hydrography"
+  // section: "Militärisches Übungsgebiet / Firing danger area". Read from
+  // the PDF text layer, not a summarizing fetch. Supersedes the earlier
+  // "Schießgefahrenbereich"/"Schießgefahrengebiet" dispute — neither was
+  // ever BSH's actual term; this is.
+  'seamark.value.category.firing_danger_area': 'Militärisches Übungsgebiet',
+  // #300 F3: "unreiner Grund" per the BSH/INT-1 legend (Karte 1 / INT 1):
+  // "Unr.; Unrein; Unreiner Grund / Foul" — "Hindernisgrund" was an invented
+  // compound, not chart usage.
+  'seamark.value.category.foul_ground': 'unreiner Grund',
+  'seamark.value.category.lanby': 'Großtonne (LANBY)',
+  // #300 F5/F10: NOT "Richtfeuerlinie" — that wrongly conflates "Feuer"
+  // (implies LIT) with "-linie" (the navigational LINE, not the mark). The
+  // BSH legend (see `clearing` above) confirms "Richtfeuer" = "Leading
+  // lights" (lit only) and "Richtlinie" = "Leading line" (the line, not the
+  // mark) — neither fits a mark that can be either. "Richtbake" is
+  // attested as "leading mark" by DWDS and de.wikipedia's "Bake
+  // (Seezeichen)" article (a pair of beacons whose extended connecting
+  // line indicates the course — exactly what `category=leading` tags),
+  // and is type-correct for all 64 shipped features (every one is a
+  // beacon_special_purpose). Honest sizing of the lit/unlit picture (F10
+  // corrected an earlier overclaim here): "Bake" conventionally denotes an
+  // UNLIT fixed mark, so "Richtbake" leans unlit in the same direction
+  // "Richtfeuer" leans lit — it is a defensible compromise, not a neutral
+  // term. Measured on the shipped data: 53 of the 64 `leading` features
+  // DO carry a lightCharacter (most are in fact lit) — "Richtfeuer" would
+  // only be wrong for the remaining 11, not for "unlit beacons" as a class.
+  // "Richtbake" is chosen because it is structurally correct for all 64
+  // (they are all beacons), where "Richtfeuer" would be wrong for those 11.
+  //
+  // KNOWN FORM INCONSISTENCY (see `clearing` above): this is a mark NOUN,
+  // while `clearing`'s "Gefahrenpeilung" names a bearing/concept —
+  // deliberate, not an oversight; German has no attested clearing-mark
+  // noun to make the two forms uniform.
+  'seamark.value.category.leading': 'Richtbake',
+  // #300 F5: German Wikipedia's own article for "marine farm" is titled
+  // "Marikultur" (de.wikipedia.org/wiki/Meeresfarm redirects there) — the
+  // established term, "Meeresfarm" is the lay/colloquial one.
+  'seamark.value.category.marine_farm': 'Marikultur',
+  // #300 F5: maintainer decision — "Muring" (dropping "-platz", which named
+  // the place rather than the ground-tackle/mooring-buoy system the tag
+  // actually denotes).
+  'seamark.value.category.mooring': 'Muring',
+  'seamark.value.category.no_entry': 'Sperrgebiet',
+  'seamark.value.category.north': 'Nord',
+  'seamark.value.category.notice': 'Hinweis',
+  'seamark.value.category.odas': 'Messboje (ODAS)',
+  'seamark.value.category.pipeline': 'Pipeline',
+  'seamark.value.category.port': 'Backbord',
+  'seamark.value.category.preferred_channel_port': 'Hauptfahrwasser Backbord',
+  'seamark.value.category.preferred_channel_starboard': 'Hauptfahrwasser Steuerbord',
+  'seamark.value.category.recording': 'Messstation',
+  'seamark.value.category.recreation_zone': 'Freizeitzone',
+  'seamark.value.category.recreational': 'Freizeit',
+  'seamark.value.category.south': 'Süd',
+  'seamark.value.category.starboard': 'Steuerbord',
+  // #300 F5: maintainer decision — "Zieltonne" ("Zielscheibe" reads as a
+  // dartboard/shooting-range target, not a floating nautical mark).
+  'seamark.value.category.target': 'Zieltonne',
+  'seamark.value.category.unknown_purpose': 'Unbekannter Zweck',
+  'seamark.value.category.warning': 'Warnung',
+  'seamark.value.category.wave_recorder': 'Wellenmessboje',
+  'seamark.value.category.west': 'West',
+  'seamark.value.category.yachting': 'Sportschifffahrt',
+  'seamark.value.colour.black': 'Schwarz',
+  'seamark.value.colour.green': 'Grün',
+  'seamark.value.colour.grey': 'Grau',
+  'seamark.value.colour.orange': 'Orange',
+  'seamark.value.colour.red': 'Rot',
+  'seamark.value.colour.white': 'Weiß',
+  'seamark.value.colour.yellow': 'Gelb',
   'plansList.empty': 'Noch keine gespeicherten Pläne.',
   'plansList.created': 'Erstellt',
   'plansList.delete': 'Plan löschen',

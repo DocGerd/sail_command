@@ -25,5 +25,9 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["src/**/realmask.repro.test.ts", "src/**/gpx.parse.test.ts"]
+  "exclude": [
+    "src/**/realmask.repro.test.ts",
+    "src/**/gpx.parse.test.ts",
+    "src/**/seamarkPopover.coverage.test.ts"
+  ]
 }
