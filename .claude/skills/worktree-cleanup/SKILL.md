@@ -5,9 +5,10 @@ description: Use when a git worktree created for an agent (implementer, reviewer
 
 # Worktree cleanup (force-free teardown)
 
-Removing a finished worktree fails for three predictable, avoidable reasons:
-an untracked `node_modules`, a dirty wind-fixture diff, and a wrong cwd. Fix
-all three and `git worktree remove` succeeds with **no** `--force`.
+Removing a finished worktree most often fails for three predictable,
+avoidable reasons: an untracked `node_modules`, a dirty wind-fixture diff, and
+a wrong cwd (other causes exist — see step 3). Fix these three and
+`git worktree remove` succeeds with **no** `--force`.
 
 **Responsibility sits with the CREATOR of the worktree** — the agent that
 made it, not the main session. `rm -rf` is permission-blocked even in the
@@ -25,7 +26,10 @@ if the creator is gone.
    ```
 
    An untracked `node_modules` is exactly what makes the worktree "dirty" and
-   blocks removal — this step is why the rest of cleanup is needed at all.
+   blocks removal — this step is why the rest of cleanup is needed at all. If
+   the worktree never ran an install (e.g. a reviewer-only tree), `find` errors
+   because `app/node_modules` doesn't exist — that's expected and harmless;
+   nothing chains off its exit code.
 
 2. **Restore the wind fixture if it's dirty.** Any worktree that ran e2e has
    regenerated `app/public/test-fixtures/wind-sw12.json` with fresh
