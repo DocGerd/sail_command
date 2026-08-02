@@ -52,15 +52,19 @@
 #     future pipeline output of that shape landing OUTSIDE the three known
 #     directories stays covered only because these patterns are still here.
 #
-# KNOWN WAYS THIS HOOK CAN PRODUCE NO EXPLICIT DECISION (PR #305 review, B2,
-# retitled from "EVERY WAY" on the same PR's follow-up review — CLAUDE.md:
-# prefer "narrowed" to "closed" unless the measurement really covers the
-# whole space, and "EVERY WAY" is exactly the over-claim that licenses the
-# next regression, the same shape as round 1's M1). A blocking guard's
-# silent-allow paths are the same defect class #274 was filed over, one
-# layer up from the `case` arms — enumerated so a future change can be
-# checked against this list, understanding the list is what has been FOUND,
-# not a proof of completeness:
+# KNOWN WAYS THE FILE_PATH (EDIT|WRITE) ARM CAN PRODUCE NO EXPLICIT DECISION
+# (PR #305 review, B2, retitled from "EVERY WAY" on the same PR's follow-up
+# review — CLAUDE.md: prefer "narrowed" to "closed" unless the measurement
+# really covers the whole space, and "EVERY WAY" is exactly the over-claim
+# that licenses the next regression, the same shape as round 1's M1).
+# RE-SCOPED (#309 fix-wave M2, CLAUDE.md's same-PR-invalidation class): this
+# list is entirely `file_path`-framed and was written when this script served
+# only the Edit|Write matcher. It now describes ONE of the script's two arms
+# — see "KNOWN SILENT-ALLOW PATHS OF THE BASH ARM" further below for the
+# other. A blocking guard's silent-allow paths are the same defect class #274
+# was filed over, one layer up from the `case` arms — enumerated so a future
+# change can be checked against this list, understanding the list is what has
+# been FOUND, not a proof of completeness:
 #   1. Empty stdin (`printf '' | ...`)              -> ask (checked below,
 #      new: `jq -r '... // empty'` exits 0 on empty input, so without this
 #      check the `||` fallback chain never fires and the case matches
@@ -141,15 +145,73 @@
 #     artifact. Accepted cost, stated here on purpose: any Bash command
 #     merely mentioning a protected path's string prompts for confirmation,
 #     even when the command is provably read-only.
-#   - The Edit|Write arm's extension-only patterns (`*.bin`, `*.pmtiles`,
-#     `*.pmtiles.png`) are DELIBERATELY NOT reproduced as bare substrings
-#     here — matching a 3-4 character extension as a raw substring anywhere
-#     in a shell command (".bin" also occurs inside "robin", "cabin", every
-#     English word ending "-bin") would be noise, not signal, at a scale the
-#     directory-shaped checks never are. Every file those patterns cover
-#     already lives under app/public/data/ today (per the comment above), so
-#     a Bash command touching one BY PATH still matches "app/public/data/".
-#     This is a scoped decision, not an oversight.
+#   - NO TRAILING SLASH on the directory entries (#309 fix-wave B1, reverting
+#     the first cut of this file). A trailing slash means a write to the
+#     protected directory's bare NAME never matches — measured, real hook
+#     JSON through the pre-fix script ALLOWed `cp -r /tmp/d app/public/data`,
+#     `rsync -a /tmp/d/ app/public/icons`, `mv app/public/data /tmp/stash`,
+#     and `cp /tmp/f docs/superpowers/specs`, all of which are ordinary ways
+#     to replace or stash a directory's contents outright. The trailing
+#     slash existed only to keep a sibling directory sharing the same prefix
+#     (`app/public/database/`, `app/public/iconsets/`,
+#     `docs/superpowers/specs-old/`) from over-firing — bounding that
+#     over-fire at the price of a real under-fire is the guard's stated
+#     asymmetry backwards (over-firing is the accepted cost HERE, precisely
+#     so under-firing never has to be). Removing the slash restores catching
+#     the directory itself and turns those three siblings into accepted
+#     over-fires instead (selftest rows below, same template as the
+#     bare-filename `NOTICES.txt.bak` row this file already carried).
+#   - ANCESTOR COVERAGE is DELIBERATELY PARTIAL (#309 fix-wave M4) — a
+#     friction cliff, not an oversight. `docs/superpowers` (the bare parent
+#     of `docs/superpowers/specs`) is added below: no routine command in this
+#     repo names it without also naming something under it, so the added
+#     over-fire cost is negligible next to the real gap it closes (`find
+#     docs/superpowers -delete`, `mv docs/superpowers /tmp/stash`, `tar -xf
+#     x.tar -C docs/superpowers`, all measured ALLOW before this entry).
+#     `app/public` is DELIBERATELY NOT added, and neither is bare `app`:
+#     `app/public` collides with `app/public/test-fixtures/wind-sw12.json`,
+#     which CLAUDE.md documents as restored routinely after every e2e run
+#     (`git restore app/public/test-fixtures/wind-sw12.json`) and which
+#     already has its own dedicated Bash hook (settings.json's other "Bash"
+#     PreToolUse entry) — adding `app/public` here would turn that routine
+#     command into a prompt on every e2e cycle, which is the exact "a guard
+#     that always asks trains you to click through" erosion CLAUDE.md warns
+#     about for `premerge-verify`. Bare `app` is far worse: it is a substring
+#     of nearly every command in this repo (`npm --prefix app run test`,
+#     `npm --prefix app run build`, ...), so it would fire constantly. The
+#     residual this leaves — `find app/public -name '*.bin' -delete`, `tar
+#     -xf x.tar -C app/public`, `mv app/public /tmp/stash`, `find app -name
+#     mask.bin -delete` all silently allow — is recorded below, not hidden.
+#   - Two of the Edit|Write arm's three extension-only patterns ARE
+#     reproduced here as literal substrings (#309 fix-wave M1): `.pmtiles`
+#     and `.pmtiles.png`. Measured: neither collides with an ordinary
+#     English word or common shell token, so there is no over-fire cost to
+#     protecting them directly — and doing so closes a real gap M1 found: a
+#     GITIGNORED `app/dist/data/basemap.pmtiles.png` (Vite's default
+#     `outDir`, unset in `app/vite.config.ts` -> `app/dist`; `public/` is
+#     copied verbatim into it on every build) is covered by the Edit|Write
+#     arm's extension pattern but was covered by NOTHING on this arm before
+#     this fix.
+#   - `.bin` is the ONE extension-only pattern DELIBERATELY NOT reproduced as
+#     a bare substring, and this is the one place the two arms' extension
+#     coverage still diverges. It is 4 characters and collides with ordinary
+#     English words used constantly in commands and prose ("robin", "cabin",
+#     every word ending "-bin") — noise, not signal, at a scale `.pmtiles`
+#     and the directory-shaped checks never are. The residual: a
+#     Bash-mediated write to a `*.bin` file OUTSIDE the protected directories
+#     (e.g. the same gitignored `app/dist/data/mask.bin`) silently allows on
+#     this arm; a TRACKED `.bin` output is still caught, because every one
+#     lives under `app/public/data` (protected by that directory entry).
+#     PRIOR CLAIM CORRECTED (#309 fix-wave M1(a)): an earlier revision of
+#     this bullet said "every file [`.bin`/`.pmtiles`/`.pmtiles.png`] covers
+#     already lives under app/public/data/ today" with no qualifier — false
+#     as written, since `app/dist/data/mask.bin` exists once built and is
+#     covered by neither this arm nor that claim's scope. The Edit|Write
+#     arm's OWN comment (above) makes the identical claim but SCOPES it —
+#     "verified via `git ls-files`" — and under that scope it is true
+#     (re-verified here: exactly two tracked files match, both under
+#     `app/public/data/`); restate the qualifier wherever the claim is made,
+#     never drop it.
 #   - PROTECTED_PATHS deliberately does NOT special-case
 #     app/public/icons/icon.svg the way the Edit|Write arm's B1 exception
 #     does — "no exemptions" applies uniformly on this arm, so a Bash command
@@ -163,15 +225,61 @@
 #     this script's own tool_name check must name the same two tools — that
 #     twin agreement is what makes this additive rather than a silent
 #     narrowing of the Edit|Write coverage.
+#   - A missing/empty Bash `command` asks, the SAME answer the file_path arm
+#     gives a missing/empty `file_path` (#309 fix-wave m2, fixing a real
+#     inconsistency: an earlier revision let this arm silently ALLOW on an
+#     absent command while the other arm asked on the identical epistemic
+#     state — "no input was ever extracted" — residual item 5 above). No
+#     practical exposure either way (a Bash call with no command executes
+#     nothing), but the two arms now agree.
+#
+# KNOWN SILENT-ALLOW PATHS OF THE BASH ARM (#309 fix-wave M2, parallel to the
+# file_path arm's list above — "known", not "every", same #305 discipline).
+# Every one of these is genuinely OUT OF this design's reach: catching them
+# needs the shell parsing that got #233 closed, which this arm deliberately
+# does not do. None of them is being fixed; they are recorded so a future
+# change can be checked against this list, all measured ALLOW through this
+# script:
+#   1. Directory-indirection: a `cd` into a protected directory (in an
+#      EARLIER Bash call, since CLAUDE.md documents that Bash cwd PERSISTS
+#      across calls in this repo) followed by a bare-filename write, e.g.
+#      `cp /tmp/f mask.bin` with no path in the command string at all. This
+#      is the LIVE one — it needs no contrivance, just two ordinary calls.
+#   2. Variable indirection: `D=app/public/data; cp /tmp/f $D/mask.bin` — the
+#      literal command string never contains the protected substring.
+#   3. Programmatic path construction: `python3 -c "import os;
+#      open(os.path.join('app','public','data','mask.bin'),'w')"` — contrast
+#      with the SAME target spelled as a literal string, which correctly
+#      asks; the two differ only in how the path is built.
+#   4. Quote-splitting / escaping / brace expansion inside the path string
+#      itself (`app/public/dat''a/mask.bin`, `app/public/data\/mask.bin`,
+#      `app/public/{data,icons}/mask.bin`) and indirection via `xargs`
+#      reading targets from a file — all shell-level rewrites of the
+#      protected substring that this arm, by design, never resolves.
+#   5. The ancestor gap named in the DESIGN block above: bare `app/public`
+#      and bare `app` are not protected, so `find app/public -name '*.bin'
+#      -delete`, `tar -xf x.tar -C app/public`, `mv app/public /tmp/stash`,
+#      and `find app -name mask.bin -delete` all allow.
+#   6. The `.bin` extension gap named in the DESIGN block above: a
+#      Bash-mediated write to a `*.bin` file outside the protected
+#      directories (there are none tracked today, but a future one — or any
+#      file under the gitignored `app/dist/`) is not caught by extension
+#      alone.
 set -uo pipefail
 
 # Single source of truth for the Bash path-presence arm (see DESIGN above).
+# Order matters for the human-readable reason message only (bash_hits_
+# protected_path returns the FIRST match) - more specific entries are listed
+# before the ancestor/ambiguous ones they nest under.
 PROTECTED_PATHS=(
-  "app/public/data/"
-  "app/public/icons/"
-  "app/public/brand/"
+  "app/public/data"
+  "app/public/icons"
+  "app/public/brand"
   "app/public/THIRD-PARTY-NOTICES.txt"
-  "docs/superpowers/specs/"
+  "docs/superpowers/specs"
+  "docs/superpowers"
+  ".pmtiles.png"
+  ".pmtiles"
 )
 
 # Pure function: does $1 (a Bash `command` string) contain ANY protected path
@@ -232,12 +340,49 @@ if [ "${1:-}" = "--selftest" ]; then
   check allow "unrelated source file"   "cat app/src/App.tsx"
   check allow "empty command"           ""
 
-  # --- NEGATIVE: a near-miss of a protected path that is genuinely OUTSIDE
-  # it - a sibling directory sharing a prefix must NOT match. This is the
-  # matching's own false-positive bound, verified, not assumed.
-  check allow "sibling dir: database/"      "cat app/public/database/config.json"
-  check allow "sibling dir: iconsets/"      "cat app/public/iconsets/foo.svg"
-  check allow "sibling dir: specs-old/"     "cat docs/superpowers/specs-old/draft.md"
+  # --- POSITIVE (#309 fix-wave B1): a write to the protected directory's
+  # BARE NAME, not something inside it, must still ask. Measured ALLOW
+  # before this fix (trailing slash on directory entries meant only a path
+  # INSIDE the directory ever matched) - this is the guard's core purpose,
+  # not a redesign.
+  check ask "B1: cp -r replaces the directory itself"   "cp -r /tmp/d app/public/data"
+  check ask "B1: rsync -a writes into the bare dir"     "rsync -a /tmp/d/ app/public/icons"
+  check ask "B1: mv stashes the directory itself"       "mv app/public/data /tmp/stash"
+  check ask "B1: write to the bare specs directory"     "cp /tmp/f docs/superpowers/specs"
+
+  # --- POSITIVE (#309 fix-wave M4): ancestor coverage for docs/superpowers -
+  # no collision found with any routine command, so added outright (see
+  # DESIGN above for why app/public and bare app are NOT given the same
+  # treatment).
+  check ask "M4: mv the docs/superpowers ancestor"      "mv docs/superpowers /tmp/stash"
+  check ask "M4: find -delete under the ancestor"       "find docs/superpowers -name *.md -delete"
+
+  # --- POSITIVE (#309 fix-wave M1): .pmtiles/.pmtiles.png are now protected
+  # as bare substrings - no noise source found for either (contrast the .bin
+  # residual row below).
+  check ask "M1: .pmtiles extension"                    "cp /tmp/f app/dist/data/basemap.pmtiles"
+  check ask "M1: .pmtiles.png extension"                 "cp /tmp/f app/dist/data/basemap.pmtiles.png"
+
+  # --- RESIDUAL (documented, not fixed - see DESIGN and the "KNOWN
+  # SILENT-ALLOW PATHS" list above): the .bin extension and the app/public
+  # and app ancestors are deliberately NOT protected. Pinned as ALLOW here so
+  # a future accidental narrowing (or widening) of PROTECTED_PATHS is caught
+  # either way, not just silently drifted.
+  check allow "RESIDUAL (documented): bare .bin outside protected dirs" "cp /tmp/f app/dist/data/mask.bin"
+  check allow "RESIDUAL (documented): bare app/public ancestor"         "find app/public -name *.bin -delete"
+  check allow "RESIDUAL (documented): bare app ancestor"                "find app -name mask.bin -delete"
+
+  # --- ACCEPTED OVER-FIRE (#309 fix-wave B1): removing the trailing slash
+  # from the directory entries means a sibling directory sharing the same
+  # PREFIX now genuinely contains the protected substring and correctly
+  # asks - this is the flip side of the B1 fix above, not a separate bug.
+  # The specs-old row ALSO matches via the new docs/superpowers ancestor
+  # entry; both are legitimate and there is no way to isolate one from the
+  # other for this family, since anything under docs/superpowers/specs-old
+  # is definitionally nested under docs/superpowers too.
+  check ask "OVER-FIRE (accepted): sibling database/ shares the data prefix"   "cat app/public/database/config.json"
+  check ask "OVER-FIRE (accepted): sibling iconsets/ shares the icons prefix"  "cat app/public/iconsets/foo.svg"
+  check ask "OVER-FIRE (accepted): sibling specs-old/ (also via ancestor)"    "cat docs/superpowers/specs-old/draft.md"
   check allow "sibling file: NOTICES-OLD.txt" "cat app/public/THIRD-PARTY-NOTICES-OLD.txt"
 
   # --- ACCEPTED OVER-FIRE (bare filename, no trailing delimiter to bound it):
@@ -255,6 +400,7 @@ if [ "${1:-}" = "--selftest" ]; then
   targets=(
     "app/public/data/mask.bin" "app/public/icons/x.svg" "app/public/brand/x.png"
     "app/public/THIRD-PARTY-NOTICES.txt" "docs/superpowers/specs/foo.md"
+    "docs/superpowers/plans/foo.md" "app/dist/data/basemap.pmtiles.png"
   )
   mech_fmts=(
     "cp /tmp/f %s" "mv /tmp/f %s" "sed -i s/a/b/ %s" "tee %s"
@@ -277,9 +423,27 @@ if [ "${1:-}" = "--selftest" ]; then
   # ---- production WRAPPER: real hook JSON on stdin through the ACTUAL
   # script (not just the pure function), so a bug in the tool_name dispatch
   # or the JSON parsing is not invisible to this table.
-  wrapper_check() { # WANT(ask|deny|allow) DESC JSON
-    local want="$1" desc="$2" json="$3" out decision
-    out=$(printf '%s' "$json" | "$0" 2>/dev/null)
+  #
+  # (#309 fix-wave m1): `"$0"` executed verbatim goes through PATH lookup
+  # when invoked without a slash (`bash artifact-guard.sh --selftest` from
+  # the script's own directory) and is not found there, silently failing
+  # every ask/deny row while the allow rows pass by coincidence - the
+  # selftest's verdict must not depend on invocation form. Normalise once.
+  case "$0" in
+    */*) SELF=$0 ;;
+    *) SELF=./$0 ;;
+  esac
+  # (#309 fix-wave M3): a WANT of "ask" is not enough to prove the Bash
+  # path-presence arm actually ran - the file_path arm's own "could not
+  # extract a file_path" fallback ALSO answers `ask`, so a fully DISABLED
+  # Bash dispatch (mutation: `if [ "$tn" = "NEVER" ]`) left the positive row
+  # green, having fallen through to that unrelated fallback. REASON_SUBSTR
+  # is required whenever WANT is ask/deny and must appear in the actual
+  # permissionDecisionReason, not just match the decision keyword - pass ""
+  # only for allow rows, which have no reason to check.
+  wrapper_check() { # WANT(ask|deny|allow) REASON_SUBSTR DESC JSON
+    local want="$1" reason_substr="$2" desc="$3" json="$4" out decision
+    out=$(printf '%s' "$json" | "$SELF" 2>/dev/null)
     if [ -z "$out" ]; then
       decision=allow
     elif printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then
@@ -293,19 +457,33 @@ if [ "${1:-}" = "--selftest" ]; then
       echo "SELFTEST FAIL [wrapper]: $desc -> got [$decision] want [$want] (out: $out)"
       fail=1
     fi
+    if [ -n "$reason_substr" ]; then
+      case "$out" in
+        *"$reason_substr"*) ;;
+        *)
+          echo "SELFTEST FAIL [wrapper reason]: $desc -> reason missing [$reason_substr] (out: $out)"
+          fail=1
+          ;;
+      esac
+    fi
   }
-  wrapper_check ask   "Bash cp through the wrapper"        '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f app/public/data/mask.bin"}}'
-  wrapper_check allow "Bash git status through the wrapper" '{"tool_name":"Bash","tool_input":{"command":"git status"}}'
-  wrapper_check allow "Bash with no command field"          '{"tool_name":"Bash","tool_input":{}}'
+  wrapper_check ask   "mentions protected path" "Bash cp through the wrapper"         '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f app/public/data/mask.bin"}}'
+  wrapper_check allow ""                        "Bash git status through the wrapper" '{"tool_name":"Bash","tool_input":{"command":"git status"}}'
+  # (#309 fix-wave m2): a missing/empty Bash command now asks (see DESIGN) -
+  # was `allow` before the m2 fix; the reason must be the Bash arm's OWN
+  # "could not extract a Bash command" text, not the unrelated file_path
+  # arm's "could not extract a file path" (which would indicate the Bash
+  # dispatch never ran at all - the same M3 blind spot, checked here too).
+  wrapper_check ask   "could not extract a Bash command" "Bash with no command field" '{"tool_name":"Bash","tool_input":{}}'
   # Regression guard: the ORIGINAL Edit|Write behavior must be byte-for-byte
   # unchanged now that this script serves a second matcher.
-  wrapper_check deny  "Edit deny arm unaffected"            '{"tool_name":"Edit","tool_input":{"file_path":"app/public/data/mask.bin"}}'
-  wrapper_check ask   "Edit specs arm unaffected"           '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/specs/foo.md"}}'
-  wrapper_check allow "Edit unrelated file unaffected"      '{"tool_name":"Write","tool_input":{"file_path":"app/src/App.tsx"}}'
-  wrapper_check allow "Edit icon.svg exception unaffected"  '{"tool_name":"Edit","tool_input":{"file_path":"app/public/icons/icon.svg"}}'
+  wrapper_check deny  "Generated artifact"      "Edit deny arm unaffected"            '{"tool_name":"Edit","tool_input":{"file_path":"app/public/data/mask.bin"}}'
+  wrapper_check ask   "source of truth"         "Edit specs arm unaffected"           '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/specs/foo.md"}}'
+  wrapper_check allow ""                        "Edit unrelated file unaffected"      '{"tool_name":"Write","tool_input":{"file_path":"app/src/App.tsx"}}'
+  wrapper_check allow ""                        "Edit icon.svg exception unaffected"  '{"tool_name":"Edit","tool_input":{"file_path":"app/public/icons/icon.svg"}}'
   # Old-shaped payload with no tool_name at all (pre-#309 test shape) must
   # still hit the file_path arm, not silently fall through as "not Bash".
-  wrapper_check deny  "no tool_name, file_path present"     '{"tool_input":{"file_path":"app/public/data/mask.bin"}}'
+  wrapper_check deny  "Generated artifact"      "no tool_name, file_path present"     '{"tool_input":{"file_path":"app/public/data/mask.bin"}}'
 
   if [ "$fail" -eq 0 ]; then
     echo "generated: ${gen} mechanism x protected-path combinations"
@@ -341,8 +519,17 @@ if [ "$tn" = "Bash" ]; then
       exit 0
     }
 
+  # #309 fix-wave m2: a missing/empty command is the SAME epistemic state as
+  # a missing file_path below (no input was ever extracted) - give it the
+  # same answer, `ask`, rather than silently falling through to a substring
+  # match against an empty string (which can never hit and would allow).
+  [ -n "$cmd" ] || {
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"artifact/spec guard could not extract a Bash command from the tool input - protection is inert."}}'
+    exit 0
+  }
+
   if p=$(bash_hits_protected_path "$cmd"); then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions protected path '"$p"' (#309: app/public/{data,icons,brand}/ are committed pipeline outputs, THIRD-PARTY-NOTICES.txt is a generated dependency manifest, docs/superpowers/specs/ is the source-of-truth spec dir). This guard only checks whether the path STRING appears anywhere in the Bash command - no shell parsing, no read/write classification - so a read-only mention also asks; this is a deliberate, accepted over-fire (see header). Confirm intent before proceeding."}}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions protected path '"$p"' (#309: app/public/{data,icons,brand}/ are committed pipeline outputs, THIRD-PARTY-NOTICES.txt/.pmtiles/.pmtiles.png are generated artifacts, docs/superpowers/ is the source-of-truth spec dir and its ancestor). This guard only checks whether the path STRING appears anywhere in the Bash command - no shell parsing, no read/write classification - so a read-only mention also asks; this is a deliberate, accepted over-fire (see header). Confirm intent before proceeding."}}'
   fi
   exit 0
 fi
