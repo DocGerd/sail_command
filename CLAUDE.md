@@ -829,14 +829,16 @@ deviate from it.
   verifiable by capturing the REAL `registerSeamarkImages` output through a
   fake `map.addImage` on a dev-server scratch page (4× nearest-neighbor) —
   the #165 evidence technique; hand-derive expected geometry/colours from
-  R1001, never from the renderer's own output. The topmark/body separation
-  rule takes the LOWEST empty band, never the WIDEST (#298): for a multi-part
-  topmark (isolated danger's two spheres) the widest band can be INTERNAL to
-  the topmark, so the rule passes while the topmark merges into the body. The
-  lowest band is always the topmark/body boundary because bodies cannot
-  contain an internal gap — `bandSegments` tiles the box with zero clearance
-  and `bodyOutline` insets 0.5 INSIDE — and it also fails closed, where
-  widest-band failed open.
+  R1001, never from the renderer's own output. The glyphs themselves are fixed
+  hand-tuned constants (`ISOLATED_DANGER_SPHERE_CY` et al.) — there is NO
+  runtime band search; what enforces topmark/body clearance is the TEST helper
+  `separation()` in `seamarkGlyphs.test.ts`, and it takes the LOWEST empty
+  band, never the WIDEST (#298): for a multi-part topmark (isolated danger's
+  two spheres) the widest band can be INTERNAL to the topmark, so the check
+  passes while the topmark merges into the body. The lowest band is always the
+  topmark/body boundary because bodies cannot contain an internal gap —
+  `bandSegments` tiles the box with zero clearance and `bodyOutline` insets 0.5
+  INSIDE — and it also fails closed, where widest-band failed open.
 - **German seamark terminology: the REFERENT decides the word, not attestation
   rank** (#300). Check the SHIPPED DATA first — `clearing`/`leading` occur only
   on `beacon_special_purpose`, i.e. S-57 **CATSPM (a MARK)**, never CATNAV (a
