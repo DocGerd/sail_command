@@ -30,8 +30,11 @@ single most important step. Green CI is not enough — the user wants a human
 visual check of the actual built state before it ships.
 
 1. Build + serve the current `develop` at the real Pages base `/sail_command/`
-   (build then `preview` on port `4173`, `--strictPort`) — exact commands in
-   the `verify` skill (production-bundle pass).
+   using the `verify` skill's **production-bundle pass** — follow that skill
+   for the exact build/serve commands AND the port. Do not restate a port
+   number here: the `verify` skill owns that constant (and explicitly
+   forbids reusing e2e's fixed `4173`) — a second copy of it in this file is
+   exactly how the two drifted apart once already (#287).
 2. Real-browser walkthrough of the key flows: **plan** → **harbor combobox** →
    the **Ergebnis card**, in BOTH wide and narrow layouts and BOTH light and
    dark.

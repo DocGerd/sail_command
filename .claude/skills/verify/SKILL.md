@@ -143,7 +143,7 @@ page. Steps 3-6 above translate to chrome-devtools MCP tool names as follows
 | Step | Playwright MCP | chrome-devtools MCP |
 |---|---|---|
 | 3, navigate | `browser_navigate` | `navigate_page` (`type: 'url'`, `url: …`) |
-| 3.5, set theme | — | `emulate` with `colorScheme: 'dark'` (call once, right after the first navigate) |
+| 3.5, set theme | — | `emulate` with `{ colorScheme: 'dark' }` — or `{ viewport: '<W>x<H>', colorScheme: 'dark' }` in ONE call if a viewport change is also needed (see the reset warning below) |
 | 4, preflight eval | `browser_evaluate` | `evaluate_script` (same zero-arg `function`) |
 | 5, chunk/version eval | `browser_evaluate` | `evaluate_script` (same zero-arg `function`) |
 | 5, take a snapshot | — | `take_snapshot` (required before the click below) |
@@ -158,6 +158,26 @@ About button's `uid` off that snapshot. There is no selector-string path on
 this tool — do `take_snapshot` → find the About button's `uid` in the
 result → `click({ uid })`. Skipping the snapshot leaves nothing to pass as
 `uid` and the click cannot be issued.
+
+**`emulate` silently resets whatever parameter you omit.** `viewport` and
+`colorScheme` are independent per-call overrides, not accumulated state — a
+call passing only `viewport` resets `colorScheme` back to `'auto'` (light,
+in headless Chrome), and a call passing only `colorScheme` resets `viewport`
+back to its default (`navigate_page` resets both). The tool's own text
+response still echoes the colour scheme you last requested even when a
+later viewport-only call has silently reset it — **do not trust that echo**
+as evidence the page is actually in that state; it was reproduced capturing
+light mode twice while every response claimed dark. Two rules follow:
+
+- If both need to change during this pass, set `viewport` AND `colorScheme`
+  in the SAME `emulate` call — never two calls, e.g. a narrow-layout dark
+  capture is one call: `emulate({ viewport: '<W>x<H>', colorScheme: 'dark' })`.
+- After every `emulate` call in this pass, assert the page actually changed
+  before screenshotting — `evaluate_script`:
+  `() => matchMedia('(prefers-color-scheme: dark)').matches` must be `true`
+  for a dark capture, `false` for a light one. Do not proceed to the
+  screenshot on a mismatch; re-issue the `emulate` call with both parameters
+  set.
 
 ## Deterministic wind (no live Open-Meteo)
 
