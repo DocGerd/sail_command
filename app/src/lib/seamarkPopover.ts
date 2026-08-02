@@ -2,9 +2,9 @@ import type { MsgKey } from '../i18n/dict.de';
 import type { SeamarkProperties } from '../types';
 
 // Pure row-building logic for the seamark info popover (#7) — DataLayers.tsx
-// resolves labelKey (and every value token's key) via t() and builds the
-// actual DOM (a MapLibre Popup's setDOMContent), so this stays unit-testable
-// without a map/DOM.
+// resolves labelKey and calls resolveSeamarkPopoverValue() (t-injected, see
+// below) to build the actual DOM (a MapLibre Popup's setDOMContent), so this
+// stays unit-testable without a map/DOM.
 
 /** One rendered value fragment: either a dict key (DataLayers resolves it via
  * t(key, vars)) or verbatim text that must never be translated. A row's value
@@ -15,6 +15,31 @@ export type SeamarkPopoverToken =
 export interface SeamarkPopoverRow {
   labelKey: MsgKey;
   value: SeamarkPopoverToken[];
+}
+
+/** Structural type for the app's `t()` (see `i18n/index.tsx`'s `useT`) —
+ * typed here, never imported at runtime, to keep this module DOM/React-free. */
+export type SeamarkPopoverTranslate = (
+  key: MsgKey,
+  vars?: Record<string, string | number>,
+) => string;
+
+/** Turns a row's value tokens into the exact string the popover renders
+ * (#300 F4): the only place that decides how tokens join. Exported and
+ * `t`-injected so DataLayers.tsx's DOM code stays a thin caller and this
+ * join logic is directly unit-testable with a stub `t`, without a
+ * map/Popup. Category rows join with ", " — the terms are independent
+ * concepts and read as a run-on otherwise (#300 F7); colour rows (a colour
+ * SEQUENCE, e.g. "black yellow black") and every other row keep the plain
+ * space humanize() always used. */
+export function resolveSeamarkPopoverValue(
+  row: SeamarkPopoverRow,
+  t: SeamarkPopoverTranslate,
+): string {
+  const separator = row.labelKey === 'seamark.popover.category' ? ', ' : ' ';
+  return row.value
+    .map((token) => ('text' in token ? token.text : t(token.key, token.vars)))
+    .join(separator);
 }
 
 // Fallback for any raw OSM tag value with no entry in the translation maps

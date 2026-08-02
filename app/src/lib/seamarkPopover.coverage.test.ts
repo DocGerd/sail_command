@@ -23,7 +23,16 @@ describe('seamarkPopoverRows coverage over the shipped seamarks.json', () => {
   });
 
   it('translates every type/category/colour/lightColour value present in the shipped data — no fallback token', () => {
-    const untranslated: string[] = [];
+    // #300 F8: collected into a Set of DISTINCT VALUES, not one line per
+    // feature — 1794 features share only a few dozen distinct tag values, so
+    // a per-feature list drowns a real drift in duplicate lines (a dropped
+    // colour.grey entry alone produced 31 byte-identical lines under the
+    // old per-feature form) and vitest truncates long array diffs, hiding
+    // exactly the new values a reviewer needs to see. `feature.id` is
+    // dropped too: verified zero features in the shipped dataset carry one,
+    // so `(feature ${feature.id ?? '?'})` always rendered dead "(feature ?)"
+    // text and named nothing.
+    const untranslated = new Set<string>();
     for (const feature of seamarks.features) {
       const props = feature.properties;
       if (!props) continue;
@@ -35,12 +44,12 @@ describe('seamarkPopoverRows coverage over the shipped seamarks.json', () => {
         if (row.labelKey === 'seamark.popover.lightCharacter') continue;
         for (const token of row.value) {
           if ('text' in token) {
-            untranslated.push(`${row.labelKey}: "${token.text}" (feature ${feature.id ?? '?'})`);
+            untranslated.add(`${row.labelKey}: "${token.text}"`);
           }
         }
       }
     }
-    expect(untranslated).toEqual([]);
+    expect([...untranslated]).toEqual([]);
   });
 
   it('keeps every lightCharacter value verbatim (never routed through a translation key)', () => {

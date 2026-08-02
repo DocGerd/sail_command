@@ -220,7 +220,12 @@ export const en = {
   'seamark.value.category.firing_danger_area': 'Firing danger area',
   'seamark.value.category.foul_ground': 'Foul ground',
   'seamark.value.category.lanby': 'LANBY (large buoy)',
-  'seamark.value.category.leading': 'Leading line',
+  // #300 F6: "Leading mark" not "Leading line" — this tags the mark/beacon
+  // itself (renders under the "Category" label on beacons/buoys), and IALA/
+  // S-57 (CATSPM) distinguish the leading MARK (the structure, lit or
+  // unlit) from the leading LINE it forms; "Category: Leading line" on a
+  // beacon read as a category error.
+  'seamark.value.category.leading': 'Leading mark',
   'seamark.value.category.marine_farm': 'Marine farm',
   'seamark.value.category.mooring': 'Mooring',
   'seamark.value.category.no_entry': 'No entry',

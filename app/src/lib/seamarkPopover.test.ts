@@ -1,5 +1,23 @@
-import { describe, expect, it } from 'vitest';
-import { seamarkPopoverRows } from './seamarkPopover';
+import { describe, expect, it, vi } from 'vitest';
+import type { MsgKey } from '../i18n/dict.de';
+import {
+  resolveSeamarkPopoverValue,
+  seamarkPopoverRows,
+  type SeamarkPopoverRow,
+  type SeamarkPopoverTranslate,
+} from './seamarkPopover';
+
+// Stub `t`: looks a key up in a fixed table and substitutes {vars}, exactly
+// like the real useT() (i18n/index.tsx) but without importing app dicts —
+// lets these tests pin literal DE/EN strings independently of whatever the
+// real dict currently says (#300 F4).
+function stubT(entries: Partial<Record<MsgKey, string>>): SeamarkPopoverTranslate {
+  return (key, vars) => {
+    let msg = entries[key] ?? `MISSING:${key}`;
+    for (const [k, v] of Object.entries(vars ?? {})) msg = msg.replaceAll(`{${k}}`, String(v));
+    return msg;
+  };
+}
 
 describe('seamarkPopoverRows', () => {
   it('translates a known type as a dict key, even with nothing else tagged', () => {
@@ -93,5 +111,81 @@ describe('seamarkPopoverRows', () => {
   it('omits category/colour/light rows entirely when untagged', () => {
     const rows = seamarkPopoverRows({ seamarkType: 'light_major' });
     expect(rows).toHaveLength(1);
+  });
+});
+
+// #300 F4: the DataLayers.tsx line that turns row.value tokens into the
+// string a user actually reads was untested (DataLayers.test.tsx stubs
+// Popup.setDOMContent as a no-op, so no test ever built the popover DOM).
+// This is that exact join/translate logic, extracted into a t-injected pure
+// function and exercised directly — each expectation below is a literal
+// string pinned by hand, not derived from the implementation (#50).
+describe('resolveSeamarkPopoverValue', () => {
+  it('resolves a single-token row via the injected t (DE)', () => {
+    const t = stubT({ 'seamark.value.type.buoy_lateral': 'Lateraltonne' });
+    const row: SeamarkPopoverRow = {
+      labelKey: 'seamark.popover.type',
+      value: [{ key: 'seamark.value.type.buoy_lateral' }],
+    };
+    expect(resolveSeamarkPopoverValue(row, t)).toBe('Lateraltonne');
+  });
+
+  it('resolves the SAME row via the injected t (EN) — proves the join goes through t, not a hardcoded string', () => {
+    const t = stubT({ 'seamark.value.type.buoy_lateral': 'Lateral buoy' });
+    const row: SeamarkPopoverRow = {
+      labelKey: 'seamark.popover.type',
+      value: [{ key: 'seamark.value.type.buoy_lateral' }],
+    };
+    expect(resolveSeamarkPopoverValue(row, t)).toBe('Lateral buoy');
+  });
+
+  it('joins a compound CATEGORY row with ", " (#300 F7)', () => {
+    const t = stubT({
+      'seamark.value.category.no_entry': 'Sperrgebiet',
+      'seamark.value.category.foul_ground': 'unreiner Grund',
+    });
+    const row: SeamarkPopoverRow = {
+      labelKey: 'seamark.popover.category',
+      value: [
+        { key: 'seamark.value.category.no_entry' },
+        { key: 'seamark.value.category.foul_ground' },
+      ],
+    };
+    expect(resolveSeamarkPopoverValue(row, t)).toBe('Sperrgebiet, unreiner Grund');
+  });
+
+  it('joins a compound COLOUR row with a bare space, not a comma (#300 F7 — colours read as a sequence)', () => {
+    const t = stubT({
+      'seamark.value.colour.black': 'Schwarz',
+      'seamark.value.colour.yellow': 'Gelb',
+    });
+    const row: SeamarkPopoverRow = {
+      labelKey: 'seamark.popover.colour',
+      value: [
+        { key: 'seamark.value.colour.black' },
+        { key: 'seamark.value.colour.yellow' },
+        { key: 'seamark.value.colour.black' },
+      ],
+    };
+    expect(resolveSeamarkPopoverValue(row, t)).toBe('Schwarz Gelb Schwarz');
+  });
+
+  it('renders a lightCharacter token verbatim and never calls t for it', () => {
+    const t = vi.fn(stubT({}));
+    const row: SeamarkPopoverRow = {
+      labelKey: 'seamark.popover.lightCharacter',
+      value: [{ text: 'Q+LFl' }],
+    };
+    expect(resolveSeamarkPopoverValue(row, t)).toBe('Q+LFl');
+    expect(t).not.toHaveBeenCalled();
+  });
+
+  it('resolves a templated key with vars (lightPeriod)', () => {
+    const t = stubT({ 'seamark.popover.lightPeriodUnit': '{value} s' });
+    const row: SeamarkPopoverRow = {
+      labelKey: 'seamark.popover.lightPeriod',
+      value: [{ key: 'seamark.popover.lightPeriodUnit', vars: { value: '9' } }],
+    };
+    expect(resolveSeamarkPopoverValue(row, t)).toBe('9 s');
   });
 });

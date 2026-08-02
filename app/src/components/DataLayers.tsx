@@ -11,7 +11,7 @@ import {
   seamarkFeatureCollectionWithIcons,
 } from '../lib/seamarkGeoJson';
 import { registerSeamarkImages } from '../lib/seamarkGlyphs';
-import { seamarkPopoverRows } from '../lib/seamarkPopover';
+import { resolveSeamarkPopoverValue, seamarkPopoverRows } from '../lib/seamarkPopover';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
@@ -350,13 +350,9 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
         const line = document.createElement('div');
         const label = document.createElement('strong');
         label.textContent = `${t(row.labelKey)}: `;
-        // Each token is either a dict key (translated here — seamarkPopover.ts
-        // stays pure/DOM-free, #300) or verbatim text (lightCharacter's chart
-        // abbreviation, or an unrecognised tag's humanize() fallback).
-        const valueText = row.value
-          .map((tok) => ('text' in tok ? tok.text : t(tok.key, tok.vars)))
-          .join(' ');
-        line.append(label, document.createTextNode(valueText));
+        // resolveSeamarkPopoverValue is the join/translate logic under direct
+        // unit test with a stub t (#300 F4) — this call is a thin DOM wrapper.
+        line.append(label, document.createTextNode(resolveSeamarkPopoverValue(row, t)));
         container.append(line);
       }
       const disclaimer = document.createElement('p');

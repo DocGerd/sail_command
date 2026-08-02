@@ -206,26 +206,61 @@ export const de = {
   // sichert die Abdeckung ab. `seamark.popover.lightCharacter`-Werte (Fl, Oc, …)
   // bleiben bewusst unübersetzt, siehe seamarkPopover.ts.
   'seamark.value.type.beacon_cardinal': 'Kardinalbake',
-  'seamark.value.type.beacon_isolated_danger': 'Bake Einzelgefahr',
+  'seamark.value.type.beacon_isolated_danger': 'Einzelgefahrenbake',
   'seamark.value.type.beacon_lateral': 'Lateralbake',
   'seamark.value.type.beacon_special_purpose': 'Sonderbake',
   'seamark.value.type.buoy_cardinal': 'Kardinaltonne',
-  'seamark.value.type.buoy_isolated_danger': 'Tonne Einzelgefahr',
+  'seamark.value.type.buoy_isolated_danger': 'Einzelgefahrentonne',
   'seamark.value.type.buoy_lateral': 'Lateraltonne',
-  'seamark.value.type.buoy_safe_water': 'Fahrwassertonne',
+  // #300 F1: NOT "Fahrwassertonne" — that names any lateral fairway buoy, not
+  // the IALA safe-water class. "Mitte-Fahrwasser-Zeichen" = "Safe Water
+  // Marks" per the BSH/INT-1 chart-symbols legend (Karte 1 / INT 1), matching
+  // the Kardinaltonne/Lateraltonne naming pattern already used in this table.
+  'seamark.value.type.buoy_safe_water': 'Mitte-Fahrwasser-Tonne',
   'seamark.value.type.buoy_special_purpose': 'Sondertonne',
   'seamark.value.type.light_major': 'Hauptfeuer',
   'seamark.value.type.light_minor': 'Nebenfeuer',
   'seamark.value.category.anchorage': 'Ankerplatz',
   'seamark.value.category.cable': 'Kabel',
-  'seamark.value.category.clearing': 'Freizeichen',
+  // #300 F2: NOT "Freizeichen" — that is the telephone dial tone in modern
+  // German (Duden), not a nautical term at all. Provisional best-effort:
+  // "Deckpeilung" = "Clearing line" per the BSH/INT-1 legend (Karte 1 / INT
+  // 1), so "Deckpeilungszeichen" follows the SAME "-Zeichen" mark-class
+  // suffix the legend itself uses for Mitte-Fahrwasser-Zeichen/
+  // Einzelgefahr-Zeichen — but "Deckpeilungszeichen" as a whole is NOT
+  // independently attested (constructed from the confirmed root only).
+  // Flagged for maintainer confirmation, not authority-settled like F1/F3.
+  'seamark.value.category.clearing': 'Deckpeilungszeichen',
   'seamark.value.category.degaussing_range': 'Entmagnetisierungsstrecke',
   'seamark.value.category.east': 'Ost',
+  // #300 F5: UNRESOLVED — BSH's own site titles this "Schießgebiete", not
+  // "-gefahrenbereich"/"-gefahrengebiet" (neither this nor the review's
+  // suggested "Schießgefahrengebiet" was found in a BSH/INT-1 source); left
+  // unchanged pending maintainer confirmation.
   'seamark.value.category.firing_danger_area': 'Schießgefahrenbereich',
-  'seamark.value.category.foul_ground': 'Hindernisgrund',
+  // #300 F3: "unreiner Grund" per the BSH/INT-1 legend (Karte 1 / INT 1):
+  // "Unr.; Unrein; Unreiner Grund / Foul" — "Hindernisgrund" was an invented
+  // compound, not chart usage.
+  'seamark.value.category.foul_ground': 'unreiner Grund',
   'seamark.value.category.lanby': 'Großtonne (LANBY)',
-  'seamark.value.category.leading': 'Richtfeuerlinie',
-  'seamark.value.category.marine_farm': 'Meeresfarm',
+  // #300 F5: NOT "Richtfeuerlinie" — that wrongly conflates "Feuer" (implies
+  // LIT) with "-linie" (the navigational LINE, not the mark); 64 shipped
+  // features carry this category including unlit beacons. The BSH/INT-1
+  // legend confirms "Richtfeuer" = "Leading lights" (lit only) and
+  // "Richtlinie"/"Deckpeilung" = "Leading line"/"Clearing line" (the line,
+  // not the mark) — neither fits. "Richtbake" is attested as "leading mark"
+  // by an independent nautical dictionary (de-academic.com), which is
+  // lit-or-unlit-agnostic and matches what this category actually tags;
+  // medium confidence (secondary source, not the primary BSH legend).
+  'seamark.value.category.leading': 'Richtbake',
+  // #300 F5: German Wikipedia's own article for "marine farm" is titled
+  // "Marikultur" (de.wikipedia.org/wiki/Meeresfarm redirects there) — the
+  // established term, "Meeresfarm" is the lay/colloquial one.
+  'seamark.value.category.marine_farm': 'Marikultur',
+  // #300 F5: UNRESOLVED — no BSH/INT-1 source found either way; the
+  // review's "Muring" is plausible (common-usage sources use it as the
+  // ground-tackle noun) but not primary-source-confirmed. Left unchanged
+  // pending maintainer confirmation.
   'seamark.value.category.mooring': 'Muringplatz',
   'seamark.value.category.no_entry': 'Sperrgebiet',
   'seamark.value.category.north': 'Nord',
@@ -240,6 +275,10 @@ export const de = {
   'seamark.value.category.recreational': 'Freizeit',
   'seamark.value.category.south': 'Süd',
   'seamark.value.category.starboard': 'Steuerbord',
+  // #300 F5: UNRESOLVED — "Zielscheibe" is a dartboard/shooting-range target
+  // (the review's point stands), but no BSH/INT-1 source confirms
+  // "Zielzeichen" or any alternative either. Left unchanged pending
+  // maintainer confirmation.
   'seamark.value.category.target': 'Zielscheibe',
   'seamark.value.category.unknown_purpose': 'Unbekannter Zweck',
   'seamark.value.category.warning': 'Warnung',
