@@ -71,6 +71,12 @@ basemap). It downloads ~900 MB of source data into `pipeline/data-src/`
 (gitignored, cached — don't delete it casually). `verify_mask.py` must exit
 0 before committing a rebuilt mask. See `pipeline/README.md`.
 
+Python code in `pipeline/` is linted and formatted with ruff
+(`pipeline/pyproject.toml`); run `ruff check pipeline/` and `ruff format
+pipeline/` before committing. CI enforces this in
+`.github/workflows/python-lint.yml` (job `ruff`) — an optional check, not
+part of `protect-main`'s required `app` + `e2e`.
+
 ## Design spec
 
 `docs/superpowers/specs/2026-07-14-sail-command-design.md` is the source of

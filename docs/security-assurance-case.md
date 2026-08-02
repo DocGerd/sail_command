@@ -1,7 +1,7 @@
 # SailCommand security assurance case
 
-**Status:** current as of 2026-07-27, describing `develop` at the time of
-writing. Reviewed at each release cut.
+**Status:** current as of 2026-08-03, describing `develop` at the time of
+writing (`v0.7.0` cut). Reviewed at each release cut.
 **Audience:** users deciding whether to trust the app, and reviewers assessing
 the project (this document is the artifact for the OpenSSF Best Practices
 `assurance_case` criterion).
@@ -330,9 +330,8 @@ Listing these is part of the argument's honesty, not an aside.
 |---|---|---|
 | CSP meta form cannot express `frame-ancestors`/`report-uri` | No framing protection and no automated violation reporting | Accepted — [#223](https://github.com/DocGerd/sail_command/issues/223); static host, no framing threat model in play, no collector to report to |
 | `connect-src` restricts background requests only — top-level navigation, `window.open`, DNS-prefetch/preconnect, and WebRTC are unrestricted | A compromised bundle can still exfiltrate via a `location.href` redirect, a popup, prefetch/preconnect hints, or a WebRTC data channel (raises the impact of [T1](#t1--supply-chain-compromise-of-a-bundled-dependency)) | Accepted — [#223](https://github.com/DocGerd/sail_command/issues/223); CSP3's `navigate-to` directive was never shipped in browsers, and WebRTC has no `default-src` fallback to restrict it with |
-| Releases and tags unsigned | Downstream cannot verify authenticity ([T5](#t5--tampering-between-the-repository-and-the-users-browser)) | Open — [#222](https://github.com/DocGerd/sail_command/issues/222) |
-| Statement coverage unmeasured | The test suite is substantial and CI-gated, but no coverage figure is claimed because none is measured | Open — [#221](https://github.com/DocGerd/sail_command/issues/221) |
-| No Python linter or formatter for `pipeline/` | Build-time code only, never runs for users; still an unenforced-standards gap | Open — [#220](https://github.com/DocGerd/sail_command/issues/220) |
+| Releases and tags unsigned | Downstream cannot verify authenticity ([T5](#t5--tampering-between-the-repository-and-the-users-browser)) | Accepted, planned — [#222](https://github.com/DocGerd/sail_command/issues/222) shipped the verification docs and process (`SECURITY.md`, `CONTRIBUTING.md`); no tag through `v0.7.0` is signed, and signing itself starts at `v0.8.0` |
+| Statement coverage is measured but not enforced | A coverage regression would not fail CI; the figure is a snapshot, not a floor | Open — measured 93.92% statements ([#221](https://github.com/DocGerd/sail_command/issues/221)); no CI wiring or threshold is set yet |
 | Bus factor is 1 | No second person can review, merge, release, or respond to a report | Structural — [`GOVERNANCE.md`](../GOVERNANCE.md#continuity-and-succession) |
 | GitHub Pages CDN is trusted | A CDN compromise would serve modified bytes; no subresource integrity is possible for the entry document | Accepted — inherent to static hosting |
 | Local device compromise | Out of scope; see [T6](#t6--local-attacker-with-access-to-the-device) | Accepted, documented |
