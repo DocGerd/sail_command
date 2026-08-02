@@ -350,7 +350,13 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
         const line = document.createElement('div');
         const label = document.createElement('strong');
         label.textContent = `${t(row.labelKey)}: `;
-        line.append(label, document.createTextNode(row.value));
+        // Each token is either a dict key (translated here — seamarkPopover.ts
+        // stays pure/DOM-free, #300) or verbatim text (lightCharacter's chart
+        // abbreviation, or an unrecognised tag's humanize() fallback).
+        const valueText = row.value
+          .map((tok) => ('text' in tok ? tok.text : t(tok.key, tok.vars)))
+          .join(' ');
+        line.append(label, document.createTextNode(valueText));
         container.append(line);
       }
       const disclaimer = document.createElement('p');
