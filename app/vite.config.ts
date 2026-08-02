@@ -131,13 +131,27 @@ function cspMeta(): Plugin {
          - base-uri 'none', object-src 'none', form-action 'none' — the app
            has no <base>, no plugins/embeds, and no forms that submit
            anywhere. -->`;
+  const MARKER = '<meta charset="UTF-8" />';
   return {
     name: 'sailcommand:csp-meta',
     apply: 'build',
     transformIndexHtml(html) {
+      // #223 review m4: String.replace with a STRING pattern silently
+      // returns the input UNCHANGED when the pattern is absent — no throw,
+      // no warning. A routine edit to index.html (e.g. a formatter lowering
+      // `UTF-8` to `utf-8`, still valid HTML) would then ship a green build
+      // with ZERO CSP metas and no signal anywhere. This is a BLOCKING guard
+      // (an absent security control is the expensive failure direction), so
+      // it must fail closed — see the guard-asymmetry rule in CLAUDE.md.
+      if (!html.includes(MARKER)) {
+        throw new Error(
+          'sailcommand:csp-meta — charset marker not found in index.html; ' +
+            'the Content-Security-Policy <meta> would be silently omitted from the build',
+        );
+      }
       return html.replace(
-        '<meta charset="UTF-8" />',
-        `<meta charset="UTF-8" />\n    ${comment}\n    <meta\n      ` +
+        MARKER,
+        `${MARKER}\n    ${comment}\n    <meta\n      ` +
           `http-equiv="Content-Security-Policy"\n      content="${directives}"\n    />`,
       );
     },
