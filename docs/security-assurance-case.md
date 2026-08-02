@@ -108,9 +108,12 @@ ecosystems plus Dependabot security updates, CodeQL on every push and pull
 request, GitHub secret scanning with push protection, a committed third-party
 notices inventory whose drift fails CI, and human review of every dependency
 bump (nothing merges automatically).
-**Residual risk: real.** No CSP restricts where a compromised bundle could send
-data ([#223](https://github.com/DocGerd/sail_command/issues/223) — the single
-most valuable open mitigation for this threat), and dependency review is one
+**Residual risk: reduced, not eliminated.** A `<meta http-equiv>`
+Content-Security-Policy ([#223](https://github.com/DocGerd/sail_command/issues/223))
+now restricts `connect-src` to `'self'`, Open-Meteo, and aisstream.io — a
+compromised bundle cannot exfiltrate to an arbitrary origin. It does not stop
+exfiltration to those three already-allowed destinations (e.g. abusing the
+Open-Meteo connection as a covert channel), and dependency review is still one
 person reading a diff. Partially bounded by the app holding little worth
 stealing: no credentials except an optional AIS key the user supplies and can
 revoke.
@@ -301,7 +304,7 @@ place to occur, not that it was judged unlikely.
 | **A02 Cryptographic failures** | Countered | The project implements no cryptography. All transport is TLS (HTTPS to Open-Meteo and Pages, WSS to aisstream.io) with default certificate verification and no bypass anywhere in the code. No cleartext protocol is supported. The only credential is the user's own AIS key — never committed, replaceable at runtime with no rebuild |
 | **A03 Injection** (CWE-79 XSS, CWE-89 SQLi, CWE-611 XXE) | Countered | No SQL and no server-side interpreter. XSS: no `innerHTML` / `dangerouslySetInnerHTML` / `eval` / `new Function` anywhere; React escapes by default. XXE: `DOMParser` with `application/xml` does not resolve external entities. CodeQL's `js/xss-through-dom` alert on that parse is a **documented false positive** — its DOM-XSS sink model is mime-insensitive, while an `application/xml` parse is inert and the parser extracts only numeric coordinates and enumerated notices |
 | **A04 Insecure design** | Countered | This document is the design argument; see [§5](#5-secure-design-argument). Threats were considered against the architecture, and the largest control is architectural: no backend, no accounts, no central data |
-| **A05 Security misconfiguration** | **Partially countered** | Minimal workflow permissions, SHA-pinned actions, protected branches, secret scanning with push protection, no debug endpoints, static hosting. **But: the app ships no Content-Security-Policy and no referrer policy** ([#223](https://github.com/DocGerd/sail_command/issues/223)). GitHub Pages cannot set response headers, but a `<meta http-equiv>` CSP is available and currently unused. This is the clearest open weakness in the app |
+| **A05 Security misconfiguration** | Countered | Minimal workflow permissions, SHA-pinned actions, protected branches, secret scanning with push protection, no debug endpoints, static hosting. GitHub Pages cannot set response headers, so the app ships a `<meta http-equiv="Content-Security-Policy">` in `app/index.html` (`default-src 'self'`, a `connect-src` allowlist of `'self'` plus Open-Meteo and aisstream.io, `worker-src`/`img-src` widened only to `blob:` where maplibre-gl 6 demonstrably needs it, no `'unsafe-inline'`/`'unsafe-eval'`) plus `<meta name="referrer" content="strict-origin-when-cross-origin">` ([#223](https://github.com/DocGerd/sail_command/issues/223)). The meta form cannot express `frame-ancestors` or `report-uri` — accepted, static host with no framing threat model and no collector |
 | **A06 Vulnerable and outdated components** (CWE-1104) | Countered | Lockfiles for every ecosystem; Dependabot across five ecosystems weekly plus security updates; zero open Dependabot alerts at the time of writing; a committed third-party notices inventory whose drift fails CI; no vendored or forked convenience copies |
 | **A07 Identification and authentication failures** | N/A by architecture | There is no authentication. No accounts, no passwords, no sessions, no password reset, nothing to brute-force |
 | **A08 Software and data integrity failures** (CWE-502) | **Partially countered** | Reproducible double-build with byte-drift gating, SHA-pinned actions, protected branches, post-deploy smoke probe. No untrusted deserialization: IndexedDB uses structured clone of the app's own records, and a corrupt record is isolated to its own row rather than blanking the list. **But releases and tags are unsigned** ([#222](https://github.com/DocGerd/sail_command/issues/222)), so downstream verification is not possible |
@@ -319,7 +322,7 @@ Listing these is part of the argument's honesty, not an aside.
 
 | Gap | Impact | Status |
 |---|---|---|
-| No Content-Security-Policy or referrer policy | A compromised dependency faces no egress restriction (raises the impact of [T1](#t1--supply-chain-compromise-of-a-bundled-dependency)) | Open — [#223](https://github.com/DocGerd/sail_command/issues/223) |
+| CSP meta form cannot express `frame-ancestors`/`report-uri` | No framing protection and no automated violation reporting; both accepted for a static host with no framing threat model and no collector to report to | Closed — [#223](https://github.com/DocGerd/sail_command/issues/223) added the CSP and referrer policy this gap previously lacked entirely; the meta-tag limitation itself is a known, accepted residual, not an open item |
 | Releases and tags unsigned | Downstream cannot verify authenticity ([T5](#t5--tampering-between-the-repository-and-the-users-browser)) | Open — [#222](https://github.com/DocGerd/sail_command/issues/222) |
 | Statement coverage unmeasured | The test suite is substantial and CI-gated, but no coverage figure is claimed because none is measured | Open — [#221](https://github.com/DocGerd/sail_command/issues/221) |
 | No Python linter or formatter for `pipeline/` | Build-time code only, never runs for users; still an unenforced-standards gap | Open — [#220](https://github.com/DocGerd/sail_command/issues/220) |
