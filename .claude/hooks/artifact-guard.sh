@@ -52,10 +52,15 @@
 #     future pipeline output of that shape landing OUTSIDE the three known
 #     directories stays covered only because these patterns are still here.
 #
-# EVERY WAY THIS HOOK CAN PRODUCE NO EXPLICIT DECISION (PR #305 review, B2):
-# a blocking guard's silent-allow paths are the same defect class #274 was
-# filed over, one layer up from the `case` arms — enumerated so a future
-# change can be checked against the full list, not just the arms it touches:
+# KNOWN WAYS THIS HOOK CAN PRODUCE NO EXPLICIT DECISION (PR #305 review, B2,
+# retitled from "EVERY WAY" on the same PR's follow-up review — CLAUDE.md:
+# prefer "narrowed" to "closed" unless the measurement really covers the
+# whole space, and "EVERY WAY" is exactly the over-claim that licenses the
+# next regression, the same shape as round 1's M1). A blocking guard's
+# silent-allow paths are the same defect class #274 was filed over, one
+# layer up from the `case` arms — enumerated so a future change can be
+# checked against this list, understanding the list is what has been FOUND,
+# not a proof of completeness:
 #   1. Empty stdin (`printf '' | ...`)              -> ask (checked below,
 #      new: `jq -r '... // empty'` exits 0 on empty input, so without this
 #      check the `||` fallback chain never fires and the case matches
@@ -67,12 +72,37 @@
 #   3. `settings.json` cannot invoke this script at all (missing file, not
 #      executable, `CLAUDE_PROJECT_DIR` unset/wrong) -> this script never
 #      runs, so nothing here can catch it. Fixed at the CALL SITE instead:
-#      settings.json now checks `[ -x "$H" ]` before invoking and emits its
-#      own `ask` JSON if the script isn't there or isn't executable, rather
-#      than depending on this file to exist in order to fail safely.
-#   4. Well-formed input, `$f` matches no `case` arm (e.g. app/src/App.tsx)
-#      -> no output, tool proceeds. This IS the intended allow path, not a
-#      gap — it is what makes every other file in the repo editable.
+#      settings.json checks `[ -f "$H" ] && [ -x "$H" ]` before invoking
+#      (the `-f` matters: `-x` alone is also true for a DIRECTORY at that
+#      path — the search bit, not "is a runnable file" — so `exec` on a
+#      directory fails non-blocking-error 126 with no JSON at all; `-f`
+#      closes that and narrows the `-x`/`exec` TOCTOU window) and emits its
+#      own `ask` JSON if the check fails, rather than depending on this file
+#      to exist in order to fail safely.
+#   4. Well-formed JSON, `file_path` present and non-empty, but `$f` matches
+#      no `case` arm (e.g. app/src/App.tsx) -> no output, tool proceeds.
+#      This IS the intended allow path, not a gap — it is what makes every
+#      other file in the repo editable.
+#   5. Well-formed JSON but `file_path` absent or `null` -> ask (checked
+#      below). This is the SAME epistemic state as (1) — no path was ever
+#      extracted, as opposed to (4) where a real path is known and simply
+#      unguarded — so it gets the same answer, not #4's silent allow.
+#   6. The hook's own `timeout: 5` (settings.json) is hit -> no JSON is
+#      emitted and the tool proceeds; pre-existing, unchanged by this PR.
+#      This script runs in well under 100ms, so the margin is large, but a
+#      list of no-decision paths is incomplete without naming it.
+#
+# ORDERING CONSEQUENCE OF THE B1 ALLOW ARM (informational, not a bug): the
+# icon.svg allow arm is checked FIRST, which is required (B1) so that
+# `app/public/icons/icon.svg` itself isn't caught by the broader deny arm
+# below it. Because `case` stops at the first match, this also means any
+# path whose TAIL is literally `app/public/icons/icon.svg` allows, even if
+# it is nested somewhere the deny arm would otherwise catch (e.g. a
+# fabricated `app/public/data/app/public/icons/icon.svg`). Every realistic
+# lookalike denies correctly (`icon.svg.bak`, `evil-icon.svg`, `ICON.SVG`,
+# `../icons/icon.svg` all measured deny) — this needs a contrived nested
+# path to reach, and the arm order is load-bearing for B1, so it is not
+# being restructured to chase this.
 set -uo pipefail
 
 IN=$(cat)
@@ -88,6 +118,11 @@ f=$(printf '%s' "$IN" | jq -r '.tool_input.file_path // empty' 2>/dev/null) \
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"artifact/spec guard could not parse tool input (malformed JSON, or jq/python3 unavailable) - protection is inert; install jq."}}'
     exit 0
   }
+
+[ -n "$f" ] || {
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"artifact/spec guard could not extract a file path from the tool input - protection is inert."}}'
+  exit 0
+}
 
 case "$f" in
   *app/public/icons/icon.svg)

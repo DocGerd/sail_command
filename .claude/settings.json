@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/artifact-guard.sh\"; if [ -x \"$H\" ]; then exec \"$H\"; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"artifact/spec guard hook missing or not executable - protection is inert; check .claude/hooks/artifact-guard.sh exists and is executable.\"}}'; fi",
+            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/artifact-guard.sh\"; if [ -f \"$H\" ] && [ -x \"$H\" ]; then exec \"$H\"; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"artifact/spec guard hook missing, not a regular file, or not executable - protection is inert; check .claude/hooks/artifact-guard.sh exists and is executable.\"}}'; fi",
             "timeout": 5
           }
         ]
