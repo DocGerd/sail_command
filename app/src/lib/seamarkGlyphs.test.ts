@@ -125,7 +125,8 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   // must fail here (mirrors windBarbs.test.ts's literal-pinning rationale).
 
   // #298 — every literal below is hand-derived from IALA R1001 Ed 2.0 §2.2
-  // Tables 5-6 plus the §B/§C separation budget, NOT from the renderer:
+  // Tables 5-6 plus the S1/S2 separation rules stated below, NOT from the
+  // renderer (the full derivation is in the PR body):
   //   * a PORT-hand mark carries a single CAN, a STARBOARD-hand mark a single
   //     CONE point up. A single SPHERE is the SAFE-WATER topmark, so the ball
   //     this glyph used to draw was wrong symbology as well as illegible.
@@ -133,7 +134,9 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   //     not the shapes) and INVERTS for the preferred-channel categories: a
   //     `preferred_channel_port` mark is a modified STARBOARD-hand mark.
   //   * body {8,9,8,12}; topmarks 6 wide against an 8-wide body (width
-  //     contrast 2) and clearing it by 1.5 units of ink; near-white keyline
+  //     contrast 2), clearing it by 2 units between shapes — 2 of that
+  //     surviving as ink under the can, whose keyline is inset, and 1.5 under
+  //     the cone, whose keyline traces its outer edge; near-white keyline
   //     'f2f2f2' on both, as the compliant cardinal glyph already does.
   const LATERAL_BODY = (fill: string) =>
     [
@@ -226,9 +229,18 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     );
   });
 
-  // The topmark is keyed off `category`, never off `colour`: the committed
-  // pull labels 18 port marks black, 15 port and 9 starboard marks grey, and
-  // one PORT mark green — ~45 marks whose side a colour rule would get wrong.
+  // The topmark is keyed off `category`, never off `colour`. Measured over the
+  // committed pull, 51 laterals carry a colour contradicting their category
+  // (18 port marks tagged black, 15 port and 9 starboard grey, 4 starboard and
+  // 2 port untagged, 2 starboard white, and one PORT mark green) — every one
+  // of which a colour rule would put on the wrong side of the channel.
+  //
+  // Reach, stated honestly: only the 11 of those in the PILLAR bucket are
+  // actually corrected here (both grey — port 7, starboard 4), because pillar
+  // is the only bucket that draws a topmark at all. The other 40 are spars and
+  // one can, still carry no topmark, and still rest on colour (#307). The
+  // green-tagged PORT mark below is a pillar-shaped stand-in that pins the
+  // RULE; the real one in the data is a can and is not among the 11.
   it('derives the topmark from category, not colour (a green PORT mark still gets a can)', () => {
     const segs = seamarkSegments({
       seamarkType: 'buoy_lateral',
@@ -508,9 +520,12 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   });
 
   // R1001 §2.5: single X topmark, INK for the same reason as the safe-water
-  // sphere (yellow on a yellow body is no mark). Raised to y1..7 so the
-  // 1.5-wide stroke clears the body at y9 — its lower tips used to reach y10,
-  // one unit INTO the body.
+  // sphere (yellow on a yellow body is no mark). Raised to y1..7 so it clears
+  // the body at y9 — its lower tips used to reach y10, one unit INTO the body.
+  // The widest stroke on these points is the 3-wide keyline, and on a 45° line
+  // that extends (3/2)·sin45° ≈ 1.06 in y, so worst-case ink lands at y ≈ 8.06
+  // for a real clearance of ≈ 0.94 (see the note in specialPurposeSegments —
+  // this is the one place S1's point-based reading of 2 overstates the ink).
   it('special-purpose with no colour tag: single yellow-fallback band + keylined X topmark', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_special_purpose' });
     // A stroked glyph takes its keyline as a wider near-white UNDERLAY on the
@@ -534,7 +549,7 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   });
 
   // R1001 §2.3: black body with broad red band(s), topmark TWO black spheres
-  // "vertically disposed". Hand-derived from §C: r 2 at cy 3 and cy 8.5 gives
+  // "vertically disposed". Hand-derived: r 2 at cy 3 and cy 8.5 gives
   // 1.5 units between the spheres and 1.5 above a body that takes the
   // cardinal's y12 origin (a two-element topmark needs the cardinal's vertical
   // budget). Each sphere is ringed with the same near-white keyline the
@@ -615,15 +630,30 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
    * both rules green. Second instance of the degenerate-pass class already
    * fixed once below in S2, so it is spelled out rather than quietly patched.
    *
-   * Why the lowest band is ALWAYS the topmark/body boundary, for any topmark
-   * part count: a body is emitted by `bandSegments`, whose rects abut exactly
-   * (`box.y + i*bandH` with height `bandH`) and tile the box with no
-   * clearance, plus a `bodyOutline` inset 0.5 INSIDE it. So no body can
-   * contain an internal empty band, every internal band belongs to the
-   * topmark, and the lowest band is the boundary. The failure direction is
-   * also the safe one: were a future body ever to gain an internal gap, this
-   * rule would measure that SMALLER gap and fail, where the widest-band rule
-   * would have measured a larger one and passed.
+   * Why the lowest band is the topmark/body boundary for any topmark part
+   * count: a body is emitted by `bandSegments`, whose rects are placed at
+   * `box.y + i*bandH` with height `bandH` and so tile the box, plus a
+   * `bodyOutline` inset 0.5 INSIDE it. For every band count this app actually
+   * ships (1, 2 and 3 — the colour tags top out at three tokens) the seam
+   * arithmetic cancels to EXACTLY 0, so a body contains no internal empty
+   * band, every internal band belongs to the topmark, and the lowest band is
+   * the boundary.
+   *
+   * Narrowed, not universal, and the residual is named: that cancellation is
+   * floating-point, not algebraic — `(box.y + i*bandH) + bandH` and
+   * `box.y + (i+1)*bandH` are the same real number but not always the same
+   * double. At 5 bands it leaves ~3.55e-15 and at 7 bands ~1.78e-15. No
+   * shipped body reaches those counts, and if one ever did the crumb is
+   * smaller than any real gap, so `separation()` would report ≈0 and fail
+   * LOUDLY rather than pass.
+   *
+   * The failure direction is safe for that mechanism, but it is not
+   * unconditionally safe: a body with an internal gap of ≥1 WOULD mask a
+   * smaller topmark/body gap, exactly as the widest-band rule did. Nothing
+   * produces such a gap today — the only real mechanism produces 1e-15 — so
+   * this is a bounded residual rather than a closed case. Deliberately no
+   * epsilon: it would harden a case that cannot currently occur and add a
+   * magic constant to a rule whose whole value is being easy to check.
    */
   const separation = (props: SeamarkProperties) => {
     const extents = seamarkSegments(props)

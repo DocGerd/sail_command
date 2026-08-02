@@ -324,10 +324,14 @@ const LATERAL_TOPMARK: Record<string, 'can' | 'cone'> = {
  * single rounded-top box rather than a topmark above a body.
  *
  * The three separators are the ones the compliant cardinal glyph already uses:
- * a background GAP (1.5 units of ink clearance here vs. the cardinal's 1),
- * a WIDTH CONTRAST (topmark 6 vs. body 8 — the cardinal runs 8 vs. 10), and
- * the near-white KEYLINE. Equal width is what actually reads as "one shape",
- * so the contrast is not decoration.
+ * a background GAP (2 units between topmark and body here, against the
+ * cardinal's 1 — both measured between shape outlines, which is also what the
+ * S1 test measures; in rendered INK the keyline stroke costs 0.5 wherever it
+ * traces an outer edge, so the cone reads 1.5 and the cardinal 0.5, while the
+ * can keeps the full 2 because its keyline is inset), a WIDTH CONTRAST
+ * (topmark 6 vs. body 8 — the cardinal runs 8 vs. 10), and the near-white
+ * KEYLINE. Equal width is what actually reads as "one shape", so the contrast
+ * is not decoration.
  */
 const LATERAL_PILLAR_BODY: Box = { x: 8, y: 9, w: 8, h: 12 };
 const LATERAL_CAN_TOPMARK: Box = { x: 9, y: 2, w: 6, h: 5 };
@@ -467,9 +471,11 @@ function coneOutline(points: readonly Point2D[]): SeamarkSegment {
 }
 
 // The same keyline for a sphere topmark, stroked ON the circle just as
-// coneOutline strokes on a cone's edges. Needed wherever a black sphere sits
-// over a black body band or above another sphere (#298, isolated danger) —
-// without it, "two spheres, vertically disposed" renders as one lozenge.
+// coneOutline strokes on a cone's edges (#298). Two callers, two reasons:
+// isolated danger, where the spheres sit over a black body band and above one
+// another, so without it "two spheres, vertically disposed" renders as a
+// single lozenge; and safe water, where nothing merges but an INK sphere on
+// transparent canvas is otherwise unreadable against the dark-theme basemap.
 function sphereOutline(cx: number, cy: number, r: number): SeamarkSegment {
   return { kind: 'ring', cx, cy, r, stroke: OUTLINE, width: 1 };
 }
@@ -500,8 +506,9 @@ function cardinalSegments(props: SeamarkProperties): SeamarkSegment[] {
 // drawn in INK here instead, deliberately: the body is red/white VERTICALLY
 // striped, so a red sphere resting on it would recreate exactly the
 // same-colour merge #298 exists to close. Chart practice (INT-1) likewise
-// renders topmarks as black shapes whatever the mark's colour. The sphere sits
-// 2 units clear of the body — it used to be tangent to it (#298).
+// renders topmarks as black shapes whatever the mark's colour. The sphere now
+// sits 2 units clear of the body outline (1.5 in rendered ink, once its
+// keyline is counted) — it used to be tangent to it (#298).
 function safeWaterSegments(props: SeamarkProperties): SeamarkSegment[] {
   const tokens = colourTokens(props.colour);
   const bands = bandSegments(tokens.length > 0 ? tokens : ['red', 'white'], 'vertical', {
@@ -517,7 +524,20 @@ function safeWaterSegments(props: SeamarkProperties): SeamarkSegment[] {
 // yellow for the same reason as the safe-water sphere above (yellow on a
 // yellow body is no mark at all). Its lower tips used to reach y10 against a
 // body starting at y9 — an overlap, though a cross-colour one — and now clear
-// the body by 1.25 units allowing for the 1.5-wide stroke (#298).
+// it (#298).
+//
+// The clearance, re-derived after the keyline was added: these are 45° lines,
+// so a stroke of width w centred on the path extends w/2 PERPENDICULAR to it,
+// i.e. (w/2)·sin45° ≈ 0.354·w in y — NOT w/2 straight down. The widest stroke
+// on these points is the 3-wide keyline, putting worst-case ink at
+// y = 7 + 1.061 = 8.061 against a body at y9: clearance ≈ 0.94.
+//
+// That is under the 1-unit S1 rule, and it is the ONE place where S1 does not
+// bound what is actually rendered: `extentOf` measures a line by its POINTS
+// and never expands by stroke width, so S1 reads this gap as 2. The mark still
+// clears the body and there is no merge — but the honest number is 0.94, and
+// the limitation is recorded in the PR's blind-spot list rather than implied
+// away. Raising the X would restore a true ≥1 without touching S1's reading.
 //
 // Opening that gap is exactly why the X needs the keyline its INK siblings
 // already carry: on base its lower ~1 unit still overlapped the yellow body,
@@ -576,10 +596,12 @@ function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
  * INK fill, and the lower one came within 0.5 of a body whose top band is also
  * black — so the pair read as a single lozenge on a black box, losing the
  * "two spheres" that distinguish this mark from a safe-water one. Separated
- * here by 1.5 units sphere-to-sphere and sphere-to-body, plus the keylines the
- * cardinal glyph already uses for its black-on-dark-basemap problem. The body
- * takes the cardinal's y12 origin because a two-element topmark needs the same
- * vertical budget the cardinal's two cones do.
+ * here by 1.5 units both sphere-to-sphere and sphere-to-body, measured between
+ * the circles themselves; the keylines then take 0.5 of each back, leaving
+ * 0.5 and 1.0 of actual transparent canvas — which is the intent, since two
+ * white rings meeting still read as two spheres where two black fills do not.
+ * The body takes the cardinal's y12 origin because a two-element topmark needs
+ * the same vertical budget the cardinal's two cones do.
  */
 const ISOLATED_DANGER_BODY: Box = { x: 7, y: 12, w: 10, h: 11 };
 const ISOLATED_DANGER_SPHERE_R = 2;
