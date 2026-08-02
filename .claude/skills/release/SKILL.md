@@ -64,9 +64,17 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   describes the shipped build.
 - **`GOVERNANCE.md`** — it carries a standing release duty and is re-read at
   each cut; confirm roles and release mechanics still match reality.
+- **`docs/security-assurance-case.md`** — the OpenSSF Silver assurance
+  document; re-check it still describes the shipped security posture (#168).
 - **`CONTRIBUTING.md`** — the milestone list names the *next* release; roll it.
-- **Milestone** — close the shipped milestone BY HAND and move anything still
-  open in it to the next one.
+- **Milestone roll-forward** — per the convention already documented in
+  CONTRIBUTING.md ("Labels & milestones"): close the shipped milestone BY
+  HAND and move anything still open in it to the next one; the pending
+  `v0.(N+1).0` milestone's scope becomes the next `v0.N.0`; open a fresh
+  `v0.(N+2).0` for what comes after. `Backlog` and `Icebox` persist unchanged
+  across the cut. **Exception:** a PATCH release (`vX.Y.Z`, `Z > 0`) closes
+  only its own milestone and shifts nothing else — the pending `vX.(Y+1).0`
+  stays where it is.
 
 ⚠️ **`Closes #N` in a release PR does NOT close the issue.** GitHub auto-closes
 only on merge into the DEFAULT branch, which here is `develop`, not `main`
@@ -79,9 +87,9 @@ manually at the cut, or reference them from a develop-side PR instead.
 |---|---|---|
 | 3 | Open the RELEASE PR `develop` → `main` | Full CI (`app` + `e2e`) re-runs under the strict up-to-date policy of the `protect-main` ruleset. Merges as a **merge commit** — never squash/rebase. |
 | 4 | USER merges | Merges to `main` are classifier-gated — **the user runs `gh pr merge`, not the assistant.** Wait for green required checks (`app` + `e2e`) first. `gh pr checks --json` is unsupported here — poll `gh api repos/OWNER/REPO/commits/SHA/check-runs` instead. |
-| 5 | Tag + push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a semver tag (e.g. `v0.5.0`) and push it. **Assert the ref first — see 5a.** That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197). |
+| 5 | Tag + push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a semver tag (e.g. `v0.5.0`) and push it. **Assert the ref first — see 5a.** That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197) — **and** a `release.yml` run that cuts the GitHub Release object automatically (#175, see 5c). |
 | 5b | 🛑 **WAIT for the tag deploy, then verify** | **Do not push or merge anything to `develop` until this passes** — see the cancellation hazard below. |
-| 5c | Create the GitHub Release | Manual today (#175). Triggers no workflow, so it cannot collide with 5b's cancellation hazard — do it any time after 5b is green, alongside or just before step 6. See 5c below. |
+| 5c | 🛑 **Verify the GitHub Release exists** | Now automated (#175) — the tag push also triggers `release.yml`. A green 5b is not evidence this happened; see 5c below. |
 | 6 | BACK-MERGE `main` → `develop` | Open a `chore/backmerge` PR into `develop` so `develop` stays strictly ahead of `main`. Full CI re-runs. This is a develop-merge — the assistant may merge it directly. |
 
 ## 5a. Assert the ref BEFORE tagging — local `main` is routinely stale
@@ -106,12 +114,25 @@ git fetch origin main:main                  # ref update, no checkout needed
 [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || { echo "local main != origin/main"; exit 1; }
 [ "$(git rev-parse main)" = "$MERGE_SHA" ]  || { echo "main is not the release merge commit"; exit 1; }
 
-git tag "$TAG" main && git push origin "$TAG"
+git tag -a "$TAG" -m "$TAG" main && git push origin "$TAG"
 ```
 
 `git fetch origin main:main` updates the ref without a checkout; it REFUSES
 while `main` is the currently checked-out branch (it will not be here — the
 cut runs from `develop`).
+
+**Annotated, not lightweight (#222).** 7 of the 9 tags shipped to date are
+lightweight, and a lightweight tag is a bare ref — it cannot carry a
+signature at all, so annotated is the prerequisite for signing later.
+`-m "$TAG"` is required, not cosmetic: a bare `git tag -a` with no message
+opens `$EDITOR` and hangs a non-interactive/agent shell. This is
+**verified safe** against the About-dialog version string: `vite.config.ts`'s
+`appVersion()` calls `git describe --tags --always`, and `--tags` resolves
+lightweight and annotated tags identically, so switching tag *kind* changes
+nothing `git describe` reports. **Signing itself (`-s`) is NOT enabled yet**
+— planned starting at `v0.8.0` per #222's decision; do not add `-s` to the
+command above before then. See `SECURITY.md`'s "Verifying a release" section
+and `CONTRIBUTING.md`'s "Release tag signing" section for the full plan.
 
 ## 5b. The tag deploy must go GREEN before the back-merge (#197)
 
@@ -189,44 +210,67 @@ for the next develop push to do it:
 gh workflow run deploy.yml --ref main
 ```
 
-## 5c. Create the GitHub Release (manual, #175)
+## 5c. Verify the GitHub Release exists (#175)
 
-A git tag and a GitHub Release are different objects. The tag push in step 5
-triggers `deploy.yml` and ships to production — it does **not** create a
-Release. Production being live is not evidence the Release exists: the v0.6.0
-cut followed this runbook exactly and still shipped without one, caught only
-when the maintainer noticed it missing from the GitHub project page.
+**Why this step exists.** At the v0.6.0 cut every other signal was green —
+tag pushed, deploy `success`, About dialog showing the clean `v0.6.0`,
+production verified serving it — and still **no GitHub Release object was
+ever created**. Nobody noticed until the maintainer happened to check the
+project page; none of the other green signals was evidence a Release
+existed, because a git tag and a GitHub Release are different objects.
 
-Creating it is manual today — Refs #175 (Icebox) tracks automating tag →
-Release from `CHANGELOG.md`. This step triggers no workflow, so it cannot
-endanger 5b's cancellation hazard; do it any time after 5b is green.
+**The mechanism (as of this runbook).** The tag push in step 5 also triggers
+`.github/workflows/release.yml`, which extracts the matching
+`## [X.Y.Z]` section from `CHANGELOG.md` and runs:
 
-Notes come from the released `CHANGELOG.md` section for this version, read
-from the **tag**, not the working tree, so they match what actually shipped:
+```bash
+gh release create "$TAG" --notes-file <extracted-section> --latest --verify-tag
+```
+
+Both flags are load-bearing: without `--latest`, the **previous** version
+keeps the "Latest" badge — a silent wrong state, not an error — and
+`--verify-tag` aborts if the tag hasn't actually reached the remote yet
+(it does **not** check a cryptographic signature; unrelated to #222).
+The workflow declares no `concurrency:` group at all, so it cannot cancel or
+be cancelled by `deploy.yml`'s `pages` group (see 5b) — the two runs are
+fully independent.
+
+**Verify it actually ran** — a green workflow run is not proof either,
+per the same lesson as 5b:
+
+```bash
+gh release view "$TAG" --json tagName,isLatest,createdAt
+```
+
+Confirm the release exists **and** `isLatest` is `true`.
+
+The automated title is the bare tag (`--title "$TAG"`); existing releases mix
+bare tags (`v0.5.1`, `v0.4.0`) and themed titles (`v0.5.0 — chart orientation
+and scale`, `v0.6.0 — depth comfort and honest recommendations`) — retitle by
+hand afterward if a theme is wanted: `gh release edit "$TAG" --title '...'`.
+
+**Known bootstrap gap, and the manual fallback.** Exactly like `deploy.yml`
+(#197), a `push` on a tag resolves the workflow FILE from the **tag's own
+commit** — so `release.yml` only fires if that file is already present on
+`main` by the time the tag is pushed. The PR that adds `release.yml` (#175)
+must reach `main` (merge + back-merge, or be included in the same release
+PR) before its own tag can trigger it; a tag pushed earlier silently gets no
+automated Release, same failure class the step exists to close. If
+`gh release view` above comes back empty, create it by hand instead of
+treating the gap as done — read `CHANGELOG.md` from the **tag**, not the
+local working tree, so the notes match exactly what shipped even if the
+local checkout is on a different branch:
 
 ```bash
 TAG=vX.Y.Z
-git show "$TAG:CHANGELOG.md" | awk "/^## \[${TAG#v}\]/{p=1;print;next} /^## \[/{p=0} p" \
-  | tail -n +2 > /tmp/release-notes.md
-
-gh release create "$TAG" --repo "$REPO" \
-  --title "$TAG" \
-  --notes-file /tmp/release-notes.md \
-  --latest --verify-tag
+VERSION=${TAG#v}
+git show "$TAG:CHANGELOG.md" | awk -v ver="$VERSION" '
+  /^## \[/ { if (f) exit; if (index($0, "## [" ver "]") == 1) f = 1; next }
+  /^\[/    { if (f) exit }
+  f        { print }
+' > /tmp/release-notes.md
+gh release create "$TAG" --notes-file /tmp/release-notes.md --latest --verify-tag
 ```
-
-`--verify-tag` makes the command **fail** rather than silently create the tag
-itself if `$TAG` is missing from the remote. `--latest` is what moves the
-"Latest" badge to this release — without it the previous version keeps it.
-
-Title convention: existing releases mix bare tags (`v0.5.1`, `v0.4.0`) and
-themed titles (`v0.5.0 — chart orientation and scale`, `v0.6.0 — depth
-comfort and honest recommendations`) — feature releases have tended to carry
-a theme, but nothing mandates one; use judgement per cut.
-
-**Verify:** `gh release list --repo $REPO` shows `$TAG` marked `Latest`. A
-tag existing (5b passing) is not sufficient evidence — that only proves the
-deploy, not the Release object.
 
 ## Gotchas
 

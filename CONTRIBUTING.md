@@ -126,6 +126,39 @@ version), [`README.md`](README.md) (known limitations),
 [`GOVERNANCE.md`](GOVERNANCE.md), and
 [`docs/security-assurance-case.md`](docs/security-assurance-case.md).
 
+## Release tag signing (planned, starting `v0.8.0`)
+
+Release tags are not signed yet
+([#222](https://github.com/DocGerd/sail_command/issues/222)); `v0.7.0` and
+every earlier tag are unsigned by design. See
+[`SECURITY.md`](SECURITY.md#verifying-a-release) for the current state and
+the verification process once signing is live.
+
+**Do not enable `tag.gpgSign` globally before `v0.8.0`.** It makes every
+`git tag -a` — including the ones the release runbook
+(`.claude/skills/release/SKILL.md`) itself creates — silently signed. A
+first-ever signed tag hitting an unset signing key or a passphrase prompt
+would stall a release cut mid-flight (the tag push is the step that triggers
+the production deploy) rather than fail safely ahead of time.
+
+Once adopted, the maintainer's local git config will look like:
+
+```bash
+git config gpg.format ssh
+git config user.signingkey ~/.ssh/id_ed25519.pub   # or a dedicated signing-only key
+git config tag.gpgSign true
+```
+
+- `gpg.format ssh` — sign with an SSH key instead of GPG. GitHub verifies SSH
+  tag/commit signatures the same way it verifies GPG ones (the "Verified"
+  badge), and it needs no separate GPG toolchain.
+- `user.signingkey` — path to the *public* half of the signing key; git
+  shells out to `ssh-keygen` to produce the signature, and the private key
+  never leaves the local `ssh-agent`/keyring.
+- `tag.gpgSign true` — sign every annotated tag (`git tag -a`) by default, so
+  the release runbook's own `git tag -a "$TAG" -m "$TAG" main` is signed
+  without needing an explicit `-s` once this is turned on.
+
 ## Claude Code config placement
 
 Claude Code / agent configuration follows a four-scope convention (shared vs.

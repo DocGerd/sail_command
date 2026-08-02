@@ -60,7 +60,9 @@ arguments — is the
   decrypt it would sit in the same storage. It is yours, it never leaves your
   device except to aisstream.io, and you can revoke it there at any time.
 - **No signature verification of releases yet.** Release tags are currently
-  unsigned ([#222](https://github.com/DocGerd/sail_command/issues/222)).
+  unsigned ([#222](https://github.com/DocGerd/sail_command/issues/222)) — see
+  [Verifying a release](#verifying-a-release) below for the current state and
+  the planned process.
 - **No third-party availability guarantees.** Open-Meteo, aisstream.io, and
   GitHub Pages are outside the project's control.
 
@@ -71,6 +73,46 @@ bundled dependencies are explicitly in scope — see
 `app/public/THIRD-PARTY-NOTICES.txt` for the inventory. Reports that a route was
 inaccurate are a product-quality issue, not a vulnerability; please file those
 as a normal issue.
+
+## Verifying a release
+
+Release tags in this repository are **not cryptographically signed yet**
+(tracked in [#222](https://github.com/DocGerd/sail_command/issues/222)).
+`v0.1.0` through `v0.7.0` are ordinary tags with no signature to check —
+running `git verify-tag` or `git tag -v` against any of them will correctly
+report "no signature," not an error. This section is written down ahead of
+the feature itself: the OpenSSF Best Practices Silver `signed_releases`
+criterion requires the verification process to be *documented*, whether or
+not signing is active yet, so this is not deferred until signing lands.
+
+**Planned, starting at `v0.8.0`:** release tags will be signed with the
+maintainer's SSH signing key (`gpg.format = ssh` — GitHub's lowest-friction
+signing option, requiring no GPG toolchain). Once active:
+
+- The public key will be retrievable from the maintainer's GitHub account at
+  `https://github.com/DocGerd.keys` (GitHub publishes SSH signing keys there
+  the same way it does authentication keys), and/or committed to this
+  repository so verification does not depend on GitHub's availability.
+- Verify a tag locally with either of the equivalent commands:
+
+  ```bash
+  git verify-tag vX.Y.Z
+  # or
+  git tag -v vX.Y.Z
+  ```
+
+  Both require `gpg.ssh.allowedSignersFile` to be configured locally,
+  pointing at a file mapping the maintainer's identity to their public key
+  (see `git help gpg-sign`) — without it, git has no way to resolve *whose*
+  key produced the signature, even though the tag itself carries one.
+- GitHub's own "Verified" badge on the tag's commit and on the Release page
+  is a second, independent verification channel that needs no local
+  configuration.
+
+Signing will **not** be retroactive: existing tags are never re-signed or
+re-tagged. Moving an existing tag would break the deploy identity scheme this
+project relies on, which keys production bytes to `(main SHA, git-describe
+version)` — see `CLAUDE.md`.
 
 ## Reporting a vulnerability
 
