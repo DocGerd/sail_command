@@ -182,16 +182,26 @@
 #     residual this leaves — `find app/public -name '*.bin' -delete`, `tar
 #     -xf x.tar -C app/public`, `mv app/public /tmp/stash`, `find app -name
 #     mask.bin -delete` all silently allow — is recorded below, not hidden.
-#   - Two of the Edit|Write arm's three extension-only patterns ARE
-#     reproduced here as literal substrings (#309 fix-wave M1): `.pmtiles`
-#     and `.pmtiles.png`. Measured: neither collides with an ordinary
-#     English word or common shell token, so there is no over-fire cost to
-#     protecting them directly — and doing so closes a real gap M1 found: a
-#     GITIGNORED `app/dist/data/basemap.pmtiles.png` (Vite's default
-#     `outDir`, unset in `app/vite.config.ts` -> `app/dist`; `public/` is
-#     copied verbatim into it on every build) is covered by the Edit|Write
-#     arm's extension pattern but was covered by NOTHING on this arm before
-#     this fix.
+#   - One of the Edit|Write arm's three extension-only patterns IS
+#     reproduced here as a literal substring (#309 fix-wave M1): `.pmtiles`.
+#     Measured: it does not collide with an ordinary English word or common
+#     shell token, so there is no over-fire cost to protecting it directly —
+#     and doing so closes a real gap M1 found: a GITIGNORED
+#     `app/dist/data/basemap.pmtiles.png` (Vite's default `outDir`, unset in
+#     `app/vite.config.ts` -> `app/dist`; `public/` is copied verbatim into
+#     it on every build) is covered by the Edit|Write arm's extension
+#     pattern but was covered by NOTHING on this arm before this fix.
+#     `.pmtiles.png` is DELIBERATELY NOT a separate PROTECTED_PATHS entry
+#     (#309 fix-wave N2, correcting this bullet's own first cut, which
+#     listed both as independently load-bearing): `.pmtiles.png` is a
+#     STRICT SUPERSTRING of `.pmtiles` — any command containing the former
+#     necessarily contains the latter — so a second entry can never be the
+#     reason a command matches something `.pmtiles` alone would have
+#     missed. Measured by mutation: deleting only a `.pmtiles.png` entry
+#     from a two-entry array left `--selftest` fully green (0 rows red);
+#     deleting `.pmtiles` instead reds every row that depends on either
+#     extension. The single `.pmtiles` entry subsumes `.pmtiles.png` files
+#     for free.
 #   - `.bin` is the ONE extension-only pattern DELIBERATELY NOT reproduced as
 #     a bare substring, and this is the one place the two arms' extension
 #     coverage still diverges. It is 4 characters and collides with ordinary
@@ -212,6 +222,18 @@
 #     (re-verified here: exactly two tracked files match, both under
 #     `app/public/data/`); restate the qualifier wherever the claim is made,
 #     never drop it.
+#   - EVERY PROTECTED_PATHS ENTRY NEEDS A BOUNDING NEGATIVE ROW (#309 fix-wave
+#     N1): this arm's whole safety argument is "over-firing is cheap, so bias
+#     toward it", which only holds while over-firing stays BOUNDED - a
+#     must-not-fire selftest row is what proves a given entry is not so broad
+#     that it fires on ordinary commands. Found by mutation: the two entries
+#     added by the M1/M4 fixes (`docs/superpowers`, `.pmtiles`) were the only
+#     ones with no such row, and over-broadening either one by a single
+#     character (`docs/superpowers` -> `docs`, `.pmtiles` -> `.p`) left
+#     `--selftest` fully green, while the same treatment on every
+#     PRE-EXISTING entry reds 1-5 rows. Closed with two new negative rows
+#     (below) pinning a real command that names the ancestor/sibling
+#     WITHOUT naming the narrower, correct string.
 #   - PROTECTED_PATHS deliberately does NOT special-case
 #     app/public/icons/icon.svg the way the Edit|Write arm's B1 exception
 #     does — "no exemptions" applies uniformly on this arm, so a Bash command
@@ -278,7 +300,6 @@ PROTECTED_PATHS=(
   "app/public/THIRD-PARTY-NOTICES.txt"
   "docs/superpowers/specs"
   "docs/superpowers"
-  ".pmtiles.png"
   ".pmtiles"
 )
 
@@ -357,11 +378,25 @@ if [ "${1:-}" = "--selftest" ]; then
   check ask "M4: mv the docs/superpowers ancestor"      "mv docs/superpowers /tmp/stash"
   check ask "M4: find -delete under the ancestor"       "find docs/superpowers -name *.md -delete"
 
-  # --- POSITIVE (#309 fix-wave M1): .pmtiles/.pmtiles.png are now protected
-  # as bare substrings - no noise source found for either (contrast the .bin
-  # residual row below).
-  check ask "M1: .pmtiles extension"                    "cp /tmp/f app/dist/data/basemap.pmtiles"
-  check ask "M1: .pmtiles.png extension"                 "cp /tmp/f app/dist/data/basemap.pmtiles.png"
+  # --- NEGATIVE (#309 fix-wave N1): bounding row for the docs/superpowers
+  # ancestor entry - a real path OUTSIDE it that shares only the "docs/"
+  # prefix must not match. Without this row, over-broadening the entry to
+  # bare "docs" (a one-character typo) reds nothing; measured, see DESIGN.
+  check allow "N1 near-miss: docs outside superpowers" "cat docs/security-assurance-case.md"
+
+  # --- POSITIVE (#309 fix-wave M1): .pmtiles is now protected as a bare
+  # substring - no noise source found (contrast the .bin residual row
+  # below). .pmtiles.png files are covered too, via SUBSUMPTION, not a
+  # second entry (see DESIGN - N2) - this row exercises that subsumption,
+  # not an independent .pmtiles.png entry.
+  check ask "M1: .pmtiles extension"                              "cp /tmp/f app/dist/data/basemap.pmtiles"
+  check ask "M1: .pmtiles.png extension (via .pmtiles subsumption)" "cp /tmp/f app/dist/data/basemap.pmtiles.png"
+
+  # --- NEGATIVE (#309 fix-wave N1): bounding row for the .pmtiles entry - a
+  # real command using an unrelated ".py" extension must not match. Without
+  # this row, over-broadening the entry to bare ".p" reds nothing; measured,
+  # see DESIGN.
+  check allow "N1 near-miss: .py is not .pmtiles" "python3 pipeline/verify_mask.py"
 
   # --- RESIDUAL (documented, not fixed - see DESIGN and the "KNOWN
   # SILENT-ALLOW PATHS" list above): the .bin extension and the app/public
@@ -529,7 +564,7 @@ if [ "$tn" = "Bash" ]; then
   }
 
   if p=$(bash_hits_protected_path "$cmd"); then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions protected path '"$p"' (#309: app/public/{data,icons,brand}/ are committed pipeline outputs, THIRD-PARTY-NOTICES.txt/.pmtiles/.pmtiles.png are generated artifacts, docs/superpowers/ is the source-of-truth spec dir and its ancestor). This guard only checks whether the path STRING appears anywhere in the Bash command - no shell parsing, no read/write classification - so a read-only mention also asks; this is a deliberate, accepted over-fire (see header). Confirm intent before proceeding."}}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions protected path '"$p"' (#309: app/public/{data,icons,brand}/ are committed pipeline outputs, THIRD-PARTY-NOTICES.txt/.pmtiles (which also matches .pmtiles.png files) are generated artifacts, docs/superpowers/ is the source-of-truth spec dir and its ancestor). This guard only checks whether the path STRING appears anywhere in the Bash command - no shell parsing, no read/write classification - so a read-only mention also asks; this is a deliberate, accepted over-fire (see header). Confirm intent before proceeding."}}'
   fi
   exit 0
 fi
