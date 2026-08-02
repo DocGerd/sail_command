@@ -79,7 +79,7 @@ deviate from it.
   `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
   CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
   commit the regenerated file (#248's entire real diff was two version strings).
-- Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
+- Pipeline: `npm --prefix pipeline run polars|harbors|seamarks|mask|icons` (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
@@ -681,6 +681,32 @@ deviate from it.
   blindness rules above, one level earlier: before asking whether the
   measurement can see the failure, ask whether the thing it measures AGAINST
   is reachable at all. The tell was already in the log.
+- **Prose rots in FOUR distinct ways, and a sweep aimed at one misses the
+  others** (#298/#300, where 8 findings were prose-accuracy defects):
+  OVER-CLAIMING (a header saying "EVERY way this can fail" with three paths
+  missing); STALE (true when written — a `1.25` clearance figure after its
+  stroke widened 1.5→3); WRONG-FROM-THE-START (`29 category` where the table
+  always held 30 — a staleness sweep asks "did the code move under this?", NOT
+  "was this ever true?", so it structurally cannot find these); and SAME-PR
+  INVALIDATION (a statement reporting a derived measurement whose inputs live in
+  a DIFFERENT HUNK of the same diff — invisible to CI, which executes no prose,
+  and to hunk-by-hunk review, where each hunk is individually correct and only
+  the pair is wrong). **A sweep cannot see a class it is itself an instance
+  of**: the sweep ordered for staleness produced two fresh same-PR instances
+  (the CHANGELOG moved to 51 while its code-comment twin stayed at ~45). So the
+  remedy is NOT "sweep harder" — it is TWIN SEARCH (state each fact in two
+  artifacts — test↔source, comment↔CHANGELOG, comment↔PR body — and check they
+  agree; redundancy is a smell in code and a CORRECTNESS CHECK in prose, which
+  has no compiler, so the second copy is the only thing playing that role) plus
+  QUOTE THE METHOD, not only the result (`(w/2)·sin45°` survives a constant
+  change and can be run BACKWARDS to find a better fix; a bare number cannot).
+  A negative report — "I re-read everything and found nothing" — is
+  unfalsifiable from outside: spot-check 2–3 claims naming a NUMBER or COUNT,
+  which are the falsifiable ones. CHANGELOG prose gets the SAME evidentiary
+  standard as code, never a looser one: it is baked into the About dialog at
+  build time, so an overstated figure ships to users and freezes into a
+  versioned section at the next cut (a "~45 marks" claim overstated a fix's
+  reach by 4×).
 - Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
@@ -803,7 +829,30 @@ deviate from it.
   verifiable by capturing the REAL `registerSeamarkImages` output through a
   fake `map.addImage` on a dev-server scratch page (4× nearest-neighbor) —
   the #165 evidence technique; hand-derive expected geometry/colours from
-  R1001, never from the renderer's own output.
+  R1001, never from the renderer's own output. The glyphs themselves are fixed
+  hand-tuned constants (`ISOLATED_DANGER_SPHERE_CY` et al.) — there is NO
+  runtime band search; what enforces topmark/body clearance is the TEST helper
+  `separation()` in `seamarkGlyphs.test.ts`, and it takes the LOWEST empty
+  band, never the WIDEST (#298): for a multi-part topmark (isolated danger's
+  two spheres) the widest band can be INTERNAL to the topmark, so the check
+  passes while the topmark merges into the body. The lowest band is always the
+  topmark/body boundary because bodies cannot contain an internal gap —
+  `bandSegments` tiles the box with zero clearance and `bodyOutline` insets 0.5
+  INSIDE — and it also fails closed, where widest-band failed open.
+- **German seamark terminology: the REFERENT decides the word, not attestation
+  rank** (#300). Check the SHIPPED DATA first — `clearing`/`leading` occur only
+  on `beacon_special_purpose`, i.e. S-57 **CATSPM (a MARK)**, never CATNAV (a
+  line), so a line noun is definitionally wrong however well attested.
+  `Deckpeilung` is better attested than the shipped `Gefahrenpeilung` and was
+  rejected anyway: it names the transit METHOD shared by clearing AND leading,
+  so it cannot distinguish them. **TRAP — pin the EDITION, not the URL**: BSH's
+  INT-1 pairing `Deckpeilung / Clearing line` is genuine on p.1 of the ©2013
+  legend but ABSENT from the re-laid-out edition served at the same bsh.de URL
+  today, so a correct citation re-verifies as a fabrication (a researcher and a
+  reviewer contradicted each other over exactly this and neither had erred).
+  The popover renders Typ and Kategorie as SEPARATE ROWS, which is what lets a
+  bearing/area noun sit in the category row. Every disputed value carries its
+  considered-and-rejected alternatives in-code — read them before changing one.
 - Open-Meteo is called directly from the browser (CORS is open, no API key).
   There is deliberately **no backend** — do not introduce one.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
@@ -868,6 +917,17 @@ deviate from it.
   guard's two failure modes cost very different amounts, make OVER-firing the
   default and suppress only provably-safe shapes; a parser bug then yields
   noise, never silence.
+  **A liveness check must live OUTSIDE the thing whose liveness is in
+  question** — a script that cannot run cannot report that it cannot run. #274's
+  guard therefore tests `[ -f "$H" ] && [ -x "$H" ]` at the `settings.json` call
+  site and emits its own `ask`: `-x` ALONE is true for a DIRECTORY, whereupon
+  `exec` dies 126 emitting nothing, and a non-blocking hook error lets the write
+  proceed. That fail-open class relocated FOUR times inside one PR (deny list →
+  extraction → empty stdin → the liveness check itself) and not one instance was
+  found by reading — all four by constructing the failing input and running it.
+  A guard's deny list also fails open by construction: prefer directory-shaped
+  matching with explicit narrow exemptions, and never drop a "redundant" pattern
+  because of what today's tree happens to contain.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
