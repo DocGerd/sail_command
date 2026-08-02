@@ -222,46 +222,91 @@ export const de = {
   'seamark.value.type.light_minor': 'Nebenfeuer',
   'seamark.value.category.anchorage': 'Ankerplatz',
   'seamark.value.category.cable': 'Kabel',
-  // #300 F2: NOT "Freizeichen" — that is the telephone dial tone in modern
-  // German (Duden), not a nautical term at all. Provisional best-effort:
-  // "Deckpeilung" = "Clearing line" per the BSH/INT-1 legend (Karte 1 / INT
-  // 1), so "Deckpeilungszeichen" follows the SAME "-Zeichen" mark-class
-  // suffix the legend itself uses for Mitte-Fahrwasser-Zeichen/
-  // Einzelgefahr-Zeichen — but "Deckpeilungszeichen" as a whole is NOT
-  // independently attested (constructed from the confirmed root only).
-  // Flagged for maintainer confirmation, not authority-settled like F1/F3.
-  'seamark.value.category.clearing': 'Deckpeilungszeichen',
+  // #300 F2/F9: NOT "Freizeichen" (telephone dial tone, Duden) and NOT the
+  // invented compound "Deckpeilungszeichen" (F9 correctly called out that
+  // "Deckpeilungszeichen" was cited to a source that doesn't say that: the
+  // BSH legend pairs "Deckpeilung" with "Clearing line" as a two-column
+  // list, not a definition of a clearing MARK). "Deckpeilung" itself is a
+  // *method* — a transit/bearing technique, de.wikipedia:
+  // "Die Deckpeilung ist ein Verfahren zur Bestimmung des eigenen
+  // geografischen Standortes" — shared by leading AND clearing lines, so it
+  // is NOT a clearing-mark noun and must never be glossed as one. It is
+  // used here bare (not "Bake einer Deckpeilung"/"Zeichen einer
+  // Deckpeilung" — neither is attested, and the first duplicates the Typ
+  // row) because this row renders under a SEPARATE "Kategorie" line below
+  // "Typ": all 3 shipped `clearing` features are beacon_special_purpose, so
+  // the popover reads "Typ: Sonderbake" / "Kategorie: Deckpeilung" —
+  // correct because the category row is naming the LINE-FIXING SYMBOL this
+  // mark establishes, not making a type claim; stays correct even if a
+  // future pipeline run tags a buoy with this category.
+  //
+  // Citation, verbatim from the PDF TEXT LAYER (not a summarizing fetch):
+  // "Wichtige Zeichen und Abkürzungen für Klein- und Sportschifffahrtskarten
+  // aus Karte 1 / INT 1", © 2013 BSH, page 1, "Hydrographie / Hydrography"
+  // section — the legend runs in sequence: "Richtlinie" / "Leading line" /
+  // "Deckpeilung" / "Clearing line" / "Empfohlener Kurs" / "Recommended
+  // track". CRITICAL EDITION NOTE: the copy served at the bsh.de URL TODAY
+  // is a different, re-laid-out 4-page edition that does NOT contain
+  // "Deckpeilung" anywhere (verified by grepping the extracted text of all
+  // 4 pages) — its legend jumps "Richtlinie / Leading line" straight to
+  // "Empfohlener Kurs / Recommended track". A future re-check against the
+  // live URL will find this citation apparently missing; cite the 2013
+  // edition specifically, not "the BSH site". Working mirror used to
+  // extract this: https://www.segelschule-bensberg.de/pdf/Kartenzeichen1_Copy.pdf
+  //
+  // KNOWN FORM INCONSISTENCY (deliberate, not an oversight): `leading`
+  // below is a mark NOUN ("Richtbake"), but this entry is BSH's gloss for
+  // the LINE/method, not a mark noun — German has no attested clearing-mark
+  // noun to make the two forms uniform, and each is independently the
+  // best-attested option for what it tags. Do not "harmonise" them.
+  'seamark.value.category.clearing': 'Deckpeilung',
   'seamark.value.category.degaussing_range': 'Entmagnetisierungsstrecke',
   'seamark.value.category.east': 'Ost',
-  // #300 F5: UNRESOLVED — BSH's own site titles this "Schießgebiete", not
-  // "-gefahrenbereich"/"-gefahrengebiet" (neither this nor the review's
-  // suggested "Schießgefahrengebiet" was found in a BSH/INT-1 source); left
-  // unchanged pending maintainer confirmation.
-  'seamark.value.category.firing_danger_area': 'Schießgefahrenbereich',
+  // #300: verbatim BSH gloss, same citation as `clearing` above —
+  // "Wichtige Zeichen und Abkürzungen für Klein- und Sportschifffahrtskarten
+  // aus Karte 1 / INT 1", © 2013 BSH, page 1, "Hydrographie / Hydrography"
+  // section: "Militärisches Übungsgebiet / Firing danger area". Read from
+  // the PDF text layer, not a summarizing fetch. Supersedes the earlier
+  // "Schießgefahrenbereich"/"Schießgefahrengebiet" dispute — neither was
+  // ever BSH's actual term; this is.
+  'seamark.value.category.firing_danger_area': 'Militärisches Übungsgebiet',
   // #300 F3: "unreiner Grund" per the BSH/INT-1 legend (Karte 1 / INT 1):
   // "Unr.; Unrein; Unreiner Grund / Foul" — "Hindernisgrund" was an invented
   // compound, not chart usage.
   'seamark.value.category.foul_ground': 'unreiner Grund',
   'seamark.value.category.lanby': 'Großtonne (LANBY)',
-  // #300 F5: NOT "Richtfeuerlinie" — that wrongly conflates "Feuer" (implies
-  // LIT) with "-linie" (the navigational LINE, not the mark); 64 shipped
-  // features carry this category including unlit beacons. The BSH/INT-1
-  // legend confirms "Richtfeuer" = "Leading lights" (lit only) and
-  // "Richtlinie"/"Deckpeilung" = "Leading line"/"Clearing line" (the line,
-  // not the mark) — neither fits. "Richtbake" is attested as "leading mark"
-  // by an independent nautical dictionary (de-academic.com), which is
-  // lit-or-unlit-agnostic and matches what this category actually tags;
-  // medium confidence (secondary source, not the primary BSH legend).
+  // #300 F5/F10: NOT "Richtfeuerlinie" — that wrongly conflates "Feuer"
+  // (implies LIT) with "-linie" (the navigational LINE, not the mark). The
+  // BSH legend (see `clearing` above) confirms "Richtfeuer" = "Leading
+  // lights" (lit only) and "Richtlinie" = "Leading line" (the line, not the
+  // mark) — neither fits a mark that can be either. "Richtbake" is
+  // attested as "leading mark" by DWDS and de.wikipedia's "Bake
+  // (Seezeichen)" article (a pair of beacons whose extended connecting
+  // line indicates the course — exactly what `category=leading` tags),
+  // and is type-correct for all 64 shipped features (every one is a
+  // beacon_special_purpose). Honest sizing of the lit/unlit picture (F10
+  // corrected an earlier overclaim here): "Bake" conventionally denotes an
+  // UNLIT fixed mark, so "Richtbake" leans unlit in the same direction
+  // "Richtfeuer" leans lit — it is a defensible compromise, not a neutral
+  // term. Measured on the shipped data: 53 of the 64 `leading` features
+  // DO carry a lightCharacter (most are in fact lit) — "Richtfeuer" would
+  // only be wrong for the remaining 11, not for "unlit beacons" as a class.
+  // "Richtbake" is chosen because it is structurally correct for all 64
+  // (they are all beacons), where "Richtfeuer" would be wrong for those 11.
+  //
+  // KNOWN FORM INCONSISTENCY (see `clearing` above): this is a mark NOUN,
+  // while `clearing`'s "Deckpeilung" is BSH's gloss for a line/method —
+  // deliberate, not an oversight; German has no attested clearing-mark
+  // noun to make the two forms uniform.
   'seamark.value.category.leading': 'Richtbake',
   // #300 F5: German Wikipedia's own article for "marine farm" is titled
   // "Marikultur" (de.wikipedia.org/wiki/Meeresfarm redirects there) — the
   // established term, "Meeresfarm" is the lay/colloquial one.
   'seamark.value.category.marine_farm': 'Marikultur',
-  // #300 F5: UNRESOLVED — no BSH/INT-1 source found either way; the
-  // review's "Muring" is plausible (common-usage sources use it as the
-  // ground-tackle noun) but not primary-source-confirmed. Left unchanged
-  // pending maintainer confirmation.
-  'seamark.value.category.mooring': 'Muringplatz',
+  // #300 F5: maintainer decision — "Muring" (dropping "-platz", which named
+  // the place rather than the ground-tackle/mooring-buoy system the tag
+  // actually denotes).
+  'seamark.value.category.mooring': 'Muring',
   'seamark.value.category.no_entry': 'Sperrgebiet',
   'seamark.value.category.north': 'Nord',
   'seamark.value.category.notice': 'Hinweis',
@@ -275,11 +320,9 @@ export const de = {
   'seamark.value.category.recreational': 'Freizeit',
   'seamark.value.category.south': 'Süd',
   'seamark.value.category.starboard': 'Steuerbord',
-  // #300 F5: UNRESOLVED — "Zielscheibe" is a dartboard/shooting-range target
-  // (the review's point stands), but no BSH/INT-1 source confirms
-  // "Zielzeichen" or any alternative either. Left unchanged pending
-  // maintainer confirmation.
-  'seamark.value.category.target': 'Zielscheibe',
+  // #300 F5: maintainer decision — "Zieltonne" ("Zielscheibe" reads as a
+  // dartboard/shooting-range target, not a floating nautical mark).
+  'seamark.value.category.target': 'Zieltonne',
   'seamark.value.category.unknown_purpose': 'Unbekannter Zweck',
   'seamark.value.category.warning': 'Warnung',
   'seamark.value.category.wave_recorder': 'Wellenmessboje',
