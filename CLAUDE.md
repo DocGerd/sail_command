@@ -447,13 +447,13 @@ deviate from it.
   `script-src 'self'` outright — a blob-URL `new Worker` ran arbitrary code
   under the policy. `img-src` keeps `data:`/`blob:` legitimately (maplibre's
   `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
-  Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
+- Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
   loads them via `getArrayBuffer`/`fetch`
   (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`); `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
   Nothing in the suite yet asserts a label actually renders (#320).
-  `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
-  suite has: `annotations.spec.ts:169` asserts ZERO Open-Meteo requests,
+- `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
+  suite has: `annotations.spec.ts:167` asserts ZERO Open-Meteo requests,
   every planning spec uses `?windFixture=`, AIS is BYOK so opens no sockets,
   and jsdom enforces no CSP at all — so a directive wrong in either direction
   (too tight, blocking startup; too loose, degraded to unrestrictive) would
@@ -468,7 +468,7 @@ deviate from it.
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
   up-to-date policy), merged as a merge commit, then tagged on `main` with an
-  ANNOTATED tag (`git tag -a "$TAG" -m "$TAG" main`, release runbook §5 — `-m`
+  ANNOTATED tag (`git tag -a "$TAG" -m "$TAG" main`, release runbook §5a — `-m`
   is required, not cosmetic: a bare `git tag -a` with no message opens an
   editor and blocks an unattended cut) — still UNSIGNED; signing starts at
   v0.8.0 (#322). `main` is
@@ -695,8 +695,13 @@ deviate from it.
   rather than check names: the `develop`→`main` release PR carries develop's
   own tip as its head SHA (the last feature merge's push run sits on that
   commit alongside the PR's own); the back-merge PR carries `main`'s tip,
-  which is ALSO the tag commit (carrying main-push CI + tag Deploy + tag
-  Release, three runs on one SHA). Rule: enumerate `gh api
+  which is ALSO the tag commit — TEN runs on that one SHA at v0.7.0:
+  main-push CI + CodeQL + Python lint + Mask integrity + the CANCELLED
+  main-push Deploy, the tag's Deploy + Release, and the back-merge PR's OWN
+  CI + CodeQL + Labeler. `CI` and `CodeQL` each appear TWICE, and that
+  duplication IS the trap — two `CI` runs attach two sets of `app`/`e2e`
+  check-runs, exactly what a name-keyed poll cannot separate. Rule:
+  enumerate `gh api
   repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
   ID explicitly — never poll by check name alone.
 - A test fake that settles eases INSTANTLY makes interruption bugs
