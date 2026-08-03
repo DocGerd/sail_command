@@ -155,9 +155,17 @@
 # directory and a silent pass-through, and a first attempt at correcting it
 # UNDERSTATED it as merely a nicer diagnostic). The directory case is indeed
 # doubly defended and `-f` really is dispensable there. But an executable
-# FIFO (or a socket, or a device node with the `x` bit set) at the hook path
-# is a DIFFERENT failure shape: opening it for read blocks until a peer
-# opens the write end, which nothing here ever does. Measured: with `-f`
+# FIFO at the hook path is a DIFFERENT failure shape: opening it for read
+# blocks until a peer opens the write end, which nothing here ever does.
+# (A UNIX socket at the same path is NOT the same shape, however plausible
+# that sounds: a socket inode can't be `open()`ed via its path at all -
+# `ENXIO` - so `execve` on one fails FAST at rc=126, caught by B2 exactly
+# like a directory. Device nodes are the same in practice: the common ones
+# open instantly and refuse rc=126, and creating/chmod-ing an executable one
+# needs root. So sockets and device nodes are already covered by B2's
+# exit-status check; only a FIFO is the gap `-f` alone closes.)
+#
+# Measured: with `-f`
 # removed, `out=$("$H")` against such a FIFO HANGS (>8s, well past
 # settings.json's `timeout: 10`) - the child process never exits, so `rc=$?`
 # is never assigned AT ALL, not zero, not non-zero, just never reached. B2's
@@ -356,6 +364,12 @@ if [ "${1:-}" = "--selftest" ]; then
           chmod +x "$tmp/.claude/hooks/wind-fixture-guard.sh"
           ;;
       esac
+      # If you are mutation-testing this row by dropping `-f` (as n5's fix
+      # itself was verified), `timeout` kills the WRAPPER, not a child stuck
+      # inside `execve` on the FIFO - that child can outlive this function on
+      # a `-f`-dropped mutant. Harmless on the shipped code path (nothing
+      # blocks here, so there is no child to strand) and confined to whoever
+      # is deliberately mutation-testing, not the normal suite.
       out=$(CLAUDE_PROJECT_DIR="$tmp" timeout 5 bash -c "$_CALLSITE" 2>/dev/null </dev/null)
       rm -rf "$tmp"
       case "$out" in
