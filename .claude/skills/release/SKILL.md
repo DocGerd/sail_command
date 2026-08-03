@@ -14,7 +14,7 @@ Whatever merges to `main` goes live immediately, so this runbook is
 
 A cut therefore produces **two** deploy runs — the merge push, then the tag
 push. The tag run is the one that bakes the clean `vX.Y.Z` into the About
-dialog, so steps 5–5b below are load-bearing, not bookkeeping.
+dialog, so steps 5–5d below are load-bearing, not bookkeeping.
 
 ## 1. Precondition — `develop` is the release candidate
 
@@ -152,9 +152,10 @@ manually at the cut, or reference them from a develop-side PR instead.
 |---|---|---|
 | 3 | Open the RELEASE PR `develop` → `main` | Full CI (`app` + `e2e`) re-runs under the strict up-to-date policy of the `protect-main` ruleset. Merges as a **merge commit** — never squash/rebase. |
 | 4 | USER merges | Merges to `main` are classifier-gated — **the user runs `gh pr merge`, not the assistant.** Wait for green required checks (`app` + `e2e`) first. `gh pr checks --json` is unsupported here — poll `gh api repos/OWNER/REPO/commits/SHA/check-runs` instead. |
-| 5 | Tag + push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a semver tag (e.g. `v0.5.0`) and push it. **Assert the ref first — see 5a.** That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197) — **and** a `release.yml` run that cuts the GitHub Release object automatically (#175, see 5c). |
+| 5 | Tag, **verify the signature**, then push | After merge (which already triggered `deploy.yml` on the push to `main`), tag `main` with a **signed** semver tag (e.g. `v0.8.0`), run `git tag -v` and confirm it prints `Good "git" signature for <identity>` BEFORE pushing (a failure here means STOP, do not push), then push it. **Assert the ref first, and use the fail-closed `\|\|`-chained commands — see 5a.** That tag push triggers a SECOND deploy run — the one that bakes the clean `vX.Y.Z`, since `git describe` could not see the tag during the merge run (#197) — **and** a `release.yml` run that cuts the GitHub Release object automatically (#175, see 5c). |
 | 5b | 🛑 **WAIT for the tag deploy, then verify** | **Do not push or merge anything to `develop` until this passes** — see the cancellation hazard below. |
 | 5c | 🛑 **Verify the GitHub Release exists** | Now automated (#175) — the tag push also triggers `release.yml`. A green 5b is not evidence this happened; see 5c below. |
+| 5d | 🛑 **Verify GitHub shows the tag/Release as Verified** | The local `git tag -v` in step 5 proves the signature to this machine only — 5d checks the badge a third party actually sees. See 5d below. |
 | 6 | BACK-MERGE `main` → `develop` | Open a `chore/backmerge` PR into `develop` so `develop` stays strictly ahead of `main`. Full CI re-runs. This is a develop-merge — the assistant may merge it directly. |
 
 ## 5a. Assert the ref BEFORE tagging — local `main` is routinely stale
@@ -179,8 +180,8 @@ git fetch origin main:main                  # ref update, no checkout needed
 [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || { echo "local main != origin/main"; exit 1; }
 [ "$(git rev-parse main)" = "$MERGE_SHA" ]  || { echo "main is not the release merge commit"; exit 1; }
 
-git tag -s "$TAG" -m "$TAG" main
-git tag -v "$TAG"                           # MUST print a Good signature — see below
+git tag -s "$TAG" -m "$TAG" main            || { echo "tag creation failed"; exit 1; }
+git tag -v "$TAG"                           || { echo "SIGNATURE NOT GOOD — do not push"; exit 1; }
 git push origin "$TAG"
 ```
 
@@ -188,7 +189,7 @@ git push origin "$TAG"
 while `main` is the currently checked-out branch (it will not be here — the
 cut runs from `develop`).
 
-**Signed, starting `v0.8.0` (#322).** 7 of the 9 tags shipped before this
+**Signed, starting `v0.8.0` (#322).** 7 of the 10 tags shipped before this
 cut are lightweight, and a lightweight tag is a bare ref — it cannot carry a
 signature at all, which is why annotated (`-a`) was the prerequisite step
 (#222) before signed (`-s`) could follow. `-s` implies annotated, so this
@@ -200,17 +201,84 @@ describe --tags --always`, which resolves lightweight, annotated, and signed
 tags identically, so switching tag *kind* changes nothing `git describe`
 reports.
 
-**`git tag -v "$TAG"` BEFORE the push is the point of #322**: it proves the
-signature locally, on this machine, before the push triggers the production
-deploy — a bad or missing signing config should fail here, not mid-cut. It
-must print `Good "git" signature for <identity> with ED25519 key
-SHA256:...`; anything else (`error: no signature found`, `gpg.ssh: unable to
-find identity referenced by`, etc.) means STOP — do not push the tag — and
-fix the local `gpg.format ssh` / `user.signingkey` / `gpg.ssh.allowedSignersFile`
-config first (one-time setup: `CONTRIBUTING.md`'s "Release tag signing"
-section). See `SECURITY.md`'s "Verifying a release" section for the full
-verification story, including for third parties who don't have this
-machine's local config.
+**`git tag -v "$TAG"` BEFORE the push is the point of #322, and the block
+above chains all three commands with `||`-guarded early exits, not bare
+lines.** This is a BLOCKING guard (it exists to stop an unverified tag from
+reaching production), so per `CLAUDE.md`'s guard-asymmetry rule it must fail
+CLOSED: any failure in tag creation or verification must stop the sequence
+before `git push`, never fall through to it. The pre-#322 form
+(`git tag -a "$TAG" -m "$TAG" main && git push origin "$TAG"`) was already
+fail-closed via `&&` for the tag-creation half; the `||`-guarded lines above
+extend that same fail-closed property to the new verification step. It
+proves the signature locally, on this machine, before the push triggers the
+production deploy — a bad or missing signing config must fail here, not
+mid-cut, and must not silently reach the push line. `git tag -v` must print
+`Good "git" signature for <identity> with ED25519 key SHA256:...`; anything
+else (`error: no signature found`, `gpg.ssh: unable to find identity
+referenced by`, `No principal matched` after an otherwise-`Good` first line,
+etc.) is a non-zero exit that the `||` guard catches — do not push the tag —
+and fix the local `gpg.format ssh` / `user.signingkey` /
+`gpg.ssh.allowedSignersFile` config first (one-time setup: `CONTRIBUTING.md`'s
+"Release tag signing" section). See `SECURITY.md`'s "Verifying a release"
+section for the full verification story, including for third parties who
+don't have this machine's local config.
+
+**Constructed proof the chain is fail-closed** — three cases, run verbatim
+(push line replaced with a `>>>` marker so nothing was actually pushed; every
+throwaway tag was deleted afterward):
+
+Case 1 — a real unsigned tag already in this repo (the exact failure the
+pre-fix chain let through):
+
+```
+$ TAG=v0.5.0
+$ git tag -v "$TAG"                           || { echo "SIGNATURE NOT GOOD — do not push"; exit 1; }
+$ echo ">>> REACHED THE PUSH LINE (would run: git push origin $TAG)"
+error: no signature found
+SIGNATURE NOT GOOD — do not push
+script exit: 1
+```
+
+(`>>> REACHED THE PUSH LINE` never printed — `exit 1` inside the `||` block
+stopped the script before it.)
+
+Case 2 — a validly signed tag verified against a BROKEN
+`gpg.ssh.allowedSignersFile` (the eyeball trap: the first line still reads
+`Good "git" signature`, and only `No principal matched` a few lines later
+says it failed):
+
+```
+$ TAG=zzz-b1-blocker-test
+$ git tag -s "$TAG" -m "$TAG" main            || { echo "tag creation failed"; exit 1; }
+$ git -c gpg.ssh.allowedSignersFile=/nonexistent/path tag -v "$TAG" || { echo "SIGNATURE NOT GOOD — do not push"; exit 1; }
+$ echo ">>> REACHED THE PUSH LINE (would run: git push origin $TAG)"
+Good "git" signature with ED25519 key SHA256:TIoKycz7HSEZF70gp+bJA6dLxK4dhUYWbSkRX+nN8ts
+Unable to open allowed keys file "/nonexistent/path": No such file or directory
+sig_find_principals: sshsig_find_principal: No such file or directory
+No principal matched.
+SIGNATURE NOT GOOD — do not push
+script exit: 1
+```
+
+(again, `>>> REACHED THE PUSH LINE` never printed — the exit-code gate, not
+the eyeball, is what caught this one.)
+
+Case 3 — a validly signed tag verified against the correct local config (the
+happy path, confirming the fix doesn't block a good signature):
+
+```
+$ TAG=zzz-b1-success-test
+$ git tag -s "$TAG" -m "$TAG" main            || { echo "tag creation failed"; exit 1; }
+$ git tag -v "$TAG"                           || { echo "SIGNATURE NOT GOOD — do not push"; exit 1; }
+$ echo ">>> REACHED THE PUSH LINE (would run: git push origin $TAG)"
+Good "git" signature for live@docgerdsoft.de with ED25519 key SHA256:TIoKycz7HSEZF70gp+bJA6dLxK4dhUYWbSkRX+nN8ts
+>>> REACHED THE PUSH LINE (would run: git push origin zzz-b1-success-test)
+script exit: 0
+```
+
+Exit codes observed: **1, 1, 0** — the two failure shapes both stop before
+the push line and both exit non-zero; the success shape reaches it and exits
+zero. That is the fail-closed property, demonstrated rather than read.
 
 ## 5b. The tag deploy must go GREEN before the back-merge (#197)
 
@@ -373,21 +441,27 @@ gh release create "$TAG" --repo "$REPO" --notes-file /tmp/release-notes.md --lat
 
 ## 5d. Verify GitHub shows the tag/release as Verified (#322)
 
-`git tag -v` in step 5a proves the signature to THIS machine, using its own
+`git tag -v` in step 5 (the fail-closed chain in §5a) proves the signature to THIS machine, using its own
 local `gpg.ssh.allowedSignersFile`. It does not prove anything to a third
 party browsing GitHub — that is what the green **Verified** badge is for,
 and it depends on a *separate* piece of state: the public key registered at
 GitHub's SSH **signing**-key endpoint (`github.com/settings/ssh/new`, key
-type "Signing Key"). Check both:
+type "Signing Key"). The maintainer's key is registered there as of this
+writing, so this is a genuine pass/fail check, not a likely-benign warning —
+confirm both:
 
 - The tag's commit page (`github.com/DocGerd/sail_command/commit/<sha>` or
   the tag view) shows **Verified** next to the commit.
 - The Release page (created in 5c) shows **Verified** next to its tag.
 
-**If GitHub shows Unverified but `git tag -v` was Good**, don't read that as
-a bad signature — the tag IS cryptographically signed; GitHub just doesn't
-have the public key to check it against yet. The likely cause is the key
-being registered only in the *authentication*-key registry
+If either does not show Verified, treat it as a real failure and investigate
+before proceeding — do not wave it through as expected.
+
+**If GitHub ever shows Unverified while `git tag -v` was Good** (e.g. after a
+key rotation, or for a successor's own key before they've registered it),
+don't read that as a bad signature — the tag IS cryptographically signed;
+GitHub just doesn't have the public key to check it against yet. The likely
+cause is the key being registered only in the *authentication*-key registry
 (`github.com/<user>.keys`) and not the separate *signing*-key one, or not
 registered at all — see `SECURITY.md`'s "Verifying a release" section for
 why the two registries are distinct. Fix the registration, not the signing

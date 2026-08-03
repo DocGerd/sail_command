@@ -177,9 +177,16 @@ git config user.signingkey ~/.ssh/id_ed25519.pub   # path to the PUBLIC half onl
 
 - **`gpg.format ssh`** — sign with an SSH key instead of GPG. Git shells out
   to `ssh-keygen` to produce the signature; the private key never leaves the
-  local `ssh-agent`/keyring, and no passphrase prompt means unattended
-  signing during a release cut works, same as any other SSH operation this
-  key already does.
+  local `ssh-agent`/keyring. **Requirement, not just an observation about the
+  current key**: whichever key is used here must be usable WITHOUT an
+  interactive passphrase prompt during the release cut — no passphrase, or
+  already loaded into `ssh-agent` for the session. The maintainer's existing
+  `~/.ssh/id_ed25519` happens to have no passphrase, which is why this works
+  unattended today, but that is a property of that specific key, not of this
+  setup in general — a successor's own passphrase-protected key would prompt
+  on `git tag -s` and stall the runbook's fail-closed chain (§5a) at exactly
+  the step that triggers the production deploy. Load it into `ssh-agent`
+  first if it has one.
 - **`user.signingkey`** — path to the **public** half of the signing key.
   Reusing an existing authentication key (`~/.ssh/id_ed25519.pub`) is fine —
   SSH signing and SSH authentication are different *uses* of the same

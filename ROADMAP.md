@@ -63,8 +63,12 @@ Remaining:
   ([#222](https://github.com/DocGerd/sail_command/issues/222), closed), and
   the signing mechanism itself has now also landed
   ([#322](https://github.com/DocGerd/sail_command/issues/322), closed — see
-  "Now" above). The `signed_releases` criterion is fully met once the
-  `v0.8.0` tag actually ships as the first signed release.
+  "Now" above), including a registered public signing key. The
+  `signed_releases` criterion is a conjunction (signing **and** a documented
+  key-obtaining process — see `SECURITY.md`); the second conjunct is already
+  true today, and the criterion is fully met once the `v0.8.0` tag actually
+  ships as the first signed release — both conjuncts together, not the tag
+  alone.
 - Tracking the remaining self-resolving OpenSSF Scorecard findings
   ([#72](https://github.com/DocGerd/sail_command/issues/72)).
 
