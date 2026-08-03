@@ -141,16 +141,34 @@
 # half matters - this liveness gate fires FIRST, with the specific "hook
 # missing, not a regular file, or not executable" reason. Measured: even with
 # the `-f` test removed (leaving only `-x`, which IS true for a directory),
-# the call site STILL asks - via a SECOND, independent mechanism, B2's
-# exit-status check below. There is no `exec` left in the call site to "die
-# with 126": `out=$("$H")` on a directory path is a plain command
-# substitution, and bash itself refuses to run a directory as a command
-# (`<path>: Is a directory`, exit 126) regardless; `[ "$rc" -ne 0 ]` catches
-# that non-zero exit and asks with ITS OWN reason ("guard exited non-zero"),
-# not the liveness one. So the directory case is doubly defended post-B2 -
-# the `-f`/`-x` gate is no longer the only thing standing between a
-# directory and a silent pass-through, though it still gives the more
-# specific, pre-execution diagnostic.
+# the call site STILL asks for a DIRECTORY - via a SECOND, independent
+# mechanism, B2's exit-status check below. There is no `exec` left in the
+# call site to "die with 126": `out=$("$H")` on a directory path is a plain
+# command substitution, and bash itself refuses to run a directory as a
+# command (`<path>: Is a directory`, exit 126) regardless; `[ "$rc" -ne 0 ]`
+# catches that non-zero exit and asks with ITS OWN reason ("guard exited
+# non-zero"), not the liveness one.
+#
+# `-f` IS STILL LOAD-BEARING, JUST NOT FOR THE REASON ORIGINALLY WRITTEN HERE
+# (PR #333 review round 3, n5 - this sentence has now been wrong in BOTH
+# directions: round 2 OVERSTATED it as the only thing standing between a
+# directory and a silent pass-through, and a first attempt at correcting it
+# UNDERSTATED it as merely a nicer diagnostic). The directory case is indeed
+# doubly defended and `-f` really is dispensable there. But an executable
+# FIFO (or a socket, or a device node with the `x` bit set) at the hook path
+# is a DIFFERENT failure shape: opening it for read blocks until a peer
+# opens the write end, which nothing here ever does. Measured: with `-f`
+# removed, `out=$("$H")` against such a FIFO HANGS (>8s, well past
+# settings.json's `timeout: 10`) - the child process never exits, so `rc=$?`
+# is never assigned AT ALL, not zero, not non-zero, just never reached. B2's
+# `[ "$rc" -ne 0 ]` check is therefore structurally blind to this shape -
+# there is no exit status for it to inspect - and the hang blows the hook's
+# own timeout, emitting nothing, silently allowing the write. `-f` is what
+# prevents this: it excludes anything that is not a regular file BEFORE
+# `-x`/`out=$("$H")` ever run, so a FIFO is denied at the same liveness gate
+# as a directory, never reaching the code path that would hang. Pinned by
+# the "FIFO at hook path" selftest row below, hard-`timeout`-guarded so a
+# regression here fails fast instead of stalling the whole suite.
 #
 # B2 (PR #333 review): `[ -f "$H" ] && [ -x "$H" ]` covers REACHABILITY
 # (missing, non-executable, directory) but `exec "$H"` REPLACES the calling
@@ -324,8 +342,21 @@ if [ "${1:-}" = "--selftest" ]; then
           printf '#!/usr/bin/env bash\nthis is not valid bash(((\n' > "$tmp/.claude/hooks/wind-fixture-guard.sh"
           chmod +x "$tmp/.claude/hooks/wind-fixture-guard.sh"
           ;;
+        fifo)
+          # n5 (PR #333 review round 3): an executable FIFO is the shape B2's
+          # exit-status check CANNOT catch even in principle - opening it for
+          # read blocks forever (nothing ever opens the write end), so the
+          # child never exits and `rc=$?` is never assigned. This row pins
+          # `-f`'s OWN protection (denying anything that isn't a regular file
+          # before `-x`/`out=$("$H")` ever run) - hence the external
+          # `timeout` below: if a future edit ever removes `-f`, this row
+          # must fail FAST, not hang the whole suite for however long CI
+          # allows.
+          mkfifo "$tmp/.claude/hooks/wind-fixture-guard.sh"
+          chmod +x "$tmp/.claude/hooks/wind-fixture-guard.sh"
+          ;;
       esac
-      out=$(CLAUDE_PROJECT_DIR="$tmp" bash -c "$_CALLSITE" 2>/dev/null </dev/null)
+      out=$(CLAUDE_PROJECT_DIR="$tmp" timeout 5 bash -c "$_CALLSITE" 2>/dev/null </dev/null)
       rm -rf "$tmp"
       case "$out" in
         *'"permissionDecision":"ask"'*) : ;;
@@ -336,6 +367,7 @@ if [ "${1:-}" = "--selftest" ]; then
     _liveness_check "non-executable hook file"     nonexec
     _liveness_check "directory at hook path"       directory
     _liveness_check "reachable but internally broken (B2)" broken
+    _liveness_check "FIFO at hook path (n5 - must ask, not hang)" fifo
   fi
 
   # ---- Fail-closed input handling (B1) + git-query gate (M1), end to end -
