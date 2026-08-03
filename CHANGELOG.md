@@ -17,8 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signature (`verified: false, reason: "no_user"`) even though the signature
   itself is cryptographically good (`git tag -v` reports `Good` signature).
   This is an attribution gap, not a signature problem, and it is permanent
-  for the v0.8.0 tag specifically — re-tagging was considered and rejected
-  (it would change production bytes at an unchanged `main` SHA). The
+  for the v0.8.0 tag specifically — re-tagging was considered and rejected:
+  release tags are treated as immutable (the deploy pipeline's `(main SHA,
+  git-describe version)` identity and its `prod-dist-v2-<sha>-<version>`
+  cache key both assume it), so the fix is forward-only, not a retag. The
   maintainer's signing identity is now fixed going forward via a repo-local
   `git config user.email`; the badge is expected to show correctly from this
   release onward. `git tag -v` / `git verify-tag` verification was, and
@@ -39,11 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signing), independently verifiable with `git tag -v`/`git verify-tag`. The
   v0.8.0 tag itself does not show GitHub's "Verified" badge — it was signed
   under an identity not registered on the maintainer's GitHub account, so
-  GitHub cannot attribute the signature; see the v0.8.1 entry above. The
-  badge applies from v0.8.1 onward. A signed tag attests that the tagged
-  commit is authentic; it does not, on its own, prove the bytes your browser
-  downloads match it — see SECURITY.md for the full picture. Tags through
-  v0.7.0 remain permanently unsigned — signing is not retroactive (#322).
+  GitHub cannot attribute the signature; see the v0.8.1 entry above for the
+  cause and current status. A signed tag attests that the tagged commit is
+  authentic; it does not, on its own, prove the bytes your browser downloads
+  match it — see SECURITY.md for the full picture. Tags through v0.7.0
+  remain permanently unsigned — signing is not retroactive (#322).
 
 ## [0.7.0] - 2026-08-03
 

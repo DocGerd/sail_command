@@ -18,18 +18,21 @@ shipped.
 
 ## Now — v0.9.0
 
-The next feature release. Its **product** scope is not yet decided, and
-unlike the last few cuts this paragraph cannot yet link a milestone: rolling
-the `v0.8.0` milestone forward into `v0.9.0` is a maintainer action performed
-by hand after this release cut, not a step this docs sweep takes itself.
-Scope will be drawn from the themes below as work is triaged into it, the
-same way v0.8.0's was. Two narrow follow-ups on this cut's own
-coverage-timeout work are already filed and waiting for that triage —
-[#357](https://github.com/DocGerd/sail_command/issues/357) (assert the
-timeout budget against measured suite wall time, not just the heaviest
+The next feature release, tracked by the
+[`v0.9.0` milestone](https://github.com/DocGerd/sail_command/milestones) —
+rolled forward by hand at the v0.8.0 cut (2026-08-03), per this repo's
+per-release milestone convention (see `CONTRIBUTING.md`). Its **product**
+scope is not yet decided; scope will be drawn from the themes below as work
+is triaged into it, the same way v0.8.0's was. Two narrow follow-ups on that
+cut's own coverage-timeout work are already filed and waiting for that
+triage — [#357](https://github.com/DocGerd/sail_command/issues/357) (assert
+the timeout budget against measured suite wall time, not just the heaviest
 per-test budget) and
 [#359](https://github.com/DocGerd/sail_command/issues/359) (restore the
-job-cap coupling check with a real YAML parse).
+job-cap coupling check with a real YAML parse). A `v0.8.1` patch release
+(documentation-only — correcting an overstated CHANGELOG claim from v0.8.0)
+is in flight alongside this and carries no milestone of its own, per this
+repo's patch-milestone exception: it doesn't move anything above.
 
 ## Themes for the next year
 

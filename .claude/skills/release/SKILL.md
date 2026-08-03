@@ -175,14 +175,17 @@ Fetch, then assert both equalities before the tag command:
 REPO=DocGerd/sail_command
 TAG=vX.Y.Z
 MERGE_SHA=<the release PR's merge commit>   # gh api repos/$REPO/pulls/N --jq .merge_commit_sha
+SIGNING_EMAIL=13460098+DocGerd@users.noreply.github.com   # the noreply identity; see CONTRIBUTING.md "Tagger identity"
 
 git fetch origin main:main                  # ref update, no checkout needed
 [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || { echo "local main != origin/main"; exit 1; }
 [ "$(git rev-parse main)" = "$MERGE_SHA" ]  || { echo "main is not the release merge commit"; exit 1; }
+[ "$(git config --get user.email)" = "$SIGNING_EMAIL" ] \
+  || { echo "tagger email is not the registered noreply identity — set it repo-locally (git config user.email $SIGNING_EMAIL), see CONTRIBUTING.md"; exit 1; }
 
 git tag -s "$TAG" -m "$TAG" main            || { echo "tag creation failed"; exit 1; }
 git tag -v "$TAG"                           || { echo "SIGNATURE NOT GOOD — do not push"; exit 1; }
-git push origin "$TAG"
+git push origin "$TAG"                      || { echo "PUSH FAILED — a GH007 email-privacy rejection means the identity check above passed but GitHub still rejects it; see CONTRIBUTING.md's third failure mode"; exit 1; }
 ```
 
 `git fetch origin main:main` updates the ref without a checkout; it REFUSES
@@ -201,27 +204,31 @@ describe --tags --always`, which resolves lightweight, annotated, and signed
 tags identically, so switching tag *kind* changes nothing `git describe`
 reports.
 
-**`git tag -v "$TAG"` BEFORE the push is the point of #322, and the block
-above chains all three commands with `||`-guarded early exits, not bare
-lines.** This is a BLOCKING guard (it exists to stop an unverified tag from
-reaching production), so per `CLAUDE.md`'s guard-asymmetry rule it must fail
-CLOSED: any failure in tag creation or verification must stop the sequence
-before `git push`, never fall through to it. The pre-#322 form
-(`git tag -a "$TAG" -m "$TAG" main && git push origin "$TAG"`) was already
-fail-closed via `&&` for the tag-creation half; the `||`-guarded lines above
-extend that same fail-closed property to the new verification step. It
-proves the signature locally, on this machine, before the push triggers the
-production deploy — a bad or missing signing config must fail here, not
-mid-cut, and must not silently reach the push line. `git tag -v` must print
-`Good "git" signature for <identity> with ED25519 key SHA256:...`; anything
-else (`error: no signature found`, `gpg.ssh: unable to find identity
-referenced by`, `No principal matched` after an otherwise-`Good` first line,
-etc.) is a non-zero exit that the `||` guard catches — do not push the tag —
-and fix the local `gpg.format ssh` / `user.signingkey` /
-`gpg.ssh.allowedSignersFile` config first (one-time setup: `CONTRIBUTING.md`'s
-"Release tag signing" section). See `SECURITY.md`'s "Verifying a release"
-section for the full verification story, including for third parties who
-don't have this machine's local config.
+**`git tag -v "$TAG"` BEFORE the push is the point of #322, and every command
+in the block above — including the identity assertion and the push itself —
+is `||`-guarded with an early exit, not a bare line.** This is a BLOCKING
+guard (it exists to stop an unverified or unattributed tag from reaching
+production), so per `CLAUDE.md`'s guard-asymmetry rule it must fail CLOSED:
+any failure in the ref/identity assertions, tag creation, verification, or
+the push itself must stop the sequence, never fall through silently. The
+pre-#322 form (`git tag -a "$TAG" -m "$TAG" main && git push origin "$TAG"`)
+was already fail-closed via `&&` for the tag-creation half; the `||`-guarded
+lines above extend that same fail-closed property to the identity check, the
+verification step, and the push. `git tag -v` must print `Good "git"
+signature for <identity> with ED25519 key SHA256:...`; anything else
+(`error: no signature found`, `gpg.ssh: unable to find identity referenced
+by`, `No principal matched` after an otherwise-`Good` first line, etc.) is a
+non-zero exit that the `||` guard catches — do not push the tag — and fix the
+local `gpg.format ssh` / `user.signingkey` / `gpg.ssh.allowedSignersFile`
+config first (one-time setup: `CONTRIBUTING.md`'s "Release tag signing"
+section). The identity assertion catches a stale/wrong `user.email` BEFORE a
+signature is even attempted; the push guard catches the one failure mode
+that survives a *correct* local signature and a *correct* identity check —
+GitHub's email-privacy push rejection (`GH007`), which happens on the wire,
+after everything upstream of it already passed. See `SECURITY.md`'s
+"Verifying a release" section for the full verification story, including for
+third parties who don't have this machine's local config, and
+`CONTRIBUTING.md`'s "Tagger identity" section for why all three checks exist.
 
 **Constructed proof the chain is fail-closed** — three cases, run verbatim
 (push line replaced with a `>>>` marker so nothing was actually pushed; every
@@ -495,28 +502,43 @@ gh api repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification
 (`<tag-object-sha>` is the annotated tag OBJECT's own SHA — `git rev-parse
 refs/tags/vX.Y.Z` — not the commit it points at.) `reason: "no_user"` covers
 BOTH the key-registration gap above and the email-registration gap — tell
-them apart by checking `github.com/settings/ssh/new` (Signing Keys) and
-`github.com/settings/emails` separately. Any other `reason` value also
-points at a registration gap, not a signature problem.
+them apart by checking `github.com/settings/keys` (the list of **registered**
+Signing Keys — `github.com/settings/ssh/new` is the add-a-key *form*, not the
+list, and won't tell you what's already registered) and
+`github.com/settings/emails` separately. `no_user`, `unverified_email` and
+`bad_email` are the attribution/registration family covered above.
+`bad_signature`, `malformed_signature`, `invalid`, `expired_key` and
+`unknown_signature_type` are different: those are real signature or key
+problems, not a registration gap — don't send someone to check email/key
+registration for one of those; investigate the signature itself instead.
 
-**The adopted fix, live in this repo since the v0.8.1 correction**: a
+**The adopted fix, in place in THIS clone since the v0.8.1 correction, and
+required in every other clone/worktree/machine that tags a release**: a
 repo-local `user.email` set to the account's GitHub-provided **noreply**
 address (`13460098+DocGerd@users.noreply.github.com`) — registered, and
 always public by construction, so it clears all three gaps simultaneously.
 Proven end to end: pushes without a `GH007`, `git tag -v` reports `Good "git"
 signature for 13460098+DocGerd@users.noreply.github.com`, and the API
-confirms `verified: true, reason: "valid"`.
+confirms `verified: true, reason: "valid"`. **This is per-clone state, not a
+repo fact** — repo-local `user.email` lives in `.git/config`, which no diff
+or commit can carry; a fresh clone, a worktree that skipped this step, or a
+successor's machine still has the *global* `user.email` (`live@docgerdsoft.de`
+on the maintainer's machine) and will reproduce case (2) unless it is set
+again there. That is why §5a's chain now asserts it before tagging (see
+above) rather than relying on this paragraph being read and remembered.
 
-**Recommended: run the pre-flight probe below before this step on any real
-release cut**, not just after a failure — it's exactly what would have
-caught v0.8.0's gap before it shipped, and it touches nothing `deploy.yml` or
-`release.yml` react to:
+**Run the pre-flight probe below before every real release tag** — it is not
+merely a nice-to-have: it is exactly what would have caught v0.8.0's gap
+before it shipped, and it touches nothing `deploy.yml` or `release.yml`
+react to. Run it **in the same clone that will create the real tag** — a
+probe run elsewhere only proves that other clone's identity, which tells you
+nothing about the one about to tag `main`:
 
 ```bash
 TAG=zzz-signing-probe-$(date +%s)          # deliberately NOT v[0-9]*, so no workflow fires
-git tag -s "$TAG" -m probe && git push origin "$TAG"   # GH007 would surface right here
+git tag -s "$TAG" -m probe HEAD && git push origin "$TAG"   # tags the current commit; GH007 would surface right here
 gh api repos/DocGerd/sail_command/git/tags/"$(git rev-parse "refs/tags/$TAG")" --jq .verification
-git push origin ":refs/tags/$TAG" && git tag -d "$TAG"  # clean up either way
+git push origin ":refs/tags/$TAG" && git tag -d "$TAG"  # clean up either way — proven to work even if the push above failed
 ```
 
 A valid signature, an attributable signature, and a *pushable* signature are

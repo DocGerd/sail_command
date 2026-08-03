@@ -545,7 +545,12 @@ deviate from it.
   editor and blocks an unattended cut). **Signed from `v0.8.0` onward (#322)**
   — SSH signing (`gpg.format = ssh`), verified locally with `git tag -v`
   BEFORE the push (§5a) and, for anyone else, via GitHub's "Verified" badge
-  or `git tag -v` against a locally-built `allowed_signers` file (setup in
+  (from `v0.8.1` onward — the `v0.8.0` tag itself is a documented exception,
+  signed under an identity not registered on the maintainer's GitHub
+  account, so it stays Unverified permanently; see the `v0.8.1` CHANGELOG
+  entry and `CONTRIBUTING.md`'s "Tagger identity" section) or `git tag -v`
+  against a locally-built `allowed_signers` file, which is unaffected by
+  that gap and works for every signed tag including `v0.8.0` (setup in
   `CONTRIBUTING.md`, verification story in `SECURITY.md`). `v0.1.0` through
   `v0.7.0` remain permanently unsigned — signing is explicitly NOT
   retroactive (re-tagging would break the `(main SHA, git-describe version)`

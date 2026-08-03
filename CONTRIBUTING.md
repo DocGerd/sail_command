@@ -137,9 +137,11 @@ labels on **pull requests** are applied automatically from changed paths by
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0`, `v0.5.0`, `v0.5.1`, `v0.6.0`, and `v0.7.0` are closed; `v0.8.0`
-ships in this cut and closes as part of the release. The
-[milestones page](https://github.com/DocGerd/sail_command/milestones) is
+`v0.4.0` through `v0.8.0` are closed — `v0.8.0` shipped and closed at its own
+cut (2026-08-03), rolling `v0.9.0` open as the next release milestone above.
+The `v0.8.1` patch release (documentation-only) is in flight as of this
+writing and, per the PATCH exception below, carries no milestone of its own.
+The [milestones page](https://github.com/DocGerd/sail_command/milestones) is
 authoritative; this list names the shape, not a live count.
 
 Roll milestones forward at each release cut: the shipped milestone closes, the
@@ -250,14 +252,16 @@ signed (`git tag -v` reports `Good signature`) while GitHub still shows it as
 **Unverified** — that is a registration gap, not a signature problem; see
 `SECURITY.md`'s "Verifying a release" section.
 
-### Tagger email — three independent ways this breaks, all invisible to `git tag -v`
+### Tagger identity — three independent ways a signed tag fails to show Verified, all invisible to `git tag -v`
 
-The key being registered is not sufficient on its own: GitHub also needs the
-tag's **tagger email** (whatever `user.email` was active when the tag was
-created — global unless a repo-local override is set, see `git help config`)
-to satisfy TWO further, independent conditions. Local `git tag -v` returns a
-`Good` signature through all three failure modes below — none of them is a
-signature problem, and none is visible until you check GitHub specifically:
+Getting a signed tag to actually show **Verified** on GitHub depends on
+three independent conditions — the signing key's registration, the tagger
+email's registration, and the tagger email's privacy setting. The tag's
+**tagger email** is whatever `user.email` was active when the tag was
+created (global unless a repo-local override is set, see `git help config`).
+Local `git tag -v` returns a `Good` signature through all three failure
+modes below — none of them is a signature problem, and none is visible
+until you check GitHub specifically:
 
 1. **Signing key not registered as a Signing Key** — see the subsection
    above. Symptom: `verified: false, reason: "no_user"` at the API (or a
@@ -314,21 +318,35 @@ gh api repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification
 refs/tags/vX.Y.Z`), not the commit it points at. `reason: "no_user"` means
 either case 1 or case 2 — same symptom, different cause, and the
 distinguishing fact (is the *key* registered? is the *email* registered?)
-has to be checked separately at `github.com/settings/ssh/new` (Signing Keys)
-and `github.com/settings/emails`.
+has to be checked separately at `github.com/settings/keys` (the list of
+**registered** Signing Keys — `github.com/settings/ssh/new` is the add-a-key
+*form*, not the list, and won't tell you what's already registered) and
+`github.com/settings/emails`. Other `reason` values
+(`bad_signature`/`malformed_signature`/`invalid`/`expired_key`/
+`unknown_signature_type`) are real signature or key problems, not a
+registration gap — don't apply this section's fixes to those.
+
+**Per-clone state, not a repo fact**: the repo-local `user.email` override
+below lives in `.git/config`, which no commit or PR can carry — it has to be
+set again in every fresh clone, worktree, or successor's machine, or that
+clone will reproduce case (2). The release runbook's §5a now asserts this
+identity before tagging for exactly that reason (`.claude/skills/release/SKILL.md`).
 
 **Recommended pre-flight probe before any real release tag** (cheap and
 side-effect-free — this is exactly what would have caught v0.8.0's gap
 before it shipped): push a signed tag whose name does **not** match
 `v[0-9]*` — so neither `deploy.yml` nor `release.yml` fires — read its
 `.verification` back from the API above, then delete both the local and
-remote tag:
+remote tag. Run this **in the same clone that will create the real release
+tag** — probing from a different clone only proves that clone's identity,
+which says nothing about the one about to tag `main`. `git tag -s` with no
+explicit ref tags `HEAD`:
 
 ```bash
 TAG=zzz-signing-probe-$(date +%s)
-git tag -s "$TAG" -m probe && git push origin "$TAG"          # GH007 surfaces right here if case 3 applies
+git tag -s "$TAG" -m probe HEAD && git push origin "$TAG"     # GH007 surfaces right here if case 3 applies
 gh api repos/DocGerd/sail_command/git/tags/"$(git rev-parse "refs/tags/$TAG")" --jq .verification
-git push origin ":refs/tags/$TAG" && git tag -d "$TAG"
+git push origin ":refs/tags/$TAG" && git tag -d "$TAG"         # cleans up correctly even if the push above failed
 ```
 
 **The durable lesson: a valid signature, an attributable signature, and a
