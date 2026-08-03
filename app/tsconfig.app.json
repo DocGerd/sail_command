@@ -36,7 +36,6 @@
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
-    "src/**/timeoutBudgetVsJobCap.test.ts",
     "src/**/changelogFragmentsFs.ts",
     "src/**/changelogFragmentsFs.test.ts"
   ]

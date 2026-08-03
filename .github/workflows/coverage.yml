@@ -83,13 +83,23 @@ jobs:
         #   whole suite in 40m56s at the PRIOR 4x multiplier) = ~165 min
         #   minimum; 240 is the next natural round number above that,
         #   leaving real margin rather than a number sized to today's exact
-        #   minimum. `app/src/test/timeoutBudgetVsJobCap.test.ts` asserts
-        #   this inequality structurally so a future bump to either number
-        #   fails loudly instead of silently re-creating the collision.
+        #   minimum.
         #
         #   There is no PR-latency cost to over-provisioning a nightly, so
         #   this stays deliberately loose rather than fitted to today's
         #   measurement — a non-required check that times out goes
         #   permanently red and gets ignored, silently defeating the whole
         #   point of #319 (a check nobody reads is worse than no check).
+        #
+        #   TWIN COMMENT (PR #351 round 5, orchestrator decision — this repo's
+        #   twin-search rule, CLAUDE.md, for a fact stated in two artifacts):
+        #   `app/src/test/timeoutBudgetVsJobCap.test.ts`'s `JOB_CAP_MINUTES`
+        #   constant (currently 240) MUST equal this number. That guard used
+        #   to READ this file directly and VERIFY the two stayed in sync;
+        #   after four regex-parsing fail-opens across two review rounds it
+        #   was simplified to a declared constant instead — the coupling is
+        #   now DOCUMENTED, not verified, so changing ONE of these two
+        #   numbers without the other is a SILENT drift. #359 tracks
+        #   restoring verified coupling with a real YAML parse. If you change
+        #   this number, change `JOB_CAP_MINUTES` too.
         timeout-minutes: 240
