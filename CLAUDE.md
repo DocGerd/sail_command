@@ -63,9 +63,17 @@ deviate from it.
   iterating (`npm --prefix app run test -- <filter>`); give the full run a
   generous timeout. Solver-heavy test files set
   `vi.setConfig({ testTimeout: 120_000 })`; the property test carries 900 s.
-  **CI runners are 6–10× slower than dev machines** — never add a per-test
-  timeout tighter than the file-level config, and never trust local timing
-  margins for CI.
+  **CI is slower than dev machines, but not by a flat multiplier** — measured
+  2026-08-03 (#341, PR #335 work): `npm run test` local 249.8 s vs CI
+  ~515–535 s (~2.1×); `npm run test:coverage` local ~983–1029 s vs CI 2558 s
+  (~2.5×). Coverage instrumentation is a SEPARATE multiplier from runner
+  speed — solver-heavy tests pay a bigger coverage penalty than component
+  tests, so no single ratio predicts both. A job's `timeout-minutes` and a
+  per-test `vi.setConfig` timeout are DIFFERENT failure surfaces: raising the
+  former cannot rescue the latter (cost three red CI runs to learn). Operative
+  rule unchanged — never add a per-test timeout tighter than the file-level
+  config, and never size a CI timeout from a local measurement's margin; that
+  holds at 2× as firmly as at a bigger multiplier.
 - vitest's `BaseSequencer` sorts by file SIZE descending when there is no
   cache — and CI never has one (`npm ci` wipes `node_modules`).
   `invariants.property.test.ts` is ~4380 bytes but ~463 s, so the
@@ -566,6 +574,20 @@ deviate from it.
   `commit_id: null` (measured on the #257 incident), so the timeline did not name
   its cause either; a commit-message-triggered close may instead record a real
   SHA.
+  GitHub parses EVERY commit message in the merged range, not just the tip
+  commit or the PR body/title — an EARLY commit written before a scope change
+  fires just as surely. PR #335 merged with `Refs #319` in its body (both
+  body and title were regex-checked, by the implementer and the reviewer,
+  and both correctly found zero keywords); #319 auto-closed anyway because
+  `c36f865`, the branch's FIRST commit, written hours earlier when the PR
+  still intended to
+  close #319, ended `Closes #319` and survived a mid-flight descope. The check
+  nobody ran: `git log origin/develop..HEAD | grep -iE
+  '(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'` — run it before merging,
+  especially when a PR's scope changed mid-flight, since the stale intent
+  lives in an old commit the body/title check never sees. The commit-vs-body
+  timeline discriminator above is what identified the culprit here too: the
+  `closed` event carried a real `commit_id`, not `null`.
   Mirror check in the OTHER direction: after a merge that deliberately used
   `Refs #N` rather than a closing keyword because N's specified fix was NOT
   implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
