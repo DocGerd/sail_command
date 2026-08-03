@@ -44,6 +44,20 @@ deviate from it.
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
+- `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
+  exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
+  executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
+  from repo root therefore never loads `app/vite.config.ts` (no jsdom, no
+  `setupFiles`) and collects Playwright `.spec.ts` under `app/e2e/` as
+  "(0 test)" — cost three failed coverage measurements this session. Always
+  use `run`, never `exec`, for anything that depends on `app/`'s config.
+- Statement coverage baseline: 93.92% (4100/4365 statements; branches 88.99%,
+  functions 92.28%, lines 95.52%; 1206 tests, 102 files), measured 2026-08-03
+  via `npm --prefix app run test:coverage`. Meets the OpenSSF
+  `test_statement_coverage80` criterion (≥80%) — it had simply never been
+  measured before. `vite.config.ts`'s `coverage` block (#221) is
+  REPORTING-ONLY, no `thresholds`, and `app`'s CI job runs plain `test`, so a
+  threshold would be inert until a coverage step is wired into CI (#319).
 - Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
   a ~40 s real-mask solver acceptance file). Use focused filters while
   iterating (`npm --prefix app run test -- <filter>`); give the full run a
@@ -93,6 +107,15 @@ deviate from it.
 
 - TypeScript `strict` + `exactOptionalPropertyTypes` are ON; tsconfig
   `erasableSyntaxOnly` forbids enums and constructor parameter properties.
+- `String.replace` with a STRING pattern (not a regex/global) silently
+  returns the input UNCHANGED when the pattern is absent — no throw, no
+  warning. Measured (#223): reformatting `<meta charset="UTF-8" />` to
+  `<meta charset="utf-8">` made `vite build` exit 0 with ZERO CSP metas in
+  `dist`. `cspMeta()` (`app/vite.config.ts`) now throws if its marker is
+  missing; `subPathMeta()` in the same file still has the bare-`replace`
+  shape (#318, open — a silent failure there degrades to an indexable UAT).
+  Per the guard-asymmetry rule below: an absent security control is the
+  expensive failure direction, so the check must fail closed.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -407,27 +430,68 @@ deviate from it.
   harbor-combobox false alarm, #107 session). Before filing, verify the
   deployed artifact with a cache-busted browser pass (unregister both origin
   SWs, clear caches, hard-reload) and inspect ARIA/DOM, not pixels.
+- **CSP (#223)** ships as a build-only `<meta http-equiv>` injected by
+  `cspMeta()` in `app/vite.config.ts` (`apply: 'build'`) — GitHub Pages
+  cannot set response headers, and the meta is deliberately ABSENT from
+  `index.html`'s source and from `vite dev`'s served HTML: Vite's dev client
+  injects CSS as inline `<style>` elements, which `style-src 'self'` blocks
+  outright (measured, PR #316 review B2 — dev renders fully unstyled, 0
+  stylesheets/0 CSS rules, with only a console violation and no visible
+  error). A dev-server browser pass is a documented verification step here,
+  so a source-HTML CSP would silently break it.
+  `worker-src` is `'self'` only — NOT `blob:`. maplibre-gl 6's blob-worker
+  fallback (`workerFactory()` in `util/web_worker.ts`) is unreachable here
+  (`MapView.tsx` feeds `setWorkerUrl` a same-origin `?worker&url` asset, and
+  the factory short-circuits same-origin URLs to the non-blob path), and
+  adding `blob:` anyway was measured (PR #316 review B1) to defeat
+  `script-src 'self'` outright — a blob-URL `new Worker` ran arbitrary code
+  under the policy. `img-src` keeps `data:`/`blob:` legitimately (maplibre's
+  `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
+  Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
+  loads them via `getArrayBuffer`/`fetch`
+  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`); `font-src`
+  governs `@font-face` only, which this app doesn't use for map labels.
+  Nothing in the suite yet asserts a label actually renders (#320).
+  `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
+  suite has: `annotations.spec.ts:169` asserts ZERO Open-Meteo requests,
+  every planning spec uses `?windFixture=`, AIS is BYOK so opens no sockets,
+  and jsdom enforces no CSP at all — so a directive wrong in either direction
+  (too tight, blocking startup; too loose, degraded to unrestrictive) would
+  pass every other spec. It asserts ALL non-`example.com` violations are
+  empty across the whole page lifetime, not an allowlist of expected ones —
+  a narrower per-origin filter was tried and would have missed exactly the
+  PR's own B2 finding.
 
 ## Release & branching
 
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
-  up-to-date policy), merged as a merge commit, then tagged on `main`; `main` is
+  up-to-date policy), merged as a merge commit, then tagged on `main` with an
+  ANNOTATED tag (`git tag -a "$TAG" -m "$TAG" main`, release runbook §5 — `-m`
+  is required, not cosmetic: a bare `git tag -a` with no message opens an
+  editor and blocks an unattended cut) — still UNSIGNED; signing starts at
+  v0.8.0 (#322). `main` is
   released-state-only. Pushing that tag is what puts the clean `vX.Y.Z` in the
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
   pass before the back-merge: the tag-triggered run reached `success` AND prod's
   About dialog shows the clean tag. A green step 5b is not the whole cut,
   though — a git tag and a GitHub Release are different objects, and pushing
-  the tag ships production without creating one. The v0.6.0 cut (2026-07-31)
+  the tag alone does not create one. The v0.6.0 cut (2026-07-31)
   followed this runbook exactly — tag pushed, deploy `success`, About dialog
   showing the clean `v0.6.0`, production verified serving it, every signal
   green — and still shipped with no Release object; none of those signals is
   evidence a Release exists, and it surfaced only when the maintainer noticed
-  it missing from the GitHub project page. The runbook's step 5c
-  (`.claude/skills/release/SKILL.md`, manual today, automation tracked in
-  #175) is what creates one, and it closes with `gh release list` showing the
+  it missing from the GitHub project page. `.github/workflows/release.yml`
+  (#175, shipped v0.7.0) now closes that gap automatically: the tag push ALSO
+  triggers `release.yml`, which extracts the matching `## [X.Y.Z]`
+  `CHANGELOG.md` section and creates the Release. Because a `push` on a tag
+  resolves the workflow FILE from the tag's own commit (same rule as the
+  `workflow_dispatch --ref` trap below), `release.yml` must already be on
+  `main` BEFORE the tag is pushed — true here only because it merged via the
+  release PR itself. Runbook step 5c is now VERIFY, not create: confirm the
+  Release exists and `gh release list` shows the
   tag marked `Latest` — `--latest` is load-bearing on creation, since without
   it the previous version keeps the badge, a silent wrong state rather than
   an error. Rationale: `cancel-in-progress`
@@ -440,7 +504,11 @@ deviate from it.
   rejected: it lets two runs reach `actions/deploy-pages` concurrently. See the
   comment above `concurrency:` in `deploy.yml`.) At the v0.4.0 cut this
   collision already happened in the other direction — the manual re-run
-  cancelled the back-merge run. `deploy.yml` (#96, #197) fires on push to
+  cancelled the back-merge run; the v0.7.0 cut (2026-08-03) confirmed the
+  standard direction empirically — the merge-push deploy run
+  (`main`@`a59236e`, 09:10:51) shows `cancelled`, superseded by the tag-push
+  deploy run 31 s later (09:11:22) — expected, not a fluke. `deploy.yml`
+  (#96, #197) fires on push to
   `main`, `develop`, or a release tag (`v[0-9]*`):
   production at the Pages site root reflects only released
   (`main`) state as before; `develop`'s unreleased state is additionally
@@ -622,7 +690,15 @@ deviate from it.
   repos/OWNER/REPO/actions/runs/<id>/jobs` — and when a SHA might carry more
   than one run, select it explicitly rather than assume there is only one;
   the release skill's §5b already does this, picking the newest
-  `event == "push"` run for the same reason.
+  `event == "push"` run for the same reason. The v0.7.0 cut hit BOTH
+  configurations again and both were caught by keying on explicit run IDs
+  rather than check names: the `develop`→`main` release PR carries develop's
+  own tip as its head SHA (the last feature merge's push run sits on that
+  commit alongside the PR's own); the back-merge PR carries `main`'s tip,
+  which is ALSO the tag commit (carrying main-push CI + tag Deploy + tag
+  Release, three runs on one SHA). Rule: enumerate `gh api
+  repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
+  ID explicitly — never poll by check name alone.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
@@ -706,7 +782,16 @@ deviate from it.
   standard as code, never a looser one: it is baked into the About dialog at
   build time, so an overstated figure ships to users and freezes into a
   versioned section at the next cut (a "~45 marks" claim overstated a fix's
-  reach by 4×).
+  reach by 4×). PATCHING instances a reviewer happens to find does not
+  converge: in the v0.7.0 session one fact (where the tag-signing work was
+  tracked) was stale across SIX artifacts and took four correction rounds,
+  each fix landing while a different artifact stayed wrong. What worked was
+  ENUMERATE, not patch — `git grep -n` every reference to the moved fact
+  repo-wide, then classify each hit as a TRACKER claim (asserts where the
+  remaining work lives — must move) or a HISTORICAL reference (names the
+  issue some already-shipped work happened under — stays as-is). Report the
+  enumeration as a table INCLUDING the hits left alone; that table is the
+  only evidence there is no seventh instance.
 - Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
