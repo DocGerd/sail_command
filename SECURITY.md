@@ -151,7 +151,7 @@ requiring no GPG toolchain):
   git -c gpg.ssh.allowedSignersFile=/tmp/sailcommand-allowed-signers tag -v vX.Y.Z
   ```
 
-  Reading the output — three shapes, only one of which is a real problem,
+  Reading the output — five shapes, only one of which is a real problem,
   and the first two look deceptively similar (both start with the word
   "Good"):
 
@@ -170,12 +170,32 @@ requiring no GPG toolchain):
     against that entry, so there is never a case where the right key with a
     "wrong" label fails this way. Fix the FILE (re-fetch step 1), not the
     identity string.
-  - **`error: no signature found`**, exit 1 → the tag genuinely isn't signed
-    (expected for `v0.1.0`–`v0.7.0`, see above — not tampering either).
+  - **`error: no signature found`**, exit 1 → the tag is *annotated* but was
+    never signed — not tampering, it simply predates signing. Three of the
+    ten pre-`v0.8.0` tags are this shape: `v0.1.0`, `v0.5.0`, `v0.7.0`.
+  - **`error: <tag>: cannot verify a non-tag object of type commit.`**,
+    exit 1 → the tag is *lightweight* — a bare ref that cannot carry a
+    signature at all, so there is nothing for `git tag -v` to check. Also
+    not tampering, for the same reason: it predates signing. The other
+    seven of those ten pre-`v0.8.0` tags are this shape: `v0.1.1`, `v0.1.2`,
+    `v0.2.0`, `v0.3.0`, `v0.4.0`, `v0.5.1`, `v0.6.0`.
+  - **`Could not verify signature.`** followed by a line naming your
+    `allowed_signers` file and a line number (e.g. `<file>:1: key is not
+    permitted for use in signature namespace "git"`), exit 1 → also NOT
+    tampering: a malformed *option* on that line in your own file (for
+    example a stray `namespaces="ssh"` restricting the key to the wrong
+    namespace) rather than a missing/wrong key. This looks like the bad-news
+    case below — it names a signature-verification failure, not merely an
+    unmatched principal — but it isn't one: it's the same class of problem
+    as the *No principal matched.* bullet above, a broken local file, just
+    surfaced through a different `ssh-keygen` error path. Fix the FILE's
+    option syntax, not the tag.
 
   An outright signature-verification-FAILURE message (not merely an
   unmatched principal) is the one case that is actually bad news: it means
-  the data doesn't match what was signed. Treat that as tampering and stop.
+  the data doesn't match what was signed. Treat that as tampering and
+  stop — unless the message names your `allowed_signers` file and a line
+  number, which is a problem with your file, not the tag.
 
   This file is a **local, per-verifier** artifact — it is not, and does not
   need to be, committed to this repository. See
