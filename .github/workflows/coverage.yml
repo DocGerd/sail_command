@@ -4,41 +4,51 @@ name: Coverage
 # python-lint.yml's shape (#220). The `app` and `e2e` jobs in ci.yml are the
 # ONLY required checks under the protect-main ruleset (strict up-to-date
 # policy) — this job is NOT added to that ruleset, so it must fail closed
-# (report a red job) without ever blocking a merge. `test:coverage` runs the
-# full suite under v8 instrumentation; measured directly on this PR's own
-# branch, THREE separate dev-machine runs landed at 994.4s / 1029.5s / 983.5s
-# (~16.4-17.2 min) — roughly 4x the ~250s plain `npm run test` takes on the
-# same hardware. CI runners are documented 6-10x slower than a dev machine
-# for this suite, so this stays out of the `app` job's critical path rather
-# than adding that cost to a required check.
+# (report a red job) without ever blocking a merge.
 # `thresholds.statements: 80` lives in app/vite.config.ts's coverage block and
 # only fires when coverage is enabled — this workflow is what enables it.
 #
-# Trigger scoping (fix-wave M1, PR #335 review): `pull_request` is scoped to
-# `paths: ['app/**']` — coverage only means anything when app source changes,
-# so the question this filter answers is "did app code change?", not "is
-# this docs-only?". That is deliberately NOT the inverse of, or kept in sync
-# with, ci.yml's `classify` step docs-allowlist from #327/#330: it is a
-# different, simpler predicate over a disjoint concern, so there is no twin
-# to diverge from and nothing here should ever be "harmonised" with that
-# list. This scoping is safe specifically BECAUSE `coverage` is not a
-# required check — a `paths`-skipped run reports nothing and blocks no
-# merge, unlike `e2e`'s required-check trap (#330) where a skipped run
-# would stall a PR forever. `push` on main/develop stays UNSCOPED so the
-# coverage trend line and the assurance-case evidence (docs/security-
-# assurance-case.md §7) stay continuous across every merge, not just
-# app-touching ones.
+# Trigger (fix-wave round 2, PR #335 review): NIGHTLY (`schedule`) +
+# `workflow_dispatch`, not `pull_request`/`push`. #319 asks for a REPORTING
+# step, not a gate — nightly satisfies that at zero PR runner cost, and a
+# long solver run stops being a PR-latency problem once nothing is waiting on
+# it. This replaces round 1's per-PR `paths: ['app/**']` scoping entirely
+# (round 1 also, by construction, never triggered on a PR touching only
+# `coverage.yml` itself — nightly removes that gap too, since it doesn't key
+# off changed paths at all). `paths` is deliberately GONE, not narrowed
+# further: a schedule has no diff to filter, so a paths filter on it would be
+# inert dead config, not a safety net.
+#
+# Why round 1's per-PR trigger was reverted, not just re-tuned: CI run
+# 30810112565 (`timeout-minutes: 60`, round 1) ran 42m38s and still FAILED —
+# `src/routing/invariants.property.test.ts` and `src/routing/
+# realmask.repro.test.ts` (x3) each blew their OWN vi.setConfig/per-test
+# `timeout` budgets (900s / 600s), which no workflow-level timeout-minutes
+# could ever fix. Those budgets are now coverage-aware (`SC_COVERAGE`-gated
+# 4x multiplier, see the two test files) — measured on THIS branch,
+# `npm run test:coverage` (with that fix in place) took 994.4s / 1029.5s /
+# 983.5s across three dev-machine runs (~16.4-17.2 min), so 42m38s
+# represents a run that was ALREADY blowing its per-test budgets, not a
+# clean passing baseline — do not extrapolate a passing duration from it.
 on:
-  pull_request:
-    paths: ['app/**']
-  push:
-    branches: [main, develop]
+  schedule:
+    # 02:17 UTC daily — deliberately off the hour and staggered from the
+    # existing weekly schedules (scorecard.yml 03:30 Mon, codeql.yml 04:23
+    # Mon) so a nightly coverage run never queues behind them. Chosen for low
+    # GitHub Actions runner contention (the top of most UTC hours is busiest)
+    # and because it lands well outside any observed contributor working
+    # hours for this repo.
+    - cron: '17 2 * * *'
+  workflow_dispatch: {}
 permissions:
   contents: read
 concurrency:
-  # Mirrors ci.yml's shape: at ~16-17 min wall-clock, rapid pushes to the
-  # same branch would otherwise queue concurrent runs instead of the newest
-  # superseding the stale ones.
+  # Mirrors ci.yml's shape. `cancel-in-progress` evaluates to `false` for
+  # both `schedule` and `workflow_dispatch` (github.event_name is neither
+  # 'pull_request' nor anything this expression treats as PR-like), so a
+  # nightly run is never superseded by a manual dispatch or vice versa — only
+  # rapid same-ref reruns would ever collide, and letting those queue rather
+  # than cancel is the right default when nothing is waiting on the result.
   group: coverage-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
@@ -51,10 +61,10 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
       - run: npm run test:coverage
-        # Measured dev-machine wall-clock (see header comment) is already
-        # ~16-17 min; CLAUDE.md documents CI runners as 6-10x slower for this
-        # suite. 60 min gives real headroom rather than a number that merely
-        # fits today's local measurement — a non-required check that times
-        # out goes permanently red and gets ignored, silently defeating the
-        # whole point of #319 (a check nobody reads is worse than no check).
-        timeout-minutes: 60
+        # Raised 60 -> 120 (fix-wave round 2): with the coverage-aware test
+        # timeouts now in place, a genuinely PASSING run may legitimately
+        # approach the ~1000s (~17 min) dev-machine measurement times a real
+        # CI-runner penalty; there is no PR latency cost to over-provisioning
+        # a nightly, so headroom is cheap here in a way it wasn't for a
+        # per-PR check.
+        timeout-minutes: 120

@@ -16,7 +16,17 @@ import type { LatLon, Leg, MaskMeta, PolarTable, Settings } from '../types';
 // than real harbor arms are straight (~200-400 m wide), so every candidate
 // died on the first expansion. These run against the real shipped mask and
 // polars, unlike the synthetic masks used everywhere else in the suite.
-vi.setConfig({ testTimeout: 120_000 });
+//
+// #319 fix-wave (PR #335): v8 coverage instrumentation adds a further ~4x on
+// top of the plain-suite budgets below — measured directly on this branch,
+// `npm run test:coverage` ran 983.5s-1029.5s for the full suite vs `npm run
+// test`'s 249.8s, and CI run 30810112565 hit `Test timed out in 600000ms`
+// three times in this file at the plain per-test budget. `SC_COVERAGE` is set
+// only by the `test:coverage` npm script (see package.json), so the plain
+// `npm run test` path an actual hang runs against keeps its tight budget —
+// only the coverage-instrumented CI run gets the wider one.
+const COVERAGE_TIMEOUT_MULTIPLIER = process.env.SC_COVERAGE ? 4 : 1;
+vi.setConfig({ testTimeout: 120_000 * COVERAGE_TIMEOUT_MULTIPLIER });
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
 const maskMeta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8')) as MaskMeta;
@@ -168,32 +178,36 @@ describe('real mask routing (issue #20)', () => {
   // 'unreachable' is the CORRECT answer for this data") is superseded by
   // #53's graceful degradation: the DEFAULT_SETTINGS spec acceptance case
   // below now expects a route WITH shallow warnings instead.
-  it('Flensburg -> Marstal (direct request at 2.3 m safety depth)', { timeout: 600_000 }, () => {
-    const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 2.3 };
-    const res = planRoute(
-      {
-        origin: FLENSBURG,
-        destination: MARSTAL,
-        viaPoints: [],
-        originHarborId: 'flensburg',
-        destinationHarborId: 'marstal',
-        departureMs: T0,
-        settings,
-      },
-      uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
-    );
-    expect(res.status).toBe('ok');
-    if (res.status !== 'ok') return;
-    // Explicitly-requested 2.3 m needs no relaxation: no shallow warnings.
-    expect('shallow' in res).toBe(false);
-    const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
-    expect(rig).not.toBeNull();
-    // ~38 nm great-circle; sane plans stay inside these envelopes
-    expect(rig!.distanceNm).toBeGreaterThan(30);
-    expect(rig!.durationMs).toBeLessThan(12 * 3_600_000);
-    expectLegsNavigable(rig!.legs, settings.safetyDepthM);
-  });
+  it(
+    'Flensburg -> Marstal (direct request at 2.3 m safety depth)',
+    { timeout: 600_000 * COVERAGE_TIMEOUT_MULTIPLIER },
+    () => {
+      const settings: Settings = { ...DEFAULT_SETTINGS, safetyDepthM: 2.3 };
+      const res = planRoute(
+        {
+          origin: FLENSBURG,
+          destination: MARSTAL,
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'marstal',
+          departureMs: T0,
+          settings,
+        },
+        uniformWindGrid(12, 270),
+        { polarGenoa, polarFock, mask },
+      );
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+      // Explicitly-requested 2.3 m needs no relaxation: no shallow warnings.
+      expect('shallow' in res).toBe(false);
+      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      expect(rig).not.toBeNull();
+      // ~38 nm great-circle; sane plans stay inside these envelopes
+      expect(rig!.distanceNm).toBeGreaterThan(30);
+      expect(rig!.durationMs).toBeLessThan(12 * 3_600_000);
+      expectLegsNavigable(rig!.legs, settings.safetyDepthM);
+    },
+  );
 
   // Spec acceptance case for #53 (graceful degradation below safety depth):
   // Flensburg -> Marstal at DEFAULT_SETTINGS (3.0 m) returns a route WITH
@@ -212,7 +226,7 @@ describe('real mask routing (issue #20)', () => {
   // same generous timeout.
   it(
     'Flensburg -> Marstal at DEFAULT_SETTINGS degrades gracefully with shallow warnings (#53)',
-    { timeout: 600_000 },
+    { timeout: 600_000 * COVERAGE_TIMEOUT_MULTIPLIER },
     () => {
       const o = mask.snapToNavigable(FLENSBURG, DEFAULT_SETTINGS.safetyDepthM);
       const d = mask.snapToNavigable(MARSTAL, DEFAULT_SETTINGS.safetyDepthM);
@@ -321,7 +335,7 @@ describe('#243 depth comfort preference (real mask)', () => {
   // recovers fock too).
   it(
     'Bagenkop -> Marstal at DEFAULT_SETTINGS still routes (the regression a superseded encoding introduced)',
-    { timeout: 600_000 },
+    { timeout: 600_000 * COVERAGE_TIMEOUT_MULTIPLIER },
     () => {
       const res = planRoute(
         {
@@ -355,7 +369,7 @@ describe('#243 depth comfort preference (real mask)', () => {
   // strictly between the two.
   it(
     'Flensburg -> Marstal at DEFAULT_SETTINGS: the relaxed gate is localized to the pinch, not the whole passage (G.4, #243 mechanism 2)',
-    { timeout: 600_000 },
+    { timeout: 600_000 * COVERAGE_TIMEOUT_MULTIPLIER },
     () => {
       const res = planRoute(
         {
@@ -490,7 +504,7 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
 
   it(
     'a light-air, motor-off plan reports unreachable, not calm-motor-off, even though #53 relaxation is attempted',
-    { timeout: 600_000 },
+    { timeout: 600_000 * COVERAGE_TIMEOUT_MULTIPLIER },
     () => {
       // Measured directly (not derived from this PR's own reasoning): #53's
       // relaxed-gate mechanism DOES fire here (reason defaults to
