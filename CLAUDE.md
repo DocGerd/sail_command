@@ -77,6 +77,14 @@ deviate from it.
   up-to-date policy), so a red `app` no longer skips `e2e`, and both jobs race
   the SAME `setup-node` cache key — a lockfile-changing PR may have `e2e`
   restore a miss and pay an uncached `npm ci`. Both accepted knowingly.
+- The `e2e` job's own run time is commonly described as "~10 minutes"
+  elsewhere in this file and in issue #327 — that figure is the assumed
+  planning estimate, not a measurement. Runs captured while building #327's
+  PR #330 (`ci.yml`'s docs-only-skip classify step) measured `npm run e2e`
+  itself at ~3–4 min (run 30805813518: 10:30:24Z→10:33:40Z, ~3m16s; run
+  30805575220: 10:26:31Z→~10:30:26Z). Use this measured range for e2e-alone
+  planning; the older ~10 min figure may still describe a full CI *cycle*
+  including queueing/startup, not the job's own duration.
 - `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
   dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
   to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
@@ -1112,10 +1120,19 @@ deviate from it.
   in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
-- `gh api graphql -F body=@file` posts the FILE as the body — `--input` is
-  REST-only and has no equivalent for `graphql`. Inline the string for a
-  GraphQL call (e.g. a review-thread reply), or repair a bad post with a
-  REST `PATCH`.
+- `gh api graphql -F body=@file` posts the FILE as the body of a form field
+  named `body` (not the GraphQL `query`), so it fails with "A query attribute
+  must be specified" — that half of the old note here was right. But
+  **`--input` DOES work for `gh api graphql`**, backticks included — the old
+  advice to inline the string instead was wrong and steered straight at the
+  shell-quoting hazard the note exists to prevent. Verified directly (PR #329
+  fix-wave review, finding #5):
+  `gh api graphql --input file.json` → `{"data":{"viewer":{"login":"DocGerd"}}}`
+  exit 0, including with a backtick inside a variable value → exit 0; `gh api
+  graphql -F body=@file.json` → `"A query attribute must be specified"` exit 1.
+  Use a JSON `--input` file for any GraphQL call carrying a body with
+  backticks (e.g. a review-thread reply) — `--input` is the PREFERRED form,
+  not a REST-only fallback.
 - GitHub links a code-scanning alert to an issue only when the alert URL
   appears as a TASK-LIST item (`- [ ] <url>`) in the issue body — a plain
   markdown link does nothing, and the REST alert object exposes no tracking
