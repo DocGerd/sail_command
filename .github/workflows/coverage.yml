@@ -1,0 +1,105 @@
+name: Coverage
+
+# #319/#342: standalone reporting-only workflow, deliberately separate from
+# ci.yml — same shape as python-lint.yml's separation (#220). The `app` and
+# `e2e` jobs in ci.yml are the ONLY required checks under the protect-main
+# ruleset (strict up-to-date policy); this job is NOT added to that ruleset,
+# so it must fail closed (report a red job) without ever blocking a merge.
+# `thresholds.statements: 80` lives in app/vite.config.ts's coverage block
+# and only fires when coverage is enabled — this workflow is what enables it.
+#
+# Trigger: NIGHTLY (`schedule`) + `workflow_dispatch`, deliberately not
+# `pull_request`/`push`. #319 asks for a REPORTING step, not a gate, and the
+# full v8-instrumented suite is a multi-hundred-second run even locally
+# (measured ~983-1029s / ~16-17 min, CLAUDE.md's coverage bullet) — nightly
+# gets that cost off every PR's critical path entirely, at zero PR runner
+# time, rather than trying to fit it inside the ~2.1-2.5x CI already adds on
+# top. `paths:` is deliberately absent — meaningless for a schedule (there is
+# no diff to filter), and NOT scoping to `app/**` also means a PR touching
+# only this workflow file still gets covered by the next nightly run rather
+# than needing its own trigger.
+#
+# #342's root cause for why per-PR was never attempted here: THREE earlier
+# dispatch runs on a per-PR-shaped trigger each failed for a different
+# reason — run 30807548075 hit a job-level `timeout-minutes: 20` cap at
+# 20.22 min; runs 30810112565 and 30815617721 (42.6 min each) then blew the
+# solver-heavy tests' OWN per-test `vi.setConfig`/`timeout` budgets under v8
+# instrumentation, which no job-level timeout could ever have fixed — two
+# independent failure surfaces, not one (see app/src/test/timeouts.ts and
+# app/src/test/timeoutGuard.test.ts, the durable fix: a single coverage-aware
+# timeout constant every solver-heavy test file imports, plus a structural
+# guard that fails loudly if a file reintroduces a hardcoded literal instead
+# of importing it). With that fix in place a genuinely PASSING run is
+# expected to land near the ~983-1029s dev-machine measurement times
+# whatever additional penalty this runner class adds — cheap to over-provision
+# on a nightly with nothing waiting on it.
+on:
+  schedule:
+    # 02:17 UTC daily — deliberately off the hour and staggered from the
+    # existing weekly schedules (scorecard.yml 03:30 Mon, codeql.yml 04:23
+    # Mon) so a nightly coverage run never queues behind them.
+    - cron: '17 2 * * *'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  # No `pull_request` trigger exists on this workflow (see `on:` above), so
+  # nothing here is ever superseded — same-ref reruns queue rather than
+  # cancel, which is correct when nothing is waiting on the result.
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+      - run: npm run test:coverage
+        # DERIVATION (PR #351 review N1 — this cap was raised 120 -> 240
+        # after `app/src/test/timeouts.ts`'s coverage multiplier was raised
+        # 4 -> 8, which made the OLD 120-minute cap collide with the
+        # heaviest per-test budget in the suite):
+        #
+        #   `invariants.property.test.ts`'s solverTimeoutMs(900_000), the
+        #   largest base in the suite, is 900_000 * 8 = 7_200_000ms =
+        #   EXACTLY 120.0 min under coverage. A per-test timer starts only
+        #   once its OWN test starts — strictly after this step's node
+        #   boot/transform/collection already consumed time — so a per-test
+        #   budget numerically equal to the step cap can NEVER fire before
+        #   the step cap does, regardless of scheduling. That collapses the
+        #   two failure surfaces `timeouts.ts` says must stay separate: a
+        #   hang would surface as GitHub's generic job-timeout with no test
+        #   named, instead of vitest naming the offender.
+        #
+        #   RULE, so the next multiplier or base change re-checks this:
+        #   this cap MUST stay strictly greater than the largest
+        #   `solverTimeoutMs(...)` product in the suite (currently 120 min,
+        #   `solverTimeoutMs(900_000)`) PLUS the rest of the suite's wall
+        #   time, with margin for step-startup overhead. 120 + ~45 min
+        #   (measured: the completed coverage run, 30829788656, ran the
+        #   whole suite in 40m56s at the PRIOR 4x multiplier) = ~165 min
+        #   minimum; 240 is the next natural round number above that,
+        #   leaving real margin rather than a number sized to today's exact
+        #   minimum.
+        #
+        #   There is no PR-latency cost to over-provisioning a nightly, so
+        #   this stays deliberately loose rather than fitted to today's
+        #   measurement — a non-required check that times out goes
+        #   permanently red and gets ignored, silently defeating the whole
+        #   point of #319 (a check nobody reads is worse than no check).
+        #
+        #   TWIN COMMENT (PR #351 round 5, orchestrator decision — this repo's
+        #   twin-search rule, CLAUDE.md, for a fact stated in two artifacts):
+        #   `app/src/test/timeoutBudgetVsJobCap.test.ts`'s `JOB_CAP_MINUTES`
+        #   constant (currently 240) MUST equal this number. That guard used
+        #   to READ this file directly and VERIFY the two stayed in sync;
+        #   after four regex-parsing fail-opens across two review rounds it
+        #   was simplified to a declared constant instead — the coupling is
+        #   now DOCUMENTED, not verified, so changing ONE of these two
+        #   numbers without the other is a SILENT drift. #359 tracks
+        #   restoring verified coupling with a real YAML parse. If you change
+        #   this number, change `JOB_CAP_MINUTES` too.
+        timeout-minutes: 240

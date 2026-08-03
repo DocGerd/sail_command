@@ -44,14 +44,79 @@ deviate from it.
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
+- `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
+  exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
+  executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
+  from repo root therefore never loads `app/vite.config.ts` (no jsdom, no
+  `setupFiles`) and collects Playwright `.spec.ts` under `app/e2e/` as
+  "(0 test)" — cost three failed coverage measurements this session. Always
+  use `run`, never `exec`, for anything that depends on `app/`'s config.
+- Statement coverage baseline: 93.92% (4100/4365 statements; branches 88.99%,
+  functions 92.28%, lines 95.52%), measured 2026-08-03 via `npm --prefix app
+  run test:coverage`. The trailing test/file COUNT from that same 2026-08-03
+  measurement (1206 tests, 102 files) is now stale by exactly PR #351's own
+  +1/+1 (`app/src/test/timeoutGuard.test.ts`, #342's structural guard) — the
+  percentages above are untouched (a scanning-only test file is
+  coverage-neutral) and were correctly left unmeasured-again per that PR;
+  only the count needed updating, verified via a real `npm --prefix app run
+  test` run: **1207 tests, 103 files** (2026-08-03). Meets the OpenSSF
+  `test_statement_coverage80` criterion (≥80%) — it had simply never been
+  measured before. `vite.config.ts`'s `coverage` block carries
+  `thresholds.statements: 80` (#335) and `.github/workflows/coverage.yml`
+  (#342) now evaluates it — but only NIGHTLY (`schedule` +
+  `workflow_dispatch`), never per-PR: `app`'s required CI job still runs
+  plain `test` (a bare `vitest run`, no coverage). `src/sw.ts` and
+  `src/routing/worker.ts` STAY IN coverage scope at ~0% BY DESIGN (jsdom has
+  no real ServiceWorker or dedicated-Worker execution model; decided 2026-08-03
+  on #319 rather than excluded, since together they are only ~0.57% of
+  statements and excluding would raise, not preserve, the published figure)
+  — their functional assurance instead comes from `app/e2e/offline.spec.ts`,
+  `csp.spec.ts`, `basemap-fallback.spec.ts`, `plan.spec.ts`, `live.spec.ts`
+  and `deploy.yml`'s post-deploy CDN smoke probe; do not "fix" the 0% with a
+  jsdom-mocked service-worker test — that would be the #50 equivalence-test
+  tautology (statements execute without modeling real CacheStorage/Range/CDN
+  semantics, the bug class that actually bit in #96 and #118).
 - Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
   a ~40 s real-mask solver acceptance file). Use focused filters while
   iterating (`npm --prefix app run test -- <filter>`); give the full run a
-  generous timeout. Solver-heavy test files set
-  `vi.setConfig({ testTimeout: 120_000 })`; the property test carries 900 s.
-  **CI runners are 6–10× slower than dev machines** — never add a per-test
-  timeout tighter than the file-level config, and never trust local timing
-  margins for CI.
+  generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
+  (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
+  per-test override, keyed OR positional, e.g. the property test's 900 s)
+  from `app/src/test/timeouts.ts` (#342) rather than hardcoding a literal —
+  eleven files previously each hardcoded their own literal (nine via
+  `vi.setConfig({ testTimeout: 120_000 })`; `workerClient.test.ts` (x8) and
+  `gpx.parse.test.ts` via a bare positional third `it()` argument, found in
+  PR #351 review after the first sweep only grepped for the `testTimeout:`
+  keyword) — a centralized, coverage-aware constant replaced all eleven.
+  `SC_COVERAGE` (read by `timeouts.ts`) is set by `vite.config.ts`'s
+  `test.env` whenever the CLI's own `--coverage`/`--coverage.enabled*` flag
+  is present — not by a shell-only env-var prefix, so it works identically
+  on any shell/OS and for any invocation that requests coverage, not only
+  the `test:coverage` npm script — and scales solver budgets **8×**
+  (hand-derived from the measured CI-coverage/CI-plain ratio below, doubled
+  because that ratio is a lower bound measured on a run that was itself
+  killed by a too-tight budget, and because solver-heavy tests are
+  documented to pay MORE than the suite-average coverage penalty; full
+  derivation in `timeouts.ts`'s `COVERAGE_MULTIPLIER` comment).
+  **CI is slower than dev machines, but not by a flat multiplier** — measured
+  2026-08-03 (#341, PR #335 work): `npm run test` local 249.8 s vs CI
+  ~515–535 s (~2.1×); `npm run test:coverage` local ~983–1029 s vs CI 2558 s
+  (~2.5×). Coverage instrumentation is a SEPARATE multiplier from runner
+  speed — solver-heavy tests pay a bigger coverage penalty than component
+  tests, so no single ratio predicts both. A job's `timeout-minutes` and a
+  per-test `vi.setConfig` timeout are DIFFERENT failure surfaces: raising the
+  former cannot rescue the latter (cost three red CI runs to learn). Operative
+  rule unchanged — never add a per-test timeout tighter than the file-level
+  config, and never size a CI timeout from a local measurement's margin; that
+  holds at 2× as firmly as at a bigger multiplier. That rule is now
+  structurally enforced, not just documented: `timeoutGuard.test.ts` fails
+  loudly if `app/src/**/*.test.{ts,tsx}` hardcodes a `testTimeout`/`timeout`
+  literal (keyed OR bare-positional form) instead of importing it from
+  `app/src/test/timeouts.ts` — Playwright specs under `app/e2e/**` and
+  `playwright.config.ts` are a NAMED residual, out of scope by glob (coverage
+  never runs e2e, and Playwright's own `timeout: 120_000` is an unrelated
+  budget); an `it.each(...)(...)` positional timeout is a separate, latent
+  (not live) residual documented in the guard's own header comment.
 - vitest's `BaseSequencer` sorts by file SIZE descending when there is no
   cache — and CI never has one (`npm ci` wipes `node_modules`).
   `invariants.property.test.ts` is ~4380 bytes but ~463 s, so the
@@ -63,6 +128,27 @@ deviate from it.
   up-to-date policy), so a red `app` no longer skips `e2e`, and both jobs race
   the SAME `setup-node` cache key — a lockfile-changing PR may have `e2e`
   restore a miss and pay an uncached `npm ci`. Both accepted knowingly.
+- The `e2e` job's own run time is commonly described as "~10 minutes"
+  elsewhere in this file and in issue #327 — that figure is the assumed
+  planning estimate, not a measurement. Runs captured while building #327's
+  PR #330 (`ci.yml`'s docs-only-skip classify step) measured `npm run e2e`
+  itself at ~3–4 min (run 30805813518: 10:30:24Z→10:33:40Z, ~3m16s; run
+  30805575220: 10:26:31Z→~10:30:26Z). Use this measured range for e2e-alone
+  planning; the older ~10 min figure may still describe a full CI *cycle*
+  including queueing/startup, not the job's own duration.
+- `ci.yml`'s `e2e` job gates its four expensive steps (`setup-node`, `npm ci`,
+  `playwright install`, `npm run e2e`) behind a docs-only classify step (#327,
+  PR #330). The JOB always runs and always reports — a trigger-level
+  `paths`/`paths-ignore` on a REQUIRED check never reports at all, leaving the
+  PR blocked forever, so only STEPS may be skipped; `python-lint.yml`/
+  `verify-mask.yml` may use trigger filters precisely because neither is
+  required. It fails CLOSED: filter error, empty diff, unreachable base,
+  non-PR event, or any unmatched path all run e2e. `.claude/**` is
+  deliberately NOT allowlisted (it holds executable hooks); `CLAUDE.md`,
+  `LICENSE`, `docs/**` and `changelog.d/**` are. Measured on a real
+  `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
+  `mergeable_state: clean` — so a skipped-but-successful required check does
+  satisfy `develop`'s gating.
 - `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
   dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
   to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
@@ -93,6 +179,15 @@ deviate from it.
 
 - TypeScript `strict` + `exactOptionalPropertyTypes` are ON; tsconfig
   `erasableSyntaxOnly` forbids enums and constructor parameter properties.
+- `String.replace` with a STRING pattern (not a regex/global) silently
+  returns the input UNCHANGED when the pattern is absent — no throw, no
+  warning. Measured (#223): reformatting `<meta charset="UTF-8" />` to
+  `<meta charset="utf-8">` made `vite build` exit 0 with ZERO CSP metas in
+  `dist`. `cspMeta()` (`app/vite.config.ts`) now throws if its marker is
+  missing; `subPathMeta()` in the same file still has the bare-`replace`
+  shape (#318, open — a silent failure there degrades to an indexable UAT).
+  Per the guard-asymmetry rule below: an absent security control is the
+  expensive failure direction, so the check must fail closed.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -407,27 +502,74 @@ deviate from it.
   harbor-combobox false alarm, #107 session). Before filing, verify the
   deployed artifact with a cache-busted browser pass (unregister both origin
   SWs, clear caches, hard-reload) and inspect ARIA/DOM, not pixels.
+- **CSP (#223)** ships as a build-only `<meta http-equiv>` injected by
+  `cspMeta()` in `app/vite.config.ts` (`apply: 'build'`) — GitHub Pages
+  cannot set response headers, and the meta is deliberately ABSENT from
+  `index.html`'s source and from `vite dev`'s served HTML: Vite's dev client
+  injects CSS as inline `<style>` elements, which `style-src 'self'` blocks
+  outright (measured, PR #316 review B2 — dev renders fully unstyled, 0
+  stylesheets/0 CSS rules, with only a console violation and no visible
+  error). A dev-server browser pass is a documented verification step here,
+  so a source-HTML CSP would silently break it.
+  `worker-src` is `'self'` only — NOT `blob:`. maplibre-gl 6's blob-worker
+  fallback (`workerFactory()` in `util/web_worker.ts`) is unreachable here
+  (`MapView.tsx` feeds `setWorkerUrl` a same-origin `?worker&url` asset, and
+  the factory short-circuits same-origin URLs to the non-blob path), and
+  adding `blob:` anyway was measured (PR #316 review B1) to defeat
+  `script-src 'self'` outright — a blob-URL `new Worker` ran arbitrary code
+  under the policy. `img-src` keeps `data:`/`blob:` legitimately (maplibre's
+  `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
+- Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
+  loads them via `getArrayBuffer`/`fetch`
+  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`); `font-src`
+  governs `@font-face` only, which this app doesn't use for map labels.
+  Nothing in the suite yet asserts a label actually renders (#320).
+- `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
+  suite has: `annotations.spec.ts:167` asserts ZERO Open-Meteo requests,
+  every planning spec uses `?windFixture=`, AIS is BYOK so opens no sockets,
+  and jsdom enforces no CSP at all — so a directive wrong in either direction
+  (too tight, blocking startup; too loose, degraded to unrestrictive) would
+  pass every other spec. It asserts ALL non-`example.com` violations are
+  empty across the whole page lifetime, not an allowlist of expected ones —
+  a narrower per-origin filter was tried and would have missed exactly the
+  PR's own B2 finding.
 
 ## Release & branching
 
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
-  up-to-date policy), merged as a merge commit, then tagged on `main`; `main` is
+  up-to-date policy), merged as a merge commit, then tagged on `main` with a
+  SIGNED tag (`git tag -s "$TAG" -m "$TAG" main`, release runbook §5a — `-m`
+  is required, not cosmetic: a bare `git tag -s` with no message opens an
+  editor and blocks an unattended cut). **Signed from `v0.8.0` onward (#322)**
+  — SSH signing (`gpg.format = ssh`), verified locally with `git tag -v`
+  BEFORE the push (§5a) and, for anyone else, via GitHub's "Verified" badge
+  or `git tag -v` against a locally-built `allowed_signers` file (setup in
+  `CONTRIBUTING.md`, verification story in `SECURITY.md`). `v0.1.0` through
+  `v0.7.0` remain permanently unsigned — signing is explicitly NOT
+  retroactive (re-tagging would break the `(main SHA, git-describe version)`
+  deploy-identity scheme). `main` is
   released-state-only. Pushing that tag is what puts the clean `vX.Y.Z` in the
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
   pass before the back-merge: the tag-triggered run reached `success` AND prod's
   About dialog shows the clean tag. A green step 5b is not the whole cut,
   though — a git tag and a GitHub Release are different objects, and pushing
-  the tag ships production without creating one. The v0.6.0 cut (2026-07-31)
+  the tag alone does not create one. The v0.6.0 cut (2026-07-31)
   followed this runbook exactly — tag pushed, deploy `success`, About dialog
   showing the clean `v0.6.0`, production verified serving it, every signal
   green — and still shipped with no Release object; none of those signals is
   evidence a Release exists, and it surfaced only when the maintainer noticed
-  it missing from the GitHub project page. The runbook's step 5c
-  (`.claude/skills/release/SKILL.md`, manual today, automation tracked in
-  #175) is what creates one, and it closes with `gh release list` showing the
+  it missing from the GitHub project page. `.github/workflows/release.yml`
+  (#175, shipped v0.7.0) now closes that gap automatically: the tag push ALSO
+  triggers `release.yml`, which extracts the matching `## [X.Y.Z]`
+  `CHANGELOG.md` section and creates the Release. Because a `push` on a tag
+  resolves the workflow FILE from the tag's own commit (same rule as the
+  `workflow_dispatch --ref` trap below), `release.yml` must already be on
+  `main` BEFORE the tag is pushed — true here only because it merged via the
+  release PR itself. Runbook step 5c is now VERIFY, not create: confirm the
+  Release exists and `gh release list` shows the
   tag marked `Latest` — `--latest` is load-bearing on creation, since without
   it the previous version keeps the badge, a silent wrong state rather than
   an error. Rationale: `cancel-in-progress`
@@ -440,7 +582,11 @@ deviate from it.
   rejected: it lets two runs reach `actions/deploy-pages` concurrently. See the
   comment above `concurrency:` in `deploy.yml`.) At the v0.4.0 cut this
   collision already happened in the other direction — the manual re-run
-  cancelled the back-merge run. `deploy.yml` (#96, #197) fires on push to
+  cancelled the back-merge run; the v0.7.0 cut (2026-08-03) confirmed the
+  standard direction empirically — the merge-push deploy run
+  (`main`@`a59236e`, 09:10:51) shows `cancelled`, superseded by the tag-push
+  deploy run 31 s later (09:11:22) — expected, not a fluke. `deploy.yml`
+  (#96, #197) fires on push to
   `main`, `develop`, or a release tag (`v[0-9]*`):
   production at the Pages site root reflects only released
   (`main`) state as before; `develop`'s unreleased state is additionally
@@ -457,19 +603,67 @@ deviate from it.
   ruleset targets both `main` and `develop` via literal refs (never
   `~DEFAULT_BRANCH` — that follows a default-branch flip and would strand the
   non-default branch) and requires `app`+`e2e` on each.
-  Changelog ritual (#131): feature PRs that change user-visible behavior add a
-  `CHANGELOG.md` `[Unreleased]` entry (Keep a Changelog 1.1, baked into the
-  About dialog's "What's new" view at build time); at each RELEASE cut, move
-  `Unreleased` into a new `## [X.Y.Z] - date` section and update the
-  comparison links at the bottom. When 2+ PRs are in flight, do NOT have each
-  edit `CHANGELOG.md`'s `[Unreleased]` section — they conflict on the same
-  region. Add the entry in the LAST PR of the batch or a dedicated changelog
-  PR; a SOLO PR may keep its atomic entry (no conflict possible). Durable fix
-  (changelog fragments) tracked in #189. Rolling `Unreleased` → `[X.Y.Z]` at a
-  cut needs NO test edits: `ChangelogView` filters the now-empty `[Unreleased]`
-  and `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
+  Changelog ritual (#131, fragments landed #189): feature PRs that change
+  user-visible behavior no longer edit `CHANGELOG.md`'s `[Unreleased]` section
+  directly — that was the original #131 ritual, and it conflicted whenever 2+
+  such PRs ran in parallel (a routine occurrence with parallel implementer
+  agents), either as a merge conflict or a forced re-sync collision under
+  `develop`'s strict up-to-date policy. Instead, each such PR drops ONE file
+  under the repo-root `changelog.d/` directory, named
+  `<issue-or-PR-number>.<category>.md` — or
+  `<issue-or-PR-number>-<n>.<category>.md` to disambiguate a second fragment
+  about the same number — (category one of Keep a Changelog
+  1.1's six: `added`/`changed`/`deprecated`/`removed`/`fixed`/`security`;
+  full format in `changelog.d/README.md`) — two PRs adding two differently-
+  named files can never conflict. A misnamed fragment (wrong category, no
+  number) is never a build error — the build SKIPS it with a console warning
+  and keeps going (the guard-asymmetry rule below: a bad fragment costs a
+  missing preview line, never a red build). `README.md` itself is skipped
+  SILENTLY — `buildFragments` (`app/src/lib/changelogFragments.ts`) `continue`s
+  on it before the warning path is even reached, so don't go hunting the
+  build log for a line that never appears there; it's the one filename that
+  is expected to be present and ignored, not an error case. Either way a
+  typo'd filename is invisible in the About dialog's preview, not loudly
+  rejected; check the build log or `ls changelog.d/` against the
+  filename pattern by eye if a fragment seems to be missing (release runbook
+  §2b makes the same check explicit at the fold step). `app/vite.config.ts`'s
+  `changelogFragmentsPlugin` reads `changelog.d/*.md` Node-side via `fs` at
+  build time (dev server, every `vite build` including the UAT deploy) and
+  exposes them through the `virtual:changelog-fragments` module;
+  `app/src/lib/changelogFragments.ts`'s `assembleFragments` +
+  `withPendingFragments` fold them into a synthetic `[Unreleased]` preview
+  `AboutDialog.tsx` merges into the parsed `CHANGELOG.md` release list —
+  which is *why* assembly happens at build time rather than only at the
+  release cut: UAT (`develop`'s unreleased state) keeps showing pending work.
+  Deliberately NOT a `?raw` glob import: that would need widening the
+  `server.fs.allow` allowlist (#131's own trap — see the Code-conventions
+  bullet on it) on every PR that adds a fragment; a plugin's own
+  `fs.readdirSync`/`readFileSync` never goes through the dev-server transform
+  middleware that allowlist gates, sidestepping it entirely. A `develop`-side
+  CI step CANNOT commit the assembled content back into `CHANGELOG.md` itself
+  — `develop` is protected and PR-only — so `CHANGELOG.md` is still only
+  ever changed by a human/agent step, now at the RELEASE cut instead of on
+  every feature PR: fold each fragment's text by hand into the new
+  `## [X.Y.Z] - date` section (grouped under the matching `### Category`
+  heading) and update the comparison links at the bottom, then DELETE the
+  fragment files (release runbook `.claude/skills/release/SKILL.md` §2b).
+  Rolling a NON-empty set of fragments → `[X.Y.Z]` at a cut needs NO test
+  edits: `ChangelogView` filters the now-empty `[Unreleased]` and
+  `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
   keep new changelog assertions tail-anchored so a cut can never force an
-  assertion edit.
+  assertion edit. **The zero-fragment cut is the one case where that "no
+  test edits" claim breaks down** — measured on PR #352's review: an EMPTY
+  `## [X.Y.Z]` section (no fragments AND an already-empty `[Unreleased]`,
+  the likely v0.8.0 shape) fails `changelog.test.ts`'s "no release section
+  may parse to zero entries except Unreleased" assertion (a REQUIRED `app`
+  check) and separately fails `release.yml`'s non-empty-notes guard at TAG
+  PUSH, after the merge and the deploy. SKILL.md §2b's zero-fragment branch
+  is the fix: never create an empty section, hand-derive real entries from
+  the milestone's merged PRs (almost always the right call — zero fragments
+  usually means the ritual was skipped, not that nothing shipped), or write
+  one honest "no user-visible changes" bullet only if that review turns up
+  genuinely nothing. Config/tooling/docs-only PRs still add no fragment at
+  all (unchanged from the original #131 rule).
   `Closes #N` in a RELEASE PR does NOT close the issue: GitHub auto-closes only
   on merge into the DEFAULT branch, which here is `develop`, not `main` (#132
   stayed open after #210 merged, v0.5.0). Close release-scoped issues by hand at
@@ -490,6 +684,20 @@ deviate from it.
   `commit_id: null` (measured on the #257 incident), so the timeline did not name
   its cause either; a commit-message-triggered close may instead record a real
   SHA.
+  GitHub parses EVERY commit message in the merged range, not just the tip
+  commit or the PR body/title — an EARLY commit written before a scope change
+  fires just as surely. PR #335 merged with `Refs #319` in its body (both
+  body and title were regex-checked, by the implementer and the reviewer,
+  and both correctly found zero keywords); #319 auto-closed anyway because
+  `c36f865`, the branch's FIRST commit, written hours earlier when the PR
+  still intended to
+  close #319, ended `Closes #319` and survived a mid-flight descope. The check
+  nobody ran: `git log origin/develop..HEAD | grep -iE
+  '(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'` — run it before merging,
+  especially when a PR's scope changed mid-flight, since the stale intent
+  lives in an old commit the body/title check never sees. The commit-vs-body
+  timeline discriminator above is what identified the culprit here too: the
+  `closed` event carried a real `commit_id`, not `null`.
   Mirror check in the OTHER direction: after a merge that deliberately used
   `Refs #N` rather than a closing keyword because N's specified fix was NOT
   implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
@@ -622,7 +830,20 @@ deviate from it.
   repos/OWNER/REPO/actions/runs/<id>/jobs` — and when a SHA might carry more
   than one run, select it explicitly rather than assume there is only one;
   the release skill's §5b already does this, picking the newest
-  `event == "push"` run for the same reason.
+  `event == "push"` run for the same reason. The v0.7.0 cut hit BOTH
+  configurations again and both were caught by keying on explicit run IDs
+  rather than check names: the `develop`→`main` release PR carries develop's
+  own tip as its head SHA (the last feature merge's push run sits on that
+  commit alongside the PR's own); the back-merge PR carries `main`'s tip,
+  which is ALSO the tag commit — TEN runs on that one SHA at v0.7.0:
+  main-push CI + CodeQL + Python lint + Mask integrity + the CANCELLED
+  main-push Deploy, the tag's Deploy + Release, and the back-merge PR's OWN
+  CI + CodeQL + Labeler. `CI` and `CodeQL` each appear TWICE, and that
+  duplication IS the trap — two `CI` runs attach two sets of `app`/`e2e`
+  check-runs, exactly what a name-keyed poll cannot separate. Rule:
+  enumerate `gh api
+  repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
+  ID explicitly — never poll by check name alone.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
@@ -706,7 +927,21 @@ deviate from it.
   standard as code, never a looser one: it is baked into the About dialog at
   build time, so an overstated figure ships to users and freezes into a
   versioned section at the next cut (a "~45 marks" claim overstated a fix's
-  reach by 4×).
+  reach by 4×). PATCHING instances a reviewer happens to find does not
+  converge: in the v0.7.0 session one fact (where the tag-signing work was
+  tracked) was stale across SIX artifacts and took four correction rounds,
+  each fix landing while a different artifact stayed wrong. What worked was
+  ENUMERATE, not patch — `git grep -n` every reference to the moved fact
+  repo-wide, then classify each hit as a TRACKER claim (asserts where the
+  remaining work lives — must move) or a HISTORICAL reference (names the
+  issue some already-shipped work happened under — stays as-is). Report the
+  enumeration as a table INCLUDING the hits left alone; that table is the
+  only evidence there is no seventh instance. The same failure has a CODE
+  form: nine test files carry `vi.setConfig({ testTimeout: 120_000 })`; PR
+  #335 patched only the two that had failed in CI, and the next run failed on
+  a third with the identical shape, at ~43 min per round to learn it (#342).
+  `git grep` the pattern first, then centralize it behind one constant plus a
+  structural guard — a per-file patch converges one CI run at a time.
 - Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
@@ -928,6 +1163,11 @@ deviate from it.
   A guard's deny list also fails open by construction: prefer directory-shaped
   matching with explicit narrow exemptions, and never drop a "redundant" pattern
   because of what today's tree happens to contain.
+  `.claude/hooks/wind-fixture-guard.sh` (#235, PR #333) — the wind-fixture
+  guard, extracted from `.claude/settings.json` into a standalone script with
+  `--selftest`. It fails CLOSED where the old inline form emitted nothing:
+  empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
+  or non-repo `git` (verified across 15 constructed failure inputs).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
@@ -942,11 +1182,21 @@ deviate from it.
   practice; treat that as an observed workaround, not a documented fix. A
   recommended fix, and the note that `reset --hard`/`clean -f` share the
   same shape, are recorded in PR #233's body for the maintainer to apply —
-  it's their global config, not something a repo PR can change.
+  it's their global config, not something a repo PR can change. Two more
+  observed false positives (2026-08-03), both on ordinary text rather than
+  any force operation: the repo's own new `.claude/hooks/wind-fixture-guard.sh`
+  (a literal `-f` at the `wind-`/`fixture` junction) and flags like
+  `cut -d= -f2`. Both blocked a read-only agent twice. These are a narrower
+  shape than the heredoc-prose case — `-f` inside a longer word or a longer
+  flag is not `-f` as a TOKEN, so exact-match on the argument would fix them
+  without the parser PR #233 was closed over. Still out of repo scope (#236).
 - PR review threads via API: send bodies containing backticks as JSON `--input`
   files (double-quoted shell interpolation mangles them); inline comments 422
   outside diff hunks — anchor to in-diff lines, put out-of-diff findings in a
-  PR comment.
+  PR comment. `.claude/skills/pr-selfreview/resolve-threads.sh` (#178, PR
+  #329) batches the reply+resolve loop: it paginates `reviewThreads` on
+  `hasNextPage`, re-enumerates fresh at the end, and exits non-zero if any
+  thread is still open.
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
@@ -968,6 +1218,14 @@ deviate from it.
   Playwright MCP browser is contested — verify the URL before every screenshot.
   A poll loop on a known-slow job that keeps reporting "no change" is pure
   overhead — poll for the TRANSITION, not the state.
+  2026-08-03 refinement: when an agent reports "waiting on a background task"
+  and that report ARRIVES AS an idle notification, the two contradict each
+  other — the notification fires only when the agent has no live background
+  children. Nudging does not fix it (one implementer stalled four times on
+  the same step, rationalising the wait differently each time). After the
+  SECOND stall, TAKE the watch: arm the monitor in the main session and hand
+  the agent the result. The orchestrator holds the watch; the worker holds
+  the code.
 - BRIEFS ARE WRONG SOMETIMES — say so in the brief, and reward the pushback.
   In one session an implementer refused to build the shell parser its brief
   asked for (#235 is the false-POSITIVE direction, unreachable by globs, and
@@ -1022,10 +1280,19 @@ deviate from it.
   in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
-- `gh api graphql -F body=@file` posts the FILE as the body — `--input` is
-  REST-only and has no equivalent for `graphql`. Inline the string for a
-  GraphQL call (e.g. a review-thread reply), or repair a bad post with a
-  REST `PATCH`.
+- `gh api graphql -F body=@file` posts the FILE as the body of a form field
+  named `body` (not the GraphQL `query`), so it fails with "A query attribute
+  must be specified" — that half of the old note here was right. But
+  **`--input` DOES work for `gh api graphql`**, backticks included — the old
+  advice to inline the string instead was wrong and steered straight at the
+  shell-quoting hazard the note exists to prevent. Verified directly (PR #329
+  fix-wave review, finding #5):
+  `gh api graphql --input file.json` → `{"data":{"viewer":{"login":"DocGerd"}}}`
+  exit 0, including with a backtick inside a variable value → exit 0; `gh api
+  graphql -F body=@file.json` → `"A query attribute must be specified"` exit 1.
+  Use a JSON `--input` file for any GraphQL call carrying a body with
+  backticks (e.g. a review-thread reply) — `--input` is the PREFERRED form,
+  not a REST-only fallback.
 - GitHub links a code-scanning alert to an issue only when the alert URL
   appears as a TASK-LIST item (`- [ ] <url>`) in the issue body — a plain
   markdown link does nothing, and the REST alert object exposes no tracking

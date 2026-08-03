@@ -160,9 +160,20 @@ _triggers() {
   # SC2221/SC2222: several alternatives subsume each other (*npm*install* also
   # matches *npm*uninstall*). Harmless - every alternative has the same body -
   # and kept verbatim so the trigger is byte-identical to the inline hook.
+  #
+  # #313: `npm audit fix` and `npm dedupe` (incl. their `--prefix` variants)
+  # both rewrite package-lock.json silently, same as the alternatives already
+  # here, so they get the same exact-or-boundary shape as the short-subcommand
+  # alternatives above (`\ ci|\ ci[!a-zA-Z0-9]*` etc), NOT the unbounded
+  # `*npm*...*` shape `install`/`uninstall`/`update` use - "audit fix"/"dedupe"
+  # are ordinary words that can appear as a PREFIX of something else (e.g.
+  # this repo's own `test-fixtures/`), so an unbounded trailing `*` would also
+  # fire on "audit fixture", a mention that happens to share the prefix. This
+  # is a pure alternation ADDITION - monotonic per the file-header argument
+  # above (can only widen firing, never narrow it).
   # shellcheck disable=SC2221,SC2222
   case "$1" in
-    *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci[!a-zA-Z0-9]*|*npm*\ add|*npm*\ add[!a-zA-Z0-9]*|*npm*\ i|*npm*\ i[!a-zA-Z0-9]*|*npm*\ rm|*npm*\ rm[!a-zA-Z0-9]*|*npm*\ remove|*npm*\ remove[!a-zA-Z0-9]*|*npm*\ up|*npm*\ up[!a-zA-Z0-9]*) return 0 ;;
+    *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci[!a-zA-Z0-9]*|*npm*\ add|*npm*\ add[!a-zA-Z0-9]*|*npm*\ i|*npm*\ i[!a-zA-Z0-9]*|*npm*\ rm|*npm*\ rm[!a-zA-Z0-9]*|*npm*\ remove|*npm*\ remove[!a-zA-Z0-9]*|*npm*\ up|*npm*\ up[!a-zA-Z0-9]*|*npm*\ audit\ fix|*npm*\ audit\ fix[!a-zA-Z0-9]*|*npm*\ dedupe|*npm*\ dedupe[!a-zA-Z0-9]*) return 0 ;;
   esac
   return 1
 }
@@ -192,7 +203,22 @@ if [ "${1:-}" = "--selftest" ]; then
   fail=0
   nl=$'\n'
   tab=$'\t'
+  # Counted independently of the generator arrays below, so a case that
+  # silently disappears - a `check` line deleted, or an array element
+  # (invocations/wrappers/nearmiss/d_pres/d_subs/d_tails) shrunk - cannot
+  # leave this suite reporting `SELFTEST OK` having covered less than it
+  # claims to (PR #350 review, Finding 3, extended past the docs-only
+  # classifier it was raised against - "in every selftest that reports a
+  # tally"). The array-length constants are asserted against the LITERAL
+  # arrays right after each is defined below, independently of the loops
+  # that consume them - deriving "expected" from the same array a loop
+  # iterates would be the exact equivalence-test tautology CLAUDE.md warns
+  # against (an expectation computed from the thing under test always
+  # matches it).
+  check_calls=0
+  EXPECTED_CHECK_CALLS=55
   check() { # want  desc  cmd
+    check_calls=$((check_calls + 1))
     local got; got=$(decide "$3")
     if [ "$got" != "$1" ]; then
       echo "SELFTEST FAIL: $2 -> got [$got] want [$1]"
@@ -270,6 +296,32 @@ if [ "${1:-}" = "--selftest" ]; then
   check fire "OVER-FIRE (accepted): run test -- i.test.ts"  "npm --prefix app run test -- i.test.ts"
   check skip "hot path WITHOUT punctuation still quiet"     "npm --prefix app run test -- invariants"
 
+  # --- #313: npm audit fix / npm dedupe also rewrite package-lock.json
+  # --- silently and must fire, including the repo-convention --prefix form.
+  check fire "npm audit fix"                   "npm audit fix"
+  check fire "npm --prefix app audit fix"      "npm --prefix app audit fix"
+  check fire "npm dedupe"                      "npm dedupe"
+  check fire "npm --prefix app dedupe"         "npm --prefix app dedupe"
+  # --- #313 mention-not-invocation: each new trigger has an echo-mention
+  # --- counterpart that MUST stay suppressed via _provably_inert, isolating
+  # --- the invocation-vs-mention distinction per the #216 lesson (a row must
+  # --- carry no OTHER construct - here, no metachar from the exclusion set -
+  # --- that could independently cause the same skip).
+  check skip "echo mentioning npm audit fix"   'echo "run npm audit fix first"'
+  check skip "echo mentioning npm dedupe"      'echo "run npm dedupe first"'
+  # --- #313 boundary guard: "audit fix"/"dedupe" get the SAME
+  # --- exact-or-[!a-zA-Z0-9]-boundary shape as the other short subcommands
+  # --- (ci/add/i/rm/remove/up), not the unbounded `*npm*...*` shape - this
+  # --- repo says "fixture" constantly (`app/public/test-fixtures/`, the
+  # --- `pree2e`-regenerated wind fixture), so an unbounded trailing `*`
+  # --- would fire on a plain npm-test-filter mention of it. This is
+  # --- produced by `_triggers` itself returning skip (no `\ audit\ fix`
+  # --- suffix and no `[!a-zA-Z0-9]` char after it - "t" in "fixtures" is
+  # --- alnum) - `_provably_inert` is never reached, since the command's
+  # --- first word is `npm`, not echo/printf/cat, so it could not be the
+  # --- mechanism producing this skip.
+  check skip "boundary guard: audit fixtures is not audit fix" "npm run test -- audit fixtures"
+
   # --- Known residual: tab before a short subcommand does not fire (header).
   check skip "RESIDUAL: tab before ci"         "npm${tab}ci"
   check fire "tab before install still fires"  "npm${tab}install"
@@ -297,6 +349,8 @@ if [ "${1:-}" = "--selftest" ]; then
     "npm remove left-pad" "npm rm left-pad" "npm update" "npm up"
     "npm --prefix app install" "npm --prefix app ci" "npm -w app install"
     "npm install --save-dev vitest" "npm ci --omit=dev"
+    # #313
+    "npm audit fix" "npm --prefix app audit fix" "npm dedupe" "npm --prefix app dedupe"
   )
   # shellcheck disable=SC2016  # literal $( ) and backticks ARE the test data
   wrappers=(
@@ -312,6 +366,24 @@ if [ "${1:-}" = "--selftest" ]; then
     'echo "$(%s)"' 'echo `%s`' "cat <(%s)" "printf '%%s' hi; %s"
     "%s > /tmp/out 2>&1" "time %s" "npx foo; %s"
   )
+  EXPECTED_INVOCATIONS=18
+  EXPECTED_WRAPPERS=28
+  # Positive assertion PER TERM, not a `-ne ... || -ne ...` compound (PR #350
+  # review round 2, R2-1): with an empty/non-numeric constant, `[ ... -ne
+  # ... ]` returns status 2 (a `[` usage error), not 1 - so the FIRST term
+  # already fails to be "true" in the `||` sense, the SECOND term is then
+  # evaluated, and if it ALSO returns status 2 the whole compound is false
+  # and NEITHER array gets checked. Splitting into two independent positive
+  # checks (see classify-docs-only.sh's matching comment for the single-term
+  # form) closes both terms independently rather than compounding the hole.
+  if ! [ "${#invocations[@]}" -eq "$EXPECTED_INVOCATIONS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: invocations=${#invocations[@]} (want ${EXPECTED_INVOCATIONS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
+  if ! [ "${#wrappers[@]}" -eq "$EXPECTED_WRAPPERS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: wrappers=${#wrappers[@]} (want ${EXPECTED_WRAPPERS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
   gen_a=0
   for inv in "${invocations[@]}"; do
     for w in "${wrappers[@]}"; do
@@ -356,6 +428,13 @@ if [ "${1:-}" = "--selftest" ]; then
     'sed -e "e npm ci" notes.txt'   'find . -name x -exec npm install {} +'
     'xargs npm install'             'awk -f run-npm-install.awk pkgs.txt'
   )
+  EXPECTED_NEARMISS=21
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
+  # classify-docs-only.sh's matching comment.
+  if ! [ "${#nearmiss[@]}" -eq "$EXPECTED_NEARMISS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: nearmiss=${#nearmiss[@]} (want ${EXPECTED_NEARMISS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
   for cm in "${nearmiss[@]}"; do
     if [ "$(decide "$cm")" != fire ]; then
       echo "SELFTEST FAIL [near-miss]: suppressed something not provably inert -> <<$(printf '%s' "$cm" | tr '\n' '~')>>"
@@ -374,9 +453,34 @@ if [ "${1:-}" = "--selftest" ]; then
     esac
     return 1
   }
-  d_subs=(ci add i rm remove up install uninstall update run test build x "")
+  # #313: "audit fix" and "dedupe" are new-only alternatives (absent from
+  # _triggers_legacy below), so they never trip the superset FAIL branch -
+  # they only ever contribute to `added`, extending the same generator loop
+  # to the new alternatives rather than inventing a parallel structure.
+  d_subs=(ci add i rm remove up install uninstall update run test build x "" "audit fix" dedupe)
   d_pres=("npm" "npm --prefix app" "sudo npm" "  npm" "echo npm" "git status && npm" "xnpm")
   d_tails=("" " " ";" ")" "|" "&&" "$nl" " left-pad" "x" "1" "-g" "$tab" "'" '"')
+  EXPECTED_D_SUBS=16
+  EXPECTED_D_PRES=7
+  EXPECTED_D_TAILS=14
+  # Positive assertion PER TERM, not a 3-way `-ne ... || -ne ... || -ne ...`
+  # compound (PR #350 review round 2, R2-1) - same short-circuit hole as the
+  # invocations/wrappers pair above, just three terms deep: an empty/
+  # non-numeric constant on ANY term makes `[` return status 2, `||`
+  # evaluates the next term, and if every term returns status 2 the whole
+  # compound is false and NONE of the three arrays gets checked.
+  if ! [ "${#d_subs[@]}" -eq "$EXPECTED_D_SUBS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: d_subs=${#d_subs[@]} (want ${EXPECTED_D_SUBS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
+  if ! [ "${#d_pres[@]}" -eq "$EXPECTED_D_PRES" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: d_pres=${#d_pres[@]} (want ${EXPECTED_D_PRES:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
+  if ! [ "${#d_tails[@]}" -eq "$EXPECTED_D_TAILS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: d_tails=${#d_tails[@]} (want ${EXPECTED_D_TAILS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
   gen_c=0; only_legacy=0; added=0
   for p in "${d_pres[@]}"; do
     for s in "${d_subs[@]}"; do
@@ -404,7 +508,9 @@ if [ "${1:-}" = "--selftest" ]; then
   # lives in the stdin->JSON->stdout wrapper, which loops A-C never touch, so
   # a mutation reintroducing it survives the entire battery above. These four
   # rows are the guard for exactly that regression class.
+  wrapper_calls=0
   wrapper_check() { # want-fire(0|1)  desc  json-payload  [runner...]
+    wrapper_calls=$((wrapper_calls + 1))
     local want="$1" desc="$2" payload="$3"; shift 3
     local out got=1
     out=$(printf '%s' "$payload" | "$@" "$0" 2>/dev/null)
@@ -416,11 +522,42 @@ if [ "${1:-}" = "--selftest" ]; then
   }
   wrapper_check 0 "real invocation through the wrapper" '{"tool_input":{"command":"npm install left-pad"}}' bash
   wrapper_check 1 "inert command through the wrapper"   '{"tool_input":{"command":"git status"}}' bash
-  if [ -x /bin/bash ]; then
+  # EXPECTED_WRAPPER_CALLS is a FLAT LITERAL, not computed to match whichever
+  # rows happened to run (PR #350 review round 2, R2-4) - the CI runner always
+  # has /bin/bash, so the cheap and honest form is to pin the full count and
+  # make the environment's absence LOUD instead of silently lowering the bar:
+  # a conditional expectation is the one pin in this file the 10-mutation
+  # deletion battery could never catch, since on a machine lacking /bin/bash
+  # the two degraded-PATH rows AND the expectation would vanish together.
+  EXPECTED_WRAPPER_CALLS=4
+  if [ ! -x /bin/bash ]; then
+    echo "SELFTEST FAIL [environment]: /bin/bash absent - the two degraded-PATH wrapper rows cannot run here"
+    fail=1
+  else
     # Degraded: neither jq nor python3 (nor `cat`) resolvable. Must still fire
     # on a real invocation, and must NOT nudge on every Bash call.
     wrapper_check 0 "degraded: npm ci still fires" '{"tool_input":{"command":"npm ci"}}' env PATH=/nonexistent /bin/bash
     wrapper_check 1 "degraded: git status quiet"   '{"tool_input":{"command":"git status"}}' env PATH=/nonexistent /bin/bash
+  fi
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
+  # classify-docs-only.sh's matching comment.
+  if ! [ "$wrapper_calls" -eq "$EXPECTED_WRAPPER_CALLS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [wrapper count]: wrapper_calls=$wrapper_calls (want ${EXPECTED_WRAPPER_CALLS:-<unset/empty>}) - a wrapper_check row was skipped or dropped"
+    fail=1
+  fi
+
+  # Pinned so a case that silently disappears from the hand-written table
+  # (check_calls) cannot leave the suite reporting `SELFTEST OK` having run
+  # fewer cases than it claims to (PR #350 review, Finding 3). The
+  # generator-loop counts (gen_a, nearmiss, gen_c) are already guarded
+  # independently above via the pinned array-length constants - re-checking
+  # them here against a value derived from the SAME loop would be the
+  # equivalence-test tautology CLAUDE.md warns against.
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
+  # classify-docs-only.sh's matching comment.
+  if ! [ "$check_calls" -eq "$EXPECTED_CHECK_CALLS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [check count]: check_calls=$check_calls (want ${EXPECTED_CHECK_CALLS:-<unset/empty>}) - a check() row was skipped or dropped"
+    fail=1
   fi
 
   if [ "$fail" -eq 0 ]; then

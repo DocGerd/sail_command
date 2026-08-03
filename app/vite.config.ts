@@ -9,6 +9,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { BaseSequencer } from 'vitest/node';
 import type { TestSpecification } from 'vitest/node';
+import { readFragmentsFromDir } from './src/lib/changelogFragmentsFs.ts';
 
 const APP_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +23,64 @@ const basePath = isUat ? '/sail_command/uat/' : '/sail_command/';
 
 // #131: the one out-of-root file the dev server may serve (see `server` below).
 const changelogPath = resolve(APP_DIR, '..', 'CHANGELOG.md');
+
+// #189: reads changelog.d/*.md fragments Node-side via `fs` at build time and
+// exposes them through the `virtual:changelog-fragments` module —
+// AboutDialog.tsx folds them into a synthetic 'Unreleased' preview (see
+// src/lib/changelogFragments.ts's module comment for the full mechanism).
+// Deliberately NOT a `?raw` glob import: `server.fs.allow` (set below, right
+// above `server:`) REPLACES the default workspace root, so an out-of-root
+// `?raw` import needs an exact allowlist entry per file (#131's own trap,
+// documented in CLAUDE.md) — a *directory* of files named by contributors
+// would need that allowlist widened on every PR. A plugin's own
+// `fs.readdirSync`/`readFileSync` calls run in the plugin's Node process and
+// never reach the dev-server transform middleware that allowlist gates, so
+// this sidesteps the trap entirely rather than working around it.
+const changelogFragmentsDir = resolve(APP_DIR, '..', 'changelog.d');
+
+function changelogFragmentsPlugin(): Plugin {
+  const virtualModuleId = 'virtual:changelog-fragments';
+  const resolvedVirtualModuleId = '\0' + virtualModuleId;
+
+  // All the actual `fs` I/O (directory scan, symlink/directory rejection,
+  // per-file read-with-fallback) plus fragment parsing lives in
+  // `readFragmentsFromDir` (`src/lib/changelogFragmentsFs.ts`) — pulled out
+  // to be unit-testable against a real temp directory (#189 review round 2:
+  // the plugin previously read every directory ENTRY unconditionally,
+  // inlining a symlink's TARGET content into the shipped bundle and
+  // hard-crashing the build on a directory or an unreadable file).
+  const readFragments = (): ReturnType<typeof readFragmentsFromDir> =>
+    readFragmentsFromDir(changelogFragmentsDir, (message) => console.warn(message));
+
+  return {
+    name: 'sailcommand:changelog-fragments',
+    resolveId(id) {
+      return id === virtualModuleId ? resolvedVirtualModuleId : undefined;
+    },
+    load(id) {
+      if (id !== resolvedVirtualModuleId) return undefined;
+      return `export default ${JSON.stringify(readFragments())};`;
+    },
+    configureServer(server) {
+      // Fragments aren't real ES module dependencies of anything, so Vite's
+      // default dependency graph never notices a changelog.d/*.md edit —
+      // watch the directory explicitly and invalidate + reload on change.
+      server.watcher.add(changelogFragmentsDir);
+      server.watcher.on('all', (_event, changedPath) => {
+        // `+ sep`, not a bare prefix match: a bare `startsWith` would also
+        // match an unrelated SIBLING path that merely shares the prefix
+        // (`changelog.d-old/x.md`, `changelog.dump`), firing a spurious
+        // full-page reload in dev.
+        if (!changedPath.startsWith(changelogFragmentsDir + sep)) return;
+        const mod = server.moduleGraph.getModuleById(resolvedVirtualModuleId);
+        if (mod !== undefined) {
+          server.moduleGraph.invalidateModule(mod);
+          server.ws.send({ type: 'full-reload' });
+        }
+      });
+    },
+  };
+}
 
 // #96: rewrites the two absolute og: URLs to the actual deploy sub-path and,
 // for the UAT build only, marks the page noindex and retitles it — so the
@@ -265,6 +324,7 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     glyphManifest(),
+    changelogFragmentsPlugin(),
     subPathMeta(basePath, isUat),
     cspMeta(),
     VitePWA({
@@ -373,16 +433,82 @@ export default defineConfig(({ command }) => ({
     include: ['src/**/*.test.{ts,tsx}'],
     // #214: see SlowFileFirstSequencer above.
     sequence: { sequencer: SlowFileFirstSequencer },
-    // #221: REPORTING ONLY — no `thresholds` block, and CI is deliberately
-    // NOT wired to run this yet (only `npm run test:coverage` locally). This
-    // release ships measurement, not enforcement, because `app` is a
-    // required check under protect-main with a strict up-to-date policy and
-    // a threshold that fails on merge day would block the release PR
-    // itself. `include` is intentionally the same glob as `app`'s source
-    // tree (not scoped to what tests happen to exercise), so an untested
-    // file reports 0% rather than silently dropping out of the denominator
-    // — a follow-up ratchet toward enforcement should add a CI step that
-    // runs `test:coverage` and reports the number without gating `app`.
+    // #342 fix-wave (PR #351 review m5): `SC_COVERAGE` (read by
+    // `app/src/test/timeouts.ts` to scale solver-heavy test budgets) used to
+    // be set by a POSIX `SC_COVERAGE=1 ` shell prefix on package.json's
+    // `test:coverage` script — silently broken on Windows cmd/PowerShell (no
+    // such syntax there), which would run the full v8-instrumented suite
+    // against the UNSCALED plain-run budgets, the exact failure #342 exists
+    // to close. Also convention-only: `npx vitest run --coverage.enabled`
+    // bypassing the npm script entirely got the unscaled budget too, even on
+    // a POSIX shell. Derived here instead from the CLI's own
+    // `--coverage`/`--coverage.enabled*` argv entry — present identically
+    // regardless of shell, since it's a literal process argument, not a
+    // shell-expanded variable — so the multiplier now follows coverage
+    // actually being requested, not which command happened to set an env
+    // var. `package.json`'s `test:coverage` script no longer needs the
+    // prefix at all.
+    //
+    // PR #351 review N3: `--coverage.enabled*` alone (no value check) also
+    // matched the EXPLICIT DISABLE `--coverage.enabled=false` — the harmful
+    // direction, since it turned the multiplier ON for a run that asked for
+    // coverage to be OFF (a genuine hang then gets 16 minutes of
+    // hang-detection budget instead of 2). Excluded below (verified: `vitest
+    // run --coverage.provider=v8` alone — no `--coverage`/`--coverage.enabled`
+    // flag at all — does NOT actually enable coverage either, confirmed by
+    // the absence of a coverage summary in that run's output, so that
+    // invocation correctly gets the unscaled budget too). The real residual
+    // is a `coverage: { enabled: true, ... }` set directly on the `test`
+    // block's coverage OBJECT below (not via any CLI flag) — argv sniffing
+    // cannot see that, and this repo does not do it today (there is no
+    // `enabled` key in the block below), but closing it for real needs the
+    // resolved coverage config, not argv. This detection is a pragmatic
+    // argv PROXY for "coverage is on", strictly better than the
+    // shell prefix it replaces, not a true reading of the resolved coverage
+    // config — it moved the convention from "which npm script you typed" to
+    // "which CLI flag you passed", not eliminated convention entirely.
+    env: process.argv.some(
+      (a) => a === '--coverage' || (a.startsWith('--coverage.enabled') && !/=(?:false|0)$/.test(a)),
+    )
+      ? { SC_COVERAGE: '1' }
+      : {},
+    // #221 measured a 93.92% statement baseline; #319 adds this threshold on
+    // top of it. `.github/workflows/coverage.yml` (#342) evaluates it, but
+    // only NIGHTLY (`schedule` + `workflow_dispatch`) — `app`'s required CI
+    // job still runs plain `npm run test` (no coverage), so a PR never pays
+    // the v8-instrumented run's cost. Getting the nightly job to a passing
+    // run needed a durable timeout fix first: an earlier per-PR-shaped
+    // dispatch attempt in #319's own PR (#335) was reverted after three runs
+    // found TWO distinct timeout surfaces, not one — run 30807548075 hit the
+    // job-level `timeout-minutes: 20` cap at 20.22 min; runs 30810112565 and
+    // 30815617721 each ran ~42.6 min and failed on the solver-heavy tests'
+    // OWN per-test `vi.setConfig`/`timeout` budgets under v8 instrumentation,
+    // which raising the job cap could never have fixed. `app/src/test/
+    // timeouts.ts` (#342) is now the single coverage-aware timeout constant
+    // every solver-heavy test file imports instead of hardcoding its own,
+    // with `app/src/test/timeoutGuard.test.ts` failing loudly if
+    // `app/src/**/*.test.{ts,tsx}` reintroduces a hardcoded `testTimeout`/
+    // `timeout` literal, keyed OR positional-argument form (PR #351 review
+    // M1/M4 — the guard's scope is exactly that glob, not e2e specs or
+    // `playwright.config.ts`, which have their own unrelated budget). `thresholds.
+    // statements: 80` matches the OpenSSF `test_statement_coverage80`
+    // criterion and is a FLOOR, not a ratchet — it leaves ~14 points of
+    // headroom below the measured 93.92%, in which a regression would still
+    // pass silently between nightly runs. Deliberate and revisitable at the
+    // next release cut, not an oversight. `include` is intentionally the
+    // same glob as `app`'s source tree (not scoped to what tests happen to
+    // exercise), so an untested file reports 0% rather than silently
+    // dropping out of the denominator — `src/sw.ts` and
+    // `src/routing/worker.ts` are two such files, decided (#319, 2026-08-03)
+    // to STAY IN scope at ~0% BY DESIGN rather than be excluded: jsdom has
+    // no real ServiceWorker or dedicated-Worker execution model, so their
+    // functional assurance comes from `app/e2e/offline.spec.ts`,
+    // `csp.spec.ts`, `basemap-fallback.spec.ts`, `plan.spec.ts`,
+    // `live.spec.ts` and `deploy.yml`'s post-deploy CDN smoke probe instead —
+    // do NOT "fix" the 0% with a jsdom-mocked service-worker test, which
+    // would be the #50 equivalence-test tautology (statements execute
+    // without modeling real CacheStorage/Range/CDN semantics, the bug class
+    // that actually bit in #96 and #118).
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'text'],
@@ -394,6 +520,7 @@ export default defineConfig(({ command }) => ({
         'src/main.tsx',
         'src/vite-env.d.ts',
       ],
+      thresholds: { statements: 80 },
     },
   },
 }));

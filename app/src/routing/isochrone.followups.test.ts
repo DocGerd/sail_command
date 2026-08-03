@@ -6,11 +6,12 @@ import { makeMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS } from '../types';
 import type { MaskMeta } from '../types';
 import { destinationPoint, haversineNm } from '../lib/geo';
+import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Regression tests for issue #21 — three follow-up gaps from the #20 review.
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower
 // than dev machines; keep the generous file-level timeout.
-vi.setConfig({ testTimeout: 120_000 });
+vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 // Fine synthetic mask: 0.00078125° cells (≈50 m lon × 87 m lat at 54.75°N),
 // bounded region so an exhaustive search saturates quickly.

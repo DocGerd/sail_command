@@ -77,6 +77,28 @@ pipeline/` before committing. CI enforces this in
 `.github/workflows/python-lint.yml` (job `ruff`) — an optional check, not
 part of `protect-main`'s required `app` + `e2e`.
 
+## Changelog fragments
+
+A PR that changes user-visible behavior adds ONE small file under
+[`changelog.d/`](changelog.d/README.md) instead of editing `CHANGELOG.md`
+directly — this repo routinely develops several PRs in parallel, and having
+every such PR edit the same `CHANGELOG.md` `[Unreleased]` section caused
+conflicts (#189). Two PRs adding two differently-named fragment files can
+never conflict.
+
+- Filename: `<issue-or-PR-number>.<category>.md`, e.g. `changelog.d/165.fixed.md`
+  (`category` is one of Keep a Changelog 1.1's six, lowercase: `added`,
+  `changed`, `deprecated`, `removed`, `fixed`, `security`).
+- Content: the entry's text only — no leading `- `, no `### Category`
+  heading. Full format and examples in
+  [`changelog.d/README.md`](changelog.d/README.md).
+- Config/tooling/docs-only PRs still add **no** fragment, same as before.
+- Pending fragments show up live in the About dialog's "What's new" preview
+  (including on the UAT deploy) — `app/vite.config.ts`'s
+  `changelogFragmentsPlugin` reads them at build time. They are folded into
+  the real `CHANGELOG.md` by hand at the release cut and deleted; see the
+  [release runbook](.claude/skills/release/SKILL.md) §2b.
+
 ## Design spec
 
 `docs/superpowers/specs/2026-07-14-sail-command-design.md` is the source of
@@ -111,12 +133,12 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.8.0` — the next release.
+- `v0.9.0` — the next release.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0`, `v0.5.0`, `v0.5.1`, and `v0.6.0` are closed; `v0.7.0` ships in this cut and
-closes as part of the release. The
+`v0.4.0`, `v0.5.0`, `v0.5.1`, `v0.6.0`, and `v0.7.0` are closed; `v0.8.0`
+ships in this cut and closes as part of the release. The
 [milestones page](https://github.com/DocGerd/sail_command/milestones) is
 authoritative; this list names the shape, not a live count.
 
@@ -128,43 +150,105 @@ its own cut and shifts nothing: the pending `vX.(Y+1).0` stays where it is.
 
 The same cut refreshes the documentation that describes project state, so it
 cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
-and themes), [`CHANGELOG.md`](CHANGELOG.md) (roll `[Unreleased]` into the new
-version), [`README.md`](README.md) (known limitations),
+and themes), [`CHANGELOG.md`](CHANGELOG.md) (fold the pending
+[`changelog.d/`](changelog.d/README.md) fragments into the new version and
+delete them), [`README.md`](README.md) (known limitations),
 [`GOVERNANCE.md`](GOVERNANCE.md), and
 [`docs/security-assurance-case.md`](docs/security-assurance-case.md).
 
-## Release tag signing (planned, starting `v0.8.0`)
+## Release tag signing (live, starting `v0.8.0`, #322)
 
-Release tags are not signed yet
-([#222](https://github.com/DocGerd/sail_command/issues/222)); `v0.7.0` and
-every earlier tag are unsigned by design. See
-[`SECURITY.md`](SECURITY.md#verifying-a-release) for the current state and
-the verification process once signing is live.
+Release tags are cryptographically signed from `v0.8.0` onward, using SSH
+signing (`gpg.format = ssh`) rather than GPG — GitHub verifies SSH tag/commit
+signatures the same way it verifies GPG ones (the "Verified" badge), and it
+needs no separate GPG toolchain. `v0.1.0` through `v0.7.0` remain unsigned
+permanently — signing is **not retroactive** (re-tagging a shipped release
+would change what a rebuild produces at an unchanged SHA; see
+[`CLAUDE.md`](CLAUDE.md)). See [`SECURITY.md`](SECURITY.md#verifying-a-release)
+for how a *user* verifies a released tag; this section is the one-time setup
+for a *maintainer* machine that needs to be able to sign one.
 
-**Do not enable `tag.gpgSign` globally before `v0.8.0`.** It makes every
-`git tag -a` — including the ones the release runbook
-(`.claude/skills/release/SKILL.md`) itself creates — silently signed. A
-first-ever signed tag hitting an unset signing key or a passphrase prompt
-would stall a release cut mid-flight (the tag push is the step that triggers
-the production deploy) rather than fail safely ahead of time.
-
-Once adopted, the maintainer's local git config will look like:
+### One-time local setup
 
 ```bash
 git config gpg.format ssh
-git config user.signingkey ~/.ssh/id_ed25519.pub   # or a dedicated signing-only key
-git config tag.gpgSign true
+git config user.signingkey ~/.ssh/id_ed25519.pub   # path to the PUBLIC half only
 ```
 
-- `gpg.format ssh` — sign with an SSH key instead of GPG. GitHub verifies SSH
-  tag/commit signatures the same way it verifies GPG ones (the "Verified"
-  badge), and it needs no separate GPG toolchain.
-- `user.signingkey` — path to the *public* half of the signing key; git
-  shells out to `ssh-keygen` to produce the signature, and the private key
-  never leaves the local `ssh-agent`/keyring.
-- `tag.gpgSign true` — sign every annotated tag (`git tag -a`) by default, so
-  the release runbook's own `git tag -a "$TAG" -m "$TAG" main` is signed
-  without needing an explicit `-s` once this is turned on.
+- **`gpg.format ssh`** — sign with an SSH key instead of GPG. Git shells out
+  to `ssh-keygen` to produce the signature; the private key never leaves the
+  local `ssh-agent`/keyring. **Requirement, not just an observation about the
+  current key**: whichever key is used here must be usable WITHOUT an
+  interactive passphrase prompt during the release cut — no passphrase, or
+  already loaded into `ssh-agent` for the session. The maintainer's existing
+  `~/.ssh/id_ed25519` happens to have no passphrase, which is why this works
+  unattended today, but that is a property of that specific key, not of this
+  setup in general — a successor's own passphrase-protected key would prompt
+  on `git tag -s` and stall the runbook's fail-closed chain (§5a) at exactly
+  the step that triggers the production deploy. Load it into `ssh-agent`
+  first if it has one.
+- **`user.signingkey`** — path to the **public** half of the signing key.
+  Reusing an existing authentication key (`~/.ssh/id_ed25519.pub`) is fine —
+  SSH signing and SSH authentication are different *uses* of the same
+  keypair, not different key material — or point it at a dedicated
+  signing-only key if you'd rather keep the two separate.
+- **Deliberately no `tag.gpgSign true`.** An earlier draft of this plan
+  proposed enabling it globally so every `git tag -a` would be silently
+  signed. That was rejected: it would make the FIRST-ever signed tag an
+  implicit side effect of an ordinary `-a`, hitting an unset config or key
+  problem mid-cut (the tag push is the step that triggers the production
+  deploy) instead of failing safely ahead of time. The release runbook
+  (`.claude/skills/release/SKILL.md` §5a) instead passes `-s` **explicitly**
+  on the one command that tags a release, and verifies the signature locally
+  with `git tag -v` *before* pushing — so signing is opt-in per invocation,
+  not an ambient git setting that could also sign some unrelated tag
+  elsewhere in the repo's history.
+
+### `allowed_signers` — required for local verification (`git tag -v`)
+
+An SSH signature on its own says "signed by whoever holds this key"; it
+takes a separate mapping from **identity → public key** for `git tag -v` /
+`git verify-tag` to resolve *whose* key that is. Without it, verification
+fails even against a perfectly good signature. Point git at that file and
+populate it:
+
+```bash
+git config gpg.ssh.allowedSignersFile ~/.config/git/allowed_signers
+```
+
+The file is plain text, one line per identity, in the format
+`ssh-keygen -Y verify` and `git verify-tag`/`git tag -v` both understand:
+
+```
+<email-or-identity> <key-type> <public-key-material>
+```
+
+e.g. (using the public key already at `~/.ssh/id_ed25519.pub`):
+
+```
+maintainer@example.com ssh-ed25519 AAAA...restofthepublickey...
+```
+
+Multiple identities may map to the same key on separate lines (useful if
+commits/tags are made under more than one email address). This file is
+**local-only** — it is not, and should not be, committed to the repository;
+see `git help gpg-sign` for the full format.
+
+### GitHub registration — required for the "Verified" badge
+
+Local `git tag -v` proves the signature to your own machine. For GitHub to
+show the green **Verified** badge (what a third party sees, without needing
+any local config of their own), the **public** key must additionally be
+registered at `github.com/settings/ssh/new` as a **Signing Key** — GitHub
+keeps SSH signing keys in a registry that is **separate from the
+authentication-key registry** an existing `~/.ssh/id_ed25519.pub` may already
+be registered in for `git push`/`git clone` over SSH. Registering a key for
+authentication does **not** register it for signing, and vice versa — both
+registrations are needed if the same key is reused for both purposes. Until
+the key is registered as a Signing Key, a tag can be correctly, verifiably
+signed (`git tag -v` reports `Good signature`) while GitHub still shows it as
+**Unverified** — that is a registration gap, not a signature problem; see
+`SECURITY.md`'s "Verifying a release" section.
 
 ## Claude Code config placement
 

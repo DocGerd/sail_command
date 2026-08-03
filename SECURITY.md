@@ -59,10 +59,12 @@ arguments — is the
   entered it. Encrypting it locally would be theatre — the key needed to
   decrypt it would sit in the same storage. It is yours, it never leaves your
   device except to aisstream.io, and you can revoke it there at any time.
-- **No signature verification of releases yet.** Release tags are currently
-  unsigned ([#222](https://github.com/DocGerd/sail_command/issues/222)) — see
-  [Verifying a release](#verifying-a-release) below for the current state and
-  the planned process.
+- **Signature verification only from `v0.8.0` onward.** Release tags starting
+  at `v0.8.0` are cryptographically signed and independently verifiable
+  ([#322](https://github.com/DocGerd/sail_command/issues/322)); `v0.1.0`
+  through `v0.7.0` remain permanently unsigned — see
+  [Verifying a release](#verifying-a-release) below for how to check one and
+  why the earlier tags can't be retrofitted.
 - **No third-party availability guarantees.** Open-Meteo, aisstream.io, and
   GitHub Pages are outside the project's control.
 
@@ -76,37 +78,47 @@ as a normal issue.
 
 ## Verifying a release
 
-Release tags in this repository are **not cryptographically signed yet**
-(tracked in [#322](https://github.com/DocGerd/sail_command/issues/322); the
-verification process and docs below shipped under
-[#222](https://github.com/DocGerd/sail_command/issues/222)).
+Release tags from `v0.8.0` onward are **cryptographically signed**
+([#322](https://github.com/DocGerd/sail_command/issues/322); the
+verification process and docs below originally shipped, ahead of signing
+itself, under [#222](https://github.com/DocGerd/sail_command/issues/222)).
 `v0.1.0` through `v0.7.0` carry no signature, so `git verify-tag` / `git tag
 -v` **fail** against them (exit 1) rather than succeed — the message differs
-by tag kind: annotated-but-unsigned tags (`v0.1.0`, `v0.5.0`) report `error:
-no signature found`, while the lightweight tags — the majority of the
-shipped set — report `error: ... cannot verify a non-tag object of type
+by tag kind: annotated-but-unsigned tags (`v0.1.0`, `v0.5.0`, `v0.7.0`) report
+`error: no signature found`, while the lightweight tags — the majority of
+that earlier set — report `error: ... cannot verify a non-tag object of type
 commit`, because a lightweight tag is a bare ref that cannot carry a
-signature at all. Both outcomes are expected for these versions, not a sign
+signature at all. Both outcomes are expected for those versions, not a sign
 of tampering.
 
 The Silver `signed_releases` criterion requires **both** cryptographic
 signing **and** a documented process for obtaining the public keys and
-verifying signatures — they are conjuncts, not alternatives. This section
-delivers the documentation half ahead of the signing half, so the process is
-settled before the first signed tag; the criterion itself is **not met**
-until signing is live at `v0.8.0`.
+verifying signatures — they are conjuncts, not alternatives. The second
+conjunct is met today: the process is documented below and the maintainer's
+signing key is registered and retrievable at the endpoint named below (query
+it yourself — `gh api users/DocGerd/ssh_signing_keys` or the plain URL — it
+is not a promise). The first conjunct — an actual signed tag — is met once
+`v0.8.0` itself ships; **both** conjuncts, together, are what satisfy the
+criterion, not the tag alone.
 
-**Planned, starting at `v0.8.0`:** release tags will be signed with the
-maintainer's SSH signing key (`gpg.format = ssh` — GitHub's lowest-friction
-signing option, requiring no GPG toolchain). Once active:
+**Live, as of `v0.8.0`:** release tags are signed with the maintainer's SSH
+signing key (`gpg.format = ssh` — GitHub's lowest-friction signing option,
+requiring no GPG toolchain):
 
-- The public key is planned to be published at GitHub's dedicated SSH
-  *signing*-key endpoint, `https://api.github.com/users/DocGerd/ssh_signing_keys`
-  — **not** `https://github.com/<user>.keys`, which serves *authentication*
-  keys from a separate registry and is not the correct source for verifying
-  a signature — and/or committed to this repository so verification does not
-  depend on GitHub's availability at all (the stronger option, and the one
-  this repo defaults to if the two ever diverge).
+- **The public key is registered** at GitHub's dedicated SSH *signing*-key
+  endpoint, `https://api.github.com/users/DocGerd/ssh_signing_keys` (also
+  browsable as JSON in any browser) — **not** `https://github.com/<user>.keys`,
+  which serves *authentication* keys from a **separate registry** that does
+  not back the "Verified" badge on a signed tag/commit. If a tag ever
+  verifies locally (`git tag -v` reports `Good signature`) but GitHub shows
+  it as **Unverified**, that is a registration gap on the signing-key
+  registry (e.g. after a key rotation, or for a successor's own key before
+  they've registered it), not evidence of a bad signature. The key's raw
+  fingerprint is not pinned in this document — it can be rotated, and a
+  fingerprint frozen into a versioned doc would go stale silently; the
+  live registry above is the authoritative source, and `GOVERNANCE.md`'s
+  succession table separately records the fingerprint currently in use for
+  custody-tracking purposes.
 - Verify a tag locally with either of the equivalent commands:
 
   ```bash
@@ -115,18 +127,90 @@ signing option, requiring no GPG toolchain). Once active:
   git tag -v vX.Y.Z
   ```
 
-  Both require `gpg.ssh.allowedSignersFile` to be configured locally,
-  pointing at a file mapping the maintainer's identity to their public key
-  (see `git help gpg-sign`) — without it, git has no way to resolve *whose*
-  key produced the signature, even though the tag itself carries one.
+  Both require a local `gpg.ssh.allowedSignersFile`, pointing at a file
+  mapping an identity to a public key (see `git help gpg-sign`) — without
+  it, git has no way to resolve the key material behind the tag's signature,
+  even though the tag itself carries one.
+
+  **Complete third-party recipe** (proven end to end against this repo, with
+  no local signing config of any kind — only the public endpoint above):
+
+  ```bash
+  # 1. Fetch the registered public key(s) — no auth required, this is public data.
+  gh api users/DocGerd/ssh_signing_keys --jq '.[].key'
+  # or: curl -s https://api.github.com/users/DocGerd/ssh_signing_keys | jq -r '.[].key'
+
+  # 2. Build a local allowed_signers file: "<identity> <key-type> <key-material>",
+  #    one line per key. The identity is a free-form label — it does NOT need to
+  #    match the tag's own tagger email for verification to succeed (see the note
+  #    below); using it anyway is good practice so the printed "Good signature
+  #    for <identity>" line is meaningful to you.
+  echo "release-signing $(gh api users/DocGerd/ssh_signing_keys --jq '.[0].key')" > /tmp/sailcommand-allowed-signers
+
+  # 3. Verify.
+  git -c gpg.ssh.allowedSignersFile=/tmp/sailcommand-allowed-signers tag -v vX.Y.Z
+  ```
+
+  Reading the output — five shapes, only one of which is a real problem,
+  and the first two look deceptively similar (both start with the word
+  "Good"):
+
+  - **`Good "git" signature FOR <identity> with ED25519 key SHA256:...`**,
+    exit 0 → verified. The `<identity>` is whatever label your file used
+    (step 2) — it is cosmetic, not a security check; only the key material
+    had to match.
+  - **`Good "git" signature WITH ED25519 key SHA256:...`** (no `for
+    <identity>` clause) **followed by `No principal matched.`**, exit 1 →
+    NOT verified, but also not tampering: your `allowed_signers` file has no
+    entry whose KEY matches the one that produced the signature (a missing
+    file, an empty file, or the wrong key — never a mismatched identity
+    label on an otherwise-correct key; see the note above). `git` resolves
+    this by running `ssh-keygen -Y find-principals` to discover which of
+    your file's entries matches the signature's key *first*, then verifies
+    against that entry, so there is never a case where the right key with a
+    "wrong" label fails this way. Fix the FILE (re-fetch step 1), not the
+    identity string.
+  - **`error: no signature found`**, exit 1 → the tag is *annotated* but was
+    never signed — not tampering, it simply predates signing. Three of the
+    ten pre-`v0.8.0` tags are this shape: `v0.1.0`, `v0.5.0`, `v0.7.0`.
+  - **`error: <tag>: cannot verify a non-tag object of type commit.`**,
+    exit 1 → the tag is *lightweight* — a bare ref that cannot carry a
+    signature at all, so there is nothing for `git tag -v` to check. Also
+    not tampering, for the same reason: it predates signing. The other
+    seven of those ten pre-`v0.8.0` tags are this shape: `v0.1.1`, `v0.1.2`,
+    `v0.2.0`, `v0.3.0`, `v0.4.0`, `v0.5.1`, `v0.6.0`.
+  - **`Could not verify signature.`** followed by a line naming your
+    `allowed_signers` file and a line number (e.g. `<file>:1: key is not
+    permitted for use in signature namespace "git"`), exit 1 → also NOT
+    tampering: a malformed *option* on that line in your own file (for
+    example a stray `namespaces="ssh"` restricting the key to the wrong
+    namespace) rather than a missing/wrong key. This looks like the bad-news
+    case below — it names a signature-verification failure, not merely an
+    unmatched principal — but it isn't one: it's the same class of problem
+    as the *No principal matched.* bullet above, a broken local file, just
+    surfaced through a different `ssh-keygen` error path. Fix the FILE's
+    option syntax, not the tag.
+
+  An outright signature-verification-FAILURE message (not merely an
+  unmatched principal) is the one case that is actually bad news: it means
+  the data doesn't match what was signed. Treat that as tampering and
+  stop — unless the message names your `allowed_signers` file and a line
+  number, which is a problem with your file, not the tag.
+
+  This file is a **local, per-verifier** artifact — it is not, and does not
+  need to be, committed to this repository. See
+  [`CONTRIBUTING.md`](CONTRIBUTING.md#release-tag-signing-live-starting-v080-322)
+  for the maintainer's own one-time local setup (a different, machine-local
+  config from the third-party recipe above).
 - GitHub's own "Verified" badge on the tag's commit and on the Release page
   is a second, independent verification channel that needs no local
-  configuration.
+  configuration at all — the fastest check for most people.
 
-Signing will **not** be retroactive: existing tags are never re-signed or
-re-tagged. Moving an existing tag would break the deploy identity scheme this
-project relies on, which keys production bytes to `(main SHA, git-describe
-version)` — see `CLAUDE.md`.
+Signing is **not retroactive**: `v0.1.0` through `v0.7.0` are never re-signed
+or re-tagged, and this is permanent, not a bootstrap gap that closes later.
+Moving an existing tag would break the deploy identity scheme this project
+relies on, which keys production bytes to `(main SHA, git-describe version)`
+— see `CLAUDE.md`.
 
 ## Reporting a vulnerability
 

@@ -8,11 +8,12 @@ import {
   type PolarTable,
   type RigResult,
 } from '../types';
+import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
 // files keep vitest's 5s default so hang detection stays meaningful there.
-vi.setConfig({ testTimeout: 120_000 });
+vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 /** Fock fixture: uniformly 12% slower than TEST_POLAR (genoa must win). */
 const SLOW_FOCK: PolarTable = {

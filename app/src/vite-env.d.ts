@@ -20,3 +20,15 @@ declare const __SC_UAT__: boolean;
 // never fetch it at runtime. Plain string interpolation — the fold-exact
 // ternary rule above is specific to the UAT gate and does not apply here.
 declare const __SC_APP_VERSION__: string;
+
+// #189: repo-root changelog.d/*.md fragments, parsed Node-side and exposed by
+// vite.config.ts's changelogFragmentsPlugin (src/lib/changelogFragments.ts
+// has the full mechanism). Not a real file on disk, so it needs its own
+// ambient module declaration rather than relying on `vite/client`'s `?raw`
+// typing.
+declare module 'virtual:changelog-fragments' {
+  import type { RawFragment } from './lib/changelogFragments';
+
+  const fragments: RawFragment[];
+  export default fragments;
+}
