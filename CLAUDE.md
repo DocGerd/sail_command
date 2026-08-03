@@ -576,10 +576,11 @@ deviate from it.
   SHA.
   GitHub parses EVERY commit message in the merged range, not just the tip
   commit or the PR body/title — an EARLY commit written before a scope change
-  fires just as surely. PR #335 merged with `Refs #319` in both body and
-  title (implementer and reviewer both regex-checked these and correctly
-  found zero keywords); #319 auto-closed anyway because `c36f865`, the
-  branch's FIRST commit, written hours earlier when the PR still intended to
+  fires just as surely. PR #335 merged with `Refs #319` in its body (both
+  body and title were regex-checked, by the implementer and the reviewer,
+  and both correctly found zero keywords); #319 auto-closed anyway because
+  `c36f865`, the branch's FIRST commit, written hours earlier when the PR
+  still intended to
   close #319, ended `Closes #319` and survived a mid-flight descope. The check
   nobody ran: `git log origin/develop..HEAD | grep -iE
   '(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'` — run it before merging,
