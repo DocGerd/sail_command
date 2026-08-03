@@ -61,19 +61,49 @@ function coverageJobTimeoutMinutes(): number {
   // prose — this file's own header comment narrates the historical
   // `timeout-minutes: 20` job cap from an earlier failed run, which a bare
   // `/timeout-minutes:\s*(\d+)/` (no anchor) matches FIRST and wrongly,
-  // since `RegExp#exec` without a global flag returns the first hit in
-  // document order and the comment sits above the real YAML key. Caught by
-  // this guard's own mutation check finding 20 (the narrated historical
-  // value) instead of 240 (the real key) on first implementation.
-  const match = /^[ \t]*timeout-minutes:\s*(\d+)\s*$/m.exec(source);
-  if (!match) {
+  // since a non-global `RegExp#exec` returns the first hit in document
+  // order and the comment sits above the real YAML key. Caught by this
+  // guard's own mutation check finding 20 (the narrated historical value)
+  // instead of 240 (the real key) on first implementation.
+  //
+  // PR #351 review N5 — the anchor closed that ONE instance but not the
+  // CLASS: GitHub Actions allows `timeout-minutes` at BOTH job level and
+  // step level, and applies the TIGHTEST one that governs a given step.
+  // Reading only the first line-anchored match (`.exec` without `/g`) is
+  // therefore unsound in general — a job-level key ABOVE the step-level one
+  // (an ordinary, arguably more idiomatic Actions edit, and conventionally
+  // the LARGER of the two) would be read as "the" cap while a smaller
+  // step-level key silently governs the real collision. Constructed and
+  // confirmed by review N5: a job-level `timeout-minutes: 600` above a
+  // step-level `timeout-minutes: 120` (the colliding value) validated
+  // GREEN against 600 while 120 was the real, uncaught cap.
+  //
+  // Fix: take the MINIMUM of every line-anchored match, since the
+  // EFFECTIVE cap on any given step is always the tightest key that
+  // applies to it — never assume there is exactly one key, and never
+  // assume position (first, last, job-level, step-level) tells you which
+  // one binds. The length check runs BEFORE `Math.min` deliberately:
+  // `Math.min()` on an empty array is `Infinity`, which would silently
+  // recreate the exact fail-open this exists to close (an inequality
+  // checked against Infinity always holds).
+  //
+  // Self-reflection this guard's SECOND fail-open earns (the first was the
+  // comment-narrated historical value): the next way this could still read
+  // the wrong number is a value this regex's `\d+` cannot parse at all —
+  // e.g. a quoted `timeout-minutes: "240"` (YAML permits numbers as
+  // strings) — which is why the empty-match branch below throws LOUDLY
+  // rather than falling back to a default; a guard that goes silent on an
+  // unparseable format is the same fail-open shape one level earlier.
+  const matches = [...source.matchAll(/^[ \t]*timeout-minutes:\s*(\d+)\s*$/gm)];
+  if (matches.length === 0) {
     throw new Error(
-      `Could not find a 'timeout-minutes: N' YAML key (line-anchored, not merely mentioned in a ` +
-        `comment) in ${workflowPath} — has the workflow's shape changed? This guard cannot ` +
-        `verify the job-cap coupling without it.`,
+      `Could not find any 'timeout-minutes: N' YAML key (line-anchored, unquoted integer, not ` +
+        `merely mentioned in a comment) in ${workflowPath} — has the workflow's shape changed, ` +
+        `or is the value quoted/non-integer? This guard cannot verify the job-cap coupling ` +
+        `without at least one parseable key, and must not silently assume a value.`,
     );
   }
-  return Number(match[1]);
+  return Math.min(...matches.map((m) => Number(m[1]!)));
 }
 
 describe('#342/N1 structural guard: coverage.yml job cap vs. timeouts.ts multiplier', () => {
@@ -86,17 +116,23 @@ describe('#342/N1 structural guard: coverage.yml job cap vs. timeouts.ts multipl
     expect(largestBaseMs).toBeGreaterThan(0);
 
     const worstCaseMs = largestBaseMs * COVERAGE_MULTIPLIER_WHEN_ENABLED;
-    const jobCapMs = coverageJobTimeoutMinutes() * 60_000;
+    const jobCapMinutes = coverageJobTimeoutMinutes();
+    const jobCapMs = jobCapMinutes * 60_000;
 
     if (worstCaseMs >= jobCapMs) {
+      // PR #351 review N7: name the value in the form the reader actually
+      // edits (`timeout-minutes: N`, a whole number of minutes), not just
+      // the millisecond figure the comparison runs on — closes the mental
+      // "divide by 60,000" step between this message and the one-line fix.
       throw new Error(
         `The heaviest per-test budget under coverage (${largestBaseMs}ms base x ` +
-          `${COVERAGE_MULTIPLIER_WHEN_ENABLED}x = ${worstCaseMs}ms) is not strictly less than ` +
-          `coverage.yml's job-level timeout-minutes (${jobCapMs}ms). A per-test timer can never ` +
-          `fire before a job cap it is equal to or larger than, which collapses the two failure ` +
-          `surfaces #342 exists to keep separate (see timeouts.ts's COVERAGE_MULTIPLIER_WHEN_ENABLED ` +
-          `comment and coverage.yml's timeout-minutes comment). Raise coverage.yml's ` +
-          `timeout-minutes rather than shrinking the multiplier — over-provisioning a nightly is free.`,
+          `${COVERAGE_MULTIPLIER_WHEN_ENABLED}x = ${worstCaseMs}ms = ${worstCaseMs / 60_000} min) ` +
+          `is not strictly less than coverage.yml's job-level timeout-minutes ` +
+          `(${jobCapMinutes} min = ${jobCapMs}ms). A per-test timer can never fire before a job ` +
+          `cap it is equal to or larger than, which collapses the two failure surfaces #342 ` +
+          `exists to keep separate (see timeouts.ts's COVERAGE_MULTIPLIER_WHEN_ENABLED comment ` +
+          `and coverage.yml's timeout-minutes comment). Raise coverage.yml's timeout-minutes ` +
+          `rather than shrinking the multiplier — over-provisioning a nightly is free.`,
       );
     }
   });
