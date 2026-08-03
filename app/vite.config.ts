@@ -373,16 +373,28 @@ export default defineConfig(({ command }) => ({
     include: ['src/**/*.test.{ts,tsx}'],
     // #214: see SlowFileFirstSequencer above.
     sequence: { sequencer: SlowFileFirstSequencer },
-    // #221: REPORTING ONLY — no `thresholds` block, and CI is deliberately
-    // NOT wired to run this yet (only `npm run test:coverage` locally). This
-    // release ships measurement, not enforcement, because `app` is a
-    // required check under protect-main with a strict up-to-date policy and
-    // a threshold that fails on merge day would block the release PR
-    // itself. `include` is intentionally the same glob as `app`'s source
-    // tree (not scoped to what tests happen to exercise), so an untested
-    // file reports 0% rather than silently dropping out of the denominator
-    // — a follow-up ratchet toward enforcement should add a CI step that
-    // runs `test:coverage` and reports the number without gating `app`.
+    // #221 measured a 93.92% statement baseline; #319 adds this threshold on
+    // top of it. NOT wired into any CI job today — `app`'s CI job runs plain
+    // `npm run test` (no coverage), so this only fires for someone running
+    // `npm run test:coverage` locally. A CI reporting step was attempted in
+    // #319's own PR (#335) and reverted after three runs found TWO distinct
+    // timeout surfaces, not one: run 30807548075 (`pull_request`) hit the
+    // job-level `timeout-minutes: 20` cap at 20.22 min; runs 30810112565
+    // (`pull_request`) and 30815617721 (`workflow_dispatch`) each ran ~42.6
+    // min and failed on the solver-heavy tests' OWN per-test
+    // `vi.setConfig`/`timeout` budgets under v8 instrumentation — raising the
+    // job cap could never have fixed that second surface. A durable fix needs
+    // a shared coverage-aware timeout mechanism plus a structural test
+    // pinning every test file that would need it, which is more than that
+    // PR's scope; tracked in #342. `thresholds.
+    // statements: 80` matches the OpenSSF `test_statement_coverage80`
+    // criterion and is a FLOOR, not a ratchet — it leaves ~14 points of
+    // headroom below the measured 93.92%, in which a regression would still
+    // pass silently. Deliberate and revisitable at the next release cut, not
+    // an oversight. `include` is intentionally the same glob as `app`'s
+    // source tree (not scoped to what tests happen to exercise), so an
+    // untested file reports 0% rather than silently dropping out of the
+    // denominator.
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'text'],
@@ -394,6 +406,7 @@ export default defineConfig(({ command }) => ({
         'src/main.tsx',
         'src/vite-env.d.ts',
       ],
+      thresholds: { statements: 80 },
     },
   },
 }));
