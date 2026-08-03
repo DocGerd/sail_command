@@ -532,8 +532,12 @@ if [ "${1:-}" = "--selftest" ]; then
   # still hit the file_path arm, not silently fall through as "not Bash".
   wrapper_check deny  "Generated artifact"      "no tool_name, file_path present"     '{"tool_input":{"file_path":"app/public/data/mask.bin"}}'
 
-  if [ "$total" -ne "$EXPECTED_CASES" ]; then
-    echo "SELFTEST FAILURES: ran $total cases, expected $EXPECTED_CASES - a case was skipped or silently dropped"
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
+  # classify-docs-only.sh's matching comment for why `-ne` with an empty or
+  # non-numeric RHS fails OPEN (status 2 from `[`, not 1) and this form
+  # doesn't.
+  if ! [ "$total" -eq "$EXPECTED_CASES" ] 2>/dev/null; then
+    echo "SELFTEST FAILURES: ran $total cases, expected ${EXPECTED_CASES:-<unset/empty>} - a case was skipped or silently dropped"
     exit 1
   fi
   if [ "$fail" -eq 0 ]; then

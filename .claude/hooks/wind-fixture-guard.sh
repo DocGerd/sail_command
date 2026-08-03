@@ -501,8 +501,12 @@ if [ "${1:-}" = "--selftest" ]; then
 
   rm -rf "$repo_dirty" "$repo_clean" "$no_git_dir" "$toolbox_no_jq" "$toolbox_no_jq_no_py" "$toolbox_no_git"
 
-  if [ "$total_cases" -ne "$EXPECTED_CASES" ]; then
-    echo "SELFTEST FAILURES: ran $total_cases cases, expected $EXPECTED_CASES - a case was skipped or silently dropped"
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
+  # classify-docs-only.sh's matching comment for why `-ne` with an empty or
+  # non-numeric RHS fails OPEN (status 2 from `[`, not 1) and this form
+  # doesn't.
+  if ! [ "$total_cases" -eq "$EXPECTED_CASES" ] 2>/dev/null; then
+    echo "SELFTEST FAILURES: ran $total_cases cases, expected ${EXPECTED_CASES:-<unset/empty>} - a case was skipped or silently dropped"
     exit 1
   fi
   if [ "$fail" -eq 0 ]; then

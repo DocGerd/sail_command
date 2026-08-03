@@ -178,6 +178,21 @@ jobs:
               echo "::error::expected script directory $d contains zero *.sh files - discovery is broken, or the directory was emptied"
               fail=1
             fi
+            # `find -L` (Finding 7) follows a symlink to discover it like a
+            # real file, but a DANGLING symlink still silently vanishes: `-L`
+            # dereferences before testing `-type f`, and a broken target
+            # fails that test the same way a plain wrong-typed entry would,
+            # with no error printed (PR #350 review round 2, R2-3). The
+            # per-directory `count` check above doesn't catch it either,
+            # since real files keep the count above zero. `-xtype l` finds
+            # exactly the entries that ARE a symlink but whose `-L`-resolved
+            # type is NOT what it claims - i.e. broken links - independent
+            # of whether anything else in the directory is healthy.
+            broken=$(find "$d" -maxdepth 1 -name '*.sh' -xtype l)
+            if [ -n "$broken" ]; then
+              echo "::error::dangling symlink(s) under $d: $broken"
+              fail=1
+            fi
           done
           [ "$fail" -eq 0 ] || exit 1
 

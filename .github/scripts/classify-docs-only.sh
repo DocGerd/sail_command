@@ -6,23 +6,28 @@
 # check (~60 lines of shell that previously had zero automated coverage - the
 # same shape #274 already burned this repo on once).
 #
-# INVOCATION SHELL IS LOAD-BEARING (PR #350 review, Finding 1). ci.yml invokes
-# this file as `run: bash -e .github/scripts/classify-docs-only.sh`, NOT a
-# bare `run: .github/scripts/classify-docs-only.sh`. The bare form execs the
-# script via its own `#!/usr/bin/env bash` shebang, which starts a NEW bash
-# process - errexit is not inherited across that exec (`SHELLOPTS` is not
-# exported), so a failure inside the script (e.g. an `>> "$GITHUB_OUTPUT"`
-# append against an unwritable path) is silently swallowed instead of
-# aborting the step, and a required check's expensive steps then skip on a
-# GREEN job that wrote no decision at all. Explicit `bash -e <script>` runs
-# the whole file under ONE interpreter with `-e` set from the start,
-# matching what a same-process `bash -e {0}` gave the pre-extraction inline
-# block. This is also why `if ! changed=$(...); then` is used below instead
-# of a bare `changed=$(...); status=$?` - a bare failing command substitution
-# under `-e` would abort the step before any exit-status variable could be
-# read, making that check dead code; wrapping it as an `if` condition is
-# exempt from `-e` and is what actually makes that branch reachable (see
-# case 21 below, which exercises it).
+# FAIL-CLOSED ON ITS OWN (PR #350 review round 2, R2-2): `set -euo pipefail`
+# below means the errexit guarantee lives in THIS FILE, not in how it happens
+# to be invoked. Round 1 fixed the Blocker by having ci.yml invoke this
+# script as `run: bash -e .github/scripts/classify-docs-only.sh` rather than
+# the bare `run: .github/scripts/classify-docs-only.sh` (the bare form execs
+# the script via its own shebang into a NEW bash process that does not
+# inherit errexit, so a failed `>> "$GITHUB_OUTPUT"` write was silently
+# swallowed and a required check's expensive steps skipped on a GREEN job
+# that wrote no decision at all) - correct, but it left the guarantee sitting
+# in the CALLER, with nothing testing that the caller still says `bash -e`; a
+# future tidy-up dropping those two tokens would silently bring the Blocker
+# back, and `--selftest` (which drives itself via `bash -e "$SELF"`) cannot
+# see it either. `-e` here removes that dependency entirely - the script is
+# fail-closed under ANY invocation, bare or not. ci.yml's `bash -e` stays as
+# belt-and-braces, not because it is still load-bearing on its own.
+#
+# `if ! changed=$(...); then` is used below instead of a bare
+# `changed=$(...); status=$?` for the same reason either way: a bare failing
+# command substitution under `-e` aborts the step before any exit-status
+# variable could be read, making that check dead code; wrapping it as an
+# `if` condition is exempt from `-e` and is what actually makes that branch
+# reachable (see case 21 below, which exercises it).
 #
 # `e2e` is REQUIRED under `protect-main` with a strict up-to-date policy, so
 # the JOB must always run and always report - a trigger-level `paths:` /
@@ -46,14 +51,13 @@
 # executable hooks (`.claude/settings.json`, `.claude/hooks/`), so it is code,
 # never docs. Do not add it.
 #
-# Production usage - invoked by ci.yml exactly as below, working-directory at
-# repo root:
+# Production usage - invoked by ci.yml with working-directory at repo root
+# (bare invocation works too - see the FAIL-CLOSED ON ITS OWN note above):
 #   EVENT_NAME=... BASE_SHA=... HEAD_SHA=... \
-#   GITHUB_OUTPUT=... GITHUB_STEP_SUMMARY=... bash -e .github/scripts/classify-docs-only.sh
-# Offline self-test, driving THIS script under that same `bash -e` invocation
-# shell against synthesized git repos (#334):
+#   GITHUB_OUTPUT=... GITHUB_STEP_SUMMARY=... .github/scripts/classify-docs-only.sh
+# Offline self-test against synthesized git repos (#334):
 #   .github/scripts/classify-docs-only.sh --selftest
-set -uo pipefail
+set -euo pipefail
 
 # ---- offline self-test ----
 if [ "${1:-}" = "--selftest" ]; then
@@ -294,8 +298,20 @@ if [ "${1:-}" = "--selftest" ]; then
   echo
   echo "PASS=$PASS FAIL=$FAIL"
   TOTAL=$((PASS + FAIL))
-  if [ "$TOTAL" -ne "$EXPECTED_CASES" ]; then
-    echo "SELFTEST FAILURES: ran $TOTAL cases, expected $EXPECTED_CASES - a case was skipped or silently dropped"
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): `[ "$TOTAL"
+  # -ne "$EXPECTED_CASES" ]` with an EMPTY or non-numeric RHS makes `[` print
+  # "integer expression expected" and return status 2, not 1 - the `if` then
+  # takes the FALSE branch, the guard is silently skipped, and the suite
+  # prints SELFTEST OK regardless. `set -u` does not help: it catches an
+  # UNSET variable, but an empty one is defined. `! [ ... -eq ... ]` inverts
+  # a TRUE (status 0, exactly this many cases ran) into the only case that
+  # skips the failure branch; a genuine mismatch (status 1) OR a `[` usage
+  # error (status 2, e.g. EXPECTED_CASES accidentally left empty or
+  # non-numeric while bumping the count) both negate to true and land in the
+  # failure branch. `2>/dev/null` suppresses the "integer expression
+  # expected" noise on that path.
+  if ! [ "$TOTAL" -eq "$EXPECTED_CASES" ] 2>/dev/null; then
+    echo "SELFTEST FAILURES: ran $TOTAL cases, expected ${EXPECTED_CASES:-<unset/empty>} - a case was skipped or silently dropped"
     exit 1
   fi
   if [ "$FAIL" -eq 0 ]; then echo "SELFTEST OK"; else echo "SELFTEST FAILURES"; fi
