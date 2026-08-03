@@ -137,9 +137,11 @@ labels on **pull requests** are applied automatically from changed paths by
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0`, `v0.5.0`, `v0.5.1`, `v0.6.0`, and `v0.7.0` are closed; `v0.8.0`
-ships in this cut and closes as part of the release. The
-[milestones page](https://github.com/DocGerd/sail_command/milestones) is
+`v0.4.0` through `v0.8.0` are closed — `v0.8.0` shipped and closed at its own
+cut (2026-08-03), rolling `v0.9.0` open as the next release milestone above.
+The `v0.8.1` patch release (documentation-only) is in flight as of this
+writing and, per the PATCH exception below, carries no milestone of its own.
+The [milestones page](https://github.com/DocGerd/sail_command/milestones) is
 authoritative; this list names the shape, not a live count.
 
 Roll milestones forward at each release cut: the shipped milestone closes, the
@@ -162,8 +164,16 @@ Release tags are cryptographically signed from `v0.8.0` onward, using SSH
 signing (`gpg.format = ssh`) rather than GPG — GitHub verifies SSH tag/commit
 signatures the same way it verifies GPG ones (the "Verified" badge), and it
 needs no separate GPG toolchain. `v0.1.0` through `v0.7.0` remain unsigned
-permanently — signing is **not retroactive** (re-tagging a shipped release
-would change what a rebuild produces at an unchanged SHA; see
+permanently — signing is **not retroactive**: **moving or re-creating a
+published tag** is avoided here, for two reasons. It needlessly re-fires
+both tag-triggered workflows — `release.yml`'s own "skip if a Release
+already exists" guard means the "Latest" badge is not actually at risk for
+any tag that has already shipped (every tag through `v0.8.0` already has a
+Release object), but `deploy.yml` has no equivalent guard and shares its
+`pages` concurrency group with genuine in-flight deploys, so a re-push risks
+cancelling one. More fundamentally, a published signed tag is an attestation
+a third party may already have fetched and verified — mutating the object
+invalidates exactly that, which is the whole point of signing (see
 [`CLAUDE.md`](CLAUDE.md)). See [`SECURITY.md`](SECURITY.md#verifying-a-release)
 for how a *user* verifies a released tag; this section is the one-time setup
 for a *maintainer* machine that needs to be able to sign one.
@@ -249,6 +259,110 @@ the key is registered as a Signing Key, a tag can be correctly, verifiably
 signed (`git tag -v` reports `Good signature`) while GitHub still shows it as
 **Unverified** — that is a registration gap, not a signature problem; see
 `SECURITY.md`'s "Verifying a release" section.
+
+### Tagger identity — three independent ways a signed tag never ends up Verified, all invisible to `git tag -v`
+
+Getting a signed tag to actually show **Verified** on GitHub depends on
+three independent conditions — the signing key's registration, the tagger
+email's registration, and the tagger email's privacy setting. The tag's
+**tagger email** is whatever `user.email` was active when the tag was
+created (global unless a repo-local override is set, see `git help config`).
+Local `git tag -v` returns a `Good` signature through all three failure
+modes below — none of them is a signature problem, and none is visible
+until you check GitHub specifically:
+
+1. **Signing key not registered as a Signing Key** — see the subsection
+   above. Symptom: `verified: false, reason: "no_user"` at the API (or a
+   plain **Unverified** badge).
+2. **Tagger email not on the GitHub account at all** — the email itself,
+   independent of the key, must be one GitHub can attribute to the signer's
+   account. Symptom: the identical `verified: false, reason: "no_user"` — a
+   different cause with the same API/badge signature as (1), so the
+   diagnostic below is what tells them apart.
+3. **Tagger email on the account but marked *private*, with GitHub's
+   push-protection for private emails enabled** — this doesn't produce an
+   Unverified badge at all; it blocks the **push** outright:
+   `! [remote rejected] <tag> (push declined due to email privacy
+   restrictions)` / `GH007: Your push would publish a private email
+   address`. The tag never reaches the remote, so there's nothing to
+   diagnose on GitHub — the error is right there in the push output.
+
+This repo hit all three in sequence while fixing v0.8.0's gap: the v0.8.0 tag
+itself was case (2) (created with the machine's *global* `user.email`,
+`live@docgerdsoft.de`, not registered on the GitHub account at all). The
+first attempted fix — a repo-local override to `dev@docgerdsoft.de`, an
+email that *is* registered — walked straight into case (3): `dev@` is
+registered but private, and pushing a tag signed under it was rejected with
+`GH007` before it ever reached GitHub for attribution to matter.
+
+**The adopted fix**: a repo-local override to the account's GitHub-provided
+**noreply** address, which is registered, always public (it exists
+specifically to be embedded in commits/tags without exposing a real
+address), and therefore clears all three gaps at once:
+
+```bash
+git config user.email 13460098+DocGerd@users.noreply.github.com   # repo-local; leaves global user.email untouched
+```
+
+(Find your own noreply address at `github.com/settings/emails` — it's
+`<user-id>+<username>@users.noreply.github.com`.) Proven end to end: a
+signed tag under this identity pushes without a `GH007` rejection, `git
+tag -v` reports `Good "git" signature for
+13460098+DocGerd@users.noreply.github.com`, and the API confirms
+`verified: true, reason: "valid"`.
+
+Diagnose which gap is in play — or confirm there isn't one — with two
+checks, since they cover different failure surfaces:
+
+```bash
+# Attribution (cases 1 and 2) — only meaningful for a tag that reached the remote:
+gh api repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification
+
+# Push-privacy (case 3) — read directly off the push command's own output;
+# there is no API to query for it, since the tag never arrives.
+```
+
+`<tag-object-sha>` is the annotated tag OBJECT's own SHA (`git rev-parse
+refs/tags/vX.Y.Z`), not the commit it points at. `reason: "no_user"` means
+either case 1 or case 2 — same symptom, different cause, and the
+distinguishing fact (is the *key* registered? is the *email* registered?)
+has to be checked separately at `github.com/settings/keys` (the list of
+**registered** Signing Keys — `github.com/settings/ssh/new` is the add-a-key
+*form*, not the list, and won't tell you what's already registered) and
+`github.com/settings/emails`. `unknown_key` and `not_signing_key` are also
+in the attribution/registration family — both are key-registration gaps
+(an unrecognized key, or one registered only for authentication, not
+signing) routed the same way as case 1 above. Other `reason` values
+(`bad_signature`/`malformed_signature`/`invalid`/`expired_key`/
+`unknown_signature_type`) are real signature or key problems, not a
+registration gap — don't apply this section's fixes to those.
+
+**Per-clone state, not a repo fact**: the repo-local `user.email` override
+below lives in `.git/config`, which no commit or PR can carry — it has to be
+set again in every fresh clone, worktree, or successor's machine, or that
+clone will reproduce case (2). The release runbook's §5a now asserts this
+identity before tagging for exactly that reason (`.claude/skills/release/SKILL.md`).
+
+**Recommended pre-flight probe before any real release tag** (cheap and
+side-effect-free — this is exactly what would have caught v0.8.0's gap
+before it shipped): push a signed tag whose name does **not** match
+`v[0-9]*` — so neither `deploy.yml` nor `release.yml` fires — read its
+`.verification` back from the API above, then delete both the local and
+remote tag. Run this **in the same clone that will create the real release
+tag** — probing from a different clone only proves that clone's identity,
+which says nothing about the one about to tag `main`. `git tag -s` with no
+explicit ref tags `HEAD`:
+
+```bash
+TAG=zzz-signing-probe-$(date +%s)
+git tag -s "$TAG" -m probe HEAD && git push origin "$TAG"     # GH007 surfaces right here if case 3 applies
+gh api repos/DocGerd/sail_command/git/tags/"$(git rev-parse "refs/tags/$TAG")" --jq .verification
+git push origin ":refs/tags/$TAG" && git tag -d "$TAG"         # cleans up correctly even if the push above failed
+```
+
+**The durable lesson: a valid signature, an attributable signature, and a
+*pushable* signature are three different things, and only the third one
+gets a tag onto GitHub with a Verified badge at all.**
 
 ## Claude Code config placement
 
