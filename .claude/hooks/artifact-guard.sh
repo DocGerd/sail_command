@@ -321,11 +321,21 @@ bash_hits_protected_path() {
 # ---- offline self-test ----
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
+  # Counted so a case that silently disappears (deleted outright, or an
+  # `if`/loop precondition that stops holding) cannot leave the suite
+  # reporting `SELFTEST OK` having run fewer cases than it claims to (PR
+  # #350 review, Finding 3 - the same blind spot that let mutations M2-M4
+  # slip through the docs-only classifier's selftest undetected). Every
+  # `check`/`wrapper_check` call and every mechanism-matrix iteration
+  # increments `total`; the expected value is asserted below.
+  total=0
+  EXPECTED_CASES=117
 
   # check WANT DESC CMD - drives the pure bash_hits_protected_path() function
   # directly (WANT is "ask" or "allow").
   check() {
     local want="$1" desc="$2" cmd="$3" got
+    total=$((total + 1))
     if bash_hits_protected_path "$cmd" >/dev/null; then got=ask; else got=allow; fi
     if [ "$got" != "$want" ]; then
       echo "SELFTEST FAIL: $desc -> got [$got] want [$want] (cmd: $cmd)"
@@ -448,6 +458,7 @@ if [ "${1:-}" = "--selftest" ]; then
       # shellcheck disable=SC2059  # $mf IS the format string, by construction
       cmd=$(printf "$mf" "$t")
       gen=$((gen + 1))
+      total=$((total + 1))
       if ! bash_hits_protected_path "$cmd" >/dev/null; then
         echo "SELFTEST FAIL [mechanism]: not caught -> <<$cmd>>"
         fail=1
@@ -478,6 +489,7 @@ if [ "${1:-}" = "--selftest" ]; then
   # only for allow rows, which have no reason to check.
   wrapper_check() { # WANT(ask|deny|allow) REASON_SUBSTR DESC JSON
     local want="$1" reason_substr="$2" desc="$3" json="$4" out decision
+    total=$((total + 1))
     out=$(printf '%s' "$json" | "$SELF" 2>/dev/null)
     if [ -z "$out" ]; then
       decision=allow
@@ -520,6 +532,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # still hit the file_path arm, not silently fall through as "not Bash".
   wrapper_check deny  "Generated artifact"      "no tool_name, file_path present"     '{"tool_input":{"file_path":"app/public/data/mask.bin"}}'
 
+  if [ "$total" -ne "$EXPECTED_CASES" ]; then
+    echo "SELFTEST FAILURES: ran $total cases, expected $EXPECTED_CASES - a case was skipped or silently dropped"
+    exit 1
+  fi
   if [ "$fail" -eq 0 ]; then
     echo "generated: ${gen} mechanism x protected-path combinations"
     echo "SELFTEST OK"

@@ -4,20 +4,34 @@
 # Extracted from an inline `run:` block in `.github/workflows/ci.yml` (#334) so
 # it carries committed test coverage: it is a BLOCKING guard on a REQUIRED
 # check (~60 lines of shell that previously had zero automated coverage - the
-# same shape #274 already burned this repo on once). Extraction preserves the
-# exact invocation semantics reviewed in PR #330 - GitHub's default `run:`
-# shell is `bash -e {0}` (no `shell:` key set), and this script keeps that
-# same `-e` sensitivity: `if ! changed=$(...); then` is deliberately used
-# instead of a bare `changed=$(...); status=$?`, because a bare failing
-# command substitution under `-e` would abort the step before any exit-status
-# variable could be read.
+# same shape #274 already burned this repo on once).
+#
+# INVOCATION SHELL IS LOAD-BEARING (PR #350 review, Finding 1). ci.yml invokes
+# this file as `run: bash -e .github/scripts/classify-docs-only.sh`, NOT a
+# bare `run: .github/scripts/classify-docs-only.sh`. The bare form execs the
+# script via its own `#!/usr/bin/env bash` shebang, which starts a NEW bash
+# process - errexit is not inherited across that exec (`SHELLOPTS` is not
+# exported), so a failure inside the script (e.g. an `>> "$GITHUB_OUTPUT"`
+# append against an unwritable path) is silently swallowed instead of
+# aborting the step, and a required check's expensive steps then skip on a
+# GREEN job that wrote no decision at all. Explicit `bash -e <script>` runs
+# the whole file under ONE interpreter with `-e` set from the start,
+# matching what a same-process `bash -e {0}` gave the pre-extraction inline
+# block. This is also why `if ! changed=$(...); then` is used below instead
+# of a bare `changed=$(...); status=$?` - a bare failing command substitution
+# under `-e` would abort the step before any exit-status variable could be
+# read, making that check dead code; wrapping it as an `if` condition is
+# exempt from `-e` and is what actually makes that branch reachable (see
+# case 21 below, which exercises it).
 #
 # `e2e` is REQUIRED under `protect-main` with a strict up-to-date policy, so
 # the JOB must always run and always report - a trigger-level `paths:` /
 # `paths-ignore:` filter would make the check never report at all on a
 # skipped PR, blocking the PR forever. Only the EXPENSIVE steps inside the job
-# are `if:`-gated on this script's `run_e2e` output; the job itself is
-# unconditional.
+# are `if:`-gated on this script's `run_e2e` output, and that gate itself
+# defaults to RUN on anything other than the literal string `false`
+# (`!= 'false'`, not `== 'true'`) so an absent or empty output - this script
+# aborting before it writes one - still runs e2e rather than skipping it.
 #
 # FAIL-CLOSED DEFAULT: the wrong-direction failure is a code PR silently
 # skipping e2e and reporting green, which is far worse than a docs PR paying
@@ -32,11 +46,12 @@
 # executable hooks (`.claude/settings.json`, `.claude/hooks/`), so it is code,
 # never docs. Do not add it.
 #
-# Production usage (invoked by ci.yml with working-directory at repo root):
+# Production usage - invoked by ci.yml exactly as below, working-directory at
+# repo root:
 #   EVENT_NAME=... BASE_SHA=... HEAD_SHA=... \
-#   GITHUB_OUTPUT=... GITHUB_STEP_SUMMARY=... .github/scripts/classify-docs-only.sh
-# Offline self-test, driving THIS script under GitHub Actions' real `bash -e`
-# invocation shell against synthesized git repos (#334):
+#   GITHUB_OUTPUT=... GITHUB_STEP_SUMMARY=... bash -e .github/scripts/classify-docs-only.sh
+# Offline self-test, driving THIS script under that same `bash -e` invocation
+# shell against synthesized git repos (#334):
 #   .github/scripts/classify-docs-only.sh --selftest
 set -uo pipefail
 
@@ -89,7 +104,14 @@ if [ "${1:-}" = "--selftest" ]; then
     rm -f "$out" "$sum" "$log"
   }
 
-  echo "=== classify-docs-only.sh: 33 adversarial cases (bash -e, GH default shell) ==="
+  # Pinned so a case that silently disappears (deleted outright, or dropped
+  # by a conditional `&&`-chain whose precondition stops holding, like 12f's
+  # filename-creation step) cannot leave the suite reporting `SELFTEST OK`
+  # having run fewer cases than it claims to (PR #350 review, Finding 3 -
+  # constructed mutations M2/M3/M4 all left `FAIL=0` with a shrunken PASS).
+  EXPECTED_CASES=34
+
+  echo "=== classify-docs-only.sh: ${EXPECTED_CASES} adversarial cases (bash -e, GH default shell) ==="
 
   # ---------- 1 docs-only ----------
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
@@ -190,9 +212,17 @@ if [ "${1:-}" = "--selftest" ]; then
   echo x > 'a"b.ts'; H=$(commit_with q)
   run '12e a"b.ts (embedded quote)' true pull_request "$B" "$H"
 
+  # Unconditional (PR #350 review, Finding 3's complementary half): a
+  # filesystem/git that rejects a newline in a filename must COUNT as a
+  # failed case, not silently drop the `run()` call and shrink PASS+FAIL -
+  # that shrinkage is exactly what let mutation M4 slip through undetected.
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
-  printf 'x' > "$(printf 'evil\nfile.ts')" 2>/dev/null && H=$(commit_with nl) && \
+  if printf 'x' > "$(printf 'evil\nfile.ts')" 2>/dev/null && H=$(commit_with nl); then
     run "12f newline in filename" true pull_request "$B" "$H"
+  else
+    printf '  XX   %-58s -> %-8s (%s)\n' "12f newline in filename" "<could-not-create>" "filesystem/git rejected a newline in a filename - case did not execute"
+    FAIL=$((FAIL + 1))
+  fi
 
   r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
   echo x > 'docs*.ts'; H=$(commit_with glob)
@@ -241,8 +271,33 @@ if [ "${1:-}" = "--selftest" ]; then
   mkdir -p .claude/hooks; echo x >> CLAUDE.md; echo x > .claude/hooks/bar.sh; H=$(commit_with mixed2)
   run "20 CLAUDE.md + .claude/hooks/bar.sh (MIXED, must RUN)" true pull_request "$B" "$H"
 
+  # ---------- 21 git diff fails though both commits exist (PR #350 review, ----------
+  # ---------- Finding 4: the one fail-closed branch nothing else reaches)  ----------
+  # `cat-file -e` on both SHAs succeeds (they're real commits), but the base
+  # commit's TREE object is then deleted, so `git diff` itself fails (exit
+  # 128) after the reachability check already passed. This is the ONLY case
+  # in the whole suite that reaches the `else` arm of
+  # `if changed="$(git ... diff ...)"; then ... else diff_status=$?; ...`
+  # below - every other case either trips the earlier `cat-file` guard
+  # (6/6b/6c/14) or hands `git diff` two intact commits. Deliberately
+  # docs-only BY CONTENT (only docs/seed.md changed) so it can only pass via
+  # the fail-closed `git diff failed` branch, never by accidentally matching
+  # a non-docs path - the same near-miss shape #216 warns against (a row
+  # meant to isolate one condition must not carry a second trigger for the
+  # same outcome).
+  r=$(mkrepo); cd "$r"; B=$(git rev-parse HEAD)
+  echo x >> docs/seed.md; H=$(commit_with docsonly3)
+  TREE=$(git rev-parse "$B^{tree}")
+  rm -f ".git/objects/${TREE:0:2}/${TREE:2}"
+  run "21 base tree object missing (git diff fails)" true pull_request "$B" "$H"
+
   echo
   echo "PASS=$PASS FAIL=$FAIL"
+  TOTAL=$((PASS + FAIL))
+  if [ "$TOTAL" -ne "$EXPECTED_CASES" ]; then
+    echo "SELFTEST FAILURES: ran $TOTAL cases, expected $EXPECTED_CASES - a case was skipped or silently dropped"
+    exit 1
+  fi
   if [ "$FAIL" -eq 0 ]; then echo "SELFTEST OK"; else echo "SELFTEST FAILURES"; fi
   exit "$FAIL"
 fi
@@ -253,6 +308,19 @@ BASE_SHA="${BASE_SHA:-}"
 HEAD_SHA="${HEAD_SHA:-}"
 GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+# The /dev/null default above is deliberate for standalone CLI use (running
+# this script by hand, or under --selftest, without a real Actions
+# environment) - NOT for a real run under Actions, where a decision silently
+# discarded to /dev/null is indistinguishable from "skip" once the outer
+# `if: run_e2e != 'false'` gate reads the (absent) output (PR #350 review,
+# Finding 6). Scoped to $GITHUB_ACTIONS so it fires only where it matters:
+# an unset GITHUB_OUTPUT under real Actions aborts loudly instead of
+# defaulting away the write.
+if [ -n "${GITHUB_ACTIONS:-}" ] && [ "$GITHUB_OUTPUT" = /dev/null ]; then
+  echo "::error::GITHUB_OUTPUT is unset under GitHub Actions - refusing to silently write the e2e decision to /dev/null (that would read as 'skip' to the job's if: gates)" >&2
+  exit 1
+fi
 
 run_e2e=true
 reason="not a pull_request event"

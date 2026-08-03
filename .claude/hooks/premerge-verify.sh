@@ -50,7 +50,16 @@ decide() {
 # ---- offline self-test ----
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
+  # Counted so a deleted `expect` row cannot leave this suite reporting
+  # `SELFTEST OK` having run fewer cases than it claims to (PR #350 review,
+  # Finding 3, extended past the docs-only classifier it was raised against -
+  # "in every selftest that reports a tally"). This file has no PASS=/FAIL=
+  # print today, only the `fail` flag - the count assertion adds the missing
+  # coverage signal without changing what a passing run looks like.
+  total_cases=0
+  EXPECTED_CASES=6
   expect() { # desc  want-prefix  got
+    total_cases=$((total_cases + 1))
     case "$3" in "$2"*) : ;; *) echo "SELFTEST FAIL: $1 -> got [$3] want [$2*]"; fail=1 ;; esac
   }
   expect "fresh head + checks -> allow" "allow"  "$(decide abc123 abc123 3)"
@@ -59,6 +68,10 @@ if [ "${1:-}" = "--selftest" ]; then
   expect "non-numeric count -> deny"    "deny:"  "$(decide abc123 abc123 x)"
   expect "missing pr sha -> ask"        "ask:"   "$(decide '' abc123 3)"
   expect "missing tip sha -> ask"       "ask:"   "$(decide abc123 '' 3)"
+  if [ "$total_cases" -ne "$EXPECTED_CASES" ]; then
+    echo "SELFTEST FAILURES: ran $total_cases cases, expected $EXPECTED_CASES - a case was skipped or silently dropped"
+    exit 1
+  fi
   if [ "$fail" -eq 0 ]; then echo "SELFTEST OK"; else echo "SELFTEST FAILURES"; fi
   exit "$fail"
 fi

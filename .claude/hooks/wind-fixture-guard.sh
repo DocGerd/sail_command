@@ -276,7 +276,18 @@ _read_callsite() {
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
   nl=$'\n'
+  # Counted so a case that silently disappears cannot leave this suite
+  # reporting `SELFTEST OK` having run fewer cases than it claims to (PR
+  # #350 review, Finding 3, extended past the docs-only classifier it was
+  # raised against - "in every selftest that reports a tally"). Incremented
+  # in check(), _liveness_check() and _prod_check_raw() - the last catches
+  # BOTH direct _prod_check_raw calls and the ones routed through
+  # _prod_check_cmd's single internal delegation, so nothing is double- or
+  # under-counted.
+  total_cases=0
+  EXPECTED_CASES=40
   check() { # want  desc  cmd
+    total_cases=$((total_cases + 1))
     local got; got=$(decide "$3")
     if [ "$got" != "$1" ]; then
       echo "SELFTEST FAIL: $2 -> got [$got] want [$1]"
@@ -334,6 +345,7 @@ if [ "${1:-}" = "--selftest" ]; then
     fail=1
   else
     _liveness_check() { # desc  kind(missing|nonexec|directory|broken)
+      total_cases=$((total_cases + 1))
       local desc="$1" kind="$2" tmp out
       tmp=$(mktemp -d)
       mkdir -p "$tmp/.claude/hooks"
@@ -417,6 +429,7 @@ if [ "${1:-}" = "--selftest" ]; then
   # uses the same trick) against a RAW stdin payload and CLAUDE_PROJECT_DIR,
   # optionally under a restricted PATH.
   _prod_check_raw() { # want(ask|nudge|silent)  desc  raw-payload  proj-dir  [PATH-override]
+    total_cases=$((total_cases + 1))
     local want="$1" desc="$2" payload="$3" proj="$4" pathovr="${5:-}" out
     if [ -n "$pathovr" ]; then
       out=$(printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$proj" PATH="$pathovr" "$BASH_BIN" "$SELFTEST_SELF" 2>/dev/null)
@@ -488,6 +501,10 @@ if [ "${1:-}" = "--selftest" ]; then
 
   rm -rf "$repo_dirty" "$repo_clean" "$no_git_dir" "$toolbox_no_jq" "$toolbox_no_jq_no_py" "$toolbox_no_git"
 
+  if [ "$total_cases" -ne "$EXPECTED_CASES" ]; then
+    echo "SELFTEST FAILURES: ran $total_cases cases, expected $EXPECTED_CASES - a case was skipped or silently dropped"
+    exit 1
+  fi
   if [ "$fail" -eq 0 ]; then
     echo "SELFTEST OK"
   fi
