@@ -83,7 +83,7 @@ describe('readFragmentsFromDir', () => {
     }
   });
 
-  it('rejects a dangling symlink shaped like a fragment name, without throwing', () => {
+  it('rejects a dangling symlink shaped like a fragment name via entry.isFile(), never reaching the readFileSync try/catch', () => {
     const d = makeTempDir();
     symlinkSync(join(tmpdir(), 'changelog-fragments-fs-nonexistent-target.txt'), join(d, '401.fixed.md'));
     writeFileSync(join(d, '1.added.md'), 'kept');
@@ -91,11 +91,16 @@ describe('readFragmentsFromDir', () => {
     const warn = vi.fn();
     const result = readFragmentsFromDir(d, warn);
     expect(result).toEqual([{ category: 'Added', text: 'kept' }]);
-    // A dangling symlink fails entry.isFile() (it's neither a file nor a
-    // directory) exactly like a live symlink does — never reaches the
-    // readFileSync try/catch below.
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toContain('401.fixed.md');
+    // The discriminating assertion (review round 3, New-1): without this,
+    // the test also passes when entry.isFile() is REMOVED, because a
+    // dangling symlink then falls through to readFileSync, which throws
+    // ENOENT into the OTHER catch block — same call count, same filename
+    // substring, different message. Asserting the exact "not a regular
+    // file" text is what proves THIS entry never reached that second catch,
+    // matching the comment's claim instead of merely asserting near it.
+    expect(warn.mock.calls[0][0]).toContain('not a regular file');
   });
 
   it('warns and skips a regular file that passes isFile() but fails to read (permissions), instead of crashing the build', () => {
@@ -117,11 +122,22 @@ describe('readFragmentsFromDir', () => {
     }
   });
 
-  it('does not warn about a skipped README.md', () => {
+  it('does not warn about a README.md that is not a regular file (the entry.name guard at the isFile() branch)', () => {
+    // Deliberately NOT a regular-file README.md — that shape is already
+    // covered above ("reads well-formed fragments and skips README.md"),
+    // where the skip happens one layer down, silently, inside
+    // buildFragments' `if (filename === 'README.md') continue`. THIS test's
+    // job is the `entry.name !== 'README.md'` check immediately below the
+    // isFile() rejection: a README.md that is itself a directory or a
+    // symlink still hits that rejection, and the check exists so it does so
+    // WITHOUT a warning. Review round 3 (New-1): the previous version of
+    // this test wrote a regular file, so it passed via buildFragments'
+    // unrelated skip and kept passing even with this guard replaced by
+    // `if (true)` — mutation-checked below to confirm this version doesn't.
     const d = makeTempDir();
-    writeFileSync(join(d, 'README.md'), 'not a fragment');
+    mkdirSync(join(d, 'README.md'));
     const warn = vi.fn();
-    readFragmentsFromDir(d, warn);
+    expect(readFragmentsFromDir(d, warn)).toEqual([]);
     expect(warn).not.toHaveBeenCalled();
   });
 

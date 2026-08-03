@@ -569,7 +569,14 @@ deviate from it.
   about the same number — (category one of Keep a Changelog
   1.1's six: `added`/`changed`/`deprecated`/`removed`/`fixed`/`security`;
   full format in `changelog.d/README.md`) — two PRs adding two differently-
-  named files can never conflict. `app/vite.config.ts`'s
+  named files can never conflict. A misnamed fragment (wrong category, no
+  number, `README.md` itself) is never a build error — the build SKIPS it
+  with a console warning and keeps going (the guard-asymmetry rule below:
+  a bad fragment costs a missing preview line, never a red build) — so a
+  typo'd filename is silently invisible in the About dialog's preview, not
+  loudly rejected; check the build log or `ls changelog.d/` against the
+  filename pattern by eye if a fragment seems to be missing (release runbook
+  §2b makes the same check explicit at the fold step). `app/vite.config.ts`'s
   `changelogFragmentsPlugin` reads `changelog.d/*.md` Node-side via `fs` at
   build time (dev server, every `vite build` including the UAT deploy) and
   exposes them through the `virtual:changelog-fragments` module;
