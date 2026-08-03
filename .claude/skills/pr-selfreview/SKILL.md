@@ -19,7 +19,7 @@ mechanics — the tables below give exact spellings. Repo: `DocGerd/sail_command
 | 1 REVIEW | Establish BASE + diff, run `pr-review-toolkit:review-pr` on it | Feature PRs base on `develop`, not `main` |
 | 2 POST | One inline thread per finding, anchored to an in-diff line | 422 outside diff hunks → PR-level comment; backticks → JSON `--input` |
 | 3 SOLVE | Fix every finding, commit, push | Never `--no-verify` / `--force` / `-f` / `--force-with-lease` |
-| 4 RESOLVE | Reply to and resolve every thread | Use the `pullRequest.reviewThreads` GraphQL path |
+| 4 RESOLVE | Reply to and resolve every thread | Run `resolve-threads.sh` — it enumerates, replies, resolves, and re-verifies in one shot |
 
 ## 1. REVIEW — gather findings
 
@@ -79,44 +79,41 @@ Split them into separate Bash invocations.
 ## 4. RESOLVE — reply to and resolve every thread
 
 The `pullRequest.reviewThreads` GraphQL path is unaffected by the
-Projects-classic bug. Enumerate threads, reply to each, then resolve each.
-
-Enumerate open threads (read-only, no backticks — inline `-f query` is fine):
+Projects-classic bug. `resolve-threads.sh` (this directory) folds the
+enumerate → reply → resolve → re-verify loop into one invocation instead of
+running it by hand, one thread at a time:
 
 ```
-gh api graphql -f query='
-query($owner:String!,$repo:String!,$pr:Int!){
-  repository(owner:$owner,name:$repo){
-    pullRequest(number:$pr){
-      reviewThreads(first:100){
-        nodes{ id isResolved comments(first:1){ nodes{ body path } } }
-      }
-    }
-  }
-}' -F owner=DocGerd -F repo=sail_command -F pr=N
+.claude/skills/pr-selfreview/resolve-threads.sh N -m "Fixed in \`abc1234\`."
 ```
 
-Reply (bodies carry backticks → send the whole GraphQL request as a JSON
-`--input` file). `reply.json`:
+or, for per-thread text keyed by the same (path, line) each finding was
+anchored to in step 2:
 
 ```json
-{
-  "query": "mutation($id:ID!,$b:String!){ addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$id, body:$b}){ comment{ id } } }",
-  "variables": { "id": "THREAD_ID", "b": "Fixed in `abc1234`." }
-}
+[
+  { "path": "app/src/routing/solver.ts", "line": 42, "body": "Fixed in `abc1234`." },
+  { "body": "Default reply for anything not listed above." }
+]
 ```
 
 ```
-gh api graphql --input reply.json
+.claude/skills/pr-selfreview/resolve-threads.sh N -f mapping.json
 ```
 
-Resolve the thread (no backticks — inline is fine):
+The script builds every GraphQL payload through `jq -n --arg`, so
+backtick/code-fence bodies never touch a double-quoted shell string — no
+hand-authored `--input` file needed. It exits non-zero, loudly (with the
+still-open thread IDs and paths), if a fresh re-enumerate after the pass
+shows anything still open — that final check is the point of the script,
+not an afterthought: a resolver that reports success without re-verifying
+against GitHub is worse than the manual loop it replaces.
 
-```
-gh api graphql -f query='mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }' -F id=THREAD_ID
-```
-
-Done when re-running the enumerate query shows every `isResolved: true`.
+Mechanically, the script does what the manual loop always did — for each
+open thread, `addPullRequestReviewThreadReply` then `resolveReviewThread`,
+then a final `reviewThreads` query to confirm every node shows
+`isResolved: true`. Reach for the raw GraphQL calls directly only if the
+script itself is broken or you need a one-off, single-thread action.
 
 ## gh gotchas
 
