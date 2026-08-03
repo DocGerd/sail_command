@@ -13,21 +13,19 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.6.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.7.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.7.0
+## Now — v0.8.0
 
-The next feature release. Its **product** scope is not yet decided and will be
-drawn from the themes below — saying "undecided" is more useful here than
-inventing a plan. What the milestone already holds is carried-over tooling
-work that did not land in v0.6.0: anchoring the Bash-matching agent hooks on
-invocation rather than mention
-([#216](https://github.com/DocGerd/sail_command/issues/216),
-[#235](https://github.com/DocGerd/sail_command/issues/235), which share one
-helper and so are done together — #216 was only partially addressed in
-v0.6.0 and #235 is blocked on a design decision). The
-[milestone](https://github.com/DocGerd/sail_command/milestone/7) is the
+The next feature release. Its **product** scope is not yet decided — the
+`v0.8.0` milestone is newly opened and currently empty; scope will be drawn
+from the themes below as work is triaged into it, the same way v0.7.0's was.
+One item is already committed regardless of triage: release tags start being
+cryptographically signed this release (`SECURITY.md` and `CONTRIBUTING.md`
+carry the verification process and the local-config steps; no tracking issue
+is open yet for the signing work itself). The
+[milestone](https://github.com/DocGerd/sail_command/milestone/8) is the
 current list; this paragraph describes the intent behind it.
 
 ## Themes for the next year
@@ -40,22 +38,26 @@ commitment either.
 The project holds the [OpenSSF Best Practices](https://www.bestpractices.dev/projects/13749)
 *passing* badge and is working toward *Silver*. A 2026-07 audit produced a
 concrete, bounded set of gaps, most of which are documents or config rather than
-product work. Done: governance, roles, Code of Conduct, this roadmap, and a
+product work. Done: governance, roles, Code of Conduct, this roadmap, a
 security assurance case
 ([#217](https://github.com/DocGerd/sail_command/issues/217),
 [#218](https://github.com/DocGerd/sail_command/issues/218),
 [#219](https://github.com/DocGerd/sail_command/issues/219),
-[#224](https://github.com/DocGerd/sail_command/issues/224)). Remaining:
+[#224](https://github.com/DocGerd/sail_command/issues/224)), a
+Content-Security-Policy for the app shell
+([#223](https://github.com/DocGerd/sail_command/issues/223)), and named
+coding standards with automated Python lint/format enforcement for
+`pipeline/` ([#220](https://github.com/DocGerd/sail_command/issues/220)).
+Remaining:
 
-- Named coding standards and automated Python lint/format enforcement for
-  `pipeline/` ([#220](https://github.com/DocGerd/sail_command/issues/220)).
-- Statement-coverage measurement and an 80% gate
-  ([#221](https://github.com/DocGerd/sail_command/issues/221)) — the only item
-  in this group whose outcome is genuinely unknown before the work starts.
-- Signed release tags with documented verification
-  ([#222](https://github.com/DocGerd/sail_command/issues/222)).
-- A Content-Security-Policy for the app shell
-  ([#223](https://github.com/DocGerd/sail_command/issues/223)).
+- A statement-coverage gate: the measurement itself landed at 93.92%
+  ([#221](https://github.com/DocGerd/sail_command/issues/221), closed), but
+  wiring it into CI and picking a threshold is tracked separately
+  ([#319](https://github.com/DocGerd/sail_command/issues/319)).
+- Release tags are still unsigned: the verification docs and process shipped
+  ([#222](https://github.com/DocGerd/sail_command/issues/222), closed), but
+  signing itself starts at `v0.8.0` (see "Now" above) and has no open
+  tracking issue yet.
 - Tracking the remaining self-resolving OpenSSF Scorecard findings
   ([#72](https://github.com/DocGerd/sail_command/issues/72)).
 
@@ -101,12 +103,14 @@ revisited, not that it has been lifted.
 Not user-visible, but it is where a meaningful share of the effort goes and it
 sets the pace of everything above: a conflict-free changelog workflow for
 parallel pull requests
-([#189](https://github.com/DocGerd/sail_command/issues/189)) and
+([#189](https://github.com/DocGerd/sail_command/issues/189)) and remaining
 agent-workflow guardrails
 ([#211](https://github.com/DocGerd/sail_command/issues/211),
-[#183](https://github.com/DocGerd/sail_command/issues/183),
-[#178](https://github.com/DocGerd/sail_command/issues/178),
-[#179](https://github.com/DocGerd/sail_command/issues/179)). Grouped
+[#178](https://github.com/DocGerd/sail_command/issues/178)). A
+worktree-cleanup skill and deduplicating the graphify guidance to a single
+home shipped this cut
+([#179](https://github.com/DocGerd/sail_command/issues/179),
+[#183](https://github.com/DocGerd/sail_command/issues/183)). Grouped
 Dependabot updates and path→area PR labeling shipped in v0.6.0
 ([#174](https://github.com/DocGerd/sail_command/issues/174),
 [#173](https://github.com/DocGerd/sail_command/issues/173)).
@@ -116,8 +120,6 @@ Dependabot updates and path→area PR labeling shipped in v0.6.0
 Parked deliberately, not stale — revisited opportunistically, and plausibly
 never done:
 
-- Tag → GitHub Release automation from `CHANGELOG.md`
-  ([#175](https://github.com/DocGerd/sail_command/issues/175)).
 - The five harbors that remain disconnected from the routable mask
   ([#9](https://github.com/DocGerd/sail_command/issues/9)). This one is
   **blocked on physics, not effort**: at the mask's ~46 m cell size the
