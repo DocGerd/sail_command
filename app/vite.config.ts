@@ -433,28 +433,82 @@ export default defineConfig(({ command }) => ({
     include: ['src/**/*.test.{ts,tsx}'],
     // #214: see SlowFileFirstSequencer above.
     sequence: { sequencer: SlowFileFirstSequencer },
+    // #342 fix-wave (PR #351 review m5): `SC_COVERAGE` (read by
+    // `app/src/test/timeouts.ts` to scale solver-heavy test budgets) used to
+    // be set by a POSIX `SC_COVERAGE=1 ` shell prefix on package.json's
+    // `test:coverage` script — silently broken on Windows cmd/PowerShell (no
+    // such syntax there), which would run the full v8-instrumented suite
+    // against the UNSCALED plain-run budgets, the exact failure #342 exists
+    // to close. Also convention-only: `npx vitest run --coverage.enabled`
+    // bypassing the npm script entirely got the unscaled budget too, even on
+    // a POSIX shell. Derived here instead from the CLI's own
+    // `--coverage`/`--coverage.enabled*` argv entry — present identically
+    // regardless of shell, since it's a literal process argument, not a
+    // shell-expanded variable — so the multiplier now follows coverage
+    // actually being requested, not which command happened to set an env
+    // var. `package.json`'s `test:coverage` script no longer needs the
+    // prefix at all.
+    //
+    // PR #351 review N3: `--coverage.enabled*` alone (no value check) also
+    // matched the EXPLICIT DISABLE `--coverage.enabled=false` — the harmful
+    // direction, since it turned the multiplier ON for a run that asked for
+    // coverage to be OFF (a genuine hang then gets 16 minutes of
+    // hang-detection budget instead of 2). Excluded below (verified: `vitest
+    // run --coverage.provider=v8` alone — no `--coverage`/`--coverage.enabled`
+    // flag at all — does NOT actually enable coverage either, confirmed by
+    // the absence of a coverage summary in that run's output, so that
+    // invocation correctly gets the unscaled budget too). The real residual
+    // is a `coverage: { enabled: true, ... }` set directly on the `test`
+    // block's coverage OBJECT below (not via any CLI flag) — argv sniffing
+    // cannot see that, and this repo does not do it today (there is no
+    // `enabled` key in the block below), but closing it for real needs the
+    // resolved coverage config, not argv. This detection is a pragmatic
+    // argv PROXY for "coverage is on", strictly better than the
+    // shell prefix it replaces, not a true reading of the resolved coverage
+    // config — it moved the convention from "which npm script you typed" to
+    // "which CLI flag you passed", not eliminated convention entirely.
+    env: process.argv.some(
+      (a) => a === '--coverage' || (a.startsWith('--coverage.enabled') && !/=(?:false|0)$/.test(a)),
+    )
+      ? { SC_COVERAGE: '1' }
+      : {},
     // #221 measured a 93.92% statement baseline; #319 adds this threshold on
-    // top of it. NOT wired into any CI job today — `app`'s CI job runs plain
-    // `npm run test` (no coverage), so this only fires for someone running
-    // `npm run test:coverage` locally. A CI reporting step was attempted in
-    // #319's own PR (#335) and reverted after three runs found TWO distinct
-    // timeout surfaces, not one: run 30807548075 (`pull_request`) hit the
-    // job-level `timeout-minutes: 20` cap at 20.22 min; runs 30810112565
-    // (`pull_request`) and 30815617721 (`workflow_dispatch`) each ran ~42.6
-    // min and failed on the solver-heavy tests' OWN per-test
-    // `vi.setConfig`/`timeout` budgets under v8 instrumentation — raising the
-    // job cap could never have fixed that second surface. A durable fix needs
-    // a shared coverage-aware timeout mechanism plus a structural test
-    // pinning every test file that would need it, which is more than that
-    // PR's scope; tracked in #342. `thresholds.
+    // top of it. `.github/workflows/coverage.yml` (#342) evaluates it, but
+    // only NIGHTLY (`schedule` + `workflow_dispatch`) — `app`'s required CI
+    // job still runs plain `npm run test` (no coverage), so a PR never pays
+    // the v8-instrumented run's cost. Getting the nightly job to a passing
+    // run needed a durable timeout fix first: an earlier per-PR-shaped
+    // dispatch attempt in #319's own PR (#335) was reverted after three runs
+    // found TWO distinct timeout surfaces, not one — run 30807548075 hit the
+    // job-level `timeout-minutes: 20` cap at 20.22 min; runs 30810112565 and
+    // 30815617721 each ran ~42.6 min and failed on the solver-heavy tests'
+    // OWN per-test `vi.setConfig`/`timeout` budgets under v8 instrumentation,
+    // which raising the job cap could never have fixed. `app/src/test/
+    // timeouts.ts` (#342) is now the single coverage-aware timeout constant
+    // every solver-heavy test file imports instead of hardcoding its own,
+    // with `app/src/test/timeoutGuard.test.ts` failing loudly if
+    // `app/src/**/*.test.{ts,tsx}` reintroduces a hardcoded `testTimeout`/
+    // `timeout` literal, keyed OR positional-argument form (PR #351 review
+    // M1/M4 — the guard's scope is exactly that glob, not e2e specs or
+    // `playwright.config.ts`, which have their own unrelated budget). `thresholds.
     // statements: 80` matches the OpenSSF `test_statement_coverage80`
     // criterion and is a FLOOR, not a ratchet — it leaves ~14 points of
     // headroom below the measured 93.92%, in which a regression would still
-    // pass silently. Deliberate and revisitable at the next release cut, not
-    // an oversight. `include` is intentionally the same glob as `app`'s
-    // source tree (not scoped to what tests happen to exercise), so an
-    // untested file reports 0% rather than silently dropping out of the
-    // denominator.
+    // pass silently between nightly runs. Deliberate and revisitable at the
+    // next release cut, not an oversight. `include` is intentionally the
+    // same glob as `app`'s source tree (not scoped to what tests happen to
+    // exercise), so an untested file reports 0% rather than silently
+    // dropping out of the denominator — `src/sw.ts` and
+    // `src/routing/worker.ts` are two such files, decided (#319, 2026-08-03)
+    // to STAY IN scope at ~0% BY DESIGN rather than be excluded: jsdom has
+    // no real ServiceWorker or dedicated-Worker execution model, so their
+    // functional assurance comes from `app/e2e/offline.spec.ts`,
+    // `csp.spec.ts`, `basemap-fallback.spec.ts`, `plan.spec.ts`,
+    // `live.spec.ts` and `deploy.yml`'s post-deploy CDN smoke probe instead —
+    // do NOT "fix" the 0% with a jsdom-mocked service-worker test, which
+    // would be the #50 equivalence-test tautology (statements execute
+    // without modeling real CacheStorage/Range/CDN semantics, the bug class
+    // that actually bit in #96 and #118).
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'text'],

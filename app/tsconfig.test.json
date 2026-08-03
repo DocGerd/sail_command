@@ -31,7 +31,12 @@
   // changelogFragmentsFs.ts/.test.ts (#189): the `node:fs` half of the
   // changelog-fragment reader (real directory scan, symlink/directory
   // rejection, read-with-fallback) plus its unit tests, which construct real
-  // temp directories/symlinks — same reason as the three above.
+  // temp directories/symlinks — same reason as the two above.
+  // timeoutBudgetVsJobCap.test.ts (#342) is DELIBERATELY NOT here — PR #351's
+  // orchestrator decision (round 5) removed its `coverage.yml` file read
+  // entirely in favor of a declared TypeScript constant (see that file's own
+  // header comment), so it no longer needs node builtins and lives back
+  // under the ordinary browser-safe tsconfig.app.json program.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",

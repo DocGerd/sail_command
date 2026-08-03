@@ -3,11 +3,12 @@ import { planRoute } from './planRoute';
 import { makeMask, openWaterMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PlanRequest, type PolarTable, type Settings } from '../types';
 import type { ProbeInfo } from './relaxedDepth';
+import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines. Fast test files keep vitest's 5s default so hang detection
 // stays meaningful there.
-vi.setConfig({ testTimeout: 120_000 });
+vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 /** Fock fixture: uniformly 12% slower than TEST_POLAR (genoa must win). */
 const SLOW_FOCK: PolarTable = {
