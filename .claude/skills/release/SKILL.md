@@ -61,10 +61,11 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   that category; category order is Added, Changed, Deprecated, Removed,
   Fixed, Security, matching `app/src/lib/changelogFragments.ts`'s
   `CATEGORY_ORDER`). Fold only files matching that shape — the build itself
-  SKIPS anything else (`README.md`, a misnamed file) with a console warning
-  rather than failing, so also check the build log / run
-  `ls changelog.d/` against the filename pattern by eye before deleting
-  anything: a fragment that got silently skipped at BUILD time (typo'd
+  SKIPS a misnamed file with a console warning rather than failing
+  (`README.md` itself is skipped SILENTLY, no warning at all — it's the
+  expected always-present file, not an error case), so also check the build
+  log / run `ls changelog.d/` against the filename pattern by eye before
+  deleting anything: a fragment that got silently skipped at BUILD time (typo'd
   category, missing number) is invisible in the About dialog's preview too,
   and a fold step that only iterates "everything except README.md" would
   fold its raw filename as if it were valid instead of catching the typo.
@@ -178,25 +179,38 @@ git fetch origin main:main                  # ref update, no checkout needed
 [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || { echo "local main != origin/main"; exit 1; }
 [ "$(git rev-parse main)" = "$MERGE_SHA" ]  || { echo "main is not the release merge commit"; exit 1; }
 
-git tag -a "$TAG" -m "$TAG" main && git push origin "$TAG"
+git tag -s "$TAG" -m "$TAG" main
+git tag -v "$TAG"                           # MUST print a Good signature — see below
+git push origin "$TAG"
 ```
 
 `git fetch origin main:main` updates the ref without a checkout; it REFUSES
 while `main` is the currently checked-out branch (it will not be here — the
 cut runs from `develop`).
 
-**Annotated, not lightweight (#222).** 7 of the 9 tags shipped to date are
-lightweight, and a lightweight tag is a bare ref — it cannot carry a
-signature at all, so annotated is the prerequisite for signing later.
-`-m "$TAG"` is required, not cosmetic: a bare `git tag -a` with no message
-opens `$EDITOR` and hangs a non-interactive/agent shell. This is
-**verified safe** against the About-dialog version string: `vite.config.ts`'s
-`appVersion()` calls `git describe --tags --always`, and `--tags` resolves
-lightweight and annotated tags identically, so switching tag *kind* changes
-nothing `git describe` reports. **Signing itself (`-s`) is NOT enabled yet**
-— planned starting at `v0.8.0` per #222's decision; do not add `-s` to the
-command above before then. See `SECURITY.md`'s "Verifying a release" section
-and `CONTRIBUTING.md`'s "Release tag signing" section for the full plan.
+**Signed, starting `v0.8.0` (#322).** 7 of the 9 tags shipped before this
+cut are lightweight, and a lightweight tag is a bare ref — it cannot carry a
+signature at all, which is why annotated (`-a`) was the prerequisite step
+(#222) before signed (`-s`) could follow. `-s` implies annotated, so this
+replaces `-a` rather than adding to it. `-m "$TAG"` is still required, not
+cosmetic: a bare `git tag -a`/`-s` with no message opens `$EDITOR` and hangs
+a non-interactive/agent shell. This is **verified safe** against the
+About-dialog version string: `vite.config.ts`'s `appVersion()` calls `git
+describe --tags --always`, which resolves lightweight, annotated, and signed
+tags identically, so switching tag *kind* changes nothing `git describe`
+reports.
+
+**`git tag -v "$TAG"` BEFORE the push is the point of #322**: it proves the
+signature locally, on this machine, before the push triggers the production
+deploy — a bad or missing signing config should fail here, not mid-cut. It
+must print `Good "git" signature for <identity> with ED25519 key
+SHA256:...`; anything else (`error: no signature found`, `gpg.ssh: unable to
+find identity referenced by`, etc.) means STOP — do not push the tag — and
+fix the local `gpg.format ssh` / `user.signingkey` / `gpg.ssh.allowedSignersFile`
+config first (one-time setup: `CONTRIBUTING.md`'s "Release tag signing"
+section). See `SECURITY.md`'s "Verifying a release" section for the full
+verification story, including for third parties who don't have this
+machine's local config.
 
 ## 5b. The tag deploy must go GREEN before the back-merge (#197)
 
@@ -293,8 +307,10 @@ gh release create "$TAG" --notes-file <extracted-section> --latest --verify-tag
 
 Both flags are load-bearing: without `--latest`, the **previous** version
 keeps the "Latest" badge — a silent wrong state, not an error — and
-`--verify-tag` aborts if the tag hasn't actually reached the remote yet
-(it does **not** check a cryptographic signature; unrelated to #222).
+`--verify-tag` aborts if the tag hasn't actually reached the remote yet. It
+does **not** check the tag's cryptographic signature — that check is `git
+tag -v` in step 5a, a separate, local, and required step; `--verify-tag`
+only confirms the ref exists on the remote.
 The workflow declares no `concurrency:` group at all, so it cannot cancel or
 be cancelled by `deploy.yml`'s `pages` group (see 5b) — the two runs are
 fully independent.
@@ -354,6 +370,28 @@ git show "$TAG:CHANGELOG.md" | awk -v ver="$VERSION" '
 ' > /tmp/release-notes.md
 gh release create "$TAG" --repo "$REPO" --notes-file /tmp/release-notes.md --latest --verify-tag
 ```
+
+## 5d. Verify GitHub shows the tag/release as Verified (#322)
+
+`git tag -v` in step 5a proves the signature to THIS machine, using its own
+local `gpg.ssh.allowedSignersFile`. It does not prove anything to a third
+party browsing GitHub — that is what the green **Verified** badge is for,
+and it depends on a *separate* piece of state: the public key registered at
+GitHub's SSH **signing**-key endpoint (`github.com/settings/ssh/new`, key
+type "Signing Key"). Check both:
+
+- The tag's commit page (`github.com/DocGerd/sail_command/commit/<sha>` or
+  the tag view) shows **Verified** next to the commit.
+- The Release page (created in 5c) shows **Verified** next to its tag.
+
+**If GitHub shows Unverified but `git tag -v` was Good**, don't read that as
+a bad signature — the tag IS cryptographically signed; GitHub just doesn't
+have the public key to check it against yet. The likely cause is the key
+being registered only in the *authentication*-key registry
+(`github.com/<user>.keys`) and not the separate *signing*-key one, or not
+registered at all — see `SECURITY.md`'s "Verifying a release" section for
+why the two registries are distinct. Fix the registration, not the signing
+config.
 
 ## Gotchas
 

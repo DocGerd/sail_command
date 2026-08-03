@@ -77,8 +77,9 @@ jobs:
           # --latest: without it, the PREVIOUS version keeps the "Latest"
           #   badge — a silent wrong state, not an error.
           # --verify-tag: aborts if the tag isn't actually on the remote yet.
-          #   This does NOT check a cryptographic signature (unrelated to
-          #   #222 — release tags are not signed yet).
+          #   This does NOT check the tag's cryptographic signature (tags are
+          #   SSH-signed from v0.8.0 onward, #322) — that check is `git tag -v`,
+          #   a separate local step in the release runbook (SKILL.md §5a).
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${{ github.repository }}" \
             --title "${GITHUB_REF_NAME}" \

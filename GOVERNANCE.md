@@ -259,7 +259,7 @@ need. It is deliberately not written as if it were the answer.
 | Release tagging | Git push rights on `main` | A `v[0-9]*` tag push is what publishes the clean version string |
 | OpenSSF Best Practices badge entry | [Project 13749](https://www.bestpractices.dev/projects/13749) | Tied to the maintainer's login; a successor needs to be added as an additional badge editor |
 | GitHub Actions secrets | None held | Deploys use the Pages OIDC flow; there is nothing to hand over |
-| Signing keys | None yet | Release tags are currently unsigned; signing is planned to start at `v0.8.0` ([#322](https://github.com/DocGerd/sail_command/issues/322)), at which point the key becomes a succession item |
+| Signing keys | Maintainer's SSH key (`~/.ssh/id_ed25519`), registered on GitHub as a Signing Key | Release tags are signed from `v0.8.0` onward ([#322](https://github.com/DocGerd/sail_command/issues/322)); a successor needs custody of the private key plus their own key registered as a Signing Key at `github.com/settings/ssh/new` to keep signing releases going. Tags through `v0.7.0` stay unsigned regardless — see [`SECURITY.md`](SECURITY.md#verifying-a-release) |
 
 Two things genuinely simplify succession here, and are worth stating because
 they are the usual hard parts: **there is no DNS to transfer** (the site lives on

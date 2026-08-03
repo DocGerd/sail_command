@@ -19,14 +19,17 @@ shipped.
 ## Now — v0.8.0
 
 The next feature release. Its **product** scope is not yet decided — the
-`v0.8.0` milestone holds one item so far,
+`v0.8.0` milestone held one item,
 [#322](https://github.com/DocGerd/sail_command/issues/322) (key custody,
-registration, and the first signed cut); further scope will be drawn from the
-themes below as work is triaged into it, the same way v0.7.0's was. That one
-item is already intended regardless of triage: release tags start being
-cryptographically signed at `v0.8.0` (**tags through `v0.7.0` are unsigned**)
-— `SECURITY.md` and `CONTRIBUTING.md` carry the verification process and the
-local-config steps, and #322 tracks the signing work itself. The
+GitHub registration, and the signed-tag runbook change), now closed: the
+signing mechanism, verification docs, and one-time maintainer setup all
+landed ahead of the cut itself, in `SECURITY.md` and `CONTRIBUTING.md`.
+Further scope will be drawn from the themes below as work is triaged into
+it, the same way v0.7.0's was. Release tags start being cryptographically
+signed at `v0.8.0` itself (**tags through `v0.7.0` remain permanently
+unsigned**) — the `v0.8.0` tag is what actually exercises the mechanism for
+the first time and is expected to be the first tag showing GitHub's
+"Verified" badge. The
 [milestone](https://github.com/DocGerd/sail_command/milestone/8) is the
 current list; this paragraph describes the intent behind it.
 
@@ -56,11 +59,12 @@ Remaining:
   ([#221](https://github.com/DocGerd/sail_command/issues/221), closed), but
   wiring it into CI and picking a threshold is tracked separately
   ([#319](https://github.com/DocGerd/sail_command/issues/319)).
-- Release tags are still unsigned: the verification docs and process shipped
-  ([#222](https://github.com/DocGerd/sail_command/issues/222), closed), but
-  signing itself starts at `v0.8.0`, tracked by
-  [#322](https://github.com/DocGerd/sail_command/issues/322) (see "Now"
-  above).
+- Release tags: the verification docs and process shipped
+  ([#222](https://github.com/DocGerd/sail_command/issues/222), closed), and
+  the signing mechanism itself has now also landed
+  ([#322](https://github.com/DocGerd/sail_command/issues/322), closed — see
+  "Now" above). The `signed_releases` criterion is fully met once the
+  `v0.8.0` tag actually ships as the first signed release.
 - Tracking the remaining self-resolving OpenSSF Scorecard findings
   ([#72](https://github.com/DocGerd/sail_command/issues/72)).
 

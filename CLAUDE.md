@@ -499,11 +499,17 @@ deviate from it.
 - **Branching (gitflow-lite, #73)**: `develop` is the protected DEFAULT branch
   where WIP accumulates — feature PRs target `develop`, never `main`. A RELEASE
   is a PR `develop` → `main` (full CI `app`+`e2e` re-runs under the strict
-  up-to-date policy), merged as a merge commit, then tagged on `main` with an
-  ANNOTATED tag (`git tag -a "$TAG" -m "$TAG" main`, release runbook §5a — `-m`
-  is required, not cosmetic: a bare `git tag -a` with no message opens an
-  editor and blocks an unattended cut) — still UNSIGNED; signing starts at
-  v0.8.0 (#322). `main` is
+  up-to-date policy), merged as a merge commit, then tagged on `main` with a
+  SIGNED tag (`git tag -s "$TAG" -m "$TAG" main`, release runbook §5a — `-m`
+  is required, not cosmetic: a bare `git tag -s` with no message opens an
+  editor and blocks an unattended cut). **Signed from `v0.8.0` onward (#322)**
+  — SSH signing (`gpg.format = ssh`), verified locally with `git tag -v`
+  BEFORE the push (§5a) and, for anyone else, via GitHub's "Verified" badge
+  or `git tag -v` against a locally-built `allowed_signers` file (setup in
+  `CONTRIBUTING.md`, verification story in `SECURITY.md`). `v0.1.0` through
+  `v0.7.0` remain permanently unsigned — signing is explicitly NOT
+  retroactive (re-tagging would break the `(main SHA, git-describe version)`
+  deploy-identity scheme). `main` is
   released-state-only. Pushing that tag is what puts the clean `vX.Y.Z` in the
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
@@ -570,11 +576,15 @@ deviate from it.
   1.1's six: `added`/`changed`/`deprecated`/`removed`/`fixed`/`security`;
   full format in `changelog.d/README.md`) — two PRs adding two differently-
   named files can never conflict. A misnamed fragment (wrong category, no
-  number, `README.md` itself) is never a build error — the build SKIPS it
-  with a console warning and keeps going (the guard-asymmetry rule below:
-  a bad fragment costs a missing preview line, never a red build) — so a
-  typo'd filename is silently invisible in the About dialog's preview, not
-  loudly rejected; check the build log or `ls changelog.d/` against the
+  number) is never a build error — the build SKIPS it with a console warning
+  and keeps going (the guard-asymmetry rule below: a bad fragment costs a
+  missing preview line, never a red build). `README.md` itself is skipped
+  SILENTLY — `buildFragments` (`app/src/lib/changelogFragments.ts`) `continue`s
+  on it before the warning path is even reached, so don't go hunting the
+  build log for a line that never appears there; it's the one filename that
+  is expected to be present and ignored, not an error case. Either way a
+  typo'd filename is invisible in the About dialog's preview, not loudly
+  rejected; check the build log or `ls changelog.d/` against the
   filename pattern by eye if a fragment seems to be missing (release runbook
   §2b makes the same check explicit at the fold step). `app/vite.config.ts`'s
   `changelogFragmentsPlugin` reads `changelog.d/*.md` Node-side via `fs` at
