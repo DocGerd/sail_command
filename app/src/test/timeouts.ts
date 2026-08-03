@@ -20,10 +20,15 @@
 // `npm run test:coverage` ran local ~983-1029s vs CI 2558s (~2.5x) — no
 // single ratio predicts both, so a flat CI-only multiplier would either
 // starve the coverage run or bloat the plain run's hang-detection budget.
-// `SC_COVERAGE` is set only by the `test:coverage` npm script (see
-// package.json) — the plain `npm run test` path an actual hang runs against
-// keeps its tight, uninstrumented budget, so a genuine hang still surfaces
-// fast; only the coverage-instrumented run gets the wider one.
+// `SC_COVERAGE` is set by `vite.config.ts`'s `test.env` whenever the CLI's
+// own `--coverage`/`--coverage.enabled*` flag is present (PR #351 review
+// m5 — previously a POSIX `SC_COVERAGE=1 ` shell prefix on the
+// `test:coverage` npm script, which silently broke on Windows cmd/
+// PowerShell and only covered invocations that went through that exact
+// script) — the plain `npm run test` path an actual hang runs against keeps
+// its tight, uninstrumented budget, so a genuine hang still surfaces fast;
+// only a run that actually requests coverage gets the wider one, regardless
+// of which command requested it.
 //
 // A job's `timeout-minutes` and a per-test `vi.setConfig`/`it(..., {
 // timeout })` budget are DIFFERENT failure surfaces — raising the former
@@ -45,7 +50,45 @@
 // with no ambient-type dependency in either program.
 const processEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } })
   .process?.env;
-const COVERAGE_MULTIPLIER = processEnv?.SC_COVERAGE ? 4 : 1;
+
+// DERIVATION of the multiplier (PR #351 review M3 — the prior `4` was
+// asserted, not derived, and sat BELOW the only measured ratio that bears on
+// it). Method, so this can be re-run when the underlying measurement moves,
+// not just the number it currently produces:
+//
+//   1. The two figures that isolate coverage's OWN marginal cost, once
+//      already inside CI's general slowdown, are CI-plain and CI-coverage
+//      full-suite durations (both quoted above and in CLAUDE.md's coverage
+//      bullet): ~515-535s plain vs 2558s coverage.
+//   2. ratio = CI-coverage / CI-plain = 2558 / ~525 (midpoint) ~= 4.9x —
+//      this is the SUITE-AVERAGE marginal coverage cost, already inside a
+//      CI-sized budget (the base constants below, e.g. 120_000ms, are
+//      themselves already sized for CI's general slowdown per their own
+//      file-level comments — this multiplier only needs to cover
+//      COVERAGE's additional cost on top of that, not CI-vs-local again).
+//   3. That 2558s figure comes from CI runs 30810112565 / 30815617721,
+//      which were KILLED by their own per-test `vi.setConfig`/`timeout`
+//      budgets before the suite finished — so 4.9x is a LOWER BOUND on a
+//      run that actually completes, not a measurement of one.
+//   4. CLAUDE.md's coverage bullet separately documents that solver-heavy
+//      tests pay a BIGGER coverage penalty than component tests — the
+//      suite-AVERAGE 4.9x therefore understates the solver-specific factor
+//      this multiplier actually needs to cover.
+//   5. Asymmetric cost: an over-large budget costs nothing here (`SC_COVERAGE`
+//      already isolates it from the plain run's tight hang-detection budget,
+//      and nothing gates the nightly on wall-clock time below
+//      `coverage.yml`'s 120-minute job cap) — the guard-asymmetry principle
+//      CLAUDE.md applies elsewhere to blocking-vs-nudge guards, applied here
+//      to a floor sized from an incomplete measurement: round UP, not to the
+//      nearest whole number of the lower bound itself.
+//
+//   => 8 (roughly 2x the measured 4.9x lower-bound floor, absorbing both the
+//      "measured on a killed run" gap in point 3 and the "solver tests pay
+//      more than average" gap in point 4, while staying comfortably inside
+//      the 120-minute job budget even for the heaviest per-test ceiling —
+//      see SOLVER_TEST_TIMEOUT_MS and the invariants property test's
+//      solverTimeoutMs(900_000) call site).
+const COVERAGE_MULTIPLIER = processEnv?.SC_COVERAGE ? 8 : 1;
 
 /** Scales a base millisecond budget by the coverage multiplier when `SC_COVERAGE` is set. */
 export function solverTimeoutMs(baseMs: number): number {

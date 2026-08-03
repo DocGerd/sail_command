@@ -43,14 +43,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  # `cancel-in-progress` evaluates to `false` for both `schedule` and
-  # `workflow_dispatch` (github.event_name is neither 'pull_request' nor
-  # anything else this expression treats as supersedable), so a nightly run
-  # is never cancelled by a manual dispatch or vice versa — only rapid
-  # same-ref reruns would ever collide, and letting those queue rather than
-  # cancel is the right default when nothing is waiting on the result.
+  # No `pull_request` trigger exists on this workflow (see `on:` above), so
+  # nothing here is ever superseded — same-ref reruns queue rather than
+  # cancel, which is correct when nothing is waiting on the result.
   group: coverage-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 jobs:
   coverage:
     runs-on: ubuntu-latest
