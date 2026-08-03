@@ -35,8 +35,13 @@ export default function ChangelogView({ releases }: ChangelogViewProps) {
               <div key={category.name}>
                 <h5>{category.name}</h5>
                 <ul>
-                  {category.entries.map((entry) => (
-                    <li key={entry}>{entry}</li>
+                  {category.entries.map((entry, i) => (
+                    // Index-prefixed, not `entry` alone: two fragments
+                    // (#189) can carry byte-identical text — two PRs can't
+                    // see each other's wording the way a single shared
+                    // [Unreleased] section let a human notice a duplicate —
+                    // and a bare-text key collides React's reconciliation.
+                    <li key={`${i}:${entry}`}>{entry}</li>
                   ))}
                 </ul>
               </div>

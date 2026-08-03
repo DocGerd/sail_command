@@ -50,12 +50,76 @@ The release cut is the moment the project's self-description is refreshed, so
 it cannot drift from the tracker. Do this on a topic branch into `develop`
 (or as the last commit before the release PR), never as a `main`-side fixup:
 
-- **`CHANGELOG.md`** — roll `[Unreleased]` into `## [X.Y.Z] - <date>` (today's
-  date, ISO) and update the two comparison links at the bottom: add
+- **`CHANGELOG.md`** — fold the pending `changelog.d/*.md` fragments (#189)
+  into a new `## [X.Y.Z] - <date>` section (today's date, ISO). For each
+  fragment file, read its category from the filename
+  (`<number>.<category>.md`, optionally `<number>-<n>.<category>.md` to
+  disambiguate a second fragment about the same issue/PR —
+  added/changed/deprecated/removed/fixed/security) and its text from the
+  file's content, then write a `- <text>` bullet under the matching
+  `### Category` heading (create the heading if this cut's first entry in
+  that category; category order is Added, Changed, Deprecated, Removed,
+  Fixed, Security, matching `app/src/lib/changelogFragments.ts`'s
+  `CATEGORY_ORDER`). Fold only files matching that shape — the build itself
+  SKIPS anything else (`README.md`, a misnamed file) with a console warning
+  rather than failing, so also check the build log / run
+  `ls changelog.d/` against the filename pattern by eye before deleting
+  anything: a fragment that got silently skipped at BUILD time (typo'd
+  category, missing number) is invisible in the About dialog's preview too,
+  and a fold step that only iterates "everything except README.md" would
+  fold its raw filename as if it were valid instead of catching the typo.
+  **Delete every folded fragment file** — leave only
+  `changelog.d/README.md`. Update the two comparison links at the bottom: add
   `[X.Y.Z]: …/compare/vX.Y.(Z-1)...vX.Y.Z` and re-point `[Unreleased]` at
-  `…/compare/vX.Y.Z...HEAD`. No test edits are needed — `ChangelogView` filters
-  the now-empty `[Unreleased]` and `changelog.test.ts` pins only the released
-  TAIL (`versions.slice(-5)`).
+  `…/compare/vX.Y.Z...HEAD`. `CHANGELOG.md`'s `## [Unreleased]` heading itself
+  stays — it is what re-fills from the NEXT batch of fragments — it should
+  just have no categories under it right after a cut (the fragment directory
+  is what carried the pending content, not that section). This fold is a
+  human/agent step, same as the rest of this docs sweep: no CI step can
+  commit the assembled content back into `CHANGELOG.md` on `develop`
+  (protected, PR-only), which is why fragments are assembled only at BUILD
+  time (for the About dialog's live preview) and folded into the file only
+  HERE, at the cut.
+
+  🛑 **If `changelog.d/` holds no fragments at all (and `[Unreleased]` is
+  already empty)**: do **NOT** create an empty `## [X.Y.Z]` section just to
+  bump the version — measured (constructed and run, not predicted; see
+  #189's PR #352 review): a version heading with nothing under it fails
+  `changelog.test.ts`'s *"no release section may parse to zero entries
+  except Unreleased"* assertion (a REQUIRED `app` check — the release PR
+  itself goes red), fails `release.yml`'s tag-push extraction (`::error::No
+  CHANGELOG.md section found for [X.Y.Z]`, exit 1 — arriving AFTER the
+  merge and the deploy, the worst point to discover it), and renders as
+  nothing in the About dialog (`ChangelogView` filters any all-empty
+  release), permanently freezing that version's entry into blankness. So:
+  in this specific, zero-fragment case, the claim above that "no test edits
+  are needed" does NOT hold — the section itself must be non-empty, not the
+  tests. Two ways to make it non-empty, in order:
+  1. **Almost always the right one.** Review the milestone's merged PRs
+     (`gh pr list --repo DocGerd/sail_command --state merged --base
+     develop --search "milestone:vX.Y.Z"`, or the merge log since the
+     previous tag) and hand-write the real user-visible changes as
+     `### Category` / `- text (#N)` entries — this is exactly what a
+     contributor's fragment would have said had they added one; a release
+     genuinely shipping zero fragments almost never means zero user-visible
+     work, it means the ritual was skipped (e.g. every in-flight PR was
+     deliberately told not to add one, as during the fragment mechanism's
+     own #189 rollout).
+  2. **Only if that review turns up genuinely nothing user-visible** (a
+     pure tooling/infra/docs cut) — write ONE honest bullet under
+     `### Changed` saying so, e.g. `- No user-visible changes in this
+     release.` Still a real, non-empty entry; still passes both checks.
+  Verify before opening the release PR: `npm --prefix app run test --
+  changelog` must be green, AND manually run `release.yml`'s own awk
+  extraction against the local `CHANGELOG.md` to confirm it yields a
+  non-empty body before relying on the tag-push workflow to do it live:
+  ```bash
+  awk -v ver="X.Y.Z" '
+    /^## \[/ { if (f) exit; if (index($0, "## [" ver "]") == 1) f = 1; next }
+    /^\[[^]]*\]: / { if (f) exit }
+    f        { print }
+  ' CHANGELOG.md | grep -q '[^[:space:]]' && echo "non-empty, OK" || echo "EMPTY — fix before tagging"
+  ```
 - **`ROADMAP.md`** — update `Current release:` and promote Now → Next: the
   shipped milestone's section goes away, the next one becomes "Now". Re-check
   every issue number named there against the tracker; this file was wrong

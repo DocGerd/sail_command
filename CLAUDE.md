@@ -557,19 +557,63 @@ deviate from it.
   ruleset targets both `main` and `develop` via literal refs (never
   `~DEFAULT_BRANCH` — that follows a default-branch flip and would strand the
   non-default branch) and requires `app`+`e2e` on each.
-  Changelog ritual (#131): feature PRs that change user-visible behavior add a
-  `CHANGELOG.md` `[Unreleased]` entry (Keep a Changelog 1.1, baked into the
-  About dialog's "What's new" view at build time); at each RELEASE cut, move
-  `Unreleased` into a new `## [X.Y.Z] - date` section and update the
-  comparison links at the bottom. When 2+ PRs are in flight, do NOT have each
-  edit `CHANGELOG.md`'s `[Unreleased]` section — they conflict on the same
-  region. Add the entry in the LAST PR of the batch or a dedicated changelog
-  PR; a SOLO PR may keep its atomic entry (no conflict possible). Durable fix
-  (changelog fragments) tracked in #189. Rolling `Unreleased` → `[X.Y.Z]` at a
-  cut needs NO test edits: `ChangelogView` filters the now-empty `[Unreleased]`
-  and `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
+  Changelog ritual (#131, fragments landed #189): feature PRs that change
+  user-visible behavior no longer edit `CHANGELOG.md`'s `[Unreleased]` section
+  directly — that was the original #131 ritual, and it conflicted whenever 2+
+  such PRs ran in parallel (a routine occurrence with parallel implementer
+  agents), either as a merge conflict or a forced re-sync collision under
+  `develop`'s strict up-to-date policy. Instead, each such PR drops ONE file
+  under the repo-root `changelog.d/` directory, named
+  `<issue-or-PR-number>.<category>.md` — or
+  `<issue-or-PR-number>-<n>.<category>.md` to disambiguate a second fragment
+  about the same number — (category one of Keep a Changelog
+  1.1's six: `added`/`changed`/`deprecated`/`removed`/`fixed`/`security`;
+  full format in `changelog.d/README.md`) — two PRs adding two differently-
+  named files can never conflict. A misnamed fragment (wrong category, no
+  number, `README.md` itself) is never a build error — the build SKIPS it
+  with a console warning and keeps going (the guard-asymmetry rule below:
+  a bad fragment costs a missing preview line, never a red build) — so a
+  typo'd filename is silently invisible in the About dialog's preview, not
+  loudly rejected; check the build log or `ls changelog.d/` against the
+  filename pattern by eye if a fragment seems to be missing (release runbook
+  §2b makes the same check explicit at the fold step). `app/vite.config.ts`'s
+  `changelogFragmentsPlugin` reads `changelog.d/*.md` Node-side via `fs` at
+  build time (dev server, every `vite build` including the UAT deploy) and
+  exposes them through the `virtual:changelog-fragments` module;
+  `app/src/lib/changelogFragments.ts`'s `assembleFragments` +
+  `withPendingFragments` fold them into a synthetic `[Unreleased]` preview
+  `AboutDialog.tsx` merges into the parsed `CHANGELOG.md` release list —
+  which is *why* assembly happens at build time rather than only at the
+  release cut: UAT (`develop`'s unreleased state) keeps showing pending work.
+  Deliberately NOT a `?raw` glob import: that would need widening the
+  `server.fs.allow` allowlist (#131's own trap — see the Code-conventions
+  bullet on it) on every PR that adds a fragment; a plugin's own
+  `fs.readdirSync`/`readFileSync` never goes through the dev-server transform
+  middleware that allowlist gates, sidestepping it entirely. A `develop`-side
+  CI step CANNOT commit the assembled content back into `CHANGELOG.md` itself
+  — `develop` is protected and PR-only — so `CHANGELOG.md` is still only
+  ever changed by a human/agent step, now at the RELEASE cut instead of on
+  every feature PR: fold each fragment's text by hand into the new
+  `## [X.Y.Z] - date` section (grouped under the matching `### Category`
+  heading) and update the comparison links at the bottom, then DELETE the
+  fragment files (release runbook `.claude/skills/release/SKILL.md` §2b).
+  Rolling a NON-empty set of fragments → `[X.Y.Z]` at a cut needs NO test
+  edits: `ChangelogView` filters the now-empty `[Unreleased]` and
+  `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
   keep new changelog assertions tail-anchored so a cut can never force an
-  assertion edit.
+  assertion edit. **The zero-fragment cut is the one case where that "no
+  test edits" claim breaks down** — measured on PR #352's review: an EMPTY
+  `## [X.Y.Z]` section (no fragments AND an already-empty `[Unreleased]`,
+  the likely v0.8.0 shape) fails `changelog.test.ts`'s "no release section
+  may parse to zero entries except Unreleased" assertion (a REQUIRED `app`
+  check) and separately fails `release.yml`'s non-empty-notes guard at TAG
+  PUSH, after the merge and the deploy. SKILL.md §2b's zero-fragment branch
+  is the fix: never create an empty section, hand-derive real entries from
+  the milestone's merged PRs (almost always the right call — zero fragments
+  usually means the ritual was skipped, not that nothing shipped), or write
+  one honest "no user-visible changes" bullet only if that review turns up
+  genuinely nothing. Config/tooling/docs-only PRs still add no fragment at
+  all (unchanged from the original #131 rule).
   `Closes #N` in a RELEASE PR does NOT close the issue: GitHub auto-closes only
   on merge into the DEFAULT branch, which here is `develop`, not `main` (#132
   stayed open after #210 merged, v0.5.0). Close release-scoped issues by hand at
