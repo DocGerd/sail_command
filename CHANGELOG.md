@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-03
+
 ### Changed
 
 - Upgraded maplibre-gl 5.24.0 -> 6.0.0. `Map` no longer exposes `isEasing()`
@@ -51,6 +53,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Kategorie: port` or `Farbe: green`. Any value not covered by the
   translation falls back to the previous readable form, so unusual tags still
   display sensibly (#300).
+
+### Security
+
+- Added a Content-Security-Policy and an explicit referrer policy to the app
+  shell. Background network requests — fetch, XHR, WebSocket, `sendBeacon` —
+  are now limited to the app's own origin plus the two services it already
+  talks to (the Open-Meteo wind forecast and, if you've entered a key,
+  aisstream.io's AIS feed), so a compromised dependency could no longer
+  quietly send your data to some other server over those channels. It is not
+  a complete seal: page navigation, opening a new tab or window,
+  prefetch/preconnect hints and WebRTC stay unrestricted, and the full list
+  of accepted gaps is in `docs/security-assurance-case.md`. The referrer
+  policy limits how much of the current page's URL is sent to other origins
+  (#223).
+- Resolved a known vulnerability (GHSA-mh99-v99m-4gvg) in a transitive
+  dependency (`brace-expansion`) via a lockfile update. This package is used
+  only by build tooling, not shipped in the app itself, so users of the app
+  were never exposed; no application behavior changed (#281).
 
 ## [0.6.0] - 2026-07-31
 
@@ -316,7 +336,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/DocGerd/sail_command/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/DocGerd/sail_command/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/DocGerd/sail_command/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/DocGerd/sail_command/compare/v0.4.0...v0.5.0

@@ -71,6 +71,12 @@ basemap). It downloads ~900 MB of source data into `pipeline/data-src/`
 (gitignored, cached — don't delete it casually). `verify_mask.py` must exit
 0 before committing a rebuilt mask. See `pipeline/README.md`.
 
+Python code in `pipeline/` is linted and formatted with ruff
+(`pipeline/pyproject.toml`); run `ruff check pipeline/` and `ruff format
+pipeline/` before committing. CI enforces this in
+`.github/workflows/python-lint.yml` (job `ruff`) — an optional check, not
+part of `protect-main`'s required `app` + `e2e`.
+
 ## Design spec
 
 `docs/superpowers/specs/2026-07-14-sail-command-design.md` is the source of
@@ -105,11 +111,12 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.7.0` — the next release.
+- `v0.8.0` — the next release.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0`, `v0.5.0`, and `v0.6.0` are closed. The
+`v0.4.0`, `v0.5.0`, `v0.5.1`, and `v0.6.0` are closed; `v0.7.0` ships in this cut and
+closes as part of the release. The
 [milestones page](https://github.com/DocGerd/sail_command/milestones) is
 authoritative; this list names the shape, not a live count.
 

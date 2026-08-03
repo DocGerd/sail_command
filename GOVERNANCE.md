@@ -161,6 +161,10 @@ then tagged `vX.Y.Z` on `main`. `main` holds released state only.
   labeled as unreleased, and is not chart-authoritative.
 - After the tag deploy is verified green, `main` is back-merged into `develop`
   via a topic branch so `develop` stays ahead.
+- The tag push also creates the GitHub Release itself: `release.yml`
+  extracts the matching `## [X.Y.Z]` section from `CHANGELOG.md` and runs
+  `gh release create` automatically — the maintainer no longer creates the
+  Release object by hand ([#175](https://github.com/DocGerd/sail_command/issues/175)).
 
 **Only the maintainer cuts releases.** Because there is no staging step between
 merging to `main` and the bytes going live, a release is gated on a human
@@ -255,7 +259,7 @@ need. It is deliberately not written as if it were the answer.
 | Release tagging | Git push rights on `main` | A `v[0-9]*` tag push is what publishes the clean version string |
 | OpenSSF Best Practices badge entry | [Project 13749](https://www.bestpractices.dev/projects/13749) | Tied to the maintainer's login; a successor needs to be added as an additional badge editor |
 | GitHub Actions secrets | None held | Deploys use the Pages OIDC flow; there is nothing to hand over |
-| Signing keys | None yet | Release tags are currently unsigned ([#222](https://github.com/DocGerd/sail_command/issues/222)); if adopted, the key becomes a succession item |
+| Signing keys | None yet | Release tags are currently unsigned; signing is planned to start at `v0.8.0` ([#322](https://github.com/DocGerd/sail_command/issues/322)), at which point the key becomes a succession item |
 
 Two things genuinely simplify succession here, and are worth stating because
 they are the usual hard parts: **there is no DNS to transfer** (the site lives on
