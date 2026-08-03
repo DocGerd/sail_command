@@ -58,11 +58,38 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
       - run: npm run test:coverage
-        # Headroom over the ~983-1029s (~16-17 min) dev-machine measurement
-        # with the coverage-aware timeouts in place: there is no PR-latency
-        # cost to over-provisioning a nightly, so this is deliberately loose
-        # rather than a number that merely fits today's local measurement —
-        # a non-required check that times out goes permanently red and gets
-        # ignored, silently defeating the whole point of #319 (a check
-        # nobody reads is worse than no check).
-        timeout-minutes: 120
+        # DERIVATION (PR #351 review N1 — this cap was raised 120 -> 240
+        # after `app/src/test/timeouts.ts`'s coverage multiplier was raised
+        # 4 -> 8, which made the OLD 120-minute cap collide with the
+        # heaviest per-test budget in the suite):
+        #
+        #   `invariants.property.test.ts`'s solverTimeoutMs(900_000), the
+        #   largest base in the suite, is 900_000 * 8 = 7_200_000ms =
+        #   EXACTLY 120.0 min under coverage. A per-test timer starts only
+        #   once its OWN test starts — strictly after this step's node
+        #   boot/transform/collection already consumed time — so a per-test
+        #   budget numerically equal to the step cap can NEVER fire before
+        #   the step cap does, regardless of scheduling. That collapses the
+        #   two failure surfaces `timeouts.ts` says must stay separate: a
+        #   hang would surface as GitHub's generic job-timeout with no test
+        #   named, instead of vitest naming the offender.
+        #
+        #   RULE, so the next multiplier or base change re-checks this:
+        #   this cap MUST stay strictly greater than the largest
+        #   `solverTimeoutMs(...)` product in the suite (currently 120 min,
+        #   `solverTimeoutMs(900_000)`) PLUS the rest of the suite's wall
+        #   time, with margin for step-startup overhead. 120 + ~45 min
+        #   (measured: the completed coverage run, 30829788656, ran the
+        #   whole suite in 40m56s at the PRIOR 4x multiplier) = ~165 min
+        #   minimum; 240 is the next natural round number above that,
+        #   leaving real margin rather than a number sized to today's exact
+        #   minimum. `app/src/test/timeoutBudgetVsJobCap.test.ts` asserts
+        #   this inequality structurally so a future bump to either number
+        #   fails loudly instead of silently re-creating the collision.
+        #
+        #   There is no PR-latency cost to over-provisioning a nightly, so
+        #   this stays deliberately loose rather than fitted to today's
+        #   measurement — a non-required check that times out goes
+        #   permanently red and gets ignored, silently defeating the whole
+        #   point of #319 (a check nobody reads is worse than no check).
+        timeout-minutes: 240

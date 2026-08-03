@@ -388,7 +388,28 @@ export default defineConfig(({ command }) => ({
     // actually being requested, not which command happened to set an env
     // var. `package.json`'s `test:coverage` script no longer needs the
     // prefix at all.
-    env: process.argv.some((a) => a === '--coverage' || a.startsWith('--coverage.enabled'))
+    //
+    // PR #351 review N3: `--coverage.enabled*` alone (no value check) also
+    // matched the EXPLICIT DISABLE `--coverage.enabled=false` — the harmful
+    // direction, since it turned the multiplier ON for a run that asked for
+    // coverage to be OFF (a genuine hang then gets 16 minutes of
+    // hang-detection budget instead of 2). Excluded below (verified: `vitest
+    // run --coverage.provider=v8` alone — no `--coverage`/`--coverage.enabled`
+    // flag at all — does NOT actually enable coverage either, confirmed by
+    // the absence of a coverage summary in that run's output, so that
+    // invocation correctly gets the unscaled budget too). The real residual
+    // is a `coverage: { enabled: true, ... }` set directly on the `test`
+    // block's coverage OBJECT below (not via any CLI flag) — argv sniffing
+    // cannot see that, and this repo does not do it today (there is no
+    // `enabled` key in the block below), but closing it for real needs the
+    // resolved coverage config, not argv. This detection is a pragmatic
+    // argv PROXY for "coverage is on", strictly better than the
+    // shell prefix it replaces, not a true reading of the resolved coverage
+    // config — it moved the convention from "which npm script you typed" to
+    // "which CLI flag you passed", not eliminated convention entirely.
+    env: process.argv.some(
+      (a) => a === '--coverage' || (a.startsWith('--coverage.enabled') && !/=(?:false|0)$/.test(a)),
+    )
       ? { SC_COVERAGE: '1' }
       : {},
     // #221 measured a 93.92% statement baseline; #319 adds this threshold on

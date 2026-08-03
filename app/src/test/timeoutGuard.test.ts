@@ -21,7 +21,13 @@ import { describe, it } from 'vitest';
 //     `invariants.property.test.ts` (`}, 900_000);`) in this same PR; PR
 //     #351 review M1 found the keyed-only scanner could not see it, so a
 //     straight revert of that file's centralization would not have been
-//     caught by the guard meant to protect it.
+//     caught by the guard meant to protect it. The positional scanner also
+//     covers `beforeAll`/`beforeEach`/`afterAll`/`afterEach` — vitest's hook
+//     signature is `(fn, timeout?)`, the same bare-trailing-number shape
+//     with the SAME coverage-scaling failure surface (the hook default is
+//     10s, which v8 instrumentation can blow just as readily as the 5s test
+//     default) — added after PR #351 review N2 constructed a live miss:
+//     `beforeAll(() => { ... }, 30_000);` scanned green before this change.
 //
 // EXPLICIT RESIDUALS (out of scope, named rather than silently uncovered):
 //   - `app/e2e/**/*.spec.ts` and `playwright.config.ts` are NOT scanned —
@@ -37,6 +43,13 @@ import { describe, it } from 'vitest';
 //     positional argument today (checked); closing this needs either a
 //     real parser or extending the call-start pattern to match a preceding
 //     `.each(...)(`, neither done here.
+//   - A local binding indirection — `const T = 120_000; vi.setConfig({
+//     testTimeout: T })` — reads as a value, not a literal, so neither the
+//     keyed nor the positional pattern matches it (constructed and
+//     confirmed green by PR #351 review N2). Inherent to any TEXTUAL
+//     scanner (it cannot resolve what a bound identifier refers to without
+//     becoming a real type-aware parser) and not worth one for a guard this
+//     narrow; named here rather than fixed, same as `it.each` above.
 const testFiles = import.meta.glob<string>(['../**/*.test.{ts,tsx}', '!./timeoutGuard.test.ts'], {
   query: '?raw',
   import: 'default',
@@ -111,7 +124,7 @@ function stripComments(source: string): string {
 // code, unrelated to vitest's own timeout options entirely.
 const KEYED_TIMEOUT_PATTERN = /\b(?:timeout|testTimeout)\s*:\s*[\d_]+(?![\w(])/g;
 
-// --- Form 2: POSITIONAL (`it('name', fn, <number>)`) ---
+// --- Form 2: POSITIONAL (`it('name', fn, <number>)` and hook equivalents) ---
 //
 // vitest's `it`/`test` signature is `(name, fn, timeout?)` where the third
 // argument, if present, is EITHER a bare number or an options object (the
@@ -122,7 +135,15 @@ const KEYED_TIMEOUT_PATTERN = /\b(?:timeout|testTimeout)\s*:\s*[\d_]+(?![\w(])/g
 // not a heuristic. `test(` is included defensively (unused anywhere in this
 // codebase today, checked) for the same reason `it.each` is out of scope
 // above: match the API surface, not just today's call sites.
-const CALL_START_PATTERN = /\b(?:it|test)(?:\.(?:only|skip|todo|concurrent|sequential))?\s*\(/g;
+//
+// `beforeAll`/`beforeEach`/`afterAll`/`afterEach` (PR #351 review N2) share
+// the identical `(fn, timeout?)` shape and the identical failure surface —
+// vitest's hook default is 10s, which v8 coverage instrumentation can blow
+// just as readily as the 5s test default — and are matched by the SAME rule
+// with no changes below it: the "bare numeric LAST argument" check does not
+// care which function name preceded the call.
+const CALL_START_PATTERN =
+  /\b(?:it|test|beforeAll|beforeEach|afterAll|afterEach)(?:\.(?:only|skip|todo|concurrent|sequential))?\s*\(/g;
 const BARE_NUMBER_PATTERN = /^[\d_]+$/;
 
 // Finds the index of the `)` matching the `(` at `openParenIndex`, tracking

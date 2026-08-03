@@ -27,10 +27,13 @@
   // tsconfig.app.json so node globals/types never leak into browser app code.
   // gpx.parse.test.ts reads app/public/data/mask.meta.json to pin DATA_AREA (#3).
   // seamarkPopover.coverage.test.ts reads app/public/data/seamarks.json to pin
-  // i18n coverage of the shipped dataset (#300).
+  // i18n coverage of the shipped dataset (#300). timeoutBudgetVsJobCap.test.ts
+  // reads .github/workflows/coverage.yml to pin the job-cap/multiplier
+  // coupling (#342, PR #351 review N1).
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
-    "src/**/seamarkPopover.coverage.test.ts"
+    "src/**/seamarkPopover.coverage.test.ts",
+    "src/**/timeoutBudgetVsJobCap.test.ts"
   ]
 }

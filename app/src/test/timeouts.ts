@@ -66,29 +66,59 @@ const processEnv = (globalThis as { process?: { env?: Record<string, string | un
 //      themselves already sized for CI's general slowdown per their own
 //      file-level comments — this multiplier only needs to cover
 //      COVERAGE's additional cost on top of that, not CI-vs-local again).
-//   3. That 2558s figure comes from CI runs 30810112565 / 30815617721,
-//      which were KILLED by their own per-test `vi.setConfig`/`timeout`
-//      budgets before the suite finished — so 4.9x is a LOWER BOUND on a
-//      run that actually completes, not a measurement of one.
+//   3. UPDATE (PR #351 review N4, folded into this derivation rather than
+//      left to go stale beside it): that 2558s figure originally came from
+//      CI runs 30810112565 / 30815617721, which were KILLED by their own
+//      per-test `vi.setConfig`/`timeout` budgets before the suite finished
+//      — a LOWER BOUND, not a measurement of a completed run. Run
+//      **30829788656 has since completed successfully in 40m56s (2456s)**
+//      — a real passing CI coverage duration, and the stronger of the two
+//      data points. This does NOT move the multiplier (point 5's asymmetry
+//      still holds — over-provisioning is free, so 8 stays right); the
+//      killed-run figure is kept above as the historical reason the floor
+//      was originally uncertain, not as the current best estimate.
 //   4. CLAUDE.md's coverage bullet separately documents that solver-heavy
 //      tests pay a BIGGER coverage penalty than component tests — the
 //      suite-AVERAGE 4.9x therefore understates the solver-specific factor
 //      this multiplier actually needs to cover.
-//   5. Asymmetric cost: an over-large budget costs nothing here (`SC_COVERAGE`
-//      already isolates it from the plain run's tight hang-detection budget,
-//      and nothing gates the nightly on wall-clock time below
-//      `coverage.yml`'s 120-minute job cap) — the guard-asymmetry principle
-//      CLAUDE.md applies elsewhere to blocking-vs-nudge guards, applied here
-//      to a floor sized from an incomplete measurement: round UP, not to the
+//   5. Asymmetric cost: an over-large PER-TEST budget costs nothing BY
+//      ITSELF (`SC_COVERAGE` already isolates it from the plain run's tight
+//      hang-detection budget) — the guard-asymmetry principle CLAUDE.md
+//      applies elsewhere to blocking-vs-nudge guards, applied here to a
+//      floor sized from an incomplete measurement: round UP, not to the
 //      nearest whole number of the lower bound itself.
 //
 //   => 8 (roughly 2x the measured 4.9x lower-bound floor, absorbing both the
 //      "measured on a killed run" gap in point 3 and the "solver tests pay
-//      more than average" gap in point 4, while staying comfortably inside
-//      the 120-minute job budget even for the heaviest per-test ceiling —
-//      see SOLVER_TEST_TIMEOUT_MS and the invariants property test's
-//      solverTimeoutMs(900_000) call site).
-const COVERAGE_MULTIPLIER = processEnv?.SC_COVERAGE ? 8 : 1;
+//      more than average" gap in point 4).
+//
+//   IMPORTANT COUPLING (PR #351 review N1): raising this multiplier is NOT
+//   free with respect to `.github/workflows/coverage.yml`'s job-level
+//   `timeout-minutes`, even though it is free with respect to CI runner
+//   cost. `invariants.property.test.ts`'s `solverTimeoutMs(900_000)` is the
+//   heaviest per-test ceiling in the suite; at this multiplier that is
+//   exactly `900_000 * 8 = 7_200_000ms = 120.0 min`. When this constant was
+//   first raised to 8, `coverage.yml`'s cap was ALSO 120 — making that
+//   per-test timer provably unable to ever fire (a per-test timer starts
+//   only once its OWN test starts, strictly after node boot/transform/
+//   collection consume time inside the step, so a budget numerically equal
+//   to the step cap is always reached by the step cap FIRST). That collapses
+//   the two failure surfaces this file's own header comment says must stay
+//   separate: a hang would surface as GitHub's generic job-timeout with no
+//   test named, instead of vitest's per-test timeout naming the offender.
+//   `coverage.yml`'s cap is 240 as of this comment specifically to leave
+//   headroom above this multiplier's heaviest product — see that file's own
+//   comment for the numeric derivation. THE RULE, so the next person who
+//   changes either number sees the coupling: `coverage.yml`'s
+//   `timeout-minutes` MUST stay strictly greater than
+//   `solverTimeoutMs(900_000)` (currently the largest base in the suite)
+//   PLUS the rest of the suite's wall time — raising this multiplier without
+//   re-checking that file's cap re-creates exactly the N1 defect.
+//   `timeoutBudgetVsJobCap.test.ts` (this directory) asserts the inequality
+//   structurally so a future bump fails loudly instead of silently
+//   recreating the collision.
+export const COVERAGE_MULTIPLIER_WHEN_ENABLED = 8;
+const COVERAGE_MULTIPLIER = processEnv?.SC_COVERAGE ? COVERAGE_MULTIPLIER_WHEN_ENABLED : 1;
 
 /** Scales a base millisecond budget by the coverage multiplier when `SC_COVERAGE` is set. */
 export function solverTimeoutMs(baseMs: number): number {
