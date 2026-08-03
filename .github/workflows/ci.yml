@@ -132,6 +132,15 @@ jobs:
             fi
           fi
 
+          # Log to stdout too, not just $GITHUB_OUTPUT/$GITHUB_STEP_SUMMARY —
+          # a misclassification six months from now needs the WHY in the
+          # plain job log, not only in machine-readable outputs that don't
+          # show up in `gh run view --log`. Name the value, not a boolean
+          # (this repo has paid for a boolean-only assertion twice already).
+          echo "changed paths:"
+          printf '%s\n' "${changed:-<none>}"
+          echo "run_e2e=${run_e2e} reason=${reason}"
+
           echo "run_e2e=${run_e2e}" >> "$GITHUB_OUTPUT"
           {
             echo "### e2e classification"
