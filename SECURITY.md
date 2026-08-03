@@ -77,7 +77,9 @@ as a normal issue.
 ## Verifying a release
 
 Release tags in this repository are **not cryptographically signed yet**
-(tracked in [#222](https://github.com/DocGerd/sail_command/issues/222)).
+(tracked in [#322](https://github.com/DocGerd/sail_command/issues/322); the
+verification process and docs below shipped under
+[#222](https://github.com/DocGerd/sail_command/issues/222)).
 `v0.1.0` through `v0.7.0` carry no signature, so `git verify-tag` / `git tag
 -v` **fail** against them (exit 1) rather than succeed — the message differs
 by tag kind: annotated-but-unsigned tags (`v0.1.0`, `v0.5.0`) report `error:
