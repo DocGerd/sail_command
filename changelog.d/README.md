@@ -31,9 +31,12 @@ as before, #131.)
 
 Example: `changelog.d/165.fixed.md`
 
-A filename that doesn't match this shape (or this `README.md` itself) is
-skipped with a build-time warning rather than failing the build — a
-misnamed fragment costs a missing preview line, never a red build.
+A filename that doesn't match this shape is skipped with a build-time
+warning rather than failing the build — a misnamed fragment costs a missing
+preview line, never a red build. This `README.md` file itself is also
+skipped, but silently (no warning at all) — it's the expected, always-present
+file in this directory, not an error case, so don't expect a build-log line
+naming it.
 
 ## Content: the entry text only
 

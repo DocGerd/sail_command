@@ -89,11 +89,14 @@ export interface RawFragment {
  * actual `fs` calls factored out so it's unit-testable without a real
  * `changelog.d/` directory: given a raw filename listing and a way to read
  * each file's content, returns the fragments ready for `assembleFragments`.
- * `README.md`, a misnamed file, and a whitespace-only file are all skipped
- * (via `warn`, never a thrown error — a NUDGE, not a blocking guard, per
- * CLAUDE.md's guard-asymmetry rule: a bad fragment should cost a missing
- * preview line, never a red build). Filenames are sorted first for a
- * deterministic entry order independent of the OS's directory listing order.
+ * A misnamed file and a whitespace-only file are both skipped via `warn`,
+ * never a thrown error — a NUDGE, not a blocking guard, per CLAUDE.md's
+ * guard-asymmetry rule: a bad fragment should cost a missing preview line,
+ * never a red build. `README.md` itself is also skipped, but SILENTLY (no
+ * `warn` call at all — see the `continue` below, which runs before the warn
+ * path) since it's the expected, always-present file in this directory, not
+ * an error case. Filenames are sorted first for a deterministic entry order
+ * independent of the OS's directory listing order.
  */
 export function buildFragments(
   filenames: string[],
