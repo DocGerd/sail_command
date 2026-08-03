@@ -373,16 +373,20 @@ export default defineConfig(({ command }) => ({
     include: ['src/**/*.test.{ts,tsx}'],
     // #214: see SlowFileFirstSequencer above.
     sequence: { sequencer: SlowFileFirstSequencer },
-    // #221: REPORTING ONLY — no `thresholds` block, and CI is deliberately
-    // NOT wired to run this yet (only `npm run test:coverage` locally). This
-    // release ships measurement, not enforcement, because `app` is a
-    // required check under protect-main with a strict up-to-date policy and
-    // a threshold that fails on merge day would block the release PR
-    // itself. `include` is intentionally the same glob as `app`'s source
-    // tree (not scoped to what tests happen to exercise), so an untested
-    // file reports 0% rather than silently dropping out of the denominator
-    // — a follow-up ratchet toward enforcement should add a CI step that
-    // runs `test:coverage` and reports the number without gating `app`.
+    // #221 measured a 93.92% statement baseline; #319 wires enforcement on
+    // top of it via a NON-required `.github/workflows/coverage.yml` (never
+    // `app` itself — `app` is a required check under protect-main with a
+    // strict up-to-date policy, and a threshold failure there would block
+    // every PR, including the release PR). The threshold only fires when
+    // coverage is enabled (`npm run test:coverage`), so it is inert for the
+    // plain `npm run test` that `app`'s CI job runs. `thresholds.statements:
+    // 80` matches the OpenSSF `test_statement_coverage80` criterion and is a
+    // FLOOR, not a ratchet — it leaves ~14 points of headroom below the
+    // measured 93.92%, in which a regression would still pass silently.
+    // Deliberate and revisitable at the next release cut, not an oversight.
+    // `include` is intentionally the same glob as `app`'s source tree (not
+    // scoped to what tests happen to exercise), so an untested file reports
+    // 0% rather than silently dropping out of the denominator.
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'text'],
@@ -394,6 +398,7 @@ export default defineConfig(({ command }) => ({
         'src/main.tsx',
         'src/vite-env.d.ts',
       ],
+      thresholds: { statements: 80 },
     },
   },
 }));

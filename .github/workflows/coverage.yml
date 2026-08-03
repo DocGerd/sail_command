@@ -1,0 +1,29 @@
+name: Coverage
+
+# #319: standalone workflow, deliberately separate from ci.yml, modelled on
+# python-lint.yml's shape (#220). The `app` and `e2e` jobs in ci.yml are the
+# ONLY required checks under the protect-main ruleset (strict up-to-date
+# policy) — this job is NOT added to that ruleset, so it must fail closed
+# (report a red job) without ever blocking a merge. `test:coverage` runs the
+# full suite under v8 instrumentation (~4 min uninstrumented on a dev
+# machine; CI runners are 6-10x slower per CLAUDE.md), so it stays out of the
+# `app` job's critical path rather than adding that cost to a required check.
+# `thresholds.statements: 80` lives in app/vite.config.ts's coverage block and
+# only fires when coverage is enabled — this workflow is what enables it.
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+permissions:
+  contents: read
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+      - run: npm run test:coverage
+        timeout-minutes: 20
