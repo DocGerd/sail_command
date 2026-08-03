@@ -219,3 +219,5 @@ dependencies are collected in
 [`app/public/THIRD-PARTY-NOTICES.txt`](app/public/THIRD-PARTY-NOTICES.txt),
 which also deploys with the site (regenerate via `npm --prefix app run
 notices` after dependency bumps).
+
+<!-- scratch: coverage trigger test, docs-only -->
