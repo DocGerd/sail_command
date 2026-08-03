@@ -164,8 +164,16 @@ Release tags are cryptographically signed from `v0.8.0` onward, using SSH
 signing (`gpg.format = ssh`) rather than GPG — GitHub verifies SSH tag/commit
 signatures the same way it verifies GPG ones (the "Verified" badge), and it
 needs no separate GPG toolchain. `v0.1.0` through `v0.7.0` remain unsigned
-permanently — signing is **not retroactive** (re-tagging a shipped release
-would change what a rebuild produces at an unchanged SHA; see
+permanently — signing is **not retroactive**: **moving or re-creating a
+published tag** is avoided here, for two reasons. It needlessly re-fires
+both tag-triggered workflows — `release.yml`'s own "skip if a Release
+already exists" guard means the "Latest" badge is not actually at risk for
+any tag that has already shipped (every tag through `v0.8.0` already has a
+Release object), but `deploy.yml` has no equivalent guard and shares its
+`pages` concurrency group with genuine in-flight deploys, so a re-push risks
+cancelling one. More fundamentally, a published signed tag is an attestation
+a third party may already have fetched and verified — mutating the object
+invalidates exactly that, which is the whole point of signing (see
 [`CLAUDE.md`](CLAUDE.md)). See [`SECURITY.md`](SECURITY.md#verifying-a-release)
 for how a *user* verifies a released tag; this section is the one-time setup
 for a *maintainer* machine that needs to be able to sign one.
@@ -252,7 +260,7 @@ signed (`git tag -v` reports `Good signature`) while GitHub still shows it as
 **Unverified** — that is a registration gap, not a signature problem; see
 `SECURITY.md`'s "Verifying a release" section.
 
-### Tagger identity — three independent ways a signed tag fails to show Verified, all invisible to `git tag -v`
+### Tagger identity — three independent ways a signed tag never ends up Verified, all invisible to `git tag -v`
 
 Getting a signed tag to actually show **Verified** on GitHub depends on
 three independent conditions — the signing key's registration, the tagger
@@ -321,7 +329,10 @@ distinguishing fact (is the *key* registered? is the *email* registered?)
 has to be checked separately at `github.com/settings/keys` (the list of
 **registered** Signing Keys — `github.com/settings/ssh/new` is the add-a-key
 *form*, not the list, and won't tell you what's already registered) and
-`github.com/settings/emails`. Other `reason` values
+`github.com/settings/emails`. `unknown_key` and `not_signing_key` are also
+in the attribution/registration family — both are key-registration gaps
+(an unrecognized key, or one registered only for authentication, not
+signing) routed the same way as case 1 above. Other `reason` values
 (`bad_signature`/`malformed_signature`/`invalid`/`expired_key`/
 `unknown_signature_type`) are real signature or key problems, not a
 registration gap — don't apply this section's fixes to those.

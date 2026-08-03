@@ -18,9 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   itself is cryptographically good (`git tag -v` reports `Good` signature).
   This is an attribution gap, not a signature problem, and it is permanent
   for the v0.8.0 tag specifically — re-tagging was considered and rejected:
-  release tags are treated as immutable (the deploy pipeline's `(main SHA,
-  git-describe version)` identity and its `prod-dist-v2-<sha>-<version>`
-  cache key both assume it), so the fix is forward-only, not a retag. The
+  a published tag is treated as immutable here, since it is an attestation
+  third parties may already have verified, and moving or re-creating it
+  would invalidate that. The fix is forward-only, not a retag. The
   maintainer's signing identity is now fixed going forward via a repo-local
   `git config user.email`; the badge is expected to show correctly from this
   release onward. `git tag -v` / `git verify-tag` verification was, and

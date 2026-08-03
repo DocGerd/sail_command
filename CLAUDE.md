@@ -553,8 +553,13 @@ deviate from it.
   that gap and works for every signed tag including `v0.8.0` (setup in
   `CONTRIBUTING.md`, verification story in `SECURITY.md`). `v0.1.0` through
   `v0.7.0` remain permanently unsigned — signing is explicitly NOT
-  retroactive (re-tagging would break the `(main SHA, git-describe version)`
-  deploy-identity scheme). `main` is
+  retroactive: moving or re-creating a published tag is avoided, both
+  because it needlessly re-fires the tag-triggered workflows (risking a
+  `pages`-concurrency cancellation of a genuine in-flight deploy —
+  `release.yml`'s own guard against a duplicate Release means the badge
+  itself isn't actually at risk for an already-shipped tag) and because a
+  published signed tag is an attestation a third party may already have
+  verified, which mutating the object would invalidate. `main` is
   released-state-only. Pushing that tag is what puts the clean `vX.Y.Z` in the
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
