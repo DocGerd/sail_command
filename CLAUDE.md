@@ -52,20 +52,52 @@ deviate from it.
   "(0 test)" — cost three failed coverage measurements this session. Always
   use `run`, never `exec`, for anything that depends on `app/`'s config.
 - Statement coverage baseline: 93.92% (4100/4365 statements; branches 88.99%,
-  functions 92.28%, lines 95.52%; 1206 tests, 102 files), measured 2026-08-03
-  via `npm --prefix app run test:coverage`. Meets the OpenSSF
+  functions 92.28%, lines 95.52%), measured 2026-08-03 via `npm --prefix app
+  run test:coverage`. The trailing test/file COUNT from that same 2026-08-03
+  measurement (1206 tests, 102 files) is now stale by exactly PR #351's own
+  +1/+1 (`app/src/test/timeoutGuard.test.ts`, #342's structural guard) — the
+  percentages above are untouched (a scanning-only test file is
+  coverage-neutral) and were correctly left unmeasured-again per that PR;
+  only the count needed updating, verified via a real `npm --prefix app run
+  test` run: **1207 tests, 103 files** (2026-08-03). Meets the OpenSSF
   `test_statement_coverage80` criterion (≥80%) — it had simply never been
-  measured before. `vite.config.ts`'s `coverage` block now carries
-  `thresholds.statements: 80` (#335) — but it is INERT: `app`'s CI job runs
-  plain `test` (a bare `vitest run`, no coverage), so nothing evaluates it,
-  and coverage is not measured automatically at any interval. Wiring that up
-  is #342, which first needs #319's still-undecided call on whether
-  `src/sw.ts` and `src/routing/worker.ts` are in coverage scope.
+  measured before. `vite.config.ts`'s `coverage` block carries
+  `thresholds.statements: 80` (#335) and `.github/workflows/coverage.yml`
+  (#342) now evaluates it — but only NIGHTLY (`schedule` +
+  `workflow_dispatch`), never per-PR: `app`'s required CI job still runs
+  plain `test` (a bare `vitest run`, no coverage). `src/sw.ts` and
+  `src/routing/worker.ts` STAY IN coverage scope at ~0% BY DESIGN (jsdom has
+  no real ServiceWorker or dedicated-Worker execution model; decided 2026-08-03
+  on #319 rather than excluded, since together they are only ~0.57% of
+  statements and excluding would raise, not preserve, the published figure)
+  — their functional assurance instead comes from `app/e2e/offline.spec.ts`,
+  `csp.spec.ts`, `basemap-fallback.spec.ts`, `plan.spec.ts`, `live.spec.ts`
+  and `deploy.yml`'s post-deploy CDN smoke probe; do not "fix" the 0% with a
+  jsdom-mocked service-worker test — that would be the #50 equivalence-test
+  tautology (statements execute without modeling real CacheStorage/Range/CDN
+  semantics, the bug class that actually bit in #96 and #118).
 - Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
   a ~40 s real-mask solver acceptance file). Use focused filters while
   iterating (`npm --prefix app run test -- <filter>`); give the full run a
-  generous timeout. Solver-heavy test files set
-  `vi.setConfig({ testTimeout: 120_000 })`; the property test carries 900 s.
+  generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
+  (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
+  per-test override, keyed OR positional, e.g. the property test's 900 s)
+  from `app/src/test/timeouts.ts` (#342) rather than hardcoding a literal —
+  eleven files previously each hardcoded their own literal (nine via
+  `vi.setConfig({ testTimeout: 120_000 })`; `workerClient.test.ts` (x8) and
+  `gpx.parse.test.ts` via a bare positional third `it()` argument, found in
+  PR #351 review after the first sweep only grepped for the `testTimeout:`
+  keyword) — a centralized, coverage-aware constant replaced all eleven.
+  `SC_COVERAGE` (read by `timeouts.ts`) is set by `vite.config.ts`'s
+  `test.env` whenever the CLI's own `--coverage`/`--coverage.enabled*` flag
+  is present — not by a shell-only env-var prefix, so it works identically
+  on any shell/OS and for any invocation that requests coverage, not only
+  the `test:coverage` npm script — and scales solver budgets **8×**
+  (hand-derived from the measured CI-coverage/CI-plain ratio below, doubled
+  because that ratio is a lower bound measured on a run that was itself
+  killed by a too-tight budget, and because solver-heavy tests are
+  documented to pay MORE than the suite-average coverage penalty; full
+  derivation in `timeouts.ts`'s `COVERAGE_MULTIPLIER` comment).
   **CI is slower than dev machines, but not by a flat multiplier** — measured
   2026-08-03 (#341, PR #335 work): `npm run test` local 249.8 s vs CI
   ~515–535 s (~2.1×); `npm run test:coverage` local ~983–1029 s vs CI 2558 s
@@ -76,7 +108,15 @@ deviate from it.
   former cannot rescue the latter (cost three red CI runs to learn). Operative
   rule unchanged — never add a per-test timeout tighter than the file-level
   config, and never size a CI timeout from a local measurement's margin; that
-  holds at 2× as firmly as at a bigger multiplier.
+  holds at 2× as firmly as at a bigger multiplier. That rule is now
+  structurally enforced, not just documented: `timeoutGuard.test.ts` fails
+  loudly if `app/src/**/*.test.{ts,tsx}` hardcodes a `testTimeout`/`timeout`
+  literal (keyed OR bare-positional form) instead of importing it from
+  `app/src/test/timeouts.ts` — Playwright specs under `app/e2e/**` and
+  `playwright.config.ts` are a NAMED residual, out of scope by glob (coverage
+  never runs e2e, and Playwright's own `timeout: 120_000` is an unrelated
+  budget); an `it.each(...)(...)` positional timeout is a separate, latent
+  (not live) residual documented in the guard's own header comment.
 - vitest's `BaseSequencer` sorts by file SIZE descending when there is no
   cache — and CI never has one (`npm ci` wipes `node_modules`).
   `invariants.property.test.ts` is ~4380 bytes but ~463 s, so the

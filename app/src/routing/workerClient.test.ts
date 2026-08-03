@@ -3,6 +3,18 @@ import { RoutingClient } from './workerClient';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PlanResult, type PolarTable, type Rig } from '../types';
+import { solverTimeoutMs } from '../test/timeouts';
+
+// #342 fix-wave (PR #351 review M2): this file has no `vi.setConfig`, so its
+// file-level budget is vitest's default 5000 ms — the eight per-test `2000`
+// overrides below were TIGHTER than that file default, the exact hard rule
+// #342 exists to enforce (a per-test timeout may only ever be raised above
+// the file-level budget, never below it), and were not coverage-scaled
+// either. Raised to the file default and routed through solverTimeoutMs so
+// v8 coverage instrumentation gets the same multiplier every other
+// solver-touching test file gets — these tests build a full mask buffer and
+// wind grid per case even though the fake worker resolves synchronously.
+const WORKER_CLIENT_TEST_TIMEOUT_MS = solverTimeoutMs(5000);
 
 const FOCK: PolarTable = { ...TEST_POLAR, rig: 'fock' };
 
@@ -52,113 +64,145 @@ const PLAN_REQUEST = {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('RoutingClient promise settling', () => {
-  it('dispose() rejects an in-flight plan', async () => {
-    const w = fakeWorker();
-    const client = new RoutingClient(() => w as unknown as Worker);
-    w.emit({ type: 'ready' });
-    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
-    await flush();
-    client.dispose();
-    await expect(p).rejects.toThrow(/disposed/);
-  }, 2000);
+  it(
+    'dispose() rejects an in-flight plan',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      client.dispose();
+      await expect(p).rejects.toThrow(/disposed/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 
-  it('global fatal rejects an in-flight plan', async () => {
-    const w = fakeWorker();
-    const client = new RoutingClient(() => w as unknown as Worker);
-    w.emit({ type: 'ready' });
-    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
-    await flush();
-    w.emit({ type: 'fatal', id: null, message: 'mask corrupted' });
-    await expect(p).rejects.toThrow(/mask corrupted/);
-  }, 2000);
+  it(
+    'global fatal rejects an in-flight plan',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      w.emit({ type: 'fatal', id: null, message: 'mask corrupted' });
+      await expect(p).rejects.toThrow(/mask corrupted/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 
-  it('first-init failure rejects init()', async () => {
-    const w = fakeWorker();
-    const client = new RoutingClient(() => w as unknown as Worker);
-    const p = client.init(INIT_ASSETS);
-    w.emit({ type: 'fatal', id: null, message: 'bad mask length' });
-    await expect(p).rejects.toThrow(/bad mask length/);
-  }, 2000);
+  it(
+    'first-init failure rejects init()',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      const p = client.init(INIT_ASSETS);
+      w.emit({ type: 'fatal', id: null, message: 'bad mask length' });
+      await expect(p).rejects.toThrow(/bad mask length/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 
-  it('plan() called after dispose() rejects immediately', async () => {
-    const w = fakeWorker();
-    const client = new RoutingClient(() => w as unknown as Worker);
-    w.emit({ type: 'ready' });
-    client.dispose();
-    await expect(client.plan(PLAN_REQUEST, uniformWindGrid(12, 0))).rejects.toThrow(/disposed/);
-  }, 2000);
+  it(
+    'plan() called after dispose() rejects immediately',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      client.dispose();
+      await expect(client.plan(PLAN_REQUEST, uniformWindGrid(12, 0))).rejects.toThrow(/disposed/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 
-  it('plan() resolves with the emitted result and forwards progress intact', async () => {
-    const w = fakeWorker();
-    const client = new RoutingClient(() => w as unknown as Worker);
-    w.emit({ type: 'ready' });
-    const progress: [Rig, number, number][] = [];
-    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), (rig, tMs, frontierSize) =>
-      progress.push([rig, tMs, frontierSize]),
-    );
-    await flush();
-    const sent = w.posted[w.posted.length - 1];
-    if (sent.type !== 'plan') throw new Error('expected a plan message');
-    w.emit({ type: 'progress', id: sent.id, rig: 'genoa', tMs: 1000, frontierSize: 5 });
-    const result: PlanResult = { status: 'error', reason: 'unreachable' };
-    w.emit({ type: 'result', id: sent.id, result });
-    await expect(p).resolves.toBe(result);
-    expect(progress).toEqual([['genoa', 1000, 5]]);
-  }, 2000);
+  it(
+    'plan() resolves with the emitted result and forwards progress intact',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const progress: [Rig, number, number][] = [];
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), (rig, tMs, frontierSize) =>
+        progress.push([rig, tMs, frontierSize]),
+      );
+      await flush();
+      const sent = w.posted[w.posted.length - 1];
+      if (sent.type !== 'plan') throw new Error('expected a plan message');
+      w.emit({ type: 'progress', id: sent.id, rig: 'genoa', tMs: 1000, frontierSize: 5 });
+      const result: PlanResult = { status: 'error', reason: 'unreachable' };
+      w.emit({ type: 'result', id: sent.id, result });
+      await expect(p).resolves.toBe(result);
+      expect(progress).toEqual([['genoa', 1000, 5]]);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 
-  it('two concurrent plan() calls (distinct ids) settle independently', async () => {
-    const w = fakeWorker();
-    const client = new RoutingClient(() => w as unknown as Worker);
-    w.emit({ type: 'ready' });
-    const p1 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
-    const p2 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
-    await flush();
-    const [sent1, sent2] = w.posted.slice(-2);
-    if (sent1.type !== 'plan' || sent2.type !== 'plan') throw new Error('expected plan messages');
-    expect(sent1.id).not.toBe(sent2.id);
-    const result: PlanResult = { status: 'error', reason: 'unreachable' };
-    w.emit({ type: 'result', id: sent1.id, result });
-    w.emit({ type: 'fatal', id: sent2.id, message: 'segment blocked' });
-    await expect(p1).resolves.toBe(result);
-    await expect(p2).rejects.toThrow(/segment blocked/);
-  }, 2000);
+  it(
+    'two concurrent plan() calls (distinct ids) settle independently',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p1 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      const p2 = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      const [sent1, sent2] = w.posted.slice(-2);
+      if (sent1.type !== 'plan' || sent2.type !== 'plan') throw new Error('expected plan messages');
+      expect(sent1.id).not.toBe(sent2.id);
+      const result: PlanResult = { status: 'error', reason: 'unreachable' };
+      w.emit({ type: 'result', id: sent1.id, result });
+      w.emit({ type: 'fatal', id: sent2.id, message: 'segment blocked' });
+      await expect(p1).resolves.toBe(result);
+      await expect(p2).rejects.toThrow(/segment blocked/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 
-  it('forwards probe messages (#53) to onProbe untouched and unthrottled', async () => {
-    const w = fakeWorker();
-    const client = new RoutingClient(() => w as unknown as Worker);
-    w.emit({ type: 'ready' });
-    const probes: [number, number, number][] = [];
-    const p = client.plan(
-      PLAN_REQUEST,
-      uniformWindGrid(12, 0),
-      undefined,
-      undefined,
-      (d, done, total) => probes.push([d, done, total]),
-    );
-    await flush();
-    const sent = w.posted[w.posted.length - 1];
-    if (sent.type !== 'plan') throw new Error('expected a plan message');
-    // Back-to-back probes (same tick) must both arrive — no 100 ms throttle.
-    w.emit({ type: 'probe', id: sent.id, probeDepthM: 2.5, done: 1, total: 4 });
-    w.emit({ type: 'probe', id: sent.id, probeDepthM: 2.2, done: 2, total: 4 });
-    const result: PlanResult = { status: 'error', reason: 'unreachable' };
-    w.emit({ type: 'result', id: sent.id, result });
-    await expect(p).resolves.toBe(result);
-    expect(probes).toEqual([
-      [2.5, 1, 4],
-      [2.2, 2, 4],
-    ]);
-  }, 2000);
+  it(
+    'forwards probe messages (#53) to onProbe untouched and unthrottled',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const probes: [number, number, number][] = [];
+      const p = client.plan(
+        PLAN_REQUEST,
+        uniformWindGrid(12, 0),
+        undefined,
+        undefined,
+        (d, done, total) => probes.push([d, done, total]),
+      );
+      await flush();
+      const sent = w.posted[w.posted.length - 1];
+      if (sent.type !== 'plan') throw new Error('expected a plan message');
+      // Back-to-back probes (same tick) must both arrive — no 100 ms throttle.
+      w.emit({ type: 'probe', id: sent.id, probeDepthM: 2.5, done: 1, total: 4 });
+      w.emit({ type: 'probe', id: sent.id, probeDepthM: 2.2, done: 2, total: 4 });
+      const result: PlanResult = { status: 'error', reason: 'unreachable' };
+      w.emit({ type: 'result', id: sent.id, result });
+      await expect(p).resolves.toBe(result);
+      expect(probes).toEqual([
+        [2.5, 1, 4],
+        [2.2, 2, 4],
+      ]);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 
-  it('worker.onerror fired by the runtime rejects an in-flight plan', async () => {
-    const w = fakeWorker();
-    const client = new RoutingClient(() => w as unknown as Worker);
-    w.emit({ type: 'ready' });
-    const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
-    await flush();
-    w.onerror?.(new ErrorEvent('error', { message: 'worker crashed' }));
-    await expect(p).rejects.toThrow(/worker crashed/);
-  }, 2000);
+  it(
+    'worker.onerror fired by the runtime rejects an in-flight plan',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      w.onerror?.(new ErrorEvent('error', { message: 'worker crashed' }));
+      await expect(p).rejects.toThrow(/worker crashed/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 });
 
 describe('RoutingClient.plan() timeout', () => {
