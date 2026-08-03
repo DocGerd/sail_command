@@ -129,12 +129,28 @@
 # THE #274 LIVENESS TRAP: extracting an inline hook into a standalone script
 # creates a NEW failure mode a purely-inline hook never had - a script that
 # cannot run cannot report that it cannot run. The call site in
-# settings.json MUST liveness-check this file (`[ -f "$H" ] && [ -x "$H" ]`,
-# emitting its OWN `ask` on failure) before invoking it, exactly like the
-# artifact-guard.sh call sites already do. Both tests are load-bearing: `-x`
-# alone is true for a DIRECTORY, whereupon `exec` on it dies with 126
-# emitting nothing, and a non-blocking hook error lets the write proceed
-# silently.
+# settings.json liveness-checks this file (`[ -f "$H" ] && [ -x "$H" ]`,
+# emitting its OWN `ask` on failure) before attempting to run it, exactly
+# like the artifact-guard.sh call sites already do.
+#
+# HOW A DIRECTORY AT THE HOOK PATH IS CAUGHT TODAY (M4, PR #333 review round
+# 2 - this paragraph used to describe a PRE-B2 mechanism the B2 commit itself
+# removed, and the sentence went stale in the same diff that invalidated it):
+# `-f` alone already excludes a directory (it tests "is a regular file"), so
+# `[ -f "$H" ] && [ -x "$H" ]` denies a directory before either test's `-x`
+# half matters - this liveness gate fires FIRST, with the specific "hook
+# missing, not a regular file, or not executable" reason. Measured: even with
+# the `-f` test removed (leaving only `-x`, which IS true for a directory),
+# the call site STILL asks - via a SECOND, independent mechanism, B2's
+# exit-status check below. There is no `exec` left in the call site to "die
+# with 126": `out=$("$H")` on a directory path is a plain command
+# substitution, and bash itself refuses to run a directory as a command
+# (`<path>: Is a directory`, exit 126) regardless; `[ "$rc" -ne 0 ]` catches
+# that non-zero exit and asks with ITS OWN reason ("guard exited non-zero"),
+# not the liveness one. So the directory case is doubly defended post-B2 -
+# the `-f`/`-x` gate is no longer the only thing standing between a
+# directory and a silent pass-through, though it still gives the more
+# specific, pre-execution diagnostic.
 #
 # B2 (PR #333 review): `[ -f "$H" ] && [ -x "$H" ]` covers REACHABILITY
 # (missing, non-executable, directory) but `exec "$H"` REPLACES the calling
@@ -397,10 +413,24 @@ if [ "${1:-}" = "--selftest" ]; then
   _prod_check_raw ask "B1: malformed stdin"                   '{not valid json'                   "$repo_dirty"
   _prod_check_raw ask "B1: JSON without tool_input"           '{"tool_name":"Bash"}'               "$repo_dirty"
   _prod_check_raw ask "B1: tool_input without command"        '{"tool_input":{}}'                  "$repo_dirty"
-  _prod_check_cmd ask "B1: jq missing, python3 present -> still asks (graceful degrade)" \
-    'git commit -m "wip"' "$repo_dirty" "$toolbox_no_jq"
   _prod_check_cmd ask "B1: jq AND python3 both missing -> asks" \
     'git commit -m "wip"' "$repo_dirty" "$toolbox_no_jq_no_py"
+
+  # M3 fix-wave (PR #333 review round 2): a DIRTY-fixture probe of the
+  # jq -> python3 fallback is a two-trigger tautology - `ask` is the correct
+  # answer whether the fallback genuinely parses (dirty commit -> ask) OR is
+  # entirely absent (parse failure -> the explicit ask), so deleting the
+  # fallback clause left this suite green (measured). A CLEAN fixture
+  # discriminates: fallback WORKING parses "git commit" correctly,
+  # decide()=commit, fixture is clean -> SILENT; fallback BROKEN can't parse
+  # at all -> ask, unconditionally, regardless of fixture state. Paired rows,
+  # same toolbox, opposite fixture state and opposite expectation - see the
+  # M3 mutation-check note below for the red output this pair produces when
+  # the fallback clause is deleted.
+  _prod_check_cmd silent "B1 (M3): jq missing, python3 present, CLEAN fixture -> silent (fallback genuinely parses)" \
+    'git commit -m "wip"' "$repo_clean" "$toolbox_no_jq"
+  _prod_check_cmd ask    "B1 (M3): jq AND python3 both missing, CLEAN fixture -> still asks (parse failure, not fixture state)" \
+    'git commit -m "wip"' "$repo_clean" "$toolbox_no_jq_no_py"
 
   # --- M1: git-query failure -> ask, never a silent allow (both branches). -
   _prod_check_cmd ask "M1: CLAUDE_PROJECT_DIR is not a git repo, commit payload" \
