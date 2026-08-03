@@ -96,35 +96,61 @@ jobs:
               # over-broad base only ever ADDS files to the changed set —
               # the safe direction for a fail-closed check. `--no-renames`
               # so a code file renamed INTO docs/ still shows its origin
-              # path and isn't misclassified as docs-only.
-              changed="$(git diff --no-renames --name-only "${base_sha}" "${head_sha}")"
-              diff_status=$?
-
-              if [ "${diff_status}" -ne 0 ]; then
+              # path and isn't misclassified as docs-only. `-c
+              # core.quotePath=false` so a non-ASCII path (e.g. `docs/ä.md`)
+              # comes back as literal UTF-8 instead of git's default
+              # C-quoted octal escapes (`"docs/\303\244.md"`), which would
+              # match no allowlist glob and force a needless RUN.
+              #
+              # The git-diff failure is captured via `if ! changed=...; then`
+              # rather than `changed=...; status=$?` — this step's shell
+              # (GitHub's default `bash -e {0}` for `run:` steps, combined
+              # with this script's own `set -uo pipefail`) does NOT clear
+              # `-e`, so a bare failing command substitution would abort the
+              # whole step before any exit-status variable could be read,
+              # making that check dead code. Wrapping the substitution as an
+              # `if` condition is exempt from `-e` and is what actually makes
+              # this branch reachable.
+              if changed="$(git -c core.quotePath=false diff --no-renames --name-only "${base_sha}" "${head_sha}")"; then
+                if [ -z "${changed}" ]; then
+                  run_e2e=true
+                  reason="empty changed-file list"
+                else
+                  run_e2e=false
+                  reason="all changed paths matched the docs allowlist"
+                  while IFS= read -r f; do
+                    [ -z "$f" ] && continue
+                    case "$f" in
+                      # NOTE: `docs/*` also matches non-Markdown files under
+                      # docs/ (e.g. docs/screenshots/capture.mjs) — accepted
+                      # because docs/ is assumed to stay non-executable
+                      # (nothing under it is referenced by any workflow or
+                      # package script today). If docs/ ever gains a build
+                      # step or generated artifact that feeds app/pipeline
+                      # code, narrow this entry instead of widening the
+                      # exclusion.
+                      #
+                      # Deliberately NOT `.claude/**` — it holds executable
+                      # hooks (`.claude/settings.json`, `.claude/hooks/`),
+                      # so it is code, never docs. Do not add it here.
+                      CHANGELOG.md|README.md|ROADMAP.md|GOVERNANCE.md|CONTRIBUTING.md|SECURITY.md|CODE_OF_CONDUCT.md|CLAUDE.md|LICENSE|docs/*|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md|changelog.d/*)
+                        ;;
+                      *)
+                        # Record only the FIRST path that forces a run — do
+                        # not overwrite once already true (an unlisted path
+                        # is code, never docs, per #327's definition of done).
+                        if [ "${run_e2e}" != "true" ]; then
+                          run_e2e=true
+                          reason="non-docs path: ${f}"
+                        fi
+                        ;;
+                    esac
+                  done <<< "${changed}"
+                fi
+              else
+                diff_status=$?
                 run_e2e=true
                 reason="git diff failed (exit ${diff_status})"
-              elif [ -z "${changed}" ]; then
-                run_e2e=true
-                reason="empty changed-file list"
-              else
-                run_e2e=false
-                reason="all changed paths matched the docs allowlist"
-                while IFS= read -r f; do
-                  [ -z "$f" ] && continue
-                  case "$f" in
-                    CHANGELOG.md|README.md|ROADMAP.md|GOVERNANCE.md|CONTRIBUTING.md|SECURITY.md|CODE_OF_CONDUCT.md|docs/*|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md|changelog.d/*)
-                      ;;
-                    *)
-                      # Record only the FIRST path that forces a run — do
-                      # not overwrite once already true (an unlisted path
-                      # is code, never docs, per #327's definition of done).
-                      if [ "${run_e2e}" != "true" ]; then
-                        run_e2e=true
-                        reason="non-docs path: ${f}"
-                      fi
-                      ;;
-                  esac
-                done <<< "${changed}"
               fi
             else
               run_e2e=true

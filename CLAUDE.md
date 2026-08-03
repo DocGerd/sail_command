@@ -77,6 +77,14 @@ deviate from it.
   up-to-date policy), so a red `app` no longer skips `e2e`, and both jobs race
   the SAME `setup-node` cache key — a lockfile-changing PR may have `e2e`
   restore a miss and pay an uncached `npm ci`. Both accepted knowingly.
+- The `e2e` job's own run time is commonly described as "~10 minutes"
+  elsewhere in this file and in issue #327 — that figure is the assumed
+  planning estimate, not a measurement. Runs captured while building #327's
+  PR #330 (`ci.yml`'s docs-only-skip classify step) measured `npm run e2e`
+  itself at ~3–4 min (run 30805813518: 10:30:24Z→10:33:40Z, ~3m16s; run
+  30805575220: 10:26:31Z→~10:30:26Z). Use this measured range for e2e-alone
+  planning; the older ~10 min figure may still describe a full CI *cycle*
+  including queueing/startup, not the job's own duration.
 - `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
   dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
   to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
