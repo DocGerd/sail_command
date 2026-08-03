@@ -55,9 +55,12 @@ deviate from it.
   functions 92.28%, lines 95.52%; 1206 tests, 102 files), measured 2026-08-03
   via `npm --prefix app run test:coverage`. Meets the OpenSSF
   `test_statement_coverage80` criterion (≥80%) — it had simply never been
-  measured before. `vite.config.ts`'s `coverage` block (#221) is
-  REPORTING-ONLY, no `thresholds`, and `app`'s CI job runs plain `test`, so a
-  threshold would be inert until a coverage step is wired into CI (#319).
+  measured before. `vite.config.ts`'s `coverage` block now carries
+  `thresholds.statements: 80` (#335) — but it is INERT: `app`'s CI job runs
+  plain `test` (a bare `vitest run`, no coverage), so nothing evaluates it,
+  and coverage is not measured automatically at any interval. Wiring that up
+  is #342, which first needs #319's still-undecided call on whether
+  `src/sw.ts` and `src/routing/worker.ts` are in coverage scope.
 - Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
   a ~40 s real-mask solver acceptance file). Use focused filters while
   iterating (`npm --prefix app run test -- <filter>`); give the full run a
@@ -93,6 +96,19 @@ deviate from it.
   30805575220: 10:26:31Z→~10:30:26Z). Use this measured range for e2e-alone
   planning; the older ~10 min figure may still describe a full CI *cycle*
   including queueing/startup, not the job's own duration.
+- `ci.yml`'s `e2e` job gates its four expensive steps (`setup-node`, `npm ci`,
+  `playwright install`, `npm run e2e`) behind a docs-only classify step (#327,
+  PR #330). The JOB always runs and always reports — a trigger-level
+  `paths`/`paths-ignore` on a REQUIRED check never reports at all, leaving the
+  PR blocked forever, so only STEPS may be skipped; `python-lint.yml`/
+  `verify-mask.yml` may use trigger filters precisely because neither is
+  required. It fails CLOSED: filter error, empty diff, unreachable base,
+  non-PR event, or any unmatched path all run e2e. `.claude/**` is
+  deliberately NOT allowlisted (it holds executable hooks); `CLAUDE.md`,
+  `LICENSE`, `docs/**` and `changelog.d/**` are. Measured on a real
+  `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
+  `mergeable_state: clean` — so a skipped-but-successful required check does
+  satisfy `develop`'s gating.
 - `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
   dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
   to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
@@ -826,7 +842,12 @@ deviate from it.
   remaining work lives — must move) or a HISTORICAL reference (names the
   issue some already-shipped work happened under — stays as-is). Report the
   enumeration as a table INCLUDING the hits left alone; that table is the
-  only evidence there is no seventh instance.
+  only evidence there is no seventh instance. The same failure has a CODE
+  form: nine test files carry `vi.setConfig({ testTimeout: 120_000 })`; PR
+  #335 patched only the two that had failed in CI, and the next run failed on
+  a third with the identical shape, at ~43 min per round to learn it (#342).
+  `git grep` the pattern first, then centralize it behind one constant plus a
+  structural guard — a per-file patch converges one CI run at a time.
 - Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
@@ -1048,6 +1069,11 @@ deviate from it.
   A guard's deny list also fails open by construction: prefer directory-shaped
   matching with explicit narrow exemptions, and never drop a "redundant" pattern
   because of what today's tree happens to contain.
+  `.claude/hooks/wind-fixture-guard.sh` (#235, PR #333) — the wind-fixture
+  guard, extracted from `.claude/settings.json` into a standalone script with
+  `--selftest`. It fails CLOSED where the old inline form emitted nothing:
+  empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
+  or non-repo `git` (verified across 15 constructed failure inputs).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
@@ -1062,11 +1088,21 @@ deviate from it.
   practice; treat that as an observed workaround, not a documented fix. A
   recommended fix, and the note that `reset --hard`/`clean -f` share the
   same shape, are recorded in PR #233's body for the maintainer to apply —
-  it's their global config, not something a repo PR can change.
+  it's their global config, not something a repo PR can change. Two more
+  observed false positives (2026-08-03), both on ordinary text rather than
+  any force operation: the repo's own new `.claude/hooks/wind-fixture-guard.sh`
+  (a literal `-f` at the `wind-`/`fixture` junction) and flags like
+  `cut -d= -f2`. Both blocked a read-only agent twice. These are a narrower
+  shape than the heredoc-prose case — `-f` inside a longer word or a longer
+  flag is not `-f` as a TOKEN, so exact-match on the argument would fix them
+  without the parser PR #233 was closed over. Still out of repo scope (#236).
 - PR review threads via API: send bodies containing backticks as JSON `--input`
   files (double-quoted shell interpolation mangles them); inline comments 422
   outside diff hunks — anchor to in-diff lines, put out-of-diff findings in a
-  PR comment.
+  PR comment. `.claude/skills/pr-selfreview/resolve-threads.sh` (#178, PR
+  #329) batches the reply+resolve loop: it paginates `reviewThreads` on
+  `hasNextPage`, re-enumerates fresh at the end, and exits non-zero if any
+  thread is still open.
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
@@ -1088,6 +1124,14 @@ deviate from it.
   Playwright MCP browser is contested — verify the URL before every screenshot.
   A poll loop on a known-slow job that keeps reporting "no change" is pure
   overhead — poll for the TRANSITION, not the state.
+  2026-08-03 refinement: when an agent reports "waiting on a background task"
+  and that report ARRIVES AS an idle notification, the two contradict each
+  other — the notification fires only when the agent has no live background
+  children. Nudging does not fix it (one implementer stalled four times on
+  the same step, rationalising the wait differently each time). After the
+  SECOND stall, TAKE the watch: arm the monitor in the main session and hand
+  the agent the result. The orchestrator holds the watch; the worker holds
+  the code.
 - BRIEFS ARE WRONG SOMETIMES — say so in the brief, and reward the pushback.
   In one session an implementer refused to build the shell parser its brief
   asked for (#235 is the false-POSITIVE direction, unreachable by globs, and
