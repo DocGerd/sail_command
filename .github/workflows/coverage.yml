@@ -1,0 +1,71 @@
+name: Coverage
+
+# #319/#342: standalone reporting-only workflow, deliberately separate from
+# ci.yml — same shape as python-lint.yml's separation (#220). The `app` and
+# `e2e` jobs in ci.yml are the ONLY required checks under the protect-main
+# ruleset (strict up-to-date policy); this job is NOT added to that ruleset,
+# so it must fail closed (report a red job) without ever blocking a merge.
+# `thresholds.statements: 80` lives in app/vite.config.ts's coverage block
+# and only fires when coverage is enabled — this workflow is what enables it.
+#
+# Trigger: NIGHTLY (`schedule`) + `workflow_dispatch`, deliberately not
+# `pull_request`/`push`. #319 asks for a REPORTING step, not a gate, and the
+# full v8-instrumented suite is a multi-hundred-second run even locally
+# (measured ~983-1029s / ~16-17 min, CLAUDE.md's coverage bullet) — nightly
+# gets that cost off every PR's critical path entirely, at zero PR runner
+# time, rather than trying to fit it inside the ~2.1-2.5x CI already adds on
+# top. `paths:` is deliberately absent — meaningless for a schedule (there is
+# no diff to filter), and NOT scoping to `app/**` also means a PR touching
+# only this workflow file still gets covered by the next nightly run rather
+# than needing its own trigger.
+#
+# #342's root cause for why per-PR was never attempted here: THREE earlier
+# dispatch runs on a per-PR-shaped trigger each failed for a different
+# reason — run 30807548075 hit a job-level `timeout-minutes: 20` cap at
+# 20.22 min; runs 30810112565 and 30815617721 (42.6 min each) then blew the
+# solver-heavy tests' OWN per-test `vi.setConfig`/`timeout` budgets under v8
+# instrumentation, which no job-level timeout could ever have fixed — two
+# independent failure surfaces, not one (see app/src/test/timeouts.ts and
+# app/src/test/timeoutGuard.test.ts, the durable fix: a single coverage-aware
+# timeout constant every solver-heavy test file imports, plus a structural
+# guard that fails loudly if a file reintroduces a hardcoded literal instead
+# of importing it). With that fix in place a genuinely PASSING run is
+# expected to land near the ~983-1029s dev-machine measurement times
+# whatever additional penalty this runner class adds — cheap to over-provision
+# on a nightly with nothing waiting on it.
+on:
+  schedule:
+    # 02:17 UTC daily — deliberately off the hour and staggered from the
+    # existing weekly schedules (scorecard.yml 03:30 Mon, codeql.yml 04:23
+    # Mon) so a nightly coverage run never queues behind them.
+    - cron: '17 2 * * *'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  # `cancel-in-progress` evaluates to `false` for both `schedule` and
+  # `workflow_dispatch` (github.event_name is neither 'pull_request' nor
+  # anything else this expression treats as supersedable), so a nightly run
+  # is never cancelled by a manual dispatch or vice versa — only rapid
+  # same-ref reruns would ever collide, and letting those queue rather than
+  # cancel is the right default when nothing is waiting on the result.
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
+      - run: npm ci
+      - run: npm run test:coverage
+        # Headroom over the ~983-1029s (~16-17 min) dev-machine measurement
+        # with the coverage-aware timeouts in place: there is no PR-latency
+        # cost to over-provisioning a nightly, so this is deliberately loose
+        # rather than a number that merely fits today's local measurement —
+        # a non-required check that times out goes permanently red and gets
+        # ignored, silently defeating the whole point of #319 (a check
+        # nobody reads is worse than no check).
+        timeout-minutes: 120

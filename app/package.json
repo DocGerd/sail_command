@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8",
+    "test:coverage": "SC_COVERAGE=1 vitest run --coverage.enabled --coverage.provider=v8",
     "lint": "eslint src",
     "notices": "node scripts/gen-third-party-notices.mjs",
     "typecheck": "tsc -b --noEmit",

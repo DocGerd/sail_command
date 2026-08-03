@@ -6,11 +6,12 @@ import { WindField } from '../lib/wind';
 import { openWaterMask, TEST_POLAR, uniformWindGrid, makeMask } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PlanRequest } from '../types';
 import { haversineNm } from '../lib/geo';
+import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
 // files keep vitest's 5s default so hang detection stays meaningful there.
-vi.setConfig({ testTimeout: 120_000 });
+vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const baseReq: PlanRequest = {
   origin: { lat: 54.7525, lon: 10.0025 },
@@ -98,7 +99,7 @@ describe('planRoute via-waypoints', () => {
     expect(r).toEqual({ status: 'error', reason: 'snap-failed-via' });
   });
 
-  it('(d) a segment blocked by land fails the plan with that segment\'s no-route reason', () => {
+  it("(d) a segment blocked by land fails the plan with that segment's no-route reason", () => {
     // Solid wall at col 170 (lon ≈ 10.25) across ALL rows — unlike wallMask,
     // there is no gap, so it is genuinely unreachable, not just a longer detour.
     // origin→via (cols ~120→~140) stays clear of it; via→destination (cols
