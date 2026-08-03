@@ -1,0 +1,35 @@
+name: Python lint
+
+# #220: standalone workflow, deliberately separate from ci.yml. The `app`
+# and `e2e` jobs in ci.yml are the ONLY required checks under the
+# protect-main ruleset (strict up-to-date policy) — this job is NOT added
+# to that ruleset, so it must fail closed (report a red job) without ever
+# blocking a merge. A step inside `app` would also mean a Python-only PR
+# never runs this at all, since `app` triggers `working-directory: app`.
+on:
+  pull_request:
+    paths:
+      - 'pipeline/**.py'
+      - 'pipeline/pyproject.toml'
+      - '.github/workflows/python-lint.yml'
+      - '.github/workflows/python-lint-requirements.txt'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'pipeline/**.py'
+      - 'pipeline/pyproject.toml'
+      - '.github/workflows/python-lint.yml'
+      - '.github/workflows/python-lint-requirements.txt'
+permissions:
+  contents: read
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: pipeline } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: '3.12' }
+      - run: pip install --require-hashes -r "$GITHUB_WORKSPACE/.github/workflows/python-lint-requirements.txt"
+      - run: ruff check .
+      - run: ruff format --check .

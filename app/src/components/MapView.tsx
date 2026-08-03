@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Map as MaplibreMap, addProtocol, AttributionControl } from 'maplibre-gl';
+import { Map as MaplibreMap, addProtocol, setWorkerUrl, AttributionControl } from 'maplibre-gl';
 import type {
   StyleSpecification,
   MapMouseEvent,
@@ -10,6 +10,7 @@ import type {
 import { Protocol } from 'pmtiles';
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { useLang } from '../i18n';
 import { BASEMAP_PATH } from '../lib/basemap';
 import { MAP_MAX_ZOOM } from '../lib/mapOrientation';
@@ -21,6 +22,37 @@ import type { LatLon } from '../types';
 // are process-global; re-registering per mount would be redundant, not wrong).
 const pmtilesProtocol = new Protocol();
 addProtocol('pmtiles', pmtilesProtocol.tile);
+
+// #253: maplibre-gl 6 loads its worker via `new Worker(new URL(...,
+// import.meta.url), {type:'module'})` INSIDE the library itself
+// (util/web_worker.ts's defaultWorkerUrl()) — a pattern Vite cannot see
+// through, so the worker chunk was never emitted into the build and the map
+// never loaded in production (it "worked" under `vite preview` only because
+// the request 404s into the SPA fallback, `index.html`, which the worker
+// then silently fails to execute as JS). The library's own escape hatch is
+// `setWorkerUrl`, which must run before any `Map` is constructed — module
+// scope here, alongside the pmtiles protocol registration above, since both
+// must be set up exactly once and before the first `Map` this module
+// constructs.
+//
+// The suffix must be `?worker&url`, NOT a bare `?url`. A bare `?url` copies
+// the target file VERBATIM into `dist/assets/` without resolving its OWN
+// imports, and maplibre-gl 6 ships its worker split across two files:
+// `maplibre-gl-worker.mjs` opens with `import{...}from"./maplibre-gl-shared
+// .mjs"`. The verbatim copy therefore keeps that relative specifier while no
+// such sibling is ever emitted, so the worker 404s on its own dependency and
+// never starts — the map then never loads, which `vite preview`'s SPA
+// fallback disguises by answering the 404 with a 200 `text/html` index.html.
+// `?worker&url` instead runs the file through Vite's worker pipeline, which
+// BUNDLES `./maplibre-gl-shared.mjs` into the emitted chunk (self-contained,
+// zero relative imports left) and hands back its `base`-prefixed URL — so it
+// works under both the prod root and the `/uat/` sub-path. The ES output
+// format that keeps `new Worker(url, {type:'module'})` valid comes from the
+// pre-existing `worker: { format: 'es' }` in vite.config.ts.
+//
+// `new URL('maplibre-gl/dist/...', import.meta.url)` is not an option here
+// either way, since `new URL` cannot resolve bare package specifiers.
+setWorkerUrl(maplibreWorkerUrl);
 
 const MAX_BOUNDS: LngLatBoundsLike = [
   [8.9, 54.05],

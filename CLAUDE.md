@@ -79,7 +79,7 @@ deviate from it.
   `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
   CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
   commit the regenerated file (#248's entire real diff was two version strings).
-- Pipeline: `npm --prefix pipeline run polars|harbors|mask|icons` (mask needs
+- Pipeline: `npm --prefix pipeline run polars|harbors|seamarks|mask|icons` (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
@@ -154,8 +154,40 @@ deviate from it.
   #227): every settle re-checks `north` against `map.getBearing()`, and
   MapLibre's `originalEvent` stamp (present only on events a real user gesture
   caused) discriminates a hand rotation from a foreign settle — guarded
-  against a settle delivered from inside our OWN `easeTo` and one arriving
-  while `map.isEasing()`. The chronology, because the dead ends recur: eases
+  against a settle delivered from inside our OWN `easeTo`. **Post-maplibre-gl-6
+  (#253): `map.isEasing()` is GONE from `Map`** — v6's `Map extends Evented`,
+  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:576` vs
+  `ui/camera.ts:284`; they are siblings), and the method survives only on the
+  private `_camera` field. `CompassControl.tsx`'s `onMoveEnd` guard is now a
+  TWO-TERM derivation: `e.originalEvent !== undefined &&
+  commandedBearingRef.current !== null &&
+  !bearingReached(map.getBearing(), commandedBearingRef.current)`. Both terms
+  are load-bearing: a `commandedBearingRef`-only guard regresses the three
+  #203 F1 aborted-ease tests (MEASURED, not predicted), because F1 (aborted
+  ease, MUST demote) and F2
+  (foreign ease still live, must NOT demote) are bit-identical in
+  `(commandedBearingRef, getBearing())` — no predicate over only those two can
+  separate them. Term 2 does NOT stand alone — `e.originalEvent !== undefined`
+  is true for EVERY handler `moveend` whether or not an ease is live; it is
+  only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
+  gave us on the reachable paths. What makes that conjunction sound: `_stop`
+  (`camera.ts:1197-1211`) deletes `_easeFrameId` and only THEN invokes
+  `_onEaseEnd` at `:1211` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
+  bound in `_ease` (`:1234`) — so `isEasing()` was already false at every
+  ease-emitted `moveend` even in v5, which is why the absence of
+  `originalEvent` discriminates a camera-internal ease termination from a
+  handler-gesture settle. ACCEPTED NARROWING: the new
+  guard is ease-source-SPECIFIC where `isEasing()` was ease-source-AGNOSTIC —
+  a foreign, bearing-changing ease carrying no `originalEvent` would now demote
+  where v5 did not. No producer exists in the app today
+  (`RouteLayer.tsx:458`'s `fitBounds` passes `duration: 0` and the current
+  bearing; keyboard rotation and drag inertia always carry `originalEvent`;
+  `resetNorth` has no call site; `bearingSnap: 0` makes MapLibre's internal
+  snap unsatisfiable), and the gap is pinned by a regression test AND by
+  `app/src/test/cameraAnimationCallSites.test.ts` (a structural test that
+  fails loudly if a new camera-animating call site appears outside the
+  allowlist) — call this "narrowed and pinned", not "closed". The chronology,
+  because the dead ends recur: eases
   that can interrupt one another need an `easeId` (5.24 fires the INTERRUPTED
   ease's `moveend` synchronously inside the next `easeTo`,
   `_stop`→`_afterEase`; the guard is skipped without an id), so an "is this my
@@ -181,8 +213,10 @@ deviate from it.
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
   `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
-  against the exact pinned `maplibre-gl@5.24.0` install AND upstream's
-  `v5.24.0` tag, byte-identical; re-check after any maplibre-gl upgrade),
+  against the exact pinned `maplibre-gl@6.0.0` install, re-checked after the
+  #253 v6 upgrade: still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
+  !sortKey.isConstant();` at the same line; re-check again after any future
+  maplibre-gl upgrade),
   disabling the placement priority entirely. Within one symbol layer,
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
@@ -212,6 +246,26 @@ deviate from it.
   deterministic fix sequences via Playwright `context.setGeolocation` +
   `test.use({ permissions: ['geolocation'] })` against the real solver/mask —
   extend it rather than claiming live behavior is untestable.
+- **maplibre-gl 6's worker must be BUNDLED, not copied** (#253): v6 loads its
+  worker via `new Worker(url, {type:'module'})` from a URL built dynamically
+  inside the library, which Vite cannot see — so nothing is emitted and the
+  basemap silently does not render. The fix is `setWorkerUrl` fed by
+  `import ... from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'` in
+  `MapView.tsx`. The `worker: { format: 'es' }` in `vite.config.ts` that keeps
+  the module-type `Worker` construction valid was ALREADY there — it predates
+  #253 and is not part of the fix; don't go looking for it in that diff.
+  **`?url`
+  is the trap**: it copies the file VERBATIM without resolving its imports,
+  and maplibre ships the worker split — `maplibre-gl-worker.mjs` opens with
+  `import{...}from"./maplibre-gl-shared.mjs"`, whose sibling never gets
+  emitted, so the worker 404s on its own dependency. The signature of the
+  broken form is a ~19 KB emitted chunk that still contains a
+  `from"./maplibre-gl-shared.mjs"`; the correct form emits a ~468 KB
+  self-contained chunk with NO import specifiers at all. Verify with
+  `grep -o 'from"[^"]*"'` on the emitted chunk — existence, correct name,
+  hashing, and a 200 response all look right in the broken case. No
+  `globPatterns` change is needed: Vite's worker pipeline emits `.js`, which
+  the existing precache token already covers.
 - `app/src/sw.ts`: the `.pmtiles` Range→206 route MUST stay registered before
   `precacheAndRoute` (first-registered wins; pmtiles' FetchSource throws on
   full-body 200s), and the SW must never cache the Open-Meteo origin (wind is
@@ -364,7 +418,19 @@ deviate from it.
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
   pass before the back-merge: the tag-triggered run reached `success` AND prod's
-  About dialog shows the clean tag. Rationale: `cancel-in-progress`
+  About dialog shows the clean tag. A green step 5b is not the whole cut,
+  though — a git tag and a GitHub Release are different objects, and pushing
+  the tag ships production without creating one. The v0.6.0 cut (2026-07-31)
+  followed this runbook exactly — tag pushed, deploy `success`, About dialog
+  showing the clean `v0.6.0`, production verified serving it, every signal
+  green — and still shipped with no Release object; none of those signals is
+  evidence a Release exists, and it surfaced only when the maintainer noticed
+  it missing from the GitHub project page. The runbook's step 5c
+  (`.claude/skills/release/SKILL.md`, manual today, automation tracked in
+  #175) is what creates one, and it closes with `gh release list` showing the
+  tag marked `Latest` — `--latest` is load-bearing on creation, since without
+  it the previous version keeps the badge, a silent wrong state rather than
+  an error. Rationale: `cancel-in-progress`
   cancel-supersedes and tag runs share the `pages` group, so the tag run
   cancels the still-running merge run, and a back-merge push inside that window
   cancels the tag run — then NEITHER release run deployed and production keeps
@@ -449,6 +515,29 @@ deviate from it.
 
 ## Verification lessons (hard-won)
 
+- A suite that goes green only after its readiness wait is weakened — the
+  weakened wait is the finding (#253). While the maplibre-gl 6 worker bundling
+  was broken (see the PWA/deploy bullet above), `map.loaded()` could never
+  become true, so all 7 `compass.spec.ts` sites had their
+  `waitForLoadState('networkidle')` replaced with a bare `installMapHandle`
+  check that does NOT require tiles, and the suite reported 15/16 green; the
+  single remaining red test (`annotations.spec.ts`'s barb-density test, the
+  only one still asserting that anything RENDERS) was written off as
+  "structurally unpassable under Playwright Chromium". Both readings were
+  wrong — the broken worker was the cause, not the runner. `mapReady()` is
+  now a genuinely NEW gate at those sites (there was never a `map.loaded()`
+  gate to "restore"), it polls a descriptive string naming the pending
+  sources rather than collapsing to a boolean, and it is MUTATION-CHECKED:
+  reverting only the one-line `?worker&url` import suffix turns all 7 red
+  with `Received: not-loaded (pending sources: protomaps, sc-harbors, …)`,
+  so the gate has teeth and the suffix is causally what makes it green.
+  Suite is 16/16 in 58.7 s. Durable rule: a lone red test contradicting a
+  green suite deserves MORE weight than the suite, not less — and "the test
+  runner can't do this" is the conclusion to distrust first. Related:
+  `waitForLoadState('networkidle')` was always the wrong
+  signal for a map app that streams tiles forever — v6 merely made the latent
+  fragility deterministic; a `@playwright/test` bump to 1.62.1 was tested and
+  does NOT help.
 - Synthetic-mask tests missed a product-blocking solver bug that the FIRST
   real-data browser run found in minutes (#20: step length vs. real channel
   width). UI tasks should end with a real-browser pass (dev server +
@@ -517,6 +606,23 @@ deviate from it.
   not the run's conclusion (#197 — a post-merge remedy dispatch was a no-op,
   caught only by downloading the baseline and finding `version.txt` absent;
   see the Deploy bullet above for the underlying mechanism).
+- Sharper case of the bullet above: a CI poll keyed on the CHECK NAME, not the
+  RUN, misreports whenever two workflow runs attach same-named check-runs to
+  one commit. Bit TWICE in the v0.6.0 cut. PR #286 (`develop`→`main`) had
+  `develop`'s own tip as its head SHA, so the earlier develop-push run's
+  finished `app`/`e2e` sat on that commit alongside the PR's own still-running
+  ones — a poll matching `name == "app"/"e2e"` + completed declared green
+  while the gating run was still in flight. PR #289 (the back-merge) had
+  `main`'s tip — also the release tag commit — as its head SHA, so two `e2e`
+  successes from two different runs read as "app + e2e" done while both `app`
+  jobs were still running. Both times `mergeable_state: blocked` contradicted
+  the poll — that disagreement is the cross-check, not a fluke
+  (`mergeable_state` is also the merge-time tell in the #119 note under
+  Working style). Fix: key the poll on the RUN, not the name — `gh api
+  repos/OWNER/REPO/actions/runs/<id>/jobs` — and when a SHA might carry more
+  than one run, select it explicitly rather than assume there is only one;
+  the release skill's §5b already does this, picking the newest
+  `event == "push"` run for the same reason.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
@@ -575,6 +681,32 @@ deviate from it.
   blindness rules above, one level earlier: before asking whether the
   measurement can see the failure, ask whether the thing it measures AGAINST
   is reachable at all. The tell was already in the log.
+- **Prose rots in FOUR distinct ways, and a sweep aimed at one misses the
+  others** (#298/#300, where 8 findings were prose-accuracy defects):
+  OVER-CLAIMING (a header saying "EVERY way this can fail" with three paths
+  missing); STALE (true when written — a `1.25` clearance figure after its
+  stroke widened 1.5→3); WRONG-FROM-THE-START (`29 category` where the table
+  always held 30 — a staleness sweep asks "did the code move under this?", NOT
+  "was this ever true?", so it structurally cannot find these); and SAME-PR
+  INVALIDATION (a statement reporting a derived measurement whose inputs live in
+  a DIFFERENT HUNK of the same diff — invisible to CI, which executes no prose,
+  and to hunk-by-hunk review, where each hunk is individually correct and only
+  the pair is wrong). **A sweep cannot see a class it is itself an instance
+  of**: the sweep ordered for staleness produced two fresh same-PR instances
+  (the CHANGELOG moved to 51 while its code-comment twin stayed at ~45). So the
+  remedy is NOT "sweep harder" — it is TWIN SEARCH (state each fact in two
+  artifacts — test↔source, comment↔CHANGELOG, comment↔PR body — and check they
+  agree; redundancy is a smell in code and a CORRECTNESS CHECK in prose, which
+  has no compiler, so the second copy is the only thing playing that role) plus
+  QUOTE THE METHOD, not only the result (`(w/2)·sin45°` survives a constant
+  change and can be run BACKWARDS to find a better fix; a bare number cannot).
+  A negative report — "I re-read everything and found nothing" — is
+  unfalsifiable from outside: spot-check 2–3 claims naming a NUMBER or COUNT,
+  which are the falsifiable ones. CHANGELOG prose gets the SAME evidentiary
+  standard as code, never a looser one: it is baked into the About dialog at
+  build time, so an overstated figure ships to users and freezes into a
+  versioned section at the next cut (a "~45 marks" claim overstated a fix's
+  reach by 4×).
 - Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
@@ -697,7 +829,30 @@ deviate from it.
   verifiable by capturing the REAL `registerSeamarkImages` output through a
   fake `map.addImage` on a dev-server scratch page (4× nearest-neighbor) —
   the #165 evidence technique; hand-derive expected geometry/colours from
-  R1001, never from the renderer's own output.
+  R1001, never from the renderer's own output. The glyphs themselves are fixed
+  hand-tuned constants (`ISOLATED_DANGER_SPHERE_CY` et al.) — there is NO
+  runtime band search; what enforces topmark/body clearance is the TEST helper
+  `separation()` in `seamarkGlyphs.test.ts`, and it takes the LOWEST empty
+  band, never the WIDEST (#298): for a multi-part topmark (isolated danger's
+  two spheres) the widest band can be INTERNAL to the topmark, so the check
+  passes while the topmark merges into the body. The lowest band is always the
+  topmark/body boundary because bodies cannot contain an internal gap —
+  `bandSegments` tiles the box with zero clearance and `bodyOutline` insets 0.5
+  INSIDE — and it also fails closed, where widest-band failed open.
+- **German seamark terminology: the REFERENT decides the word, not attestation
+  rank** (#300). Check the SHIPPED DATA first — `clearing`/`leading` occur only
+  on `beacon_special_purpose`, i.e. S-57 **CATSPM (a MARK)**, never CATNAV (a
+  line), so a line noun is definitionally wrong however well attested.
+  `Deckpeilung` is better attested than the shipped `Gefahrenpeilung` and was
+  rejected anyway: it names the transit METHOD shared by clearing AND leading,
+  so it cannot distinguish them. **TRAP — pin the EDITION, not the URL**: BSH's
+  INT-1 pairing `Deckpeilung / Clearing line` is genuine on p.1 of the ©2013
+  legend but ABSENT from the re-laid-out edition served at the same bsh.de URL
+  today, so a correct citation re-verifies as a fabrication (a researcher and a
+  reviewer contradicted each other over exactly this and neither had erred).
+  The popover renders Typ and Kategorie as SEPARATE ROWS, which is what lets a
+  bearing/area noun sit in the category row. Every disputed value carries its
+  considered-and-rejected alternatives in-code — read them before changing one.
 - Open-Meteo is called directly from the browser (CORS is open, no API key).
   There is deliberately **no backend** — do not introduce one.
 - **AIS (#25) is BYOK and must stay inert without a key**: no `aisApiKey` → no
@@ -762,6 +917,17 @@ deviate from it.
   guard's two failure modes cost very different amounts, make OVER-firing the
   default and suppress only provably-safe shapes; a parser bug then yields
   noise, never silence.
+  **A liveness check must live OUTSIDE the thing whose liveness is in
+  question** — a script that cannot run cannot report that it cannot run. #274's
+  guard therefore tests `[ -f "$H" ] && [ -x "$H" ]` at the `settings.json` call
+  site and emits its own `ask`: `-x` ALONE is true for a DIRECTORY, whereupon
+  `exec` dies 126 emitting nothing, and a non-blocking hook error lets the write
+  proceed. That fail-open class relocated FOUR times inside one PR (deny list →
+  extraction → empty stdin → the liveness check itself) and not one instance was
+  found by reading — all four by constructing the failing input and running it.
+  A guard's deny list also fails open by construction: prefer directory-shaped
+  matching with explicit narrow exemptions, and never drop a "redundant" pattern
+  because of what today's tree happens to contain.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,

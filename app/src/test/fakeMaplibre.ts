@@ -157,21 +157,35 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
 // into a scratch test — a copy that could then drift from the semantics it is
 // supposed to model.
 //
-// Verified line by line against `node_modules/maplibre-gl/dist/
-// maplibre-gl-dev.js` (5.24.0):
+// Verified line by line against the maplibre-gl 6.0.0 TypeScript SOURCE
+// (`node_modules/maplibre-gl/src/ui/camera.ts` — not the minified `dist/`
+// bundle, and re-read fresh for this citation rather than reused from the
+// prior 5.24.0 dist-offset pass, per the CLAUDE.md CITATION HALO lesson).
+// `Map` no longer EXTENDS `Camera` in v6 (it now HOLDS one, `ui/map.ts:576`),
+// but `Camera` itself — where all of the mechanics below live — is otherwise
+// unchanged from 5.24 in every particular this fake models:
 //
-//   easeTo(options, eventData)
-//     -> `this._stop(false, options.easeId)` FIRST                    (:69468)
-//     -> `_stop` runs the pending ease's `_onEaseEnd(easeId)` inline  (:69901)
+//   easeTo(options, eventData)                                  (camera.ts:749)
+//     -> `this._stop(false, options.easeId)` FIRST                     (:750)
+//     -> `_stop` runs the pending ease's `_onEaseEnd(easeId)` inline,
+//        i.e. `_afterEase` bound via the `_ease()` call below      (:1197-1211)
 //     -> `_afterEase(d, id)` returns early ONLY when `this._easeId && id &&
-//        this._easeId === id`; otherwise it fires rotateend then moveend,
-//        both carrying the INTERRUPTED ease's own eventData            (:69668)
+//        this._easeId === id`; otherwise it clears `_easeId` and (further
+//        down, not reproduced here) fires rotateend then moveend, both
+//        carrying the INTERRUPTED ease's own eventData             (:982-986)
 //     -> then `this._easeId = options.easeId`, `_prepareEase` fires
 //        rotatestart (only when the bearing actually changes and no
-//        rotation was already in progress)                     (:69512/:69530)
+//        rotation was already in progress)                    (:809-810,840-842)
 //     -> `_ease` runs `frame(1); finish()` synchronously when duration is 0,
-//        otherwise schedules frames and sets `_easeFrameId`             (:69908)
-//   isEasing() === `!!this._easeFrameId`                                (:69879)
+//        otherwise schedules frames and sets `_easeFrameId`     (:1218,1225-1233)
+//   isEasing() === `!!this._easeFrameId`                            (:1189-1191)
+//
+// `isEasing()` itself moved down onto `Camera` (still present there — see
+// CLAUDE.md's "established facts" for this migration) but is no longer
+// reachable as `Map#isEasing()`, which is why CompassControl.tsx's own guard
+// no longer calls it and this fake no longer exposes it (#253): a fake that
+// kept a method the real `Map` dropped would make that whole breakage
+// structurally unreachable in tests (the #155 lesson).
 //
 // Two properties are load-bearing and must NOT be "simplified":
 //
@@ -189,10 +203,12 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
 //     interpolated — tests choose the partial bearing with `setBearing`.
 //   - `rotating` is tracked per ease rather than as MapLibre's sticky
 //     `_rotating` flag.
-//   - The end-of-gesture `bearingSnap` branch (:68706-68718) is NOT modelled.
-//     KEEP THIS WARNING: it is exactly why no test in this file can prove
-//     anything about that branch, and it is what forced #230's fix to be
-//     proven in a real browser (e2e/compass.spec.ts) instead of here.
+//   - The end-of-gesture `bearingSnap` branch
+//     (`node_modules/maplibre-gl/src/ui/handler_manager.ts:694-712`,
+//     `_fireEvents`; unchanged in v6 other than the line numbers) is NOT
+//     modelled. KEEP THIS WARNING: it is exactly why no test in this file can
+//     prove anything about that branch, and it is what forced #230's fix to
+//     be proven in a real browser (e2e/compass.spec.ts) instead of here.
 //
 //     What the un-modelled branch does depends on the `bearingSnap` value, and
 //     this app now passes 0 at map construction (MapView.tsx, #230), which
@@ -298,8 +314,12 @@ export function makeFakeCameraMap(initialBearing = 0) {
     finishEase: () => afterEase(undefined, true),
     /**
      * HandlerManager aborting an animation because the user grabbed the chart:
-     * `map._stop(true)` (:68587/:68346), no interrupting easeId, and the camera
-     * simply stays wherever the ease got to.
+     * `this._camera.stop(true)` -> `Camera#_stop(true)`, no interrupting
+     * easeId (`node_modules/maplibre-gl/src/ui/handler_manager.ts:463` when a
+     * handler first becomes active, and again at `:543` in
+     * `_updateMapTransform` before applying the gesture's own deltas —
+     * `camera.ts:1193-1195` for `stop()` itself), and the camera simply stays
+     * wherever the ease got to.
      */
     stopForGesture: () => afterEase(undefined, false),
     /** A hand rotation: BOTH events carry the DOM event that caused them. */
@@ -308,7 +328,6 @@ export function makeFakeCameraMap(initialBearing = 0) {
       fire('rotatestart', { originalEvent });
       fire('rotate', { originalEvent });
     },
-    isEasing: () => pending !== null,
     getBearing: () => state.bearing,
     setBearing: (deg: number) => {
       state.bearing = deg;

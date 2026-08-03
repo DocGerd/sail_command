@@ -9,6 +9,7 @@ vi.mock('maplibre-gl', () => ({
   Map: class {},
   AttributionControl: class {},
   addProtocol: vi.fn(),
+  setWorkerUrl: vi.fn(),
 }));
 
 // Unit coverage for the #33 collapse logic itself (one-shot semantics,

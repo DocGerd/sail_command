@@ -14,6 +14,23 @@ pipeline/.venv/bin/pip install -r pipeline/requirements.txt
 npm --prefix pipeline install   # only needed if pipeline/node_modules is absent; the two .mjs scripts use no npm deps beyond Node's stdlib
 ```
 
+## Style (#220)
+
+`build_mask.py` and `verify_mask.py` are linted/formatted with
+[ruff](https://docs.astral.sh/ruff/), configured in `pipeline/pyproject.toml`
+(select rules + line-length rationale documented there). CI enforces this in
+`.github/workflows/python-lint.yml` — an OPTIONAL job, deliberately not part
+of `protect-main`'s required checks (only `app` + `e2e` are required; see
+CLAUDE.md's Release & branching section). Run locally before committing:
+
+```
+ruff check pipeline/
+ruff format pipeline/
+```
+
+JS/TS style is ESLint (`app/eslint.config.js`), enforced by the `app`
+required check.
+
 ## Assets
 
 ### `polar-genoa.json` / `polar-fock.json` — Salona 45 boat-speed polars

@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "IN=$(cat); f=$(printf '%s' \"$IN\" | jq -r '.tool_input.file_path // empty' 2>/dev/null) || f=$(printf '%s' \"$IN\" | python3 -c \"import json,sys;print(json.load(sys.stdin).get('tool_input',{}).get('file_path') or '')\" 2>/dev/null) || { echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"artifact/spec guard cannot parse tool input (jq and python3 unavailable) - protection is inert; install jq.\"}}'; exit 0; }; case \"$f\" in *.bin|*.pmtiles|*.pmtiles.png|*app/public/data/*.json) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Pipeline outputs (*.bin, *.pmtiles, *.pmtiles.png, app/public/data/*.json) are generated artifacts - regenerate via npm --prefix pipeline run polars|harbors|mask, never hand-edit.\"}}' ;; *docs/superpowers/specs/*) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"docs/superpowers/specs/ is the user-approved source of truth - CLAUDE.md forbids silently deviating from it. Confirm the user wants the spec itself changed before editing.\"}}' ;; esac",
+            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/artifact-guard.sh\"; if [ -f \"$H\" ] && [ -x \"$H\" ]; then exec \"$H\"; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"artifact/spec guard hook missing, not a regular file, or not executable - protection is inert; check .claude/hooks/artifact-guard.sh exists and is executable.\"}}'; fi",
             "timeout": 5
           }
         ]
@@ -47,6 +47,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/premerge-verify.sh",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "H=\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/artifact-guard.sh\"; if [ -f \"$H\" ] && [ -x \"$H\" ]; then exec \"$H\"; else echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"artifact/spec guard hook missing, not a regular file, or not executable - protection is inert; check .claude/hooks/artifact-guard.sh exists and is executable.\"}}'; fi",
+            "timeout": 5
           }
         ]
       }

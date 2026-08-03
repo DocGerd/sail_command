@@ -40,6 +40,52 @@ async function installMapHandle(page: Page): Promise<boolean> {
   });
 }
 
+// #253: `networkidle` is NOT the readiness signal here — it never settles for
+// a map that streams tiles indefinitely, and under maplibre-gl 6 the module
+// worker's fetch does not produce a `requestfinished` Playwright will count
+// either. `mapReady` below replaces it: it waits for the map handle AND for
+// `map.loaded()`, which is the only signal that actually proves the tile
+// pipeline — and therefore the worker — is alive.
+//
+// Keeping the `map.loaded()` half is deliberate. During the maplibre-gl 6
+// upgrade this gate went red, and the cause was a REAL product bug: the
+// worker chunk shipped with an unresolved `./maplibre-gl-shared.mjs` import
+// and 404'd on its own dependency, so no vector/GeoJSON source ever loaded.
+// The gate was correctly reporting a broken map. It is fixed at source
+// (MapView.tsx's `?worker&url` import); this gate is what keeps that fix
+// honest, so do not weaken it back to "the handle exists" — that would pass
+// against a map rendering nothing at all.
+//
+// It returns a descriptive STRING rather than a boolean on purpose (see
+// CLAUDE.md's e2e assertion convention): a boolean collapsed into
+// `.toBe(true)` can only ever report `Expected: true / Received: false` plus
+// a timeout, which is indistinguishable between "slow" and "never". The
+// string names the pending sources, so a CI failure says which part of the
+// pipeline stalled.
+type ReadyMap = {
+  loaded: () => boolean;
+  getStyle: () => { sources: Record<string, unknown> };
+  isSourceLoaded: (id: string) => boolean;
+};
+
+async function mapReadyState(page: Page): Promise<string> {
+  if (!(await installMapHandle(page))) return 'no-map-handle';
+  return page.evaluate(() => {
+    const map = (window as unknown as { __scE2eMap?: ReadyMap }).__scE2eMap;
+    if (!map) return 'handle-lost';
+    if (!map.loaded()) {
+      const pending = Object.keys(map.getStyle().sources).filter((id) => !map.isSourceLoaded(id));
+      return `not-loaded (pending sources: ${pending.join(', ') || 'none — style still parsing'})`;
+    }
+    return 'loaded';
+  });
+}
+
+/** Gate a spec on a map that has actually rendered, reporting WHY if it hasn't. */
+async function mapReady(page: Page): Promise<void> {
+  await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
+}
+
 // `+ 0` for the same negative-zero reason as needleDeg below. Here the residual
 // happens to land positive (`Math.round(0.048)` is `+0`), so this is latent
 // rather than observed — but a rotation the other way would round to `-0` and
@@ -97,8 +143,7 @@ test('compass: north-up cold start, hand rotation drops to free, tap brings the 
     await page.goto(server.url);
     const compass = page.locator('.compass-btn');
     await expect(compass).toBeVisible();
-    await page.waitForLoadState('networkidle');
-    expect(await installMapHandle(page)).toBe(true);
+    await mapReady(page);
 
     // The round glass chip, and the >=44 px cockpit touch target the issue
     // asks for. toBeVisible() alone would pass in the broken state that
@@ -268,14 +313,42 @@ function armCameraRest(page: Page) {
  * a poll on the flags alone would pass through that window and read a bearing
  * that is about to change.
  */
+// `map._camera.isEasing()` below (here and in `releaseBranch`) reaches for
+// the PRIVATE field, not a public API call.
+//
+// maplibre-gl 6 removed `Map#isEasing()`: `Map` no longer extends `Camera`, it
+// now HOLDS one (`_camera`, `ui/map.ts:576`), and `isEasing()` lives only on
+// that `Camera` (`ui/camera.ts:1189-1191`). CompassControl.tsx's production
+// guard was rewritten to avoid this private field entirely (#253) — this e2e
+// harness is the ONE deliberate exception, and the asymmetry is intentional:
+// this is test-only instrumentation that needs the camera's true animation
+// state (not merely a proxy for it) to tell "the gesture's end-of-gesture
+// ease has not started yet" apart from "there is nothing left to settle" (see
+// the comment above `cameraState`), and shipping code has no such need — it
+// only ever has to judge ITS OWN commanded eases, which `commandedBearingRef`
+// already tracks without touching `_camera`.
+//
+// Both call sites below guard the read rather than trust it blindly: if a
+// future maplibre-gl release drops `_camera` too (or renames it), the probe
+// throws a clear, named error instead of silently reading
+// `undefined.isEasing` as falsy and reporting "at rest"/"non-inertial"
+// forever — exactly the kind of structurally-invisible false green this
+// repo's CLAUDE.md warns against. The check is duplicated (not shared via an
+// outer helper) because `page.evaluate` serialises its callback by source
+// text alone — it cannot close over a Node-side function.
+type E2eMapWithCamera = { isMoving: () => boolean; _camera?: { isEasing?: () => boolean } };
+
 function cameraState(page: Page): Promise<string> {
   return page.evaluate(() => {
-    const w = window as unknown as {
-      __scE2eMap: { isMoving: () => boolean; isEasing: () => boolean };
-      __scMoveEnds: number;
-    };
+    const w = window as unknown as { __scE2eMap: E2eMapWithCamera; __scMoveEnds: number };
     const moving = w.__scE2eMap.isMoving();
-    const easing = w.__scE2eMap.isEasing();
+    const camera = w.__scE2eMap._camera;
+    if (!camera || typeof camera.isEasing !== 'function') {
+      throw new Error(
+        'maplibre-gl Map no longer exposes a working _camera.isEasing() — update this e2e probe for the new internal shape',
+      );
+    }
+    const easing = camera.isEasing();
     if (w.__scMoveEnds > 0 && !moving && !easing) return 'at-rest';
     return `busy(moveends=${w.__scMoveEnds}, moving=${moving}, easing=${easing})`;
   });
@@ -308,12 +381,23 @@ function cameraState(page: Page): Promise<string> {
 function releaseBranch(page: Page): Promise<'inertial' | 'non-inertial'> {
   return page.evaluate(
     () =>
-      new Promise<'inertial' | 'non-inertial'>((resolve) => {
-        const w = window as unknown as { __scE2eMap: { isEasing: () => boolean } };
+      new Promise<'inertial' | 'non-inertial'>((resolve, reject) => {
+        // See the comment above `cameraState` for why `_camera.isEasing()`
+        // (private field) is used here and nowhere in production code.
+        const w = window as unknown as { __scE2eMap: E2eMapWithCamera };
         requestAnimationFrame(() =>
-          requestAnimationFrame(() =>
-            resolve(w.__scE2eMap.isEasing() ? 'inertial' : 'non-inertial'),
-          ),
+          requestAnimationFrame(() => {
+            const camera = w.__scE2eMap._camera;
+            if (!camera || typeof camera.isEasing !== 'function') {
+              reject(
+                new Error(
+                  'maplibre-gl Map no longer exposes a working _camera.isEasing() — update this e2e probe for the new internal shape',
+                ),
+              );
+              return;
+            }
+            resolve(camera.isEasing() ? 'inertial' : 'non-inertial');
+          }),
         );
       }),
   );
@@ -333,8 +417,7 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     await setCourseFix(page, context, SNAP_WINDOW_BEARING);
 
     await page.goto(server.url);
-    await page.waitForLoadState('networkidle');
-    expect(await installMapHandle(page)).toBe(true);
+    await mapReady(page);
 
     // --- engage course-up: "show my position" is what feeds the compass a fix ---
     await page.getByRole('tab', { name: 'Planen' }).click();
@@ -501,7 +584,7 @@ test('scale bar: labels the rendered viewport, never swallows a map tap, and cle
     await page.goto(server.url);
     const bar = page.locator('.scale-bar');
     await expect(bar).toBeVisible();
-    await page.waitForLoadState('networkidle');
+    await mapReady(page);
 
     // An integer magnitude and one of the three chart units — never a
     // decimal, and never an empty bar.
@@ -642,8 +725,7 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await page.waitForLoadState('networkidle');
-    expect(await installMapHandle(page)).toBe(true);
+    await mapReady(page);
 
     const compass = page.locator('.compass-btn');
     const bar = page.locator('.scale-bar');
@@ -723,7 +805,7 @@ test('#208 review "Major 2": the offline banner stays on top of the map-chrome t
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await page.waitForLoadState('networkidle');
+    await mapReady(page);
     await page.setViewportSize({ width: 375, height: 667 });
 
     // `context.setOffline` flips `navigator.onLine`/fires the browser
@@ -775,7 +857,7 @@ test('#208 review "Minor 7": the scale bar does not cover the expanded attributi
   const server = await startPreview();
   try {
     await page.goto(server.url);
-    await page.waitForLoadState('networkidle');
+    await mapReady(page);
     // The reviewer's own reproduction viewport — wide enough that the
     // expanded attribution's left edge reaches the bottom-left scale bar.
     await page.setViewportSize({ width: 1024, height: 600 });
@@ -825,7 +907,7 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     // grid itself is irrelevant here, only that a real plan/route exists so
     // RouteLayer actually renders `.route-layer-controls` (plan-gated).
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
-    await page.waitForLoadState('networkidle');
+    await mapReady(page);
     await page.getByRole('tab', { name: 'Planen' }).click();
 
     // Same harbor pair the review's own reproduction used.

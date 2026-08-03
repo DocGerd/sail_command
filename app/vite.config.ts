@@ -55,6 +55,109 @@ function subPathMeta(base: string, uat: boolean): Plugin {
   };
 }
 
+// #223: injects the Content-Security-Policy <meta http-equiv> at BUILD time
+// only (apply: 'build') — deliberately absent from index.html's source and
+// from `vite dev`'s served HTML. Vite's dev client injects CSS as `<style>`
+// elements with `textContent`, which a `style-src 'self'` policy blocks
+// outright (measured, PR #316 review B2: dev renders fully unstyled — 0
+// stylesheets, 0 CSS rules — with only a console `style-src-elem`/`inline`
+// violation, no visible error). Injected right after <meta charset>, the
+// same position the meta held when it was static, so build output is
+// otherwise unchanged; referrer/viewport/etc. stay static in index.html
+// since they don't gate resource loading and are harmless in dev.
+function cspMeta(): Plugin {
+  const directives = [
+    "default-src 'self'",
+    "script-src 'self'",
+    // worker-src: 'self' only — see the comment below for why `blob:` was
+    // investigated and rejected (PR #316 review B1/M3), not merely unused.
+    "worker-src 'self'",
+    "connect-src 'self' https://api.open-meteo.com wss://stream.aisstream.io",
+    // img-src keeps blob: — unlike the worker case this path is genuinely
+    // reachable (browser-dependent createImageBitmap fallback in maplibre's
+    // util/util.ts arrayBufferToImage, and the PMTiles raster path).
+    "img-src 'self' data: blob:",
+    "style-src 'self'",
+    "font-src 'self'",
+    "manifest-src 'self'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "form-action 'none'",
+  ].join('; ');
+  const comment =
+    `<!-- #223: GitHub Pages cannot set response headers, so this ` +
+    `<meta http-equiv> form is the only CSP mechanism available to a
+         static-hosted PWA. Known, accepted limitation of that form: it
+         cannot express \`frame-ancestors\` or \`report-uri\` — neither matters
+         here (static host, no framing threat model in play, no collector to
+         report to). Directives, and why each is present (verified against a
+         fresh maplibre-gl 6 build, #253):
+         - worker-src 'self' — the routing engine's own worker
+           (workerClient.ts) and MapView.tsx's \`setWorkerUrl\` (a Vite
+           \`?worker&url\` same-origin asset) are both 'self'. maplibre-gl 6's
+           own blob-URL worker fallback (util/web_worker.ts's
+           \`workerFactory()\`) was investigated and REJECTED, not merely
+           unused: it short-circuits to the same-origin path whenever the URL
+           is same-origin (\`if (!isCrossOrigin(url)) return
+           createWorker(url, asModule)\`), which is always true here, so the
+           blob branch can never execute — and adding \`blob:\` anyway was
+           measured (PR #316 review B1) to defeat \`script-src 'self'\`
+           outright: \`new Worker(URL.createObjectURL(new
+           Blob(['self.postMessage(...)'])))\` ran arbitrary code under this
+           exact policy. Deliberately omitted, not merely unused.
+         - img-src 'self' data: blob: — maplibre creates object URLs for
+           raster images/glyphs (util.ts) and the PMTiles basemap source does
+           the same; \`data:\` covers inline icons. Unlike the worker case this
+           path IS reachable (browser-dependent \`createImageBitmap\`
+           fallback), so \`blob:\` stays here.
+         - connect-src 'self' https://api.open-meteo.com
+           wss://stream.aisstream.io — the two outbound third-party feeds
+           (Open-Meteo forecasts over HTTPS, optional BYOK AIS over WSS) plus
+           same-origin XHR/fetch (PMTiles range reads, SW, IndexedDB-adjacent
+           fetches). Restricts background requests only (fetch/XHR/WebSocket/
+           beacon) — top-level navigation, \`window.open\`, DNS-prefetch/
+           preconnect, and WebRTC are a separate, accepted residual (see
+           docs/security-assurance-case.md's known-gaps table).
+         - script-src 'self', style-src 'self' — no inline script or injected
+           \`<style>\` anywhere in the app or its maplibre-gl/pmtiles
+           dependencies (grepped); React's \`style\` prop sets CSSOM properties
+           individually, which CSP style-src does not gate. This meta is
+           build-only (see the function comment above) precisely because
+           Vite's OWN dev-mode CSS injection would otherwise violate it.
+         - 'wasm-unsafe-eval' is deliberately OMITTED: no WebAssembly and no
+           \`new Function(\`/\`eval(\` in the built bundle or the maplibre-gl
+           worker chunk (re-verified against this build, not assumed from an
+           older one).
+         - base-uri 'none', object-src 'none', form-action 'none' — the app
+           has no <base>, no plugins/embeds, and no forms that submit
+           anywhere. -->`;
+  const MARKER = '<meta charset="UTF-8" />';
+  return {
+    name: 'sailcommand:csp-meta',
+    apply: 'build',
+    transformIndexHtml(html) {
+      // #223 review m4: String.replace with a STRING pattern silently
+      // returns the input UNCHANGED when the pattern is absent — no throw,
+      // no warning. A routine edit to index.html (e.g. a formatter lowering
+      // `UTF-8` to `utf-8`, still valid HTML) would then ship a green build
+      // with ZERO CSP metas and no signal anywhere. This is a BLOCKING guard
+      // (an absent security control is the expensive failure direction), so
+      // it must fail closed — see the guard-asymmetry rule in CLAUDE.md.
+      if (!html.includes(MARKER)) {
+        throw new Error(
+          'sailcommand:csp-meta — charset marker not found in index.html; ' +
+            'the Content-Security-Policy <meta> would be silently omitted from the build',
+        );
+      }
+      return html.replace(
+        MARKER,
+        `${MARKER}\n    ${comment}\n    <meta\n      ` +
+          `http-equiv="Content-Security-Policy"\n      content="${directives}"\n    />`,
+      );
+    },
+  };
+}
+
 // #28: emits dist/glyph-manifest.json — the complete, sorted list of font
 // glyph-range files under public/basemap-assets/fonts/, as BASE_URL-relative
 // paths. Fonts are excluded from the SW precache (globIgnores below) and
@@ -163,6 +266,7 @@ export default defineConfig(({ command }) => ({
     react(),
     glyphManifest(),
     subPathMeta(basePath, isUat),
+    cspMeta(),
     VitePWA({
       strategies: 'injectManifest',
       srcDir: 'src',
@@ -180,6 +284,14 @@ export default defineConfig(({ command }) => ({
         // range workaround, see src/lib/basemap.ts) — it is matched by the
         // `png` token below, so no dedicated `pmtiles` token remains.
         maximumFileSizeToCacheInBytes: 40 * 1024 * 1024,
+        // #253: the maplibre-gl worker chunk MUST be precached — without it
+        // the vector basemap works online but breaks OFFLINE, since
+        // `setWorkerUrl`'s hashed asset URL has no runtime-cache route. The
+        // `js` token below already covers it: MapView.tsx's `?worker&url`
+        // import runs the worker through Vite's worker pipeline, which emits
+        // `assets/maplibre-gl-worker-<hash>.js` (Vite names ES-format worker
+        // chunks `.js` regardless of the `.mjs` source extension). No `mjs`
+        // token is needed — the build emits no `.mjs` file at all.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,pbf}'],
         // brand/social-card.png is an og:image served over HTTP, not part of
         // the offline app — keep it out of the precache so the install
@@ -261,5 +373,27 @@ export default defineConfig(({ command }) => ({
     include: ['src/**/*.test.{ts,tsx}'],
     // #214: see SlowFileFirstSequencer above.
     sequence: { sequencer: SlowFileFirstSequencer },
+    // #221: REPORTING ONLY — no `thresholds` block, and CI is deliberately
+    // NOT wired to run this yet (only `npm run test:coverage` locally). This
+    // release ships measurement, not enforcement, because `app` is a
+    // required check under protect-main with a strict up-to-date policy and
+    // a threshold that fails on merge day would block the release PR
+    // itself. `include` is intentionally the same glob as `app`'s source
+    // tree (not scoped to what tests happen to exercise), so an untested
+    // file reports 0% rather than silently dropping out of the denominator
+    // — a follow-up ratchet toward enforcement should add a CI step that
+    // runs `test:coverage` and reports the number without gating `app`.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'text'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/**/*.d.ts',
+        'src/test/**',
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+      ],
+    },
   },
 }));

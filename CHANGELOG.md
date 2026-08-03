@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-03
+
+### Changed
+
+- Upgraded maplibre-gl 5.24.0 -> 6.0.0. `Map` no longer exposes `isEasing()`
+  (it moved onto the internal `Camera` object `Map` now holds instead of
+  extends); the compass control's camera-settle guard was rewritten to derive
+  the same "our own ease is still in flight" signal from state the app
+  already owns, narrower than before but with no reachable behavioral change
+  in this app today (#253). The upgrade also broke the vector basemap in
+  production: v6 loads its worker via an internal `new URL(...,
+  import.meta.url)` Vite cannot see through, so the worker chunk was never
+  emitted into the build and the map never loaded outside `vite preview`'s
+  SPA-fallback masking. Fixed via maplibre's own `setWorkerUrl` escape hatch,
+  fed a Vite `?worker&url` import so the worker ships as a hashed, precached
+  asset. The `worker` half of that suffix is load-bearing: v6 splits its
+  worker across two files, and a plain `?url` copies only the entry file
+  verbatim, leaving an unresolved `./maplibre-gl-shared.mjs` import that 404s
+  at runtime — `?worker&url` bundles the pair into one self-contained chunk
+  (#253).
+
+### Fixed
+
+- Buoy and beacon symbols no longer merge their topmark into the body below
+  it. A pillar-shaped port-hand mark used to render as a single red box with a
+  barely visible bump on top; it now carries a clearly separated topmark, and
+  the topmark is the shape IALA R1001 actually specifies for that side of the
+  channel — a can for port-hand marks, a cone for starboard-hand ones,
+  instead of the ball both used to get (a ball is the safe-water mark's
+  topmark). Which side a mark belongs to is now read from its category rather
+  than guessed from its colour: 51 lateral marks in the chart area carry a
+  colour that contradicts their category, and the 11 of those drawn as pillars
+  — the only shape this change gives a topmark — now show the correct side.
+  The other 40 are drawn as spars or cans, still carry no topmark, and are
+  unchanged for now (#307). A mark with no category shows no topmark at all
+  rather than a guessed one. Isolated danger marks again read as the two
+  separate spheres that distinguish them, where before the pair merged into
+  one blob against a black body, and the safe-water sphere and special mark's
+  cross now stand clear of the bodies they sit on and stay legible in dark
+  mode (#298).
+- Seamark detail popovers are now fully localized: field values such as the
+  mark's type, category and colours appear in the selected language instead
+  of staying raw English data words, so a German UI no longer shows
+  `Kategorie: port` or `Farbe: green`. Any value not covered by the
+  translation falls back to the previous readable form, so unusual tags still
+  display sensibly (#300).
+
+### Security
+
+- Added a Content-Security-Policy and an explicit referrer policy to the app
+  shell. Background network requests — fetch, XHR, WebSocket, `sendBeacon` —
+  are now limited to the app's own origin plus the two services it already
+  talks to (the Open-Meteo wind forecast and, if you've entered a key,
+  aisstream.io's AIS feed), so a compromised dependency could no longer
+  quietly send your data to some other server over those channels. It is not
+  a complete seal: page navigation, opening a new tab or window,
+  prefetch/preconnect hints and WebRTC stay unrestricted, and the full list
+  of accepted gaps is in `docs/security-assurance-case.md`. The referrer
+  policy limits how much of the current page's URL is sent to other origins
+  (#223).
+- Resolved a known vulnerability (GHSA-mh99-v99m-4gvg) in a transitive
+  dependency (`brace-expansion`) via a lockfile update. This package is used
+  only by build tooling, not shipped in the app itself, so users of the app
+  were never exposed; no application behavior changed (#281).
+
 ## [0.6.0] - 2026-07-31
 
 ### Added
@@ -271,7 +336,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/DocGerd/sail_command/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/DocGerd/sail_command/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/DocGerd/sail_command/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/DocGerd/sail_command/compare/v0.4.0...v0.5.0
