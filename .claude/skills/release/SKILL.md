@@ -467,27 +467,61 @@ registered at all — see `SECURITY.md`'s "Verifying a release" section for
 why the two registries are distinct. Fix the registration, not the signing
 config.
 
-**A second, independent registration gap gives the identical symptom: the
-tagger EMAIL, not the key.** The v0.8.0 tag hit exactly this — key correctly
-registered, signature good, badge still Unverified, because the tag was
-created under the machine's *global* `user.email` (`live@docgerdsoft.de`, not
-an email on the GitHub account) rather than the maintainer's registered
-`dev@docgerdsoft.de`. Diagnose which of the two gaps is in play with:
+**Two further, independent gaps give a similar or worse symptom — both keyed
+off the tagger EMAIL, not the key — and `git tag -v` is Good through both.**
+The v0.8.0 tag hit the first: key correctly registered, signature good,
+badge still Unverified, because the tag was created under the machine's
+*global* `user.email` (`live@docgerdsoft.de`), which was not registered on
+the GitHub account at all. The first attempted fix — a repo-local override
+to `dev@docgerdsoft.de`, an email that *is* registered — hit the second,
+worse gap: `dev@` is registered but marked **private**, and GitHub's
+push-protection for private emails **rejects the push outright**:
+`! [remote rejected] <tag> (push declined due to email privacy
+restrictions)` / `GH007: Your push would publish a private email address`.
+That one doesn't even reach the attribution check below — the tag never
+lands on the remote.
+
+Diagnose which of the three gaps (key registration, email registration,
+email privacy) is in play with two checks:
 
 ```bash
+# Attribution (key or email registration) — only meaningful once the tag is on the remote:
 gh api repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification
+
+# Push-privacy — no API for this; read it straight off the push command's own
+# output (a GH007 line), since a privacy-rejected tag never reaches GitHub.
 ```
 
 (`<tag-object-sha>` is the annotated tag OBJECT's own SHA — `git rev-parse
-refs/tags/vX.Y.Z` — not the commit it points at.) `reason: "no_user"` is the
-email-attribution gap; fix it by setting a repo-local `user.email` to an
-address registered on the signer's GitHub account (`CONTRIBUTING.md`'s
-"Release tag signing" section) — never the global one, which other repos may
-depend on. Any other `reason` value points back at the key-registration gap
-above instead. This repo already carries that repo-local override as of the
-v0.8.1 fix, so a fresh signed tag should not hit this again — but re-run this
-diagnostic at 5d regardless; a valid signature and an attributable one are
-different things, and only the diagnostic tells you which you have.
+refs/tags/vX.Y.Z` — not the commit it points at.) `reason: "no_user"` covers
+BOTH the key-registration gap above and the email-registration gap — tell
+them apart by checking `github.com/settings/ssh/new` (Signing Keys) and
+`github.com/settings/emails` separately. Any other `reason` value also
+points at a registration gap, not a signature problem.
+
+**The adopted fix, live in this repo since the v0.8.1 correction**: a
+repo-local `user.email` set to the account's GitHub-provided **noreply**
+address (`13460098+DocGerd@users.noreply.github.com`) — registered, and
+always public by construction, so it clears all three gaps simultaneously.
+Proven end to end: pushes without a `GH007`, `git tag -v` reports `Good "git"
+signature for 13460098+DocGerd@users.noreply.github.com`, and the API
+confirms `verified: true, reason: "valid"`.
+
+**Recommended: run the pre-flight probe below before this step on any real
+release cut**, not just after a failure — it's exactly what would have
+caught v0.8.0's gap before it shipped, and it touches nothing `deploy.yml` or
+`release.yml` react to:
+
+```bash
+TAG=zzz-signing-probe-$(date +%s)          # deliberately NOT v[0-9]*, so no workflow fires
+git tag -s "$TAG" -m probe && git push origin "$TAG"   # GH007 would surface right here
+gh api repos/DocGerd/sail_command/git/tags/"$(git rev-parse "refs/tags/$TAG")" --jq .verification
+git push origin ":refs/tags/$TAG" && git tag -d "$TAG"  # clean up either way
+```
+
+A valid signature, an attributable signature, and a *pushable* signature are
+three different things — re-run the diagnostics above regardless of how
+confident you are; only they tell you which of the three you actually have.
 
 ## Gotchas
 

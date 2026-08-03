@@ -250,40 +250,90 @@ signed (`git tag -v` reports `Good signature`) while GitHub still shows it as
 **Unverified** — that is a registration gap, not a signature problem; see
 `SECURITY.md`'s "Verifying a release" section.
 
-### Tagger email — a second, independent registration requirement
+### Tagger email — three independent ways this breaks, all invisible to `git tag -v`
 
 The key being registered is not sufficient on its own: GitHub also needs the
 tag's **tagger email** (whatever `user.email` was active when the tag was
 created — global unless a repo-local override is set, see `git help config`)
-to match an email address registered on the signer's GitHub account. If it
-doesn't, GitHub cannot attribute the signature to any account and the badge
-shows **Unverified** with `reason: "no_user"` — even with a perfectly good
-signature and a correctly registered signing key. This bit the v0.8.0 tag: it
-was created with the machine's *global* `user.email` (`live@docgerdsoft.de`,
-not an email on the GitHub account) rather than the maintainer's intended
-signing identity (`dev@docgerdsoft.de`, which is). The fix, applied after
-v0.8.0 shipped, is a **repo-local** override so this repository's tags always
-use the right identity regardless of the machine's global config:
+to satisfy TWO further, independent conditions. Local `git tag -v` returns a
+`Good` signature through all three failure modes below — none of them is a
+signature problem, and none is visible until you check GitHub specifically:
+
+1. **Signing key not registered as a Signing Key** — see the subsection
+   above. Symptom: `verified: false, reason: "no_user"` at the API (or a
+   plain **Unverified** badge).
+2. **Tagger email not on the GitHub account at all** — the email itself,
+   independent of the key, must be one GitHub can attribute to the signer's
+   account. Symptom: the identical `verified: false, reason: "no_user"` — a
+   different cause with the same API/badge signature as (1), so the
+   diagnostic below is what tells them apart.
+3. **Tagger email on the account but marked *private*, with GitHub's
+   push-protection for private emails enabled** — this doesn't produce an
+   Unverified badge at all; it blocks the **push** outright:
+   `! [remote rejected] <tag> (push declined due to email privacy
+   restrictions)` / `GH007: Your push would publish a private email
+   address`. The tag never reaches the remote, so there's nothing to
+   diagnose on GitHub — the error is right there in the push output.
+
+This repo hit all three in sequence while fixing v0.8.0's gap: the v0.8.0 tag
+itself was case (2) (created with the machine's *global* `user.email`,
+`live@docgerdsoft.de`, not registered on the GitHub account at all). The
+first attempted fix — a repo-local override to `dev@docgerdsoft.de`, an
+email that *is* registered — walked straight into case (3): `dev@` is
+registered but private, and pushing a tag signed under it was rejected with
+`GH007` before it ever reached GitHub for attribution to matter.
+
+**The adopted fix**: a repo-local override to the account's GitHub-provided
+**noreply** address, which is registered, always public (it exists
+specifically to be embedded in commits/tags without exposing a real
+address), and therefore clears all three gaps at once:
 
 ```bash
-git config user.email dev@docgerdsoft.de   # repo-local; leaves global user.email untouched
+git config user.email 13460098+DocGerd@users.noreply.github.com   # repo-local; leaves global user.email untouched
 ```
 
-Diagnose which of the two registration gaps (key vs. email) is in play — or
-confirm there isn't one — with:
+(Find your own noreply address at `github.com/settings/emails` — it's
+`<user-id>+<username>@users.noreply.github.com`.) Proven end to end: a
+signed tag under this identity pushes without a `GH007` rejection, `git
+tag -v` reports `Good "git" signature for
+13460098+DocGerd@users.noreply.github.com`, and the API confirms
+`verified: true, reason: "valid"`.
+
+Diagnose which gap is in play — or confirm there isn't one — with two
+checks, since they cover different failure surfaces:
 
 ```bash
+# Attribution (cases 1 and 2) — only meaningful for a tag that reached the remote:
 gh api repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification
+
+# Push-privacy (case 3) — read directly off the push command's own output;
+# there is no API to query for it, since the tag never arrives.
 ```
 
 `<tag-object-sha>` is the annotated tag OBJECT's own SHA (`git rev-parse
-refs/tags/vX.Y.Z`), not the commit it points at. `reason: "no_user"` means the
-tagger email isn't attributable to any GitHub account; other `reason` values
-(e.g. an unregistered or mismatched key) point at the signing-key gap
-described above instead. **The durable lesson: a valid signature and an
-attributable signature are different things, and only the second produces a
-badge** — always verify both the signing key AND the tagger email are
-registered on the intended GitHub account, not just one or the other.
+refs/tags/vX.Y.Z`), not the commit it points at. `reason: "no_user"` means
+either case 1 or case 2 — same symptom, different cause, and the
+distinguishing fact (is the *key* registered? is the *email* registered?)
+has to be checked separately at `github.com/settings/ssh/new` (Signing Keys)
+and `github.com/settings/emails`.
+
+**Recommended pre-flight probe before any real release tag** (cheap and
+side-effect-free — this is exactly what would have caught v0.8.0's gap
+before it shipped): push a signed tag whose name does **not** match
+`v[0-9]*` — so neither `deploy.yml` nor `release.yml` fires — read its
+`.verification` back from the API above, then delete both the local and
+remote tag:
+
+```bash
+TAG=zzz-signing-probe-$(date +%s)
+git tag -s "$TAG" -m probe && git push origin "$TAG"          # GH007 surfaces right here if case 3 applies
+gh api repos/DocGerd/sail_command/git/tags/"$(git rev-parse "refs/tags/$TAG")" --jq .verification
+git push origin ":refs/tags/$TAG" && git tag -d "$TAG"
+```
+
+**The durable lesson: a valid signature, an attributable signature, and a
+*pushable* signature are three different things, and only the third one
+gets a tag onto GitHub with a Verified badge at all.**
 
 ## Claude Code config placement
 
