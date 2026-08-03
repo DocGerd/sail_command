@@ -75,8 +75,10 @@ jobs:
           set -uo pipefail
           # FAIL-CLOSED DEFAULT. This is a BLOCKING guard: the wrong-direction
           # failure is a code PR silently skipping e2e and reporting green,
-          # which is far worse than a docs PR paying ~10 minutes it didn't
-          # need to (which just costs time). So any ambiguity — a non-PR
+          # which is far worse than a docs PR paying the few minutes of
+          # e2e it didn't need to (which just costs time — measured ~3-4
+          # min per run, not the ~10 min sometimes assumed elsewhere; see
+          # CLAUDE.md's Commands section). So any ambiguity — a non-PR
           # event, an unreadable base/head commit (shallow clone, merge
           # queue, force-push), a failing `git diff`, or an empty
           # changed-file list — defaults to RUN, explicitly, not by accident
