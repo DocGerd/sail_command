@@ -25,10 +25,19 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
+  // realmask/gpx/seamarkPopover: tests that need node builtins, kept out so
+  // node globals/types never leak into browser app code (see
+  // tsconfig.test.json, which picks them back up). changelogFragmentsFs.ts
+  // (#189) is the same shape one level up: it's the actual `node:fs` half of
+  // the changelog-fragment reader, imported only by vite.config.ts (never by
+  // browser app code) — excluded here for the same reason, picked up by
+  // tsconfig.test.json below.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
-    "src/**/timeoutBudgetVsJobCap.test.ts"
+    "src/**/timeoutBudgetVsJobCap.test.ts",
+    "src/**/changelogFragmentsFs.ts",
+    "src/**/changelogFragmentsFs.test.ts"
   ]
 }

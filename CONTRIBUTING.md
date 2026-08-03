@@ -77,6 +77,28 @@ pipeline/` before committing. CI enforces this in
 `.github/workflows/python-lint.yml` (job `ruff`) — an optional check, not
 part of `protect-main`'s required `app` + `e2e`.
 
+## Changelog fragments
+
+A PR that changes user-visible behavior adds ONE small file under
+[`changelog.d/`](changelog.d/README.md) instead of editing `CHANGELOG.md`
+directly — this repo routinely develops several PRs in parallel, and having
+every such PR edit the same `CHANGELOG.md` `[Unreleased]` section caused
+conflicts (#189). Two PRs adding two differently-named fragment files can
+never conflict.
+
+- Filename: `<issue-or-PR-number>.<category>.md`, e.g. `changelog.d/165.fixed.md`
+  (`category` is one of Keep a Changelog 1.1's six, lowercase: `added`,
+  `changed`, `deprecated`, `removed`, `fixed`, `security`).
+- Content: the entry's text only — no leading `- `, no `### Category`
+  heading. Full format and examples in
+  [`changelog.d/README.md`](changelog.d/README.md).
+- Config/tooling/docs-only PRs still add **no** fragment, same as before.
+- Pending fragments show up live in the About dialog's "What's new" preview
+  (including on the UAT deploy) — `app/vite.config.ts`'s
+  `changelogFragmentsPlugin` reads them at build time. They are folded into
+  the real `CHANGELOG.md` by hand at the release cut and deleted; see the
+  [release runbook](.claude/skills/release/SKILL.md) §2b.
+
 ## Design spec
 
 `docs/superpowers/specs/2026-07-14-sail-command-design.md` is the source of
@@ -128,8 +150,9 @@ its own cut and shifts nothing: the pending `vX.(Y+1).0` stays where it is.
 
 The same cut refreshes the documentation that describes project state, so it
 cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
-and themes), [`CHANGELOG.md`](CHANGELOG.md) (roll `[Unreleased]` into the new
-version), [`README.md`](README.md) (known limitations),
+and themes), [`CHANGELOG.md`](CHANGELOG.md) (fold the pending
+[`changelog.d/`](changelog.d/README.md) fragments into the new version and
+delete them), [`README.md`](README.md) (known limitations),
 [`GOVERNANCE.md`](GOVERNANCE.md), and
 [`docs/security-assurance-case.md`](docs/security-assurance-case.md).
 

@@ -203,7 +203,22 @@ if [ "${1:-}" = "--selftest" ]; then
   fail=0
   nl=$'\n'
   tab=$'\t'
+  # Counted independently of the generator arrays below, so a case that
+  # silently disappears - a `check` line deleted, or an array element
+  # (invocations/wrappers/nearmiss/d_pres/d_subs/d_tails) shrunk - cannot
+  # leave this suite reporting `SELFTEST OK` having covered less than it
+  # claims to (PR #350 review, Finding 3, extended past the docs-only
+  # classifier it was raised against - "in every selftest that reports a
+  # tally"). The array-length constants are asserted against the LITERAL
+  # arrays right after each is defined below, independently of the loops
+  # that consume them - deriving "expected" from the same array a loop
+  # iterates would be the exact equivalence-test tautology CLAUDE.md warns
+  # against (an expectation computed from the thing under test always
+  # matches it).
+  check_calls=0
+  EXPECTED_CHECK_CALLS=55
   check() { # want  desc  cmd
+    check_calls=$((check_calls + 1))
     local got; got=$(decide "$3")
     if [ "$got" != "$1" ]; then
       echo "SELFTEST FAIL: $2 -> got [$got] want [$1]"
@@ -351,6 +366,24 @@ if [ "${1:-}" = "--selftest" ]; then
     'echo "$(%s)"' 'echo `%s`' "cat <(%s)" "printf '%%s' hi; %s"
     "%s > /tmp/out 2>&1" "time %s" "npx foo; %s"
   )
+  EXPECTED_INVOCATIONS=18
+  EXPECTED_WRAPPERS=28
+  # Positive assertion PER TERM, not a `-ne ... || -ne ...` compound (PR #350
+  # review round 2, R2-1): with an empty/non-numeric constant, `[ ... -ne
+  # ... ]` returns status 2 (a `[` usage error), not 1 - so the FIRST term
+  # already fails to be "true" in the `||` sense, the SECOND term is then
+  # evaluated, and if it ALSO returns status 2 the whole compound is false
+  # and NEITHER array gets checked. Splitting into two independent positive
+  # checks (see classify-docs-only.sh's matching comment for the single-term
+  # form) closes both terms independently rather than compounding the hole.
+  if ! [ "${#invocations[@]}" -eq "$EXPECTED_INVOCATIONS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: invocations=${#invocations[@]} (want ${EXPECTED_INVOCATIONS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
+  if ! [ "${#wrappers[@]}" -eq "$EXPECTED_WRAPPERS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: wrappers=${#wrappers[@]} (want ${EXPECTED_WRAPPERS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
   gen_a=0
   for inv in "${invocations[@]}"; do
     for w in "${wrappers[@]}"; do
@@ -395,6 +428,13 @@ if [ "${1:-}" = "--selftest" ]; then
     'sed -e "e npm ci" notes.txt'   'find . -name x -exec npm install {} +'
     'xargs npm install'             'awk -f run-npm-install.awk pkgs.txt'
   )
+  EXPECTED_NEARMISS=21
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
+  # classify-docs-only.sh's matching comment.
+  if ! [ "${#nearmiss[@]}" -eq "$EXPECTED_NEARMISS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: nearmiss=${#nearmiss[@]} (want ${EXPECTED_NEARMISS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
   for cm in "${nearmiss[@]}"; do
     if [ "$(decide "$cm")" != fire ]; then
       echo "SELFTEST FAIL [near-miss]: suppressed something not provably inert -> <<$(printf '%s' "$cm" | tr '\n' '~')>>"
@@ -420,6 +460,27 @@ if [ "${1:-}" = "--selftest" ]; then
   d_subs=(ci add i rm remove up install uninstall update run test build x "" "audit fix" dedupe)
   d_pres=("npm" "npm --prefix app" "sudo npm" "  npm" "echo npm" "git status && npm" "xnpm")
   d_tails=("" " " ";" ")" "|" "&&" "$nl" " left-pad" "x" "1" "-g" "$tab" "'" '"')
+  EXPECTED_D_SUBS=16
+  EXPECTED_D_PRES=7
+  EXPECTED_D_TAILS=14
+  # Positive assertion PER TERM, not a 3-way `-ne ... || -ne ... || -ne ...`
+  # compound (PR #350 review round 2, R2-1) - same short-circuit hole as the
+  # invocations/wrappers pair above, just three terms deep: an empty/
+  # non-numeric constant on ANY term makes `[` return status 2, `||`
+  # evaluates the next term, and if every term returns status 2 the whole
+  # compound is false and NONE of the three arrays gets checked.
+  if ! [ "${#d_subs[@]}" -eq "$EXPECTED_D_SUBS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: d_subs=${#d_subs[@]} (want ${EXPECTED_D_SUBS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
+  if ! [ "${#d_pres[@]}" -eq "$EXPECTED_D_PRES" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: d_pres=${#d_pres[@]} (want ${EXPECTED_D_PRES:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
+  if ! [ "${#d_tails[@]}" -eq "$EXPECTED_D_TAILS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [array size]: d_tails=${#d_tails[@]} (want ${EXPECTED_D_TAILS:-<unset/empty>}) - an array shrank or grew without updating the pinned constant"
+    fail=1
+  fi
   gen_c=0; only_legacy=0; added=0
   for p in "${d_pres[@]}"; do
     for s in "${d_subs[@]}"; do
@@ -447,7 +508,9 @@ if [ "${1:-}" = "--selftest" ]; then
   # lives in the stdin->JSON->stdout wrapper, which loops A-C never touch, so
   # a mutation reintroducing it survives the entire battery above. These four
   # rows are the guard for exactly that regression class.
+  wrapper_calls=0
   wrapper_check() { # want-fire(0|1)  desc  json-payload  [runner...]
+    wrapper_calls=$((wrapper_calls + 1))
     local want="$1" desc="$2" payload="$3"; shift 3
     local out got=1
     out=$(printf '%s' "$payload" | "$@" "$0" 2>/dev/null)
@@ -459,11 +522,42 @@ if [ "${1:-}" = "--selftest" ]; then
   }
   wrapper_check 0 "real invocation through the wrapper" '{"tool_input":{"command":"npm install left-pad"}}' bash
   wrapper_check 1 "inert command through the wrapper"   '{"tool_input":{"command":"git status"}}' bash
-  if [ -x /bin/bash ]; then
+  # EXPECTED_WRAPPER_CALLS is a FLAT LITERAL, not computed to match whichever
+  # rows happened to run (PR #350 review round 2, R2-4) - the CI runner always
+  # has /bin/bash, so the cheap and honest form is to pin the full count and
+  # make the environment's absence LOUD instead of silently lowering the bar:
+  # a conditional expectation is the one pin in this file the 10-mutation
+  # deletion battery could never catch, since on a machine lacking /bin/bash
+  # the two degraded-PATH rows AND the expectation would vanish together.
+  EXPECTED_WRAPPER_CALLS=4
+  if [ ! -x /bin/bash ]; then
+    echo "SELFTEST FAIL [environment]: /bin/bash absent - the two degraded-PATH wrapper rows cannot run here"
+    fail=1
+  else
     # Degraded: neither jq nor python3 (nor `cat`) resolvable. Must still fire
     # on a real invocation, and must NOT nudge on every Bash call.
     wrapper_check 0 "degraded: npm ci still fires" '{"tool_input":{"command":"npm ci"}}' env PATH=/nonexistent /bin/bash
     wrapper_check 1 "degraded: git status quiet"   '{"tool_input":{"command":"git status"}}' env PATH=/nonexistent /bin/bash
+  fi
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
+  # classify-docs-only.sh's matching comment.
+  if ! [ "$wrapper_calls" -eq "$EXPECTED_WRAPPER_CALLS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [wrapper count]: wrapper_calls=$wrapper_calls (want ${EXPECTED_WRAPPER_CALLS:-<unset/empty>}) - a wrapper_check row was skipped or dropped"
+    fail=1
+  fi
+
+  # Pinned so a case that silently disappears from the hand-written table
+  # (check_calls) cannot leave the suite reporting `SELFTEST OK` having run
+  # fewer cases than it claims to (PR #350 review, Finding 3). The
+  # generator-loop counts (gen_a, nearmiss, gen_c) are already guarded
+  # independently above via the pinned array-length constants - re-checking
+  # them here against a value derived from the SAME loop would be the
+  # equivalence-test tautology CLAUDE.md warns against.
+  # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
+  # classify-docs-only.sh's matching comment.
+  if ! [ "$check_calls" -eq "$EXPECTED_CHECK_CALLS" ] 2>/dev/null; then
+    echo "SELFTEST FAIL [check count]: check_calls=$check_calls (want ${EXPECTED_CHECK_CALLS:-<unset/empty>}) - a check() row was skipped or dropped"
+    fail=1
   fi
 
   if [ "$fail" -eq 0 ]; then

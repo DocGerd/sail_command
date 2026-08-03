@@ -12,7 +12,7 @@ Closes #
 ## Checklist
 
 - [ ] **Closes an issue** — the `Closes #<n>` line above references every issue this resolves.
-- [ ] **CHANGELOG** — added an `[Unreleased]` entry if this changes user-visible behavior (Keep a Changelog 1.1).
+- [ ] **CHANGELOG** — added a `changelog.d/<number>.<category>.md` fragment if this changes user-visible behavior (Keep a Changelog 1.1 categories; see `changelog.d/README.md`). Never edit `CHANGELOG.md`'s `[Unreleased]` section directly — that's what fragments replace (#189).
 - [ ] **i18n** — every new UI string added to BOTH the `de` and `en` dicts (key parity is type-enforced).
 - [ ] **Lint & typecheck** — `npm --prefix app run lint` and `npm --prefix app run typecheck` pass.
 - [ ] **Tests** — `npm --prefix app run test` passes (plus `e2e` where behavior, map rendering, or offline/PWA flows changed); new or changed behavior has tests.

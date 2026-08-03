@@ -26,14 +26,19 @@
   // Tests that need node builtins (fs access to real data assets). Kept out of
   // tsconfig.app.json so node globals/types never leak into browser app code.
   // gpx.parse.test.ts reads app/public/data/mask.meta.json to pin DATA_AREA (#3).
-  // seamarkPopover.coverage.test.ts reads app/public/data/seamarks.json to pin
   // i18n coverage of the shipped dataset (#300). timeoutBudgetVsJobCap.test.ts
   // reads .github/workflows/coverage.yml to pin the job-cap/multiplier
   // coupling (#342, PR #351 review N1).
+  // changelogFragmentsFs.ts/.test.ts (#189): the `node:fs` half of the
+  // changelog-fragment reader (real directory scan, symlink/directory
+  // rejection, read-with-fallback) plus its unit tests, which construct real
+  // temp directories/symlinks — same reason as the three above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
-    "src/**/timeoutBudgetVsJobCap.test.ts"
+    "src/**/timeoutBudgetVsJobCap.test.ts",
+    "src/**/changelogFragmentsFs.ts",
+    "src/**/changelogFragmentsFs.test.ts"
   ]
 }
