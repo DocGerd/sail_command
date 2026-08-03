@@ -87,25 +87,74 @@ function coverageJobTimeoutMinutes(): number {
   // recreate the exact fail-open this exists to close (an inequality
   // checked against Infinity always holds).
   //
-  // Self-reflection this guard's SECOND fail-open earns (the first was the
-  // comment-narrated historical value): the next way this could still read
-  // the wrong number is a value this regex's `\d+` cannot parse at all —
-  // e.g. a quoted `timeout-minutes: "240"` (YAML permits numbers as
-  // strings) — which is why the empty-match branch below throws LOUDLY
-  // rather than falling back to a default; a guard that goes silent on an
-  // unparseable format is the same fail-open shape one level earlier.
-  const matches = [...source.matchAll(/^[ \t]*timeout-minutes:\s*(\d+)\s*$/gm)];
-  if (matches.length === 0) {
+  // PR #351 review N8 — the THIRD fail-open in this ~20-line function, a
+  // different route to the same CLASS as N5's first-match-wins: an
+  // UNPARSEABLE governing key was silently DROPPED whenever any OTHER key
+  // in the file parsed. The previous version matched the KEY and the VALUE
+  // in one regex (`timeout-minutes:\s*(\d+)\s*$`) — a value that regex
+  // couldn't read (an ordinary YAML trailing comment, `120 # bumped`)
+  // simply failed to match at all, so `matchAll` silently returned one
+  // fewer element with no signal that a governing line went unread. The
+  // "could not find any" branch only fired when EVERY key failed to
+  // parse — not when ANY key did — so a decoy key that parsed (even a
+  // large, safe one) hid a small, colliding one that didn't. Constructed
+  // and confirmed by review N8: a job-level `timeout-minutes: 600`
+  // (parses) above a step-level `timeout-minutes: 120 # bumped` (silently
+  // dropped — a shape the quoted-string case below never exercised)
+  // validated GREEN against 600 while 120 was the real, uncaught cap.
+  //
+  // Fix: separate MATCHING the key from VALIDATING the value, so a value
+  // this can't read THROWS instead of vanishing — no line that matches the
+  // key can be silently skipped just because a sibling line parsed. A YAML
+  // trailing comment (`240 # bumped`) is stripped before validation, since
+  // that value genuinely IS 240; anything left over that isn't a bare
+  // integer (a quoted string, an anchor/alias, an expression) throws
+  // loudly, naming the unparseable text.
+  //
+  // Self-reflection on why this is the THIRD instance, not just a third
+  // fix: the first two fail-opens were both about WHICH match wins
+  // (a comment-narrated value; first-match vs. tightest-match) — this one
+  // is about a match that never happened at all being invisible to the
+  // "did I find anything?" check. "Did the regex I expect match?" is not
+  // the same question as "did every governing line get READ?" — ask the
+  // second explicitly before trusting this function again; that is the
+  // question a fourth instance would exploit.
+  const keyLines = [...source.matchAll(/^[ \t]*timeout-minutes:[ \t]*(.*)$/gm)];
+  if (keyLines.length === 0) {
     throw new Error(
-      `Could not find any 'timeout-minutes: N' YAML key (line-anchored, unquoted integer, not ` +
-        `merely mentioned in a comment) in ${workflowPath} — has the workflow's shape changed, ` +
-        `or is the value quoted/non-integer? This guard cannot verify the job-cap coupling ` +
-        `without at least one parseable key, and must not silently assume a value.`,
+      `Could not find any 'timeout-minutes:' YAML key (line-anchored, not merely mentioned in a ` +
+        `comment) in ${workflowPath} — has the workflow's shape changed? This guard cannot ` +
+        `verify the job-cap coupling without at least one key, and must not silently assume a value.`,
     );
   }
-  return Math.min(...matches.map((m) => Number(m[1]!)));
+  const values = keyLines.map((m) => {
+    const raw = m[1]!.replace(/\s*#.*$/, '').trim(); // strip a YAML trailing comment
+    if (!/^\d+$/.test(raw)) {
+      throw new Error(
+        `Unparseable 'timeout-minutes' value ${JSON.stringify(raw)} in ${workflowPath} — this ` +
+          `guard must not silently SKIP a key it cannot read, because that key may be the one ` +
+          `governing the step. Use a bare unquoted integer (a trailing '# comment' is fine).`,
+      );
+    }
+    return Number(raw);
+  });
+  return Math.min(...values);
 }
 
+// KNOWN RESIDUAL (constructed and confirmed during the N8 fix-wave, PR #351):
+// this scans the ENTIRE workflow file for `timeout-minutes:` keys, with no
+// notion of which JOB or STEP a key belongs to. Adding a second job to
+// `coverage.yml` with its own smaller `timeout-minutes` (for an unrelated
+// purpose) would make `Math.min` pick up that irrelevant value and FAIL this
+// guard against a `coverage` job cap that is actually perfectly safe — the
+// opposite failure direction from N5/N8 (a false failure on a safe config,
+// rather than a false pass on an unsafe one), but still wrong, and this
+// guard runs inside the REQUIRED `app` check (`npm run test`), so a false
+// failure here would block an unrelated, legitimate PR. LATENT, not live:
+// `coverage.yml` has exactly one job today (checked). Not fixed here — see
+// this file's own PR #351 review thread (N8) for the reasoning that a job/
+// step-scoped read needs a real YAML parse to do correctly, which is a
+// larger change than this fix-wave's scope.
 describe('#342/N1 structural guard: coverage.yml job cap vs. timeouts.ts multiplier', () => {
   it('the largest per-test budget under coverage stays strictly below the job cap', () => {
     const largestBaseMs = largestSolverTimeoutBaseMs();
