@@ -85,6 +85,43 @@ export interface RawFragment {
 }
 
 /**
+ * The whole of `vite.config.ts`'s `readFragments()` behavior, with the
+ * actual `fs` calls factored out so it's unit-testable without a real
+ * `changelog.d/` directory: given a raw filename listing and a way to read
+ * each file's content, returns the fragments ready for `assembleFragments`.
+ * `README.md`, a misnamed file, and a whitespace-only file are all skipped
+ * (via `warn`, never a thrown error — a NUDGE, not a blocking guard, per
+ * CLAUDE.md's guard-asymmetry rule: a bad fragment should cost a missing
+ * preview line, never a red build). Filenames are sorted first for a
+ * deterministic entry order independent of the OS's directory listing order.
+ */
+export function buildFragments(
+  filenames: string[],
+  readFile: (filename: string) => string,
+  warn: (message: string) => void = () => {},
+): RawFragment[] {
+  const fragments: RawFragment[] = [];
+  for (const filename of [...filenames].sort()) {
+    if (filename === 'README.md') continue;
+    const parsed = parseFragmentFilename(filename);
+    if (parsed === null) {
+      warn(
+        `[changelog.d] skipping "${filename}": expected "<number>.<category>.md" ` +
+          '(added|changed|deprecated|removed|fixed|security)',
+      );
+      continue;
+    }
+    const text = normalizeFragmentText(readFile(filename));
+    if (text === '') {
+      warn(`[changelog.d] skipping "${filename}": file is empty`);
+      continue;
+    }
+    fragments.push({ category: parsed.category, text });
+  }
+  return fragments;
+}
+
+/**
  * Groups fragments by category, in Keep a Changelog's canonical order
  * (CATEGORY_ORDER above), not file/discovery order, into a synthetic
  * 'Unreleased' release. Entries within a category keep the input order.
@@ -105,6 +142,18 @@ export function assembleFragments(fragments: RawFragment[]): ChangelogRelease {
   return { version: 'Unreleased', date: null, categories };
 }
 
+// Rank used to sort a merged category list back into Keep a Changelog's
+// canonical order (see `assembleFragments`'s CATEGORY_ORDER.filter above,
+// which this mirrors). A category name outside the canonical six — only
+// reachable via `existing`, which comes from the free-form CHANGELOG.md
+// parser and could carry anything a human typed under a `### Heading` —
+// sorts AFTER all six canonical ones, in first-seen order among themselves
+// (Array.prototype.sort is stable, so ties keep their Map insertion order).
+function categoryRank(name: string): number {
+  const index = CATEGORY_ORDER.indexOf(name as Category);
+  return index === -1 ? CATEGORY_ORDER.length : index;
+}
+
 /**
  * Folds a pending-fragments 'Unreleased' preview into a parsed CHANGELOG.md
  * release list. Merges into the real `## [Unreleased]` section if one is
@@ -113,6 +162,9 @@ export function assembleFragments(fragments: RawFragment[]): ChangelogRelease {
  * or prepends a synthetic one if the section is somehow absent. A pure
  * no-op — returns the SAME array reference — when there are no pending
  * fragments, so a fragment-free build never re-renders anything differently.
+ * The merged category list is re-sorted into CATEGORY_ORDER (never left in
+ * Map insertion order) so a manually-added CHANGELOG.md category doesn't
+ * silently shuffle the canonical ordering `assembleFragments` guarantees.
  */
 export function withPendingFragments(
   releases: ChangelogRelease[],
@@ -128,10 +180,9 @@ export function withPendingFragments(
     entries.push(...c.entries);
     byName.set(c.name, entries);
   }
-  const mergedCategories: ChangelogCategory[] = [...byName.entries()].map(([name, entries]) => ({
-    name,
-    entries,
-  }));
+  const mergedCategories: ChangelogCategory[] = [...byName.entries()]
+    .map(([name, entries]) => ({ name, entries }))
+    .sort((a, b) => categoryRank(a.name) - categoryRank(b.name));
   const merged: ChangelogRelease = { ...existing, categories: mergedCategories };
   return [...releases.slice(0, index), merged, ...releases.slice(index + 1)];
 }

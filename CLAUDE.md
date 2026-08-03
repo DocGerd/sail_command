@@ -564,7 +564,9 @@ deviate from it.
   agents), either as a merge conflict or a forced re-sync collision under
   `develop`'s strict up-to-date policy. Instead, each such PR drops ONE file
   under the repo-root `changelog.d/` directory, named
-  `<issue-or-PR-number>.<category>.md` (category one of Keep a Changelog
+  `<issue-or-PR-number>.<category>.md` — or
+  `<issue-or-PR-number>-<n>.<category>.md` to disambiguate a second fragment
+  about the same number — (category one of Keep a Changelog
   1.1's six: `added`/`changed`/`deprecated`/`removed`/`fixed`/`security`;
   full format in `changelog.d/README.md`) — two PRs adding two differently-
   named files can never conflict. `app/vite.config.ts`'s
@@ -588,12 +590,23 @@ deviate from it.
   `## [X.Y.Z] - date` section (grouped under the matching `### Category`
   heading) and update the comparison links at the bottom, then DELETE the
   fragment files (release runbook `.claude/skills/release/SKILL.md` §2b).
-  Rolling fragments → `[X.Y.Z]` at a cut needs NO test edits:
-  `ChangelogView` filters the now-empty `[Unreleased]`
-  and `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
+  Rolling a NON-empty set of fragments → `[X.Y.Z]` at a cut needs NO test
+  edits: `ChangelogView` filters the now-empty `[Unreleased]` and
+  `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
   keep new changelog assertions tail-anchored so a cut can never force an
-  assertion edit. Config/tooling/docs-only PRs still add no fragment at all
-  (unchanged from the original #131 rule).
+  assertion edit. **The zero-fragment cut is the one case where that "no
+  test edits" claim breaks down** — measured on PR #352's review: an EMPTY
+  `## [X.Y.Z]` section (no fragments AND an already-empty `[Unreleased]`,
+  the likely v0.8.0 shape) fails `changelog.test.ts`'s "no release section
+  may parse to zero entries except Unreleased" assertion (a REQUIRED `app`
+  check) and separately fails `release.yml`'s non-empty-notes guard at TAG
+  PUSH, after the merge and the deploy. SKILL.md §2b's zero-fragment branch
+  is the fix: never create an empty section, hand-derive real entries from
+  the milestone's merged PRs (almost always the right call — zero fragments
+  usually means the ritual was skipped, not that nothing shipped), or write
+  one honest "no user-visible changes" bullet only if that review turns up
+  genuinely nothing. Config/tooling/docs-only PRs still add no fragment at
+  all (unchanged from the original #131 rule).
   `Closes #N` in a RELEASE PR does NOT close the issue: GitHub auto-closes only
   on merge into the DEFAULT branch, which here is `develop`, not `main` (#132
   stayed open after #210 merged, v0.5.0). Close release-scoped issues by hand at

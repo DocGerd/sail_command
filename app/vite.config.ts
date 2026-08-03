@@ -9,11 +9,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { BaseSequencer } from 'vitest/node';
 import type { TestSpecification } from 'vitest/node';
-import {
-  normalizeFragmentText,
-  parseFragmentFilename,
-  type RawFragment,
-} from './src/lib/changelogFragments.ts';
+import { readFragmentsFromDir } from './src/lib/changelogFragmentsFs.ts';
 
 const APP_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -46,35 +42,15 @@ function changelogFragmentsPlugin(): Plugin {
   const virtualModuleId = 'virtual:changelog-fragments';
   const resolvedVirtualModuleId = '\0' + virtualModuleId;
 
-  function readFragments(): RawFragment[] {
-    let filenames: string[];
-    try {
-      filenames = readdirSync(changelogFragmentsDir);
-    } catch {
-      // Directory missing entirely (e.g. a stray `rm -rf`) — no fragments,
-      // not a build error; README.md is the normal keeper that keeps this
-      // directory present.
-      return [];
-    }
-    const fragments: RawFragment[] = [];
-    for (const filename of [...filenames].sort()) {
-      if (filename === 'README.md') continue;
-      const parsed = parseFragmentFilename(filename);
-      if (parsed === null) {
-        // A nudge, not a blocking guard (CLAUDE.md's guard-asymmetry rule):
-        // a misnamed fragment must not fail the build, only miss the
-        // preview — warn loudly so it isn't silently dropped forever.
-        console.warn(
-          `[changelog.d] skipping "${filename}": expected "<number>.<category>.md" ` +
-            '(added|changed|deprecated|removed|fixed|security)',
-        );
-        continue;
-      }
-      const raw = readFileSync(resolve(changelogFragmentsDir, filename), 'utf8');
-      fragments.push({ category: parsed.category, text: normalizeFragmentText(raw) });
-    }
-    return fragments;
-  }
+  // All the actual `fs` I/O (directory scan, symlink/directory rejection,
+  // per-file read-with-fallback) plus fragment parsing lives in
+  // `readFragmentsFromDir` (`src/lib/changelogFragmentsFs.ts`) — pulled out
+  // to be unit-testable against a real temp directory (#189 review round 2:
+  // the plugin previously read every directory ENTRY unconditionally,
+  // inlining a symlink's TARGET content into the shipped bundle and
+  // hard-crashing the build on a directory or an unreadable file).
+  const readFragments = (): ReturnType<typeof readFragmentsFromDir> =>
+    readFragmentsFromDir(changelogFragmentsDir, (message) => console.warn(message));
 
   return {
     name: 'sailcommand:changelog-fragments',
@@ -91,7 +67,11 @@ function changelogFragmentsPlugin(): Plugin {
       // watch the directory explicitly and invalidate + reload on change.
       server.watcher.add(changelogFragmentsDir);
       server.watcher.on('all', (_event, changedPath) => {
-        if (!changedPath.startsWith(changelogFragmentsDir)) return;
+        // `+ sep`, not a bare prefix match: a bare `startsWith` would also
+        // match an unrelated SIBLING path that merely shares the prefix
+        // (`changelog.d-old/x.md`, `changelog.dump`), firing a spurious
+        // full-page reload in dev.
+        if (!changedPath.startsWith(changelogFragmentsDir + sep)) return;
         const mod = server.moduleGraph.getModuleById(resolvedVirtualModuleId);
         if (mod !== undefined) {
           server.moduleGraph.invalidateModule(mod);
