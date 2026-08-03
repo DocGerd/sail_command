@@ -1180,3 +1180,5 @@ deviate from it.
   origin develop:develop` (ref update without checkout), then switch. That
   ref-update trick REFUSES while `develop` is itself the checked-out branch —
   branch straight off the remote instead (`git switch -c <b> origin/develop`).
+
+<!-- scratch CLAUDE.md-only skip proof for #327/#330 fix-wave; will be reverted/deleted -->
