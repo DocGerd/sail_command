@@ -71,122 +71,163 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -uo pipefail
-          # FAIL-CLOSED DEFAULT. This is a BLOCKING guard: the wrong-direction
-          # failure is a code PR silently skipping e2e and reporting green,
-          # which is far worse than a docs PR paying the few minutes of
-          # e2e it didn't need to (which just costs time — measured ~3-4
-          # min per run, not the ~10 min sometimes assumed elsewhere; see
-          # CLAUDE.md's Commands section). So any ambiguity — a non-PR
-          # event, an unreadable base/head commit (shallow clone, merge
-          # queue, force-push), a failing `git diff`, or an empty
-          # changed-file list — defaults to RUN, explicitly, not by accident
-          # of how an expression happens to evaluate.
-          run_e2e=true
-          reason="not a pull_request event"
-
-          if [ "${EVENT_NAME}" = "pull_request" ]; then
-            base_sha="${BASE_SHA}"
-            head_sha="${HEAD_SHA}"
-
-            if git cat-file -e "${base_sha}^{commit}" 2>/dev/null \
-              && git cat-file -e "${head_sha}^{commit}" 2>/dev/null; then
-
-              # Two-dot diff, not three-dot: two-dot needs no merge-base, so
-              # it survives a shallow/partial object store, and a stale or
-              # over-broad base only ever ADDS files to the changed set —
-              # the safe direction for a fail-closed check. `--no-renames`
-              # so a code file renamed INTO docs/ still shows its origin
-              # path and isn't misclassified as docs-only. `-c
-              # core.quotePath=false` so a non-ASCII path (e.g. `docs/ä.md`)
-              # comes back as literal UTF-8 instead of git's default
-              # C-quoted octal escapes (`"docs/\303\244.md"`), which would
-              # match no allowlist glob and force a needless RUN.
-              #
-              # The git-diff failure is captured via `if ! changed=...; then`
-              # rather than `changed=...; status=$?` — this step's shell
-              # (GitHub's default `bash -e {0}` for `run:` steps, combined
-              # with this script's own `set -uo pipefail`) does NOT clear
-              # `-e`, so a bare failing command substitution would abort the
-              # whole step before any exit-status variable could be read,
-              # making that check dead code. Wrapping the substitution as an
-              # `if` condition is exempt from `-e` and is what actually makes
-              # this branch reachable.
-              if changed="$(git -c core.quotePath=false diff --no-renames --name-only "${base_sha}" "${head_sha}")"; then
-                if [ -z "${changed}" ]; then
-                  run_e2e=true
-                  reason="empty changed-file list"
-                else
-                  run_e2e=false
-                  reason="all changed paths matched the docs allowlist"
-                  while IFS= read -r f; do
-                    [ -z "$f" ] && continue
-                    case "$f" in
-                      # NOTE: `docs/*` also matches non-Markdown files under
-                      # docs/ (e.g. docs/screenshots/capture.mjs) — accepted
-                      # because docs/ is assumed to stay non-executable
-                      # (nothing under it is referenced by any workflow or
-                      # package script today). If docs/ ever gains a build
-                      # step or generated artifact that feeds app/pipeline
-                      # code, narrow this entry instead of widening the
-                      # exclusion.
-                      #
-                      # Deliberately NOT `.claude/**` — it holds executable
-                      # hooks (`.claude/settings.json`, `.claude/hooks/`),
-                      # so it is code, never docs. Do not add it here.
-                      CHANGELOG.md|README.md|ROADMAP.md|GOVERNANCE.md|CONTRIBUTING.md|SECURITY.md|CODE_OF_CONDUCT.md|CLAUDE.md|LICENSE|docs/*|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md|changelog.d/*)
-                        ;;
-                      *)
-                        # Record only the FIRST path that forces a run — do
-                        # not overwrite once already true (an unlisted path
-                        # is code, never docs, per #327's definition of done).
-                        if [ "${run_e2e}" != "true" ]; then
-                          run_e2e=true
-                          reason="non-docs path: ${f}"
-                        fi
-                        ;;
-                    esac
-                  done <<< "${changed}"
-                fi
-              else
-                diff_status=$?
-                run_e2e=true
-                reason="git diff failed (exit ${diff_status})"
-              fi
-            else
-              run_e2e=true
-              reason="base or head commit unreachable (shallow clone / merge-queue / force-push)"
-            fi
-          fi
-
-          # Log to stdout too, not just $GITHUB_OUTPUT/$GITHUB_STEP_SUMMARY —
-          # a misclassification six months from now needs the WHY in the
-          # plain job log, not only in machine-readable outputs that don't
-          # show up in `gh run view --log`. Name the value, not a boolean
-          # (this repo has paid for a boolean-only assertion twice already).
-          echo "changed paths:"
-          printf '%s\n' "${changed:-<none>}"
-          echo "run_e2e=${run_e2e} reason=${reason}"
-
-          echo "run_e2e=${run_e2e}" >> "$GITHUB_OUTPUT"
-          {
-            echo "### e2e classification"
-            echo "- run_e2e: **${run_e2e}**"
-            echo "- reason: ${reason}"
-          } >> "$GITHUB_STEP_SUMMARY"
+        # Extracted to .github/scripts/classify-docs-only.sh (#334) so the
+        # decision logic carries committed test coverage (a 34-case adversarial
+        # harness runnable offline via `--selftest`) instead of living only as
+        # untested inline YAML shell — see that script's header for the full
+        # rationale.
+        #
+        # `bash -e` here is LOAD-BEARING, not stylistic (PR #350 review,
+        # Finding 1). GitHub's default `run:` shell already wraps the step in
+        # `bash -e {0}`, but a bare `run: .github/scripts/classify-docs-only.sh`
+        # execs the script via its own `#!/usr/bin/env bash` shebang, which
+        # starts a NEW bash process — errexit is not inherited across that
+        # exec (SHELLOPTS is not exported), so a failure inside the script
+        # (e.g. `>> "$GITHUB_OUTPUT"` against an unwritable path) is silently
+        # swallowed instead of aborting the step. Explicitly invoking
+        # `bash -e <script>` runs the whole file under ONE interpreter with
+        # `-e` set from the start, restoring the fail-closed semantics the
+        # inline pre-extraction version had for free. This also makes the
+        # script's own `--selftest` (which drives itself via `bash -e "$SELF"`)
+        # an honest model of production instead of a stricter one.
+        run: bash -e .github/scripts/classify-docs-only.sh
+      # The four `if:` gates below default to RUN on anything OTHER than the
+      # literal string 'false' — not `== 'true'` (PR #350 review, Finding 1).
+      # An absent or empty `run_e2e` output (classify step aborted before
+      # writing it, `GITHUB_OUTPUT` unwritable, any future classifier bug)
+      # must fail this REQUIRED check's gate CLOSED, i.e. still run e2e; an
+      # equality-on-'true' gate does the opposite — it skips on anything that
+      # isn't exactly 'true', which includes "wrote nothing at all".
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.classify.outputs.run_e2e == 'true'
+        if: steps.classify.outputs.run_e2e != 'false'
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
-        if: steps.classify.outputs.run_e2e == 'true'
+        if: steps.classify.outputs.run_e2e != 'false'
       - run: npx playwright install --with-deps chromium
-        if: steps.classify.outputs.run_e2e == 'true'
+        if: steps.classify.outputs.run_e2e != 'false'
       - run: npm run e2e
-        if: steps.classify.outputs.run_e2e == 'true'
+        if: steps.classify.outputs.run_e2e != 'false'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: playwright-report
           path: app/playwright-report/
           retention-days: 7
+  # Non-required (#334; NOT added to `protect-main`'s required checks, same
+  # treatment as the coverage job in #319 — and per `mergeable_state:
+  # unstable`'s meaning in this repo, "only optional checks are red" is still
+  # mergeable, so this job RUNS coverage and turns a broken selftest into a
+  # visible red check, but does not itself GATE the merge). Several
+  # `.claude/hooks/*.sh` scripts, and now `.github/scripts/classify-docs-only.sh`,
+  # carry a `--selftest` mode with real coverage — but nothing ran any of them
+  # automatically before this job, so a hook could be broken by an edit to a
+  # DIFFERENT file (or an environment change) and every check would stay
+  # green. Discovers scripts rather than hardcoding a list — a hardcoded list
+  # silently misses the next hook added, the same enumerate-don't-patch
+  # principle applied elsewhere in this repo to prose.
+  hook-selftests:
+    # DO NOT add `defaults: { run: { working-directory: ... } }` to this job
+    # (PR #350 review, pre-existing-but-now-relevant finding). This job has
+    # no `defaults`, so its steps run at the checkout root — repo-root
+    # relative paths like `.claude/hooks` resolve correctly, AND
+    # `wind-fixture-guard.sh --selftest` (unrelated to this PR) is
+    # cwd-sensitive: it reads `${CLAUDE_PROJECT_DIR:-.}/.claude/settings.json`
+    # relative to `.`, so it only passes today because `.` happens to be the
+    # repo root here. Setting a `working-directory` (e.g. `app`, to mirror
+    # the `app`/`e2e` jobs) would silently turn that hook's selftest red
+    # without touching a single line of its own logic - a landmine for the
+    # next person who "tidies" this job to match the others.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Discover and run every --selftest suite
+        run: |
+          set -uo pipefail
+          fail=0
+
+          # Discover rather than hardcode (#334): both directories currently
+          # hold hand-authored shell that is invoked by name from
+          # `.claude/settings.json` or `ci.yml` respectively, and both are
+          # small enough (5 files total today) that walking them on every
+          # run costs nothing. `-maxdepth 1` deliberately does not recurse —
+          # neither directory nests scripts today, and a future nested
+          # script should be a conscious addition to this job, not a silent
+          # pickup. `find -L` follows symlinks so a symlinked hook is
+          # discovered like a real file (PR #350 review, Finding 7) —
+          # plain `-type f` silently excludes a symlink even though it's
+          # exactly the kind of "next hook added" this job exists to catch.
+          #
+          # Each directory is checked INDIVIDUALLY, not just the combined
+          # result (PR #350 review, Finding 2): a bare
+          # `find A B ... 2>/dev/null | sort` swallows `find`'s error when
+          # ONE of the two directories is missing/renamed, and the surviving
+          # directory alone keeps `$files` non-empty — so a zero-files guard
+          # on the COMBINED list only fires when BOTH directories vanish at
+          # once, silently running with partial coverage (e.g. 1 of 5
+          # scripts) the rest of the time. Requiring each directory to exist
+          # AND yield at least one script closes that gap, and dropping
+          # `2>/dev/null` makes a future `find` failure loud instead of empty.
+          for d in .claude/hooks .github/scripts; do
+            if [ ! -d "$d" ]; then
+              echo "::error::expected script directory $d is missing (renamed or moved?) - discovery cannot proceed without it"
+              fail=1
+              continue
+            fi
+            count=$(find -L "$d" -maxdepth 1 -name '*.sh' -type f | wc -l)
+            if [ "$count" -eq 0 ]; then
+              echo "::error::expected script directory $d contains zero *.sh files - discovery is broken, or the directory was emptied"
+              fail=1
+            fi
+            # `find -L` (Finding 7) follows a symlink to discover it like a
+            # real file, but a DANGLING symlink still silently vanishes: `-L`
+            # dereferences before testing `-type f`, and a broken target
+            # fails that test the same way a plain wrong-typed entry would,
+            # with no error printed (PR #350 review round 2, R2-3). The
+            # per-directory `count` check above doesn't catch it either,
+            # since real files keep the count above zero. `-xtype l` finds
+            # exactly the entries that ARE a symlink but whose `-L`-resolved
+            # type is NOT what it claims - i.e. broken links - independent
+            # of whether anything else in the directory is healthy.
+            broken=$(find "$d" -maxdepth 1 -name '*.sh' -xtype l)
+            if [ -n "$broken" ]; then
+              echo "::error::dangling symlink(s) under $d: $broken"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+
+          files=$(find -L .claude/hooks .github/scripts -maxdepth 1 -name '*.sh' -type f | sort)
+
+          while IFS= read -r f; do
+            echo "::group::--selftest $f"
+            out=$(mktemp)
+            # `timeout` + `</dev/null`: a liveness check must live OUTSIDE
+            # the thing whose liveness is in question — a hook whose
+            # --selftest hangs (e.g. falls through to a stdin-reading
+            # production path because it never learned to recognise the
+            # flag) must not hang this JOB. 60s is generous headroom over
+            # notices-nudge.sh's own ~504-shape selftest.
+            if timeout 60 bash "$f" --selftest </dev/null >"$out" 2>&1; then
+              rc=0
+            else
+              rc=$?
+            fi
+            cat "$out"
+            # Require BOTH exit 0 AND the literal "SELFTEST OK" marker every
+            # one of these scripts prints on success. Exit 0 alone is not
+            # proof the script understood --selftest: a script with no
+            # --selftest branch at all could fall through to a production
+            # no-op and exit 0 too — exactly the "check that structurally
+            # cannot fail" this issue exists to close, so the marker is
+            # required in addition to, not instead of, the exit code.
+            if [ "$rc" -eq 0 ] && grep -q '^SELFTEST OK$' "$out"; then
+              echo "OK: $f"
+            else
+              echo "::error::$f --selftest FAILED (exit $rc, or missing the SELFTEST OK marker) - see the log above"
+              fail=1
+            fi
+            echo "::endgroup::"
+            rm -f "$out"
+          done <<< "$files"
+
+          exit "$fail"
