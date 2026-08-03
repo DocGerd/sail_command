@@ -1069,11 +1069,11 @@ deviate from it.
   A guard's deny list also fails open by construction: prefer directory-shaped
   matching with explicit narrow exemptions, and never drop a "redundant" pattern
   because of what today's tree happens to contain.
-  `.claude/hooks/wind-fixture-guard.sh` (#235, PR #333) extracts the wind-fixture
-  guard out of `.claude/settings.json` into a standalone script with
-  `--selftest`; it fails CLOSED on 15 input/environment failure modes (missing
-  or failing `jq`, empty or unparseable stdin, unavailable `git`) where the old
-  inline form emitted nothing.
+  `.claude/hooks/wind-fixture-guard.sh` (#235, PR #333) — the wind-fixture
+  guard, extracted from `.claude/settings.json` into a standalone script with
+  `--selftest`. It fails CLOSED where the old inline form emitted nothing:
+  empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
+  or non-repo `git` (verified across 15 constructed failure inputs).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
