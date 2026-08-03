@@ -50,12 +50,29 @@ The release cut is the moment the project's self-description is refreshed, so
 it cannot drift from the tracker. Do this on a topic branch into `develop`
 (or as the last commit before the release PR), never as a `main`-side fixup:
 
-- **`CHANGELOG.md`** — roll `[Unreleased]` into `## [X.Y.Z] - <date>` (today's
-  date, ISO) and update the two comparison links at the bottom: add
+- **`CHANGELOG.md`** — fold the pending `changelog.d/*.md` fragments (#189)
+  into a new `## [X.Y.Z] - <date>` section (today's date, ISO): for each
+  fragment file (everything under `changelog.d/` except `README.md`), read
+  its category from the filename (`<number>.<category>.md` —
+  added/changed/deprecated/removed/fixed/security) and its text from the
+  file's content, then write a `- <text>` bullet under the matching
+  `### Category` heading (create the heading if this cut's first entry in
+  that category; category order is Added, Changed, Deprecated, Removed,
+  Fixed, Security, matching `app/src/lib/changelogFragments.ts`'s
+  `CATEGORY_ORDER`). **Delete every folded fragment file** — leave only
+  `changelog.d/README.md`. Update the two comparison links at the bottom: add
   `[X.Y.Z]: …/compare/vX.Y.(Z-1)...vX.Y.Z` and re-point `[Unreleased]` at
-  `…/compare/vX.Y.Z...HEAD`. No test edits are needed — `ChangelogView` filters
-  the now-empty `[Unreleased]` and `changelog.test.ts` pins only the released
-  TAIL (`versions.slice(-5)`).
+  `…/compare/vX.Y.Z...HEAD`. `CHANGELOG.md`'s `## [Unreleased]` heading itself
+  stays — it is what re-fills from the NEXT batch of fragments — it should
+  just have no categories under it right after a cut (the fragment directory
+  is what carried the pending content, not that section). No test edits are
+  needed — `ChangelogView` filters the now-empty `[Unreleased]` and
+  `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`).
+  This fold is a human/agent step, same as the rest of this docs sweep: no CI
+  step can commit the assembled content back into `CHANGELOG.md` on `develop`
+  (protected, PR-only), which is why fragments are assembled only at BUILD
+  time (for the About dialog's live preview) and folded into the file only
+  HERE, at the cut.
 - **`ROADMAP.md`** — update `Current release:` and promote Now → Next: the
   shipped milestone's section goes away, the next one becomes "Now". Re-check
   every issue number named there against the tracker; this file was wrong

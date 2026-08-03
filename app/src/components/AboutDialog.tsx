@@ -5,14 +5,27 @@ import { useEffect, useRef, useState } from 'react';
 // honesty rule as __SC_APP_VERSION__ above the disclosure). The dev server
 // serves the out-of-root file via the vite.config.ts `server.fs.allow` entry.
 import changelogRaw from '../../../CHANGELOG.md?raw';
+// #189: changelog.d/*.md fragments — the conflict-free replacement for
+// having every user-visible-behavior PR edit CHANGELOG.md's shared
+// [Unreleased] section directly. Parsed Node-side by vite.config.ts's
+// changelogFragmentsPlugin (never via a `?raw` glob — see that plugin's own
+// comment for why), exposed as this virtual module's default export.
+import fragmentsRaw from 'virtual:changelog-fragments';
 import { useT } from '../i18n';
 import { parseChangelog } from '../lib/changelog';
+import { assembleFragments, withPendingFragments } from '../lib/changelogFragments';
 import type { MaskMeta } from '../types';
 import ChangelogView from './ChangelogView';
 import Disclosure from './Disclosure';
 
-// Parsed once at module load — the content is a build-time constant.
-const changelogReleases = parseChangelog(changelogRaw);
+// Parsed once at module load — the content is a build-time constant. Pending
+// fragments are folded into a synthetic 'Unreleased' preview so UAT
+// (develop's unreleased state) keeps showing pending work even though no PR
+// edits CHANGELOG.md directly anymore (#189).
+const changelogReleases = withPendingFragments(
+  parseChangelog(changelogRaw),
+  assembleFragments(fragmentsRaw),
+);
 
 export interface AboutDialogProps {
   open: boolean;

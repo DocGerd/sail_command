@@ -9,6 +9,11 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { BaseSequencer } from 'vitest/node';
 import type { TestSpecification } from 'vitest/node';
+import {
+  normalizeFragmentText,
+  parseFragmentFilename,
+  type RawFragment,
+} from './src/lib/changelogFragments.ts';
 
 const APP_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +27,80 @@ const basePath = isUat ? '/sail_command/uat/' : '/sail_command/';
 
 // #131: the one out-of-root file the dev server may serve (see `server` below).
 const changelogPath = resolve(APP_DIR, '..', 'CHANGELOG.md');
+
+// #189: reads changelog.d/*.md fragments Node-side via `fs` at build time and
+// exposes them through the `virtual:changelog-fragments` module —
+// AboutDialog.tsx folds them into a synthetic 'Unreleased' preview (see
+// src/lib/changelogFragments.ts's module comment for the full mechanism).
+// Deliberately NOT a `?raw` glob import: `server.fs.allow` (set below, right
+// above `server:`) REPLACES the default workspace root, so an out-of-root
+// `?raw` import needs an exact allowlist entry per file (#131's own trap,
+// documented in CLAUDE.md) — a *directory* of files named by contributors
+// would need that allowlist widened on every PR. A plugin's own
+// `fs.readdirSync`/`readFileSync` calls run in the plugin's Node process and
+// never reach the dev-server transform middleware that allowlist gates, so
+// this sidesteps the trap entirely rather than working around it.
+const changelogFragmentsDir = resolve(APP_DIR, '..', 'changelog.d');
+
+function changelogFragmentsPlugin(): Plugin {
+  const virtualModuleId = 'virtual:changelog-fragments';
+  const resolvedVirtualModuleId = '\0' + virtualModuleId;
+
+  function readFragments(): RawFragment[] {
+    let filenames: string[];
+    try {
+      filenames = readdirSync(changelogFragmentsDir);
+    } catch {
+      // Directory missing entirely (e.g. a stray `rm -rf`) — no fragments,
+      // not a build error; README.md is the normal keeper that keeps this
+      // directory present.
+      return [];
+    }
+    const fragments: RawFragment[] = [];
+    for (const filename of [...filenames].sort()) {
+      if (filename === 'README.md') continue;
+      const parsed = parseFragmentFilename(filename);
+      if (parsed === null) {
+        // A nudge, not a blocking guard (CLAUDE.md's guard-asymmetry rule):
+        // a misnamed fragment must not fail the build, only miss the
+        // preview — warn loudly so it isn't silently dropped forever.
+        console.warn(
+          `[changelog.d] skipping "${filename}": expected "<number>.<category>.md" ` +
+            '(added|changed|deprecated|removed|fixed|security)',
+        );
+        continue;
+      }
+      const raw = readFileSync(resolve(changelogFragmentsDir, filename), 'utf8');
+      fragments.push({ category: parsed.category, text: normalizeFragmentText(raw) });
+    }
+    return fragments;
+  }
+
+  return {
+    name: 'sailcommand:changelog-fragments',
+    resolveId(id) {
+      return id === virtualModuleId ? resolvedVirtualModuleId : undefined;
+    },
+    load(id) {
+      if (id !== resolvedVirtualModuleId) return undefined;
+      return `export default ${JSON.stringify(readFragments())};`;
+    },
+    configureServer(server) {
+      // Fragments aren't real ES module dependencies of anything, so Vite's
+      // default dependency graph never notices a changelog.d/*.md edit —
+      // watch the directory explicitly and invalidate + reload on change.
+      server.watcher.add(changelogFragmentsDir);
+      server.watcher.on('all', (_event, changedPath) => {
+        if (!changedPath.startsWith(changelogFragmentsDir)) return;
+        const mod = server.moduleGraph.getModuleById(resolvedVirtualModuleId);
+        if (mod !== undefined) {
+          server.moduleGraph.invalidateModule(mod);
+          server.ws.send({ type: 'full-reload' });
+        }
+      });
+    },
+  };
+}
 
 // #96: rewrites the two absolute og: URLs to the actual deploy sub-path and,
 // for the UAT build only, marks the page noindex and retitles it — so the
@@ -265,6 +344,7 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     glyphManifest(),
+    changelogFragmentsPlugin(),
     subPathMeta(basePath, isUat),
     cspMeta(),
     VitePWA({
