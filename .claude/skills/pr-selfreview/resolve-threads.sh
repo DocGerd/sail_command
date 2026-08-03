@@ -18,8 +18,19 @@
 # Each open thread is matched against its own (path, line) — the same
 # coordinates used to anchor the original inline comment (SKILL.md step 2).
 # An entry with NEITHER "path" NOR "line" is the catch-all default, tried
-# only when no path/line entry matches. A thread matching nothing is a hard
-# failure (see below) — the script never silently skips a thread.
+# only when no path/line entry matches (and reusable across many threads —
+# that is what a catch-all is for). A thread matching nothing at all is a
+# hard failure (see below) — the script never silently skips a thread.
+#
+# A specific (path, line) mapping entry, by contrast, is CONSUMED the first
+# time it is used: if two distinct open threads share the same (path, line)
+# — a real GitHub shape, e.g. two review rounds both leaving a top-level
+# comment at the same line — the second thread does NOT silently receive the
+# first thread's reply text. It falls through to the default entry if one
+# exists, or is treated as unmatched (loud failure) if not. Silently reusing
+# text for an ambiguous match was considered and rejected: this repo's
+# guard-asymmetry convention (CLAUDE.md, "Working style") is to make the
+# surprising case fail loudly rather than fail open.
 #
 # All reply bodies pass through `jq -n --arg` to build the GraphQL JSON
 # payload, so backtick/code-fence bodies need no special handling and no
@@ -74,46 +85,96 @@ esac
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# Paginated: reviewThreads is capped at 100 nodes per page. A PR with >100
+# threads would otherwise be silently truncated in BOTH the initial pass and
+# the final re-verify — exactly the silent-failure class this script exists
+# to prevent, so both enumerate() calls page through pageInfo.hasNextPage
+# rather than trusting a single first:100 response.
 # shellcheck disable=SC2016 # GraphQL $variable syntax, not shell expansion
 ENUMERATE_QUERY='
-query($owner:String!,$repo:String!,$pr:Int!){
+query($owner:String!,$repo:String!,$pr:Int!,$cursor:String){
   repository(owner:$owner,name:$repo){
     pullRequest(number:$pr){
-      reviewThreads(first:100){
+      reviewThreads(first:100, after:$cursor){
+        pageInfo{ hasNextPage endCursor }
         nodes{ id isResolved path line comments(first:1){ nodes{ body } } }
       }
     }
   }
 }'
 
-enumerate() {
-  gh api graphql -f query="$ENUMERATE_QUERY" -F owner="$OWNER" -F repo="$REPO" -F pr="$PR" \
-    --jq '.data.repository.pullRequest.reviewThreads.nodes'
+# Fetch one page of reviewThreads. $1 = cursor ("" for the first page).
+# Prints {"nodes":[...],"hasNextPage":bool,"endCursor":str-or-null}.
+fetch_page() {
+  local cursor="$1"
+  local payload_file="$TMPDIR/enumerate-query.json"
+  if [ -z "$cursor" ]; then
+    jq -n --arg owner "$OWNER" --arg repo "$REPO" --argjson pr "$PR" --arg query "$ENUMERATE_QUERY" \
+      '{query: $query, variables: {owner: $owner, repo: $repo, pr: $pr, cursor: null}}' \
+      > "$payload_file"
+  else
+    jq -n --arg owner "$OWNER" --arg repo "$REPO" --argjson pr "$PR" --arg cursor "$cursor" --arg query "$ENUMERATE_QUERY" \
+      '{query: $query, variables: {owner: $owner, repo: $repo, pr: $pr, cursor: $cursor}}' \
+      > "$payload_file"
+  fi
+  gh api graphql --input "$payload_file" \
+    --jq '.data.repository.pullRequest.reviewThreads | {nodes, hasNextPage: .pageInfo.hasNextPage, endCursor: .pageInfo.endCursor}'
 }
 
-# Look up the reply body for one thread (a single-line JSON object on stdin
-# via $1). Prints the body to stdout and returns 0 on a match; returns 1 with
-# nothing printed when no match exists (shared mode always matches).
+# Enumerate ALL reviewThreads on the PR, following pagination to the end.
+enumerate() {
+  local cursor="" all="[]" page nodes has_next
+  while true; do
+    page="$(fetch_page "$cursor")"
+    nodes="$(printf '%s' "$page" | jq -c '.nodes')"
+    all="$(jq -c -n --argjson a "$all" --argjson b "$nodes" '$a + $b')"
+    has_next="$(printf '%s' "$page" | jq -r '.hasNextPage')"
+    if [ "$has_next" != "true" ]; then
+      break
+    fi
+    cursor="$(printf '%s' "$page" | jq -r '.endCursor')"
+  done
+  printf '%s' "$all"
+}
+
+# Indices (into the mapping-file array) already used to answer a specific
+# (path, line) match, so a second thread sharing those coordinates cannot
+# silently receive the same reply text — see the header comment above.
+CONSUMED_JSON="[]"
+
+# Look up the reply body for one thread (a single-line JSON object in $1).
+# Prints {"index": <mapping-array-index-or-null>, "body": "..."} to stdout
+# and returns 0 on a match; returns 1 with nothing printed when no match
+# exists (shared mode always matches, with index always null).
+#
+# Deliberately does NOT update CONSUMED_JSON itself: this function is always
+# invoked as `x="$(reply_body_for_thread ...)"`, and bash runs the RHS of a
+# command substitution in a subshell — any variable mutation inside it is
+# invisible to the caller once the subshell exits. Consumption bookkeeping
+# happens in the caller instead, using the "index" this function returns.
 reply_body_for_thread() {
   local thread="$1"
   if [ "$MODE" = "shared" ]; then
-    printf '%s' "$MESSAGE"
+    jq -cn --arg body "$MESSAGE" '{index: null, body: $body}'
     return 0
   fi
   local path line match
   path="$(printf '%s' "$thread" | jq -r '.path')"
   line="$(printf '%s' "$thread" | jq -r '.line')"
-  match="$(jq -c --arg path "$path" --argjson line "$line" '
-      [.[] | select(has("path") and has("line")) | select(.path == $path and .line == $line)]
+  match="$(jq -c --arg path "$path" --argjson line "$line" --argjson consumed "$CONSUMED_JSON" '
+      to_entries
+      | map(select(.value | has("path") and has("line")))
+      | map(select(.value.path == $path and .value.line == $line))
+      | map(select(.key as $k | ($consumed | index($k)) == null))
       | first // empty
     ' "$MAPPING_FILE")"
   if [ -n "$match" ]; then
-    printf '%s' "$match" | jq -r '.body'
+    printf '%s' "$match" | jq -c '{index: .key, body: .value.body}'
     return 0
   fi
   match="$(jq -c '[.[] | select((has("path") | not) and (has("line") | not))] | first // empty' "$MAPPING_FILE")"
   if [ -n "$match" ]; then
-    printf '%s' "$match" | jq -r '.body'
+    printf '%s' "$match" | jq -c '{index: null, body: .body}'
     return 0
   fi
   return 1
@@ -137,11 +198,16 @@ for i in $(seq 0 $((OPEN_COUNT - 1))); do
   path="$(printf '%s' "$thread" | jq -r '.path // "n/a"')"
   line="$(printf '%s' "$thread" | jq -r '.line // "n/a"')"
 
-  body="$(reply_body_for_thread "$thread")" && matched=1 || matched=0
+  match_json="$(reply_body_for_thread "$thread")" && matched=1 || matched=0
   if [ "$matched" -ne 1 ]; then
     echo "!! No reply text for thread $id ($path:$line) — no mapping entry and no default; skipping" >&2
     PASS_ERRORS=$((PASS_ERRORS + 1))
     continue
+  fi
+  body="$(printf '%s' "$match_json" | jq -r '.body')"
+  used_idx="$(printf '%s' "$match_json" | jq -r '.index')"
+  if [ "$used_idx" != "null" ]; then
+    CONSUMED_JSON="$(jq -c -n --argjson c "$CONSUMED_JSON" --argjson i "$used_idx" '$c + [$i]')"
   fi
 
   echo "==> [$id] $path:$line — replying" >&2

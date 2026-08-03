@@ -1112,10 +1112,19 @@ deviate from it.
   in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
-- `gh api graphql -F body=@file` posts the FILE as the body — `--input` is
-  REST-only and has no equivalent for `graphql`. Inline the string for a
-  GraphQL call (e.g. a review-thread reply), or repair a bad post with a
-  REST `PATCH`.
+- `gh api graphql -F body=@file` posts the FILE as the body of a form field
+  named `body` (not the GraphQL `query`), so it fails with "A query attribute
+  must be specified" — that half of the old note here was right. But
+  **`--input` DOES work for `gh api graphql`**, backticks included — the old
+  advice to inline the string instead was wrong and steered straight at the
+  shell-quoting hazard the note exists to prevent. Verified directly (PR #329
+  fix-wave review, finding #5):
+  `gh api graphql --input file.json` → `{"data":{"viewer":{"login":"DocGerd"}}}`
+  exit 0, including with a backtick inside a variable value → exit 0; `gh api
+  graphql -F body=@file.json` → `"A query attribute must be specified"` exit 1.
+  Use a JSON `--input` file for any GraphQL call carrying a body with
+  backticks (e.g. a review-thread reply) — `--input` is the PREFERRED form,
+  not a REST-only fallback.
 - GitHub links a code-scanning alert to an issue only when the alert URL
   appears as a TASK-LIST item (`- [ ] <url>`) in the issue body — a plain
   markdown link does nothing, and the REST alert object exposes no tracking

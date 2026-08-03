@@ -109,11 +109,51 @@ shows anything still open — that final check is the point of the script,
 not an afterthought: a resolver that reports success without re-verifying
 against GitHub is worse than the manual loop it replaces.
 
+### Fallback: raw GraphQL (script unavailable, or a one-off single thread)
+
 Mechanically, the script does what the manual loop always did — for each
 open thread, `addPullRequestReviewThreadReply` then `resolveReviewThread`,
 then a final `reviewThreads` query to confirm every node shows
-`isResolved: true`. Reach for the raw GraphQL calls directly only if the
-script itself is broken or you need a one-off, single-thread action.
+`isResolved: true`. Reach for these directly only if the script itself is
+broken or you need to act on a single thread:
+
+Enumerate open threads (read-only, no backticks — inline `-f query` is fine):
+
+```
+gh api graphql -f query='
+query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      reviewThreads(first:100){
+        nodes{ id isResolved path line comments(first:1){ nodes{ body } } }
+      }
+    }
+  }
+}' -F owner=DocGerd -F repo=sail_command -F pr=N
+```
+
+Reply (bodies carrying backticks → send the whole GraphQL request as a JSON
+`--input` file — `--input` works fine for `gh api graphql`, unlike
+`-F body=@file`; see the gotchas table). `reply.json`:
+
+```json
+{
+  "query": "mutation($id:ID!,$b:String!){ addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$id, body:$b}){ comment{ id } } }",
+  "variables": { "id": "THREAD_ID", "b": "Fixed in `abc1234`." }
+}
+```
+
+```
+gh api graphql --input reply.json
+```
+
+Resolve the thread (no backticks — inline is fine):
+
+```
+gh api graphql -f query='mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }' -F id=THREAD_ID
+```
+
+Done when re-running the enumerate query shows every `isResolved: true`.
 
 ## gh gotchas
 
