@@ -402,3 +402,4 @@ export default defineConfig(({ command }) => ({
     },
   },
 }));
+// scratch: coverage trigger test, app-touching
