@@ -5,17 +5,42 @@ name: Coverage
 # ONLY required checks under the protect-main ruleset (strict up-to-date
 # policy) — this job is NOT added to that ruleset, so it must fail closed
 # (report a red job) without ever blocking a merge. `test:coverage` runs the
-# full suite under v8 instrumentation (~4 min uninstrumented on a dev
-# machine; CI runners are 6-10x slower per CLAUDE.md), so it stays out of the
-# `app` job's critical path rather than adding that cost to a required check.
+# full suite under v8 instrumentation; measured directly on this PR's own
+# branch, THREE separate dev-machine runs landed at 994.4s / 1029.5s / 983.5s
+# (~16.4-17.2 min) — roughly 4x the ~250s plain `npm run test` takes on the
+# same hardware. CI runners are documented 6-10x slower than a dev machine
+# for this suite, so this stays out of the `app` job's critical path rather
+# than adding that cost to a required check.
 # `thresholds.statements: 80` lives in app/vite.config.ts's coverage block and
 # only fires when coverage is enabled — this workflow is what enables it.
+#
+# Trigger scoping (fix-wave M1, PR #335 review): `pull_request` is scoped to
+# `paths: ['app/**']` — coverage only means anything when app source changes,
+# so the question this filter answers is "did app code change?", not "is
+# this docs-only?". That is deliberately NOT the inverse of, or kept in sync
+# with, ci.yml's `classify` step docs-allowlist from #327/#330: it is a
+# different, simpler predicate over a disjoint concern, so there is no twin
+# to diverge from and nothing here should ever be "harmonised" with that
+# list. This scoping is safe specifically BECAUSE `coverage` is not a
+# required check — a `paths`-skipped run reports nothing and blocks no
+# merge, unlike `e2e`'s required-check trap (#330) where a skipped run
+# would stall a PR forever. `push` on main/develop stays UNSCOPED so the
+# coverage trend line and the assurance-case evidence (docs/security-
+# assurance-case.md §7) stay continuous across every merge, not just
+# app-touching ones.
 on:
   pull_request:
+    paths: ['app/**']
   push:
     branches: [main, develop]
 permissions:
   contents: read
+concurrency:
+  # Mirrors ci.yml's shape: at ~16-17 min wall-clock, rapid pushes to the
+  # same branch would otherwise queue concurrent runs instead of the newest
+  # superseding the stale ones.
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   coverage:
     runs-on: ubuntu-latest
@@ -26,4 +51,10 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci
       - run: npm run test:coverage
-        timeout-minutes: 20
+        # Measured dev-machine wall-clock (see header comment) is already
+        # ~16-17 min; CLAUDE.md documents CI runners as 6-10x slower for this
+        # suite. 60 min gives real headroom rather than a number that merely
+        # fits today's local measurement — a non-required check that times
+        # out goes permanently red and gets ignored, silently defeating the
+        # whole point of #319 (a check nobody reads is worse than no check).
+        timeout-minutes: 60
