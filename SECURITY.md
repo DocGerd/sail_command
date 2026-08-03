@@ -180,9 +180,9 @@ requiring no GPG toolchain):
     namespace) rather than a missing/wrong key. This looks like the bad-news
     case below — it names a signature-verification failure, not merely an
     unmatched principal — but it isn't one: it's the same class of problem
-    as the previous bullet, a broken local file, just surfaced through a
-    different `ssh-keygen` error path. Fix the FILE's option syntax, not the
-    tag.
+    as the *No principal matched.* bullet above, a broken local file, just
+    surfaced through a different `ssh-keygen` error path. Fix the FILE's
+    option syntax, not the tag.
 
   An outright signature-verification-FAILURE message (not merely an
   unmatched principal) is the one case that is actually bad news: it means

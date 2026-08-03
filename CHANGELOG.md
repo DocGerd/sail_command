@@ -11,12 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Upgraded maplibre-gl 6.0.0 -> 6.1.0. The only behavior from the bump this
-  app actually exercises: draggable via-point markers (added when inserting
-  a stop mid-route) now show a grab cursor and pick up the correct ARIA role
-  (`button` once interactive, matching the `img` role non-draggable markers
-  already had) automatically from the library — a small drag-affordance and
-  accessibility fix, not a new feature (#347).
+- Upgraded maplibre-gl 6.0.0 -> 6.1.0. The one change this app exercises:
+  draggable via-point markers (added when inserting a stop mid-route) now
+  show a grab cursor on hover — a small drag-affordance fix, not a new
+  feature (#347).
 
 ### Security
 
