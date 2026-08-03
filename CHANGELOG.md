@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-03
+
+### Changed
+
+- Upgraded maplibre-gl 6.0.0 -> 6.1.0. The only behavior from the bump this
+  app actually exercises: draggable via-point markers (added when inserting
+  a stop mid-route) now show a grab cursor and pick up the correct ARIA role
+  (`button` once interactive, matching the `img` role non-draggable markers
+  already had) automatically from the library — a small drag-affordance and
+  accessibility fix, not a new feature (#347).
+
+### Security
+
+- Release tags are now cryptographically signed starting at v0.8.0 (SSH
+  signing), independently verifiable with `git tag -v`/`git verify-tag` or via
+  GitHub's "Verified" badge on the tag and Release page. A signed tag attests
+  that the tagged commit is authentic; it does not, on its own, prove the
+  bytes your browser downloads match it — see SECURITY.md for the full
+  picture. Tags through v0.7.0 remain permanently unsigned — signing is not
+  retroactive (#322).
+
 ## [0.7.0] - 2026-08-03
 
 ### Changed
@@ -336,7 +357,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/DocGerd/sail_command/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/DocGerd/sail_command/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/DocGerd/sail_command/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/DocGerd/sail_command/compare/v0.5.0...v0.5.1
