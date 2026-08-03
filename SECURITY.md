@@ -204,7 +204,15 @@ requiring no GPG toolchain):
   config from the third-party recipe above).
 - GitHub's own "Verified" badge on the tag's commit and on the Release page
   is a second, independent verification channel that needs no local
-  configuration at all — the fastest check for most people.
+  configuration at all — the fastest check for most people, **from v0.8.1
+  onward**. The v0.8.0 tag is a documented exception: it was signed under an
+  email address not registered on the maintainer's GitHub account, so GitHub
+  shows it Unverified (`reason: "no_user"`) despite a cryptographically good
+  signature — an attribution gap, not a signature problem. `git tag -v` /
+  `git verify-tag` verification above is unaffected and works for v0.8.0 the
+  same as for any other signed tag; only the badge channel is affected, and
+  only for that one tag. See the [v0.8.1 CHANGELOG entry](CHANGELOG.md) and
+  `CONTRIBUTING.md`'s "Release tag signing" section for the fix.
 
 Signing is **not retroactive**: `v0.1.0` through `v0.7.0` are never re-signed
 or re-tagged, and this is permanent, not a bootstrap gap that closes later.

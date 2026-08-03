@@ -467,6 +467,28 @@ registered at all — see `SECURITY.md`'s "Verifying a release" section for
 why the two registries are distinct. Fix the registration, not the signing
 config.
 
+**A second, independent registration gap gives the identical symptom: the
+tagger EMAIL, not the key.** The v0.8.0 tag hit exactly this — key correctly
+registered, signature good, badge still Unverified, because the tag was
+created under the machine's *global* `user.email` (`live@docgerdsoft.de`, not
+an email on the GitHub account) rather than the maintainer's registered
+`dev@docgerdsoft.de`. Diagnose which of the two gaps is in play with:
+
+```bash
+gh api repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification
+```
+
+(`<tag-object-sha>` is the annotated tag OBJECT's own SHA — `git rev-parse
+refs/tags/vX.Y.Z` — not the commit it points at.) `reason: "no_user"` is the
+email-attribution gap; fix it by setting a repo-local `user.email` to an
+address registered on the signer's GitHub account (`CONTRIBUTING.md`'s
+"Release tag signing" section) — never the global one, which other repos may
+depend on. Any other `reason` value points back at the key-registration gap
+above instead. This repo already carries that repo-local override as of the
+v0.8.1 fix, so a fresh signed tag should not hit this again — but re-run this
+diagnostic at 5d regardless; a valid signature and an attributable one are
+different things, and only the diagnostic tells you which you have.
+
 ## Gotchas
 
 - **PR-only** per the `protect-main` ruleset: review threads resolved, merge

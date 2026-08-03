@@ -250,6 +250,41 @@ signed (`git tag -v` reports `Good signature`) while GitHub still shows it as
 **Unverified** — that is a registration gap, not a signature problem; see
 `SECURITY.md`'s "Verifying a release" section.
 
+### Tagger email — a second, independent registration requirement
+
+The key being registered is not sufficient on its own: GitHub also needs the
+tag's **tagger email** (whatever `user.email` was active when the tag was
+created — global unless a repo-local override is set, see `git help config`)
+to match an email address registered on the signer's GitHub account. If it
+doesn't, GitHub cannot attribute the signature to any account and the badge
+shows **Unverified** with `reason: "no_user"` — even with a perfectly good
+signature and a correctly registered signing key. This bit the v0.8.0 tag: it
+was created with the machine's *global* `user.email` (`live@docgerdsoft.de`,
+not an email on the GitHub account) rather than the maintainer's intended
+signing identity (`dev@docgerdsoft.de`, which is). The fix, applied after
+v0.8.0 shipped, is a **repo-local** override so this repository's tags always
+use the right identity regardless of the machine's global config:
+
+```bash
+git config user.email dev@docgerdsoft.de   # repo-local; leaves global user.email untouched
+```
+
+Diagnose which of the two registration gaps (key vs. email) is in play — or
+confirm there isn't one — with:
+
+```bash
+gh api repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification
+```
+
+`<tag-object-sha>` is the annotated tag OBJECT's own SHA (`git rev-parse
+refs/tags/vX.Y.Z`), not the commit it points at. `reason: "no_user"` means the
+tagger email isn't attributable to any GitHub account; other `reason` values
+(e.g. an unregistered or mismatched key) point at the signing-key gap
+described above instead. **The durable lesson: a valid signature and an
+attributable signature are different things, and only the second produces a
+badge** — always verify both the signing key AND the tagger email are
+registered on the intended GitHub account, not just one or the other.
+
 ## Claude Code config placement
 
 Claude Code / agent configuration follows a four-scope convention (shared vs.
