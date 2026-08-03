@@ -373,20 +373,24 @@ export default defineConfig(({ command }) => ({
     include: ['src/**/*.test.{ts,tsx}'],
     // #214: see SlowFileFirstSequencer above.
     sequence: { sequencer: SlowFileFirstSequencer },
-    // #221 measured a 93.92% statement baseline; #319 wires enforcement on
-    // top of it via a NON-required `.github/workflows/coverage.yml` (never
-    // `app` itself — `app` is a required check under protect-main with a
-    // strict up-to-date policy, and a threshold failure there would block
-    // every PR, including the release PR). The threshold only fires when
-    // coverage is enabled (`npm run test:coverage`), so it is inert for the
-    // plain `npm run test` that `app`'s CI job runs. `thresholds.statements:
-    // 80` matches the OpenSSF `test_statement_coverage80` criterion and is a
-    // FLOOR, not a ratchet — it leaves ~14 points of headroom below the
-    // measured 93.92%, in which a regression would still pass silently.
-    // Deliberate and revisitable at the next release cut, not an oversight.
-    // `include` is intentionally the same glob as `app`'s source tree (not
-    // scoped to what tests happen to exercise), so an untested file reports
-    // 0% rather than silently dropping out of the denominator.
+    // #221 measured a 93.92% statement baseline; #319 adds this threshold on
+    // top of it. NOT wired into any CI job today — `app`'s CI job runs plain
+    // `npm run test` (no coverage), so this only fires for someone running
+    // `npm run test:coverage` locally. A CI reporting step was attempted in
+    // #319's own PR (#335) and reverted: three dispatch runs each ~43 min,
+    // failing on either the job-level timeout or the solver-heavy tests'
+    // OWN per-test `vi.setConfig`/`timeout` budgets under v8 instrumentation
+    // — a durable fix needs a shared coverage-aware timeout mechanism plus a
+    // structural test pinning every test file that would need it, which is
+    // more than that PR's scope; tracked as a follow-up. `thresholds.
+    // statements: 80` matches the OpenSSF `test_statement_coverage80`
+    // criterion and is a FLOOR, not a ratchet — it leaves ~14 points of
+    // headroom below the measured 93.92%, in which a regression would still
+    // pass silently. Deliberate and revisitable at the next release cut, not
+    // an oversight. `include` is intentionally the same glob as `app`'s
+    // source tree (not scoped to what tests happen to exercise), so an
+    // untested file reports 0% rather than silently dropping out of the
+    // denominator.
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'text'],
