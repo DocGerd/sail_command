@@ -56,17 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Added a Content-Security-Policy and a stricter referrer policy to the app
-  shell. The policy restricts background network requests — fetch, XHR,
-  WebSocket, and `sendBeacon` — to the app's own origin plus the two services
-  it already talks to (the Open-Meteo wind forecast and, if you've entered a
-  key, aisstream.io's AIS feed), so a compromised dependency could no longer
-  quietly send your data to some other server over those channels. It does
-  not restrict page navigation, opening a new tab/window, prefetch/preconnect
-  hints, or WebRTC — GitHub Pages cannot set response headers, so the policy
-  ships as a `<meta>` tag, which cannot express those restrictions, and they
-  remain open. The referrer policy reduces how much of the current page's URL
-  is sent to other origins (#223).
+- Added a Content-Security-Policy and an explicit referrer policy to the app
+  shell. Background network requests — fetch, XHR, WebSocket, `sendBeacon` —
+  are now limited to the app's own origin plus the two services it already
+  talks to (the Open-Meteo wind forecast and, if you've entered a key,
+  aisstream.io's AIS feed), so a compromised dependency could no longer
+  quietly send your data to some other server over those channels. It is not
+  a complete seal: page navigation, opening a new tab or window,
+  prefetch/preconnect hints and WebRTC stay unrestricted, and the full list
+  of accepted gaps is in `docs/security-assurance-case.md`. The referrer
+  policy limits how much of the current page's URL is sent to other origins
+  (#223).
 - Resolved a known vulnerability (GHSA-mh99-v99m-4gvg) in a transitive
   dependency (`brace-expansion`) via a lockfile update. This package is used
   only by build tooling, not shipped in the app itself, so users of the app
