@@ -377,12 +377,16 @@ export default defineConfig(({ command }) => ({
     // top of it. NOT wired into any CI job today — `app`'s CI job runs plain
     // `npm run test` (no coverage), so this only fires for someone running
     // `npm run test:coverage` locally. A CI reporting step was attempted in
-    // #319's own PR (#335) and reverted: three dispatch runs each ~43 min,
-    // failing on either the job-level timeout or the solver-heavy tests'
-    // OWN per-test `vi.setConfig`/`timeout` budgets under v8 instrumentation
-    // — a durable fix needs a shared coverage-aware timeout mechanism plus a
-    // structural test pinning every test file that would need it, which is
-    // more than that PR's scope; tracked as a follow-up. `thresholds.
+    // #319's own PR (#335) and reverted after three runs found TWO distinct
+    // timeout surfaces, not one: run 30807548075 (`pull_request`) hit the
+    // job-level `timeout-minutes: 20` cap at 20.22 min; runs 30810112565
+    // (`pull_request`) and 30815617721 (`workflow_dispatch`) each ran ~42.6
+    // min and failed on the solver-heavy tests' OWN per-test
+    // `vi.setConfig`/`timeout` budgets under v8 instrumentation — raising the
+    // job cap could never have fixed that second surface. A durable fix needs
+    // a shared coverage-aware timeout mechanism plus a structural test
+    // pinning every test file that would need it, which is more than that
+    // PR's scope; tracked in #342. `thresholds.
     // statements: 80` matches the OpenSSF `test_statement_coverage80`
     // criterion and is a FLOOR, not a ratchet — it leaves ~14 points of
     // headroom below the measured 93.92%, in which a regression would still
