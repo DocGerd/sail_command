@@ -163,12 +163,17 @@ _triggers() {
   #
   # #313: `npm audit fix` and `npm dedupe` (incl. their `--prefix` variants)
   # both rewrite package-lock.json silently, same as the alternatives already
-  # here, so they get the same broad `*npm*...*` substring treatment. This is
-  # a pure alternation ADDITION - monotonic per the file-header argument above
-  # (can only widen firing, never narrow it).
+  # here, so they get the same exact-or-boundary shape as the short-subcommand
+  # alternatives above (`\ ci|\ ci[!a-zA-Z0-9]*` etc), NOT the unbounded
+  # `*npm*...*` shape `install`/`uninstall`/`update` use - "audit fix"/"dedupe"
+  # are ordinary words that can appear as a PREFIX of something else (e.g.
+  # this repo's own `test-fixtures/`), so an unbounded trailing `*` would also
+  # fire on "audit fixture", a mention that happens to share the prefix. This
+  # is a pure alternation ADDITION - monotonic per the file-header argument
+  # above (can only widen firing, never narrow it).
   # shellcheck disable=SC2221,SC2222
   case "$1" in
-    *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci[!a-zA-Z0-9]*|*npm*\ add|*npm*\ add[!a-zA-Z0-9]*|*npm*\ i|*npm*\ i[!a-zA-Z0-9]*|*npm*\ rm|*npm*\ rm[!a-zA-Z0-9]*|*npm*\ remove|*npm*\ remove[!a-zA-Z0-9]*|*npm*\ up|*npm*\ up[!a-zA-Z0-9]*|*npm*\ audit\ fix*|*npm*\ dedupe*) return 0 ;;
+    *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci[!a-zA-Z0-9]*|*npm*\ add|*npm*\ add[!a-zA-Z0-9]*|*npm*\ i|*npm*\ i[!a-zA-Z0-9]*|*npm*\ rm|*npm*\ rm[!a-zA-Z0-9]*|*npm*\ remove|*npm*\ remove[!a-zA-Z0-9]*|*npm*\ up|*npm*\ up[!a-zA-Z0-9]*|*npm*\ audit\ fix|*npm*\ audit\ fix[!a-zA-Z0-9]*|*npm*\ dedupe|*npm*\ dedupe[!a-zA-Z0-9]*) return 0 ;;
   esac
   return 1
 }
@@ -289,6 +294,18 @@ if [ "${1:-}" = "--selftest" ]; then
   # --- that could independently cause the same skip).
   check skip "echo mentioning npm audit fix"   'echo "run npm audit fix first"'
   check skip "echo mentioning npm dedupe"      'echo "run npm dedupe first"'
+  # --- #313 boundary guard: "audit fix"/"dedupe" get the SAME
+  # --- exact-or-[!a-zA-Z0-9]-boundary shape as the other short subcommands
+  # --- (ci/add/i/rm/remove/up), not the unbounded `*npm*...*` shape - this
+  # --- repo says "fixture" constantly (`app/public/test-fixtures/`, the
+  # --- `pree2e`-regenerated wind fixture), so an unbounded trailing `*`
+  # --- would fire on a plain npm-test-filter mention of it. This is
+  # --- produced by `_triggers` itself returning skip (no `\ audit\ fix`
+  # --- suffix and no `[!a-zA-Z0-9]` char after it - "t" in "fixtures" is
+  # --- alnum) - `_provably_inert` is never reached, since the command's
+  # --- first word is `npm`, not echo/printf/cat, so it could not be the
+  # --- mechanism producing this skip.
+  check skip "boundary guard: audit fixtures is not audit fix" "npm run test -- audit fixtures"
 
   # --- Known residual: tab before a short subcommand does not fire (header).
   check skip "RESIDUAL: tab before ci"         "npm${tab}ci"
