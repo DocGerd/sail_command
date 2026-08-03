@@ -160,9 +160,15 @@ _triggers() {
   # SC2221/SC2222: several alternatives subsume each other (*npm*install* also
   # matches *npm*uninstall*). Harmless - every alternative has the same body -
   # and kept verbatim so the trigger is byte-identical to the inline hook.
+  #
+  # #313: `npm audit fix` and `npm dedupe` (incl. their `--prefix` variants)
+  # both rewrite package-lock.json silently, same as the alternatives already
+  # here, so they get the same broad `*npm*...*` substring treatment. This is
+  # a pure alternation ADDITION - monotonic per the file-header argument above
+  # (can only widen firing, never narrow it).
   # shellcheck disable=SC2221,SC2222
   case "$1" in
-    *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci[!a-zA-Z0-9]*|*npm*\ add|*npm*\ add[!a-zA-Z0-9]*|*npm*\ i|*npm*\ i[!a-zA-Z0-9]*|*npm*\ rm|*npm*\ rm[!a-zA-Z0-9]*|*npm*\ remove|*npm*\ remove[!a-zA-Z0-9]*|*npm*\ up|*npm*\ up[!a-zA-Z0-9]*) return 0 ;;
+    *npm*install*|*npm*uninstall*|*npm*update*|*npm*\ ci|*npm*\ ci[!a-zA-Z0-9]*|*npm*\ add|*npm*\ add[!a-zA-Z0-9]*|*npm*\ i|*npm*\ i[!a-zA-Z0-9]*|*npm*\ rm|*npm*\ rm[!a-zA-Z0-9]*|*npm*\ remove|*npm*\ remove[!a-zA-Z0-9]*|*npm*\ up|*npm*\ up[!a-zA-Z0-9]*|*npm*\ audit\ fix*|*npm*\ dedupe*) return 0 ;;
   esac
   return 1
 }
@@ -270,6 +276,20 @@ if [ "${1:-}" = "--selftest" ]; then
   check fire "OVER-FIRE (accepted): run test -- i.test.ts"  "npm --prefix app run test -- i.test.ts"
   check skip "hot path WITHOUT punctuation still quiet"     "npm --prefix app run test -- invariants"
 
+  # --- #313: npm audit fix / npm dedupe also rewrite package-lock.json
+  # --- silently and must fire, including the repo-convention --prefix form.
+  check fire "npm audit fix"                   "npm audit fix"
+  check fire "npm --prefix app audit fix"      "npm --prefix app audit fix"
+  check fire "npm dedupe"                      "npm dedupe"
+  check fire "npm --prefix app dedupe"         "npm --prefix app dedupe"
+  # --- #313 mention-not-invocation: each new trigger has an echo-mention
+  # --- counterpart that MUST stay suppressed via _provably_inert, isolating
+  # --- the invocation-vs-mention distinction per the #216 lesson (a row must
+  # --- carry no OTHER construct - here, no metachar from the exclusion set -
+  # --- that could independently cause the same skip).
+  check skip "echo mentioning npm audit fix"   'echo "run npm audit fix first"'
+  check skip "echo mentioning npm dedupe"      'echo "run npm dedupe first"'
+
   # --- Known residual: tab before a short subcommand does not fire (header).
   check skip "RESIDUAL: tab before ci"         "npm${tab}ci"
   check fire "tab before install still fires"  "npm${tab}install"
@@ -297,6 +317,8 @@ if [ "${1:-}" = "--selftest" ]; then
     "npm remove left-pad" "npm rm left-pad" "npm update" "npm up"
     "npm --prefix app install" "npm --prefix app ci" "npm -w app install"
     "npm install --save-dev vitest" "npm ci --omit=dev"
+    # #313
+    "npm audit fix" "npm --prefix app audit fix" "npm dedupe" "npm --prefix app dedupe"
   )
   # shellcheck disable=SC2016  # literal $( ) and backticks ARE the test data
   wrappers=(
@@ -374,7 +396,11 @@ if [ "${1:-}" = "--selftest" ]; then
     esac
     return 1
   }
-  d_subs=(ci add i rm remove up install uninstall update run test build x "")
+  # #313: "audit fix" and "dedupe" are new-only alternatives (absent from
+  # _triggers_legacy below), so they never trip the superset FAIL branch -
+  # they only ever contribute to `added`, extending the same generator loop
+  # to the new alternatives rather than inventing a parallel structure.
+  d_subs=(ci add i rm remove up install uninstall update run test build x "" "audit fix" dedupe)
   d_pres=("npm" "npm --prefix app" "sudo npm" "  npm" "echo npm" "git status && npm" "xnpm")
   d_tails=("" " " ";" ")" "|" "&&" "$nl" " left-pad" "x" "1" "-g" "$tab" "'" '"')
   gen_c=0; only_legacy=0; added=0
