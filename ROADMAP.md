@@ -19,12 +19,14 @@ shipped.
 ## Now — v0.8.0
 
 The next feature release. Its **product** scope is not yet decided — the
-`v0.8.0` milestone is newly opened and currently empty; scope will be drawn
-from the themes below as work is triaged into it, the same way v0.7.0's was.
-One item is already committed regardless of triage: release tags start being
-cryptographically signed this release (`SECURITY.md` and `CONTRIBUTING.md`
-carry the verification process and the local-config steps; no tracking issue
-is open yet for the signing work itself). The
+`v0.8.0` milestone holds one item so far,
+[#322](https://github.com/DocGerd/sail_command/issues/322) (key custody,
+registration, and the first signed cut); further scope will be drawn from the
+themes below as work is triaged into it, the same way v0.7.0's was. That one
+item is already intended regardless of triage: release tags start being
+cryptographically signed at `v0.8.0` (**tags through `v0.7.0` are unsigned**)
+— `SECURITY.md` and `CONTRIBUTING.md` carry the verification process and the
+local-config steps, and #322 tracks the signing work itself. The
 [milestone](https://github.com/DocGerd/sail_command/milestone/8) is the
 current list; this paragraph describes the intent behind it.
 
@@ -56,8 +58,9 @@ Remaining:
   ([#319](https://github.com/DocGerd/sail_command/issues/319)).
 - Release tags are still unsigned: the verification docs and process shipped
   ([#222](https://github.com/DocGerd/sail_command/issues/222), closed), but
-  signing itself starts at `v0.8.0` (see "Now" above) and has no open
-  tracking issue yet.
+  signing itself starts at `v0.8.0`, tracked by
+  [#322](https://github.com/DocGerd/sail_command/issues/322) (see "Now"
+  above).
 - Tracking the remaining self-resolving OpenSSF Scorecard findings
   ([#72](https://github.com/DocGerd/sail_command/issues/72)).
 
@@ -106,11 +109,13 @@ parallel pull requests
 ([#189](https://github.com/DocGerd/sail_command/issues/189)) and remaining
 agent-workflow guardrails
 ([#211](https://github.com/DocGerd/sail_command/issues/211),
-[#178](https://github.com/DocGerd/sail_command/issues/178)). A
-worktree-cleanup skill and deduplicating the graphify guidance to a single
-home shipped this cut
+[#178](https://github.com/DocGerd/sail_command/issues/178),
+[#235](https://github.com/DocGerd/sail_command/issues/235)). A
+worktree-cleanup skill, deduplicating the graphify guidance to a single home,
+and tag → GitHub Release automation from `CHANGELOG.md` shipped this cut
 ([#179](https://github.com/DocGerd/sail_command/issues/179),
-[#183](https://github.com/DocGerd/sail_command/issues/183)). Grouped
+[#183](https://github.com/DocGerd/sail_command/issues/183),
+[#175](https://github.com/DocGerd/sail_command/issues/175)). Grouped
 Dependabot updates and path→area PR labeling shipped in v0.6.0
 ([#174](https://github.com/DocGerd/sail_command/issues/174),
 [#173](https://github.com/DocGerd/sail_command/issues/173)).
