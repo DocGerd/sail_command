@@ -3,9 +3,11 @@ import { compareRigs, planRoute, RIG_TIE_BAND_MS } from './planRoute';
 import { openWaterMask, TEST_POLAR, uniformWindGrid, makeMask } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
+  RIG_ORDER,
   type Leg,
   type PlanRequest,
   type PolarTable,
+  type Rig,
   type RigResult,
 } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
@@ -79,6 +81,25 @@ describe('planRoute', () => {
     const seen = new Set<string>();
     planRoute(req, uniformWindGrid(12, 0), deps, (rig) => seen.add(rig));
     expect(seen).toEqual(new Set(['genoa', 'fock']));
+  });
+
+  // #340 NAMED COUPLING guard: PlannerPanel.tsx's "sail N of 2" phase readout
+  // numbers rigs using RIG_ORDER (../types.ts), which only has the router's
+  // REAL solve order if `runBoth` (this file) genuinely evaluates genoa then
+  // fock. Unlike the count-only 'reports progress per rig' test above (a
+  // Set, order-blind by construction), this records the ORDER rigs are
+  // FIRST seen in — from a real (small) solve, not from reading the source —
+  // and pins it against RIG_ORDER, so a `runBoth` reorder fails this test
+  // instead of silently mislabeling the UI. Mutation-checked: swapping
+  // `runBoth`'s two properties (fock first) turns this red with
+  // `[ 'fock', 'genoa' ]` vs. the expected `RIG_ORDER`; reverting turns it
+  // green again.
+  it('#340: solve order matches RIG_ORDER — the router genuinely solves genoa then fock', () => {
+    const order: Rig[] = [];
+    planRoute(req, uniformWindGrid(12, 0), deps, (rig) => {
+      if (!order.includes(rig)) order.push(rig);
+    });
+    expect(order).toEqual(RIG_ORDER);
   });
 
   it('recommends genoa on an exact ETA tie between rigs, but reports the comparison as a tie (#259)', () => {

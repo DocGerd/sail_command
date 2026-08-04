@@ -4,6 +4,19 @@ export interface LatLon {
 }
 
 export type Rig = 'genoa' | 'fock';
+
+// #340 NAMED COUPLING: the router's actual, fixed solve order. This constant
+// is ENFORCED equal to the real runtime order by
+// routing/planRoute.test.ts's "#340: solve order matches RIG_ORDER" guard
+// test, which observes the ACTUAL order rigs report progress in from a real
+// (small) solve — not merely documented by comment. The real order is set by
+// routing/planRoute.ts's `runBoth`, which evaluates `run('genoa', …)` then
+// `run('fock', …)` as plain, synchronous object-literal properties (no
+// interleaving) — see the NAMED COUPLING comment there. If `runBoth`'s
+// property order is ever swapped, the guard test fails red; this array's
+// order must be swapped to match, never the other way around. Consumed by
+// PlannerPanel.tsx for the "sail N of 2" phase readout numbering (#340).
+export const RIG_ORDER: readonly Rig[] = ['genoa', 'fock'];
 export type Board = 'port' | 'starboard';
 export type LegKind = 'sail' | 'motor';
 export type ManeuverKind = 'tack' | 'gybe';

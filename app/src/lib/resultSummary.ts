@@ -15,6 +15,14 @@ export const RIG_LABEL_KEY: Record<Rig, MsgKey> = {
   fock: 'route.rig.fock',
 };
 
+// #340: RIG_ORDER (the router's actual, fixed solve order — used for the
+// planner panel's "rig N of 2" phase readout) lives in ../types.ts, next to
+// the `Rig` type, not here — its coupling to routing/planRoute.ts's real
+// solve order is ENFORCED by routing/planRoute.test.ts's guard test, and
+// types.ts is the neutral layer both that test and this presentation module
+// already depend on (importing it from here into a routing test would be
+// the layering inversion the other direction).
+
 export interface ResultSummary {
   arrivalText: string;
   distanceText: string;
