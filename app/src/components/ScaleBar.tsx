@@ -302,6 +302,30 @@ export default function ScaleBar() {
     const mo = new MutationObserver(rewireLive);
     mo.observe(host, { childList: true });
 
+    // #368 fix-wave finding: `.map-stack-tl` can now reposition at runtime
+    // (app.css's banner-clearance rule, `:has(.banner-area .banner)`)
+    // whenever `.banner-area` gains or loses a rendered banner — a
+    // `childList` mutation on `.banner-area`, not a resize of the sheet, the
+    // live view, or the bar's own box (the only three things this effect
+    // otherwise watches). Without an observer for it, `apply()` never
+    // re-runs on that trigger, so the `mapStackBottom` it reads stays
+    // STALE at whatever it was the last time something ELSE happened to
+    // call `apply()` — measured live (no plan, Planen tab, 375x667): the bar
+    // rendered fully OVERLAPPING `.map-stack-tl`'s new, lower position
+    // (1837.7px² measured overlap) instead of either clearing it or
+    // suppressing, until an unrelated resize forced a fresh read. `.banner-
+    // area` lives OUTSIDE `host` (a sibling of `.map-area` under
+    // `.app-shell`, not inside the MapView wrapper the observer above is
+    // scoped to), so it needs its own top-level query rather than
+    // piggy-backing on that one, which only ever sees LiveView mount/unmount
+    // (`childList` on `host`).
+    let bannerMo: MutationObserver | null = null;
+    const bannerAreaEl = document.querySelector<HTMLElement>('.banner-area');
+    if (bannerAreaEl) {
+      bannerMo = new MutationObserver(() => apply());
+      bannerMo.observe(bannerAreaEl, { childList: true });
+    }
+
     // Re-applies whenever the BAR's own box changes size — the first real
     // label paint (async, see the `barHeight` comment inside `apply` above)
     // and every suppress/un-suppress toggle (`display: none` <-> real box)
@@ -317,6 +341,7 @@ export default function ScaleBar() {
       mo.disconnect();
       liveRo?.disconnect();
       sheetRo?.disconnect();
+      bannerMo?.disconnect();
       barRo?.disconnect();
     };
   }, [isWide]);

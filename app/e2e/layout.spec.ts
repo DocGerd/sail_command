@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { startPreview } from './helpers';
+import { startPreview, mapReady } from './helpers';
 
 // Responsive shell layout (#24). Below 1024px the panel is a bottom-sheet
 // overlay on a full-viewport map; at >=1024px it becomes a ~1/3-width side
@@ -39,61 +39,6 @@ function elementDescriptionAt(page: Page, x: number, y: number): Promise<string>
     },
     [x, y] as [number, number],
   );
-}
-
-// #253 fix-up pattern, duplicated from datalayers.spec.ts/compass.spec.ts
-// (neither exports it, and helpers.ts is out of this change's file scope —
-// worth promoting to helpers.ts in a follow-up so the copies can't drift).
-// Needed below so `context.setOffline(true)` cannot ALSO trip a genuine
-// `mapError` banner (basemap tiles still in flight when the network cuts) —
-// that's a second, unrelated banner stacking on top of the one the #368 test
-// means to repro, which would silently defeat its single-banner clearance.
-async function installMapHandle(page: Page): Promise<boolean> {
-  return page.evaluate(() => {
-    const el = document.querySelector('.maplibregl-map');
-    if (!el) return false;
-    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
-    if (!key) return false;
-    let f = (el as unknown as Record<string, { memoizedState?: unknown; return?: unknown }>)[key];
-    while (f) {
-      let h = f.memoizedState as { memoizedState?: unknown; next?: unknown } | undefined;
-      let guard = 0;
-      while (h && guard++ < 60) {
-        const v = h.memoizedState as { getBearing?: unknown; project?: unknown } | undefined;
-        if (v && typeof v.getBearing === 'function' && typeof v.project === 'function') {
-          (window as unknown as Record<string, unknown>).__scE2eMap = v;
-          return true;
-        }
-        h = h.next as typeof h;
-      }
-      f = f.return as typeof f;
-    }
-    return false;
-  });
-}
-
-type ReadyMap = {
-  loaded: () => boolean;
-  getStyle: () => { sources: Record<string, unknown> };
-  isSourceLoaded: (id: string) => boolean;
-};
-
-async function mapReadyState(page: Page): Promise<string> {
-  if (!(await installMapHandle(page))) return 'no-map-handle';
-  return page.evaluate(() => {
-    const map = (window as unknown as { __scE2eMap?: ReadyMap }).__scE2eMap;
-    if (!map) return 'handle-lost';
-    if (!map.loaded()) {
-      const pending = Object.keys(map.getStyle().sources).filter((id) => !map.isSourceLoaded(id));
-      return `not-loaded (pending sources: ${pending.join(', ') || 'none — style still parsing'})`;
-    }
-    return 'loaded';
-  });
-}
-
-/** Gate a spec on a map that has actually rendered, reporting WHY if it hasn't. */
-async function mapReady(page: Page): Promise<void> {
-  await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
 }
 
 test('responsive layout: side panel on wide screens, bottom sheet on narrow', async ({ page }) => {
@@ -295,9 +240,17 @@ for (const viewport of [
       // the checkbox. A `.toBe(true)` boolean here would collapse "hit the
       // banner" and "hit nothing at all" into the same failure — polling the
       // description instead names exactly which element is in the way.
+      // Positive match, not just `.not.toMatch(/banner-message/)`: the
+      // banner is `<div class="banner banner-warning"><span
+      // class="banner-message">`, so a hit resolving to the flex CONTAINER
+      // (e.g. after a padding/justification change, or a shorter dictionary
+      // string leaving the checkbox's x under the container's free space)
+      // would read as `DIV.banner.banner-warning` — matches neither
+      // `/banner-message/` NOR the checkbox, but would pass the negative
+      // form while the control stays intercepted.
       await expect
         .poll(() => elementDescriptionAt(page, x, y), { timeout: 10_000 })
-        .not.toMatch(/banner-message/);
+        .toMatch(/^INPUT\b/);
 
       // DoD's own phrasing: measured overlap between the two clusters is 0.
       // A second, independent signal from the same fix (top offset moved,

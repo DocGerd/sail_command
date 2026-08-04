@@ -138,8 +138,16 @@ select {
    same way: moving the LOWER tier's cluster clear of the banner's footprint
    when one is actually rendered, never by touching either element's
    z-index — see the dedicated rule above `.compass-control`'s section
-   below (this one Tier 3-vs-Tier 2 pair, not a repo-wide policy: nothing
-   else in Tier 2 shares this narrow-layout collision with Tier 3 today).
+   below. NOT a repo-wide policy, and NOT the only Tier-2/Tier-3 pair in this
+   band: `.ais-status` sits in the SAME `top: 3.5rem` row and is ALSO
+   buried by any rendered banner — a pre-existing, already-documented
+   residual (see that rule's own "#208 review R3-2" comment) deliberately
+   left unfixed because it is `pointer-events: none` (a legibility loss, not
+   a hit-test one — nothing becomes unclickable) and because chasing it
+   there was explicitly deferred rather than rushed. #368 fixes the
+   HIT-TEST pair (`.map-stack-tl`/`.route-layer-controls`, both real click
+   targets) and deliberately does not extend to `.ais-status` for the same
+   deferred reason.
 
    Tier 3 — SHELL CHROME (z-index: 3). The user must always be able to read
    or reach these; nothing on the map ever outranks them:
@@ -635,7 +643,9 @@ select {
    NAMED COUPLING: `top` mirrors .route-layer-controls above (3.5rem to clear
    the narrow-layout .app-header, 0.75rem on wide) and `left: 0.5rem` mirrors
    its `right: 0.5rem`. The 1024px breakpoint that switches them is the SAME
-   value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY — change both together.
+   value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY AND the #368
+   `@media not (min-width: 1024px)` banner-clearance rule below (its own
+   comment) — change all three together.
    The column itself is pointer-events:none so the inter-control gap never
    swallows a map tap; each child re-enables them.
    `z-index: 2` is Tier 2 ("map chrome" — see the tier-order comment above
@@ -678,17 +688,19 @@ select {
   pointer-events: auto;
 }
 
-/* #368: on narrow layouts `.banner-area` is a full-width Tier-3 overlay
-   sitting directly above these Tier-2 clusters' shared `top: 3.5rem` — with
-   any banner shown, it overlaps that 56px top edge. The tier order does NOT
-   fix this: Tier 3 correctly wins BOTH the paint and the hit test there, so
-   the banner intercepts taps meant for the toggles underneath it (measured:
+/* #368 (NARROWED, not closed — see the residual band below): on narrow
+   layouts `.banner-area` is a full-width Tier-3 overlay sitting directly
+   above these Tier-2 clusters' shared `top: 3.5rem` — with any banner shown,
+   it overlaps that 56px top edge. The tier order does NOT fix this: Tier 3
+   correctly wins BOTH the paint and the hit test there, so the banner
+   intercepts taps meant for the toggles underneath it (measured:
    `elementFromPoint` over the depth checkbox resolved to
    `SPAN.banner-message`) — a same-tier-style z-index bump would only change
    which element loses, leaving the hit test wrong either way. The real fix
    is moving the lower-priority cluster clear of the banner's footprint.
    `:has()` detects an ACTUALLY rendered banner — `.banner-area` is always in
    the DOM but 0-height and childless when none is active.
+
    HOW TALL A PUSH — this is not a single-banner number: the issue's own
    report measured ONE banner (offline, 48px tall, bottom edge 96px), but
    this repo's real e2e environment (a fresh browser context/profile) and,
@@ -701,8 +713,17 @@ select {
    no explicit setOffline() call at all). Measured together (live preview,
    390x844, `context.setOffline(true)` after the SW finished installing):
    offlineReady 48px + 2px `.banner-area` gap + offline-warning 48px = 98px
-   total, bottom edge at `48 (banner-area's own top) + 98 = 146px`. `9.75rem`
-   (156px) clears that with a 10px margin.
+   total, bottom edge at `48 (banner-area's own top) + 98 = 146px`; `9.75rem`
+   (156px) is the chosen push target FOR THAT two-banner case, with a 10px
+   margin ABOVE 146px — but that margin is a property of the TARGET, not of
+   what any given viewport height actually resolves to (see the clamp's
+   FLOOR/CEILING behaviour below): the flat 10px figure only describes the
+   band where the clamp reaches its ceiling at all (H >= 675.6px, derived
+   below). Below that height the resolved push is LESS than 9.75rem, and the
+   real margin over 146px is `(0.45*H - 148) - 146 + 156`... restated simply:
+   margin(H) = clamp(H) - 146, which is negative (still intercepted) below
+   roughly 636px — see the residual band below for the exact numbers.
+
    WHY IT MUST BE BOUNDED, NOT A FLAT 9.75rem — a first attempt at this rule
    pushed `top` to a flat `9.75rem` unconditionally and re-derived
    `max-height` from it (preserving the NAMED COUPLING bottom edge,
@@ -720,28 +741,93 @@ select {
    red). `clamp()` fixes this without inventing a breakpoint: it resolves to
    the base `3.5rem` (no push at all) whenever the banner-inclusive push
    would leave less than a `140px` floor above the bottom edge, and to the
-   full `9.75rem` once there's room to spare. `140px` is picked to resolve
-   EXACTLY `3.5rem` at both tested short-landscape heights (390 -> 27.5px of
-   slack before floor, 360 -> 14px) and EXACTLY `9.75rem` at both tested
-   portrait heights (844 -> 231.8px of slack, 740 -> 185px) — i.e. short
-   landscape falls back to the UNFIXED overlap (a real residual gap: #368's
-   own DoD only requires the two portrait viewports it measured, and short
-   landscape with a banner present stays exactly as overlapping as before
-   this PR, no better and no worse — a real second fix, likely a genuinely
-   different mechanism given the compass's own fixed-size floor, is left for
-   a follow-up rather than attempted here). `--sc-banner-clear-top` holds the
-   clamped value ONCE so `top` and `max-height` (its own re-derivation, same
-   NAMED COUPLING requirement as the base rules) can't drift apart from each
-   other the way the flat-9.75rem attempt didn't need to (nothing to drift,
-   only one number) but a future edit easily could. Wide (>=1024px) needs no
-   such rule: there `.banner-area` becomes a `position: static` grid item
+   full `9.75rem` once there's room to spare — i.e. the clamped middle TERM
+   is `0.45*H - 148` (derived from `100dvh - 55vh - 0.5rem - 140px`, H in
+   px), which is what the numbers below actually are.
+
+   `140px`'s OWN derivation (a budget, not a fitted constant): the compass
+   needs `2.75rem` (44px, `.compass-control .compass-btn`) + `0.5rem` column
+   gap (8px, `.map-stack-tl`'s own `gap`) + a minimum SCROLLABLE toggle
+   budget the base `.map-stack-tl` rule's own comment already accepts at its
+   tightest tested viewport (~60px) = ~112px, plus ~28px of extra headroom.
+   Caveat, not a contradiction: in the FLOORED branch (short landscape, base
+   `top: 3.5rem` applies, this rule contributes nothing) the base rule's OWN
+   budget is `0.45*H - 64` (from `100dvh - 3.5rem - 55vh - 0.5rem`), which is
+   111.5px at H=390 — BELOW this 140px figure. That is pre-existing base
+   behaviour this rule doesn't touch; `140px` is only ever a floor on the
+   budget WHILE this rule's own middle branch is active.
+
+   The clamp's branch boundaries, and what they mean at real heights (H in
+   px, all at 375px width; the middle term `0.45*H - 148` is what the clamp
+   compares against its 56px/156px bounds — NOT "slack to a threshold",
+   which is the DISTANCE from that term to whichever bound is nearest):
+     - Floor engages (resolves to base `3.5rem`, no push) at H <= 453.3px.
+       390 -> middle term 27.5, i.e. 28.5px BELOW the 56px floor bound.
+       360 -> middle term 14, i.e. 42px BELOW the 56px floor bound.
+     - Ceiling engages (resolves to full `9.75rem`) at H >= 675.6px.
+       844 -> middle term 231.8, i.e. 75.8px ABOVE the 156px ceiling bound.
+       740 -> middle term 185, i.e. 29px ABOVE the 156px ceiling bound.
+     - BETWEEN 453.3px and 675.6px the push is PARTIAL (neither bound), and
+       narrower than either measured DoD viewport — 375x667 (H=667) lands in
+       this band and is the one point inside it this repo actually tests
+       (`compass.spec.ts`'s dedicated #368 fix-wave test): push resolves to
+       152.15px, clearing the two-banner 146px bottom edge by ~14px (the
+       checkbox itself, not the whole cluster, since it sits `top + 8px`
+       down) — a real, PASSING point inside the band, not an assumed one.
+
+   RESIDUAL — narrower than "portrait clears it": below ~636px tall (where
+   the two-banner clearance need, `top >= 146` i.e. H >= 653.3, stops being
+   met even by the partial push) the checkbox is STILL intercepted with two
+   banners up. Measured at 320x568 (a width this repo already treats as
+   supported — #277's own regression test runs there): push resolves to
+   107.6px, checkbox spans 115.6-155.6px, and `elementFromPoint` at its
+   centre still resolves to the banner — NOT fixed here, alongside short
+   landscape (844x390/740x360, unconditionally unfixed per the floor branch
+   above) and a THIRD simultaneous banner at any height (the SAME accepted
+   non-guarantee already documented for `.app-tabs` in the tier-order
+   comment above `.app-header`).
+
+   THE TRADE THIS SPENDS — disclosed, not hidden in a test comment: the push
+   moves `.map-stack-tl`'s RENDERED bottom edge down by roughly the same
+   amount `top` moves (content already filling the base budget keeps filling
+   the smaller one too), and `ScaleBar`'s own `ceiling` (ScaleBar.tsx,
+   #208 NEW-3) is computed from that same rendered bottom — so at 375x667,
+   the viewport `OCCLUSION_VIEWPORTS` (compass.spec.ts) marks
+   `neverSuppress: true` for, an offline user now sees the scale bar honestly
+   SUPPRESS rather than either overlap it or squeeze the toggles further to
+   avoid that. Measured live at a THIRD portrait height, 360x740 (no existing
+   `neverSuppress` assertion covers it, so nothing broke there, but it is the
+   same trade): also suppresses with two banners up on the Planen tab; the
+   other DoD-measured height, 390x844, does not (matches its own
+   `neverSuppress: true` still holding). Investigated and accepted, not a bug
+   routed around: neither
+   loosening the push (helps nothing — content already fills the tighter
+   budget, so MORE room only grows the rendered bottom further) nor
+   tightening it further (squeezes the just-fixed toggles instead, trading
+   one Tier-2 control's usability for another's) does better than this
+   trade, and the scale bar is Tier 0 ("present unless something more
+   important needs the space" — the tier principle above `.app-header`) next
+   to two real Tier-2/3 controls. Pinned, not left undisclosed: the SAME
+   `compass.spec.ts` test that exercises the 667px partial-push point above
+   also asserts this suppression explicitly. A genuinely separate bug was
+   found and fixed alongside this investigation, in ScaleBar.tsx: it had no
+   observer on `.banner-area` mounting/unmounting a banner, so its ceiling
+   calculation went STALE and the bar briefly rendered fully OVERLAPPING
+   `.map-stack-tl` instead of cleanly suppressing — see that file's own
+   comment on the `MutationObserver` this rule's existence now requires.
+
+   `--sc-banner-clear-top` holds the clamped value ONCE so `top` and
+   `max-height` (its own re-derivation, same NAMED COUPLING requirement as
+   the base rules) can't drift apart from each other. Wide (>=1024px) needs
+   no such rule: there `.banner-area` becomes a `position: static` grid item
    (its own wide-layout rule) and no longer overlaps the map at all, so this
-   whole block is scoped to the narrow layout only. Scope: portrait clears
-   the measured 1- AND 2-banner collision (#368); short landscape is the
-   documented residual above, and a THIRD simultaneous banner anywhere is the
-   SAME accepted non-guarantee already documented for `.app-tabs` in the
-   tier-order comment above `.app-header` — neither attempted here. */
-@media (max-width: 1023.98px) {
+   whole block is scoped to the narrow layout only — via `not (min-width:
+   1024px)` rather than a separate `max-width` figure, so there is no
+   fractional hairline (`1023.98px`-to-`1024px`) neither query would match;
+   this is a THIRD place sharing the 1024px constant alongside
+   `.map-stack-tl`'s own NAMED COUPLING note and `lib/useWideLayout.ts`'s
+   `WIDE_LAYOUT_QUERY` — change all three together. */
+@media not (min-width: 1024px) {
   .app-shell:has(.banner-area .banner) .route-layer-controls,
   .app-shell:has(.banner-area .banner) .map-stack-tl {
     --sc-banner-clear-top: clamp(3.5rem, calc(100dvh - 55vh - 0.5rem - 140px), 9.75rem);
