@@ -37,11 +37,16 @@
   // entirely in favor of a declared TypeScript constant (see that file's own
   // header comment), so it no longer needs node builtins and lives back
   // under the ordinary browser-safe tsconfig.app.json program.
+  // subPathMeta.test.ts (#318 fix-wave) imports vite.config.ts, which is only
+  // typed cleanly with node globals available — same reason as
+  // changelogFragmentsFs.test.ts above; see tsconfig.app.json's exclude
+  // comment for the TS2578 mechanism this avoids.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",
-    "src/**/changelogFragmentsFs.test.ts"
+    "src/**/changelogFragmentsFs.test.ts",
+    "src/**/subPathMeta.test.ts"
   ]
 }

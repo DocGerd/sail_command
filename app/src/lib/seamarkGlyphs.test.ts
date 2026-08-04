@@ -73,10 +73,43 @@ describe('seamarkImageId (family + the fields the glyph actually varies on)', ()
     );
   });
 
-  // The other buckets draw no topmark, so their glyph does not vary on
+  // #307: spar now draws a topmark too (category-derived, same as pillar),
+  // so it must separate categories exactly like the pillar test above — a
+  // grey spar mark's port and starboard image ids must differ, or the cache
+  // under-keys and one registered image serves both sides of the channel.
+  it('lateral spar: separates categories, because the topmark differs by side', () => {
+    const port = seamarkImageId({
+      seamarkType: 'buoy_lateral',
+      shape: 'spar',
+      colour: 'grey',
+      category: 'port',
+    });
+    const stbd = seamarkImageId({
+      seamarkType: 'buoy_lateral',
+      shape: 'spar',
+      colour: 'grey',
+      category: 'starboard',
+    });
+    expect(port).not.toBe(stbd);
+    // stake/pile/pole all bucket to 'spar' and must share its category-suffixed id.
+    expect(
+      seamarkImageId({
+        seamarkType: 'buoy_lateral',
+        shape: 'stake',
+        colour: 'grey',
+        category: 'port',
+      }),
+    ).toBe(port);
+    // Untagged category still resolves to a stable id (it draws a bare body).
+    expect(seamarkImageId({ seamarkType: 'buoy_lateral', shape: 'spar', colour: 'grey' })).toBe(
+      'seamark-lateral-spar-grey-unknown',
+    );
+  });
+
+  // The remaining buckets draw no topmark, so their glyph does not vary on
   // category and their ids must not fragment the image cache by it.
-  it('lateral can/conical/spar/spherical ids stay category-independent', () => {
-    for (const shape of ['can', 'conical', 'spar', 'spherical']) {
+  it('lateral can/conical/spherical ids stay category-independent', () => {
+    for (const shape of ['can', 'conical', 'spherical']) {
       const a = seamarkImageId({ seamarkType: 'buoy_lateral', shape, colour: 'red' });
       const b = seamarkImageId({
         seamarkType: 'buoy_lateral',
@@ -235,12 +268,15 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   // 2 port untagged, 2 starboard white, and one PORT mark green) — every one
   // of which a colour rule would put on the wrong side of the channel.
   //
-  // Reach, stated honestly: only the 11 of those in the PILLAR bucket are
-  // actually corrected here (both grey — port 7, starboard 4), because pillar
-  // is the only bucket that draws a topmark at all. The other 40 are spars and
-  // one can, still carry no topmark, and still rest on colour (#307). The
-  // green-tagged PORT mark below is a pillar-shaped stand-in that pins the
-  // RULE; the real one in the data is a can and is not among the 11.
+  // Reach, updated by #307: the pillar bucket's 11 (port 7, starboard 4,
+  // both grey) and the spar bucket's 39 (18 port tagged black, 8 port / 5
+  // starboard grey, 2 starboard white, 2 port / 4 starboard untagged) of the
+  // 51 are now corrected — every bucket that draws a topmark keys it off
+  // `category`. Only the one remaining can (the PORT mark tagged green) is
+  // untouched, and by design: a can's SILHOUETTE already indicates port
+  // regardless of its colour tag, unlike a spar or pillar's uniform body.
+  // The green-tagged PORT mark below is a pillar-shaped stand-in that pins
+  // the RULE; the real one in the data is that can.
   it('derives the topmark from category, not colour (a green PORT mark still gets a can)', () => {
     const segs = seamarkSegments({
       seamarkType: 'buoy_lateral',
@@ -268,6 +304,90 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
         fill: '#888888',
       },
     ]);
+  });
+
+  // #307: spar (and stake/pile/pole, which bucket to the same silhouette)
+  // is the 524-mark majority of laterals and, before this, carried NO
+  // topmark at all — its side rested on colour alone. Geometry hand-derived
+  // from the tighter canvas budget above a spar's thin pole body (see the
+  // LATERAL_SPAR_CAN_TOPMARK/_CONE_TOPMARK docblock in seamarkGlyphs.ts):
+  // body {10,5,4,16}, no outline (unchanged, #307 is topmark-only scope);
+  // topmark box {9,1,6,3} — 1 unit of empty canvas above the body (S1) and
+  // 6 vs. the body's 4 (S2 = 2, contrast in the WIDER direction this time —
+  // see the S2 comment further down for why direction is shape-dependent).
+  const SPAR_BODY = (fill: string) => [{ kind: 'rect', x: 10, y: 5, w: 4, h: 16, fill }] as const;
+  const SPAR_CAN_TOPMARK = (fill: string) =>
+    [
+      { kind: 'rect', x: 9, y: 1, w: 6, h: 3, fill },
+      {
+        kind: 'line',
+        points: [
+          { x: 9.5, y: 1.5 },
+          { x: 14.5, y: 1.5 },
+          { x: 14.5, y: 3.5 },
+          { x: 9.5, y: 3.5 },
+          { x: 9.5, y: 1.5 },
+        ],
+        stroke: '#f2f2f2',
+        width: 1,
+      },
+    ] as const;
+  const SPAR_CONE_POINTS = [
+    { x: 12, y: 1 },
+    { x: 15, y: 4 },
+    { x: 9, y: 4 },
+  ];
+  const SPAR_CONE_TOPMARK = (fill: string) =>
+    [
+      { kind: 'polygon', points: SPAR_CONE_POINTS, fill },
+      {
+        kind: 'line',
+        points: [...SPAR_CONE_POINTS, SPAR_CONE_POINTS[0]],
+        stroke: '#f2f2f2',
+        width: 1,
+      },
+    ] as const;
+
+  it('lateral spar, port: R1001 CAN topmark (previously no topmark at all)', () => {
+    const segs = seamarkSegments({
+      seamarkType: 'buoy_lateral',
+      shape: 'spar',
+      colour: 'red',
+      category: 'port',
+    });
+    expect(segs).toEqual([...SPAR_BODY('red'), ...SPAR_CAN_TOPMARK('red')]);
+  });
+
+  it('lateral spar, starboard: R1001 CONE point up (previously no topmark at all)', () => {
+    const segs = seamarkSegments({
+      seamarkType: 'buoy_lateral',
+      shape: 'spar',
+      colour: 'green',
+      category: 'starboard',
+    });
+    expect(segs).toEqual([...SPAR_BODY('green'), ...SPAR_CONE_TOPMARK('green')]);
+  });
+
+  // stake/pile/pole all bucket to the same 'spar' silhouette (bucketShape)
+  // and must draw the identical topmark.
+  it('lateral stake/pile/pole shapes draw the same spar topmark', () => {
+    for (const shape of ['stake', 'pile', 'pole']) {
+      const segs = seamarkSegments({
+        seamarkType: 'buoy_lateral',
+        shape,
+        colour: 'red',
+        category: 'port',
+      });
+      expect(segs, shape).toEqual([...SPAR_BODY('red'), ...SPAR_CAN_TOPMARK('red')]);
+    }
+  });
+
+  // Same nav-safety rule as the pillar bucket: an untagged category must
+  // never guess a side.
+  it('lateral spar with an untagged category draws NO topmark (never a guessed side)', () => {
+    const segs = seamarkSegments({ seamarkType: 'buoy_lateral', shape: 'spar', colour: 'red' });
+    expect(segs).toEqual([...SPAR_BODY('red')]);
+    expect(segs.some((s) => s.kind === 'polygon')).toBe(false);
   });
 
   // #165 (nav-safety): cardinal glyphs get IALA R1001 Ed 2.0 Tables 5-6 colour
@@ -407,6 +527,13 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
       label: `lateral ${shape}`,
       props: { seamarkType: 'buoy_lateral', shape, colour: 'green', category: 'starboard' },
     })),
+    // #307: the starboard case above already exercises the spar CONE, but
+    // the CAN topmark (port) has its own, differently-shaped geometry and
+    // needs its own on-canvas check.
+    {
+      label: 'lateral spar port',
+      props: { seamarkType: 'buoy_lateral', shape: 'spar', colour: 'red', category: 'port' },
+    },
     { label: 'safe water', props: { seamarkType: 'buoy_safe_water', colour: 'red;white' } },
     { label: 'special purpose', props: { seamarkType: 'buoy_special_purpose', colour: 'yellow' } },
     {
@@ -527,6 +654,25 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
   // that extends (3/2)·sin45° ≈ 1.06 in y, so worst-case ink lands at y ≈ 8.06
   // for a real clearance of ≈ 0.94 (see the note in specialPurposeSegments —
   // this is the one place S1's point-based reading of 2 overstates the ink).
+  //
+  // #308: the body itself now also carries the near-white bodyOutline() every
+  // other multi-band family (cardinal, isolated danger, lateral pillar/spar)
+  // already has — a `colour=black` special-purpose body (133 of 703 in the
+  // committed pull) was otherwise a solid INK rect on transparent canvas,
+  // invisible against the dark-theme basemap the same way the pre-#306 X was.
+  const SPECIAL_BODY_OUTLINE = {
+    kind: 'line',
+    points: [
+      { x: 7.5, y: 9.5 },
+      { x: 16.5, y: 9.5 },
+      { x: 16.5, y: 20.5 },
+      { x: 7.5, y: 20.5 },
+      { x: 7.5, y: 9.5 },
+    ],
+    stroke: OUT,
+    width: 1,
+  } as const;
+
   it('special-purpose with no colour tag: single yellow-fallback band + keylined X topmark', () => {
     const segs = seamarkSegments({ seamarkType: 'buoy_special_purpose' });
     // A stroked glyph takes its keyline as a wider near-white UNDERLAY on the
@@ -542,11 +688,21 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     ];
     expect(segs).toEqual([
       { kind: 'rect', x: 7, y: 9, w: 10, h: 12, fill: 'yellow' },
+      SPECIAL_BODY_OUTLINE,
       { kind: 'line', points: stroke1, stroke: OUT, width: 3 },
       { kind: 'line', points: stroke2, stroke: OUT, width: 3 },
       { kind: 'line', points: stroke1, stroke: INK, width: 1.5 },
       { kind: 'line', points: stroke2, stroke: INK, width: 1.5 },
     ]);
+  });
+
+  // #308: the actual reported defect — a solid black body — gets the same
+  // keyline, making it legible instead of a near-invisible box on the
+  // dark-theme basemap.
+  it('special-purpose, black-tagged: body gets a near-white keyline for dark-basemap contrast', () => {
+    const segs = seamarkSegments({ seamarkType: 'buoy_special_purpose', colour: 'black' });
+    expect(segs[0]).toEqual({ kind: 'rect', x: 7, y: 9, w: 10, h: 12, fill: 'black' });
+    expect(segs[1]).toEqual(SPECIAL_BODY_OUTLINE);
   });
 
   // R1001 §2.3: black body with broad red band(s), topmark TWO black spheres
@@ -696,6 +852,17 @@ describe('seamarkSegments (pure glyph geometry, 24x24 icon box)', () => {
     {
       label: 'lateral pillar starboard (cone)',
       props: { seamarkType: 'buoy_lateral', colour: 'green', category: 'starboard' },
+    },
+    // #307: the tighter spar budget (gap 1, width contrast 2) sits right at
+    // both S1/S2 thresholds — this is exactly the row that would catch a
+    // regression squeezing the spar topmark any further.
+    {
+      label: 'lateral spar port (can)',
+      props: { seamarkType: 'buoy_lateral', shape: 'spar', colour: 'red', category: 'port' },
+    },
+    {
+      label: 'lateral spar starboard (cone)',
+      props: { seamarkType: 'buoy_lateral', shape: 'spar', colour: 'green', category: 'starboard' },
     },
     { label: 'cardinal north', props: { seamarkType: 'buoy_cardinal', category: 'north' } },
     { label: 'cardinal west', props: { seamarkType: 'buoy_cardinal', category: 'west' } },
