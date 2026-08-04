@@ -1,20 +1,36 @@
-// TZ pinned BEFORE any other import (matching PlannerPanel.dst.test.tsx's
-// convention): the DST-transition tests below hand-derive expected strings
-// for specific Europe/Berlin wall-clock instants, so they are only
-// deterministic if formatSliderTime's ambient Date/Intl timezone is fixed
-// to that same zone regardless of the host/CI machine's own TZ (measured:
-// CI runs UTC, this repo's dev sandbox runs Europe/Berlin, and the two
-// disagree by exactly the DST offset — reproduced locally with `TZ=UTC npm
-// --prefix app run test -- src/lib/format.test.ts`). Assigning
-// `process.env.TZ` LATER (e.g. inside a test body) does not reliably
-// re-anchor Node's already-initialized Intl/Date internals; setting it here,
-// before `vitest`/`./format` are imported, is what makes it take effect for
-// the whole file. Every other test in this file (formatTime, formatDateTime,
-// the non-DST formatSliderTime tiers) already builds both its input AND its
-// expected string from the SAME local-time `Date` constructor, so those stay
-// correct under any TZ this pin could plausibly be — this only makes the
-// DST-specific hand-derived literals stop depending on which machine runs
-// them.
+// TZ pin: the DST-transition tests below hand-derive expected strings for
+// specific Europe/Berlin wall-clock instants, so they are only deterministic
+// if formatSliderTime's ambient Date/Intl timezone is fixed to that same
+// zone regardless of the host/CI machine's own TZ (measured: CI runs UTC,
+// this repo's dev sandbox runs Europe/Berlin, and the two disagree by
+// exactly the DST offset — reproduced locally with `TZ=UTC npm --prefix app
+// run test -- src/lib/format.test.ts`).
+//
+// The actual requirement is narrower than "before the imports": this
+// assignment must run before any Date/Intl call in this file EXECUTES, not
+// merely before any import STATEMENT. vitest registers every `describe`/
+// `it` callback synchronously while this file's module body evaluates, but
+// the callback BODIES — the only place a Date/Intl call in this file lives —
+// run in a later phase, strictly after module evaluation (i.e. every
+// top-level statement, including this one) has finished; `format.ts` itself
+// has no top-level Date/Intl call either. So any top-level position for this
+// assignment satisfies the real requirement — CONFIRMED, not assumed: moving
+// it to after the imports below, and separately to the very last line of
+// this file after every describe block, both stayed 37/37 green under
+// ambient UTC. Position among top-level statements is NOT what makes this
+// work; do not read the position of the line below as load-bearing.
+//
+// What WOULD break it: assigning `process.env.TZ` from INSIDE a test body
+// (an `it()` callback) instead of at the top level. Test bodies run in that
+// same later phase, in file order — a test declared BEFORE the assignment
+// would already have executed its Date/Intl calls under whatever TZ was
+// ambient before the assignment ran, unaffected by it. Never move this pin
+// into a test.
+//
+// The one thing that WOULD invalidate "any top-level position is safe": a
+// future top-level (module-evaluation-time, not inside a describe/it
+// callback) Date/Intl call added ABOVE this assignment in this file. None
+// exists today — if one is ever added, this assignment must move above it.
 // @ts-expect-error process is not typed in browser context
 process.env.TZ = 'Europe/Berlin';
 
