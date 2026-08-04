@@ -22,6 +22,13 @@ import { startPreview } from './helpers';
 // fields (`violatedDirective`, `blockedURI`) rather than collapsing to
 // true/false, so a failure names the offending directive and URI directly
 // instead of producing an inscrutable timeout.
+//
+// #320: a second disallowed-origin probe uses a glyph-.pbf-SHAPED path,
+// pinning that connect-src (not font-src) is what judges it — see the
+// comment at that probe below for exactly what it does and doesn't prove.
+// labels.spec.ts covers the complementary, harder half of #320: that the
+// app's own real (same-origin, allowed) glyph fetch actually produces a
+// rendered label rather than a silent library-internal fallback.
 
 interface CspViolationRecord {
   violatedDirective: string;
@@ -96,18 +103,39 @@ test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is 
       }
     });
 
+    // #320: a glyph-SHAPED path (same extension/segment shape MapLibre's
+    // glyph loader requests, load_glyph_range.ts:21) at the same disallowed
+    // origin, pinning WHICH directive judges it. This does not prove the
+    // app's own real glyph fetch (same-origin, allowed) goes through
+    // connect-src in production — that's established by reading
+    // load_glyph_range.ts's getArrayBuffer -> ajax.ts's fetch() call, plus
+    // the measured 'connect-src' violatedDirective when connect-src's
+    // 'self' is removed (see the PR description's mutation-check). What
+    // THIS probe pins is narrower and still real: a glyph-.pbf-shaped
+    // request is judged by connect-src, never font-src, so a future CSP
+    // edit that "moves" glyph coverage into font-src (the WRONG-FROM-THE
+    // START mental model #320 was filed to correct) fails this assertion
+    // instead of silently shipping.
+    await page.evaluate(async () => {
+      try {
+        await fetch('https://example.com/basemap-assets/fonts/Noto%20Sans%20Regular/0-255.pbf');
+      } catch {
+        // Expected to throw (CSP block) — see comment above.
+      }
+    });
+
     const violations = await page.evaluate(
       () => (window as unknown as WindowWithCspViolations).__cspViolations,
     );
 
-    // The example.com probe is the ONLY violation this test ever expects,
-    // anywhere in the page's lifetime — covering ordinary startup (basemap
-    // worker, glyphs, styles, images, manifest) as well as the Open-Meteo
-    // fetch above. A narrower filter that only inspected Open-Meteo and
-    // example.com (as an earlier revision of this spec did) would have
-    // silently passed through a startup violation on anything else — the
-    // PR's dominant risk direction (too tight), and exactly the shape its
-    // own B2 finding turned out to be (PR #316 review M2).
+    // The two example.com probes are the ONLY violations this test ever
+    // expects, anywhere in the page's lifetime — covering ordinary startup
+    // (basemap worker, glyphs, styles, images, manifest) as well as the
+    // Open-Meteo fetch above. A narrower filter that only inspected
+    // Open-Meteo and example.com (as an earlier revision of this spec did)
+    // would have silently passed through a startup violation on anything
+    // else — the PR's dominant risk direction (too tight), and exactly the
+    // shape its own B2 finding turned out to be (PR #316 review M2).
     const unexpectedViolations = violations.filter(
       (v) => blockedHostname(v.blockedURI) !== 'example.com',
     );
@@ -121,9 +149,13 @@ test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is 
     );
     expect(
       exampleComViolations,
-      `expected a connect-src violation for https://example.com/, got violations: ${JSON.stringify(violations)}`,
-    ).toHaveLength(1);
-    expect(exampleComViolations[0]?.violatedDirective).toBe('connect-src');
+      `expected connect-src violations for both example.com probes (bare + glyph-shaped path), got violations: ${JSON.stringify(violations)}`,
+    ).toHaveLength(2);
+    for (const v of exampleComViolations) {
+      expect(v.violatedDirective, `expected connect-src, got: ${JSON.stringify(v)}`).toBe(
+        'connect-src',
+      );
+    }
   } finally {
     server.kill();
   }

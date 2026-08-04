@@ -173,10 +173,22 @@ function cspMeta(): Plugin {
            wss://stream.aisstream.io — the two outbound third-party feeds
            (Open-Meteo forecasts over HTTPS, optional BYOK AIS over WSS) plus
            same-origin XHR/fetch (PMTiles range reads, SW, IndexedDB-adjacent
-           fetches). Restricts background requests only (fetch/XHR/WebSocket/
-           beacon) — top-level navigation, \`window.open\`, DNS-prefetch/
-           preconnect, and WebRTC are a separate, accepted residual (see
+           fetches, AND the basemap's glyph .pbf ranges — MapLibre loads glyph
+           ranges via \`getArrayBuffer\`/\`fetch\`,
+           node_modules/maplibre-gl/src/style/load_glyph_range.ts:21, which
+           connect-src gates like any other fetch; #320). Restricts
+           background requests only (fetch/XHR/WebSocket/beacon) —
+           top-level navigation, \`window.open\`, DNS-prefetch/preconnect,
+           and WebRTC are a separate, accepted residual (see
            docs/security-assurance-case.md's known-gaps table).
+         - font-src 'self' — NOT the glyph control (#320): this app has no
+           \`@font-face\` anywhere, so today this directive gates nothing
+           reachable. It stays as defence-in-depth against a future
+           \`@font-face\` addition and costs nothing; connect-src above is
+           what actually gates the basemap's glyph .pbf fetches. Confirmed by
+           e2e (csp.spec.ts's glyph-shaped disallowed-origin probe,
+           labels.spec.ts's real-glyph-pipeline assertion), not just this
+           comment.
          - script-src 'self', style-src 'self' — no inline script or injected
            \`<style>\` anywhere in the app or its maplibre-gl/pmtiles
            dependencies (grepped); React's \`style\` prop sets CSSOM properties
