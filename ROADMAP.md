@@ -13,7 +13,7 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.8.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.8.1**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
 ## Now — v0.9.0
@@ -29,10 +29,10 @@ triage — [#357](https://github.com/DocGerd/sail_command/issues/357) (assert
 the timeout budget against measured suite wall time, not just the heaviest
 per-test budget) and
 [#359](https://github.com/DocGerd/sail_command/issues/359) (restore the
-job-cap coupling check with a real YAML parse). A `v0.8.1` patch release
+job-cap coupling check with a real YAML parse). The `v0.8.1` patch release
 (documentation-only — correcting an overstated CHANGELOG claim from v0.8.0)
-is in flight alongside this and carries no milestone of its own, per this
-repo's patch-milestone exception: it doesn't move anything above.
+shipped on 2026-08-04 and carried no milestone of its own, per this repo's
+patch-milestone exception: it moved nothing above.
 
 ## Themes for the next year
 
