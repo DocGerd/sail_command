@@ -319,11 +319,27 @@ export default function ScaleBar() {
     // scoped to), so it needs its own top-level query rather than
     // piggy-backing on that one, which only ever sees LiveView mount/unmount
     // (`childList` on `host`).
+    // NAMED COUPLING with App.tsx (same convention as the `.live-view`/
+    // `.live-view-no-plan` coupling noted above): `.banner-area` is expected
+    // to exist unconditionally — `App.tsx:684` renders
+    // `<div className="banner-area">` with no gating condition, and React
+    // commits the whole tree before any effect (including this one) runs,
+    // so `bannerAreaEl` cannot be null today. The `if` guard is defence for
+    // if that ever stops being true (the wrapper made conditional, renamed,
+    // or moved) — the fail-open direction: a null here means the observer
+    // silently does not exist, and the symptom is the 1837.7px² overlap this
+    // fix exists to close, returning with NO signal anywhere. `console.warn`
+    // below is what leaves that signal (a fail-open control should leave a
+    // trace) rather than degrading silently a second time.
     let bannerMo: MutationObserver | null = null;
     const bannerAreaEl = document.querySelector<HTMLElement>('.banner-area');
     if (bannerAreaEl) {
       bannerMo = new MutationObserver(() => apply());
       bannerMo.observe(bannerAreaEl, { childList: true });
+    } else {
+      console.warn(
+        '[ScaleBar] .banner-area not found — banner-triggered map-chrome moves will not re-measure the scale bar (see App.tsx:684)',
+      );
     }
 
     // Re-applies whenever the BAR's own box changes size — the first real

@@ -644,7 +644,7 @@ select {
    the narrow-layout .app-header, 0.75rem on wide) and `left: 0.5rem` mirrors
    its `right: 0.5rem`. The 1024px breakpoint that switches them is the SAME
    value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY AND the #368
-   `@media not (min-width: 1024px)` banner-clearance rule below (its own
+   `@media (max-width: 1023.98px)` banner-clearance rule below (its own
    comment) — change all three together.
    The column itself is pointer-events:none so the inter-control gap never
    swallows a map tap; each child re-enables them.
@@ -702,13 +702,15 @@ select {
    the DOM but 0-height and childless when none is active.
 
    HOW TALL A PUSH — this is not a single-banner number: the issue's own
-   report measured ONE banner (offline, 48px tall, bottom edge 96px), but
-   this repo's real e2e environment (a fresh browser context/profile) and,
-   plausibly, a real first-launch user who loses signal shortly after
-   installing BOTH routinely show `.banner-area`'s OTHER inhabitant at the
-   same time: `ReloadPrompt`'s one-shot "offline ready" toast, which fires on
-   every FRESH service-worker install (i.e. every fresh profile — the "one
-   shot" is per install, not per session; CONFIRMED live in this repo's own
+   report measured ONE banner (offline, 48px tall at 390px WIDTH — this is a
+   measured single-line height, not a constant of the design; see the
+   wrapping caveat in the RESIDUAL section below), but this repo's real e2e
+   environment (a fresh browser context/profile) and, plausibly, a real
+   first-launch user who loses signal shortly after installing BOTH
+   routinely show `.banner-area`'s OTHER inhabitant at the same time:
+   `ReloadPrompt`'s one-shot "offline ready" toast, which fires on every
+   FRESH service-worker install (i.e. every fresh profile — the "one shot"
+   is per install, not per session; CONFIRMED live in this repo's own
    `#208: compass stays tappable...` landscape spec, which triggers it with
    no explicit setOffline() call at all). Measured together (live preview,
    390x844, `context.setOffline(true)` after the SW finished installing):
@@ -719,10 +721,12 @@ select {
    what any given viewport height actually resolves to (see the clamp's
    FLOOR/CEILING behaviour below): the flat 10px figure only describes the
    band where the clamp reaches its ceiling at all (H >= 675.6px, derived
-   below). Below that height the resolved push is LESS than 9.75rem, and the
-   real margin over 146px is `(0.45*H - 148) - 146 + 156`... restated simply:
-   margin(H) = clamp(H) - 146, which is negative (still intercepted) below
-   roughly 636px — see the residual band below for the exact numbers.
+   below). Below that height the resolved push is LESS than 9.75rem: the
+   CLUSTER's top edge clears the 146px two-banner bottom edge at
+   `0.45*H - 148 >= 146` -> H >= 653.3px; the CHECKBOX, sitting `top + 8px`
+   down (`.data-layer-controls`'s own `0.5rem` padding), clears at the
+   correspondingly lower `H >= 635.6px` — see the residual band below for
+   what happens under each threshold.
 
    WHY IT MUST BE BOUNDED, NOT A FLAT 9.75rem — a first attempt at this rule
    pushed `top` to a flat `9.75rem` unconditionally and re-derived
@@ -775,17 +779,26 @@ select {
        checkbox itself, not the whole cluster, since it sits `top + 8px`
        down) — a real, PASSING point inside the band, not an assumed one.
 
-   RESIDUAL — narrower than "portrait clears it": below ~636px tall (where
-   the two-banner clearance need, `top >= 146` i.e. H >= 653.3, stops being
-   met even by the partial push) the checkbox is STILL intercepted with two
-   banners up. Measured at 320x568 (a width this repo already treats as
-   supported — #277's own regression test runs there): push resolves to
-   107.6px, checkbox spans 115.6-155.6px, and `elementFromPoint` at its
-   centre still resolves to the banner — NOT fixed here, alongside short
-   landscape (844x390/740x360, unconditionally unfixed per the floor branch
-   above) and a THIRD simultaneous banner at any height (the SAME accepted
-   non-guarantee already documented for `.app-tabs` in the tier-order
-   comment above `.app-header`).
+   RESIDUAL — narrower than "portrait clears it": below the checkbox's own
+   H >= 635.6px threshold (derived above — NOT the cluster's H >= 653.3px;
+   the two are 8px apart and easy to conflate, so both are spelled out where
+   each applies) the checkbox is STILL intercepted with two banners up.
+   Measured at 320x568 (a width this repo already treats as supported —
+   #277's own regression test runs there): push resolves to 107.6px,
+   checkbox spans 115.6-155.6px, and `elementFromPoint` at its centre still
+   resolves to the banner — NOT fixed here, alongside short landscape
+   (844x390/740x360, unconditionally unfixed per the floor branch above), a
+   THIRD simultaneous banner at any height, and a TALLER banner at any
+   height (the SAME accepted non-guarantee already documented for
+   `.app-tabs` in the tier-order comment above `.app-header`): every number
+   in this comment assumes the measured 48px SINGLE-LINE banner height at
+   390px width — a German dictionary string wrapping to two lines (a real
+   possibility this comment does not rule out, same trigger class as the
+   `max-width: 9.5rem` rule's own "NOT invalidated lightly, but DOES get
+   invalidated" note on dictionary strings growing) adds ~22px to
+   `.banner-area`'s bottom edge with NO corresponding change to the push
+   (`--sc-banner-clear-top` is a function of viewport HEIGHT only), silently
+   reopening the interception at heights this comment marks as cleared.
 
    THE TRADE THIS SPENDS — disclosed, not hidden in a test comment: the push
    moves `.map-stack-tl`'s RENDERED bottom edge down by roughly the same
@@ -821,13 +834,28 @@ select {
    the base rules) can't drift apart from each other. Wide (>=1024px) needs
    no such rule: there `.banner-area` becomes a `position: static` grid item
    (its own wide-layout rule) and no longer overlaps the map at all, so this
-   whole block is scoped to the narrow layout only — via `not (min-width:
-   1024px)` rather than a separate `max-width` figure, so there is no
-   fractional hairline (`1023.98px`-to-`1024px`) neither query would match;
-   this is a THIRD place sharing the 1024px constant alongside
-   `.map-stack-tl`'s own NAMED COUPLING note and `lib/useWideLayout.ts`'s
-   `WIDE_LAYOUT_QUERY` — change all three together. */
-@media not (min-width: 1024px) {
+   whole block is scoped to the narrow layout only — matching this
+   stylesheet's EXISTING convention (an unconditional base rule overridden by
+   the wide-layout `@media (min-width: 1024px)` blocks elsewhere in this
+   file, mirrored by `lib/useWideLayout.ts`'s `WIDE_LAYOUT_QUERY`) rather
+   than the Media Queries Level 4 `not (min-width: 1024px)` boolean form
+   this rule tried first: that form parses as a syntax error under Level 3,
+   and a malformed
+   media query's failure mode is the WHOLE BLOCK silently dropped — not a
+   console error, nothing for CI to see — which would mean `top` stays
+   `3.5rem` and the entire #368 fix does not apply. `:has()` (this rule's
+   other dependency) shipped on WebKit EARLIER than MQ4 boolean/range syntax
+   did, so there is a real band of iOS Safari versions — this app's actual
+   audience — where `:has()` matches and this query would have been thrown
+   away. `max-width: 1023.98px` accepts a known, ACCEPTED trade instead: a
+   0.02px hairline (1023.98px-1024px) that no real viewport, device pixel
+   ratio, or zoom level lands on as a layout width, and whose failure mode —
+   if one ever did — is the PRE-fix behaviour for that one hairline width,
+   not a silently dropped fix. This is a THIRD place sharing the 1024px
+   constant alongside `.map-stack-tl`'s own NAMED COUPLING note and
+   `lib/useWideLayout.ts`'s `WIDE_LAYOUT_QUERY` — change all three
+   together. */
+@media (max-width: 1023.98px) {
   .app-shell:has(.banner-area .banner) .route-layer-controls,
   .app-shell:has(.banner-area .banner) .map-stack-tl {
     --sc-banner-clear-top: clamp(3.5rem, calc(100dvh - 55vh - 0.5rem - 140px), 9.75rem);
