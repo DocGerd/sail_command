@@ -59,7 +59,18 @@ deviate from it.
   percentages above are untouched (a scanning-only test file is
   coverage-neutral) and were correctly left unmeasured-again per that PR;
   only the count needed updating, verified via a real `npm --prefix app run
-  test` run: **1207 tests, 103 files** (2026-08-03). Meets the OpenSSF
+  test` run: **1207 tests, 103 files** (2026-08-03). Session 24 (2026-08-04)
+  merged four PRs (#380/#340 planner progress, #381/#378 route annotation
+  layers, #382/#368 banner clearance, #384/#324 second-rig overlay) that
+  together added test files (`app/src/lib/useBannerHeight.test.ts` among
+  them) and cases to several existing ones — the count is stale again by
+  more than a fixed delta this time, so it was re-measured rather than
+  hand-added: a real `npm --prefix app run test` run gives **1294 tests, 109
+  files** (2026-08-04). The coverage PERCENTAGES above are UNTOUCHED — they
+  were not re-measured this session (that needs `test:coverage`, a
+  substantially longer run) and a scanning-only or assertion-adding test
+  file is coverage-neutral to first order the same way PR #351's was; don't
+  infer a new percentage from this count. Meets the OpenSSF
   `test_statement_coverage80` criterion (≥80%) — it had simply never been
   measured before. `vite.config.ts`'s `coverage` block carries
   `thresholds.statements: 80` (#335) and `.github/workflows/coverage.yml`
@@ -240,13 +251,31 @@ deviate from it.
   rendered bottom edge. Before PR #374 nothing observed `.banner-area`
   mounting a banner, so that ceiling went stale and the bar rendered fully
   OVERLAPPING `.map-stack-tl` — 1837.7px² measured — rather than
-  suppressing. Fixed with a `MutationObserver` on `.banner-area`
-  (`{childList: true}`), disconnected on unmount, with a NAMED COUPLING
-  comment pointing at `App.tsx:684` which renders the wrapper unconditionally.
-  Any rule that moves `.map-stack-tl` also changes `ScaleBar`'s available
-  room — the two are connected only through that runtime-measured layout
-  value, invisible in the CSS, in the diff, and to any test that checks the
-  two components separately.
+  suppressing. PR #374 fixed this with a `MutationObserver` on `.banner-area`
+  (`{childList: true}`), disconnected on unmount. **PR #382 (#368) REMOVED
+  that observer**, subsumed rather than kept as a second redundant trigger:
+  `childList` fires on banner mount/unmount but is BLIND to a banner that
+  grows TALLER by wrapping to a second line (a longer German string) with no
+  child added or removed at all — exactly the residual `lib/useBannerHeight.ts`'s
+  shared `ResizeObserver` on `.banner-area` closes structurally, publishing
+  the real rendered height as the `--sc-banner-height` custom property on
+  `:root` (the same value `app.css`'s narrow-layout banner-clearance rule
+  now reads, replacing an earlier viewport-height CLAMP HEURISTIC that was
+  blind to actual banner count/height — see that rule's own comment).
+  ScaleBar.tsx now calls that SAME hook (its own call site, alongside
+  App.tsx's) purely to get an effect-rerun trigger — the hook's
+  `ResizeObserver` callback writes the CSS custom property SYNCHRONOUSLY,
+  before the `setState` that would otherwise schedule ScaleBar's re-render,
+  so by the time ScaleBar's own `[isWide, bannerHeight]` effect reads
+  `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
+  correct regardless of which call site's commit lands first. NAMED
+  COUPLING now points at `App.tsx:687` (renders `.banner-area`
+  unconditionally) and `App.tsx:132` (the App-level `useBannerHeight()`
+  call, kept purely for that write side-effect). Any rule that moves
+  `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
+  connected only through that runtime-measured layout value, invisible in
+  the CSS, in the diff, and to any test that checks the two components
+  separately.
 - `@media not (min-width: 1024px)` is Media Queries Level 4 syntax (`not`
   applied to a bare condition with no media type) — a Level 3 parser treats
   it as a syntax error and drops the ENTIRE block silently, no console error,
@@ -258,6 +287,14 @@ deviate from it.
   hairline — do not "tidy" it to the MQ4 complement. When swapping a syntax,
   check the support floors of the features that must work TOGETHER, not
   each in isolation.
+  **Update (PR #382, #368): the `:has()` half of that combination is GONE**
+  — the rule's own `.app-shell:has(.banner-area .banner)` gate was removed
+  once a real `ResizeObserver` measurement made it redundant (a genuine 0px
+  reading collapses `top`/`max-height` back to their base values on its own,
+  no gate needed). The MQ3-vs-MQ4 choice above is UNCHANGED and
+  independently justified regardless — app.css's own updated comment: a
+  Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
+  on its own" — not merely a residual of the now-gone `:has()` pairing.
 - `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx` — not via a later
   `setMaxPitch`/`setPitch`, which a style reload could undo — and pinned by
   `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
@@ -298,8 +335,11 @@ deviate from it.
   guard is ease-source-SPECIFIC where `isEasing()` was ease-source-AGNOSTIC —
   a foreign, bearing-changing ease carrying no `originalEvent` would now demote
   where v5 did not. No producer exists in the app today
-  (`RouteLayer.tsx:458`'s `fitBounds` passes `duration: 0` and the current
-  bearing; keyboard rotation and drag inertia always carry `originalEvent`;
+  (`RouteLayer.tsx:656`'s `fitBounds` passes `duration: 0` and the current
+  bearing (line number moved from :458 by today's #378/#324 insertions
+  earlier in the file, #380/#381/#382/#384 session — re-check after any
+  future edit that adds lines above this call site); keyboard rotation and
+  drag inertia always carry `originalEvent`;
   `resetNorth` has no call site; `bearingSnap: 0` makes MapLibre's internal
   snap unsatisfiable), and the gap is pinned by a regression test AND by
   `app/src/test/cameraAnimationCallSites.test.ts` (a structural test that
@@ -338,6 +378,52 @@ deviate from it.
   disabling the placement priority entirely. Within one symbol layer,
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
+- `icon-allow-overlap` and `icon-ignore-placement` sound like the same knob
+  and are not: `allow-overlap` ("place me even if I collide") governs
+  whether *I* get culled by the collision index; `ignore-placement` ("do not
+  enter me into the collision index") governs whether I block OTHERS.
+  `sc-wind-barbs` (`RouteLayer.tsx`) had the first without the second —
+  `icon-allow-overlap: true` made barbs immune to being culled, but with
+  `icon-ignore-placement` unset (defaults false) every dense barb icon
+  (~96-110px screen spacing at every zoom, `routeGeoJson.ts`'s
+  `adaptiveBarbFeatures`) still INSERTED a collision box that blocked the
+  ETA/speed TEXT layers underneath. The visible symptom was on the labels
+  (`sc-eta-primary`/`sc-eta-secondary`/`sc-leg-speed` culled to 0 at some
+  zooms); the cause was on a layer that looked perfectly healthy (#378,
+  MEASURED via `queryRenderedFeatures`: hiding `sc-wind-barbs` alone took
+  `sc-eta-primary`'s evicted 'gybe' label at z12 from 0 back to present, and
+  `sc-leg-speed` on the same route from 0 to 7). The issue's own
+  hypothesis — the z12 `icon-overlap` threshold from #191/#192 — was WRONG
+  and refuted directly (these are point/line TEXT symbols with no
+  `icon-image`; `icon-overlap` is never set on them at all), as was a
+  primary-vs-secondary layer-order theory (hiding `sc-eta-secondary` alone
+  left `sc-eta-primary` still at 0). Fix: `'icon-ignore-placement': true` on
+  `sc-wind-barbs`. For TEXT symbols the analogue of `icon-padding`'s
+  collision-box lever is **`text-padding`** — `icon-padding` itself is
+  meaningless on a text-only layer.
+- **#378 route annotation layers** (`RouteLayer.tsx`): `sc-eta-primary`/
+  `sc-eta-secondary`/`sc-leg-speed`'s `text-size` is now zoom-interpolated —
+  `['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15]` — replacing
+  a flat `text-size: 11` that was legible at a desk but too small on a phone
+  on deck in daylight. Growth is deliberately gated to z12+ (held near
+  current size through 9→12, +9%) because MapLibre's collision footprint
+  scales 1:1 with text-size and a bigger box culls MORE labels under
+  `text-allow-overlap: false` — the same coupling #378 itself found and
+  exists to fix. The two ETA layers (not `sc-leg-speed`, which places along
+  the line and can't use this) replaced a fixed `text-anchor`/`text-offset`
+  (exactly ONE candidate placement per point — any collision there culled
+  the label outright with no fallback) with `text-variable-anchor:
+  ['left','right','top','bottom']` + `text-radial-offset: 0.9` +
+  `text-justify: 'auto'` (up to 4 fallback placements before giving up) —
+  these three are MUTUALLY INCOMPATIBLE with `text-anchor`/`text-offset` in
+  the MapLibre style spec, never combine them. `text-padding` on all three
+  annotation layers trimmed from the 2px default to `1` to partially offset
+  the larger collision box the zoom-interpolated text-size introduces.
+  `sc-leg-speed`'s culling-by-line-length (`symbol-placement: 'line-center'`
+  — short legs stay unlabeled at low zoom, no hand-tuned nm threshold) and
+  `sc-maneuver-labels`' `text-allow-overlap`/`text-ignore-placement: true`
+  overlap exemption are UNCHANGED by #378 and remain deliberate (per their
+  own code comments, not previously written up here).
 
 ## PWA / E2E / deploy
 
@@ -354,6 +440,25 @@ deviate from it.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
+- `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
+  (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
+  tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
+  narrow/short stress cases #368's own residuals were measured against:
+  narrowPortrait360, shortLandscape844/740, deepPortrait320,
+  partialPushBand375, wrapForcing280). Specs must import and iterate these,
+  never inline viewport literals — this repo already paid for the per-file
+  version of that mistake once (nine hardcoded `testTimeout` literals,
+  patched two at a time across CI rounds before centralizing behind one
+  constant, #342). Playwright viewports are CSS px, not device px: a real 4K
+  display at common 150%/200% OS scaling presents as ~2560x1440 or exactly
+  1920x1080 CSS px, so `desktopHd` already doubles as the scaled-4K case —
+  `desktop4k` is deliberately the UNSCALED, very-wide extreme instead of a
+  third near-duplicate entry. The tablet pair straddles this app's single
+  `1024px` wide-layout breakpoint (`lib/useWideLayout.ts`): at
+  `tabletLandscape`, `.banner-area` becomes `position: static; grid-area:
+  banner` inside the wide-layout grid (`app.css`, `@media (min-width:
+  1024px)`) and cannot collide with map chrome by construction; at
+  `tabletPortrait` the narrow banner-clearance rule fires instead.
 - `map.once('idle')` settle gates are UNREACHABLE in practice — measured on
   PR #375: instrumenting the real page with a non-`once` `map.on('idle')` for
   8s starting immediately after `mapReady()` resolves produced ZERO idle
@@ -573,7 +678,9 @@ deviate from it.
   governs `@font-face` only, which this app doesn't use for map labels.
   Nothing in the suite yet asserts a label actually renders (#320).
 - `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
-  suite has: `annotations.spec.ts:167` asserts ZERO Open-Meteo requests,
+  suite has: `annotations.spec.ts:246` asserts ZERO Open-Meteo requests
+  (line moved from :167 — #378/PR #381 added ~247 lines earlier in this
+  file, session 24),
   every planning spec uses `?windFixture=`, AIS is BYOK so opens no sockets,
   and jsdom enforces no CSP at all — so a directive wrong in either direction
   (too tight, blocking startup; too loose, degraded to unrestrictive) would
@@ -913,6 +1020,36 @@ deviate from it.
   tests (#208); a camera fake that doesn't model `map.resetNorth()` cannot
   show a settle that never arrives (#203). Ask of any green result: *what
   class of failure can this method not detect?*
+- The sibling question belongs BEFORE the check is demanded, not after: a
+  brief asking for evidence a method structurally cannot produce will get it
+  — fabricated. #368 (PR #382 review): an implementer was asked to prove a
+  sub-frame first-paint timing window was closed; no Playwright assertion in
+  this suite can observe one (every gate in this repo polls post-settle —
+  the E2E determinism rule above itself forbids anything else), and the e2e
+  test written to "prove" it passed even against a manually-reverted
+  `useEffect`. A reviewer flagged the demand as unsatisfiable and the test
+  was deleted rather than shipped; the guarantee instead rests on a
+  source-level argument (`useLayoutEffect`'s synchronous-before-paint
+  contract, no SSR in this app — `main.tsx` is a plain
+  `createRoot().render()`). Ask *what class of failure can this method not
+  detect* before requiring something as proof, not only after a green
+  result — the two questions are the same question asked at different
+  times, but only one of them prevents the fabricated test from ever being
+  written.
+- A cross-language invariant (a CSS `var()` fallback that must equal a JS
+  constant — no compiler spans CSS and TypeScript) has no automatic keeper;
+  the only thing that can catch drift is a test that reads BOTH artifacts
+  and compares them — `useBannerHeight.test.ts` reads `app.css` via
+  `node:fs`, regexes out the `var(--sc-banner-height, <N>px)` fallback, and
+  asserts it equals `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX` (#368). It
+  fails CLOSED, not merely equal: an explicit `expect(match,
+  '...').not.toBeNull()` runs BEFORE the value comparison, so a regex that
+  silently stops matching (the CSS rule renamed, reformatted, or removed)
+  fails loudly instead of quietly passing — the same shape as the
+  STRING-pattern `String.replace` bullet above (a silent no-op that shipped
+  a build with zero CSP metas, #223). Mutation-checked both ways: reverting
+  the CSS literal to `0px` fails with `Expected: 176, Received: 0`; deleting
+  the fallback entirely trips the `not.toBeNull()` guard first.
 - A fix INHERITS its bug's blind spot. #233's hook fix drew six Blockers over
   two rounds, and all three of round 2's were the same mention-vs-invocation
   class the fix existed to close, now living inside the fix itself; #228
@@ -1045,6 +1182,26 @@ deviate from it.
   instruction, brief the reviewer to check claim STRENGTH against the evidence,
   not just claim correctness — and prefer "narrowed" to "closed" unless the
   measurement really covers the whole space.
+- **#383 — a KNOWN e2e flake, confirmed pre-existing on unmodified
+  `develop`**: `compass.spec.ts`'s `"#208: compass stays tappable and the
+  scale bar never sits under .app-bottom-sheet, at every measured
+  narrow/landscape viewport"` (named at `compass.spec.ts:651`) fails ~37%
+  (3 of 8 across two `--repeat-each=4` invocations against unmodified
+  `develop`, independently reproduced a third time by a different agent
+  during PR #382) — always the same signature, the failing assertion inside
+  the `rotateThenTapCompassHome` helper at `compass.spec.ts:635`:
+  `Expected: "free" / Received: "north-up"`. The locator resolved 14× over
+  the 5s window reading `north-up` every time — the mode never flips at
+  all, so raising the timeout cannot help. A red `e2e` on THIS test with
+  THIS signature is the known flake; that must be CONFIRMED against the
+  actual log before being written off, not assumed from "compass.spec.ts
+  failed" alone — a different assertion failing in the same file is a
+  different bug. Do NOT "fix" this by weakening the readiness wait — #253's
+  lesson applies exactly here: a suite that greens only after its wait is
+  weakened means the weakened wait IS the finding, and that mistake already
+  cost this repo a wrong root-cause once (seven `networkidle` sites swapped
+  for a check that didn't require tiles, blaming "the runner" for what was
+  really a broken worker bundle).
 
 ## Domain rules that are easy to get wrong
 
@@ -1060,6 +1217,45 @@ deviate from it.
   allowed post-processing is merging near-collinear legs with re-validation.
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible.
+- **Second rig, on the map too, not just in the results panel** (#324): the
+  rig NOT currently shown as primary can be overlaid on `RouteLayer.tsx`'s
+  map as `sc-route-alt-sail`/`sc-route-alt-motor` — map-only (no
+  labels/maneuver points, so it never enters #378's fragile ETA/speed
+  collision index), dashed (`[1, 1.5]`) + 0.45 opacity so it reads as "the
+  other rig" rather than a duplicate primary, distinguished from the primary
+  route purely by dash + opacity since colour already carries
+  port/starboard and sail/motor meaning. Anchored with an explicit
+  `beforeId: HIGHLIGHT_LAYER` — above `ROUTE_STACK_BOTTOM_LAYER` (the #53
+  shallow-depth casing, so the overlay can rarely paint over a safety
+  warning where the two tracks coincide — a considered trade; the reverse
+  order would instead hide the whole overlay under DataLayers' depth
+  shading) and below the primary route's own highlight/sail/motor layers
+  (the recommendation stays visually dominant wherever the two cross).
+  Toggle persisted in **localStorage** (`usePersistedToggle`,
+  `lib/storage.ts`'s safe wrappers — NOT IndexedDB), default OFF. Gated on
+  `Boolean(result) && Boolean(altResult)` in BOTH the checkbox's `disabled`
+  attribute AND the layer-visibility effect (PR #384 review) — gating only
+  the control leaves an overlay already made visible by the persisted flag
+  still rendered once a user switches primary-rig tabs to one whose own
+  result is null: `!altResult` alone is not enough, since `result` can be
+  null while the complement's `altResult` stays truthy, which would draw the
+  ONLY real route as the dashed "other rig" track.
+- **Planner progress is phase-based, not a percentage** (#340): the old
+  readout divided simulated route TIME by the unrelated 6-day/144h forecast
+  HORIZON — capped around 5% by construction and reset to 0% at every
+  genoa→fock rig switch and every #53 depth-relaxation retry. Replaced with
+  a phase readout ("sail N of 2 (Rig)", i18n key `planner.status.routingRig`)
+  derived from `rig` alone via `RIG_ORDER` (`types.ts`, `['genoa', 'fock']`).
+  `runBoth` in `planRoute.ts` evaluates `genoa: run(...)` then
+  `fock: run(...)` as plain, SYNCHRONOUS object-literal properties — no
+  interleaving — which is what makes the numbering honest: genoa's solve
+  (and every progress message it reports) fully completes before fock's
+  starts. The coupling is enforced by `planRoute.test.ts`'s "#340: solve
+  order matches RIG_ORDER" guard test, which records the order rigs are
+  FIRST seen in via the progress callback into a plain array (deliberately
+  NOT a `Set`, which is order-blind) and asserts it equals `RIG_ORDER` —
+  mutation-checked: swapping `runBoth`'s two properties turns this red with
+  `['fock', 'genoa']` against the expected `RIG_ORDER`.
 - **Motor legs are first-class**: planned where sailing speed falls below the
   SAIL-SPEED FLOOR `max(motorThresholdKn, motorSpeedKn - sailPreferenceKn)`
   (defaults 2.5 / 6.5 / 2.8 → floor 3.7 kn), run at motor speed, always flagged
@@ -1260,6 +1456,23 @@ deviate from it.
   `--selftest`. It fails CLOSED where the old inline form emitted nothing:
   empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
   or non-repo `git` (verified across 15 constructed failure inputs).
+- A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
+  FIRST PAINT depends on must be written in `useLayoutEffect`, not
+  `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
+  cold load where `var(--x, fallback)` resolves to its fallback
+  (`lib/useBannerHeight.ts`). The fix there is TWO guards, deliberately not
+  one duplicated: `useLayoutEffect` closes the pre-paint TIMING window; a
+  non-zero CSS fallback (`var(--sc-banner-height, 176px)`, matching
+  `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX`) is what still protects the
+  layout if the custom property is never written AT ALL for some other
+  reason (hook not mounted, an error thrown before the write, a future
+  refactor) — a failure mode the timing fix does nothing for. Per the
+  guard-asymmetry principle above: that CSS fallback must fail toward
+  OVER-pushing (a generous non-zero default), never toward zero clearance —
+  the same "the absent-measurement path must fail toward the
+  expensive-but-safe direction" call as the `String.replace` CSP bullet
+  above, one layer lower (a CSS custom-property default instead of a
+  build-time string transform).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
@@ -1288,7 +1501,16 @@ deviate from it.
   PR comment. `.claude/skills/pr-selfreview/resolve-threads.sh` (#178, PR
   #329) batches the reply+resolve loop: it paginates `reviewThreads` on
   `hasNextPage`, re-enumerates fresh at the end, and exits non-zero if any
-  thread is still open.
+  thread is still open. Mapping-file gotcha (session 24): when a thread's
+  `line` reads `null` because the diff moved under it (GitHub's GraphQL
+  `line` field, not `originalLine`), the mapping entry for that finding must
+  carry an explicit `"line": null` — `reply_body_for_thread`'s matcher
+  compares `.value.line == $line` exactly against the JSON value read
+  straight off the thread and does NOT consult `originalLine`. Omitting the
+  key (rather than setting it to `null`) makes that entry fail every match;
+  the thread is then skipped with a loud `No reply text for thread ... — no
+  mapping entry and no default` — correct fail-closed behavior, but the fix
+  (add the key) is non-obvious the first time you hit it.
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
