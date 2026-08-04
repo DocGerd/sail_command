@@ -171,10 +171,15 @@ export const en = {
   'route.legend.headingChange': 'Heading change',
   'route.legend.via': 'Via waypoint',
   'route.legend.shallow': 'Charted shallower than safety depth',
+  // #324: map-only overlay of the rig NOT currently shown as the primary
+  // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
+  'route.legend.altRig': 'Other rig (dashed)',
   'route.exportGpx': 'Export GPX',
   'route.windBarbs.toggle': 'Show wind barbs',
   'route.windBarbs.timeSlider': 'Forecast time',
   'route.annotations.toggle': 'Times & speeds',
+  'route.altRig.toggle': 'Show other rig',
+  'route.altRig.unavailable': 'Only one rig found a route',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Depth profile',

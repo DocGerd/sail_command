@@ -7,7 +7,7 @@
 // @ts-expect-error process is not typed in browser context
 process.env.TZ = 'Europe/Berlin';
 
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import RouteLayer, { HIGHLIGHT_LAYER, ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { I18nProvider } from '../i18n';
@@ -117,6 +117,46 @@ function makePlan(): Plan {
   };
 }
 
+// #324: a second leg for the fock rig, geometrically distinct from LEG (the
+// genoa leg makePlan() uses) so the two rigs' feature collections are
+// trivially distinguishable by coordinates alone.
+const FOCK_LEG: Leg = {
+  kind: 'sail',
+  board: 'port',
+  twaDeg: -60,
+  maneuverAtStart: null,
+  start: { lat: 54.8, lon: 10.0 },
+  end: { lat: 54.8, lon: 10.4 },
+  startTimeMs: DEPARTURE_MS,
+  endTimeMs: ETA_MS,
+  headingDeg: 270,
+  twsKn: 12,
+  speedKn: 5,
+  distanceNm: 10,
+};
+
+// #324: both rigs solved (unlike makePlan(), whose fock is null) — the alt-
+// rig overlay fixture. genoa stays the recommended/displayed rig by default.
+function makeBothRigsPlan(): Plan {
+  const base = makePlan();
+  return {
+    ...base,
+    result: {
+      ...base.result,
+      fock: {
+        rig: 'fock',
+        legs: [FOCK_LEG],
+        etaMs: ETA_MS + 60_000,
+        durationMs: 3_660_000,
+        distanceNm: 10,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
+      fockReason: null,
+    },
+  };
+}
+
 function renderRouteLayer(map: ReturnType<typeof makeFakeMap>, activeLegIndex: number | null) {
   hoisted.map = map;
   return render(
@@ -124,6 +164,23 @@ function renderRouteLayer(map: ReturnType<typeof makeFakeMap>, activeLegIndex: n
       plan={makePlan()}
       rig="genoa"
       activeLegIndex={activeLegIndex}
+      viaReplanning={false}
+      onViaDragEnd={async () => true}
+    />,
+  );
+}
+
+function renderRouteLayerWithPlan(
+  map: ReturnType<typeof makeFakeMap>,
+  plan: Plan,
+  rig: 'genoa' | 'fock' = 'genoa',
+) {
+  hoisted.map = map;
+  return render(
+    <RouteLayer
+      plan={plan}
+      rig={rig}
+      activeLegIndex={null}
       viaReplanning={false}
       onViaDragEnd={async () => true}
     />,
@@ -231,6 +288,119 @@ describe('RouteLayer fit-to-route (#155)', () => {
   });
 });
 
+// #324: "show both foresail routes" — a map-only overlay of the rig NOT
+// currently displayed as the primary route, default OFF, distinguished by
+// dash pattern + reduced opacity rather than a new colour (colour already
+// carries sail/motor + port/starboard meaning). The overlay must never add a
+// symbol/label layer (that would reopen #378's collision-index fragility),
+// so these tests pin the LINE layer spec and its explicit beforeId anchor —
+// the behavior itself (whether the dashed line is legible against the real
+// basemap) is a real-browser concern, per this file's own "Not unit-tested"
+// header for MapLibre rendering.
+describe('RouteLayer alt-rig overlay (#324)', () => {
+  it('creates the alt-rig source/layers hidden by default, with an unchecked, enabled toggle', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeBothRigsPlan());
+    expect(map.sources.has('sc-route-alt')).toBe(true);
+    expect(map.layers.get('sc-route-alt-sail')?.layout?.visibility).toBe('none');
+    expect(map.layers.get('sc-route-alt-motor')?.layout?.visibility).toBe('none');
+    const toggle = screen.getByRole('checkbox', { name: 'Anderes Rigg anzeigen' });
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeEnabled();
+  });
+
+  it('disables the toggle, explains why via an aria-describedby note, and leaves the alt source empty when only one rig has a route', () => {
+    const map = makeFakeMap();
+    // makePlan() (used by renderRouteLayer) has fock: null.
+    renderRouteLayer(map, null);
+    const toggle = screen.getByRole('checkbox', { name: 'Anderes Rigg anzeigen' });
+    expect(toggle).toBeDisabled();
+    // A `title` attribute is hover-only (unreachable on touch, this app's
+    // primary context) — the explanation must be a real, visible, wired-up
+    // note instead.
+    const note = screen.getByText('Nur ein Rigg hat eine Route gefunden');
+    expect(toggle).toHaveAttribute('aria-describedby', note.id);
+    expect(sourceData(map, 'sc-route-alt').features).toHaveLength(0);
+  });
+
+  it('enables the toggle with no unavailable note when both rigs have a route', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeBothRigsPlan());
+    const toggle = screen.getByRole('checkbox', { name: 'Anderes Rigg anzeigen' });
+    expect(toggle).toBeEnabled();
+    expect(toggle).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByText('Nur ein Rigg hat eine Route gefunden')).not.toBeInTheDocument();
+  });
+
+  it('reveals the layer and paints the OTHER rig — not the primary route — when toggled on', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeBothRigsPlan());
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Anderes Rigg anzeigen' }));
+    expect(map.layers.get('sc-route-alt-sail')?.layout?.visibility).toBe('visible');
+    expect(map.layers.get('sc-route-alt-motor')?.layout?.visibility).toBe('visible');
+    // The primary genoa track is untouched.
+    expect(
+      (sourceData(map, 'sc-route').features[0].geometry as GeoJSON.LineString).coordinates,
+    ).toEqual([
+      [10.0, 54.75],
+      [10.4, 54.75],
+    ]);
+    // The overlay carries the OTHER rig's (fock's) distinct geometry.
+    const alt = sourceData(map, 'sc-route-alt');
+    expect(alt.features).toHaveLength(1);
+    expect((alt.features[0].geometry as GeoJSON.LineString).coordinates).toEqual([
+      [10.0, 54.8],
+      [10.4, 54.8],
+    ]);
+  });
+
+  it('distinguishes the overlay by dash pattern + reduced opacity, not a new colour', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeBothRigsPlan());
+    const altSail = map.layers.get('sc-route-alt-sail');
+    const altMotor = map.layers.get('sc-route-alt-motor');
+    // Dashed: present at all (the primary sail line has NO dasharray), and
+    // distinct from the primary motor line's [2, 1.5] dash so the overlay
+    // reads as "the other rig", not "a motor leg".
+    expect(map.layers.get('sc-route-sail')?.paint?.['line-dasharray']).toBeUndefined();
+    expect(map.layers.get('sc-route-motor')?.paint?.['line-dasharray']).toEqual([2, 1.5]);
+    expect(altSail?.paint?.['line-dasharray']).toEqual([1, 1.5]);
+    expect(altMotor?.paint?.['line-dasharray']).toEqual([1, 1.5]);
+    // Reduced opacity: the primary route paints at full (default/unset)
+    // opacity, the overlay explicitly below it.
+    expect(map.layers.get('sc-route-sail')?.paint?.['line-opacity']).toBeUndefined();
+    expect(map.layers.get('sc-route-motor')?.paint?.['line-opacity']).toBeUndefined();
+    expect(altSail?.paint?.['line-opacity']).toBe(0.45);
+    expect(altMotor?.paint?.['line-opacity']).toBe(0.45);
+    // Colour: the SAME board/motor vocabulary as the primary route, not a
+    // new hue — colour already carries meaning elsewhere (CLAUDE.md). Pinned
+    // as a literal (not "equals whatever sc-route-sail has today") so a
+    // colour regression in EITHER layer still fails this — comparing the two
+    // layers to each other would pass if both were changed to the same new
+    // (wrong) hue.
+    const boardColorExpr = ['case', ['==', ['get', 'board'], 'port'], '#D55E00', '#009E73'];
+    expect(altSail?.paint?.['line-color']).toEqual(boardColorExpr);
+    expect(map.layers.get('sc-route-sail')?.paint?.['line-color']).toEqual(boardColorExpr);
+    expect(altMotor?.paint?.['line-color']).toBe('#5b5b5b');
+  });
+
+  it('anchors below HIGHLIGHT_LAYER with an explicit beforeId, so the recommendation paints on top', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeBothRigsPlan());
+    expect(map.layers.get('sc-route-alt-sail')?.beforeId).toBe(HIGHLIGHT_LAYER);
+    expect(map.layers.get('sc-route-alt-motor')?.beforeId).toBe(HIGHLIGHT_LAYER);
+    const order = map.layerOrder;
+    const idx = (id: string) => order.indexOf(id);
+    expect(idx(ROUTE_STACK_BOTTOM_LAYER)).toBeGreaterThanOrEqual(0);
+    // Bottom -> top: shallow casing, alt overlay, highlight, primary sail/motor.
+    expect(idx(ROUTE_STACK_BOTTOM_LAYER)).toBeLessThan(idx('sc-route-alt-sail'));
+    expect(idx('sc-route-alt-sail')).toBeLessThan(idx(HIGHLIGHT_LAYER));
+    expect(idx('sc-route-alt-motor')).toBeLessThan(idx(HIGHLIGHT_LAYER));
+    expect(idx(HIGHLIGHT_LAYER)).toBeLessThan(idx('sc-route-sail'));
+    expect(idx(HIGHLIGHT_LAYER)).toBeLessThan(idx('sc-route-motor'));
+  });
+});
+
 describe('RouteLayer style reload (#153)', () => {
   it('re-adds all sources/layers and repaints the CURRENT plan data', () => {
     const map = makeFakeMap();
@@ -238,12 +408,14 @@ describe('RouteLayer style reload (#153)', () => {
     act(() => {
       simulateStyleReload(map);
     });
-    for (const id of ['sc-route', 'sc-maneuvers', 'sc-barbs']) {
+    for (const id of ['sc-route', 'sc-route-alt', 'sc-maneuvers', 'sc-barbs']) {
       expect(map.sources.has(id)).toBe(true);
     }
     for (const id of [
       ROUTE_STACK_BOTTOM_LAYER,
       HIGHLIGHT_LAYER,
+      'sc-route-alt-sail',
+      'sc-route-alt-motor',
       'sc-route-sail',
       'sc-route-motor',
       'sc-leg-speed',
@@ -312,6 +484,21 @@ describe('RouteLayer style reload (#153)', () => {
       expect(map.layers.get(id)?.layout?.visibility).toBe('none');
     }
     expect(map.layers.get('sc-wind-barbs')?.layout?.visibility).toBe('none');
+  });
+
+  // #324: mirrors the wind-barbs ON-by-default case above, but for a
+  // toggle whose DEFAULT is off — the re-created layer must still pick up
+  // an explicit persisted ON choice, not just fall back to the (matching,
+  // here) default.
+  it('re-applies a persisted ON alt-rig visibility state after a reload', () => {
+    localStorage.setItem('sc-alt-rig-visible', '1');
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeBothRigsPlan());
+    act(() => {
+      simulateStyleReload(map);
+    });
+    expect(map.layers.get('sc-route-alt-sail')?.layout?.visibility).toBe('visible');
+    expect(map.layers.get('sc-route-alt-motor')?.layout?.visibility).toBe('visible');
   });
 
   it('routine styledata firings neither re-create nor repaint anything', () => {

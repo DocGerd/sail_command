@@ -37,14 +37,22 @@ export interface RouteLayerProps {
   onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
 
-// Not unit-tested: jsdom has no MapLibre/WebGL runtime — map.addSource/
-// addLayer/getSource etc. either no-op or return undefined under jsdom, so
-// this component's own source/layer wiring can only be meaningfully
-// exercised against a real browser (manual/Playwright verification). The
-// pure feature-building logic it calls into (routeGeoJson.ts) is covered
-// separately, with ordinary unit tests.
+// jsdom has no MapLibre/WebGL runtime — map.addSource/addLayer/getSource
+// etc. either no-op or return undefined, so nothing here can render for
+// real under jsdom. RouteLayer.test.tsx still pins the STATIC layer specs
+// (paint/layout objects, filter expressions, beforeId anchoring, toggle
+// visibility sync) against the shared fake map (test/fakeMaplibre.ts),
+// which records addLayer's arguments verbatim without needing a real
+// renderer — that catches an accidental spec revert at unit-test speed. What
+// stays real-browser-only is whether any of this actually RENDERS/is
+// legible (tile compositing, collision placement, on-screen contrast); the
+// pure feature-building logic (routeGeoJson.ts) is covered separately too.
 
 const ROUTE_SOURCE = 'sc-route';
+// #324: the non-displayed rig's route (map-only overlay, no labels/points —
+// see the effects and setupLayers comment below).
+const ROUTE_ALT_SOURCE = 'sc-route-alt';
+const ALT_ROUTE_LAYERS = ['sc-route-alt-sail', 'sc-route-alt-motor'] as const;
 const MANEUVER_SOURCE = 'sc-maneuvers';
 const BARB_SOURCE = 'sc-barbs';
 // #378: the three annotation symbol layers below (sc-eta-primary,
@@ -200,6 +208,77 @@ function setupLayers(map: MaplibreMap): void {
         'text-halo-width': 1.4,
       },
     });
+  }
+  if (!map.getSource(ROUTE_ALT_SOURCE)) {
+    map.addSource(ROUTE_ALT_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    // #324: "show both foresail routes" — the rig NOT currently displayed as
+    // the primary route (usually, but not always, plan.result.recommended:
+    // RouteSummary lets the user switch which rig is primary, and this
+    // overlay always shows whichever one that isn't). Map-only per the
+    // settled design — no maneuver points, ETA labels or speed labels, so it
+    // adds nothing to the collision index (#378's fragile ETA/speed
+    // placement stays untouched) and needs no per-hour barb sampling either.
+    // Anchored explicitly BELOW HIGHLIGHT_LAYER with an explicit beforeId
+    // (added earlier in this same setup pass, so the anchor always exists
+    // when this runs) — deliberately below the primary route's highlight,
+    // sail and motor layers (all added later, on top) so the recommendation
+    // stays visually dominant wherever the two tracks cross. Still above
+    // ROUTE_STACK_BOTTOM_LAYER (the shallow casing), which stays the
+    // genuine bottom of the stack DataLayers anchors against — a considered
+    // trade-off, not an oversight: sitting ABOVE the shallow casing means the
+    // overlay can paint over the orange safety-depth warning where the two
+    // geometries happen to coincide (rare — the shallow casing traces the
+    // PRIMARY route's legs, not the overlay's), but sitting BELOW
+    // ROUTE_STACK_BOTTOM_LAYER instead would move DataLayers' own depth
+    // overlay (which anchors below that same layer) ABOVE the alt-rig track,
+    // hiding the whole overlay under it whenever depth shading is on — a
+    // strictly worse failure (#53 safety content survives either choice;
+    // this overlay would not survive the second one).
+    // Reuses the SAME board/motor color vocabulary as the primary route
+    // (colour already carries sail-vs-motor/port-vs-starboard meaning — see
+    // CLAUDE.md's symbol-sort-key note on not overloading one visual channel
+    // with two meanings) and is distinguished purely by dash pattern +
+    // reduced opacity, per the settled design. The dasharray is deliberately
+    // NOT the primary motor line's [2, 1.5] — a denser dash so the overlay
+    // reads as "the other rig", not "a motor leg". Created hidden
+    // (visibility 'none'): the default is OFF (#324), and the
+    // altRigVisible sync effect below applies the persisted/default state,
+    // mirroring sc-wind-barbs' own creation-hidden pattern above.
+    map.addLayer(
+      {
+        id: 'sc-route-alt-sail',
+        type: 'line',
+        source: ROUTE_ALT_SOURCE,
+        filter: ['==', ['get', 'kind'], 'sail'],
+        layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+        paint: {
+          'line-width': 3.5,
+          'line-color': ['case', ['==', ['get', 'board'], 'port'], '#D55E00', '#009E73'],
+          'line-dasharray': [1, 1.5],
+          'line-opacity': 0.45,
+        },
+      },
+      HIGHLIGHT_LAYER,
+    );
+    map.addLayer(
+      {
+        id: 'sc-route-alt-motor',
+        type: 'line',
+        source: ROUTE_ALT_SOURCE,
+        filter: ['==', ['get', 'kind'], 'motor'],
+        layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+        paint: {
+          'line-width': 3.5,
+          'line-color': '#5b5b5b',
+          'line-dasharray': [1, 1.5],
+          'line-opacity': 0.45,
+        },
+      },
+      HIGHLIGHT_LAYER,
+    );
   }
   if (!map.getSource(MANEUVER_SOURCE)) {
     map.addSource(MANEUVER_SOURCE, {
@@ -403,6 +482,9 @@ export default function RouteLayer({
     'sc-annotations-visible',
     true,
   );
+  // #324: map-only overlay of the OTHER rig's route, default OFF (settled
+  // design — showing two routes by default clutters harbour-approach zoom).
+  const [altRigVisible, setAltRigVisible] = usePersistedToggle('sc-alt-rig-visible', false);
   // Real land/depth mask for barb land-culling — loaded once, best-effort.
   // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
   // transferred, never mutated). null until it resolves; sampling skips
@@ -430,6 +512,12 @@ export default function RouteLayer({
   }
 
   const result = plan && rig ? activeRigResult(plan, rig) : null;
+  // #324: whichever rig is NOT currently shown as the primary route. `rig`
+  // defaults to plan.result.recommended but is user-switchable (RouteSummary
+  // tabs) — this always tracks the complement of whatever IS primary, not a
+  // fixed "recommended vs. non-recommended" pair.
+  const otherRig: Rig | null = rig === 'genoa' ? 'fock' : rig === 'fock' ? 'genoa' : null;
+  const altResult = plan && otherRig ? activeRigResult(plan, otherRig) : null;
 
   // Counts completed setup passes for the current map instance: 0 = sources/
   // layers don't exist yet; 1 once the style is first ready; +1 after every
@@ -508,6 +596,15 @@ export default function RouteLayer({
     // retrigger this rebuild (the strings are language-dependent).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, styleEpoch, result, lang]);
+
+  // #324: the alt-rig overlay's line data. No labels/points depend on this
+  // source (see setupLayers' comment), so — unlike the effect above — this
+  // never needs `lang` or `t()`.
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    const altData = legsToFeatureCollection(altResult?.legs ?? []);
+    (map.getSource(ROUTE_ALT_SOURCE) as GeoJSONSource | undefined)?.setData(altData);
+  }, [map, styleEpoch, altResult]);
 
   // Maneuver letter labels are language-dependent: W/H (de), T/G (en).
   useEffect(() => {
@@ -633,6 +730,15 @@ export default function RouteLayer({
     }
   }, [map, styleEpoch, annotationsVisible]);
 
+  // #324: alt-rig overlay toggle, default OFF.
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    const visibility = altRigVisible ? 'visible' : 'none';
+    for (const id of ALT_ROUTE_LAYERS) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    }
+  }, [map, styleEpoch, altRigVisible]);
+
   // Cheap setFilter() only — no source re-set — so this stays cheap even
   // when GPS noise near a leg boundary flips activeLegIndex back and forth.
   // The effect dependency array already value-gates this to real changes.
@@ -661,6 +767,24 @@ export default function RouteLayer({
         />
         {t('route.windBarbs.toggle')}
       </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={altRigVisible}
+          disabled={!altResult}
+          onChange={(e) => setAltRigVisible(e.target.checked)}
+          aria-describedby={altResult ? undefined : 'route-alt-rig-note'}
+        />
+        {t('route.altRig.toggle')}
+      </label>
+      {/* A `title` attribute is hover-only — unreachable on this app's
+          primary (touch) context. A visible note, wired via
+          aria-describedby, reaches both. */}
+      {!altResult && (
+        <p id="route-alt-rig-note" className="route-alt-rig-note">
+          {t('route.altRig.unavailable')}
+        </p>
+      )}
       {hourOptions.length > 1 && (
         <div className="route-layer-time-slider">
           <input
