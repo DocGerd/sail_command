@@ -12,7 +12,14 @@ import type { Plan, PlanRequest, PlanResult, Rig, Settings, WindGrid } from '../
 export type PlanningState =
   | { phase: 'idle' }
   | { phase: 'fetching-wind' }
-  | { phase: 'routing'; rig: Rig; simulatedToMs: number }
+  // #340: `rig` is the only progress signal — the router runs genoa then
+  // fock SEQUENTIALLY (routing/planRoute.ts's `runBoth` evaluates
+  // `run('genoa', …)` then `run('fock', …)` as plain object-literal
+  // properties, both synchronous, no interleaving), so "which rig is
+  // currently solving" is an honest, bounded phase indicator — unlike the
+  // removed simulatedToMs/FORECAST_HORIZON_MS percentage, which capped
+  // around 5% and reset to 0 at this exact rig switch (#340).
+  | { phase: 'routing'; rig: Rig }
   // #53: the worker is probing relaxed depth gates (mask connectivity BFS)
   // after an unreachable solve at the requested safety depth. Reported so the
   // UI shows the probe phase instead of a stalled routing bar; the relaxed
@@ -91,11 +98,6 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // to the worker, so it must only ever be called once per client.
   const clientRef = useRef<RoutingClient | null>(null);
   const readyRef = useRef<Promise<void> | null>(null);
-  // Per-rig high-water mark: each rig's simulatedToMs must be independently
-  // monotone. The genoa→fock switch is a reset, not a regression — clamping
-  // fock's early tMs against genoa's mark would plateau in a way a UI can't
-  // distinguish from a stall.
-  const maxSimulatedToMsRef = useRef<Record<Rig, number>>({ genoa: -Infinity, fock: -Infinity });
 
   const fetchWind = deps.fetchWind ?? fetchWindGrid;
   // Wrapped in useMemo: the `?? (() => ...)` fallback would otherwise
@@ -203,26 +205,23 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         return;
       }
 
-      maxSimulatedToMsRef.current = { genoa: -Infinity, fock: -Infinity };
       let result: PlanResult;
       try {
         result = await client.plan(
           req,
           windGrid,
-          (rig, tMs) => {
-            // The solver's progress can regress by up to one step at
-            // via-segment joints (ledgered) — clamp per rig so the UI never
-            // shows simulated time going backwards within that rig's own solve.
-            const simulatedToMs = Math.max(maxSimulatedToMsRef.current[rig], tMs);
-            maxSimulatedToMsRef.current[rig] = simulatedToMs;
-            transition({ phase: 'routing', rig, simulatedToMs });
+          // #340: only `rig` drives the UI now (phase indication, not a
+          // percentage) — the worker's tMs/frontierSize are still throttled
+          // upstream (workerClient.ts) but no longer consumed here.
+          (rig) => {
+            transition({ phase: 'routing', rig });
           },
           undefined,
           () => {
-            // #53 probe phase. The relaxed re-solve that may follow restarts
-            // each rig's progress clock — reset the high-water marks so its
-            // early ticks aren't clamped flat against the doomed first run.
-            maxSimulatedToMsRef.current = { genoa: -Infinity, fock: -Infinity };
+            // #53 probe phase. The relaxed re-solve that may follow renders
+            // as its own 'routing' state (naming whichever rig restarts
+            // first) once it begins — never a regression of the doomed
+            // first run's readout, since there is no number to regress.
             transition({ phase: 'probing-depth' });
           },
         );

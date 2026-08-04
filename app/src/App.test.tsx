@@ -1295,20 +1295,34 @@ describe('harbor marker click-to-pick (#38)', () => {
 describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
   // The adapter only uses `t` on the error branch (t(messageKey)); an identity
   // stub is enough to pin the passthrough there.
-  const t = ((key: string) => key) as unknown as Parameters<typeof toPlannerStatus>[2];
+  const t = ((key: string) => key) as unknown as Parameters<typeof toPlannerStatus>[1];
 
   it("maps usePlanFlow's 'probing-depth' to the panel's { phase: 'probing' }", () => {
-    expect(toPlannerStatus({ phase: 'probing-depth' }, 0, t)).toEqual({ phase: 'probing' });
+    expect(toPlannerStatus({ phase: 'probing-depth' }, t)).toEqual({ phase: 'probing' });
   });
 
   // Guard the sibling branches too, so the probing mapping isn't a lone case a
   // typo could silently collapse into another phase.
   it('maps the sibling planning phases to their own panel phases', () => {
-    expect(toPlannerStatus({ phase: 'idle' }, 0, t)).toEqual({ phase: 'idle' });
-    expect(toPlannerStatus({ phase: 'fetching-wind' }, 0, t)).toEqual({ phase: 'fetching' });
-    expect(toPlannerStatus({ phase: 'error', messageKey: 'error.internal' }, 0, t)).toEqual({
+    expect(toPlannerStatus({ phase: 'idle' }, t)).toEqual({ phase: 'idle' });
+    expect(toPlannerStatus({ phase: 'fetching-wind' }, t)).toEqual({ phase: 'fetching' });
+    expect(toPlannerStatus({ phase: 'error', messageKey: 'error.internal' }, t)).toEqual({
       phase: 'error',
       message: 'error.internal',
+    });
+  });
+
+  // #340: `rig` must pass through unchanged — this is the only progress
+  // signal left, so a typo here would silently break the "sail N of 2"
+  // phase readout for one or both rigs.
+  it("passes 'routing' through with its rig unchanged (#340: rig is the phase signal, not a percentage)", () => {
+    expect(toPlannerStatus({ phase: 'routing', rig: 'genoa' }, t)).toEqual({
+      phase: 'routing',
+      rig: 'genoa',
+    });
+    expect(toPlannerStatus({ phase: 'routing', rig: 'fock' }, t)).toEqual({
+      phase: 'routing',
+      rig: 'fock',
     });
   });
 });
