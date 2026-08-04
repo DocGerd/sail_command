@@ -3,7 +3,7 @@ import { LngLatBounds, Map as MaplibreMap } from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
-import { formatTime } from '../lib/format';
+import { formatDateTime, formatSliderTime } from '../lib/format';
 import { activeRigResult } from '../lib/plan';
 import {
   adaptiveBarbFeatures,
@@ -328,6 +328,15 @@ export default function RouteLayer({
   // culling gracefully in the meantime.
   const [mask, setMask] = useState<NavMask | null>(null);
   const [hourIdx, setHourIdx] = useState(0);
+  // Reference "now" for the slider label's day-vs-today tier decision
+  // (#292) — computed once at mount, matching PlannerPanel's departure-
+  // bounds pattern, NOT a ticking clock. Reading Date.now() directly during
+  // render is flagged by the react-hooks/react-compiler purity lint; this
+  // lazy useState initializer runs exactly once. Accepted limitation: a plan
+  // left open across a tier boundary (midnight, the 6-day cutoff) keeps
+  // showing its previous tier until something else re-renders this
+  // component — no timer is added to chase that.
+  const [nowMs] = useState(() => Date.now());
   // Reset the slider to departure whenever the plan itself changes (not on
   // every render). Adjusted during render — React's documented pattern for
   // deriving state from a prop change (mirrors OptionsPanel.tsx's
@@ -581,8 +590,9 @@ export default function RouteLayer({
             value={clampedHourIdx}
             onChange={(e) => setHourIdx(Number(e.target.value))}
             aria-label={t('route.windBarbs.timeSlider')}
+            aria-valuetext={formatDateTime(tMs, lang)}
           />
-          <span>{formatTime(tMs, lang)}</span>
+          <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
         </div>
       )}
       <ViaMarkers
