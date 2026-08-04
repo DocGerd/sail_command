@@ -157,6 +157,24 @@ function makeBothRigsPlan(): Plan {
   };
 }
 
+// PR #384 review: both rigs solve, but genoa — the rig the test then asks
+// RouteLayer to display as PRIMARY — is the one WITHOUT a route; fock is the
+// only one that found one. Models RouteSummary's rig tabs being ungated:
+// nothing stops a user from selecting a rig whose own result never solved
+// while the complement did.
+function makeOtherRigOnlyPlan(): Plan {
+  const base = makeBothRigsPlan();
+  return {
+    ...base,
+    result: {
+      ...base.result,
+      genoa: null,
+      genoaReason: 'calm-motor-off',
+      recommended: 'fock',
+    },
+  };
+}
+
 function renderRouteLayer(map: ReturnType<typeof makeFakeMap>, activeLegIndex: number | null) {
   hoisted.map = map;
   return render(
@@ -323,6 +341,42 @@ describe('RouteLayer alt-rig overlay (#324)', () => {
     expect(sourceData(map, 'sc-route-alt').features).toHaveLength(0);
   });
 
+  // PR #384 review (r3713944428): pre-fix, `disabled={!altResult}` only
+  // checked the OTHER rig's result — so selecting a PRIMARY rig with no
+  // route of its own (genoa here, via RouteSummary's ungated tabs) left the
+  // toggle enabled, because the complement (fock) is what backs `altResult`.
+  it('disables the toggle and explains why when the PRIMARY rig has no route, even though the other rig does', () => {
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeOtherRigOnlyPlan(), 'genoa');
+    const toggle = screen.getByRole('checkbox', { name: 'Anderes Rigg anzeigen' });
+    expect(toggle).toBeDisabled();
+    const note = screen.getByText('Nur ein Rigg hat eine Route gefunden');
+    expect(toggle).toHaveAttribute('aria-describedby', note.id);
+  });
+
+  // PR #384 review: `disabled` alone does not retract an ALREADY-visible
+  // overlay — altRigVisible is a persisted toggle (usePersistedToggle)
+  // independent of which rig is primary. Pre-fix, the layer-visibility
+  // effect keyed on `altRigVisible` alone, so a toggle left ON from an
+  // earlier, both-rigs-solved plan would still paint the overlay here —
+  // meaning the ONLY real route (fock's) would render as the dashed,
+  // reduced-opacity "other rig" track, with the primary source empty and
+  // nothing solid on the map at all (the composition inversion the review
+  // flagged). Asserting layer visibility, not just the checkbox, is what
+  // makes this test fail against the pre-fix `disabled={!altResult}` code —
+  // that change alone never touches the visibility effect.
+  it('hides an already-toggled-on overlay, not just disables the checkbox, once the PRIMARY rig has no route', () => {
+    localStorage.setItem('sc-alt-rig-visible', '1');
+    const map = makeFakeMap();
+    renderRouteLayerWithPlan(map, makeOtherRigOnlyPlan(), 'genoa');
+    expect(map.layers.get('sc-route-alt-sail')?.layout?.visibility).toBe('none');
+    expect(map.layers.get('sc-route-alt-motor')?.layout?.visibility).toBe('none');
+    // Confirms the primary route really is empty in this state — hiding the
+    // overlay leaves nothing, which is strictly better than the pre-fix
+    // "only the de-emphasised track renders" bug.
+    expect(sourceData(map, 'sc-route').features).toHaveLength(0);
+  });
+
   it('enables the toggle with no unavailable note when both rigs have a route', () => {
     const map = makeFakeMap();
     renderRouteLayerWithPlan(map, makeBothRigsPlan());
@@ -373,8 +427,8 @@ describe('RouteLayer alt-rig overlay (#324)', () => {
     expect(altSail?.paint?.['line-opacity']).toBe(0.45);
     expect(altMotor?.paint?.['line-opacity']).toBe(0.45);
     // Colour: the SAME board/motor vocabulary as the primary route, not a
-    // new hue — colour already carries meaning elsewhere (CLAUDE.md). Pinned
-    // as a literal (not "equals whatever sc-route-sail has today") so a
+    // new hue — issue #324 itself names colour as already carrying meaning.
+    // Pinned as a literal (not "equals whatever sc-route-sail has today") so a
     // colour regression in EITHER layer still fails this — comparing the two
     // layers to each other would pass if both were changed to the same new
     // (wrong) hue.

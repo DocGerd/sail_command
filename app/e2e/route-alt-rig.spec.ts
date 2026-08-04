@@ -140,16 +140,16 @@ test.describe('alt-rig map overlay (#324)', () => {
     }
   });
 
-  // Dark mode has no in-app toggle (pure `prefers-color-scheme`) — emulate
-  // it rather than looking for a UI control. Lighter than the test above: it
-  // only proves the toggle stays reachable, the overlay still paints under
-  // the dark stylesheet, and the one theme-sensitive PIXEL this change added
-  // — the legend swatch's #757575 dash, deliberately a fixed literal rather
-  // than a `--sc-bg`-relative alpha value (see app.css's comment on
-  // `.route-legend-alt-rig`) — actually reaches the DOM unchanged; MapLibre's
-  // own paint colors are canvas-rendered and theme-invariant by construction
-  // (CLAUDE.md), so re-asserting every paint value from the test above would
-  // prove nothing new here.
+  // Dark mode has no in-app toggle (pure `prefers-color-scheme`, CLAUDE.md) —
+  // emulate it rather than looking for a UI control. Lighter than the test
+  // above: it only proves the toggle stays reachable, the overlay still
+  // paints under the dark stylesheet, and the one theme-sensitive PIXEL this
+  // change added — the legend swatch's #757575 dash, deliberately a fixed
+  // literal rather than a `--sc-bg`-relative alpha value (see app.css's
+  // comment on `.route-legend-alt-rig`) — actually reaches the DOM unchanged;
+  // MapLibre's own paint colors are rendered directly to its WebGL canvas,
+  // untouched by CSS or `prefers-color-scheme`, so re-asserting every paint
+  // value from the test above would prove nothing new here.
   test('the toggle stays visible and functional, and the legend swatch keeps its literal colour, under the dark theme', async ({
     page,
   }) => {

@@ -238,10 +238,11 @@ function setupLayers(map: MaplibreMap): void {
     // strictly worse failure (#53 safety content survives either choice;
     // this overlay would not survive the second one).
     // Reuses the SAME board/motor color vocabulary as the primary route
-    // (colour already carries sail-vs-motor/port-vs-starboard meaning — see
-    // CLAUDE.md's symbol-sort-key note on not overloading one visual channel
-    // with two meanings) and is distinguished purely by dash pattern +
-    // reduced opacity, per the settled design. The dasharray is deliberately
+    // (colour already carries sail-vs-motor/port-vs-starboard meaning — issue
+    // #324's own "open design questions" section names this directly: "dash
+    // pattern, opacity, and colour are the available axes, and colour is
+    // already carrying meaning") and is distinguished purely by dash pattern
+    // + reduced opacity, per the settled design. The dasharray is deliberately
     // NOT the primary motor line's [2, 1.5] — a denser dash so the overlay
     // reads as "the other rig", not "a motor leg". Created hidden
     // (visibility 'none'): the default is OFF (#324), and the
@@ -518,6 +519,16 @@ export default function RouteLayer({
   // fixed "recommended vs. non-recommended" pair.
   const otherRig: Rig | null = rig === 'genoa' ? 'fock' : rig === 'fock' ? 'genoa' : null;
   const altResult = plan && otherRig ? activeRigResult(plan, otherRig) : null;
+  // #324 (PR #384 review): the toggle needs BOTH a primary result to be
+  // de-emphasised against AND an alt result to show — not `altResult` alone.
+  // RouteSummary's rig tabs are not gated, so `rig` can point at a rig whose
+  // own result is null while the complement solved; in that state `result`
+  // is null (the primary route layers paint nothing, see the ROUTE_SOURCE
+  // effect below) while `altResult` is truthy, so an `!altResult`-only check
+  // would leave the toggle enabled and let the ONLY real route be drawn as
+  // the dashed, reduced-opacity "other rig" track — a composition inversion,
+  // not a double-draw.
+  const altToggleAvailable = Boolean(result) && Boolean(altResult);
 
   // Counts completed setup passes for the current map instance: 0 = sources/
   // layers don't exist yet; 1 once the style is first ready; +1 after every
@@ -730,14 +741,22 @@ export default function RouteLayer({
     }
   }, [map, styleEpoch, annotationsVisible]);
 
-  // #324: alt-rig overlay toggle, default OFF.
+  // #324: alt-rig overlay toggle, default OFF. Gated on altToggleAvailable
+  // too, not just the persisted altRigVisible flag — the checkbox's
+  // `disabled` attribute alone would not retract an ALREADY-toggled-on
+  // overlay: altRigVisible is independent of which rig is primary, so a user
+  // who enables it while both rigs solve, then switches the primary rig tab
+  // to one whose own result is null (PR #384 review), would otherwise still
+  // see the dashed/reduced-opacity track with nothing solid beneath it. This
+  // makes that state degrade to "overlay hidden", never "overlay usurps the
+  // primary".
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const visibility = altRigVisible ? 'visible' : 'none';
+    const visibility = altRigVisible && altToggleAvailable ? 'visible' : 'none';
     for (const id of ALT_ROUTE_LAYERS) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
-  }, [map, styleEpoch, altRigVisible]);
+  }, [map, styleEpoch, altRigVisible, altToggleAvailable]);
 
   // Cheap setFilter() only — no source re-set — so this stays cheap even
   // when GPS noise near a leg boundary flips activeLegIndex back and forth.
@@ -771,16 +790,21 @@ export default function RouteLayer({
         <input
           type="checkbox"
           checked={altRigVisible}
-          disabled={!altResult}
+          disabled={!altToggleAvailable}
           onChange={(e) => setAltRigVisible(e.target.checked)}
-          aria-describedby={altResult ? undefined : 'route-alt-rig-note'}
+          aria-describedby={altToggleAvailable ? undefined : 'route-alt-rig-note'}
         />
         {t('route.altRig.toggle')}
       </label>
       {/* A `title` attribute is hover-only — unreachable on this app's
           primary (touch) context. A visible note, wired via
-          aria-describedby, reaches both. */}
-      {!altResult && (
+          aria-describedby, reaches both. Reused for BOTH unavailable
+          causes (fock/genoa's own result null, or the complement's) — "only
+          one rig found a route" is accurate either way; a `Plan` only exists
+          once at least the recommended rig has solved (types.ts:
+          `recommendedResult`'s invariant), so the two results can never be
+          null AT THE SAME TIME. */}
+      {!altToggleAvailable && (
         <p id="route-alt-rig-note" className="route-alt-rig-note">
           {t('route.altRig.unavailable')}
         </p>
