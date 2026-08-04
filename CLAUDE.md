@@ -235,6 +235,29 @@ deviate from it.
   but `.map-stack-tl` lets only `.data-layer-controls` shrink
   (`.compass-control` is `flex-shrink: 0`) — DELIBERATE: the plain bound would
   scroll the compass itself out of reach.
+- `ScaleBar` is coupled to `.banner-area` through a RUNTIME-MEASURED value,
+  not a CSS rule: it computes its suppression ceiling from `.map-stack-tl`'s
+  rendered bottom edge. Before PR #374 nothing observed `.banner-area`
+  mounting a banner, so that ceiling went stale and the bar rendered fully
+  OVERLAPPING `.map-stack-tl` — 1837.7px² measured — rather than
+  suppressing. Fixed with a `MutationObserver` on `.banner-area`
+  (`{childList: true}`), disconnected on unmount, with a NAMED COUPLING
+  comment pointing at `App.tsx:684` which renders the wrapper unconditionally.
+  Any rule that moves `.map-stack-tl` also changes `ScaleBar`'s available
+  room — the two are connected only through that runtime-measured layout
+  value, invisible in the CSS, in the diff, and to any test that checks the
+  two components separately.
+- `@media not (min-width: 1024px)` is Media Queries Level 4 syntax (`not`
+  applied to a bare condition with no media type) — a Level 3 parser treats
+  it as a syntax error and drops the ENTIRE block silently, no console error,
+  nothing for CI to see. On WebKit, `:has()` shipped EARLIER than MQ4
+  boolean syntax, so for a rule using both there is a real iOS Safari band
+  where the selector matches and the query is discarded, losing the rule
+  entirely. `app/src/app.css`'s banner-clearance rule therefore uses
+  `@media (max-width: 1023.98px)` deliberately, accepting the 0.02px
+  hairline — do not "tidy" it to the MQ4 complement. When swapping a syntax,
+  check the support floors of the features that must work TOGETHER, not
+  each in isolation.
 - `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx` — not via a later
   `setMaxPitch`/`setPitch`, which a style reload could undo — and pinned by
   `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
@@ -331,6 +354,28 @@ deviate from it.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
+- `map.once('idle')` settle gates are UNREACHABLE in practice — measured on
+  PR #375: instrumenting the real page with a non-`once` `map.on('idle')` for
+  8s starting immediately after `mapReady()` resolves produced ZERO idle
+  events on an already-loaded static map. `map.loaded()` requires only
+  sources loaded; `idle` additionally requires placement settled, so by the
+  time `mapReady()`'s poll observes `loaded() === true` the one-shot initial
+  `idle` has already fired and the listener attaches after it. A gate of the
+  shape `map.once('idle', done)` racing a fixed cap therefore ALWAYS takes
+  the cap — an unconditional sleep in a state-signal costume, forbidden by
+  the E2E determinism rule above, and self-concealing: a gate that always
+  times out and always passes is indistinguishable from one that settles
+  fast. Replacement in `labels.spec.ts`: poll sorted `places_locality` label
+  arrays (identity compare, not count — a same-count swap must be caught),
+  require three consecutive matches at 400ms, fail CLOSED on budget
+  exhaustion with the count history and last three label sets. Three-at-400ms
+  is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
+  (`symbol/placement.ts:1268-1277`) gates re-runs on `commitTime +
+  fadeDuration * durationAdjustment > now` with `fadeDuration: 300` defaulted
+  at `ui/map.ts:539`. Measured effect: spec runtime ~6.5s -> ~2.3s,
+  stabilising after three reads (~820ms) — placement had been settled almost
+  immediately all along. `annotations.spec.ts` carries the same pattern and
+  is NOT yet fixed — tracked in #376.
 - Dark mode has NO in-app toggle — it is pure `@media (prefers-color-scheme:
   dark)` in `app.css`, so a both-themes verification pass needs Playwright
   `page.emulateMedia({ colorScheme })`, never a UI click.
@@ -881,6 +926,28 @@ deviate from it.
   reported as verified too. After correcting any citation, re-check EVERY
   other citation in the block (#200 — §2.7.1.2 was "tightened" into being
   false; §2.7.1.1 was correct all along).
+- MapLibre glyph loading has NO observable failure signal by design:
+  `GlyphManager._downloadAndCacheRangePromise`
+  (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`) catches EVERY
+  glyph-range fetch failure and falls back unconditionally to a
+  locally-drawn TinySDF glyph — the symbol is still placed, so
+  `queryRenderedFeatures` returns identical counts and names whether glyphs
+  are real or 100% broken, and `map.on('error')` never fires because nothing
+  re-throws. The only signal is a `console.warn` matching `"Unable to load
+  glyph range"` at `glyph_manager.ts:144`. Separately,
+  `_getAndCacheGlyphsPromise` (`:104-108`) takes a COMPLETELY silent
+  local-font path — no fetch, no warning — whenever the style's `glyphs` URL
+  is falsy, and `glyphManager.setURL()` is fed from the style's `glyphs`
+  field at two sites in `style.ts` including the style-DIFF path (`:491`)
+  that `styleReload.ts` exercises on every `styledata` re-add. `glyphs` is
+  documented OPTIONAL in the maplibre style spec, so nothing upstream flags
+  it. A label-render test needs THREE signals — a rendered-feature check,
+  the zero-warnings check, and a timing-independent assertion that
+  `map.getStyle().glyphs` matches the expected template — `app/e2e/labels.spec.ts`
+  (#320, PR #375) does this; its header documents that the rendered-feature
+  check LICENSES the zero-warnings assertion (an absence assertion carries
+  no information until the evidence-generating process is established to
+  have run) and must not be deleted as redundant.
 - Never source an integer-exact claim (line number, byte count, version
   string) from a summarizing fetch — `WebFetch`/`WebSearch` paraphrase, and
   a paraphrased integer is silently wrong rather than obviously wrong. Read
@@ -952,6 +1019,18 @@ deviate from it.
   a third with the identical shape, at ~43 min per round to learn it (#342).
   `git grep` the pattern first, then centralize it behind one constant plus a
   structural guard — a per-file patch converges one CI run at a time.
+- A FABRICATED citation is worse than a wrong number — it launders the claim
+  as verified and stops the next reader from checking, compounding the
+  CITATION HALO risk above. Two shipped in one PR this session: a comment
+  invented "CLAUDE.md's documented 6-10x runner-speed ratio" (no such phrase
+  exists; the real measured figures are ~2.1x plain / ~2.5x coverage
+  documented above, and are separate multipliers for the vitest UNIT suite,
+  not Playwright), and a test header misattributed a `symbol_bucket.ts:391`
+  claim to CLAUDE.md when it came from that PR's own review. Both were found
+  only because the reviewer was asked to ENUMERATE every citation in the diff
+  and name where it looked, not to fix the one instance flagged — patching
+  flagged instances does not converge; enumerate and report the enumeration
+  including hits left alone (same methodology as the prose-rots bullet above).
 - Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
