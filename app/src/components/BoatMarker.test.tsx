@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BoatMarker from './BoatMarker';
+import { de } from '../i18n/dict.de';
 
 // #141: BoatMarker's marker/accuracy-circle behavior stays "not unit-tested"
 // (jsdom has no MapLibre/WebGL runtime — see the component's own note). What
@@ -10,8 +11,19 @@ import BoatMarker from './BoatMarker';
 // endpoint literals are hand-derived there, not read off the implementation),
 // and teardown. The maplibre Marker is stubbed to an inert chainable object.
 
+// #361: constructed Marker instances are recorded so tests can inspect the
+// custom `element` BoatMarker passes in — real maplibre-gl 6.1.0 stops
+// supplying its own default aria-label/role for a custom element, so
+// BoatMarker must set one itself; this mock just needs to expose what was
+// passed, not emulate maplibre's own accessibility behavior.
+const createdMarkers: { element: HTMLElement }[] = [];
 vi.mock('maplibre-gl', () => ({
   Marker: class {
+    element: HTMLElement;
+    constructor(opts: { element: HTMLElement }) {
+      this.element = opts.element;
+      createdMarkers.push(this);
+    }
     setLngLat() {
       return this;
     }
@@ -22,6 +34,9 @@ vi.mock('maplibre-gl', () => ({
       return this;
     }
     remove() {}
+    getElement() {
+      return this.element;
+    }
   },
 }));
 
@@ -131,6 +146,28 @@ const MOVING = {
   headingToSteerDeg: 45,
   accuracyM: 12,
 };
+
+beforeEach(() => {
+  createdMarkers.length = 0;
+});
+
+// #361: maplibre-gl 6.1.0's Marker._updateAccessibilityRole() only supplies
+// its own default aria-label/role when NO custom `element` is passed to the
+// constructor — BoatMarker always passes a custom element, so under 6.1.0 it
+// got neither (under 6.0.0, addTo() still supplied a generic "Map marker"
+// label). Pin an explicit, correct accessible name of our own so the
+// ownship indicator never again silently loses it to a library version bump.
+describe('BoatMarker accessible name (#361)', () => {
+  it('sets an aria-label on the custom marker element, independent of maplibre-gl defaults', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(<BoatMarker {...MOVING} />);
+    expect(createdMarkers).toHaveLength(1);
+    const label = createdMarkers[0].element.getAttribute('aria-label');
+    expect(label).toBe(de['live.ownship.marker']);
+    expect(label).toBeTruthy();
+  });
+});
 
 describe('BoatMarker ownship projection vector (#141)', () => {
   it('adds a vector source and an ownship-colored line layer in the AIS line-style family', () => {

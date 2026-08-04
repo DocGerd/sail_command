@@ -391,6 +391,8 @@ export const de = {
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
   'live.gpsHint.dismiss': 'Verstanden',
+  // #361: siehe englisches Dict für den Hintergrund.
+  'live.ownship.marker': 'Aktuelle Bootsposition',
   // #115: manueller "Route ab hier"-Neuplan — Planungssprache, keine
   // Navigationsführung; nutzt die GESPEICHERTE Windvorhersage des Plans
   // (offlinefähig, im Gegensatz zur #114-Neuberechnung).

@@ -316,9 +316,16 @@ function bandSegments(
  * reached only by absence.) 51 is the canonical figure and the one the
  * CHANGELOG uses — quote it, not the 45-mark enumeration above (#298).
  *
- * Reach: only the 11 of those 51 in the PILLAR bucket are corrected here,
- * pillar being the only bucket that draws a topmark. The other 40 are spars
- * and one can, still carry no topmark, and still rest on colour (#307).
+ * Reach, extended by #307: the pillar bucket's 11 (#298) and the spar
+ * bucket's 39 of those 51 are now corrected — every bucket that draws a
+ * topmark keys it off `category`, never `colour`. Measured, spar bucket only
+ * (shape in {spar,stake,pile,pole}, colour contradicting category): 18 port
+ * tagged black, 8 port / 5 starboard grey, 2 starboard white, 2 port / 4
+ * starboard untagged = 39. The one remaining mark (a PORT buoy tagged green)
+ * is a `can`, untouched by design rather than omission: a can's SILHOUETTE
+ * already indicates port per R1001 regardless of its colour tag — unlike a
+ * spar or pillar, a uniform body shape with no side information of its own —
+ * so it was never actually resting on colour the way the other 50 were.
  */
 const LATERAL_TOPMARK: Record<string, 'can' | 'cone'> = {
   port: 'can',
@@ -351,6 +358,26 @@ const LATERAL_CONE_TOPMARK: readonly Point2D[] = [
   { x: 9, y: 7 },
 ];
 
+/**
+ * Spar lateral topmark budget (#307). The spar body (x 10..14, w4, y5..21) is
+ * a thin pole occupying nearly the full canvas height, leaving only y0..5 of
+ * clear space above it — far less than the pillar's y0..9. Both shapes still
+ * use the S1/S2 rules from the pillar docblock above (>=1 unit empty band,
+ * >=2 units of width contrast), just at the tighter budget this shape allows:
+ * topmark box y1..4 (h3) against the body's y5 gives S1 = 1; topmark width 6
+ * against the body's width 4 gives S2 = 2 — same width (6, x9..15) as the
+ * pillar topmarks, reused rather than re-derived, but WIDER than this body
+ * (4) where the pillar's was NARROWER than its body (8): S2's direction is
+ * shape-dependent (see the S2 comment in seamarkGlyphs.test.ts), and a
+ * spar's body is already narrower than either topmark shape needs to be.
+ */
+const LATERAL_SPAR_CAN_TOPMARK: Box = { x: 9, y: 1, w: 6, h: 3 };
+const LATERAL_SPAR_CONE_TOPMARK: readonly Point2D[] = [
+  { x: 12, y: 1 },
+  { x: 15, y: 4 },
+  { x: 9, y: 4 },
+];
+
 function lateralSegments(props: SeamarkProperties): SeamarkSegment[] {
   const fill = primaryColour(props.colour);
   switch (bucketShape(props.shape)) {
@@ -368,8 +395,29 @@ function lateralSegments(props: SeamarkProperties): SeamarkSegment[] {
           fill,
         },
       ];
-    case 'spar':
-      return [{ kind: 'rect', x: 10, y: 5, w: 4, h: 16, fill }];
+    case 'spar': {
+      // Unlike can/conical, a spar's silhouette (a plain pole) carries no
+      // side information of its own — same reasoning as the pillar case
+      // below — so it needs the category-derived topmark just as much as a
+      // pillar does. #307: 524 of 828 in-area lateral marks are in this
+      // bucket and, before this, rendered with no topmark at all.
+      const segments: SeamarkSegment[] = [{ kind: 'rect', x: 10, y: 5, w: 4, h: 16, fill }];
+      switch (LATERAL_TOPMARK[props.category ?? '']) {
+        case 'can':
+          segments.push(
+            { kind: 'rect', ...LATERAL_SPAR_CAN_TOPMARK, fill },
+            bodyOutline(LATERAL_SPAR_CAN_TOPMARK),
+          );
+          break;
+        case 'cone':
+          segments.push(
+            { kind: 'polygon', points: LATERAL_SPAR_CONE_TOPMARK, fill },
+            coneOutline(LATERAL_SPAR_CONE_TOPMARK),
+          );
+          break;
+      }
+      return segments;
+    }
     case 'spherical':
       return [{ kind: 'circle', cx: 12, cy: 13, r: 6, fill }];
     case 'pillar':
@@ -577,16 +625,23 @@ const SPECIAL_X_STROKES: readonly (readonly Point2D[])[] = [
 const SPECIAL_X_WIDTH = 1.5;
 const SPECIAL_X_KEYLINE_WIDTH = 3;
 
+// #308: the X topmark got a near-white keyline underlay in #306, but the
+// BODY box did not — a `colour=black` special-purpose mark (133 of 703 in
+// the committed pull, S-57 CATSPM) is a solid INK-coloured rect on
+// transparent canvas, which blends into the dark-theme basemap exactly as
+// the pre-#306 X did. Same fix as every other multi-band family here
+// (cardinal, isolated danger, lateral pillar/spar): a near-white
+// `bodyOutline()` traced once around the whole box, unconditionally —
+// harmless for a yellow/white/red body, and it also gives every band seam a
+// consistent visual boundary rather than special-casing "is any band black".
+const SPECIAL_BODY: Box = { x: 7, y: 9, w: 10, h: 12 };
+
 function specialPurposeSegments(props: SeamarkProperties): SeamarkSegment[] {
   const tokens = colourTokens(props.colour);
-  const bands = bandSegments(tokens.length > 0 ? tokens : ['yellow'], 'horizontal', {
-    x: 7,
-    y: 9,
-    w: 10,
-    h: 12,
-  });
+  const bands = bandSegments(tokens.length > 0 ? tokens : ['yellow'], 'horizontal', SPECIAL_BODY);
   return [
     ...bands,
+    bodyOutline(SPECIAL_BODY),
     // Both keyline underlays first, so neither can paint over the other
     // stroke's INK where the two cross at the centre of the X.
     ...SPECIAL_X_STROKES.map((points): SeamarkSegment => ({
@@ -712,21 +767,19 @@ export function seamarkImageId(props: SeamarkProperties): string {
     case 'lateral': {
       const shape = bucketShape(props.shape);
       const base = `seamark-lateral-${shape}-${primaryColour(props.colour)}`;
-      // The pillar/default silhouette is the only lateral bucket that draws a
-      // topmark, and that topmark is derived from `category` (#298) — so this
-      // id must carry the category too, or the cache under-keys and one
-      // registered image serves both sides of the channel. It is not
-      // hypothetical: 7 of the 14 lateral ids in the committed pull cover more
-      // than one category, spanning 571 marks. The 2 of those in the `pillar`
-      // bucket are the ones this suffix actually separates and account for 61
-      // of them: `pillar-red` = {port 49, preferred_channel_starboard 1} and
-      // `pillar-grey` = {port 7, starboard 4}. The other 5 ids (510 marks —
-      // spar-green 247, spar-red 238, spar-grey 13, can-green 6,
-      // spar-#888888 6) stay deliberately unsuffixed, because those buckets
-      // draw no topmark and so their glyph does not vary on category — this
-      // function's rule is to key only on what the glyph actually varies on.
-      // Extend the condition if a topmark is ever added to another bucket.
-      return shape === 'pillar' ? `${base}-${props.category ?? 'unknown'}` : base;
+      // Both the `pillar` and `spar` (#307; was pillar-only, #298) buckets
+      // draw a topmark derived from `category` — so both ids must carry the
+      // category too, or the cache under-keys and one registered image
+      // serves both sides of the channel. `can`/`conical`/`spherical` draw
+      // no topmark and stay unsuffixed — their glyph does not vary on
+      // category. Measured over the committed pull: 16 suffixed ids cover
+      // 633 marks (109 pillar-bucket + 524 spar-bucket); the 5 unsuffixed
+      // ids cover the remaining 195 (conical-green 94, can-red 81,
+      // spherical-red 7, spherical-green 7, can-green 6). Extend the
+      // condition if a topmark is ever added to another bucket.
+      return shape === 'pillar' || shape === 'spar'
+        ? `${base}-${props.category ?? 'unknown'}`
+        : base;
     }
     case 'cardinal':
       return `seamark-cardinal-${props.category ?? 'unknown'}`;
