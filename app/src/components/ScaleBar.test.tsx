@@ -55,10 +55,21 @@ const hoisted = vi.hoisted(() => ({ map: null as unknown }));
 vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 
 let map: ReturnType<typeof makeFakeMap>;
+let bannerArea: HTMLElement;
 
 beforeEach(() => {
   map = makeFakeMap();
   hoisted.map = map;
+  // #368 fix-wave, round 4: `.banner-area` is present UNCONDITIONALLY in the
+  // real app (App.tsx renders it with no gating condition), so ScaleBar's
+  // `.banner-area` MutationObserver is created on every real mount too — a
+  // test suite where only 2 of ~18 cases stub it exercises a `ScaleBar` with
+  // NO such observer for the other ~16, a configuration production never
+  // has, and prints ScaleBar.tsx's own `console.warn` (added for exactly
+  // this null case) on every one of them. Stubbing it here, once, for every
+  // test removes both problems at the source instead of patching the
+  // symptom.
+  bannerArea = stubBannerArea();
 });
 
 function bar() {
@@ -427,7 +438,8 @@ describe('ScaleBar', () => {
     // test's own comment), so a MutationObserver on `.banner-area` is the
     // ONLY thing that can catch this — without it, nothing in this test
     // sequence re-triggers `apply()` after the stack's geometry changes.
-    const bannerArea = stubBannerArea();
+    // `bannerArea` comes from the shared `beforeEach` stub (present for
+    // every test now, matching production).
     const sheet = stubSheet(400); // floor = 400 + 8 = 408
     const { container } = render(<ScaleBar />);
     stubHost(container);
@@ -463,7 +475,6 @@ describe('ScaleBar', () => {
     // observer did not re-trigger `apply()`.
     expect(bar().className).toContain('scale-bar-suppressed');
     sheet.remove();
-    bannerArea.remove();
   });
 
   it('unregisters its map listeners on unmount', () => {
@@ -477,20 +488,33 @@ describe('ScaleBar', () => {
     // #368 fix-wave: the sibling test above only proves the map's own
     // on/off pairing unregisters — it says nothing about the NEW
     // MutationObserver on `.banner-area`, which has no map listener at all
-    // and would leak silently. `.banner-area` must be PRESENT at mount so
-    // the observer is actually created (the `if (bannerAreaEl)` guard in
-    // ScaleBar.tsx skips it otherwise) — spying on the shared
-    // `MutationObserver.prototype.disconnect` and counting calls is enough
-    // to prove BOTH of this component's MutationObservers (the pre-existing
-    // live-view one and this new one) got torn down, since jsdom gives every
-    // instance the same prototype method.
-    const bannerArea = stubBannerArea();
+    // and would leak silently.
+    //
+    // round 4: a plain "disconnect was called exactly 2 times" count (the
+    // first version of this test) counts calls on the SHARED
+    // `MutationObserver.prototype`, which cannot tell the two observers
+    // apart — it goes FALSE RED the moment a third, unrelated
+    // MutationObserver is added anywhere in this effect (a reasonable future
+    // change), and FALSE GREEN if `bannerMo` were swapped for a different
+    // observer that also disconnects while the `.banner-area` teardown
+    // itself silently vanished. Isolating the SPECIFIC instance ScaleBar
+    // gave `.banner-area` to — via `observe`'s own recorded `this` — and
+    // asserting disconnect on THAT instance is the same fix the sibling
+    // `on`/`off` SET comparison above already applies to the map listeners;
+    // `vi.spyOn` calls through to the real implementation by default, so the
+    // component still works normally under both spies.
+    const observeSpy = vi.spyOn(MutationObserver.prototype, 'observe');
     const disconnectSpy = vi.spyOn(MutationObserver.prototype, 'disconnect');
-    const before = disconnectSpy.mock.calls.length;
     const { unmount } = render(<ScaleBar />);
+
+    const bannerCallIndex = observeSpy.mock.calls.findIndex(([target]) => target === bannerArea);
+    expect(bannerCallIndex, '.banner-area was never passed to observe()').toBeGreaterThanOrEqual(0);
+    const bannerObserverInstance = observeSpy.mock.instances[bannerCallIndex];
+
     unmount();
-    expect(disconnectSpy.mock.calls.length - before).toBe(2);
+
+    expect(disconnectSpy.mock.instances).toContain(bannerObserverInstance);
+    observeSpy.mockRestore();
     disconnectSpy.mockRestore();
-    bannerArea.remove();
   });
 });

@@ -728,6 +728,20 @@ select {
    correspondingly lower `H >= 635.6px` — see the residual band below for
    what happens under each threshold.
 
+   TESTED vs. DERIVED: the two-banner numbers above (146px bottom edge, both
+   H thresholds, the 320x568 residual measurement below) come from a
+   one-off manual measurement against a live build, not from anything the
+   committed e2e suite runs today. Every `#368`-related e2e test
+   (`layout.spec.ts`'s two, and `compass.spec.ts`'s `"Major 2"` and
+   `"fix-wave"` tests) DELIBERATELY DISMISSES the incidental SW toast and
+   pins the deterministic SINGLE-banner case instead (asserting
+   `.banner-area .banner` count is exactly 1 at the moment of measurement) —
+   waiting for the toast to test the two-banner case for real would make the
+   suite depend on SW install timing, which was rejected. So the one-banner
+   numbers this comment also states are the tested ones; the two-banner
+   numbers are derived from the same formula and spot-measured once, not
+   continuously verified.
+
    WHY IT MUST BE BOUNDED, NOT A FLAT 9.75rem — a first attempt at this rule
    pushed `top` to a flat `9.75rem` unconditionally and re-derived
    `max-height` from it (preserving the NAMED COUPLING bottom edge,
@@ -781,8 +795,10 @@ select {
 
    RESIDUAL — narrower than "portrait clears it": below the checkbox's own
    H >= 635.6px threshold (derived above — NOT the cluster's H >= 653.3px;
-   the two are 8px apart and easy to conflate, so both are spelled out where
-   each applies) the checkbox is STILL intercepted with two banners up.
+   the two are 8px apart in the CLUSTER's own geometry — 17.8px of viewport
+   height, since the push moves at 0.45 per px of H, so 8 / 0.45 = 17.8 — and
+   easy to conflate, so both are spelled out where each applies) the checkbox
+   is STILL intercepted with two banners up.
    Measured at 320x568 (a width this repo already treats as supported —
    #277's own regression test runs there): push resolves to 107.6px,
    checkbox spans 115.6-155.6px, and `elementFromPoint` at its centre still

@@ -760,6 +760,18 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     await mapReady(page);
     await page.setViewportSize({ width: 375, height: 667 });
 
+    // Dismiss the incidental SW "offline ready" toast so this test pins the
+    // SINGLE-banner case its own numbers below assume, rather than whichever
+    // of the one- or two-banner cases SW install timing happened to produce.
+    // The gap between them is large at this exact viewport: a 152.15px push
+    // clears a 96px (one-banner) bottom edge by ~56px but a 146px
+    // (two-banner) edge by only ~6px — silently choosing between a loose and
+    // a near-zero margin is not an acceptable thing to leave to timing.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+
     // `context.setOffline` flips `navigator.onLine`/fires the browser
     // 'offline' event, which is exactly what the app's own online/offline
     // state tracks — it does not need to (and per this repo's standing
@@ -772,6 +784,10 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     // 'Planung deaktiviert' ("planning disabled") is unique to this one.
     const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
     await expect(banner).toBeVisible();
+    // Pin the count AT THE MOMENT OF MEASUREMENT (not at the dismiss attempt
+    // above, whose 5s timeout is swallowed) — a late-mounting toast between
+    // here and there would silently swap this test onto the two-banner case.
+    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
 
     // #368: this test USED TO assert `.banner-area` (top: 3rem) and
     // `.map-stack-tl` (top: 3.5rem) overlap BY DESIGN and that the Tier-3
@@ -900,7 +916,6 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
       .locator('.reload-prompt .banner-dismiss')
       .click({ timeout: 5_000 })
       .catch(() => {});
-    await expect(page.locator('.banner-area .banner')).toHaveCount(0);
 
     await page.setViewportSize({ width: 375, height: 667 });
     await page.getByRole('tab', { name: 'Planen' }).click();
@@ -908,6 +923,22 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
     await page.context().setOffline(true);
     const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
     await expect(banner).toBeVisible();
+    // The count that actually matters is at the MOMENT OF MEASUREMENT, not
+    // at the dismiss click above: the dismiss click's own 5s timeout is
+    // swallowed (`.catch(() => {})`), so on a loaded CI runner or a cold
+    // profile where the SW precache install finishes later than that budget,
+    // the toast can still mount during setViewportSize/the tab click/
+    // setOffline below — at which point `.banner-area` would hold TWO
+    // banners while `toHaveCount(0)` right after the dismiss attempt had
+    // already (correctly, at that instant) passed on a genuinely empty area.
+    // That is self-concealing: the failure mode is a green test, since the
+    // two-banner case pushes `.map-stack-tl` by the SAME amount as the
+    // one-banner case (`:has()` is a binary "any banner", not banner-COUNT-
+    // based) — the exact shape that let the first version of this test pass
+    // unchanged with the observer deleted. Asserting the count HERE, right
+    // after the banner this test is ABOUT becomes visible, pins which case
+    // actually ran instead of assuming it.
+    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
 
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
     const toggleBox = (await depthToggle.boundingBox())!;

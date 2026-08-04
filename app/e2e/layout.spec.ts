@@ -222,6 +222,16 @@ for (const viewport of [
       // the single one this test means to repro, defeating its clearance).
       await mapReady(page);
 
+      // Dismiss the incidental SW "offline ready" toast so this actually IS
+      // the single-banner repro the comment above claims, rather than
+      // whichever of the one- or two-banner cases SW install timing happened
+      // to produce (best-effort — `.click()`'s own auto-wait no-ops
+      // harmlessly if it never appears).
+      await page
+        .locator('.reload-prompt .banner-dismiss')
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+
       // `context.setOffline` flips `navigator.onLine`/fires the browser
       // 'offline' event, which is exactly what useOnline() tracks — it does
       // not need to (and per this repo's standing offline-testing lesson,
@@ -231,6 +241,14 @@ for (const viewport of [
       await page.context().setOffline(true);
       const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
       await expect(banner).toBeVisible();
+      // Pin WHICH case this is, right at the moment of measurement — not at
+      // the dismiss attempt above, whose own 5s timeout is swallowed, so a
+      // late-mounting toast could still land between here and there on a
+      // slow CI runner. See compass.spec.ts's #368 fix-wave test for the
+      // full derivation of why this matters (the two-banner case pushes
+      // `.map-stack-tl` by the SAME amount as one banner, so a stray second
+      // banner would silently swap which case this test actually exercises).
+      await expect(page.locator('.banner-area .banner')).toHaveCount(1);
 
       const toggleBox = await box(depthToggle);
       const x = toggleBox.x + toggleBox.width / 2;
