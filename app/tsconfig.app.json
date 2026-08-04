@@ -39,7 +39,7 @@
   // PlannerPanel.dst.test.tsx's `@ts-expect-error process is not typed in
   // browser context` on an unrelated file (TS2578, caught by CI, not by a
   // local incremental `tsc -b`). Excluded here for the same reason as the
-  // four above.
+  // five above.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",

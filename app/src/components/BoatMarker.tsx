@@ -190,10 +190,14 @@ export default function BoatMarker({
   // boatTriangleElement() construction time so it also tracks a runtime
   // language toggle (the app has no full reload on switch). Runs after the
   // [map] mount effect above (declared later = runs later within one
-  // commit), so markerRef.current is already set on the very first paint;
-  // re-runs whenever `map` changes (a fresh marker/element) or `t` changes
-  // (a language switch). Not a native <button> (this marker isn't
-  // interactive), so no role/tabIndex — just the accessible name.
+  // commit), so markerRef.current is already set on the very first paint.
+  // `t` (useT()) is a fresh, unmemoized closure every render, so this effect
+  // actually re-runs on EVERY render of BoatMarker, not only on a map change
+  // or an actual language toggle — that's fine because the body is an
+  // idempotent setAttribute writing the same computed string on every no-op
+  // re-run, the same t-in-deps shape ViaMarkers.tsx's own rebuild effect
+  // already uses. Not a native <button> (this marker isn't interactive), so
+  // no role/tabIndex — just the accessible name.
   useEffect(() => {
     markerRef.current?.getElement().setAttribute('aria-label', t('live.ownship.marker'));
   }, [map, t]);
