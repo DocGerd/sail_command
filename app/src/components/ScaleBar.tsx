@@ -302,6 +302,46 @@ export default function ScaleBar() {
     const mo = new MutationObserver(rewireLive);
     mo.observe(host, { childList: true });
 
+    // #368 fix-wave finding: `.map-stack-tl` can now reposition at runtime
+    // (app.css's banner-clearance rule, `:has(.banner-area .banner)`)
+    // whenever `.banner-area` gains or loses a rendered banner — a
+    // `childList` mutation on `.banner-area`, not a resize of the sheet, the
+    // live view, or the bar's own box (the only three things this effect
+    // otherwise watches). Without an observer for it, `apply()` never
+    // re-runs on that trigger, so the `mapStackBottom` it reads stays
+    // STALE at whatever it was the last time something ELSE happened to
+    // call `apply()` — measured live (no plan, Planen tab, 375x667): the bar
+    // rendered fully OVERLAPPING `.map-stack-tl`'s new, lower position
+    // (1837.7px² measured overlap) instead of either clearing it or
+    // suppressing, until an unrelated resize forced a fresh read. `.banner-
+    // area` lives OUTSIDE `host` (a sibling of `.map-area` under
+    // `.app-shell`, not inside the MapView wrapper the observer above is
+    // scoped to), so it needs its own top-level query rather than
+    // piggy-backing on that one, which only ever sees LiveView mount/unmount
+    // (`childList` on `host`).
+    // NAMED COUPLING with App.tsx (same convention as the `.live-view`/
+    // `.live-view-no-plan` coupling noted above): `.banner-area` is expected
+    // to exist unconditionally — `App.tsx:684` renders
+    // `<div className="banner-area">` with no gating condition, and React
+    // commits the whole tree before any effect (including this one) runs,
+    // so `bannerAreaEl` cannot be null today. The `if` guard is defence for
+    // if that ever stops being true (the wrapper made conditional, renamed,
+    // or moved) — the fail-open direction: a null here means the observer
+    // silently does not exist, and the symptom is the 1837.7px² overlap this
+    // fix exists to close, returning with NO signal anywhere. `console.warn`
+    // below is what leaves that signal (a fail-open control should leave a
+    // trace) rather than degrading silently a second time.
+    let bannerMo: MutationObserver | null = null;
+    const bannerAreaEl = document.querySelector<HTMLElement>('.banner-area');
+    if (bannerAreaEl) {
+      bannerMo = new MutationObserver(() => apply());
+      bannerMo.observe(bannerAreaEl, { childList: true });
+    } else {
+      console.warn(
+        '[ScaleBar] .banner-area not found — banner-triggered map-chrome moves will not re-measure the scale bar (see App.tsx:684)',
+      );
+    }
+
     // Re-applies whenever the BAR's own box changes size — the first real
     // label paint (async, see the `barHeight` comment inside `apply` above)
     // and every suppress/un-suppress toggle (`display: none` <-> real box)
@@ -317,6 +357,7 @@ export default function ScaleBar() {
       mo.disconnect();
       liveRo?.disconnect();
       sheetRo?.disconnect();
+      bannerMo?.disconnect();
       barRo?.disconnect();
     };
   }, [isWide]);

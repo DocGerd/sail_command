@@ -55,10 +55,21 @@ const hoisted = vi.hoisted(() => ({ map: null as unknown }));
 vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 
 let map: ReturnType<typeof makeFakeMap>;
+let bannerArea: HTMLElement;
 
 beforeEach(() => {
   map = makeFakeMap();
   hoisted.map = map;
+  // #368 fix-wave, round 4: `.banner-area` is present UNCONDITIONALLY in the
+  // real app (App.tsx renders it with no gating condition), so ScaleBar's
+  // `.banner-area` MutationObserver is created on every real mount too — a
+  // test suite where only 2 of ~18 cases stub it exercises a `ScaleBar` with
+  // NO such observer for the other ~16, a configuration production never
+  // has, and prints ScaleBar.tsx's own `console.warn` (added for exactly
+  // this null case) on every one of them. Stubbing it here, once, for every
+  // test removes both problems at the source instead of patching the
+  // symptom.
+  bannerArea = stubBannerArea();
 });
 
 function bar() {
@@ -106,6 +117,19 @@ function stubMapStack(container: HTMLElement, topPx: number, heightPx: number) {
   return el;
 }
 
+// #368 fix-wave: `.banner-area`, like `.app-bottom-sheet`, is a SIBLING of
+// the map in the real app (App.tsx) — not a descendant of the ScaleBar host
+// — so it is found via `document.querySelector` and stood in for via
+// `document.body`, same shape as `stubSheet` above. Starts empty (no
+// `.banner` children), matching the real `.banner-area`'s own always-
+// mounted-but-often-childless shape.
+function stubBannerArea() {
+  const el = document.createElement('div');
+  el.className = 'banner-area';
+  document.body.appendChild(el);
+  return el;
+}
+
 function setWideLayout(matches: boolean) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches,
@@ -127,6 +151,7 @@ afterEach(() => {
   // @ts-expect-error -- deliberately restoring the untouched jsdom default
   delete window.matchMedia;
   document.querySelectorAll('.app-bottom-sheet').forEach((el) => el.remove());
+  document.querySelectorAll('.banner-area').forEach((el) => el.remove());
 });
 
 describe('ScaleBar', () => {
@@ -402,10 +427,94 @@ describe('ScaleBar', () => {
     sheet.remove();
   });
 
+  it('re-measures when a banner mounts into .banner-area after the initial measurement (#368 fix-wave)', async () => {
+    // Reproduces the exact bug found while investigating #368's push: nothing
+    // watched `.map-stack-tl` itself (it can now reposition at runtime, via
+    // app.css's `:has(.banner-area .banner)` banner-clearance rule), so a
+    // banner mounting AFTER the first measurement left `apply()`'s ceiling
+    // calculation stale — measured live, the bar rendered fully overlapping
+    // `.map-stack-tl`'s new position instead of suppressing. jsdom has no
+    // ResizeObserver (see the earlier "recovers the correct... bar height"
+    // test's own comment), so a MutationObserver on `.banner-area` is the
+    // ONLY thing that can catch this — without it, nothing in this test
+    // sequence re-triggers `apply()` after the stack's geometry changes.
+    // `bannerArea` comes from the shared `beforeEach` stub (present for
+    // every test now, matching production).
+    const sheet = stubSheet(400); // floor = 400 + 8 = 408
+    const { container } = render(<ScaleBar />);
+    stubHost(container);
+    Object.defineProperty(bar(), 'offsetHeight', { value: 30, configurable: true });
+    // Initial, comfortably-visible geometry — bottom edge 56 + 165 = 221,
+    // mirrors the "does NOT suppress... with room to spare" test above. This
+    // insertion (into `container`/`host`) is what triggers the FIRST apply().
+    const stack = await act(async () => {
+      return stubMapStack(container, 56, 165);
+    });
+    // ceiling = 667 (host) - 30 (bar) - 221 (stack bottom) - 8 (gap) = 408,
+    // exactly meeting floor (408) — same arithmetic as the sibling test.
+    expect(bar().className).not.toContain('scale-bar-suppressed');
+    expect(bar().style.bottom).toBe('408px');
+
+    // Simulate app.css's banner-clearance rule pushing `.map-stack-tl` down
+    // (the real 375x667, two-banner measured values: top 152px, height
+    // 140px -> bottom 292px) WITHOUT triggering anything — a plain property
+    // redefinition, not a DOM mutation `mo`/`bannerMo` could see. This is the
+    // moment the real bug goes stale: nothing has re-read the new geometry
+    // yet, mirroring exactly what CSS alone does (no DOM mutation at all).
+    Object.defineProperty(stack, 'offsetTop', { value: 152, configurable: true });
+    Object.defineProperty(stack, 'offsetHeight', { value: 140, configurable: true });
+    expect(bar().className).not.toContain('scale-bar-suppressed'); // still stale
+
+    // NOW mount a banner into `.banner-area` — the ONLY mutation in this
+    // test after the geometry change above.
+    await act(async () => {
+      bannerArea.appendChild(document.createElement('div'));
+    });
+    // ceiling = 667 - 30 - 292 (new stack bottom) - 8 = 337 < floor (408) ->
+    // must suppress. Failing here (staying visible) means the banner-area
+    // observer did not re-trigger `apply()`.
+    expect(bar().className).toContain('scale-bar-suppressed');
+    sheet.remove();
+  });
+
   it('unregisters its map listeners on unmount', () => {
     const { unmount } = render(<ScaleBar />);
     const registered = map.on.mock.calls.map((c) => c[0]);
     unmount();
     expect(new Set(map.off.mock.calls.map((c) => c[0]))).toEqual(new Set(registered));
+  });
+
+  it('disconnects the .banner-area observer on unmount too, not just the map listeners', () => {
+    // #368 fix-wave: the sibling test above only proves the map's own
+    // on/off pairing unregisters — it says nothing about the NEW
+    // MutationObserver on `.banner-area`, which has no map listener at all
+    // and would leak silently.
+    //
+    // round 4: a plain "disconnect was called exactly 2 times" count (the
+    // first version of this test) counts calls on the SHARED
+    // `MutationObserver.prototype`, which cannot tell the two observers
+    // apart — it goes FALSE RED the moment a third, unrelated
+    // MutationObserver is added anywhere in this effect (a reasonable future
+    // change), and FALSE GREEN if `bannerMo` were swapped for a different
+    // observer that also disconnects while the `.banner-area` teardown
+    // itself silently vanished. Isolating the SPECIFIC instance ScaleBar
+    // gave `.banner-area` to — via `observe`'s own recorded `this` — and
+    // asserting disconnect on THAT instance is the same fix the sibling
+    // `on`/`off` SET comparison above already applies to the map listeners;
+    // `vi.spyOn` calls through to the real implementation by default, so the
+    // component still works normally under both spies.
+    const observeSpy = vi.spyOn(MutationObserver.prototype, 'observe');
+    const disconnectSpy = vi.spyOn(MutationObserver.prototype, 'disconnect');
+    const { unmount } = render(<ScaleBar />);
+
+    const bannerCallIndex = observeSpy.mock.calls.findIndex(([target]) => target === bannerArea);
+    expect(bannerCallIndex, '.banner-area was never passed to observe()').toBeGreaterThanOrEqual(0);
+    const bannerObserverInstance = observeSpy.mock.instances[bannerCallIndex];
+
+    unmount();
+
+    expect(disconnectSpy.mock.instances).toContain(bannerObserverInstance);
+    observeSpy.mockRestore();
+    disconnectSpy.mockRestore();
   });
 });

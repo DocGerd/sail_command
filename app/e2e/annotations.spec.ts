@@ -134,9 +134,10 @@ test('map annotations: barb density, annotations toggle, no wind re-fetch (#35 #
     });
     const slider = page.getByRole('slider', { name: 'Vorhersagezeitpunkt' });
     await expect(slider).toBeVisible();
-    // The slider's own readout (RouteLayer.tsx's `<span>{formatTime(tMs,
-    // lang)}</span>` beside the range input) is the concrete UI signal that
-    // ArrowRight actually moved the forecast hour — `networkidle` never
+    // The slider's own readout (RouteLayer.tsx's
+    // `<span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>`
+    // beside the range input) is the concrete UI signal that ArrowRight
+    // actually moved the forecast hour — `networkidle` never
     // settles under maplibre-gl 6 (no `requestfinished` for its
     // module-worker fetch) and was never the right readiness signal for
     // "did the debounced hour-change effect fire" anyway. A literal clock

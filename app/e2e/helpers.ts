@@ -6,6 +6,7 @@
 import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { expect, type Page } from '@playwright/test';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = resolve(__dirname, '..');
@@ -58,10 +59,14 @@ export async function startPreview(): Promise<PreviewServer> {
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (spawnError) {
-      throw new Error(`preview server process failed to spawn before answering at ${BASE}: ${spawnError.message}`);
+      throw new Error(
+        `preview server process failed to spawn before answering at ${BASE}: ${spawnError.message}`,
+      );
     }
     if (child.exitCode !== null) {
-      throw new Error(`preview server process exited early (code ${child.exitCode}) before answering at ${BASE}`);
+      throw new Error(
+        `preview server process exited early (code ${child.exitCode}) before answering at ${BASE}`,
+      );
     }
     try {
       const res = await fetch(BASE);
@@ -76,4 +81,87 @@ export async function startPreview(): Promise<PreviewServer> {
   // surface it instead of a bare, misleading "didn't respond in 30s".
   const cause = spawnError ? `: ${spawnError.message}` : '';
   throw new Error(`preview server did not respond at ${BASE} within ${START_TIMEOUT_MS}ms${cause}`);
+}
+
+// #253 fix-up: readiness gate for a map that has actually rendered. The app
+// deliberately exposes no global map handle (there is no reason for
+// production code to), so this reads MapView's `map` state through the React
+// fiber instead — test-harness only, and asserted to succeed rather than
+// silently skipped: a fiber layout change must fail loudly, not quietly
+// delete the strongest assertions built on it.
+//
+// `waitForLoadState('networkidle')` is always the wrong signal for a map app
+// that streams tiles forever (CLAUDE.md's verification-lessons record why),
+// and maplibre-gl 6 stopped producing a `requestfinished` Playwright counts
+// for its module-worker fetch. `mapReady` waits for the map handle AND for
+// `map.loaded()`, which is the only signal that actually proves the tile
+// pipeline — and therefore the worker — is alive. Keeping the `map.loaded()`
+// half is deliberate: during the maplibre-gl 6 upgrade this gate went red for
+// a REAL product bug (the worker chunk shipped with an unresolved
+// `./maplibre-gl-shared.mjs` import and 404'd on its own dependency, so no
+// vector/GeoJSON source ever loaded) — the gate was correctly reporting a
+// broken map. That bug is fixed at source (MapView.tsx's `?worker&url`
+// import); this gate is what keeps that fix honest, so do not weaken it back
+// to "the handle exists" — that would pass against a map rendering nothing
+// at all. It reads `map.loaded()` rather than a fiber-existence check for the
+// same reason, and returns a descriptive STRING rather than a boolean on
+// purpose: a boolean collapsed into `.toBe(true)` can only ever report
+// `Expected: true / Received: false` plus a timeout, indistinguishable
+// between "slow" and "never" — the string names the pending sources, so a CI
+// failure says which part of the pipeline stalled.
+//
+// Promoted here from THREE independent copies (`datalayers.spec.ts`,
+// `compass.spec.ts`, `layout.spec.ts` — each written "duplicated rather than
+// imported... worth promoting to helpers.ts in a follow-up" and then never
+// promoted) per CLAUDE.md's enumerate-don't-patch rule: a comment pointing at
+// a follow-up is not a tracker, and a fourth divergent copy is exactly the
+// shape that rule warns against letting recur. Only `mapReady` is exported —
+// `installMapHandle`/`mapReadyState` are call-site-internal to it, and no
+// spec has ever called them directly.
+async function installMapHandle(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const el = document.querySelector('.maplibregl-map');
+    if (!el) return false;
+    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+    if (!key) return false;
+    let f = (el as unknown as Record<string, { memoizedState?: unknown; return?: unknown }>)[key];
+    while (f) {
+      let h = f.memoizedState as { memoizedState?: unknown; next?: unknown } | undefined;
+      let guard = 0;
+      while (h && guard++ < 60) {
+        const v = h.memoizedState as { getBearing?: unknown; project?: unknown } | undefined;
+        if (v && typeof v.getBearing === 'function' && typeof v.project === 'function') {
+          (window as unknown as Record<string, unknown>).__scE2eMap = v;
+          return true;
+        }
+        h = h.next as typeof h;
+      }
+      f = f.return as typeof f;
+    }
+    return false;
+  });
+}
+
+type ReadyMap = {
+  loaded: () => boolean;
+  getStyle: () => { sources: Record<string, unknown> };
+  isSourceLoaded: (id: string) => boolean;
+};
+
+async function mapReadyState(page: Page): Promise<string> {
+  if (!(await installMapHandle(page))) return 'no-map-handle';
+  return page.evaluate(() => {
+    const map = (window as unknown as { __scE2eMap?: ReadyMap }).__scE2eMap;
+    if (!map) return 'handle-lost';
+    if (!map.loaded()) {
+      const pending = Object.keys(map.getStyle().sources).filter((id) => !map.isSourceLoaded(id));
+      return `not-loaded (pending sources: ${pending.join(', ') || 'none — style still parsing'})`;
+    }
+    return 'loaded';
+  });
+}
+
+/** Gate a spec on a map that has actually rendered, reporting WHY if it hasn't. */
+export async function mapReady(page: Page): Promise<void> {
+  await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
 }
