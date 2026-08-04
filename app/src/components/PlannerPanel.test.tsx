@@ -417,14 +417,17 @@ describe('PlannerPanel', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Fetching wind forecast');
   });
 
-  it('renders a routing status message, with progress when provided', () => {
-    renderPanel({ planning: { phase: 'routing', progress: 0.42 } });
-    expect(screen.getByRole('status')).toHaveTextContent('42%');
+  // #340: the readout is a bounded phase indicator ("sail N of 2 (Rig)"),
+  // not a percentage — pinning literal text for both rigs so a mixed-up
+  // index/rig-name substitution would fail visibly.
+  it('renders the genoa routing phase as "sail 1 of 2 (Genoa)"', () => {
+    renderPanel({ planning: { phase: 'routing', rig: 'genoa' } });
+    expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
   });
 
-  it('renders a generic routing status message when no progress is given', () => {
-    renderPanel({ planning: { phase: 'routing' } });
-    expect(screen.getByRole('status')).toHaveTextContent('Calculating route');
+  it('renders the fock routing phase as "sail 2 of 2 (Fock)" — the genoa->fock switch is not a regression', () => {
+    renderPanel({ planning: { phase: 'routing', rig: 'fock' } });
+    expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');
   });
 
   it('does NOT render a plan-run error inline (the App banner is the single alert surface)', () => {
@@ -582,7 +585,9 @@ describe('PlannerPanel', () => {
       localStorage.setItem('sc-lang', 'en');
       const { rerender } = render(
         <I18nProvider>
-          <PlannerPanel {...baseProps({ planning: { phase: 'routing' }, plan: null, rig: null })} />
+          <PlannerPanel
+            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+          />
         </I18nProvider>,
       );
       // In-flight: the region shows the routing message.
@@ -606,7 +611,9 @@ describe('PlannerPanel', () => {
       localStorage.setItem('sc-lang', 'en');
       const { rerender } = render(
         <I18nProvider>
-          <PlannerPanel {...baseProps({ planning: { phase: 'routing' }, plan: null, rig: null })} />
+          <PlannerPanel
+            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+          />
         </I18nProvider>,
       );
       rerender(
@@ -688,7 +695,7 @@ describe('PlannerPanel', () => {
 
     it('renders a decorative skeleton in the result slot while a first plan is in flight', () => {
       const { container } = renderPanelReturningContainer({
-        planning: { phase: 'routing', progress: 0.3 },
+        planning: { phase: 'routing', rig: 'genoa' },
         plan: null,
         rig: null,
       });
@@ -720,7 +727,7 @@ describe('PlannerPanel', () => {
       // gate must keep the real compact Ergebnis card and NOT overlay a skeleton
       // on top of it. Mutating the gate to drop `!summary` makes this fail.
       const { container } = renderPanelReturningContainer({
-        planning: { phase: 'routing', progress: 0.3 },
+        planning: { phase: 'routing', rig: 'genoa' },
         plan: makePlan(),
         rig: 'genoa',
       });

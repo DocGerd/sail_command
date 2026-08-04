@@ -82,8 +82,10 @@ export const en = {
   'planner.import.notice.multipleTracks':
     'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
-  'planner.status.routing': 'Calculating route…',
-  'planner.status.routingProgress': 'Calculating route… {progress}%',
+  // #340: phase readout, not a percentage — the router solves genoa and fock
+  // SEQUENTIALLY, so "sail {index} of {total}" is honest and bounded, unlike
+  // the removed percentage (capped ~5%, reset to 0 at the genoa->fock switch).
+  'planner.status.routingRig': 'Calculating route… sail {index} of {total} ({rig})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',

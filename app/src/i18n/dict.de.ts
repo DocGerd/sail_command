@@ -80,8 +80,10 @@ export const de = {
   'planner.import.notice.multipleTracks':
     'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
-  'planner.status.routing': 'Route wird berechnet…',
-  'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
+  // #340: phase readout, not a percentage — the router solves genoa and fock
+  // SEQUENTIALLY, so "Segel {index} von {total}" ({rig} already localized via
+  // RIG_LABEL_KEY) is honest and bounded, unlike the removed percentage.
+  'planner.status.routingRig': 'Route wird berechnet… Segel {index} von {total} ({rig})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
