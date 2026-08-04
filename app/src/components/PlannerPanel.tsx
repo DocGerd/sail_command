@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { Harbor, LatLon, PickedPoint, Plan, Rig, RigResult, Settings } from '../types';
+// #340 NAMED COUPLING: RIG_ORDER's coupling to the router's real solve order
+// is enforced by routing/planRoute.test.ts — see its definition in types.ts.
+import { RIG_ORDER } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import {
@@ -27,12 +30,13 @@ import Skeleton from './Skeleton';
 export type TapTarget = 'origin' | 'destination' | 'via';
 
 // This panel's own idle/fetching/routing/error view of planning progress —
-// coarser than usePlanFlow.ts's PlanningState (which additionally tracks
-// per-rig simulatedToMs). App.tsx's toPlannerStatus adapts one to the other.
+// coarser than usePlanFlow.ts's PlanningState in naming only (fetching vs.
+// fetching-wind, message vs. messageKey); the 'routing' rig is carried
+// through unchanged (#340). App.tsx's toPlannerStatus adapts one to the other.
 export type PlannerStatus =
   | { phase: 'idle' }
   | { phase: 'fetching' }
-  | { phase: 'routing'; progress?: number }
+  | { phase: 'routing'; rig: Rig }
   // #53: probing relaxed depth gates after an unreachable requested-depth solve
   | { phase: 'probing' }
   | { phase: 'error'; message: string };
@@ -252,10 +256,14 @@ export default function PlannerPanel({
   let statusText = '';
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
   else if (planning.phase === 'routing')
-    statusText =
-      planning.progress !== undefined
-        ? t('planner.status.routingProgress', { progress: Math.round(planning.progress * 100) })
-        : t('planner.status.routing');
+    // #340: phase readout ("sail N of 2") — RIG_ORDER is the router's actual,
+    // fixed solve order (genoa then fock), so the index always matches which
+    // solve is really running.
+    statusText = t('planner.status.routingRig', {
+      index: RIG_ORDER.indexOf(planning.rig) + 1,
+      total: RIG_ORDER.length,
+      rig: t(RIG_LABEL_KEY[planning.rig]),
+    });
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
   else if (planning.phase === 'idle') statusText = announcement;
   // §3.4 (fix wave): the idle completion announcement is screen-reader-only —

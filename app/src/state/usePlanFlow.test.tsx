@@ -275,7 +275,12 @@ describe('usePlanFlow', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it('progress reaches the routing phase for both rigs, and simulatedToMs is monotone per rig despite a regressing tMs', async () => {
+  // #340: the routing phase carries only `rig` — no simulatedToMs/progress
+  // number — since the router solves genoa then fock SEQUENTIALLY
+  // (planRoute.ts's runBoth) and `rig` alone is an honest, bounded phase
+  // signal. tMs/frontierSize still arrive on every progress message (the
+  // worker protocol is unchanged) but are no longer reflected into state.
+  it('the routing phase tracks which rig is solving, regardless of tMs — including a same-rig regression, which is not a phase change', async () => {
     let now = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
 
@@ -306,53 +311,25 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 1000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({
-      phase: 'routing',
-      rig: 'genoa',
-      simulatedToMs: 1000,
-    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
 
-    now += 150; // clear the 100 ms per-rig progress throttle
-    act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 800, frontierSize: 4 }); // via-joint regression
-    });
-    expect(result.current.planning).toEqual({
-      phase: 'routing',
-      rig: 'genoa',
-      simulatedToMs: 1000,
-    }); // clamped
-
+    // A regressing tMs at a via-segment joint (ledgered) is invisible to the
+    // UI now — there is no number to clamp or regress, only the rig. `now`
+    // advances past workerClient.ts's 100 ms per-rig throttle so this
+    // message genuinely reaches onProgress rather than being swallowed.
     now += 150;
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 1500, frontierSize: 5 });
+      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 800, frontierSize: 4 });
     });
-    expect(result.current.planning).toEqual({
-      phase: 'routing',
-      rig: 'genoa',
-      simulatedToMs: 1500,
-    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
 
+    // The genoa->fock switch: the ONLY visible change is `rig` — this is the
+    // exact transition the removed percentage rendered as a reset to 0.
     now += 150;
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'fock', tMs: 200, frontierSize: 1 });
     });
-    // The genoa→fock rig switch is a legitimate reset, not a regression:
-    // fock starts its own monotone sequence at its own tMs, not clamped up
-    // against genoa's high-water mark (a UI can't otherwise distinguish
-    // that plateau from a stall).
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock', simulatedToMs: 200 });
-
-    now += 150;
-    act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'fock', tMs: 100, frontierSize: 2 }); // fock's own via-joint regression
-    });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock', simulatedToMs: 200 }); // clamped within fock
-
-    now += 150;
-    act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'fock', tMs: 600, frontierSize: 3 });
-    });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock', simulatedToMs: 600 });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock' });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
@@ -361,7 +338,7 @@ describe('usePlanFlow', () => {
     expect(result.current.planning).toEqual({ phase: 'idle' });
   });
 
-  it('a relaxed-depth probe enters probing-depth and resets the per-rig high-water so the relaxed re-solve is not clamped flat (#53/#68)', async () => {
+  it('a relaxed-depth probe enters probing-depth, and the relaxed re-solve renders as its own routing state — never a regression (#53/#68/#340)', async () => {
     let now = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
 
@@ -389,32 +366,28 @@ describe('usePlanFlow', () => {
 
     const planMsg = findPosted(w.posted, 'plan');
 
-    // The doomed requested-depth solve advances genoa's clock to 5000.
+    // The doomed requested-depth solve reaches genoa.
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 5000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({
-      phase: 'routing',
-      rig: 'genoa',
-      simulatedToMs: 5000,
-    });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
 
     // The worker starts probing relaxed depth gates (mask BFS): the UI shows
-    // the probe phase, not a routing bar frozen at the doomed run's progress.
+    // its own named 'probing-depth' phase, not a routing readout frozen at
+    // the doomed run's last rig.
     act(() => {
       w.emit({ type: 'probe', id: planMsg.id, probeDepthM: 2.5, done: 1, total: 4 });
     });
     expect(result.current.planning).toEqual({ phase: 'probing-depth' });
 
-    // The relaxed re-solve restarts each rig's clock from scratch. Its early
-    // genoa tMs (200) is BELOW the doomed run's 5000 high-water: without the
-    // probe's reset it would clamp to 5000 (Math.max) and read as a stall.
-    // The reset lets the genuine early progress (200) show through.
+    // The relaxed re-solve restarts at genoa again. There is no number left
+    // to regress — the state is byte-identical to the FIRST genoa tick
+    // above, which is correct: restarting the same rig is not a new phase.
     now += 150; // clear the 100 ms per-rig progress throttle
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 200, frontierSize: 2 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa', simulatedToMs: 200 });
+    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
