@@ -289,6 +289,10 @@ export const en = {
   'live.gpsHint':
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
   'live.gpsHint.dismiss': 'Got it',
+  // #361: maplibre-gl 6.1.0 stopped supplying a default aria-label/role for
+  // markers built with a custom `element` — BoatMarker must set its own,
+  // like ViaMarkers already does, independent of library defaults.
+  'live.ownship.marker': 'Current vessel position',
   // #115: manual "replan from here" — planning-aid framing, never navigation
   // guidance; uses the plan's STORED wind forecast (offline-capable, unlike
   // the #114 recalculation).
