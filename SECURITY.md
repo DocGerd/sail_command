@@ -111,9 +111,16 @@ requiring no GPG toolchain):
   which serves *authentication* keys from a **separate registry** that does
   not back the "Verified" badge on a signed tag/commit. If a tag ever
   verifies locally (`git tag -v` reports `Good signature`) but GitHub shows
-  it as **Unverified**, that is a registration gap on the signing-key
-  registry (e.g. after a key rotation, or for a successor's own key before
-  they've registered it), not evidence of a bad signature. The key's raw
+  it as **Unverified**, that is a registration gap — either on the
+  signing-key registry above (e.g. after a key rotation, or for a
+  successor's own key before they've registered it), **or on the tagger
+  email** (whatever `user.email` was active when the tag was created must
+  itself be registered on the signer's GitHub account, independent of the
+  key) — not evidence of a bad signature either way. This is not a
+  hypothetical: it is exactly what happened to the `v0.8.0` tag itself (see
+  the `v0.8.1` CHANGELOG entry). See `CONTRIBUTING.md`'s "Tagger identity"
+  section for the full three-way breakdown (key registration, email
+  registration, email privacy) and how to tell them apart. The key's raw
   fingerprint is not pinned in this document — it can be rotated, and a
   fingerprint frozen into a versioned doc would go stale silently; the
   live registry above is the authoritative source, and `GOVERNANCE.md`'s
@@ -204,7 +211,19 @@ requiring no GPG toolchain):
   config from the third-party recipe above).
 - GitHub's own "Verified" badge on the tag's commit and on the Release page
   is a second, independent verification channel that needs no local
-  configuration at all — the fastest check for most people.
+  configuration at all — the fastest check for most people, and it is
+  **expected to show correctly from v0.8.1 onward** (the fix has been
+  proven end to end against a throwaway probe tag; a real `v0.8.1` release
+  tag had not yet been cut as of this writing, so this is a verified-fix
+  expectation, not yet an observation of the actual v0.8.1 tag). The v0.8.0
+  tag is a documented exception: it was signed under an email address not
+  registered on the maintainer's GitHub account, so GitHub shows it
+  Unverified (`reason: "no_user"`) despite a cryptographically good
+  signature — an attribution gap, not a signature problem. `git tag -v` /
+  `git verify-tag` verification above is unaffected and works for v0.8.0 the
+  same as for any other signed tag; only the badge channel is affected, and
+  only for that one tag. See the [v0.8.1 CHANGELOG entry](CHANGELOG.md) and
+  `CONTRIBUTING.md`'s "Tagger identity" section for the fix.
 
 Signing is **not retroactive**: `v0.1.0` through `v0.7.0` are never re-signed
 or re-tagged, and this is permanent, not a bootstrap gap that closes later.

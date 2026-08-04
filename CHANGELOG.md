@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-04
+
+### Fixed
+
+- Corrected v0.8.0's Security note, which overstated GitHub "Verified" badge
+  coverage: the v0.8.0 tag was signed under an email address not registered
+  on the maintainer's GitHub account, so GitHub cannot attribute the
+  signature (`verified: false, reason: "no_user"`) even though the signature
+  itself is cryptographically good (`git tag -v` reports `Good` signature).
+  This is an attribution gap, not a signature problem, and it is permanent
+  for the v0.8.0 tag specifically — re-tagging was considered and rejected:
+  a published tag is treated as immutable here, since it is an attestation
+  third parties may already have verified, and moving or re-creating it
+  would invalidate that. The fix is forward-only, not a retag. The
+  maintainer's signing identity is now fixed going forward via a repo-local
+  `git config user.email`; the badge is expected to show correctly from this
+  release onward. `git tag -v` / `git verify-tag` verification was, and
+  remains, unaffected for every signed tag including v0.8.0 (#322).
+
 ## [0.8.0] - 2026-08-03
 
 ### Changed
@@ -19,12 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Release tags are now cryptographically signed starting at v0.8.0 (SSH
-  signing), independently verifiable with `git tag -v`/`git verify-tag` or via
-  GitHub's "Verified" badge on the tag and Release page. A signed tag attests
-  that the tagged commit is authentic; it does not, on its own, prove the
-  bytes your browser downloads match it — see SECURITY.md for the full
-  picture. Tags through v0.7.0 remain permanently unsigned — signing is not
-  retroactive (#322).
+  signing), independently verifiable with `git tag -v`/`git verify-tag`. The
+  v0.8.0 tag itself does not show GitHub's "Verified" badge — it was signed
+  under an identity not registered on the maintainer's GitHub account, so
+  GitHub cannot attribute the signature; see the v0.8.1 entry above for the
+  cause and current status. A signed tag attests that the tagged commit is
+  authentic; it does not, on its own, prove the bytes your browser downloads
+  match it — see SECURITY.md for the full picture. Tags through v0.7.0
+  remain permanently unsigned — signing is not retroactive (#322).
 
 ## [0.7.0] - 2026-08-03
 
@@ -355,7 +376,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/DocGerd/sail_command/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/DocGerd/sail_command/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/DocGerd/sail_command/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/DocGerd/sail_command/compare/v0.5.1...v0.6.0
