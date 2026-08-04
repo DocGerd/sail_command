@@ -712,6 +712,27 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
 
           await rotateThenTapCompassHome(page, compass);
 
+          // #368 fix-wave, round 5: the toast dismissal above only proves
+          // `.banner-area` was empty at ONE point in time, before this
+          // per-viewport/per-tab loop even starts — 5 viewports x 2 tabs,
+          // each with a drag-rotate, a raw click, and a `toPass` retry, is a
+          // far wider window for a late SW install to still mount the toast
+          // than the point-in-time checks round 4 closed elsewhere. Unlike
+          // those, a stray banner here does NOT produce a vacuous pass: it
+          // pushes `.map-stack-tl` down (app.css's `:has()` banner-clearance
+          // rule), drops ScaleBar's ceiling below its floor, and the
+          // `neverSuppress` branch below throws "scale bar unexpectedly
+          // suppressed... has real headroom" — pointing squarely at #208's
+          // over-suppression bug, which would be the wrong diagnosis
+          // entirely; someone would go hunting in ScaleBar's suppression
+          // rule for a defect that is not there. Asserting the actual
+          // condition here, right before that branch, makes the failure
+          // name its real cause instead of a plausible-looking neighbour.
+          await expect(
+            page.locator('.banner-area .banner'),
+            `a banner appeared mid-sweep at ${viewport.width}x${viewport.height}/${tabName} — this pushes .map-stack-tl down and would misdiagnose the scale-bar check below as #208 over-suppression`,
+          ).toHaveCount(0);
+
           // --- scale bar: real occlusion, or an honest, recorded suppression ---
           const barClass = await bar.getAttribute('class');
           if (barClass?.includes('scale-bar-suppressed')) {
