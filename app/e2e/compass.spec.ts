@@ -877,6 +877,31 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
   try {
     await page.goto(server.url);
     await mapReady(page);
+
+    // Dismiss the incidental SW "offline ready" toast FIRST and confirm
+    // `.banner-area` is genuinely empty before the probe. This is load-
+    // bearing for what this test actually exercises, not just tidiness: if
+    // the toast were left up, it would likely have already pushed
+    // `.map-stack-tl` down (and fired ScaleBar's sheet/tab-switch-triggered
+    // `apply()` at least once AFTER that push) before `setOffline(true)`
+    // below ever runs — at which point `setOffline` mounting a SECOND
+    // banner changes NOTHING about `.map-stack-tl`'s geometry (the CSS
+    // `:has()` gate is a binary "any banner at all", not banner-COUNT-based,
+    // so 1-banner and 2-banner states push by the identical amount at a
+    // given viewport height). That would let a suppressed/cleared result
+    // pass even with `ScaleBar`'s `.banner-area` `MutationObserver` removed
+    // — MEASURED: the first version of this test did exactly that, passing
+    // unchanged with the observer deleted. Starting from a confirmed-empty
+    // `.banner-area`, with the viewport/tab already settled and NO further
+    // resize or tab-switch after `setOffline(true)`, makes that one call the
+    // ONLY thing that can plausibly re-trigger `apply()` — which is what
+    // makes this test actually depend on the observer under test.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+    await expect(page.locator('.banner-area .banner')).toHaveCount(0);
+
     await page.setViewportSize({ width: 375, height: 667 });
     await page.getByRole('tab', { name: 'Planen' }).click();
 
