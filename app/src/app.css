@@ -722,8 +722,20 @@ select {
 
    MEASURED, not estimated — `--sc-banner-height` is `.banner-area`'s REAL
    rendered height in px, kept live by a `ResizeObserver`
-   (`lib/useBannerHeight.ts`, written onto `:root` by App.tsx and read here
-   via `var(..., 0px)`). This REPLACES an earlier viewport-height CLAMP
+   (`lib/useBannerHeight.ts`, written onto `:root` by App.tsx, via a
+   `useLayoutEffect` so the write lands BEFORE first paint — see that file's
+   own comment for the PR #382 review finding this closes: a plain
+   `useEffect` left a real first-paint window on a cold load with a banner
+   already visible where this property had not been written yet). Read here
+   via `var(..., 176px)` — the SAME generous, guard-asymmetry fallback
+   `lib/useBannerHeight.ts` uses for its own unmeasurable-environment case
+   (`BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX`), kept in sync BY HAND (a CSS
+   `var()` fallback can't import a JS constant): belt-and-braces with the
+   `useLayoutEffect` timing fix, not a duplicate of it — this default is
+   what still protects the layout if the custom property is never written at
+   all for some OTHER reason (the hook not mounted, an error thrown before
+   the write, a future refactor), a failure mode `useLayoutEffect` timing
+   does nothing for. This REPLACES an earlier viewport-height CLAMP
    HEURISTIC (`clamp(3.5rem, calc(100dvh - 55vh - 0.5rem - 140px), 9.75rem)`,
    see git history if the derivation is ever needed again) that was blind to
    the actual banner count/height on screen and, being a function of `100dvh`
@@ -780,12 +792,19 @@ select {
 
    NO `:has()` GATE: the previous version of this rule only applied
    `.app-shell:has(.banner-area .banner) ...`, so it could stay off when no
-   banner was rendered. That gate is no longer needed — a measured 0px
-   banner height collapses `top`/`max-height` to EXACTLY the base rule's own
-   values, so applying this rule unconditionally is behaviour-preserving in
-   the no-banner case, and removes both the `:has()` selector's cost and its
-   own documented iOS Safari MQ-parsing caveat (see the `max-width:
-   1023.98px` note below, which is unrelated and still applies).
+   banner was rendered. That gate is no longer needed — once mounted,
+   `lib/useBannerHeight.ts` always WRITES an explicit value (literally
+   `0px` when `.banner-area` is empty, not a fallback), which overrides the
+   `var()` default regardless of what that default is — so a real 0px
+   measurement still collapses `top`/`max-height` to EXACTLY the base rule's
+   own values in the steady-state no-banner case. (The `176px` default above
+   is reachable only in the brief pre-mount window `useLayoutEffect` targets,
+   or if the write never happens at all — see that comment — never in the
+   ordinary "mounted, no banner" case this paragraph is about.) Applying this
+   rule unconditionally is therefore still behaviour-preserving when no
+   banner renders, and removes both the `:has()` selector's cost and its own
+   documented iOS Safari MQ-parsing caveat (see the `max-width: 1023.98px`
+   note below, which is unrelated and still applies).
 
    ScaleBar.tsx reads the SAME `--sc-banner-height` (via the SAME
    `lib/useBannerHeight.ts` hook, its own call site) rather than re-deriving
@@ -808,7 +827,7 @@ select {
 @media (max-width: 1023.98px) {
   .route-layer-controls,
   .map-stack-tl {
-    --sc-banner-clear-top: calc(3.5rem + var(--sc-banner-height, 0px));
+    --sc-banner-clear-top: calc(3.5rem + var(--sc-banner-height, 176px));
     top: var(--sc-banner-clear-top);
     max-height: calc(100dvh - var(--sc-banner-clear-top) - 55vh - 0.5rem);
   }

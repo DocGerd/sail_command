@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 
 // #368: an unmeasurable environment must assume a GENEROUS banner height,
 // never zero — this repo's guard-asymmetry convention (CLAUDE.md: a NUDGE
@@ -15,8 +15,19 @@ export const BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX = 176;
 
 // NAMED COUPLING: this is the ONLY place `--sc-banner-height` is written —
 // app.css's narrow-layout banner-clearance rule (`.route-layer-controls`,
-// `.map-stack-tl`) reads it via `var(--sc-banner-height, 0px)`. Change the
-// property name in both places together.
+// `.map-stack-tl`) reads it via `var(--sc-banner-height, 176px)`. Change the
+// property name in both places together. The CSS fallback is the SAME
+// `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX` constant above, kept in sync BY
+// HAND (a CSS `var()` fallback can't import a JS constant) — belt-and-braces
+// with the `useLayoutEffect` below, not a duplicate of the same guard: the
+// `useLayoutEffect` closes the FIRST-PAINT timing window (this hook hasn't
+// measured yet), while the CSS fallback is what protects the layout if the
+// custom property is never written at all for any OTHER reason (this hook
+// not mounted, an error thrown before the write, a future refactor) — see
+// the PR #382 review finding this pair fixes: a `0px` CSS default failed the
+// WRONG way (under- rather than over-pushing) for exactly the window a
+// PLAIN `useEffect` (fires after paint) left open on a cold load with a
+// banner already visible.
 const CSS_VAR = '--sc-banner-height';
 
 /**
@@ -51,6 +62,16 @@ const CSS_VAR = '--sc-banner-height';
  * self-sufficient: the DOM is already correct by the time ANY consumer's own
  * effect runs, regardless of which call site's commit happens to land first.
  *
+ * `useLayoutEffect`, NOT `useEffect` (PR #382 review): a plain `useEffect`
+ * fires AFTER paint, so on a cold load with a banner already visible (the
+ * common case — see App.tsx's ReloadPrompt/offline-banner comments) there
+ * was a real first-paint frame where `--sc-banner-height` had not been
+ * written yet and the CSS `var(..., 0px)` fallback (now `176px`, the CSS_VAR
+ * comment above) collapsed the push to nothing — reopening the exact
+ * hit-test collision this hook exists to prevent, for one frame on every
+ * cold load. No SSR runs in this app, so `useLayoutEffect`'s
+ * synchronous-before-paint timing is safe to rely on unconditionally.
+ *
  * jsdom has no `ResizeObserver` (`src/test/setup.ts` does not stub it
  * globally) — the guard-asymmetry fallback above applies: `canObserve` false
  * means this hook returns the generous constant unconditionally and never
@@ -63,7 +84,7 @@ export function useBannerHeight(): number {
     canObserve ? 0 : BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX,
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!canObserve) return;
     const el = document.querySelector<HTMLElement>('.banner-area');
     if (!el) return;

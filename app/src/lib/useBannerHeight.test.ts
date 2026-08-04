@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { useBannerHeight, BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX } from './useBannerHeight';
+
+const APP_CSS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../app.css');
 
 // jsdom has no real ResizeObserver (CLAUDE.md: "any unit test will need a
 // stub") — this fake is deliberately minimal: it records the callback and
@@ -131,5 +136,28 @@ describe('useBannerHeight', () => {
     // fallback) — the element is simply missing, a separate case.
     expect(result.current).toBe(0);
     expect(FakeResizeObserver.instances).toHaveLength(0);
+  });
+
+  // PR #382 review, MAJOR fix-wave: a real, checkable structural property —
+  // NOT a claim about timing/first-paint behaviour, which no test in this
+  // suite can observe (a Playwright assertion polls post-settle, so it
+  // would pass whether or not a pre-paint race exists; see this PR's own
+  // report for why that test was deliberately NOT written). What CAN be
+  // checked is that the two independent copies of this fallback number stay
+  // in sync: app.css's `var(--sc-banner-height, <N>px)` can't import this
+  // JS constant (a CSS `var()` fallback takes a literal), so nothing else
+  // keeps them equal. `useBannerHeight.ts`'s own CSS_VAR comment explains
+  // why BOTH matter — `useLayoutEffect` closes the pre-paint timing window,
+  // this sync is what protects the layout if the custom property is never
+  // written at all for some other reason (the hook not mounted, an error
+  // thrown before the write, a future refactor).
+  it('matches the CSS var(...) fallback app.css uses for the same unmeasurable-environment case', () => {
+    const css = readFileSync(APP_CSS_PATH, 'utf8');
+    const match = css.match(/var\(--sc-banner-height,\s*(\d+)px\)/);
+    expect(
+      match,
+      'app.css no longer has a var(--sc-banner-height, <N>px) fallback to check against',
+    ).not.toBeNull();
+    expect(Number(match![1])).toBe(BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX);
   });
 });
