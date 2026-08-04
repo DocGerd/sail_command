@@ -165,6 +165,51 @@ describe('RouteLayer setup', () => {
   });
 });
 
+// #378: waypoint ETAs disappearing at some zooms, and ETA/speed text being
+// too small. The behavior itself (MapLibre collision/placement) can only be
+// exercised against a real browser (see app/e2e/annotations.spec.ts's #378
+// test) — jsdom has no MapLibre runtime — but the LAYER SPEC these fixes
+// depend on is plain data the fake map records verbatim from addLayer's
+// argument, so pinning it here catches an accidental revert (e.g. back to a
+// flat text-size:11, or losing icon-ignore-placement) at unit-test speed
+// instead of only via the slower e2e symptom.
+describe('RouteLayer annotation layer spec (#378)', () => {
+  it('sizes ETA/speed text with a zoom interpolation, not a flat literal', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    for (const id of ['sc-eta-primary', 'sc-eta-secondary', 'sc-leg-speed']) {
+      const textSize = map.layers.get(id)?.layout?.['text-size'];
+      expect(Array.isArray(textSize), `${id}'s text-size`).toBe(true);
+      expect((textSize as unknown[])[0]).toBe('interpolate');
+    }
+  });
+
+  it('gives the ETA layers placement fallbacks via text-variable-anchor', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    for (const id of ['sc-eta-primary', 'sc-eta-secondary']) {
+      const layout = map.layers.get(id)?.layout;
+      expect(layout?.['text-variable-anchor']).toEqual(['left', 'right', 'top', 'bottom']);
+      // text-variable-anchor is incompatible with text-anchor/text-offset in
+      // the MapLibre style spec — text-radial-offset is the replacement.
+      expect(layout?.['text-anchor']).toBeUndefined();
+      expect(layout?.['text-offset']).toBeUndefined();
+      expect(layout?.['text-radial-offset']).toBe(0.9);
+    }
+  });
+
+  it('exempts the dense wind-barb layer from blocking other symbols (icon-ignore-placement)', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    const layout = map.layers.get('sc-wind-barbs')?.layout;
+    // icon-allow-overlap alone only protects barbs FROM being culled; without
+    // icon-ignore-placement barbs still occupy the collision index and cull
+    // the ETA/speed text layers beneath them — the actual #378 root cause.
+    expect(layout?.['icon-allow-overlap']).toBe(true);
+    expect(layout?.['icon-ignore-placement']).toBe(true);
+  });
+});
+
 // #155: the fit-to-route camera call must not quietly own the map's
 // orientation. MapLibre's cameraForBounds computes `options?.bearing || 0`, so
 // omitting `bearing` does not mean "leave it alone" — it means "rotate to
