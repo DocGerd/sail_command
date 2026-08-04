@@ -31,14 +31,23 @@
   // (#189) is the same shape one level up: it's the actual `node:fs` half of
   // the changelog-fragment reader, imported only by vite.config.ts (never by
   // browser app code) — excluded here for the same reason, picked up by
-  // tsconfig.test.json below. glyphFallbackWarningGuard.test.ts (#320) is the
-  // same shape again — reads installed node_modules source via `node:fs`.
+  // tsconfig.test.json below. subPathMeta.test.ts (#318 fix-wave) is the same
+  // shape again: it imports vite.config.ts (now that subPathMeta() is
+  // exported) to pin the fail-closed guard directly, which pulled Node's
+  // ambient `process` global into THIS program via vite.config.ts's own
+  // node:fs/node:path/node:child_process imports — silently satisfying
+  // PlannerPanel.dst.test.tsx's `@ts-expect-error process is not typed in
+  // browser context` on an unrelated file (TS2578, caught by CI, not by a
+  // local incremental `tsc -b`). Excluded here for the same reason as the
+  // five above. glyphFallbackWarningGuard.test.ts (#320) is the same shape
+  // again — reads installed node_modules source via `node:fs`.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",
     "src/**/changelogFragmentsFs.test.ts",
+    "src/**/subPathMeta.test.ts",
     "src/**/glyphFallbackWarningGuard.test.ts"
   ]
 }

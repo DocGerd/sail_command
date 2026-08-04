@@ -87,26 +87,53 @@ function changelogFragmentsPlugin(): Plugin {
 // staging deploy is never confused with (or indexed as) production. Regex
 // on the exact production strings rather than templating index.html, so a
 // production build's html output is byte-for-byte identical to before #96.
-function subPathMeta(base: string, uat: boolean): Plugin {
+// Exported (only public function in this file, #318) so
+// src/test/subPathMeta.test.ts can pin the fail-closed guard directly rather
+// than only empirically, the way #223's sibling cspMeta() guard was verified.
+export function subPathMeta(base: string, uat: boolean): Plugin {
   const origin = 'https://docgerd.github.io';
+  const OG_URL_MARKER =
+    '<meta property="og:url" content="https://docgerd.github.io/sail_command/" />';
+  const OG_IMAGE_MARKER =
+    '<meta property="og:image" content="https://docgerd.github.io/sail_command/brand/social-card.png" />';
+  const TITLE_MARKER = '<title>SailCommand</title>';
+  const THEME_COLOR_MARKER = '<meta name="theme-color" content="#10243D" />';
+  // #318: mirrors cspMeta()'s fail-closed guard (#223 review m4) — String.replace
+  // with a STRING pattern silently returns the input UNCHANGED when the
+  // pattern is absent, no throw, no warning. Measured on this exact plugin
+  // shape (PR #316 review): reformatting a meta tag made `vite build` exit 0
+  // with the injection silently skipped. The `robots` noindex meta is what
+  // makes this a BLOCKING guard rather than a nudge — a silent no-op here
+  // would let the unreleased UAT deploy become indexable (guard-asymmetry
+  // rule in CLAUDE.md: an absent security/indexing control is the expensive
+  // failure direction, so it must fail closed).
+  const requireMarker = (html: string, marker: string, label: string): void => {
+    if (!html.includes(marker)) {
+      throw new Error(
+        `sailcommand:sub-path-meta — ${label} marker not found in index.html; ` +
+          'its replacement would be silently omitted from the build',
+      );
+    }
+  };
   return {
     name: 'sailcommand:sub-path-meta',
     transformIndexHtml(html) {
+      requireMarker(html, OG_URL_MARKER, 'og:url');
+      requireMarker(html, OG_IMAGE_MARKER, 'og:image');
       let out = html
+        .replace(OG_URL_MARKER, `<meta property="og:url" content="${origin}${base}" />`)
         .replace(
-          '<meta property="og:url" content="https://docgerd.github.io/sail_command/" />',
-          `<meta property="og:url" content="${origin}${base}" />`,
-        )
-        .replace(
-          '<meta property="og:image" content="https://docgerd.github.io/sail_command/brand/social-card.png" />',
+          OG_IMAGE_MARKER,
           `<meta property="og:image" content="${origin}${base}brand/social-card.png" />`,
         );
       if (uat) {
+        requireMarker(html, TITLE_MARKER, 'title');
+        requireMarker(html, THEME_COLOR_MARKER, 'theme-color (robots noindex insertion point)');
         out = out
-          .replace('<title>SailCommand</title>', '<title>SailCommand UAT</title>')
+          .replace(TITLE_MARKER, '<title>SailCommand UAT</title>')
           .replace(
-            '<meta name="theme-color" content="#10243D" />',
-            '<meta name="theme-color" content="#10243D" />\n    <meta name="robots" content="noindex, nofollow" />',
+            THEME_COLOR_MARKER,
+            `${THEME_COLOR_MARKER}\n    <meta name="robots" content="noindex, nofollow" />`,
           );
       }
       return out;
