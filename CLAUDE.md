@@ -374,8 +374,11 @@ deviate from it.
   fadeDuration * durationAdjustment > now` with `fadeDuration: 300` defaulted
   at `ui/map.ts:539`. Measured effect: spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
-  immediately all along. `annotations.spec.ts` carries the same pattern and
-  is NOT yet fixed — tracked in #376.
+  immediately all along. Whether any OTHER spec shares this defect is
+  UNCONFIRMED — a grep of `annotations.spec.ts` (the spec `labels.spec.ts`'s
+  gate was originally modelled on) finds no `once('idle')`/fixed-cap race at
+  all, so do not assume it is affected; #376 tracks auditing `app/e2e/**` by
+  MEASUREMENT rather than by pattern-matching.
 - Dark mode has NO in-app toggle — it is pure `@media (prefers-color-scheme:
   dark)` in `app.css`, so a both-themes verification pass needs Playwright
   `page.emulateMedia({ colorScheme })`, never a UI click.
