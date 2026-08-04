@@ -107,35 +107,61 @@ import { startPreview } from './helpers';
 // produce. (C)'s mutation-check is a direct style-field removal instead —
 // see the PR description for the verbatim three-signal outcome.
 //
-// Timing note: symbol placement is a separate async step from map.loaded()
-// (see mapReady() below), so the settle wait races an 'idle' event against a
-// 5s cap. Before this fix wave, that cap was silently indistinguishable from
-// a healthy run — a genuinely hung placement pass would resolve via the cap
-// and look identical to normal. The test now records WHICH branch resolved
-// rather than hard-failing on a timeout: CI runners are documented as
-// materially slower than dev machines, so treating every timeout-branch
-// resolution as a test failure would trade a real diagnostic gap for CI
-// flakiness.
+// Settle note (PR #375 review, round 4 — this is the SECOND full rewrite of
+// this comment; round 3's version described an idle/5s-cap race that
+// MEASUREMENT then showed does not exist. Read this one, not history.)
 //
-// CORRECTED (PR #375 review, round 3) — name the channels precisely rather
-// than the general claim "visible to a human", which was measured false for
-// the case that matters most. The settle branch is surfaced through TWO
-// channels with different, non-overlapping reach:
-//   - a `console.log` line, captured in the test's stdout. This is what a
-//     human actually sees on an ordinary CI run: `ci.yml`'s ONLY step that
-//     runs `playwright test` is `npm run e2e`, whose output goes straight to
-//     the job log, and this repo's `list` reporter streams that stdout as
-//     each test completes — on BOTH a passing and a failing run.
-//   - a `test.info().annotations` entry, which is the correct structured
-//     form for a local HTML report or `--reporter=json`, but is NOT what
-//     reaches CI's log on a pass: `ci.yml`'s `playwright-report` artifact
-//     upload step is gated `if: failure()` — on a PASSING run (precisely the
-//     scenario this diagnostic exists to surface) the HTML report is never
-//     produced or uploaded at all, and this repo's `list` reporter prints
-//     nothing for a custom annotation on a green test (measured directly:
-//     an isolated Playwright run with this repo's exact reporter config
-//     produced zero console output for the annotation on a pass). Kept
-//     anyway for the local/JSON-report reader; just not relied on alone.
+// Symbol placement is a separate async step from map.loaded() (see
+// mapReady() below): map.loaded() only requires SOURCES loaded, 'idle'
+// additionally requires placement/collision to have settled. The original
+// design raced a `map.once('idle', ...)` listener against a 5s cap,
+// reasoning that placement might still be running when mapReady() resolves.
+// Instrumented directly (PR #375 review round 4): on this spec's page, a
+// NON-once `map.on('idle', ...)` attached immediately after mapReady()
+// resolves and monitored for a full 8s saw ZERO idle events
+// (`loadedAtAttach:true, isMovingAtAttach:false, idleTimestamps:[]`). The
+// map's one-shot initial 'idle' had already fired before the listener could
+// attach — mapReady()'s own poll takes long enough that by the time it
+// observes loaded()===true, placement has typically already settled too. So
+// the idle listener was structurally unable to fire in this test, and the
+// block was an UNCONDITIONAL 5-second sleep wearing a state-signal costume —
+// exactly the shape CLAUDE.md's e2e determinism rule forbids ("no fixed
+// waitForTimeout as a synchronization wait; gate on state signals").
+//
+// The fix: poll the ACTUAL state this test cares about — the placed
+// `places_locality` label set — until two consecutive reads are IDENTICAL
+// (same sorted names, not just the same count: a same-count swap, one label
+// culled while a different one is placed, would read stable under a
+// count-only compare, the same blindness class this PR keeps finding
+// elsewhere). This mirrors datalayers.spec.ts's `settledCanvas` idiom
+// (poll on a fixed cadence via `page.waitForTimeout` — a POLL INTERVAL
+// inside a stabilization loop, not a synchronization wait itself — until two
+// consecutive reads match) with ONE deliberate divergence: `settledCanvas`
+// returns its last frame best-effort if it never stabilizes (fail OPEN —
+// acceptable there because a subsequent byte-compare against that frame
+// still fails correctly if the raster is genuinely different). Here,
+// proceeding on an unstable read would let Signal (A)/(B) below validate a
+// still-settling snapshot as "the map's labels" — silently, since nothing
+// downstream would notice. So this gate fails CLOSED: exhausting its budget
+// throws, naming the full count history AND the last two label arrays it
+// saw (not just counts — see the swap case above), rather than returning
+// best-effort and letting an unstable state slip through as evidence.
+//
+// annotations.spec.ts's barb-density assertion uses the identical
+// `map.once('idle', ...)` shape and likely has the same defect — NOT fixed
+// here (out of this PR's scope; the coordinator is filing it separately).
+//
+// Two output channels for the settle diagnostic, kept for different
+// readers: a `console.log` line (what reaches a human on an ordinary CI
+// run — `ci.yml`'s only step running `playwright test` is `npm run e2e`,
+// whose stdout the `list` reporter streams to the job log on BOTH a pass
+// and a fail) and a `test.info().annotations` entry (the correct structured
+// form for a local HTML report or `--reporter=json`, but NOT what reaches
+// CI's log on a pass — `ci.yml`'s `playwright-report` upload is gated
+// `if: failure()`, so the HTML report is never produced on a passing run,
+// and the `list` reporter prints nothing for a custom annotation on green;
+// measured directly in round 3). Neither channel alone is enough; both are
+// kept.
 
 // Duplicated from compass.spec.ts/datalayers.spec.ts rather than imported —
 // neither file exports it and helpers.ts is out of this change's scope; both
@@ -191,6 +217,73 @@ async function mapReady(page: Page): Promise<void> {
   await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
 }
 
+const SETTLE_POLL_INTERVAL_MS = 250;
+// ~10s budget at 250ms cadence — generous against the near-instant
+// stabilization actually measured (placement typically already settled by
+// the time mapReady() resolves; see the file header), with CI slack per
+// CLAUDE.md's documented 6-10x runner-speed ratio.
+const SETTLE_MAX_READS = 40;
+
+interface SettledPlacedLabels {
+  labels: string[];
+  /** Total reads taken, including the two that matched. */
+  reads: number;
+  elapsedMs: number;
+}
+
+/**
+ * Polls the placed `places_locality` label set (sorted names) until two
+ * CONSECUTIVE reads are identical, then returns that stable set. Fails
+ * CLOSED — throws, naming the full count history and the last two label
+ * arrays observed, rather than returning a possibly-still-settling read —
+ * see the file header's "Settle note" for why this deliberately diverges
+ * from datalayers.spec.ts's `settledCanvas`, which returns best-effort.
+ * `page.waitForTimeout` below is the POLL CADENCE inside this stabilization
+ * loop (the same idiom `settledCanvas` uses), not a synchronization wait.
+ */
+async function settledPlacedLabels(page: Page): Promise<SettledPlacedLabels> {
+  const readLabels = () =>
+    page.evaluate(() => {
+      const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
+      return map
+        .queryRenderedFeatures({ layers: ['places_locality'] })
+        .map((f) => f.properties.name)
+        .filter((name): name is string => typeof name === 'string')
+        .sort();
+    });
+
+  const start = Date.now();
+  const countHistory: number[] = [];
+  // secondToLast/last track the two most recent reads' full arrays (not
+  // just their counts) so a failure message can show a same-count SWAP —
+  // see the comparison comment below for why count alone isn't enough.
+  let secondToLast: string[] | null = null;
+  let last = await readLabels();
+  countHistory.push(last.length);
+  for (let extraReads = 1; extraReads <= SETTLE_MAX_READS; extraReads++) {
+    await page.waitForTimeout(SETTLE_POLL_INTERVAL_MS);
+    const next = await readLabels();
+    countHistory.push(next.length);
+    // Compare the SORTED IDENTITY, not just the count — a same-count swap
+    // (one label culled while a different one is placed the same instant)
+    // would read stable under a count-only compare, the exact blindness
+    // class this PR keeps finding elsewhere.
+    if (JSON.stringify(next) === JSON.stringify(last)) {
+      const reads = extraReads + 1;
+      return { labels: next, reads, elapsedMs: Date.now() - start };
+    }
+    secondToLast = last;
+    last = next;
+  }
+  const totalReads = countHistory.length;
+  throw new Error(
+    `places_locality placement never stabilized across ${totalReads} reads ` +
+      `(${SETTLE_POLL_INTERVAL_MS}ms apart, ~${(totalReads * SETTLE_POLL_INTERVAL_MS) / 1000}s budget); ` +
+      `counts seen: ${JSON.stringify(countHistory)}; last two label sets: ` +
+      `${JSON.stringify(secondToLast)} -> ${JSON.stringify(last)}`,
+  );
+}
+
 test('map labels: a place label is placed and uses the real (non-fallback) glyph pipeline (#320)', async ({
   page,
 }) => {
@@ -208,46 +301,11 @@ test('map labels: a place label is placed and uses the real (non-fallback) glyph
     await page.goto(server.url);
     await mapReady(page);
 
-    // Symbol placement can lag map.loaded() by a frame or two (tiles loaded
-    // != collision/placement settled). Wait for one 'idle' — the same signal
-    // annotations.spec.ts's barb-density assertions settle on — with a
-    // capped fallback in case 'idle' already fired before this listener
-    // attached. Which branch resolved is returned rather than discarded (see
-    // "Timing note" in the file header): a hang and a healthy run must not
-    // look identical.
-    const settleBranch = await page.evaluate(
-      () =>
-        new Promise<'idle' | 'timeout-cap'>((resolve) => {
-          const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
-          let settled = false;
-          const done = (branch: 'idle' | 'timeout-cap') => {
-            if (settled) return;
-            settled = true;
-            resolve(branch);
-          };
-          map.once('idle', () => done('idle'));
-          setTimeout(() => done('timeout-cap'), 5_000);
-        }),
-    );
-    // Two channels, deliberately both kept — see the corrected "Timing note"
-    // in the file header for why the annotation ALONE is not enough. The
-    // console.log is what actually reaches a human on a PASSING CI run
-    // (ci.yml's `playwright-report` upload is `if: failure()` only, and the
-    // `list` reporter this repo uses prints nothing for a custom annotation
-    // on a green test — the annotation alone would be invisible exactly when
-    // it matters). The annotation stays for anyone reading a report locally
-    // or via `--reporter=json`.
-    console.log(`[#320 labels.spec.ts] symbol-placement-settle resolved via: ${settleBranch}`);
-    test.info().annotations.push({
-      type: 'symbol-placement-settle',
-      description: `resolved via: ${settleBranch}`,
-    });
-
     // Signal (C): the THIRD, more severe fail-open path — see file header.
-    // Timing-independent by design: unlike (A)/(B), which depend on
+    // Timing-independent by design: unlike (A)/(B) below, which depend on
     // placement having actually run, the style's `glyphs` field is set at
     // style-load time and does not change with settling, so this is
-    // asserted regardless of which settleBranch fired above.
+    // asserted before the settle gate rather than after it.
     const expectedGlyphsTemplate = '/sail_command/basemap-assets/fonts/{fontstack}/{range}.pbf';
     const actualGlyphsTemplate = await page.evaluate(() => {
       const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
@@ -261,18 +319,26 @@ test('map labels: a place label is placed and uses the real (non-fallback) glyph
         `Signal (B) above can detect (see file header)`,
     ).toBe(expectedGlyphsTemplate);
 
-    const placedLabels = await page.evaluate(() => {
-      const map = (window as unknown as { __scE2eMap: ScTestMap }).__scE2eMap;
-      return map
-        .queryRenderedFeatures({ layers: ['places_locality'] })
-        .map((f) => f.properties.name)
-        .filter((name): name is string => typeof name === 'string');
+    // The settle gate — see the file header's "Settle note" for the
+    // measurement that replaced the old idle/5s-cap race with this. Two
+    // output channels for the diagnostic (see the same note for why both):
+    // a console.log line (reaches CI's job log on every run) and a
+    // Playwright annotation (structured form for a local/JSON report).
+    const { labels: placedLabels, reads, elapsedMs } = await settledPlacedLabels(page);
+    console.log(
+      `[#320 labels.spec.ts] places_locality placement stabilized after ${reads} reads (${elapsedMs}ms)`,
+    );
+    test.info().annotations.push({
+      type: 'symbol-placement-settle',
+      description: `stabilized after ${reads} reads (${elapsedMs}ms)`,
     });
 
-    // Signal (A): the layer actually placed something. Not merely a weak
-    // secondary check — it LICENSES Signal (B) below (see file header) and
-    // separately rules out a different regression (place-name data absent
-    // from the basemap extract at the default view).
+    // Signal (A): the layer actually placed something (asserted on the
+    // GATE's stable read, distinct from the gate itself — the gate proves
+    // stability, this proves non-emptiness). Not merely a weak secondary
+    // check — it LICENSES Signal (B) below (see file header) and separately
+    // rules out a different regression (place-name data absent from the
+    // basemap extract at the default view).
     expect(
       placedLabels.length,
       `expected at least one placed 'places_locality' label at the default view, got: ${JSON.stringify(placedLabels)}`,
