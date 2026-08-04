@@ -112,12 +112,30 @@ import { startPreview } from './helpers';
 // 5s cap. Before this fix wave, that cap was silently indistinguishable from
 // a healthy run — a genuinely hung placement pass would resolve via the cap
 // and look identical to normal. The test now records WHICH branch resolved
-// as a Playwright annotation (visible in the HTML/CI report) rather than
-// hard-failing on a timeout: CI runners are documented as materially slower
-// than dev machines, so treating every timeout-branch resolution as a test
-// failure would trade a real diagnostic gap for CI flakiness. The annotation
-// makes a persistently-late 'idle' visible to a human without making a slow
-// (but eventually-correct) CI run red.
+// rather than hard-failing on a timeout: CI runners are documented as
+// materially slower than dev machines, so treating every timeout-branch
+// resolution as a test failure would trade a real diagnostic gap for CI
+// flakiness.
+//
+// CORRECTED (PR #375 review, round 3) — name the channels precisely rather
+// than the general claim "visible to a human", which was measured false for
+// the case that matters most. The settle branch is surfaced through TWO
+// channels with different, non-overlapping reach:
+//   - a `console.log` line, captured in the test's stdout. This is what a
+//     human actually sees on an ordinary CI run: `ci.yml`'s ONLY step that
+//     runs `playwright test` is `npm run e2e`, whose output goes straight to
+//     the job log, and this repo's `list` reporter streams that stdout as
+//     each test completes — on BOTH a passing and a failing run.
+//   - a `test.info().annotations` entry, which is the correct structured
+//     form for a local HTML report or `--reporter=json`, but is NOT what
+//     reaches CI's log on a pass: `ci.yml`'s `playwright-report` artifact
+//     upload step is gated `if: failure()` — on a PASSING run (precisely the
+//     scenario this diagnostic exists to surface) the HTML report is never
+//     produced or uploaded at all, and this repo's `list` reporter prints
+//     nothing for a custom annotation on a green test (measured directly:
+//     an isolated Playwright run with this repo's exact reporter config
+//     produced zero console output for the annotation on a pass). Kept
+//     anyway for the local/JSON-report reader; just not relied on alone.
 
 // Duplicated from compass.spec.ts/datalayers.spec.ts rather than imported —
 // neither file exports it and helpers.ts is out of this change's scope; both
@@ -211,6 +229,15 @@ test('map labels: a place label is placed and uses the real (non-fallback) glyph
           setTimeout(() => done('timeout-cap'), 5_000);
         }),
     );
+    // Two channels, deliberately both kept — see the corrected "Timing note"
+    // in the file header for why the annotation ALONE is not enough. The
+    // console.log is what actually reaches a human on a PASSING CI run
+    // (ci.yml's `playwright-report` upload is `if: failure()` only, and the
+    // `list` reporter this repo uses prints nothing for a custom annotation
+    // on a green test — the annotation alone would be invisible exactly when
+    // it matters). The annotation stays for anyone reading a report locally
+    // or via `--reporter=json`.
+    console.log(`[#320 labels.spec.ts] symbol-placement-settle resolved via: ${settleBranch}`);
     test.info().annotations.push({
       type: 'symbol-placement-settle',
       description: `resolved via: ${settleBranch}`,
