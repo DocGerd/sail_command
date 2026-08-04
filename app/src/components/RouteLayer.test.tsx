@@ -1,6 +1,16 @@
-import { act, render } from '@testing-library/react';
+// TZ pinned for the aria-valuetext wiring tests below (#292/#373 fix-wave
+// Minor 3): those hand-derive an expected `formatDateTime` string for a
+// fixed UTC instant, which is only deterministic across CI/dev machines if
+// the local timezone used to render it is also fixed. No other test in this
+// file reads a formatted local-time string (route geometry etc. use
+// Date.UTC-derived instants directly), so pinning here is neutral for them.
+// @ts-expect-error process is not typed in browser context
+process.env.TZ = 'Europe/Berlin';
+
+import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import RouteLayer, { HIGHLIGHT_LAYER, ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
+import { I18nProvider } from '../i18n';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
@@ -278,5 +288,48 @@ describe('RouteLayer style reload (#153)', () => {
     simulateStyleReload(map);
     expect(map.sources.size).toBe(0);
     expect(map.layers.size).toBe(0);
+  });
+});
+
+// #292 review (PR #373, Minor 3): the visible slider label can be abbreviated
+// (bare time or a short weekday), so the ONLY place a screen-reader user gets
+// the unambiguous full date+time is the range input's `aria-valuetext`. #361
+// (a parallel PR) shipped an accessible-name regression unnoticed, which is
+// exactly the failure class an eyeball check on this attribute cannot catch
+// reliably -- this pins the actual DOM wiring instead.
+//
+// DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0) is 2026-07-15 10:00 CEST
+// under the file's pinned Europe/Berlin TZ (UTC+2 in July) -- the expected
+// strings are hand-derived from that instant via `Intl.DateTimeFormat`
+// directly (`de-DE`/`en-GB`, day/month/year 2-digit + hour/minute h23,
+// matching `formatDateTime`'s own known options -- see this file's
+// `formatDateTime` tests for the same DD.MM.YYYY, HH:MM / DD/MM/YYYY, HH:MM
+// shapes), not by calling `formatSliderTime`/`formatDateTime` from the
+// component under test.
+describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () => {
+  it('carries the full unambiguous date+time in German, independent of the abbreviated visible label', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    const slider = screen.getByRole('slider', { name: 'Vorhersagezeitpunkt' });
+    expect(slider).toHaveAttribute('aria-valuetext', '15.07.2026, 10:00');
+  });
+
+  it('carries the full unambiguous date+time in English, independent of the abbreviated visible label', () => {
+    localStorage.setItem('sc-lang', 'en');
+    const map = makeFakeMap();
+    hoisted.map = map;
+    render(
+      <I18nProvider>
+        <RouteLayer
+          plan={makePlan()}
+          rig="genoa"
+          activeLegIndex={null}
+          viaReplanning={false}
+          onViaDragEnd={async () => true}
+        />
+      </I18nProvider>,
+    );
+    const slider = screen.getByRole('slider', { name: 'Forecast time' });
+    expect(slider).toHaveAttribute('aria-valuetext', '15/07/2026, 10:00');
   });
 });
