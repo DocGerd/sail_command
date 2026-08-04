@@ -1,3 +1,23 @@
+// TZ pinned BEFORE any other import (matching PlannerPanel.dst.test.tsx's
+// convention): the DST-transition tests below hand-derive expected strings
+// for specific Europe/Berlin wall-clock instants, so they are only
+// deterministic if formatSliderTime's ambient Date/Intl timezone is fixed
+// to that same zone regardless of the host/CI machine's own TZ (measured:
+// CI runs UTC, this repo's dev sandbox runs Europe/Berlin, and the two
+// disagree by exactly the DST offset — reproduced locally with `TZ=UTC npm
+// --prefix app run test -- src/lib/format.test.ts`). Assigning
+// `process.env.TZ` LATER (e.g. inside a test body) does not reliably
+// re-anchor Node's already-initialized Intl/Date internals; setting it here,
+// before `vitest`/`./format` are imported, is what makes it take effect for
+// the whole file. Every other test in this file (formatTime, formatDateTime,
+// the non-DST formatSliderTime tiers) already builds both its input AND its
+// expected string from the SAME local-time `Date` constructor, so those stay
+// correct under any TZ this pin could plausibly be — this only makes the
+// DST-specific hand-derived literals stop depending on which machine runs
+// them.
+// @ts-expect-error process is not typed in browser context
+process.env.TZ = 'Europe/Berlin';
+
 import { describe, it, expect } from 'vitest';
 import {
   formatNm,
