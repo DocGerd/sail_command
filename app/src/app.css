@@ -1254,6 +1254,27 @@ select {
   background: #e69f00;
 }
 
+/* #324: the alt-rig map overlay (sc-route-alt-sail/-motor) — dashed AND
+   lower-opacity, mirroring both paint axes of the live layers rather than
+   picking one. Deliberately NOT a real `opacity`/alpha value: on the MAP the
+   0.45 line-opacity blends against MapLibre's canvas (a basemap that does
+   not itself re-theme with prefers-color-scheme), but this swatch sits in
+   app chrome whose OWN background flips between themes — true alpha here
+   would read fine composited on light chrome and nearly vanish on dark
+   chrome. A lighter, muted grey than `.route-legend-line-motor`'s solid
+   #5b5b5b stands in for "lower opacity" instead, staying legible against
+   both `--sc-bg` values without a theme-specific override (the same
+   theme-invariant-literal convention every other swatch above already
+   uses). A neutral grey (not a board color): the swatch stands for the
+   overlay as a whole, the same simplification `.route-legend-line-motor`
+   already makes for the primary route's motor legs regardless of board. */
+.route-legend-alt-rig {
+  width: 1.25rem;
+  height: 3px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(to right, #757575 0 3px, transparent 3px 6px);
+}
+
 .sc-boat-marker {
   pointer-events: none;
 }
@@ -1931,6 +1952,16 @@ select {
 }
 
 .route-legs-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* #324: explains the alt-rig toggle's disabled state (only one rig found a
+   route). Same muted-note treatment as .route-legs-note/.options-help
+   above, wired via aria-describedby rather than a hover-only `title` —
+   reachable on touch, this app's primary context, not just desktop hover. */
+.route-alt-rig-note {
   margin: 0;
   font-size: 0.8rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);

@@ -173,10 +173,15 @@ export const de = {
   'route.legend.headingChange': 'Kursänderung',
   'route.legend.via': 'Zwischenpunkt',
   'route.legend.shallow': 'Flacher als Sicherheitstiefe kartiert',
+  // #324: map-only overlay of the rig NOT currently shown as the primary
+  // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
+  'route.legend.altRig': 'Anderes Rigg (gestrichelt)',
   'route.exportGpx': 'GPX exportieren',
   'route.windBarbs.toggle': 'Windpfeile anzeigen',
   'route.windBarbs.timeSlider': 'Vorhersagezeitpunkt',
   'route.annotations.toggle': 'Zeiten & Geschwindigkeiten',
+  'route.altRig.toggle': 'Anderes Rigg anzeigen',
+  'route.altRig.unavailable': 'Nur ein Rigg hat eine Route gefunden',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Tiefenprofil',
