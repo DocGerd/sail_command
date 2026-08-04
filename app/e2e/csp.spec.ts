@@ -22,6 +22,14 @@ import { startPreview } from './helpers';
 // fields (`violatedDirective`, `blockedURI`) rather than collapsing to
 // true/false, so a failure names the offending directive and URI directly
 // instead of producing an inscrutable timeout.
+//
+// #320: a second disallowed-origin probe uses a glyph-.pbf-SHAPED path. It
+// does NOT pin which directive governs glyph requests — CSP dispatch is
+// destination-based, not URL-shape-based, so it's mechanically identical to
+// the bare-origin probe above (see the comment at that probe below for the
+// full correction). labels.spec.ts covers the actual hard half of #320:
+// that the app's own real (same-origin, allowed) glyph fetch produces a
+// rendered label rather than a silent library-internal fallback.
 
 interface CspViolationRecord {
   violatedDirective: string;
@@ -96,18 +104,43 @@ test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is 
       }
     });
 
+    // #320: a glyph-SHAPED path at the same disallowed origin. IMPORTANT —
+    // CORRECTED after PR #375 review: this probe does NOT pin that
+    // connect-src (rather than font-src) judges glyph requests. CSP
+    // directive selection for a `fetch()` call is DESTINATION-based only
+    // (the browser dispatches every fetch/XHR/WebSocket/beacon through
+    // connect-src regardless of the URL's path/extension) — it never
+    // inspects URL shape, so this probe is mechanically identical to the
+    // bare `https://example.com/` probe above and proves nothing beyond it.
+    // Kept anyway (harmless, and the toHaveLength(2)/per-violation
+    // connect-src check below still passes honestly) but NOT as evidence for
+    // the connect-src-governs-glyphs claim. That claim rests on two things
+    // instead: reading load_glyph_range.ts's getArrayBuffer -> ajax.ts's
+    // fetch() call (source), and the measured 'connect-src' violatedDirective
+    // against the app's OWN real glyph-manifest.json fetch when connect-src's
+    // 'self' is removed (see the PR description's mutation-check) — a
+    // same-origin, normally-allowed request, unlike this probe's
+    // already-disallowed-origin one.
+    await page.evaluate(async () => {
+      try {
+        await fetch('https://example.com/basemap-assets/fonts/Noto%20Sans%20Regular/0-255.pbf');
+      } catch {
+        // Expected to throw (CSP block) — see comment above.
+      }
+    });
+
     const violations = await page.evaluate(
       () => (window as unknown as WindowWithCspViolations).__cspViolations,
     );
 
-    // The example.com probe is the ONLY violation this test ever expects,
-    // anywhere in the page's lifetime — covering ordinary startup (basemap
-    // worker, glyphs, styles, images, manifest) as well as the Open-Meteo
-    // fetch above. A narrower filter that only inspected Open-Meteo and
-    // example.com (as an earlier revision of this spec did) would have
-    // silently passed through a startup violation on anything else — the
-    // PR's dominant risk direction (too tight), and exactly the shape its
-    // own B2 finding turned out to be (PR #316 review M2).
+    // The two example.com probes are the ONLY violations this test ever
+    // expects, anywhere in the page's lifetime — covering ordinary startup
+    // (basemap worker, glyphs, styles, images, manifest) as well as the
+    // Open-Meteo fetch above. A narrower filter that only inspected
+    // Open-Meteo and example.com (as an earlier revision of this spec did)
+    // would have silently passed through a startup violation on anything
+    // else — the PR's dominant risk direction (too tight), and exactly the
+    // shape its own B2 finding turned out to be (PR #316 review M2).
     const unexpectedViolations = violations.filter(
       (v) => blockedHostname(v.blockedURI) !== 'example.com',
     );
@@ -121,9 +154,13 @@ test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is 
     );
     expect(
       exampleComViolations,
-      `expected a connect-src violation for https://example.com/, got violations: ${JSON.stringify(violations)}`,
-    ).toHaveLength(1);
-    expect(exampleComViolations[0]?.violatedDirective).toBe('connect-src');
+      `expected connect-src violations for both example.com probes (bare + glyph-shaped path), got violations: ${JSON.stringify(violations)}`,
+    ).toHaveLength(2);
+    for (const v of exampleComViolations) {
+      expect(v.violatedDirective, `expected connect-src, got: ${JSON.stringify(v)}`).toBe(
+        'connect-src',
+      );
+    }
   } finally {
     server.kill();
   }

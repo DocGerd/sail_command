@@ -41,12 +41,16 @@
   // typed cleanly with node globals available — same reason as
   // changelogFragmentsFs.test.ts above; see tsconfig.app.json's exclude
   // comment for the TS2578 mechanism this avoids.
+  // glyphFallbackWarningGuard.test.ts (#320, PR #375 fix wave): reads the
+  // installed maplibre-gl source via `node:fs` to structurally guard the
+  // exact warning string app/e2e/labels.spec.ts's Signal (B) depends on.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",
     "src/**/changelogFragmentsFs.test.ts",
-    "src/**/subPathMeta.test.ts"
+    "src/**/subPathMeta.test.ts",
+    "src/**/glyphFallbackWarningGuard.test.ts"
   ]
 }
