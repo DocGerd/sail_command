@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Marker } from 'maplibre-gl';
 import type { GeoJSONSource, LngLatLike } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
+import { useT } from '../i18n';
 import { destinationPoint } from '../lib/geo';
 import { ownshipVectorGeoJson } from '../lib/ownshipVector';
 import { installStyleSetup } from '../lib/styleReload';
@@ -53,6 +54,10 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 function boatTriangleElement(): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'sc-boat-marker';
+  // #361: aria-label is set imperatively in the component below (a single
+  // effect keyed on [map, t]), not here — the accessible name must survive a
+  // runtime language toggle (no full reload), so a construction-time-only
+  // value would go stale. See that effect for the full rationale.
 
   // Triangle points "up" (bearing 0°); MapLibre's rotationAlignment: 'map'
   // rotates the whole element to the marker's set rotation from there. Built
@@ -83,6 +88,7 @@ export default function BoatMarker({
   accuracyM,
 }: BoatMarkerProps) {
   const map = useMapInstance();
+  const t = useT();
   const markerRef = useRef<Marker | null>(null);
 
   // Latest fix, readable from the style-ready/re-add handler in the [map]
@@ -173,6 +179,28 @@ export default function BoatMarker({
     markerRef.current?.setLngLat([point.lon, point.lat] as LngLatLike);
     markerRef.current?.setRotation(cogDeg ?? headingToSteerDeg);
   }, [point, cogDeg, headingToSteerDeg]);
+
+  // #361: maplibre-gl 6.1.0's Marker._updateAccessibilityRole() only sets a
+  // default aria-label/role when NO custom `element` is passed to the
+  // constructor — this marker always passes one, so under 6.1.0 it got
+  // neither (6.0.0's addTo() still supplied a generic "Map marker" label
+  // unconditionally). Set an explicit, correct one of our own instead of
+  // depending on maplibre-gl's version-dependent default, mirroring the
+  // pattern ViaMarkers.tsx uses — imperatively rather than at
+  // boatTriangleElement() construction time so it also tracks a runtime
+  // language toggle (the app has no full reload on switch). Runs after the
+  // [map] mount effect above (declared later = runs later within one
+  // commit), so markerRef.current is already set on the very first paint.
+  // `t` (useT()) is a fresh, unmemoized closure every render, so this effect
+  // actually re-runs on EVERY render of BoatMarker, not only on a map change
+  // or an actual language toggle — that's fine because the body is an
+  // idempotent setAttribute writing the same computed string on every no-op
+  // re-run, the same t-in-deps shape ViaMarkers.tsx's own rebuild effect
+  // already uses. Not a native <button> (this marker isn't interactive), so
+  // no role/tabIndex — just the accessible name.
+  useEffect(() => {
+    markerRef.current?.getElement().setAttribute('aria-label', t('live.ownship.marker'));
+  }, [map, t]);
 
   useEffect(() => {
     if (!map || !map.getSource(ACCURACY_SOURCE)) return;
