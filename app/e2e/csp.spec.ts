@@ -23,11 +23,12 @@ import { startPreview } from './helpers';
 // true/false, so a failure names the offending directive and URI directly
 // instead of producing an inscrutable timeout.
 //
-// #320: a second disallowed-origin probe uses a glyph-.pbf-SHAPED path,
-// pinning that connect-src (not font-src) is what judges it — see the
-// comment at that probe below for exactly what it does and doesn't prove.
-// labels.spec.ts covers the complementary, harder half of #320: that the
-// app's own real (same-origin, allowed) glyph fetch actually produces a
+// #320: a second disallowed-origin probe uses a glyph-.pbf-SHAPED path. It
+// does NOT pin which directive governs glyph requests — CSP dispatch is
+// destination-based, not URL-shape-based, so it's mechanically identical to
+// the bare-origin probe above (see the comment at that probe below for the
+// full correction). labels.spec.ts covers the actual hard half of #320:
+// that the app's own real (same-origin, allowed) glyph fetch produces a
 // rendered label rather than a silent library-internal fallback.
 
 interface CspViolationRecord {
@@ -103,19 +104,23 @@ test('CSP: real Open-Meteo fetch is allowed, an arbitrary third-party origin is 
       }
     });
 
-    // #320: a glyph-SHAPED path (same extension/segment shape MapLibre's
-    // glyph loader requests, load_glyph_range.ts:21) at the same disallowed
-    // origin, pinning WHICH directive judges it. This does not prove the
-    // app's own real glyph fetch (same-origin, allowed) goes through
-    // connect-src in production — that's established by reading
-    // load_glyph_range.ts's getArrayBuffer -> ajax.ts's fetch() call, plus
-    // the measured 'connect-src' violatedDirective when connect-src's
-    // 'self' is removed (see the PR description's mutation-check). What
-    // THIS probe pins is narrower and still real: a glyph-.pbf-shaped
-    // request is judged by connect-src, never font-src, so a future CSP
-    // edit that "moves" glyph coverage into font-src (the WRONG-FROM-THE
-    // START mental model #320 was filed to correct) fails this assertion
-    // instead of silently shipping.
+    // #320: a glyph-SHAPED path at the same disallowed origin. IMPORTANT —
+    // CORRECTED after PR #375 review: this probe does NOT pin that
+    // connect-src (rather than font-src) judges glyph requests. CSP
+    // directive selection for a `fetch()` call is DESTINATION-based only
+    // (the browser dispatches every fetch/XHR/WebSocket/beacon through
+    // connect-src regardless of the URL's path/extension) — it never
+    // inspects URL shape, so this probe is mechanically identical to the
+    // bare `https://example.com/` probe above and proves nothing beyond it.
+    // Kept anyway (harmless, and the toHaveLength(2)/per-violation
+    // connect-src check below still passes honestly) but NOT as evidence for
+    // the connect-src-governs-glyphs claim. That claim rests on two things
+    // instead: reading load_glyph_range.ts's getArrayBuffer -> ajax.ts's
+    // fetch() call (source), and the measured 'connect-src' violatedDirective
+    // against the app's OWN real glyph-manifest.json fetch when connect-src's
+    // 'self' is removed (see the PR description's mutation-check) — a
+    // same-origin, normally-allowed request, unlike this probe's
+    // already-disallowed-origin one.
     await page.evaluate(async () => {
       try {
         await fetch('https://example.com/basemap-assets/fonts/Noto%20Sans%20Regular/0-255.pbf');

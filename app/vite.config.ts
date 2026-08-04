@@ -185,10 +185,15 @@ function cspMeta(): Plugin {
            \`@font-face\` anywhere, so today this directive gates nothing
            reachable. It stays as defence-in-depth against a future
            \`@font-face\` addition and costs nothing; connect-src above is
-           what actually gates the basemap's glyph .pbf fetches. Confirmed by
-           e2e (csp.spec.ts's glyph-shaped disallowed-origin probe,
-           labels.spec.ts's real-glyph-pipeline assertion), not just this
-           comment.
+           what actually gates the basemap's glyph .pbf fetches — confirmed
+           by source (load_glyph_range.ts's getArrayBuffer -> ajax.ts's
+           fetch()) and by e2e (labels.spec.ts's real-glyph-pipeline
+           assertion, which measurably fails when the glyphs template is
+           starved), not just this comment. csp.spec.ts's glyph-shaped
+           disallowed-origin probe does NOT support this claim — CSP
+           dispatch for fetch() is destination-based, not URL-shape-based,
+           so that probe is mechanically identical to a bare-origin probe;
+           see its own comment for the correction.
          - script-src 'self', style-src 'self' — no inline script or injected
            \`<style>\` anywhere in the app or its maplibre-gl/pmtiles
            dependencies (grepped); React's \`style\` prop sets CSSOM properties
