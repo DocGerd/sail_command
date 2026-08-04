@@ -158,11 +158,33 @@ describe('formatLatLon', () => {
 });
 
 describe('formatSliderTime', () => {
-  // All timestamps below use the local-time Date constructor (matching
-  // formatTime/formatDateTime and the other tests in this file), so
-  // calendar-day comparisons are stable regardless of the host/CI machine's
-  // timezone offset -- both the "day" input and the formatter interpret the
-  // same instant in the same local zone.
+  // Two different guarantees are in play below, and they are NOT the same
+  // property -- do not read one as implying the other.
+  //
+  // The tier tests (1/2/3 describe blocks just below, non-DST) build BOTH
+  // their input timestamp AND their expected string from the SAME local-time
+  // `Date` constructor (`new Date(y, m, d, h, min)`), never from a fixed UTC
+  // instant. That makes them genuinely zone-AGNOSTIC: whatever the ambient
+  // ICU zone is, the input and the expectation are computed IN that same
+  // zone, so they agree regardless of which zone it is. These tests would
+  // pass under this file's Europe/Berlin pin, under UTC, or under any other
+  // zone, unchanged.
+  //
+  // The "DST transitions" describe block further down is DELIBERATELY THE
+  // OPPOSITE: it hand-derives literals (`'02:00'`, `'30. März 00:30'`, etc.)
+  // for SPECIFIC Europe/Berlin 2026 transition instants, so those literals
+  // are only correct under Europe/Berlin specifically -- they are
+  // zone-SPECIFIC by design, not zone-agnostic, and depend entirely on the
+  // file-level `process.env.TZ = 'Europe/Berlin'` pin at the top of this
+  // file. A PREVIOUS version of this comment claimed "stable regardless of
+  // the host/CI machine's timezone offset" for the whole describe block --
+  // that was true only for the tier tests and FALSE for the DST tests, and
+  // this file shipped without the pin as a result: CI (UTC) and this
+  // author's dev sandbox (Europe/Berlin) produced different DST-test
+  // results until the pin was added. Do not delete the pin as
+  // "unnecessary", and do not add a new zone-specific literal here without
+  // either deriving it the tier-test way (input and expectation from the
+  // same local `Date` call) or relying on the pin the DST tests already use.
 
   describe('tier 1: today-only forecast -> bare HH:MM', () => {
     it('renders bare HH:MM when every slider hour AND now fall on the same calendar day (#292)', () => {
