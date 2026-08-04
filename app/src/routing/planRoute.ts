@@ -219,6 +219,16 @@ export function planRoute(
     };
     return { rigResult, reason: null };
   };
+  // #340 NAMED COUPLING: this evaluates `run('genoa', …)` then
+  // `run('fock', …)` as plain, synchronous object-literal properties — no
+  // interleaving, genoa's solve (and every progress message it reports)
+  // fully completes before fock's starts. That real order is asserted equal
+  // to `RIG_ORDER` (../types.ts, next to the `Rig` type) by
+  // planRoute.test.ts's "#340: solve order matches RIG_ORDER" guard test,
+  // which PlannerPanel.tsx's "sail N of 2" phase-readout numbering relies
+  // on. Reordering these two properties changes the real solve order and
+  // must fail that guard test — if it doesn't, the guard is broken, not this
+  // code.
   const runBoth = (settings: Settings, comfort: number | undefined) => ({
     genoa: run('genoa', deps.polarGenoa, settings, comfort),
     fock: run('fock', deps.polarFock, settings, comfort),

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { Harbor, LatLon, PickedPoint, Plan, Rig, RigResult, Settings } from '../types';
+// #340 NAMED COUPLING: RIG_ORDER's coupling to the router's real solve order
+// is enforced by routing/planRoute.test.ts — see its definition in types.ts.
+import { RIG_ORDER } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import {
@@ -12,7 +15,7 @@ import {
 } from '../lib/format';
 import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
-import { RIG_LABEL_KEY, RIG_ORDER, resultSummary } from '../lib/resultSummary';
+import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
 import OptionsPanel, { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
