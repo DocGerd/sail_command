@@ -38,6 +38,7 @@ import UatBadge from './components/UatBadge';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
 import { useWideLayout } from './lib/useWideLayout';
+import { useBannerHeight } from './lib/useBannerHeight';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
@@ -122,6 +123,13 @@ function AppShell() {
   const t = useT();
   const [lang, setLang] = useLang();
   const online = useOnline();
+  // #368: keeps `--sc-banner-height` (app.css's narrow-layout banner-
+  // clearance rule) in sync with `.banner-area`'s REAL rendered height —
+  // called here purely for that side effect (the hook writes the CSS custom
+  // property itself; see its own comment). The return value is unused at
+  // this call site; ScaleBar.tsx makes its own separate call to know when to
+  // re-measure `.map-stack-tl`'s position.
+  useBannerHeight();
   const [settings, setSettings] = useSettings();
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();

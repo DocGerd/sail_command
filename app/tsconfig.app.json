@@ -41,6 +41,9 @@
   // local incremental `tsc -b`). Excluded here for the same reason as the
   // five above. glyphFallbackWarningGuard.test.ts (#320) is the same shape
   // again — reads installed node_modules source via `node:fs`.
+  // useBannerHeight.test.ts (#368, PR #382 review fix-wave) is the same
+  // shape once more — reads app/src/app.css via `node:fs` to structurally
+  // guard its CSS fallback stays in sync with the hook's own JS constant.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -48,6 +51,7 @@
     "src/**/changelogFragmentsFs.ts",
     "src/**/changelogFragmentsFs.test.ts",
     "src/**/subPathMeta.test.ts",
-    "src/**/glyphFallbackWarningGuard.test.ts"
+    "src/**/glyphFallbackWarningGuard.test.ts",
+    "src/**/useBannerHeight.test.ts"
   ]
 }

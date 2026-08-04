@@ -12,6 +12,46 @@ import { de } from '../i18n/dict.de';
 
 type Handler = (arg: unknown) => void;
 
+// jsdom has no real ResizeObserver (CLAUDE.md: "any unit test will need a
+// stub") — this fake is deliberately inert until a test explicitly calls
+// `fire()` on one of its instances, so installing it globally in every
+// test's `beforeEach` cannot silently change any OTHER test's behaviour:
+// `liveRo`/`sheetRo`/`barRo` (ScaleBar's own observers) and
+// `useBannerHeight`'s own observer all get real instances instead of being
+// skipped, but none of them ever CALLS BACK unless a test asks for it.
+type RoEntry = { contentRect: { height: number } };
+type RoCallback = (entries: RoEntry[]) => void;
+
+class FakeResizeObserver {
+  static instances: FakeResizeObserver[] = [];
+  observed: Element | null = null;
+  disconnected = false;
+  private readonly callback: RoCallback;
+  constructor(callback: RoCallback) {
+    this.callback = callback;
+    FakeResizeObserver.instances.push(this);
+  }
+  observe(el: Element) {
+    this.observed = el;
+  }
+  unobserve() {
+    this.observed = null;
+  }
+  disconnect() {
+    this.disconnected = true;
+  }
+  fire(height: number) {
+    this.callback([{ contentRect: { height } }]);
+  }
+}
+
+/** Finds the FakeResizeObserver instance watching a specific element. */
+function roFor(el: Element): FakeResizeObserver {
+  const found = FakeResizeObserver.instances.find((o) => o.observed === el);
+  if (!found) throw new Error('no ResizeObserver instance is observing this element');
+  return found;
+}
+
 // Degrees of longitude per screen pixel, chosen so the bar's 100 px reference
 // spans ~3 NM. At 54.85 N one NM is 1 / (60 * cos 54.85) = 0.028950 deg of
 // longitude, so 3 NM across 100 px is 0.0008685 deg/px. The largest 1-2-5
@@ -70,6 +110,8 @@ beforeEach(() => {
   // test removes both problems at the source instead of patching the
   // symptom.
   bannerArea = stubBannerArea();
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+  FakeResizeObserver.instances = [];
 });
 
 function bar() {
@@ -152,6 +194,8 @@ afterEach(() => {
   delete window.matchMedia;
   document.querySelectorAll('.app-bottom-sheet').forEach((el) => el.remove());
   document.querySelectorAll('.banner-area').forEach((el) => el.remove());
+  document.documentElement.style.removeProperty('--sc-banner-height');
+  vi.unstubAllGlobals();
 });
 
 describe('ScaleBar', () => {
@@ -427,19 +471,16 @@ describe('ScaleBar', () => {
     sheet.remove();
   });
 
-  it('re-measures when a banner mounts into .banner-area after the initial measurement (#368 fix-wave)', async () => {
+  it('re-measures when .banner-area resizes after the initial measurement (#368)', async () => {
     // Reproduces the exact bug found while investigating #368's push: nothing
     // watched `.map-stack-tl` itself (it can now reposition at runtime, via
-    // app.css's `:has(.banner-area .banner)` banner-clearance rule), so a
+    // app.css's banner-clearance rule reading `--sc-banner-height`), so a
     // banner mounting AFTER the first measurement left `apply()`'s ceiling
     // calculation stale — measured live, the bar rendered fully overlapping
-    // `.map-stack-tl`'s new position instead of suppressing. jsdom has no
-    // ResizeObserver (see the earlier "recovers the correct... bar height"
-    // test's own comment), so a MutationObserver on `.banner-area` is the
-    // ONLY thing that can catch this — without it, nothing in this test
-    // sequence re-triggers `apply()` after the stack's geometry changes.
-    // `bannerArea` comes from the shared `beforeEach` stub (present for
-    // every test now, matching production).
+    // `.map-stack-tl`'s new position instead of suppressing. `useBannerHeight`
+    // (via its own ResizeObserver on `.banner-area`, the FakeResizeObserver
+    // installed in `beforeEach`) is what re-triggers this component's main
+    // effect now; `bannerArea` comes from the shared `beforeEach` stub.
     const sheet = stubSheet(400); // floor = 400 + 8 = 408
     const { container } = render(<ScaleBar />);
     stubHost(container);
@@ -458,20 +499,22 @@ describe('ScaleBar', () => {
     // Simulate app.css's banner-clearance rule pushing `.map-stack-tl` down
     // (the real 375x667, two-banner measured values: top 152px, height
     // 140px -> bottom 292px) WITHOUT triggering anything — a plain property
-    // redefinition, not a DOM mutation `mo`/`bannerMo` could see. This is the
-    // moment the real bug goes stale: nothing has re-read the new geometry
-    // yet, mirroring exactly what CSS alone does (no DOM mutation at all).
+    // redefinition, not a DOM mutation/resize either observer could see. This
+    // is the moment the real bug goes stale: nothing has re-read the new
+    // geometry yet, mirroring exactly what CSS alone does.
     Object.defineProperty(stack, 'offsetTop', { value: 152, configurable: true });
     Object.defineProperty(stack, 'offsetHeight', { value: 140, configurable: true });
     expect(bar().className).not.toContain('scale-bar-suppressed'); // still stale
 
-    // NOW mount a banner into `.banner-area` — the ONLY mutation in this
-    // test after the geometry change above.
+    // NOW fire the .banner-area ResizeObserver — the ONLY trigger in this
+    // test after the geometry change above, standing in for a real banner
+    // mounting (or a banner wrapping to a second line, which a childList
+    // MutationObserver could never have seen in the first place).
     await act(async () => {
-      bannerArea.appendChild(document.createElement('div'));
+      roFor(bannerArea).fire(98);
     });
     // ceiling = 667 - 30 - 292 (new stack bottom) - 8 = 337 < floor (408) ->
-    // must suppress. Failing here (staying visible) means the banner-area
+    // must suppress. Failing here (staying visible) means the banner-height
     // observer did not re-trigger `apply()`.
     expect(bar().className).toContain('scale-bar-suppressed');
     sheet.remove();
@@ -484,37 +527,21 @@ describe('ScaleBar', () => {
     expect(new Set(map.off.mock.calls.map((c) => c[0]))).toEqual(new Set(registered));
   });
 
-  it('disconnects the .banner-area observer on unmount too, not just the map listeners', () => {
-    // #368 fix-wave: the sibling test above only proves the map's own
-    // on/off pairing unregisters — it says nothing about the NEW
-    // MutationObserver on `.banner-area`, which has no map listener at all
-    // and would leak silently.
-    //
-    // round 4: a plain "disconnect was called exactly 2 times" count (the
-    // first version of this test) counts calls on the SHARED
-    // `MutationObserver.prototype`, which cannot tell the two observers
-    // apart — it goes FALSE RED the moment a third, unrelated
-    // MutationObserver is added anywhere in this effect (a reasonable future
-    // change), and FALSE GREEN if `bannerMo` were swapped for a different
-    // observer that also disconnects while the `.banner-area` teardown
-    // itself silently vanished. Isolating the SPECIFIC instance ScaleBar
-    // gave `.banner-area` to — via `observe`'s own recorded `this` — and
-    // asserting disconnect on THAT instance is the same fix the sibling
-    // `on`/`off` SET comparison above already applies to the map listeners;
-    // `vi.spyOn` calls through to the real implementation by default, so the
-    // component still works normally under both spies.
-    const observeSpy = vi.spyOn(MutationObserver.prototype, 'observe');
-    const disconnectSpy = vi.spyOn(MutationObserver.prototype, 'disconnect');
+  it('disconnects the .banner-area (useBannerHeight) observer on unmount too, not just the map listeners', () => {
+    // #368: the sibling test above only proves the map's own on/off pairing
+    // unregisters — it says nothing about `useBannerHeight`'s own
+    // ResizeObserver on `.banner-area`, which has no map listener at all and
+    // would leak silently. Isolating the SPECIFIC instance that observed
+    // `.banner-area` (via `roFor`, the same technique the fake exposes for
+    // the re-measure test above) is the same fix the sibling `on`/`off` SET
+    // comparison already applies to the map listeners — a bare "disconnect
+    // was called N times" count cannot tell ScaleBar's OWN `liveRo`/`sheetRo`/
+    // `barRo` instances apart from `useBannerHeight`'s.
     const { unmount } = render(<ScaleBar />);
-
-    const bannerCallIndex = observeSpy.mock.calls.findIndex(([target]) => target === bannerArea);
-    expect(bannerCallIndex, '.banner-area was never passed to observe()').toBeGreaterThanOrEqual(0);
-    const bannerObserverInstance = observeSpy.mock.instances[bannerCallIndex];
+    const observer = roFor(bannerArea);
 
     unmount();
 
-    expect(disconnectSpy.mock.instances).toContain(bannerObserverInstance);
-    observeSpy.mockRestore();
-    disconnectSpy.mockRestore();
+    expect(observer.disconnected).toBe(true);
   });
 });

@@ -1,5 +1,11 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { startPreview, mapReady } from './helpers';
+import {
+  startPreview,
+  mapReady,
+  STANDARD_VIEWPORTS,
+  EDGE_VIEWPORTS,
+  type Viewport,
+} from './helpers';
 
 // Responsive shell layout (#24). Below 1024px the panel is a bottom-sheet
 // overlay on a full-viewport map; at >=1024px it becomes a ~1/3-width side
@@ -195,16 +201,44 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
 // underneath it (measured pre-fix: `elementFromPoint` over the checkbox
 // resolved to `SPAN.banner-message`, not the control). The fix moves
 // `.map-stack-tl` (and its mirrored `.route-layer-controls`) clear of a
-// rendered banner's footprint instead of touching either element's z-index —
-// asserted at both narrow widths this repo actively tests (390x844, 360x740).
+// rendered banner's footprint by MEASURING `.banner-area`'s real rendered
+// height (`lib/useBannerHeight.ts`) instead of estimating it from viewport
+// height, rather than touching either element's z-index.
+//
+// Runs the SAME single-banner hit-test across BOTH the standard device
+// matrix (helpers.ts's `STANDARD_VIEWPORTS` — maintainer requirement: every
+// layout-sensitive spec covers desktop 4K/HD, tablet landscape/portrait, and
+// phone portrait at minimum) and three of the narrow/short `EDGE_VIEWPORTS`
+// entries — `deepPortrait320` and `wrapForcing280` are excluded here because
+// they need a DIFFERENT test body (two stacked banners, and a forced wrap,
+// both below), not the single-banner one this loop pins.
+// `phonePortrait` (390x844, STANDARD) already covers what used to be this
+// loop's own first entry — not duplicated into EDGE.
+//
+// `tabletLandscape` (1180 wide) and `tabletPortrait` (820 wide) straddle the
+// 1024px wide/narrow breakpoint (`lib/useWideLayout.ts`) for the FIRST time
+// in this test file: every viewport tested before this addition sat on one
+// side of it. At >=1024px `.banner-area` becomes a `position: static` grid
+// item (app.css's wide-layout override) and structurally cannot overlap the
+// map chrome at all, so the wide-branch cases are expected to pass trivially
+// — asserted explicitly here rather than assumed, since "structurally can't
+// happen" has been wrong before in this file's own history (#208).
+// `desktop4k` (3840px) is this file's widest-ever viewport, checked for the
+// same reason: nothing in the wide-layout CSS is written against an assumed
+// maximum width, and this is the test that would catch it if that stopped
+// being true.
+//
 // Every check below polls or asserts on the VALUE (the resolved element
 // description, the measured overlap area), never a bare boolean, so a CI
 // failure names what actually got hit instead of just timing out.
-for (const viewport of [
-  { width: 390, height: 844 },
-  { width: 360, height: 740 },
-]) {
-  test(`#368: offline banner no longer intercepts the depth checkbox at ${viewport.width}x${viewport.height}`, async ({
+const SINGLE_BANNER_VIEWPORTS: Record<string, Viewport> = {
+  ...STANDARD_VIEWPORTS,
+  narrowPortrait360: EDGE_VIEWPORTS.narrowPortrait360,
+  shortLandscape844: EDGE_VIEWPORTS.shortLandscape844,
+  shortLandscape740: EDGE_VIEWPORTS.shortLandscape740,
+};
+for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
+  test(`#368: offline banner no longer intercepts the depth checkbox (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
     const server = await startPreview();
@@ -288,6 +322,187 @@ for (const viewport of [
     }
   });
 }
+
+// #368 residual: two STACKED banners (the SW's one-shot "offline ready"
+// toast plus the offline warning — both dismissible/self-clearing, neither
+// forced) at 320x568, the exact configuration measured broken under the old
+// viewport-height clamp heuristic (push resolved to 107.6px there, clearing
+// neither the 146px two-banner bottom edge nor the checkbox). A measured
+// push (app.css, `--sc-banner-height`) always leaves a fixed ~8px margin
+// below whatever `.banner-area` actually renders, regardless of how many
+// banners are stacked — see that rule's own derivation comment.
+test('#368: two stacked banners at 320x568 (previously measured broken) no longer intercept the depth checkbox', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
+    await page.goto(server.url);
+
+    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    await expect(depthToggle).toBeVisible();
+    await mapReady(page);
+
+    // Deliberately NOT dismissing the SW toast here — this test is ABOUT the
+    // two-banner case, so the toast staying up is the point, not something to
+    // clear out of the way like the single-banner tests above.
+    await page.context().setOffline(true);
+    const offlineBanner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
+    await expect(offlineBanner).toBeVisible();
+    // The toast's own install completion is independent of the offline flip
+    // above and not on any fixed clock this test controls — poll for it
+    // rather than assuming a fixed delay ever settles it.
+    await expect
+      .poll(() => page.locator('.banner-area .banner').count(), { timeout: 15_000 })
+      .toBe(2);
+
+    const toggleBox = await box(depthToggle);
+    const x = toggleBox.x + toggleBox.width / 2;
+    const y = toggleBox.y + toggleBox.height / 2;
+    await expect
+      .poll(() => elementDescriptionAt(page, x, y), { timeout: 10_000 })
+      .toMatch(/^INPUT\b/);
+
+    await expect
+      .poll(
+        async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
+        { timeout: 10_000 },
+      )
+      .toBe(0);
+  } finally {
+    await page
+      .context()
+      .setOffline(false)
+      .catch(() => {});
+    server.kill();
+  }
+});
+
+// #368 residual: THREE simultaneous banners (the SW toast, the offline
+// warning, and the tap-pick info banner from clicking "Auf Karte wählen") —
+// a count the old `:has(.banner-area .banner)` gate treated identically to
+// one banner (a binary "any banner at all", not banner-COUNT-based), so a
+// third banner stacking on top never widened the push at all. A measured
+// `--sc-banner-height` has no such blind spot: it is `.banner-area`'s real
+// rendered height regardless of how many children produced it.
+test('#368: three simultaneous banners at 390x844 do not intercept the depth checkbox', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize(STANDARD_VIEWPORTS.phonePortrait);
+    await page.goto(server.url);
+
+    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    await expect(depthToggle).toBeVisible();
+    await mapReady(page);
+
+    // Banner 1: the SW's one-shot toast — deliberately not dismissed.
+    // Banner 2: the offline warning.
+    await page.context().setOffline(true);
+    await expect(page.locator('.banner-message', { hasText: 'Planung deaktiviert' })).toBeVisible();
+    await expect
+      .poll(() => page.locator('.banner-area .banner').count(), { timeout: 15_000 })
+      .toBe(2);
+
+    // Banner 3: the tap-pick info banner, from "Pick on map" on the Origin
+    // field (default-active Plan tab, so no tab switch is needed first).
+    await page
+      .getByRole('region', { name: 'Start' })
+      .getByRole('button', { name: 'Auf Karte wählen' })
+      .click();
+    await expect(page.locator('.banner-message', { hasText: 'Auf Karte tippen' })).toBeVisible();
+    await expect(page.locator('.banner-area .banner')).toHaveCount(3);
+
+    const toggleBox = await box(depthToggle);
+    const x = toggleBox.x + toggleBox.width / 2;
+    const y = toggleBox.y + toggleBox.height / 2;
+    await expect
+      .poll(() => elementDescriptionAt(page, x, y), { timeout: 10_000 })
+      .toMatch(/^INPUT\b/);
+
+    await expect
+      .poll(
+        async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
+        { timeout: 10_000 },
+      )
+      .toBe(0);
+  } finally {
+    await page
+      .context()
+      .setOffline(false)
+      .catch(() => {});
+    server.kill();
+  }
+});
+
+// #368 residual: a banner that WRAPS to a second line — no banner-count
+// change at all (a `MutationObserver({childList: true})`, this fix's own
+// earlier mechanism, cannot see this; see ScaleBar.tsx's comment on why it
+// was replaced with a `ResizeObserver`). Forced with a genuinely narrow
+// viewport (280px — narrower than this repo's 320px minimum-supported
+// width) rather than faking the DOM shape: the offline banner's own DE copy
+// is long enough to wrap for real at that width, confirmed below by
+// asserting the banner's OWN rendered height, not just the fix's outcome.
+test('#368: a banner that wraps to two lines (280px width) does not intercept the depth checkbox', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize(EDGE_VIEWPORTS.wrapForcing280);
+    await page.goto(server.url);
+
+    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    await expect(depthToggle).toBeVisible();
+    await mapReady(page);
+
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+
+    await page.context().setOffline(true);
+    const offlineBanner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
+    await expect(offlineBanner).toBeVisible();
+    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
+
+    // Proves the wrap actually happened, in the browser, rather than
+    // assuming it from the viewport width alone: this banner's copy
+    // measures a TRUE single line at 32px tall (only reached at a
+    // comfortably wide viewport — see app.css's `.data-layer-controls`
+    // `min-height` comment for that measurement); each wrapped line adds
+    // roughly another line-height on top of that, and 64px was measured live
+    // at this exact 280px width during this fix's development. 55px sits
+    // comfortably between the true single-line height and that measured
+    // wrapped one, so this fails loudly if a font/padding change ever makes
+    // the string fit on one line at this width again.
+    await expect
+      .poll(async () => (await box(page.locator('.banner-area .banner'))).height, {
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(55);
+
+    const toggleBox = await box(depthToggle);
+    const x = toggleBox.x + toggleBox.width / 2;
+    const y = toggleBox.y + toggleBox.height / 2;
+    await expect
+      .poll(() => elementDescriptionAt(page, x, y), { timeout: 10_000 })
+      .toMatch(/^INPUT\b/);
+
+    await expect
+      .poll(
+        async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
+        { timeout: 10_000 },
+      )
+      .toBe(0);
+  } finally {
+    await page
+      .context()
+      .setOffline(false)
+      .catch(() => {});
+    server.kill();
+  }
+});
 
 // #277: pins #276's fix for #205 (the narrow-width overlap between
 // `.data-layer-controls`, top-left, and `.route-layer-controls`, top-right)
