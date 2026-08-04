@@ -130,6 +130,16 @@ select {
    with NO favourable DOM order behind it: fixed by moving the chip's row
    (below), not by inventing a fourth tier — the same fix any REAL same-tier
    collision needs, since this system has no mechanism to arbitrate one.
+   #368 is the CROSS-tier variant of the same problem: `.banner-area`
+   (Tier 3) and `.map-stack-tl`/`.route-layer-controls` (Tier 2) occupy the
+   same narrow-layout screen region, and the tier order correctly resolves
+   who WINS the collision (Tier 3, both paint and hit test — that part was
+   never broken) without resolving that a collision exists at all. Fixed the
+   same way: moving the LOWER tier's cluster clear of the banner's footprint
+   when one is actually rendered, never by touching either element's
+   z-index — see the dedicated rule above `.compass-control`'s section
+   below (this one Tier 3-vs-Tier 2 pair, not a repo-wide policy: nothing
+   else in Tier 2 shares this narrow-layout collision with Tier 3 today).
 
    Tier 3 — SHELL CHROME (z-index: 3). The user must always be able to read
    or reach these; nothing on the map ever outranks them:
@@ -666,6 +676,78 @@ select {
 
 .map-stack-tl > * {
   pointer-events: auto;
+}
+
+/* #368: on narrow layouts `.banner-area` is a full-width Tier-3 overlay
+   sitting directly above these Tier-2 clusters' shared `top: 3.5rem` — with
+   any banner shown, it overlaps that 56px top edge. The tier order does NOT
+   fix this: Tier 3 correctly wins BOTH the paint and the hit test there, so
+   the banner intercepts taps meant for the toggles underneath it (measured:
+   `elementFromPoint` over the depth checkbox resolved to
+   `SPAN.banner-message`) — a same-tier-style z-index bump would only change
+   which element loses, leaving the hit test wrong either way. The real fix
+   is moving the lower-priority cluster clear of the banner's footprint.
+   `:has()` detects an ACTUALLY rendered banner — `.banner-area` is always in
+   the DOM but 0-height and childless when none is active.
+   HOW TALL A PUSH — this is not a single-banner number: the issue's own
+   report measured ONE banner (offline, 48px tall, bottom edge 96px), but
+   this repo's real e2e environment (a fresh browser context/profile) and,
+   plausibly, a real first-launch user who loses signal shortly after
+   installing BOTH routinely show `.banner-area`'s OTHER inhabitant at the
+   same time: `ReloadPrompt`'s one-shot "offline ready" toast, which fires on
+   every FRESH service-worker install (i.e. every fresh profile — the "one
+   shot" is per install, not per session; CONFIRMED live in this repo's own
+   `#208: compass stays tappable...` landscape spec, which triggers it with
+   no explicit setOffline() call at all). Measured together (live preview,
+   390x844, `context.setOffline(true)` after the SW finished installing):
+   offlineReady 48px + 2px `.banner-area` gap + offline-warning 48px = 98px
+   total, bottom edge at `48 (banner-area's own top) + 98 = 146px`. `9.75rem`
+   (156px) clears that with a 10px margin.
+   WHY IT MUST BE BOUNDED, NOT A FLAT 9.75rem — a first attempt at this rule
+   pushed `top` to a flat `9.75rem` unconditionally and re-derived
+   `max-height` from it (preserving the NAMED COUPLING bottom edge,
+   `100dvh - 55vh - 0.5rem`, same as the base rules). That preserved the
+   BOTTOM edge correctly but starved the ROOM above it: `.map-stack-tl` sets
+   `max-height` with NO `overflow` of its own (see that rule's comment) —
+   only `.data-layer-controls` shrinks/scrolls; `.compass-control` is
+   `flex-shrink: 0` and always renders at full size, so it can render PAST
+   `max-height` when the budget above the bottom edge is too thin for it. At
+   844x390/740x360 (this repo's tested short-landscape viewports) a flat
+   9.75rem push left only ~19-35px of budget — nowhere near the compass's
+   ~44px plus visible toggles — so the compass rendered inside the Tier-3 tab
+   strip's own band and lost the SAME way #208 round-1/R2-1 already fixed
+   once (measured regression: 3 compass/route-layer-controls specs newly
+   red). `clamp()` fixes this without inventing a breakpoint: it resolves to
+   the base `3.5rem` (no push at all) whenever the banner-inclusive push
+   would leave less than a `140px` floor above the bottom edge, and to the
+   full `9.75rem` once there's room to spare. `140px` is picked to resolve
+   EXACTLY `3.5rem` at both tested short-landscape heights (390 -> 27.5px of
+   slack before floor, 360 -> 14px) and EXACTLY `9.75rem` at both tested
+   portrait heights (844 -> 231.8px of slack, 740 -> 185px) — i.e. short
+   landscape falls back to the UNFIXED overlap (a real residual gap: #368's
+   own DoD only requires the two portrait viewports it measured, and short
+   landscape with a banner present stays exactly as overlapping as before
+   this PR, no better and no worse — a real second fix, likely a genuinely
+   different mechanism given the compass's own fixed-size floor, is left for
+   a follow-up rather than attempted here). `--sc-banner-clear-top` holds the
+   clamped value ONCE so `top` and `max-height` (its own re-derivation, same
+   NAMED COUPLING requirement as the base rules) can't drift apart from each
+   other the way the flat-9.75rem attempt didn't need to (nothing to drift,
+   only one number) but a future edit easily could. Wide (>=1024px) needs no
+   such rule: there `.banner-area` becomes a `position: static` grid item
+   (its own wide-layout rule) and no longer overlaps the map at all, so this
+   whole block is scoped to the narrow layout only. Scope: portrait clears
+   the measured 1- AND 2-banner collision (#368); short landscape is the
+   documented residual above, and a THIRD simultaneous banner anywhere is the
+   SAME accepted non-guarantee already documented for `.app-tabs` in the
+   tier-order comment above `.app-header` — neither attempted here. */
+@media (max-width: 1023.98px) {
+  .app-shell:has(.banner-area .banner) .route-layer-controls,
+  .app-shell:has(.banner-area .banner) .map-stack-tl {
+    --sc-banner-clear-top: clamp(3.5rem, calc(100dvh - 55vh - 0.5rem - 140px), 9.75rem);
+    top: var(--sc-banner-clear-top);
+    max-height: calc(100dvh - var(--sc-banner-clear-top) - 55vh - 0.5rem);
+  }
 }
 
 /* ---- #155 north arrow / track-up toggle ---- */

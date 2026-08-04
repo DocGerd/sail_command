@@ -727,6 +727,23 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
     await page.goto(server.url);
     await mapReady(page);
 
+    // The PWA's SW registration finishes at roughly the same time as
+    // mapReady() above and shows a ONE-SHOT "offline ready" toast
+    // (ReloadPrompt, present in every fresh e2e context/profile — see
+    // #368's app.css comment). Left up, it is a rendered `.banner-area`
+    // banner, which #368's narrow-layout clearance rule pushes
+    // `.map-stack-tl`/`.route-layer-controls` down to avoid — that push
+    // eats into ScaleBar's own measured clearance at 375x667 enough to
+    // suppress it, and this sweep's `neverSuppress: true` was tuned against
+    // the BASELINE (no-banner) geometry. Dismiss it up front (best-effort —
+    // `.click()`'s own auto-wait no-ops harmlessly if it never appears) so
+    // the rest of this test, which is not itself about banners, runs
+    // against that same baseline.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+
     const compass = page.locator('.compass-btn');
     const bar = page.locator('.scale-bar');
 
@@ -799,7 +816,7 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
   }
 });
 
-test('#208 review "Major 2": the offline banner stays on top of the map-chrome tier, not covered by it', async ({
+test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no longer share screen space', async ({
   page,
 }) => {
   const server = await startPreview();
@@ -821,28 +838,51 @@ test('#208 review "Major 2": the offline banner stays on top of the map-chrome t
     const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
     await expect(banner).toBeVisible();
 
+    // #368: this test USED TO assert `.banner-area` (top: 3rem) and
+    // `.map-stack-tl` (top: 3.5rem) overlap BY DESIGN and that the Tier-3
+    // banner wins the paint AND hit test at that overlap point — that was
+    // correct as far as it went, but "who wins" was the wrong question: Tier
+    // 3 winning the paint there also meant it won the hit test, so the
+    // banner silently intercepted taps meant for the "Wassertiefen" toggle
+    // underneath it (a same-tier-style z-index fix could only have changed
+    // WHICH element lost). #368's fix moves `.map-stack-tl` clear of a
+    // rendered banner's footprint instead, so the two no longer occupy the
+    // same region at all — asserted here as zero overlap, replacing the old
+    // "who's on top at the overlap point" probe (still exercised, in more
+    // depth, by layout.spec.ts's own #368 regression test).
     const bannerBox = (await banner.boundingBox())!;
     const stackBox = (await page.locator('.map-stack-tl').boundingBox())!;
-    // Sanity: `.banner-area` (top: 3rem) and `.map-stack-tl` (top: 3.5rem)
-    // overlap BY DESIGN (app.css) — if a layout change ever separates them,
-    // this probe stops meaning anything, so fail loudly instead of silently
-    // passing on an empty overlap.
-    const overlapX = Math.max(bannerBox.x, stackBox.x) + 4;
-    const overlapY = Math.max(bannerBox.y, stackBox.y) + 4;
+    const overlapWidth = Math.max(
+      0,
+      Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width) -
+        Math.max(bannerBox.x, stackBox.x),
+    );
+    const overlapHeight = Math.max(
+      0,
+      Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height) -
+        Math.max(bannerBox.y, stackBox.y),
+    );
+    // AREA, not the two dimensions separately: both clusters are left-
+    // anchored, so they always share an x-range (overlapWidth > 0) even once
+    // the fix moves them fully clear of each other vertically — asserting
+    // `overlapWidth === 0` would fail on that harmless shared x-range, not on
+    // a real overlap. Two rects only truly intersect when BOTH dimensions
+    // overlap; the product is 0 whenever either one is.
     expect(
-      overlapX,
-      'banner and map-stack-tl no longer overlap horizontally — this probe needs updating',
-    ).toBeLessThan(Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width));
-    expect(
-      overlapY,
-      'banner and map-stack-tl no longer overlap vertically — this probe needs updating',
-    ).toBeLessThan(Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height));
+      overlapWidth * overlapHeight,
+      `overlapWidth=${overlapWidth} overlapHeight=${overlapHeight}`,
+    ).toBe(0);
 
-    const onTop = await topmostIsWithin(page, overlapX, overlapY, '.banner-area');
+    // The banner itself must still be fully legible — nothing else in the
+    // map-chrome tier may cover IT either, now that they no longer share
+    // space to arbitrate in the first place.
+    const bannerCenterX = bannerBox.x + bannerBox.width / 2;
+    const bannerCenterY = bannerBox.y + bannerBox.height / 2;
+    const onTop = await topmostIsWithin(page, bannerCenterX, bannerCenterY, '.banner-area');
     if (!onTop) {
-      const hitStack = await elementsAt(page, overlapX, overlapY);
+      const hitStack = await elementsAt(page, bannerCenterX, bannerCenterY);
       throw new Error(
-        `offline banner text is covered at the overlap point: ${JSON.stringify(hitStack)}`,
+        `offline banner text is covered at its own center: ${JSON.stringify(hitStack)}`,
       );
     }
   } finally {
