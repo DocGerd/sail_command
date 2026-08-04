@@ -47,6 +47,25 @@ export interface RouteLayerProps {
 const ROUTE_SOURCE = 'sc-route';
 const MANEUVER_SOURCE = 'sc-maneuvers';
 const BARB_SOURCE = 'sc-barbs';
+// #378: the three annotation symbol layers below (sc-eta-primary,
+// sc-eta-secondary, sc-leg-speed) each set
+// `'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15]`
+// — zoom-interpolated, replacing a flat `text-size: 11` that was legible at a
+// desk but too small on a phone on deck in daylight. Growth is DELIBERATELY
+// zoom-gated rather than flat: MapLibre's collision footprint scales 1:1
+// with text-size, and under text-allow-overlap:false a bigger box culls MORE
+// labels — the coupling #378 itself calls out. Held near the current size
+// through the low/mid zoom range (9 -> 12, +9%) where the most annotation
+// points are simultaneously in view (widening it there would worsen the
+// "ETAs vanish" complaint, defeating the point of this fix), then grown
+// further from z12 up (12 -> 13, 15 -> 15) where a narrower viewport holds
+// fewer competing points. Written out per layer (not hoisted to a shared
+// const): a `const` array here loses TypeScript's tuple narrowing for
+// MapLibre's `DataDrivenPropertyValueSpecification<number>` expression type
+// (contextual typing only narrows an inline literal, not a value pulled from
+// a separate declaration) — this also matches the file's existing pattern of
+// inlining each symbol layer's layout/paint literals, see
+// sc-eta-primary/-secondary's already-duplicated text-font/halo pair.
 // The three annotation symbol layers the "Times & speeds" checkbox flips
 // together (heading dots stay on — they're tiny and minzoom-gated).
 const ANNOTATION_LAYERS = ['sc-eta-primary', 'sc-eta-secondary', 'sc-leg-speed'] as const;
@@ -154,7 +173,14 @@ function setupLayers(map: MaplibreMap): void {
     // renders when the label fits the on-screen leg length and collision
     // culls overlaps, so short legs stay unlabeled at low zoom and gain a
     // label as you zoom in — no hand-tuned nm threshold. Text stays achromatic
-    // for contrast; the board colors live on the line beneath it.
+    // for contrast; the board colors live on the line beneath it. #378:
+    // text-padding trimmed from the 2px default to partially offset the
+    // larger collision box the zoom-interpolated text-size introduces — see
+    // the #378 comment above BARB_SOURCE (top of file) for the full
+    // text-size/collision coupling rationale.
+    // symbol-placement:'line-center' cannot use text-variable-anchor (that
+    // property only applies to point placement), so unlike the two ETA
+    // layers below this one keeps its existing anchor behavior unchanged.
     map.addLayer({
       id: 'sc-leg-speed',
       type: 'symbol',
@@ -163,9 +189,10 @@ function setupLayers(map: MaplibreMap): void {
       layout: {
         'text-field': ['get', 'speedLabel'],
         'symbol-placement': 'line-center',
-        'text-size': 11,
+        'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15],
         'text-font': ['Noto Sans Regular'],
         'text-rotation-alignment': 'map',
+        'text-padding': 1,
       },
       paint: {
         'text-color': '#1a1a1a',
@@ -229,8 +256,38 @@ function setupLayers(map: MaplibreMap): void {
     // z9, secondary (plain heading joints) from z12 — one step after the dots
     // appear at 11, so a dot never pops in already-labeled. symbol-sort-key
     // = rank, so on a collision the destination ETA (rank 0) wins, then the
-    // departure, then maneuvers. text-allow-overlap:false → MapLibre declutters.
+    // departure, then maneuvers — but that ranking is per-LAYER only (see
+    // CLAUDE.md's symbol-sort-key note); it does not arbitrate a primary-vs-
+    // secondary collision. text-allow-overlap:false → MapLibre declutters.
     // (Layout/paint inlined per layer so addLayer's contextual typing applies.)
+    //
+    // #378: text-anchor:'left' + a fixed text-offset gave MapLibre exactly
+    // ONE candidate placement per point — any collision at that one spot
+    // culled the label outright with no fallback. text-variable-anchor gives
+    // MapLibre up to 4 fallback placements (left/right/top/bottom) before it
+    // gives up and culls, directly attacking the disappearance rather than
+    // trading it against size. text-variable-anchor is incompatible with
+    // text-anchor/text-offset in the MapLibre style spec — text-radial-offset
+    // is the documented replacement (same 0.9-em magnitude as the old
+    // text-offset[0.9,0], now radial instead of purely horizontal), paired
+    // with text-justify:'auto' so each candidate placement's text aligns
+    // toward the anchor point. text-padding trimmed from the 2px default to
+    // partially offset the larger collision box the zoom-interpolated
+    // text-size introduces.
+    //
+    // #378 root cause, MEASURED not assumed (queryRenderedFeatures at a
+    // z9-z14 zoom sweep centered on a real tack/gybe cluster, real mask/
+    // polars — see BARB_SOURCE's sc-wind-barbs layer below for the fix).
+    // TWO hypotheses were tested here and REFUTED by direct measurement
+    // before the real cause was found, recorded so a future reader doesn't
+    // re-walk the same dead ends: (1) the #191/#192 icon-overlap z12
+    // threshold — inapplicable, these are point/line TEXT symbols with no
+    // icon-image, icon-overlap is never set on them; (2) a primary-vs-
+    // secondary cross-layer collision priority fight — ruled out by hiding
+    // sc-eta-secondary entirely and re-measuring: sc-eta-primary's evicted
+    // 'gybe' label stayed at count 0 regardless. The actual cause was
+    // sc-wind-barbs (see that layer's comment): hiding barbs alone, with
+    // secondary still visible, brought the label straight back.
     map.addLayer({
       id: 'sc-eta-primary',
       type: 'symbol',
@@ -239,11 +296,13 @@ function setupLayers(map: MaplibreMap): void {
       filter: ['in', ['get', 'kind'], ['literal', ['start', 'finish', 'tack', 'gybe']]],
       layout: {
         'text-field': ['get', 'eta'],
-        'text-anchor': 'left',
-        'text-offset': [0.9, 0],
-        'text-size': 11,
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+        'text-radial-offset': 0.9,
+        'text-justify': 'auto',
+        'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15],
         'text-font': ['Noto Sans Regular'],
         'text-allow-overlap': false,
+        'text-padding': 1,
         'symbol-sort-key': ['get', 'rank'],
       },
       paint: {
@@ -260,11 +319,13 @@ function setupLayers(map: MaplibreMap): void {
       filter: ['==', ['get', 'kind'], 'heading'],
       layout: {
         'text-field': ['get', 'eta'],
-        'text-anchor': 'left',
-        'text-offset': [0.9, 0],
-        'text-size': 11,
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+        'text-radial-offset': 0.9,
+        'text-justify': 'auto',
+        'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15],
         'text-font': ['Noto Sans Regular'],
         'text-allow-overlap': false,
+        'text-padding': 1,
         'symbol-sort-key': ['get', 'rank'],
       },
       paint: {
@@ -295,6 +356,26 @@ function setupLayers(map: MaplibreMap): void {
         'icon-rotate': ['get', 'dirFromDeg'],
         'icon-rotation-alignment': 'map',
         'icon-allow-overlap': true,
+        // #378 root cause, MEASURED not assumed: with icon-ignore-placement
+        // unset (defaulting to false), every barb icon — deliberately dense,
+        // ~96-110px screen spacing at every zoom per routeGeoJson.ts's own
+        // comment on this source — still INSERTED a collision box that
+        // blocked the ETA/speed text layers below, even though
+        // icon-allow-overlap:true already made the barbs themselves immune
+        // to being blocked. That combination is the actual "ETAs vanish at
+        // some zooms" mechanism (isolated with queryRenderedFeatures: hiding
+        // sc-wind-barbs alone took sc-eta-primary's evicted 'gybe' label at
+        // z12 from 0 back to present, and sc-leg-speed on the same route
+        // from 0 to 7) — not the #191/#192 icon-overlap z12 threshold the
+        // issue guessed at (these are point/line TEXT symbols with no
+        // icon-image; icon-overlap is never set on them at all), and not
+        // primary-vs-secondary layer order (ruled out directly: hiding
+        // sc-eta-secondary alone left sc-eta-primary at 0). Setting
+        // icon-ignore-placement here completes the "barbs sit outside the
+        // collision system" intent routeGeoJson.ts's adaptiveBarbFeatures
+        // comment already states for icon-allow-overlap — that comment's
+        // "no collision culling" was only half true before this fix.
+        'icon-ignore-placement': true,
         // Hidden at creation; the barbsVisible sync effect applies the
         // persisted/default state (ON for a fresh profile — #63) in the same
         // commit, before any paint.
