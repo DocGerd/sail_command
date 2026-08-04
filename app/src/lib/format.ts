@@ -57,6 +57,30 @@ export function formatTime(ms: number, lang: Lang): string {
   }).format(ms);
 }
 
+/**
+ * Slider label for the wind-barb forecast-time control (#292). Same-day
+ * forecasts render bare HH:MM (the common case, unchanged from before this
+ * fix); once the candidate hours span more than one calendar day — a
+ * passage that runs past midnight, or an old saved plan whose stored
+ * forecast no longer matches "today" — a short locale weekday is prefixed
+ * so the visible time can no longer be misread as belonging to the wrong
+ * day. `hourOptionsMs` is the slider's full snap-point list (RouteLayer's
+ * `hourOptions`), not just the selected hour, so the day indicator appears
+ * consistently across the whole multi-day range rather than popping in and
+ * out as the user drags. Calendar-day comparison and the weekday text are
+ * both evaluated in local wall-clock time, matching `formatTime`/
+ * `formatDateTime` and the departure-time input (`toLocalInputValue`)
+ * elsewhere in this module — deliberately NOT the wind grid's UTC instants.
+ */
+export function formatSliderTime(ms: number, hourOptionsMs: readonly number[], lang: Lang): string {
+  const first = hourOptionsMs[0] ?? ms;
+  const firstDay = new Date(first).toDateString();
+  const spansMultipleDays = hourOptionsMs.some((t) => new Date(t).toDateString() !== firstDay);
+  if (!spansMultipleDays) return formatTime(ms, lang);
+  const weekday = new Intl.DateTimeFormat(LOCALES[lang], { weekday: 'short' }).format(ms);
+  return `${weekday} ${formatTime(ms, lang)}`;
+}
+
 export function formatDateTime(ms: number, lang: Lang): string {
   return new Intl.DateTimeFormat(LOCALES[lang], {
     day: '2-digit',

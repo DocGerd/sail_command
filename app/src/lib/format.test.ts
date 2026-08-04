@@ -8,6 +8,7 @@ import {
   formatDuration,
   formatDriftMin,
   formatLatLon,
+  formatSliderTime,
 } from './format';
 
 describe('formatNm', () => {
@@ -133,6 +134,50 @@ describe('formatLatLon', () => {
 
   it('rounds to three decimals', () => {
     expect(formatLatLon({ lat: 54.78949, lon: 9.43349 })).toBe('54.789°N 9.433°E');
+  });
+});
+
+describe('formatSliderTime', () => {
+  // All timestamps below use the local-time Date constructor (matching
+  // formatTime/formatDateTime and the other tests in this file), so
+  // calendar-day comparisons are stable regardless of the host/CI machine's
+  // timezone offset -- both the "day" input and the formatter interpret the
+  // same instant in the same local zone.
+  it('renders bare HH:MM when every slider hour falls on the same calendar day (#292)', () => {
+    const departure = new Date(2026, 7, 4, 18, 0).getTime(); // Tue 04 Aug 2026, 18:00
+    const selected = new Date(2026, 7, 4, 21, 0).getTime(); // same day, 21:00
+    const hourOptions = [
+      departure,
+      new Date(2026, 7, 4, 19, 0).getTime(),
+      new Date(2026, 7, 4, 20, 0).getTime(),
+      selected,
+      new Date(2026, 7, 4, 22, 0).getTime(),
+    ];
+    expect(formatSliderTime(selected, hourOptions, 'de')).toBe('21:00');
+    expect(formatSliderTime(selected, hourOptions, 'en')).toBe('21:00');
+  });
+
+  it('prefixes a short locale weekday once the slider hours cross midnight (#292)', () => {
+    const departure = new Date(2026, 7, 4, 22, 0).getTime(); // Tue 04 Aug 2026, 22:00
+    const selected = new Date(2026, 7, 5, 3, 0).getTime(); // Wed 05 Aug 2026, 03:00
+    const hourOptions = [departure, new Date(2026, 7, 4, 23, 0).getTime(), selected];
+    // 05 Aug 2026 is a Wednesday -- "Mi" (de) / "Wed" (en) hand-derived from
+    // the calendar, not from Intl output re-fed into the assertion.
+    expect(formatSliderTime(selected, hourOptions, 'de')).toBe('Mi 03:00');
+    expect(formatSliderTime(selected, hourOptions, 'en')).toBe('Wed 03:00');
+  });
+
+  it('still prefixes the weekday for an hour ON the first (departure) day once the range spans midnight (#292)', () => {
+    // The day indicator is driven by whether the WHOLE hourOptions range
+    // spans multiple days, not by whether this particular hour differs from
+    // the first entry -- so the departure-day hour itself also gets the
+    // weekday prefix once a later hour crosses into the next day. This
+    // keeps the label's width/shape constant as the user drags the slider.
+    const departure = new Date(2026, 7, 4, 22, 0).getTime(); // Tue 04 Aug 2026, 22:00
+    const nextDay = new Date(2026, 7, 5, 3, 0).getTime(); // Wed 05 Aug 2026, 03:00
+    const hourOptions = [departure, nextDay];
+    expect(formatSliderTime(departure, hourOptions, 'de')).toBe('Di 22:00');
+    expect(formatSliderTime(departure, hourOptions, 'en')).toBe('Tue 22:00');
   });
 });
 

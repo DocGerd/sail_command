@@ -3,7 +3,7 @@ import { LngLatBounds, Map as MaplibreMap } from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
-import { formatTime } from '../lib/format';
+import { formatDateTime, formatSliderTime } from '../lib/format';
 import { activeRigResult } from '../lib/plan';
 import {
   adaptiveBarbFeatures,
@@ -581,8 +581,9 @@ export default function RouteLayer({
             value={clampedHourIdx}
             onChange={(e) => setHourIdx(Number(e.target.value))}
             aria-label={t('route.windBarbs.timeSlider')}
+            aria-valuetext={formatDateTime(tMs, lang)}
           />
-          <span>{formatTime(tMs, lang)}</span>
+          <span>{formatSliderTime(tMs, hourOptions, lang)}</span>
         </div>
       )}
       <ViaMarkers
