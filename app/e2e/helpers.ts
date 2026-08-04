@@ -15,6 +15,59 @@ const BASE = `http://localhost:${PORT}/sail_command/`;
 const START_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 300;
 
+export interface Viewport {
+  width: number;
+  height: number;
+}
+
+// Named viewport matrix, defined ONCE rather than inlined per spec — this
+// repo already paid for the per-file version of that mistake (nine test
+// files each hardcoded their own `testTimeout` literal; a fix patched only
+// the two that had failed in CI, and the next run failed on a third with the
+// identical shape, at ~43 min per round; CLAUDE.md's "enumerate, don't
+// patch" lesson). A spec imports whichever set(s) it needs and iterates by
+// `Object.entries()` so failures name the KEY, not just raw numbers.
+//
+// STANDARD_VIEWPORTS: the five device classes product/QA expects every
+// layout-sensitive spec to cover at minimum — desktop 4K, desktop HD,
+// tablet landscape, tablet portrait, phone portrait. Playwright viewports
+// are CSS px, not device px: a real 4K display at the common 150%/200% OS
+// scaling presents to the browser as ~2560x1440 or exactly 1920x1080 CSS
+// px, so `desktopHd` (1920x1080) already doubles as that scaled-4K case —
+// `desktop4k` (3840x2160) is deliberately the UNSCALED, very-wide extreme
+// instead of a third near-duplicate entry. An explicit ~2560x1440 entry was
+// considered and left out: at this app's single `min-width: 1024px` wide
+// breakpoint (`lib/useWideLayout.ts`), 1920 and 2560 exercise the identical
+// wide-layout code path — the interesting extremes are the breakpoint
+// itself (`tabletPortrait` 820 vs `tabletLandscape` 1180, straddling 1024)
+// and how far the wide layout stretches (3840), not a third point on the
+// same side of both.
+export const STANDARD_VIEWPORTS = {
+  desktop4k: { width: 3840, height: 2160 },
+  desktopHd: { width: 1920, height: 1080 },
+  tabletLandscape: { width: 1180, height: 820 },
+  tabletPortrait: { width: 820, height: 1180 },
+  phonePortrait: { width: 390, height: 844 },
+} as const satisfies Record<string, Viewport>;
+
+// EDGE_VIEWPORTS: the narrow/short stress cases #368's own residuals were
+// actually measured against (clamp-floor short landscape, deep portrait with
+// stacked banners, and a viewport narrow enough to force a real 2-line
+// wrap). `phonePortrait` above (390x844) already covers the widest of these
+// — it is deliberately NOT duplicated here; every entry below is a distinct
+// value STANDARD_VIEWPORTS does not already exercise. Kept in a SEPARATE
+// object (not merged into STANDARD_VIEWPORTS) so a spec can iterate
+// STANDARD, EDGE, or both, and it's obvious from the import alone which
+// category a given test belongs to.
+export const EDGE_VIEWPORTS = {
+  narrowPortrait360: { width: 360, height: 740 },
+  shortLandscape844: { width: 844, height: 390 },
+  shortLandscape740: { width: 740, height: 360 },
+  deepPortrait320: { width: 320, height: 568 },
+  partialPushBand375: { width: 375, height: 667 },
+  wrapForcing280: { width: 280, height: 568 },
+} as const satisfies Record<string, Viewport>;
+
 export interface PreviewServer {
   /** Base URL, e.g. `http://localhost:4173/sail_command/` — pass through `?windFixture=...`. */
   url: string;

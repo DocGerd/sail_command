@@ -1,5 +1,11 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { startPreview, mapReady } from './helpers';
+import {
+  startPreview,
+  mapReady,
+  STANDARD_VIEWPORTS,
+  EDGE_VIEWPORTS,
+  type Viewport,
+} from './helpers';
 
 // Responsive shell layout (#24). Below 1024px the panel is a bottom-sheet
 // overlay on a full-viewport map; at >=1024px it becomes a ~1/3-width side
@@ -199,24 +205,40 @@ test('responsive layout: side panel on wide screens, bottom sheet on narrow', as
 // height (`lib/useBannerHeight.ts`) instead of estimating it from viewport
 // height, rather than touching either element's z-index.
 //
-// 844x390 and 740x360 (short landscape) were added to this loop as part of
-// closing #368's short-landscape residual: the earlier viewport-height
-// CLAMP HEURISTIC this fix replaced had a FLOOR branch that applied ZERO
-// push whenever the viewport was this short, regardless of whether a real
-// banner was covering the toggles at that moment — these two sizes are
-// exactly where that floor used to engage, and a measured push has no such
-// floor (see app.css's own comment on the current rule).
+// Runs the SAME single-banner hit-test across BOTH the standard device
+// matrix (helpers.ts's `STANDARD_VIEWPORTS` — maintainer requirement: every
+// layout-sensitive spec covers desktop 4K/HD, tablet landscape/portrait, and
+// phone portrait at minimum) and three of the narrow/short `EDGE_VIEWPORTS`
+// entries — `deepPortrait320` and `wrapForcing280` are excluded here because
+// they need a DIFFERENT test body (two stacked banners, and a forced wrap,
+// both below), not the single-banner one this loop pins.
+// `phonePortrait` (390x844, STANDARD) already covers what used to be this
+// loop's own first entry — not duplicated into EDGE.
+//
+// `tabletLandscape` (1180 wide) and `tabletPortrait` (820 wide) straddle the
+// 1024px wide/narrow breakpoint (`lib/useWideLayout.ts`) for the FIRST time
+// in this test file: every viewport tested before this addition sat on one
+// side of it. At >=1024px `.banner-area` becomes a `position: static` grid
+// item (app.css's wide-layout override) and structurally cannot overlap the
+// map chrome at all, so the wide-branch cases are expected to pass trivially
+// — asserted explicitly here rather than assumed, since "structurally can't
+// happen" has been wrong before in this file's own history (#208).
+// `desktop4k` (3840px) is this file's widest-ever viewport, checked for the
+// same reason: nothing in the wide-layout CSS is written against an assumed
+// maximum width, and this is the test that would catch it if that stopped
+// being true.
 //
 // Every check below polls or asserts on the VALUE (the resolved element
 // description, the measured overlap area), never a bare boolean, so a CI
 // failure names what actually got hit instead of just timing out.
-for (const viewport of [
-  { width: 390, height: 844 },
-  { width: 360, height: 740 },
-  { width: 844, height: 390 },
-  { width: 740, height: 360 },
-]) {
-  test(`#368: offline banner no longer intercepts the depth checkbox at ${viewport.width}x${viewport.height}`, async ({
+const SINGLE_BANNER_VIEWPORTS: Record<string, Viewport> = {
+  ...STANDARD_VIEWPORTS,
+  narrowPortrait360: EDGE_VIEWPORTS.narrowPortrait360,
+  shortLandscape844: EDGE_VIEWPORTS.shortLandscape844,
+  shortLandscape740: EDGE_VIEWPORTS.shortLandscape740,
+};
+for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
+  test(`#368: offline banner no longer intercepts the depth checkbox (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
     const server = await startPreview();
@@ -314,7 +336,7 @@ test('#368: two stacked banners at 320x568 (previously measured broken) no longe
 }) => {
   const server = await startPreview();
   try {
-    await page.setViewportSize({ width: 320, height: 568 });
+    await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
     await page.goto(server.url);
 
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
@@ -368,7 +390,7 @@ test('#368: three simultaneous banners at 390x844 do not intercept the depth che
 }) => {
   const server = await startPreview();
   try {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize(STANDARD_VIEWPORTS.phonePortrait);
     await page.goto(server.url);
 
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
@@ -427,7 +449,7 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
 }) => {
   const server = await startPreview();
   try {
-    await page.setViewportSize({ width: 280, height: 568 });
+    await page.setViewportSize(EDGE_VIEWPORTS.wrapForcing280);
     await page.goto(server.url);
 
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
