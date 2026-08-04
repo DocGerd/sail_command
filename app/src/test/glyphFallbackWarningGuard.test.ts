@@ -14,11 +14,13 @@ import { describe, expect, it } from 'vitest';
 // future maplibre-gl upgrade could reword or relocate this message, and
 // Signal (B) would then fail OPEN — silently stop catching the exact
 // regression #320 exists to catch, while reporting green. This is the same
-// class of undefended library-internals dependency as
-// `symbol_bucket.ts:391` (CLAUDE.md), which the #200/#232 review flagged as
-// a nice-to-have rather than required; here it's required, because Signal
-// (B) is the PRIMARY discriminator its own file exists to provide, not a
-// secondary check.
+// class of undefended library-internals dependency CLAUDE.md documents for
+// `symbol_bucket.ts:391` (a pinned line number/behavior re-verified after
+// every maplibre-gl upgrade rather than structurally guarded) — CLAUDE.md
+// itself does not say whether that one needs a guard; PR #375's own review
+// separately offered one for THIS dependency as a nice-to-have. Here it's
+// required, not optional, because Signal (B) is the PRIMARY discriminator
+// its own file exists to provide, not a secondary check.
 //
 // Fails CLOSED, not open, on either failure mode:
 //   - the file has moved/been renamed (a maplibre-gl upgrade restructured

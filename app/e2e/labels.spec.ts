@@ -217,29 +217,55 @@ async function mapReady(page: Page): Promise<void> {
   await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
 }
 
-const SETTLE_POLL_INTERVAL_MS = 250;
-// ~10s budget at 250ms cadence — generous against the near-instant
-// stabilization actually measured (placement typically already settled by
-// the time mapReady() resolves; see the file header), with CI slack per
-// CLAUDE.md's documented 6-10x runner-speed ratio.
-const SETTLE_MAX_READS = 40;
+// Widened past maplibre-gl's placement throttle window (PR #375 review,
+// round 5 — the original 250ms/two-match design was measured sound on
+// stability but not proven to span a real placement recompute). Verified
+// against the INSTALLED maplibre-gl 6.1.0 source, not inferred:
+// `node_modules/maplibre-gl/src/symbol/placement.ts:1268-1277`'s
+// `stillRecent(now, zoom)` returns
+// `this.commitTime + this.fadeDuration * durationAdjustment > now` — i.e.
+// while "recent", no fresh full placement recompute happens.
+// `node_modules/maplibre-gl/src/ui/map.ts:539` sets the `Map` constructor's
+// default `fadeDuration: 300` (ms). A 250ms poll interval could therefore
+// land two "matching" reads entirely inside one such quiescent window,
+// without ever spanning an actual recompute — passing not because placement
+// had genuinely converged, but because nothing had a chance to change
+// between two closely-spaced samples. Two independent margins against that,
+// both applied: the interval (400ms) exceeds the 300ms default window, and
+// three consecutive matches are required rather than two.
+const SETTLE_POLL_INTERVAL_MS = 400;
+const SETTLE_STABLE_READS_REQUIRED = 3;
+// ~10.8s budget at 400ms cadence (27 gaps). Chosen with headroom for a
+// slower CI runner, NOT derived from a measured CI/local ratio for this
+// harness — CLAUDE.md's only measured runner-speed figures (~2.1x for a
+// plain `npm run test`, ~2.5x under coverage; measured 2026-08-03, #341) are
+// for the vitest UNIT suite, a different subsystem with a different
+// bottleneck (module transform + jsdom vs. a Playwright Chromium render
+// wait), and CLAUDE.md is explicit those two multipliers don't generalize
+// to each other, let alone to a third context — applying either figure here
+// would be an unjustified transfer, not a citation. The near-instant
+// stabilization actually measured pre-widening (2 reads, ~260ms) is the
+// real basis for confidence that 10.8s is generous margin, not a tight fit.
+const SETTLE_MAX_READS = 27;
 
 interface SettledPlacedLabels {
   labels: string[];
-  /** Total reads taken, including the two that matched. */
+  /** Total reads taken, including the SETTLE_STABLE_READS_REQUIRED that matched. */
   reads: number;
   elapsedMs: number;
 }
 
 /**
- * Polls the placed `places_locality` label set (sorted names) until two
- * CONSECUTIVE reads are identical, then returns that stable set. Fails
- * CLOSED — throws, naming the full count history and the last two label
- * arrays observed, rather than returning a possibly-still-settling read —
- * see the file header's "Settle note" for why this deliberately diverges
- * from datalayers.spec.ts's `settledCanvas`, which returns best-effort.
- * `page.waitForTimeout` below is the POLL CADENCE inside this stabilization
- * loop (the same idiom `settledCanvas` uses), not a synchronization wait.
+ * Polls the placed `places_locality` label set (sorted names) until
+ * SETTLE_STABLE_READS_REQUIRED CONSECUTIVE reads are identical, then returns
+ * that stable set. Fails CLOSED — throws, naming the full count history and
+ * the label arrays in the final (still-unstable) window, rather than
+ * returning a possibly-still-settling read — see the file header's "Settle
+ * note" for why this deliberately diverges from datalayers.spec.ts's
+ * `settledCanvas`, which returns best-effort, and for the throttle-window
+ * source citation behind the interval/match-count choice. `page.waitForTimeout`
+ * below is the POLL CADENCE inside this stabilization loop (the same idiom
+ * `settledCanvas` uses), not a synchronization wait.
  */
 async function settledPlacedLabels(page: Page): Promise<SettledPlacedLabels> {
   const readLabels = () =>
@@ -254,33 +280,45 @@ async function settledPlacedLabels(page: Page): Promise<SettledPlacedLabels> {
 
   const start = Date.now();
   const countHistory: number[] = [];
-  // secondToLast/last track the two most recent reads' full arrays (not
-  // just their counts) so a failure message can show a same-count SWAP —
-  // see the comparison comment below for why count alone isn't enough.
-  let secondToLast: string[] | null = null;
-  let last = await readLabels();
-  countHistory.push(last.length);
+  // Sliding window of the most recent SETTLE_STABLE_READS_REQUIRED reads'
+  // FULL arrays (not just counts), used both for the stability comparison
+  // and so a failure message can show a same-count SWAP — see the
+  // comparison comment below for why count alone isn't enough. Deliberately
+  // NOT named `window` — that would lexically shadow the DOM global inside
+  // this same function, and while Playwright's page.evaluate() re-parses
+  // its callback as fresh source in the browser (so it would in fact still
+  // be runtime-safe), the name invites exactly the wrong question from a
+  // future reader.
+  const recentReads: string[][] = [];
+  const first = await readLabels();
+  countHistory.push(first.length);
+  recentReads.push(first);
+
   for (let extraReads = 1; extraReads <= SETTLE_MAX_READS; extraReads++) {
     await page.waitForTimeout(SETTLE_POLL_INTERVAL_MS);
     const next = await readLabels();
     countHistory.push(next.length);
-    // Compare the SORTED IDENTITY, not just the count — a same-count swap
-    // (one label culled while a different one is placed the same instant)
-    // would read stable under a count-only compare, the exact blindness
-    // class this PR keeps finding elsewhere.
-    if (JSON.stringify(next) === JSON.stringify(last)) {
+    recentReads.push(next);
+    if (recentReads.length > SETTLE_STABLE_READS_REQUIRED) recentReads.shift();
+
+    // Compare the SORTED IDENTITY across the whole window, not just the
+    // count — a same-count swap (one label culled while a different one is
+    // placed) would read stable under a count-only compare, the exact
+    // blindness class this PR keeps finding elsewhere.
+    const windowStable =
+      recentReads.length === SETTLE_STABLE_READS_REQUIRED &&
+      recentReads.every((labels) => JSON.stringify(labels) === JSON.stringify(recentReads[0]));
+    if (windowStable) {
       const reads = extraReads + 1;
       return { labels: next, reads, elapsedMs: Date.now() - start };
     }
-    secondToLast = last;
-    last = next;
   }
   const totalReads = countHistory.length;
   throw new Error(
     `places_locality placement never stabilized across ${totalReads} reads ` +
-      `(${SETTLE_POLL_INTERVAL_MS}ms apart, ~${(totalReads * SETTLE_POLL_INTERVAL_MS) / 1000}s budget); ` +
-      `counts seen: ${JSON.stringify(countHistory)}; last two label sets: ` +
-      `${JSON.stringify(secondToLast)} -> ${JSON.stringify(last)}`,
+      `(${SETTLE_POLL_INTERVAL_MS}ms apart, ~${(totalReads * SETTLE_POLL_INTERVAL_MS) / 1000}s budget, ` +
+      `${SETTLE_STABLE_READS_REQUIRED} consecutive matches required); ` +
+      `counts seen: ${JSON.stringify(countHistory)}; last ${recentReads.length} label sets: ${JSON.stringify(recentReads)}`,
   );
 }
 
