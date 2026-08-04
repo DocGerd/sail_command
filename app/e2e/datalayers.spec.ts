@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { startPreview } from './helpers';
+import { startPreview, mapReady } from './helpers';
 
 // #38/#39 always-mounted map data layers. What this asserts (and why it's
 // not theater): the depth toggle must exist BEFORE any plan (the whole point
@@ -16,61 +16,11 @@ import { startPreview } from './helpers';
 // byte-equal blank frames 250ms apart is MORE likely, not less, on a slow CI
 // runner) — after which every `.equals(baseline)).toBe(false)` assertion
 // would pass on the first late tile paint, never on the raster actually
-// toggling. `compass.spec.ts` hit the identical problem and replaced
-// `networkidle` with `mapReady()`, gating on `map.loaded()` via a
-// React-fiber-read map handle (this spec runs BEFORE any plan exists, so
-// RouteLayer's `window.__scMap` test hook isn't set yet — the fiber read is
-// the only handle available pre-plan). Duplicated here rather than imported:
-// `compass.spec.ts` doesn't export it and helpers.ts was out of this
-// change's file scope, so this is a copy, not a shared helper — worth
-// promoting to `helpers.ts` in a follow-up so the two copies can't drift.
-async function installMapHandle(page: Page): Promise<boolean> {
-  return page.evaluate(() => {
-    const el = document.querySelector('.maplibregl-map');
-    if (!el) return false;
-    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
-    if (!key) return false;
-    let f = (el as unknown as Record<string, { memoizedState?: unknown; return?: unknown }>)[key];
-    while (f) {
-      let h = f.memoizedState as { memoizedState?: unknown; next?: unknown } | undefined;
-      let guard = 0;
-      while (h && guard++ < 60) {
-        const v = h.memoizedState as { getBearing?: unknown; project?: unknown } | undefined;
-        if (v && typeof v.getBearing === 'function' && typeof v.project === 'function') {
-          (window as unknown as Record<string, unknown>).__scE2eMap = v;
-          return true;
-        }
-        h = h.next as typeof h;
-      }
-      f = f.return as typeof f;
-    }
-    return false;
-  });
-}
-
-type ReadyMap = {
-  loaded: () => boolean;
-  getStyle: () => { sources: Record<string, unknown> };
-  isSourceLoaded: (id: string) => boolean;
-};
-
-async function mapReadyState(page: Page): Promise<string> {
-  if (!(await installMapHandle(page))) return 'no-map-handle';
-  return page.evaluate(() => {
-    const map = (window as unknown as { __scE2eMap?: ReadyMap }).__scE2eMap;
-    if (!map) return 'handle-lost';
-    if (!map.loaded()) {
-      const pending = Object.keys(map.getStyle().sources).filter((id) => !map.isSourceLoaded(id));
-      return `not-loaded (pending sources: ${pending.join(', ') || 'none — style still parsing'})`;
-    }
-    return 'loaded';
-  });
-}
-
-/** Gate a spec on a map that has actually rendered, reporting WHY if it hasn't. */
-async function mapReady(page: Page): Promise<void> {
-  await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
-}
+// toggling. `mapReady` (`./helpers`, promoted from three independent copies
+// of this gate — see that file's own comment) replaces it, gating on
+// `map.loaded()` via a React-fiber-read map handle (this spec runs BEFORE
+// any plan exists, so RouteLayer's `window.__scMap` test hook isn't set yet
+// — the fiber read is the only handle available pre-plan).
 
 // Polls until the canvas stops changing frame-to-frame (two consecutive
 // byte-equal screenshots), then returns that settled frame. This replaces

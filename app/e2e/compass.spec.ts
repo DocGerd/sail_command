@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type CDPSession, type Page } from '@playwright/test';
-import { startPreview } from './helpers';
+import { startPreview, mapReady } from './helpers';
 
 // #155 map orientation chrome: the north arrow / track-up toggle and the
 // nautical scale bar, against the REAL MapLibre camera (jsdom has none, so
@@ -11,80 +11,9 @@ import { startPreview } from './helpers';
 // rotation really reaching 'free', a tap really bringing the chart home, and
 // the bar really measuring the rendered viewport.
 
-// The app deliberately exposes no global map handle (there is no reason for
-// production code to), so this test reads MapView's `map` state through the
-// React fiber. Test-harness only. It is asserted to succeed rather than
-// silently skipped: a fiber layout change must fail this spec loudly, not
-// quietly delete its strongest assertions.
-async function installMapHandle(page: Page): Promise<boolean> {
-  return page.evaluate(() => {
-    const el = document.querySelector('.maplibregl-map');
-    if (!el) return false;
-    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
-    if (!key) return false;
-    let f = (el as unknown as Record<string, { memoizedState?: unknown; return?: unknown }>)[key];
-    while (f) {
-      let h = f.memoizedState as { memoizedState?: unknown; next?: unknown } | undefined;
-      let guard = 0;
-      while (h && guard++ < 60) {
-        const v = h.memoizedState as { getBearing?: unknown; project?: unknown } | undefined;
-        if (v && typeof v.getBearing === 'function' && typeof v.project === 'function') {
-          (window as unknown as Record<string, unknown>).__scE2eMap = v;
-          return true;
-        }
-        h = h.next as typeof h;
-      }
-      f = f.return as typeof f;
-    }
-    return false;
-  });
-}
-
-// #253: `networkidle` is NOT the readiness signal here — it never settles for
-// a map that streams tiles indefinitely, and under maplibre-gl 6 the module
-// worker's fetch does not produce a `requestfinished` Playwright will count
-// either. `mapReady` below replaces it: it waits for the map handle AND for
-// `map.loaded()`, which is the only signal that actually proves the tile
-// pipeline — and therefore the worker — is alive.
-//
-// Keeping the `map.loaded()` half is deliberate. During the maplibre-gl 6
-// upgrade this gate went red, and the cause was a REAL product bug: the
-// worker chunk shipped with an unresolved `./maplibre-gl-shared.mjs` import
-// and 404'd on its own dependency, so no vector/GeoJSON source ever loaded.
-// The gate was correctly reporting a broken map. It is fixed at source
-// (MapView.tsx's `?worker&url` import); this gate is what keeps that fix
-// honest, so do not weaken it back to "the handle exists" — that would pass
-// against a map rendering nothing at all.
-//
-// It returns a descriptive STRING rather than a boolean on purpose (see
-// CLAUDE.md's e2e assertion convention): a boolean collapsed into
-// `.toBe(true)` can only ever report `Expected: true / Received: false` plus
-// a timeout, which is indistinguishable between "slow" and "never". The
-// string names the pending sources, so a CI failure says which part of the
-// pipeline stalled.
-type ReadyMap = {
-  loaded: () => boolean;
-  getStyle: () => { sources: Record<string, unknown> };
-  isSourceLoaded: (id: string) => boolean;
-};
-
-async function mapReadyState(page: Page): Promise<string> {
-  if (!(await installMapHandle(page))) return 'no-map-handle';
-  return page.evaluate(() => {
-    const map = (window as unknown as { __scE2eMap?: ReadyMap }).__scE2eMap;
-    if (!map) return 'handle-lost';
-    if (!map.loaded()) {
-      const pending = Object.keys(map.getStyle().sources).filter((id) => !map.isSourceLoaded(id));
-      return `not-loaded (pending sources: ${pending.join(', ') || 'none — style still parsing'})`;
-    }
-    return 'loaded';
-  });
-}
-
-/** Gate a spec on a map that has actually rendered, reporting WHY if it hasn't. */
-async function mapReady(page: Page): Promise<void> {
-  await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
-}
+// `mapReady` (map-handle-via-React-fiber readiness gate, #253) now lives in
+// `./helpers` — promoted from three independent copies of this exact block
+// (see that file's own comment for the full history/rationale).
 
 // `+ 0` for the same negative-zero reason as needleDeg below. Here the residual
 // happens to land positive (`Math.round(0.048)` is `+0`), so this is latent
@@ -727,6 +656,29 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
     await page.goto(server.url);
     await mapReady(page);
 
+    // The PWA's SW registration finishes at roughly the same time as
+    // mapReady() above and shows a ONE-SHOT "offline ready" toast
+    // (ReloadPrompt, present in every fresh e2e context/profile — see
+    // #368's app.css comment). Left up, it is a rendered `.banner-area`
+    // banner, which #368's narrow-layout clearance rule pushes
+    // `.map-stack-tl`/`.route-layer-controls` down to avoid — that push
+    // eats into ScaleBar's own measured clearance at 375x667 enough to
+    // suppress it, and this sweep's `neverSuppress: true` was tuned against
+    // the BASELINE (no-banner) geometry. Dismiss it up front (best-effort —
+    // `.click()`'s own auto-wait no-ops harmlessly if it never appears) so
+    // the rest of this test, which is not itself about banners, runs
+    // against that same baseline.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+    // Assert the INTENT, not just that the click no-op'd harmlessly: a
+    // `.catch(() => {})` alone swallows a genuine selector drift (e.g.
+    // `.reload-prompt`/`.banner-dismiss` renamed) exactly as silently as it
+    // swallows an absent toast, leaving this sweep back on the banner-
+    // present geometry it exists to avoid, with no signal that happened.
+    await expect(page.locator('.reload-prompt')).toHaveCount(0);
+
     const compass = page.locator('.compass-btn');
     const bar = page.locator('.scale-bar');
 
@@ -759,6 +711,27 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
           }
 
           await rotateThenTapCompassHome(page, compass);
+
+          // #368 fix-wave, round 5: the toast dismissal above only proves
+          // `.banner-area` was empty at ONE point in time, before this
+          // per-viewport/per-tab loop even starts — 5 viewports x 2 tabs,
+          // each with a drag-rotate, a raw click, and a `toPass` retry, is a
+          // far wider window for a late SW install to still mount the toast
+          // than the point-in-time checks round 4 closed elsewhere. Unlike
+          // those, a stray banner here does NOT produce a vacuous pass: it
+          // pushes `.map-stack-tl` down (app.css's `:has()` banner-clearance
+          // rule), drops ScaleBar's ceiling below its floor, and the
+          // `neverSuppress` branch below throws "scale bar unexpectedly
+          // suppressed... has real headroom" — pointing squarely at #208's
+          // over-suppression bug, which would be the wrong diagnosis
+          // entirely; someone would go hunting in ScaleBar's suppression
+          // rule for a defect that is not there. Asserting the actual
+          // condition here, right before that branch, makes the failure
+          // name its real cause instead of a plausible-looking neighbour.
+          await expect(
+            page.locator('.banner-area .banner'),
+            `a banner appeared mid-sweep at ${viewport.width}x${viewport.height}/${tabName} — this pushes .map-stack-tl down and would misdiagnose the scale-bar check below as #208 over-suppression`,
+          ).toHaveCount(0);
 
           // --- scale bar: real occlusion, or an honest, recorded suppression ---
           const barClass = await bar.getAttribute('class');
@@ -799,7 +772,7 @@ test('#208: compass stays tappable and the scale bar never sits under .app-botto
   }
 });
 
-test('#208 review "Major 2": the offline banner stays on top of the map-chrome tier, not covered by it', async ({
+test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no longer share screen space', async ({
   page,
 }) => {
   const server = await startPreview();
@@ -807,6 +780,18 @@ test('#208 review "Major 2": the offline banner stays on top of the map-chrome t
     await page.goto(server.url);
     await mapReady(page);
     await page.setViewportSize({ width: 375, height: 667 });
+
+    // Dismiss the incidental SW "offline ready" toast so this test pins the
+    // SINGLE-banner case its own numbers below assume, rather than whichever
+    // of the one- or two-banner cases SW install timing happened to produce.
+    // The gap between them is large at this exact viewport: a 152.15px push
+    // clears a 96px (one-banner) bottom edge by ~56px but a 146px
+    // (two-banner) edge by only ~6px — silently choosing between a loose and
+    // a near-zero margin is not an acceptable thing to leave to timing.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
 
     // `context.setOffline` flips `navigator.onLine`/fires the browser
     // 'offline' event, which is exactly what the app's own online/offline
@@ -820,31 +805,186 @@ test('#208 review "Major 2": the offline banner stays on top of the map-chrome t
     // 'Planung deaktiviert' ("planning disabled") is unique to this one.
     const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
     await expect(banner).toBeVisible();
+    // Pin the count AT THE MOMENT OF MEASUREMENT (not at the dismiss attempt
+    // above, whose 5s timeout is swallowed) — a late-mounting toast between
+    // here and there would silently swap this test onto the two-banner case.
+    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
 
+    // #368: this test USED TO assert `.banner-area` (top: 3rem) and
+    // `.map-stack-tl` (top: 3.5rem) overlap BY DESIGN and that the Tier-3
+    // banner wins the paint AND hit test at that overlap point — that was
+    // correct as far as it went, but "who wins" was the wrong question: Tier
+    // 3 winning the paint there also meant it won the hit test, so the
+    // banner silently intercepted taps meant for the "Wassertiefen" toggle
+    // underneath it (a same-tier-style z-index fix could only have changed
+    // WHICH element lost). #368's fix moves `.map-stack-tl` clear of a
+    // rendered banner's footprint instead, so the two no longer occupy the
+    // same region at all — asserted here as zero overlap, replacing the old
+    // "who's on top at the overlap point" probe (still exercised, in more
+    // depth, by layout.spec.ts's own #368 regression test).
     const bannerBox = (await banner.boundingBox())!;
     const stackBox = (await page.locator('.map-stack-tl').boundingBox())!;
-    // Sanity: `.banner-area` (top: 3rem) and `.map-stack-tl` (top: 3.5rem)
-    // overlap BY DESIGN (app.css) — if a layout change ever separates them,
-    // this probe stops meaning anything, so fail loudly instead of silently
-    // passing on an empty overlap.
-    const overlapX = Math.max(bannerBox.x, stackBox.x) + 4;
-    const overlapY = Math.max(bannerBox.y, stackBox.y) + 4;
+    const overlapWidth = Math.max(
+      0,
+      Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width) -
+        Math.max(bannerBox.x, stackBox.x),
+    );
+    const overlapHeight = Math.max(
+      0,
+      Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height) -
+        Math.max(bannerBox.y, stackBox.y),
+    );
+    // AREA, not the two dimensions separately: both clusters are left-
+    // anchored, so they always share an x-range (overlapWidth > 0) even once
+    // the fix moves them fully clear of each other vertically — asserting
+    // `overlapWidth === 0` would fail on that harmless shared x-range, not on
+    // a real overlap. Two rects only truly intersect when BOTH dimensions
+    // overlap; the product is 0 whenever either one is.
     expect(
-      overlapX,
-      'banner and map-stack-tl no longer overlap horizontally — this probe needs updating',
-    ).toBeLessThan(Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width));
-    expect(
-      overlapY,
-      'banner and map-stack-tl no longer overlap vertically — this probe needs updating',
-    ).toBeLessThan(Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height));
+      overlapWidth * overlapHeight,
+      `overlapWidth=${overlapWidth} overlapHeight=${overlapHeight}`,
+    ).toBe(0);
 
-    const onTop = await topmostIsWithin(page, overlapX, overlapY, '.banner-area');
+    // The banner itself must still be fully legible — nothing else in the
+    // map-chrome tier may cover IT either, now that they no longer share
+    // space to arbitrate in the first place.
+    //
+    // Cost of this rewrite, worth recording rather than losing silently:
+    // nothing from the map-chrome tier is at the banner's own centre any
+    // more (that's the fix), so `topmostIsWithin` below can now only ever
+    // fail on a WHOLLY NEW occluder appearing — it no longer exercises
+    // "Tier 3 beats Tier 2 at a genuine overlap point" at all, which is what
+    // #208 round 2 was originally about. That guarantee is presently
+    // covered only BY CONSTRUCTION (the two no longer overlap), not by an
+    // assertion — a future change that legitimately reopens an overlap
+    // would have no test left to answer whether the tier order still wins
+    // it correctly.
+    const bannerCenterX = bannerBox.x + bannerBox.width / 2;
+    const bannerCenterY = bannerBox.y + bannerBox.height / 2;
+    const onTop = await topmostIsWithin(page, bannerCenterX, bannerCenterY, '.banner-area');
     if (!onTop) {
-      const hitStack = await elementsAt(page, overlapX, overlapY);
+      const hitStack = await elementsAt(page, bannerCenterX, bannerCenterY);
       throw new Error(
-        `offline banner text is covered at the overlap point: ${JSON.stringify(hitStack)}`,
+        `offline banner text is covered at its own center: ${JSON.stringify(hitStack)}`,
       );
     }
+  } finally {
+    await page.context().setOffline(false);
+    server.kill();
+  }
+});
+
+// #368 fix-wave finding (app.css:749 review thread): the banner-clearance
+// push SPENDS `.map-stack-tl`'s height budget — its rendered BOTTOM edge
+// moves down by roughly the same amount `top` does, because content that
+// already filled the base budget keeps filling the smaller one too. `Scale
+// Bar`'s own `ceiling` (ScaleBar.tsx) is computed from that rendered bottom,
+// so once the banner-inclusive push is large enough, `floor > ceiling` and
+// the bar suppresses — at 375x667, the exact viewport `OCCLUSION_VIEWPORTS`
+// (above) marks `neverSuppress: true` for with the #208 review "Minor 5"
+// rationale "this viewport has real headroom and must show the lifted bar".
+// Investigated and accepted as a genuine trade, not a bug to route around:
+//   - A bounded/partial push (spending LESS of the budget) was tried by hand
+//     against a live build and found to help ScaleBar only by squeezing
+//     `.data-layer-controls` harder — directly undoing headroom #368 itself
+//     needed for the depth/seamark toggles to stay usable. A LOOSER push
+//     (spending MORE) does not help ScaleBar at all: with content already
+//     filling the tighter budget, more room only lets the cluster's
+//     rendered bottom grow, which can only make `ceiling` smaller.
+//   - A separate, real bug WAS found and fixed in the course of this
+//     investigation: ScaleBar had no observer on `.banner-area` mounting or
+//     unmounting a banner (only on the sheet, the live view, and its own
+//     box), so `apply()` never re-ran on that trigger and the bar rendered
+//     fully OVERLAPPING `.map-stack-tl`'s new position (measured live,
+//     1837.7px^2) instead of cleanly suppressing, until an unrelated resize
+//     forced a fresh read. Fixed with a `MutationObserver` on `.banner-area`
+//     (ScaleBar.tsx) — this test is what that fix makes reliably assertable;
+//     without it, `barClass` below would depend on timing/resize history
+//     rather than being a function of the banner state alone.
+// Per the Tier principle documented above `.app-header` in app.css (an
+// element outranks another when a user unable to reach/see it is the WORSE
+// outcome): a clickable depth toggle and a legible offline banner both
+// outrank the passive, Tier-0 scale bar, so honest suppression here is the
+// accepted answer — pinned explicitly rather than left as an undisclosed
+// side effect of the #368 push.
+test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner, scale bar honestly suppresses', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(server.url);
+    await mapReady(page);
+
+    // Dismiss the incidental SW "offline ready" toast FIRST and confirm
+    // `.banner-area` is genuinely empty before the probe. This is load-
+    // bearing for what this test actually exercises, not just tidiness: if
+    // the toast were left up, it would likely have already pushed
+    // `.map-stack-tl` down (and fired ScaleBar's sheet/tab-switch-triggered
+    // `apply()` at least once AFTER that push) before `setOffline(true)`
+    // below ever runs — at which point `setOffline` mounting a SECOND
+    // banner changes NOTHING about `.map-stack-tl`'s geometry (the CSS
+    // `:has()` gate is a binary "any banner at all", not banner-COUNT-based,
+    // so 1-banner and 2-banner states push by the identical amount at a
+    // given viewport height). That would let a suppressed/cleared result
+    // pass even with `ScaleBar`'s `.banner-area` `MutationObserver` removed
+    // — MEASURED: the first version of this test did exactly that, passing
+    // unchanged with the observer deleted. Starting from a confirmed-empty
+    // `.banner-area`, with the viewport/tab already settled and NO further
+    // resize or tab-switch after `setOffline(true)`, makes that one call the
+    // ONLY thing that can plausibly re-trigger `apply()` — which is what
+    // makes this test actually depend on the observer under test.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.getByRole('tab', { name: 'Planen' }).click();
+
+    await page.context().setOffline(true);
+    const banner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
+    await expect(banner).toBeVisible();
+    // The count that actually matters is at the MOMENT OF MEASUREMENT, not
+    // at the dismiss click above: the dismiss click's own 5s timeout is
+    // swallowed (`.catch(() => {})`), so on a loaded CI runner or a cold
+    // profile where the SW precache install finishes later than that budget,
+    // the toast can still mount during setViewportSize/the tab click/
+    // setOffline below — at which point `.banner-area` would hold TWO
+    // banners while `toHaveCount(0)` right after the dismiss attempt had
+    // already (correctly, at that instant) passed on a genuinely empty area.
+    // That is self-concealing: the failure mode is a green test, since the
+    // two-banner case pushes `.map-stack-tl` by the SAME amount as the
+    // one-banner case (`:has()` is a binary "any banner", not banner-COUNT-
+    // based) — the exact shape that let the first version of this test pass
+    // unchanged with the observer deleted. Asserting the count HERE, right
+    // after the banner this test is ABOUT becomes visible, pins which case
+    // actually ran instead of assuming it.
+    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
+
+    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    const toggleBox = (await depthToggle.boundingBox())!;
+    const bannerBox = (await banner.boundingBox())!;
+    const overlapWidth = Math.max(
+      0,
+      Math.min(bannerBox.x + bannerBox.width, toggleBox.x + toggleBox.width) -
+        Math.max(bannerBox.x, toggleBox.x),
+    );
+    const overlapHeight = Math.max(
+      0,
+      Math.min(bannerBox.y + bannerBox.height, toggleBox.y + toggleBox.height) -
+        Math.max(bannerBox.y, toggleBox.y),
+    );
+    expect(
+      overlapWidth * overlapHeight,
+      `overlapWidth=${overlapWidth} overlapHeight=${overlapHeight}`,
+    ).toBe(0);
+
+    // Poll the class STRING, not a derived boolean — a bare
+    // `.toBe(true)` here would discard exactly which class was present on
+    // a failure, the same lesson CLAUDE.md records for #243's dogleg.
+    await expect
+      .poll(() => page.locator('.scale-bar').getAttribute('class'), { timeout: 10_000 })
+      .toMatch(/\bscale-bar-suppressed\b/);
   } finally {
     await page.context().setOffline(false);
     server.kill();
