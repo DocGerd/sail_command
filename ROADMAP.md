@@ -41,10 +41,10 @@ mark contrast on the dark basemap, the wind-barb slider's day indication —
 route-planning progress readout and the second-rig map overlay
 ([#340](https://github.com/DocGerd/sail_command/issues/340),
 [#324](https://github.com/DocGerd/sail_command/issues/324)); a cluster of
-narrow-viewport map-chrome fixes (offline banner overlap, the scale bar
-painting over map chrome, the ownship marker's accessible name lost in the
-6.1.0 bump —
-[#368](https://github.com/DocGerd/sail_command/issues/368),
+narrow-viewport map-chrome fixes (the offline banner overlapping the
+top-left chrome, and the scale bar painting over it —
+[#368](https://github.com/DocGerd/sail_command/issues/368) — plus the
+ownship marker's accessible name lost in the 6.1.0 bump,
 [#361](https://github.com/DocGerd/sail_command/issues/361)); a route
 annotation readability pass (ETA/speed labels culled or too small —
 [#378](https://github.com/DocGerd/sail_command/issues/378)); three
