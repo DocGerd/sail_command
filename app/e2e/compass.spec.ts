@@ -620,7 +620,14 @@ function topmostIsWithin(
  * coordinates with a raw `page.mouse.click` — bypassing Playwright's own
  * actionability pre-check, so a build where the sheet actually intercepts
  * the click fails on the `data-orientation` assertion below, not on a
- * generic "element not clickable" timeout. */
+ * generic "element not clickable" timeout.
+ *
+ * PRE/POSTCONDITION (#383): the camera must be AT REST when this is called,
+ * and it is at rest again when it returns — a right-drag begun while a camera
+ * animation is still running is discarded by MapLibre without a trace (full
+ * mechanism at the closing gate). The caller's loop repeats this ten times,
+ * so the postcondition below is what establishes the precondition for every
+ * call after the first. */
 async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['locator']>) {
   const canvas = page.locator('canvas.maplibregl-canvas');
   const box = (await canvas.boundingBox())!;
@@ -632,7 +639,23 @@ async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['lo
   await page.mouse.down({ button: 'right' });
   await page.mouse.move(cx + 150, ry, { steps: 10 });
   await page.mouse.up({ button: 'right' });
+  // #383: assert the CAMERA first, so a swallowed gesture reports the bearing
+  // it never left instead of only the attribute that consequently never
+  // changed. `data-orientation` staying `north-up` is the SYMPTOM of both a
+  // gesture that never reached MapLibre and a demotion that failed to fire;
+  // the bearing is what tells them apart, and a run that reds at 3am has to
+  // carry that number itself (the #243/#252 rule). Kept BEFORE the attribute
+  // assertion, which still runs and still catches the rotated-but-not-demoted
+  // direction on its own.
+  await expect
+    .poll(() => bearing(page), { message: 'the right-drag really rotated the camera (#383)' })
+    .not.toBe(0);
   await expect(compass).toHaveAttribute('data-orientation', 'free');
+
+  // Zeroed HERE, before the tap that starts the ease this helper's closing
+  // gate waits out — see that gate for why the ease, not the tap, is what the
+  // next caller has to be protected from.
+  await armCameraRest(page);
 
   // Bounded retry, not a fixed wait: under full-suite load a single raw
   // click can occasionally land a frame before the browser has settled the
@@ -646,6 +669,41 @@ async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['lo
     await page.mouse.click(cbox.x + cbox.width / 2, cbox.y + cbox.height / 2);
     await expect(compass).toHaveAttribute('data-orientation', 'north-up', { timeout: 500 });
   }).toPass({ timeout: 5_000 });
+
+  // #383, the whole fix — an ADDED gate, not a weakened one, and a state
+  // signal rather than a sleep.
+  //
+  // The tap above is satisfied SYNCHRONOUSLY: `handleTap` calls `applyMode`
+  // and only then `easeBearing(0, EASE_NORTH_MS)`, so `data-orientation`
+  // reads `north-up` at t=0 of a 600 ms ease. Nothing used to wait for that
+  // ease, and this helper is called ten times in a row (5 viewports x 2
+  // tabs), so the NEXT call's right-drag routinely landed inside the
+  // PREVIOUS call's still-running ease — and a drag that starts there is
+  // swallowed whole:
+  //
+  //   MapLibre arms `mouseRotate` on the `mousedown` (measured: `_lastPoint`
+  //   set, `_moveStateManager._eventButton = 2`). One frame later the ease
+  //   reaches t=1 and `_renderFrameCallback` calls a BARE `this.stop()`
+  //   (`camera.ts:1246`) — no `allowGestures` — which runs `_stopHandlers()`
+  //   (`camera.ts:1213` -> `map.ts:771`) -> `HandlerManager.stop(false)`,
+  //   whose whole body is `handler.reset()` on EVERY handler
+  //   (`handler_manager.ts:342-349`). `mouseRotate` is disarmed back to
+  //   `_lastPoint = undefined` mid-gesture, so all ten subsequent
+  //   `mousemove`s with `buttons: 2` produce a bearing delta of exactly
+  //   zero, no `rotate`/`rotatestart` event ever fires, and the compass
+  //   correctly stays `north-up` — the camera genuinely never moved. That is
+  //   MapLibre's own behaviour for any drag begun during any camera
+  //   animation; CompassControl is not involved, and neither is the readiness
+  //   wait (raising the assertion timeout cannot help a bearing that is
+  //   never going to change).
+  //
+  // So the helper now leaves the camera where its own name promises: home
+  // AND stopped. `cameraState` needs the moveend COUNT as well as the flags,
+  // which is what the `armCameraRest` call above is positioned for.
+  await expect
+    .poll(() => cameraState(page), { message: 'the tap-home ease finishes before the next drag' })
+    .toBe('at-rest');
+  expect(await bearing(page), 'the tap really brought the chart home').toBe(0);
 }
 
 test('#208: compass stays tappable and the scale bar never sits under .app-bottom-sheet, at every measured narrow/landscape viewport', async ({
