@@ -647,6 +647,18 @@ async function rotateThenTapCompassHome(page: Page, compass: ReturnType<Page['lo
   // carry that number itself (the #243/#252 rule). Kept BEFORE the attribute
   // assertion, which still runs and still catches the rotated-but-not-demoted
   // direction on its own.
+  //
+  // This assertion is only MEANINGFUL because the closing gate below ran on
+  // the previous call: it is the gate that guarantees the camera enters this
+  // drag at rest on bearing 0, so any non-zero reading here can only have
+  // come from the drag. Measured while mutation-checking that gate (#383):
+  // with the gate removed, three of four reproduced failures passed THIS
+  // assertion and failed the attribute one instead — the poll was reading
+  // the PREVIOUS ease's residual bearing on its way down to 0, not a
+  // rotation this drag caused. Do not read that as the compass failing to
+  // demote a genuinely rotated camera; `onMoveEnd` demotes on exactly that
+  // condition, and the instrumented traces put max |bearing| across the
+  // whole gesture at 0.
   await expect
     .poll(() => bearing(page), { message: 'the right-drag really rotated the camera (#383)' })
     .not.toBe(0);
