@@ -5,9 +5,12 @@
 - Status: Recommendation (no implementation in this change)
 - **Verdict: keep the mask, harbours, seamarks and polars monolithic and eager; split the basemap into a still-eager "core" archive plus per-region archives that are lazily fetched and explicitly pinned per plan, with a hard, network-free, byte-length-verified completeness check gating a plan's offline-ready state.**
 
-This document answers the six questions in #296. It changes no code under
-`app/src/` or `pipeline/`; all numbers below are measured against the files
-actually committed in this worktree (branch point: `develop`@`41d94b8`).
+This document answers #296's questions (the issue's own "Questions to
+answer" section numbers five; §3 below splits the per-asset story's
+chunking sub-question into its own section, so this document has six
+top-level sections covering those five questions). It changes no code
+under `app/src/` or `pipeline/`; all numbers below are measured against the
+files actually committed in this worktree (branch point: `develop`@`41d94b8`).
 
 ## 0. The strongest finding first: "do nothing" is not actually safe
 
@@ -31,7 +34,7 @@ density, not area alone, so this is illustrative, not exact):
 27,201,789 × 1.7 ≈ 46.2 MB — **over the 40 MB cap**.
 
 Method: `27,201,789 × 1.7`, compared against the literal
-`maximumFileSizeToCacheInBytes` value read from `app/vite.config.ts:346`.
+`maximumFileSizeToCacheInBytes` value read from `app/vite.config.ts:390`.
 
 If that happens, the *entire* basemap archive — not just the newly extended
 region — is silently dropped from the precache manifest at build time. At
@@ -48,7 +51,7 @@ merely a UX/size regression, it risks tripping an *already-enforced* limit
 in the code exactly as written today.
 
 (Bumping `maximumFileSizeToCacheInBytes` removes the silent-drop risk but
-is not by itself a fix — see §7 "considered and rejected" item 3.)
+is not by itself a fix — see §9 "considered and rejected" item 3.)
 
 ## 1. Measured assets
 
@@ -67,27 +70,28 @@ totals.
 | Icons (4 files) | `app/public/icons/*` | 24,263 | 23.7 KiB |
 | Sprites (v4, json+png, matched) | `app/public/basemap-assets/sprites/v4/*` | 52,154 | 50.9 KiB |
 | Sprite LICENSE.txt (not matched, `.txt` not in globPatterns) | — | 1,074 | — |
-| Font glyphs (769 `.pbf` files, runtime-cached, `globIgnores`d) | `app/public/basemap-assets/fonts/` | 11,083,630 | 10.6 MiB |
+| Font glyphs (768 `.pbf` files + 1 `OFL.txt` license = 769 files total, runtime-cached, `globIgnores`d) | `app/public/basemap-assets/fonts/` | 11,083,630 | 10.6 MiB |
 | Brand social card (`globIgnores`d) | `app/public/brand/social-card.png` | 48,820 | 47.7 KiB |
 | Test fixtures (`globIgnores`d, dev-only) | `app/public/test-fixtures/` | 581,010 | 567.4 KiB |
+| Third-party notices (not matched, `.txt` not in globPatterns) | `app/public/THIRD-PARTY-NOTICES.txt` | 20,258 | 19.8 KiB |
 | **Total `app/public`** | | **44,651,795** | **42.6 MiB** |
 
 **Current precache total** (public-asset portion — see method below):
 27,201,789 + 5,280,000 + 604 + 11,947 + 343,466 + 1,426 + 1,354 + 24,263 +
-52,154 = **32,918,003 bytes ≈ 31.4 MiB / 32.9 MB**.
+52,154 = **32,917,003 bytes ≈ 31.4 MiB / 32.9 MB**.
 
 Method: sum of every `app/public/**` file whose extension matches
 `globPatterns: ['**/*.{js,css,html,ico,png,svg,json,bin,pbf}']`
-(`app/vite.config.ts:355`) and is **not** excluded by
+(`app/vite.config.ts:399`) and is **not** excluded by
 `globIgnores: ['**/test-fixtures/**', '**/brand/**', '**/basemap-assets/fonts/**']`
-(`:365`). This matches the code's own comment ("~33 MB expected"). It
+(`:409`). This matches the code's own comment ("~33 MB expected", `:384`). It
 **excludes** the compiled app shell (JS/CSS/HTML bundle emitted by `vite
 build`, which this spike did not run — no code changes, no `npm ci`
 required per the brief) — the real total precache is this figure plus the
 app shell, which is smaller and not the subject of this spike.
 
-The issue's own figures ("~31 MB toward ~55 MB", "basemap 26 MB and mask
-5.1 MB today") are consistent with the measurements above once accounting
+The issue's own figures ("~31 MB toward the ~55 MB range", "basemap 26 MB
+and mask 5.1 MB today") are consistent with the measurements above once accounting
 for MB-vs-MiB rounding (25.9 MiB ≈ "26 MB"; 5.03 MiB ≈ "5.1 MB" under a
 slightly different rounding convention) — narrowed to "roughly right", not
 independently re-derived, since the area-extension issue itself was not
@@ -104,7 +108,7 @@ read for this spike.
 | Basemap (PMTiles) | Yes (map underneath the plan) | **Yes** | `LiveView` renders the same `MapView`/`RouteLayer` stack as planning — the chart is the trip's map, not a planning-only artifact |
 | Font glyphs | Yes (label text) | Yes (label text) | Already lazy — see below; degrades to a locally-drawn glyph shape on failure (`node_modules/maplibre-gl/.../glyph_manager.ts`), never a missing feature |
 
-**Conclusion on §1's central question (does the glyph precedent
+**Conclusion on #296's own central question (does the glyph precedent
 generalise to basemap/mask): no**, and the reason is categorical, not just
 a size difference. A missing glyph range degrades *invisibly and
 cosmetically* — MapLibre substitutes a locally-drawn TinySDF glyph with no
@@ -125,9 +129,10 @@ must keep working offline" (`CLAUDE.md`).
 
 **Assets trivially kept eager:** harbours (issue requirement, 11.9 KB),
 polars (1.4+1.4 KB, plan-time only), seamarks (343 KB, already commented as
-same-tier-as-harbours in `assets.ts`). Combined 358 KB — three orders of
-magnitude below the basemap; no plausible install-budget benefit from
-lazy-loading any of them, only complexity.
+same-tier-as-harbours in `assets.ts`). Combined 358,193 bytes (method:
+11,947 + 1,426 + 1,354 + 343,466) — roughly two orders of magnitude below
+the basemap (method: 27,201,789 / 358,193 ≈ 76×), not three; no plausible
+install-budget benefit from lazy-loading any of them, only complexity.
 
 ## 3. Chunking model
 
@@ -150,8 +155,8 @@ hot"). This is a real, bounded engineering task, but it is a
 **routing-behaviour change**, and CLAUDE.md's #282 rule is explicit that any
 change to reachability/no-route classification needs a full
 Flensburg→all-harbours regression sweep, not a labeling-only review. Given
-the mask is small even after the extension (§4), this cost is not
-justified by the savings — see rejected alternatives, §7.2.
+the mask is small even after the extension (quantified in §9, item 2), this
+cost is not justified by the savings.
 
 ### Basemap: natively chunkable, but not for free
 
@@ -174,7 +179,7 @@ granularities were considered:
   *proving completeness*: "is every tile this corridor needs, at every
   zoom level it needs, present" requires decoding PMTiles' tile-ID scheme
   and enumerating the exact set for a corridor, then verifying each one
-  individually. Rejected — see §7.1.
+  individually. Rejected — see §9, item 1.
 - **Per named region, as separate archives** (recommended). The pipeline
   emits more than one PMTiles archive — e.g. today's committed
   54.3–55.3°N/9.4–11.0°E box stays a "core" archive, unchanged; the area
@@ -358,10 +363,11 @@ signal.
    re-verification path (which must exist regardless) gets exercised.
 5. **Lazy-load harbours, seamarks, or polars.** Rejected per the issue's
    own framing (harbours always eager) and confirmed by measurement — all
-   three combined are 358 KB, three orders of magnitude below the basemap;
-   no plausible benefit, only complexity and (for the mask/harbours pairing
-   the router needs together) more moving parts in the solver's asset
-   loading path for no size reason.
+   three combined are 358,193 bytes, roughly two orders of magnitude below
+   the basemap (27,201,789 / 358,193 ≈ 76×), not three; no plausible
+   benefit, only complexity and (for the mask/harbours pairing the router
+   needs together) more moving parts in the solver's asset loading path for
+   no size reason.
 
 ## Claim-strength note
 
