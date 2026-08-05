@@ -38,6 +38,14 @@ deviate from it.
   (#217–#219, #224). **#224 deliberately DECLINED a DCO and a CLA** (Apache-2.0
   §5 makes inbound = outbound): never add `Signed-off-by` trailers, and nothing
   checks for them. The #132 release-cut docs sweep covers these four too.
+- `docs/spikes/` — one decision document per investigated-but-not-built
+  spike, named `<issue>-<slug>.md` (#245, #244, #296). Each records a
+  RECOMMENDATION plus an explicit considered-and-rejected section, so a
+  declined option cannot quietly come back as a fresh idea. Deliberately NOT
+  under `docs/superpowers/specs/`: that path is guarded by a main-session
+  ask-gate hook, and a subagent writing there would slip a spec edit past
+  the gate. A spike doc is evidence for a decision, never a spec — promoting
+  one to a spec is a main-session act.
 
 ## Commands
 
@@ -311,8 +319,9 @@ deviate from it.
   caused) discriminates a hand rotation from a foreign settle — guarded
   against a settle delivered from inside our OWN `easeTo`. **Post-maplibre-gl-6
   (#253): `map.isEasing()` is GONE from `Map`** — v6's `Map extends Evented`,
-  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:576` vs
-  `ui/camera.ts:284`; they are siblings), and the method survives only on the
+  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:589` vs
+  `ui/camera.ts:284`, both read against `maplibre-gl@6.1.0`; they are
+  siblings), and the method survives only on the
   private `_camera` field. `CompassControl.tsx`'s `onMoveEnd` guard is now a
   TWO-TERM derivation: `e.originalEvent !== undefined &&
   commandedBearingRef.current !== null &&
@@ -326,9 +335,9 @@ deviate from it.
   is true for EVERY handler `moveend` whether or not an ease is live; it is
   only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
   gave us on the reachable paths. What makes that conjunction sound: `_stop`
-  (`camera.ts:1197-1211`) deletes `_easeFrameId` and only THEN invokes
-  `_onEaseEnd` at `:1211` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
-  bound in `_ease` (`:1234`) — so `isEasing()` was already false at every
+  (`camera.ts:1197-1210`, 6.1.0) deletes `_easeFrameId` and only THEN invokes
+  `_onEaseEnd` at `:1210` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
+  bound in `_ease` (`:1232`) — so `isEasing()` was already false at every
   ease-emitted `moveend` even in v5, which is why the absence of
   `originalEvent` discriminates a camera-internal ease termination from a
   handler-gesture settle. ACCEPTED NARROWING: the new
@@ -371,8 +380,9 @@ deviate from it.
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
   `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
-  against the exact pinned `maplibre-gl@6.0.0` install, re-checked after the
-  #253 v6 upgrade: still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
+  against `maplibre-gl@6.1.0`, the version `app/package-lock.json` pins,
+  re-checked after the #253 v6 upgrade and again after the 6.1.0 bump: still
+  `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
   !sortKey.isConstant();` at the same line; re-check again after any future
   maplibre-gl upgrade),
   disabling the placement priority entirely. Within one symbol layer,
@@ -475,9 +485,9 @@ deviate from it.
   require three consecutive matches at 400ms, fail CLOSED on budget
   exhaustion with the count history and last three label sets. Three-at-400ms
   is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
-  (`symbol/placement.ts:1268-1277`) gates re-runs on `commitTime +
+  (`symbol/placement.ts:1268-1277`, 6.1.0) gates re-runs on `commitTime +
   fadeDuration * durationAdjustment > now` with `fadeDuration: 300` defaulted
-  at `ui/map.ts:539`. Measured effect: spec runtime ~6.5s -> ~2.3s,
+  at `ui/map.ts:539` (same version). Measured effect: spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
   immediately all along. Whether any OTHER spec shares this defect is
   UNCONFIRMED — a grep of `annotations.spec.ts` (the spec `labels.spec.ts`'s
@@ -674,13 +684,14 @@ deviate from it.
   `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
 - Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
   loads them via `getArrayBuffer`/`fetch`
-  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`); `font-src`
+  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, 6.1.0); `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
   Nothing in the suite yet asserts a label actually renders (#320).
 - `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
-  suite has: `annotations.spec.ts:246` asserts ZERO Open-Meteo requests
-  (line moved from :167 — #378/PR #381 added ~247 lines earlier in this
-  file, session 24),
+  suite has: `annotations.spec.ts:244-247` asserts ZERO Open-Meteo requests
+  (the assertion moved from :167 when #378/PR #381 added ~247 lines earlier
+  in this file; re-derived session 25, where the previously cited `:246` was
+  the message argument rather than the `expect(` itself),
   every planning spec uses `?windFixture=`, AIS is BYOK so opens no sockets,
   and jsdom enforces no CSP at all — so a directive wrong in either direction
   (too tight, blocking startup; too loose, degraded to unrestrictive) would
@@ -921,7 +932,9 @@ deviate from it.
 - The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
   (measured, issue #9: the bridge decks are already deep water; sub-cell
   channels ≤30 m wide are the real barrier) — reconnecting them requires
-  fabricating depth; don't attempt without hi-res bathymetry.
+  fabricating depth; don't attempt without hi-res bathymetry. A finer grid
+  is NOT that hi-res bathymetry and has been measured to make things worse
+  — see the #245 rule under Domain rules.
 - Issue texts are not ground truth for states they don't describe: #31's
   correct wide-float description got misapplied to the narrow layout and
   spread into 5 code sites — verify wording against code before reusing it in
@@ -940,6 +953,16 @@ deviate from it.
   a fix wave is the same tautology one step later — the reviewer hand-derives
   the value from the state machine before accepting it (how #145's changed
   backoff literal was validated rather than trusted).
+- **One invocation cannot tell a load-bearing guard from a decorative one
+  when the failure it defends against is PROBABILISTIC** (#383, PR #390).
+  Reverting that PR's new at-rest settle gate gave 8/8 GREEN on the first
+  try — on that evidence the fix was a placebo about to ship. Only
+  `--repeat-each=16` exposed it: 25% failure with the gate removed, 0% with
+  it. At a 25% per-run failure rate, eight consecutive clean runs happen
+  ~10% of the time by chance (`0.75^8` = 10.0%) — an 8-run revert is a
+  coin-flip-grade experiment, not a mutation check. Size the repeat count
+  against the failure rate you are trying to detect, and never read one
+  green revert as "the gate does nothing".
 - A mutation battery can pass for the WRONG reason when a test row carries
   MORE THAN ONE trigger for the same expected outcome. A near-miss row meant
   to pin allowlist MEMBERSHIP was written as `xargs npm install < pkgs.txt` —
@@ -949,6 +972,20 @@ deviate from it.
   catching it (#216, `.claude/hooks/notices-nudge.sh`). General form: when a
   row's purpose is to isolate ONE condition, strip every other
   character/construct that could independently cause the same pass/fail.
+  **A row can also be vacuous by matching PROSE rather than the value under
+  test** — the same class, recurring inside the check written to prevent it
+  (#388, PR #387). A twin check meant to prove the guard's user-facing
+  reason string lists every allowlisted verb substring-matched each verb
+  against the WHOLE reason sentence; `ls` was satisfied by the phrase "which
+  a**ls**o matches", so that verb passed even with the derived list stubbed
+  EMPTY — the mutation reds 13 of 14 rows rather than 14, and a 13/14 red is
+  convincing enough that nobody counts. Assert against the parsed VALUE (the extracted list), never against the
+  surrounding sentence. Sharper still: the reviewer's suggested fix PASSED
+  the vacuity probe while deriving needle and haystack from the SAME array —
+  a worse tautology that no longer tested anything. **A fix that passes the
+  test written to catch its absence can still be the wrong fix.** The
+  discriminating experiment was to break the SPLICE while leaving the
+  DERIVATION intact: correct form reds 1, suggested form reds 0.
 - CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
   `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
   mime-insensitive, but an `application/xml` parse is inert (no script exec, no
@@ -1068,7 +1105,8 @@ deviate from it.
   false; §2.7.1.1 was correct all along).
 - MapLibre glyph loading has NO observable failure signal by design:
   `GlyphManager._downloadAndCacheRangePromise`
-  (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`) catches EVERY
+  (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`; every line
+  number in this bullet read against `maplibre-gl@6.1.0`) catches EVERY
   glyph-range fetch failure and falls back unconditionally to a
   locally-drawn TinySDF glyph — the symbol is still placed, so
   `queryRenderedFeatures` returns identical counts and names whether glyphs
@@ -1098,6 +1136,23 @@ deviate from it.
   the exact source is already on disk. Same failure as CITATION HALO above,
   one level up: borrowed confidence from a tool that looked authoritative
   instead of from an adjacent verified edit (#234).
+  **"Read it from the installed artifact" is NOT sufficient on its own
+  (#392).** A long-lived checkout's `node_modules` can be STALE against the
+  lockfile — this one was, serving `maplibre-gl` 6.0.0 while
+  `app/package-lock.json` pinned 6.1.0 — so two people can each `grep -n`
+  real source and reach opposite, both-honest conclusions about the same
+  line (measured: a reviewer filed a Major finding that a correct citation
+  was wrong; the implementer refuted it with the version, #383/PR #390).
+  **The LOCKFILE is authoritative** — it is what `npm ci`, CI and production
+  install. So: `npm ci` first, confirm the version you are about to read
+  (`node -p "require('./app/node_modules/<pkg>/package.json').version"`),
+  check it against `app/package-lock.json` — never against a warm
+  `node_modules`, memory, or CLAUDE.md — and NAME that version next to the
+  citation, because these numbers move between releases. Re-derive EVERY
+  citation individually after an upgrade: the offset is not uniform even
+  within one file (6.0.0 → 6.1.0 left `ui/map.ts:539` untouched while
+  `:576` became `:589` — a bulk shift would be a fresh fabrication
+  replacing a stale one).
 - A Playwright `expect.poll` predicate that returns a BOOLEAN discards the
   diagnostic. `return deg >= 330 || deg <= 30` + `.toBe(true)` can only report
   `Expected: true / Received: false` plus a timeout — and a Playwright timeout
@@ -1182,32 +1237,59 @@ deviate from it.
   instruction, brief the reviewer to check claim STRENGTH against the evidence,
   not just claim correctness — and prefer "narrowed" to "closed" unless the
   measurement really covers the whole space.
-- **#383 — a KNOWN e2e flake, confirmed pre-existing on unmodified
-  `develop`**: `compass.spec.ts`'s `"#208: compass stays tappable and the
-  scale bar never sits under .app-bottom-sheet, at every measured
-  narrow/landscape viewport"` (named at `compass.spec.ts:651`) fails ~37%
-  (3 of 8 across two `--repeat-each=4` invocations against unmodified
-  `develop`, independently reproduced a third time by a different agent
-  during PR #382) — always the same signature, the failing assertion inside
-  the `rotateThenTapCompassHome` helper at `compass.spec.ts:635`:
-  `Expected: "free" / Received: "north-up"`. The locator resolved 14× over
-  the 5s window reading `north-up` every time — the mode never flips at
-  all, so raising the timeout cannot help. A red `e2e` on THIS test with
-  THIS signature is the known flake; that must be CONFIRMED against the
-  actual log before being written off, not assumed from "compass.spec.ts
-  failed" alone — a different assertion failing in the same file is a
-  different bug. Do NOT "fix" this by weakening the readiness wait — #253's
-  lesson applies exactly here: a suite that greens only after its wait is
-  weakened means the weakened wait IS the finding, and that mistake already
-  cost this repo a wrong root-cause once (seven `networkidle` sites swapped
-  for a check that didn't require tiles, blaming "the runner" for what was
-  really a broken worker bundle).
+- **#383 was never a flake — it was a real MapLibre defect, and it is FIXED
+  (PR #390).** `compass.spec.ts`'s `rotateThenTapCompassHome` helper reds
+  with `Expected: "free" / Received: "north-up"` whenever its right-drag
+  begins inside the PREVIOUS iteration's still-running tap-home ease: that
+  ease's natural completion calls a BARE `this.stop()` (no `allowGestures`)
+  → `_stopHandlers()` → `reset()` on EVERY handler, disarming `mouseRotate`
+  mid-gesture, so the ten following `mousemove`s produce a bearing delta of
+  exactly zero (MEASURED: max |bearing| = 0 across the whole gesture). The
+  camera genuinely never moved, which is why raising the timeout could never
+  help and why the mode "never flips" — CompassControl is not involved. The
+  fix ADDED an at-rest settle gate to the helper (a state signal, not a
+  sleep); PRODUCT CODE IS UNTOUCHED, so **the underlying MapLibre defect is
+  still live for real users on any `easeTo`/`flyTo`/`fitBounds` — tracked as
+  #391 (Backlog), and fixing it means patching maplibre.** Pinned 128/128
+  plus a reviewer's independent 16/16. The maplibre line numbers for the
+  whole `stop`→`_stopHandlers`→`reset` chain live in that helper's own
+  closing-gate comment, which names the version they were read against — go
+  there rather than re-citing them here. #253's lesson is VINDICATED, not
+  contradicted: the fix is a gate ADDED, never a readiness wait weakened,
+  and calling this "a known flake" for two sessions is exactly the
+  write-off that rule exists to prevent — a lone red test contradicting a
+  green suite deserves MORE weight than the suite.
 
 ## Domain rules that are easy to get wrong
 
 - **Navigability is decided at query time** (`cellDepth >= safetyDepth`), not
   baked into the mask — safety depth (default 3.0 m; boat draft 2.1 m) is a
   user setting and must never require regenerating data.
+- **The ~46 m mask grid is SOURCE-limited, and refining it is a measurable
+  REGRESSION against today's connectivity gate** (#245,
+  `docs/spikes/245-depth-mask-resolution.md` — do not re-open without new
+  bathymetry). Rebuilt end-to-end at 23 m and 12 m: **0 of the 5 #9
+  KNOWN_DISCONNECTED harbours reconnect** at either resolution, while
+  `aabenraa` DISCONNECTS at 23 m and `augustenborg` additionally at 12 m.
+  Mechanism: each sits exactly ON its gate (`aabenraa` 3.0 ≥ 3.0,
+  `augustenborg` 2.8 ≥ 2.8) and a finer cell no longer borrows the decimetre
+  the coarse cell averaged in — so `verify_mask.py` fails. State this
+  GATE-CONDITIONAL: it is true at the DEFAULT 3.0 m safety depth, never as
+  unconditional "finer is harmful" (`aabenraa` reads 2.9 m at 23 m, so it
+  stays connected for any user who lowers the gate). Licensed by a fidelity
+  control the reviewer reproduced INDEPENDENTLY with their own
+  reimplementation: 0 of 5,280,000 bytes differ.
+- **Buoyed fairways are DECLINED as a routing input** (#244,
+  `docs/spikes/244-buoyed-fairways.md`). `seamark:type=fairway` does not
+  exist in-region at all; the 258 `waterway=fairway` ways that do exist
+  carry ZERO width/depth/draft tags, and 144 (55.8%) are canoe-scheme
+  geometry of which 132 (51.2% of all 258) are explicitly
+  `boat=discouraged` — a naive nearest-fairway lookup picks a PADDLING route
+  for `maasholm`. The issue's own "depth already confines the boat, so a
+  fairway adds little" hypothesis was FALSIFIED, not confirmed: the
+  navigable corridor is >1 km wide at 90.8% of navigable-centreline points.
+  The decline rests on the data being unusable, not on the corridor being
+  narrow.
 - **Wind grids are stored with each plan** (IndexedDB). A saved route must
   always render against the forecast it was computed from, never a re-fetched
   one.
@@ -1313,9 +1395,9 @@ deviate from it.
   NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
   measured against a chord that crossed LAND.
 - **No-route `reason` is a CONTROL INPUT, not just a status label** (#282,
-  open): `needsUnpreferencedRetry` (`planRoute.ts:67-71`) branches on
+  open): `needsUnpreferencedRetry` (`planRoute.ts:112-116`) branches on
   `r.reason === 'unreachable' || r.reason === 'beyond-horizon'`, and the #53
-  relaxation gate (`planRoute.ts:273`) branches on `reason === 'unreachable'`
+  relaxation gate (`planRoute.ts:349`) branches on `reason === 'unreachable'`
   (plus a depth-floor guard). So ANY change to no-route classification —
   including a strictly more accurate one — changes which retry tiers run and
   can return a SLOWER route, not merely a differently-labeled one. Measured
@@ -1456,6 +1538,24 @@ deviate from it.
   `--selftest`. It fails CLOSED where the old inline form emitted nothing:
   empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
   or non-repo `git` (verified across 15 constructed failure inputs).
+- **A read-only EXEMPTION must be CONJUNCTIVE, and its allowlist rests on a
+  named precondition** (#388, PR #387). `.claude/hooks/artifact-guard.sh`
+  used to `ask` on any Bash command merely NAMING a protected path,
+  read-only ones included — a deliberate over-fire the maintainer then
+  overruled ("too restrictive, i had to approve several stat calls"). It now
+  suppresses only when ALL THREE hold: the command's FIRST WORD exactly
+  matches a small no-write-capability verb set, AND the whole command
+  contains none of `> < | & ; \` $ \ ( ) { } ! #` / newline / CR, AND none of
+  `tee xargs -exec -delete -ok sudo eval "sh -c" "bash -c"`. A first-word- or
+  prefix-only exemption fails OPEN and is still wrong. **NAMED PRECONDITION:
+  no allowlisted verb may be a shell FUNCTION or ALIAS in the guarded
+  shell** — `grep` is excluded precisely because in Claude Code's Bash it is
+  a function shimming to ugrep, so "the executable is its first word" is
+  false for it; `find` is excluded for `-delete`/`-exec`, and `file` because
+  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only).
+  Before adding a verb, run `type <verb>` **in the real Bash tool**:
+  measuring inside `bash script.sh` does not inherit non-exported functions,
+  so the shim vanishes and every verb reports a reassuring `file`.
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
