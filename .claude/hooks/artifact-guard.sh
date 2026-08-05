@@ -559,7 +559,7 @@ if [ "${1:-}" = "--selftest" ]; then
   # NOTE (#388 review): this total includes ONE case per READONLY_VERBS entry
   # (the reason-string twin check at the end), so adding or removing a verb
   # moves it by 2 - the verb's own decision row plus its twin case.
-  EXPECTED_CASES=195
+  EXPECTED_CASES=196
 
   # check WANT DESC CMD - drives the pure bash_hits_protected_path() function
   # directly (WANT is "ask" or "allow"). This tests PATH COVERAGE ONLY, which
@@ -590,6 +590,30 @@ if [ "${1:-}" = "--selftest" ]; then
     got=$(bash_decision "$cmd")
     if [ "$got" != "$want" ]; then
       echo "SELFTEST FAIL [decision]: $desc -> got [$got] want [$want] (cmd: $cmd)"
+      fail=1
+    fi
+  }
+
+  # decide_exempt DESC CMD - for a row whose point is that the EXEMPTION
+  # suppressed it. Asserts BOTH that the command hits a protected path AND
+  # that the decision is allow (#388 re-review, Minor 6, second half: the
+  # same vacuity lens applied to my own rows). Without the first assertion a
+  # suppress row is satisfiable by a TYPO - misspell the path and the row
+  # allows on the path check alone, proving nothing about the exemption,
+  # which is precisely the #216 shape. The PR body claimed every such row
+  # names a protected path; this makes the claim enforced rather than
+  # asserted. Deliberately ONE case, not two, so the count stays row-shaped.
+  decide_exempt() {
+    local desc="$1" cmd="$2" got
+    total=$((total + 1))
+    if ! bash_hits_protected_path "$cmd" >/dev/null; then
+      echo "SELFTEST FAIL [exempt row names no protected path]: $desc -> this row would pass with the exemption deleted (cmd: $cmd)"
+      fail=1
+      return
+    fi
+    got=$(bash_decision "$cmd")
+    if [ "$got" != "allow" ]; then
+      echo "SELFTEST FAIL [decision]: $desc -> got [$got] want [allow] (cmd: $cmd)"
       fail=1
     fi
   }
@@ -714,22 +738,22 @@ if [ "${1:-}" = "--selftest" ]; then
 
   # --- MUST SUPPRESS: one allowlisted verb, one protected path, nothing else.
   # The first row IS the maintainer's reported case.
-  decide allow "EXEMPT: stat (the reported case)"   "stat app/public/data/mask.bin"
-  decide allow "EXEMPT: ls"                         "ls -la app/public/icons"
-  decide allow "EXEMPT: wc"                         "wc -c app/public/THIRD-PARTY-NOTICES.txt"
-  decide allow "EXEMPT: du"                         "du -sh app/public/brand"
-  decide allow "EXEMPT: head"                       "head -n 5 docs/superpowers/specs/foo.md"
-  decide allow "EXEMPT: cat"                        "cat app/public/data/mask.bin"
-  decide allow "EXEMPT: sha256sum"                  "sha256sum app/public/data/mask.bin"
-  decide allow "EXEMPT: md5sum"                     "md5sum app/public/data/mask.bin"
-  decide allow "EXEMPT: test"                       "test -f app/public/data/mask.bin"
-  decide allow "EXEMPT: [ (bracket form of test)"   "[ -f app/public/data/mask.bin ]"
-  decide allow "EXEMPT: readlink"                   "readlink app/public/data/mask.bin"
-  decide allow "EXEMPT: realpath"                   "realpath app/public/data/mask.bin"
-  decide allow "EXEMPT: dirname"                    "dirname app/public/data/mask.bin"
-  decide allow "EXEMPT: basename"                   "basename app/public/data/mask.bin"
-  decide allow "EXEMPT: .pmtiles entry, not a dir"  "stat app/dist/data/basemap.pmtiles"
-  decide allow "EXEMPT: leading whitespace ignored" "  stat app/public/data/mask.bin"
+  decide_exempt "EXEMPT: stat (the reported case)"   "stat app/public/data/mask.bin"
+  decide_exempt "EXEMPT: ls"                         "ls -la app/public/icons"
+  decide_exempt "EXEMPT: wc"                         "wc -c app/public/THIRD-PARTY-NOTICES.txt"
+  decide_exempt "EXEMPT: du"                         "du -sh app/public/brand"
+  decide_exempt "EXEMPT: head"                       "head -n 5 docs/superpowers/specs/foo.md"
+  decide_exempt "EXEMPT: cat"                        "cat app/public/data/mask.bin"
+  decide_exempt "EXEMPT: sha256sum"                  "sha256sum app/public/data/mask.bin"
+  decide_exempt "EXEMPT: md5sum"                     "md5sum app/public/data/mask.bin"
+  decide_exempt "EXEMPT: test"                       "test -f app/public/data/mask.bin"
+  decide_exempt "EXEMPT: [ (bracket form of test)"   "[ -f app/public/data/mask.bin ]"
+  decide_exempt "EXEMPT: readlink"                   "readlink app/public/data/mask.bin"
+  decide_exempt "EXEMPT: realpath"                   "realpath app/public/data/mask.bin"
+  decide_exempt "EXEMPT: dirname"                    "dirname app/public/data/mask.bin"
+  decide_exempt "EXEMPT: basename"                   "basename app/public/data/mask.bin"
+  decide_exempt "EXEMPT: .pmtiles entry, not a dir"  "stat app/dist/data/basemap.pmtiles"
+  decide_exempt "EXEMPT: leading whitespace ignored" "  stat app/public/data/mask.bin"
   # Behaviour change stated rather than left to be inferred: the four
   # `cat`-carrier over-fires pinned in the path-matching blocks above no
   # longer reach the user, because the command that produces each is a bare
@@ -737,10 +761,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # of them had none, leaving the user-visible half of the change unpinned:
   # nothing would have failed if one started prompting again, which is the
   # regression this PR exists to prevent).
-  decide allow "EXEMPT: sibling database/ read no longer prompts"  "cat app/public/database/config.json"
-  decide allow "EXEMPT: sibling iconsets/ read no longer prompts"  "cat app/public/iconsets/foo.svg"
-  decide allow "EXEMPT: sibling specs-old/ read no longer prompts" "cat docs/superpowers/specs-old/draft.md"
-  decide allow "EXEMPT: NOTICES.txt.bak read no longer prompts"    "cat app/public/THIRD-PARTY-NOTICES.txt.bak"
+  decide_exempt "EXEMPT: sibling database/ read no longer prompts"  "cat app/public/database/config.json"
+  decide_exempt "EXEMPT: sibling iconsets/ read no longer prompts"  "cat app/public/iconsets/foo.svg"
+  decide_exempt "EXEMPT: sibling specs-old/ read no longer prompts" "cat docs/superpowers/specs-old/draft.md"
+  decide_exempt "EXEMPT: NOTICES.txt.bak read no longer prompts"    "cat app/public/THIRD-PARTY-NOTICES.txt.bak"
 
   # --- MUST ASK: verb MEMBERSHIP is what fails. No disqualifying construct
   # in any of these - strip one clause and only these rows can catch it.
@@ -919,13 +943,41 @@ if [ "${1:-}" = "--selftest" ]; then
   # every array entry. Fails CLOSED: an empty/absent reason reds every row
   # rather than passing vacuously (same shape as useBannerHeight.test.ts's
   # CSS<->TS check, CLAUDE.md).
+  # The needle must be matched against the emitted VERB LIST ONLY, never
+  # against the whole reason (#388 re-review, Minor 6). Matching the whole
+  # string made the `ls` case VACUOUS: the reason's own prose contains
+  # "which aLSo matches", so `*"ls"*` hit the prose and that case passed even
+  # with the derived list empty - measured, 13 of 14 red instead of 14. That
+  # is the #216 class living inside the very check written to prevent it.
+  #
+  # So: extract the parenthesised list out of the PRODUCTION output first,
+  # then match each verb slash-delimited within it. Extracting from the
+  # emitted JSON (rather than re-deriving the list here) is what keeps this a
+  # twin check at all - a needle and a haystack both built from
+  # READONLY_VERBS would agree with each other no matter what production
+  # actually printed, which is a tautology, not a test.
   reason_out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f app/public/data/mask.bin"}}' | "$SELF" 2>/dev/null)
+  # Fail CLOSED on extraction: if the marker is gone (reason reworded,
+  # renamed, or not emitted at all) say so loudly rather than letting the
+  # `#`/`%%` expansions below silently yield a nonsense haystack that might
+  # still match something. Same discipline as useBannerHeight.test.ts's
+  # explicit not-null assertion before its value comparison.
+  total=$((total + 1))
+  case "$reason_out" in
+    *"no-write verb ("*")"*) ;;
+    *)
+      echo "SELFTEST FAIL [reason twin]: could not find the 'no-write verb (...)' list in the emitted permissionDecisionReason - extraction is broken, so the per-verb checks below prove nothing (out: $reason_out)"
+      fail=1
+      ;;
+  esac
+  emitted_list=${reason_out#*no-write verb (}
+  emitted_list=${emitted_list%%)*}
   for v in "${READONLY_VERBS[@]}"; do
     total=$((total + 1))
-    case "$reason_out" in
-      *"$v"*) ;;
+    case "/$emitted_list/" in
+      *"/$v/"*) ;;
       *)
-        echo "SELFTEST FAIL [reason twin]: READONLY_VERBS entry [$v] is missing from the emitted permissionDecisionReason (out: $reason_out)"
+        echo "SELFTEST FAIL [reason twin]: READONLY_VERBS entry [$v] is missing from the emitted verb list [$emitted_list]"
         fail=1
         ;;
     esac
