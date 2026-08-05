@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-05
+
+### Added
+
+- The map can now show both foresail routes at once, so a genoa/fock
+  recommendation can be compared visually rather than only through their
+  ETAs. A new "Anderes Rigg anzeigen" ("Show other rig") toggle in the
+  route-layer controls (off by default) overlays the rig NOT currently
+  displayed, as a dashed, lower-opacity track — the active route stays solid
+  and unchanged, and the recommendation badge still says which rig is faster
+  and by how much. Nothing else re-keys: the depth profile, leg list and
+  wind-barb slider all stay bound to the active route as before. Pure
+  presentation over data the plan already computes — no extra solver run, no
+  extra wind forecast fetch (#324).
+
+### Fixed
+
+- The wind-barb forecast-time slider now shows which day it refers to
+  instead of a bare clock time: a passage running past midnight gets a short
+  weekday prefix, and an older saved plan gets a short date once it's more
+  than a few days old — so "03:00" can no longer be misread as tonight when
+  it's actually three days ago. The slider's accessible value always carries
+  the full date and time for screen readers, independent of the abbreviated
+  visible label (#292).
+
+- Spar-shaped lateral marks (the majority silhouette — 524 of 828 in-area
+  lateral marks) now render a can or cone topmark, matching pillar marks.
+  They previously carried none, leaving the port/starboard side conveyed by
+  colour alone (#307).
+
+- Black-tagged special-purpose marks now get a near-white keyline around
+  their body, fixing a contrast gap where they were nearly invisible against
+  the dark-theme basemap (#308).
+
+- The build-time plugin that adds the UAT `noindex` robots meta and rewrites
+  `og:url`/`og:image` for the deploy sub-path now fails the build loudly if
+  one of its `index.html` markers ever drifts, instead of silently shipping
+  without the injection — matching the guard `cspMeta()` already had (#318).
+
+- The route-planning status now shows an honest, bounded phase readout
+  ("Calculating route… sail 1 of 2 (Genoa)") instead of a percentage that
+  capped around 5% and reset to 0% when the router switched from the genoa
+  to the fock rig solve, or when a depth-relaxation retry restarted the
+  solve — both were the readout doing exactly what its formula said, not a
+  glitch, but neither was a meaningful measure of progress (#340).
+
+- The boat-position marker on the map now has an accessible name again
+  ("Current vessel position" / "Aktuelle Bootsposition"). The maplibre-gl
+  6.1.0 bump stopped supplying a default one for markers built with a custom
+  element, leaving the ownship indicator with none at all (#361).
+
+- On taller narrow-portrait phone viewports (390x844, 360x740), the offline
+  status banner no longer overlaps the top-left map chrome, where it used to
+  make the "Wassertiefen" (depth) toggle unclickable underneath it. The
+  map-chrome cluster now moves clear of a rendered banner's footprint
+  instead of relying on a z-index bump, which would only have decided which
+  element painted on top and left the hit test wrong either way. At some of
+  these heights (measured: 375x667, 360x740) the passive scale bar now
+  suppresses itself while a banner is shown, an accepted trade rather than
+  an oversight — it stays out of the way of the now-clickable toggles
+  instead of overlapping them. Shorter viewports (narrow landscape, and
+  narrow portrait below roughly 636px tall with two banners shown) are not
+  covered by this change and keep the existing overlap (#368).
+
+- Closes the remaining #368 gaps: the offline/status banner area no longer
+  overlaps the top-left map chrome (compass, "Wassertiefen"/"Seezeichen"
+  toggles) at every narrow viewport and banner combination this fix was
+  tested against — short landscape (844x390, 740x360), deep portrait (down
+  to 320x568 with two banners shown), three or more stacked banners, and a
+  banner that wraps to two lines, not just the two portrait sizes and
+  single-banner case the first pass closed. The map chrome is now pushed
+  clear by the banner area's REAL measured height rather than a
+  viewport-height estimate, so it clears whatever is actually on screen
+  instead of only the cases that estimate happened to cover — including a
+  banner already visible on a cold load, since the measurement now lands
+  before the browser's first paint rather than after.
+
+- The nautical scale bar could render fully on top of the top-left
+  map-chrome column (the depth/seamark toggles and compass) instead of
+  hiding itself out of the way, on narrow phone viewports whenever a status
+  banner appeared after the map had already loaded. It now updates
+  immediately when a banner appears or disappears, so it reliably clears the
+  toggles or hides itself instead of sitting on top of them (measured on
+  375x667 and 360x740, #368).
+
+- Waypoint ETA labels could vanish outright at some zoom levels, and the
+  ETA/track-speed text was too small to read on deck in daylight. The
+  disappearance turned out to be the dense wind-barb layer: it was already
+  protected from being culled itself, but wasn't marked to stay out of the
+  way of the ETA/speed labels underneath it, so it blocked them from being
+  placed. ETA/speed text now scales up at higher zoom, and MapLibre is given
+  several fallback positions per label before giving up on it, instead of
+  one fixed spot with no fallback (#378).
+
 ## [0.8.1] - 2026-08-04
 
 ### Fixed
@@ -376,7 +470,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/DocGerd/sail_command/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/DocGerd/sail_command/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/DocGerd/sail_command/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/DocGerd/sail_command/compare/v0.6.0...v0.7.0
