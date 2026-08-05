@@ -365,7 +365,13 @@ deviate from it.
   flag. Residual: a pure PAN can still get rewritten into a rotation-to-north
   by MapLibre's own 7° `bearingSnap` and fires WITH `originalEvent` attached,
   so track-up still drops whenever `0 < |bearing| < 7` — an everyday heading
-  (#230).
+  (#230). SECOND RESIDUAL, in this same `_stop` mechanism and live for real
+  users: a gesture BEGUN while any `easeTo`/`flyTo`/`fitBounds` is in flight
+  is swallowed whole, because the ease's own completion calls a bare
+  `this.stop()` (no `allowGestures`) → `_stopHandlers()` → `reset()` on every
+  handler, disarming the gesture mid-drag (#391, Backlog — fixing it means
+  patching maplibre; symptom, measurement and the e2e-side workaround in the
+  #383 bullet under Verification lessons).
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
   Live reroute under way) silently un-rotates the chart and kills track-up
@@ -957,8 +963,9 @@ deviate from it.
   when the failure it defends against is PROBABILISTIC** (#383, PR #390).
   Reverting that PR's new at-rest settle gate gave 8/8 GREEN on the first
   try — on that evidence the fix was a placebo about to ship. Only
-  `--repeat-each=16` exposed it: 25% failure with the gate removed, 0% with
-  it. At a 25% per-run failure rate, eight consecutive clean runs happen
+  `--repeat-each=16` exposed it: 25% failure with the gate removed, against
+  128/128 green with it (plus a reviewer's independent 16/16).
+  At a 25% per-run failure rate, eight consecutive clean runs happen
   ~10% of the time by chance (`0.75^8` = 10.0%) — an 8-run revert is a
   coin-flip-grade experiment, not a mutation check. Size the repeat count
   against the failure rate you are trying to detect, and never read one
@@ -1545,9 +1552,18 @@ deviate from it.
   overruled ("too restrictive, i had to approve several stat calls"). It now
   suppresses only when ALL THREE hold: the command's FIRST WORD exactly
   matches a small no-write-capability verb set, AND the whole command
-  contains none of `> < | & ; \` $ \ ( ) { } ! #` / newline / CR, AND none of
-  `tee xargs -exec -delete -ok sudo eval "sh -c" "bash -c"`. A first-word- or
-  prefix-only exemption fails OPEN and is still wrong. **NAMED PRECONDITION:
+  contains none of `> < | & ; \` $ \ ( ) { } ! #` / newline / CR, AND it
+  contains none of a write-capable TOKEN list matched as substrings anywhere.
+  A first-word- or prefix-only exemption fails OPEN and is still wrong. Read
+  the three arrays off the hook itself (`WRITE_CAPABLE_CHARS`,
+  `WRITE_CAPABLE_TOKENS`, `READONLY_VERBS`) rather than from any second copy
+  — including this one; the token list in particular is deliberately
+  SUBSUMPTION-PRUNED, so `-execdir`, `-okdir` and `"bash -c"` are absent by
+  design (each is a strict superstring of an entry that IS there —
+  `"bash -c"` is `ba` + `"sh -c"` — so a separate entry could never be the
+  reason a command matches, and adding one back makes its own selftest row
+  unfalsifiable: deleting `"bash -c"` reds 0 rows, MEASURED).
+  **NAMED PRECONDITION:
   no allowlisted verb may be a shell FUNCTION or ALIAS in the guarded
   shell** — `grep` is excluded precisely because in Claude Code's Bash it is
   a function shimming to ugrep, so "the executable is its first word" is
