@@ -127,13 +127,127 @@
 #     segmentation is the exact shape that got PR #233 closed — a shell
 #     segmenter that exits 0 while emitting confidently-wrong segments about
 #     which command is really running. Never reintroduce that shape here.
-#   - NO read-only exemptions. An allowlist for grep/cat/head was explicitly
-#     considered and REJECTED: each exemption is a fail-open hole (`cat f >
-#     protected/path` would match a `cat`-prefix exemption and bypass this
-#     guard entirely), and this exact shape relocated its fail-open bug FOUR
-#     TIMES inside one PR (#274, recorded in CLAUDE.md). So `grep -n foo
-#     <protected>` and a command that merely NAMES a protected path in prose
-#     both `ask` — a DELIBERATE, ACCEPTED over-fire, not a bug to tune away.
+#   - ONE NARROW READ-ONLY EXEMPTION (#309 follow-up, NEW USER RULING: "the
+#     protected path hook is for trivial and secure calls too restrictive, i
+#     had to approve several stat calls"). The bullet this replaces said "NO
+#     read-only exemptions", rejecting a grep/cat/head allowlist because
+#     `cat f > protected/path` would match a `cat`-PREFIX exemption and
+#     bypass the guard entirely. That counterexample refutes a FIRST-WORD
+#     allowlist, and only that: it is a `cat` command that is also a write,
+#     and it is a write ONLY because of the `>`. So the exemption here is
+#     CONJUNCTIVE, never a verb test alone:
+#
+#         suppress  <=>  first word is in READONLY_VERBS (exact match)
+#                   AND  the command string contains NO write-capable
+#                        construct (see WRITE_CAPABLE_* below)
+#
+#     Both halves are load-bearing and neither is sufficient. `cat f >
+#     protected` fails the second half; `sed -i s/x/y/ protected` fails the
+#     first. Everything not PROVABLY safe still asks — an unrecognised verb,
+#     an unparseable shape, any doubt at all. This is the guard-asymmetry
+#     principle (CLAUDE.md) held to: over-firing costs a stray prompt,
+#     under-firing costs a silently drifted artifact, so the exemption
+#     suppresses only shapes it can prove, and every ambiguity resolves to
+#     ask. Crucially, this is NOT the shell segmentation that got PR #233
+#     closed: there is no attempt to split a command line into commands or
+#     to classify which one "really" runs. The predicate is the opposite —
+#     it REFUSES to reason about any string that could contain more than one
+#     command, and only then reads the single leading word.
+#   - WHY THAT CONJUNCTION IS SOUND (the argument the whole exemption rests
+#     on, stated so it can be attacked): with `;` `&` `|` newline/CR
+#     backtick `$` `\` `(` `)` `{` `}` all disqualifying, the surviving
+#     string cannot contain a command separator, a redirect, a substitution,
+#     an expansion, or an escape — so it is ONE simple command whose
+#     executable is its first word, and no expansion can introduce a second.
+#     The first word is then compared by EXACT equality against a small set
+#     of verbs that have no write capability at all (not "usually don't" —
+#     none of them accepts an output-file option). A path-qualified spelling
+#     (`/usr/bin/stat`) deliberately does NOT match: it could be any
+#     executable, including a local script named `stat`.
+#   - NAMED PRECONDITION OF THAT ARGUMENT — **no allowlisted verb may be a
+#     shell FUNCTION or ALIAS in the guarded shell** (#388 review, Finding 1).
+#     "The executable is its first word" is a statement about the shell that
+#     actually runs the command, and a function or alias breaks it outright:
+#     the word resolves to shell code that can run a DIFFERENT program, with
+#     a different option surface, inside a subshell — none of which this
+#     predicate sees. This is not hypothetical. `grep` in the Claude Code
+#     Bash tool (the exact shell this hook guards) is a FUNCTION shimming to
+#     ugrep via the `claude` binary:
+#         $ type grep
+#         grep is a function
+#         grep () { ... exec -a ugrep "$_cc_bin" -G --ignore-files ... }
+#     ugrep's option surface is not GNU grep's and contains writers and
+#     command-executors (`--save-config[=FILE]`, `--filter=COMMANDS`,
+#     `--pager`, `--view`), none of which needs a character this guard
+#     disqualifies. `grep` was therefore REMOVED (see VERB SELECTION).
+#   - HOW TO CHECK IT, and the trap that makes the obvious check lie: run
+#     `type <verb>` in the REAL Claude Code Bash tool and paste what you saw
+#     into your PR. Do NOT measure it from inside a script (`bash probe.sh`
+#     containing `type -t grep`) — a non-interactive child shell does not
+#     inherit non-exported functions, so the shim VANISHES and every verb
+#     reports a reassuring `file`. That exact false negative was produced
+#     while fixing this (`bash script.sh` said `file`; the same check run
+#     directly said `function`). Measured directly, 2026-08-05, all 14
+#     current entries: `test` and `[` are `builtin` (fine — a bash builtin
+#     runs no external program and has no write capability), every other
+#     entry is `file`, and NOTHING is a function or alias.
+#   - DO NOT teach this guard about shims, functions or aliases. Detecting
+#     them is the shell-parsing road PR #233 was closed over. The correct
+#     response to a shimmed verb is to REMOVE IT FROM THE ALLOWLIST — a
+#     smaller allowlist and an honest comment, never a smarter parser.
+#   - VERB SELECTION, and the three the brief for this change asked about:
+#       * `find` is EXCLUDED and would be a serious hole: `-delete`,
+#         `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprintf` and
+#         `-fls` all write or execute, and this repo runs `find
+#         app/node_modules -delete` as a documented worktree-cleanup ritual
+#         (CLAUDE.md). Disqualifying tokens would have to enumerate that
+#         whole surface correctly to make `find` safe — exactly the "deny
+#         list fails open by construction" shape CLAUDE.md warns against.
+#       * `cat` is INCLUDED, reversing the earlier rejection, because the
+#         conjunctive form refutes the counterexample that rejection rested
+#         on (see above): it cannot write without a construct that already
+#         disqualifies the command — its options are all formatting
+#         (-A -b -e -n -s -t -u -v) — and it is NOT shimmed in the guarded
+#         shell (`type -a cat` -> `/usr/bin/cat`, `/bin/cat`). If a future
+#         reader wants the strictest possible reading of the original "no
+#         exemptions" rule, dropping it from READONLY_VERBS is a one-line
+#         edit and reds only its own row.
+#       * `grep` is EXCLUDED, and it is the entry this whole design nearly
+#         got wrong (#388 review, Finding 1). The reasoning that first
+#         included it — "GNU grep has no output-file option" — described a
+#         program that IS NOT THE ONE RUNNING: `grep` is a Claude Code shell
+#         FUNCTION shimming to ugrep (see the NAMED PRECONDITION above).
+#         No write is reachable through it TODAY — the shim intercepts
+#         `--filter`/`--pager`/`--view`/`--save-config` and falls back to
+#         `command grep`, ugrep refuses long-option abbreviations, `--index`
+#         is read-only, and no `.ugrep` auto-loads under the `ugrep` exec
+#         name — but that safety would rest entirely on an UNVERSIONED
+#         EXTERNAL shim's intercept list that this repo neither controls,
+#         pins, nor tests. A Claude Code upgrade could widen a security
+#         guard with nothing here noticing. An exemption whose soundness
+#         depends on someone else's unpinned implementation detail is not an
+#         exemption this guard can carry.
+#       * `file` is EXCLUDED despite looking as inert as `stat`, and this is
+#         the non-obvious one: `file -C -m X` COMPILES the magic file and
+#         WRITES `X.mgc`. MEASURED, not reasoned — `file -C -m magic.txt`
+#         in an empty temp dir exited 0 and created `magic.txt.mgc` (752
+#         bytes). Keeping `file` would need `-C` in the disqualifying token
+#         list, an odd token that also over-fires on `ls -C`; excluding the
+#         verb is the smaller and more obviously-correct rule.
+#     `tail` is absent only because nothing asked for it — it is as safe as
+#     `head`; add it with its own rows if it becomes noise.
+#   - ACCEPTED RESIDUAL OVER-FIRES of the exemption (named so they read as
+#     decisions, not oversights): `!` is disqualified, so `test ! -f
+#     <protected>` — a legitimate read-only shape — still asks; `#` is
+#     disqualified, so a trailing comment still asks; `$` is disqualified
+#     wholesale, so `stat "$HOME/<protected>"` still asks. Each is the safe
+#     direction and none has a cheap sound alternative (a `#` cannot be told
+#     from a filename character without parsing, which is the thing this
+#     guard refuses to do).
+#   - A command that names a protected path and is NOT provably read-only
+#     still asks, including one that merely mentions the path in prose
+#     (`echo mentions <protected>`) — `echo` is not on the verb allowlist.
+#     That over-fire is unchanged and still deliberate.
 #   - `ask`, NEVER `deny`, on this Bash arm — this is the guard-asymmetry
 #     principle (CLAUDE.md) applied in the OTHER direction from the Edit|
 #     Write arm above: that arm can `deny` because a file_path IS the write
@@ -287,6 +401,14 @@
 #      directories (there are none tracked today, but a future one — or any
 #      file under the gitignored `app/dist/`) is not caught by extension
 #      alone.
+#   7. The read-only exemption (DESIGN above) allows a command that names a
+#      protected path when it is PROVABLY a single read-only command. This
+#      is an INTENDED allow, the direct analogue of the file_path arm's item
+#      4, not a gap — but it is the one entry on this list that a change to
+#      READONLY_VERBS or WRITE_CAPABLE_* can widen, so any such change must
+#      be re-argued against the soundness paragraph in DESIGN, never made by
+#      adding a verb that "looks read-only" (`file` looked read-only and
+#      writes; see there).
 set -uo pipefail
 
 # Single source of truth for the Bash path-presence arm (see DESIGN above).
@@ -318,6 +440,111 @@ bash_hits_protected_path() {
   return 1
 }
 
+# --- read-only exemption (#309 follow-up; see DESIGN above for the full
+# rationale and the soundness argument). Three data sets, each with its own
+# job; the predicate below requires ALL of them to be satisfied.
+
+# Verbs with NO write capability whatsoever - not "usually read-only", but
+# "has no option that creates or modifies a file". Compared by EXACT equality
+# against the command's first word. `find`, `file` and `grep` are DELIBERATELY
+# absent (DESIGN explains all three, each with a measurement).
+#
+# BEFORE ADDING A VERB: run `type <verb>` in the real Claude Code Bash tool
+# and paste the output in your PR - a verb that is a shell FUNCTION or ALIAS
+# breaks this predicate's soundness argument outright, and measuring it from
+# inside a script silently reports the wrong answer. See the NAMED
+# PRECONDITION in DESIGN above. Also confirm the verb has no output-file or
+# command-executing option (`file` looked inert and writes `X.mgc`).
+READONLY_VERBS=(
+  stat ls wc du head cat sha256sum md5sum
+  test "[" readlink realpath dirname basename
+)
+
+# Characters that can introduce a second command, a redirect, a substitution,
+# an expansion or an escape. ANY occurrence, in ANY position, disqualifies -
+# this is what reduces the string to a single simple command (DESIGN). The
+# multi-character operators are covered by their first character on purpose:
+# `>>` and `2>&1` by `>`, `<<`/`<<<` by `<`, `||` by `|`, `&&` by `&`, `$(`
+# and `${` by `$`. Newline and carriage return are handled separately (they
+# cannot be written inside this array's quoting without noise).
+# shellcheck disable=SC1003  # '\' IS the literal backslash we match on, not a botched quote escape
+WRITE_CAPABLE_CHARS=('>' '<' '|' '&' ';' '`' '$' '\' '(' ')' '{' '}' '!' '#')
+
+# Belt-and-braces token list. Every one of these is ALREADY unreachable as an
+# executable once the checks above pass (the first word must be an
+# allowlisted verb, and none of those verbs runs its arguments) - they are
+# matched as substrings anywhere so that a future widening of READONLY_VERBS
+# cannot quietly make one of them reachable. Over-firing on an innocent
+# argument (`stat /tmp/committee`) is the accepted direction.
+#
+# `-execdir`, `-okdir` and `"bash -c"` are DELIBERATELY NOT listed: each is a
+# strict SUPERSTRING of an entry that IS here (`-exec`, `-ok`, and `"sh -c"` —
+# `"bash -c"` is `ba` + `sh -c`), so any command containing one necessarily
+# contains the other and a separate entry can never be the reason a command
+# matches. Same reasoning, and the same mutation proof, as the `.pmtiles.png`
+# entry in DESIGN (N2) - selftest rows below exercise all three subsumptions.
+# `"bash -c"` was listed here until the #388 review measured that deleting it
+# reds 0 rows - exactly the `-execdir` result this file already cites as proof
+# of subsumption, so keeping it applied the rule inconsistently inside one
+# array and made its own selftest row unfalsifiable.
+WRITE_CAPABLE_TOKENS=(
+  tee xargs -exec -delete -ok sudo eval "sh -c"
+)
+
+# Pure function: is $1 (a Bash `command` string) PROVABLY a single read-only
+# command? Returns 0 only when it can be proven so; returns 1 for everything
+# else including every shape it does not understand. Never the other way
+# round - "I cannot tell" and "this is a write" get the same answer.
+bash_is_provably_readonly() {
+  local cmd="$1" c t v verb rest
+  local nl=$'\n' cr=$'\r'
+
+  for c in "${WRITE_CAPABLE_CHARS[@]}"; do
+    case "$cmd" in *"$c"*) return 1 ;; esac
+  done
+  case "$cmd" in *"$nl"*|*"$cr"*) return 1 ;; esac
+
+  for t in "${WRITE_CAPABLE_TOKENS[@]}"; do
+    case "$cmd" in *"$t"*) return 1 ;; esac
+  done
+
+  # First word only. `read -r` strips leading IFS whitespace and performs no
+  # expansion; IFS is pinned locally so a future edit elsewhere cannot change
+  # what "first word" means here. An empty command yields an empty verb,
+  # which matches nothing below and therefore asks.
+  local IFS=$' \t'
+  read -r verb rest <<<"$cmd"
+
+  for v in "${READONLY_VERBS[@]}"; do
+    [ "$verb" = "$v" ] && return 0
+  done
+  return 1
+}
+
+# The user-facing verb list, DERIVED from READONLY_VERBS rather than typed out
+# a second time (#388 review, Finding 2: the hand-maintained string enumerated
+# 14 verbs while the array held 15 - it silently omitted `[`). A derived string
+# cannot drift from its source; the selftest additionally asserts every array
+# entry appears in the emitted reason, so a future refactor that breaks the
+# derivation fails closed rather than shipping a wrong list. Safe to splice
+# into JSON as-is: every entry is bare ASCII with no quote or backslash.
+readonly_verbs_sentence() {
+  local out="" v
+  for v in "${READONLY_VERBS[@]}"; do
+    out="${out}${out:+/}$v"
+  done
+  printf '%s' "$out"
+}
+
+# The Bash arm's COMPLETE decision, as one pure function so the selftest can
+# drive exactly what production does. Prints "ask" or "allow".
+bash_decision() {
+  local cmd="$1"
+  bash_hits_protected_path "$cmd" >/dev/null || { printf 'allow'; return 0; }
+  if bash_is_provably_readonly "$cmd"; then printf 'allow'; return 0; fi
+  printf 'ask'
+}
+
 # ---- offline self-test ----
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
@@ -329,10 +556,20 @@ if [ "${1:-}" = "--selftest" ]; then
   # `check`/`wrapper_check` call and every mechanism-matrix iteration
   # increments `total`; the expected value is asserted below.
   total=0
-  EXPECTED_CASES=117
+  # NOTE (#388 review): this total includes ONE case per READONLY_VERBS entry
+  # (the reason-string twin check at the end), so adding or removing a verb
+  # moves it by 2 - the verb's own decision row plus its twin case.
+  EXPECTED_CASES=196
 
   # check WANT DESC CMD - drives the pure bash_hits_protected_path() function
-  # directly (WANT is "ask" or "allow").
+  # directly (WANT is "ask" or "allow"). This tests PATH COVERAGE ONLY, which
+  # is deliberate and must stay that way (#309 read-only-exemption review):
+  # several rows below use `cat <path>` purely as a carrier to pin a
+  # PROTECTED_PATHS decision (the B1 trailing-slash removal, the N1 bounding
+  # rows). `cat` is now on READONLY_VERBS, so rebinding `check` to the full
+  # decision would flip those rows to `allow` and silently stop them pinning
+  # anything a PROTECTED_PATHS mutation could red. New exemption rows use
+  # `decide` below instead; no existing row's expectation changed.
   check() {
     local want="$1" desc="$2" cmd="$3" got
     total=$((total + 1))
@@ -343,7 +580,46 @@ if [ "${1:-}" = "--selftest" ]; then
     fi
   }
 
+  # decide WANT DESC CMD - drives bash_decision(), i.e. the Bash arm's
+  # COMPLETE decision (path presence AND the read-only exemption), which is
+  # exactly what the production path computes. Every row for the #309
+  # follow-up exemption uses this.
+  decide() {
+    local want="$1" desc="$2" cmd="$3" got
+    total=$((total + 1))
+    got=$(bash_decision "$cmd")
+    if [ "$got" != "$want" ]; then
+      echo "SELFTEST FAIL [decision]: $desc -> got [$got] want [$want] (cmd: $cmd)"
+      fail=1
+    fi
+  }
+
+  # decide_exempt DESC CMD - for a row whose point is that the EXEMPTION
+  # suppressed it. Asserts BOTH that the command hits a protected path AND
+  # that the decision is allow (#388 re-review, Minor 6, second half: the
+  # same vacuity lens applied to my own rows). Without the first assertion a
+  # suppress row is satisfiable by a TYPO - misspell the path and the row
+  # allows on the path check alone, proving nothing about the exemption,
+  # which is precisely the #216 shape. The PR body claimed every such row
+  # names a protected path; this makes the claim enforced rather than
+  # asserted. Deliberately ONE case, not two, so the count stays row-shaped.
+  decide_exempt() {
+    local desc="$1" cmd="$2" got
+    total=$((total + 1))
+    if ! bash_hits_protected_path "$cmd" >/dev/null; then
+      echo "SELFTEST FAIL [exempt row names no protected path]: $desc -> this row would pass with the exemption deleted (cmd: $cmd)"
+      fail=1
+      return
+    fi
+    got=$(bash_decision "$cmd")
+    if [ "$got" != "allow" ]; then
+      echo "SELFTEST FAIL [decision]: $desc -> got [$got] want [allow] (cmd: $cmd)"
+      fail=1
+    fi
+  }
+
   nl=$'\n'
+  cr=$'\r'
 
   # --- POSITIVE: a real Bash-mediated write to a protected path must ask.
   # Each row isolates exactly ONE shell construct plus the path (#216
@@ -359,10 +635,12 @@ if [ "${1:-}" = "--selftest" ]; then
   # shellcheck disable=SC2016  # literal $( ) is the test input, not an expansion
   check ask 'path inside $( )'          'echo "$(cat app/public/data/mask.bin)"'
 
-  # --- ACCEPTED OVER-FIRE: a provably read-only mention still asks. This is
-  # DELIBERATE (see DESIGN above, "no read-only exemptions") - each row says
-  # so, so a future reader doesn't mistake it for an untuned false positive.
-  check ask "OVER-FIRE (accepted): read-only grep" "grep -n foo app/public/data/mask.bin"
+  # --- PATH MATCHING of a read-only mention. Both rows pin that the PATH is
+  # seen; only the second is still an accepted over-fire at the DECISION
+  # level. `grep -n foo <path>` now SUPPRESSES (#309 follow-up read-only
+  # exemption) - its decision-level twin is in the exemption block below,
+  # and this row's job is now solely to keep the path match pinned.
+  check ask "path match: read-only grep (decision: allow, see exemption block)" "grep -n foo app/public/data/mask.bin"
   check ask "OVER-FIRE (accepted): prose mention"  "echo mentions app/public/data/mask.bin in passing"
 
   # --- NEGATIVE: no protected path named anywhere.
@@ -417,10 +695,15 @@ if [ "${1:-}" = "--selftest" ]; then
   check allow "RESIDUAL (documented): bare app/public ancestor"         "find app/public -name *.bin -delete"
   check allow "RESIDUAL (documented): bare app ancestor"                "find app -name mask.bin -delete"
 
-  # --- ACCEPTED OVER-FIRE (#309 fix-wave B1): removing the trailing slash
-  # from the directory entries means a sibling directory sharing the same
-  # PREFIX now genuinely contains the protected substring and correctly
-  # asks - this is the flip side of the B1 fix above, not a separate bug.
+  # --- PATH MATCHING (#309 fix-wave B1): removing the trailing slash from
+  # the directory entries means a sibling directory sharing the same PREFIX
+  # genuinely contains the protected substring and is MATCHED here - this is
+  # the flip side of the B1 fix above, not a separate bug. NOTE these four
+  # rows use `cat` purely as a carrier verb, and `cat` is now on
+  # READONLY_VERBS, so at the DECISION level all four now suppress rather
+  # than ask (one is pinned as such in the exemption block below); they are
+  # deliberately still driven through `check`, which tests PATH COVERAGE
+  # only, because that coverage is what they exist to pin.
   # The specs-old row ALSO matches via the new docs/superpowers ancestor
   # entry; both are legitimate and there is no way to isolate one from the
   # other for this family, since anything under docs/superpowers/specs-old
@@ -433,9 +716,122 @@ if [ "${1:-}" = "--selftest" ]; then
   # --- ACCEPTED OVER-FIRE (bare filename, no trailing delimiter to bound it):
   # a literal file path has no natural "next char must be /" boundary the way
   # a directory does, so a longer filename sharing the same PREFIX genuinely
-  # does contain the protected string and correctly asks - not a bug, but
-  # worth pinning so it isn't mistaken for one later.
-  check ask "OVER-FIRE (accepted): NOTICES.txt.bak" "cat app/public/THIRD-PARTY-NOTICES.txt.bak"
+  # does contain the protected string and is correctly MATCHED - not a bug,
+  # but worth pinning so it isn't mistaken for one later. (Same carrier-verb
+  # note as the block above: at the DECISION level this `cat` now suppresses.)
+  check ask "path match: NOTICES.txt.bak" "cat app/public/THIRD-PARTY-NOTICES.txt.bak"
+
+  # ======================================================================
+  # #309 FOLLOW-UP: the read-only exemption. Driven through `decide` (the
+  # COMPLETE Bash-arm decision), never `check`.
+  #
+  # EVERY row here names a protected path. That is not decoration: without
+  # one the command allows on the path check alone and the row would prove
+  # nothing about the exemption - it would pass identically with the whole
+  # exemption deleted (#216's near-miss lesson, whose original instance was a
+  # membership row that a `<` redirect had already disqualified).
+  #
+  # Each MUST-ASK row carries exactly ONE reason to ask beyond the path, so
+  # it isolates the clause it pins. Where two conditions cannot be separated
+  # (`$(` necessarily contains both `$` and `(`), the row says so and the
+  # separable halves get their own rows.
+
+  # --- MUST SUPPRESS: one allowlisted verb, one protected path, nothing else.
+  # The first row IS the maintainer's reported case.
+  decide_exempt "EXEMPT: stat (the reported case)"   "stat app/public/data/mask.bin"
+  decide_exempt "EXEMPT: ls"                         "ls -la app/public/icons"
+  decide_exempt "EXEMPT: wc"                         "wc -c app/public/THIRD-PARTY-NOTICES.txt"
+  decide_exempt "EXEMPT: du"                         "du -sh app/public/brand"
+  decide_exempt "EXEMPT: head"                       "head -n 5 docs/superpowers/specs/foo.md"
+  decide_exempt "EXEMPT: cat"                        "cat app/public/data/mask.bin"
+  decide_exempt "EXEMPT: sha256sum"                  "sha256sum app/public/data/mask.bin"
+  decide_exempt "EXEMPT: md5sum"                     "md5sum app/public/data/mask.bin"
+  decide_exempt "EXEMPT: test"                       "test -f app/public/data/mask.bin"
+  decide_exempt "EXEMPT: [ (bracket form of test)"   "[ -f app/public/data/mask.bin ]"
+  decide_exempt "EXEMPT: readlink"                   "readlink app/public/data/mask.bin"
+  decide_exempt "EXEMPT: realpath"                   "realpath app/public/data/mask.bin"
+  decide_exempt "EXEMPT: dirname"                    "dirname app/public/data/mask.bin"
+  decide_exempt "EXEMPT: basename"                   "basename app/public/data/mask.bin"
+  decide_exempt "EXEMPT: .pmtiles entry, not a dir"  "stat app/dist/data/basemap.pmtiles"
+  decide_exempt "EXEMPT: leading whitespace ignored" "  stat app/public/data/mask.bin"
+  # Behaviour change stated rather than left to be inferred: the four
+  # `cat`-carrier over-fires pinned in the path-matching blocks above no
+  # longer reach the user, because the command that produces each is a bare
+  # `cat`. All four get a decision-level twin (#388 review, Finding 4 - three
+  # of them had none, leaving the user-visible half of the change unpinned:
+  # nothing would have failed if one started prompting again, which is the
+  # regression this PR exists to prevent).
+  decide_exempt "EXEMPT: sibling database/ read no longer prompts"  "cat app/public/database/config.json"
+  decide_exempt "EXEMPT: sibling iconsets/ read no longer prompts"  "cat app/public/iconsets/foo.svg"
+  decide_exempt "EXEMPT: sibling specs-old/ read no longer prompts" "cat docs/superpowers/specs-old/draft.md"
+  decide_exempt "EXEMPT: NOTICES.txt.bak read no longer prompts"    "cat app/public/THIRD-PARTY-NOTICES.txt.bak"
+
+  # --- MUST ASK: verb MEMBERSHIP is what fails. No disqualifying construct
+  # in any of these - strip one clause and only these rows can catch it.
+  decide ask "MEMBERSHIP: sed is not read-only"      "sed -i s/x/y/ app/public/data/mask.bin"
+  decide ask "MEMBERSHIP: cp is not read-only"       "cp /tmp/f app/public/data/mask.bin"
+  decide ask "MEMBERSHIP: touch is not read-only"    "touch app/public/data/mask.bin"
+  decide ask "MEMBERSHIP: find is EXCLUDED (-delete/-exec surface)" "find app/public/data -name x"
+  decide ask "MEMBERSHIP: file is EXCLUDED (file -C -m X writes X.mgc)" "file app/public/data/mask.bin"
+  # #388 review Finding 1: `grep` is a Claude Code shell FUNCTION shimming to
+  # ugrep, whose option surface contains writers/executors - so it is NOT on
+  # the allowlist and a bare read-only grep correctly asks. Removing it flips
+  # exactly this row's former `allow` twin; nothing else moved.
+  decide ask "MEMBERSHIP: grep is EXCLUDED (shell function shimming to ugrep)" "grep -n foo app/public/data/mask.bin"
+  decide ask "MEMBERSHIP: exact match, not prefix"   "statx app/public/data/mask.bin"
+  decide ask "MEMBERSHIP: exact match, not a path-qualified spelling" "/usr/bin/stat app/public/data/mask.bin"
+  decide ask "MEMBERSHIP: a bare path as the verb"   "app/public/data/mask.bin"
+
+  # --- MUST ASK: a WRITE-CAPABLE CHARACTER is what fails. Every row is an
+  # allowlisted verb + a protected path, so the named character is the only
+  # thing standing between it and suppression. These are the fail-open shapes
+  # a first-word-only allowlist would have let through.
+  decide ask "CHAR >: redirect makes cat a write"    "cat app/public/data/mask.bin > /tmp/x"
+  decide ask "CHAR >>: append redirect"              "cat app/public/data/mask.bin >> /tmp/x"
+  decide ask "CHAR <: input redirect"                "wc -l < app/public/data/mask.bin"
+  decide ask "CHAR <<: heredoc"                      "cat app/public/data/mask.bin << EOF"
+  decide ask "CHAR |: pipe (could pipe into tee)"    "cat app/public/data/mask.bin | wc -l"
+  decide ask "CHAR ||: or-list"                      "stat app/public/data/mask.bin || true"
+  decide ask "CHAR &: background"                    "stat app/public/data/mask.bin &"
+  decide ask "CHAR &&: and-list (stat foo && rm bar shape)" "stat app/public/data/mask.bin && true"
+  decide ask "CHAR ;: separator"                     "stat app/public/data/mask.bin ; true"
+  # shellcheck disable=SC2016  # the literal backtick IS the test input
+  decide ask 'CHAR backtick: command substitution'   'stat app/public/data/mask.bin `true`'
+  # shellcheck disable=SC2016  # literal $ is the test input, not an expansion
+  decide ask 'CHAR $: parameter expansion'           'stat $HOME/app/public/data/mask.bin'
+  # shellcheck disable=SC2016
+  decide ask 'CHAR $( ): substitution - inseparable from $ and ( )' 'stat $(echo app/public/data/mask.bin)'
+  # shellcheck disable=SC2016
+  decide ask 'CHAR ${ }: inseparable from $ and { }'  'stat ${HOME}/app/public/data/mask.bin'
+  decide ask "CHAR ( ): subshell"                    "stat (app/public/data/mask.bin)"
+  decide ask "CHAR { }: brace expansion"             "stat app/public/data/{mask,x}.bin"
+  decide ask "CHAR backslash: escaping"              'stat app/public/data/mask.bin\x'
+  decide ask "CHAR !: negation/history"              "test ! -f app/public/data/mask.bin"
+  decide ask "CHAR #: comment"                       "stat app/public/data/mask.bin # note"
+  decide ask "CHAR newline: second command"          "stat app/public/data/mask.bin${nl}true"
+  decide ask "CHAR carriage return"                  "stat app/public/data/mask.bin${cr}true"
+
+  # --- MUST ASK: a WRITE-CAPABLE TOKEN is what fails. Each token appears as
+  # an ARGUMENT of an allowlisted verb, which is contrived on purpose: the
+  # natural spelling (`xargs stat <path>`) would also fail verb membership
+  # and so could not isolate the token (#216). These rows are defence in
+  # depth - the token is already unreachable as an executable here.
+  decide ask "TOKEN tee"                             "stat tee app/public/data/mask.bin"
+  decide ask "TOKEN xargs"                           "stat xargs app/public/data/mask.bin"
+  decide ask "TOKEN -exec"                           "stat -exec app/public/data/mask.bin"
+  decide ask "TOKEN -execdir (via -exec subsumption, not its own entry)" "stat -execdir app/public/data/mask.bin"
+  decide ask "TOKEN -delete"                         "stat -delete app/public/data/mask.bin"
+  decide ask "TOKEN -ok"                             "stat -ok app/public/data/mask.bin"
+  decide ask "TOKEN -okdir (via -ok subsumption, not its own entry)"     "stat -okdir app/public/data/mask.bin"
+  decide ask "TOKEN sudo"                            "stat sudo app/public/data/mask.bin"
+  decide ask "TOKEN eval"                            "stat eval app/public/data/mask.bin"
+  decide ask "TOKEN sh -c"                           "stat sh -c app/public/data/mask.bin"
+  decide ask "TOKEN bash -c (via sh -c subsumption, not its own entry)" "stat bash -c app/public/data/mask.bin"
+
+  # --- The exemption must not widen the guard either: an allowlisted verb
+  # with NO protected path is allowed for the ordinary reason (no hit), and
+  # that has to stay independent of the exemption.
+  decide allow "no path named: unrelated read" "cat app/src/App.tsx"
 
   # ---- mechanism enumeration: every Bash-mediated write mechanism named in
   # #309 (plus a few more of the same shape) must be caught against EACH
@@ -531,6 +927,61 @@ if [ "${1:-}" = "--selftest" ]; then
   # Old-shaped payload with no tool_name at all (pre-#309 test shape) must
   # still hit the file_path arm, not silently fall through as "not Bash".
   wrapper_check deny  "Generated artifact"      "no tool_name, file_path present"     '{"tool_input":{"file_path":"app/public/data/mask.bin"}}'
+  # #309 follow-up: the read-only exemption through REAL hook JSON, so a bug
+  # in the production dispatch (rather than in the pure predicate) cannot
+  # hide from this table. The first is the maintainer's reported case; the
+  # second is the same verb and the same path plus a redirect, i.e. the
+  # fail-open shape a first-word-only allowlist would have suppressed.
+  wrapper_check allow ""                        "EXEMPT: stat through the wrapper"    '{"tool_name":"Bash","tool_input":{"command":"stat app/public/data/mask.bin"}}'
+  wrapper_check ask   "mentions protected path" "stat + redirect still asks"          '{"tool_name":"Bash","tool_input":{"command":"stat app/public/data/mask.bin > /tmp/x"}}'
+  wrapper_check ask   "mentions protected path" "non-allowlisted verb still asks"     '{"tool_name":"Bash","tool_input":{"command":"sed -i s/x/y/ app/public/data/mask.bin"}}'
+
+  # TWIN CHECK (#388 review, Finding 2): the user-facing reason string claims
+  # to name the exempt set exhaustively. It is DERIVED from READONLY_VERBS,
+  # so it cannot drift by hand — but a future refactor could break the
+  # derivation, so assert the emitted production JSON really does contain
+  # every array entry. Fails CLOSED: an empty/absent reason reds every row
+  # rather than passing vacuously (same shape as useBannerHeight.test.ts's
+  # CSS<->TS check, CLAUDE.md).
+  # The needle must be matched against the emitted VERB LIST ONLY, never
+  # against the whole reason (#388 re-review, Minor 6). Matching the whole
+  # string made the `ls` case VACUOUS: the reason's own prose contains
+  # "which aLSo matches", so `*"ls"*` hit the prose and that case passed even
+  # with the derived list empty - measured, 13 of 14 red instead of 14. That
+  # is the #216 class living inside the very check written to prevent it.
+  #
+  # So: extract the parenthesised list out of the PRODUCTION output first,
+  # then match each verb slash-delimited within it. Extracting from the
+  # emitted JSON (rather than re-deriving the list here) is what keeps this a
+  # twin check at all - a needle and a haystack both built from
+  # READONLY_VERBS would agree with each other no matter what production
+  # actually printed, which is a tautology, not a test.
+  reason_out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f app/public/data/mask.bin"}}' | "$SELF" 2>/dev/null)
+  # Fail CLOSED on extraction: if the marker is gone (reason reworded,
+  # renamed, or not emitted at all) say so loudly rather than letting the
+  # `#`/`%%` expansions below silently yield a nonsense haystack that might
+  # still match something. Same discipline as useBannerHeight.test.ts's
+  # explicit not-null assertion before its value comparison.
+  total=$((total + 1))
+  case "$reason_out" in
+    *"no-write verb ("*")"*) ;;
+    *)
+      echo "SELFTEST FAIL [reason twin]: could not find the 'no-write verb (...)' list in the emitted permissionDecisionReason - extraction is broken, so the per-verb checks below prove nothing (out: $reason_out)"
+      fail=1
+      ;;
+  esac
+  emitted_list=${reason_out#*no-write verb (}
+  emitted_list=${emitted_list%%)*}
+  for v in "${READONLY_VERBS[@]}"; do
+    total=$((total + 1))
+    case "/$emitted_list/" in
+      *"/$v/"*) ;;
+      *)
+        echo "SELFTEST FAIL [reason twin]: READONLY_VERBS entry [$v] is missing from the emitted verb list [$emitted_list]"
+        fail=1
+        ;;
+    esac
+  done
 
   # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
   # classify-docs-only.sh's matching comment for why `-ne` with an empty or
@@ -584,7 +1035,13 @@ if [ "$tn" = "Bash" ]; then
   }
 
   if p=$(bash_hits_protected_path "$cmd"); then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions protected path '"$p"' (#309: app/public/{data,icons,brand}/ are committed pipeline outputs, THIRD-PARTY-NOTICES.txt/.pmtiles (which also matches .pmtiles.png files) are generated artifacts, docs/superpowers/ is the source-of-truth spec dir and its ancestor). This guard only checks whether the path STRING appears anywhere in the Bash command - no shell parsing, no read/write classification - so a read-only mention also asks; this is a deliberate, accepted over-fire (see header). Confirm intent before proceeding."}}'
+    # #309 follow-up: suppress ONLY a provably-single read-only command (see
+    # DESIGN). Everything else - including anything this predicate cannot
+    # prove - falls through to `ask` below.
+    if bash_is_provably_readonly "$cmd"; then
+      exit 0
+    fi
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions protected path '"$p"' (#309: app/public/{data,icons,brand}/ are committed pipeline outputs, THIRD-PARTY-NOTICES.txt/.pmtiles (which also matches .pmtiles.png files) are generated artifacts, docs/superpowers/ is the source-of-truth spec dir and its ancestor). This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no redirect, pipe, separator, substitution, expansion or escape anywhere in it - which is suppressed silently. This command is not that, so it asks: it either uses a verb outside that set or contains a write-capable construct. Confirm intent before proceeding."}}'
   fi
   exit 0
 fi
