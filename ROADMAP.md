@@ -45,7 +45,6 @@ narrow-viewport map-chrome fixes (offline banner overlap, the scale bar
 painting over map chrome, the ownship marker's accessible name lost in the
 6.1.0 bump —
 [#368](https://github.com/DocGerd/sail_command/issues/368),
-[#374](https://github.com/DocGerd/sail_command/issues/374),
 [#361](https://github.com/DocGerd/sail_command/issues/361)); a route
 annotation readability pass (ETA/speed labels culled or too small —
 [#378](https://github.com/DocGerd/sail_command/issues/378)); three
@@ -103,7 +102,7 @@ slower than the plain one; see `docs/security-assurance-case.md` §7 for the
 accepted gap that cadence leaves open. The `signed_releases` criterion — a
 conjunction of cryptographic signing **and** a documented key-obtaining
 process (see `SECURITY.md`) — is now fully met: `v0.8.0` shipped as the
-first signed tag, and `v0.8.1`/`v0.9.0` have followed it, so both conjuncts
+first signed tag, and `v0.8.1` has followed it, so both conjuncts
 are proven on real releases, not just the mechanism. (The `v0.8.0` tag
 itself still shows GitHub's "Verified" badge as `no_user` rather than
 verified — a tagger-identity attribution gap fixed going forward from
@@ -142,7 +141,9 @@ buoyed fairways ([#244](https://github.com/DocGerd/sail_command/issues/244))
 tags and is over half canoe-scheme geometry, so a naive nearest-fairway
 lookup would route a real boat down a paddling track; see
 `docs/spikes/244-buoyed-fairways.md` for the full evidence and the
-considered-and-rejected alternatives.
+considered-and-rejected alternatives; the spike's own recommendation — ship
+the mandatory-class objects as an advisory display overlay instead — is not
+scheduled.
 
 Note the tension with "Out of scope (v1)" in [`README.md`](README.md): currents,
 tides, waves, and multi-day passages were excluded from v1 and remain excluded
@@ -167,8 +168,8 @@ area: a stale-`node_modules` maplibre-gl citation in `CLAUDE.md` that had
 already caused one wrong line-number claim
 ([#392](https://github.com/DocGerd/sail_command/issues/392)); the
 artifact-guard Bash hook's read-only exemption, now conjunctive (exact verb
-AND no write-capable construct anywhere) instead of the over-firing
-first-word match that had been prompting on plain `stat` calls
+AND no write-capable construct anywhere) instead of the bare path-presence
+match that had been prompting on plain `stat` calls
 ([#388](https://github.com/DocGerd/sail_command/issues/388)); a
 `compass.spec.ts` e2e flake root-caused to a real MapLibre defect — a bare
 `this.stop()` at ease completion disarms an in-flight drag gesture entirely
@@ -236,9 +237,10 @@ never done:
   A spike this cut ([#245](https://github.com/DocGerd/sail_command/issues/245),
   `docs/spikes/245-depth-mask-resolution.md`) confirmed this by rebuilding
   the mask end-to-end at 23 m and 12 m: none of the five reconnect at either
-  resolution (at the default 3.0 m safety depth), and two currently-connected
-  harbors disconnect instead — refining the grid is a measured regression
-  here, not merely an untried option.
+  resolution, while `aabenraa` disconnects at both (it passes today only on
+  `3.0 ≥ 3.0` at the default gate) and `augustenborg` additionally at 12 m,
+  at its 2.8 m exception gate — so refining the grid is a measured regression
+  at today's gates, not merely an untried option.
 
 ## What the project does not intend to do
 

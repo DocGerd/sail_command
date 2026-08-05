@@ -90,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   banner appeared after the map had already loaded. It now updates
   immediately when a banner appears or disappears, so it reliably clears the
   toggles or hides itself instead of sitting on top of them (measured on
-  375x667 and 360x740, #374).
+  375x667 and 360x740, #368).
 
 - Waypoint ETA labels could vanish outright at some zoom levels, and the
   ETA/track-speed text was too small to read on deck in daylight. The
