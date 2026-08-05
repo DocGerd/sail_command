@@ -3,10 +3,12 @@
 - **Issue:** #245 (paired with #244)
 - **Date:** 2026-08-05
 - **Status:** Decision / Recommendation
-- **Verdict:** **46 m is source-limited, not choice-limited. Uniform refinement is
-  not merely useless here — it is measurably *harmful*: at 23 m and 12 m it
-  reconnects none of the five #9 harbours and *disconnects* harbours that work
-  today. Bytes were never the constraint. Do not change the grid.**
+- **Verdict:** **46 m is source-limited, not choice-limited. Uniform refinement
+  buys no information and is a measurable regression against today's
+  connectivity gate: at 23 m and 12 m it reconnects none of the five #9
+  harbours, and — at the default 3.0 m gate — disconnects `aabenraa` (and, at
+  its 2.8 m exception gate, `augustenborg` at 12 m), failing `verify_mask.py`.
+  Bytes were never the constraint. Do not change the grid.**
 
 > Companion: [`244-buoyed-fairways.md`](./244-buoyed-fairways.md). The two spikes
 > are alternative answers to the same question — how to represent a corridor the
@@ -135,7 +137,7 @@ the channel there, so this is a land-*data* limit, not a rasterization-
 resolution limit. Refinement's one plausible mechanism was tested and did not
 fire.
 
-### 2.2 Refinement *breaks* harbours that work today — and the mechanism is a knife edge
+### 2.2 Refinement disconnects harbours that pass today — at their current gates
 
 | Harbour | Gate | Snap-cell depth @46 m | @23 m | @12 m |
 |---|---|---|---|---|
@@ -156,8 +158,22 @@ two. `aabenraa` passes today on `3.0 ≥ 3.0` — a single decimetre with no
 margin, and that decimetre is a smoothing artifact of the cell size rather
 than a measurement at the snap point.
 
-Two consequences worth separating by strength:
+**The disconnection is gate-conditional, and the gate is a user setting.**
+`aabenraa` reads **2.9 m** at 23 m, so it stays connected at any user
+`safetyDepthM ≤ 2.9`; it disconnects at the 3.0 m default. Navigability is
+decided at query time, so "disconnects harbours that pass today" is a claim
+about the *default* setting and about `verify_mask.py`'s gate, not a universal
+one. This repo already treats the sibling case as correct data behaviour
+rather than a bug (Flensburg→Marstal routes only at safety depth ≤ 2.3 m), so
+the qualifier is load-bearing.
 
+Three consequences worth separating by strength:
+
+- **Unconditional, and enough to decide this spike on its own:** refinement
+  buys **zero new information** — the destination already oversamples the
+  source in both axes (§1.2) — and `verify_mask.py` **exits non-zero**, since
+  neither harbour is in `KNOWN_DISCONNECTED`. Neither statement depends on any
+  user setting.
 - **Strong, and it decides this spike:** any resolution change re-opens
   `CONNECTIVITY_EXCEPTIONS_M`, exactly as #245 already anticipated for
   `TOLERANCE_M`. Those thresholds were derived (per `verify_mask.py`'s own
@@ -221,8 +237,12 @@ single file is 41,943,040 − 27,201,789 = **14,741,251 B**.
 - At 23 m the mask is 21,120,000 B — under the per-file cap, total precache
   ~48.7 MB.
 - At 12 m the mask is 84,480,000 B — **over the per-file cap**. Workbox would
-  silently drop it from the precache manifest and the app would lose offline
-  routing with no build error. Noting this for completeness; §2 already
+  drop it from the precache manifest with only a build **warning** and no
+  error, and the app would lose offline routing. (Read from the installed
+  source, `app/node_modules/workbox-build/src/lib/maximum-size-transform.ts`:
+  the oversized entry is filtered out of the manifest and a
+  `"… won't be precached"` string is pushed onto `warnings` — so there *is* a
+  signal, it simply is not a failure.) Noting this for completeness; §2 already
   disqualifies 12 m on correctness.
 
 ### 3.3 In-memory footprint — **this is the real constraint, and it is in app code**
@@ -397,17 +417,23 @@ buying real information; it was not acceptable for interpolation.
 ## 7. RECOMMENDATION
 
 1. **Do not change the mask resolution.** 46 m already oversamples its source
-   3.58× by area; refinement to 23 m and 12 m was measured to reconnect **0 of
-   5** #9 harbours and to **disconnect** `aabenraa` (23 m) and additionally
-   `augustenborg` (12 m), failing `verify_mask.py`.
+   3.58× by area, so refinement buys no information; and refinement to 23 m and
+   12 m was measured to reconnect **0 of 5** #9 harbours while **disconnecting**
+   `aabenraa` at the default 3.0 m gate (23 m and 12 m) and `augustenborg` at
+   its 2.8 m exception gate (12 m), failing `verify_mask.py`. The
+   disconnections are gate-conditional (§2.2); the zero information gain and
+   the non-zero `verify_mask.py` exit are not.
 2. **Do not change the depth quantization.** A non-linear scale cannot change
    the outcome of a decimetre-quantised `cellDepth >= safetyDepthM` comparison
    (§4.2).
 3. **Fix the actual bottleneck, in app code:** size `cellsConnected`'s
    `Int32Array` queue to the frontier rather than `rows*cols`. 26.4 MB per call
    today, up to 5 calls per solve. Worth doing at the current resolution;
-   nothing about it depends on this spike's other conclusions. *(Follow-up
-   issue.)*
+   nothing about it depends on this spike's other conclusions. **Queue sizing
+   is allocation-only and cannot change `cellsConnected`'s return value for any
+   input — a correctly-sized queue visits the same cells in the same order — so
+   it triggers no #282 routing-behaviour sweep** despite living inside the
+   `connectedAt` path #282 governs. *(Follow-up issue.)*
 4. **Record byte 254 as the designated `unknown/unsurveyed` code** without
    emitting it yet — the slot is already reserved and unused, and claiming it
    now costs nothing and prevents a future ingest from taking it. *(Docs/comment
@@ -425,15 +451,15 @@ buying real information; it was not acceptable for interpolation.
 
 | Option | Why it lost |
 |---|---|
-| **Uniform refinement to 23 m** | Reconnects 0 of 5 #9 harbours; disconnects `aabenraa`; 4× asset (21.1 MB) and 105.6 MB per `cellsConnected` call; re-opens `TOLERANCE_M` **and** `CONNECTIVITY_EXCEPTIONS_M` tuning. Buys no information — the source is coarser than the destination in both axes. |
-| **Uniform refinement to 12 m** | All of the above, worse: disconnects `aabenraa` *and* `augustenborg`; 84.5 MB asset **exceeds** `maximumFileSizeToCacheInBytes` (41,943,040) and would be silently dropped from the precache, breaking offline; 422.4 MB per BFS call. |
-| **Variable resolution / high-res patches** | Right mechanism, wrong input — patches interpolate from the same 67 × 116 m source, and would land exactly where coarse-cell smoothing is currently holding connectivity together (§5). Revisit only after a finer source is licensed. |
+| **Uniform refinement to 23 m** | Reconnects 0 of 5 #9 harbours; disconnects `aabenraa` at the default 3.0 m gate; 4× asset (21.1 MB) and 105.6 MB per `cellsConnected` call; re-opens `TOLERANCE_M` **and** `CONNECTIVITY_EXCEPTIONS_M` tuning. Buys no information — the source is coarser than the destination in both axes. |
+| **Uniform refinement to 12 m** | All of the above, worse: disconnects `aabenraa` (3.0 m gate) *and* `augustenborg` (2.8 m exception gate); 84.5 MB asset **exceeds** `maximumFileSizeToCacheInBytes` (41,943,040) and would be dropped from the precache with only a build warning, breaking offline; 422.4 MB per BFS call. |
+| **Variable resolution / high-res patches** | Right mechanism, wrong input — patches interpolate from the same 67 × 116 m source, and would land exactly where coarse-cell smoothing is currently holding connectivity together (§2.2). Revisit only after a finer source is licensed. |
 | **Non-linear depth scale** | Free in bytes, worthless in decisions: the gate compares two decimetre-quantised numbers, so sub-decimetre precision changes no outcome (§4.2). |
 | **Distinct land/unknown codes, now** | Correct encoding, zero effect — this bbox has **0** unsurveyed cells at every resolution tested. Deferred, with byte 254 reserved for it (§4.3). |
 | **Brotli precompression** | 987,004 B beats gzip by 26.7%, but GitHub Pages cannot set `Content-Encoding` for a precompressed asset, so it is not deployable here — and PNG beats it anyway at 799,073 B (§3.1). |
 | **Raising `maximumFileSizeToCacheInBytes`** | Would "solve" only the 12 m per-file wall, which §2 already disqualifies on correctness. Treating a correctness blocker as a budget problem. |
 | **Relaxing `KNOWN_DISCONNECTED` to absorb the refinement regressions** | Explicitly forbidden by #245's own constraints — the allowlist may shrink, never grow to accommodate a regression. Named here only to record that it was considered and refused. |
-| **Fabricating depth in the #9 channels** (from a fairway centreline or otherwise) | Violates "never overstate depth". See [`244-buoyed-fairways.md`](./244-buoyed-fairways.md) §5, where it also fails on data before it fails on principle. |
+| **Fabricating depth in the #9 channels** (from a fairway centreline or otherwise) | Violates "never overstate depth". See [`244-buoyed-fairways.md`](./244-buoyed-fairways.md) §6.2, where it also fails on data before it fails on principle. |
 
 ## 9. Invariants checked against this recommendation
 
@@ -443,7 +469,12 @@ buying real information; it was not acceptable for interpolation.
 - **`verify_mask.py` must exit 0** with `KNOWN_DISCONNECTED` unchanged or
   shrunk — the primary reason refinement is rejected (§2.2).
 - **Never overstate depth** — no recommendation adds depth anywhere.
-- **Offline-first** — recommendation 6 explicitly guards the per-file precache
-  cap that 12 m would have breached.
+- **Offline-first** — recommendation 1 (leave the grid at 46 m) is what keeps
+  the mask under the per-file precache cap that 12 m would have breached
+  (§3.2).
+- **#282** — recommendation 3 edits `cellsConnected`, inside the `connectedAt`
+  path #282 governs, but is **allocation-only**: it cannot change the function's
+  return value for any input, so it triggers no routing-behaviour sweep. No
+  other recommendation touches a solver input at all.
 - **No backend, no chart authority** — nothing here adds a runtime data source
   or a claim of chart accuracy.

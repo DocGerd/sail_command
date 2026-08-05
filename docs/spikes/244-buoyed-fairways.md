@@ -6,10 +6,10 @@
 - **Verdict:** **Decline to make fairways a routing input.** The data cannot
   support it: `seamark:type=fairway` does not exist in this bbox at all, the
   258 `waterway=fairway` ways that *do* exist carry **zero** width, depth or
-  draft tags, and **55.8% of them are OSM canoe-route geometry tagged
-  `boat=discouraged`** — following it would steer a 2.1 m draft yacht along
-  shoreline paddling routes. Ship the mandatory-class objects as an **advisory
-  display overlay** instead.
+  draft tags, and **144 of them (55.8%) are OSM canoe-route geometry — 132
+  (51.2% of all 258) explicitly tagged `boat=discouraged`** — so following the
+  tag would steer a 2.1 m draft yacht along shoreline paddling routes. Ship the
+  mandatory-class objects as an **advisory display overlay** instead.
 
 > Companion: [`245-depth-mask-resolution.md`](./245-depth-mask-resolution.md).
 > The two spikes are alternative answers to the same question — how to
@@ -111,8 +111,14 @@ discriminators:
 - **Maintained-depth overlay** (Q3, option 2) — there is no maintained depth to
   overlay. See §5.
 
-Geometry shape: 6,273 nodes over 1,799.2 km, mean vertex spacing **299 m**,
-quantiles p10 = 54 m / p50 = 180 m / p90 = 2,703 m / max = 22,615 m. **Zero of
+Geometry shape: 6,273 nodes over 1,799.2 km in 6,015 segments (spherical
+haversine, R = 6,371 km). Two different populations, kept apart because a mean
+from one sitting beside quantiles from the other reads as an impossible
+distribution: **per-segment** mean spacing is **299 m** (1,799.2 km / 6,015),
+with per-segment p10 = 26 m / p50 = 70 m / p90 = 326 m; **per-way mean
+spacing** (n = 258, linear-interpolated quantiles) is p10 = 55 m / p50 = 181 m
+/ p90 = 2,717 m / max = 22,615 m. The per-way figures are the ones §2.3 and
+§6.1/§6.3 use, since a buffer has to track a whole way. **Zero of
 the 258 are closed ways** — these are polylines, not corridor polygons. A
 22.6 km straight segment is a route line, not a channel.
 
@@ -182,8 +188,10 @@ A two-node way carrying an `orientation` of `279.2` is a **transit bearing** —
 S-57 `NAVLNE`/`RECTRC` semantics: a line you *align on*, typically extended well
 beyond the navigable water to a shore mark. It is not the edge or centre of a
 navigable corridor and has no width by definition. `recommended_track` is
-sourced `Dansk Fyrliste 2022` (the Danish List of Lights) on 20 of 21 ways —
-a light list, which is what a transit bearing belongs to.
+sourced to the Danish List of Lights on **20 of 21** ways — but pin the
+edition, not just the title: **19 × `Dansk Fyrliste 2022`, 1 × `Dansk Fyrliste
+2020`**, and 1 way carries no `source` tag at all. A light list is what a
+transit bearing belongs to, which is the point here.
 
 Concretely, the four `navigation_line` ways inside the Schlei are named
 `Lotseninsel` (bearing 94), `Schleimünde` (107.5), `Grimsnis` (266) and
@@ -206,22 +214,39 @@ The problem is population size.
 
 **Traffic Separation Scheme — exactly one, at the southern edge.**
 `separation_lane` ×2 (2.7 km each), `separation_zone` ×1 (6.0 km),
-`separation_boundary` ×2 (2.8 km each), all centred **54.477–54.500 N,
-10.279–10.307 E**. That is geometrically coherent — two lanes flanking a zone
+`separation_boundary` ×2 (2.8 km each). Their per-way **centroids** span
+**54.477–54.500 N, 10.279–10.307 E** (the raw vertex extent is wider,
+54.469–54.507 N / 10.262–10.322 E — the two are easy to confuse when
+re-deriving this). That is geometrically coherent — two lanes flanking a zone
 between two boundaries — so it is a *real* TSS (the Kiel approach), not random
-fragments. It sits at the extreme south of the bbox, ~30 km from the nearest
-planning harbour, and covers **five ways in a 1.6° × 1.0° area**.
+fragments. It sits at the southern edge of the bbox: the nearest harbour in
+`harbors.json` is **`damp`, 20.0 km from the TSS centroid (54.4898 N,
+10.2927 E) and 18.1 km from the nearest TSS vertex**, then `olpenitz` at
+24.9 km and `schleimuende` at 26.2 km (spherical haversine, R = 6,371 km). The
+whole scheme is **five ways in a 1.6° × 1.0° area**.
+
+`harbors.json` carries only `id` / `names` / `country` / `snap` /
+`approachNote` — there is **no status or class field**, so all 33 entries are
+equal-status planning destinations and there is no reading under which the
+nearest one is farther than `damp`.
 
 **Restricted areas — 130 features, but mostly not about entry.**
 
 ```
-restriction tokens: restricted_fishing 42, no_entry 35, no_fishing 22,
+seamark:restricted_area:restriction tokens (semicolon-split):
+                    restricted_fishing 42, no_entry 35, no_fishing 22,
                     no_anchoring 13, restricted_entry 8, entry_prohibited 5,
                     no_dredging 2, restricted_anchoring 1, no_boating 1,
                     no_diving 1, look_at_NfS 1
-categories:         military 23, fish_sanctuary 20, nature_reserve 17,
-                    swimming 6, safety 2, kite_surfing 1, ...
+seamark:restricted_area:category whole values:
+                    military 24, fish_sanctuary 20, nature_reserve 17,
+                    swimming 6, safety 2, kite_surfing 1, military_area 1,
+                    warning;no_entry 1, scuba_diving 1, rowing;canoe;... 1
 ```
+
+(The category key is named in full deliberately: matching any key *ending* in
+`:category` instead yields 84, because 10 of these features also carry a
+`seamark:dumping_ground:category=explosives` tag.)
 
 116 of 130 carry a `:restriction`; 74 carry a `:category`; none carry neither.
 **40 of 130 are entry-restricted** (`no_entry` or `entry_prohibited` as a
@@ -243,35 +268,47 @@ instructs the spike to try to falsify it first. So it was tested rather than
 argued.
 
 **Method.** Walk the 114 marine-scheme `waterway=fairway` centrelines, sampling
-every 100 m. At each sample, probe **perpendicular** to the centreline in 20 m
-steps until the shipped 46 m mask reports a cell below the 3.0 m default gate.
-Sum both sides to get the width of the navigable corridor the depth gate alone
-imposes. 13,070 sample points.
+every 100 m — **13,070 sample points** in total. At each sample, probe
+**perpendicular** to the centreline in 20 m steps until the shipped 46 m mask
+reports a cell below the 3.0 m default gate, capping at 3,000 m per side; sum
+both sides to get the width of the navigable corridor the depth gate alone
+imposes. Distances are spherical haversine at R = 6,371 km (a WGS84 geodesic
+would put the network's total length at ~1,803 km rather than 1,799.2 km).
+
+**The population split matters, so it is stated before the numbers.** Of the
+13,070 sample points, **1,719 (13.2%) sit on a centreline cell that is itself
+below the 3.0 m gate** — the fairway and the mask disagree there (see the note
+below). Those points have no meaningful "corridor width" to measure, so the
+width distribution below is over the remaining **11,351 navigable-centreline
+points**. Both denominators are given, because the choice moves the headline
+figure by 12 points and neither number is wrong — they answer different
+questions.
 
 **Result.**
 
-| Corridor width at gate 3.0 m | Value |
-|---|---|
-| p5 | 440 m |
-| p10 | 1,100 m |
-| p25 | 3,440 m |
-| p50 / p75 / p90 / p95 | ≥ 6,000 m (probe cap) |
-| mean | 4,630 m |
-| wider than 100 m | 99.7% of points |
-| wider than 400 m | 95.4% of points |
-| wider than 1,000 m | **90.8% of points** |
+| Corridor width at gate 3.0 m | over the 11,351 navigable-centreline points | over all 13,070 sample points |
+|---|---|---|
+| p5 | 440 m | 0 m |
+| p10 | 1,100 m | 0 m |
+| p25 | 3,440 m | — |
+| p50 / p75 / p90 / p95 | ≥ 6,000 m (probe cap) | — |
+| wider than 100 m | 99.7% | 86.6% |
+| wider than 400 m | 95.4% | 82.9% |
+| wider than 1,000 m | **90.8%** | **78.8%** |
 
-**The hypothesis is falsified.** At ~91% of sampled points the boat can leave
-the fairway by more than a kilometre without the depth gate objecting. Depth
-does *not* already confine the boat to the marked channel, so a fairway rule
-would not be redundant — it would be genuinely new behaviour.
+**The hypothesis is falsified on either denominator.** The boat can leave the
+fairway by more than a kilometre without the depth gate objecting at **90.8% of
+the points where the centreline is navigable at all**, or **78.8% of all
+sampled points**. Depth does *not* already confine the boat to the marked
+channel, so a fairway rule would not be redundant — it would be genuinely new
+behaviour.
 
 **And that is an argument against adding it.** The reason the corridor is so
 wide is that this fairway network is dominated by long open-water route lines
 (Little Belt, Kiel–Fehmarnsund) where a 2.1 m draft yacht *legitimately sails
 anywhere* — exactly #244's own opening observation that channels are dredged
 and marked for far deeper commercial traffic. A corridor cost term would
-manufacture detours across 91% of the network to no benefit.
+manufacture detours across most of the network to no benefit.
 
 **Two honest limits on this measurement.** The probe caps at 3,000 m per side,
 so p50–p95 are lower bounds, reported as "≥ 6,000 m" rather than a value. And
@@ -282,11 +319,15 @@ about the handful of genuinely narrow channels. It is a falsification of the
 
 **One finding points the other way, and it matters:** at **13.2% of sample
 points (1,719 of 13,070) the fairway centreline itself lies on a mask cell
-below 3.0 m.** Where the fairway and the mask disagree, it is usually the
-raster that is wrong (#245 §2: the source is 67 × 116 m and cannot resolve a
-30 m channel). This is the honest kernel of #244's "data-substitute necessity"
-argument — and it is also precisely the set of places where a depth overlay
-would be *fabricating* depth (§6.2).
+below 3.0 m.** This spike did **not** determine which source is wrong at those
+points — that would need per-point ground truth it has no access to. Both
+mechanisms are available: the raster cannot resolve a channel narrower than its
+67 × 116 m source (#245 §1.1), and a schematic centreline at 181 m median
+per-way spacing can equally run outside the real channel. This is the honest
+kernel of #244's "data-substitute necessity" argument — and it is also
+precisely the set of places where a depth overlay would be *fabricating* depth
+(§6.2), which is why the disagreement counts as evidence for #245's source
+question rather than as licence to overlay.
 
 ---
 
@@ -309,8 +350,9 @@ gate.
   the vertex spacing (442 m on the Schlei way) is too coarse for a tight buffer
   to track the real channel.
 - **Failure mode:** absurd detours. §5 measures a ≥ 1 km navigable corridor at
-  90.8% of points, so a penalty applied across this network would push the boat
-  toward schematic route lines in open water where sailing anywhere is correct.
+  90.8% of the 11,351 navigable-centreline points (78.8% of all 13,070), so a
+  penalty applied across this network would push the boat toward schematic
+  route lines in open water where sailing anywhere is correct.
   **Who it hurts:** every user on every open-water leg — the common case.
 - **Under incomplete/stale data:** the Schlei has one centreline and Dyvig's
   ~30 m channel has none; coverage is uneven, so the penalty would apply
@@ -382,12 +424,14 @@ Insert vias along a fairway centreline when origin/destination lie beyond it.
 1. **Do not make fairways a routing input.** Not as a cost term, not as a mask
    overlay, not as a via generator. The decisive reason is data, not design:
    zero width, zero depth, zero draft tags across all 258 fairway ways (§2.1);
-   55.8% canoe-scheme contamination tagged `boat=discouraged` (§2.2); and
+   144 of 258 ways (55.8%) on the canoe scheme, 132 of them explicitly
+   `boat=discouraged` (§2.2); and
    the mandatory-class inventory (one TSS, 40 entry-restricted polygons)
    contains no fairway at all (§4).
 2. **Record that depth-derived necessity was tested and does not hold** (§5).
-   #244 asks for this hypothesis to be falsified first; it was, at 90.8% of
-   sampled points. Future work should not re-assume "the mask already handles
+   #244 asks for this hypothesis to be falsified first; it was — a ≥ 1 km
+   navigable corridor at 90.8% of the 11,351 navigable-centreline sample points,
+   or 78.8% of all 13,070. Future work should not re-assume "the mask already handles
    it" — but should also not read that as a reason to add a corridor rule,
    since the same measurement shows why a corridor rule would misfire.
 3. **Ship the mandatory-class objects as an ADVISORY DISPLAY overlay**
@@ -400,8 +444,9 @@ Insert vias along a fairway centreline when origin/destination lie beyond it.
 4. **Keep the Schlei centreline (way `1205243476`) on file** as the single
    genuinely useful corridor object found (§2.3), for a future
    display-only channel hint. Not a routing input.
-5. **Treat the 13.2% centreline-below-gate finding as evidence for #245's
-   source question**, not as a licence to overlay depth (§5, §6.2). It
+5. **Treat the centreline-below-gate finding (1,719 of 13,070 sample points,
+   13.2%) as evidence for #245's source question**, not as a licence to
+   overlay depth (§5, §6.2). It
    quantifies where the raster and the buoyage disagree, which is exactly the
    region a genuinely higher-resolution source would fix.
 6. **If any of this is ever revisited, the entry condition is a source that
@@ -413,13 +458,13 @@ Insert vias along a fairway centreline when origin/destination lie beyond it.
 
 | Option | Why it lost |
 |---|---|
-| **Corridor as a cost term** (§6.1) | No width on any of 258 ways, so the corridor must be invented; §5 measures a ≥ 1 km navigable corridor at 90.8% of points, so the penalty would manufacture detours across most of the network. Cleanest design, no data to run it on. |
+| **Corridor as a cost term** (§6.1) | No width on any of 258 ways, so the corridor must be invented; §5 measures a ≥ 1 km navigable corridor at 90.8% of the 11,351 navigable-centreline points (78.8% of all 13,070), so the penalty would manufacture detours across most of the network. Cleanest design, no data to run it on. |
 | **Mask overlay raising depth in a fairway** (§6.2) | Fails on data before principle: **one** `dredged_area` in the bbox, no depth tag, and no depth tag on any fairway way — there is no charted maintained depth to promote. On principle it violates *never overstate depth* (**not** the query-time navigability invariant, which it would actually respect). Worst failure mode of the three. |
 | **Implicit via-point generator** (§6.3) | Safest of the three and still rejected: a via is a hard constraint that cannot be tuned down, driven by a 442 m-spacing schematic centreline, present at ~4 harbours and absent at Dyvig — so it binds hardest exactly where the geometry is weakest. |
 | **Using `navigation_line` / `recommended_track` as corridors** (§3) | Category error. 56/57 and 21/21 carry an `:orientation` bearing; all `recommended_track` ways are 2-node. These are transit bearings extended toward shore marks — following one runs onto the land it points at. |
 | **Naive nearest-`waterway=fairway` lookup** (§2.2) | Already mis-picks a `boat=discouraged` canoe shoreline route for `maasholm` at a 26 m margin. The mode filter that fixes it is a heuristic over optional free-form tags, not a schema. |
 | **Fairway centreline to recover #9 connectivity** | The geometry is close enough (43–70 m from all five snaps) that this looks promising, and it is the tempting cross-over from #245. But recovering connectivity from a centreline with no depth *is* fabricating depth by another name — the thing #9 explicitly refused — and at `maasholm` the nearest geometry is a paddling route. Rejected. |
-| **Honouring the TSS as a routing constraint** | COLREG Rule 10 is genuinely binding, so this is the one legally-clear case. Rejected on scope and size: five ways at the extreme southern edge, ~30 km from the nearest planning harbour, and #244 puts traffic/right-of-way modelling out of scope for an offline solo-boat planner. Display it (§7.3), do not route on it. |
+| **Honouring the TSS as a routing constraint** | COLREG Rule 10 is genuinely binding, so this is the one legally-clear case. Rejected on **scope and size, not distance**: it is five ways in the whole 1.6° × 1.0° operating area, and #244 puts traffic/right-of-way modelling out of scope for an offline solo-boat planner. (It is nearer than a first pass suggested — 18.1 km from `damp`'s snap to the nearest TSS vertex, §4 — so distance is deliberately not part of this rejection.) Display it (§7.3), do not route on it. |
 | **Extracting fairways into `seamarks.json` now** | `build_seamarks.mjs` would need ways/relations (worth doing for §7.3), but shipping 1,799 km of mixed-mode centrelines with no width or depth would add ~ hundreds of KB to a precached asset to render geometry the router must ignore and the user could misread as a channel. Only the §7.3 subset earns its bytes. |
 
 ## 9. Invariants checked against this recommendation
