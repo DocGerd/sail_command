@@ -1593,7 +1593,7 @@ deviate from it.
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
   global/personal, unversioned, shared across concurrent sessions) — NOT
-  covered by #216, which is the notices-regen/graphify-nudge hooks; #233
+  covered by #216, which is the notices-regen and nudge hooks; #233
   audited this guard specifically and declined to touch it. Observed but
   NOT confirmed as a mechanism: a Bash call was blocked while drafting a
   heredoc whose PROSE merely mentioned the force flags with no git command
