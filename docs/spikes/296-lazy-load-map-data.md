@@ -209,7 +209,9 @@ even if the corridor only clips its edge) as the cost of a completeness
 proof that is a single boolean rather than an enumerated tile set. Mask,
 harbours, seamarks, and polars need no pinning action — they are already
 part of the eager core precache and cover the whole routable area
-regardless of the extension (§3).
+regardless of the extension (harbours/seamarks/polars: §2's "trivially
+kept eager" characterization; the mask's non-chunked, whole-rectangle
+coverage: §3).
 
 **When:** an explicit, visible user action per plan ("make this plan
 available offline"), not a silent background download. A silent background
