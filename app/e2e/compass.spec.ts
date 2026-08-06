@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type CDPSession, type Page } from '@playwright/test';
-import { startPreview, mapReady } from './helpers';
+import { startPreview, mapReady, bannerHeightVar } from './helpers';
 
 // #155 map orientation chrome: the north arrow / track-up toggle and the
 // nautical scale bar, against the REAL MapLibre camera (jsdom has none, so
@@ -907,28 +907,52 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     // same region at all — asserted here as zero overlap, replacing the old
     // "who's on top at the overlap point" probe (still exercised, in more
     // depth, by layout.spec.ts's own #368 regression test).
-    const bannerBox = (await banner.boundingBox())!;
-    const stackBox = (await page.locator('.map-stack-tl').boundingBox())!;
-    const overlapWidth = Math.max(
-      0,
-      Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width) -
-        Math.max(bannerBox.x, stackBox.x),
-    );
-    const overlapHeight = Math.max(
-      0,
-      Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height) -
-        Math.max(bannerBox.y, stackBox.y),
-    );
-    // AREA, not the two dimensions separately: both clusters are left-
-    // anchored, so they always share an x-range (overlapWidth > 0) even once
-    // the fix moves them fully clear of each other vertically — asserting
-    // `overlapWidth === 0` would fail on that harmless shared x-range, not on
-    // a real overlap. Two rects only truly intersect when BOTH dimensions
-    // overlap; the product is 0 whenever either one is.
-    expect(
-      overlapWidth * overlapHeight,
-      `overlapWidth=${overlapWidth} overlapHeight=${overlapHeight}`,
-    ).toBe(0);
+    // #412: geometry is RE-SAMPLED on every poll tick below, never frozen
+    // from a single read taken before the `--sc-banner-height` ResizeObserver
+    // write (and the CSS push it drives) has settled — a stale pre-push read
+    // and a genuine, still-live overlap would otherwise produce the
+    // byte-identical `toBe(0)` failure. `lastOverlapWidth`/`lastOverlapHeight`
+    // are tracked outside the poll purely so the catch below can still name
+    // the actual last-observed numbers (`expect.poll`'s own `message` option
+    // must be a static string, not a function of the polled value).
+    let lastOverlapWidth = 0;
+    let lastOverlapHeight = 0;
+    try {
+      await expect
+        .poll(
+          async () => {
+            const bannerBox = (await banner.boundingBox())!;
+            const stackBox = (await page.locator('.map-stack-tl').boundingBox())!;
+            lastOverlapWidth = Math.max(
+              0,
+              Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width) -
+                Math.max(bannerBox.x, stackBox.x),
+            );
+            lastOverlapHeight = Math.max(
+              0,
+              Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height) -
+                Math.max(bannerBox.y, stackBox.y),
+            );
+            // AREA, not the two dimensions separately: both clusters are
+            // left-anchored, so they always share an x-range
+            // (overlapWidth > 0) even once the fix moves them fully clear of
+            // each other vertically — asserting `overlapWidth === 0` would
+            // fail on that harmless shared x-range, not on a real overlap.
+            // Two rects only truly intersect when BOTH dimensions overlap;
+            // the product is 0 whenever either one is.
+            return lastOverlapWidth * lastOverlapHeight;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(0);
+    } catch (e) {
+      const height = await bannerHeightVar(page);
+      throw new Error(
+        `overlapWidth=${lastOverlapWidth} overlapHeight=${lastOverlapHeight} ` +
+          `bannerHeight=${height || '(unset)'}\n${(e as Error).message}`,
+        { cause: e },
+      );
+    }
 
     // The banner itself must still be fully legible — nothing else in the
     // map-chrome tier may cover IT either, now that they no longer share
@@ -944,8 +968,12 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     // assertion — a future change that legitimately reopens an overlap
     // would have no test left to answer whether the tier order still wins
     // it correctly.
-    const bannerCenterX = bannerBox.x + bannerBox.width / 2;
-    const bannerCenterY = bannerBox.y + bannerBox.height / 2;
+    //
+    // Fresh read, taken AFTER the poll above has already confirmed the
+    // geometry settled — not a re-use of a pre-settle value.
+    const settledBannerBox = (await banner.boundingBox())!;
+    const bannerCenterX = settledBannerBox.x + settledBannerBox.width / 2;
+    const bannerCenterY = settledBannerBox.y + settledBannerBox.height / 2;
     const onTop = await topmostIsWithin(page, bannerCenterX, bannerCenterY, '.banner-area');
     if (!onTop) {
       const hitStack = await elementsAt(page, bannerCenterX, bannerCenterY);
@@ -1047,22 +1075,45 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
     await expect(page.locator('.banner-area .banner')).toHaveCount(1);
 
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
-    const toggleBox = (await depthToggle.boundingBox())!;
-    const bannerBox = (await banner.boundingBox())!;
-    const overlapWidth = Math.max(
-      0,
-      Math.min(bannerBox.x + bannerBox.width, toggleBox.x + toggleBox.width) -
-        Math.max(bannerBox.x, toggleBox.x),
-    );
-    const overlapHeight = Math.max(
-      0,
-      Math.min(bannerBox.y + bannerBox.height, toggleBox.y + toggleBox.height) -
-        Math.max(bannerBox.y, toggleBox.y),
-    );
-    expect(
-      overlapWidth * overlapHeight,
-      `overlapWidth=${overlapWidth} overlapHeight=${overlapHeight}`,
-    ).toBe(0);
+    // #412: this was the MORE exposed of the two `#368` guards named in the
+    // issue — a single, un-polled `boundingBox()` read on each side feeding
+    // an IMMEDIATE one-shot `toBe(0)`, with zero settle tolerance for a
+    // coordinate sampled before the `--sc-banner-height` push. Both boxes are
+    // now RE-SAMPLED on every poll tick; `lastOverlapWidth`/`lastOverlapHeight`
+    // are tracked outside the poll purely so the catch below can still name
+    // the actual last-observed numbers (`expect.poll`'s own `message` option
+    // must be a static string, not a function of the polled value).
+    let lastOverlapWidth = 0;
+    let lastOverlapHeight = 0;
+    try {
+      await expect
+        .poll(
+          async () => {
+            const toggleBox = (await depthToggle.boundingBox())!;
+            const bannerBox = (await banner.boundingBox())!;
+            lastOverlapWidth = Math.max(
+              0,
+              Math.min(bannerBox.x + bannerBox.width, toggleBox.x + toggleBox.width) -
+                Math.max(bannerBox.x, toggleBox.x),
+            );
+            lastOverlapHeight = Math.max(
+              0,
+              Math.min(bannerBox.y + bannerBox.height, toggleBox.y + toggleBox.height) -
+                Math.max(bannerBox.y, toggleBox.y),
+            );
+            return lastOverlapWidth * lastOverlapHeight;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(0);
+    } catch (e) {
+      const height = await bannerHeightVar(page);
+      throw new Error(
+        `overlapWidth=${lastOverlapWidth} overlapHeight=${lastOverlapHeight} ` +
+          `bannerHeight=${height || '(unset)'}\n${(e as Error).message}`,
+        { cause: e },
+      );
+    }
 
     // Poll the class STRING, not a derived boolean — a bare
     // `.toBe(true)` here would discard exactly which class was present on

@@ -2,6 +2,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 import {
   startPreview,
   mapReady,
+  bannerHeightVar,
   STANDARD_VIEWPORTS,
   EDGE_VIEWPORTS,
   type Viewport,
@@ -45,6 +46,28 @@ function elementDescriptionAt(page: Page, x: number, y: number): Promise<string>
     },
     [x, y] as [number, number],
   );
+}
+
+// #412: `locator`'s bounding box is RE-READ every time this is called, never
+// frozen once before a poll starts — a poll built on it re-samples the
+// checkbox's actual position on every tick instead of hit-testing a single
+// coordinate captured before the `--sc-banner-height` ResizeObserver write
+// (and the CSS push it drives) has settled. Per the issue's own acceptance
+// criteria, the returned string carries the hit element, the coordinate
+// probed, AND the live banner-height custom property together — so a CI
+// timeout on this poll names every value that could plausibly explain a
+// miss, rather than collapsing "the banner still intercepts it" and "the
+// geometry hadn't settled yet" into the same bare mismatch.
+async function settledHitDescription(page: Page, locator: Locator): Promise<string> {
+  const b = await locator.boundingBox();
+  if (!b) return '(no box)';
+  const x = b.x + b.width / 2;
+  const y = b.y + b.height / 2;
+  const [hit, height] = await Promise.all([
+    elementDescriptionAt(page, x, y),
+    bannerHeightVar(page),
+  ]);
+  return `${hit} @ (${Math.round(x)},${Math.round(y)}) bannerHeight=${height || '(unset)'}`;
 }
 
 test('responsive layout: side panel on wide screens, bottom sheet on narrow', async ({ page }) => {
@@ -284,10 +307,6 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
       // banner would silently swap which case this test actually exercises).
       await expect(page.locator('.banner-area .banner')).toHaveCount(1);
 
-      const toggleBox = await box(depthToggle);
-      const x = toggleBox.x + toggleBox.width / 2;
-      const y = toggleBox.y + toggleBox.height / 2;
-
       // The real defect, in one probe: what actually receives a tap aimed at
       // the checkbox. A `.toBe(true)` boolean here would collapse "hit the
       // banner" and "hit nothing at all" into the same failure — polling the
@@ -300,8 +319,11 @@ for (const [label, viewport] of Object.entries(SINGLE_BANNER_VIEWPORTS)) {
       // would read as `DIV.banner.banner-warning` — matches neither
       // `/banner-message/` NOR the checkbox, but would pass the negative
       // form while the control stays intercepted.
+      // #412: `settledHitDescription` re-reads `depthToggle`'s bounding box
+      // on EVERY poll tick — the coordinate is never frozen from a single
+      // read taken before the `--sc-banner-height` push settles.
       await expect
-        .poll(() => elementDescriptionAt(page, x, y), { timeout: 10_000 })
+        .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
         .toMatch(/^INPUT\b/);
 
       // DoD's own phrasing: measured overlap between the two clusters is 0.
@@ -356,11 +378,11 @@ test('#368: two stacked banners at 320x568 (previously measured broken) no longe
       .poll(() => page.locator('.banner-area .banner').count(), { timeout: 15_000 })
       .toBe(2);
 
-    const toggleBox = await box(depthToggle);
-    const x = toggleBox.x + toggleBox.width / 2;
-    const y = toggleBox.y + toggleBox.height / 2;
+    // #412: re-reads `depthToggle`'s bounding box on every poll tick — never
+    // a coordinate frozen from a single read taken before the
+    // `--sc-banner-height` push settles.
     await expect
-      .poll(() => elementDescriptionAt(page, x, y), { timeout: 10_000 })
+      .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
       .toMatch(/^INPUT\b/);
 
     await expect
@@ -414,11 +436,11 @@ test('#368: three simultaneous banners at 390x844 do not intercept the depth che
     await expect(page.locator('.banner-message', { hasText: 'Auf Karte tippen' })).toBeVisible();
     await expect(page.locator('.banner-area .banner')).toHaveCount(3);
 
-    const toggleBox = await box(depthToggle);
-    const x = toggleBox.x + toggleBox.width / 2;
-    const y = toggleBox.y + toggleBox.height / 2;
+    // #412: re-reads `depthToggle`'s bounding box on every poll tick — never
+    // a coordinate frozen from a single read taken before the
+    // `--sc-banner-height` push settles.
     await expect
-      .poll(() => elementDescriptionAt(page, x, y), { timeout: 10_000 })
+      .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
       .toMatch(/^INPUT\b/);
 
     await expect
@@ -482,11 +504,11 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
       })
       .toBeGreaterThan(55);
 
-    const toggleBox = await box(depthToggle);
-    const x = toggleBox.x + toggleBox.width / 2;
-    const y = toggleBox.y + toggleBox.height / 2;
+    // #412: re-reads `depthToggle`'s bounding box on every poll tick — never
+    // a coordinate frozen from a single read taken before the
+    // `--sc-banner-height` push settles.
     await expect
-      .poll(() => elementDescriptionAt(page, x, y), { timeout: 10_000 })
+      .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
       .toMatch(/^INPUT\b/);
 
     await expect
