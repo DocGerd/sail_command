@@ -33,7 +33,12 @@ Your final message is a report to the orchestrator, not prose for the end user.
 - Never transfer the wind grid's buffers to the worker; only the mask buffer is
   transferred, always as a `.slice(0)` copy.
 - Tests import vitest APIs explicitly. Never add a per-test timeout tighter than
-  the file-level config — CI runners are 6–10× slower than dev machines.
+  the file-level config. CI is slower than dev machines, but not by one flat
+  multiplier: measured 2026-08-03 (#341) for the vitest unit suite, `npm run
+  test` ran 249.8 s local vs ~515–535 s on CI (~2.1×), and `npm run
+  test:coverage` ran ~983–1029 s local vs 2558 s on CI (~2.5×) — coverage
+  instrumentation is a separate multiplier from runner speed, not part of a
+  single ratio, and neither figure is a Playwright/e2e measurement.
 
 ## Verification (evidence, not assertions)
 

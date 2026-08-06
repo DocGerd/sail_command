@@ -800,8 +800,12 @@ deviate from it.
   `pages`-concurrency cancellation of a genuine in-flight deploy —
   `release.yml`'s own guard against a duplicate Release means the badge
   itself isn't actually at risk for an already-shipped tag) and because a
-  published signed tag is an attestation a third party may already have
-  verified, which mutating the object would invalidate. `main` is
+  published tag object is something third parties may already have
+  fetched — re-creating it does change the tag object's sha (measured
+  during #364), which is disruptive even for these unsigned tags with no
+  signature to invalidate; the stronger "attestation a third party may
+  already have verified" framing applies once the subject is an actually
+  signed tag (`v0.8.0` onward). `main` is
   released-state-only. Pushing that tag is what puts the clean `vX.Y.Z` in the
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
@@ -845,7 +849,9 @@ deviate from it.
   published to the deliberately-labeled, `noindex`ed `/uat/` sub-path in the
   same run — a UAT preview, not a second production. After a RELEASE, back-merge
   `main` into `develop` via a TOPIC branch (branch off `develop`, `git merge
-  origin/main` — fast-forwards to the release commit, zero file diff — then PR →
+  origin/main` — fast-forwards to the release commit, zero file diff from the
+  merge itself; step 6 of the release runbook (`.claude/skills/release/SKILL.md`)
+  adds the `ROADMAP.md` bump on top — then PR →
   `develop`): a DIRECT main→develop PR reads BEHIND under the strict up-to-date
   policy, and its "Update branch" button would merge develop→main, polluting the
   released branch (v0.2.0 lesson, reused for v0.3.0). A HOTFIX branches from `main`, PRs to

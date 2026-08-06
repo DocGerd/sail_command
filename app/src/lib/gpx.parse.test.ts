@@ -205,7 +205,8 @@ describe('parseGpx — element-count DoS guard', () => {
       // The coordinates are in-bounds and valid, so nothing but the size guard can
       // reject this — proving the guard, not a coord/bounds check, fires. Generous
       // per-test timeout: building + jsdom-parsing 100k nodes is ~0.5 s here but
-      // CI runners are 6–10× slower (never tighten below the file default) —
+      // CI is measurably slower than dev machines (CLAUDE.md: ~2.1x/~2.5x for
+      // the vitest unit suite; never tighten below the file default) —
       // scaled further via solverTimeoutMs (#342) so v8 coverage instrumentation
       // on top of that CI slowdown doesn't blow this budget either.
       const xml =
