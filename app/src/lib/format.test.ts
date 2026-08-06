@@ -42,6 +42,7 @@ import {
   formatTime,
   formatDateTime,
   formatDuration,
+  formatLegDuration,
   formatDriftMin,
   formatLatLon,
   formatSliderTime,
@@ -112,6 +113,44 @@ describe('formatDuration', () => {
 
   it('rounds to the nearest minute', () => {
     expect(formatDuration(3661000)).toBe('1 h 01 min');
+  });
+});
+
+describe('formatLegDuration', () => {
+  it('formats zero duration without an hours prefix', () => {
+    expect(formatLegDuration(0)).toBe('0 min');
+  });
+
+  it('rounds sub-minute durations up to the nearest minute (59 s)', () => {
+    // Math.round(59_000 / 60_000) = Math.round(0.9833) = 1, not 0 — a
+    // floor-based implementation would wrongly report "0 min" here.
+    expect(formatLegDuration(59_000)).toBe('1 min');
+  });
+
+  it('formats a short manoeuvring leg with no hours prefix (47 min)', () => {
+    // This is the motivating case: formatDuration(47 * 60_000) would render
+    // "0 h 47 min", which reads as "basically nothing" for a 47-minute leg.
+    expect(formatLegDuration(47 * 60_000)).toBe('47 min');
+  });
+
+  it('stays hours-free right up to the 60-minute tier boundary', () => {
+    expect(formatLegDuration(59 * 60_000)).toBe('59 min');
+  });
+
+  it('crosses the tier boundary at exactly 60 minutes', () => {
+    expect(formatLegDuration(60 * 60_000)).toBe('1 h 00 min');
+  });
+
+  it('formats just past the tier boundary, zero-padded', () => {
+    expect(formatLegDuration(61 * 60_000)).toBe('1 h 01 min');
+  });
+
+  it('formats a multi-hour leg the same way formatDuration would', () => {
+    expect(formatLegDuration(125 * 60_000)).toBe('2 h 05 min');
+  });
+
+  it('does not cap at 24 hours', () => {
+    expect(formatLegDuration(25 * 60 * 60_000)).toBe('25 h 00 min');
   });
 });
 
