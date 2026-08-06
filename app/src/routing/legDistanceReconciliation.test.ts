@@ -27,9 +27,11 @@ import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 // `distanceNm`:
 //
 //   - isochrone.ts's OWN collinear-hop bookkeeping inside `backtrack`
-//     (gated `< 0.5°` between consecutive sub-hop headings, isochrone.ts's
-//     `collinear` check) sets `prev.distanceNm += distanceNm` while only
-//     `prev.end` moves -- the POLYLINE length of the merged sub-hops.
+//     (gated `< 0.5°` between EACH sub-hop's heading and the ANCHOR heading
+//     of the leg it is extending -- `prev.headingDeg`, read at :554 -- NOT
+//     between consecutive sub-hops; see the ANCHORED GATE note below) sets
+//     `prev.distanceNm += distanceNm` while only `prev.end` moves -- the
+//     POLYLINE length of the merged sub-hops.
 //   - postprocess.ts's collinear-LEG merge (`tryMerge`, gated
 //     `MAX_MERGE_DEG = 10`, the CLAUDE.md-governed RE-VALIDATING pass, not
 //     the same pass as above) sets `distanceNm = haversineNm(a.start,
@@ -73,9 +75,35 @@ import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 //    separate `mergedCount > 0` / F4b assertions (residual collapses to
 //    exactly 0, so no leg is detected as isochrone-merged) -- again with the
 //    sign assertion still green. See the per-test comments for the exact
-//    measured numbers and the bound's own honesty caveat (it is not a
-//    universal safe ceiling -- a longer, legitimately-merged chain can
-//    exceed it with no bug at all; derivation at that assertion).
+//    measured numbers and the derivation of the bound's own ceiling.
+//
+// ANCHORED GATE, not consecutive-pairwise -- read from the source, not
+// modelled (this correction itself replaces an EARLIER wrong version of
+// this comment, see below): `isochrone.ts:554`'s collinear check reads
+// `prev.headingDeg`, and the collinear branch (:556-559) updates `end`,
+// `endTimeMs`, `distanceNm`, `speedKn` but NEVER reassigns `headingDeg` --
+// that field is set exactly ONCE per Leg, at :567, when a NEW leg starts.
+// So every sub-hop appended to a chain is gated against the SAME anchor
+// heading (the chain's first sub-hop), not against its immediate
+// predecessor. Contrast with postprocess.ts's `mergeCollinearLegs`, which
+// DOES recompute `headingDeg` on every merge (`postprocess.ts:41`,
+// `initialBearingDeg(a.start, b.end)`) -- the two merge passes differ here,
+// not just in chord-vs-polyline. Consequence: NO cumulative drift is
+// possible in isochrone's own merge. A PREVIOUS version of this comment
+// (and the PR body) modelled a discretised circular arc where each sub-hop
+// drifts a further ~0.5deg from the previous one (`k*d -
+// |sum_i d*unit(i*phi)|`) -- that model silently assumes what the anchored
+// gate rules out, and was itself flagged and corrected (PR #410 review #2).
+// The correct, anchor-based bound: with every sub-hop's heading within
+// `theta = 0.5deg` of the SAME anchor direction, its along-anchor
+// projection is `>= cos(theta)` of its length regardless of sign or order
+// (zigzag, monotonic, whatever), so the chord (>= the along-anchor
+// component alone) is `>= L*cos(theta)` for total polyline length `L` --
+// giving `residual <= L*(1-cos(0.5deg))`, INDEPENDENT of the sub-hop count
+// `k`. `1-cos(0.5deg) = 3.807694e-5` -- see the per-test comment for the
+// fixture-scale numbers (verified both by this closed form and by an
+// independent adversarial-zigzag numeric simulation, which agree to 5
+// significant figures).
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
@@ -158,26 +186,49 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
     // semantics) reds THIS bound at 0.027475406327489793 nm -- 27.5x over
     // -- while assertion 1 above stays green throughout (residual > 0).
     //
-    // The bound (1e-3 nm, ~1.85 m) is NOT a universal safe ceiling and a
-    // future red here does not automatically mean a bug -- quote the
-    // method, not just the number: for a chain of k sub-hops of length d
-    // (nm) each turning by the isochrone.ts:554 gate's permitted maximum
-    // (just under 0.5 deg from the previous sub-hop), the worst-case
-    // polyline-vs-chord residual is `k*d - |sum_{i=0}^{k-1} d * unit(i*phi)|`
-    // (a discretised circular arc; phi ~ 0.5deg). At d = 1 nm this is
-    // ~1.9e-5 nm for a single pair (k=2, matching the "small but nonzero"
-    // design-record expectation) but ~3.14e-3 nm for a k=10 chain --
-    // already ABOVE this bound, with no bug involved, because
-    // isochrone.ts's OWN internal merge (unlike postprocess.ts's
-    // MAX_MERGE_DEG=10 cap) has no overall degree ceiling: it chains for as
-    // long as each CONSECUTIVE pair of sub-hops satisfies the <0.5deg gate.
-    // On this fixture mergedCount stayed at 1-3, keeping the observed
-    // residual in the micrometre range, far under 1e-3 -- but a longer,
-    // gently-curving passage could legitimately push a future measurement
-    // past this bound. Before treating a red here as a ROUTING finding,
-    // check mergedCount and each leg's own (distanceNm - its chord) to see
-    // whether a long benign merge chain explains it; only investigate
-    // isochrone.ts's collinear accumulation as a bug if it doesn't.
+    // THE BOUND'S CEILING -- derived from the source, not modelled (see the
+    // ANCHORED GATE note in the file header for the full derivation and why
+    // an earlier draft here was wrong: it assumed cumulative pairwise
+    // drift, which isochrone.ts:554's anchored gate rules out).
+    // `isochrone.ts`'s collinear branch never reassigns `prev.headingDeg`
+    // (verified: it appears at exactly two sites, :554 the gate read and
+    // :567 the new-leg assignment -- absent from the collinear branch at
+    // :556-559), so every sub-hop in a chain is gated against the SAME
+    // anchor heading, independent of chain length `k`. That gives a
+    // k-INDEPENDENT worst-case bound: `residual <= L*(1-cos(0.5deg))` =
+    // `L * 3.807694e-5` for total merged polyline length `L` (nm) --
+    // verified both by this closed form and by an independent adversarial
+    // zigzag simulation (agree to 5 significant figures).
+    //
+    // On THIS fixture, L is bounded above by the whole route
+    // (genoa.distanceNm = 19.3775 nm), so the PROVABLE ADVERSARIAL CEILING
+    // for a legitimate residual is `19.3775 * 3.807694e-5 = 7.38e-4` nm --
+    // i.e. this bound (1e-3) clears that ceiling by only 1.36x, while still
+    // sitting 10.5x under the fock postprocess-flip residual measured
+    // above. A red here on THIS fixture is therefore a real signal, not a
+    // "maybe benign geometry" case -- unlike the discarded arc model, which
+    // (wrongly) put a 10-hop chain's ceiling ABOVE this bound.
+    //
+    // FIXTURE-LENGTH DEPENDENCE, the one real coupling here: the ceiling
+    // scales with route length, so a benign residual on THIS 19.4 nm route
+    // cannot legitimately reach 1e-3 -- but `1e-3 / 3.807694e-5 ~= 26.3 nm`
+    // is the route length at which a fully-merged, gate-limit-drifting
+    // route COULD legitimately approach this bound. If this test's fixture
+    // is ever swapped for a materially longer route, this bound must be
+    // RE-DERIVED against the new route's own length, not carried over --
+    // say that plainly here so it isn't silently wrong the next time
+    // someone changes the fixture.
+    //
+    // Empirical support (measured by temporarily instrumenting
+    // isochrone.ts's collinear branch and reverting, `git diff` confirmed
+    // clean afterward): on this fixture 13 of the 14 collinear-merge hops
+    // have a heading delta against their anchor of EXACTLY 0 (the solver's
+    // heading set is quantised -- observed 15/35/45/55/90/105/125deg), the
+    // single exception at 0.00057917226263271deg (~863x below the 0.5deg
+    // gate); the longest observed chain is 4 sub-hops (one initial hop plus
+    // 3 collinear extensions, anchor 55deg). Nowhere near the adversarial
+    // ceiling above -- this fixture is benign by a wide margin, not merely
+    // by luck.
     const residual = genoa.distanceNm - chordSum;
     expect(residual).toBeGreaterThanOrEqual(0);
     expect(residual).toBeLessThan(1e-3);
