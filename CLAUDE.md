@@ -1313,15 +1313,28 @@ deviate from it.
   **Corollary for DELEGATION: enumerate FIRST, then scope the agent's file
   allowlist from the enumeration — never the other way round.** Measured
   2026-08-06 (PR #402): a brief scoped its allowlist from the ISSUE's claim
-  about where the stale text lived, but #341's issue text named the wrong
-  file entirely (`CONTRIBUTING.md`, not `CLAUDE.md`) and the fact lived in
-  four places, two outside the allowlist. The implementer correctly fixed
-  what it could and reported the rest as "live stale, NOT fixed — outside
-  file allowlist", costing a round; a less disciplined agent would have
-  silently widened scope or silently skipped them. An allowlist derived from
-  an unverified claim about the code is the enumerate-don't-patch failure
-  relocated one level up, into the brief. Same reason issue texts are not
-  ground truth for states they do not describe.
+  about where the stale text lived. #341's issue text located the "6-10x CI
+  slower" claim in `CLAUDE.md` — that was backwards: `CLAUDE.md` already
+  carried the corrected, measured figures, and the live stale text was
+  actually in `CONTRIBUTING.md`. Four `.md`-adjacent locations were in view
+  across the fix (`CLAUDE.md`, falsely, per the issue's own claim;
+  `CONTRIBUTING.md`, fixed against the original allowlist; then
+  `.claude/agents/sail-implementer.md` and `README.md`, found only by a
+  follow-up enumeration and both OUTSIDE the allowlist the brief had derived
+  from the issue). That follow-up enumeration was itself under-scoped —
+  `git grep -n "..." -- '*.md'`, silently Markdown-only — and got reported as
+  "repo-wide" with "zero remaining instances." It wasn't: a reviewer's later,
+  genuinely unscoped grep found 14 more live instances in source/test
+  comments (`app/e2e/*.spec.ts`, `app/src/routing/*.test.ts`,
+  `app/src/lib/gpx.parse.test.ts`), of which 6 were fixed and 8 deliberately
+  left alone as a different, correctly-cited defect (a real, dated ~30-44x
+  solver-CI measurement, not the fabricated 6-10x figure). The
+  scoped-grep-reported-as-repo-wide over-claim is the SAME failure this
+  file's own "four ways prose rots" bullet documents, one layer further
+  out — occurring inside the very PR fixing prose-rot claims. An allowlist
+  derived from an unverified claim about the code is the enumerate-don't-patch
+  failure relocated one level up, into the brief. Same reason issue texts
+  are not ground truth for states they do not describe.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -1719,8 +1732,16 @@ deviate from it.
   re-propose them** (2026-08-06, three-lens audit; full record in #404/#405).
   Narrowing the Bash-arm path `docs/superpowers/` → `docs/superpowers/specs/`
   is the seductive one and the worst: it makes `mv docs/superpowers
-  /tmp/stash` a SILENT ALLOW (it moves `specs/` too), reds 11 of the guard's
-  own selftest rows, and is SUBSUMPTION-INVERTED — `docs/superpowers/specs`
+  /tmp/stash` a SILENT ALLOW (it moves `specs/` too), reds 13 of the guard's
+  own selftest rows (re-measured 2026-08-06 against a scratch copy — an
+  earlier auditor's 11 does not reproduce). Method, so this can be re-run
+  rather than re-argued: `docs/superpowers/specs` is ALREADY a separate
+  `PROTECTED_PATHS` entry alongside the bare `docs/superpowers` ancestor, so
+  the two edits a mutation could try — deleting the ancestor entry outright,
+  or "narrowing" it by replacing it with `docs/superpowers/specs` — collapse
+  to the same array and the same byte-identical script; both were run
+  independently in `/tmp` and both gave 13, never 11. It is also
+  SUBSUMPTION-INVERTED — `docs/superpowers/specs`
   is a strict superstring of `docs/superpowers`, so the parent subsumes the
   child and removing the parent deletes the entry doing all the work. Adding
   `cd` to `READONLY_VERBS` and segmenting the command on `;`/`&&`/newline
