@@ -146,7 +146,7 @@ export const de = {
   'route.split.aria': 'Segelanteil {sailPct} %, Motoranteil {motorPct} %',
   'route.legs.time': 'Zeit',
   'route.legs.kind': 'Art',
-  'route.legs.heading': 'Kurs',
+  'route.legs.cog': 'COG',
   'route.legs.twa': 'TWA',
   'route.legs.tws': 'TWS',
   'route.legs.speed': 'Geschwindigkeit',
