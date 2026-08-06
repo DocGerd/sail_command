@@ -472,6 +472,20 @@ deviate from it.
   #368-guard stale-geometry issue (number pending). Polling a state signal is
   not enough if the coordinate or handle being polled was itself sampled
   before settle.
+  `app/e2e/compass.spec.ts` (test declared at `:995`) has a SIBLING shape,
+  not the same one, and is the more exposed of the two: `const toggleBox =
+  (await depthToggle.boundingBox())!` / `const bannerBox = (await
+  banner.boundingBox())!` at `:1050-1051` feed an IMMEDIATE one-shot
+  `expect(overlapWidth * overlapHeight, ...).toBe(0)` at `:1062-1065` — no
+  poll, no retry, zero settle tolerance. The shared root: both assert
+  against geometry sampled before the `ResizeObserver` write of
+  `--sc-banner-height` and the resulting CSS push have applied.
+  `layout.spec.ts`'s poll can then watch a stale point for its whole budget;
+  `compass.spec.ts`'s one-shot form has no tolerance for that window at all
+  — not polling is not the same as not needing a gate. The two also produce
+  DIFFERENT CI signatures for the same root cause, which is why recognising
+  them as one class matters: `layout.spec.ts` times out on the predicate,
+  `compass.spec.ts` fails an overlap-area comparison immediately.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
   (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
