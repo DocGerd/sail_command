@@ -578,7 +578,7 @@ if [ "${1:-}" = "--selftest" ]; then
   # NOTE (#388 review): this total includes ONE case per READONLY_VERBS entry
   # (the reason-string twin check at the end), so adding or removing a verb
   # moves it by 2 - the verb's own decision row plus its twin case.
-  EXPECTED_CASES=198
+  EXPECTED_CASES=199
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -593,6 +593,33 @@ if [ "${1:-}" = "--selftest" ]; then
     */*) SELF=$0 ;;
     *) SELF=./$0 ;;
   esac
+
+  # LIVENESS GATE (#421 review, Major 2) - runs OUTSIDE the battery, before
+  # ANY row below executes, per CLAUDE.md's #274 principle: a liveness
+  # check must live outside the thing whose liveness is in question, because
+  # a script that cannot run cannot report that it cannot run. `-x` ALONE is
+  # true for a DIRECTORY (the search bit, not "is a runnable file"), so
+  # `[ ! -d "$SELF" ]` is not redundant with it - without this whole check,
+  # a directory at $SELF's path passes `-x`, `exec` then dies 126 emitting
+  # NO JSON at all, and every row below reads that silence as `allow`.
+  # MEASURED on scratch copies under /tmp before this gate existed: $SELF
+  # non-executable, $SELF pointed at a directory, and $SELF exiting non-zero
+  # with no output all produced the SAME signature - 41 of the want-`ask`
+  # rows red, 0 of the 22 want-`allow` rows red (the entire pinning of
+  # #388's conjunctive read-only exemption: the single `decide allow` row
+  # plus all 21 `decide_exempt` rows) - the suite failed closed only by
+  # ACCIDENT of the ask rows outnumbering the allow rows, not on purpose.
+  # This catches the two STATIC failure shapes ($SELF not executable, $SELF
+  # a directory) in one place with one clear diagnosis instead of 41
+  # misleading "got [allow] want [ask]" lines that look like a decision
+  # regression. It does NOT catch a $SELF that is executable but crashes or
+  # exits non-zero on a specific call (or always) - decide()/decide_exempt()/
+  # wrapper_check() below each capture $SELF's own exit status per call for
+  # that, which is a different failure mode (transient vs. structural).
+  if ! { [ -f "$SELF" ] && [ -x "$SELF" ] && [ ! -d "$SELF" ]; }; then
+    echo "SELFTEST FAIL [liveness]: \$SELF ($SELF) is not an executable regular file - every row below would read an empty/failed response as 'allow' and pass vacuously. Aborting before running the battery."
+    exit 1
+  fi
 
   # json_escape STR - escapes STR for embedding as a JSON string literal, so
   # decide()/decide_exempt() below can build a synthetic tool_input payload
@@ -611,17 +638,36 @@ if [ "${1:-}" = "--selftest" ]; then
     printf '%s' "$s"
   }
 
-  # hook_decision_from_output OUT - given the raw stdout OUT (or an empty
-  # string) the production script printed for one call, returns its decision
-  # as one of ask|deny|allow|other. ONE interpretation of that output,
-  # shared by every selftest helper that talks to the wrapper ($SELF) -
-  # #404 exists because two independently maintained copies of the
-  # allow/ask DECISION logic drifted; this function is what stops the same
-  # shape recurring one level down, in how the selftest reads the answer
-  # back.
-  hook_decision_from_output() {
+  # hook_decision OUT - given the raw stdout OUT (or an empty string) the
+  # production script printed for one call that ALREADY EXITED 0 (the
+  # caller checks that BEFORE reaching here - #421 review Major 2, see the
+  # per-call invocation check in decide()/decide_exempt()/wrapper_check()
+  # below), returns its decision as one of inert|ask|deny|allow|other. ONE
+  # interpretation of that output, shared by every selftest helper that
+  # talks to the wrapper ($SELF) - #404 exists because two independently
+  # maintained copies of the allow/ask DECISION logic drifted; this
+  # function is what stops the same shape recurring one level down, in how
+  # the selftest reads the answer back.
+  #
+  # `inert` is checked FIRST (#421 review, Minor 3): production answers a
+  # plain `"permissionDecision":"ask"` both for a genuine
+  # path-hit-plus-write-construct decision AND for its own six "could not
+  # parse tool input" / "could not extract a Bash command" / "could not
+  # extract a file path" / "received empty tool input" fallbacks (all
+  # sharing the substring "protection is inert") - two different REASONS
+  # folded into the same JSON shape a bare ask/deny grep cannot tell apart.
+  # A `decide ask` row whose synthetic command is not valid JSON (a raw
+  # control character json_escape() does not handle, say) could pass
+  # without the predicate under test ever being reached - the
+  # `xargs npm install < pkgs.txt` shape #216 recorded, one level up. No
+  # row in this suite may legitimately want `inert` (the one row that DOES
+  # reach this path - "Bash with no command field" - now asserts it
+  # explicitly), so separating it out turns a silent pass into a red row.
+  hook_decision() {
     local out="$1"
-    if [ -z "$out" ]; then
+    if printf '%s' "$out" | grep -q 'protection is inert'; then
+      printf 'inert'
+    elif [ -z "$out" ]; then
       printf 'allow'
     elif printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then
       printf 'deny'
@@ -659,11 +705,23 @@ if [ "${1:-}" = "--selftest" ]; then
   # logic that only the selftest ever exercised; see its removal note
   # above). Every row for the #309 follow-up exemption uses this.
   decide() {
-    local want="$1" desc="$2" cmd="$3" json out got
+    local want="$1" desc="$2" cmd="$3" json out rc got
     total=$((total + 1))
     json="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$(json_escape "$cmd")\"}}"
-    out=$(printf '%s' "$json" | "$SELF" 2>/dev/null)
-    got=$(hook_decision_from_output "$out")
+    # (#421 review, Major 2) rc is captured and checked BEFORE the output is
+    # read as a decision - a dead/crashing $SELF must not be conflated with
+    # an intentional empty-output "allow". stderr is folded into $out
+    # (2>&1, was 2>/dev/null) so a non-zero exit's diagnostic (e.g.
+    # "Permission denied") is visible in the failure line rather than
+    # thrown away; the production script never writes to stderr on a
+    # successful (rc=0) run, so this is a no-op for every passing row.
+    out=$(printf '%s' "$json" | "$SELF" 2>&1); rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "SELFTEST FAIL [invocation]: $desc -> \$SELF exited $rc, not 0 - this is NOT a decision, it is a dead or crashing invocation (out: $out)"
+      fail=1
+      return
+    fi
+    got=$(hook_decision "$out")
     if [ "$got" != "$want" ]; then
       echo "SELFTEST FAIL [decision]: $desc -> got [$got] want [$want] (cmd: $cmd)"
       fail=1
@@ -683,7 +741,7 @@ if [ "${1:-}" = "--selftest" ]; then
   # IS the single production function, not a twin of it); the decision half
   # goes through the production entry point exactly like decide() (#404).
   decide_exempt() {
-    local desc="$1" cmd="$2" json out got
+    local desc="$1" cmd="$2" json out rc got
     total=$((total + 1))
     if ! bash_hits_protected_path "$cmd" >/dev/null; then
       echo "SELFTEST FAIL [exempt row names no protected path]: $desc -> this row would pass with the exemption deleted (cmd: $cmd)"
@@ -691,8 +749,16 @@ if [ "${1:-}" = "--selftest" ]; then
       return
     fi
     json="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$(json_escape "$cmd")\"}}"
-    out=$(printf '%s' "$json" | "$SELF" 2>/dev/null)
-    got=$(hook_decision_from_output "$out")
+    # (#421 review, Major 2) - same rc-before-decision discipline as decide()
+    # above; these are exactly the 21 rows the review found passing
+    # vacuously against a dead $SELF.
+    out=$(printf '%s' "$json" | "$SELF" 2>&1); rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "SELFTEST FAIL [invocation]: $desc -> \$SELF exited $rc, not 0 - this is NOT a decision, it is a dead or crashing invocation (out: $out)"
+      fail=1
+      return
+    fi
+    got=$(hook_decision "$out")
     if [ "$got" != "allow" ]; then
       echo "SELFTEST FAIL [decision]: $desc -> got [$got] want [allow] (cmd: $cmd)"
       fail=1
@@ -971,11 +1037,18 @@ if [ "${1:-}" = "--selftest" ]; then
   # is required whenever WANT is ask/deny and must appear in the actual
   # permissionDecisionReason, not just match the decision keyword - pass ""
   # only for allow rows, which have no reason to check.
-  wrapper_check() { # WANT(ask|deny|allow) REASON_SUBSTR DESC JSON
-    local want="$1" reason_substr="$2" desc="$3" json="$4" out decision
+  wrapper_check() { # WANT(ask|deny|allow|inert) REASON_SUBSTR DESC JSON
+    local want="$1" reason_substr="$2" desc="$3" json="$4" out rc decision
     total=$((total + 1))
-    out=$(printf '%s' "$json" | "$SELF" 2>/dev/null)
-    decision=$(hook_decision_from_output "$out")
+    # (#421 review, Major 2) - same rc-before-decision discipline as
+    # decide()/decide_exempt() above.
+    out=$(printf '%s' "$json" | "$SELF" 2>&1); rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "SELFTEST FAIL [invocation]: $desc -> \$SELF exited $rc, not 0 - this is NOT a decision, it is a dead or crashing invocation (out: $out)"
+      fail=1
+      return
+    fi
+    decision=$(hook_decision "$out")
     if [ "$decision" != "$want" ]; then
       echo "SELFTEST FAIL [wrapper]: $desc -> got [$decision] want [$want] (out: $out)"
       fail=1
@@ -997,7 +1070,12 @@ if [ "${1:-}" = "--selftest" ]; then
   # "could not extract a Bash command" text, not the unrelated file_path
   # arm's "could not extract a file path" (which would indicate the Bash
   # dispatch never ran at all - the same M3 blind spot, checked here too).
-  wrapper_check ask   "could not extract a Bash command" "Bash with no command field" '{"tool_name":"Bash","tool_input":{}}'
+  # WANT is `inert`, not `ask` (#421 review, Minor 3): production answers a
+  # bare `permissionDecision:"ask"` for this parse-failure fallback too, and
+  # hook_decision() now separates that reason out - this row is the one
+  # place in the suite that SHOULD land there, so it is the more honest
+  # assertion.
+  wrapper_check inert "could not extract a Bash command" "Bash with no command field" '{"tool_name":"Bash","tool_input":{}}'
   # Regression guard: the ORIGINAL Edit|Write behavior must be byte-for-byte
   # unchanged now that this script serves a second matcher.
   wrapper_check deny  "Generated artifact"      "Edit deny arm unaffected"            '{"tool_name":"Edit","tool_input":{"file_path":"app/public/data/mask.bin"}}'
@@ -1006,6 +1084,13 @@ if [ "${1:-}" = "--selftest" ]; then
   # pattern) reds this row - drives the REAL production wrapper, not a bare
   # pattern match on the case statement in isolation.
   wrapper_check ask   "tracks implementation plans" "Edit plans arm (#405: was a silent allow)" '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/plans/foo.md"}}'
+  # (#421 review, Major 1) mutation-checkable: pins the catch-all arm, which
+  # is what actually matches the Bash arm's ANCESTOR coverage - a file under
+  # docs/superpowers/ that is in NEITHER named child (specs/, plans/) was
+  # still a silent allow before that arm existed. Deleting the catch-all
+  # arm (or narrowing its pattern back to only the two named children) must
+  # red this row.
+  wrapper_check ask   "guarded as a whole" "Edit docs/superpowers/ catch-all (#421: was a silent allow one path over)" '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/notes.md"}}'
   wrapper_check allow ""                        "Edit unrelated file unaffected"      '{"tool_name":"Write","tool_input":{"file_path":"app/src/App.tsx"}}'
   wrapper_check allow ""                        "Edit icon.svg exception unaffected"  '{"tool_name":"Edit","tool_input":{"file_path":"app/public/icons/icon.svg"}}'
   # Old-shaped payload with no tool_name at all (pre-#309 test shape) must
@@ -1157,8 +1242,35 @@ case "$f" in
     # under docs/superpowers/plans/ fell through to the unguarded default
     # (silent allow) even though the Bash arm's PROTECTED_PATHS ancestor
     # entry ("docs/superpowers") already covers a Bash-mediated write to the
-    # same file. WIDENS this arm to match, per #405's direction - the Bash
-    # arm and its docs/superpowers PROTECTED_PATHS entries are unchanged.
+    # same file. Adds a tailored ask arm, same decision as docs/superpowers/
+    # specs/ above - the Bash arm and its docs/superpowers PROTECTED_PATHS
+    # entries are unchanged. CORRECTED (#421 review, Major 1): an earlier
+    # revision of this comment said this arm "WIDENS this arm to match [the
+    # Bash arm]" - that overstated it. Two named children (specs/, plans/)
+    # still do not match an ANCESTOR entry's coverage of everything under
+    # it, present and future; the catch-all arm right below this one is what
+    # actually closes that gap, this arm alone does not.
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/plans/ tracks implementation plans and is guarded the same way as docs/superpowers/specs/ (#405). Confirm the user wants a plan doc changed before editing."}}'
+    ;;
+  *docs/superpowers/*)
+    # #421 review, Major 1: docs/superpowers/specs/ and .../plans/ above are
+    # named children with their own tailored reason text; this catch-all,
+    # mirroring the Bash arm's ANCESTOR PROTECTED_PATHS entry
+    # ("docs/superpowers"), is what actually matches that arm's coverage -
+    # the two named arms alone do not, since they only enumerate today's
+    # two subdirectories. `case` takes the first match, so specs/ and
+    # plans/ keep their own text and everything else under docs/superpowers/
+    # (a future third subdirectory, or a file directly in it) stops being a
+    # silent allow instead of moving the #405 gap one path over. Declining
+    # to replace all three of these arms with a data-driven loop over
+    # PROTECTED_PATHS was considered and explicitly rejected: this arm maps
+    # to `ask`, the app/public/{data,icons,brand}/THIRD-PARTY-NOTICES.txt
+    # arm above maps to `deny`, plus there is an exception (icon.svg) and
+    # two extension-only patterns (*.bin, *.pmtiles.png) with no
+    # PROTECTED_PATHS entry at all - a flat loop would need PROTECTED_PATHS
+    # restructured into (path, decision) pairs, which changes the Bash arm's
+    # own data and is squarely against #405's "the Bash arm is left
+    # UNCHANGED".
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/ is the user-approved spec/plan tree and is guarded as a whole (#405/#421) - CLAUDE.md forbids silently deviating from docs/superpowers/specs/, and the same caution applies to the rest of the tree. Confirm the user wants this file changed before editing."}}'
     ;;
 esac
