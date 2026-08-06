@@ -44,6 +44,8 @@
   // useBannerHeight.test.ts (#368, PR #382 review fix-wave) is the same
   // shape once more — reads app/src/app.css via `node:fs` to structurally
   // guard its CSS fallback stays in sync with the hook's own JS constant.
+  // legDistanceReconciliation.test.ts (#379) is the same shape again — reads
+  // the real shipped mask/polars via `node:fs`, same as realmask.repro.test.ts.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -52,6 +54,7 @@
     "src/**/changelogFragmentsFs.test.ts",
     "src/**/subPathMeta.test.ts",
     "src/**/glyphFallbackWarningGuard.test.ts",
-    "src/**/useBannerHeight.test.ts"
+    "src/**/useBannerHeight.test.ts",
+    "src/**/legDistanceReconciliation.test.ts"
   ]
 }

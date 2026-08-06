@@ -1,6 +1,6 @@
 import type { Ref } from 'react';
 import { useT, useLang } from '../i18n';
-import { formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
+import { formatHeading, formatKn, formatLegDuration, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
@@ -216,6 +216,15 @@ export default function RouteSummary({
               <thead>
                 <tr>
                   <th>{t('route.legs.time')}</th>
+                  {/* #379: leg-scale elapsed time (endTimeMs - startTimeMs).
+                      Placed next to Time (same dimension, read together) and
+                      away from Distance/Speed — those two plus this one are
+                      algebraically dependent (speedKn = distanceNm / hours
+                      by construction, see isochrone.ts/postprocess.ts), so
+                      showing all three is a deck-readability convenience —
+                      cross-reading without doing arithmetic — never
+                      independent confirmation of one another. */}
+                  <th>{t('route.legs.duration')}</th>
                   <th>{t('route.legs.kind')}</th>
                   {/* #379: this column shows headingDeg, which is course over
                       ground despite its field name — no leeway model exists
@@ -233,6 +242,11 @@ export default function RouteSummary({
                 {result.legs.map((leg, i) => (
                   <tr key={i}>
                     <td>{formatTime(leg.startTimeMs, lang)}</td>
+                    {/* endTimeMs/startTimeMs live on LegCommon, so both sail
+                        and motor legs render a real duration here — no
+                        `kind` narrowing needed or wanted (a defensive
+                        ternary would wrongly print '—' over real data). */}
+                    <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
                     <td>
                       <LegKindChip leg={leg} rig={rig} />
                     </td>
