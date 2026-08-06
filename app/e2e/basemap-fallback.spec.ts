@@ -27,7 +27,10 @@ const ARCHIVE_GLOB = '**/data/basemap.pmtiles.png';
 // Same settle idiom as datalayers.spec.ts: polls until the canvas stops
 // changing frame-to-frame (two consecutive byte-equal screenshots), then
 // returns that settled frame — adaptive, no fixed-sleep synchronization.
-// CI runners are 6-10x slower than dev machines, hence the generous cap.
+// CI is measurably slower than dev machines (CLAUDE.md: ~2.1x/~2.5x for the
+// vitest unit suite, no equivalent Playwright/e2e figure measured), hence
+// the generous cap — adaptive polling means it only costs real time when a
+// page is genuinely slow, never on a normal run.
 async function settledCanvas(page: Page, canvas: Locator): Promise<Buffer> {
   let prev = await canvas.screenshot();
   for (let i = 0; i < 60; i++) {

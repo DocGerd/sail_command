@@ -5,6 +5,7 @@ export const en = {
   'app.tagline': 'Time-optimal passage planning — offline, on board.',
   'app.disclaimer':
     'SailCommand is a passage-planning aid, not a navigation device. Chart data is simplified; official charts and your plotter remain authoritative.',
+  'panel.resizer.label': 'Resize panel',
   'plan.eta': 'Arrival {time}',
   'harborPicker.searchLabel': 'Search harbor',
   'harborPicker.searchPlaceholder': 'Search harbor…',
@@ -143,8 +144,9 @@ export const en = {
   'route.split.motor': 'Motor',
   'route.split.aria': 'Sail {sailPct}%, motor {motorPct}%',
   'route.legs.time': 'Time',
+  'route.legs.duration': 'Duration',
   'route.legs.kind': 'Type',
-  'route.legs.heading': 'Heading',
+  'route.legs.cog': 'COG',
   'route.legs.twa': 'TWA',
   'route.legs.tws': 'TWS',
   'route.legs.speed': 'Speed',

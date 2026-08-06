@@ -28,7 +28,10 @@ import { startPreview, mapReady } from './helpers';
 // before the frame finished), and fire mid-render → false pass (a still-
 // settling baseline differs from itself). Adaptive — returns as soon as stable,
 // so it's usually fast; the attempt cap only guards a genuinely stuck page.
-// CI runners are 6-10x slower than dev machines, hence the generous cap.
+// CI is measurably slower than dev machines (CLAUDE.md: ~2.1x/~2.5x for the
+// vitest unit suite, no equivalent Playwright/e2e figure measured), hence
+// the generous cap — adaptive polling means it only costs real time when a
+// page is genuinely slow, never on a normal run.
 async function settledCanvas(page: Page, canvas: Locator): Promise<Buffer> {
   let prev = await canvas.screenshot();
   for (let i = 0; i < 60; i++) {

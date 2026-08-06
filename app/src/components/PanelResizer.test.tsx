@@ -1,0 +1,185 @@
+import { createRef } from 'react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import PanelResizer from './PanelResizer';
+
+// #355 test plan (CLAUDE.md framing rule — state the blind spot explicitly):
+// this file covers the A11Y CONTRACT ONLY. jsdom has no `setPointerCapture`
+// and no real hit-testing/layout, so a synthesised `pointermove` here would
+// prove an event handler ran, not that a drag visually works — writing a
+// jsdom test that claims to cover DRAGGING would pass against a resizer
+// that moves nothing on screen. That path (and "the map renders correctly
+// during a drag") is out of reach for this suite entirely; see the PR
+// description for the source-level argument and the e2e spec for the
+// resize-and-persist behaviour Playwright CAN observe.
+//
+// A SECOND, sharper blind spot this file cannot see by construction: every
+// test below hands PanelResizer a `panelRef`/`targetRef` whose `.current` is
+// ALREADY populated before mount (`renderResizer` sets it directly). The
+// real bug this component actually shipped with — `panelRef.current` still
+// `null` inside a `useLayoutEffect` because that effect ran before a LATER
+// sibling's ref got attached, a real cross-fiber ordering issue — is
+// invisible to a harness that never lets the ref start `null` and get
+// attached through React's own commit. That bug was caught only by the e2e
+// spec, in a real browser, against the real App.tsx tree; see
+// PanelResizer.tsx's own comment on the `useEffect` fix. This file proves
+// the KEYBOARD/ARIA contract once `widthPx` is known-good; it was never able
+// to prove `widthPx` gets set correctly on a cold mount in the real app.
+//
+// Same fake as lib/useBannerHeight.test.ts (jsdom has no real
+// ResizeObserver) — deliberately minimal and never auto-fires. PanelResizer
+// seeds its width synchronously from `getBoundingClientRect()` inside its
+// own `useEffect` (see that file's comment for why `useEffect`, not
+// `useLayoutEffect`) — these tests only need a real `ResizeObserver`
+// constructor to exist so that code path runs; no test here exercises an
+// ONGOING resize, so the fake never needs to invoke its callback.
+class FakeResizeObserver {
+  observed: Element | null = null;
+  observe(el: Element) {
+    this.observed = el;
+  }
+  unobserve() {
+    this.observed = null;
+  }
+  disconnect() {
+    this.observed = null;
+  }
+}
+
+function stubMeasuredWidth(el: HTMLElement, width: number) {
+  el.getBoundingClientRect = () =>
+    ({
+      width,
+      height: 0,
+      top: 0,
+      left: 0,
+      right: width,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON() {
+        return {};
+      },
+    }) as DOMRect;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function renderResizer({
+  min = 320,
+  max = 700,
+  measuredWidth = 400,
+  onCommit = vi.fn(),
+}: {
+  min?: number;
+  max?: number;
+  measuredWidth?: number;
+  onCommit?: (next: number | null) => void;
+} = {}) {
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+  const panelRef = createRef<HTMLDivElement>();
+  const targetRef = createRef<HTMLDivElement>();
+  // The elements PanelResizer measures/writes must exist in the DOM before
+  // mount for the refs to be non-null when its measurement effect runs —
+  // see the file header comment above for why that is NOT how the real
+  // App.tsx tree behaves on a cold mount.
+  const panelEl = document.createElement('div');
+  const targetEl = document.createElement('div');
+  document.body.append(panelEl, targetEl);
+  (panelRef as { current: HTMLDivElement }).current = panelEl;
+  (targetRef as { current: HTMLDivElement }).current = targetEl;
+  stubMeasuredWidth(panelEl, measuredWidth);
+
+  render(
+    <PanelResizer
+      panelRef={panelRef}
+      targetRef={targetRef}
+      min={min}
+      max={max}
+      onCommit={onCommit}
+      aria-label="Resize panel"
+    />,
+  );
+  return { onCommit, targetEl };
+}
+
+describe('PanelResizer — a11y contract', () => {
+  it('exposes role=separator with the WAI-ARIA window-splitter value attributes', () => {
+    renderResizer({ min: 320, max: 700, measuredWidth: 400 });
+    const el = screen.getByRole('separator');
+    expect(el).toHaveAttribute('aria-orientation', 'vertical');
+    expect(el).toHaveAttribute('aria-valuemin', '320');
+    expect(el).toHaveAttribute('aria-valuemax', '700');
+    expect(el).toHaveAttribute('aria-valuenow', '400');
+    expect(el).toHaveAttribute('aria-label', 'Resize panel');
+  });
+
+  it('is keyboard-focusable (tabIndex 0)', () => {
+    renderResizer();
+    expect(screen.getByRole('separator')).toHaveAttribute('tabIndex', '0');
+  });
+
+  it('ArrowRight commits a step increase from the measured current width', () => {
+    const { onCommit } = renderResizer({ min: 320, max: 700, measuredWidth: 400 });
+    act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowRight' }));
+    expect(onCommit).toHaveBeenCalledWith(416); // 400 + STEP_PX(16)
+  });
+
+  it('ArrowLeft commits a step decrease', () => {
+    const { onCommit } = renderResizer({ min: 320, max: 700, measuredWidth: 400 });
+    act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowLeft' }));
+    expect(onCommit).toHaveBeenCalledWith(384); // 400 - 16
+  });
+
+  it('Shift+ArrowRight uses the coarse step', () => {
+    const { onCommit } = renderResizer({ min: 320, max: 700, measuredWidth: 400 });
+    act(() =>
+      fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowRight', shiftKey: true }),
+    );
+    expect(onCommit).toHaveBeenCalledWith(464); // 400 + STEP_PX_COARSE(64)
+  });
+
+  it('ArrowRight clamps at max rather than overshooting', () => {
+    const { onCommit } = renderResizer({ min: 320, max: 700, measuredWidth: 695 });
+    act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowRight' }));
+    expect(onCommit).toHaveBeenCalledWith(700);
+  });
+
+  it('ArrowLeft clamps at min rather than undershooting', () => {
+    const { onCommit } = renderResizer({ min: 320, max: 700, measuredWidth: 325 });
+    act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowLeft' }));
+    expect(onCommit).toHaveBeenCalledWith(320);
+  });
+
+  it('Home jumps straight to min', () => {
+    const { onCommit } = renderResizer({ min: 320, max: 700, measuredWidth: 500 });
+    act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'Home' }));
+    expect(onCommit).toHaveBeenCalledWith(320);
+  });
+
+  it('End jumps straight to max', () => {
+    const { onCommit } = renderResizer({ min: 320, max: 700, measuredWidth: 500 });
+    act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'End' }));
+    expect(onCommit).toHaveBeenCalledWith(700);
+  });
+
+  it('Enter resets (commits null)', () => {
+    const { onCommit } = renderResizer();
+    act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'Enter' }));
+    expect(onCommit).toHaveBeenCalledWith(null);
+  });
+
+  it('a double-click resets (commits null)', () => {
+    const { onCommit } = renderResizer();
+    act(() => fireEvent.doubleClick(screen.getByRole('separator')));
+    expect(onCommit).toHaveBeenCalledWith(null);
+  });
+
+  it('an unrelated key (e.g. Tab) neither commits nor throws', () => {
+    const { onCommit } = renderResizer();
+    act(() => fireEvent.keyDown(screen.getByRole('separator'), { key: 'Tab' }));
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+});

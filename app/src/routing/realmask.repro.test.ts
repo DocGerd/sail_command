@@ -157,8 +157,9 @@ describe('real mask routing (issue #20)', () => {
 
   // Direct-request case (Flensburg -> Marstal at an explicit 2.3 m),
   // runtime-heavy: ~45 s locally (~40 s before #21's clock-aware visited
-  // pruning deliberately widened the search; CI runners are 6-10x slower,
-  // hence the generous timeout).
+  // pruning deliberately widened the search; CI is measurably slower than
+  // dev machines, hence the generous timeout — the 600 s base budget below
+  // has ample headroom over 45 s regardless of the exact ratio).
   //
   // Runs at safetyDepthM 2.3: in the shipped mask Marstal's snap cell sits in
   // a 119-cell pocket that only 4-connects to open water at gate depths
