@@ -62,6 +62,30 @@ async function dragSeparatorBy(page: Page, separator: Locator, dx: number) {
   await page.mouse.up();
 }
 
+/** Drags the separator OUT to an intermediate position and back to its exact
+    starting x — a net-zero-movement drag. Real pointermoves are dispatched
+    along the way (unlike a plain click), so `writeLive` genuinely writes an
+    intermediate, never-committed `--sc-panel-w` before the release. */
+async function dragSeparatorOutAndBack(page: Page, separator: Locator, outDx: number) {
+  const b = await box(separator);
+  const startX = b.x + b.width / 2;
+  const y = b.y + b.height / 2;
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await page.mouse.move(startX + outDx / 2, y);
+  await page.mouse.move(startX + outDx, y);
+  await page.mouse.move(startX + outDx / 2, y);
+  await page.mouse.move(startX, y);
+  await page.mouse.up();
+}
+
+async function panelCssVar(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const shell = document.querySelector<HTMLElement>('.app-shell');
+    return shell ? shell.style.getPropertyValue('--sc-panel-w') : '(no shell)';
+  });
+}
+
 test.describe('#355 resizable panel', () => {
   test('drag resizes and persists across reload; keyboard steps too', async ({ page }) => {
     const server = await startPreview();
@@ -80,12 +104,26 @@ test.describe('#355 resizable panel', () => {
 
       // Drag right by 200px and commit (mouseup).
       await dragSeparatorBy(page, separator, 200);
+      // The panel's OWN width is safe to read immediately: it is driven by
+      // OUR `--sc-panel-w` write (App.tsx's useLayoutEffect, synchronous
+      // with the React commit that follows `onCommit`), not by any
+      // externally-throttled observer. The map CANVAS below is the one
+      // that genuinely lags (see its own comment).
       const draggedWidth = (await box(panel)).width;
       // Must have actually moved, and moved in the dragged direction — the
       // vacuity trap this design explicitly calls out: without a contrast
       // against the untouched default, a no-op drag would pass too.
       expect(draggedWidth).toBeGreaterThan(defaultWidth + 100);
-      expect(await separator.getAttribute('aria-valuenow')).toBe(String(Math.round(draggedWidth)));
+      // `aria-valuenow` is driven by PanelResizer's OWN `ResizeObserver` on
+      // the panel element — a REAL (unthrottled by us, but still async)
+      // browser ResizeObserver callback, which lags the DOM commit by at
+      // least one frame. Poll, don't read once (#412-shaped: a bare
+      // one-shot read right after the action samples pre-settle geometry).
+      // Playwright's own "Expected/Received" diagnostic already names the
+      // exact px string here, so no custom message is needed.
+      await expect
+        .poll(() => separator.getAttribute('aria-valuenow'))
+        .toBe(String(Math.round(draggedWidth)));
 
       // #355 acceptance: "the map renders correctly ... after a drag" — the
       // testable half (see this file's header comment for why "during" is
@@ -93,10 +131,39 @@ test.describe('#355 resizable panel', () => {
       // argument, PanelResizer.tsx's comment) must have shrunk the canvas
       // by roughly the same amount the panel grew — not just "some smaller
       // number", a real reflow proportional to the actual panel growth.
-      const draggedCanvasWidth = (await box(canvas)).width;
+      //
+      // #412-shaped defect, fixed here: MapLibre throttles its own
+      // resize+redraw to one call per 50ms (installed maplibre-gl@6.1.0,
+      // `ui/map.ts:3977-3994`, `_setupResizeObserver`'s `throttle(..., 50)`)
+      // — reading the canvas box in the SAME TICK as `mouse.up()` can
+      // sample PRE-resize geometry and pass or fail for reasons unrelated
+      // to the behaviour under test. Poll until settled instead.
       const panelGrowth = draggedWidth - defaultWidth;
-      const canvasShrink = defaultCanvasWidth - draggedCanvasWidth;
-      expect(Math.abs(canvasShrink - panelGrowth)).toBeLessThan(5);
+      let lastCanvasWidth = defaultCanvasWidth;
+      let lastDeltaAbs = Math.abs(defaultCanvasWidth - defaultCanvasWidth - panelGrowth);
+      try {
+        await expect
+          .poll(async () => {
+            lastCanvasWidth = (await box(canvas)).width;
+            const canvasShrink = defaultCanvasWidth - lastCanvasWidth;
+            lastDeltaAbs = Math.abs(canvasShrink - panelGrowth);
+            return lastDeltaAbs;
+          })
+          .toBeLessThan(5);
+      } catch (e) {
+        // `expect.poll`'s `message` option must be a static string
+        // (Playwright's own type: `string | {message?: string, ...}` — no
+        // function form), so the ACTUAL observed values (not just the last
+        // polled number) are attached here instead, on top of Playwright's
+        // own diagnostic, for a 3am CI failure to be diagnosable without a
+        // local re-run.
+        throw new Error(
+          `canvas did not reflow to match the panel drag: ` +
+            `defaultCanvasWidth=${defaultCanvasWidth}px, canvasWidth=${lastCanvasWidth}px, ` +
+            `panelWidth=${draggedWidth}px, panelGrowth=${panelGrowth}px, ` +
+            `|canvasShrink-panelGrowth|=${lastDeltaAbs}px (want <5px)\n${(e as Error).message}`,
+        );
+      }
 
       // Reload: the committed width, not the default, must come back.
       await page.reload();
@@ -122,14 +189,24 @@ test.describe('#355 resizable panel', () => {
       await expect
         .poll(() => separatorAfterReload.getAttribute('aria-valuenow'))
         .toBe(String(expectedAfterKeyboard));
-      const afterKeyboardWidth = (await box(page.locator('.app-bottom-sheet'))).width;
-      expect(Math.abs(afterKeyboardWidth - expectedAfterKeyboard)).toBeLessThan(3);
+      // Panel width itself is our own synchronous write (see the comment on
+      // `draggedWidth` above), but poll it too — uniform `expect.poll`
+      // throughout this file rather than mixing one-shot and polled reads
+      // of related state.
+      await expect
+        .poll(async () =>
+          Math.abs((await box(page.locator('.app-bottom-sheet'))).width - expectedAfterKeyboard),
+        )
+        .toBeLessThan(3);
 
       // Enter resets to the CSS default — back to (approximately) the
       // original unresized width, not merely "some smaller number".
       await page.keyboard.press('Enter');
-      const afterResetWidth = (await box(page.locator('.app-bottom-sheet'))).width;
-      expect(Math.abs(afterResetWidth - defaultWidth)).toBeLessThan(3);
+      await expect
+        .poll(async () =>
+          Math.abs((await box(page.locator('.app-bottom-sheet'))).width - defaultWidth),
+        )
+        .toBeLessThan(3);
     } finally {
       server.kill();
     }
@@ -147,24 +224,79 @@ test.describe('#355 resizable panel', () => {
       const panel = page.locator('.app-bottom-sheet');
       const separator = page.getByRole('separator', { name: 'Panelbreite anpassen' });
 
-      // Drag far left, past the floor.
+      // Drag far left, past the floor. Panel width is our own synchronous
+      // write (safe to read once, see the first test's comment on
+      // `draggedWidth`); `aria-valuenow` is PanelResizer's OWN
+      // `ResizeObserver` on the panel — a real async browser callback that
+      // lags the commit by at least a frame, so it needs `expect.poll`
+      // (#412-shaped, same fix as the first test).
       await dragSeparatorBy(page, separator, -5000);
       const minWidth = (await box(panel)).width;
       expect(Math.abs(minWidth - MIN_PANEL_PX)).toBeLessThan(3);
-      expect(await separator.getAttribute('aria-valuenow')).toBe(String(MIN_PANEL_PX));
+      await expect.poll(() => separator.getAttribute('aria-valuenow')).toBe(String(MIN_PANEL_PX));
 
       // Drag far right, past the ceiling.
       await dragSeparatorBy(page, separator, 8000);
       const maxWidth = (await box(panel)).width;
       const expectedMax = expectedMaxPanelPx(STANDARD_VIEWPORTS.desktopHd.width);
       expect(Math.abs(maxWidth - expectedMax)).toBeLessThan(5);
+      await expect
+        .poll(() => separator.getAttribute('aria-valuenow'))
+        .toBe(String(Math.round(expectedMax)));
 
-      // Home/End reach the same bounds via keyboard.
+      // Home/End reach the same bounds via keyboard. `aria-valuenow` polled
+      // for the same async-ResizeObserver reason as above; panel width read
+      // once since it is our own synchronous commit.
       await separator.focus();
       await page.keyboard.press('Home');
+      await expect.poll(() => separator.getAttribute('aria-valuenow')).toBe(String(MIN_PANEL_PX));
       expect(Math.abs((await box(panel)).width - MIN_PANEL_PX)).toBeLessThan(3);
       await page.keyboard.press('End');
+      await expect
+        .poll(() => separator.getAttribute('aria-valuenow'))
+        .toBe(String(Math.round(expectedMax)));
       expect(Math.abs((await box(panel)).width - expectedMax)).toBeLessThan(3);
+    } finally {
+      server.kill();
+    }
+  });
+
+  // PR #414 review, Minor 4 (MEASURED, user-facing): a drag that moves the
+  // pointer and returns to its exact starting x must NOT pin the panel to
+  // an explicit px width. `handlePointerMove` writes an INTERMEDIATE,
+  // never-committed `--sc-panel-w` via `writeLive` as the pointer moves;
+  // `endDrag`'s zero-net-movement guard used to `return` without cleaning
+  // that write up, leaving it on `.app-shell` even though nothing was ever
+  // persisted — silently converting the responsive `1fr` default into a
+  // fixed width that stops reflowing with the window.
+  test('a net-zero-movement drag does not pin the panel to a fixed width', async ({ page }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      const panel = page.locator('.app-bottom-sheet');
+      const separator = page.getByRole('separator', { name: 'Panelbreite anpassen' });
+      await expect(separator).toBeVisible();
+
+      expect(await panelCssVar(page)).toBe(''); // no override yet — CSS `1fr` governs
+      const defaultWidth = (await box(panel)).width;
+
+      await dragSeparatorOutAndBack(page, separator, 250);
+
+      // The property must be back to unset — not merely "close to the old
+      // width", which a leftover inline write would also satisfy.
+      await expect.poll(() => panelCssVar(page)).toBe('');
+      expect(await separator.getAttribute('aria-valuenow')).toBe(String(Math.round(defaultWidth)));
+
+      // The real behavioural check: the panel must still be RESPONSIVE
+      // (`1fr`-driven) after the no-op drag, not pinned at the old absolute
+      // px. Shrink the viewport and confirm the panel width tracks the new
+      // 1/3-ish share rather than staying frozen near `defaultWidth`.
+      const narrower = { width: 1400, height: 900 };
+      await page.setViewportSize(narrower);
+      await expect.poll(async () => (await box(panel)).width).toBeLessThan(defaultWidth - 50);
     } finally {
       server.kill();
     }

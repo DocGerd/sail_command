@@ -85,9 +85,15 @@ export default function PanelResizer({
   // Real rendered width of the panel, kept in sync with a ResizeObserver.
   // Feeds ONLY `aria-valuenow` and the drag-start reference below — never
   // used to POSITION the resizer itself (that's plain CSS Grid, `grid-area:
-  // resizer`, so there is no pre-paint layout-flash risk to guard against
-  // here, unlike lib/useBannerHeight.ts's CSS-var write, which this was
-  // originally modelled on with a `useLayoutEffect`).
+  // resizer`, so there is no pre-paint POSITIONING-flash risk to guard
+  // against here). That is narrower than "no flash at all": the PANEL'S
+  // WIDTH is still JS-driven (App.tsx writes `--sc-panel-w`), and that has
+  // its own pre-paint timing window — closed at THAT call site via
+  // `useLayoutEffect` (see App.tsx's comment), not by anything in this
+  // component. This effect's own value (`widthPx`) has no first-paint
+  // stakes of its own — a stale `aria-valuenow`/drag-start reference for one
+  // frame is not a visual defect — which is what makes `useEffect` (below)
+  // the right choice here specifically, unlike App.tsx's write.
   //
   // `useEffect`, NOT `useLayoutEffect` — measured, not a style preference:
   // `panelRef` targets a SIBLING (`.app-bottom-sheet`), not a descendant.
@@ -111,7 +117,13 @@ export default function PanelResizer({
   // primitive (its DOM target is a caller concern, not a class name it
   // should know about), and `useEffect` closes the actual bug without
   // giving that up.
-  const [widthPx, setWidthPx] = useState(0);
+  // Seeded from `min`, not `0` — `0` is out of range against
+  // `aria-valuemin={min}` (320 by default), so a screen reader that reads
+  // the separator's value before the first `ResizeObserver` callback fires
+  // (a real, if narrow, ~20ms window measured live) would see an invalid
+  // value. `min` is always a legal value for the eventual real width to
+  // clamp toward, so it is never itself misleading the way `0` was.
+  const [widthPx, setWidthPx] = useState(min);
 
   useEffect(() => {
     const el = panelRef.current;
@@ -130,7 +142,7 @@ export default function PanelResizer({
   }, [panelRef]);
 
   const rafRef = useRef(0);
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startWidth: number; startCssVar: string } | null>(null);
   // The keyboard-step base of record, separate from `widthPx` above. `null`
   // until the first commit; falls back to the RO-measured `widthPx` only
   // before that. `handleKeyDown` closes over `widthPx` (React STATE) to
@@ -176,7 +188,12 @@ export default function PanelResizer({
     // reason (a banner appearing, a viewport change) between the last
     // observer callback and this pointerdown.
     const startWidth = Math.round(panelRef.current?.getBoundingClientRect().width ?? widthPx);
-    dragRef.current = { startX: e.clientX, startWidth };
+    // The `--sc-panel-w` inline value as it stood BEFORE this drag touches
+    // it — captured so a zero-movement drag (see `endDrag`) can put it back
+    // exactly, rather than leaving behind whatever `writeLive` wrote for an
+    // intermediate (never-committed) pointer position.
+    const startCssVar = targetRef.current?.style.getPropertyValue('--sc-panel-w') ?? '';
+    dragRef.current = { startX: e.clientX, startWidth, startCssVar };
     e.preventDefault();
   };
 
@@ -208,7 +225,26 @@ export default function PanelResizer({
     // measure — silently converting the responsive `1fr` default into a
     // fixed width that stops reflowing with the window, with no drag having
     // actually happened.
-    if (dx === 0) return;
+    if (dx === 0) {
+      // MEASURED bug (not merely a theoretical one): `handlePointerMove`
+      // may already have called `writeLive` for an intermediate pointer
+      // position before the pointer returned to its start x — that write
+      // landed on `targetRef.current.style` directly, bypassing React
+      // state, and skipping `commit()` here left it there. Restore exactly
+      // what was on the property before this drag touched it (captured at
+      // pointerdown), not a value derived from `committedRef`/React state —
+      // this component doesn't know whether the TRUE current value is "no
+      // override" (a persisted width from a PREVIOUS session that this
+      // component instance never itself committed) or a real number, so
+      // "undo my own uncommitted write" is the only thing it can do
+      // correctly without that knowledge.
+      const target = targetRef.current;
+      if (target) {
+        if (drag.startCssVar === '') target.style.removeProperty('--sc-panel-w');
+        else target.style.setProperty('--sc-panel-w', drag.startCssVar);
+      }
+      return;
+    }
     commit(drag.startWidth + dx);
   };
 

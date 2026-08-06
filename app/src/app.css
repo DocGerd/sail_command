@@ -2284,17 +2284,27 @@ select {
    writes `--sc-panel-w` on THIS element (`.app-shell`) as a px length once a
    user drags or keys `.panel-resizer` (below); the `1fr` fallback is
    load-bearing — with no stored width, and before `.panel-resizer` ever
-   mounts, this rule is BYTE-IDENTICAL to the pre-#355 layout. Every bound
-   (the `320px` floor here, the max width, the default) lives as a single TS
-   source of truth in `lib/panelWidth.ts` per CLAUDE.md's cross-language-
-   invariant lesson — `panelWidth.test.ts` pins the `320px` literal below
-   against that file the same way `useBannerHeight.test.ts` pins its own
-   CSS/TS pair; the `1fr` fallback itself has no numeric TS counterpart to
-   compare against, so it stays a named, unenforced residual (see that
-   file's own header comment). A dedicated `resizer` column (rather than
-   absolutely positioning `.panel-resizer` over the seam) means the browser
-   computes its screen position for free via ordinary grid layout — no JS
-   measurement, and so no pre-paint positioning flash to guard against. */
+   mounts, the PANEL keeps its `1fr` share of the remaining space exactly as
+   before #355. NOT byte-identical to the pre-#355 layout overall, though:
+   the new `resizer` column below is an UNCONDITIONAL 10px, taken out of the
+   shared free space whether or not any width is ever stored or
+   `.panel-resizer` ever mounts — measured at a 1920px viewport, this rule
+   renders `636.656px 10px 1273.34px` where the pre-#355 two-column rule
+   rendered `640px 1280px`. Every bound (the `320px` floor here, the max
+   width, the default) lives as a single TS source of truth in
+   `lib/panelWidth.ts` per CLAUDE.md's cross-language-invariant lesson —
+   `panelWidth.test.ts` pins the `320px` literal below against that file the
+   same way `useBannerHeight.test.ts` pins its own CSS/TS pair; the `1fr`
+   fallback itself has no numeric TS counterpart to compare against, so it
+   stays a named, unenforced residual (see that file's own header comment).
+   A dedicated `resizer` column (rather than absolutely positioning
+   `.panel-resizer` over the seam) means the browser computes its screen
+   POSITION for free via ordinary grid layout — no JS measurement, and so no
+   pre-paint POSITIONING flash to guard against. That is a narrower claim
+   than "no flash at all": the panel's WIDTH is still JS-driven (the
+   `--sc-panel-w` write in App.tsx), and that write's own pre-paint timing
+   is a separate concern, closed by `useLayoutEffect` at that call site (see
+   its own comment) rather than by anything in this rule. */
 @media (min-width: 1024px) {
   .app-shell {
     display: grid;

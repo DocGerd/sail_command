@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLang, useT } from './i18n';
 import {
   AppStateProvider,
@@ -177,6 +177,25 @@ function AppShell() {
   useEffect(() => {
     // Coalesced to one state update per animation frame — a window resize
     // (e.g. dragging the OS window edge) can fire far more often than that.
+    //
+    // Accepted cost, not fixed (PR #414 review, Minor 7): this re-renders
+    // the WHOLE `AppShell` subtree (including `MapView`, not itself
+    // `memo()`-wrapped) on every frame of a window drag-resize, even in the
+    // common case where `panelWidthPx === null` (no stored override) and
+    // the recomputed `panelMaxPx` therefore has no effect on anything
+    // rendered. Bailing on `panelWidthPx === null` was considered and
+    // rejected: `panelMaxPx` is also the `max` PROP `PanelResizer` clamps a
+    // live drag/keyboard step against, so pausing the update while null
+    // would leave that prop stale the moment a user's FIRST interaction
+    // arrives after a resize — a real (if narrow) correctness regression
+    // traded for an unmeasured perf win. The actual cost here is a React
+    // reconciliation pass over a subtree whose OWN effects (MapLibre init,
+    // GPS subscriptions, etc.) are keyed on stable deps and so do not re-run
+    // on this — not a MapLibre re-init or a network refetch — so this is a
+    // CPU cost during an already-CPU-bound user gesture (dragging an OS
+    // window edge triggers layout on every browser frame regardless), not
+    // demonstrated to be visible. Revisit with a measurement (a profiler
+    // trace during a real window drag) before "fixing" this preemptively.
     let raf = 0;
     const onResize = () => {
       cancelAnimationFrame(raf);
@@ -194,7 +213,22 @@ function AppShell() {
     PANEL_MIN_WIDTH_PX,
     panelMaxPx,
   );
-  useEffect(() => {
+  // `useLayoutEffect`, NOT `useEffect` — measured, per the same guard-
+  // asymmetry class as `lib/useBannerHeight.ts`'s FIRST-PAINT window (#368):
+  // a plain `useEffect` here left a real cold-load frame where a user with a
+  // STORED width (e.g. 900px) painted at the `1fr` DEFAULT (636.656px)
+  // first, then snapped — measured via a rAF sampler + CPU throttle, FCP
+  // landing strictly between an UNSET sample and the 900px one. This is
+  // `shellRef`'s OWN root element (`AppShell` returns `.app-shell`
+  // directly), not a sibling — unlike `PanelResizer.tsx`'s measurement
+  // effect (deliberately `useEffect` there: `panelRef` targets a SIBLING
+  // declared earlier in this same JSX, and React attaches a fiber's ref /
+  // runs its layout effects as it walks the committed tree in fiber order,
+  // so a `useLayoutEffect` there could run before that sibling's ref
+  // attaches). `commitAttachRef` for a component's OWN returned host fiber
+  // runs before that component's OWN layout effects, so `shellRef.current`
+  // is always attached here — no such ordering hazard at THIS call site.
+  useLayoutEffect(() => {
     const shell = shellRef.current;
     if (!shell) return;
     // `null` (no stored override yet, or just reset) removes the property
