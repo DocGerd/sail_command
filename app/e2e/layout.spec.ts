@@ -66,15 +66,24 @@ function elementDescriptionAt(page: Page, x: number, y: number): Promise<string>
 // throttle re-running the SAME query and producing a STALE match after a
 // real change — a value that can regress AFTER first agreeing. The banner
 // geometry these tests depend on has no equivalent regress-after-match path
-// within a single test's poll window: every banner-area size change in this
-// file only GROWS it (a banner mounting, a second banner stacking, a wrap to
-// a second line) and nothing here dismisses a banner mid-poll, so once
-// `--sc-banner-height` reflects a push large enough to clear the checkbox,
-// there is no live producer left that could shrink it back over the target a
-// tick later. Reachability of a stale-LARGE-then-settles-lower transient
-// (e.g. a future test that dismisses a banner INSIDE one of these polls'
-// 10s budget) is assessed LOW here, not proven impossible — revisit this
-// comment if such a test is ever added.
+// WITHIN A SINGLE TEST'S POLL WINDOW (#412 fix-wave, PR #419 review, Minor 7
+// — CORRECTED scope: this file DOES dismiss a banner in two tests, via the
+// `.reload-prompt .banner-dismiss` click below and its sibling in the
+// wrap-forcing test — "every banner-area size change in this file only
+// grows it" was FALSE as a whole-file claim). The scoping that actually
+// holds: within any ONE test's poll window, the push only grows — every
+// dismiss click here runs as SETUP, before `setOffline(true)` and before the
+// relevant poll ever starts, never while a poll (`settledHitDescription` or
+// the sibling `overlapArea` polls) is actively running. So once
+// `--sc-banner-height` reflects a push large enough to clear the checkbox
+// within one of those poll windows, there is no live producer left that
+// could shrink it back over the target a tick later — matching
+// `compass.spec.ts`'s twin comment, which was correctly scoped this way
+// from the start. Reachability of a stale-LARGE-then-settles-lower
+// transient (e.g. a future test that dismisses a banner INSIDE one of these
+// polls' 10s budget, rather than before it starts) is assessed LOW here,
+// not proven impossible — revisit this comment if such a test is ever
+// added.
 async function settledHitDescription(page: Page, locator: Locator): Promise<string> {
   const b = await locator.boundingBox();
   if (!b) return '(no box)';
