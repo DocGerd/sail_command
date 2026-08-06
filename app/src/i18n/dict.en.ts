@@ -144,7 +144,7 @@ export const en = {
   'route.split.aria': 'Sail {sailPct}%, motor {motorPct}%',
   'route.legs.time': 'Time',
   'route.legs.kind': 'Type',
-  'route.legs.heading': 'Heading',
+  'route.legs.cog': 'COG',
   'route.legs.twa': 'TWA',
   'route.legs.tws': 'TWS',
   'route.legs.speed': 'Speed',

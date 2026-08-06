@@ -110,7 +110,8 @@ export interface LegCommon {
   end: LatLon;
   startTimeMs: number;
   endTimeMs: number;
-  headingDeg: number; // course over ground, degrees true
+  headingDeg: number; // course over ground, degrees true — no leeway model
+  // exists, so never render this as "heading" (#379); UI shows it as COG.
   twsKn: number; // TWS at leg start
   speedKn: number;
   distanceNm: number;
