@@ -81,14 +81,43 @@ describe('#282: retry gates read an internal cause, never the user-facing reason
 const SOLVER_LABELS = ['unreachable', 'beyond-horizon', 'calm-motor-off'] as const;
 
 /**
+ * A label written as a TypeScript string literal, in ANY of the three quote
+ * forms the language accepts. Matching only `'…'` failed OPEN (PR #411
+ * review, MEASURED): a recoupling written with backticks —
+ * ``NO_ROUTE_LABEL_OF_CAUSE[cause] === `unreachable` `` — left this guard
+ * 10/10 green while passing both `lint` and `typecheck`, because prettier
+ * normalises `"…"` to `'…'` but leaves a template literal alone. Quotes are
+ * REQUIRED (no bare-identifier form): `cause === unreachable` is not valid
+ * TypeScript, so the compiler already closes that shape.
+ */
+function labelLiteral(label: string): RegExp {
+  return new RegExp(`['"\`]${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`);
+}
+
+/**
  * Strip line and block comments. Load-bearing, per #388: `planRoute.ts`'s own
  * prose legitimately names all three labels while explaining the gates, and a
  * guard that matched PROSE rather than code would fire on documentation and
- * never on a real recoupling. The vacuity direction is checked explicitly in
- * the mutation notes on this file's PR.
+ * never on a real recoupling. The vacuity direction is pinned by its own row
+ * below, not only by a manual mutation.
+ *
+ * ONE pass with alternation, deliberately — not two sequential `replace`
+ * calls. Running the block-comment regex FIRST (the shape this started as,
+ * PR #411 review) lets a `//` line comment containing `/*` open a spurious
+ * block match that swallows everything up to the next block terminator,
+ * silently deleting
+ * real code from the scanned text: a fail-OPEN in the guard whose entire value
+ * is that it fails closed. A single alternation is scanned left-to-right, so
+ * whichever comment opener appears EARLIER in the source always wins, in both
+ * directions. The `(^|[^:])` prefix keeps a `://` inside a real string literal
+ * from being read as a line comment.
  */
 function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  return src.replace(/\/\*[\s\S]*?\*\/|(^|[^:])\/\/[^\n]*/g, (_match, before?: string) =>
+    // Unmatched groups arrive as `undefined`, which is what discriminates the
+    // block-comment alternative (no group) from the line-comment one.
+    before === undefined ? ' ' : before,
+  );
 }
 
 /** Slice out `const <name> = { ... } as const satisfies ...;` including braces. */
@@ -126,6 +155,50 @@ describe('#282 structural guard: no gate may branch on a solver-derived label', 
 
   const stripped = stripComments(planRouteSource);
 
+  // The guard's own two primitives, pinned directly. Without these rows the
+  // only evidence that the detector and the comment stripper work is a manual
+  // mutation nobody re-runs — and both of these shapes were LIVE fail-open
+  // holes found in review, not hypotheticals.
+  it("the label detector recognises all three of TypeScript's quote forms", () => {
+    for (const label of SOLVER_LABELS) {
+      for (const q of ["'", '"', '`']) {
+        expect(
+          labelLiteral(label).test(`if (NO_ROUTE_LABEL_OF_CAUSE[cause] === ${q}${label}${q}) {`),
+          `#282 guard: a ${q}-quoted '${label}' recoupling would not be detected`,
+        ).toBe(true);
+      }
+    }
+    // ...and does not fire on an unquoted mention: prose is stripped before
+    // this ever runs, and `cause === unreachable` is not valid TypeScript.
+    expect(labelLiteral('unreachable').test('the destination is unreachable')).toBe(false);
+  });
+
+  it('stripComments handles a nested opener in EITHER order without eating code', () => {
+    // (i) A `//` line comment containing a block OPENER, followed later by a
+    // real block TERMINATOR — the fail-open the block-first two-pass form had.
+    // The trailing `/** doc */` is load-bearing: without a later `*/` the lazy
+    // block regex never matches at all and the row passes under BOTH orderings,
+    // i.e. it would be vacuous (measured — this row did exactly that at first).
+    expect(
+      stripComments(
+        "// prose with a /* opener in it\nconst b = 'beyond-horizon';\n/** doc */\nconst z = 1;",
+      ),
+      'block-comment-first stripping swallowed real code',
+    ).toContain("const b = 'beyond-horizon';");
+
+    // (ii) The mirror: a block comment containing a line OPENER, with code on
+    // the SAME line after the block closes. Line-comment-first stripping would
+    // eat `// */ const c = …` through end-of-line. Same vacuity trap: the code
+    // must share the line, or the row passes under both orderings.
+    expect(
+      stripComments("/* prose with a // opener */ const c = 'unreachable';"),
+      'line-comment-first stripping swallowed real code',
+    ).toContain("const c = 'unreachable';");
+
+    // (iii) A `://` inside a real string literal is not a line comment.
+    expect(stripComments("const u = 'https://example.com/x';")).toContain('example.com');
+  });
+
   it('the two translation tables are the ONLY code mentioning a solver-derived label', () => {
     const a = sliceTable(stripped, 'CAUSE_OF_SOLVE_REASON');
     const b = sliceTable(a.rest, 'NO_ROUTE_LABEL_OF_CAUSE');
@@ -148,12 +221,13 @@ describe('#282 structural guard: no gate may branch on a solver-derived label', 
 
     // Non-vacuity in the other direction: each label must really live in a table.
     for (const label of SOLVER_LABELS) {
-      expect(tables, `#282 guard: '${label}' is not in either translation table`).toContain(
-        `'${label}'`,
-      );
+      expect(
+        labelLiteral(label).test(tables),
+        `#282 guard: '${label}' is not in either translation table`,
+      ).toBe(true);
     }
 
-    const leaked = SOLVER_LABELS.filter((label) => rest.includes(`'${label}'`));
+    const leaked = SOLVER_LABELS.filter((label) => labelLiteral(label).test(rest));
     expect(
       leaked,
       `#282: planRoute.ts names the solver-derived no-route label(s) ${leaked
