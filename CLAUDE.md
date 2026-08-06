@@ -1156,8 +1156,14 @@ deviate from it.
   `Open Sans Regular,Arial Unicode MS Regular` — a fontstack this app does
   not ship — and silently renders via TinySDF. Pre-existing (dates to the
   original route-layers commit, well before #378/#324), audited against all
-  nine runtime symbol layers, tracked as #395. `labels.spec.ts` cannot see
-  it because that spec never plans a route.
+  nine runtime symbol layers, tracked as #288. `labels.spec.ts` cannot see
+  it because that spec never plans a route. The missing-fontstack request
+  itself is real in both environments, but its symptom differs: local `vite
+  preview` returns the SPA fallback (HTTP 200, body starting `<!do`) for
+  that path, so MapLibre's decode fails with `Unimplemented type: 4` — an
+  artifact of the preview server, not of production, which returns an
+  honest 404 for the same request. That distinction is what made the
+  symptom look environmental for two sessions.
 - Never source an integer-exact claim (line number, byte count, version
   string) from a summarizing fetch — `WebFetch`/`WebSearch` paraphrase, and
   a paraphrased integer is silently wrong rather than obviously wrong. Read
