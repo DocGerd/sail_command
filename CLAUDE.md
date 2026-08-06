@@ -303,6 +303,28 @@ deviate from it.
   independently justified regardless — app.css's own updated comment: a
   Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
   on its own" — not merely a residual of the now-gone `:has()` pairing.
+- **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
+  `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
+  primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
+  the affordance even in the accessibility tree). `app.css`'s `.app-shell`
+  grid track is `grid-template-columns: minmax(320px, var(--sc-panel-w, 1fr))
+  10px 2fr;` — `--sc-panel-w` is written by `App.tsx` as a px length once a
+  user drags/keys the resizer, and the bare `1fr` fallback is load-bearing:
+  with no stored override the pre-#355 layout is reachable byte-for-byte, not
+  merely approximated. `panelWidth.ts`'s `panelMaxWidthPx()` computes
+  `max(320, min(0.7·viewportWidth, viewportWidth − 480))` — the `480px` map
+  reserve (`PANEL_MAP_RESERVE_PX`) is a maintainer JUDGEMENT call, not a
+  measured layout constant, and its own comment says so explicitly so a future
+  reader doesn't mistake it for one. Persistence is `usePersistedNumber` —
+  localStorage via `lib/storage.ts`'s safe wrappers, NOT IndexedDB (mirrors
+  `usePersistedToggle`'s contract); `null` means no override; the returned
+  value clamps to the CALLER's current `min`/`max` on every read, but the raw
+  stored number is left untouched by a bounds change ALONE — only an explicit
+  drag/keyboard-step/reset commit persists a new value, so one narrow-viewport
+  visit cannot silently erase a wide-screen preference. `panelWidth.test.ts` is
+  the CSS/JS drift guard (this repo's `useBannerHeight.test.ts` pattern): it
+  `readFileSync`s `app.css`, regexes out the `320px` literal, and asserts it
+  equals `PANEL_MIN_WIDTH_PX`.
 - `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx` — not via a later
   `setMaxPitch`/`setPitch`, which a style reload could undo — and pinned by
   `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
@@ -715,6 +737,22 @@ deviate from it.
   measured twice at the v0.9.0 cut) but "proceed to the back-merge" (step
   6), whose push carries a DIFFERENT SHA and rebuilds the site root from
   `main` with the tag now visible.
+- **Deploy — `deploy` job timeout, a DIFFERENT failure mode from #398**
+  (#415, open): the Pages `deploy` job (the `actions/deploy-pages` step) can
+  time out while polling deployment status (`Current status:
+  deployment_queued` or `deployment_in_progress`, both observed) rather than
+  ever reaching `success` — `build` still succeeds, `deploy` fails, and
+  `prod-environment`/`uat-environment`/`smoke-probe` all SKIP (`needs:
+  deploy`). Failures began at `042c5d2` and had not recovered as of
+  `e303e49`, with at least one interleaved success in between — intermittent,
+  not a permanent break. Production is unaffected as long as `main` hasn't
+  moved past its last successful deploy; `/uat/` goes stale. GitHub's own
+  status page reported all-operational throughout — not an externally
+  visible incident. **`smoke-probe` structurally cannot catch this**: #398
+  is a deploy that reports success but silently doesn't take; this deploy
+  reports FAILURE outright and its downstream jobs never run — the probe
+  that closed #398 has nothing to probe here. Root cause not yet identified;
+  do not assume it shares #398's mechanism.
 - **Deploy — concurrency and environments**: `concurrency: { group: pages,
   cancel-in-progress: true }` admits only one deploy run at a time, but it
   CANCEL-SUPERSEDES rather than queues — a newer run cancels the in-flight one
@@ -1247,6 +1285,15 @@ deviate from it.
   produced four cascading z-index regressions, each caused by the previous
   fix. Re-run the ORIGINAL defect class against the new code, and treat a
   passing selftest table as proof only of the shapes it lists.
+- Documenting a rule fixes nothing already in flight. #412 (the #368-guard
+  stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
+  being written in parallel under a brief that predated the finding — the
+  new spec acquired the identical single-`boundingBox()`-then-assert defect
+  the just-filed issue was about, because a CLAUDE.md/issue update doesn't
+  reach code a parallel agent already has open. Caught only because a
+  reviewer was told to check for that specific shape (PR #414 review, fixed
+  in `3bba82f`). A rule landing mid-session needs an explicit re-check
+  against work started before it existed, not an assumption of propagation.
 - `Object.is(-0, 0)` is `false`, and Playwright's `toBe` uses `Object.is`. A
   counter-rotating needle rounds a −0.11° residual to `-0` and fails
   `toBe(0)` intermittently — MapLibre's camera lands 0.04–0.18° short after a
@@ -1860,6 +1907,23 @@ deviate from it.
   expensive-but-safe direction" call as the `String.replace` CSP bullet
   above, one layer lower (a CSS custom-property default instead of a
   build-time string transform).
+- **Sharper case of the guard-asymmetry bullet above, same component tree,
+  opposite answer** (#355, PR #414 review): `App.tsx`'s `--sc-panel-w` writer
+  MUST be `useLayoutEffect` — measured with a rAF sampler under CPU throttle:
+  as a plain `useEffect`, first contentful paint on a cold load with a STORED
+  900px width rendered the DEFAULT `1fr` width (636.656px) first, then
+  snapped. Safe here specifically because `shellRef` is `AppShell`'s OWN ROOT
+  element — React's `commitAttachRef` for a component's own returned host
+  fiber runs before that component's OWN layout effects, so `shellRef.current`
+  is always attached in time. `PanelResizer.tsx`'s sibling `aria-valuenow`
+  measurement effect, by contrast, MUST stay `useEffect`: `panelRef` targets a
+  SIBLING declared later in the same JSX, and a `useLayoutEffect` version
+  there measured `panelRef.current === null` live in Chromium (React attaches
+  refs and runs layout effects in fiber/JSX declaration order, so the
+  sibling's ref had not yet attached). Rule: "useLayoutEffect for first-paint
+  values" is necessary but NOT sufficient — whether the effect's OWN component
+  owns the ref (safe) or reads a sibling's (unsafe, ordering-dependent)
+  decides which hook is correct.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
@@ -2033,6 +2097,15 @@ deviate from it.
   retrying — never blind-retry (you double-merge or get a confusing `behind`);
   reconcile a stuck-but-merged PR by closing the PR + deleting the branch +
   closing the issue manually (#94).
+- `gh run rerun <id> --failed` gives a MISLEADING error when the target run
+  hasn't finished: `run <id> cannot be rerun; its workflow file may be
+  broken` — the workflow file is fine; the run is simply not `completed`
+  yet. Check `gh run view <id> --json status` before trusting the message.
+  This command is MUTATING (re-queues a real run) — never issue it during
+  read-only diagnostic work; a `completed` run reruns silently with no
+  confirmation prompt (measured 2026-08-06: a read-only probe of the message
+  above accidentally re-queued a live deploy because the run had completed
+  in the interim).
 - Before ANY merge: verify the PR's `head.sha` equals the SHA you pushed AND
   that check-runs exist for that exact SHA — PR #119's head stuck on a stale
   SHA after a push (dropped `synchronize` webhook), so all-green checks +
