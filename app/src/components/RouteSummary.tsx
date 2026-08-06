@@ -217,7 +217,11 @@ export default function RouteSummary({
                 <tr>
                   <th>{t('route.legs.time')}</th>
                   <th>{t('route.legs.kind')}</th>
-                  <th>{t('route.legs.heading')}</th>
+                  {/* #379: this column shows headingDeg, which is course over
+                      ground despite its field name — no leeway model exists
+                      in this app, so a true heading value would be
+                      fabricated. Label as COG, not "Heading". */}
+                  <th>{t('route.legs.cog')}</th>
                   <th>{t('route.legs.twa')}</th>
                   <th>{t('route.legs.tws')}</th>
                   <th>{t('route.legs.speed')}</th>
