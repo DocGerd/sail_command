@@ -22,14 +22,14 @@ import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 // The genuinely independent check compares the reported total against
 // `Σ haversineNm(leg.start, leg.end)` -- the great-circle CHORD of each
 // FINAL leg, recomputed straight from stored endpoint geometry rather than
-// read from `leg.distanceNm`. This has teeth because the two merge passes
-// that can produce a final leg use OPPOSITE conventions for `distanceNm`:
+// read from `leg.distanceNm`. This is independent because the two merge
+// passes that can produce a final leg use OPPOSITE conventions for
+// `distanceNm`:
 //
 //   - isochrone.ts's OWN collinear-hop bookkeeping inside `backtrack`
 //     (gated `< 0.5°` between consecutive sub-hop headings, isochrone.ts's
 //     `collinear` check) sets `prev.distanceNm += distanceNm` while only
-//     `prev.end` moves -- the POLYLINE length of the merged sub-hops. A
-//     polyline is never shorter than the chord between its own endpoints.
+//     `prev.end` moves -- the POLYLINE length of the merged sub-hops.
 //   - postprocess.ts's collinear-LEG merge (`tryMerge`, gated
 //     `MAX_MERGE_DEG = 10`, the CLAUDE.md-governed RE-VALIDATING pass, not
 //     the same pass as above) sets `distanceNm = haversineNm(a.start,
@@ -40,22 +40,42 @@ import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 //     `backtrack` computed it in the first place (`distanceNm =
 //     haversineNm(start, end)`, immediately above the collinear check).
 //
-// So the only legs where `leg.distanceNm > haversineNm(leg.start, leg.end)`
-// are ones that survived an isochrone-internal collinear merge, and the
-// SIGN of the residual needs no tolerance and no epsilon at all: the
-// reported total (== Σ leg.distanceNm, by planRoute.ts:216) can never be
-// LESS than Σ haversineNm(leg.start, leg.end) recomputed independently from
-// those same legs' own stored endpoints. That inequality is what this file
-// pins as the load-bearing assertion. A secondary magnitude bound is pinned
-// too, from a MEASURED residual on this fixture (see the comment at that
-// assertion) -- never from a closed-form formula: an earlier draft tried
-// `legCount * maxLegNm * (1 - cos(0.25°))` and it is wrong on two counts --
-// the 0.5° gate in isochrone.ts's `collinear` check applies PAIRWISE between
-// consecutive sub-hops, not as a single half-angle bound on the whole merged
-// leg, and the polyline-vs-chord deficit can accumulate across a long
-// merged chain (hop k can be up to (k-1) x 0.5 degrees off hop 1), so a
-// per-leg small-angle substitution under-bounds a long chain. The honest
-// bound is measured, with a stated margin.
+// TWO SEPARATE ASSERTIONS below, and they catch TWO DIFFERENT bug classes
+// -- read what each one actually proves before trusting either alone
+// (corrected after review, PR #410 review #1, which measured both flips
+// below in an isolated worktree; the original comment here overclaimed):
+//
+// 1. THE SIGN ASSERTION (`distanceNm >= chordSum`) IS A NEAR-TAUTOLOGY
+//    UNDER THE CURRENT ARCHITECTURE, not a strong regression catcher. Every
+//    leg's `distanceNm` is either exactly its own chord, or a SUM of
+//    sub-chords (isochrone's internal merge) -- and a sum of sub-chords is
+//    >= the chord between the sum's own endpoints by the triangle
+//    inequality, for ANY merge convention. So the sign holds whether
+//    isochrone.ts:558 accumulates (today) or is flipped to chord semantics,
+//    and whether postprocess.ts:46 uses the chord (today) or is flipped to
+//    accumulate the sub-legs' distances instead -- MEASURED: both flips,
+//    run and reverted in this worktree, left the sign assertion PASSING.
+//    What it DOES catch: a leg reporting LESS distance than the straight
+//    line between its own stored endpoints, which is not possible under
+//    either legitimate convention (verified: halving isochrone.ts:545's
+//    per-hop `distanceNm` reds this assertion hard, e.g.
+//    `14.657655903577167 to be greater than or equal to 19.37747007095334`
+//    on the genoa fixture below). Kept as a cheap, epsilon-free invariant
+//    guard -- not the check that actually discriminates the two merge
+//    conventions from each other.
+// 2. THE MAGNITUDE BOUND is the one that DOES discriminate them on this
+//    fixture. Flipping postprocess.ts:46 to accumulate
+//    (`a.distanceNm + b.distanceNm`, polyline semantics) instead of taking
+//    the chord reds the bound at 27.5x over for genoa (measured residual
+//    0.027475406327489793 nm) and 10.5x over for fock (0.010527711806410878
+//    nm) -- while the sign assertion stays green throughout. Flipping
+//    isochrone.ts:558 to chord semantics instead of accumulating reds the
+//    separate `mergedCount > 0` / F4b assertions (residual collapses to
+//    exactly 0, so no leg is detected as isochrone-merged) -- again with the
+//    sign assertion still green. See the per-test comments for the exact
+//    measured numbers and the bound's own honesty caveat (it is not a
+//    universal safe ceiling -- a longer, legitimately-merged chain can
+//    exceed it with no bug at all; derivation at that assertion).
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
 
 const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/data');
@@ -114,33 +134,50 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
     const chordSum = chordSumNm(genoa.legs);
     const mergedCount = isochroneMergedLegCount(genoa.legs);
 
-    // The load-bearing assertion: no epsilon, because it is a triangle-
-    // inequality guarantee (a polyline is never shorter than its own
-    // chord), not a numeric approximation. Reds if isochrone.ts:558 is ever
-    // flipped to chord semantics (the residual would vanish or invert) or
-    // if postprocess.ts:46 is flipped to polyline semantics.
+    // ASSERTION 1 -- the sign, near-tautological given the current code
+    // (see the file header): every leg's distanceNm is its own chord or a
+    // sum of sub-chords, which by the triangle inequality is always >= the
+    // chord between that sum's own endpoints. MEASURED to hold under BOTH
+    // convention flips (postprocess.ts:46 -> polyline, isochrone.ts:558 ->
+    // chord) -- it does NOT discriminate them. What it DOES catch: a leg
+    // under-reporting its own chord (verified: halving isochrone.ts:545's
+    // per-hop distanceNm reds this with
+    // `expected 14.657655903577167 to be greater than or equal to
+    // 19.37747007095334`). Kept as a cheap, epsilon-free invariant guard.
     expect(genoa.distanceNm).toBeGreaterThanOrEqual(chordSum);
 
-    // The magnitude bound: MEASURED on this exact fixture (real mask +
-    // real polar + uniformWindGrid(12, 270), Flensburg -> Soenderborg,
-    // DEFAULT_SETTINGS, T0 = 2026-07-15T06:00Z) at
+    // ASSERTION 2 -- the magnitude bound, the one that actually catches a
+    // postprocess-convention regression. MEASURED on this exact fixture
+    // (real mask + real polar + uniformWindGrid(12, 270),
+    // Flensburg -> Soenderborg, DEFAULT_SETTINGS, T0 = 2026-07-15T06:00Z):
     // genoa.distanceNm = 19.377470074773907, chordSum = 19.37747007095334,
     // legCount = 19, mergedCount = 1, residual = 3.820566973899986e-9 nm
     // (~7 um -- one isochrone-internal merge over very short sub-hops on
-    // this route). That is far smaller than the design record's "small but
-    // nonzero" expectation, and it is genuine, not float noise: double-
-    // precision haversine error on a ~19 nm distance is on the order of
-    // 1e-14 nm, roughly six orders of magnitude below this residual.
-    // Bound set to 1e-3 nm (~1.85 m) -- about 260,000x the measured
-    // residual, deliberately loose so this assertion is not a source of
-    // flakiness from JS engine/platform floating-point reordering, while
-    // still failing hard against any regression on the scale of even a
-    // fraction of a real leg length (every leg on this route is >= ~0.1 nm
-    // by the solver's own position quantum, isochrone.ts's PRUNE_LAT/LON).
-    // If a future change pushes the measured residual past this bound,
-    // that is a ROUTING finding per #379's own escalation clause, not a
-    // display one -- investigate isochrone.ts's collinear accumulation
-    // rather than widening the margin to make this pass.
+    // this route). Confirmed as the DISCRIMINATING assertion: flipping
+    // postprocess.ts:46 to `a.distanceNm + b.distanceNm` (polyline
+    // semantics) reds THIS bound at 0.027475406327489793 nm -- 27.5x over
+    // -- while assertion 1 above stays green throughout (residual > 0).
+    //
+    // The bound (1e-3 nm, ~1.85 m) is NOT a universal safe ceiling and a
+    // future red here does not automatically mean a bug -- quote the
+    // method, not just the number: for a chain of k sub-hops of length d
+    // (nm) each turning by the isochrone.ts:554 gate's permitted maximum
+    // (just under 0.5 deg from the previous sub-hop), the worst-case
+    // polyline-vs-chord residual is `k*d - |sum_{i=0}^{k-1} d * unit(i*phi)|`
+    // (a discretised circular arc; phi ~ 0.5deg). At d = 1 nm this is
+    // ~1.9e-5 nm for a single pair (k=2, matching the "small but nonzero"
+    // design-record expectation) but ~3.14e-3 nm for a k=10 chain --
+    // already ABOVE this bound, with no bug involved, because
+    // isochrone.ts's OWN internal merge (unlike postprocess.ts's
+    // MAX_MERGE_DEG=10 cap) has no overall degree ceiling: it chains for as
+    // long as each CONSECUTIVE pair of sub-hops satisfies the <0.5deg gate.
+    // On this fixture mergedCount stayed at 1-3, keeping the observed
+    // residual in the micrometre range, far under 1e-3 -- but a longer,
+    // gently-curving passage could legitimately push a future measurement
+    // past this bound. Before treating a red here as a ROUTING finding,
+    // check mergedCount and each leg's own (distanceNm - its chord) to see
+    // whether a long benign merge chain explains it; only investigate
+    // isochrone.ts's collinear accumulation as a bug if it doesn't.
     const residual = genoa.distanceNm - chordSum;
     expect(residual).toBeGreaterThanOrEqual(0);
     expect(residual).toBeLessThan(1e-3);
@@ -168,12 +205,22 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
     if (!fock) return;
 
     const chordSum = chordSumNm(fock.legs);
+    const mergedCount = isochroneMergedLegCount(fock.legs);
     // Same fixture, fock rig: distanceNm = 19.571885101792418,
     // chordSum = 19.571884766730506, legCount = 20, mergedCount = 3,
-    // residual = 3.350619124375953e-7 nm (~0.62 mm). Same bound reasoning
-    // as the genoa case above (~3,000,000x the measured residual here).
+    // residual = 3.350619124375953e-7 nm (~0.62 mm). Same two-assertion
+    // reasoning as the genoa case above: MEASURED, flipping
+    // postprocess.ts:46 to polyline semantics reds the magnitude bound at
+    // 0.010527711806410878 nm (10.5x over) while the sign stays green;
+    // `mergedCount > 0` is what catches isochrone.ts:558 flipped to chord
+    // semantics instead (both assertions below were MISSING here in the
+    // first version of this file, which is why that second flip left this
+    // test fully green -- fixed in review).
+    const residual = fock.distanceNm - chordSum;
     expect(fock.distanceNm).toBeGreaterThanOrEqual(chordSum);
-    expect(fock.distanceNm - chordSum).toBeLessThan(1e-3);
+    expect(residual).toBeGreaterThanOrEqual(0);
+    expect(residual).toBeLessThan(1e-3);
+    expect(mergedCount).toBeGreaterThan(0);
   });
 
   // F4b (design record): the drawn route on the map is a two-point
