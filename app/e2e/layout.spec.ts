@@ -67,29 +67,32 @@ function elementDescriptionAt(page: Page, x: number, y: number): Promise<string>
 // real change — a value that can regress AFTER first agreeing. The banner
 // geometry these tests depend on has no equivalent regress-after-match path
 // WITHIN A SINGLE TEST'S POLL WINDOW (#412 fix-wave, PR #419 review, Minor 7
-// — INCOMPLETE, not false, in review round 3: the load-bearing claim below
-// holds at every site; the wording just undercounted where dismissals live.
-// This file dismisses a banner at THREE source sites, not two: the
-// `Abbrechen` tap-pick-cancel in the file's first test (line ~164), the
-// `.reload-prompt .banner-dismiss` click below (inside the
-// `SINGLE_BANNER_VIEWPORTS` loop, which expands to 8 separate tests — one
-// dismissal per viewport, not one), and its sibling in the wrap-forcing test
-// (1 test). Ten of this file's thirteen tests dismiss a banner, not "two
-// tests" — "every banner-area size change in this file only grows it" was
-// FALSE as a whole-file claim). The scoping that actually
-// holds: within any ONE test's poll window, the push only grows — every
-// dismiss click here runs as SETUP, before `setOffline(true)` and before the
-// relevant poll ever starts, never while a poll (`settledHitDescription` or
-// the sibling `overlapArea` polls) is actively running. So once
-// `--sc-banner-height` reflects a push large enough to clear the checkbox
-// within one of those poll windows, there is no live producer left that
-// could shrink it back over the target a tick later — matching
-// `compass.spec.ts`'s twin comment, which was correctly scoped this way
-// from the start. Reachability of a stale-LARGE-then-settles-lower
-// transient (e.g. a future test that dismisses a banner INSIDE one of these
-// polls' 10s budget, rather than before it starts) is assessed LOW here,
-// not proven impossible — revisit this comment if such a test is ever
-// added.
+// — INCOMPLETE, not false, in review round 3, Minor 9: the load-bearing
+// claim below holds at every site checked; the wording just undercounted
+// where dismissals live and over-generalised how they relate to a poll).
+// This file dismisses a `.banner-area` banner at THREE source sites, not
+// two: `Abbrechen` (tap-pick-cancel) in the file's first test at line ~173
+// — a test with NO `settledHitDescription`/`overlapArea` poll at all, so
+// this dismissal is simply outside any poll's existence, not merely before
+// one starts — and the two `.reload-prompt .banner-dismiss` clicks below
+// (line ~323, inside the `SINGLE_BANNER_VIEWPORTS` loop, which expands to 8
+// separate tests — one dismissal per viewport, not one) and in the
+// wrap-forcing test (line ~517). Ten of this file's thirteen tests dismiss
+// a banner, not "two tests" — "every banner-area size change in this file
+// only grows it" was FALSE as a whole-file claim. The scoping that actually
+// holds: within any ONE test's poll window, the push only grows — the two
+// `.reload-prompt` dismissals run as SETUP, before their own test's
+// `setOffline(true)` and before the relevant poll ever starts, and the
+// `Abbrechen` dismissal has no poll in its test to race at all. None of the
+// three can ever shrink a push mid-poll. So once `--sc-banner-height`
+// reflects a push large enough to clear the checkbox within one of those
+// poll windows, there is no live producer left that could shrink it back
+// over the target a tick later — matching `compass.spec.ts`'s twin comment,
+// which was correctly scoped this way from the start. Reachability of a
+// stale-LARGE-then-settles-lower transient (e.g. a future test that
+// dismisses a banner INSIDE one of these polls' 10s budget, rather than
+// before/outside it) is assessed LOW here, not proven impossible — revisit
+// this comment if such a test is ever added.
 async function settledHitDescription(page: Page, locator: Locator): Promise<string> {
   const b = await locator.boundingBox();
   if (!b) return '(no box)';
