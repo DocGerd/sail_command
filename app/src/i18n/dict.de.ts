@@ -3,6 +3,7 @@ export const de = {
   'app.tagline': 'Zeitoptimale Törnplanung — offline an Bord.',
   'app.disclaimer':
     'SailCommand ist eine Törnplanungshilfe, kein Navigationsgerät. Kartendaten sind vereinfacht; maßgeblich bleiben amtliche Seekarten und der Plotter.',
+  'panel.resizer.label': 'Panelbreite anpassen',
   'plan.eta': 'Ankunft {time}',
   'harborPicker.searchLabel': 'Hafen suchen',
   'harborPicker.searchPlaceholder': 'Hafen suchen…',

@@ -46,6 +46,10 @@
   // guard its CSS fallback stays in sync with the hook's own JS constant.
   // legDistanceReconciliation.test.ts (#379) is the same shape again — reads
   // the real shipped mask/polars via `node:fs`, same as realmask.repro.test.ts.
+  // panelWidth.test.ts (#355) is the same shape once more — reads
+  // app/src/app.css via `node:fs` to structurally guard the `320px` grid
+  // literal stays in sync with PANEL_MIN_WIDTH_PX, same pattern as
+  // useBannerHeight.test.ts above.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -55,6 +59,7 @@
     "src/**/subPathMeta.test.ts",
     "src/**/glyphFallbackWarningGuard.test.ts",
     "src/**/useBannerHeight.test.ts",
-    "src/**/legDistanceReconciliation.test.ts"
+    "src/**/legDistanceReconciliation.test.ts",
+    "src/**/panelWidth.test.ts"
   ]
 }
