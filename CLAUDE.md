@@ -1310,6 +1310,18 @@ deviate from it.
   a third with the identical shape, at ~43 min per round to learn it (#342).
   `git grep` the pattern first, then centralize it behind one constant plus a
   structural guard — a per-file patch converges one CI run at a time.
+  **Corollary for DELEGATION: enumerate FIRST, then scope the agent's file
+  allowlist from the enumeration — never the other way round.** Measured
+  2026-08-06 (PR #402): a brief scoped its allowlist from the ISSUE's claim
+  about where the stale text lived, but #341's issue text named the wrong
+  file entirely (`CONTRIBUTING.md`, not `CLAUDE.md`) and the fact lived in
+  four places, two outside the allowlist. The implementer correctly fixed
+  what it could and reported the rest as "live stale, NOT fixed — outside
+  file allowlist", costing a round; a less disciplined agent would have
+  silently widened scope or silently skipped them. An allowlist derived from
+  an unverified claim about the code is the enumerate-don't-patch failure
+  relocated one level up, into the brief. Same reason issue texts are not
+  ground truth for states they do not describe.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -1373,6 +1385,17 @@ deviate from it.
   `age: 392`, `cache-control: max-age=600`) on a URL never requested before.
   Sibling of the existing "what class of failure can this method not
   detect?" rule — here the answer was "any change at all".
+  **The 404 half of that argument is now MEASURED, not assumed** (PR #403
+  review, 2026-08-06): a never-deployed `assets/*.js` HEADs a genuine 404 on
+  the real production CDN, not an SPA-fallback 200. That was worth checking
+  rather than reasoning about, because local `vite preview` returns the SPA
+  fallback (HTTP 200) for exactly this shape of request — see the glyph
+  bullet above, where that same preview-vs-prod difference made a symptom
+  look environmental for two sessions. Had production behaved like preview,
+  the whole version-aware probe would have passed forever while proving
+  nothing. The shipped probe was then confirmed to actually EXECUTE on a
+  real deploy (run `31092871174`, step "Assert this run's own build is
+  actually live (#398)") — a green run is not evidence the new step ran.
 
 ## Domain rules that are easy to get wrong
 
@@ -1683,11 +1706,37 @@ deviate from it.
   no allowlisted verb may be a shell FUNCTION or ALIAS in the guarded
   shell** — `grep` is excluded precisely because in Claude Code's Bash it is
   a function shimming to ugrep, so "the executable is its first word" is
-  false for it; `find` is excluded for `-delete`/`-exec`, and `file` because
-  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only).
+  false for it; `find` is excluded for `-delete`/`-exec`, `file` because
+  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only), and
+  `sed` because sed's `w` command writes with NO flag at all
+  (`sed -n '1,5w /tmp/out' file`), so excluding only `-i` would not be
+  enough — and a `sed -n` range read is exactly the innocent-looking shape
+  that motivates asking for it.
   Before adding a verb, run `type <verb>` **in the real Bash tool**:
   measuring inside `bash script.sh` does not inherit non-exported functions,
   so the shim vanishes and every verb reports a reassuring `file`.
+- **Four loosenings of that guard were MEASURED and REJECTED — do not
+  re-propose them** (2026-08-06, three-lens audit; full record in #404/#405).
+  Narrowing the Bash-arm path `docs/superpowers/` → `docs/superpowers/specs/`
+  is the seductive one and the worst: it makes `mv docs/superpowers
+  /tmp/stash` a SILENT ALLOW (it moves `specs/` too), reds 11 of the guard's
+  own selftest rows, and is SUBSUMPTION-INVERTED — `docs/superpowers/specs`
+  is a strict superstring of `docs/superpowers`, so the parent subsumes the
+  child and removing the parent deletes the entry doing all the work. Adding
+  `cd` to `READONLY_VERBS` and segmenting the command on `;`/`&&`/newline
+  each removed EXACTLY ZERO prompts from a 165-command corpus of real
+  observed commands, and `cd` is actively harmful: the `ask` on `cd
+  app/public/data` is the ONLY visible moment of the two-call bypass the
+  hook's own design names as its one LIVE hole (Bash cwd persists across
+  calls). The general trap, worth more than the specific verdicts: **a
+  control that looks broader than its stated justification usually has a
+  SECOND justification you have not found** — here the parent-path entry is
+  not justified by the spec-edit rule at all, but by containment against
+  commands that destroy `specs/` WITHOUT NAMING IT (#309's M4 fix). Look for
+  the second reason before narrowing anything. The real remaining gap runs
+  the other way: the Edit/Write arm hardcodes `*docs/superpowers/specs/*`,
+  so `plans/` has no ask-gate at all (#405) — WIDEN that arm, never narrow
+  the Bash one.
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
