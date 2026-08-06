@@ -87,26 +87,53 @@ function changelogFragmentsPlugin(): Plugin {
 // staging deploy is never confused with (or indexed as) production. Regex
 // on the exact production strings rather than templating index.html, so a
 // production build's html output is byte-for-byte identical to before #96.
-function subPathMeta(base: string, uat: boolean): Plugin {
+// Exported (only public function in this file, #318) so
+// src/test/subPathMeta.test.ts can pin the fail-closed guard directly rather
+// than only empirically, the way #223's sibling cspMeta() guard was verified.
+export function subPathMeta(base: string, uat: boolean): Plugin {
   const origin = 'https://docgerd.github.io';
+  const OG_URL_MARKER =
+    '<meta property="og:url" content="https://docgerd.github.io/sail_command/" />';
+  const OG_IMAGE_MARKER =
+    '<meta property="og:image" content="https://docgerd.github.io/sail_command/brand/social-card.png" />';
+  const TITLE_MARKER = '<title>SailCommand</title>';
+  const THEME_COLOR_MARKER = '<meta name="theme-color" content="#10243D" />';
+  // #318: mirrors cspMeta()'s fail-closed guard (#223 review m4) — String.replace
+  // with a STRING pattern silently returns the input UNCHANGED when the
+  // pattern is absent, no throw, no warning. Measured on this exact plugin
+  // shape (PR #316 review): reformatting a meta tag made `vite build` exit 0
+  // with the injection silently skipped. The `robots` noindex meta is what
+  // makes this a BLOCKING guard rather than a nudge — a silent no-op here
+  // would let the unreleased UAT deploy become indexable (guard-asymmetry
+  // rule in CLAUDE.md: an absent security/indexing control is the expensive
+  // failure direction, so it must fail closed).
+  const requireMarker = (html: string, marker: string, label: string): void => {
+    if (!html.includes(marker)) {
+      throw new Error(
+        `sailcommand:sub-path-meta — ${label} marker not found in index.html; ` +
+          'its replacement would be silently omitted from the build',
+      );
+    }
+  };
   return {
     name: 'sailcommand:sub-path-meta',
     transformIndexHtml(html) {
+      requireMarker(html, OG_URL_MARKER, 'og:url');
+      requireMarker(html, OG_IMAGE_MARKER, 'og:image');
       let out = html
+        .replace(OG_URL_MARKER, `<meta property="og:url" content="${origin}${base}" />`)
         .replace(
-          '<meta property="og:url" content="https://docgerd.github.io/sail_command/" />',
-          `<meta property="og:url" content="${origin}${base}" />`,
-        )
-        .replace(
-          '<meta property="og:image" content="https://docgerd.github.io/sail_command/brand/social-card.png" />',
+          OG_IMAGE_MARKER,
           `<meta property="og:image" content="${origin}${base}brand/social-card.png" />`,
         );
       if (uat) {
+        requireMarker(html, TITLE_MARKER, 'title');
+        requireMarker(html, THEME_COLOR_MARKER, 'theme-color (robots noindex insertion point)');
         out = out
-          .replace('<title>SailCommand</title>', '<title>SailCommand UAT</title>')
+          .replace(TITLE_MARKER, '<title>SailCommand UAT</title>')
           .replace(
-            '<meta name="theme-color" content="#10243D" />',
-            '<meta name="theme-color" content="#10243D" />\n    <meta name="robots" content="noindex, nofollow" />',
+            THEME_COLOR_MARKER,
+            `${THEME_COLOR_MARKER}\n    <meta name="robots" content="noindex, nofollow" />`,
           );
       }
       return out;
@@ -173,10 +200,27 @@ function cspMeta(): Plugin {
            wss://stream.aisstream.io — the two outbound third-party feeds
            (Open-Meteo forecasts over HTTPS, optional BYOK AIS over WSS) plus
            same-origin XHR/fetch (PMTiles range reads, SW, IndexedDB-adjacent
-           fetches). Restricts background requests only (fetch/XHR/WebSocket/
-           beacon) — top-level navigation, \`window.open\`, DNS-prefetch/
-           preconnect, and WebRTC are a separate, accepted residual (see
+           fetches, AND the basemap's glyph .pbf ranges — MapLibre loads glyph
+           ranges via \`getArrayBuffer\`/\`fetch\`,
+           node_modules/maplibre-gl/src/style/load_glyph_range.ts:21, which
+           connect-src gates like any other fetch; #320). Restricts
+           background requests only (fetch/XHR/WebSocket/beacon) —
+           top-level navigation, \`window.open\`, DNS-prefetch/preconnect,
+           and WebRTC are a separate, accepted residual (see
            docs/security-assurance-case.md's known-gaps table).
+         - font-src 'self' — NOT the glyph control (#320): this app has no
+           \`@font-face\` anywhere, so today this directive gates nothing
+           reachable. It stays as defence-in-depth against a future
+           \`@font-face\` addition and costs nothing; connect-src above is
+           what actually gates the basemap's glyph .pbf fetches — confirmed
+           by source (load_glyph_range.ts's getArrayBuffer -> ajax.ts's
+           fetch()) and by e2e (labels.spec.ts's real-glyph-pipeline
+           assertion, which measurably fails when the glyphs template is
+           starved), not just this comment. csp.spec.ts's glyph-shaped
+           disallowed-origin probe does NOT support this claim — CSP
+           dispatch for fetch() is destination-based, not URL-shape-based,
+           so that probe is mechanically identical to a bare-origin probe;
+           see its own comment for the correction.
          - script-src 'self', style-src 'self' — no inline script or injected
            \`<style>\` anywhere in the app or its maplibre-gl/pmtiles
            dependencies (grepped); React's \`style\` prop sets CSSOM properties

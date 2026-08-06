@@ -37,11 +37,26 @@
   // entirely in favor of a declared TypeScript constant (see that file's own
   // header comment), so it no longer needs node builtins and lives back
   // under the ordinary browser-safe tsconfig.app.json program.
+  // subPathMeta.test.ts (#318 fix-wave) imports vite.config.ts, which is only
+  // typed cleanly with node globals available — same reason as
+  // changelogFragmentsFs.test.ts above; see tsconfig.app.json's exclude
+  // comment for the TS2578 mechanism this avoids.
+  // glyphFallbackWarningGuard.test.ts (#320, PR #375 fix wave): reads the
+  // installed maplibre-gl source via `node:fs` to structurally guard the
+  // exact warning string app/e2e/labels.spec.ts's Signal (B) depends on.
+  // useBannerHeight.test.ts (#368, PR #382 review fix-wave): reads
+  // app/src/app.css via `node:fs` to structurally guard that its
+  // `var(--sc-banner-height, <N>px)` fallback stays in sync with
+  // BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX — the two can't share a single
+  // source of truth (a CSS `var()` fallback can't import a JS constant).
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
     "src/**/seamarkPopover.coverage.test.ts",
     "src/**/changelogFragmentsFs.ts",
-    "src/**/changelogFragmentsFs.test.ts"
+    "src/**/changelogFragmentsFs.test.ts",
+    "src/**/subPathMeta.test.ts",
+    "src/**/glyphFallbackWarningGuard.test.ts",
+    "src/**/useBannerHeight.test.ts"
   ]
 }

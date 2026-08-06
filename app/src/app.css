@@ -130,6 +130,24 @@ select {
    with NO favourable DOM order behind it: fixed by moving the chip's row
    (below), not by inventing a fourth tier — the same fix any REAL same-tier
    collision needs, since this system has no mechanism to arbitrate one.
+   #368 is the CROSS-tier variant of the same problem: `.banner-area`
+   (Tier 3) and `.map-stack-tl`/`.route-layer-controls` (Tier 2) occupy the
+   same narrow-layout screen region, and the tier order correctly resolves
+   who WINS the collision (Tier 3, both paint and hit test — that part was
+   never broken) without resolving that a collision exists at all. Fixed the
+   same way: moving the LOWER tier's cluster clear of the banner's footprint
+   when one is actually rendered, never by touching either element's
+   z-index — see the dedicated rule above `.compass-control`'s section
+   below. NOT a repo-wide policy, and NOT the only Tier-2/Tier-3 pair in this
+   band: `.ais-status` sits in the SAME `top: 3.5rem` row and is ALSO
+   buried by any rendered banner — a pre-existing, already-documented
+   residual (see that rule's own "#208 review R3-2" comment) deliberately
+   left unfixed because it is `pointer-events: none` (a legibility loss, not
+   a hit-test one — nothing becomes unclickable) and because chasing it
+   there was explicitly deferred rather than rushed. #368 fixes the
+   HIT-TEST pair (`.map-stack-tl`/`.route-layer-controls`, both real click
+   targets) and deliberately does not extend to `.ais-status` for the same
+   deferred reason.
 
    Tier 3 — SHELL CHROME (z-index: 3). The user must always be able to read
    or reach these; nothing on the map ever outranks them:
@@ -497,16 +515,38 @@ select {
 /* #208 round-2 "R2-1" follow-through: `.data-layer-controls` is the ONE flex
    ITEM of `.map-stack-tl` (below) that is allowed to shrink and scroll when
    the column is height-bounded — `.compass-control`, the other item, is
-   `flex-shrink: 0` specifically so it never does. `min-height: 0` overrides
-   flexbox's default `min-height: auto`, which would otherwise refuse to
-   shrink this below its own content size and defeat the bound entirely.
-   `flex: 1 1 auto` (grow, shrink, basis auto) plus `overflow-y: auto` is
-   inert on `.route-layer-controls` above (not a flex item of anything —
-   it's independently `position: absolute`), so sharing the base rule stays
-   safe; this second rule only ever applies where it's a flex item. */
+   `flex-shrink: 0` specifically so it never does. `flex: 1 1 auto` (grow,
+   shrink, basis auto) plus `overflow-y: auto` is inert on
+   `.route-layer-controls` above (not a flex item of anything — it's
+   independently `position: absolute`), so sharing the base rule stays safe;
+   this second rule only ever applies where it's a flex item.
+
+   `min-height: 2.75rem` (#368 fix-wave, NOT the original `0`): flexbox's
+   default `min-height: auto` refuses to shrink an item below its own
+   content size, which would defeat this whole bound, so overriding it to
+   SOME explicit value is required regardless — `0` was the original choice,
+   which lets this shrink all the way to fully hidden under a tight enough
+   budget. Measured live (844x390, one 32px banner — the REAL single-line
+   height of the offline banner at this WIDE-landscape width; narrower
+   widths wrap it taller): a `0` floor left only ~27.5px of `.map-stack-tl`'s
+   budget for the toggles after the compass claimed its own 44px+gap, which
+   clips the FIRST checkbox's clickable centre out of the visible scroll
+   window by ~3.5px — `elementFromPoint` over "Wassertiefen" resolved to
+   `CANVAS.maplibregl-canvas`, not the checkbox: reachable in the DOM and by
+   Playwright's own visibility check, but NOT by a real tap. `2.75rem` reuses
+   the SAME cockpit-touch-target constant `.compass-control .compass-btn`
+   already uses (rather than inventing a new figure): enough for one full
+   checkbox row to stay inside the visible window regardless of how tight
+   the computed budget gets. This CAN push `.map-stack-tl`'s rendered bottom
+   edge past the `max-height` formula's own (deliberately worst-case, `100dvh
+   - 55vh` sheet-at-its-cap) boundary in the tightest cases — the SAME trade
+   the base rule's own comment already accepts for the compass (no `overflow`
+   on `.map-stack-tl` itself, so nothing here was ever hard-clipped at that
+   boundary in the first place; see that rule's comment). Compacting this
+   whole column for real is #231's tracked follow-up, not attempted here. */
 .data-layer-controls {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 2.75rem;
   overflow-y: auto;
 }
 
@@ -625,7 +665,9 @@ select {
    NAMED COUPLING: `top` mirrors .route-layer-controls above (3.5rem to clear
    the narrow-layout .app-header, 0.75rem on wide) and `left: 0.5rem` mirrors
    its `right: 0.5rem`. The 1024px breakpoint that switches them is the SAME
-   value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY — change both together.
+   value as lib/useWideLayout.ts's WIDE_LAYOUT_QUERY AND the #368
+   `@media (max-width: 1023.98px)` banner-clearance rule below (its own
+   comment) — change all three together.
    The column itself is pointer-events:none so the inter-control gap never
    swallows a map tap; each child re-enables them.
    `z-index: 2` is Tier 2 ("map chrome" — see the tier-order comment above
@@ -666,6 +708,129 @@ select {
 
 .map-stack-tl > * {
   pointer-events: auto;
+}
+
+/* #368: on narrow layouts `.banner-area` is a full-width Tier-3 overlay
+   sitting directly above these Tier-2 clusters' shared `top: 3.5rem` — with
+   any banner shown, it overlaps that 56px top edge. The tier order does NOT
+   fix this: Tier 3 correctly wins BOTH the paint and the hit test there, so
+   the banner intercepts taps meant for the toggles underneath it (measured:
+   `elementFromPoint` over the depth checkbox resolved to
+   `SPAN.banner-message`) — a same-tier-style z-index bump would only change
+   which element loses, leaving the hit test wrong either way. The real fix
+   is moving the lower-priority cluster clear of the banner's footprint.
+
+   MEASURED, not estimated — `--sc-banner-height` is `.banner-area`'s REAL
+   rendered height in px, kept live by a `ResizeObserver`
+   (`lib/useBannerHeight.ts`, written onto `:root` by App.tsx, via a
+   `useLayoutEffect` so the write lands BEFORE first paint — see that file's
+   own comment for the PR #382 review finding this closes: a plain
+   `useEffect` left a real first-paint window on a cold load with a banner
+   already visible where this property had not been written yet). Read here
+   via `var(..., 176px)` — the SAME generous, guard-asymmetry fallback
+   `lib/useBannerHeight.ts` uses for its own unmeasurable-environment case
+   (`BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX`), kept in sync BY HAND (a CSS
+   `var()` fallback can't import a JS constant): belt-and-braces with the
+   `useLayoutEffect` timing fix, not a duplicate of it — this default is
+   what still protects the layout if the custom property is never written at
+   all for some OTHER reason (the hook not mounted, an error thrown before
+   the write, a future refactor), a failure mode `useLayoutEffect` timing
+   does nothing for. This REPLACES an earlier viewport-height CLAMP
+   HEURISTIC (`clamp(3.5rem, calc(100dvh - 55vh - 0.5rem - 140px), 9.75rem)`,
+   see git history if the derivation is ever needed again) that was blind to
+   the actual banner count/height on screen and, being a function of `100dvh`
+   alone, had a FLOOR branch that applied ZERO push at short viewport heights
+   regardless of whether a banner was covering the toggles right then — the
+   exact defect this rule now closes: short landscape (844x390, 740x360) and
+   deep portrait (down to at least 320x568, two banners stacked) all measure
+   a real, positive push here, because the push is driven by what's actually
+   on screen, not by how tall the viewport happens to be.
+
+   DERIVATION — no case analysis needed, because the SAME formula produces a
+   fixed clearance margin regardless of banner count/height/wrapping:
+     top = 3.5rem + bannerHeight
+     bannerBottom (.banner-area's own rendered bottom edge)
+         = 3rem (.banner-area's own `top`) + bannerHeight
+     top - bannerBottom = 3.5rem - 3rem = 0.5rem (8px), for ANY bannerHeight.
+   One banner, three stacked banners, or a German string that wrapped to two
+   lines are therefore all just "however tall `.banner-area` measured today"
+   — never a case this rule has to special-case, and never a push that can
+   under-shoot the banner's real bottom edge.
+
+   NO CEILING, DELIBERATELY: an earlier version of this rule clamped `top` to
+   a viewport-derived ceiling to protect `.compass-control` from reaching
+   Tier 3's tab strip (the #208 round-1/R2-1 failure mode) — but ANY value
+   below the full `3.5rem + bannerHeight` push reopens the exact banner
+   collision this rule exists to close (the two are the same term, per the
+   derivation above; a ceiling can only ever buy back a few px of the fixed
+   8px margin, not meaningfully trade against a genuinely tall banner stack).
+   Given the stated, unconditional invariant — no hit-test collision between
+   `.banner-area` and this cluster, at any viewport or banner count — that
+   trade is refused here. `.compass-control` staying reachable is instead
+   protected the way it always has been (`.map-stack-tl`'s own base-rule
+   comment): `flex-shrink: 0` plus NO `overflow` on `.map-stack-tl` itself
+   means it is never clipped regardless of how small `max-height` computes —
+   only `.data-layer-controls` (its own `flex: 1 1 auto; min-height: 0;
+   overflow-y: auto`) shrinks or scrolls, all the way down to fully hidden if
+   the budget runs out; the compass renders past the box, unclipped, every
+   time. ACCEPTED, NARROW residual: in a genuinely extreme combination this
+   rule does not target (several tall/stacked banners AND a short-landscape
+   viewport at once — not one of this repo's tested configurations, and a
+   materially rarer combination than "any single banner at any viewport",
+   which is what shipped broken before) the compass could in principle sit
+   close to the tab-strip band. No test in this repo's suite exercises that
+   combination failing; if one ever does, it needs a DIFFERENT fix (e.g.
+   reflowing the column, not re-adding a ceiling that reopens the banner
+   collision to buy it back).
+
+   max-height is re-derived from the SAME pushed `top`, same NAMED COUPLING
+   requirement as the base rule above (`100dvh - 55vh - 0.5rem` is the
+   sheet's own worst-case top edge, untouched by this rule) — CSS clamps a
+   negative `calc()` result for a non-negative property like `max-height` to
+   0 per spec, so no explicit `max(0px, ...)` wrapper is needed here, same as
+   the base rule never needed one.
+
+   NO `:has()` GATE: the previous version of this rule only applied
+   `.app-shell:has(.banner-area .banner) ...`, so it could stay off when no
+   banner was rendered. That gate is no longer needed — once mounted,
+   `lib/useBannerHeight.ts` always WRITES an explicit value (literally
+   `0px` when `.banner-area` is empty, not a fallback), which overrides the
+   `var()` default regardless of what that default is — so a real 0px
+   measurement still collapses `top`/`max-height` to EXACTLY the base rule's
+   own values in the steady-state no-banner case. (The `176px` default above
+   is reachable only in the brief pre-mount window `useLayoutEffect` targets,
+   or if the write never happens at all — see that comment — never in the
+   ordinary "mounted, no banner" case this paragraph is about.) Applying this
+   rule unconditionally is therefore still behaviour-preserving when no
+   banner renders, and removes both the `:has()` selector's cost and its own
+   documented iOS Safari MQ-parsing caveat (see the `max-width: 1023.98px`
+   note below, which is unrelated and still applies).
+
+   ScaleBar.tsx reads the SAME `--sc-banner-height` (via the SAME
+   `lib/useBannerHeight.ts` hook, its own call site) rather than re-deriving
+   `.map-stack-tl`'s position from viewport math a second time — see that
+   file's own comment for why a second, independent formula was the actual
+   defect class an earlier fix-wave found and closed (a stale ceiling
+   calculation once let the scale bar render fully overlapping this cluster).
+
+   `max-width: 1023.98px` (not the Media Queries Level 4 `not (min-width:
+   1024px)` boolean form) is unrelated to the `:has()` removal above and
+   still deliberate: a Level 3 parser treats the MQ4 form as a syntax error
+   and drops the WHOLE BLOCK silently — no console error, nothing for CI to
+   see — which would mean `top` stays `3.5rem` and this fix does not apply at
+   all. `max-width: 1023.98px` accepts a known, accepted trade instead: a
+   0.02px hairline that no real viewport, device pixel ratio, or zoom level
+   lands on as a layout width. This is a THIRD place sharing the 1024px
+   constant alongside `.map-stack-tl`'s own NAMED COUPLING note and
+   `lib/useWideLayout.ts`'s `WIDE_LAYOUT_QUERY` — change all three
+   together. */
+@media (max-width: 1023.98px) {
+  .route-layer-controls,
+  .map-stack-tl {
+    --sc-banner-clear-top: calc(3.5rem + var(--sc-banner-height, 176px));
+    top: var(--sc-banner-clear-top);
+    max-height: calc(100dvh - var(--sc-banner-clear-top) - 55vh - 0.5rem);
+  }
 }
 
 /* ---- #155 north arrow / track-up toggle ---- */
@@ -1087,6 +1252,27 @@ select {
   height: 7px;
   border-radius: 3px;
   background: #e69f00;
+}
+
+/* #324: the alt-rig map overlay (sc-route-alt-sail/-motor) — dashed AND
+   lower-opacity, mirroring both paint axes of the live layers rather than
+   picking one. Deliberately NOT a real `opacity`/alpha value: on the MAP the
+   0.45 line-opacity blends against MapLibre's canvas (a basemap that does
+   not itself re-theme with prefers-color-scheme), but this swatch sits in
+   app chrome whose OWN background flips between themes — true alpha here
+   would read fine composited on light chrome and nearly vanish on dark
+   chrome. A lighter, muted grey than `.route-legend-line-motor`'s solid
+   #5b5b5b stands in for "lower opacity" instead, staying legible against
+   both `--sc-bg` values without a theme-specific override (the same
+   theme-invariant-literal convention every other swatch above already
+   uses). A neutral grey (not a board color): the swatch stands for the
+   overlay as a whole, the same simplification `.route-legend-line-motor`
+   already makes for the primary route's motor legs regardless of board. */
+.route-legend-alt-rig {
+  width: 1.25rem;
+  height: 3px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(to right, #757575 0 3px, transparent 3px 6px);
 }
 
 .sc-boat-marker {
@@ -1766,6 +1952,16 @@ select {
 }
 
 .route-legs-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--sc-fg) 65%, transparent);
+}
+
+/* #324: explains the alt-rig toggle's disabled state (only one rig found a
+   route). Same muted-note treatment as .route-legs-note/.options-help
+   above, wired via aria-describedby rather than a hover-only `title` —
+   reachable on touch, this app's primary context, not just desktop hover. */
+.route-alt-rig-note {
   margin: 0;
   font-size: 0.8rem;
   color: color-mix(in srgb, var(--sc-fg) 65%, transparent);

@@ -3,7 +3,7 @@ import { LngLatBounds, Map as MaplibreMap } from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
-import { formatTime } from '../lib/format';
+import { formatDateTime, formatSliderTime } from '../lib/format';
 import { activeRigResult } from '../lib/plan';
 import {
   adaptiveBarbFeatures,
@@ -37,16 +37,43 @@ export interface RouteLayerProps {
   onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
 
-// Not unit-tested: jsdom has no MapLibre/WebGL runtime — map.addSource/
-// addLayer/getSource etc. either no-op or return undefined under jsdom, so
-// this component's own source/layer wiring can only be meaningfully
-// exercised against a real browser (manual/Playwright verification). The
-// pure feature-building logic it calls into (routeGeoJson.ts) is covered
-// separately, with ordinary unit tests.
+// jsdom has no MapLibre/WebGL runtime — map.addSource/addLayer/getSource
+// etc. either no-op or return undefined, so nothing here can render for
+// real under jsdom. RouteLayer.test.tsx still pins the STATIC layer specs
+// (paint/layout objects, filter expressions, beforeId anchoring, toggle
+// visibility sync) against the shared fake map (test/fakeMaplibre.ts),
+// which records addLayer's arguments verbatim without needing a real
+// renderer — that catches an accidental spec revert at unit-test speed. What
+// stays real-browser-only is whether any of this actually RENDERS/is
+// legible (tile compositing, collision placement, on-screen contrast); the
+// pure feature-building logic (routeGeoJson.ts) is covered separately too.
 
 const ROUTE_SOURCE = 'sc-route';
+// #324: the non-displayed rig's route (map-only overlay, no labels/points —
+// see the effects and setupLayers comment below).
+const ROUTE_ALT_SOURCE = 'sc-route-alt';
+const ALT_ROUTE_LAYERS = ['sc-route-alt-sail', 'sc-route-alt-motor'] as const;
 const MANEUVER_SOURCE = 'sc-maneuvers';
 const BARB_SOURCE = 'sc-barbs';
+// #378: the three annotation symbol layers below (sc-eta-primary,
+// sc-eta-secondary, sc-leg-speed) each set
+// `'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15]`
+// — zoom-interpolated, replacing a flat `text-size: 11` that was legible at a
+// desk but too small on a phone on deck in daylight. Growth is DELIBERATELY
+// zoom-gated rather than flat: MapLibre's collision footprint scales 1:1
+// with text-size, and under text-allow-overlap:false a bigger box culls MORE
+// labels — the coupling #378 itself calls out. Held near the current size
+// through the low/mid zoom range (9 -> 12, +9%) where the most annotation
+// points are simultaneously in view (widening it there would worsen the
+// "ETAs vanish" complaint, defeating the point of this fix), then grown
+// further from z12 up (12 -> 13, 15 -> 15) where a narrower viewport holds
+// fewer competing points. Written out per layer (not hoisted to a shared
+// const): a `const` array here loses TypeScript's tuple narrowing for
+// MapLibre's `DataDrivenPropertyValueSpecification<number>` expression type
+// (contextual typing only narrows an inline literal, not a value pulled from
+// a separate declaration) — this also matches the file's existing pattern of
+// inlining each symbol layer's layout/paint literals, see
+// sc-eta-primary/-secondary's already-duplicated text-font/halo pair.
 // The three annotation symbol layers the "Times & speeds" checkbox flips
 // together (heading dots stay on — they're tiny and minzoom-gated).
 const ANNOTATION_LAYERS = ['sc-eta-primary', 'sc-eta-secondary', 'sc-leg-speed'] as const;
@@ -154,7 +181,14 @@ function setupLayers(map: MaplibreMap): void {
     // renders when the label fits the on-screen leg length and collision
     // culls overlaps, so short legs stay unlabeled at low zoom and gain a
     // label as you zoom in — no hand-tuned nm threshold. Text stays achromatic
-    // for contrast; the board colors live on the line beneath it.
+    // for contrast; the board colors live on the line beneath it. #378:
+    // text-padding trimmed from the 2px default to partially offset the
+    // larger collision box the zoom-interpolated text-size introduces — see
+    // the #378 comment above BARB_SOURCE (top of file) for the full
+    // text-size/collision coupling rationale.
+    // symbol-placement:'line-center' cannot use text-variable-anchor (that
+    // property only applies to point placement), so unlike the two ETA
+    // layers below this one keeps its existing anchor behavior unchanged.
     map.addLayer({
       id: 'sc-leg-speed',
       type: 'symbol',
@@ -163,9 +197,10 @@ function setupLayers(map: MaplibreMap): void {
       layout: {
         'text-field': ['get', 'speedLabel'],
         'symbol-placement': 'line-center',
-        'text-size': 11,
+        'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15],
         'text-font': ['Noto Sans Regular'],
         'text-rotation-alignment': 'map',
+        'text-padding': 1,
       },
       paint: {
         'text-color': '#1a1a1a',
@@ -173,6 +208,78 @@ function setupLayers(map: MaplibreMap): void {
         'text-halo-width': 1.4,
       },
     });
+  }
+  if (!map.getSource(ROUTE_ALT_SOURCE)) {
+    map.addSource(ROUTE_ALT_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    // #324: "show both foresail routes" — the rig NOT currently displayed as
+    // the primary route (usually, but not always, plan.result.recommended:
+    // RouteSummary lets the user switch which rig is primary, and this
+    // overlay always shows whichever one that isn't). Map-only per the
+    // settled design — no maneuver points, ETA labels or speed labels, so it
+    // adds nothing to the collision index (#378's fragile ETA/speed
+    // placement stays untouched) and needs no per-hour barb sampling either.
+    // Anchored explicitly BELOW HIGHLIGHT_LAYER with an explicit beforeId
+    // (added earlier in this same setup pass, so the anchor always exists
+    // when this runs) — deliberately below the primary route's highlight,
+    // sail and motor layers (all added later, on top) so the recommendation
+    // stays visually dominant wherever the two tracks cross. Still above
+    // ROUTE_STACK_BOTTOM_LAYER (the shallow casing), which stays the
+    // genuine bottom of the stack DataLayers anchors against — a considered
+    // trade-off, not an oversight: sitting ABOVE the shallow casing means the
+    // overlay can paint over the orange safety-depth warning where the two
+    // geometries happen to coincide (rare — the shallow casing traces the
+    // PRIMARY route's legs, not the overlay's), but sitting BELOW
+    // ROUTE_STACK_BOTTOM_LAYER instead would move DataLayers' own depth
+    // overlay (which anchors below that same layer) ABOVE the alt-rig track,
+    // hiding the whole overlay under it whenever depth shading is on — a
+    // strictly worse failure (#53 safety content survives either choice;
+    // this overlay would not survive the second one).
+    // Reuses the SAME board/motor color vocabulary as the primary route
+    // (colour already carries sail-vs-motor/port-vs-starboard meaning — issue
+    // #324's own "open design questions" section names this directly: "dash
+    // pattern, opacity, and colour are the available axes, and colour is
+    // already carrying meaning") and is distinguished purely by dash pattern
+    // + reduced opacity, per the settled design. The dasharray is deliberately
+    // NOT the primary motor line's [2, 1.5] — a denser dash so the overlay
+    // reads as "the other rig", not "a motor leg". Created hidden
+    // (visibility 'none'): the default is OFF (#324), and the
+    // altRigVisible sync effect below applies the persisted/default state,
+    // mirroring sc-wind-barbs' own creation-hidden pattern above.
+    map.addLayer(
+      {
+        id: 'sc-route-alt-sail',
+        type: 'line',
+        source: ROUTE_ALT_SOURCE,
+        filter: ['==', ['get', 'kind'], 'sail'],
+        layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+        paint: {
+          'line-width': 3.5,
+          'line-color': ['case', ['==', ['get', 'board'], 'port'], '#D55E00', '#009E73'],
+          'line-dasharray': [1, 1.5],
+          'line-opacity': 0.45,
+        },
+      },
+      HIGHLIGHT_LAYER,
+    );
+    map.addLayer(
+      {
+        id: 'sc-route-alt-motor',
+        type: 'line',
+        source: ROUTE_ALT_SOURCE,
+        filter: ['==', ['get', 'kind'], 'motor'],
+        layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+        paint: {
+          'line-width': 3.5,
+          'line-color': '#5b5b5b',
+          'line-dasharray': [1, 1.5],
+          'line-opacity': 0.45,
+        },
+      },
+      HIGHLIGHT_LAYER,
+    );
   }
   if (!map.getSource(MANEUVER_SOURCE)) {
     map.addSource(MANEUVER_SOURCE, {
@@ -229,8 +336,38 @@ function setupLayers(map: MaplibreMap): void {
     // z9, secondary (plain heading joints) from z12 — one step after the dots
     // appear at 11, so a dot never pops in already-labeled. symbol-sort-key
     // = rank, so on a collision the destination ETA (rank 0) wins, then the
-    // departure, then maneuvers. text-allow-overlap:false → MapLibre declutters.
+    // departure, then maneuvers — but that ranking is per-LAYER only (see
+    // CLAUDE.md's symbol-sort-key note); it does not arbitrate a primary-vs-
+    // secondary collision. text-allow-overlap:false → MapLibre declutters.
     // (Layout/paint inlined per layer so addLayer's contextual typing applies.)
+    //
+    // #378: text-anchor:'left' + a fixed text-offset gave MapLibre exactly
+    // ONE candidate placement per point — any collision at that one spot
+    // culled the label outright with no fallback. text-variable-anchor gives
+    // MapLibre up to 4 fallback placements (left/right/top/bottom) before it
+    // gives up and culls, directly attacking the disappearance rather than
+    // trading it against size. text-variable-anchor is incompatible with
+    // text-anchor/text-offset in the MapLibre style spec — text-radial-offset
+    // is the documented replacement (same 0.9-em magnitude as the old
+    // text-offset[0.9,0], now radial instead of purely horizontal), paired
+    // with text-justify:'auto' so each candidate placement's text aligns
+    // toward the anchor point. text-padding trimmed from the 2px default to
+    // partially offset the larger collision box the zoom-interpolated
+    // text-size introduces.
+    //
+    // #378 root cause, MEASURED not assumed (queryRenderedFeatures at a
+    // z9-z14 zoom sweep centered on a real tack/gybe cluster, real mask/
+    // polars — see BARB_SOURCE's sc-wind-barbs layer below for the fix).
+    // TWO hypotheses were tested here and REFUTED by direct measurement
+    // before the real cause was found, recorded so a future reader doesn't
+    // re-walk the same dead ends: (1) the #191/#192 icon-overlap z12
+    // threshold — inapplicable, these are point/line TEXT symbols with no
+    // icon-image, icon-overlap is never set on them; (2) a primary-vs-
+    // secondary cross-layer collision priority fight — ruled out by hiding
+    // sc-eta-secondary entirely and re-measuring: sc-eta-primary's evicted
+    // 'gybe' label stayed at count 0 regardless. The actual cause was
+    // sc-wind-barbs (see that layer's comment): hiding barbs alone, with
+    // secondary still visible, brought the label straight back.
     map.addLayer({
       id: 'sc-eta-primary',
       type: 'symbol',
@@ -239,11 +376,13 @@ function setupLayers(map: MaplibreMap): void {
       filter: ['in', ['get', 'kind'], ['literal', ['start', 'finish', 'tack', 'gybe']]],
       layout: {
         'text-field': ['get', 'eta'],
-        'text-anchor': 'left',
-        'text-offset': [0.9, 0],
-        'text-size': 11,
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+        'text-radial-offset': 0.9,
+        'text-justify': 'auto',
+        'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15],
         'text-font': ['Noto Sans Regular'],
         'text-allow-overlap': false,
+        'text-padding': 1,
         'symbol-sort-key': ['get', 'rank'],
       },
       paint: {
@@ -260,11 +399,13 @@ function setupLayers(map: MaplibreMap): void {
       filter: ['==', ['get', 'kind'], 'heading'],
       layout: {
         'text-field': ['get', 'eta'],
-        'text-anchor': 'left',
-        'text-offset': [0.9, 0],
-        'text-size': 11,
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
+        'text-radial-offset': 0.9,
+        'text-justify': 'auto',
+        'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15],
         'text-font': ['Noto Sans Regular'],
         'text-allow-overlap': false,
+        'text-padding': 1,
         'symbol-sort-key': ['get', 'rank'],
       },
       paint: {
@@ -295,6 +436,26 @@ function setupLayers(map: MaplibreMap): void {
         'icon-rotate': ['get', 'dirFromDeg'],
         'icon-rotation-alignment': 'map',
         'icon-allow-overlap': true,
+        // #378 root cause, MEASURED not assumed: with icon-ignore-placement
+        // unset (defaulting to false), every barb icon — deliberately dense,
+        // ~96-110px screen spacing at every zoom per routeGeoJson.ts's own
+        // comment on this source — still INSERTED a collision box that
+        // blocked the ETA/speed text layers below, even though
+        // icon-allow-overlap:true already made the barbs themselves immune
+        // to being blocked. That combination is the actual "ETAs vanish at
+        // some zooms" mechanism (isolated with queryRenderedFeatures: hiding
+        // sc-wind-barbs alone took sc-eta-primary's evicted 'gybe' label at
+        // z12 from 0 back to present, and sc-leg-speed on the same route
+        // from 0 to 7) — not the #191/#192 icon-overlap z12 threshold the
+        // issue guessed at (these are point/line TEXT symbols with no
+        // icon-image; icon-overlap is never set on them at all), and not
+        // primary-vs-secondary layer order (ruled out directly: hiding
+        // sc-eta-secondary alone left sc-eta-primary at 0). Setting
+        // icon-ignore-placement here completes the "barbs sit outside the
+        // collision system" intent routeGeoJson.ts's adaptiveBarbFeatures
+        // comment already states for icon-allow-overlap — that comment's
+        // "no collision culling" was only half true before this fix.
+        'icon-ignore-placement': true,
         // Hidden at creation; the barbsVisible sync effect applies the
         // persisted/default state (ON for a fresh profile — #63) in the same
         // commit, before any paint.
@@ -322,12 +483,24 @@ export default function RouteLayer({
     'sc-annotations-visible',
     true,
   );
+  // #324: map-only overlay of the OTHER rig's route, default OFF (settled
+  // design — showing two routes by default clutters harbour-approach zoom).
+  const [altRigVisible, setAltRigVisible] = usePersistedToggle('sc-alt-rig-visible', false);
   // Real land/depth mask for barb land-culling — loaded once, best-effort.
   // A plain Uint8Array VIEW over the module-cached buffer (never a copy, never
   // transferred, never mutated). null until it resolves; sampling skips
   // culling gracefully in the meantime.
   const [mask, setMask] = useState<NavMask | null>(null);
   const [hourIdx, setHourIdx] = useState(0);
+  // Reference "now" for the slider label's day-vs-today tier decision
+  // (#292) — computed once at mount, matching PlannerPanel's departure-
+  // bounds pattern, NOT a ticking clock. Reading Date.now() directly during
+  // render is flagged by the react-hooks/react-compiler purity lint; this
+  // lazy useState initializer runs exactly once. Accepted limitation: a plan
+  // left open across a tier boundary (midnight, the 6-day cutoff) keeps
+  // showing its previous tier until something else re-renders this
+  // component — no timer is added to chase that.
+  const [nowMs] = useState(() => Date.now());
   // Reset the slider to departure whenever the plan itself changes (not on
   // every render). Adjusted during render — React's documented pattern for
   // deriving state from a prop change (mirrors OptionsPanel.tsx's
@@ -340,6 +513,22 @@ export default function RouteLayer({
   }
 
   const result = plan && rig ? activeRigResult(plan, rig) : null;
+  // #324: whichever rig is NOT currently shown as the primary route. `rig`
+  // defaults to plan.result.recommended but is user-switchable (RouteSummary
+  // tabs) — this always tracks the complement of whatever IS primary, not a
+  // fixed "recommended vs. non-recommended" pair.
+  const otherRig: Rig | null = rig === 'genoa' ? 'fock' : rig === 'fock' ? 'genoa' : null;
+  const altResult = plan && otherRig ? activeRigResult(plan, otherRig) : null;
+  // #324 (PR #384 review): the toggle needs BOTH a primary result to be
+  // de-emphasised against AND an alt result to show — not `altResult` alone.
+  // RouteSummary's rig tabs are not gated, so `rig` can point at a rig whose
+  // own result is null while the complement solved; in that state `result`
+  // is null (the primary route layers paint nothing, see the ROUTE_SOURCE
+  // effect below) while `altResult` is truthy, so an `!altResult`-only check
+  // would leave the toggle enabled and let the ONLY real route be drawn as
+  // the dashed, reduced-opacity "other rig" track — a composition inversion,
+  // not a double-draw.
+  const altToggleAvailable = Boolean(result) && Boolean(altResult);
 
   // Counts completed setup passes for the current map instance: 0 = sources/
   // layers don't exist yet; 1 once the style is first ready; +1 after every
@@ -418,6 +607,15 @@ export default function RouteLayer({
     // retrigger this rebuild (the strings are language-dependent).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, styleEpoch, result, lang]);
+
+  // #324: the alt-rig overlay's line data. No labels/points depend on this
+  // source (see setupLayers' comment), so — unlike the effect above — this
+  // never needs `lang` or `t()`.
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    const altData = legsToFeatureCollection(altResult?.legs ?? []);
+    (map.getSource(ROUTE_ALT_SOURCE) as GeoJSONSource | undefined)?.setData(altData);
+  }, [map, styleEpoch, altResult]);
 
   // Maneuver letter labels are language-dependent: W/H (de), T/G (en).
   useEffect(() => {
@@ -543,6 +741,23 @@ export default function RouteLayer({
     }
   }, [map, styleEpoch, annotationsVisible]);
 
+  // #324: alt-rig overlay toggle, default OFF. Gated on altToggleAvailable
+  // too, not just the persisted altRigVisible flag — the checkbox's
+  // `disabled` attribute alone would not retract an ALREADY-toggled-on
+  // overlay: altRigVisible is independent of which rig is primary, so a user
+  // who enables it while both rigs solve, then switches the primary rig tab
+  // to one whose own result is null (PR #384 review), would otherwise still
+  // see the dashed/reduced-opacity track with nothing solid beneath it. This
+  // makes that state degrade to "overlay hidden", never "overlay usurps the
+  // primary".
+  useEffect(() => {
+    if (!map || styleEpoch === 0) return;
+    const visibility = altRigVisible && altToggleAvailable ? 'visible' : 'none';
+    for (const id of ALT_ROUTE_LAYERS) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    }
+  }, [map, styleEpoch, altRigVisible, altToggleAvailable]);
+
   // Cheap setFilter() only — no source re-set — so this stays cheap even
   // when GPS noise near a leg boundary flips activeLegIndex back and forth.
   // The effect dependency array already value-gates this to real changes.
@@ -571,6 +786,29 @@ export default function RouteLayer({
         />
         {t('route.windBarbs.toggle')}
       </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={altRigVisible}
+          disabled={!altToggleAvailable}
+          onChange={(e) => setAltRigVisible(e.target.checked)}
+          aria-describedby={altToggleAvailable ? undefined : 'route-alt-rig-note'}
+        />
+        {t('route.altRig.toggle')}
+      </label>
+      {/* A `title` attribute is hover-only — unreachable on this app's
+          primary (touch) context. A visible note, wired via
+          aria-describedby, reaches both. Reused for BOTH unavailable
+          causes (fock/genoa's own result null, or the complement's) — "only
+          one rig found a route" is accurate either way; a `Plan` only exists
+          once at least the recommended rig has solved (types.ts:
+          `recommendedResult`'s invariant), so the two results can never be
+          null AT THE SAME TIME. */}
+      {!altToggleAvailable && (
+        <p id="route-alt-rig-note" className="route-alt-rig-note">
+          {t('route.altRig.unavailable')}
+        </p>
+      )}
       {hourOptions.length > 1 && (
         <div className="route-layer-time-slider">
           <input
@@ -581,8 +819,9 @@ export default function RouteLayer({
             value={clampedHourIdx}
             onChange={(e) => setHourIdx(Number(e.target.value))}
             aria-label={t('route.windBarbs.timeSlider')}
+            aria-valuetext={formatDateTime(tMs, lang)}
           />
-          <span>{formatTime(tMs, lang)}</span>
+          <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
         </div>
       )}
       <ViaMarkers

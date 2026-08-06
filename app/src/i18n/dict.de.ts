@@ -80,8 +80,10 @@ export const de = {
   'planner.import.notice.multipleTracks':
     'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
-  'planner.status.routing': 'Route wird berechnet…',
-  'planner.status.routingProgress': 'Route wird berechnet… {progress}%',
+  // #340: phase readout, not a percentage — the router solves genoa and fock
+  // SEQUENTIALLY, so "Segel {index} von {total}" ({rig} already localized via
+  // RIG_LABEL_KEY) is honest and bounded, unlike the removed percentage.
+  'planner.status.routingRig': 'Route wird berechnet… Segel {index} von {total} ({rig})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
@@ -171,10 +173,15 @@ export const de = {
   'route.legend.headingChange': 'Kursänderung',
   'route.legend.via': 'Zwischenpunkt',
   'route.legend.shallow': 'Flacher als Sicherheitstiefe kartiert',
+  // #324: map-only overlay of the rig NOT currently shown as the primary
+  // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
+  'route.legend.altRig': 'Anderes Rigg (gestrichelt)',
   'route.exportGpx': 'GPX exportieren',
   'route.windBarbs.toggle': 'Windpfeile anzeigen',
   'route.windBarbs.timeSlider': 'Vorhersagezeitpunkt',
   'route.annotations.toggle': 'Zeiten & Geschwindigkeiten',
+  'route.altRig.toggle': 'Anderes Rigg anzeigen',
+  'route.altRig.unavailable': 'Nur ein Rigg hat eine Route gefunden',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Tiefenprofil',
@@ -391,6 +398,8 @@ export const de = {
   'live.gpsHint':
     'Standortzugriff ist nicht verfügbar, daher kann die Bootsposition nicht auf der Karte angezeigt werden. Planung und die gespeicherte Route funktionieren weiterhin uneingeschränkt — dies ist eine Törnplanungshilfe, kein Navigationsgerät.',
   'live.gpsHint.dismiss': 'Verstanden',
+  // #361: siehe englisches Dict für den Hintergrund.
+  'live.ownship.marker': 'Aktuelle Bootsposition',
   // #115: manueller "Route ab hier"-Neuplan — Planungssprache, keine
   // Navigationsführung; nutzt die GESPEICHERTE Windvorhersage des Plans
   // (offlinefähig, im Gegensatz zur #114-Neuberechnung).

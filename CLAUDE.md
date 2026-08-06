@@ -38,6 +38,14 @@ deviate from it.
   (#217–#219, #224). **#224 deliberately DECLINED a DCO and a CLA** (Apache-2.0
   §5 makes inbound = outbound): never add `Signed-off-by` trailers, and nothing
   checks for them. The #132 release-cut docs sweep covers these four too.
+- `docs/spikes/` — one decision document per investigated-but-not-built
+  spike, named `<issue>-<slug>.md` (#245, #244, #296). Each records a
+  RECOMMENDATION plus an explicit considered-and-rejected section, so a
+  declined option cannot quietly come back as a fresh idea. Deliberately NOT
+  under `docs/superpowers/specs/`: that path is guarded by a main-session
+  ask-gate hook, and a subagent writing there would slip a spec edit past
+  the gate. A spike doc is evidence for a decision, never a spec — promoting
+  one to a spec is a main-session act.
 
 ## Commands
 
@@ -59,7 +67,18 @@ deviate from it.
   percentages above are untouched (a scanning-only test file is
   coverage-neutral) and were correctly left unmeasured-again per that PR;
   only the count needed updating, verified via a real `npm --prefix app run
-  test` run: **1207 tests, 103 files** (2026-08-03). Meets the OpenSSF
+  test` run: **1207 tests, 103 files** (2026-08-03). Session 24 (2026-08-04)
+  merged four PRs (#380/#340 planner progress, #381/#378 route annotation
+  layers, #382/#368 banner clearance, #384/#324 second-rig overlay) that
+  together added test files (`app/src/lib/useBannerHeight.test.ts` among
+  them) and cases to several existing ones — the count is stale again by
+  more than a fixed delta this time, so it was re-measured rather than
+  hand-added: a real `npm --prefix app run test` run gives **1294 tests, 109
+  files** (2026-08-04). The coverage PERCENTAGES above are UNTOUCHED — they
+  were not re-measured this session (that needs `test:coverage`, a
+  substantially longer run) and a scanning-only or assertion-adding test
+  file is coverage-neutral to first order the same way PR #351's was; don't
+  infer a new percentage from this count. Meets the OpenSSF
   `test_statement_coverage80` criterion (≥80%) — it had simply never been
   measured before. `vite.config.ts`'s `coverage` block carries
   `thresholds.statements: 80` (#335) and `.github/workflows/coverage.yml`
@@ -235,6 +254,55 @@ deviate from it.
   but `.map-stack-tl` lets only `.data-layer-controls` shrink
   (`.compass-control` is `flex-shrink: 0`) — DELIBERATE: the plain bound would
   scroll the compass itself out of reach.
+- `ScaleBar` is coupled to `.banner-area` through a RUNTIME-MEASURED value,
+  not a CSS rule: it computes its suppression ceiling from `.map-stack-tl`'s
+  rendered bottom edge. Before PR #374 nothing observed `.banner-area`
+  mounting a banner, so that ceiling went stale and the bar rendered fully
+  OVERLAPPING `.map-stack-tl` — 1837.7px² measured — rather than
+  suppressing. PR #374 fixed this with a `MutationObserver` on `.banner-area`
+  (`{childList: true}`), disconnected on unmount. **PR #382 (#368) REMOVED
+  that observer**, subsumed rather than kept as a second redundant trigger:
+  `childList` fires on banner mount/unmount but is BLIND to a banner that
+  grows TALLER by wrapping to a second line (a longer German string) with no
+  child added or removed at all — exactly the residual `lib/useBannerHeight.ts`'s
+  shared `ResizeObserver` on `.banner-area` closes structurally, publishing
+  the real rendered height as the `--sc-banner-height` custom property on
+  `:root` (the same value `app.css`'s narrow-layout banner-clearance rule
+  now reads, replacing an earlier viewport-height CLAMP HEURISTIC that was
+  blind to actual banner count/height — see that rule's own comment).
+  ScaleBar.tsx now calls that SAME hook (its own call site, alongside
+  App.tsx's) purely to get an effect-rerun trigger — the hook's
+  `ResizeObserver` callback writes the CSS custom property SYNCHRONOUSLY,
+  before the `setState` that would otherwise schedule ScaleBar's re-render,
+  so by the time ScaleBar's own `[isWide, bannerHeight]` effect reads
+  `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
+  correct regardless of which call site's commit lands first. NAMED
+  COUPLING now points at `App.tsx:687` (renders `.banner-area`
+  unconditionally) and `App.tsx:132` (the App-level `useBannerHeight()`
+  call, kept purely for that write side-effect). Any rule that moves
+  `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
+  connected only through that runtime-measured layout value, invisible in
+  the CSS, in the diff, and to any test that checks the two components
+  separately.
+- `@media not (min-width: 1024px)` is Media Queries Level 4 syntax (`not`
+  applied to a bare condition with no media type) — a Level 3 parser treats
+  it as a syntax error and drops the ENTIRE block silently, no console error,
+  nothing for CI to see. On WebKit, `:has()` shipped EARLIER than MQ4
+  boolean syntax, so for a rule using both there is a real iOS Safari band
+  where the selector matches and the query is discarded, losing the rule
+  entirely. `app/src/app.css`'s banner-clearance rule therefore uses
+  `@media (max-width: 1023.98px)` deliberately, accepting the 0.02px
+  hairline — do not "tidy" it to the MQ4 complement. When swapping a syntax,
+  check the support floors of the features that must work TOGETHER, not
+  each in isolation.
+  **Update (PR #382, #368): the `:has()` half of that combination is GONE**
+  — the rule's own `.app-shell:has(.banner-area .banner)` gate was removed
+  once a real `ResizeObserver` measurement made it redundant (a genuine 0px
+  reading collapses `top`/`max-height` back to their base values on its own,
+  no gate needed). The MQ3-vs-MQ4 choice above is UNCHANGED and
+  independently justified regardless — app.css's own updated comment: a
+  Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
+  on its own" — not merely a residual of the now-gone `:has()` pairing.
 - `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx` — not via a later
   `setMaxPitch`/`setPitch`, which a style reload could undo — and pinned by
   `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
@@ -251,8 +319,9 @@ deviate from it.
   caused) discriminates a hand rotation from a foreign settle — guarded
   against a settle delivered from inside our OWN `easeTo`. **Post-maplibre-gl-6
   (#253): `map.isEasing()` is GONE from `Map`** — v6's `Map extends Evented`,
-  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:576` vs
-  `ui/camera.ts:284`; they are siblings), and the method survives only on the
+  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:589` vs
+  `ui/camera.ts:284`, both read against `maplibre-gl@6.1.0`; they are
+  siblings), and the method survives only on the
   private `_camera` field. `CompassControl.tsx`'s `onMoveEnd` guard is now a
   TWO-TERM derivation: `e.originalEvent !== undefined &&
   commandedBearingRef.current !== null &&
@@ -266,17 +335,20 @@ deviate from it.
   is true for EVERY handler `moveend` whether or not an ease is live; it is
   only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
   gave us on the reachable paths. What makes that conjunction sound: `_stop`
-  (`camera.ts:1197-1211`) deletes `_easeFrameId` and only THEN invokes
-  `_onEaseEnd` at `:1211` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
-  bound in `_ease` (`:1234`) — so `isEasing()` was already false at every
+  (`camera.ts:1197-1210`, 6.1.0) deletes `_easeFrameId` and only THEN invokes
+  `_onEaseEnd` at `:1210` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
+  bound in `_ease` (`:1232`) — so `isEasing()` was already false at every
   ease-emitted `moveend` even in v5, which is why the absence of
   `originalEvent` discriminates a camera-internal ease termination from a
   handler-gesture settle. ACCEPTED NARROWING: the new
   guard is ease-source-SPECIFIC where `isEasing()` was ease-source-AGNOSTIC —
   a foreign, bearing-changing ease carrying no `originalEvent` would now demote
   where v5 did not. No producer exists in the app today
-  (`RouteLayer.tsx:458`'s `fitBounds` passes `duration: 0` and the current
-  bearing; keyboard rotation and drag inertia always carry `originalEvent`;
+  (`RouteLayer.tsx:656`'s `fitBounds` passes `duration: 0` and the current
+  bearing (line number moved from :458 by today's #378/#324 insertions
+  earlier in the file, #380/#381/#382/#384 session — re-check after any
+  future edit that adds lines above this call site); keyboard rotation and
+  drag inertia always carry `originalEvent`;
   `resetNorth` has no call site; `bearingSnap: 0` makes MapLibre's internal
   snap unsatisfiable), and the gap is pinned by a regression test AND by
   `app/src/test/cameraAnimationCallSites.test.ts` (a structural test that
@@ -293,7 +365,13 @@ deviate from it.
   flag. Residual: a pure PAN can still get rewritten into a rotation-to-north
   by MapLibre's own 7° `bearingSnap` and fires WITH `originalEvent` attached,
   so track-up still drops whenever `0 < |bearing| < 7` — an everyday heading
-  (#230).
+  (#230). SECOND RESIDUAL, in this same `_stop` mechanism and live for real
+  users: a gesture BEGUN while any `easeTo`/`flyTo`/`fitBounds` is in flight
+  is swallowed whole, because the ease's own completion calls a bare
+  `this.stop()` (no `allowGestures`) → `_stopHandlers()` → `reset()` on every
+  handler, disarming the gesture mid-drag (#391, Backlog — fixing it means
+  patching maplibre; symptom, measurement and the e2e-side workaround in the
+  #383 bullet under Verification lessons).
 - `fitBounds` must pass `bearing: map.getBearing()` explicitly —
   `cameraForBounds` defaults bearing to 0, so every new `plan.id` (including a
   Live reroute under way) silently un-rotates the chart and kills track-up
@@ -308,13 +386,60 @@ deviate from it.
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
   `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
-  against the exact pinned `maplibre-gl@6.0.0` install, re-checked after the
-  #253 v6 upgrade: still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
+  against `maplibre-gl@6.1.0`, the version `app/package-lock.json` pins,
+  re-checked after the #253 v6 upgrade and again after the 6.1.0 bump: still
+  `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
   !sortKey.isConstant();` at the same line; re-check again after any future
   maplibre-gl upgrade),
   disabling the placement priority entirely. Within one symbol layer,
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
+- `icon-allow-overlap` and `icon-ignore-placement` sound like the same knob
+  and are not: `allow-overlap` ("place me even if I collide") governs
+  whether *I* get culled by the collision index; `ignore-placement` ("do not
+  enter me into the collision index") governs whether I block OTHERS.
+  `sc-wind-barbs` (`RouteLayer.tsx`) had the first without the second —
+  `icon-allow-overlap: true` made barbs immune to being culled, but with
+  `icon-ignore-placement` unset (defaults false) every dense barb icon
+  (~96-110px screen spacing at every zoom, `routeGeoJson.ts`'s
+  `adaptiveBarbFeatures`) still INSERTED a collision box that blocked the
+  ETA/speed TEXT layers underneath. The visible symptom was on the labels
+  (`sc-eta-primary`/`sc-eta-secondary`/`sc-leg-speed` culled to 0 at some
+  zooms); the cause was on a layer that looked perfectly healthy (#378,
+  MEASURED via `queryRenderedFeatures`: hiding `sc-wind-barbs` alone took
+  `sc-eta-primary`'s evicted 'gybe' label at z12 from 0 back to present, and
+  `sc-leg-speed` on the same route from 0 to 7). The issue's own
+  hypothesis — the z12 `icon-overlap` threshold from #191/#192 — was WRONG
+  and refuted directly (these are point/line TEXT symbols with no
+  `icon-image`; `icon-overlap` is never set on them at all), as was a
+  primary-vs-secondary layer-order theory (hiding `sc-eta-secondary` alone
+  left `sc-eta-primary` still at 0). Fix: `'icon-ignore-placement': true` on
+  `sc-wind-barbs`. For TEXT symbols the analogue of `icon-padding`'s
+  collision-box lever is **`text-padding`** — `icon-padding` itself is
+  meaningless on a text-only layer.
+- **#378 route annotation layers** (`RouteLayer.tsx`): `sc-eta-primary`/
+  `sc-eta-secondary`/`sc-leg-speed`'s `text-size` is now zoom-interpolated —
+  `['interpolate', ['linear'], ['zoom'], 9, 12, 12, 13, 15, 15]` — replacing
+  a flat `text-size: 11` that was legible at a desk but too small on a phone
+  on deck in daylight. Growth is deliberately gated to z12+ (held near
+  current size through 9→12, +9%) because MapLibre's collision footprint
+  scales 1:1 with text-size and a bigger box culls MORE labels under
+  `text-allow-overlap: false` — the same coupling #378 itself found and
+  exists to fix. The two ETA layers (not `sc-leg-speed`, which places along
+  the line and can't use this) replaced a fixed `text-anchor`/`text-offset`
+  (exactly ONE candidate placement per point — any collision there culled
+  the label outright with no fallback) with `text-variable-anchor:
+  ['left','right','top','bottom']` + `text-radial-offset: 0.9` +
+  `text-justify: 'auto'` (up to 4 fallback placements before giving up) —
+  these three are MUTUALLY INCOMPATIBLE with `text-anchor`/`text-offset` in
+  the MapLibre style spec, never combine them. `text-padding` on all three
+  annotation layers trimmed from the 2px default to `1` to partially offset
+  the larger collision box the zoom-interpolated text-size introduces.
+  `sc-leg-speed`'s culling-by-line-length (`symbol-placement: 'line-center'`
+  — short legs stay unlabeled at low zoom, no hand-tuned nm threshold) and
+  `sc-maneuver-labels`' `text-allow-overlap`/`text-ignore-placement: true`
+  overlap exemption are UNCHANGED by #378 and remain deliberate (per their
+  own code comments, not previously written up here).
 
 ## PWA / E2E / deploy
 
@@ -331,6 +456,50 @@ deviate from it.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
+- `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
+  (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
+  tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
+  narrow/short stress cases #368's own residuals were measured against:
+  narrowPortrait360, shortLandscape844/740, deepPortrait320,
+  partialPushBand375, wrapForcing280). Specs must import and iterate these,
+  never inline viewport literals — this repo already paid for the per-file
+  version of that mistake once (nine hardcoded `testTimeout` literals,
+  patched two at a time across CI rounds before centralizing behind one
+  constant, #342). Playwright viewports are CSS px, not device px: a real 4K
+  display at common 150%/200% OS scaling presents as ~2560x1440 or exactly
+  1920x1080 CSS px, so `desktopHd` already doubles as the scaled-4K case —
+  `desktop4k` is deliberately the UNSCALED, very-wide extreme instead of a
+  third near-duplicate entry. The tablet pair straddles this app's single
+  `1024px` wide-layout breakpoint (`lib/useWideLayout.ts`): at
+  `tabletLandscape`, `.banner-area` becomes `position: static; grid-area:
+  banner` inside the wide-layout grid (`app.css`, `@media (min-width:
+  1024px)`) and cannot collide with map chrome by construction; at
+  `tabletPortrait` the narrow banner-clearance rule fires instead.
+- `map.once('idle')` settle gates are UNREACHABLE in practice — measured on
+  PR #375: instrumenting the real page with a non-`once` `map.on('idle')` for
+  8s starting immediately after `mapReady()` resolves produced ZERO idle
+  events on an already-loaded static map. `map.loaded()` requires only
+  sources loaded; `idle` additionally requires placement settled, so by the
+  time `mapReady()`'s poll observes `loaded() === true` the one-shot initial
+  `idle` has already fired and the listener attaches after it. A gate of the
+  shape `map.once('idle', done)` racing a fixed cap therefore ALWAYS takes
+  the cap — an unconditional sleep in a state-signal costume, forbidden by
+  the E2E determinism rule above, and self-concealing: a gate that always
+  times out and always passes is indistinguishable from one that settles
+  fast. Replacement in `labels.spec.ts`: poll sorted `places_locality` label
+  arrays (identity compare, not count — a same-count swap must be caught),
+  require three consecutive matches at 400ms, fail CLOSED on budget
+  exhaustion with the count history and last three label sets. Three-at-400ms
+  is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
+  (`symbol/placement.ts:1268-1277`, 6.1.0) gates re-runs on `commitTime +
+  fadeDuration * durationAdjustment > now` with `fadeDuration: 300` defaulted
+  at `ui/map.ts:539` (same version). Measured effect: spec runtime ~6.5s -> ~2.3s,
+  stabilising after three reads (~820ms) — placement had been settled almost
+  immediately all along. Whether any OTHER spec shares this defect is
+  UNCONFIRMED — a grep of `annotations.spec.ts` (the spec `labels.spec.ts`'s
+  gate was originally modelled on) finds no `once('idle')`/fixed-cap race at
+  all, so do not assume it is affected; #376 tracks auditing `app/e2e/**` by
+  MEASUREMENT rather than by pattern-matching.
 - Dark mode has NO in-app toggle — it is pure `@media (prefers-color-scheme:
   dark)` in `app.css`, so a both-themes verification pass needs Playwright
   `page.emulateMedia({ colorScheme })`, never a UI click.
@@ -521,11 +690,14 @@ deviate from it.
   `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
 - Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
   loads them via `getArrayBuffer`/`fetch`
-  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`); `font-src`
+  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, 6.1.0); `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
   Nothing in the suite yet asserts a label actually renders (#320).
 - `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
-  suite has: `annotations.spec.ts:167` asserts ZERO Open-Meteo requests,
+  suite has: `annotations.spec.ts:244-247` asserts ZERO Open-Meteo requests
+  (the assertion moved from :167 when #378/PR #381 added ~247 lines earlier
+  in this file; re-derived session 25, where the previously cited `:246` was
+  the message argument rather than the `expect(` itself),
   every planning spec uses `?windFixture=`, AIS is BYOK so opens no sockets,
   and jsdom enforces no CSP at all — so a directive wrong in either direction
   (too tight, blocking startup; too loose, degraded to unrestrictive) would
@@ -766,7 +938,9 @@ deviate from it.
 - The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
   (measured, issue #9: the bridge decks are already deep water; sub-cell
   channels ≤30 m wide are the real barrier) — reconnecting them requires
-  fabricating depth; don't attempt without hi-res bathymetry.
+  fabricating depth; don't attempt without hi-res bathymetry. A finer grid
+  is NOT that hi-res bathymetry and has been measured to make things worse
+  — see the #245 rule under Domain rules.
 - Issue texts are not ground truth for states they don't describe: #31's
   correct wide-float description got misapplied to the narrow layout and
   spread into 5 code sites — verify wording against code before reusing it in
@@ -785,6 +959,17 @@ deviate from it.
   a fix wave is the same tautology one step later — the reviewer hand-derives
   the value from the state machine before accepting it (how #145's changed
   backoff literal was validated rather than trusted).
+- **One invocation cannot tell a load-bearing guard from a decorative one
+  when the failure it defends against is PROBABILISTIC** (#383, PR #390).
+  Reverting that PR's new at-rest settle gate gave 8/8 GREEN on the first
+  try — on that evidence the fix was a placebo about to ship. Only
+  `--repeat-each=16` exposed it: 25% failure with the gate removed, against
+  128/128 green with it (plus a reviewer's independent 16/16).
+  At a 25% per-run failure rate, eight consecutive clean runs happen
+  ~10% of the time by chance (`0.75^8` = 10.0%) — an 8-run revert is a
+  coin-flip-grade experiment, not a mutation check. Size the repeat count
+  against the failure rate you are trying to detect, and never read one
+  green revert as "the gate does nothing".
 - A mutation battery can pass for the WRONG reason when a test row carries
   MORE THAN ONE trigger for the same expected outcome. A near-miss row meant
   to pin allowlist MEMBERSHIP was written as `xargs npm install < pkgs.txt` —
@@ -794,6 +979,20 @@ deviate from it.
   catching it (#216, `.claude/hooks/notices-nudge.sh`). General form: when a
   row's purpose is to isolate ONE condition, strip every other
   character/construct that could independently cause the same pass/fail.
+  **A row can also be vacuous by matching PROSE rather than the value under
+  test** — the same class, recurring inside the check written to prevent it
+  (#388, PR #387). A twin check meant to prove the guard's user-facing
+  reason string lists every allowlisted verb substring-matched each verb
+  against the WHOLE reason sentence; `ls` was satisfied by the phrase "which
+  a**ls**o matches", so that verb passed even with the derived list stubbed
+  EMPTY — the mutation reds 13 of 14 rows rather than 14, and a 13/14 red is
+  convincing enough that nobody counts. Assert against the parsed VALUE (the extracted list), never against the
+  surrounding sentence. Sharper still: the reviewer's suggested fix PASSED
+  the vacuity probe while deriving needle and haystack from the SAME array —
+  a worse tautology that no longer tested anything. **A fix that passes the
+  test written to catch its absence can still be the wrong fix.** The
+  discriminating experiment was to break the SPLICE while leaving the
+  DERIVATION intact: correct form reds 1, suggested form reds 0.
 - CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
   `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
   mime-insensitive, but an `application/xml` parse is inert (no script exec, no
@@ -865,6 +1064,36 @@ deviate from it.
   tests (#208); a camera fake that doesn't model `map.resetNorth()` cannot
   show a settle that never arrives (#203). Ask of any green result: *what
   class of failure can this method not detect?*
+- The sibling question belongs BEFORE the check is demanded, not after: a
+  brief asking for evidence a method structurally cannot produce will get it
+  — fabricated. #368 (PR #382 review): an implementer was asked to prove a
+  sub-frame first-paint timing window was closed; no Playwright assertion in
+  this suite can observe one (every gate in this repo polls post-settle —
+  the E2E determinism rule above itself forbids anything else), and the e2e
+  test written to "prove" it passed even against a manually-reverted
+  `useEffect`. A reviewer flagged the demand as unsatisfiable and the test
+  was deleted rather than shipped; the guarantee instead rests on a
+  source-level argument (`useLayoutEffect`'s synchronous-before-paint
+  contract, no SSR in this app — `main.tsx` is a plain
+  `createRoot().render()`). Ask *what class of failure can this method not
+  detect* before requiring something as proof, not only after a green
+  result — the two questions are the same question asked at different
+  times, but only one of them prevents the fabricated test from ever being
+  written.
+- A cross-language invariant (a CSS `var()` fallback that must equal a JS
+  constant — no compiler spans CSS and TypeScript) has no automatic keeper;
+  the only thing that can catch drift is a test that reads BOTH artifacts
+  and compares them — `useBannerHeight.test.ts` reads `app.css` via
+  `node:fs`, regexes out the `var(--sc-banner-height, <N>px)` fallback, and
+  asserts it equals `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX` (#368). It
+  fails CLOSED, not merely equal: an explicit `expect(match,
+  '...').not.toBeNull()` runs BEFORE the value comparison, so a regex that
+  silently stops matching (the CSS rule renamed, reformatted, or removed)
+  fails loudly instead of quietly passing — the same shape as the
+  STRING-pattern `String.replace` bullet above (a silent no-op that shipped
+  a build with zero CSP metas, #223). Mutation-checked both ways: reverting
+  the CSS literal to `0px` fails with `Expected: 176, Received: 0`; deleting
+  the fallback entirely trips the `not.toBeNull()` guard first.
 - A fix INHERITS its bug's blind spot. #233's hook fix drew six Blockers over
   two rounds, and all three of round 2's were the same mention-vs-invocation
   class the fix existed to close, now living inside the fix itself; #228
@@ -881,6 +1110,29 @@ deviate from it.
   reported as verified too. After correcting any citation, re-check EVERY
   other citation in the block (#200 — §2.7.1.2 was "tightened" into being
   false; §2.7.1.1 was correct all along).
+- MapLibre glyph loading has NO observable failure signal by design:
+  `GlyphManager._downloadAndCacheRangePromise`
+  (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`; every line
+  number in this bullet read against `maplibre-gl@6.1.0`) catches EVERY
+  glyph-range fetch failure and falls back unconditionally to a
+  locally-drawn TinySDF glyph — the symbol is still placed, so
+  `queryRenderedFeatures` returns identical counts and names whether glyphs
+  are real or 100% broken, and `map.on('error')` never fires because nothing
+  re-throws. The only signal is a `console.warn` matching `"Unable to load
+  glyph range"` at `glyph_manager.ts:144`. Separately,
+  `_getAndCacheGlyphsPromise` (`:104-108`) takes a COMPLETELY silent
+  local-font path — no fetch, no warning — whenever the style's `glyphs` URL
+  is falsy, and `glyphManager.setURL()` is fed from the style's `glyphs`
+  field at two sites in `style.ts` including the style-DIFF path (`:491`)
+  that `styleReload.ts` exercises on every `styledata` re-add. `glyphs` is
+  documented OPTIONAL in the maplibre style spec, so nothing upstream flags
+  it. A label-render test needs THREE signals — a rendered-feature check,
+  the zero-warnings check, and a timing-independent assertion that
+  `map.getStyle().glyphs` matches the expected template — `app/e2e/labels.spec.ts`
+  (#320, PR #375) does this; its header documents that the rendered-feature
+  check LICENSES the zero-warnings assertion (an absence assertion carries
+  no information until the evidence-generating process is established to
+  have run) and must not be deleted as redundant.
 - Never source an integer-exact claim (line number, byte count, version
   string) from a summarizing fetch — `WebFetch`/`WebSearch` paraphrase, and
   a paraphrased integer is silently wrong rather than obviously wrong. Read
@@ -891,6 +1143,23 @@ deviate from it.
   the exact source is already on disk. Same failure as CITATION HALO above,
   one level up: borrowed confidence from a tool that looked authoritative
   instead of from an adjacent verified edit (#234).
+  **"Read it from the installed artifact" is NOT sufficient on its own
+  (#392).** A long-lived checkout's `node_modules` can be STALE against the
+  lockfile — this one was, serving `maplibre-gl` 6.0.0 while
+  `app/package-lock.json` pinned 6.1.0 — so two people can each `grep -n`
+  real source and reach opposite, both-honest conclusions about the same
+  line (measured: a reviewer filed a Major finding that a correct citation
+  was wrong; the implementer refuted it with the version, #383/PR #390).
+  **The LOCKFILE is authoritative** — it is what `npm ci`, CI and production
+  install. So: `npm ci` first, confirm the version you are about to read
+  (`node -p "require('./app/node_modules/<pkg>/package.json').version"`),
+  check it against `app/package-lock.json` — never against a warm
+  `node_modules`, memory, or CLAUDE.md — and NAME that version next to the
+  citation, because these numbers move between releases. Re-derive EVERY
+  citation individually after an upgrade: the offset is not uniform even
+  within one file (6.0.0 → 6.1.0 left `ui/map.ts:539` untouched while
+  `:576` became `:589` — a bulk shift would be a fresh fabrication
+  replacing a stale one).
 - A Playwright `expect.poll` predicate that returns a BOOLEAN discards the
   diagnostic. `return deg >= 330 || deg <= 30` + `.toBe(true)` can only report
   `Expected: true / Received: false` plus a timeout — and a Playwright timeout
@@ -952,6 +1221,18 @@ deviate from it.
   a third with the identical shape, at ~43 min per round to learn it (#342).
   `git grep` the pattern first, then centralize it behind one constant plus a
   structural guard — a per-file patch converges one CI run at a time.
+- A FABRICATED citation is worse than a wrong number — it launders the claim
+  as verified and stops the next reader from checking, compounding the
+  CITATION HALO risk above. Two shipped in one PR this session: a comment
+  invented "CLAUDE.md's documented 6-10x runner-speed ratio" (no such phrase
+  exists; the real measured figures are ~2.1x plain / ~2.5x coverage
+  documented above, and are separate multipliers for the vitest UNIT suite,
+  not Playwright), and a test header misattributed a `symbol_bucket.ts:391`
+  claim to CLAUDE.md when it came from that PR's own review. Both were found
+  only because the reviewer was asked to ENUMERATE every citation in the diff
+  and name where it looked, not to fix the one instance flagged — patching
+  flagged instances does not converge; enumerate and report the enumeration
+  including hits left alone (same methodology as the prose-rots bullet above).
 - Never promote a subagent's COMPARATIVE ADJECTIVE into a durable claim without
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
@@ -963,12 +1244,59 @@ deviate from it.
   instruction, brief the reviewer to check claim STRENGTH against the evidence,
   not just claim correctness — and prefer "narrowed" to "closed" unless the
   measurement really covers the whole space.
+- **#383 was never a flake — it was a real MapLibre defect, and it is FIXED
+  (PR #390).** `compass.spec.ts`'s `rotateThenTapCompassHome` helper reds
+  with `Expected: "free" / Received: "north-up"` whenever its right-drag
+  begins inside the PREVIOUS iteration's still-running tap-home ease: that
+  ease's natural completion calls a BARE `this.stop()` (no `allowGestures`)
+  → `_stopHandlers()` → `reset()` on EVERY handler, disarming `mouseRotate`
+  mid-gesture, so the ten following `mousemove`s produce a bearing delta of
+  exactly zero (MEASURED: max |bearing| = 0 across the whole gesture). The
+  camera genuinely never moved, which is why raising the timeout could never
+  help and why the mode "never flips" — CompassControl is not involved. The
+  fix ADDED an at-rest settle gate to the helper (a state signal, not a
+  sleep); PRODUCT CODE IS UNTOUCHED, so **the underlying MapLibre defect is
+  still live for real users on any `easeTo`/`flyTo`/`fitBounds` — tracked as
+  #391 (Backlog), and fixing it means patching maplibre.** Pinned 128/128
+  plus a reviewer's independent 16/16. The maplibre line numbers for the
+  whole `stop`→`_stopHandlers`→`reset` chain live in that helper's own
+  closing-gate comment, which names the version they were read against — go
+  there rather than re-citing them here. #253's lesson is VINDICATED, not
+  contradicted: the fix is a gate ADDED, never a readiness wait weakened,
+  and calling this "a known flake" for two sessions is exactly the
+  write-off that rule exists to prevent — a lone red test contradicting a
+  green suite deserves MORE weight than the suite.
 
 ## Domain rules that are easy to get wrong
 
 - **Navigability is decided at query time** (`cellDepth >= safetyDepth`), not
   baked into the mask — safety depth (default 3.0 m; boat draft 2.1 m) is a
   user setting and must never require regenerating data.
+- **The ~46 m mask grid is SOURCE-limited, and refining it is a measurable
+  REGRESSION against today's connectivity gate** (#245,
+  `docs/spikes/245-depth-mask-resolution.md` — do not re-open without new
+  bathymetry). Rebuilt end-to-end at 23 m and 12 m: **0 of the 5 #9
+  KNOWN_DISCONNECTED harbours reconnect** at either resolution, while
+  `aabenraa` DISCONNECTS at 23 m and `augustenborg` additionally at 12 m.
+  Mechanism: each sits exactly ON its gate (`aabenraa` 3.0 ≥ 3.0,
+  `augustenborg` 2.8 ≥ 2.8) and a finer cell no longer borrows the decimetre
+  the coarse cell averaged in — so `verify_mask.py` fails. State this
+  GATE-CONDITIONAL: it is true at the DEFAULT 3.0 m safety depth, never as
+  unconditional "finer is harmful" (`aabenraa` reads 2.9 m at 23 m, so it
+  stays connected for any user who lowers the gate). Licensed by a fidelity
+  control the reviewer reproduced INDEPENDENTLY with their own
+  reimplementation: 0 of 5,280,000 bytes differ.
+- **Buoyed fairways are DECLINED as a routing input** (#244,
+  `docs/spikes/244-buoyed-fairways.md`). `seamark:type=fairway` does not
+  exist in-region at all; the 258 `waterway=fairway` ways that do exist
+  carry ZERO width/depth/draft tags, and 144 (55.8%) are canoe-scheme
+  geometry of which 132 (51.2% of all 258) are explicitly
+  `boat=discouraged` — a naive nearest-fairway lookup picks a PADDLING route
+  for `maasholm`. The issue's own "depth already confines the boat, so a
+  fairway adds little" hypothesis was FALSIFIED, not confirmed: the
+  navigable corridor is >1 km wide at 90.8% of navigable-centreline points.
+  The decline rests on the data being unusable, not on the corridor being
+  narrow.
 - **Wind grids are stored with each plan** (IndexedDB). A saved route must
   always render against the forecast it was computed from, never a re-fetched
   one.
@@ -978,6 +1306,45 @@ deviate from it.
   allowed post-processing is merging near-collinear legs with re-validation.
 - **The router runs twice per plan** (genoa polar, fock polar) and recommends
   the faster rig. Both results are user-visible.
+- **Second rig, on the map too, not just in the results panel** (#324): the
+  rig NOT currently shown as primary can be overlaid on `RouteLayer.tsx`'s
+  map as `sc-route-alt-sail`/`sc-route-alt-motor` — map-only (no
+  labels/maneuver points, so it never enters #378's fragile ETA/speed
+  collision index), dashed (`[1, 1.5]`) + 0.45 opacity so it reads as "the
+  other rig" rather than a duplicate primary, distinguished from the primary
+  route purely by dash + opacity since colour already carries
+  port/starboard and sail/motor meaning. Anchored with an explicit
+  `beforeId: HIGHLIGHT_LAYER` — above `ROUTE_STACK_BOTTOM_LAYER` (the #53
+  shallow-depth casing, so the overlay can rarely paint over a safety
+  warning where the two tracks coincide — a considered trade; the reverse
+  order would instead hide the whole overlay under DataLayers' depth
+  shading) and below the primary route's own highlight/sail/motor layers
+  (the recommendation stays visually dominant wherever the two cross).
+  Toggle persisted in **localStorage** (`usePersistedToggle`,
+  `lib/storage.ts`'s safe wrappers — NOT IndexedDB), default OFF. Gated on
+  `Boolean(result) && Boolean(altResult)` in BOTH the checkbox's `disabled`
+  attribute AND the layer-visibility effect (PR #384 review) — gating only
+  the control leaves an overlay already made visible by the persisted flag
+  still rendered once a user switches primary-rig tabs to one whose own
+  result is null: `!altResult` alone is not enough, since `result` can be
+  null while the complement's `altResult` stays truthy, which would draw the
+  ONLY real route as the dashed "other rig" track.
+- **Planner progress is phase-based, not a percentage** (#340): the old
+  readout divided simulated route TIME by the unrelated 6-day/144h forecast
+  HORIZON — capped around 5% by construction and reset to 0% at every
+  genoa→fock rig switch and every #53 depth-relaxation retry. Replaced with
+  a phase readout ("sail N of 2 (Rig)", i18n key `planner.status.routingRig`)
+  derived from `rig` alone via `RIG_ORDER` (`types.ts`, `['genoa', 'fock']`).
+  `runBoth` in `planRoute.ts` evaluates `genoa: run(...)` then
+  `fock: run(...)` as plain, SYNCHRONOUS object-literal properties — no
+  interleaving — which is what makes the numbering honest: genoa's solve
+  (and every progress message it reports) fully completes before fock's
+  starts. The coupling is enforced by `planRoute.test.ts`'s "#340: solve
+  order matches RIG_ORDER" guard test, which records the order rigs are
+  FIRST seen in via the progress callback into a plain array (deliberately
+  NOT a `Set`, which is order-blind) and asserts it equals `RIG_ORDER` —
+  mutation-checked: swapping `runBoth`'s two properties turns this red with
+  `['fock', 'genoa']` against the expected `RIG_ORDER`.
 - **Motor legs are first-class**: planned where sailing speed falls below the
   SAIL-SPEED FLOOR `max(motorThresholdKn, motorSpeedKn - sailPreferenceKn)`
   (defaults 2.5 / 6.5 / 2.8 → floor 3.7 kn), run at motor speed, always flagged
@@ -1035,9 +1402,9 @@ deviate from it.
   NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
   measured against a chord that crossed LAND.
 - **No-route `reason` is a CONTROL INPUT, not just a status label** (#282,
-  open): `needsUnpreferencedRetry` (`planRoute.ts:67-71`) branches on
+  open): `needsUnpreferencedRetry` (`planRoute.ts:112-116`) branches on
   `r.reason === 'unreachable' || r.reason === 'beyond-horizon'`, and the #53
-  relaxation gate (`planRoute.ts:273`) branches on `reason === 'unreachable'`
+  relaxation gate (`planRoute.ts:349`) branches on `reason === 'unreachable'`
   (plus a depth-floor guard). So ANY change to no-route classification —
   including a strictly more accurate one — changes which retry tiers run and
   can return a SLOWER route, not merely a differently-labeled one. Measured
@@ -1178,11 +1545,55 @@ deviate from it.
   `--selftest`. It fails CLOSED where the old inline form emitted nothing:
   empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
   or non-repo `git` (verified across 15 constructed failure inputs).
+- **A read-only EXEMPTION must be CONJUNCTIVE, and its allowlist rests on a
+  named precondition** (#388, PR #387). `.claude/hooks/artifact-guard.sh`
+  used to `ask` on any Bash command merely NAMING a protected path,
+  read-only ones included — a deliberate over-fire the maintainer then
+  overruled ("too restrictive, i had to approve several stat calls"). It now
+  suppresses only when ALL THREE hold: the command's FIRST WORD exactly
+  matches a small no-write-capability verb set, AND the whole command
+  contains none of `> < | & ; \` $ \ ( ) { } ! #` / newline / CR, AND it
+  contains none of a write-capable TOKEN list matched as substrings anywhere.
+  A first-word- or prefix-only exemption fails OPEN and is still wrong. Read
+  the three arrays off the hook itself (`WRITE_CAPABLE_CHARS`,
+  `WRITE_CAPABLE_TOKENS`, `READONLY_VERBS`) rather than from any second copy
+  — including this one; the token list in particular is deliberately
+  SUBSUMPTION-PRUNED, so `-execdir`, `-okdir` and `"bash -c"` are absent by
+  design (each is a strict superstring of an entry that IS there —
+  `"bash -c"` is `ba` + `"sh -c"` — so a separate entry could never be the
+  reason a command matches, and adding one back makes its own selftest row
+  unfalsifiable: deleting `"bash -c"` reds 0 rows, MEASURED).
+  **NAMED PRECONDITION:
+  no allowlisted verb may be a shell FUNCTION or ALIAS in the guarded
+  shell** — `grep` is excluded precisely because in Claude Code's Bash it is
+  a function shimming to ugrep, so "the executable is its first word" is
+  false for it; `find` is excluded for `-delete`/`-exec`, and `file` because
+  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only).
+  Before adding a verb, run `type <verb>` **in the real Bash tool**:
+  measuring inside `bash script.sh` does not inherit non-exported functions,
+  so the shim vanishes and every verb reports a reassuring `file`.
+- A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
+  FIRST PAINT depends on must be written in `useLayoutEffect`, not
+  `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
+  cold load where `var(--x, fallback)` resolves to its fallback
+  (`lib/useBannerHeight.ts`). The fix there is TWO guards, deliberately not
+  one duplicated: `useLayoutEffect` closes the pre-paint TIMING window; a
+  non-zero CSS fallback (`var(--sc-banner-height, 176px)`, matching
+  `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX`) is what still protects the
+  layout if the custom property is never written AT ALL for some other
+  reason (hook not mounted, an error thrown before the write, a future
+  refactor) — a failure mode the timing fix does nothing for. Per the
+  guard-asymmetry principle above: that CSS fallback must fail toward
+  OVER-pushing (a generous non-zero default), never toward zero clearance —
+  the same "the absent-measurement path must fail toward the
+  expensive-but-safe direction" call as the `String.replace` CSP bullet
+  above, one layer lower (a CSS custom-property default instead of a
+  build-time string transform).
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
   global/personal, unversioned, shared across concurrent sessions) — NOT
-  covered by #216, which is the notices-regen/graphify-nudge hooks; #233
+  covered by #216, which is the notices-regen and nudge hooks; #233
   audited this guard specifically and declined to touch it. Observed but
   NOT confirmed as a mechanism: a Bash call was blocked while drafting a
   heredoc whose PROSE merely mentioned the force flags with no git command
@@ -1206,7 +1617,16 @@ deviate from it.
   PR comment. `.claude/skills/pr-selfreview/resolve-threads.sh` (#178, PR
   #329) batches the reply+resolve loop: it paginates `reviewThreads` on
   `hasNextPage`, re-enumerates fresh at the end, and exits non-zero if any
-  thread is still open.
+  thread is still open. Mapping-file gotcha (session 24): when a thread's
+  `line` reads `null` because the diff moved under it (GitHub's GraphQL
+  `line` field, not `originalLine`), the mapping entry for that finding must
+  carry an explicit `"line": null` — `reply_body_for_thread`'s matcher
+  compares `.value.line == $line` exactly against the JSON value read
+  straight off the thread and does NOT consult `originalLine`. Omitting the
+  key (rather than setting it to `null`) makes that entry fail every match;
+  the thread is then skipped with a loud `No reply text for thread ... — no
+  mapping entry and no default` — correct fail-closed behavior, but the fix
+  (add the key) is non-obvious the first time you hit it.
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the

@@ -82,8 +82,10 @@ export const en = {
   'planner.import.notice.multipleTracks':
     'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
-  'planner.status.routing': 'Calculating route…',
-  'planner.status.routingProgress': 'Calculating route… {progress}%',
+  // #340: phase readout, not a percentage — the router solves genoa and fock
+  // SEQUENTIALLY, so "sail {index} of {total}" is honest and bounded, unlike
+  // the removed percentage (capped ~5%, reset to 0 at the genoa->fock switch).
+  'planner.status.routingRig': 'Calculating route… sail {index} of {total} ({rig})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
@@ -169,10 +171,15 @@ export const en = {
   'route.legend.headingChange': 'Heading change',
   'route.legend.via': 'Via waypoint',
   'route.legend.shallow': 'Charted shallower than safety depth',
+  // #324: map-only overlay of the rig NOT currently shown as the primary
+  // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
+  'route.legend.altRig': 'Other rig (dashed)',
   'route.exportGpx': 'Export GPX',
   'route.windBarbs.toggle': 'Show wind barbs',
   'route.windBarbs.timeSlider': 'Forecast time',
   'route.annotations.toggle': 'Times & speeds',
+  'route.altRig.toggle': 'Show other rig',
+  'route.altRig.unavailable': 'Only one rig found a route',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Depth profile',
@@ -289,6 +296,10 @@ export const en = {
   'live.gpsHint':
     "Location access isn't available, so the boat position can't be shown on the map. Planning and the saved route still work fully — this is a passage-planning aid, not a navigation device.",
   'live.gpsHint.dismiss': 'Got it',
+  // #361: maplibre-gl 6.1.0 stopped supplying a default aria-label/role for
+  // markers built with a custom `element` — BoatMarker must set its own,
+  // like ViaMarkers already does, independent of library defaults.
+  'live.ownship.marker': 'Current vessel position',
   // #115: manual "replan from here" — planning-aid framing, never navigation
   // guidance; uses the plan's STORED wind forecast (offline-capable, unlike
   // the #114 recalculation).

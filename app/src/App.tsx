@@ -13,7 +13,6 @@ import { useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
-import { FORECAST_DAYS } from './services/openMeteo';
 import MapView from './components/MapView';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './components/DataLayers';
 import CompassControl from './components/CompassControl';
@@ -39,13 +38,12 @@ import UatBadge from './components/UatBadge';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
 import { useWideLayout } from './lib/useWideLayout';
+import { useBannerHeight } from './lib/useBannerHeight';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
 import type { Harbor, LatLon, PickedPoint, Plan } from './types';
-
-const FORECAST_HORIZON_MS = FORECAST_DAYS * 86_400_000;
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
@@ -59,21 +57,24 @@ const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
   via: 'planner.via.label',
 };
 
-// Reconciles usePlanFlow.ts's PlanningState (fetching-wind / routing{rig,
-// simulatedToMs} / error{messageKey}) with PlannerPanel's own, coarser
-// PlannerStatus (fetching / routing{progress?} / error{message}) — the two
-// hooks are owned by different modules and track planning progress at
-// different granularities, so this adapter is what reconciles them.
-// `progress` is simulatedToMs's advance through the departure->forecast-
-// horizon window — an approximation (the router may finish well before the
-// horizon), good enough for a progress indicator.
+// Reconciles usePlanFlow.ts's PlanningState (fetching-wind / routing{rig} /
+// error{messageKey}) with PlannerPanel's own, coarser-in-naming-only
+// PlannerStatus (fetching / routing{rig} / error{message}) — the two hooks
+// are owned by different modules, so this adapter is what reconciles them.
+// #340: this used to also convert simulatedToMs into a 0-1 `progress`
+// fraction of the departure->forecast-horizon window — removed because that
+// fraction was never an honest measure of solve progress (the denominator
+// was the 6-day forecast horizon, unrelated to how long the solve runs or
+// how long the passage takes): a realistic passage completed at a few
+// percent by construction, and it reset to 0 at every genoa->fock switch and
+// #53 depth-relaxation retry. `rig` alone is now the phase signal, honest
+// and bounded ("sail N of 2" — PlannerPanel.tsx renders it).
 // Exported for a focused unit test of the phase mapping (App.test.tsx) — the
 // full render can't easily hold the transient 'probing-depth' phase, and the
 // adapter is the single point where a phase-mapping typo would slip through.
 // eslint-disable-next-line react-refresh/only-export-components
 export function toPlannerStatus(
   flow: FlowPlanningState,
-  departureMs: number,
   t: ReturnType<typeof useT>,
 ): PlannerStatus {
   switch (flow.phase) {
@@ -81,13 +82,8 @@ export function toPlannerStatus(
       return { phase: 'idle' };
     case 'fetching-wind':
       return { phase: 'fetching' };
-    case 'routing': {
-      const progress = Math.min(
-        1,
-        Math.max(0, (flow.simulatedToMs - departureMs) / FORECAST_HORIZON_MS),
-      );
-      return { phase: 'routing', progress };
-    }
+    case 'routing':
+      return { phase: 'routing', rig: flow.rig };
     case 'probing-depth':
       return { phase: 'probing' };
     case 'error':
@@ -127,6 +123,13 @@ function AppShell() {
   const t = useT();
   const [lang, setLang] = useLang();
   const online = useOnline();
+  // #368: keeps `--sc-banner-height` (app.css's narrow-layout banner-
+  // clearance rule) in sync with `.banner-area`'s REAL rendered height —
+  // called here purely for that side effect (the hook writes the CSS custom
+  // property itself; see its own comment). The return value is unused at
+  // this call site; ScaleBar.tsx makes its own separate call to know when to
+  // re-measure `.map-stack-tl`'s position.
+  useBannerHeight();
   const [settings, setSettings] = useSettings();
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
@@ -527,7 +530,7 @@ function AppShell() {
       ? t('planner.disabled.pickEndpoints')
       : null;
 
-  const plannerStatus = toPlannerStatus(planning, departureMs, t);
+  const plannerStatus = toPlannerStatus(planning, t);
   const stale = plan !== null && isStaleForecast(plan);
 
   return (

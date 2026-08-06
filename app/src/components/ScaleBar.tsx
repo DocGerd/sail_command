@@ -3,6 +3,7 @@ import { useMapInstance } from './MapView';
 import { useLang, useT } from '../i18n';
 import { haversineNm } from '../lib/geo';
 import { useWideLayout } from '../lib/useWideLayout';
+import { useBannerHeight } from '../lib/useBannerHeight';
 import {
   SCALE_LIFT_GAP_PX,
   SCALE_LIFT_MAX_VIEWPORT_FRACTION,
@@ -28,6 +29,20 @@ export default function ScaleBar() {
   const [lang] = useLang();
   const t = useT();
   const isWide = useWideLayout();
+  // #368: `.map-stack-tl` can reposition at runtime (app.css's banner-
+  // clearance rule reads `--sc-banner-height`, written by this SAME hook —
+  // see its own comment) whenever `.banner-area`'s rendered height changes:
+  // a banner mounting/unmounting, OR a banner wrapping to a second line with
+  // no child added/removed at all (the case a `.banner-area` `childList`
+  // MutationObserver, this effect's previous mechanism, could not see — see
+  // the effect below's own comment on why that observer was removed rather
+  // than kept alongside this one). The returned number is used only as an
+  // effect-rerun trigger below; the actual geometry this effect needs
+  // (`.map-stack-tl`'s real `offsetTop`/`offsetHeight`) is already correct
+  // by the time that effect runs, because this hook's own `ResizeObserver`
+  // callback writes the CSS custom property SYNCHRONOUSLY, before it calls
+  // the `setState` this render is even responding to.
+  const bannerHeight = useBannerHeight();
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
@@ -302,6 +317,25 @@ export default function ScaleBar() {
     const mo = new MutationObserver(rewireLive);
     mo.observe(host, { childList: true });
 
+    // #368: `.map-stack-tl` can reposition at runtime (app.css's banner-
+    // clearance rule, driven by `--sc-banner-height`) whenever `.banner-
+    // area`'s rendered height changes — a banner mounting/unmounting, OR a
+    // banner wrapping to a second line with no child added/removed at all.
+    // This effect re-runs (see the dependency array below) whenever this
+    // component's OWN `useBannerHeight()` call (top of the component)
+    // returns a new number, which `apply()` (re-invoked below via the
+    // `measureSheet`/`rewireLive` calls this whole effect re-runs) then
+    // reads the FRESH `.map-stack-tl` position for.
+    //
+    // Previously this was a `MutationObserver({childList: true})` on
+    // `.banner-area` — SUBSUMED by (not stacked alongside) the shared
+    // `useBannerHeight()` `ResizeObserver`, and deliberately removed rather
+    // than kept as a second, redundant trigger: `childList` fires on banner
+    // mount/unmount but is BLIND to a banner that grows taller by wrapping
+    // to a second line — no child was added, the box just got taller — which
+    // is exactly the #368 "wrapped banner" residual a resize-based trigger
+    // closes and a mutation-based one structurally cannot.
+
     // Re-applies whenever the BAR's own box changes size — the first real
     // label paint (async, see the `barHeight` comment inside `apply` above)
     // and every suppress/un-suppress toggle (`display: none` <-> real box)
@@ -319,7 +353,7 @@ export default function ScaleBar() {
       sheetRo?.disconnect();
       barRo?.disconnect();
     };
-  }, [isWide]);
+  }, [isWide, bannerHeight]);
 
   return (
     <div
