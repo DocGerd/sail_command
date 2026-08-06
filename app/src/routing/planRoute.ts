@@ -15,7 +15,7 @@ import type {
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
-import { solve } from './isochrone';
+import { solve, type SolveResult } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
 import { BOAT_DRAFT_M, findRelaxedDepthM, type ProbeProgress } from './relaxedDepth';
 
@@ -27,25 +27,92 @@ export interface PlanDeps {
 
 export type RigProgress = (rig: Rig, info: { tMs: number; frontierSize: number }) => void;
 
+/**
+ * #282: the INTERNAL control vocabulary for a failed solve — deliberately a
+ * DIFFERENT type from the user-facing `NoRouteReason`, and deliberately not
+ * exported through `types.ts`, so it cannot leak into UI code.
+ *
+ * Why the two must not be one field: the #243 retry gate and the #53
+ * relaxation gate below both need to know WHY a solve failed. Until #282 they
+ * read that from `NoRouteReason` — the same string the planner shows the user
+ * — so a purely presentational improvement to the wording or the granularity
+ * of that string silently changed which retry tiers ran, and therefore which
+ * route the boat got — measured on a candidate reclassification patch (PR
+ * #279) that was REVERTED and never merged, so those numbers are motivating
+ * evidence recorded in #282, not reproducible from this branch. The
+ * gates now branch on this cause, and `NoRouteReason` is produced from it by
+ * `NO_ROUTE_LABEL_OF_CAUSE` at the plan boundary and nowhere else — so the
+ * label is free to change without moving a single route.
+ *
+ * RESIDUAL, stated plainly because the next reader will ask: the CAUSE itself
+ * is still derived from `SolveResult.reason`, because that is the only failure
+ * signal `solve()` exposes today. So a change to the CLASSIFICATION inside
+ * `isochrone.ts` (e.g. #265's calm-vs-blocked heuristic) still moves routes,
+ * and still needs the full sweep. What #282 closes is everything downstream of
+ * that classification. #282's own guidance is that a tier which must fire only
+ * for a specific cause has to carry that distinction EXPLICITLY rather than
+ * inherit it from user-facing copy — which is exactly what the two predicates
+ * below now do.
+ */
+export type SolveFailureCause = 'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded';
+
+/** The no-route reasons `solve()` can return (`snap-failed-*` never comes from it). */
+type SolveNoRouteReason = Extract<SolveResult, { status: 'no-route' }>['reason'];
+
+/**
+ * Translation IN: solver classification -> internal cause. One of exactly two
+ * places in this file allowed to name a solver-derived label; the structural
+ * guard in planRoute.reasonDecoupling.test.ts fails the build if a third
+ * appears.
+ */
+const CAUSE_OF_SOLVE_REASON = {
+  unreachable: 'mask-blocked',
+  'calm-motor-off': 'calm-without-motor',
+  'beyond-horizon': 'horizon-exceeded',
+} as const satisfies Record<SolveNoRouteReason, SolveFailureCause>;
+
+/**
+ * Translation OUT: internal cause -> the label the user sees. Purely
+ * presentational — nothing in this file branches on its VALUES, only on the
+ * cause. Changing this table (or making the label more accurate) cannot change
+ * any route.
+ */
+export const NO_ROUTE_LABEL_OF_CAUSE = {
+  'mask-blocked': 'unreachable',
+  'calm-without-motor': 'calm-motor-off',
+  'horizon-exceeded': 'beyond-horizon',
+} as const satisfies Record<SolveFailureCause, NoRouteReason>;
+
 interface RunOut {
   rigResult: RigResult | null;
-  reason: NoRouteReason | null;
+  /** Null exactly when `rigResult` is non-null. Never the user-facing label. */
+  cause: SolveFailureCause | null;
+}
+
+/** The user-facing label for a RunOut, or null when the rig actually solved. */
+function noRouteLabel(out: RunOut): NoRouteReason | null {
+  return out.cause === null ? null : NO_ROUTE_LABEL_OF_CAUSE[out.cause];
 }
 
 /**
- * #68 reason propagation: fold the two rigs' failure reasons from the RELAXED
- * re-solve into one plan-level reason. Precedence encodes actionability, so the
+ * #68 cause propagation: fold the two rigs' failure causes from the RELAXED
+ * re-solve into one plan-level cause. Precedence encodes actionability, so the
  * class the user can act on wins when the rigs disagree:
- *   'beyond-horizon' (change departure / refresh forecast)
- *   > 'calm-motor-off' (enable motor)
- *   > 'unreachable' (mask-level, nothing the user can change).
+ *   'horizon-exceeded' (change departure / refresh forecast)
+ *   > 'calm-without-motor' (enable motor)
+ *   > 'mask-blocked' (mask-level, nothing the user can change).
  * Both rigs share mask/wind/waypoints and differ only in polar table, so a
  * disagreement is rare — but the fold is deterministic so the result is stable.
+ * Pre-#282 this folded the LABELS; the precedence and the both-null default are
+ * unchanged, only the vocabulary moved.
  */
-function combineNoRouteReason(a: NoRouteReason | null, b: NoRouteReason | null): NoRouteReason {
-  if (a === 'beyond-horizon' || b === 'beyond-horizon') return 'beyond-horizon';
-  if (a === 'calm-motor-off' || b === 'calm-motor-off') return 'calm-motor-off';
-  return 'unreachable';
+function combineFailureCause(
+  a: SolveFailureCause | null,
+  b: SolveFailureCause | null,
+): SolveFailureCause {
+  if (a === 'horizon-exceeded' || b === 'horizon-exceeded') return 'horizon-exceeded';
+  if (a === 'calm-without-motor' || b === 'calm-without-motor') return 'calm-without-motor';
+  return 'mask-blocked';
 }
 
 // #259: an ETA gap smaller than this is measurement noise, not a genuine
@@ -93,15 +160,41 @@ export function compareRigs(genoa: RigResult, fock: RigResult): RigRecommendatio
 }
 
 /**
+ * #243 gate predicate: could the depth-comfort preference plausibly have
+ * CAUSED this failure, so that re-solving with the preference off might
+ * succeed? True for the §C.1 search-capacity effect the two-scalar clock
+ * encoding was designed to avoid but cannot PROVE it always avoids
+ * ('mask-blocked'), and for a preference-inflated ranking clock tripping the
+ * horizon guard ('horizon-exceeded'). A calm forecast with the engine off is a
+ * wind fact the preference can neither cause nor cure — mirroring #53's own
+ * rule that only mask-unreachability degrades further — so it never triggers a
+ * retry.
+ *
+ * #282: takes the internal cause, NOT the user-facing reason. Exported for
+ * direct unit testing of the truth table.
+ */
+export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
+  return cause === 'mask-blocked' || cause === 'horizon-exceeded';
+}
+
+/**
+ * #53 gate predicate: might a SHALLOWER safety gate connect a mask the
+ * requested gate does not? Only a mask-level block can be answered by moving
+ * the depth gate — a calm forecast or an exhausted forecast horizon is
+ * unchanged by it, which is why those two keep their errors instead of
+ * degrading further.
+ *
+ * #282: takes the internal cause, NOT the user-facing reason. Exported for
+ * direct unit testing of the truth table.
+ */
+export function depthRelaxationMayHelp(cause: SolveFailureCause): boolean {
+  return cause === 'mask-blocked';
+}
+
+/**
  * #243: does this rig-pair result need a full-tier retry with the depth
- * comfort preference turned off? True when EITHER rig individually failed
- * with a reason the preference could plausibly have caused: the §C.1
- * search-capacity effect the two-scalar clock encoding was designed to avoid
- * but cannot PROVE it always avoids ('unreachable'), or a preference-inflated
- * ranking clock tripping the horizon guard ('beyond-horizon'). 'calm-motor-off'
- * is a wind/mask fact the preference cannot cause or cure — mirroring #53's
- * own rule that only mask-unreachability degrades further — and never
- * triggers a retry.
+ * comfort preference turned off? True when EITHER rig individually failed with
+ * a cause `comfortRetryMayHelp` admits.
  *
  * Checked per rig, but the retry always re-solves BOTH rigs together (#243
  * §D.1 piece 3, decided at PLAN level): a per-rig-only retry would cost the
@@ -111,7 +204,7 @@ export function compareRigs(genoa: RigResult, fock: RigResult): RigRecommendatio
  */
 function needsUnpreferencedRetry(out: { genoa: RunOut; fock: RunOut }): boolean {
   const failedRetriably = (r: RunOut): boolean =>
-    r.rigResult === null && (r.reason === 'unreachable' || r.reason === 'beyond-horizon');
+    r.rigResult === null && r.cause !== null && comfortRetryMayHelp(r.cause);
   return failedRetriably(out.genoa) || failedRetriably(out.fock);
 }
 
@@ -203,7 +296,7 @@ export function planRoute(
         onProgress: (info) => onProgress?.(rig, info),
         ...(comfort !== undefined ? { comfortDepthM: comfort } : {}),
       });
-      if (res.status !== 'ok') return { rigResult: null, reason: res.reason };
+      if (res.status !== 'ok') return { rigResult: null, cause: CAUSE_OF_SOLVE_REASON[res.reason] };
       legs.push(...mergeCollinearLegs(res.legs, mask, wind, settings, comfort));
       departureMs = res.etaMs;
     }
@@ -217,7 +310,7 @@ export function planRoute(
       maneuverCount: legs.filter((l) => l.maneuverAtStart !== null).length,
       motorDistanceNm: legs.filter((l) => l.kind === 'motor').reduce((d, l) => d + l.distanceNm, 0),
     };
-    return { rigResult, reason: null };
+    return { rigResult, cause: null };
   };
   // #340 NAMED COUPLING: this evaluates `run('genoa', …)` then
   // `run('fock', …)` as plain, synchronous object-literal properties — no
@@ -267,8 +360,9 @@ export function planRoute(
       status: 'ok',
       genoa: genoa.rigResult,
       fock: fock.rigResult,
-      genoaReason: genoa.rigResult ? null : genoa.reason,
-      fockReason: fock.rigResult ? null : fock.reason,
+      // #282: the ONE place a per-rig failure becomes a user-facing label.
+      genoaReason: genoa.rigResult ? null : noRouteLabel(genoa),
+      fockReason: fock.rigResult ? null : noRouteLabel(fock),
       recommended,
       rigRecommendation,
       snappedOrigin: origin,
@@ -290,11 +384,15 @@ export function planRoute(
   // between consecutive snapped waypoints (segmentNavigable's traversal steps
   // one cell at a time in x or y, so every validated leg sweeps such a chain).
   // A mask disconnected at the requested gate therefore makes both full solves
-  // a foregone 'unreachable' — classify directly (one cheap BFS) instead of
-  // burning two doomed isochrone runs first. This also classifies a
-  // disconnected-AND-calm plan as 'unreachable' rather than the solver's
+  // a foregone mask-level failure — classify directly (one cheap BFS) instead
+  // of burning two doomed isochrone runs first. This also classifies a
+  // disconnected-AND-calm plan as mask-blocked rather than the solver's
   // death-count heuristic guess, which is the more accurate class.
-  let reason: NoRouteReason = 'unreachable';
+  //
+  // #282: this is the plan-level CAUSE, the control input for the relaxation
+  // gate below — never the label. The label is derived from it exactly once,
+  // at the `return` at the end of this function.
+  let cause: SolveFailureCause = 'mask-blocked';
   if (connectedAt(s.safetyDepthM)) {
     // #243 tier 1: requested gate, preference on — the happy path, nothing
     // extra paid.
@@ -322,31 +420,36 @@ export function planRoute(
       if (tier1.genoa.rigResult || tier1.fock.rigResult) {
         return assemble(tier1.genoa, tier1.fock, null);
       }
-      // Arbitrary tie-break: report genoa's reason (checked first); both rigs
+      // Arbitrary tie-break: take genoa's cause (checked first); both rigs
       // solve identical mask/wind/waypoints and differ only in polar table,
-      // so their failure reasons rarely differ in practice. Matches tier 1's
+      // so their failure causes rarely differ in practice. Matches tier 1's
       // fallback below exactly (the pre-#243 rule).
-      reason = tier2.genoa.reason!;
+      cause = tier2.genoa.cause!;
     } else if (tier1.genoa.rigResult || tier1.fock.rigResult) {
       return assemble(tier1.genoa, tier1.fock, null);
     } else {
-      // Arbitrary tie-break: report genoa's reason (checked first); both rigs
+      // Arbitrary tie-break: take genoa's cause (checked first); both rigs
       // solve identical mask/wind/waypoints and differ only in polar table,
-      // so their failure reasons rarely differ in practice.
-      reason = tier1.genoa.reason!;
+      // so their failure causes rarely differ in practice.
+      cause = tier1.genoa.cause!;
     }
   }
 
   // #53 graceful degradation below safety depth: ONLY the mask-unreachability
-  // class relaxes — calm-motor-off and beyond-horizon keep their errors — and
-  // never at or below the boat-draft floor. The relaxed gate is discovered
-  // once (cheap mask BFS probes, no solver runs), then BOTH rigs solve at that
-  // single gate, so the rig comparison stays apples-to-apples by construction.
-  // The user's safetyDepthM setting is NEVER mutated: the relaxed gate lives
-  // only in a solver-local Settings copy, per-plan, never sticky. Unaffected
-  // by #243: this decision is a pure mask/reason fact, made before either
-  // relaxed tier runs.
-  if (reason === 'unreachable' && s.safetyDepthM > BOAT_DRAFT_M) {
+  // class relaxes — a calm forecast and an exhausted horizon keep their errors
+  // — and never at or below the boat-draft floor. The relaxed gate is
+  // discovered once (cheap mask BFS probes, no solver runs), then BOTH rigs
+  // solve at that single gate, so the rig comparison stays apples-to-apples by
+  // construction. The user's safetyDepthM setting is NEVER mutated: the relaxed
+  // gate lives only in a solver-local Settings copy, per-plan, never sticky.
+  // Unaffected by #243: this decision is a pure mask/cause fact, made before
+  // either relaxed tier runs.
+  //
+  // #282: gated on the internal cause via `depthRelaxationMayHelp`, never on
+  // the user-facing label — and this gate must stay HERE in the control flow:
+  // the `combineFailureCause` assignments inside the block below are downstream
+  // of it and presentational only.
+  if (depthRelaxationMayHelp(cause) && s.safetyDepthM > BOAT_DRAFT_M) {
     const usedDepthM = findRelaxedDepthM(mask, waypoints, s.safetyDepthM, onProbe);
     if (usedDepthM !== null) {
       const relaxedSettings: Settings = { ...s, safetyDepthM: usedDepthM };
@@ -376,27 +479,29 @@ export function planRoute(
         }
         // #68: relaxation FOUND a connected gate but both rigs still failed to
         // solve there even without the preference, so this is no longer a
-        // mask-level failure — propagate the relaxed solve's OWN class
-        // (beyond-horizon / calm-motor-off are actionable) rather than
-        // leaving the stale 'unreachable'. See combineNoRouteReason for the
+        // mask-level failure — propagate the relaxed solve's OWN class (the
+        // horizon and calm classes are actionable) rather than leaving the
+        // stale mask-blocked one. See combineFailureCause for the
         // rig-disagreement precedence. Matches tier 3's fallback below
         // exactly (the pre-#243 rule).
-        reason = combineNoRouteReason(tier4.genoa.reason, tier4.fock.reason);
+        cause = combineFailureCause(tier4.genoa.cause, tier4.fock.cause);
       } else if (tier3.genoa.rigResult || tier3.fock.rigResult) {
         const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
         return assemble(tier3.genoa, tier3.fock, shallow);
       } else {
         // #68: relaxation FOUND a connected gate but both rigs still failed to
-        // solve there, so this is no longer a mask-level failure — propagate the
-        // relaxed solve's OWN class (beyond-horizon / calm-motor-off are
-        // actionable) rather than leaving the stale 'unreachable'. See
-        // combineNoRouteReason for the rig-disagreement precedence.
-        reason = combineNoRouteReason(tier3.genoa.reason, tier3.fock.reason);
+        // solve there, so this is no longer a mask-level failure — propagate
+        // the relaxed solve's OWN class (the horizon and calm classes are
+        // actionable) rather than leaving the stale mask-blocked one. See
+        // combineFailureCause for the rig-disagreement precedence.
+        cause = combineFailureCause(tier3.genoa.cause, tier3.fock.cause);
       }
     }
   }
   // The relaxed solve failed (or no gate connected / relaxation not attempted):
-  // report `reason` — 'unreachable' when the mask never connected, else the
+  // report the cause — mask-blocked when the mask never connected, else the
   // propagated relaxed-solve class.
-  return { status: 'error', reason };
+  //
+  // #282: the ONE place a plan-level failure becomes a user-facing label.
+  return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE[cause] };
 }
