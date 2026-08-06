@@ -1310,6 +1310,31 @@ deviate from it.
   a third with the identical shape, at ~43 min per round to learn it (#342).
   `git grep` the pattern first, then centralize it behind one constant plus a
   structural guard — a per-file patch converges one CI run at a time.
+  **Corollary for DELEGATION: enumerate FIRST, then scope the agent's file
+  allowlist from the enumeration — never the other way round.** Measured
+  2026-08-06 (PR #402): a brief scoped its allowlist from the ISSUE's claim
+  about where the stale text lived. #341's issue text located the "6-10x CI
+  slower" claim in `CLAUDE.md` — that was backwards: `CLAUDE.md` already
+  carried the corrected, measured figures, and the live stale text was
+  actually in `CONTRIBUTING.md`. Four `.md`-adjacent locations were in view
+  across the fix (`CLAUDE.md`, falsely, per the issue's own claim;
+  `CONTRIBUTING.md`, fixed against the original allowlist; then
+  `.claude/agents/sail-implementer.md` and `README.md`, found only by a
+  follow-up enumeration and both OUTSIDE the allowlist the brief had derived
+  from the issue). That follow-up enumeration was itself under-scoped —
+  `git grep -n "..." -- '*.md'`, silently Markdown-only — and got reported as
+  "repo-wide" with "zero remaining instances." It wasn't: a reviewer's later,
+  genuinely unscoped grep found 14 more live instances in source/test
+  comments (`app/e2e/*.spec.ts`, `app/src/routing/*.test.ts`,
+  `app/src/lib/gpx.parse.test.ts`), of which 6 were fixed and 8 deliberately
+  left alone as a different, correctly-cited defect (a real, dated ~30-44x
+  solver-CI measurement, not the fabricated 6-10x figure). The
+  scoped-grep-reported-as-repo-wide over-claim is the SAME failure this
+  file's own "four ways prose rots" bullet documents, one layer further
+  out — occurring inside the very PR fixing prose-rot claims. An allowlist
+  derived from an unverified claim about the code is the enumerate-don't-patch
+  failure relocated one level up, into the brief. Same reason issue texts
+  are not ground truth for states they do not describe.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -1373,6 +1398,17 @@ deviate from it.
   `age: 392`, `cache-control: max-age=600`) on a URL never requested before.
   Sibling of the existing "what class of failure can this method not
   detect?" rule — here the answer was "any change at all".
+  **The 404 half of that argument is now MEASURED, not assumed** (PR #403
+  review, 2026-08-06): a never-deployed `assets/*.js` HEADs a genuine 404 on
+  the real production CDN, not an SPA-fallback 200. That was worth checking
+  rather than reasoning about, because local `vite preview` returns the SPA
+  fallback (HTTP 200) for exactly this shape of request — see the glyph
+  bullet above, where that same preview-vs-prod difference made a symptom
+  look environmental for two sessions. Had production behaved like preview,
+  the whole version-aware probe would have passed forever while proving
+  nothing. The shipped probe was then confirmed to actually EXECUTE on a
+  real deploy (run `31092871174`, step "Assert this run's own build is
+  actually live (#398)") — a green run is not evidence the new step ran.
 
 ## Domain rules that are easy to get wrong
 
@@ -1683,11 +1719,45 @@ deviate from it.
   no allowlisted verb may be a shell FUNCTION or ALIAS in the guarded
   shell** — `grep` is excluded precisely because in Claude Code's Bash it is
   a function shimming to ugrep, so "the executable is its first word" is
-  false for it; `find` is excluded for `-delete`/`-exec`, and `file` because
-  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only).
+  false for it; `find` is excluded for `-delete`/`-exec`, `file` because
+  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only), and
+  `sed` because sed's `w` command writes with NO flag at all
+  (`sed -n '1,5w /tmp/out' file`), so excluding only `-i` would not be
+  enough — and a `sed -n` range read is exactly the innocent-looking shape
+  that motivates asking for it.
   Before adding a verb, run `type <verb>` **in the real Bash tool**:
   measuring inside `bash script.sh` does not inherit non-exported functions,
   so the shim vanishes and every verb reports a reassuring `file`.
+- **Four loosenings of that guard were MEASURED and REJECTED — do not
+  re-propose them** (2026-08-06, three-lens audit; full record in #404/#405).
+  Narrowing the Bash-arm path `docs/superpowers/` → `docs/superpowers/specs/`
+  is the seductive one and the worst: it makes `mv docs/superpowers
+  /tmp/stash` a SILENT ALLOW (it moves `specs/` too), reds 13 of the guard's
+  own selftest rows (re-measured 2026-08-06 against a scratch copy — an
+  earlier auditor's 11 does not reproduce). Method, so this can be re-run
+  rather than re-argued: `docs/superpowers/specs` is ALREADY a separate
+  `PROTECTED_PATHS` entry alongside the bare `docs/superpowers` ancestor, so
+  the two edits a mutation could try — deleting the ancestor entry outright,
+  or "narrowing" it by replacing it with `docs/superpowers/specs` — collapse
+  to the same array and the same byte-identical script; both were run
+  independently in `/tmp` and both gave 13, never 11. It is also
+  SUBSUMPTION-INVERTED — `docs/superpowers/specs`
+  is a strict superstring of `docs/superpowers`, so the parent subsumes the
+  child and removing the parent deletes the entry doing all the work. Adding
+  `cd` to `READONLY_VERBS` and segmenting the command on `;`/`&&`/newline
+  each removed EXACTLY ZERO prompts from a 165-command corpus of real
+  observed commands, and `cd` is actively harmful: the `ask` on `cd
+  app/public/data` is the ONLY visible moment of the two-call bypass the
+  hook's own design names as its one LIVE hole (Bash cwd persists across
+  calls). The general trap, worth more than the specific verdicts: **a
+  control that looks broader than its stated justification usually has a
+  SECOND justification you have not found** — here the parent-path entry is
+  not justified by the spec-edit rule at all, but by containment against
+  commands that destroy `specs/` WITHOUT NAMING IT (#309's M4 fix). Look for
+  the second reason before narrowing anything. The real remaining gap runs
+  the other way: the Edit/Write arm hardcodes `*docs/superpowers/specs/*`,
+  so `plans/` has no ask-gate at all (#405) — WIDEN that arm, never narrow
+  the Bash one.
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
