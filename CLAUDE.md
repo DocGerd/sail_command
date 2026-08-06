@@ -656,15 +656,26 @@ deviate from it.
   push, or a dispatch on `main`) BOTH halves are this run's own fresh build
   and both are decisive — exactly the configuration #398 is about, since
   the merge-push run and the tag-push run are each main-mode and deploy the
-  identical commit. On a develop-triggered run the PROD half is NOT built
-  by this run at all — per #117a it is restored from the cached,
-  already-live dist, so its URL returns 200 regardless of whether THIS
-  run's own deployment took; that 200 is evidence about the PREVIOUS
-  deployment, not this one. Only the UAT half (rebuilt every push, since
-  `git describe --tags --always` moves with every commit) is this run's own
-  build there. The check still runs unconditionally on every trigger —
-  cheap, and the uat half alone still generalizes to "deployment reported
-  success but did not take" beyond this one root cause; do not skip either
+  identical commit. On a develop-triggered run the PROD half depends on
+  which #117a path THIS run took, not on trigger alone: on a cache HIT that
+  passes validation, `deploy.yml`'s `build-main` step never fires and the
+  prod dist is restored from the `prod-dist-v2-<sha>-<version>` cache — by
+  construction the build already live, so its URL returns 200 regardless of
+  whether THIS run's own deployment took (that 200 is evidence about the
+  PREVIOUS deployment, not this one). On a cache MISS or a FAILED
+  validation, `build-main` reruns even in develop mode (`if: mode == 'main'
+  || cache-hit != 'true' || valid != 'true'`) and `prod_dist` becomes this
+  run's own fresh build — the prod half CAN carry real signal there, most
+  notably in the window where "Enforce byte-stability vs last main-mode
+  build" finds no retrievable baseline and skips the drift check with only a
+  warning: that rebuild is otherwise unverified against any known-good
+  reference, so this probe is the one thing standing in for it. The UAT half
+  has real teeth on EVERY develop-triggered run regardless of which prod
+  path was taken (rebuilt every push, since `git describe --tags --always`
+  moves with every commit) and is this run's own build there. The check
+  still runs unconditionally on every trigger — cheap, and the uat half
+  alone still generalizes to "deployment reported success but did not take"
+  beyond this one root cause; do not skip either
   half on the assumption one is redundant.
 
   Consequence for the release runbook: a same-SHA no-op now REDS the

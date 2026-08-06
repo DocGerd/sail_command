@@ -751,13 +751,29 @@ jobs:
         #     This is exactly the configuration #398 is about: the merge-push
         #     run and the tag-push run are each main-mode, deploy the
         #     IDENTICAL commit, and are what collide.
-        #   - On a develop-triggered run, the PROD half is not built by this
-        #     run at all — per #117a it is RESTORED from the
-        #     `prod-dist-v2-<sha>-<version>` cache, i.e. it is by
-        #     construction the build already live. Its URL therefore returns
-        #     200 regardless of whether THIS run's own deployment took; that
-        #     200 is evidence about the PREVIOUS deployment, not this one.
-        #     The UAT half is what has real teeth there: `git describe
+        #   - On a develop-triggered run, the PROD half depends on which
+        #     #117a path THIS run took, not on trigger alone — say the
+        #     mechanism, not just the conclusion:
+        #       * cache HIT + validated ("Validate cached prod dist before
+        #         reuse" passes): `build-main`'s `if:` does not fire, prod
+        #         dist is RESTORED from the `prod-dist-v2-<sha>-<version>`
+        #         cache, i.e. it is by construction the build already live.
+        #         Its URL returns 200 regardless of whether THIS run's own
+        #         deployment took — that 200 is evidence about the PREVIOUS
+        #         deployment, not this one.
+        #       * cache MISS or FAILED validation: `build-main`'s `if:`
+        #         (`mode == 'main' || cache-hit != 'true' || valid !=
+        #         'true'`) fires even in develop mode, `prod_dist` becomes
+        #         this run's own fresh `build-main/app/dist`, and the prod
+        #         half CAN carry real signal — most notably in the exact
+        #         window where "Enforce byte-stability vs last main-mode
+        #         build" finds no retrievable baseline and skips the drift
+        #         check with only a `::warning::` (BASELINE_FOUND != true):
+        #         that rebuild is otherwise unverified against any known-good
+        #         reference, so this probe is the one thing standing in for
+        #         it there.
+        #     The UAT half has real teeth on EVERY develop-triggered run
+        #     regardless of which prod path this run took: `git describe
         #     --tags --always` moves with every commit, so develop's entry
         #     hash changes on every push (including docs-only ones), making
         #     it this run's own build in the same sense the prod half is on
