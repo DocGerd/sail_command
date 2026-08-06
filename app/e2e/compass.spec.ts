@@ -589,6 +589,27 @@ const OCCLUSION_VIEWPORTS = [
 ];
 const OCCLUSION_TABS = ['Planen', 'Routen'] as const;
 
+// #412 fix-wave (PR #419 review, Minor 1): formats an overlap tracker that
+// was initialised to `null` (never `0` — see the two `#368` overlap guards
+// below) so a failure message can say "unmeasured" instead of fabricating a
+// "0" that reads as a genuine clean measurement.
+function fmtOverlap(v: number | null): string {
+  return v === null ? 'unmeasured' : String(v);
+}
+
+// No 3-CONSECUTIVE stability requirement on the overlap polls below or on
+// the Major-1 hit-test poll in the `"Major 3"` test further down this file
+// (#412 fix-wave, PR #419 review, Minor 2 — considered and declined here,
+// not silently skipped). See `layout.spec.ts`'s `settledHitDescription`
+// comment for the full argument: `labels.spec.ts`'s three-consecutive-at-
+// 400ms pattern exists to outlast a value that can go stale AFTER first
+// matching (MapLibre's placement throttle re-running a query); the
+// `--sc-banner-height` push these polls depend on only GROWS within any one
+// test's poll window here, so a single satisfying tick has no live producer
+// left that could shrink the clearance back a tick later. Reachability of a
+// stale-LARGE-then-settles-lower transient is assessed LOW, not proven
+// impossible.
+
 /** Every element (tag+class) at a point, front-to-back — used only for the
  * diagnostic dump attached to a failing assertion below. */
 function elementsAt(page: Page, x: number, y: number): Promise<{ tag: string; cls: string }[]> {
@@ -915,8 +936,19 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     // are tracked outside the poll purely so the catch below can still name
     // the actual last-observed numbers (`expect.poll`'s own `message` option
     // must be a static string, not a function of the polled value).
-    let lastOverlapWidth = 0;
-    let lastOverlapHeight = 0;
+    //
+    // #412 fix-wave (PR #419 review, Minor 1): initialised to `null`, NOT
+    // `0` — a `0` initial value is indistinguishable from a genuine "no
+    // overlap" MEASUREMENT. If `boundingBox()` ever returns `null` (element
+    // not visible/detached), the `!` assertion below throws inside the poll
+    // callback; Playwright treats a throwing predicate as a non-matching
+    // tick and keeps retrying, so these trackers would otherwise silently
+    // stay at their initial value and the catch below would report
+    // `overlapWidth=0 overlapHeight=0` as if it had actually measured a
+    // clean, non-overlapping layout — a fabricated measurement, not an
+    // honest "never observed".
+    let lastOverlapWidth: number | null = null;
+    let lastOverlapHeight: number | null = null;
     try {
       await expect
         .poll(
@@ -948,7 +980,7 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     } catch (e) {
       const height = await bannerHeightVar(page);
       throw new Error(
-        `overlapWidth=${lastOverlapWidth} overlapHeight=${lastOverlapHeight} ` +
+        `overlapWidth=${fmtOverlap(lastOverlapWidth)} overlapHeight=${fmtOverlap(lastOverlapHeight)} ` +
           `bannerHeight=${height || '(unset)'}\n${(e as Error).message}`,
         { cause: e },
       );
@@ -1083,8 +1115,14 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
     // are tracked outside the poll purely so the catch below can still name
     // the actual last-observed numbers (`expect.poll`'s own `message` option
     // must be a static string, not a function of the polled value).
-    let lastOverlapWidth = 0;
-    let lastOverlapHeight = 0;
+    //
+    // #412 fix-wave (PR #419 review, Minor 1): initialised to `null`, not
+    // `0` — see `fmtOverlap`'s own comment for why a `0` default would
+    // fabricate a measurement that never happened if the poll callback
+    // throws on every tick (e.g. a `null` box) and these trackers are never
+    // actually assigned.
+    let lastOverlapWidth: number | null = null;
+    let lastOverlapHeight: number | null = null;
     try {
       await expect
         .poll(
@@ -1109,7 +1147,7 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
     } catch (e) {
       const height = await bannerHeightVar(page);
       throw new Error(
-        `overlapWidth=${lastOverlapWidth} overlapHeight=${lastOverlapHeight} ` +
+        `overlapWidth=${fmtOverlap(lastOverlapWidth)} overlapHeight=${fmtOverlap(lastOverlapHeight)} ` +
           `bannerHeight=${height || '(unset)'}\n${(e as Error).message}`,
         { cause: e },
       );
@@ -1206,6 +1244,13 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     const liveTab = page.getByRole('tab', { name: 'Live' });
     const planTab = page.getByRole('tab', { name: 'Planen' });
 
+    // TEMP MUTATION-CHECK ONLY (#412 fix-wave Major 1) -- substitutes for a
+    // late SW toast: forces a real .banner-area banner to mount right before
+    // the viewport loop, so the FIRST iteration's geometry read races the
+    // injected ResizeObserver delay in useBannerHeight.ts. NEVER COMMIT.
+    await page.context().setOffline(true);
+    await expect(page.locator('.banner-message', { hasText: 'Planung deaktiviert' })).toBeVisible();
+
     // #208's original pass ran WITHOUT a plan, so this cluster was empty —
     // 390x844 is the review's own negative control (it does not reach the
     // sheet, or the tab strip, even unfixed); the other three are the exact
@@ -1228,15 +1273,33 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
         // The cluster's LOWER edge is the row most likely to reach into the
         // sheet — the review's own finding was that its lower rows, not its
         // top, hit-tested to the tab-strip button.
-        const lowerX = box.x + box.width / 2;
-        const lowerY = box.y + box.height - 4;
-        const onTop = await topmostIsWithin(page, lowerX, lowerY, '.route-layer-controls');
-        if (!onTop) {
-          const hitStack = await elementsAt(page, lowerX, lowerY);
-          throw new Error(
-            `.route-layer-controls is not the topmost hit at its lower edge (${vp.width}x${vp.height}): ${JSON.stringify(hitStack)}`,
-          );
-        }
+        //
+        // #412 fix-wave (PR #419 review, Major 1): this test never dismisses
+        // the SW's one-shot "offline ready" toast, so a late-mounting toast
+        // can push `.route-layer-controls` (one of the two selectors the
+        // `--sc-banner-height` narrow-layout clearance rule mirrors) down
+        // mid-test. `lowerX`/`lowerY` are now RE-SAMPLED from a fresh
+        // `controls.boundingBox()` on every poll tick, never frozen from the
+        // `box` read above — a push that moved the lower edge away from a
+        // frozen point could otherwise land the hit test mid-body and pass
+        // even while the settled state still overlaps. Polls the VALUE (a
+        // description of what's actually on top, `'on-top'` or the hit
+        // stack), never a collapsed boolean — a `.toBe(true)` here would
+        // discard exactly which element won the hit test on a failure.
+        await expect
+          .poll(
+            async () => {
+              const b = (await controls.boundingBox())!;
+              const lx = b.x + b.width / 2;
+              const ly = b.y + b.height - 4;
+              const onTop = await topmostIsWithin(page, lx, ly, '.route-layer-controls');
+              if (onTop) return 'on-top';
+              const hitStack = await elementsAt(page, lx, ly);
+              return JSON.stringify(hitStack);
+            },
+            { timeout: 10_000 },
+          )
+          .toBe('on-top');
 
         // #208 round-2 "R2-1" (the actual Blocker): the cluster being on
         // top of itself proves nothing about the TAB STRIP surviving next
@@ -1272,6 +1335,7 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     await legend.click();
     await expect(legendDetails).toHaveAttribute('open', '');
   } finally {
+    await page.context().setOffline(false).catch(() => {});
     server.kill();
   }
 });

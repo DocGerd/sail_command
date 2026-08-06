@@ -162,6 +162,7 @@ test.describe('#355 resizable panel', () => {
             `defaultCanvasWidth=${defaultCanvasWidth}px, canvasWidth=${lastCanvasWidth}px, ` +
             `panelWidth=${draggedWidth}px, panelGrowth=${panelGrowth}px, ` +
             `|canvasShrink-panelGrowth|=${lastDeltaAbs}px (want <5px)\n${(e as Error).message}`,
+          { cause: e },
         );
       }
 

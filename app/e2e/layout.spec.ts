@@ -58,6 +58,23 @@ function elementDescriptionAt(page: Page, x: number, y: number): Promise<string>
 // timeout on this poll names every value that could plausibly explain a
 // miss, rather than collapsing "the banner still intercepts it" and "the
 // geometry hadn't settled yet" into the same bare mismatch.
+//
+// No 3-CONSECUTIVE stability requirement (#412 fix-wave, PR #419 review,
+// Minor 2 — considered and declined here, not silently skipped): a single
+// satisfying poll tick wins, unlike `labels.spec.ts`'s three-consecutive-at-
+// 400ms pattern. That pattern exists there to outlast MapLibre's placement
+// throttle re-running the SAME query and producing a STALE match after a
+// real change — a value that can regress AFTER first agreeing. The banner
+// geometry these tests depend on has no equivalent regress-after-match path
+// within a single test's poll window: every banner-area size change in this
+// file only GROWS it (a banner mounting, a second banner stacking, a wrap to
+// a second line) and nothing here dismisses a banner mid-poll, so once
+// `--sc-banner-height` reflects a push large enough to clear the checkbox,
+// there is no live producer left that could shrink it back over the target a
+// tick later. Reachability of a stale-LARGE-then-settles-lower transient
+// (e.g. a future test that dismisses a banner INSIDE one of these polls'
+// 10s budget) is assessed LOW here, not proven impossible — revisit this
+// comment if such a test is ever added.
 async function settledHitDescription(page: Page, locator: Locator): Promise<string> {
   const b = await locator.boundingBox();
   if (!b) return '(no box)';
