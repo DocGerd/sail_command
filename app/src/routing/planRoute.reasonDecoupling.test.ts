@@ -74,11 +74,26 @@ describe('#282: retry gates read an internal cause, never the user-facing reason
 // ---------------------------------------------------------------------------
 
 /**
- * The three solver-derived NoRouteReason values. `snap-failed-*` are
- * deliberately excluded: they are returned before any solve runs and never
- * reach either gate, so `planRoute` may name them freely.
+ * The solver-derived NoRouteReason values. `snap-failed-*` are deliberately
+ * excluded: they are returned before any solve runs and never reach either
+ * gate, so `planRoute` may name them freely.
+ *
+ * DERIVED from `EXPECTED_LABELS`, not written out a second time (PR #411
+ * review). As a hand-copied literal this array had NO TWIN: stubbing it to
+ * `[]` left the whole structural guard 12/12 GREEN, because every failing
+ * assertion below iterates it — silently dropping a label disabled the check
+ * while it kept reporting success. Same fail-open shape as the backtick hole
+ * above, one level up, in the guard's DATA rather than its detection.
+ *
+ * Deliberately NOT derived from `NO_ROUTE_LABEL_OF_CAUSE`: the haystack is
+ * `planRoute.ts`'s own source text, and pulling the needle from that same
+ * production module would make both sides one source — the worse tautology
+ * #388 records, where a suggested fix passed its own vacuity probe while
+ * testing nothing. `EXPECTED_LABELS` is hand-written HERE and merely PINNED
+ * against production by the `toEqual` row above, so production drift reds that
+ * row rather than silently following it.
  */
-const SOLVER_LABELS = ['unreachable', 'beyond-horizon', 'calm-motor-off'] as const;
+const SOLVER_LABELS: readonly string[] = Object.values(EXPECTED_LABELS);
 
 /**
  * A label written as a TypeScript string literal, in ANY of the three quote
@@ -159,6 +174,21 @@ describe('#282 structural guard: no gate may branch on a solver-derived label', 
   // only evidence that the detector and the comment stripper work is a manual
   // mutation nobody re-runs — and both of these shapes were LIVE fail-open
   // holes found in review, not hypotheticals.
+  it('SOLVER_LABELS carries one label per cause — an emptied or truncated list cannot pass', () => {
+    // Without this row, `SOLVER_LABELS = []` disables every assertion below
+    // while the file still reports green (MEASURED before the fix). The
+    // expectation comes from the hand-written test tables, never from
+    // planRoute.ts — which is the haystack the labels are searched IN.
+    expect(
+      [...SOLVER_LABELS].sort(),
+      '#282 guard: SOLVER_LABELS no longer covers every cause — the structural ' +
+        'checks below would silently stop looking for the missing label(s)',
+    ).toEqual(Object.values(EXPECTED_LABELS).sort());
+    expect(SOLVER_LABELS.length, '#282 guard: one label per cause').toBe(
+      Object.keys(EXPECTED).length,
+    );
+  });
+
   it("the label detector recognises all three of TypeScript's quote forms", () => {
     for (const label of SOLVER_LABELS) {
       for (const q of ["'", '"', '`']) {
