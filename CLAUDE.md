@@ -658,6 +658,40 @@ deviate from it.
   206 of exactly 16 bytes starting with the `PMTiles` magic, with retries for
   CDN propagation — a CDN gzip/range flip becomes a red deploy run, not a
   silent user-facing slowdown.
+- **Deploy — same-SHA no-op fix, smoke-probe is now version-aware (#398)**:
+  GitHub Pages keys a deployment by COMMIT SHA. A release tag points at
+  `main`'s tip, so the merge-push deploy run and the tag-push deploy run
+  target the SAME commit; the first deployment of that SHA wins and the
+  second is accepted, reports `success`, and does not replace the served
+  artifact. Measured at the v0.9.0 cut: production kept serving the pre-tag
+  build for ~40 minutes while every existing signal — run conclusion, Pages
+  deployment status, and the CDN smoke probe above — read green, because the
+  probed basemap archive is byte-identical between the two builds and
+  therefore cannot distinguish them. The fix: the `build` job now also
+  discovers the exact entry-chunk URL THIS run's own build produced (from
+  the built `index.html`'s own `<script type="module">` tag, never a
+  hardcoded filename — same discovery philosophy as the basemap archive
+  lookup) and exposes it as a job output (`prod-entry-url`/`uat-entry-url`);
+  `smoke-probe` fetches that exact URL and requires 200. The content hash
+  changes whenever the bundled `__SC_APP_VERSION__` define changes, so a
+  main-push build and a later tag-push build of the IDENTICAL commit
+  produce two DIFFERENT hashes — on a same-SHA no-op the live site is still
+  serving the PREVIOUS build's chunk, so THIS run's own URL 404s,
+  decisively (a URL never requested before cannot be a stale cache hit,
+  unlike polling `index.html`, which the Pages CDN's query-string
+  normalization makes cache-proof against `?cb=` busting — curl, a real
+  browser, `cache: 'no-store'` and `cache: 'reload'` are all answered from
+  the same edge object). This check runs for every trigger (main, develop,
+  tag), not only main-mode runs, since a develop-triggered run's own
+  deployment SHA is always that push's own unique commit and can never
+  collide the same way — checking it unconditionally costs nothing extra and
+  generalizes to "deployment reported success but did not take" beyond this
+  one root cause. Consequence for the release runbook: a same-SHA no-op now
+  REDS the `smoke-probe` job instead of reporting a false `success` —
+  `.claude/skills/release/SKILL.md` §5b's remedy for that case is no longer
+  "re-run the tag deploy" (provably a no-op against the same SHA, measured
+  twice at the v0.9.0 cut) but "proceed to the back-merge" (step 6), whose
+  push carries a fresh SHA and therefore cannot collide.
 - After a BATCH of develop merges, verify the LAST deploy run before trusting
   either deployment — `gh run list --workflow=deploy.yml --limit 6 --json
   headSha,conclusion` then check that run's `smoke-probe` job. `concurrency:

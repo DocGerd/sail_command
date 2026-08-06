@@ -377,12 +377,34 @@ back-merging.
 SW serves the old bundle otherwise) and confirm the **About dialog shows
 `vX.Y.Z`**, not `vX.(Y-1).Z-N-g<sha>`.
 
-If the tag run was cancelled, or the version string still carries a suffix,
-re-run it before back-merging:
+If the tag run was **cancelled** (pending or in-flight, never attempted a
+deployment at all — the cancel-supersedes hazard above), re-running it is the
+correct remedy, since there is no earlier deployment of that SHA for it to
+collide with:
 
 ```bash
 gh api "repos/$REPO/actions/runs/<id>/rerun" --method POST
 ```
+
+🛑 **If instead the tag run's `smoke-probe` job itself went RED with a
+`#398` error, or (on an older `deploy.yml` predating #398) it reported
+`success` while check 2 still shows a suffixed version string — do NOT
+re-run it.** Both are the same failure: GitHub Pages keys a deployment by
+commit SHA, and the merge-push run and the tag-push run deploy the
+IDENTICAL `main` commit, so the first deployment of that SHA wins and the
+second silently no-ops. Re-running redeploys the SAME SHA again and
+reproduces the SAME no-op — measured twice at the v0.9.0 cut, both attempts
+green, neither changed the served bytes (`smoke-probe`'s CDN-Range check
+couldn't see it either, since the probed basemap archive is byte-identical
+between the two builds). `deploy.yml`'s `smoke-probe` job is now
+version-aware (#398 — see the CLAUDE.md deploy-architecture note for the
+mechanism) and turns this into a hard job failure instead of a false
+`success`, but the FIX is unchanged either way: skip straight to **step 6**
+(the back-merge) instead of re-running. That PR's own push carries a
+DIFFERENT commit SHA, so its deploy run cannot collide with the stuck one
+and republishes prod correctly with the tag now visible. Re-verify check 2
+(the About dialog) against production again once that back-merge's deploy
+run goes green, before treating the cut as fully shipped.
 
 **Whenever the drift-baseline format or the prod cache key changes** (as in
 #197), a main-mode dispatch is what re-establishes a usable baseline for
