@@ -35,10 +35,13 @@ import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
+import PanelResizer from './components/PanelResizer';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
+import { usePersistedNumber } from './lib/usePersistedNumber';
+import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
@@ -156,6 +159,52 @@ function AppShell() {
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
   const isWide = useWideLayout();
+
+  // #355: resizable desktop left panel. `shellRef`/`panelRef` target
+  // `.app-shell`/`.app-bottom-sheet` — plain DOM refs, never given a React
+  // `style` prop, so PanelResizer's direct `.style.setProperty` writes
+  // during a live drag are never clobbered by an unrelated React re-render
+  // of either element (see PanelResizer.tsx's own comment). Both hooks
+  // below run unconditionally (rules of hooks) even on narrow, where their
+  // output is inert: `--sc-panel-w` is only read inside app.css's
+  // `@media (min-width: 1024px)` block, so writing it while narrow has no
+  // visual effect, and PanelResizer itself is only ever RENDERED when
+  // `isWide` (below) — narrow must not gain a resize affordance even in the
+  // accessibility tree, so this is a mount gate, not a CSS `display: none`.
+  const shellRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    // Coalesced to one state update per animation frame — a window resize
+    // (e.g. dragging the OS window edge) can fire far more often than that.
+    let raf = 0;
+    const onResize = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setViewportWidth(window.innerWidth));
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+  const panelMaxPx = panelMaxWidthPx(viewportWidth);
+  const [panelWidthPx, setPanelWidthPx] = usePersistedNumber(
+    'sc-panel-width',
+    PANEL_MIN_WIDTH_PX,
+    panelMaxPx,
+  );
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    // `null` (no stored override yet, or just reset) removes the property
+    // entirely rather than writing a computed default — app.css's
+    // `var(--sc-panel-w, 1fr)` fallback is what must govern then, so today's
+    // exact pre-#355 layout is reachable byte-for-byte, not merely
+    // approximated by a JS-computed number.
+    if (panelWidthPx === null) shell.style.removeProperty('--sc-panel-w');
+    else shell.style.setProperty('--sc-panel-w', `${panelWidthPx}px`);
+  }, [panelWidthPx]);
   // #31: on wide, LiveView (which must stay mounted inside MapView's subtree
   // for BoatMarker's map context) portals its textual readout into this
   // panel-column slot. A callback ref into state so the portal target becomes
@@ -534,7 +583,7 @@ function AppShell() {
   const stale = plan !== null && isStaleForecast(plan);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" ref={shellRef}>
       {/* Base layer: full-viewport map. Header/banners/bottom-sheet below are
           positioned overlays painted on top of it (later in DOM order, same
           stacking context), each occupying only its own natural height, so
@@ -782,7 +831,22 @@ function AppShell() {
         )}
       </div>
 
-      <div className="app-bottom-sheet">
+      {/* #355: only ever mounted on wide — narrow must not gain a resize
+          affordance, and gating on the hook (rather than hiding via CSS)
+          keeps a meaningless control out of the phone/tablet-portrait tab
+          order entirely. */}
+      {isWide && (
+        <PanelResizer
+          panelRef={panelRef}
+          targetRef={shellRef}
+          min={PANEL_MIN_WIDTH_PX}
+          max={panelMaxPx}
+          onCommit={setPanelWidthPx}
+          aria-label={t('panel.resizer.label')}
+        />
+      )}
+
+      <div className="app-bottom-sheet" ref={panelRef}>
         <nav className="app-tabs" role="tablist">
           <button
             type="button"

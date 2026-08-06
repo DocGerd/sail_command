@@ -178,6 +178,20 @@ select {
        over the chip completely; moving the row, not adding another tier
        bump, is what fixes it — see that rule's own comment and the #205
        note there).
+     - `.panel-resizer` — the #355 resizable-panel drag handle, wide-layout
+       only. It is not "always operable" like navigation (Tier 3): a resize
+       affordance is a convenience, and per this list's own principle it
+       must never cost the user shell chrome. Unlike every other Tier-2
+       member above, it does NOT actually compete for screen space with
+       anything today — it occupies its OWN dedicated grid column
+       (`resizer`, between `panel` and `map`), and `grid-template-areas`
+       confines every other participant (including `.app-header`, which
+       spans only the `panel` column in its own row) to its own cells, so
+       there is no sub-pixel overlap to arbitrate at any edge. The
+       assignment is DEFENSIVE, not a fix for an observed collision: it
+       classifies the element by the principle it matches, so a future
+       absolutely-positioned addition to this column inherits a sane
+       default instead of needing this list revisited from scratch.
    The MapLibre attribution control carries its OWN `z-index: 2`
    (maplibre-gl.css, not ours to change) in the same root stacking context
    (nothing between it and `.app-shell` creates one) — at that tie, DOM
@@ -2264,16 +2278,32 @@ select {
    The overlay elements (header/banner/sheet/map-area) are all absolutely
    positioned in the base layout; here they become ordinary grid items placed
    via grid-template-areas. The map column spans all three rows, so it keeps
-   full height regardless of how tall the header/banner rows are. */
+   full height regardless of how tall the header/banner rows are.
+
+   #355: the panel column's `1fr` is now `var(--sc-panel-w, 1fr)` — App.tsx
+   writes `--sc-panel-w` on THIS element (`.app-shell`) as a px length once a
+   user drags or keys `.panel-resizer` (below); the `1fr` fallback is
+   load-bearing — with no stored width, and before `.panel-resizer` ever
+   mounts, this rule is BYTE-IDENTICAL to the pre-#355 layout. Every bound
+   (the `320px` floor here, the max width, the default) lives as a single TS
+   source of truth in `lib/panelWidth.ts` per CLAUDE.md's cross-language-
+   invariant lesson — `panelWidth.test.ts` pins the `320px` literal below
+   against that file the same way `useBannerHeight.test.ts` pins its own
+   CSS/TS pair; the `1fr` fallback itself has no numeric TS counterpart to
+   compare against, so it stays a named, unenforced residual (see that
+   file's own header comment). A dedicated `resizer` column (rather than
+   absolutely positioning `.panel-resizer` over the seam) means the browser
+   computes its screen position for free via ordinary grid layout — no JS
+   measurement, and so no pre-paint positioning flash to guard against. */
 @media (min-width: 1024px) {
   .app-shell {
     display: grid;
-    grid-template-columns: minmax(320px, 1fr) 2fr;
+    grid-template-columns: minmax(320px, var(--sc-panel-w, 1fr)) 10px 2fr;
     grid-template-rows: auto auto 1fr;
     grid-template-areas:
-      'header map'
-      'banner map'
-      'panel  map';
+      'header resizer map'
+      'banner resizer map'
+      'panel  resizer map';
   }
 
   .app-header {
@@ -2300,6 +2330,43 @@ select {
     inset: auto;
     grid-area: map;
     border-left: 1px solid var(--sc-border); /* single divider between panel and map */
+  }
+
+  /* #355: the drag handle. `.map-area`'s border-left (above) already draws
+     the resting-state seam line, so this stays transparent at rest and only
+     shows its own accent line on hover/focus — an always-visible handle
+     the full shell height would visually compete with that seam for no
+     reason. `touch-action: none` stops the browser's own touch-scroll
+     gesture from cancelling the pointer stream mid-drag (PanelResizer.tsx
+     relies on getting every pointermove via setPointerCapture). Only ever
+     rendered on wide (App.tsx gates on useWideLayout, not CSS), so no
+     narrow-layout rule is needed to hide it. */
+  .panel-resizer {
+    grid-area: resizer;
+    position: relative;
+    cursor: col-resize;
+    touch-action: none;
+    /* Tier 2 (map chrome) — see the tier-order comment above .app-header. */
+    z-index: 2;
+  }
+
+  .panel-resizer::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 0 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    background: transparent;
+  }
+
+  .panel-resizer:hover::after,
+  .panel-resizer:focus-visible::after {
+    background: var(--sc-accent);
+  }
+
+  .panel-resizer:focus-visible {
+    outline: 2px solid var(--sc-accent);
+    outline-offset: -2px;
   }
 
   .app-bottom-sheet {
