@@ -137,6 +137,10 @@ describe('#282 structural guard: no gate may branch on a solver-derived label', 
     expect(rest, '#282 guard: excision swallowed planRoute() itself').toContain(
       'export function planRoute',
     );
+    // Both tables together are ~3% of the comment-stripped file (measured
+    // 0.970 at the commit that added this guard), so 0.8 is a loose bound on
+    // "the excision ate something it should not have", NOT a budget anyone can
+    // trip by adding a cause value.
     expect(
       rest.length / stripped.length,
       '#282 guard: the two tables should be a small slice of the file',
