@@ -377,14 +377,30 @@ back-merging.
 SW serves the old bundle otherwise) and confirm the **About dialog shows
 `vX.Y.Z`**, not `vX.(Y-1).Z-N-g<sha>`.
 
-If the tag run was **cancelled** (pending or in-flight, never attempted a
-deployment at all — the cancel-supersedes hazard above), re-running it is the
-correct remedy, since there is no earlier deployment of that SHA for it to
-collide with:
+If the tag run was **cancelled**, check whether its own `deploy` job had
+already completed before assuming a re-run is safe — `concurrency:
+cancel-in-progress` can catch a run at ANY point (the hazard above), including
+after `deploy` (and therefore the Pages deployment for that SHA) already
+finished, e.g. mid-`smoke-probe`:
 
 ```bash
-gh api "repos/$REPO/actions/runs/<id>/rerun" --method POST
+gh api "repos/$REPO/actions/runs/<id>/jobs" --jq '.jobs[] | select(.name=="deploy") | {conclusion}'
 ```
+
+- `conclusion` is `null` (job never ran), `cancelled`, or `failure`: no
+  deployment for this SHA was created by this run — re-running is the correct
+  remedy, since there is no earlier deployment of that SHA for it to collide
+  with:
+
+  ```bash
+  gh api "repos/$REPO/actions/runs/<id>/rerun" --method POST
+  ```
+
+- `conclusion` is `success`: this SHA is **already deployed** by this run (it
+  was cancelled somewhere after `deploy`, not before) — re-running would
+  redeploy the identical SHA and hit the same-SHA no-op below instead of the
+  cancelled-run case. Verify check 2 directly rather than re-running; if it
+  still fails, treat it as the block immediately below, not as a cancellation.
 
 🛑 **If instead the tag run's `smoke-probe` job itself went RED with a
 `#398` error, or (on an older `deploy.yml` predating #398) it reported

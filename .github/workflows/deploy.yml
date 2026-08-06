@@ -75,15 +75,16 @@ jobs:
     outputs:
       prod-archive-files: ${{ steps.probe-target.outputs.prod-files }}
       uat-archive-files: ${{ steps.probe-target.outputs.uat-files }}
-      # #398: the exact entry-chunk URL THIS run's own build produced, for
-      # both refs. The version-aware smoke-probe check below fetches these
-      # verbatim rather than a hardcoded/globbed filename, because the
-      # content hash changes whenever the bundled __SC_APP_VERSION__ define
-      # changes — exactly what differs between a main-push build (untagged
-      # `git describe`) and a later tag-push build of the IDENTICAL commit
-      # (clean `vX.Y.Z`), the two builds that collide in the #398 same-SHA
-      # no-op. A URL that was never requested before cannot be served from a
-      # stale CDN cache entry, which is what makes a 200 there decisive.
+      # #398: the entry-chunk URL assembled into each ref's dist for THIS
+      # run's Pages artifact (never a hardcoded/globbed filename). The
+      # version-aware smoke-probe job fetches these verbatim and requires
+      # 200 — see that job's own step for exactly which half is FRESHLY
+      # built by this run (and therefore decisive) per trigger: it differs
+      # between a main-mode run (both halves fresh) and a develop-triggered
+      # run (prod is #117a's cache-restored, already-live dist; only uat is
+      # fresh). A URL that was never requested before cannot be served from
+      # a stale CDN cache entry, which is what makes a 200 decisive wherever
+      # the URL genuinely is this run's own build.
       prod-entry-url: ${{ steps.probe-target.outputs.prod-entry }}
       uat-entry-url: ${{ steps.probe-target.outputs.uat-entry }}
     steps:
@@ -502,6 +503,7 @@ jobs:
           # below gets to run and print a diagnostic naming the file.
           locate_entry() {
             html="$1/index.html"
+            expected_prefix="$2"
             if [ ! -f "$html" ]; then
               echo "::error::#398 $html not found — cannot resolve this dist's entry chunk" >&2
               exit 1
@@ -516,12 +518,37 @@ jobs:
               echo "::error::#398 module script tag in $html has no usable src attribute" >&2
               exit 1
             fi
+            # #398 review (Major): validate the extracted value's SHAPE
+            # before trusting it as a cache-proof probe target. `head -1`
+            # above takes the FIRST module script tag in document order —
+            # today there is provably exactly one (verified against the real
+            # built dist), but that is a property of today's
+            # vite-plugin-pwa config, not an invariant a future
+            # plugin/injectRegister change or Vite upgrade must preserve.
+            # An unvalidated src could hand the probe a NON-hashed,
+            # permanently-live URL, or a malformed one (e.g. `base` ever
+            # becoming relative would concatenate into
+            # `https://docgerd.github.ioassets/...`, failing for the wrong
+            # reason and blaming a same-SHA no-op) — either way the check
+            # would go green FOREVER with zero signal, the same fail-open
+            # class as the String.replace CSP no-op that shipped a build
+            # with zero CSP metas. Require the expected deployment's own
+            # base path AND a hashed `assets/<name>-<hash>.js` shape (the
+            # `*-*` requires at least one hyphen before `.js`, which a
+            # non-hashed filename like a bare `registerSW.js` cannot match).
+            case "$entry_src" in
+              "${expected_prefix}assets/"*-*.js) ;;
+              *)
+                echo "::error::#398 entry src '$entry_src' from $html does not match the expected hashed-asset shape '${expected_prefix}assets/<name>-<hash>.js' — refusing to probe a URL that may not be this run's own build" >&2
+                exit 1
+                ;;
+            esac
           }
           prod_files="$(locate "$PROD_DIST")"
           uat_files="$(locate build-develop/app/dist)"
-          locate_entry "$PROD_DIST"
+          locate_entry "$PROD_DIST" /sail_command/
           prod_entry="$entry_src"
-          locate_entry build-develop/app/dist
+          locate_entry build-develop/app/dist /sail_command/uat/
           uat_entry="$entry_src"
           {
             echo "prod-files=$prod_files"
@@ -704,27 +731,42 @@ jobs:
         # issue for the full mechanism and timeline). Re-running the tag
         # deploy does NOT fix this (same SHA, same no-op — measured twice).
         #
-        # This check fetches the exact entry-chunk URL THIS run's own build
-        # produced (never a hardcoded filename — see the build job's
-        # `probe-target` step) and requires 200. On a same-SHA no-op the LIVE
-        # site is still serving the PREVIOUS build's differently-hashed
-        # chunk (the bundled __SC_APP_VERSION__ define changes the chunk's
-        # content and therefore its hash across a tag push), so THIS run's
-        # own URL 404s — decisively, since a URL that was never requested
-        # before cannot be a stale cache hit. That is also why this can't be
-        # done by polling index.html: the Pages CDN normalizes query strings,
-        # so `?cb=` cache-busting is a no-op and would be answered from the
-        # same stale edge object every time (#398).
+        # This check fetches the entry-chunk URL the build job resolved for
+        # each half and requires 200. On a same-SHA no-op the LIVE site is
+        # still serving the PREVIOUS build's differently-hashed chunk (the
+        # bundled __SC_APP_VERSION__ define changes the chunk's content and
+        # therefore its hash across a tag push), so the resolved URL 404s —
+        # decisively, since a URL that was never requested before cannot be
+        # a stale cache hit. That is also why this can't be done by polling
+        # index.html: the Pages CDN normalizes query strings, so `?cb=`
+        # cache-busting is a no-op and would be answered from the same stale
+        # edge object every time (#398).
         #
-        # Runs for every trigger (main, develop, tag), not only the
-        # main-mode runs where the historical incident happened: a
-        # develop-triggered run's own deployment SHA is always that push's
-        # own unique commit, so it can never collide with an earlier run the
-        # way two main-mode runs (a main push and a later tag push of the
-        # identical commit) can. Checking it unconditionally costs nothing
-        # extra and catches "deployment reported success but did not take"
-        # generally, exactly as the issue's own fix ranking (option 1) asks
-        # for — independent of whichever root cause produces it next.
+        # #398 review (Major): which half carries signal depends on the
+        # trigger, and it is NOT "this run's own build" for both halves on
+        # every run — say precisely what is proven, not more:
+        #   - On a MAIN-MODE run (a `main` push, a release-tag push, or a
+        #     dispatch on `main` — see the build job's `refs` step) BOTH
+        #     halves are this run's own fresh build, so both are decisive.
+        #     This is exactly the configuration #398 is about: the merge-push
+        #     run and the tag-push run are each main-mode, deploy the
+        #     IDENTICAL commit, and are what collide.
+        #   - On a develop-triggered run, the PROD half is not built by this
+        #     run at all — per #117a it is RESTORED from the
+        #     `prod-dist-v2-<sha>-<version>` cache, i.e. it is by
+        #     construction the build already live. Its URL therefore returns
+        #     200 regardless of whether THIS run's own deployment took; that
+        #     200 is evidence about the PREVIOUS deployment, not this one.
+        #     The UAT half is what has real teeth there: `git describe
+        #     --tags --always` moves with every commit, so develop's entry
+        #     hash changes on every push (including docs-only ones), making
+        #     it this run's own build in the same sense the prod half is on
+        #     a main-mode run. Runs unconditionally (every trigger) anyway,
+        #     since it is cheap and the uat half alone still catches
+        #     "deployment reported success but did not take" beyond a
+        #     same-SHA no-op — do not skip either half on the assumption one
+        #     is redundant; the develop-mode prod probe merely reports on
+        #     the WRONG run when it does pass.
         env:
           PROD_ENTRY: ${{ needs.build.outputs.prod-entry-url }}
           UAT_ENTRY: ${{ needs.build.outputs.uat-entry-url }}
@@ -733,7 +775,12 @@ jobs:
             url="$1"
             label="$2"
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
-              status="$(curl -sSI -o /dev/null -w '%{http_code}' "$url" || echo "000")"
+              # #398 review (Minor): `curl -w '%{http_code}'` already writes
+              # "000" to stdout AND exits non-zero on a transport failure, so
+              # a trailing `|| echo "000"` on the whole substitution used to
+              # append a SECOND one (measured: status=[000000]). Fall back on
+              # the assignment's own exit status instead — one "000", never two.
+              status="$(curl -sSI -o /dev/null -w '%{http_code}' "$url")" || status="000"
               if [ "$status" = "200" ]; then
                 echo "  $label attempt $attempt: OK ($url -> 200)"
                 return 0
