@@ -381,8 +381,17 @@
 #      across calls in this repo) followed by a bare-filename write, e.g.
 #      `cp /tmp/f mask.bin` with no path in the command string at all. This
 #      is the LIVE one — it needs no contrivance, just two ordinary calls.
-#   2. Variable indirection: `D=app/public/data; cp /tmp/f $D/mask.bin` — the
-#      literal command string never contains the protected substring.
+#   2. Variable indirection: `D=app/public; cp /tmp/f $D/data/mask.bin` — the
+#      literal command string never contains the protected substring
+#      "app/public/data" (it is split across the assignment and the
+#      dereference). CORRECTED (#404): an earlier revision of this example
+#      used `D=app/public/data; cp /tmp/f $D/mask.bin` instead, which does
+#      NOT demonstrate this hole — that string DOES contain the literal
+#      substring "app/public/data" (inside the assignment itself), so
+#      bash_hits_protected_path matches it, and the `;` then disqualifies
+#      the read-only exemption, so production correctly ASKS. Measured, not
+#      inferred: an example that does not demonstrate the hole it documents
+#      is worse than none.
 #   3. Programmatic path construction: `python3 -c "import os;
 #      open(os.path.join('app','public','data','mask.bin'),'w')"` — contrast
 #      with the SAME target spelled as a literal string, which correctly
@@ -536,14 +545,24 @@ readonly_verbs_sentence() {
   printf '%s' "$out"
 }
 
-# The Bash arm's COMPLETE decision, as one pure function so the selftest can
-# drive exactly what production does. Prints "ask" or "allow".
-bash_decision() {
-  local cmd="$1"
-  bash_hits_protected_path "$cmd" >/dev/null || { printf 'allow'; return 0; }
-  if bash_is_provably_readonly "$cmd"; then printf 'allow'; return 0; fi
-  printf 'ask'
-}
+# bash_decision() - REMOVED (#404). It used to be a second, hand-maintained
+# copy of "hits a protected path AND is not provably read-only", used ONLY
+# by --selftest's `decide`/`decide_exempt` helpers below - production never
+# called it, it called bash_hits_protected_path/bash_is_provably_readonly
+# inline instead (see the production path near the end of this file). The
+# two copies could and did drift: patching bash_decision() alone, to
+# reimplement the read-only check with `;`-segmentation (checking each
+# `;`-separated segment's first word against READONLY_VERBS independently,
+# rather than disqualifying on any `;` at all the way the real predicate
+# does), still produced "SELFTEST OK" end to end - because no selftest row
+# fed a multi-segment command where every segment independently looks
+# read-only through the DECISION path (`decide`/`decide_exempt`, as opposed
+# to `check`, which only ever tested path coverage). `decide`/`decide_exempt`
+# now drive the PRODUCTION entry point itself (through $SELF, the same
+# wrapper `wrapper_check` already uses, via the shared
+# `hook_decision_from_output` helper) - there is exactly one implementation
+# of this decision left in the file, so nothing can diverge from it because
+# nothing else computes it.
 
 # ---- offline self-test ----
 if [ "${1:-}" = "--selftest" ]; then
@@ -559,7 +578,59 @@ if [ "${1:-}" = "--selftest" ]; then
   # NOTE (#388 review): this total includes ONE case per READONLY_VERBS entry
   # (the reason-string twin check at the end), so adding or removing a verb
   # moves it by 2 - the verb's own decision row plus its twin case.
-  EXPECTED_CASES=196
+  EXPECTED_CASES=198
+
+  # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
+  # can use it too - they now drive the production entry point through it
+  # instead of a parallel bash_decision() twin, see its removal note above):
+  # `"$0"` executed verbatim goes through PATH lookup when invoked without a
+  # slash (`bash artifact-guard.sh --selftest` from the script's own
+  # directory) and is not found there, silently failing every ask/deny row
+  # while the allow rows pass by coincidence - the selftest's verdict must
+  # not depend on invocation form. Normalise once, before anything below
+  # needs it.
+  case "$0" in
+    */*) SELF=$0 ;;
+    *) SELF=./$0 ;;
+  esac
+
+  # json_escape STR - escapes STR for embedding as a JSON string literal, so
+  # decide()/decide_exempt() below can build a synthetic tool_input payload
+  # for any test command and feed it through the real production script
+  # (#404). Backslash MUST be escaped first, before the replacement it
+  # introduces would itself be re-escaped. Only \\, \", \n and \r are
+  # handled - the only forms any row in this suite's command strings
+  # actually contains (CHAR backslash / CHAR newline / CHAR carriage return
+  # rows).
+  json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    printf '%s' "$s"
+  }
+
+  # hook_decision_from_output OUT - given the raw stdout OUT (or an empty
+  # string) the production script printed for one call, returns its decision
+  # as one of ask|deny|allow|other. ONE interpretation of that output,
+  # shared by every selftest helper that talks to the wrapper ($SELF) -
+  # #404 exists because two independently maintained copies of the
+  # allow/ask DECISION logic drifted; this function is what stops the same
+  # shape recurring one level down, in how the selftest reads the answer
+  # back.
+  hook_decision_from_output() {
+    local out="$1"
+    if [ -z "$out" ]; then
+      printf 'allow'
+    elif printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then
+      printf 'deny'
+    elif printf '%s' "$out" | grep -q '"permissionDecision":"ask"'; then
+      printf 'ask'
+    else
+      printf 'other'
+    fi
+  }
 
   # check WANT DESC CMD - drives the pure bash_hits_protected_path() function
   # directly (WANT is "ask" or "allow"). This tests PATH COVERAGE ONLY, which
@@ -580,14 +651,19 @@ if [ "${1:-}" = "--selftest" ]; then
     fi
   }
 
-  # decide WANT DESC CMD - drives bash_decision(), i.e. the Bash arm's
-  # COMPLETE decision (path presence AND the read-only exemption), which is
-  # exactly what the production path computes. Every row for the #309
-  # follow-up exemption uses this.
+  # decide WANT DESC CMD - drives the Bash arm's COMPLETE decision (path
+  # presence AND the read-only exemption) by feeding CMD through the
+  # PRODUCTION entry point itself - $SELF, the real script, via a synthetic
+  # tool_input JSON payload - rather than a parallel function (#404: this
+  # used to call bash_decision(), a second hand-maintained copy of the same
+  # logic that only the selftest ever exercised; see its removal note
+  # above). Every row for the #309 follow-up exemption uses this.
   decide() {
-    local want="$1" desc="$2" cmd="$3" got
+    local want="$1" desc="$2" cmd="$3" json out got
     total=$((total + 1))
-    got=$(bash_decision "$cmd")
+    json="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$(json_escape "$cmd")\"}}"
+    out=$(printf '%s' "$json" | "$SELF" 2>/dev/null)
+    got=$(hook_decision_from_output "$out")
     if [ "$got" != "$want" ]; then
       echo "SELFTEST FAIL [decision]: $desc -> got [$got] want [$want] (cmd: $cmd)"
       fail=1
@@ -603,15 +679,20 @@ if [ "${1:-}" = "--selftest" ]; then
   # which is precisely the #216 shape. The PR body claimed every such row
   # names a protected path; this makes the claim enforced rather than
   # asserted. Deliberately ONE case, not two, so the count stays row-shaped.
+  # The path-coverage check calls bash_hits_protected_path() directly (that
+  # IS the single production function, not a twin of it); the decision half
+  # goes through the production entry point exactly like decide() (#404).
   decide_exempt() {
-    local desc="$1" cmd="$2" got
+    local desc="$1" cmd="$2" json out got
     total=$((total + 1))
     if ! bash_hits_protected_path "$cmd" >/dev/null; then
       echo "SELFTEST FAIL [exempt row names no protected path]: $desc -> this row would pass with the exemption deleted (cmd: $cmd)"
       fail=1
       return
     fi
-    got=$(bash_decision "$cmd")
+    json="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$(json_escape "$cmd")\"}}"
+    out=$(printf '%s' "$json" | "$SELF" 2>/dev/null)
+    got=$(hook_decision_from_output "$out")
     if [ "$got" != "allow" ]; then
       echo "SELFTEST FAIL [decision]: $desc -> got [$got] want [allow] (cmd: $cmd)"
       fail=1
@@ -811,6 +892,16 @@ if [ "${1:-}" = "--selftest" ]; then
   decide ask "CHAR newline: second command"          "stat app/public/data/mask.bin${nl}true"
   decide ask "CHAR carriage return"                  "stat app/public/data/mask.bin${cr}true"
 
+  # --- MUST ASK (#404): a multi-segment command where EVERY segment
+  # independently looks read-only. This is the exact shape that let the
+  # since-removed bash_decision() twin diverge from production undetected:
+  # a `;`-segmenter checking each segment's first word against
+  # READONLY_VERBS independently would ALLOW this (both `stat` and `ls` are
+  # on the allowlist), while the real predicate's "any disqualifying char
+  # anywhere" rule (the bare `;`) correctly still asks. This is the
+  # maintainer's own reported reproduction command, unchanged.
+  decide ask "MULTI-SEGMENT (#404): every segment individually looks read-only" "stat app/public/data/mask.bin; ls app/public/data"
+
   # --- MUST ASK: a WRITE-CAPABLE TOKEN is what fails. Each token appears as
   # an ARGUMENT of an allowlisted verb, which is contrived on purpose: the
   # natural spelling (`xargs stat <path>`) would also fail verb membership
@@ -866,15 +957,12 @@ if [ "${1:-}" = "--selftest" ]; then
   # script (not just the pure function), so a bug in the tool_name dispatch
   # or the JSON parsing is not invisible to this table.
   #
-  # (#309 fix-wave m1): `"$0"` executed verbatim goes through PATH lookup
-  # when invoked without a slash (`bash artifact-guard.sh --selftest` from
-  # the script's own directory) and is not found there, silently failing
-  # every ask/deny row while the allow rows pass by coincidence - the
-  # selftest's verdict must not depend on invocation form. Normalise once.
-  case "$0" in
-    */*) SELF=$0 ;;
-    *) SELF=./$0 ;;
-  esac
+  # $SELF is computed once, near the top of --selftest (right after
+  # EXPECTED_CASES) - moved there by #404 so decide()/decide_exempt() above
+  # can drive the same production entry point this wrapper does, instead of
+  # a parallel bash_decision() twin. See that computation's own comment for
+  # the "$0" PATH-lookup rationale; nothing here changed except where it
+  # lives.
   # (#309 fix-wave M3): a WANT of "ask" is not enough to prove the Bash
   # path-presence arm actually ran - the file_path arm's own "could not
   # extract a file_path" fallback ALSO answers `ask`, so a fully DISABLED
@@ -887,15 +975,7 @@ if [ "${1:-}" = "--selftest" ]; then
     local want="$1" reason_substr="$2" desc="$3" json="$4" out decision
     total=$((total + 1))
     out=$(printf '%s' "$json" | "$SELF" 2>/dev/null)
-    if [ -z "$out" ]; then
-      decision=allow
-    elif printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then
-      decision=deny
-    elif printf '%s' "$out" | grep -q '"permissionDecision":"ask"'; then
-      decision=ask
-    else
-      decision=other
-    fi
+    decision=$(hook_decision_from_output "$out")
     if [ "$decision" != "$want" ]; then
       echo "SELFTEST FAIL [wrapper]: $desc -> got [$decision] want [$want] (out: $out)"
       fail=1
@@ -922,6 +1002,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # unchanged now that this script serves a second matcher.
   wrapper_check deny  "Generated artifact"      "Edit deny arm unaffected"            '{"tool_name":"Edit","tool_input":{"file_path":"app/public/data/mask.bin"}}'
   wrapper_check ask   "source of truth"         "Edit specs arm unaffected"           '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/specs/foo.md"}}'
+  # (#405) mutation-checkable: deleting the new plans/ arm (or narrowing its
+  # pattern) reds this row - drives the REAL production wrapper, not a bare
+  # pattern match on the case statement in isolation.
+  wrapper_check ask   "tracks implementation plans" "Edit plans arm (#405: was a silent allow)" '{"tool_name":"Edit","tool_input":{"file_path":"docs/superpowers/plans/foo.md"}}'
   wrapper_check allow ""                        "Edit unrelated file unaffected"      '{"tool_name":"Write","tool_input":{"file_path":"app/src/App.tsx"}}'
   wrapper_check allow ""                        "Edit icon.svg exception unaffected"  '{"tool_name":"Edit","tool_input":{"file_path":"app/public/icons/icon.svg"}}'
   # Old-shaped payload with no tool_name at all (pre-#309 test shape) must
@@ -1067,5 +1151,14 @@ case "$f" in
     ;;
   *docs/superpowers/specs/*)
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/specs/ is the user-approved source of truth - CLAUDE.md forbids silently deviating from it. Confirm the user wants the spec itself changed before editing."}}'
+    ;;
+  *docs/superpowers/plans/*)
+    # #405: this arm used to not exist at all, so an Edit/Write to a file
+    # under docs/superpowers/plans/ fell through to the unguarded default
+    # (silent allow) even though the Bash arm's PROTECTED_PATHS ancestor
+    # entry ("docs/superpowers") already covers a Bash-mediated write to the
+    # same file. WIDENS this arm to match, per #405's direction - the Bash
+    # arm and its docs/superpowers PROTECTED_PATHS entries are unchanged.
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"docs/superpowers/plans/ tracks implementation plans and is guarded the same way as docs/superpowers/specs/ (#405). Confirm the user wants a plan doc changed before editing."}}'
     ;;
 esac
