@@ -456,6 +456,22 @@ deviate from it.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
+  **The rule governs an assertion's INPUTS, not only its predicate.**
+  `app/e2e/layout.spec.ts`'s four `#368` banner-clearance guards (the
+  parametrized viewport sweep plus three named fix-wave tests, currently at
+  lines 287/359/417/485) each capture `depthToggle`'s `boundingBox()` ONCE,
+  then poll a COORDINATE frozen from that read
+  (`.poll(() => elementDescriptionAt(page, x, y), ...)`). If the box is read
+  before the `ResizeObserver` write of `--sc-banner-height` (and the
+  resulting CSS push) settles, the poll spends its whole budget watching the
+  checkbox's PRE-PUSH position — a real interception and a stale-coordinate
+  read produce a byte-identical signature, and the race can make the test
+  PASS with the defect live. Measured 0/100 locally on clean `develop` (rate
+  below ~3% at 95% confidence, rule of three); a loaded-CI reproduction was
+  NOT performed, so a load-dependent race is untested. Tracked as the
+  #368-guard stale-geometry issue (number pending). Polling a state signal is
+  not enough if the coordinate or handle being polled was itself sampled
+  before settle.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
   (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
@@ -1046,6 +1062,47 @@ deviate from it.
   coin-flip-grade experiment, not a mutation check. Size the repeat count
   against the failure rate you are trying to detect, and never read one
   green revert as "the gate does nothing".
+- **This session produced THREE distinct vacuity traps in one PR lineage — a
+  guard, then its fix, then the fix's data — the documented "a fix inherits
+  its bug's blind spot" pattern, one level deeper each time; not one was
+  found by reading, all three by constructing the failing input and running
+  it.**
+- A THIRD mutation-vacuity class, distinct from #50's equivalence-test trap
+  and #216/#388's prose-vs-value trap below: **a mutation reddening a test
+  does not establish the test guards anything REACHABLE.** Measured on PR
+  #410: `legDistanceReconciliation.test.ts`'s epsilon-free sign assertion
+  (`total >= Σ chord`) reds under a "halve every stored distance" mutation,
+  so the battery looked convincing. But that assertion is a THEOREM given
+  the code — every leg's `distanceNm` is exactly its own chord or a sum of
+  sub-chords, which is >= the chord by the triangle inequality — so no
+  reachable code change can violate it. A reviewer flipped the
+  chord/polyline convention in BOTH directions and the sign assertion PASSED
+  both times; what actually discriminates is the magnitude bound
+  `residual < 1e-3` (reds at 27.5x/10.5x over). The stated roles of the two
+  assertions were exactly inverted. Rule: for each assertion, ask whether
+  any change the code could actually make would violate it — a mutation the
+  codebase cannot produce proves nothing.
+- Guards fail open on QUOTE STYLE too. Measured on PR #411:
+  `planRoute.reasonDecoupling.test.ts`'s structural guard, which detects a
+  gate re-coupling to a solver-derived label, matched only SINGLE-quoted
+  string literals — a re-coupling written with backticks
+  (``NO_ROUTE_LABEL_OF_CAUSE[cause] === `unreachable` ``) left it **10/10
+  GREEN** and passed both lint and typecheck (prettier normalises `"…"` to
+  `'…'` but leaves a template literal alone). Any source-scanning guard must
+  match `'`, `"` AND backtick. Fixed with a `labelLiteral()` regex over all
+  three quote forms, pinned by a row that reds when narrowed back to
+  single-quote-only.
+- A guard's DATA needs a twin too, not just its detection logic. Same guard,
+  same PR: `SOLVER_LABELS`, the array every failing loop iterates, had NO
+  twin — stubbing it to `[]` left the whole guard **12/12 GREEN**, silently
+  dropping a label disabled the guard while it kept reporting success. Fix:
+  tie the list to the test's own hand-written `EXPECTED_LABELS`, NOT to
+  production `NO_ROUTE_LABEL_OF_CAUSE` — deriving needle and haystack from
+  one source is the worse tautology (#388's shape). Discriminating
+  experiment: perturb EACH SIDE ALONE — changing production only reds the
+  structural row; changing the test's own table reds two rows. Had the
+  needle come from production, that second probe would have been
+  unobservable.
 - A mutation battery can pass for the WRONG reason when a test row carries
   MORE THAN ONE trigger for the same expected outcome. A near-miss row meant
   to pin allowlist MEMBERSHIP was written as `xargs npm install < pkgs.txt` —
@@ -1545,19 +1602,33 @@ deviate from it.
   NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
   measured against a chord that crossed LAND.
 - **No-route `reason` is a CONTROL INPUT, not just a status label** (#282,
-  open): `needsUnpreferencedRetry` (`planRoute.ts:112-116`) branches on
-  `r.reason === 'unreachable' || r.reason === 'beyond-horizon'`, and the #53
-  relaxation gate (`planRoute.ts:349`) branches on `reason === 'unreachable'`
-  (plus a depth-floor guard). So ANY change to no-route classification —
-  including a strictly more accurate one — changes which retry tiers run and
-  can return a SLOWER route, not merely a differently-labeled one. Measured
-  against a candidate reclassification patch that was REVERTED and never
-  merged — these are not reproducible from current `develop` — on a
-  Flensburg→all-harbours sweep (uniform TWS 3/dir 0, motor off, real
-  mask+polars): Bagenkop +515.2 s, Wackerballig +499.4 s, Gelting-Mole
-  +353.2 s, while 11 of 14 plans stayed byte-identical — which is what made it
-  easy to miss. Still OPEN; treat any reason-classification change as a
-  routing-behavior change needing the same sweep, never a labeling-only fix.
+  REOPENED — PR #411's merge auto-closed it via an earlier commit's stray
+  keyword even though the PR body itself used `Refs`; do not let it be
+  closed again on this evidence). PR #411 NARROWED the coupling, it did not
+  remove it: the two retry gates — named predicates `comfortRetryMayHelp` /
+  `depthRelaxationMayHelp` — now branch on an INTERNAL `SolveFailureCause`
+  (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded'`), deliberately
+  kept OUT of `types.ts` so it cannot leak into UI code. The public
+  `NoRouteReason` is unchanged, derived from the cause at exactly two
+  presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE`. A LABELLING change
+  is now safe — free to reword or re-granularise with zero routing effect. A
+  CLASSIFICATION change is NOT: the cause is still DERIVED from
+  `SolveResult.reason`, the only failure signal `solve()` exposes. Proven,
+  not theoretical: PR #279's pre-revert change (`isochrone.ts:530-531`)
+  flipped `'unreachable'` → `'calm-motor-off'`, which now maps to cause
+  `'calm-without-motor'`, which `comfortRetryMayHelp` still rejects — tier 2
+  is still suppressed, and the same slower route (the motivating incident
+  behind the reverted, never-merged reclassification patch — Bagenkop,
+  Wackerballig, Gelting-Mole all slower — not reproducible from current
+  `develop`) recurs unchanged. Reusable asset from #411: a five-arm
+  Flensburg→all-33-harbours sweep, **165/165 plans byte-identical**
+  (33 harbours × 5 settings arms), run TWICE at BASE before any edit as a
+  control (byte-identical both times, licensing the BASE-vs-HEAD comparison
+  at all), with MEASURED two-directional gate coverage — both gates
+  exercised true AND false, including the calm class (0 occurrences across
+  the original 3 arms; 34 across two arms added specifically to reach it).
+  NARROWED, NOT CLOSED: any future reason-classification change still needs
+  that full sweep, never a labeling-only fix.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
