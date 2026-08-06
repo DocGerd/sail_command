@@ -67,10 +67,16 @@ function elementDescriptionAt(page: Page, x: number, y: number): Promise<string>
 // real change — a value that can regress AFTER first agreeing. The banner
 // geometry these tests depend on has no equivalent regress-after-match path
 // WITHIN A SINGLE TEST'S POLL WINDOW (#412 fix-wave, PR #419 review, Minor 7
-// — CORRECTED scope: this file DOES dismiss a banner in two tests, via the
-// `.reload-prompt .banner-dismiss` click below and its sibling in the
-// wrap-forcing test — "every banner-area size change in this file only
-// grows it" was FALSE as a whole-file claim). The scoping that actually
+// — INCOMPLETE, not false, in review round 3: the load-bearing claim below
+// holds at every site; the wording just undercounted where dismissals live.
+// This file dismisses a banner at THREE source sites, not two: the
+// `Abbrechen` tap-pick-cancel in the file's first test (line ~164), the
+// `.reload-prompt .banner-dismiss` click below (inside the
+// `SINGLE_BANNER_VIEWPORTS` loop, which expands to 8 separate tests — one
+// dismissal per viewport, not one), and its sibling in the wrap-forcing test
+// (1 test). Ten of this file's thirteen tests dismiss a banner, not "two
+// tests" — "every banner-area size change in this file only grows it" was
+// FALSE as a whole-file claim). The scoping that actually
 // holds: within any ONE test's poll window, the push only grows — every
 // dismiss click here runs as SETUP, before `setOffline(true)` and before the
 // relevant poll ever starts, never while a poll (`settledHitDescription` or
