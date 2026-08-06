@@ -288,7 +288,17 @@ test.describe('#355 resizable panel', () => {
       // The property must be back to unset — not merely "close to the old
       // width", which a leftover inline write would also satisfy.
       await expect.poll(() => panelCssVar(page)).toBe('');
-      expect(await separator.getAttribute('aria-valuenow')).toBe(String(Math.round(defaultWidth)));
+      // #412-shaped, caught in review (this file's OWN ninth+ instance of the
+      // fix it introduced): `panelCssVar` above reads a value WE write
+      // synchronously in `endDrag` (a direct `.style` mutation), so that
+      // poll settles on its very first check and grants no real wait time.
+      // `aria-valuenow` is a DIFFERENT signal — PanelResizer's own
+      // `ResizeObserver` on the panel, a real async browser callback that
+      // lags the commit by at least a frame — so it needs its OWN poll, not
+      // a free ride on the settle above.
+      await expect
+        .poll(() => separator.getAttribute('aria-valuenow'))
+        .toBe(String(Math.round(defaultWidth)));
 
       // The real behavioural check: the panel must still be RESPONSIVE
       // (`1fr`-driven) after the no-op drag, not pinned at the old absolute
