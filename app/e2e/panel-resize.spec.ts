@@ -71,10 +71,12 @@ test.describe('#355 resizable panel', () => {
       await mapReady(page);
 
       const panel = page.locator('.app-bottom-sheet');
+      const canvas = page.locator('canvas.maplibregl-canvas');
       const separator = page.getByRole('separator', { name: 'Panelbreite anpassen' });
       await expect(separator).toBeVisible();
 
       const defaultWidth = (await box(panel)).width;
+      const defaultCanvasWidth = (await box(canvas)).width;
 
       // Drag right by 200px and commit (mouseup).
       await dragSeparatorBy(page, separator, 200);
@@ -84,6 +86,17 @@ test.describe('#355 resizable panel', () => {
       // against the untouched default, a no-op drag would pass too.
       expect(draggedWidth).toBeGreaterThan(defaultWidth + 100);
       expect(await separator.getAttribute('aria-valuenow')).toBe(String(Math.round(draggedWidth)));
+
+      // #355 acceptance: "the map renders correctly ... after a drag" — the
+      // testable half (see this file's header comment for why "during" is
+      // not). MapLibre's own container ResizeObserver (source-level
+      // argument, PanelResizer.tsx's comment) must have shrunk the canvas
+      // by roughly the same amount the panel grew — not just "some smaller
+      // number", a real reflow proportional to the actual panel growth.
+      const draggedCanvasWidth = (await box(canvas)).width;
+      const panelGrowth = draggedWidth - defaultWidth;
+      const canvasShrink = defaultCanvasWidth - draggedCanvasWidth;
+      expect(Math.abs(canvasShrink - panelGrowth)).toBeLessThan(5);
 
       // Reload: the committed width, not the default, must come back.
       await page.reload();
