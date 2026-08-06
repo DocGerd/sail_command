@@ -615,6 +615,24 @@ deviate from it.
   publishes the authoritative `prod-manifest` baseline. A `push` on a tag also
   resolves the WORKFLOW FILE from the tag's commit, so a `v[0-9]*` tag on a
   commit predating #197 silently does not deploy.
+- **Deploy — same-SHA no-op (#398)**: GitHub Pages keys a deployment by COMMIT
+  SHA — `actions/deploy-pages` logs `Created deployment for <sha>, ID: <sha>`.
+  A release tag points at `main`'s tip, so the merge-push run and the tag-push
+  run deploy the SAME commit; the first deployment of that SHA wins and the
+  second is accepted, reports success, and does not replace the served
+  artifact. MEASURED at the v0.9.0 cut: merge-push run completed 07:04:20Z and
+  deployed `c4e139d`; the tag run's Pages deployment reported `success` at
+  07:07:14Z and changed nothing; production kept serving the pre-tag build
+  (`v0.8.1-82-gc4e139d`) for ~40 min. Two full attempts of the tag run both
+  went green and both no-opped. `concurrency: cancel-in-progress` is what
+  normally hides this and it is a RACE, not a guarantee — at v0.7.0 the tag
+  run cancelled the merge run before it deployed, so only one deployment of
+  that SHA existed. Inverted intuition, state it explicitly: a SLOW tag push
+  is the dangerous case, i.e. exactly the runbook's human flow (merge the PR,
+  tag at human speed). §5b's documented remedy — re-run the tag deploy — does
+  NOT fix this root cause (same SHA, same no-op; measured). What recovers it
+  is the back-merge, whose push carries a DIFFERENT SHA and rebuilds the site
+  root from `main` with the tag now visible.
 - **Deploy — concurrency and environments**: `concurrency: { group: pages,
   cancel-in-progress: true }` admits only one deploy run at a time, but it
   CANCEL-SUPERSEDES rather than queues — a newer run cancels the in-flight one
@@ -1132,7 +1150,14 @@ deviate from it.
   (#320, PR #375) does this; its header documents that the rendered-feature
   check LICENSES the zero-warnings assertion (an absence assertion carries
   no information until the evidence-generating process is established to
-  have run) and must not be deleted as redundant.
+  have run) and must not be deleted as redundant. `sc-maneuver-labels`
+  (`app/src/components/RouteLayer.tsx:321-333`) is the one symbol layer that
+  sets a `text-field` but no `text-font`, so it requests MapLibre's default
+  `Open Sans Regular,Arial Unicode MS Regular` — a fontstack this app does
+  not ship — and silently renders via TinySDF. Pre-existing (dates to the
+  original route-layers commit, well before #378/#324), audited against all
+  nine runtime symbol layers, tracked as #395. `labels.spec.ts` cannot see
+  it because that spec never plans a route.
 - Never source an integer-exact claim (line number, byte count, version
   string) from a summarizing fetch — `WebFetch`/`WebSearch` paraphrase, and
   a paraphrased integer is silently wrong rather than obviously wrong. Read
@@ -1266,6 +1291,24 @@ deviate from it.
   and calling this "a known flake" for two sessions is exactly the
   write-off that rule exists to prevent — a lone red test contradicting a
   green suite deserves MORE weight than the suite.
+- **Five green signals can share one blind spot (#398).** Verifying the
+  v0.9.0 tag deploy actually reached production, three green signals missed
+  the same-SHA no-op: the run conclusion, the Pages deployment status
+  (`success`, with `environment_url` = the prod root), and `smoke-probe` —
+  which probes the `.pmtiles` archive, byte-identical between the two
+  builds, so it cannot distinguish them. The probe that DOES work compares
+  the run's own published `prod-manifest` (it records the entry chunk
+  `assets/index-<hash>.js` and `version.txt`) against the live site and
+  requests that exact filename: 404 vs 200 is decisive precisely because a
+  never-requested URL cannot be a stale cache hit. Do NOT verify by polling
+  `index.html` — GitHub Pages' CDN NORMALIZES QUERY STRINGS, so
+  `?cb=$RANDOM` is a no-op and curl, a real browser, `cache: 'no-store'` and
+  `cache: 'reload'` are all answered from the SAME edge object. Five checks
+  agreeing was one check with a shared blind spot, and it nearly triggered an
+  unnecessary production re-deploy; the tell was `x-cache: HIT` (with
+  `age: 392`, `cache-control: max-age=600`) on a URL never requested before.
+  Sibling of the existing "what class of failure can this method not
+  detect?" rule — here the answer was "any change at all".
 
 ## Domain rules that are easy to get wrong
 
@@ -1521,7 +1564,16 @@ deviate from it.
   (high/med/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
   optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
   apply type+area+priority to every new issue. Taxonomy documented in
-  CONTRIBUTING.md (#167/#168).
+  CONTRIBUTING.md (#167/#168). **The taxonomy has DRIFTED into space/no-space
+  duplicates** (found during the v0.9.0 cut): `priority: high` /
+  `priority: medium` / `priority: low` coexist with `priority:medium` /
+  `priority:low`, and `area: deploy` / `area: map` / `area: routing` /
+  `area: pwa` / `area: ais` / `area: pipeline` / `area: tooling` coexist with
+  `area:tooling` / `area:map` / `area:pipeline`. `gh issue create` fails with
+  `could not add label: '<name>' not found` on the wrong spelling, and
+  filtering by one silently misses issues tagged with the other. Verify with
+  `gh label list --repo DocGerd/sail_command --limit 60 --json name --jq
+  '.[].name'` before using a label name; a cleanup pass is unscheduled.
 - Design a guard around its ASYMMETRY: a BLOCKING guard should fail closed, a
   NUDGE should fail open. #233's command segmenter exits 0 while emitting
   confidently-wrong segments, so its fail-closed path covers none of its
@@ -1626,7 +1678,14 @@ deviate from it.
   key (rather than setting it to `null`) makes that entry fail every match;
   the thread is then skipped with a loud `No reply text for thread ... — no
   mapping entry and no default` — correct fail-closed behavior, but the fix
-  (add the key) is non-obvious the first time you hit it.
+  (add the key) is non-obvious the first time you hit it. Sharper case
+  (PR #396): when SEVERAL threads share the same `(path, line)` key —
+  routine after a fix wave, since every thread on a file whose diff moved
+  reads `line: null` — the mapping matcher cannot disambiguate them and the
+  first match wins for all. Measured: six of eight threads were
+  `(ROADMAP.md, null)`. Either use a single default reply via `-m`, or drive
+  the reply+resolve loop directly off the GraphQL thread IDs (keying
+  per-thread text on `originalLine`, which stays unique).
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
