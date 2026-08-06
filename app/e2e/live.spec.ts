@@ -56,7 +56,10 @@ test('live view: emulated GPS drives readout, reroute-from-here, and leg advance
   context,
 }) => {
   // Two real dual-rig solves (plan + reroute) plus PWA startup — well beyond
-  // the 120 s config default on CI runners (6-10x slower than dev machines).
+  // the 120 s config default even before accounting for CI being slower than
+  // dev machines (CLAUDE.md's measured ~2.1x/~2.5x figures are for the
+  // vitest unit suite specifically; no equivalent Playwright/e2e ratio has
+  // been measured).
   test.setTimeout(360_000);
   const server = await startPreview();
   try {
