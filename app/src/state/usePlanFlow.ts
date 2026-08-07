@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
 import { savePlan } from '../services/db';
 import { loadRoutingAssets } from '../services/assets';
-import { RoutingClient } from '../routing/workerClient';
+import { RoutingClient, RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { dedupeViaPoints } from './replan';
@@ -33,6 +33,35 @@ export interface PlanFlowDeps {
   save?: typeof savePlan;
 }
 
+// #433/#435 spike §12: the presentation-boundary classification for every
+// routing-side failure workerClient.ts's RoutingClient can throw
+// (RoutingFailureKind), plus the three causes that never reach
+// workerClient.ts at all — ensureClient() returning null (asset/worker init
+// failure, below), a post-SUCCESS savePlan() failure, and a fetchWind()
+// rejection that mapWindError can't otherwise classify. Each of these used
+// to collapse onto the single 'error.internal' key (#433); each now gets its
+// own key so the banner (App.tsx) and a future diagnostics record (#435,
+// not built here) can tell them apart. The remedy per key genuinely
+// differs — see App.tsx's RETRY_MAY_HELP_KEYS and CLAUDE.md's #433 bullet
+// for the full per-path reasoning: a retry hands the user a FRESH worker
+// (ensureClient/run() below null both client refs before erroring out),
+// which helps a crashed worker or an undeserializable message, but cannot
+// change the outcome of an input-deterministic failure (the same solve
+// hits the same timeout or throw again).
+const ROUTING_FAILURE_MESSAGE_KEY: Record<
+  RoutingFailureKind | 'worker-init' | 'persist-failed' | 'wind-unclassified',
+  MsgKey
+> = {
+  timeout: 'error.routingTimeout',
+  'worker-fatal': 'error.routingFailed',
+  'worker-error': 'error.routingCrashed',
+  messageerror: 'error.routingMessageError',
+  disposed: 'error.routingInterrupted',
+  'worker-init': 'error.workerInit',
+  'persist-failed': 'error.planSaveFailed',
+  'wind-unclassified': 'error.windUnknown',
+};
+
 function mapWindError(err: unknown): MsgKey {
   if (err instanceof OpenMeteoError) {
     switch (err.kind) {
@@ -45,7 +74,7 @@ function mapWindError(err: unknown): MsgKey {
         return 'error.windService';
     }
   }
-  return 'error.internal';
+  return ROUTING_FAILURE_MESSAGE_KEY['wind-unclassified'];
 }
 
 // #114: options for run(). `replacePlanId` is the explicit-confirm
@@ -201,7 +230,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
 
       const client = await ensureClient();
       if (!client) {
-        transition({ phase: 'error', messageKey: 'error.internal' });
+        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['worker-init'] });
         return;
       }
 
@@ -225,7 +254,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
             transition({ phase: 'probing-depth' });
           },
         );
-      } catch {
+      } catch (err) {
         // Worker fatal (rejected promise) — a resolved PlanResult with
         // status 'error' is handled separately below. Mirrors ensureClient's
         // own recovery: without this, a mid-plan crash would leave the
@@ -240,7 +269,17 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         }
         clientRef.current = null;
         readyRef.current = null;
-        transition({ phase: 'error', messageKey: 'error.internal' });
+        // #433: client.plan() always rejects with a RoutingError (see
+        // workerClient.ts) — classify by its typed `kind`, NEVER by matching
+        // err.message (that would make a user-adjacent label a control
+        // input; see workerClient.ts's own RoutingFailureKind comment on the
+        // #282/#411 precedent this avoids repeating). The plain-Error
+        // fallback mirrors replan.ts's/reroute.ts's own
+        // `instanceof ReplanError` pattern for a genuinely unexpected throw
+        // shape.
+        const messageKey =
+          err instanceof RoutingError ? ROUTING_FAILURE_MESSAGE_KEY[err.kind] : 'error.internal';
+        transition({ phase: 'error', messageKey });
         return;
       }
 
@@ -262,7 +301,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       try {
         await save(plan);
       } catch {
-        transition({ phase: 'error', messageKey: 'error.internal' });
+        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
         return;
       }
       setPlan(plan);

@@ -94,6 +94,23 @@ export const en = {
   'error.windService': 'Wind forecast could not be loaded. Try again in a moment.',
   'error.internal':
     'Route planning failed unexpectedly. Try again; if it keeps happening, reload the app.',
+  // #433: causes that used to collapse onto error.internal above, now
+  // distinguishable — each with remedy copy honest about whether "Try
+  // again" can actually help (see App.tsx's RETRY_MAY_HELP_KEYS).
+  'error.workerInit':
+    'The route planner could not be started — required data failed to load. Reload the app and try again.',
+  'error.routingTimeout':
+    'Routing did not finish within the time limit. Trying again will likely time out the same way — a simpler route or a faster device may help.',
+  'error.routingFailed':
+    'Route planning failed with an internal routing error. Trying again will likely fail the same way — a different route or settings may avoid it.',
+  'error.routingCrashed': 'The routing engine crashed unexpectedly. Try again — it restarts fresh.',
+  'error.routingMessageError':
+    'The routing engine sent back a reply that could not be read. Try again — it restarts fresh.',
+  'error.routingInterrupted': 'Route planning was interrupted. Try again.',
+  'error.planSaveFailed':
+    'The route was calculated but could not be saved. Try again, or check available storage on this device.',
+  'error.windUnknown':
+    'Wind forecast could not be loaded due to an unexpected error. Try again in a moment.',
   'error.noRoute.unreachable':
     'No route found — the destination cannot be reached without crossing land or too-shallow water.',
   'error.noRoute.beyondHorizon':

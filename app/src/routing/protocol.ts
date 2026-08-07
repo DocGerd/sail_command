@@ -19,7 +19,11 @@ export type WorkerResponse =
   // run) so the UI can show the probe phase instead of a stalled routing bar.
   | { type: 'probe'; id: string; probeDepthM: number; done: number; total: number }
   | { type: 'result'; id: string; result: PlanResult }
-  | { type: 'fatal'; id: string | null; message: string };
+  // #433/#435 spike §12: `stack` is the worker-side stack trace at the real
+  // throw site inside planRoute() — populated below, consumed by
+  // workerClient.ts's RoutingError so the resulting client-side error names
+  // where the failure actually happened, not just where it was reported.
+  | { type: 'fatal'; id: string | null; message: string; stack?: string };
 
 export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRequest) => void {
   let state: { mask: NavMask; polarGenoa: PolarTable; polarFock: PolarTable } | null = null;
@@ -59,10 +63,15 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
       post({ type: 'result', id: req.id, result });
     } catch (err) {
       try {
+        // exactOptionalPropertyTypes: `stack` must be OMITTED, not set to
+        // `undefined`, when the throw carries none — same idiom as
+        // workerClient.ts's PendingEntry construction.
+        const stack = err instanceof Error ? err.stack : undefined;
         post({
           type: 'fatal',
           id: req.type === 'plan' ? req.id : null,
           message: err instanceof Error ? err.message : String(err),
+          ...(stack !== undefined ? { stack } : {}),
         });
       } catch {
         // If even the fatal report can't be serialized/posted, there's nothing

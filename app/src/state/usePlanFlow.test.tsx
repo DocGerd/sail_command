@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePlanFlow } from './usePlanFlow';
 import { useViaReplan } from './replan';
 import { AppStateProvider, useActivePlan } from './AppState';
-import { RoutingClient } from '../routing/workerClient';
+import { RoutingClient, RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { WorkerRequest, WorkerResponse } from '../routing/protocol';
 import { OpenMeteoError, type OpenMeteoErrorKind } from '../services/openMeteo';
 import * as assetsModule from '../services/assets';
@@ -214,7 +214,11 @@ describe('usePlanFlow', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it('maps a fetchWind rejection that is not an OpenMeteoError (e.g. a bare Error) to error.internal', async () => {
+  // #433: this used to collapse onto error.internal — mapWindError's
+  // fallthrough is now its own distinguishable key (kind 'wind-unclassified'
+  // in usePlanFlow.ts's ROUTING_FAILURE_MESSAGE_KEY), since a retry helps
+  // here (re-fetching) unlike most of error.internal's other former causes.
+  it('maps a fetchWind rejection that is not an OpenMeteoError (e.g. a bare Error) to error.windUnknown', async () => {
     const fetchWind = vi.fn().mockRejectedValue(new Error('unexpected'));
     const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
 
@@ -232,7 +236,7 @@ describe('usePlanFlow', () => {
       await result.current.run(REQ, 'Test plan');
     });
 
-    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.internal' });
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.windUnknown' });
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -415,7 +419,11 @@ describe('usePlanFlow', () => {
     await act(async () => {
       await result.current.run(REQ, 'First attempt');
     });
-    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.internal' });
+    // #433: ensureClient() returning null (asset/worker init failure) is
+    // classified as 'worker-init' in usePlanFlow.ts's
+    // ROUTING_FAILURE_MESSAGE_KEY — distinguishable from the OTHER causes
+    // that used to collapse onto the same error.internal key.
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.workerInit' });
     expect(makeClient).toHaveBeenCalledTimes(1);
     expect(brokenWorker.posted.some((m) => m.type === 'plan')).toBe(false); // never got past init
     // The broken client's Worker thread must be torn down, not leaked, when
@@ -477,7 +485,11 @@ describe('usePlanFlow', () => {
       firstWorker.emit({ type: 'fatal', id: firstPlanMsg.id, message: 'segment blocked' });
       await runPromise;
     });
-    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.internal' });
+    // #433: a targeted 'fatal' rejects client.plan() with a RoutingError of
+    // kind 'worker-fatal' (workerClient.ts), classified here as
+    // error.routingFailed — distinguishable from the sibling causes that
+    // used to collapse onto the same error.internal key.
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.routingFailed' });
     expect(makeClient).toHaveBeenCalledTimes(1);
     // The poisoned client must be disposed (Worker thread torn down), not
     // just abandoned with the shared singleton still pointing at it.
@@ -498,6 +510,45 @@ describe('usePlanFlow', () => {
 
     expect(result.current.planning).toEqual({ phase: 'idle' });
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  // #433: a savePlan() failure AFTER routing already succeeded used to
+  // report the same error.internal key as every other cause — genuinely
+  // misleading, since routing worked and only persistence failed. Now
+  // classified as its own error.planSaveFailed.
+  it('a post-success savePlan() failure is classified as error.planSaveFailed, not error.internal (#433)', async () => {
+    const w = fakeWorker();
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi
+      .fn<(plan: Plan) => Promise<void>>()
+      .mockRejectedValue(new Error('IndexedDB quota exceeded'));
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'Test plan');
+      await flush();
+    });
+
+    const planMsg = findPosted(w.posted, 'plan');
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey: 'error.planSaveFailed' });
   });
 
   it('run() dedupes adjacent via points (< 60 m) before submitting the request, and before saving the plan', async () => {
@@ -821,5 +872,54 @@ describe('#114 recalculate with a fresh forecast', () => {
     expect(persisted).toBeDefined();
     expect(Array.from(persisted!.windGrid.speedKn).every((v) => v === 17)).toBe(true);
     expect(persisted!.request.departureMs).toBe(Date.UTC(2026, 6, 15, 8, 0, 0));
+  });
+});
+
+// #433/#435 spike §12: exhaustive proof that usePlanFlow.ts's
+// ROUTING_FAILURE_MESSAGE_KEY maps EVERY RoutingFailureKind to its own
+// distinguishable MsgKey. A stub client (not a full worker/protocol
+// simulation — workerClient.test.ts already proves each of the seven SITES
+// throws the correct kind) isolates usePlanFlow's own classification table
+// so this test can cover all five kinds cheaply, one at a time.
+describe('usePlanFlow classifies every RoutingFailureKind (#433)', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each<[RoutingFailureKind, MsgKey]>([
+    ['timeout', 'error.routingTimeout'],
+    ['worker-fatal', 'error.routingFailed'],
+    ['worker-error', 'error.routingCrashed'],
+    ['messageerror', 'error.routingMessageError'],
+    ['disposed', 'error.routingInterrupted'],
+  ])('maps a RoutingError of kind %s to %s', async (kind, messageKey) => {
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+    // Minimal structural stub — only the methods run()/ensureClient() call.
+    const stubClient = {
+      init: vi.fn().mockResolvedValue(undefined),
+      plan: vi.fn().mockRejectedValue(new RoutingError(kind, `stub ${kind} failure`)),
+      dispose: vi.fn(),
+    } as unknown as RoutingClient;
+
+    const { result } = renderHook(
+      () => usePlanFlow({ fetchWind, save, makeClient: () => stubClient }),
+      {
+        wrapper: AppStateProvider,
+      },
+    );
+
+    await act(async () => {
+      await result.current.run(REQ, 'Test plan');
+    });
+
+    expect(result.current.planning).toEqual({ phase: 'error', messageKey });
+    expect(save).not.toHaveBeenCalled();
   });
 });
