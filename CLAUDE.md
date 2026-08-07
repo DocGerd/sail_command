@@ -753,17 +753,20 @@ deviate from it.
   `main` with the tag now visible.
 
   **FIRST REAL EXERCISE — v0.10.0 cut (2026-08-07): it fired and was right.**
-  The merge-push Deploy (10:51:56Z) had already COMPLETED when the tag was
-  pushed, so `cancel-in-progress` had nothing to cancel — the slow-tag-push
-  case, which IS the normal human runbook flow. The tag Deploy went RED with
-  10x 404 on its own entry chunk while the OLD #117/#118 basemap Range probe
-  PASSED in that same job (the archive is byte-identical across both builds):
-  one run, both verdicts. The back-merge remedy worked as documented, and its
-  log shows `#117a PROD REBUILD ... cache miss` — the cache key's VERSION
-  component changed at an UNCHANGED main SHA, which is precisely why it
-  carries the version. Afterwards prod served the SAME chunk name the tag run
-  had built, proving that run's BUILD was always correct and only its
-  DEPLOYMENT no-opped.
+  The merge-push Deploy COMPLETED at 10:53:21Z and the tag Deploy was created
+  at 10:54:04Z — a **43-second** margin, so `cancel-in-progress` had nothing to
+  cancel. That tightness IS the point: this is the slow-tag-push case, and it
+  is the normal human runbook flow. The tag Deploy went RED with 10x 404 on its
+  own entry chunk while the OLD #117/#118 basemap Range probe PASSED on attempt
+  1 in that same job (the archive is byte-identical across both builds): one
+  run, both verdicts. The back-merge remedy worked as documented, and prod then
+  served the SAME chunk name the tag run had built — proving that run's BUILD
+  was always correct and only its DEPLOYMENT no-opped. Its log does show
+  `#117a PROD REBUILD ... cache miss`, but do NOT cite this run as evidence
+  that the key's VERSION component caused the miss: only one cache entry per
+  release SHA has ever existed (main-mode runs do not save caches), so the SHA
+  component alone missed. The version-in-key rationale is real and documented
+  above; this run is not evidence for it.
 - **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
   on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
   describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
@@ -1169,14 +1172,21 @@ deviate from it.
   width). UI tasks should end with a real-browser pass (dev server +
   Playwright); routing changes must keep `app/src/routing/realmask.repro.test.ts`
   green (it uses the real committed mask/polars).
-- Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at default
-  settings: `depthComfortMarginM` (default 2.0) puts #53's relaxed gate in
-  play and `planRoute()` returns `status: 'ok'` with shallow warnings — as
-  `realmask.repro.test.ts`'s own DEFAULT_SETTINGS case asserts. The older
-  "routes only at ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about
-  what a user experiences; it misdirected a live production triage for two
-  rounds (session 30). That solve costs ~58 s here against a fixed 120 s
-  client budget — see #432.
+- Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at DEFAULT
+  settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
+  `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as `realmask.repro.test.ts`'s own
+  DEFAULT_SETTINGS case asserts. The mechanism is #53's relaxation tier, which
+  fires on `depthRelaxationMayHelp(cause)` (`planRoute.ts:452`) whenever the
+  failure cause is mask-unreachability — **independent of
+  `depthComfortMarginM`**, which is #243's soft comfort PREFERENCE
+  (`planRoute.ts:271`, its only production call site) and does not gate
+  relaxation at all; `planRoute.ts:445` says so itself ("Unaffected by #243").
+  Set `depthComfortMarginM: 0` and it still routes. The older "routes only at
+  ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
+  experiences; it misdirected a live production triage for two rounds
+  (session 30). Solve cost is minutes-scale, not seconds — see #432 for the
+  measurement and why a Node/vitest figure cannot be compared to the browser
+  worker's 120 s budget.
 - The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
   (measured, issue #9: the bridge decks are already deep water; sub-cell
   channels ≤30 m wide are the real barrier) — reconnecting them requires
@@ -1318,13 +1328,7 @@ deviate from it.
   jobs were still running. Both times `mergeable_state: blocked` contradicted
   the poll — that disagreement is the cross-check, not a fluke
   (`mergeable_state` is also the merge-time tell in the #119 note under
-  Working style). INVERSE CASE (v0.10.0 cut): the run-ID poll can be RIGHT
-  while the merge is still blocked — release PR #429's head carried run
-  31170778727 (event=pull_request, green) AND 31170723523 (event=push, `e2e`
-  still running), and branch protection is NAME-keyed so it blocked on the
-  neighbour. Run ID answers "is my gating run green"; `mergeable_state`
-  answers "will the merge button work". Poll the run, gate on
-  `mergeable_state`. Fix: key the poll on the RUN, not the name — `gh api
+  Working style). Fix: key the poll on the RUN, not the name — `gh api
   repos/OWNER/REPO/actions/runs/<id>/jobs` — and when a SHA might carry more
   than one run, select it explicitly rather than assume there is only one;
   the release skill's §5b already does this, picking the newest
@@ -1338,7 +1342,16 @@ deviate from it.
   main-push Deploy, the tag's Deploy + Release, and the back-merge PR's OWN
   CI + CodeQL + Labeler. `CI` and `CodeQL` each appear TWICE, and that
   duplication IS the trap — two `CI` runs attach two sets of `app`/`e2e`
-  check-runs, exactly what a name-keyed poll cannot separate. Rule:
+  check-runs, exactly what a name-keyed poll cannot separate.
+  INVERSE CASE (v0.10.0 cut) — keying on the RUN is necessary but NOT
+  sufficient for the MERGE decision: release PR #429's head carried run
+  31170778727 (event=pull_request) green at 10:46:40Z while its neighbour
+  31170723523 (event=push, same SHA) still had `e2e` running until 10:50:20Z,
+  and branch protection is itself NAME-keyed, so `mergeable_state` stayed
+  `blocked` for ~3m40s while the run-ID poll was correctly reporting green.
+  Run ID answers "is my gating run green"; `mergeable_state` answers "will the
+  merge button work". Poll the run; gate the merge on `mergeable_state`.
+  Rule:
   enumerate `gh api
   repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
   ID explicitly — never poll by check name alone.
@@ -1581,9 +1594,11 @@ deviate from it.
   At the v0.10.0 cut `docs/screenshots/plan-route.png` still showed the
   pre-#408/#410 legs table, contradicting two of the three user-visible changes
   in that same release. `docs/screenshots/capture.mjs` could not regenerate it:
-  unrunnable since #64 (2026-07-18, ONE DAY after it was authored) because
-  nothing ever exercises it — three stale selectors were fixed at the cut, the
-  ★ wait still blocks it (#428). Durable form: a capture or verification tool
+  #64 (`852cb8c`, 2026-07-18 — ONE DAY after the script was authored) BROKE it,
+  and nothing ever exercising it is why the break went unnoticed for three
+  weeks — two separate causes, don't merge them. Three stale selectors were
+  fixed at the cut; the ★ wait still blocks it (#428). Durable form: a capture
+  or verification tool
   hardcoded to the PRODUCTION url can never capture a release candidate, since
   at cut time production IS by definition the previous release
   (`SC_SCREENSHOT_URL` now overrides it).
@@ -1843,23 +1858,31 @@ deviate from it.
   NARROWED, NOT CLOSED: any future reason-classification change still needs
   that full sweep, never a labeling-only fix.
 - **A route-planning failure is currently UNDIAGNOSABLE from a user report**
-  (#433). SIX unrelated sites collapse onto the single `error.internal` key
-  with byte-identical banner text: worker/asset init, `worker.onerror`,
-  `onmessageerror`, the 120 s client timeout, a real throw inside
-  `planRoute()` forwarded WITH detail by `protocol.ts`, and a POST-SUCCESS
-  IndexedDB `savePlan` failure (which reports failure when routing SUCCEEDED).
+  (#433). At least SEVEN unrelated sites collapse onto the single
+  `error.internal` key with byte-identical banner text: worker/asset init,
+  `worker.onerror`, `onmessageerror`, the 120 s client timeout, a real throw
+  inside `planRoute()` forwarded WITH detail by `protocol.ts`, a POST-SUCCESS
+  IndexedDB `savePlan` failure (which reports failure when routing SUCCEEDED),
+  and `mapWindError`'s fallthrough (`usePlanFlow.ts:48`) for any wind-fetch
+  failure that is not an `OpenMeteoError`. (#433's title says "six" — it
+  predates the seventh; do not read either count as exhaustive.)
   `usePlanFlow.ts:228` discards the caught Error, and there are ZERO
   `console.*` calls across `workerClient.ts` / `worker.ts` / `protocol.ts` /
   `usePlanFlow.ts` — so an empty console is DESIGNED behaviour, not evidence
   that nothing happened; never ask a reporter to check it. Related (#432):
-  `DEFAULT_PLAN_TIMEOUT_MS = 120_000` is fixed and un-scaled, `isochrone.ts`
-  has no wall-clock budget at all (only `MAX_FRONTIER = 30_000`, a
-  candidate-count cap), and the timeout never calls `worker.terminate()` — the
-  abandoned solve keeps burning a core and the banner's own "try again" advice
-  stacks another. A Chromium worker OOM-killed frequently does NOT fire
-  `onerror`, so a dead worker and a merely slow one are indistinguishable
-  today. Note the banner tells the user to RELOAD, which helps for exactly one
-  of the six.
+  `DEFAULT_PLAN_TIMEOUT_MS = 120_000` is fixed and un-scaled, and
+  `isochrone.ts` has no WALL-CLOCK budget (its bounds are `MAX_FRONTIER =
+  30_000`, a PER-RING frontier-size cap, and the forecast-horizon guard at
+  `isochrone.ts:268` which does terminate with `reason: 'beyond-horizon'`).
+  SCOPE THE TERMINATE CLAIM CAREFULLY: `settle()` itself does not terminate,
+  but `run()` recovers — `usePlanFlow.ts:228`'s catch calls `client.dispose()`
+  (`:237`) which does `worker.terminate()`, then nulls the refs (`:241`) so a
+  retry builds a FRESH worker. It is `replan.ts:110` and `reroute.ts:113` that
+  reject WITHOUT disposing, so a timeout reached via replan/reroute genuinely
+  leaves the worker running. Nothing in `protocol.ts`/`workerClient.ts`
+  distinguishes a worker that died from one merely still running, so those two
+  cases are indistinguishable today. The banner tells the user to RELOAD,
+  which helps for exactly one of the seven.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
