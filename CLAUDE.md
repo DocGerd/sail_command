@@ -1075,22 +1075,25 @@ deviate from it.
   still intended to
   close #319, ended `Closes #319` and survived a mid-flight descope. The check
   nobody ran: `git log origin/develop..HEAD | grep -iE
-  '(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'` — run it before merging,
+  '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'` — run it
+  before merging,
   especially when a PR's scope changed mid-flight, since the stale intent
   lives in an old commit the body/title check never sees. The commit-vs-body
   timeline discriminator above is what identified the culprit here too: the
   `closed` event carried a real `commit_id`, not `null`.
-  That grep is wrong in BOTH directions, measured 2026-08-07 on one probe
-  file. It MISSES a keyword separated from the ref by punctuation — `fix
-  (#412` passed it CLEAN — because `[[:space:]]+` admits no `(`. And it
-  FALSE-POSITIVES on any word merely starting with a keyword, because
-  `fix[a-z]*` greedily eats `fixture`: `prefix-only fixture #99 mention`
-  matches. Both are fixed by
-  `(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+`, which on
-  the same probe catches `fix (#412`, `Closes #999` and `fixes #1234` while
-  correctly ignoring the `fixture` line. Whether GitHub itself parses the
-  BRACKETED form is UNVERIFIED — widen the grep rather than reason about it:
-  the check is free and its failure mode is silent.
+  That pattern REPLACED an earlier `'(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'`
+  that was wrong in BOTH directions (measured 2026-08-07 on one probe file):
+  `[[:space:]]+` admits no `(`, so a bracket- or colon-separated ref slipped
+  through (`fix (#412`, `Closes: #321` — the colon form is a real GitHub
+  spelling, which is what the `:` in the class is for), while `fix[a-z]*`
+  greedily ate longer words, so `fixture #99` false-POSITIVED. The replacement
+  fixes the misses and NARROWS the false positives — it does not close them:
+  a word merely CONTAINING or ENDING with a keyword still matches (`postfix
+  #12`, `unclose #13`), which is the safe direction for a nudge. It also
+  deliberately drops the gerunds (`closing`/`fixing`/`resolving` are not
+  GitHub keywords, and the old `[a-z]*` matched them). Whether GitHub itself
+  parses the BRACKETED form is UNVERIFIED — widen the grep rather than reason
+  about it: the check is free and its failure mode is silent.
   Mirror check in the OTHER direction: after a merge that deliberately used
   `Refs #N` rather than a closing keyword because N's specified fix was NOT
   implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
@@ -1470,20 +1473,11 @@ deviate from it.
   blindness rules above, one level earlier: before asking whether the
   measurement can see the failure, ask whether the thing it measures AGAINST
   is reachable at all. The tell was already in the log.
-- **A FIFTH way prose rots: SIBLING-MERGE invalidation.** #423's CLAUDE.md
-  text was accurate when written and became FALSE when #419 merged three hours
-  later in the SAME merge train — a different PR entirely. Structurally
-  invisible to BOTH reviews: #419's never read #423's prose, and #423's ran
-  before #419 landed. Re-check a docs PR's factual claims against the base at
-  MERGE time, not at review time — most of all when the train touches the
-  subsystems that prose describes.
 - **A fix whose trigger is RARE is not verified by the trigger's absence.**
   Write "NOT YET EXERCISED" in the same breath as "landed" — every later
-  healthy run reads as confirmation otherwise. Sharper: where the SUCCESS path
-  makes two candidate implementations indistinguishable (a succeeding step
-  reads `success` on BOTH `.outcome` and `.conclusion`), no number of green
-  runs can separate the correct guard from the broken one, and the claim rests
-  on the source-level argument alone.
+  healthy run reads as confirmation otherwise. The #415 deploy-retry bullet
+  under PWA/E2E/deploy is the worked instance, including why a SUCCEEDING run
+  cannot discriminate the correct guard from the broken one.
 - **Prose rots in FOUR distinct ways, and a sweep aimed at one misses the
   others** (#298/#300, where 8 findings were prose-accuracy defects):
   OVER-CLAIMING (a header saying "EVERY way this can fail" with three paths
@@ -1549,6 +1543,24 @@ deviate from it.
   derived from an unverified claim about the code is the enumerate-don't-patch
   failure relocated one level up, into the brief. Same reason issue texts
   are not ground truth for states they do not describe.
+- **A FIFTH way, adjacent to SAME-PR INVALIDATION: SIBLING-MERGE
+  invalidation.** #423's CLAUDE.md prose was accurate when authored
+  (2026-08-06T22:06:46Z) and was made FALSE by #419 merging 9 h 19 min later
+  (2026-08-07T07:26:14Z) — a DIFFERENT PR in the same merge train, so no hunk
+  of #423's own diff contains the invalidating change. **What CAUGHT it was
+  review time, not merge time**: #423's review ran 40 min after #419 landed,
+  against a base that already contained it (`git merge-base --is-ancestor`
+  confirms), and re-derived each claim from the CURRENT code rather than from
+  the diff — which is exactly how it found the bullet describing an
+  already-fixed defect as live. So the remedy is NOT a new merge-time step:
+  it is that a docs review must re-derive claims against the base it is
+  actually running on, and must be re-run when the base moves (same rule as
+  "a review is valid only against the base it ran on" under Working style).
+  Recorded because the FIRST write-up of this incident asserted the opposite —
+  that both reviews were structurally blind — which was contradicted by this
+  repo's own timestamps and would have taught future sessions to distrust the
+  control that worked. A claim about the RECORD, stated from memory instead
+  of re-read from the record, is the same class as a claim about the code.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -2220,13 +2232,18 @@ deviate from it.
   reconcile a stuck-but-merged PR by closing the PR + deleting the branch +
   closing the issue manually (#94).
 - `gh pr merge <N>` run on a DETACHED HEAD errors `could not determine current
-  branch` while STILL LANDING the merge (measured 2026-08-07, #423) — the #94
-  shape with a new trigger. Verify via the merge commit's parents (`gh api
-  repos/…/commits/<sha> --jq '.parents[].sha'`), never blind-retry. Only the
-  LOCAL branch-delete step fails; a worktree still holding the branch fails
-  that same step harmlessly (`cannot delete branch … used by worktree`) with
-  the REMOTE delete already done. Don't detach HEAD to work around that —
-  detaching is what upgrades a harmless message into the ambiguous one.
+  branch` while STILL LANDING the merge (OBSERVED ONCE, 2026-08-07, #423) —
+  the #94 shape with a new trigger, so it invites the same blind retry.
+  Operative advice, independent of mechanism: verify via the merge commit's
+  parents (`gh api repos/…/commits/<sha> --jq '.parents[].sha'`), never
+  blind-retry. Two things were CORROBORATED — the merge landed, and the
+  REMOTE branch was gone (`git ls-remote --heads origin <branch>` empty) —
+  and a separate, non-detached run printed `cannot delete branch … used by
+  worktree` with the merge equally landed. What was NOT established: which
+  internal `gh` step failed (inferred from one error string, never measured),
+  or that detachment CAUSES the difference — the two cases were observed
+  separately, never as a controlled comparison. Treat the mechanism as
+  unproven and the verification step as the durable part.
 - `gh run rerun <id> --failed` gives a MISLEADING error when the target run
   hasn't finished: `run <id> cannot be rerun; its workflow file may be
   broken` — the workflow file is fine; the run is simply not `completed`
