@@ -1416,6 +1416,18 @@ deviate from it.
   no compiler, so nothing else catches it. The remedy that worked: make claims
   PER-SITE, which are falsifiable one site at a time — every failure was a
   GENERALISATION ("two tests", "only grows", "not precise hit-tests").
+  **The CORRECTION is the highest-risk moment, not the original** — session
+  30's PR #434 ran the class repeatedly within one PR, each instance inside
+  the fix for the previous one: a false MECHANISM inside a correction of a
+  misleading claim; an unmeasured magnitude plus a citation to a measurement
+  that did not exist, inside the fix for an unreproducible magnitude; an
+  over-broad "helps" inside the fix for an over-broad count. A replacement
+  arrives sounding authoritative and nobody re-attacks it as hard as the
+  original, so brief the reviewer at the REPLACEMENT TEXT specifically and
+  expect a further instance rather than assuming the last fix stopped it.
+  Every one was a GROUP NOUN ("the gate", "the measurement", "the
+  worker-fatal paths") and became falsifiable the moment it was split into
+  members — which is the same PER-SITE remedy above, one round later.
 - Documenting a rule fixes nothing already in flight. #412 (the #368-guard
   stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
@@ -1885,11 +1897,13 @@ deviate from it.
   genuinely leaves the worker running. Nothing in
   `protocol.ts`/`workerClient.ts` distinguishes a worker that died from one
   merely still running, so those two cases are indistinguishable today. The
-  banner's two pieces of advice are not equally good: "try again" DOES help
-  the worker-fatal paths (fresh worker, per `:241-242`) and a transient
-  wind-fetch failure, whereas "reload the app" helps essentially only the
-  asset/init case — don't quote one half without the other, and don't attach a
-  count to it, since the count moves whenever the site list does.
+  banner's advice splits PER PATH, not per group — three categories, no count:
+  "try again" hands the user a genuinely FRESH worker (`:241-242`) rather than
+  a poisoned client, so it helps the TRANSIENT failures (`onerror`,
+  `onmessageerror`, a wind-fetch blip); it CANNOT help the DETERMINISTIC ones,
+  since a timeout or a `planRoute()` throw recomputes identical inputs against
+  an identical budget and reproduces; and "reload the app" helps essentially
+  only the asset/init case.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
