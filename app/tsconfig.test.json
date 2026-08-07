@@ -49,6 +49,12 @@
   // `var(--sc-banner-height, <N>px)` fallback stays in sync with
   // BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX — the two can't share a single
   // source of truth (a CSS `var()` fallback can't import a JS constant).
+  // legDistanceReconciliation.test.ts (#379): reads the real shipped
+  // mask/polars via `node:fs` to reconcile per-leg distance against the
+  // plan total on a real solve, same reason as realmask.repro.test.ts.
+  // panelWidth.test.ts (#355): reads app/src/app.css via `node:fs` to
+  // structurally guard the `320px` grid-template-columns literal stays in
+  // sync with PANEL_MIN_WIDTH_PX, same reason as useBannerHeight.test.ts.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -57,6 +63,8 @@
     "src/**/changelogFragmentsFs.test.ts",
     "src/**/subPathMeta.test.ts",
     "src/**/glyphFallbackWarningGuard.test.ts",
-    "src/**/useBannerHeight.test.ts"
+    "src/**/useBannerHeight.test.ts",
+    "src/**/legDistanceReconciliation.test.ts",
+    "src/**/panelWidth.test.ts"
   ]
 }

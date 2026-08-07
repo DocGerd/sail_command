@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLang, useT } from './i18n';
 import {
   AppStateProvider,
@@ -35,10 +35,13 @@ import Banner, { type BannerKind } from './components/Banner';
 import AboutDialog from './components/AboutDialog';
 import ReloadPrompt from './components/ReloadPrompt';
 import UatBadge from './components/UatBadge';
+import PanelResizer from './components/PanelResizer';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
+import { usePersistedNumber } from './lib/usePersistedNumber';
+import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import type { MsgKey } from './i18n/dict.de';
@@ -156,6 +159,86 @@ function AppShell() {
   const [tab, setTab] = useState<Tab>('plan');
   const [aboutOpen, setAboutOpen] = useState(false);
   const isWide = useWideLayout();
+
+  // #355: resizable desktop left panel. `shellRef`/`panelRef` target
+  // `.app-shell`/`.app-bottom-sheet` — plain DOM refs, never given a React
+  // `style` prop, so PanelResizer's direct `.style.setProperty` writes
+  // during a live drag are never clobbered by an unrelated React re-render
+  // of either element (see PanelResizer.tsx's own comment). Both hooks
+  // below run unconditionally (rules of hooks) even on narrow, where their
+  // output is inert: `--sc-panel-w` is only read inside app.css's
+  // `@media (min-width: 1024px)` block, so writing it while narrow has no
+  // visual effect, and PanelResizer itself is only ever RENDERED when
+  // `isWide` (below) — narrow must not gain a resize affordance even in the
+  // accessibility tree, so this is a mount gate, not a CSS `display: none`.
+  const shellRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    // Coalesced to one state update per animation frame — a window resize
+    // (e.g. dragging the OS window edge) can fire far more often than that.
+    //
+    // Accepted cost, not fixed (PR #414 review, Minor 7): this re-renders
+    // the WHOLE `AppShell` subtree (including `MapView`, not itself
+    // `memo()`-wrapped) on every frame of a window drag-resize, even in the
+    // common case where `panelWidthPx === null` (no stored override) and
+    // the recomputed `panelMaxPx` therefore has no effect on anything
+    // rendered. Bailing on `panelWidthPx === null` was considered and
+    // rejected: `panelMaxPx` is also the `max` PROP `PanelResizer` clamps a
+    // live drag/keyboard step against, so pausing the update while null
+    // would leave that prop stale the moment a user's FIRST interaction
+    // arrives after a resize — a real (if narrow) correctness regression
+    // traded for an unmeasured perf win. The actual cost here is a React
+    // reconciliation pass over a subtree whose OWN effects (MapLibre init,
+    // GPS subscriptions, etc.) are keyed on stable deps and so do not re-run
+    // on this — not a MapLibre re-init or a network refetch — so this is a
+    // CPU cost during an already-CPU-bound user gesture (dragging an OS
+    // window edge triggers layout on every browser frame regardless), not
+    // demonstrated to be visible. Revisit with a measurement (a profiler
+    // trace during a real window drag) before "fixing" this preemptively.
+    let raf = 0;
+    const onResize = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setViewportWidth(window.innerWidth));
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+  const panelMaxPx = panelMaxWidthPx(viewportWidth);
+  const [panelWidthPx, setPanelWidthPx] = usePersistedNumber(
+    'sc-panel-width',
+    PANEL_MIN_WIDTH_PX,
+    panelMaxPx,
+  );
+  // `useLayoutEffect`, NOT `useEffect` — measured, per the same guard-
+  // asymmetry class as `lib/useBannerHeight.ts`'s FIRST-PAINT window (#368):
+  // a plain `useEffect` here left a real cold-load frame where a user with a
+  // STORED width (e.g. 900px) painted at the `1fr` DEFAULT (636.656px)
+  // first, then snapped — measured via a rAF sampler + CPU throttle, FCP
+  // landing strictly between an UNSET sample and the 900px one. This is
+  // `shellRef`'s OWN root element (`AppShell` returns `.app-shell`
+  // directly), not a sibling — unlike `PanelResizer.tsx`'s measurement
+  // effect (deliberately `useEffect` there: `panelRef` targets a SIBLING
+  // declared earlier in this same JSX, and React attaches a fiber's ref /
+  // runs its layout effects as it walks the committed tree in fiber order,
+  // so a `useLayoutEffect` there could run before that sibling's ref
+  // attaches). `commitAttachRef` for a component's OWN returned host fiber
+  // runs before that component's OWN layout effects, so `shellRef.current`
+  // is always attached here — no such ordering hazard at THIS call site.
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    // `null` (no stored override yet, or just reset) removes the property
+    // entirely rather than writing a computed default — app.css's
+    // `var(--sc-panel-w, 1fr)` fallback is what must govern then, so today's
+    // exact pre-#355 layout is reachable byte-for-byte, not merely
+    // approximated by a JS-computed number.
+    if (panelWidthPx === null) shell.style.removeProperty('--sc-panel-w');
+    else shell.style.setProperty('--sc-panel-w', `${panelWidthPx}px`);
+  }, [panelWidthPx]);
   // #31: on wide, LiveView (which must stay mounted inside MapView's subtree
   // for BoatMarker's map context) portals its textual readout into this
   // panel-column slot. A callback ref into state so the portal target becomes
@@ -534,7 +617,7 @@ function AppShell() {
   const stale = plan !== null && isStaleForecast(plan);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" ref={shellRef}>
       {/* Base layer: full-viewport map. Header/banners/bottom-sheet below are
           positioned overlays painted on top of it (later in DOM order, same
           stacking context), each occupying only its own natural height, so
@@ -782,7 +865,22 @@ function AppShell() {
         )}
       </div>
 
-      <div className="app-bottom-sheet">
+      {/* #355: only ever mounted on wide — narrow must not gain a resize
+          affordance, and gating on the hook (rather than hiding via CSS)
+          keeps a meaningless control out of the phone/tablet-portrait tab
+          order entirely. */}
+      {isWide && (
+        <PanelResizer
+          panelRef={panelRef}
+          targetRef={shellRef}
+          min={PANEL_MIN_WIDTH_PX}
+          max={panelMaxPx}
+          onCommit={setPanelWidthPx}
+          aria-label={t('panel.resizer.label')}
+        />
+      )}
+
+      <div className="app-bottom-sheet" ref={panelRef}>
         <nav className="app-tabs" role="tablist">
           <button
             type="button"

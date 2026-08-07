@@ -13,61 +13,53 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.8.1**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.9.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
 ## Now — v0.10.0
 
-The next feature release, tracked by the
-[`v0.10.0` milestone](https://github.com/DocGerd/sail_command/milestones) —
-created empty at the v0.9.0 cut (2026-08-05), per this repo's per-release
-milestone convention (see `CONTRIBUTING.md`). Its **product** scope is not
-yet decided; scope will be drawn from the themes below as work is triaged
-into it, the same way v0.9.0's was. The two coverage-timeout follow-ups
-noted at the v0.8.0 cut were never triaged into v0.9.0 and remain open —
-[#357](https://github.com/DocGerd/sail_command/issues/357) (assert the
-timeout budget against measured suite wall time, not just the heaviest
-per-test budget, currently carries no milestone) and
-[#359](https://github.com/DocGerd/sail_command/issues/359) (restore the
-job-cap coupling check with a real YAML parse, sitting in `Backlog`) —
-either could land in v0.10.0 once triaged, or stay in `Backlog` again.
+The `v0.10.0` cut (2026-08-07) closed out all 9 issues held in the
+[`v0.10.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+the resizable desktop left panel, so the route legs table is no longer
+cramped against a fixed-width column
+([#355](https://github.com/DocGerd/sail_command/issues/355)); a Duration
+column added to that table, and a correction of its "Heading" column label
+to "COG" (the value shown was always course over ground — this app has no
+leeway model, so it never computed true heading); the same issue's
+remaining distance-column scope carries into v0.11.0 below
+([#379](https://github.com/DocGerd/sail_command/issues/379)); and eight
+tooling/process items — two deploy-reliability fixes, an e2e hardening
+fix, two further artifact-guard fixes, and three documentation
+corrections
+([#415](https://github.com/DocGerd/sail_command/issues/415),
+[#398](https://github.com/DocGerd/sail_command/issues/398),
+[#412](https://github.com/DocGerd/sail_command/issues/412),
+[#405](https://github.com/DocGerd/sail_command/issues/405),
+[#404](https://github.com/DocGerd/sail_command/issues/404),
+[#393](https://github.com/DocGerd/sail_command/issues/393),
+[#365](https://github.com/DocGerd/sail_command/issues/365),
+[#341](https://github.com/DocGerd/sail_command/issues/341)) covered under
+"Development workflow" below.
 
-The `v0.9.0` cut (2026-08-05) closed out all 18 issues it carried: three
-map/seamark correctness fixes (spar-lateral topmarks, black special-purpose
-mark contrast on the dark basemap, the wind-barb slider's day indication —
-[#307](https://github.com/DocGerd/sail_command/issues/307),
-[#308](https://github.com/DocGerd/sail_command/issues/308),
-[#292](https://github.com/DocGerd/sail_command/issues/292)); the
-route-planning progress readout and the second-rig map overlay
-([#340](https://github.com/DocGerd/sail_command/issues/340),
-[#324](https://github.com/DocGerd/sail_command/issues/324)); a cluster of
-narrow-viewport map-chrome fixes (the offline banner overlapping the
-top-left chrome, and the scale bar painting over it —
-[#368](https://github.com/DocGerd/sail_command/issues/368) — plus the
-ownship marker's accessible name lost in the 6.1.0 bump,
-[#361](https://github.com/DocGerd/sail_command/issues/361)); a route
-annotation readability pass (ETA/speed labels culled or too small —
-[#378](https://github.com/DocGerd/sail_command/issues/378)); three
-investigated-but-not-built spikes, none of which changed any code
-([#244](https://github.com/DocGerd/sail_command/issues/244) buoyed
-fairways and [#245](https://github.com/DocGerd/sail_command/issues/245)
-depth-mask resolution, both **declined** and cross-referenced from the
-themes below;
-[#296](https://github.com/DocGerd/sail_command/issues/296) lazy-loading map
-data for offline coverage, a **recommendation** for future work rather than
-a decline — nothing was implemented); a dev-only dependency security bump
-([#369](https://github.com/DocGerd/sail_command/issues/369)); a CSP/build
-guard hardening pair
-([#320](https://github.com/DocGerd/sail_command/issues/320),
-[#318](https://github.com/DocGerd/sail_command/issues/318)); and four
-tooling/process items ([#392](https://github.com/DocGerd/sail_command/issues/392),
-[#388](https://github.com/DocGerd/sail_command/issues/388),
-[#383](https://github.com/DocGerd/sail_command/issues/383),
-[#277](https://github.com/DocGerd/sail_command/issues/277)) covered under
-"Development workflow" below. The `v0.8.1` patch release (documentation-only
-— correcting an overstated CHANGELOG claim from v0.8.0) shipped on
-2026-08-04 and carried no milestone of its own, per this repo's
-patch-milestone exception: it moved nothing above.
+## Next — v0.11.0
+
+Tracked by the
+[`v0.11.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+with five issues: the remaining scope of
+[#379](https://github.com/DocGerd/sail_command/issues/379) — a per-leg
+distance column, having already shipped duration and the corrected
+course-over-ground label above;
+[#282](https://github.com/DocGerd/sail_command/issues/282) — the reopened
+no-route `reason` control-input coupling (PR #411 narrowed it but did not
+close it; see `CLAUDE.md`'s Domain-rules section for the full history);
+[#301](https://github.com/DocGerd/sail_command/issues/301) — re-plan from
+the Plan view, prefilling the form from the displayed route instead of
+re-entering harbours/waypoints;
+[#231](https://github.com/DocGerd/sail_command/issues/231) — compacting the
+top-left map-chrome column on short landscape viewports; and
+[#427](https://github.com/DocGerd/sail_command/issues/427) — the About
+button's `ⓘ` label glyph renders as tofu on at least one measured platform,
+with no font fallback and coverage on real user platforms unmeasured.
 
 ## Themes for the next year
 
@@ -163,7 +155,34 @@ revisited, not that it has been lifted.
 ### Development workflow
 
 Not user-visible, but it is where a meaningful share of the effort goes and it
-sets the pace of everything above. The v0.9.0 cut fixed four items in this
+sets the pace of everything above. The `v0.10.0` cut fixed eight items in
+this area: two deploy-reliability fixes — a retry for the Pages `deploy`
+job's `deployment_queued`/`deployment_in_progress` timeout wedge (upstream
+`actions/deploy-pages` was hanging on its own default poll ceiling), and a
+version-aware smoke probe that turns a tag-push deploy silently
+no-opping — when the merge-push run already deployed the identical commit
+SHA — into a hard job failure instead of a false `success`
+([#415](https://github.com/DocGerd/sail_command/issues/415),
+[#398](https://github.com/DocGerd/sail_command/issues/398)); an e2e
+hardening fix closing a stale-geometry gap in the #368 banner-clearance
+guards, where a coordinate frozen before the `ResizeObserver`-driven CSS
+push settled could pass even with a real interception live
+([#412](https://github.com/DocGerd/sail_command/issues/412)); two further
+artifact-guard fixes — a read-only-exemption path where the Edit/Write arm
+left `docs/superpowers/plans/` with no ask-gate at all, and a selftest that
+had been exercising a second, drifted copy of the production Bash
+predicate rather than the real one
+([#405](https://github.com/DocGerd/sail_command/issues/405),
+[#404](https://github.com/DocGerd/sail_command/issues/404)); and three
+documentation corrections — `pipeline/README.md`'s wrong mask cell size,
+two residual inconsistencies the release runbook was left with after the
+v0.8.1 correction, and `CLAUDE.md`'s unmeasured "6-10x CI slowdown" claim
+replaced with the measured ratios
+([#393](https://github.com/DocGerd/sail_command/issues/393),
+[#365](https://github.com/DocGerd/sail_command/issues/365),
+[#341](https://github.com/DocGerd/sail_command/issues/341)).
+
+The v0.9.0 cut fixed four items in this
 area: a stale-`node_modules` maplibre-gl citation in `CLAUDE.md` that had
 already caused one wrong line-number claim
 ([#392](https://github.com/DocGerd/sail_command/issues/392)); the
@@ -203,8 +222,8 @@ coverage-aware test timeouts and wiring the coverage measurement into CI are
 covered under "Supply-chain" above, not repeated here
 ([#342](https://github.com/DocGerd/sail_command/issues/342),
 [#319](https://github.com/DocGerd/sail_command/issues/319)) — the two
-follow-ups it left open never got triaged into v0.9.0 and are listed under
-"Now" above
+follow-ups it left open never got triaged into v0.9.0 or v0.10.0 either,
+and remain open, untriaged, in `Backlog`
 ([#357](https://github.com/DocGerd/sail_command/issues/357),
 [#359](https://github.com/DocGerd/sail_command/issues/359)). A
 worktree-cleanup skill, deduplicating the graphify guidance to a single home,

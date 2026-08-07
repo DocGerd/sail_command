@@ -19,3 +19,17 @@ export function safeSetItem(key: string, value: string): boolean {
     return false;
   }
 }
+
+/**
+ * Clears a persisted override so a caller can fall back to its own default
+ * (#355: resetting the panel width must not merely stop reading the stored
+ * value — a stale entry would still be there, and wrong, on the next reload
+ * unless removed).
+ */
+export function safeRemoveItem(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Best-effort, matching safeGetItem/safeSetItem's degrade-silently contract.
+  }
+}

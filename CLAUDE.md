@@ -52,6 +52,17 @@ deviate from it.
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
+  **`lint` is literally `eslint src`, so `app/e2e/**` is NEVER linted by CI**
+  (#420, open) — including the specs that are the ONLY functional assurance
+  for `src/sw.ts` and `src/routing/worker.ts` (both ~0% coverage by design).
+  Run `npm --prefix app run lint -- e2e` by hand after touching a spec (this
+  lints `src` AND `e2e` in one pass, so it cannot silently diverge from what
+  CI runs); a real error sat there unseen until PR #419's review found it.
+  Note the `run`, not `exec` — per the next bullet, `exec` does NOT chdir, so
+  `npm --prefix app exec eslint e2e` resolves `e2e` against the REPO ROOT and
+  exits 2 with "No files matching the pattern" (measured), silently linting
+  nothing. The e2e-only spelling that does work is
+  `npm --prefix app exec eslint app/e2e`.
 - `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
   exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
   executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
@@ -303,6 +314,28 @@ deviate from it.
   independently justified regardless — app.css's own updated comment: a
   Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
   on its own" — not merely a residual of the now-gone `:has()` pairing.
+- **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
+  `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
+  primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
+  the affordance even in the accessibility tree). `app.css`'s `.app-shell`
+  grid track is `grid-template-columns: minmax(320px, var(--sc-panel-w, 1fr))
+  10px 2fr;` — `--sc-panel-w` is written by `App.tsx` as a px length once a
+  user drags/keys the resizer, and the bare `1fr` fallback is load-bearing:
+  with no stored override the pre-#355 layout is reachable byte-for-byte, not
+  merely approximated. `panelWidth.ts`'s `panelMaxWidthPx()` computes
+  `max(320, min(0.7·viewportWidth, viewportWidth − 480))` — the `480px` map
+  reserve (`PANEL_MAP_RESERVE_PX`) is a maintainer JUDGEMENT call, not a
+  measured layout constant, and its own comment says so explicitly so a future
+  reader doesn't mistake it for one. Persistence is `usePersistedNumber` —
+  localStorage via `lib/storage.ts`'s safe wrappers, NOT IndexedDB (mirrors
+  `usePersistedToggle`'s contract); `null` means no override; the returned
+  value clamps to the CALLER's current `min`/`max` on every read, but the raw
+  stored number is left untouched by a bounds change ALONE — only an explicit
+  drag/keyboard-step/reset commit persists a new value, so one narrow-viewport
+  visit cannot silently erase a wide-screen preference. `panelWidth.test.ts` is
+  the CSS/JS drift guard (this repo's `useBannerHeight.test.ts` pattern): it
+  `readFileSync`s `app.css`, regexes out the `320px` literal, and asserts it
+  equals `PANEL_MIN_WIDTH_PX`.
 - `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx` — not via a later
   `setMaxPitch`/`setPitch`, which a style reload could undo — and pinned by
   `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
@@ -453,9 +486,42 @@ deviate from it.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
+- **Reproducing a settle race needs the write to land INSIDE the window, and
+  the window is smaller than it looks** (#412, PR #419). The target here is
+  the gap between `boundingBox()` and `elementsFromPoint` — two consecutive
+  CDP round-trips, roughly 10 ms. A multi-second delay puts the write BEYOND
+  both calls and a pre-loop CSS force puts it BEFORE both: **both sample the
+  two CONSISTENT states and can never reach the inconsistent one**, so three
+  such constructions "proved" a site was dormant when they had not tested it
+  at all. Worse, the supporting evidence (`box.y + box.height <= vp.height`
+  "trips first") read the SAME FROZEN BOX the assertion does, so it was blind
+  to exactly what it was credited with catching. Treat reachability as
+  UNMEASURED unless the construction demonstrably lands inside the window;
+  two residual sites are tracked in #422.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
+  **The rule governs an assertion's INPUTS, not only its predicate.**
+  The `#368` banner-clearance guards in `app/e2e/layout.spec.ts` (a
+  parametrized viewport sweep plus three named fix-wave tests) and the
+  SIBLING guard in `app/e2e/compass.spec.ts` each USED TO capture
+  `depthToggle`'s `boundingBox()` ONCE and then assert against a coordinate
+  frozen from that single read — taken before the `ResizeObserver` write of
+  `--sc-banner-height`, and the CSS push it causes, had settled. A real
+  interception and a stale-coordinate read produce a BYTE-IDENTICAL
+  signature, so the race could make a guard PASS with the defect live. The
+  two forms differed only in CI signature, which is exactly why recognising
+  them as ONE class mattered: `layout.spec.ts` polled a stale point until its
+  budget expired (a predicate timeout), while `compass.spec.ts` fed the
+  frozen boxes to an IMMEDIATE one-shot `expect(overlap area).toBe(0)` with
+  zero settle tolerance and failed an overlap comparison outright — not
+  polling is not the same as not needing a gate. FIXED in #412 / PR #419:
+  every one of those guards now RE-SAMPLES its geometry INSIDE the poll
+  callback, so no box survives across a tick; the specs carry `#412` comments
+  at each site saying so. Two residual frozen-geometry sites remain elsewhere
+  in the suite, tracked in #422. The durable rule outlives the fix: polling a
+  state signal is not enough if the coordinate or handle being polled was
+  itself sampled before settle.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
   (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
@@ -615,6 +681,134 @@ deviate from it.
   publishes the authoritative `prod-manifest` baseline. A `push` on a tag also
   resolves the WORKFLOW FILE from the tag's commit, so a `v[0-9]*` tag on a
   commit predating #197 silently does not deploy.
+- **Deploy — same-SHA no-op (#398), FIXED via a version-aware smoke probe**:
+  GitHub Pages keys a deployment by COMMIT SHA — `actions/deploy-pages` logs
+  `Created deployment for <sha>, ID: <sha>`. A release tag points at `main`'s
+  tip, so the merge-push run and the tag-push run deploy the SAME commit; the
+  first deployment of that SHA wins and the second is accepted, reports
+  success, and does not replace the served artifact. MEASURED at the v0.9.0
+  cut: merge-push run completed 07:04:20Z and deployed `c4e139d`; the tag
+  run's Pages deployment reported `success` at 07:07:14Z and changed
+  nothing; production kept serving the pre-tag build (`v0.8.1-82-gc4e139d`)
+  for ~40 min. Two full attempts of the tag run both went green and both
+  no-opped — every existing signal (run conclusion, Pages deployment status,
+  and the CDN smoke probe below) read green, because the probed basemap
+  archive is byte-identical between the two builds and cannot distinguish
+  them. `concurrency: cancel-in-progress` is what normally hides this and it
+  is a RACE, not a guarantee — at v0.7.0 the tag run cancelled the merge run
+  before it deployed, so only one deployment of that SHA existed. Inverted
+  intuition, state it explicitly: a SLOW tag push is the dangerous case,
+  i.e. exactly the runbook's human flow (merge the PR, tag at human speed).
+
+  **The fix**: the `build` job discovers the entry-chunk URL assembled into
+  each ref's dist (from the built `index.html`'s own `<script
+  type="module">` tag, validated for a hashed `assets/<name>-<hash>.js`
+  shape under the expected deployment base path — never a hardcoded
+  filename, and never an unvalidated one either; same discovery philosophy
+  as the basemap archive lookup below) and exposes it as a job output
+  (`prod-entry-url`/`uat-entry-url`); `smoke-probe` fetches that URL and
+  requires 200. The bundled `__SC_APP_VERSION__` define changes the chunk's
+  content hash whenever it changes, so a main-push build and a later
+  tag-push build of the IDENTICAL commit produce two DIFFERENT hashes — on
+  a same-SHA no-op the live site is still serving the PREVIOUS build's
+  chunk, so the resolved URL 404s, decisively (a URL never requested before
+  cannot be a stale cache hit, unlike polling `index.html`, which the Pages
+  CDN's query-string normalization makes cache-proof against `?cb=` busting
+  — curl, a real browser, `cache: 'no-store'` and `cache: 'reload'` are all
+  answered from the same edge object).
+
+  **Which half carries signal depends on the trigger** — say precisely what
+  is proven, not more: on a MAIN-MODE run (a `main` push, a release-tag
+  push, or a dispatch on `main`) BOTH halves are this run's own fresh build
+  and both are decisive — exactly the configuration #398 is about, since
+  the merge-push run and the tag-push run are each main-mode and deploy the
+  identical commit. On a develop-triggered run the PROD half depends on
+  which #117a path THIS run took, not on trigger alone: on a cache HIT that
+  passes validation, `deploy.yml`'s `build-main` step never fires and the
+  prod dist is restored from the `prod-dist-v2-<sha>-<version>` cache — by
+  construction the build already live, so its URL returns 200 regardless of
+  whether THIS run's own deployment took (that 200 is evidence about the
+  PREVIOUS deployment, not this one). On a cache MISS or a FAILED
+  validation, `build-main` reruns even in develop mode (`if: mode == 'main'
+  || cache-hit != 'true' || valid != 'true'`) and `prod_dist` becomes this
+  run's own fresh build — the prod half CAN carry real signal there, most
+  notably in the window where "Enforce byte-stability vs last main-mode
+  build" finds no retrievable baseline and skips the drift check with only a
+  warning: that rebuild is otherwise unverified against any known-good
+  reference, so this probe is the one thing standing in for it. The UAT half
+  has real teeth on EVERY develop-triggered run regardless of which prod
+  path was taken (rebuilt every push, since `git describe --tags --always`
+  moves with every commit) and is this run's own build there. The check
+  still runs unconditionally on every trigger — cheap, and the uat half
+  alone still generalizes to "deployment reported success but did not take"
+  beyond this one root cause; do not skip either
+  half on the assumption one is redundant.
+
+  Consequence for the release runbook: a same-SHA no-op now REDS the
+  `smoke-probe` job instead of reporting a false `success` on a main-mode
+  run — `.claude/skills/release/SKILL.md` §5b's remedy for that case is no
+  longer "re-run the tag deploy" (provably a no-op against the same SHA,
+  measured twice at the v0.9.0 cut) but "proceed to the back-merge" (step
+  6), whose push carries a DIFFERENT SHA and rebuilds the site root from
+  `main` with the tag now visible.
+- **Deploy — `deploy` job timeout, a DIFFERENT failure mode from #398**
+  (#415): the Pages `deploy` job (the `actions/deploy-pages` step) aborts a
+  deployment that never reaches a terminal state — `build` still succeeds,
+  `deploy` fails, and `prod-environment`/`uat-environment`/`smoke-probe` all
+  SKIP (`needs: deploy`). Production is unaffected as long as `main` hasn't
+  moved past its last successful deploy; `/uat/` goes stale.
+  **Describe it by SHAPE, never by one status string**: `deployment_queued`
+  AND `deployment_in_progress` are both observed (`fb2481c` logged
+  `deployment_in_progress` x118 and `deployment_queued` x0), and upstream
+  reports `syncing_files` — a triage grepping for one string concludes it is
+  a different defect. The abort is the action's OWN DEFAULT poll ceiling
+  (`action.yml`'s `timeout: 600000`, not overridden here); every failure runs
+  10m05s-10m09s. **`smoke-probe` structurally cannot catch this**: #398 is a
+  deploy that reports success but silently doesn't take; this one reports
+  FAILURE outright and its downstream jobs never run — the probe that closed
+  #398 has nothing to probe here.
+  **Root cause is UPSTREAM and externally CONFIRMED**: `actions/deploy-pages#406`
+  (open, independent reporters) plus GitHub's own 2026-08-06 incidents
+  *"Pages - Deployment Lag"* (15:03Z) and *"Actions"* (15:22Z), both reaching
+  `major_outage`. TRAP worth keeping: the status page read ALL-OPERATIONAL
+  for hours first, and the community threads report the same — **absence of a
+  published incident is not evidence the fault is yours**.
+  **REJECTED — raising the `timeout` input.** Upstream reports it ineffective,
+  and on `e303e496` attempt 1 burned the full ceiling while a FRESH attempt 2
+  succeeded in **11 SECONDS** on the identical commit and artifact (run
+  `31109710670`), with `smoke-probe` PASSING on that rescued deployment. On
+  timeout the action CANCELS its own deployment, so a wedge clears by
+  RETRYING, never by waiting — the intuitive fix is the evidentially weaker
+  one here.
+  **FALSIFIED, do not revisit**: `concurrency: cancel-in-progress` did NOT
+  orphan a deployment — no deploy.yml run that day was cancelled at all, and
+  no non-terminal Pages deployment existed. Artifact size is flat (~70.75 MB
+  against a documented 1 GB Pages limit) and not implicated; both
+  `actions/deploy-pages` and `upload-pages-artifact` are already at v5.0.0,
+  the newest release, so there is nothing to bump.
+  The fix — `continue-on-error` on the first `deploy-pages` step, then a
+  `steps.deployment.outcome == 'failure'`-gated warn + wait + retry — landed
+  in PR #418. NOT YET EXERCISED as of 2026-08-07: on the first deploy after
+  that merge, attempt 1 succeeded in 11 s and all three retry steps SKIPPED.
+  A green deploy is therefore NOT evidence the retry works, and never will
+  be — only the `::warning::` firing marks a genuine rescue. That run also
+  cannot discriminate `.outcome` from `.conclusion` (see the next bullet):
+  on a SUCCEEDING step both read `success`, so the correct guard and the
+  broken one are indistinguishable there.
+- **GitHub Actions expression gotchas** (verified 2026-08-06 against the
+  documented Contexts grammar AND `actions/runner` source, not from memory):
+  a HYPHENATED step id IS valid in dot notation — `steps.deployment-retry
+  .outputs.page_url` parses correctly, no `steps['deployment-retry']` index
+  syntax needed —
+  `src/Sdk/DTExpressions2/Expressions2/Sdk/ExpressionUtility.cs`'s
+  `IsLegalKeyword` admits `-` at index >= 1 but NOT as the first character
+  (read against `actions/runner` `main` @ 2026-08-06 — a moving branch, so
+  re-derive after any upgrade), and `deploy.yml` already relies on this in
+  green production runs. And
+  `steps.<id>.outcome` is the result BEFORE `continue-on-error` is applied
+  while `.conclusion` is the result AFTER — so a retry must gate on
+  `.outcome == 'failure'`; `.conclusion` reads `success` on the very step
+  whose failure you are trying to detect.
 - **Deploy — concurrency and environments**: `concurrency: { group: pages,
   cancel-in-progress: true }` admits only one deploy run at a time, but it
   CANCEL-SUPERSEDES rather than queues — a newer run cancels the in-flight one
@@ -730,8 +924,12 @@ deviate from it.
   `pages`-concurrency cancellation of a genuine in-flight deploy —
   `release.yml`'s own guard against a duplicate Release means the badge
   itself isn't actually at risk for an already-shipped tag) and because a
-  published signed tag is an attestation a third party may already have
-  verified, which mutating the object would invalidate. `main` is
+  published tag object is something third parties may already have
+  fetched — re-creating it does change the tag object's sha (measured
+  during #364), which is disruptive even for these unsigned tags with no
+  signature to invalidate; the stronger "attestation a third party may
+  already have verified" framing applies once the subject is an actually
+  signed tag (`v0.8.0` onward). `main` is
   released-state-only. Pushing that tag is what puts the clean `vX.Y.Z` in the
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
@@ -775,7 +973,9 @@ deviate from it.
   published to the deliberately-labeled, `noindex`ed `/uat/` sub-path in the
   same run — a UAT preview, not a second production. After a RELEASE, back-merge
   `main` into `develop` via a TOPIC branch (branch off `develop`, `git merge
-  origin/main` — fast-forwards to the release commit, zero file diff — then PR →
+  origin/main` — fast-forwards to the release commit, zero file diff from the
+  merge itself; step 6 of the release runbook (`.claude/skills/release/SKILL.md`)
+  adds the `ROADMAP.md` bump on top — then PR →
   `develop`): a DIRECT main→develop PR reads BEHIND under the strict up-to-date
   policy, and its "Update branch" button would merge develop→main, polluting the
   released branch (v0.2.0 lesson, reused for v0.3.0). A HOTFIX branches from `main`, PRs to
@@ -875,11 +1075,25 @@ deviate from it.
   still intended to
   close #319, ended `Closes #319` and survived a mid-flight descope. The check
   nobody ran: `git log origin/develop..HEAD | grep -iE
-  '(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'` — run it before merging,
+  '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'` — run it
+  before merging,
   especially when a PR's scope changed mid-flight, since the stale intent
   lives in an old commit the body/title check never sees. The commit-vs-body
   timeline discriminator above is what identified the culprit here too: the
   `closed` event carried a real `commit_id`, not `null`.
+  That pattern REPLACED an earlier `'(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'`
+  that was wrong in BOTH directions (measured 2026-08-07 on one probe file):
+  `[[:space:]]+` admits no `(`, so a bracket- or colon-separated ref slipped
+  through (`fix (#412`, `Closes: #321` — the colon form is a real GitHub
+  spelling, which is what the `:` in the class is for), while `fix[a-z]*`
+  greedily ate longer words, so `fixture #99` false-POSITIVED. The replacement
+  fixes the misses and NARROWS the false positives — it does not close them:
+  a word merely CONTAINING or ENDING with a keyword still matches (`postfix
+  #12`, `unclose #13`), which is the safe direction for a nudge. It also
+  deliberately drops the gerunds (`closing`/`fixing`/`resolving` are not
+  GitHub keywords, and the old `[a-z]*` matched them). Whether GitHub itself
+  parses the BRACKETED form is UNVERIFIED — widen the grep rather than reason
+  about it: the check is free and its failure mode is silent.
   Mirror check in the OTHER direction: after a merge that deliberately used
   `Refs #N` rather than a closing keyword because N's specified fix was NOT
   implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
@@ -970,6 +1184,47 @@ deviate from it.
   coin-flip-grade experiment, not a mutation check. Size the repeat count
   against the failure rate you are trying to detect, and never read one
   green revert as "the gate does nothing".
+- **This session produced THREE distinct vacuity traps in one PR lineage — a
+  guard, then its fix, then the fix's data — the documented "a fix inherits
+  its bug's blind spot" pattern, one level deeper each time; not one was
+  found by reading, all three by constructing the failing input and running
+  it.**
+- A THIRD mutation-vacuity class, distinct from #50's equivalence-test trap
+  and #216/#388's prose-vs-value trap below: **a mutation reddening a test
+  does not establish the test guards anything REACHABLE.** Measured on PR
+  #410: `legDistanceReconciliation.test.ts`'s epsilon-free sign assertion
+  (`total >= Σ chord`) reds under a "halve every stored distance" mutation,
+  so the battery looked convincing. But that assertion is a THEOREM given
+  the code — every leg's `distanceNm` is exactly its own chord or a sum of
+  sub-chords, which is >= the chord by the triangle inequality — so no
+  reachable code change can violate it. A reviewer flipped the
+  chord/polyline convention in BOTH directions and the sign assertion PASSED
+  both times; what actually discriminates is the magnitude bound
+  `residual < 1e-3` (reds at 27.5x/10.5x over). The stated roles of the two
+  assertions were exactly inverted. Rule: for each assertion, ask whether
+  any change the code could actually make would violate it — a mutation the
+  codebase cannot produce proves nothing.
+- Guards fail open on QUOTE STYLE too. Measured on PR #411:
+  `planRoute.reasonDecoupling.test.ts`'s structural guard, which detects a
+  gate re-coupling to a solver-derived label, matched only SINGLE-quoted
+  string literals — a re-coupling written with backticks
+  (``NO_ROUTE_LABEL_OF_CAUSE[cause] === `unreachable` ``) left it **10/10
+  GREEN** and passed both lint and typecheck (prettier normalises `"…"` to
+  `'…'` but leaves a template literal alone). Any source-scanning guard must
+  match `'`, `"` AND backtick. Fixed with a `labelLiteral()` regex over all
+  three quote forms, pinned by a row that reds when narrowed back to
+  single-quote-only.
+- A guard's DATA needs a twin too, not just its detection logic. Same guard,
+  same PR: `SOLVER_LABELS`, the array every failing loop iterates, had NO
+  twin — stubbing it to `[]` left the whole guard **12/12 GREEN**, silently
+  dropping a label disabled the guard while it kept reporting success. Fix:
+  tie the list to the test's own hand-written `EXPECTED_LABELS`, NOT to
+  production `NO_ROUTE_LABEL_OF_CAUSE` — deriving needle and haystack from
+  one source is the worse tautology (#388's shape). Discriminating
+  experiment: perturb EACH SIDE ALONE — changing production only reds the
+  structural row; changing the test's own table reds two rows. Had the
+  needle come from production, that second probe would have been
+  unobservable.
 - A mutation battery can pass for the WRONG reason when a test row carries
   MORE THAN ONE trigger for the same expected outcome. A near-miss row meant
   to pin allowlist MEMBERSHIP was written as `xargs npm install < pkgs.txt` —
@@ -1100,6 +1355,26 @@ deviate from it.
   produced four cascading z-index regressions, each caused by the previous
   fix. Re-run the ORIGINAL defect class against the new code, and treat a
   passing selftest table as proof only of the shapes it lists.
+  Session 28 (2026-08-06/07) produced fresh instances in EVERY ONE of the
+  three PRs merged that night — including one inside a **comment-only**
+  wording correction, where the entire content of the change was a single
+  comment and it still reproduced the class. (Deliberately no count: the
+  first write-up said "five" and the enumeration found ~10, one PR alone
+  exceeding five — a bare number in a durable instruction reads as an
+  enumeration.) The invariant across every one of them: **a claim
+  about code, stated from memory instead of re-read from the code**. Prose has
+  no compiler, so nothing else catches it. The remedy that worked: make claims
+  PER-SITE, which are falsifiable one site at a time — every failure was a
+  GENERALISATION ("two tests", "only grows", "not precise hit-tests").
+- Documenting a rule fixes nothing already in flight. #412 (the #368-guard
+  stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
+  being written in parallel under a brief that predated the finding — the
+  new spec acquired the identical single-`boundingBox()`-then-assert defect
+  the just-filed issue was about, because a CLAUDE.md/issue update doesn't
+  reach code a parallel agent already has open. Caught only because a
+  reviewer was told to check for that specific shape (PR #414 review, fixed
+  in `3bba82f`). A rule landing mid-session needs an explicit re-check
+  against work started before it existed, not an assumption of propagation.
 - `Object.is(-0, 0)` is `false`, and Playwright's `toBe` uses `Object.is`. A
   counter-rotating needle rounds a −0.11° residual to `-0` and fails
   `toBe(0)` intermittently — MapLibre's camera lands 0.04–0.18° short after a
@@ -1132,7 +1407,20 @@ deviate from it.
   (#320, PR #375) does this; its header documents that the rendered-feature
   check LICENSES the zero-warnings assertion (an absence assertion carries
   no information until the evidence-generating process is established to
-  have run) and must not be deleted as redundant.
+  have run) and must not be deleted as redundant. `sc-maneuver-labels`
+  (`app/src/components/RouteLayer.tsx:321-333`) is the one symbol layer that
+  sets a `text-field` but no `text-font`, so it requests MapLibre's default
+  `Open Sans Regular,Arial Unicode MS Regular` — a fontstack this app does
+  not ship — and silently renders via TinySDF. Pre-existing (dates to the
+  original route-layers commit, well before #378/#324), audited against all
+  nine runtime symbol layers, tracked as #288. `labels.spec.ts` cannot see
+  it because that spec never plans a route. The missing-fontstack request
+  itself is real in both environments, but its symptom differs: local `vite
+  preview` returns the SPA fallback (HTTP 200, body starting `<!do`) for
+  that path, so MapLibre's decode fails with `Unimplemented type: 4` — an
+  artifact of the preview server, not of production, which returns an
+  honest 404 for the same request. That distinction is what made the
+  symptom look environmental for two sessions.
 - Never source an integer-exact claim (line number, byte count, version
   string) from a summarizing fetch — `WebFetch`/`WebSearch` paraphrase, and
   a paraphrased integer is silently wrong rather than obviously wrong. Read
@@ -1150,6 +1438,10 @@ deviate from it.
   real source and reach opposite, both-honest conclusions about the same
   line (measured: a reviewer filed a Major finding that a correct citation
   was wrong; the implementer refuted it with the version, #383/PR #390).
+  SECOND independent instance (2026-08-06, PR #419): the same checkout served
+  `@playwright/test` 1.62.0 while `app/package-lock.json` pinned 1.62.1 — two
+  different packages, same trap, so treat this as the normal state of a
+  long-lived checkout rather than a one-off.
   **The LOCKFILE is authoritative** — it is what `npm ci`, CI and production
   install. So: `npm ci` first, confirm the version you are about to read
   (`node -p "require('./app/node_modules/<pkg>/package.json').version"`),
@@ -1181,6 +1473,11 @@ deviate from it.
   blindness rules above, one level earlier: before asking whether the
   measurement can see the failure, ask whether the thing it measures AGAINST
   is reachable at all. The tell was already in the log.
+- **A fix whose trigger is RARE is not verified by the trigger's absence.**
+  Write "NOT YET EXERCISED" in the same breath as "landed" — every later
+  healthy run reads as confirmation otherwise. The #415 deploy-retry bullet
+  under PWA/E2E/deploy is the worked instance, including why a SUCCEEDING run
+  cannot discriminate the correct guard from the broken one.
 - **Prose rots in FOUR distinct ways, and a sweep aimed at one misses the
   others** (#298/#300, where 8 findings were prose-accuracy defects):
   OVER-CLAIMING (a header saying "EVERY way this can fail" with three paths
@@ -1221,6 +1518,49 @@ deviate from it.
   a third with the identical shape, at ~43 min per round to learn it (#342).
   `git grep` the pattern first, then centralize it behind one constant plus a
   structural guard — a per-file patch converges one CI run at a time.
+  **Corollary for DELEGATION: enumerate FIRST, then scope the agent's file
+  allowlist from the enumeration — never the other way round.** Measured
+  2026-08-06 (PR #402): a brief scoped its allowlist from the ISSUE's claim
+  about where the stale text lived. #341's issue text located the "6-10x CI
+  slower" claim in `CLAUDE.md` — that was backwards: `CLAUDE.md` already
+  carried the corrected, measured figures, and the live stale text was
+  actually in `CONTRIBUTING.md`. Four `.md`-adjacent locations were in view
+  across the fix (`CLAUDE.md`, falsely, per the issue's own claim;
+  `CONTRIBUTING.md`, fixed against the original allowlist; then
+  `.claude/agents/sail-implementer.md` and `README.md`, found only by a
+  follow-up enumeration and both OUTSIDE the allowlist the brief had derived
+  from the issue). That follow-up enumeration was itself under-scoped —
+  `git grep -n "..." -- '*.md'`, silently Markdown-only — and got reported as
+  "repo-wide" with "zero remaining instances." It wasn't: a reviewer's later,
+  genuinely unscoped grep found 14 more live instances in source/test
+  comments (`app/e2e/*.spec.ts`, `app/src/routing/*.test.ts`,
+  `app/src/lib/gpx.parse.test.ts`), of which 6 were fixed and 8 deliberately
+  left alone as a different, correctly-cited defect (a real, dated ~30-44x
+  solver-CI measurement, not the fabricated 6-10x figure). The
+  scoped-grep-reported-as-repo-wide over-claim is the SAME failure this
+  file's own "four ways prose rots" bullet documents, one layer further
+  out — occurring inside the very PR fixing prose-rot claims. An allowlist
+  derived from an unverified claim about the code is the enumerate-don't-patch
+  failure relocated one level up, into the brief. Same reason issue texts
+  are not ground truth for states they do not describe.
+- **A FIFTH way, adjacent to SAME-PR INVALIDATION: SIBLING-MERGE
+  invalidation.** #423's CLAUDE.md prose was accurate when authored
+  (2026-08-06T22:06:46Z) and was made FALSE by #419 merging 9 h 19 min later
+  (2026-08-07T07:26:14Z) — a DIFFERENT PR in the same merge train, so no hunk
+  of #423's own diff contains the invalidating change. **What CAUGHT it was
+  review time, not merge time**: #423's review ran 40 min after #419 landed,
+  against a base that already contained it (`git merge-base --is-ancestor`
+  confirms), and re-derived each claim from the CURRENT code rather than from
+  the diff — which is exactly how it found the bullet describing an
+  already-fixed defect as live. So the remedy is NOT a new merge-time step:
+  it is that a docs review must re-derive claims against the base it is
+  actually running on, and must be re-run when the base moves (same rule as
+  "a review is valid only against the base it ran on" under Working style).
+  Recorded because the FIRST write-up of this incident asserted the opposite —
+  that both reviews were structurally blind — which was contradicted by this
+  repo's own timestamps and would have taught future sessions to distrust the
+  control that worked. A claim about the RECORD, stated from memory instead
+  of re-read from the record, is the same class as a claim about the code.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -1266,6 +1606,35 @@ deviate from it.
   and calling this "a known flake" for two sessions is exactly the
   write-off that rule exists to prevent — a lone red test contradicting a
   green suite deserves MORE weight than the suite.
+- **Five green signals can share one blind spot (#398).** Verifying the
+  v0.9.0 tag deploy actually reached production, three green signals missed
+  the same-SHA no-op: the run conclusion, the Pages deployment status
+  (`success`, with `environment_url` = the prod root), and `smoke-probe` —
+  which probes the `.pmtiles` archive, byte-identical between the two
+  builds, so it cannot distinguish them. The probe that DOES work compares
+  the run's own published `prod-manifest` (it records the entry chunk
+  `assets/index-<hash>.js` and `version.txt`) against the live site and
+  requests that exact filename: 404 vs 200 is decisive precisely because a
+  never-requested URL cannot be a stale cache hit. Do NOT verify by polling
+  `index.html` — GitHub Pages' CDN NORMALIZES QUERY STRINGS, so
+  `?cb=$RANDOM` is a no-op and curl, a real browser, `cache: 'no-store'` and
+  `cache: 'reload'` are all answered from the SAME edge object. Five checks
+  agreeing was one check with a shared blind spot, and it nearly triggered an
+  unnecessary production re-deploy; the tell was `x-cache: HIT` (with
+  `age: 392`, `cache-control: max-age=600`) on a URL never requested before.
+  Sibling of the existing "what class of failure can this method not
+  detect?" rule — here the answer was "any change at all".
+  **The 404 half of that argument is now MEASURED, not assumed** (PR #403
+  review, 2026-08-06): a never-deployed `assets/*.js` HEADs a genuine 404 on
+  the real production CDN, not an SPA-fallback 200. That was worth checking
+  rather than reasoning about, because local `vite preview` returns the SPA
+  fallback (HTTP 200) for exactly this shape of request — see the glyph
+  bullet above, where that same preview-vs-prod difference made a symptom
+  look environmental for two sessions. Had production behaved like preview,
+  the whole version-aware probe would have passed forever while proving
+  nothing. The shipped probe was then confirmed to actually EXECUTE on a
+  real deploy (run `31092871174`, step "Assert this run's own build is
+  actually live (#398)") — a green run is not evidence the new step ran.
 
 ## Domain rules that are easy to get wrong
 
@@ -1402,19 +1771,33 @@ deviate from it.
   NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
   measured against a chord that crossed LAND.
 - **No-route `reason` is a CONTROL INPUT, not just a status label** (#282,
-  open): `needsUnpreferencedRetry` (`planRoute.ts:112-116`) branches on
-  `r.reason === 'unreachable' || r.reason === 'beyond-horizon'`, and the #53
-  relaxation gate (`planRoute.ts:349`) branches on `reason === 'unreachable'`
-  (plus a depth-floor guard). So ANY change to no-route classification —
-  including a strictly more accurate one — changes which retry tiers run and
-  can return a SLOWER route, not merely a differently-labeled one. Measured
-  against a candidate reclassification patch that was REVERTED and never
-  merged — these are not reproducible from current `develop` — on a
-  Flensburg→all-harbours sweep (uniform TWS 3/dir 0, motor off, real
-  mask+polars): Bagenkop +515.2 s, Wackerballig +499.4 s, Gelting-Mole
-  +353.2 s, while 11 of 14 plans stayed byte-identical — which is what made it
-  easy to miss. Still OPEN; treat any reason-classification change as a
-  routing-behavior change needing the same sweep, never a labeling-only fix.
+  REOPENED — PR #411's merge auto-closed it via an earlier commit's stray
+  keyword even though the PR body itself used `Refs`; do not let it be
+  closed again on this evidence). PR #411 NARROWED the coupling, it did not
+  remove it: the two retry gates — named predicates `comfortRetryMayHelp` /
+  `depthRelaxationMayHelp` — now branch on an INTERNAL `SolveFailureCause`
+  (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded'`), deliberately
+  kept OUT of `types.ts` so it cannot leak into UI code. The public
+  `NoRouteReason` is unchanged, derived from the cause at exactly two
+  presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE`. A LABELLING change
+  is now safe — free to reword or re-granularise with zero routing effect. A
+  CLASSIFICATION change is NOT: the cause is still DERIVED from
+  `SolveResult.reason`, the only failure signal `solve()` exposes. Proven,
+  not theoretical: PR #279's pre-revert change (`isochrone.ts:530-531`)
+  flipped `'unreachable'` → `'calm-motor-off'`, which now maps to cause
+  `'calm-without-motor'`, which `comfortRetryMayHelp` still rejects — tier 2
+  is still suppressed, and the same slower route (the motivating incident
+  behind the reverted, never-merged reclassification patch — Bagenkop,
+  Wackerballig, Gelting-Mole all slower — not reproducible from current
+  `develop`) recurs unchanged. Reusable asset from #411: a five-arm
+  Flensburg→all-33-harbours sweep, **165/165 plans byte-identical**
+  (33 harbours × 5 settings arms), run TWICE at BASE before any edit as a
+  control (byte-identical both times, licensing the BASE-vs-HEAD comparison
+  at all), with MEASURED two-directional gate coverage — both gates
+  exercised true AND false, including the calm class (0 occurrences across
+  the original 3 arms; 34 across two arms added specifically to reach it).
+  NARROWED, NOT CLOSED: any future reason-classification change still needs
+  that full sweep, never a labeling-only fix.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
@@ -1521,7 +1904,16 @@ deviate from it.
   (high/med/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
   optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
   apply type+area+priority to every new issue. Taxonomy documented in
-  CONTRIBUTING.md (#167/#168).
+  CONTRIBUTING.md (#167/#168). **The taxonomy has DRIFTED into space/no-space
+  duplicates** (found during the v0.9.0 cut): `priority: high` /
+  `priority: medium` / `priority: low` coexist with `priority:medium` /
+  `priority:low`, and `area: deploy` / `area: map` / `area: routing` /
+  `area: pwa` / `area: ais` / `area: pipeline` / `area: tooling` coexist with
+  `area:tooling` / `area:map` / `area:pipeline`. `gh issue create` fails with
+  `could not add label: '<name>' not found` on the wrong spelling, and
+  filtering by one silently misses issues tagged with the other. Verify with
+  `gh label list --repo DocGerd/sail_command --limit 60 --json name --jq
+  '.[].name'` before using a label name; a cleanup pass is unscheduled.
 - Design a guard around its ASYMMETRY: a BLOCKING guard should fail closed, a
   NUDGE should fail open. #233's command segmenter exits 0 while emitting
   confidently-wrong segments, so its fail-closed path covers none of its
@@ -1567,11 +1959,45 @@ deviate from it.
   no allowlisted verb may be a shell FUNCTION or ALIAS in the guarded
   shell** — `grep` is excluded precisely because in Claude Code's Bash it is
   a function shimming to ugrep, so "the executable is its first word" is
-  false for it; `find` is excluded for `-delete`/`-exec`, and `file` because
-  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only).
+  false for it; `find` is excluded for `-delete`/`-exec`, `file` because
+  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only), and
+  `sed` because sed's `w` command writes with NO flag at all
+  (`sed -n '1,5w /tmp/out' file`), so excluding only `-i` would not be
+  enough — and a `sed -n` range read is exactly the innocent-looking shape
+  that motivates asking for it.
   Before adding a verb, run `type <verb>` **in the real Bash tool**:
   measuring inside `bash script.sh` does not inherit non-exported functions,
   so the shim vanishes and every verb reports a reassuring `file`.
+- **Four loosenings of that guard were MEASURED and REJECTED — do not
+  re-propose them** (2026-08-06, three-lens audit; full record in #404/#405).
+  Narrowing the Bash-arm path `docs/superpowers/` → `docs/superpowers/specs/`
+  is the seductive one and the worst: it makes `mv docs/superpowers
+  /tmp/stash` a SILENT ALLOW (it moves `specs/` too), reds 13 of the guard's
+  own selftest rows (re-measured 2026-08-06 against a scratch copy — an
+  earlier auditor's 11 does not reproduce). Method, so this can be re-run
+  rather than re-argued: `docs/superpowers/specs` is ALREADY a separate
+  `PROTECTED_PATHS` entry alongside the bare `docs/superpowers` ancestor, so
+  the two edits a mutation could try — deleting the ancestor entry outright,
+  or "narrowing" it by replacing it with `docs/superpowers/specs` — collapse
+  to the same array and the same byte-identical script; both were run
+  independently in `/tmp` and both gave 13, never 11. It is also
+  SUBSUMPTION-INVERTED — `docs/superpowers/specs`
+  is a strict superstring of `docs/superpowers`, so the parent subsumes the
+  child and removing the parent deletes the entry doing all the work. Adding
+  `cd` to `READONLY_VERBS` and segmenting the command on `;`/`&&`/newline
+  each removed EXACTLY ZERO prompts from a 165-command corpus of real
+  observed commands, and `cd` is actively harmful: the `ask` on `cd
+  app/public/data` is the ONLY visible moment of the two-call bypass the
+  hook's own design names as its one LIVE hole (Bash cwd persists across
+  calls). The general trap, worth more than the specific verdicts: **a
+  control that looks broader than its stated justification usually has a
+  SECOND justification you have not found** — here the parent-path entry is
+  not justified by the spec-edit rule at all, but by containment against
+  commands that destroy `specs/` WITHOUT NAMING IT (#309's M4 fix). Look for
+  the second reason before narrowing anything. The real remaining gap runs
+  the other way: the Edit/Write arm hardcodes `*docs/superpowers/specs/*`,
+  so `plans/` has no ask-gate at all (#405) — WIDEN that arm, never narrow
+  the Bash one.
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
@@ -1589,6 +2015,23 @@ deviate from it.
   expensive-but-safe direction" call as the `String.replace` CSP bullet
   above, one layer lower (a CSS custom-property default instead of a
   build-time string transform).
+- **Sharper case of the guard-asymmetry bullet above, same component tree,
+  opposite answer** (#355, PR #414 review): `App.tsx`'s `--sc-panel-w` writer
+  MUST be `useLayoutEffect` — measured with a rAF sampler under CPU throttle:
+  as a plain `useEffect`, first contentful paint on a cold load with a STORED
+  900px width rendered the DEFAULT `1fr` width (636.656px) first, then
+  snapped. Safe here specifically because `shellRef` is `AppShell`'s OWN ROOT
+  element — React's `commitAttachRef` for a component's own returned host
+  fiber runs before that component's OWN layout effects, so `shellRef.current`
+  is always attached in time. `PanelResizer.tsx`'s sibling `aria-valuenow`
+  measurement effect, by contrast, MUST stay `useEffect`: `panelRef` targets a
+  SIBLING declared later in the same JSX, and a `useLayoutEffect` version
+  there measured `panelRef.current === null` live in Chromium (React attaches
+  refs and runs layout effects in fiber/JSX declaration order, so the
+  sibling's ref had not yet attached). Rule: "useLayoutEffect for first-paint
+  values" is necessary but NOT sufficient — whether the effect's OWN component
+  owns the ref (safe) or reads a sibling's (unsafe, ordering-dependent)
+  decides which hook is correct.
 - The destructive-git guard pattern-matches `-f` anywhere in a compound command:
   never combine `gh api -f …` with `git push` in one Bash call — split them.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
@@ -1626,11 +2069,33 @@ deviate from it.
   key (rather than setting it to `null`) makes that entry fail every match;
   the thread is then skipped with a loud `No reply text for thread ... — no
   mapping entry and no default` — correct fail-closed behavior, but the fix
-  (add the key) is non-obvious the first time you hit it.
+  (add the key) is non-obvious the first time you hit it. Sharper case
+  (PR #396): when SEVERAL threads share the same `(path, line)` key —
+  routine after a fix wave, since every thread on a file whose diff moved
+  reads `line: null` — the mapping matcher cannot disambiguate them and the
+  first match wins for all. Measured: six of eight threads were
+  `(ROADMAP.md, null)`. Either use a single default reply via `-m`, or drive
+  the reply+resolve loop directly off the GraphQL thread IDs (keying
+  per-thread text on `originalLine`, which stays unique).
 - Completed worktree agents CAN be resumed for fix waves — SendMessage to the
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
   fallback.
+- **PIN THE BASE BRANCH in every agent brief**, and require the agent to
+  report its merge-base as part of its deliverable — `isolation: worktree`
+  does NOT reliably inherit the session's checked-out branch. MEASURED
+  (2026-08-06, PR #418): an implementer branched off `main`/v0.9.0
+  (`c4e139d`) instead of `develop` and edited a `.github/workflows/deploy.yml`
+  177 lines stale that lacked PR #403's entire #398 probe. **Every per-diff
+  gate passed clean through it** — diff confined to the one allowlisted file,
+  YAML validated, `actionlint` clean, an opus review returning 0 Blockers, and
+  an independent 8/8 verification of Actions semantics from `actions/runner`
+  source. The ONLY signal was the PR object's `mergeable_state: "behind"`,
+  because no per-diff check looks at what a diff is BASED on. Durable rule:
+  **a review is valid only against the base it ran on** — when the base moves,
+  re-verify the MERGED artifact instead of carrying the review forward.
+  Nothing was lost that time only because the `deploy` job happened to be
+  byte-identical across both refs; that is luck, not a control.
 - Agent stall patterns (session 7, 6/6 recoveries): an implementer that stops
   "waiting on an armed watcher/monitor" while its notification shows NO live
   background children is asleep forever — nudge it to check the result in the
@@ -1696,9 +2161,20 @@ deviate from it.
   permission-blocked in the main session) — brief reviewers to remove their
   own worktree or verify without a local install.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
-  ask-gate hook must prompt the user) — never through subagents. Use the
-  Edit/Write tools for them: the hook does not match Bash appends (`cat >>`),
-  which silently skip the user prompt.
+  ask-gate hook must prompt the user) — never through subagents. The hook DOES
+  match Bash appends: `bash_hits_protected_path` substring-matches the RAW
+  command, so `cat >>` and heredoc forms ASK (MEASURED 2026-08-06 against
+  `origin/develop`). `>`/`<` are in `WRITE_CAPABLE_CHARS`, so a redirect
+  DISQUALIFIES the narrow read-only exemption rather than bypassing the
+  path-presence check — pinned by the hook's own `check ask "> redirect"` and
+  `"heredoc redirect"` selftest rows. An earlier claim here that appends
+  "silently skip the user prompt" was FALSE, and false in the DANGEROUS
+  direction (it advertised a bypass that does not exist, in the one bullet
+  about protecting user-approved specs). The real residuals are indirection a
+  string-level check cannot see — cwd + bare filename, variable or
+  programmatic path construction, quote-splitting — enumerated in the hook's
+  own "KNOWN SILENT-ALLOW PATHS" comment; read that, not this, for the
+  current list.
 - `.superpowers/` (SDD ledger) is gitignored — append session records
   directly, no PR needed.
 - **Claude Code config placement**: shared config is COMMITTED — `.mcp.json`
@@ -1755,6 +2231,28 @@ deviate from it.
   retrying — never blind-retry (you double-merge or get a confusing `behind`);
   reconcile a stuck-but-merged PR by closing the PR + deleting the branch +
   closing the issue manually (#94).
+- `gh pr merge <N>` run on a DETACHED HEAD errors `could not determine current
+  branch` while STILL LANDING the merge (OBSERVED ONCE, 2026-08-07, #423) —
+  the #94 shape with a new trigger, so it invites the same blind retry.
+  Operative advice, independent of mechanism: verify via the merge commit's
+  parents (`gh api repos/…/commits/<sha> --jq '.parents[].sha'`), never
+  blind-retry. Two things were CORROBORATED — the merge landed, and the
+  REMOTE branch was gone (`git ls-remote --heads origin <branch>` empty) —
+  and a separate, non-detached run printed `cannot delete branch … used by
+  worktree` with the merge equally landed. What was NOT established: which
+  internal `gh` step failed (inferred from one error string, never measured),
+  or that detachment CAUSES the difference — the two cases were observed
+  separately, never as a controlled comparison. Treat the mechanism as
+  unproven and the verification step as the durable part.
+- `gh run rerun <id> --failed` gives a MISLEADING error when the target run
+  hasn't finished: `run <id> cannot be rerun; its workflow file may be
+  broken` — the workflow file is fine; the run is simply not `completed`
+  yet. Check `gh run view <id> --json status` before trusting the message.
+  This command is MUTATING (re-queues a real run) — never issue it during
+  read-only diagnostic work; a `completed` run reruns silently with no
+  confirmation prompt (measured 2026-08-06: a read-only probe of the message
+  above accidentally re-queued a live deploy because the run had completed
+  in the interim).
 - Before ANY merge: verify the PR's `head.sha` equals the SHA you pushed AND
   that check-runs exist for that exact SHA — PR #119's head stuck on a stale
   SHA after a push (dropped `synchronize` webhook), so all-green checks +

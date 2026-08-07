@@ -52,8 +52,16 @@ See [README → Development](README.md#development). Quick reference:
   unused imports or type errors.
 - The full unit/property suite takes ~4 min (a ~200 s seeded fast-check
   property file and a ~40 s real-mask solver acceptance file are expected).
-  CI runners are 6–10× slower than dev machines: never add a per-test
-  timeout tighter than the file-level `vi.setConfig` values.
+  CI is slower than dev machines, but not by one flat multiplier: measured
+  2026-08-03 (#341) for the vitest unit suite, `npm run test` ran 249.8 s
+  local vs ~515–535 s on CI (~2.1×), and `npm run test:coverage` ran
+  ~983–1029 s local vs 2558 s on CI (~2.5×) — coverage instrumentation is a
+  separate multiplier from runner speed, not part of a single ratio, and
+  neither figure is a Playwright/e2e measurement. Regardless of the exact
+  ratio: never add a per-test timeout tighter than the file-level
+  `vi.setConfig` values, and never size a CI timeout from a local
+  measurement's margin (see CLAUDE.md's Commands section for the full
+  derivation).
 - UI strings go through the i18n dictionaries (`de` + `en`); key parity is
   type-enforced — add every key to BOTH dicts.
 - TypeScript `strict` + `exactOptionalPropertyTypes` are on; enums are
@@ -133,14 +141,20 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.10.0` — the next release.
+- `v0.11.0` — the next release.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.9.0` are closed — `v0.9.0` shipped and closed at its own
-cut (2026-08-05), rolling `v0.10.0` open as the next release milestone above.
-The `v0.8.1` patch release (documentation-only) shipped on 2026-08-04 and,
-per the PATCH exception below, carries no milestone of its own.
+`v0.4.0` through `v0.9.0` are closed. **`v0.10.0` has not shipped yet — its
+milestone still shows `state: open` on GitHub.** All 9 of its issues are
+resolved and this cut's `CHANGELOG.md` section is already folded, but the
+milestone object itself only closes once the release PR actually merges
+and the tag is pushed, per the roll-forward convention below; until then,
+`gh api repos/DocGerd/sail_command/milestones` is the fact, not this
+sentence. `v0.11.0` is already open and scoped as the next release
+milestone above. The `v0.8.1` patch release (documentation-only) shipped
+on 2026-08-04 and, per the PATCH exception below, carries no milestone of
+its own.
 The [milestones page](https://github.com/DocGerd/sail_command/milestones) is
 authoritative; this list names the shape, not a live count.
 
@@ -171,10 +185,14 @@ already exists" guard means the "Latest" badge is not actually at risk for
 any tag that has already shipped (every tag through `v0.8.0` already has a
 Release object), but `deploy.yml` has no equivalent guard and shares its
 `pages` concurrency group with genuine in-flight deploys, so a re-push risks
-cancelling one. More fundamentally, a published signed tag is an attestation
-a third party may already have fetched and verified — mutating the object
-invalidates exactly that, which is the whole point of signing (see
-[`CLAUDE.md`](CLAUDE.md)). See [`SECURITY.md`](SECURITY.md#verifying-a-release)
+cancelling one. More fundamentally, a published tag object is something a
+third party may already have fetched — re-creating it changes the tag
+object's sha (measured during #364), which is disruptive on its own even
+for these unsigned `v0.1.0`–`v0.7.0` tags with no signature to invalidate;
+for an actually signed tag (`v0.8.0` onward), mutating the object also
+invalidates a verification a third party may already have performed, which
+is the whole point of signing (see [`CLAUDE.md`](CLAUDE.md)). See
+[`SECURITY.md`](SECURITY.md#verifying-a-release)
 for how a *user* verifies a released tag; this section is the one-time setup
 for a *maintainer* machine that needs to be able to sign one.
 

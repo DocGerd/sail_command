@@ -42,6 +42,24 @@ export function formatDuration(ms: number): string {
   return `${hours} h ${zeroPad(minutes, 2)} min`;
 }
 
+/**
+ * Leg-scale duration for the legs table (#379) — `formatDuration` above is
+ * passage-scale and renders a short manoeuvring leg as `0 h 04 min`, which
+ * reads as "basically nothing" rather than the honest 4 minutes. Below one
+ * hour this drops the leading `0 h ` entirely (`"47 min"`); at or above one
+ * hour it falls back to the same `H h MM min` shape as `formatDuration`
+ * (`"2 h 05 min"`). `h`/`min` are used untranslated by `formatDuration`
+ * already, so this needs no new i18n value keys — only the column header
+ * (`route.legs.duration`) is translated.
+ */
+export function formatLegDuration(ms: number): string {
+  const totalMinutes = Math.round(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes} min`;
+  return `${hours} h ${zeroPad(minutes, 2)} min`;
+}
+
 /** Signed schedule drift in whole minutes, e.g. "+12 min" (behind) / "-10 min" (ahead) / "0 min". */
 export function formatDriftMin(driftMs: number): string {
   const minutes = Math.round(driftMs / 60_000);

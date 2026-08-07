@@ -112,9 +112,14 @@ point-in-time extract, not a continuously-verified feed.
 
 **Hook-protected binary — regenerate, never hand-edit `mask.bin`.**
 
-A packed 2200×2400 grid (dLon ≈ 46.6 m, dLat ≈ 46.3 m at 54.8°N; 2× the
+A packed 2200×2400 grid (dLon ≈ 46.8 m, dLat ≈ 46.4 m at 54.8°N; 2× the
 original 1100×1200 grid — see issue #6) covering
-9.4–11.0°E, 54.3–55.3°N. Each cell is one byte: `0` = land or
+9.4–11.0°E, 54.3–55.3°N. Derived from `mask.meta.json`'s `cols: 2200, rows:
+2400`, bounds 9.4–11.0°E / 54.3–55.3°N: `dLat_deg = (55.3-54.3)/2400 =
+0.00041667°`, `dLon_deg = (11.0-9.4)/2200 = 0.00072727°`; WGS84 arc length
+per degree at 54.8°N via the standard series (`M ≈ 111319.80 m/deg`,
+`P ≈ 64312.03 m/deg`) gives `dLat = M·dLat_deg ≈ 46.38 m`,
+`dLon = P·dLon_deg ≈ 46.77 m` (#393). Each cell is one byte: `0` = land or
 unknown/unsurveyed (non-navigable), `1..254` = depth in decimeters (floored,
 never rounded up — 0.1–25.4 m), `255` = deep (≥ 25.4 m). Row 0 is the
 **south** edge (`mask.meta.json` carries the full encoding description plus

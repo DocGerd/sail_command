@@ -3,6 +3,7 @@ export const de = {
   'app.tagline': 'Zeitoptimale Törnplanung — offline an Bord.',
   'app.disclaimer':
     'SailCommand ist eine Törnplanungshilfe, kein Navigationsgerät. Kartendaten sind vereinfacht; maßgeblich bleiben amtliche Seekarten und der Plotter.',
+  'panel.resizer.label': 'Panelbreite anpassen',
   'plan.eta': 'Ankunft {time}',
   'harborPicker.searchLabel': 'Hafen suchen',
   'harborPicker.searchPlaceholder': 'Hafen suchen…',
@@ -145,8 +146,9 @@ export const de = {
   'route.split.motor': 'Motor',
   'route.split.aria': 'Segelanteil {sailPct} %, Motoranteil {motorPct} %',
   'route.legs.time': 'Zeit',
+  'route.legs.duration': 'Dauer',
   'route.legs.kind': 'Art',
-  'route.legs.heading': 'Kurs',
+  'route.legs.cog': 'COG',
   'route.legs.twa': 'TWA',
   'route.legs.tws': 'TWS',
   'route.legs.speed': 'Geschwindigkeit',

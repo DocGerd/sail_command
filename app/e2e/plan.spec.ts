@@ -37,7 +37,9 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     // have swallowed MapLibre's one-shot auto-expansion (no
     // `maplibregl-compact-show`, which is the class that paints the full-width
     // bar). Generous timeout: compact mode needs the pmtiles source metadata,
-    // and CI runners are 6-10x slower than dev machines.
+    // and CI is measurably slower than dev machines (CLAUDE.md's measured
+    // ~2.1x/~2.5x figures are for the vitest unit suite specifically; no
+    // equivalent Playwright/e2e ratio has been measured).
     // `(\s|$)` not `\b`: a word boundary alone would also match the
     // "maplibregl-compact" prefix inside "maplibregl-compact-show".
     const attribution = page.locator('details.maplibregl-ctrl-attrib');

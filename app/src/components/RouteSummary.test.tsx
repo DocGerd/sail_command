@@ -291,6 +291,41 @@ describe('RouteSummary', () => {
     expect(screen.getByText('088°')).toBeInTheDocument();
   });
 
+  it('renders the nine legs-table headers in order, including Duration (#379)', () => {
+    const { container } = renderSummary({ rig: 'genoa' });
+    const headers = Array.from(container.querySelectorAll('table.route-legs thead th')).map(
+      (th) => th.textContent,
+    );
+    expect(headers).toEqual([
+      'Time',
+      'Duration',
+      'Type',
+      'COG',
+      'TWA',
+      'TWS',
+      'Speed',
+      'Distance',
+      'Maneuver',
+    ]);
+  });
+
+  it('renders a real Duration value for both a sail leg and a motor leg (#379)', () => {
+    // Anti-regression for the "symmetry ternary" risk: duration lives on
+    // LegCommon, so both union variants must render a real value here, never
+    // a stray `leg.kind === 'sail' ? ... : '—'` copied from the TWA column.
+    const { container } = renderSummary({ rig: 'genoa' });
+    const rows = container.querySelectorAll('table.route-legs tbody tr');
+    expect(rows).toHaveLength(3);
+    const durationCell = (rowIndex: number) =>
+      rows[rowIndex]?.querySelectorAll('td')[1]?.textContent;
+    // Leg 0: sail, DEPARTURE_MS -> +2h.
+    expect(durationCell(0)).toBe('2 h 00 min');
+    // Leg 1: motor, +2h -> +4h -- a real duration, not '-'.
+    expect(durationCell(1)).toBe('2 h 00 min');
+    // Leg 2: sail, +4h -> +5h.
+    expect(durationCell(2)).toBe('1 h 00 min');
+  });
+
   it('prefixes each sail-leg chip with the displayed rig name (genoa)', () => {
     renderSummary({ rig: 'genoa' });
     expect(screen.getByText('Genoa · Stbd Reach')).toBeInTheDocument();
