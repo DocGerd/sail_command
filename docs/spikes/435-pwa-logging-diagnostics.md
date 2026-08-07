@@ -10,10 +10,29 @@ section, under its own three headings (How / Where applicable / What to
 do). It changes no code under `app/src/`, `app/vite.config.ts` or
 `pipeline/`.
 
-Everything below is measured against this worktree at branch point
-`develop`@`3979bae` — the same commit #435's own baseline names, so the
-re-verification in §0 is a true replication rather than a comparison
-across moving code.
+**Base: `develop`@`9e4886c`.** Every `file:line` below was verified at
+that commit.
+
+Two notes on provenance, because the base moved once during review and
+will move again:
+
+- §0's replication of #435's own measured baseline was run at
+  `develop`@`3979bae`, which is the commit #435 itself measured — that
+  is what makes §0 a true replication rather than a comparison across
+  moving code. Its greps were **re-run unchanged at `9e4886c`**.
+- Between those two commits `develop` moved `app/src/App.tsx` (+25) and
+  `app/src/components/AboutDialog.tsx` (+1), drifting four citations
+  (nine occurrences), all re-derived at the new base. **No other cited
+  source or spec file moved** — verified with
+  `git diff --stat 3979bae 9e4886c -- app/src app/e2e app/vite.config.ts`.
+  The citations that did *not* move survived because they sit above their
+  file's hunk, which is luck, not design.
+- **The four load-bearing citations therefore carry a re-derivable
+  anchor** — a symbol name or the exact comment text at that site —
+  alongside the line number. A bare line number degrades into pointing
+  confidently at the wrong code; an anchored one degrades into "find this
+  symbol", which a reader can still act on. Prefer the anchor over the
+  number whenever they disagree.
 
 ---
 
@@ -53,7 +72,7 @@ grep -rnoE 'console\.[a-z]+[^(a-z]' . --include='*.ts' --include='*.tsx' | grep 
 
 **Status: FIXED IN #435 ITSELF on 2026-08-07, after this document was
 written.** The issue body now carries a "CORRECTED 2026-08-07 (found by
-the spike itself, PR #438)" block and points at `App.tsx:806-823`. The
+the spike itself, PR #438)" block and points at `App.tsx:831-848`. The
 quotation below is the **pre-correction text** and is no longer findable
 in the issue — verified against the current body:
 `grep -c 'holding one generic translated string'` returns **0**. This
@@ -89,8 +108,10 @@ missing `reason`, and it is never reached by `usePlanFlow`'s
 
 The planning-flow error — the one every `error.internal` in
 `usePlanFlow.ts:204/:243/:265` and every `mapWindError` fallthrough at
-`:48` actually produces — renders at **`App.tsx:806-823`**, as a
-`<Banner>`:
+`:48` actually produces — renders at **`App.tsx:831-848`**, as a
+`<Banner>`. **Anchor** (prefer this if the line number has drifted
+again): the `{planning.phase === 'error' && (` block rendering
+`<Banner kind={planErrorBannerKind(planning.messageKey)}>`:
 
 ```
 {planning.phase === 'error' && (
@@ -108,7 +129,8 @@ Why this matters, and it is not a nitpick:
 1. **The banner is already structured.** `planErrorGroup`
    (`App.tsx:112-116`) classifies into `network` / `noRoute` /
    `unexpected`, `planErrorBannerKind` (`:121-123`) picks the paint, and
-   `:809-819` attaches a "Try again" action to network errors only. #433
+   `:834-844` (the `action={…}` prop) attaches a "Try again" action to
+   network errors only. #433
    does not need to invent a presentation layer — it needs to add a cause
    dimension to one that exists. Aiming #433 at `RouteSummary.tsx` would
    have been the wrong file.
@@ -118,7 +140,9 @@ Why this matters, and it is not a nitpick:
    `error.noRoute.*` each render distinct text and a different banner
    kind. The defect is narrower and more precisely locatable than the
    issue states.
-3. `App.tsx:797-805`'s own comment already declares this "the SINGLE
+3. `App.tsx:822-830`'s own comment — **anchor**: the JSX comment
+   containing the phrase "the SINGLE alert surface for plan errors" —
+   already declares this "the SINGLE
    alert surface for plan errors (PlannerPanel no longer renders an
    inline duplicate)" — so the correct target was documented in-code the
    whole time.
@@ -402,7 +426,8 @@ Four reasons, in descending weight:
    spec asserts on it**. It is tempting to credit
    `e2e/basemap-fallback.spec.ts:125`
    (`expect(consoleMessages.some((m) => m.includes('[#118]'))).toBe(true)`)
-   — but `grep -rn '\[#118\]' app/src` at `3979bae` returns exactly one
+   — but `grep -rn '\[#118\]' app/src` (run at `3979bae`, re-run
+   unchanged at `9e4886c`) returns exactly one
    hit, `services/basemapSource.ts:111`, a **main-window** module. That
    assertion covers a different file.
 
@@ -470,7 +495,8 @@ in the About dialog (`AboutDialog.tsx`), both offline, neither requiring
 devtools.** The export is plain, human-readable text.
 
 - **Home is the About dialog.** It already exists, already opens offline,
-  already displays build identity (`AboutDialog.tsx:115` reads
+  already displays build identity (`AboutDialog.tsx:116` — **anchor**:
+  the `<p className="about-version">` that reads
   `__SC_APP_VERSION__`) — which is the first thing any report needs and
   the thing users most reliably get wrong. Putting diagnostics next to
   the version number means one place to point a reporter at.
@@ -489,7 +515,7 @@ devtools.** The export is plain, human-readable text.
 - **Plain text, deliberately.** Q7 makes the user the last redaction
   gate, and a user can only be a gate over something they can read. An
   opaque JSON blob or a base64 bundle forfeits that.
-- **The banner points at it.** #433's banner (`App.tsx:806-823`) should
+- **The banner points at it.** #433's banner (`App.tsx:831-848`) should
   name where diagnostics live, since the moment the user has evidence is
   the moment the banner is up. The banner does not itself export.
 
@@ -586,6 +612,18 @@ wrong to cite Rules 1-2 alone for them:
   N+1; redacting at the one entry dominates every exit, present and
   future. This is also what finally makes Q11 step 1's "redaction lives
   here and only here" claim true rather than aspirational.
+
+  **Completeness: `record()` is not the only WRITER into the buffer.**
+  Restore-on-load is the second — it repopulates the buffer from the
+  mirror without passing through `record()`. Entry-dominance still holds,
+  but **transitively rather than directly**: restored records were
+  scrubbed by `record()` before they were ever mirrored, so they are
+  already clean. The one case where that is not sufficient is a secret
+  set that has since changed, and cost 3 below is exactly what covers it
+  — `setRedactionSecrets()` re-scrubs the buffer and rewrites the mirror,
+  which is what makes restore-on-load safe rather than merely
+  usually-safe. Stating this because "one entry point" is otherwise an
+  over-claim: there are two writers and only one of them is `record()`.
 
   **What it costs — four things, none free:**
 
@@ -787,7 +825,7 @@ redundant:
 
 1. **A positive control on the export itself** — assert the exported
    text *contains* a token that must be there: the rendered
-   `__SC_APP_VERSION__` value (`AboutDialog.tsx:115`) and the harbour
+   `__SC_APP_VERSION__` value (`AboutDialog.tsx:116`) and the harbour
    name of the plan just run. This establishes that an export was
    produced and is non-empty, which is what licenses reading "absent" as
    evidence.
@@ -872,7 +910,8 @@ Build, in this order (sizes in Q13):
    *Group C, the four INNER bare catches — and these are the ones that
    destroy the discriminator §12 designs.*
    `grep -n '} catch {' app/src/state/replan.ts app/src/state/reroute.ts`
-   at `3979bae` returns four, and they split by what they erase:
+   (run at `3979bae`, re-run unchanged at `9e4886c` — neither file moved
+   in that range) returns four, and they split by what they erase:
 
    | Site | Wraps | Erases |
    |---|---|---|
@@ -1073,10 +1112,12 @@ rule — internal to the routing/state layer, never in `types.ts`.
 Without it, cause 5 (a real throw inside `planRoute()`) still arrives
 stripped of the only detail that identifies it.
 
-**Where #433's UI change lands** — and §0 matters here: **`App.tsx:806-823`,
+**Where #433's UI change lands** — and §0 matters here: **`App.tsx:831-848`
+(anchor: the `{planning.phase === 'error' && (` `<Banner>` block),
 not `RouteSummary.tsx:154`.** `planErrorGroup` (`App.tsx:112-116`) gains
 the new keys, `planErrorBannerKind` (`:121-123`) keeps its paint rule, and
-the `action` at `:809-819` becomes per-cause rather than per-group,
+the `action` at `:834-844` (anchor: that `<Banner>`'s own `action={…}`
+prop) becomes per-cause rather than per-group,
 because CLAUDE.md is explicit that the advice splits **per path, not per
 group**: "try again" hands the user a genuinely fresh worker
 (`usePlanFlow.ts:241-242`) and so helps `onerror`/`onmessageerror`; a
@@ -1200,8 +1241,10 @@ document was written. See §0.)*
 ## Claim-strength note
 
 Everything in §0 and every `file:line` in Parts A-C was read from this
-worktree at `develop`@`3979bae`. Five things are deliberately **not**
-claimed:
+worktree, at `develop`@`9e4886c` after the review-time re-sync (§0's
+replication of #435's own baseline was run at `3979bae`, the commit #435
+measured, and re-run unchanged at `9e4886c` — see the provenance note at
+the top). Five things are deliberately **not** claimed:
 
 - **The `maplibre-gl` glyph-warning line number was not re-derived**, for
   two independent reasons — the second found by this PR's review, and it
