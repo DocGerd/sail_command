@@ -96,6 +96,28 @@ export const de = {
     'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
   'error.internal':
     'Routenplanung unerwartet fehlgeschlagen. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+  // #433: Ursachen, die zuvor alle auf error.internal zusammenfielen, jetzt
+  // unterscheidbar — jeweils mit Hinweistext, der ehrlich sagt, ob „Erneut
+  // versuchen" tatsächlich helfen kann (siehe App.tsx's RETRY_MAY_HELP_KEYS).
+  'error.workerInit':
+    'Der Routenplaner konnte nicht gestartet werden — erforderliche Daten konnten nicht geladen werden. App neu laden und erneut versuchen.',
+  'error.routingTimeout':
+    'Die Routenberechnung hat das Zeitlimit überschritten. Ein erneuter Versuch dürfte genauso am Zeitlimit scheitern — eine einfachere Route oder ein schnelleres Gerät könnten helfen.',
+  // #433 review Minor 1: behauptet NICHT, dass ein erneuter Versuch
+  // zwecklos ist — diese Ursache umfasst auch einen Ressourcenerschöpfungs-
+  // Fehler, bei dem ein frischer Worker tatsächlich helfen kann (siehe
+  // Kommentar zu usePlanFlow.ts's ROUTING_FAILURE_MESSAGE_KEY).
+  'error.routingFailed':
+    'Bei der Routenberechnung ist ein interner Fehler aufgetreten. Eine andere Route oder andere Einstellungen helfen eher als ein erneuter Versuch mit derselben Anfrage.',
+  'error.routingCrashed':
+    'Die Routen-Engine ist unerwartet abgestürzt. Erneut versuchen — sie startet dabei neu.',
+  'error.routingMessageError':
+    'Die Routen-Engine hat eine nicht lesbare Antwort gesendet. Erneut versuchen — sie startet dabei neu.',
+  'error.routingInterrupted': 'Die Routenberechnung wurde unterbrochen. Erneut versuchen.',
+  'error.planSaveFailed':
+    'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
+  'error.windUnknown':
+    'Windvorhersage konnte aufgrund eines unerwarteten Fehlers nicht geladen werden. Bitte in Kürze erneut versuchen.',
   'error.noRoute.unreachable':
     'Keine Route gefunden — das Ziel ist ohne Landkontakt oder zu flaches Wasser nicht erreichbar.',
   'error.noRoute.beyondHorizon':
