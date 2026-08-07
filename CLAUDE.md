@@ -1184,9 +1184,12 @@ deviate from it.
   Set `depthComfortMarginM: 0` and it still routes. The older "routes only at
   ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
   experiences; it misdirected a live production triage for two rounds
-  (session 30). Solve cost is minutes-scale, not seconds — see #432 for the
-  measurement and why a Node/vitest figure cannot be compared to the browser
-  worker's 120 s budget.
+  (session 30). This route is also one of the app's most expensive inputs —
+  `DEFAULT_PLAN_TIMEOUT_MS` is fixed and un-scaled while the solver has no
+  wall-clock budget, so a slow enough machine can time out on a route that
+  routes correctly (#432). No magnitude is quoted here on purpose: any figure
+  has to carry its method and environment, and a Node/vitest number cannot be
+  compared to a browser worker's budget.
 - The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
   (measured, issue #9: the bridge decks are already deep water; sub-cell
   channels ≤30 m wide are the real barrier) — reconnecting them requires
@@ -1864,8 +1867,8 @@ deviate from it.
   inside `planRoute()` forwarded WITH detail by `protocol.ts`, a POST-SUCCESS
   IndexedDB `savePlan` failure (which reports failure when routing SUCCEEDED),
   and `mapWindError`'s fallthrough (`usePlanFlow.ts:48`) for any wind-fetch
-  failure that is not an `OpenMeteoError`. (#433's title says "six" — it
-  predates the seventh; do not read either count as exhaustive.)
+  failure that is not an `OpenMeteoError`. (#433 originally enumerated six and
+  gained the seventh in review; do not read any count as exhaustive.)
   `usePlanFlow.ts:228` discards the caught Error, and there are ZERO
   `console.*` calls across `workerClient.ts` / `worker.ts` / `protocol.ts` /
   `usePlanFlow.ts` — so an empty console is DESIGNED behaviour, not evidence
@@ -1876,13 +1879,17 @@ deviate from it.
   `isochrone.ts:268` which does terminate with `reason: 'beyond-horizon'`).
   SCOPE THE TERMINATE CLAIM CAREFULLY: `settle()` itself does not terminate,
   but `run()` recovers — `usePlanFlow.ts:228`'s catch calls `client.dispose()`
-  (`:237`) which does `worker.terminate()`, then nulls the refs (`:241`) so a
-  retry builds a FRESH worker. It is `replan.ts:110` and `reroute.ts:113` that
-  reject WITHOUT disposing, so a timeout reached via replan/reroute genuinely
-  leaves the worker running. Nothing in `protocol.ts`/`workerClient.ts`
-  distinguishes a worker that died from one merely still running, so those two
-  cases are indistinguishable today. The banner tells the user to RELOAD,
-  which helps for exactly one of the seven.
+  (`:237`) which does `worker.terminate()`, then nulls both refs (`:241-242`)
+  so a retry builds a FRESH worker. It is `replan.ts:110` and `reroute.ts:113`
+  that reject WITHOUT disposing, so a timeout reached via replan/reroute
+  genuinely leaves the worker running. Nothing in
+  `protocol.ts`/`workerClient.ts` distinguishes a worker that died from one
+  merely still running, so those two cases are indistinguishable today. The
+  banner's two pieces of advice are not equally good: "try again" DOES help
+  the worker-fatal paths (fresh worker, per `:241-242`) and a transient
+  wind-fetch failure, whereas "reload the app" helps essentially only the
+  asset/init case — don't quote one half without the other, and don't attach a
+  count to it, since the count moves whenever the site list does.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
