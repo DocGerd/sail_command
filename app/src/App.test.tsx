@@ -543,6 +543,22 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('#427: About button carries its accessible name via aria-label, not the (now-removed) glyph', async () => {
+    renderApp();
+    const aboutButton = await screen.findByRole('button', { name: de['about.open'] });
+
+    // The old U+24D8 CIRCLED LATIN SMALL LETTER I glyph rendered as tofu on
+    // some platforms (#427) and is replaced by a decorative inline SVG — it
+    // must be gone from the button's content, and the accessible name above
+    // must still resolve (this assertion is the mutation check: dropping
+    // aria-label would make the button unnamed and findByRole would throw
+    // instead of finding it — verified by temporarily removing aria-label
+    // from App.tsx and re-running this test, which reds with "Unable to
+    // find role=button and name ...", then restoring it).
+    expect(aboutButton.textContent).not.toContain('ⓘ');
+    expect(aboutButton.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
+  });
+
   it('shows a dismissible settings-persistence-failure banner when a settings save fails', async () => {
     renderApp();
     const safetyDepthInput = await screen.findByLabelText(de['options.safetyDepth.label']);

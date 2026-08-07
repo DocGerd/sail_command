@@ -64,7 +64,8 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   // The element focused right before the dialog opened — restored on close
   // so keyboard/screen-reader users land back where they were (the header's
-  // ⓘ button in practice), rather than at the top of the document.
+  // About button in practice, #427: an inline SVG icon, not a glyph),
+  // rather than at the top of the document.
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {

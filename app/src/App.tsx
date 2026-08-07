@@ -761,8 +761,33 @@ function AppShell() {
           >
             {lang === 'de' ? t('nav.langToggle.en') : t('nav.langToggle.de')}
           </button>
+          {/* #427: was the bare U+24D8 CIRCLED LATIN SMALL LETTER I glyph —
+              measured (canvas-vs-notdef comparison) to render as tofu on a
+              thin Linux font set, since none of the installed families cover
+              that codepoint. Inline SVG removes the font dependency entirely,
+              matching the CompassControl.tsx pattern exactly: sizing/stroke/
+              fill live in app.css classes (currentColor resolves to the
+              button's inherited --sc-fg in both color schemes), not inline
+              attributes. The accessible name is unchanged — it was always
+              carried by aria-label, never by the glyph. */}
           <button type="button" aria-label={t('about.open')} onClick={() => setAboutOpen(true)}>
-            ⓘ
+            <svg
+              className="about-icon-svg"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle className="about-icon-ring" cx="12" cy="12" r="9.25" />
+              <circle className="about-icon-dot" cx="12" cy="7.6" r="1.2" />
+              <rect
+                className="about-icon-stem"
+                x="10.85"
+                y="10.6"
+                width="2.3"
+                height="7"
+                rx="1.15"
+              />
+            </svg>
           </button>
         </div>
       </header>

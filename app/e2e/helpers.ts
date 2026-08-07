@@ -63,6 +63,11 @@ export const EDGE_VIEWPORTS = {
   narrowPortrait360: { width: 360, height: 740 },
   shortLandscape844: { width: 844, height: 390 },
   shortLandscape740: { width: 740, height: 360 },
+  // #231: the third short-landscape case its own issue text cites
+  // (alongside 844x390/740x360, both already above) — added for the
+  // `.map-stack-tl` compaction fix's own guard, `layout.spec.ts`'s
+  // "#231: ScaleBar is not suppressed" test.
+  shortLandscape932: { width: 932, height: 430 },
   deepPortrait320: { width: 320, height: 568 },
   partialPushBand375: { width: 375, height: 667 },
   wrapForcing280: { width: 280, height: 568 },
