@@ -141,14 +141,20 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.10.0` — the next release.
+- `v0.11.0` — the next release.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.9.0` are closed — `v0.9.0` shipped and closed at its own
-cut (2026-08-05), rolling `v0.10.0` open as the next release milestone above.
-The `v0.8.1` patch release (documentation-only) shipped on 2026-08-04 and,
-per the PATCH exception below, carries no milestone of its own.
+`v0.4.0` through `v0.9.0` are closed. **`v0.10.0` has not shipped yet — its
+milestone still shows `state: open` on GitHub.** All 9 of its issues are
+resolved and this cut's `CHANGELOG.md` section is already folded, but the
+milestone object itself only closes once the release PR actually merges
+and the tag is pushed, per the roll-forward convention below; until then,
+`gh api repos/DocGerd/sail_command/milestones` is the fact, not this
+sentence. `v0.11.0` is already open and scoped as the next release
+milestone above. The `v0.8.1` patch release (documentation-only) shipped
+on 2026-08-04 and, per the PATCH exception below, carries no milestone of
+its own.
 The [milestones page](https://github.com/DocGerd/sail_command/milestones) is
 authoritative; this list names the shape, not a live count.
 

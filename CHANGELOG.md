@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-07
+
+### Added
+
+- The desktop left panel is now resizable — drag the handle between the panel
+  and the map, or focus it and use the arrow keys (Shift for a larger step,
+  Home/End for the bounds, Enter or a double-click to reset). The chosen width
+  survives a reload; narrow (phone/tablet-portrait) layouts are unaffected
+  (#355).
+- Added a Duration column to the legs table, alongside the existing Distance
+  and Speed — a per-leg elapsed time so a route's pacing is readable at a
+  glance without doing arithmetic (#379).
+
+### Fixed
+
+- Corrected the legs table's "Heading" column label to "COG" — the value it
+  shows is course over ground, and this app models no leeway (#379).
+
 ## [0.9.0] - 2026-08-05
 
 ### Added
@@ -470,7 +488,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/DocGerd/sail_command/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/DocGerd/sail_command/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/DocGerd/sail_command/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/DocGerd/sail_command/compare/v0.7.0...v0.8.0

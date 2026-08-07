@@ -211,12 +211,13 @@ requiring no GPG toolchain):
   config from the third-party recipe above).
 - GitHub's own "Verified" badge on the tag's commit and on the Release page
   is a second, independent verification channel that needs no local
-  configuration at all — the fastest check for most people, and it is
-  **expected to show correctly from v0.8.1 onward** (the fix has been
-  proven end to end against a throwaway probe tag; a real `v0.8.1` release
-  tag had not yet been cut as of this writing, so this is a verified-fix
-  expectation, not yet an observation of the actual v0.8.1 tag). The v0.8.0
-  tag is a documented exception: it was signed under an email address not
+  configuration at all — the fastest check for most people, and it **shows
+  correctly from v0.8.1 onward**: confirmed on the real `v0.8.1` and `v0.9.0`
+  release tags (`verified: true, reason: "valid"` on each via `gh api
+  repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification`),
+  not just the throwaway probe tag the fix was originally proven against.
+  The v0.8.0 tag is a documented exception: it was signed under an email
+  address not
   registered on the maintainer's GitHub account, so GitHub shows it
   Unverified (`reason: "no_user"`) despite a cryptographically good
   signature — an attribution gap, not a signature problem. `git tag -v` /
