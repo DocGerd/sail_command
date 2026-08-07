@@ -751,6 +751,31 @@ deviate from it.
   measured twice at the v0.9.0 cut) but "proceed to the back-merge" (step
   6), whose push carries a DIFFERENT SHA and rebuilds the site root from
   `main` with the tag now visible.
+
+  **FIRST REAL EXERCISE — v0.10.0 cut (2026-08-07): it fired and was right.**
+  The merge-push Deploy COMPLETED at 10:53:21Z and the tag Deploy was created
+  at 10:54:04Z — a **43-second** margin, so `cancel-in-progress` had nothing to
+  cancel. That tightness IS the point: this is the slow-tag-push case, and it
+  is the normal human runbook flow. The tag Deploy went RED with 10x 404 on its
+  own entry chunk while the OLD #117/#118 basemap Range probe PASSED on attempt
+  1 in that same job (the archive is byte-identical across both builds): one
+  run, both verdicts. The back-merge remedy worked as documented, and prod then
+  served the SAME chunk name the tag run had built — proving that run's BUILD
+  was always correct and only its DEPLOYMENT no-opped. Its log does show
+  `#117a PROD REBUILD ... cache miss`, but do NOT cite this run as evidence
+  that the key's VERSION component caused the miss: only one cache entry per
+  release SHA has ever existed (main-mode runs do not save caches), so the SHA
+  component alone missed. The version-in-key rationale is real and documented
+  above; this run is not evidence for it.
+- **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
+  on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
+  describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
+  the v0.10.0 cut: develop's tip described `v0.9.0-72-gc4e7351` while main
+  described `v0.10.0`). Only `main` IS the tagged commit. The About dialog's
+  changelog half and version half also have DIFFERENT sources (parsed
+  `CHANGELOG.md` vs `git describe` at build time), so a correct `0.10.0`
+  changelog beside a suffixed version string is expected — and during the
+  #398 window PROD shows one too, until the back-merge deploy lands.
 - **Deploy — `deploy` job timeout, a DIFFERENT failure mode from #398**
   (#415): the Pages `deploy` job (the `actions/deploy-pages` step) aborts a
   deployment that never reaches a terminal state — `build` still succeeds,
@@ -1147,8 +1172,24 @@ deviate from it.
   width). UI tasks should end with a real-browser pass (dev server +
   Playwright); routing changes must keep `app/src/routing/realmask.repro.test.ts`
   green (it uses the real committed mask/polars).
-- Flensburg→Marstal routes only at safety depth ≤ 2.3 m — that is correct
-  data behavior, not a bug (documented in the realmask test; see #9).
+- Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at DEFAULT
+  settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
+  `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as `realmask.repro.test.ts`'s own
+  DEFAULT_SETTINGS case asserts. The mechanism is #53's relaxation tier, which
+  fires on `depthRelaxationMayHelp(cause)` (`planRoute.ts:452`) whenever the
+  failure cause is mask-unreachability — **independent of
+  `depthComfortMarginM`**, which is #243's soft comfort PREFERENCE
+  (`planRoute.ts:271`, its only production call site) and does not gate
+  relaxation at all; `planRoute.ts:445` says so itself ("Unaffected by #243").
+  Set `depthComfortMarginM: 0` and it still routes. The older "routes only at
+  ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
+  experiences; it misdirected a live production triage for two rounds
+  (session 30). This route is also one of the app's most expensive inputs —
+  `DEFAULT_PLAN_TIMEOUT_MS` is fixed and un-scaled while the solver has no
+  wall-clock budget, so a slow enough machine can time out on a route that
+  routes correctly (#432). No magnitude is quoted here on purpose: any figure
+  has to carry its method and environment, and a Node/vitest number cannot be
+  compared to a browser worker's budget.
 - The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
   (measured, issue #9: the bridge decks are already deep water; sub-cell
   channels ≤30 m wide are the real barrier) — reconnecting them requires
@@ -1304,7 +1345,16 @@ deviate from it.
   main-push Deploy, the tag's Deploy + Release, and the back-merge PR's OWN
   CI + CodeQL + Labeler. `CI` and `CodeQL` each appear TWICE, and that
   duplication IS the trap — two `CI` runs attach two sets of `app`/`e2e`
-  check-runs, exactly what a name-keyed poll cannot separate. Rule:
+  check-runs, exactly what a name-keyed poll cannot separate.
+  INVERSE CASE (v0.10.0 cut) — keying on the RUN is necessary but NOT
+  sufficient for the MERGE decision: release PR #429's head carried run
+  31170778727 (event=pull_request) green at 10:46:40Z while its neighbour
+  31170723523 (event=push, same SHA) still had `e2e` running until 10:50:20Z,
+  and branch protection is itself NAME-keyed, so `mergeable_state` stayed
+  `blocked` for ~3m40s while the run-ID poll was correctly reporting green.
+  Run ID answers "is my gating run green"; `mergeable_state` answers "will the
+  merge button work". Poll the run; gate the merge on `mergeable_state`.
+  Rule:
   enumerate `gh api
   repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
   ID explicitly — never poll by check name alone.
@@ -1366,6 +1416,23 @@ deviate from it.
   no compiler, so nothing else catches it. The remedy that worked: make claims
   PER-SITE, which are falsifiable one site at a time — every failure was a
   GENERALISATION ("two tests", "only grows", "not precise hit-tests").
+  **The CORRECTION is the highest-risk moment, not the original** — session
+  30's PR #434 ran the class repeatedly within one PR, each instance inside
+  the fix for the previous one: a false MECHANISM inside a correction of a
+  misleading claim; an unmeasured magnitude plus a citation to a figure
+  ALREADY REJECTED IN REVIEW as unreproducible, inside the fix for that same
+  unreproducible magnitude; an over-broad "helps" inside the fix for an
+  over-broad count. (State that middle form precisely: "cited a measurement
+  that did not exist" is a fabrication nobody commits, while citing one
+  already known to be bad is the error people actually make.) A
+  replacement arrives sounding authoritative and nobody re-attacks it as hard
+  as the original, so brief the reviewer at the REPLACEMENT TEXT specifically
+  and expect a further instance rather than assuming the last fix stopped it.
+  SEVERAL were GROUP NOUNS ("the measurement", "the worker-fatal paths") and
+  became falsifiable the moment they were split into members — the same
+  PER-SITE remedy above, one round later. But not all: the false-mechanism
+  instance was caught instead by checking the suspect field's ONE call site,
+  so per-site beats group-splitting as the general form.
 - Documenting a rule fixes nothing already in flight. #412 (the #368-guard
   stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
@@ -1543,6 +1610,18 @@ deviate from it.
   derived from an unverified claim about the code is the enumerate-don't-patch
   failure relocated one level up, into the brief. Same reason issue texts
   are not ground truth for states they do not describe.
+- **IMAGES rot the same way prose does, and the #132 sweep must check them.**
+  At the v0.10.0 cut `docs/screenshots/plan-route.png` still showed the
+  pre-#408/#410 legs table, contradicting two of the three user-visible changes
+  in that same release. `docs/screenshots/capture.mjs` could not regenerate it:
+  #64 (`852cb8c`, 2026-07-18 — ONE DAY after the script was authored) BROKE it,
+  and nothing ever exercising it is why the break went unnoticed for three
+  weeks — two separate causes, don't merge them. Three stale selectors were
+  fixed at the cut; the ★ wait still blocks it (#428). Durable form: a capture
+  or verification tool
+  hardcoded to the PRODUCTION url can never capture a release candidate, since
+  at cut time production IS by definition the previous release
+  (`SC_SCREENSHOT_URL` now overrides it).
 - **A FIFTH way, adjacent to SAME-PR INVALIDATION: SIBLING-MERGE
   invalidation.** #423's CLAUDE.md prose was accurate when authored
   (2026-08-06T22:06:46Z) and was made FALSE by #419 merging 9 h 19 min later
@@ -1798,6 +1877,43 @@ deviate from it.
   the original 3 arms; 34 across two arms added specifically to reach it).
   NARROWED, NOT CLOSED: any future reason-classification change still needs
   that full sweep, never a labeling-only fix.
+- **A route-planning failure is currently UNDIAGNOSABLE from a user report**
+  (#433). At least SEVEN unrelated sites collapse onto the single
+  `error.internal` key with byte-identical banner text: worker/asset init,
+  `worker.onerror`, `onmessageerror`, the 120 s client timeout, a real throw
+  inside `planRoute()` forwarded WITH detail by `protocol.ts`, a POST-SUCCESS
+  IndexedDB `savePlan` failure (which reports failure when routing SUCCEEDED),
+  and `mapWindError`'s fallthrough (`usePlanFlow.ts:48`) for any wind-fetch
+  failure that is not an `OpenMeteoError`. (#433 originally enumerated six and
+  gained the seventh in review; do not read any count as exhaustive.)
+  `usePlanFlow.ts:228` discards the caught Error, and there are ZERO
+  `console.*` calls across `workerClient.ts` / `worker.ts` / `protocol.ts` /
+  `usePlanFlow.ts` — so an empty console is DESIGNED behaviour, not evidence
+  that nothing happened; never ask a reporter to check it. Related (#432):
+  `DEFAULT_PLAN_TIMEOUT_MS = 120_000` is fixed and un-scaled, and
+  `isochrone.ts` has no WALL-CLOCK budget (its bounds are `MAX_FRONTIER =
+  30_000`, a PER-RING frontier-size cap, and the forecast-horizon guard at
+  `isochrone.ts:268` which does terminate with `reason: 'beyond-horizon'`).
+  SCOPE THE TERMINATE CLAIM CAREFULLY: `settle()` itself does not terminate,
+  but `run()` recovers — `usePlanFlow.ts:228`'s catch calls `client.dispose()`
+  (`:237`) which does `worker.terminate()`, then nulls both refs (`:241-242`)
+  so a retry builds a FRESH worker. It is `replan.ts:110` and `reroute.ts:113`
+  that reject WITHOUT disposing, so a timeout reached via replan/reroute
+  genuinely leaves the worker running. Nothing in
+  `protocol.ts`/`workerClient.ts` distinguishes a worker that died from one
+  merely still running, so those two cases are indistinguishable today. The
+  banner's advice splits PER PATH, not per group — and note the paths differ
+  in WHY a retry helps, so don't glue them: "try again" hands the user a
+  genuinely FRESH worker (`:241-242`) rather than a poisoned client, which
+  helps `onerror`/`onmessageerror`; a wind-fetch blip is helped too but by
+  RE-FETCHING, not by the worker (`usePlanFlow.ts:195-199` returns at `:199`,
+  before `ensureClient()` at `:202`, so no worker is involved); a
+  resource-exhaustion throw can also escape, since `dispose()` released the
+  failed worker's whole heap first. What a retry CANNOT help is the
+  input-deterministic pair — the 120 s timeout recomputes the same solve
+  against the same fixed budget, and a DETERMINISTIC `planRoute()` throw
+  reproduces on identical inputs. "Reload the app" helps essentially only the
+  asset/init case.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
