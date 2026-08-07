@@ -751,6 +751,28 @@ deviate from it.
   measured twice at the v0.9.0 cut) but "proceed to the back-merge" (step
   6), whose push carries a DIFFERENT SHA and rebuilds the site root from
   `main` with the tag now visible.
+
+  **FIRST REAL EXERCISE — v0.10.0 cut (2026-08-07): it fired and was right.**
+  The merge-push Deploy (10:51:56Z) had already COMPLETED when the tag was
+  pushed, so `cancel-in-progress` had nothing to cancel — the slow-tag-push
+  case, which IS the normal human runbook flow. The tag Deploy went RED with
+  10x 404 on its own entry chunk while the OLD #117/#118 basemap Range probe
+  PASSED in that same job (the archive is byte-identical across both builds):
+  one run, both verdicts. The back-merge remedy worked as documented, and its
+  log shows `#117a PROD REBUILD ... cache miss` — the cache key's VERSION
+  component changed at an UNCHANGED main SHA, which is precisely why it
+  carries the version. Afterwards prod served the SAME chunk name the tag run
+  had built, proving that run's BUILD was always correct and only its
+  DEPLOYMENT no-opped.
+- **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
+  on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
+  describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
+  the v0.10.0 cut: develop's tip described `v0.9.0-72-gc4e7351` while main
+  described `v0.10.0`). Only `main` IS the tagged commit. The About dialog's
+  changelog half and version half also have DIFFERENT sources (parsed
+  `CHANGELOG.md` vs `git describe` at build time), so a correct `0.10.0`
+  changelog beside a suffixed version string is expected — and during the
+  #398 window PROD shows one too, until the back-merge deploy lands.
 - **Deploy — `deploy` job timeout, a DIFFERENT failure mode from #398**
   (#415): the Pages `deploy` job (the `actions/deploy-pages` step) aborts a
   deployment that never reaches a terminal state — `build` still succeeds,
@@ -1147,8 +1169,14 @@ deviate from it.
   width). UI tasks should end with a real-browser pass (dev server +
   Playwright); routing changes must keep `app/src/routing/realmask.repro.test.ts`
   green (it uses the real committed mask/polars).
-- Flensburg→Marstal routes only at safety depth ≤ 2.3 m — that is correct
-  data behavior, not a bug (documented in the realmask test; see #9).
+- Flensburg→Marstal fails the RAW 3.0 m gate but ROUTES ANYWAY at default
+  settings: `depthComfortMarginM` (default 2.0) puts #53's relaxed gate in
+  play and `planRoute()` returns `status: 'ok'` with shallow warnings — as
+  `realmask.repro.test.ts`'s own DEFAULT_SETTINGS case asserts. The older
+  "routes only at ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about
+  what a user experiences; it misdirected a live production triage for two
+  rounds (session 30). That solve costs ~58 s here against a fixed 120 s
+  client budget — see #432.
 - The 5 KNOWN_DISCONNECTED harbors are genuinely unreachable at 46 m cells
   (measured, issue #9: the bridge decks are already deep water; sub-cell
   channels ≤30 m wide are the real barrier) — reconnecting them requires
@@ -1290,7 +1318,13 @@ deviate from it.
   jobs were still running. Both times `mergeable_state: blocked` contradicted
   the poll — that disagreement is the cross-check, not a fluke
   (`mergeable_state` is also the merge-time tell in the #119 note under
-  Working style). Fix: key the poll on the RUN, not the name — `gh api
+  Working style). INVERSE CASE (v0.10.0 cut): the run-ID poll can be RIGHT
+  while the merge is still blocked — release PR #429's head carried run
+  31170778727 (event=pull_request, green) AND 31170723523 (event=push, `e2e`
+  still running), and branch protection is NAME-keyed so it blocked on the
+  neighbour. Run ID answers "is my gating run green"; `mergeable_state`
+  answers "will the merge button work". Poll the run, gate on
+  `mergeable_state`. Fix: key the poll on the RUN, not the name — `gh api
   repos/OWNER/REPO/actions/runs/<id>/jobs` — and when a SHA might carry more
   than one run, select it explicitly rather than assume there is only one;
   the release skill's §5b already does this, picking the newest
@@ -1543,6 +1577,16 @@ deviate from it.
   derived from an unverified claim about the code is the enumerate-don't-patch
   failure relocated one level up, into the brief. Same reason issue texts
   are not ground truth for states they do not describe.
+- **IMAGES rot the same way prose does, and the #132 sweep must check them.**
+  At the v0.10.0 cut `docs/screenshots/plan-route.png` still showed the
+  pre-#408/#410 legs table, contradicting two of the three user-visible changes
+  in that same release. `docs/screenshots/capture.mjs` could not regenerate it:
+  unrunnable since #64 (2026-07-18, ONE DAY after it was authored) because
+  nothing ever exercises it — three stale selectors were fixed at the cut, the
+  ★ wait still blocks it (#428). Durable form: a capture or verification tool
+  hardcoded to the PRODUCTION url can never capture a release candidate, since
+  at cut time production IS by definition the previous release
+  (`SC_SCREENSHOT_URL` now overrides it).
 - **A FIFTH way, adjacent to SAME-PR INVALIDATION: SIBLING-MERGE
   invalidation.** #423's CLAUDE.md prose was accurate when authored
   (2026-08-06T22:06:46Z) and was made FALSE by #419 merging 9 h 19 min later
@@ -1798,6 +1842,24 @@ deviate from it.
   the original 3 arms; 34 across two arms added specifically to reach it).
   NARROWED, NOT CLOSED: any future reason-classification change still needs
   that full sweep, never a labeling-only fix.
+- **A route-planning failure is currently UNDIAGNOSABLE from a user report**
+  (#433). SIX unrelated sites collapse onto the single `error.internal` key
+  with byte-identical banner text: worker/asset init, `worker.onerror`,
+  `onmessageerror`, the 120 s client timeout, a real throw inside
+  `planRoute()` forwarded WITH detail by `protocol.ts`, and a POST-SUCCESS
+  IndexedDB `savePlan` failure (which reports failure when routing SUCCEEDED).
+  `usePlanFlow.ts:228` discards the caught Error, and there are ZERO
+  `console.*` calls across `workerClient.ts` / `worker.ts` / `protocol.ts` /
+  `usePlanFlow.ts` — so an empty console is DESIGNED behaviour, not evidence
+  that nothing happened; never ask a reporter to check it. Related (#432):
+  `DEFAULT_PLAN_TIMEOUT_MS = 120_000` is fixed and un-scaled, `isochrone.ts`
+  has no wall-clock budget at all (only `MAX_FRONTIER = 30_000`, a
+  candidate-count cap), and the timeout never calls `worker.terminate()` — the
+  abandoned solve keeps burning a core and the banner's own "try again" advice
+  stacks another. A Chromium worker OOM-killed frequently does NOT fire
+  `onerror`, so a dead worker and a merely slow one are indistinguishable
+  today. Note the banner tells the user to RELOAD, which helps for exactly one
+  of the six.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
