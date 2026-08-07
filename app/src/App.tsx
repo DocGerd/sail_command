@@ -123,6 +123,33 @@ export function planErrorBannerKind(key: MsgKey): BannerKind {
   return planErrorGroup(key) === 'unexpected' ? 'error' : 'warning';
 }
 
+// #433: whether "Try again" (re-running handlePlan) can plausibly change the
+// outcome — a SEPARATE, orthogonal classification from planErrorGroup above
+// (which only picks banner paint). This used to just be
+// `planErrorGroup(key) === 'network'`, correct back when every non-network
+// failure collapsed onto the single error.internal key; now that #433 has
+// split that key by cause, causes differ in whether a retry can help at
+// all (CLAUDE.md's #433 bullet has the full per-path reasoning; short
+// version: usePlanFlow.ts's run() always disposes+nulls the client refs
+// before erroring out of a routing failure, so the NEXT run() builds an
+// entirely fresh RoutingClient — real for a crashed worker or an
+// undeserializable message, but irrelevant to an input-deterministic
+// timeout or a real throw inside planRoute(), which reproduce identically
+// against the identical request).
+const RETRY_MAY_HELP_KEYS: ReadonlySet<MsgKey> = new Set<MsgKey>([
+  ...NETWORK_ERROR_KEYS,
+  'error.windUnknown',
+  'error.routingCrashed',
+  'error.routingMessageError',
+  'error.routingInterrupted',
+  'error.planSaveFailed',
+]);
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function planErrorRetryMayHelp(key: MsgKey): boolean {
+  return RETRY_MAY_HELP_KEYS.has(key);
+}
+
 function AppShell() {
   const t = useT();
   const [lang, setLang] = useLang();
@@ -851,8 +878,33 @@ function AppShell() {
           >
             {lang === 'de' ? t('nav.langToggle.en') : t('nav.langToggle.de')}
           </button>
+          {/* #427: was the bare U+24D8 CIRCLED LATIN SMALL LETTER I glyph —
+              measured (canvas-vs-notdef comparison) to render as tofu on a
+              thin Linux font set, since none of the installed families cover
+              that codepoint. Inline SVG removes the font dependency entirely,
+              matching the CompassControl.tsx pattern exactly: sizing/stroke/
+              fill live in app.css classes (currentColor resolves to the
+              button's inherited --sc-fg in both color schemes), not inline
+              attributes. The accessible name is unchanged — it was always
+              carried by aria-label, never by the glyph. */}
           <button type="button" aria-label={t('about.open')} onClick={() => setAboutOpen(true)}>
-            ⓘ
+            <svg
+              className="about-icon-svg"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle className="about-icon-ring" cx="12" cy="12" r="9.25" />
+              <circle className="about-icon-dot" cx="12" cy="7.6" r="1.2" />
+              <rect
+                className="about-icon-stem"
+                x="10.85"
+                y="10.6"
+                width="2.3"
+                height="7"
+                rx="1.15"
+              />
+            </svg>
           </button>
         </div>
       </header>
@@ -900,10 +952,12 @@ function AppShell() {
               // "Try again" re-runs the planner form, so it needs both
               // endpoints — a #114 recalculation can error without any form
               // state (handlePlan would silently no-op), in which case the
-              // user retries from the plan row instead.
-              planErrorGroup(planning.messageKey) === 'network' &&
-              origin !== null &&
-              destination !== null
+              // user retries from the plan row instead. #433: eligibility is
+              // now per-cause (planErrorRetryMayHelp), not the coarser
+              // per-group check this used to be — see that function's own
+              // comment for why the causes that used to collapse onto
+              // error.internal differ in whether a retry helps at all.
+              planErrorRetryMayHelp(planning.messageKey) && origin !== null && destination !== null
                 ? { label: t('banner.retry'), onClick: handlePlan }
                 : undefined
             }

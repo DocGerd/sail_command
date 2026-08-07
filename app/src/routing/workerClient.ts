@@ -8,6 +8,52 @@ type ProbeCb = (probeDepthM: number, done: number, total: number) => void;
 
 const RIGS: readonly Rig[] = ['genoa', 'fock'];
 
+// #433/#435 spike §12: a typed discriminator for every failure RoutingClient
+// can produce, mirroring the two existing precedents in this codebase rather
+// than inventing a third shape — OpenMeteoError (services/openMeteo.ts:16-24,
+// `readonly kind`) and ReplanError (state/replan.ts:50-58, `readonly
+// messageKey`). Deliberately kept OUT of types.ts, same rule as
+// SolveFailureCause (routing/planRoute.ts): a routing-internal discriminator
+// must never leak into UI code as a control input, and never be re-derived
+// by matching THIS Error's own `.message` text — that is exactly the
+// #282/#411 label-as-control-input coupling this repo already paid to
+// narrow once. The presentation-boundary mapping (kind -> MsgKey) is wired
+// up ONLY at state/usePlanFlow.ts's run() — the PRIMARY plan path.
+//
+// NARROWED, NOT CLOSED (#433/#432 boundary): the same RoutingClient.plan()
+// is also called from state/replan.ts:110 and state/reroute.ts:113, and
+// BOTH sites discard the caught error with a bare, unbound `catch {` before
+// rethrowing a fresh, unrelated ReplanError('error.internal', …) — see
+// replan.ts:111/:123 and reroute.ts:114/:142 (four sites total; the other
+// two are each file's own save()-failure catch, same shape). A RoutingError
+// thrown on a via-replan or a Live reroute therefore loses its `kind`
+// before anything can read it, so this discriminator has NO effect on
+// those two paths today. Left deliberately unfixed here: #432 already needs
+// to edit both files for their own missing dispose() calls on a timeout
+// (CLAUDE.md's #432 bullet), and editing them from this change too would
+// collide with that work.
+export type RoutingFailureKind =
+  | 'timeout' // plan()'s own client-side deadline (:DEFAULT_PLAN_TIMEOUT_MS) elapsed
+  | 'worker-fatal' // protocol.ts forwarded a real throw from inside the worker (+stack)
+  | 'worker-error' // the Worker's global onerror fired
+  | 'messageerror' // the Worker's onmessageerror fired (undeserializable message)
+  | 'disposed'; // this client is (or became) disposed
+
+// NOT structured-clone-safe: Error subclasses lose their prototype chain
+// across postMessage/IndexedDB (mirrors OpenMeteoError's and ReplanError's
+// own caveat) — RoutingError must never cross a postMessage/IndexedDB
+// boundary; it is constructed here, client-side, from plain WorkerResponse
+// data, never sent as one.
+export class RoutingError extends Error {
+  readonly kind: RoutingFailureKind;
+
+  constructor(kind: RoutingFailureKind, message: string) {
+    super(message);
+    this.name = 'RoutingError';
+    this.kind = kind;
+  }
+}
+
 // Generous but finite: a real solve over the full 6-day forecast horizon
 // with both rigs can legitimately take tens of seconds on slow hardware, but
 // a hung worker (postMessage swallowed, or stuck in an infinite loop past
@@ -45,9 +91,23 @@ export class RoutingClient {
     // init(); init() still returns `this.ready` directly, so callers observe it.
     this.ready.catch(() => {});
     this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => this.handle(e.data);
-    this.worker.onerror = (e) => this.failAll(new Error(e.message || 'worker error'));
+    this.worker.onerror = (e) =>
+      this.failAll(new RoutingError('worker-error', e.message || 'worker error'));
     this.worker.onmessageerror = () =>
-      this.failAll(new Error('worker message could not be deserialized'));
+      this.failAll(new RoutingError('messageerror', 'worker message could not be deserialized'));
+  }
+
+  // #433: `stack` (protocol.ts's `fatal.stack`, populated at the real throw
+  // site inside the worker) replaces the default Error.stack a bare `new
+  // RoutingError(...)` would otherwise carry — which would only ever show
+  // THIS file's own construction site, not where the failure actually
+  // happened inside planRoute(). Without this, a forwarded worker throw
+  // (cause: a real exception inside planRoute()) arrives stripped of the
+  // one detail that identifies it.
+  private makeWorkerFatalError(message: string, stack: string | undefined): RoutingError {
+    const err = new RoutingError('worker-fatal', message);
+    if (stack !== undefined) err.stack = stack;
+    return err;
   }
 
   private handle(msg: WorkerResponse) {
@@ -64,9 +124,11 @@ export class RoutingClient {
     } else if (msg.type === 'result') {
       this.settle(msg.id, (entry) => entry.resolve(msg.result));
     } else if (msg.id) {
-      this.settle(msg.id, (entry) => entry.reject(new Error(msg.message)));
+      this.settle(msg.id, (entry) =>
+        entry.reject(this.makeWorkerFatalError(msg.message, msg.stack)),
+      );
     } else {
-      this.failAll(new Error(msg.message));
+      this.failAll(this.makeWorkerFatalError(msg.message, msg.stack));
     }
   }
 
@@ -113,7 +175,7 @@ export class RoutingClient {
     onProbe?: ProbeCb,
   ): Promise<PlanResult> {
     await this.ready;
-    if (this.disposed) throw new Error('RoutingClient disposed');
+    if (this.disposed) throw new RoutingError('disposed', 'RoutingClient disposed');
     const id = crypto.randomUUID();
     return new Promise<PlanResult>((resolve, reject) => {
       // A hung worker (message lost, or stuck past its own step budget)
@@ -124,7 +186,7 @@ export class RoutingClient {
       // silent no-op (settle() finds nothing left to settle) rather than a
       // second, conflicting resolution.
       const timer = setTimeout(() => {
-        this.settle(id, (entry) => entry.reject(new Error('routing timed out')));
+        this.settle(id, (entry) => entry.reject(new RoutingError('timeout', 'routing timed out')));
       }, timeoutMs);
       // exactOptionalPropertyTypes: `onProgress`/`onProbe` are `... | undefined`
       // here (omitted args), but the map's value type declares them as
@@ -140,7 +202,7 @@ export class RoutingClient {
 
   dispose() {
     this.disposed = true;
-    this.failAll(new Error('RoutingClient disposed'));
+    this.failAll(new RoutingError('disposed', 'RoutingClient disposed'));
     this.worker.terminate();
   }
 }

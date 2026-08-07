@@ -8,7 +8,8 @@ import AboutDialog from './AboutDialog';
 
 // Standalone in every other test (open/onClose are just props), but focus
 // return specifically needs a real "trigger" element to hand focus back to
-// — App.tsx's ⓘ header button in practice, reproduced here minimally.
+// — App.tsx's About header button in practice (#427: an inline SVG icon,
+// not a glyph), reproduced here minimally.
 function DialogWithTrigger() {
   const [open, setOpen] = useState(false);
   return (
