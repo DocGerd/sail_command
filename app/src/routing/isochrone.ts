@@ -1,4 +1,4 @@
-import type { Board, Leg, LegKind, LatLon, ManeuverKind, NoRouteReason, Settings } from '../types';
+import type { Board, Leg, LegKind, LatLon, ManeuverKind, Settings } from '../types';
 import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
@@ -61,20 +61,64 @@ export interface SolveDeadline {
   expired(): boolean;
 }
 
+/**
+ * #282: WHY a solve failed, in the solver's own INTERNAL control vocabulary.
+ *
+ * This is deliberately a DIFFERENT type from the user-facing `NoRouteReason`,
+ * and deliberately NOT exported through `types.ts`, so it cannot leak into UI
+ * code. `planRoute.ts` translates it to a label exactly once, at its own
+ * presentation boundary (`NO_ROUTE_LABEL_OF_CAUSE`); nothing else in the app
+ * ever sees a cause.
+ *
+ * Why the solver must not speak the presentational vocabulary: the #243 retry
+ * gate and the #53 relaxation gate both branch on why a solve failed. While
+ * `solve()` returned a `NoRouteReason`, those gates were reading — one
+ * lookup-table hop away — the very string the planner shows the user, so
+ * rewording or re-granularising that string changed which retry tiers ran, and
+ * therefore which route the boat got. It lives HERE rather than in
+ * `planRoute.ts` because `planRoute.ts` already imports from this module: a
+ * back-import would be a cycle, and because this is `solve()`'s OWN output the
+ * solver is its natural owner.
+ *
+ * WHAT THIS DOES NOT FIX, stated plainly because the next reader will ask:
+ * changing the CLASSIFICATION — the `blockedDeaths >= calmDeaths` heuristic
+ * below, or the horizon guard's placement — still changes which cause comes
+ * out and therefore still moves routes. That coupling is intrinsic and is
+ * meant to exist: a gate has to know why the solve failed. What #282 removes is
+ * the ACCIDENTAL half — a change to the user-facing label set can no longer
+ * reach the solver at all. A classification change is now visibly an edit to a
+ * control value rather than to a display string, and per #282 it still needs
+ * the full Flensburg->all-harbours sweep before it is trusted.
+ */
+export type SolveFailureCause =
+  | 'mask-blocked'
+  | 'calm-without-motor'
+  | 'horizon-exceeded'
+  // #432: the plan's wall-clock budget ran out mid-search.
+  //
+  // Unlike the other three this is NOT a product of the classification
+  // heuristic at the bottom of solve() — it is returned by the deadline check
+  // at the top of the ring loop, on a path no completing solve ever reaches.
+  // That is what keeps it outside #282's "a classification change moves
+  // routes" hazard: the partition of the pre-existing three is untouched, an
+  // UNBUDGETED solve (`SolveParams.deadline` absent — every vitest call site)
+  // can never produce it, and a budgeted one can only produce it where the
+  // client's own deadline was already about to abandon the plan.
+  //
+  // It shares the `no-route` arm with the others rather than getting a
+  // separate SolveResult arm, which is a deliberate reversal of this change's
+  // first draft: that draft predated PR #450 and needed the separate arm
+  // only because `solve()` was still typed against the presentational
+  // `NoRouteReason`, so a fourth member would have leaked a label into the
+  // solver. #450 removed that constraint. The remaining semantic objection —
+  // "no-route" overstates what a truncated search knows — is real but already
+  // true of 'horizon-exceeded', which is likewise a search LIMIT rather than
+  // a finding about the water; the honesty is carried where the user actually
+  // reads it, by the 'search-budget-exceeded' label's own copy.
+  | 'budget-exhausted';
+
 export type SolveResult =
-  | { status: 'ok'; legs: Leg[]; etaMs: number }
-  | {
-      status: 'no-route';
-      reason: Extract<NoRouteReason, 'unreachable' | 'beyond-horizon' | 'calm-motor-off'>;
-    }
-  // #432: a THIRD arm, deliberately not a `no-route` reason. `no-route` means
-  // a search that RAN TO COMPLETION and found nothing; this means the search
-  // was cut short and we do not know. Folding it in as a fourth reason would
-  // also have forced a new member into the presentational `NoRouteReason`
-  // union that `solve()` is typed against here — exactly the label-as-control
-  // -input coupling #282/#411 paid to narrow. This arm carries no string at
-  // all, so it cannot be confused with one.
-  | { status: 'budget-exhausted' };
+  { status: 'ok'; legs: Leg[]; etaMs: number } | { status: 'no-route'; cause: SolveFailureCause };
 
 interface Node {
   lat: number;
@@ -304,7 +348,7 @@ export function solve(p: SolveParams): SolveResult {
     // alternative — return it with a `truncated` warning alongside, mirroring
     // ShallowInfo — is a real design and is recorded as rejected-for-now in
     // the PR body, not foreclosed.
-    if (p.deadline?.expired()) return { status: 'budget-exhausted' };
+    if (p.deadline?.expired()) return { status: 'no-route', cause: 'budget-exhausted' };
     // Substepped nodes lag the global clock, so the termination guards use the
     // earliest node clock in the frontier (=== tMs/costMs when no substeps
     // occurred). The "no further improvement possible" guard below ranks on
@@ -326,7 +370,7 @@ export function solve(p: SolveParams): SolveResult {
     const dtS = minDist < 2 ? 150 : minDist < 5 ? 300 : 600;
     if (minTMs + dtS * 1000 > horizonMs) {
       if (best) break;
-      return { status: 'no-route', reason: 'beyond-horizon' };
+      return { status: 'no-route', cause: 'horizon-exceeded' };
     }
 
     const byKey = new Map<string, Node>();
@@ -587,7 +631,8 @@ export function solve(p: SolveParams): SolveResult {
     // plus a handful of consumed-without-registering paths (a blocked direct-arrival attempt; a zero-effective-speed candidate after a maneuver penalty).
     return {
       status: 'no-route',
-      reason: blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'unreachable' : 'calm-motor-off',
+      cause:
+        blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'mask-blocked' : 'calm-without-motor',
     };
   }
   return { status: 'ok', legs: backtrack(best.last, p.departureMs), etaMs: best.etaMs };

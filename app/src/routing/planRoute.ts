@@ -15,7 +15,7 @@ import type {
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
-import { solve, type SolveDeadline, type SolveResult } from './isochrone';
+import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
 import { BOAT_DRAFT_M, findRelaxedDepthM, type ProbeProgress } from './relaxedDepth';
 
@@ -28,67 +28,22 @@ export interface PlanDeps {
 export type RigProgress = (rig: Rig, info: { tMs: number; frontierSize: number }) => void;
 
 /**
- * #282: the INTERNAL control vocabulary for a failed solve — deliberately a
- * DIFFERENT type from the user-facing `NoRouteReason`, and deliberately not
- * exported through `types.ts`, so it cannot leak into UI code.
+ * #282: the ONE translation from the solver's internal control vocabulary
+ * (`SolveFailureCause`, declared next to `solve()` in isochrone.ts — read its
+ * doc comment for why the two vocabularies exist) to the label the user sees.
  *
- * Why the two must not be one field: the #243 retry gate and the #53
- * relaxation gate below both need to know WHY a solve failed. Until #282 they
- * read that from `NoRouteReason` — the same string the planner shows the user
- * — so a purely presentational improvement to the wording or the granularity
- * of that string silently changed which retry tiers ran, and therefore which
- * route the boat got — measured on a candidate reclassification patch (PR
- * #279) that was REVERTED and never merged, so those numbers are motivating
- * evidence recorded in #282, not reproducible from this branch. The
- * gates now branch on this cause, and `NoRouteReason` is produced from it by
- * `NO_ROUTE_LABEL_OF_CAUSE` at the plan boundary and nowhere else — so the
- * label is free to change without moving a single route.
+ * Purely presentational: nothing in this file branches on its VALUES, only on
+ * the cause. Changing this table — rewording a label, or re-granularising
+ * `NoRouteReason` altogether — cannot change any route, because no gate and no
+ * solver ever reads a label. That is the whole point of #282, and it is
+ * enforced structurally: planRoute.reasonDecoupling.test.ts fails the build if
+ * any code in THIS file names a solver-derived label outside this table, or if
+ * `isochrone.ts` names one at all.
  *
- * RESIDUAL, stated plainly because the next reader will ask: the CAUSE itself
- * is still derived from `SolveResult.reason`, because that is the only failure
- * signal `solve()` exposes today. So a change to the CLASSIFICATION inside
- * `isochrone.ts` (e.g. #265's calm-vs-blocked heuristic) still moves routes,
- * and still needs the full sweep. What #282 closes is everything downstream of
- * that classification. #282's own guidance is that a tier which must fire only
- * for a specific cause has to carry that distinction EXPLICITLY rather than
- * inherit it from user-facing copy — which is exactly what the two predicates
- * below now do.
- */
-export type SolveFailureCause =
-  | 'mask-blocked'
-  | 'calm-without-motor'
-  | 'horizon-exceeded'
-  // #432: the plan's wall-clock budget ran out mid-search. NOT produced by
-  // `solve()`'s classification heuristic at all — it comes from the separate
-  // `status: 'budget-exhausted'` arm (isochrone.ts), so no existing plan's
-  // cause can change into or out of this value: a solve that completes
-  // classifies exactly as it did before #432, and an unbudgeted solve
-  // (SolveParams.deadline absent — every vitest call site, see that field's
-  // comment) can never produce it. That is what keeps this addition OUTSIDE
-  // #282's "a classification change moves routes" hazard: it widens the
-  // union without touching the partition of the pre-existing three.
-  | 'budget-exhausted';
-
-/** The no-route reasons `solve()` can return (`snap-failed-*` never comes from it). */
-type SolveNoRouteReason = Extract<SolveResult, { status: 'no-route' }>['reason'];
-
-/**
- * Translation IN: solver classification -> internal cause. One of exactly two
- * places in this file allowed to name a solver-derived label; the structural
- * guard in planRoute.reasonDecoupling.test.ts fails the build if a third
- * appears.
- */
-const CAUSE_OF_SOLVE_REASON = {
-  unreachable: 'mask-blocked',
-  'calm-motor-off': 'calm-without-motor',
-  'beyond-horizon': 'horizon-exceeded',
-} as const satisfies Record<SolveNoRouteReason, SolveFailureCause>;
-
-/**
- * Translation OUT: internal cause -> the label the user sees. Purely
- * presentational — nothing in this file branches on its VALUES, only on the
- * cause. Changing this table (or making the label more accurate) cannot change
- * any route.
+ * The reverse direction no longer exists. `solve()` used to return a
+ * `NoRouteReason` that a second table translated back into a cause, so the
+ * gates were one lookup hop from the display string; the solver now emits the
+ * cause directly and this is the only table left.
  */
 export const NO_ROUTE_LABEL_OF_CAUSE = {
   'mask-blocked': 'unreachable',
@@ -363,13 +318,12 @@ export function planRoute(
         // solve of this plan — see the `deadline` parameter's doc comment.
         ...(deadline !== undefined ? { deadline } : {}),
       });
-      // #432: checked BEFORE the label translation below, because
-      // 'budget-exhausted' deliberately carries no `reason` to translate —
-      // it is a separate SolveResult arm, not a fourth no-route label
-      // (isochrone.ts). CAUSE_OF_SOLVE_REASON stays a total map over the
-      // three labels a COMPLETED solve can produce.
-      if (res.status === 'budget-exhausted') return { rigResult: null, cause: 'budget-exhausted' };
-      if (res.status !== 'ok') return { rigResult: null, cause: CAUSE_OF_SOLVE_REASON[res.reason] };
+      // #282: the solver's own cause, taken verbatim — no label ever exists on
+      // this path. #432's 'budget-exhausted' needs no branch of its own here:
+      // folding it into SolveFailureCause (rather than giving it a separate
+      // SolveResult arm, as this change's pre-#450 draft did) means it arrives
+      // through exactly this line like any other cause.
+      if (res.status !== 'ok') return { rigResult: null, cause: res.cause };
       legs.push(...mergeCollinearLegs(res.legs, mask, wind, settings, comfort));
       departureMs = res.etaMs;
     }

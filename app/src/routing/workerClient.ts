@@ -13,7 +13,7 @@ const RIGS: readonly Rig[] = ['genoa', 'fock'];
 // than inventing a third shape — OpenMeteoError (services/openMeteo.ts:16-24,
 // `readonly kind`) and ReplanError (state/replan.ts:50-58, `readonly
 // messageKey`). Deliberately kept OUT of types.ts, same rule as
-// SolveFailureCause (routing/planRoute.ts): a routing-internal discriminator
+// SolveFailureCause (routing/isochrone.ts): a routing-internal discriminator
 // must never leak into UI code as a control input, and never be re-derived
 // by matching THIS Error's own `.message` text — that is exactly the
 // #282/#411 label-as-control-input coupling this repo already paid to

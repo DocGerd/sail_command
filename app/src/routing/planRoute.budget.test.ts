@@ -108,7 +108,10 @@ describe('#432 solve(): the plan-level wall-clock budget', () => {
       deadline: { expired: () => true },
       onProgress,
     });
-    expect(res.status).toBe('budget-exhausted');
+    // Asserted as a CAUSE, not a label — post-#450 `solve()` speaks only the
+    // internal vocabulary, and 'budget-exhausted' is a member of it rather
+    // than a separate SolveResult arm.
+    expect(res).toEqual({ status: 'no-route', cause: 'budget-exhausted' });
     // The check is FIRST in the ring, so a later tier entered with a spent
     // budget costs one predicate, not one ring of expansion.
     expect(onProgress, 'a spent budget must not expand any ring').not.toHaveBeenCalled();
@@ -131,12 +134,15 @@ describe('#432 solve(): the plan-level wall-clock budget', () => {
     expect(reference.status, 'the reference solve must succeed').toBe('ok');
     expect(rings, 'the reference solve must take more than one ring').toBeGreaterThan(1);
 
-    // Expire on the LAST ring the successful search needed. `best` is already
-    // set by then (the reference proves a route was found within these rings),
-    // so a run that returned its incumbent would answer 'ok' here. It must
-    // not: exceeding the budget is a failure and says so.
+    // Expire on the LAST ring the successful search needed. That `best` is
+    // genuinely already set by then is not assumed — it is MEASURED by the
+    // mutation: with the ring check deleted this exact case returns
+    // `status: 'ok'`, which it could only do from an incumbent found before
+    // the abort point. So the incumbent exists and is being discarded, which
+    // is the behaviour #432 requires (exceeding the budget is a failure, not
+    // a route of unproven optimality returned silently).
     const res = solve({ ...base, deadline: deadlineAfterCalls(rings) });
-    expect(res.status).toBe('budget-exhausted');
+    expect(res).toEqual({ status: 'no-route', cause: 'budget-exhausted' });
   });
 });
 

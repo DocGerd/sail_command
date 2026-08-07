@@ -89,7 +89,7 @@ describe('issue #21 gap 2: blocked direct arrivals get the substep retry', () =>
     const spy = vi.spyOn(mask, 'segmentNavigable');
     const r = solve({ origin: O, destination: D, departureMs: T0, polar, wind, mask, settings });
     // The wall is full-height: the pocket stays correctly unreachable.
-    expect(r).toEqual({ status: 'no-route', reason: 'unreachable' });
+    expect(r).toEqual({ status: 'no-route', cause: 'mask-blocked' });
 
     const fromOrigin = spy.mock.calls.filter(([a]) => a.lat === O.lat && a.lon === O.lon);
     // The blocked arrival probe itself (origin → exact destination) ran…
@@ -123,7 +123,7 @@ describe('issue #21 gap 3: the endpoint-capture hop is mask-validated', () => {
     expect(mask.segmentNavigable(child85, D, settings.safetyDepthM)).toBe(false);
 
     const r = solve({ origin: O, destination: D, departureMs: T0, polar, wind, mask, settings });
-    expect(r).toEqual({ status: 'no-route', reason: 'unreachable' });
+    expect(r).toEqual({ status: 'no-route', cause: 'mask-blocked' });
   });
 });
 
@@ -187,7 +187,7 @@ describe('issue #67: a capped-out node must not seal its prune cell', () => {
 
     // Each cap is ≥ the frontier the solver needs (the fix finds a route within
     // this many slots), yet stamp-before-cap sealed the gateway and returned
-    // { status:'no-route', reason:'unreachable' } at every one of these caps.
+    // { status:'no-route', cause:'mask-blocked' } at every one of these caps.
     for (const maxFrontier of [11, 12, 16, 17, 22]) {
       const r = solve({
         origin: trapO,
