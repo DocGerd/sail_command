@@ -151,6 +151,24 @@ export function routingFailureKey(err: unknown): MsgKey {
  * rebuilds on it; the two halves are load-bearing together, and disposing
  * without that check would turn every subsequent replan into
  * 'error.routingInterrupted'.
+ *
+ * SHARED-SINGLETON CONSEQUENCE, spelled out so the next reader does not have
+ * to re-derive it (PR #453 review, Minor 4): `RoutingClient.dispose()` calls
+ * `failAll()`, which rejects EVERY pending entry, not just this caller's.
+ * Three consumers share one client — useViaReplan, useLiveReroute and
+ * usePlanFlow's run() — and their in-flight guards are independent
+ * (`busyRef` in each of the first two, `planning` state in the third); no
+ * guard spans them. So a reroute that fails at the client deadline can tear
+ * down a client carrying an unrelated in-flight primary plan, which surfaces
+ * to that operation as 'disposed' -> error.routingInterrupted.
+ *
+ * That is NOT new in kind — usePlanFlow.run()'s catch already disposed
+ * unconditionally, so a failing primary plan could already abort an in-flight
+ * replan — but #432 takes the reachable surface from one disposer to three,
+ * and the justification above reasons only about THIS caller's worker, never
+ * about a sibling operation sharing it. Accepted deliberately: the uniform
+ * teardown is what makes a retry trustworthy, and the alternative (a shared
+ * in-flight count across all three consumers) is a larger change than #432.
  */
 export function disposeAfterFailure(client: ReplanClient): void {
   try {

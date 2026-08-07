@@ -352,6 +352,32 @@ describe('#432 plan budget vs the client liveness deadline', () => {
     expect(sent.budgetMs).toBe(PLAN_BUDGET_MS);
   });
 
+  // PR #453 review, Minor 1: a deadline at or under the grace margin used to
+  // clamp to `budgetMs: 0`, which protocol.ts reads as an ALREADY-SPENT
+  // budget — every such plan died before expanding a ring. It must degrade to
+  // the documented fail-open unbudgeted path instead, i.e. omit the key.
+  it.each([
+    ['equal to the grace margin', 15_000],
+    ['under the grace margin', 5_000],
+  ])('omits budgetMs entirely for a deadline %s, rather than sending 0', async (_label, ms) => {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    void client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, ms).catch(() => {});
+    await Promise.resolve();
+
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+    // hasOwnProperty, not `=== undefined`: a present-but-undefined key would
+    // satisfy the looser check while still violating
+    // exactOptionalPropertyTypes, and `budgetMs: 0` would fail neither.
+    expect(
+      Object.prototype.hasOwnProperty.call(sent, 'budgetMs'),
+      `a ${ms} ms deadline must send NO budget, not an unsatisfiable one`,
+    ).toBe(false);
+  });
+
   it('exposes isDisposed so a singleton owner can rebuild instead of reusing a dead client', () => {
     const w = fakeWorker();
     const client = new RoutingClient(() => w as unknown as Worker);

@@ -74,8 +74,21 @@ function noRouteLabel(out: RunOut): NoRouteReason | null {
  * disagreement is rare — but the fold is deterministic so the result is stable.
  * Pre-#282 this folded the LABELS; the precedence and the both-null default are
  * unchanged, only the vocabulary moved.
+ *
+ * Exported for direct unit testing of the truth table, exactly as
+ * `comfortRetryMayHelp`/`depthRelaxationMayHelp` below are — and for the same
+ * reason. PR #453 review MEASURED that deleting the `'budget-exhausted'` arm
+ * below reds ZERO tests across all 25 `src/routing` + `src/state` files: a
+ * reachable behavioural claim with nothing falsifying it, which is the exact
+ * standard this file applies to the retry gates. `combineFailureCause` is
+ * called only where BOTH rigs failed with non-null causes, and a shared
+ * deadline expiring during the SECOND rig's solve after the first finished
+ * with 'mask-blocked'/'horizon-exceeded' produces precisely that mixed pair.
+ * planRoute.budget.test.ts now pins the whole 5x5 table (the four causes plus
+ * null in both argument positions), so the older `horizon > calm > mask`
+ * ordering — equally unpinned until now — is covered too.
  */
-function combineFailureCause(
+export function combineFailureCause(
   a: SolveFailureCause | null,
   b: SolveFailureCause | null,
 ): SolveFailureCause {

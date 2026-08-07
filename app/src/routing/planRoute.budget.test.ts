@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { solve, type SolveDeadline } from './isochrone';
-import { planRoute } from './planRoute';
+import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
+import { combineFailureCause, planRoute } from './planRoute';
 import { NavMask } from '../lib/mask';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
@@ -143,6 +143,87 @@ describe('#432 solve(): the plan-level wall-clock budget', () => {
     // a route of unproven optimality returned silently).
     const res = solve({ ...base, deadline: deadlineAfterCalls(rings) });
     expect(res).toEqual({ status: 'no-route', cause: 'budget-exhausted' });
+  });
+});
+
+// PR #453 review, Major 1. Deleting `combineFailureCause`'s 'budget-exhausted'
+// arm reddened ZERO of the 297 tests in src/routing + src/state — a reachable
+// behavioural claim with nothing falsifying it, which is precisely the standard
+// planRoute.ts applies to its own retry gates. The whole 5x5 table is pinned
+// rather than just the budget arm, because the pre-existing
+// `horizon > calm > mask` ordering was equally unpinned.
+//
+// Expectations are HAND-DERIVED from the documented precedence, never computed
+// by re-implementing the fold (that would be #50's equivalence tautology: an
+// expectation derived from the function under test always passes). Reading
+// order, most actionable first:
+//   budget-exhausted   the search did not finish — we do not know, and must
+//                      not report a finished sibling's verdict as fact
+//   > horizon-exceeded change departure / refresh forecast
+//   > calm-without-motor  enable the motor
+//   > mask-blocked     nothing the user can change; also the both-null default
+const B = 'budget-exhausted';
+const H = 'horizon-exceeded';
+const C = 'calm-without-motor';
+const M = 'mask-blocked';
+
+const PRECEDENCE: ReadonlyArray<[SolveFailureCause | null, SolveFailureCause | null, string]> = [
+  // both null -> the mask-level default (pre-#432 behaviour, unchanged)
+  [null, null, M],
+  // one side null: the non-null cause carries, whatever it is
+  [null, M, M],
+  [M, null, M],
+  [null, C, C],
+  [C, null, C],
+  [null, H, H],
+  [H, null, H],
+  [null, B, B],
+  [B, null, B],
+  // same on both sides
+  [M, M, M],
+  [C, C, C],
+  [H, H, H],
+  [B, B, B],
+  // mixed pairs among the pre-existing three, both argument orders
+  [M, C, C],
+  [C, M, C],
+  [M, H, H],
+  [H, M, H],
+  [C, H, H],
+  [H, C, H],
+  // #432: budget beats every one of them, in BOTH positions
+  [B, M, B],
+  [M, B, B],
+  [B, C, B],
+  [C, B, B],
+  [B, H, B],
+  [H, B, B],
+];
+
+describe('#432/#453 combineFailureCause precedence', () => {
+  it.each(PRECEDENCE)('combineFailureCause(%s, %s) === %s', (a, b, expected) => {
+    expect(combineFailureCause(a, b)).toBe(expected);
+  });
+
+  it('is symmetric in its two arguments', () => {
+    const all: (SolveFailureCause | null)[] = [null, M, C, H, B];
+    for (const a of all) {
+      for (const b of all) {
+        expect(
+          combineFailureCause(a, b),
+          `combineFailureCause is order-dependent at (${a}, ${b})`,
+        ).toBe(combineFailureCause(b, a));
+      }
+    }
+  });
+
+  it('the table covers every ordered pair over the four causes plus null', () => {
+    // Fails closed: a shrunken PRECEDENCE table would silently stop testing
+    // the arm this describe exists for, the SOLVER_LABELS failure mode one
+    // level up (PR #411).
+    expect(PRECEDENCE.length, 'PRECEDENCE must cover all 5x5 ordered pairs').toBe(25);
+    const seen = new Set(PRECEDENCE.map(([a, b]) => `${a}|${b}`));
+    expect(seen.size, 'PRECEDENCE contains a duplicate pair').toBe(25);
   });
 });
 

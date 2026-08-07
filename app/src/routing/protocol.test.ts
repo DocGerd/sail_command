@@ -271,4 +271,28 @@ describe('#432 worker plan budget', () => {
     const generous = planWithBudget([], 10 * 60_000);
     expect(generous).toEqual(unbudgeted);
   });
+
+  // PR #453 review, Minor 3 — the residual the PR's own "narrowed, not
+  // closed" paragraph did not name. The three rows above fire the budget only
+  // at ring ZERO (budgetMs 0) or never (absent / 10 min), so the behaviour the
+  // ring check's comment spends most of its length justifying — aborting
+  // MID-SEARCH — was exercised only at solve() level through an injected
+  // `deadlineAfterCalls` fake. Nothing ran the REAL Date.now()-based deadline
+  // that protocol.ts builds to expiry partway through a real solve, which is
+  // the one link in the chain (client budgetMs -> startedAtMs closure ->
+  // per-ring check -> cause -> label) that composition did not cover.
+  //
+  // 1 ms is chosen so the deadline is live but not already spent when the
+  // handler starts: `expired()` is `Date.now() - startedAtMs >= 1`, and the
+  // control below establishes this solve takes far longer than that, so the
+  // abort lands after a ring or two rather than before the first.
+  it('a 1 ms budget expires mid-solve through the real Date.now() deadline', () => {
+    const control = planWithBudget([]);
+    expect(control.status, 'control: this plan must succeed when unbudgeted').toBe('ok');
+
+    const result = planWithBudget([], 1);
+    expect(result.status).toBe('error');
+    if (result.status !== 'error') return;
+    expect(result.reason).toBe('search-budget-exceeded');
+  });
 });

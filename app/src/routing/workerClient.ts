@@ -71,22 +71,39 @@ export class RoutingError extends Error {
 // currently-succeeding plan starts failing" true by construction rather than
 // by measurement — the wall a slow solve hits is the same wall, moved from
 // the client to the solver, which is the only side that can say where it got
-// to. For scale: this app's most expensive real input (Flensburg -> Marstal
-// at DEFAULT_SETTINGS, real committed mask+polars) measured 41-43 s of pure
-// solver time on one dev machine, 2026-08-07 — a device would have to be
-// ~3x slower to reach this budget at all.
+// to.
+//
+// For scale, with the machine named next to every figure — the headroom is a
+// property of the DEVICE, not of the route, and PR #453 review caught the
+// first draft stating a one-machine ratio as a general property. This app's
+// most expensive real input is Flensburg -> Marstal at DEFAULT_SETTINGS
+// against the real committed mask and polars, 2026-08-07:
+//
+//   author's dev machine, uniformWindGrid(12, 225):  41-43 s  -> ~2.8x headroom there
+//   reviewer's machine,   uniformWindGrid(12, 270):  50.5 s   -> ~2.4x headroom there
+//
+// (Different wind directions, so these are SIBLING inputs rather than a
+// strict replication; the ~1.2x delta is consistent across total time, ring
+// count and worst ring, which is what a slower machine looks like.) So a
+// device roughly 2.4-2.9x slower than one of these reaches the budget at all
+// — and a phone, the case #432's report is about, is exactly the device for
+// which that multiplier is plausible. Do not restate this as an absolute
+// "~3x slower" without naming a machine.
 export const PLAN_BUDGET_MS = 120_000;
 
 // How much longer the CLIENT waits than the budget it handed the worker. The
 // solver must always win this race: it is the side that produces the honest,
 // specific "budget exceeded" answer, while this deadline can only ever say
 // "no reply". Sized to cover, in order: the worker's abort granularity of one
-// isochrone ring (MEASURED at 1045 ms worst case on the Flensburg -> Marstal
-// input above, so ~3 s even on a device 3x slower), plus postMessage +
-// structured-clone of the request on the way in (the client's clock starts
-// BEFORE the worker's, so the worker's deadline lands strictly later than
-// this one otherwise would), plus unwinding four tiers and posting the
-// result back.
+// isochrone ring — worst ring MEASURED at 1045 ms (author, 132 rings) and
+// 1270 ms (reviewer, 144 rings) on the two machines above, so these are the
+// fastest observations anyone has taken and a LOWER BOUND on what a slow
+// device does; the 15 s margin is chosen to stay comfortable several
+// multiples above them rather than to sit just past 1270 ms — plus
+// postMessage + structured-clone of the request on the way in (the client's
+// clock starts BEFORE the worker's, so the worker's deadline lands strictly
+// later than this one otherwise would), plus unwinding four tiers and
+// posting the result back.
 const PLAN_TIMEOUT_GRACE_MS = 15_000;
 
 // Now purely a LIVENESS backstop, not the routing wall it used to be: with
@@ -253,12 +270,28 @@ export class RoutingClient {
       // budget with it and the two can never invert — a worker budget longer
       // than the client deadline would silently restore the pre-#432
       // behaviour of the client pre-empting the solver's honest answer.
+      //
+      // PR #453 review, Minor 1: a deadline at or under the grace margin
+      // leaves no room for a budget, and the first draft clamped it to
+      // `Math.max(0, …)`. That made the budget UNSATISFIABLE rather than
+      // absent — `expired()` is `Date.now() - startedAtMs >= 0`, true on its
+      // first evaluation, so every such plan died before expanding one ring.
+      // Latent, not live (no production caller overrides timeoutMs today),
+      // but it satisfied "the two can never invert" by making the budget
+      // impossible, which is not what that sentence is for. Omitting the key
+      // instead degrades to the documented FAIL-OPEN unbudgeted path that
+      // planRoute()/solve()/protocol.ts all already take when the deadline is
+      // absent — the same direction as the rest of the design, and the client
+      // deadline still bounds the wait.
+      const budgetMs = timeoutMs - PLAN_TIMEOUT_GRACE_MS;
       this.worker.postMessage({
         type: 'plan',
         id,
         request,
         windGrid,
-        budgetMs: Math.max(0, timeoutMs - PLAN_TIMEOUT_GRACE_MS),
+        // exactOptionalPropertyTypes: omit the key entirely, never send
+        // `budgetMs: undefined`.
+        ...(budgetMs > 0 ? { budgetMs } : {}),
       } satisfies WorkerRequest);
     });
   }
