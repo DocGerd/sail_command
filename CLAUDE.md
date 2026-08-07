@@ -106,6 +106,21 @@ deviate from it.
   jsdom-mocked service-worker test — that would be the #50 equivalence-test
   tautology (statements execute without modeling real CacheStorage/Range/CDN
   semantics, the bug class that actually bit in #96 and #118).
+- `app/sweep/` (#450) is the committed 198-plan #282 acceptance harness — six
+  arms x 33 harbours, a README carrying the full rebuild spec, and a REQUIRED
+  BASE double-run control (two BASE runs must be byte-identical to each other
+  before any BASE-vs-HEAD comparison means anything). It sits OUTSIDE
+  `app/src/` so `vite.config.ts`'s `include` never collects it into
+  `npm run test` or CI; run it deliberately with `--config
+  sweep/vitest.config.ts`. vitest 4 has NO `--include` (`CACError: Unknown
+  option`, measured) and `--dir` only narrows, which is why it needs its own
+  config rather than a flag. Budget ~48 min for all three runs. Two known
+  defects (#451): the config's `include` glob resolves against `app/` not
+  `app/sweep/`, so it over-collects the whole `.ts` suite and a run exits 1 on
+  an unrelated `changelog.test.ts` (`server.fs.allow` denies `CHANGELOG.md?raw`
+  under that config); and `compare.mjs` fails closed on ZERO arms but not on
+  FEWER THAN SIX, so assert six arm files per output directory yourself before
+  quoting any verdict.
 - Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
   a ~40 s real-mask solver acceptance file). Use focused filters while
   iterating (`npm --prefix app run test -- <filter>`); give the full run a
@@ -479,7 +494,10 @@ deviate from it.
 - E2E: `npm --prefix app run e2e` (the `pree2e` hook regenerates
   `app/public/test-fixtures/wind-sw12.json` with fresh timestamps and builds —
   a dirty fixture diff after an e2e run is expected churn, restore it, don't
-  commit it). One-time setup: `npm --prefix app exec playwright install chromium`.
+  commit it). The COMMITTED fixture is stale by design (last forecast hour
+  2026-07-22), so any MANUAL dev-server browser pass fails 'beyond horizon'
+  until `node scripts/gen-wind-fixture.mjs` is run — restore it afterwards.
+  One-time setup: `npm --prefix app exec playwright install chromium`.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards).
@@ -1876,44 +1894,44 @@ deviate from it.
   exercised true AND false, including the calm class (0 occurrences across
   the original 3 arms; 34 across two arms added specifically to reach it).
   NARROWED, NOT CLOSED: any future reason-classification change still needs
-  that full sweep, never a labeling-only fix.
-- **A route-planning failure is currently UNDIAGNOSABLE from a user report**
-  (#433). At least SEVEN unrelated sites collapse onto the single
-  `error.internal` key with byte-identical banner text: worker/asset init,
-  `worker.onerror`, `onmessageerror`, the 120 s client timeout, a real throw
-  inside `planRoute()` forwarded WITH detail by `protocol.ts`, a POST-SUCCESS
-  IndexedDB `savePlan` failure (which reports failure when routing SUCCEEDED),
-  and `mapWindError`'s fallthrough (`usePlanFlow.ts:48`) for any wind-fetch
-  failure that is not an `OpenMeteoError`. (#433 originally enumerated six and
-  gained the seventh in review; do not read any count as exhaustive.)
-  `usePlanFlow.ts:228` discards the caught Error, and there are ZERO
-  `console.*` calls across `workerClient.ts` / `worker.ts` / `protocol.ts` /
-  `usePlanFlow.ts` — so an empty console is DESIGNED behaviour, not evidence
-  that nothing happened; never ask a reporter to check it. Related (#432):
-  `DEFAULT_PLAN_TIMEOUT_MS = 120_000` is fixed and un-scaled, and
-  `isochrone.ts` has no WALL-CLOCK budget (its bounds are `MAX_FRONTIER =
-  30_000`, a PER-RING frontier-size cap, and the forecast-horizon guard at
-  `isochrone.ts:268` which does terminate with `reason: 'beyond-horizon'`).
-  SCOPE THE TERMINATE CLAIM CAREFULLY: `settle()` itself does not terminate,
-  but `run()` recovers — `usePlanFlow.ts:228`'s catch calls `client.dispose()`
-  (`:237`) which does `worker.terminate()`, then nulls both refs (`:241-242`)
-  so a retry builds a FRESH worker. It is `replan.ts:110` and `reroute.ts:113`
-  that reject WITHOUT disposing, so a timeout reached via replan/reroute
-  genuinely leaves the worker running. Nothing in
-  `protocol.ts`/`workerClient.ts` distinguishes a worker that died from one
-  merely still running, so those two cases are indistinguishable today. The
-  banner's advice splits PER PATH, not per group — and note the paths differ
-  in WHY a retry helps, so don't glue them: "try again" hands the user a
-  genuinely FRESH worker (`:241-242`) rather than a poisoned client, which
-  helps `onerror`/`onmessageerror`; a wind-fetch blip is helped too but by
-  RE-FETCHING, not by the worker (`usePlanFlow.ts:195-199` returns at `:199`,
-  before `ensureClient()` at `:202`, so no worker is involved); a
-  resource-exhaustion throw can also escape, since `dispose()` released the
-  failed worker's whole heap first. What a retry CANNOT help is the
-  input-deterministic pair — the 120 s timeout recomputes the same solve
-  against the same fixed budget, and a DETERMINISTIC `planRoute()` throw
-  reproduces on identical inputs. "Reload the app" helps essentially only the
-  asset/init case.
+  that full sweep — now runnable at `app/sweep/`, BASE double-run control
+  first — never a labeling-only fix.
+- **Routing failures are TYPED — never re-add a shared `error.internal`**
+  (#433/PR #442 and #432/PR #453, both shipped 2026-08-07; this bullet
+  previously described the pre-fix state and is rewritten, not amended).
+  `RoutingError` in `workerClient.ts` carries a `readonly kind:
+  RoutingFailureKind` (8 kinds: `timeout`, `worker-fatal`, `worker-error`,
+  `messageerror`, `disposed`, `worker-init`, `persist-failed`,
+  `wind-unclassified`), `protocol.ts`'s `fatal` arm carries `stack?: string`,
+  and the banner's remedy differs PER PATH with each one true of that path:
+  a retry hands the user a genuinely FRESH worker (helps
+  `onerror`/`onmessageerror`/`disposed`), a wind blip is helped by
+  RE-FETCHING with no worker involved, and the input-deterministic pair
+  (budget exhaustion, a deterministic `planRoute()` throw) cannot be helped
+  by retrying at all — do not glue one remedy sentence onto all of them.
+  NEVER infer a cause by matching a message string (the #282 label-as-control
+  coupling in a new place), and keep `RoutingFailureKind` OUT of `types.ts`
+  exactly as `SolveFailureCause` is.
+  `isochrone.ts` NOW HAS a per-plan wall-clock budget: `PLAN_BUDGET_MS`
+  (120_000, byte-identical to the old client timeout) checked at ring ENTRY
+  plus once before the #53 BFS probes, imposed ONLY by `protocol.ts` —
+  `planRoute()` is unbudgeted unless handed a deadline, which is what lets
+  `app/sweep/` exercise the solver at all. Client deadline is budget + 15 s
+  so the solver wins. WHY THAT CANNOT BREAK A WORKING PLAN, structurally
+  rather than by margin: the worker's clock starts at the plan handler,
+  strictly LATER than the client's at `plan()` (postMessage + clone between),
+  so the new wall is >= the old one and anything that fitted the old client
+  window fits the new worker window. The four bare catches in
+  `replan.ts`/`reroute.ts` now preserve the discriminator AND dispose (with
+  `RoutingClient.isDisposed` + an `ensureClient()` rebuild — dispose alone
+  would make every later replan fail `disposed`).
+  STILL TRUE and load-bearing: `routing/` contains ZERO `console.*` calls, so
+  an empty console is DESIGNED behaviour, not evidence nothing happened —
+  never ask a reporter to check it. Measure that inventory with BOTH
+  `console\.[a-z]+\(` (invocations) and `console\.[a-z]+[^(a-z]` (bare refs
+  like `.catch(console.error)` plus comment mentions): the invocation-only
+  grep UNDER-counts, and the composition shifts between merges even when the
+  total does not.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
@@ -2153,10 +2171,16 @@ deviate from it.
   It lives OUTSIDE this repo (`~/.claude/hooks/guard-destructive-git.sh`,
   global/personal, unversioned, shared across concurrent sessions) — NOT
   covered by #216, which is the notices-regen and nudge hooks; #233
-  audited this guard specifically and declined to touch it. Observed but
-  NOT confirmed as a mechanism: a Bash call was blocked while drafting a
-  heredoc whose PROSE merely mentioned the force flags with no git command
-  invoked, and separately a command containing `gh api -f` was blocked —
+  audited this guard specifically and declined to touch it. The heredoc-prose
+  case is now CONFIRMED, cleanly reproduced 2026-08-07: a `cat > file <<'EOF'`
+  whose body merely LISTED dangerous git subcommands as prose — no git command
+  invoked anywhere — was blocked, because the guard matches the raw command
+  string and a heredoc body is part of it. Note the irony and the remedy: it
+  blocks you from DOCUMENTING why the thing it guards is dangerous, and the
+  fix is to use the **Write tool**, which does not route through the Bash
+  guard. Do NOT reword the prose to appease the matcher — that lets a
+  substring check silently shape the documentation. Separately, a command
+  containing `gh api -f` was blocked —
   the precise trigger for the second case is unconfirmed (a reviewer could
   not reproduce it in isolation). `--raw-field` avoided the block in
   practice; treat that as an observed workaround, not a documented fix. A
@@ -2237,6 +2261,28 @@ deviate from it.
   SECOND stall, TAKE the watch: arm the monitor in the main session and hand
   the agent the result. The orchestrator holds the watch; the worker holds
   the code.
+  2026-08-07 CORRECTION, and it cost the worst mistake of that session: an
+  idle notification means the agent STOPPED; its ABSENCE means it is STILL
+  WORKING. Reading absence as "died silently" led to spawning a duplicate
+  agent into a LIVE worktree, which detached its HEAD mid-test-run (nothing
+  lost — the branch ref survived and the intruded-upon agent noticed the
+  foreign write itself and discarded the contaminated run). Check the
+  ARTIFACT — branch, commit, `git status`, the process table — never the
+  notification. And because an agent that shells out to a long command is
+  invisible to the harness, BOTH the notification and its absence are
+  ambiguous: it can legitimately idle mid-run. So when in doubt ASK ("what is
+  your state?") before inferring — a question costs one round-trip and cannot
+  be wrong, whereas every inference available from outside is blind to an
+  uncommitted worktree.
+- Monitors, three failure modes all measured 2026-08-07: `pgrep -f <pat>`
+  SELF-MATCHES a watcher whose own command line contains `<pat>` (so the count
+  never reaches zero and the watch times out claiming "still running") — watch
+  `/proc/<pid>` instead. Watch the DRIVER, not its first child: a script
+  running N sequential jobs spawns a new pid per job, so watching the first
+  announces completion at 1/N — and that fails LOUD and WRONG, worse than the
+  silent case. And always emit on FAILURE and on never-started, not only on
+  success: #443's `e2e` went red and a success-only filter would have been
+  indistinguishable from still-building.
 - BRIEFS ARE WRONG SOMETIMES — say so in the brief, and reward the pushback.
   In one session an implementer refused to build the shell parser its brief
   asked for (#235 is the false-POSITIVE direction, unreachable by globs, and
