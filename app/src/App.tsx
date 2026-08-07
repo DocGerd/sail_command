@@ -38,6 +38,7 @@ import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
+import { departureSeedMs, pickedPointsOfPlan, planFormDirty } from './lib/planForm';
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
 import { usePersistedNumber } from './lib/usePersistedNumber';
@@ -250,6 +251,20 @@ function AppShell() {
   // no retry path since the underlying map instance isn't recreated.
   const [mapError, setMapError] = useState(false);
   const [harbors, setHarbors] = useState<Harbor[]>([]);
+  // #301: true once the harbors asset load's Promise SETTLES (success OR
+  // permanent failure) — gates the plan-form sync effect below (next to
+  // planIdRef) so it doesn't write a plan's origin/destination labels before
+  // harbor names are resolvable (a harborId lookup would fall back to a raw
+  // lat/lon 'tap' label prematurely). Set in BOTH the .then and the .catch of
+  // the loadRoutingAssets() effect further down, so a permanently failed
+  // asset load (harbors stays [], the documented best-effort path) still
+  // lets the sync proceed with tap-labeled points rather than silently never
+  // firing.
+  const [harborsLoaded, setHarborsLoaded] = useState(false);
+  // #301: also written by the plan-form sync effect below (next to
+  // planIdRef) whenever a NEW plan.id becomes active — origin/destination
+  // from harborToPickedPoint-shaped picks, departureMs from PlansList's own
+  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs).
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
   const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
@@ -298,18 +313,65 @@ function AppShell() {
     planIdRef.current = plan?.id ?? null;
   }, [plan?.id]);
 
+  // #301: prefills the planner FORM (origin/destination/departure) from the
+  // active plan's own stored request — one derivation keyed on plan
+  // identity, covering every setPlan caller (PlansList's Load, session
+  // restore, a completed run/via-replan/live-reroute) rather than patching
+  // each call site individually. Keyed on plan?.id + harborsLoaded
+  // DELIBERATELY, not on `plan`/`harbors`/`lang` object identity: a via-
+  // replan (state/replan.ts) produces a new `plan` object with the SAME id
+  // and must not clobber a departure the user has just edited (mirrors
+  // planIdRef's own clobber-guard rationale above) — same pattern as
+  // RouteLayer.tsx's fitBounds effect, which keys on plan identity rather
+  // than the (recreated) result object.
+  //
+  // syncedPlanIdRef makes the write happen at most ONCE per plan id
+  // (deterministic even under StrictMode's dev-only double-invoke): gated
+  // behind `harborsLoaded` so a plan that becomes active before the harbors
+  // asset load settles doesn't sync with premature (harbor-id-lookup-miss)
+  // tap labels — the ref is only advanced inside the gated branch, so once
+  // harborsLoaded flips true the effect re-fires for the SAME (still
+  // unsynced) plan id and resolves the real harbor labels then.
+  //
+  // No-ops on `plan === null`: GPX import deliberately calls setPlan(null)
+  // *and* seeds the draft directly in the same batch (handleImportRoute
+  // below) — syncing here would clobber that import.
+  const syncedPlanIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!plan || !harborsLoaded) return;
+    if (syncedPlanIdRef.current === plan.id) return;
+    syncedPlanIdRef.current = plan.id;
+    const { origin: syncedOrigin, destination: syncedDestination } = pickedPointsOfPlan(
+      plan,
+      harbors,
+      lang,
+    );
+    setOrigin(syncedOrigin);
+    setDestination(syncedDestination);
+    setDepartureMs(departureSeedMs(plan));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id + harborsLoaded deliberately, see the comment above
+  }, [plan?.id, harborsLoaded]);
+
   // Eager load, matching spec §7's first-load budget (measured ~44 MB) —
   // mask/polars/harbors are meant to be fetched up front, not deferred to
   // first Plan tap. Best-effort: a failed fetch leaves `harbors` empty
   // (HarborPicker just shows no results; map tap-to-pick still works) rather
-  // than blocking the rest of the app.
+  // than blocking the rest of the app. Either branch also flips
+  // harborsLoaded (#301) — a permanent failure must still unblock the
+  // plan-form sync effect above, not silently leave it waiting forever.
   useEffect(() => {
     let cancelled = false;
     void loadRoutingAssets()
       .then((assets) => {
-        if (!cancelled) setHarbors(assets.harbors);
+        if (!cancelled) {
+          setHarbors(assets.harbors);
+          setHarborsLoaded(true);
+        }
       })
-      .catch(console.error);
+      .catch((err: unknown) => {
+        console.error(err);
+        if (!cancelled) setHarborsLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -615,6 +677,18 @@ function AppShell() {
 
   const plannerStatus = toPlannerStatus(planning, t);
   const stale = plan !== null && isStaleForecast(plan);
+  // #301: true when the form (origin/destination/departure/live settings)
+  // has drifted from the plan actually on screen — a re-run right now would
+  // produce a DIFFERENT route than the displayed one. Guarded on
+  // origin/destination being non-null: right after loading a plan there's a
+  // one-effect-tick window where `plan` is already set but the #301 sync
+  // effect above hasn't yet written origin/destination — reading false there
+  // (nothing to compare yet) avoids a one-frame false-dirty flicker rather
+  // than feeding planFormDirty a stale/null form.
+  const formDirty =
+    plan && origin && destination
+      ? planFormDirty(plan, { origin, destination, departureMs, settings })
+      : false;
 
   return (
     <div className="app-shell" ref={shellRef}>
@@ -933,6 +1007,7 @@ function AppShell() {
               planning={plannerStatus}
               plan={plan}
               rig={rig}
+              formDirty={formDirty}
               onViewDetails={handleViewDetails}
             />
           )}

@@ -73,6 +73,7 @@ function renderPanel(overrides: Overrides = {}) {
     planning: { phase: 'idle' } as PlannerStatus,
     plan: null,
     rig: null,
+    formDirty: false,
     onViewDetails: vi.fn(),
     ...overrides,
   };

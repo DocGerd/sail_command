@@ -58,6 +58,12 @@ export const de = {
   // stable, atomic summary announced once per new plan (never on slider/
   // via-edit re-renders).
   'planner.result.announce': 'Route berechnet — Ankunft {arrival}, Dauer {duration}, {distance}.',
+  // #301: die Eingaben (Start/Ziel/Abfahrt/Einstellungen) weichen von der
+  // oben angezeigten Route ab — eine erneute Berechnung würde jetzt eine
+  // andere Route liefern. Als zweiter Chip in der Ergebnis-Karte gezeigt UND
+  // in die eine Live-Region dieses Panels eingefügt (nie eine zweite).
+  'planner.result.stale':
+    'Zeigt die zuvor berechnete Route — die Eingaben wurden seitdem geändert.',
   // GPX import (#3): the control, the success confirmation, one message per
   // rejection reason, and the non-blocking notices. "Import/Planung"-Sprache,
   // niemals "Navigation" — importierte Geometrie ist eine Planungseingabe.

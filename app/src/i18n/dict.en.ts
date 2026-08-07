@@ -61,6 +61,12 @@ export const en = {
   // via-edit re-renders).
   'planner.result.announce':
     'Route calculated — arrival {arrival}, duration {duration}, {distance}.',
+  // #301: the form (origin/destination/departure/settings) has drifted from
+  // the plan actually displayed above — a re-run right now would produce a
+  // different route. Shown as a second Chip in the Ergebnis card AND folded
+  // into this panel's one live region (never a second one).
+  'planner.result.stale':
+    'Showing the previously calculated route — the inputs have changed since.',
   // GPX import (#3): the control, the success confirmation, one message per
   // rejection reason, and the non-blocking notices. "Import/planning" language,
   // never "navigation" — imported geometry is a planning input, not a route.
