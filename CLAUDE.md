@@ -55,8 +55,14 @@ deviate from it.
   **`lint` is literally `eslint src`, so `app/e2e/**` is NEVER linted by CI**
   (#420, open) — including the specs that are the ONLY functional assurance
   for `src/sw.ts` and `src/routing/worker.ts` (both ~0% coverage by design).
-  Run `npm --prefix app exec eslint e2e` by hand after touching a spec; a real
-  error sat there unseen until PR #419's review found it.
+  Run `npm --prefix app run lint -- e2e` by hand after touching a spec (this
+  lints `src` AND `e2e` in one pass, so it cannot silently diverge from what
+  CI runs); a real error sat there unseen until PR #419's review found it.
+  Note the `run`, not `exec` — per the next bullet, `exec` does NOT chdir, so
+  `npm --prefix app exec eslint e2e` resolves `e2e` against the REPO ROOT and
+  exits 2 with "No files matching the pattern" (measured), silently linting
+  nothing. The e2e-only spelling that does work is
+  `npm --prefix app exec eslint app/e2e`.
 - `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
   exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
   executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
@@ -496,35 +502,26 @@ deviate from it.
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
   **The rule governs an assertion's INPUTS, not only its predicate.**
-  `app/e2e/layout.spec.ts`'s four `#368` banner-clearance guards (the
-  parametrized viewport sweep plus three named fix-wave tests, currently at
-  lines 287/359/417/485) each capture `depthToggle`'s `boundingBox()` ONCE,
-  then poll a COORDINATE frozen from that read
-  (`.poll(() => elementDescriptionAt(page, x, y), ...)`). If the box is read
-  before the `ResizeObserver` write of `--sc-banner-height` (and the
-  resulting CSS push) settles, the poll spends its whole budget watching the
-  checkbox's PRE-PUSH position — a real interception and a stale-coordinate
-  read produce a byte-identical signature, and the race can make the test
-  PASS with the defect live. Measured 0/100 locally on clean `develop` (rate
-  below ~3% at 95% confidence, rule of three); a loaded-CI reproduction was
-  NOT performed, so a load-dependent race is untested. Tracked as the
-  #368-guard stale-geometry issue (number pending). Polling a state signal is
-  not enough if the coordinate or handle being polled was itself sampled
-  before settle.
-  `app/e2e/compass.spec.ts` (test declared at `:995`) has a SIBLING shape,
-  not the same one, and is the more exposed of the two: `const toggleBox =
-  (await depthToggle.boundingBox())!` / `const bannerBox = (await
-  banner.boundingBox())!` at `:1050-1051` feed an IMMEDIATE one-shot
-  `expect(overlapWidth * overlapHeight, ...).toBe(0)` at `:1062-1065` — no
-  poll, no retry, zero settle tolerance. The shared root: both assert
-  against geometry sampled before the `ResizeObserver` write of
-  `--sc-banner-height` and the resulting CSS push have applied.
-  `layout.spec.ts`'s poll can then watch a stale point for its whole budget;
-  `compass.spec.ts`'s one-shot form has no tolerance for that window at all
-  — not polling is not the same as not needing a gate. The two also produce
-  DIFFERENT CI signatures for the same root cause, which is why recognising
-  them as one class matters: `layout.spec.ts` times out on the predicate,
-  `compass.spec.ts` fails an overlap-area comparison immediately.
+  The `#368` banner-clearance guards in `app/e2e/layout.spec.ts` (a
+  parametrized viewport sweep plus three named fix-wave tests) and the
+  SIBLING guard in `app/e2e/compass.spec.ts` each USED TO capture
+  `depthToggle`'s `boundingBox()` ONCE and then assert against a coordinate
+  frozen from that single read — taken before the `ResizeObserver` write of
+  `--sc-banner-height`, and the CSS push it causes, had settled. A real
+  interception and a stale-coordinate read produce a BYTE-IDENTICAL
+  signature, so the race could make a guard PASS with the defect live. The
+  two forms differed only in CI signature, which is exactly why recognising
+  them as ONE class mattered: `layout.spec.ts` polled a stale point until its
+  budget expired (a predicate timeout), while `compass.spec.ts` fed the
+  frozen boxes to an IMMEDIATE one-shot `expect(overlap area).toBe(0)` with
+  zero settle tolerance and failed an overlap comparison outright — not
+  polling is not the same as not needing a gate. FIXED in #412 / PR #419:
+  every one of those guards now RE-SAMPLES its geometry INSIDE the poll
+  callback, so no box survives across a tick; the specs carry `#412` comments
+  at each site saying so. Two residual frozen-geometry sites remain elsewhere
+  in the suite, tracked in #422. The durable rule outlives the fix: polling a
+  state signal is not enough if the coordinate or handle being polled was
+  itself sampled before settle.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
   (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
@@ -789,14 +786,25 @@ deviate from it.
   against a documented 1 GB Pages limit) and not implicated; both
   `actions/deploy-pages` and `upload-pages-artifact` are already at v5.0.0,
   the newest release, so there is nothing to bump.
-  The fix — an in-job retry of the deploy step — is in PR #418; check that
-  PR's state rather than assuming it landed.
+  The fix — `continue-on-error` on the first `deploy-pages` step, then a
+  `steps.deployment.outcome == 'failure'`-gated warn + wait + retry — landed
+  in PR #418. NOT YET EXERCISED as of 2026-08-07: on the first deploy after
+  that merge, attempt 1 succeeded in 11 s and all three retry steps SKIPPED.
+  A green deploy is therefore NOT evidence the retry works, and never will
+  be — only the `::warning::` firing marks a genuine rescue. That run also
+  cannot discriminate `.outcome` from `.conclusion` (see the next bullet):
+  on a SUCCEEDING step both read `success`, so the correct guard and the
+  broken one are indistinguishable there.
 - **GitHub Actions expression gotchas** (verified 2026-08-06 against the
   documented Contexts grammar AND `actions/runner` source, not from memory):
   a HYPHENATED step id IS valid in dot notation — `steps.deployment-retry
   .outputs.page_url` parses correctly, no `steps['deployment-retry']` index
-  syntax needed (`ExpressionUtility.cs`'s `IsLegalKeyword` admits `-`, and
-  `deploy.yml` already relies on this in green production runs). And
+  syntax needed —
+  `src/Sdk/DTExpressions2/Expressions2/Sdk/ExpressionUtility.cs`'s
+  `IsLegalKeyword` admits `-` at index >= 1 but NOT as the first character
+  (read against `actions/runner` `main` @ 2026-08-06 — a moving branch, so
+  re-derive after any upgrade), and `deploy.yml` already relies on this in
+  green production runs. And
   `steps.<id>.outcome` is the result BEFORE `continue-on-error` is applied
   while `.conclusion` is the result AFTER — so a retry must gate on
   `.outcome == 'failure'`; `.conclusion` reads `success` on the very step
@@ -1333,10 +1341,13 @@ deviate from it.
   produced four cascading z-index regressions, each caused by the previous
   fix. Re-run the ORIGINAL defect class against the new code, and treat a
   passing selftest table as proof only of the shapes it lists.
-  Session 28 (2026-08-06/07) produced **five** fresh instances in one night
-  across three PRs — including one inside a **comment-only** wording
-  correction, where the entire content of the change was a single comment and
-  it still reproduced the class. The invariant across all five: **a claim
+  Session 28 (2026-08-06/07) produced fresh instances in EVERY ONE of the
+  three PRs merged that night — including one inside a **comment-only**
+  wording correction, where the entire content of the change was a single
+  comment and it still reproduced the class. (Deliberately no count: the
+  first write-up said "five" and the enumeration found ~10, one PR alone
+  exceeding five — a bare number in a durable instruction reads as an
+  enumeration.) The invariant across every one of them: **a claim
   about code, stated from memory instead of re-read from the code**. Prose has
   no compiler, so nothing else catches it. The remedy that worked: make claims
   PER-SITE, which are falsifiable one site at a time — every failure was a
