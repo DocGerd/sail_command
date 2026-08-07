@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { planRoute } from './planRoute';
-import { solve } from './isochrone';
+import { solve, type SolveFailureCause } from './isochrone';
 import { makeMask, openWaterMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
@@ -78,9 +78,13 @@ const ok = (distanceNm: number, etaMs = T0 + 1000) => ({
   legs: [leg(distanceNm)],
   etaMs,
 });
-const noRoute = (reason: 'unreachable' | 'beyond-horizon' | 'calm-motor-off') => ({
+// #282: `solve()` speaks the INTERNAL control vocabulary (SolveFailureCause),
+// not the user-facing NoRouteReason label — so these mocked failures are
+// written in causes. The plan-level `reason` the assertions below check is the
+// LABEL planRoute derives from the cause at its one presentation boundary.
+const noRoute = (cause: SolveFailureCause) => ({
   status: 'no-route' as const,
-  reason,
+  cause,
 });
 
 beforeEach(() => {
@@ -88,9 +92,9 @@ beforeEach(() => {
 });
 
 describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => {
-  it("retries BOTH rigs without the preference when only ONE rig fails unreachable, discarding the OTHER rig's successful tier-1 result", () => {
+  it("retries BOTH rigs without the preference when only ONE rig fails mask-blocked, discarding the OTHER rig's successful tier-1 result", () => {
     // Tier 1 (preference on): genoa fails, fock SUCCEEDS.
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier1 genoa
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier1 genoa
     solveMock.mockReturnValueOnce(ok(999)); // tier1 fock (a distinctive distance that must NOT survive)
     // Tier 2 (preference off): both succeed.
     solveMock.mockReturnValueOnce(ok(11)); // tier2 genoa
@@ -117,9 +121,9 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
     expect(solveMock.mock.calls[3]![0]).not.toHaveProperty('comfortDepthM');
   });
 
-  it('also retries on beyond-horizon (not just unreachable)', () => {
-    solveMock.mockReturnValueOnce(noRoute('beyond-horizon')); // tier1 genoa
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier1 fock
+  it('also retries on horizon-exceeded (not just mask-blocked)', () => {
+    solveMock.mockReturnValueOnce(noRoute('horizon-exceeded')); // tier1 genoa
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier1 fock
     solveMock.mockReturnValueOnce(ok(21)); // tier2 genoa
     solveMock.mockReturnValueOnce(ok(22)); // tier2 fock
 
@@ -133,9 +137,9 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
     expect(res.fock?.distanceNm).toBe(22);
   });
 
-  it('never retries on calm-motor-off — that class is a wind/mask fact the preference cannot cause or cure', () => {
-    solveMock.mockReturnValueOnce(noRoute('calm-motor-off')); // tier1 genoa
-    solveMock.mockReturnValueOnce(noRoute('calm-motor-off')); // tier1 fock
+  it('never retries on calm-without-motor — that class is a wind/mask fact the preference cannot cause or cure', () => {
+    solveMock.mockReturnValueOnce(noRoute('calm-without-motor')); // tier1 genoa
+    solveMock.mockReturnValueOnce(noRoute('calm-without-motor')); // tier1 fock
 
     const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 2.0 };
     const res = planRoute({ ...req, settings }, windGrid, deps);
@@ -144,12 +148,12 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
     expect(res).toEqual({ status: 'error', reason: 'calm-motor-off' });
   });
 
-  it('feature off (margin 0): never attempts a retry even on an unreachable tier-1 failure', () => {
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier1 genoa
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier1 fock
+  it('feature off (margin 0): never attempts a retry even on a mask-blocked tier-1 failure', () => {
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier1 genoa
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier1 fock
 
     // safetyDepthM pinned to BOAT_DRAFT_M (2.1): keeps this test isolated to
-    // the requested-gate stage — above the floor, a real 'unreachable' on
+    // the requested-gate stage — above the floor, a real 'mask-blocked' on
     // openWaterMask() (uniformly navigable at any depth, connected at any
     // gate) would otherwise fall through into #53's relaxed-gate mechanism
     // and call solve() twice more for tier 3, which is a different concern
@@ -165,10 +169,10 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
   });
 
   it("when tier 2 ALSO fails entirely, the plan-level reason is tier 2's own genoa tie-break (matching the pre-#243 rule at the requested gate)", () => {
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier1 genoa
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier1 fock
-    solveMock.mockReturnValueOnce(noRoute('calm-motor-off')); // tier2 genoa
-    solveMock.mockReturnValueOnce(noRoute('calm-motor-off')); // tier2 fock
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier1 genoa
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier1 fock
+    solveMock.mockReturnValueOnce(noRoute('calm-without-motor')); // tier2 genoa
+    solveMock.mockReturnValueOnce(noRoute('calm-without-motor')); // tier2 fock
 
     const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 2.0, safetyDepthM: 2.1 }; // at BOAT_DRAFT_M: relaxation never fires, isolates this stage
     const res = planRoute({ ...req, settings }, windGrid, deps);
@@ -184,9 +188,9 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
   // because the retry it triggered came up empty on BOTH rigs.
   it("falls back to tier 1's successful rig when tier 2 fails on BOTH rigs (does not discard a working route)", () => {
     solveMock.mockReturnValueOnce(ok(41)); // tier1 genoa: succeeds
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier1 fock: fails, triggers retry
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier2 genoa: retry fails too
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier2 fock: retry fails too
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier1 fock: fails, triggers retry
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier2 genoa: retry fails too
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier2 fock: retry fails too
 
     const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 2.0, safetyDepthM: 2.1 }; // at BOAT_DRAFT_M: relaxation never fires, isolates this stage
     const res = planRoute({ ...req, settings }, windGrid, deps);
@@ -222,8 +226,8 @@ describe('#243 planRoute tier ladder (relaxed gate: tier 3 -> tier 4)', () => {
     destination: { lat: 54.7525, lon: 10.4025 },
   };
 
-  it('retries BOTH rigs without the preference when the relaxed-gate solve fails unreachable, discarding a successful tier-3 rig', () => {
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier3 genoa
+  it('retries BOTH rigs without the preference when the relaxed-gate solve fails mask-blocked, discarding a successful tier-3 rig', () => {
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier3 genoa
     solveMock.mockReturnValueOnce(ok(999)); // tier3 fock (must NOT survive)
     solveMock.mockReturnValueOnce(ok(31)); // tier4 genoa
     solveMock.mockReturnValueOnce(ok(32)); // tier4 fock
@@ -253,9 +257,9 @@ describe('#243 planRoute tier ladder (relaxed gate: tier 3 -> tier 4)', () => {
   // both rigs must not discard tier 3's genuinely successful rig.
   it("falls back to tier 3's successful rig when tier 4 fails on BOTH rigs (does not discard a working relaxed-gate route)", () => {
     solveMock.mockReturnValueOnce(ok(51)); // tier3 genoa: succeeds
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier3 fock: fails, triggers retry
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier4 genoa: retry fails too
-    solveMock.mockReturnValueOnce(noRoute('unreachable')); // tier4 fock: retry fails too
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier3 fock: fails, triggers retry
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier4 genoa: retry fails too
+    solveMock.mockReturnValueOnce(noRoute('mask-blocked')); // tier4 fock: retry fails too
 
     const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 2.0 };
     const res = planRoute(
