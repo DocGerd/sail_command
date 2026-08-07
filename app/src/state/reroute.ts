@@ -1,7 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { ReplanError, type ReplanClient, type ReplanDeps } from './replan';
+import {
+  disposeAfterFailure,
+  ReplanError,
+  ROUTING_FAILURE_MESSAGE_KEY,
+  routingFailureKey,
+  type ReplanClient,
+  type ReplanDeps,
+} from './replan';
 import type { MsgKey } from '../i18n/dict.de';
 import {
   DEFAULT_SETTINGS,
@@ -111,8 +118,18 @@ export async function rerouteFromFix(
     // posts it with no transfer list) — the original plan's forecast
     // survives intact regardless of what the worker does.
     result = await deps.client.plan(request, plan.windGrid);
-  } catch {
-    throw new ReplanError('error.internal', 'routing worker rejected the reroute request');
+  } catch (err) {
+    // #432: mirrors replanWithVias's own plan() catch exactly — bind the
+    // error, dispose the client so a retry gets a fresh worker rather than
+    // one still grinding on the abandoned solve, and classify by
+    // RoutingError.kind instead of collapsing onto 'error.internal'. This
+    // path matters more than the replan one for a timeout: it is reached
+    // from Live view, mid-passage.
+    disposeAfterFailure(deps.client);
+    throw new ReplanError(
+      routingFailureKey(err),
+      `routing worker rejected the reroute request: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   if (result.status === 'error') {
@@ -139,8 +156,14 @@ export async function rerouteFromFix(
   const save = deps.save ?? savePlan;
   try {
     await save(rerouted);
-  } catch {
-    throw new ReplanError('error.internal', 'failed to persist the rerouted plan');
+  } catch (err) {
+    // #432: 'persist-failed', not 'error.internal' — the reroute itself
+    // SUCCEEDED and only the write failed, so the storage-specific copy is
+    // the honest one. No dispose: the worker is healthy.
+    throw new ReplanError(
+      ROUTING_FAILURE_MESSAGE_KEY['persist-failed'],
+      `failed to persist the rerouted plan: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   return rerouted;
 }

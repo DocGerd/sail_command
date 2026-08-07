@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RoutingClient, RoutingError, type RoutingFailureKind } from './workerClient';
+import {
+  PLAN_BUDGET_MS,
+  RoutingClient,
+  RoutingError,
+  type RoutingFailureKind,
+} from './workerClient';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PlanResult, type PolarTable, type Rig } from '../types';
@@ -281,6 +286,105 @@ describe('RoutingClient promise settling', () => {
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
+});
+
+// #432: the worker's plan budget and the client's liveness deadline are two
+// halves of one mechanism, and their ORDER is what makes the whole change
+// work — the solver must always reach its budget first, because it is the
+// only side that can say what it was doing. Nothing else in the suite would
+// notice if that ordering inverted.
+describe('#432 plan budget vs the client liveness deadline', () => {
+  it('ships a budgetMs strictly SHORTER than the deadline the client itself waits', async () => {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    const timeoutMs = 60_000;
+    void client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, timeoutMs).catch(() => {});
+    await Promise.resolve();
+
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+    expect(sent.budgetMs, 'the worker must be given a budget at all').toBeDefined();
+    // Poll the VALUE, not a boolean: a bare `toBeLessThan` would report
+    // "false" and nothing about the two numbers involved.
+    expect(
+      sent.budgetMs,
+      `budgetMs ${sent.budgetMs} must be under the client deadline ${timeoutMs}, or the ` +
+        `client pre-empts the solver's honest answer (the pre-#432 behaviour)`,
+    ).toBeLessThan(timeoutMs);
+    expect(sent.budgetMs).toBeGreaterThan(0);
+  });
+
+  it('derives budgetMs from the CALL’s timeoutMs, so the two can never invert', async () => {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    const budgets: (number | undefined)[] = [];
+    for (const timeoutMs of [40_000, 90_000]) {
+      void client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, timeoutMs).catch(() => {});
+      await Promise.resolve();
+      const sent = w.posted[w.posted.length - 1];
+      if (sent.type !== 'plan') throw new Error('expected a plan message');
+      budgets.push(sent.budgetMs);
+      expect(sent.budgetMs).toBeLessThan(timeoutMs);
+    }
+    // A constant read off PLAN_BUDGET_MS instead of the call's own timeout
+    // would give the same number twice — and would exceed a shortened
+    // deadline, restoring exactly the inversion this guards.
+    expect(budgets[0], 'budgetMs must track the call, not a module constant').not.toBe(budgets[1]);
+  });
+
+  it('the default deadline leaves PLAN_BUDGET_MS of room plus a real grace margin', async () => {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    // No explicit timeoutMs — exercises DEFAULT_PLAN_TIMEOUT_MS, which is not
+    // exported. The budget it yields must be exactly PLAN_BUDGET_MS, which is
+    // what pins "the default deadline == budget + grace" from the outside.
+    void client.plan(PLAN_REQUEST, uniformWindGrid(12, 0)).catch(() => {});
+    await Promise.resolve();
+
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+    expect(sent.budgetMs).toBe(PLAN_BUDGET_MS);
+  });
+
+  // PR #453 review, Minor 1: a deadline at or under the grace margin used to
+  // clamp to `budgetMs: 0`, which protocol.ts reads as an ALREADY-SPENT
+  // budget — every such plan died before expanding a ring. It must degrade to
+  // the documented fail-open unbudgeted path instead, i.e. omit the key.
+  it.each([
+    ['equal to the grace margin', 15_000],
+    ['under the grace margin', 5_000],
+  ])('omits budgetMs entirely for a deadline %s, rather than sending 0', async (_label, ms) => {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    w.emit({ type: 'ready' });
+
+    void client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), undefined, ms).catch(() => {});
+    await Promise.resolve();
+
+    const sent = w.posted[w.posted.length - 1];
+    if (sent.type !== 'plan') throw new Error('expected a plan message');
+    // hasOwnProperty, not `=== undefined`: a present-but-undefined key would
+    // satisfy the looser check while still violating
+    // exactOptionalPropertyTypes, and `budgetMs: 0` would fail neither.
+    expect(
+      Object.prototype.hasOwnProperty.call(sent, 'budgetMs'),
+      `a ${ms} ms deadline must send NO budget, not an unsatisfiable one`,
+    ).toBe(false);
+  });
+
+  it('exposes isDisposed so a singleton owner can rebuild instead of reusing a dead client', () => {
+    const w = fakeWorker();
+    const client = new RoutingClient(() => w as unknown as Worker);
+    expect(client.isDisposed).toBe(false);
+    client.dispose();
+    expect(client.isDisposed).toBe(true);
+  });
 });
 
 describe('RoutingClient.plan() timeout', () => {

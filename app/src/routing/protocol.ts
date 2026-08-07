@@ -10,7 +10,27 @@ export type WorkerRequest =
       polarGenoa: PolarTable;
       polarFock: PolarTable;
     }
-  | { type: 'plan'; id: string; request: PlanRequest; windGrid: WindGrid };
+  | {
+      type: 'plan';
+      id: string;
+      request: PlanRequest;
+      windGrid: WindGrid;
+      /**
+       * #432: wall-clock budget for the WHOLE plan (all tiers, both rigs,
+       * every waypoint segment), measured from the moment this handler
+       * starts. Defined and sent by routing/workerClient.ts so the budget
+       * and the client-side liveness deadline that backstops it have a
+       * single definition and cannot drift apart.
+       *
+       * OPTIONAL, and absent means UNBUDGETED — the same fail-open default
+       * planRoute()/solve() use. That is the right asymmetry for this
+       * particular control: it is a diagnostic/UX bound rather than a safety
+       * one, and its absence degrades exactly to the pre-#432 shipped
+       * behaviour (the client deadline still bounds the wait), never to
+       * something unbounded that is bounded today.
+       */
+      budgetMs?: number;
+    };
 
 export type WorkerResponse =
   | { type: 'ready' }
@@ -39,6 +59,20 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
         return;
       }
       if (!state) throw new Error('plan requested before init');
+      // #432: ONE deadline object for the whole plan, created here — the
+      // worker request handler is the only place in the routing stack with a
+      // human actually waiting on the answer, which is why the budget is
+      // imposed here rather than defaulted inside planRoute(). Keeping
+      // planRoute() pure is what stops a wall-clock bound from deciding the
+      // outcome of a vitest run whose speed swings with the runner
+      // (CLAUDE.md: ~2.1x on CI, and a separate 8x multiplier under coverage
+      // for solver-heavy work).
+      const budgetMs = req.budgetMs;
+      const startedAtMs = Date.now();
+      const deadline =
+        budgetMs === undefined
+          ? undefined
+          : { expired: () => Date.now() - startedAtMs >= budgetMs };
       const result = planRoute(
         req.request,
         req.windGrid,
@@ -59,6 +93,7 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
             done: p.done,
             total: p.total,
           }),
+        deadline,
       );
       post({ type: 'result', id: req.id, result });
     } catch (err) {

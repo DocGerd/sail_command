@@ -37,10 +37,24 @@ import type { SolveFailureCause } from './isochrone';
 // depthRelaxation — "might a SHALLOWER safety gate connect a mask that the
 // requested gate does not?" Only a mask-level block can be answered by moving
 // the depth gate; a calm forecast or an exhausted horizon is unchanged by it.
+//
+// #432 budget-exhausted — "the plan's wall-clock budget ran out mid-search".
+// FALSE for both gates, and this table is the ONLY thing pinning that:
+// planRoute.ts deliberately does not carry a redundant
+// `if (cause === 'budget-exhausted') return false;` in either predicate,
+// because with the `===` lists as written such a statement could not be
+// reddened by any mutation and would be an unfalsifiable guard (PR #410).
+// The rows below ARE falsifiable — widening either list to admit the cause
+// reds them. Hand-derived intent: both gates exist to answer "would spending
+// MORE solver time a different way succeed?", and the one thing known here
+// is that there is no more time to spend; every retried solve would abort at
+// its own first ring, and the relaxation gate would additionally run
+// findRelaxedDepthM's BFS probes past a deadline that has already passed.
 const EXPECTED: Record<SolveFailureCause, { comfortRetry: boolean; depthRelaxation: boolean }> = {
   'mask-blocked': { comfortRetry: true, depthRelaxation: true },
   'horizon-exceeded': { comfortRetry: true, depthRelaxation: false },
   'calm-without-motor': { comfortRetry: false, depthRelaxation: false },
+  'budget-exhausted': { comfortRetry: false, depthRelaxation: false },
 };
 
 // The user-facing label each cause carries today. Pinned so that a change to
@@ -51,6 +65,14 @@ const EXPECTED_LABELS: Record<SolveFailureCause, string> = {
   'mask-blocked': 'unreachable',
   'horizon-exceeded': 'beyond-horizon',
   'calm-without-motor': 'calm-motor-off',
+  // #432: deliberately spelled UNLIKE its cause ('budget-exhausted') — the
+  // two vocabularies must stay greppable apart, and the near-synonymous
+  // spellings of the other three are part of why they were conflated in the
+  // first place. This row also keeps the structural guard below honest: the
+  // label appears in planRoute.ts exactly once, inside
+  // NO_ROUTE_LABEL_OF_CAUSE, and the pre-relaxation budget check nearby
+  // reaches it through the CAUSE key rather than by naming the string.
+  'budget-exhausted': 'search-budget-exceeded',
 };
 
 describe('#282: retry gates read an internal cause, never the user-facing reason', () => {
@@ -214,7 +236,13 @@ describe('#282 structural guard: the guard\u2019s own primitives', () => {
     expect([...SOLVER_CAUSES].sort(), '#282 guard: SOLVER_CAUSES lost a cause').toEqual(
       Object.keys(EXPECTED).sort(),
     );
-    expect(SOLVER_CAUSES.length).toBe(3);
+    // #432: 3 -> 4 for 'budget-exhausted'. Deliberately still a hand-written
+    // LITERAL and not `Object.keys(EXPECTED).length`: SOLVER_CAUSES IS
+    // `Object.keys(EXPECTED)`, so the comparison just above is a tautology and
+    // this literal is the only half of the row carrying information — it is
+    // what catches a cause being dropped from the type and the table TOGETHER.
+    // Deriving it would make the whole row vacuous.
+    expect(SOLVER_CAUSES.length, '#282 guard: the cause union should have 4 members').toBe(4);
   });
 
   it("the label detector recognises all three of TypeScript's quote forms", () => {

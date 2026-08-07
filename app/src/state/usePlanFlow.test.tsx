@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePlanFlow } from './usePlanFlow';
 import { useViaReplan } from './replan';
 import { AppStateProvider, useActivePlan } from './AppState';
-import { RoutingClient, RoutingError, type RoutingFailureKind } from '../routing/workerClient';
+import {
+  PLAN_BUDGET_MS,
+  RoutingClient,
+  RoutingError,
+  type RoutingFailureKind,
+} from '../routing/workerClient';
 import type { WorkerRequest, WorkerResponse } from '../routing/protocol';
 import { OpenMeteoError, type OpenMeteoErrorKind } from '../services/openMeteo';
 import * as assetsModule from '../services/assets';
@@ -627,6 +632,81 @@ describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  // #432 part (b): the two halves of the replan/reroute recovery, driven
+  // together. Neither half works alone — disposing without ensureClient's
+  // isDisposed check would hand the DEAD client back on the retry and turn
+  // every subsequent replan into 'error.routingInterrupted', which is why
+  // this test asserts the retry actually reaches a fresh worker rather than
+  // just that dispose() fired.
+  it('a timed-out via-replan disposes its client, and the RETRY is given a fresh worker', async () => {
+    vi.useFakeTimers();
+    try {
+      const workers = [fakeWorker(), fakeWorker()];
+      let made = 0;
+      const makeClient = vi.fn(() => new RoutingClient(() => workers[made++] as unknown as Worker));
+      vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+      // Stubbed save: the successful retry below would otherwise persist
+      // through fake-indexeddb, which needs REAL timers to settle — under
+      // vi.useFakeTimers() it never resolves and poisons the shared DB
+      // connection for every later test file (measured: 11 unrelated
+      // failures, all "Hook timed out" in a later describe's beforeEach).
+      // Persistence itself is covered by replan.test.ts; this test is about
+      // client lifecycle.
+      const save = vi.fn().mockResolvedValue(undefined);
+      const { result } = renderHook(
+        () => {
+          const flow = usePlanFlow({ makeClient });
+          const viaReplan = useViaReplan(flow.ensureClient, { save });
+          return { flow, viaReplan };
+        },
+        { wrapper: AppStateProvider },
+      );
+
+      const loadedPlan: Plan = {
+        id: 'loaded-timeout',
+        name: 'Loaded from PlansList',
+        createdAtMs: REQ.departureMs - 3_600_000,
+        request: { ...REQ, viaPoints: [] },
+        windGrid: uniformWindGrid(12, 0),
+        result: OK_RESULT,
+      };
+
+      // First replan: never answered. The client's own liveness deadline
+      // fires (this fake worker has no budget of its own to reach first).
+      await act(async () => {
+        const p = result.current.viaReplan.replace(loadedPlan, [{ lat: 54.76, lon: 10.15 }]);
+        await vi.advanceTimersByTimeAsync(0);
+        findPosted(workers[0].posted, 'plan');
+        await vi.advanceTimersByTimeAsync(PLAN_BUDGET_MS + 60_000);
+        await p;
+      });
+
+      expect(result.current.viaReplan.state.error, 'a timeout must not read as generic').toBe(
+        'error.routingTimeout',
+      );
+      expect(workers[0].terminate, 'the abandoned worker must be terminated').toHaveBeenCalled();
+
+      // The retry. It must build a SECOND client rather than reuse the
+      // disposed one — the whole point of exposing isDisposed.
+      await act(async () => {
+        const p = result.current.viaReplan.replace(loadedPlan, [{ lat: 54.76, lon: 10.15 }]);
+        await vi.advanceTimersByTimeAsync(0);
+        const planMsg = findPosted(workers[1].posted, 'plan');
+        workers[1].emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+        await p;
+      });
+
+      expect(makeClient, 'the retry must build a fresh client').toHaveBeenCalledTimes(2);
+      expect(
+        result.current.viaReplan.state.error,
+        'the retry must succeed, not report the disposed client',
+      ).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a via-replan works with no prior run() in this session — ensureClient lazily creates the client on demand', async () => {

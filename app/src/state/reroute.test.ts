@@ -3,6 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloneWindGrid, rerouteFromFix, useLiveReroute } from './reroute';
 import { type ReplanClient } from './replan';
+import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
+import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
 import { uniformWindGrid } from '../test/fixtures';
@@ -321,7 +323,28 @@ describe('rerouteFromFix', () => {
     },
   );
 
-  it('maps a rejected client.plan() (worker fatal) to ReplanError(error.internal)', async () => {
+  // #432: mirrors replan.test.ts's table. Same bare-`catch {}` defect, same
+  // fix, and this is the path that matters most for a timeout — it is reached
+  // from Live view, mid-passage. Expected keys hand-written per kind, not read
+  // off ROUTING_FAILURE_MESSAGE_KEY.
+  it.each<[RoutingFailureKind, MsgKey]>([
+    ['timeout', 'error.routingTimeout'],
+    ['worker-fatal', 'error.routingFailed'],
+    ['worker-error', 'error.routingCrashed'],
+    ['messageerror', 'error.routingMessageError'],
+    ['disposed', 'error.routingInterrupted'],
+  ])('preserves RoutingError kind %s as ReplanError(%s)', async (kind, messageKey) => {
+    const plan = makePlan();
+    const client: ReplanClient = {
+      plan: vi.fn().mockRejectedValue(new RoutingError(kind, `simulated ${kind}`)),
+    };
+
+    await expect(rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', { client })).rejects.toMatchObject({
+      messageKey,
+    });
+  });
+
+  it('falls back to error.internal for a throw that is not a RoutingError', async () => {
     const plan = makePlan();
     const client: ReplanClient = { plan: vi.fn().mockRejectedValue(new Error('worker crashed')) };
 
@@ -330,14 +353,40 @@ describe('rerouteFromFix', () => {
     });
   });
 
-  it('maps a rejected save() to ReplanError(error.internal)', async () => {
+  it('disposes the client after a rejected plan(), so a retry gets a fresh worker', async () => {
     const plan = makePlan();
-    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const dispose = vi.fn();
+    const client: ReplanClient = {
+      plan: vi.fn().mockRejectedValue(new RoutingError('timeout', 'routing timed out')),
+      dispose,
+    };
+
+    await expect(rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', { client })).rejects.toBeDefined();
+    expect(dispose, 'a timed-out reroute must dispose its client').toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT dispose the client on a successful reroute', async () => {
+    const plan = makePlan();
+    const dispose = vi.fn();
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT), dispose };
+
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it('maps a rejected save() to ReplanError(error.planSaveFailed), and leaves the client alone', async () => {
+    const plan = makePlan();
+    const dispose = vi.fn();
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT), dispose };
     const save = vi.fn().mockRejectedValue(new Error('idb full'));
 
     await expect(
       rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', { client, save }),
-    ).rejects.toMatchObject({ messageKey: 'error.internal' });
+    ).rejects.toMatchObject({ messageKey: 'error.planSaveFailed' });
+    expect(dispose).not.toHaveBeenCalled();
   });
 });
 

@@ -2,10 +2,10 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { fetchWindGrid, OpenMeteoError } from '../services/openMeteo';
 import { savePlan } from '../services/db';
 import { loadRoutingAssets } from '../services/assets';
-import { RoutingClient, RoutingError, type RoutingFailureKind } from '../routing/workerClient';
+import { RoutingClient } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { dedupeViaPoints } from './replan';
+import { dedupeViaPoints, ROUTING_FAILURE_MESSAGE_KEY, routingFailureKey } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Plan, PlanRequest, PlanResult, Rig, Settings, WindGrid } from '../types';
 
@@ -33,49 +33,10 @@ export interface PlanFlowDeps {
   save?: typeof savePlan;
 }
 
-// #433/#435 spike §12: the presentation-boundary classification for every
-// routing-side failure workerClient.ts's RoutingClient can throw
-// (RoutingFailureKind), plus the three causes that never reach
-// workerClient.ts at all — ensureClient() returning null (asset/worker init
-// failure, below), a post-SUCCESS savePlan() failure, and a fetchWind()
-// rejection that mapWindError can't otherwise classify. Each of these used
-// to collapse onto the single 'error.internal' key (#433); each now gets its
-// own key so the banner (App.tsx) and a future diagnostics record (#435,
-// not built here) can tell them apart. The remedy per key genuinely
-// differs — see App.tsx's RETRY_MAY_HELP_KEYS and CLAUDE.md's #433 bullet
-// for the full per-path reasoning: a retry hands the user a FRESH worker
-// (ensureClient/run() below null both client refs before erroring out),
-// which helps a crashed worker or an undeserializable message, but cannot
-// change the outcome of an input-deterministic failure (the same solve
-// hits the same timeout or throw again).
-// #433 fix-wave (review Minor 1): 'worker-fatal' bundles TWO different
-// causes protocol.ts's catch(err) cannot tell apart — a deterministic
-// planRoute() throw (retry genuinely can't help, same inputs reproduce it)
-// and a resource-exhaustion throw (retry CAN help, since dispose() frees the
-// failed worker's whole heap before the retry builds a fresh one; CLAUDE.md's
-// #433 bullet). `err` at protocol.ts:60 is only ever `unknown`/`Error` — no
-// field distinguishes "ran out of memory" from "hit a logic bug", and
-// sniffing `err.constructor`/`instanceof RangeError` would be exactly as
-// unreliable as matching on `.message` (a RangeError can just as easily come
-// from an ordinary bounds bug), which is the discriminator-fabrication this
-// file's own header comment warns against. So the two stay ONE kind, and
-// error.routingFailed's copy hedges rather than asserting retry is futile —
-// still under the safe direction (no retry BUTTON offered either,
-// RETRY_MAY_HELP_KEYS in App.tsx), but honest about the possibility a retry
-// helps.
-const ROUTING_FAILURE_MESSAGE_KEY: Record<
-  RoutingFailureKind | 'worker-init' | 'persist-failed' | 'wind-unclassified',
-  MsgKey
-> = {
-  timeout: 'error.routingTimeout',
-  'worker-fatal': 'error.routingFailed',
-  'worker-error': 'error.routingCrashed',
-  messageerror: 'error.routingMessageError',
-  disposed: 'error.routingInterrupted',
-  'worker-init': 'error.workerInit',
-  'persist-failed': 'error.planSaveFailed',
-  'wind-unclassified': 'error.windUnknown',
-};
+// #432: ROUTING_FAILURE_MESSAGE_KEY (and its `routingFailureKey` accessor)
+// moved to state/replan.ts — all three paths that can observe a RoutingError
+// share it now, not just this one. Its full rationale, including why
+// 'worker-fatal' deliberately bundles two causes, lives with the table.
 
 function mapWindError(err: unknown): MsgKey {
   if (err instanceof OpenMeteoError) {
@@ -160,6 +121,19 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // rationale and the failure-recovery contract.
   const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
     try {
+      // #432: the singleton may have been disposed by a caller that cannot
+      // reach these refs — state/replan.ts's and state/reroute.ts's plan()
+      // catches now tear the client down so a retry is not handed a worker
+      // still grinding on an abandoned solve. Without this check that
+      // teardown would be strictly HARMFUL: `clientRef.current` stays
+      // truthy and `readyRef.current` stays resolved, so the next call would
+      // return the dead client and every subsequent replan would fail with
+      // 'disposed' -> error.routingInterrupted. The dispose and this check
+      // are one fix in two halves, not two independent improvements.
+      if (clientRef.current?.isDisposed) {
+        clientRef.current = null;
+        readyRef.current = null;
+      }
       if (!clientRef.current) {
         const assets = await loadRoutingAssets();
         clientRef.current = makeClient();
@@ -288,13 +262,12 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         // workerClient.ts) — classify by its typed `kind`, NEVER by matching
         // err.message (that would make a user-adjacent label a control
         // input; see workerClient.ts's own RoutingFailureKind comment on the
-        // #282/#411 precedent this avoids repeating). The plain-Error
-        // fallback mirrors replan.ts's/reroute.ts's own
-        // `instanceof ReplanError` pattern for a genuinely unexpected throw
-        // shape.
-        const messageKey =
-          err instanceof RoutingError ? ROUTING_FAILURE_MESSAGE_KEY[err.kind] : 'error.internal';
-        transition({ phase: 'error', messageKey });
+        // #282/#411 precedent this avoids repeating). #432 extracted the
+        // classification into replan.ts's shared `routingFailureKey`, which
+        // this path, replanWithVias() and rerouteFromFix() now all use — one
+        // classification, three call sites, instead of one classification
+        // and two bare `catch {}`s.
+        transition({ phase: 'error', messageKey: routingFailureKey(err) });
         return;
       }
 
