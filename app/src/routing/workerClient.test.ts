@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RoutingClient } from './workerClient';
+import { RoutingClient, RoutingError, type RoutingFailureKind } from './workerClient';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PlanResult, type PolarTable, type Rig } from '../types';
@@ -63,6 +63,22 @@ const PLAN_REQUEST = {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
+// #433: every RoutingClient failure site is a RoutingError carrying a typed
+// `kind` — this asserts BOTH the kind and the message pattern in one place,
+// so a test reduced to "some error was thrown" (which discriminates
+// nothing) can't creep back in.
+async function expectRoutingError(
+  p: Promise<unknown>,
+  kind: RoutingFailureKind,
+  messagePattern: RegExp,
+): Promise<void> {
+  const err = await p.catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(RoutingError);
+  const routingErr = err as RoutingError;
+  expect(routingErr.kind, `expected kind '${kind}', got '${routingErr.kind}'`).toBe(kind);
+  expect(routingErr.message).toMatch(messagePattern);
+}
+
 describe('RoutingClient promise settling', () => {
   it(
     'dispose() rejects an in-flight plan',
@@ -73,7 +89,7 @@ describe('RoutingClient promise settling', () => {
       const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
       await flush();
       client.dispose();
-      await expect(p).rejects.toThrow(/disposed/);
+      await expectRoutingError(p, 'disposed', /disposed/);
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
@@ -87,7 +103,7 @@ describe('RoutingClient promise settling', () => {
       const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
       await flush();
       w.emit({ type: 'fatal', id: null, message: 'mask corrupted' });
-      await expect(p).rejects.toThrow(/mask corrupted/);
+      await expectRoutingError(p, 'worker-fatal', /mask corrupted/);
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
@@ -99,7 +115,7 @@ describe('RoutingClient promise settling', () => {
       const client = new RoutingClient(() => w as unknown as Worker);
       const p = client.init(INIT_ASSETS);
       w.emit({ type: 'fatal', id: null, message: 'bad mask length' });
-      await expect(p).rejects.toThrow(/bad mask length/);
+      await expectRoutingError(p, 'worker-fatal', /bad mask length/);
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
@@ -111,7 +127,11 @@ describe('RoutingClient promise settling', () => {
       const client = new RoutingClient(() => w as unknown as Worker);
       w.emit({ type: 'ready' });
       client.dispose();
-      await expect(client.plan(PLAN_REQUEST, uniformWindGrid(12, 0))).rejects.toThrow(/disposed/);
+      await expectRoutingError(
+        client.plan(PLAN_REQUEST, uniformWindGrid(12, 0)),
+        'disposed',
+        /disposed/,
+      );
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
@@ -154,7 +174,7 @@ describe('RoutingClient promise settling', () => {
       w.emit({ type: 'result', id: sent1.id, result });
       w.emit({ type: 'fatal', id: sent2.id, message: 'segment blocked' });
       await expect(p1).resolves.toBe(result);
-      await expect(p2).rejects.toThrow(/segment blocked/);
+      await expectRoutingError(p2, 'worker-fatal', /segment blocked/);
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
@@ -199,7 +219,65 @@ describe('RoutingClient promise settling', () => {
       const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
       await flush();
       w.onerror?.(new ErrorEvent('error', { message: 'worker crashed' }));
-      await expect(p).rejects.toThrow(/worker crashed/);
+      await expectRoutingError(p, 'worker-error', /worker crashed/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  // #433: onmessageerror (kind 'messageerror') had no dedicated test before —
+  // only onerror (above) and the various 'fatal' shapes were covered.
+  it(
+    'worker.onmessageerror fired by the runtime rejects an in-flight plan',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      w.onmessageerror?.({} as MessageEvent);
+      await expectRoutingError(p, 'messageerror', /could not be deserialized/);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  // #433: protocol.ts's fatal.stack (populated at the real throw site inside
+  // the worker) must survive into the client-side RoutingError, replacing
+  // the default Error.stack a bare `new RoutingError(...)` would otherwise
+  // carry (which would only ever point at workerClient.ts's own
+  // construction site, not the real failure).
+  it(
+    "a fatal message's stack replaces the default RoutingError construction-site stack",
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      const sent = w.posted[w.posted.length - 1];
+      if (sent.type !== 'plan') throw new Error('expected a plan message');
+      const workerStack = 'Error: boom\n    at planRoute (planRoute.ts:123:4)';
+      w.emit({ type: 'fatal', id: sent.id, message: 'boom', stack: workerStack });
+      const err = await p.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RoutingError);
+      expect((err as RoutingError).stack).toBe(workerStack);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'a fatal message with no stack still produces a usable (non-empty) RoutingError.stack',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0));
+      await flush();
+      const sent = w.posted[w.posted.length - 1];
+      if (sent.type !== 'plan') throw new Error('expected a plan message');
+      w.emit({ type: 'fatal', id: sent.id, message: 'boom' });
+      const err = await p.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RoutingError);
+      expect((err as RoutingError).stack).toBeTruthy();
     },
     WORKER_CLIENT_TEST_TIMEOUT_MS,
   );
@@ -224,7 +302,11 @@ describe('RoutingClient.plan() timeout', () => {
 
     await vi.advanceTimersByTimeAsync(5_000);
     const err = await outcome;
-    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(RoutingError);
+    expect(
+      (err as RoutingError).kind,
+      `expected kind 'timeout', got '${(err as RoutingError).kind}'`,
+    ).toBe('timeout');
     expect((err as Error).message).toMatch(/routing timed out/);
 
     // The worker eventually replies anyway — must not throw or otherwise

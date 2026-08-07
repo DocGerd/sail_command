@@ -1,7 +1,12 @@
 import 'fake-indexeddb/auto';
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import App, { planErrorBannerKind, planErrorGroup, toPlannerStatus } from './App';
+import App, {
+  planErrorBannerKind,
+  planErrorGroup,
+  planErrorRetryMayHelp,
+  toPlannerStatus,
+} from './App';
 import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
 import { en } from './i18n/dict.en';
@@ -1371,6 +1376,66 @@ describe('planErrorGroup / planErrorBannerKind (§3.5 error presentation)', () =
   it('classifies error.internal as an unexpected failure with the assertive error paint', () => {
     expect(planErrorGroup('error.internal')).toBe('unexpected');
     expect(planErrorBannerKind('error.internal')).toBe('error');
+  });
+
+  // #433: the eight causes that used to collapse onto error.internal all
+  // still classify as 'unexpected' (assertive paint) for banner PRESENTATION
+  // purposes — a separate question from whether "Try again" can help
+  // (planErrorRetryMayHelp, tested below). Literal list, not derived from
+  // ROUTING_FAILURE_MESSAGE_KEY, per this file's own mutation-check note.
+  it('classifies every new #433 routing-failure key as an unexpected failure too', () => {
+    for (const key of [
+      'error.workerInit',
+      'error.routingTimeout',
+      'error.routingFailed',
+      'error.routingCrashed',
+      'error.routingMessageError',
+      'error.routingInterrupted',
+      'error.planSaveFailed',
+      'error.windUnknown',
+    ] as const) {
+      expect(planErrorGroup(key)).toBe('unexpected');
+      expect(planErrorBannerKind(key)).toBe('error');
+    }
+  });
+});
+
+// #433: separate from planErrorGroup/planErrorBannerKind above — whether a
+// "Try again" retry can plausibly change the outcome. Literals pinned by
+// hand (mutation-check, #50) — NOT read back from RETRY_MAY_HELP_KEYS under
+// test, so a mutation dropping/adding a key from that set is actually
+// caught rather than trivially agreeing with itself.
+describe('planErrorRetryMayHelp (#433: per-cause retry eligibility)', () => {
+  it('retry helps: the three pre-existing network causes, unchanged, plus every #433 cause a fresh worker or a re-fetch can fix', () => {
+    for (const key of [
+      'error.offline',
+      'error.rateLimited',
+      'error.windService',
+      'error.windUnknown',
+      'error.routingCrashed',
+      'error.routingMessageError',
+      'error.routingInterrupted',
+      'error.planSaveFailed',
+    ] as const) {
+      expect(planErrorRetryMayHelp(key), `expected retry to help for ${key}`).toBe(true);
+    }
+  });
+
+  it('retry does NOT help: no-route copy already states the next step, and the input-deterministic / reload-only #433 causes reproduce the identical failure', () => {
+    for (const key of [
+      'error.internal',
+      'error.workerInit',
+      'error.routingTimeout',
+      'error.routingFailed',
+      'error.noRoute.unreachable',
+      'error.noRoute.beyondHorizon',
+      'error.noRoute.calmMotorOff',
+      'error.noRoute.snapOrigin',
+      'error.noRoute.snapDestination',
+      'error.noRoute.snapVia',
+    ] as const) {
+      expect(planErrorRetryMayHelp(key), `expected retry NOT to help for ${key}`).toBe(false);
+    }
   });
 });
 
