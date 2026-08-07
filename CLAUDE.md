@@ -1419,12 +1419,12 @@ deviate from it.
   **The CORRECTION is the highest-risk moment, not the original** — session
   30's PR #434 ran the class repeatedly within one PR, each instance inside
   the fix for the previous one: a false MECHANISM inside a correction of a
-  misleading claim; an unmeasured magnitude plus a citation to a figure that
-  had ALREADY BEEN RETRACTED as unreproducible, inside the fix for that same
+  misleading claim; an unmeasured magnitude plus a citation to a figure
+  ALREADY REJECTED IN REVIEW as unreproducible, inside the fix for that same
   unreproducible magnitude; an over-broad "helps" inside the fix for an
-  over-broad count. (Cite the retracted-figure form precisely: "cited a
-  measurement that did not exist" is a fabrication nobody commits, while
-  citing one already retracted is the error people actually make.) A
+  over-broad count. (State that middle form precisely: "cited a measurement
+  that did not exist" is a fabrication nobody commits, while citing one
+  already known to be bad is the error people actually make.) A
   replacement arrives sounding authoritative and nobody re-attacks it as hard
   as the original, so brief the reviewer at the REPLACEMENT TEXT specifically
   and expect a further instance rather than assuming the last fix stopped it.
