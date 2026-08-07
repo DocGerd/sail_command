@@ -205,10 +205,24 @@ test('true offline reload: precached app shell renders and a saved plan reloads 
     // assertion, not just "button disabled because nothing is picked yet".
     // (#113 restored the Routen tab above, so switch to Planen first.)
     await page.getByRole('tab', { name: 'Planen' }).click();
-    await page.getByRole('region', { name: 'Start' }).getByRole('combobox').fill('Langballigau');
-    await page.getByRole('region', { name: 'Start' }).getByRole('option').first().click();
-    await page.getByRole('region', { name: 'Ziel' }).getByRole('combobox').fill('Sønderborg');
-    await page.getByRole('region', { name: 'Ziel' }).getByRole('option').first().click();
+    // #301/#443: the #113 restore just above re-activates the saved plan
+    // (offline, purely local replay), and the #301 sync effect (App.tsx)
+    // then prefills origin/destination from THAT plan's own stored request —
+    // this spec is the one flow in the whole e2e suite that reaches a
+    // picker with a plan already active, everywhere else a fresh page.goto()
+    // precedes the first pick. Both endpoint sections therefore render the
+    // COLLAPSED "selected" row with an "Ändern" (Change) button, not the
+    // search combobox (a harbor selection unmounts HarborPicker — its own
+    // comment on `onBlur` says so). Click Change to reopen each combobox
+    // before picking new endpoints — a real user action, not a wait.
+    const startSection = page.getByRole('region', { name: 'Start' });
+    const zielSection = page.getByRole('region', { name: 'Ziel' });
+    await startSection.getByRole('button', { name: 'Ändern' }).click();
+    await startSection.getByRole('combobox').fill('Langballigau');
+    await startSection.getByRole('option').first().click();
+    await zielSection.getByRole('button', { name: 'Ändern' }).click();
+    await zielSection.getByRole('combobox').fill('Sønderborg');
+    await zielSection.getByRole('option').first().click();
     const offlinePlanButton = page.getByRole('button', { name: 'Route planen' });
     await expect(offlinePlanButton).toBeDisabled();
     await expect(

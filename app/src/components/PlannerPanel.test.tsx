@@ -118,6 +118,7 @@ interface Overrides {
   planning?: PlannerStatus;
   plan?: Plan | null;
   rig?: Rig | null;
+  formDirty?: boolean;
   onViewDetails?: () => void;
 }
 
@@ -145,6 +146,7 @@ function baseProps(overrides: Overrides = {}) {
     planning: { phase: 'idle' } as PlannerStatus,
     plan: null as Plan | null,
     rig: null as Rig | null,
+    formDirty: false,
     onViewDetails: vi.fn(),
     ...overrides,
   };
@@ -649,6 +651,102 @@ describe('PlannerPanel', () => {
       // Seeded from the mount plan id, so re-entering the tab with an existing
       // result stays quiet — the region is empty, not restating the summary.
       expect(screen.getByRole('status').textContent).toBe('');
+    });
+  });
+
+  // #301: the dirty-form indicator — a second Chip in the Ergebnis card plus
+  // the same sentence folded into the panel's ONE existing live region.
+  describe('dirty-form indicator (#301)', () => {
+    it('renders a second Chip when formDirty && summary', () => {
+      renderPanel({ plan: makePlan(), rig: 'genoa', formDirty: true });
+      // Scoped to the Chip's <span> — the identical sentence is ALSO folded
+      // into the sr-only status <p> below (see the live-region tests further
+      // down), so an unscoped query would match two elements.
+      expect(
+        screen.getByText(en['planner.result.stale'], { selector: 'span' }),
+      ).toBeInTheDocument();
+      // Beside the existing faster-rig chip, not replacing it.
+      expect(screen.getByText('Faster: Genoa')).toBeInTheDocument();
+    });
+
+    it('does NOT render the stale chip when formDirty is false', () => {
+      renderPanel({ plan: makePlan(), rig: 'genoa', formDirty: false });
+      expect(screen.queryByText(en['planner.result.stale'])).not.toBeInTheDocument();
+    });
+
+    it('does NOT render the stale chip when formDirty is true but there is no result yet (no plan)', () => {
+      renderPanel({ plan: null, rig: null, formDirty: true });
+      expect(screen.queryByText(en['planner.result.stale'])).not.toBeInTheDocument();
+    });
+
+    it('folds the same sentence into the panel status region, and there is still exactly ONE role="status" region', () => {
+      renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      // No fresh announcement fired on this mount (seeded from the mount plan
+      // id, per the test above) — so the status text is the stale sentence
+      // ALONE, with no leading space from an empty announcement half.
+      expect(screen.getByRole('status').textContent).toBe(en['planner.result.stale']);
+    });
+
+    it('joins a genuine completion announcement AND the stale sentence into the one region, space-separated', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const { rerender } = render(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+          />
+        </I18nProvider>,
+      );
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'idle' },
+              plan: makePlan(),
+              rig: 'genoa',
+              formDirty: true,
+            })}
+          />
+        </I18nProvider>,
+      );
+      const status = screen.getByRole('status');
+      const text = status.textContent ?? '';
+      expect(text).toContain('Route calculated');
+      expect(text.endsWith(en['planner.result.stale'])).toBe(true);
+      // Exactly ONE space joins the two halves — not glued together (zero
+      // spaces) and not a double space (would read as two run-on sentences).
+      const beforeSuffix = text.slice(0, text.length - en['planner.result.stale'].length);
+      expect(beforeSuffix.endsWith(' ')).toBe(true);
+      expect(beforeSuffix.endsWith('  ')).toBe(false);
+    });
+
+    it('does NOT change the status text when formDirty flips false→false (only the boolean flip drives a change)', () => {
+      const { rerender } = render(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'idle' },
+              plan: makePlan(),
+              rig: 'genoa',
+              formDirty: false,
+            })}
+          />
+        </I18nProvider>,
+      );
+      const before = screen.getByRole('status').textContent;
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'idle' },
+              plan: makePlan(),
+              rig: 'genoa',
+              formDirty: false,
+            })}
+          />
+        </I18nProvider>,
+      );
+      expect(screen.getByRole('status').textContent).toBe(before);
     });
   });
 

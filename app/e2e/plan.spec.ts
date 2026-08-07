@@ -189,3 +189,71 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     server.kill();
   }
 });
+
+// #301: re-plan from the Plan view. Loading/planning prefills the form from
+// the active plan; editing an input afterward (here: departure) marks the
+// displayed route stale (a second Chip in the Ergebnis card); re-running
+// produces a NEW plan (never replaces the original) using LIVE settings.
+// Reuses the SAME Langballigau -> Sønderborg pair and wind fixture as the
+// happy-path test above for deterministic routing, but stays narrowly scoped
+// to the #301 flow rather than re-covering attribution/via/live-view.
+test('re-plan from the Plan view: editing after a completed plan shows the stale chip, and re-running adds a second saved plan', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+    await page.getByRole('tab', { name: 'Planen' }).click();
+
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    await originSection.getByRole('option').first().click();
+
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    await destSection.getByRole('option').first().click();
+
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    // Ergebnis card present, and NOT stale immediately after a completed run
+    // — the form still matches the plan it just produced.
+    const resultCard = page.locator('.planner-result');
+    await expect(resultCard).toBeVisible();
+    const staleChip = resultCard.getByText('Zeigt die zuvor berechnete Route', { exact: false });
+    await expect(staleChip).toHaveCount(0);
+
+    // Edit the departure — the ONE form input this flow touches — to a value
+    // a few hours after whatever the form currently shows (still comfortably
+    // inside the datetime-local's [now, now + forecast horizon] bounds).
+    const departureInput = page.getByLabel('Abfahrt');
+    const originalValue = await departureInput.inputValue();
+    const [datePart, timePart] = originalValue.split('T');
+    const original = new Date(`${datePart}T${timePart}:00`);
+    const edited = new Date(original.getTime() + 3 * 3_600_000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const editedValue = `${edited.getFullYear()}-${pad(edited.getMonth() + 1)}-${pad(edited.getDate())}T${pad(edited.getHours())}:${pad(edited.getMinutes())}`;
+    await departureInput.fill(editedValue);
+
+    // The chip appears (folded into the SAME Ergebnis card the faster-rig
+    // chip already lives in) once the form has drifted from the displayed
+    // route — state signal, not a fixed wait.
+    await expect(staleChip).toBeVisible();
+    await expect(resultCard.locator('.chip-faster-rig')).toBeVisible();
+
+    // Re-run: a NEW plan, not a replacement (#301 decision (a)) — using LIVE
+    // settings, which is what "Route planen" always did (#301 decision (b)).
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    // Freshly completed: no longer stale against the form that produced it.
+    await expect(staleChip).toHaveCount(0);
+
+    // Two distinct saved plans now exist — the original stayed, untouched.
+    await page.getByRole('tab', { name: 'Routen' }).click();
+    await expect(page.locator('.plans-list-row')).toHaveCount(2);
+  } finally {
+    server.kill();
+  }
+});

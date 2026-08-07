@@ -14,7 +14,7 @@ import { fetchWindGrid, OpenMeteoError } from './services/openMeteo';
 import { __resetDbForTests } from './services/db';
 import * as db from './services/db';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from './test/fixtures';
-import { formatLatLon, formatNm } from './lib/format';
+import { formatLatLon, formatNm, toLocalInputValue } from './lib/format';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -1592,5 +1592,299 @@ describe('session restore (#113)', () => {
     } finally {
       delete (window.navigator as { geolocation?: unknown }).geolocation;
     }
+  });
+});
+
+// #301: prefills the Plan-view form from whatever plan just became active —
+// one derivation keyed on plan.id (+ harborsLoaded), covering every setPlan
+// caller (PlansList's Load here; session restore below) rather than patching
+// call sites individually. FLENSBURG (defined near the top of this file) is
+// the curated harbor these tests snap the plan's origin to, so a successful
+// sync shows its NAME, not a raw lat/lon.
+describe('plan-form sync (#301)', () => {
+  const PREFILL_ORIGIN = FLENSBURG.snap;
+  const PREFILL_DEST = { lat: 55.05, lon: 10.9 }; // no curated harbor there — stays a tap point
+
+  function prefillPlan(id: string, overrides: Partial<PlanRequest> = {}): Plan {
+    const now = Date.now();
+    return {
+      id,
+      name: 'Prefill Plan',
+      createdAtMs: now - 60_000,
+      request: {
+        origin: PREFILL_ORIGIN,
+        destination: PREFILL_DEST,
+        viaPoints: [],
+        originHarborId: FLENSBURG.id,
+        destinationHarborId: null,
+        departureMs: now + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+        ...overrides,
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
+      result: okPlanResult(99),
+    };
+  }
+
+  it('loading a plan from PlansList prefills the Plan-view form (origin/destination/departure)', async () => {
+    const plan = prefillPlan('prefill-basic');
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    expect(
+      within(destSection).getByText(formatLatLon(PREFILL_DEST), { selector: 'p' }),
+    ).toBeInTheDocument();
+
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs));
+  });
+
+  it('a via-replan (same plan id, new object) does not clobber a departure the user edited after loading', async () => {
+    const plan = prefillPlan('prefill-via-clobber', { originHarborId: null });
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    await waitFor(() =>
+      expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs)),
+    );
+
+    // The user edits the departure by hand, after the prefill.
+    const editedMs = Date.now() + 5 * 3_600_000;
+    fireEvent.change(departureInput, { target: { value: toLocalInputValue(editedMs) } });
+    expect(departureInput.value).toBe(toLocalInputValue(editedMs));
+
+    // Trigger a via-replan on THIS plan — replanWithVias (state/replan.ts)
+    // preserves the id but produces a NEW plan object.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(70));
+    await waitFor(() => expect(screen.getByText(formatNm(70))).toBeInTheDocument());
+
+    // #301: the sync effect is keyed on plan.id, never on the plan OBJECT —
+    // a via-replan must not re-fire it, or it would silently discard the
+    // user's edit (the exact clobber planIdRef's own guard, just above the
+    // sync effect in App.tsx, documents for a different field).
+    expect(departureInput.value).toBe(toLocalInputValue(editedMs));
+  });
+
+  it('GPX import (setPlan(null) + a fresh draft) is not clobbered by the plan-form sync effect', async () => {
+    const plan = prefillPlan('prefill-gpx-clobber');
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    // Precondition, proven not assumed: the sync DID prefill from `plan` first.
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+
+    const importOrigin = { lat: 54.79, lon: 9.43 };
+    const importDest = { lat: 54.9, lon: 10.5 };
+    const gpx =
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><rte>' +
+      `<rtept lat="${importOrigin.lat}" lon="${importOrigin.lon}"/>` +
+      `<rtept lat="${importDest.lat}" lon="${importDest.lon}"/>` +
+      '</rte></gpx>';
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) throw new Error('import file input not found');
+
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [new File([gpx], 'route.gpx', { type: 'application/gpx+xml' })] },
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        within(originSection).getByText(formatLatLon(importOrigin), { selector: 'p' }),
+      ).toBeInTheDocument(),
+    );
+    // Not reverted back to the (now-cleared) plan's origin — the sync effect
+    // correctly no-ops on plan === null instead of re-firing on the id
+    // transition to `undefined`.
+    expect(within(originSection).queryByText('Flensburg')).not.toBeInTheDocument();
+  });
+
+  // PR #443 review (MAJOR): handleImportRoute's setPlan(null) must also reset
+  // syncedPlanIdRef, or re-loading the SAME plan id later finds the ref
+  // already advanced to that id from the earlier load and silently skips the
+  // sync — leaving the form on the stale GPX-draft values while planFormDirty
+  // reads the freshly (re-)loaded plan as dirty, backwards from reality.
+  it('#443: re-loading the same plan id after a GPX import re-syncs the form (does not stay on the GPX draft)', async () => {
+    const plan = prefillPlan('prefill-reload-after-gpx');
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Step 1: load plan A — the sync fires, advancing syncedPlanIdRef to A's id.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('region', { name: de['planner.origin.label'] })).getByText(
+          'Flensburg',
+        ),
+      ).toBeInTheDocument(),
+    );
+
+    // Step 2: GPX import — setPlan(null) plus a fresh draft, same shape as
+    // the sibling "no-clobber" test above.
+    const importOrigin = { lat: 54.79, lon: 9.43 };
+    const importDest = { lat: 54.9, lon: 10.5 };
+    const gpx =
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><rte>' +
+      `<rtept lat="${importOrigin.lat}" lon="${importOrigin.lon}"/>` +
+      `<rtept lat="${importDest.lat}" lon="${importDest.lon}"/>` +
+      '</rte></gpx>';
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) throw new Error('import file input not found');
+
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [new File([gpx], 'route.gpx', { type: 'application/gpx+xml' })] },
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('region', { name: de['planner.origin.label'] })).getByText(
+          formatLatLon(importOrigin),
+          { selector: 'p' },
+        ),
+      ).toBeInTheDocument(),
+    );
+
+    // Step 3: load plan A again — the SAME id as step 1. Without the #443
+    // fix, syncedPlanIdRef.current is still 'prefill-reload-after-gpx' from
+    // step 1, so the sync effect's guard (`syncedPlanIdRef.current ===
+    // plan.id`) short-circuits and the form is left showing the GPX import's
+    // origin instead of plan A's real request.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+    expect(
+      within(originSection).queryByText(formatLatLon(importOrigin), { selector: 'p' }),
+    ).not.toBeInTheDocument();
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    await waitFor(() =>
+      expect(
+        within(destSection).getByText(formatLatLon(PREFILL_DEST), { selector: 'p' }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(destSection).queryByText(formatLatLon(importDest), { selector: 'p' }),
+    ).not.toBeInTheDocument();
+
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs));
+  });
+
+  it('harbors landing AFTER the plan becomes active still prefills labels once they resolve', async () => {
+    // A harbors.json fetch this test controls the resolution of — everything
+    // else answers immediately, same as the shared fetchMock() helper.
+    let resolveHarbors!: (r: Response) => void;
+    const harborsPromise = new Promise<Response>((res) => {
+      resolveHarbors = res;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('mask.meta.json')) return Promise.resolve(jsonResponse(TEST_MASK_META));
+        if (url.includes('mask.bin')) {
+          const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
+          return Promise.resolve(new Response(buf, { status: 200 }));
+        }
+        if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+        if (url.includes('polar-fock.json'))
+          return Promise.resolve(jsonResponse({ ...TEST_POLAR, rig: 'fock' }));
+        if (url.includes('harbors.json')) return harborsPromise;
+        if (url.includes('seamarks.json'))
+          return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
+        if (url.includes('basemap.pmtiles.png')) {
+          return Promise.resolve(
+            new Response(Uint8Array.from([0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73]), {
+              status: 206,
+            }),
+          );
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`));
+      }),
+    );
+
+    const plan = prefillPlan('prefill-late-harbors');
+    await db.savePlan(plan);
+    localStorage.setItem('sc-session', `{"v":1,"planId":"${plan.id}","tab":"plan","rig":"genoa"}`);
+
+    // services/assets.ts module-caches loadRoutingAssets()'s result "for the
+    // lifetime of the page" — by this point in the file, every earlier test's
+    // renderApp() has already resolved and cached it, so the harborsPromise
+    // stub above would never even be reached through the statically-imported
+    // App. vi.resetModules() + a fresh dynamic import gets a genuinely new
+    // module graph (a fresh services/assets.ts `cached` singleton included)
+    // while every vi.mock'd module (workerClient/openMeteo/maplibre-gl,
+    // still bound to the same hoisted mapTestHooks/routingMock) stays mocked
+    // — the standard Vitest pattern for isolating a module-level singleton.
+    vi.resetModules();
+    const { default: FreshApp } = await import('./App');
+
+    render(
+      <I18nProvider>
+        <FreshApp />
+      </I18nProvider>,
+    );
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // The plan restores (its 99.0 nm Ergebnis total appears) while
+    // harbors.json is still pending — the sync effect must NOT yet have
+    // written a harbor-labeled origin (harborsLoaded is still false).
+    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    expect(within(originSection).queryByText('Flensburg')).not.toBeInTheDocument();
+
+    // Harbors resolve now — the effect re-fires for the SAME (still
+    // unsynced) plan id, and the origin label resolves correctly this time.
+    await act(async () => {
+      resolveHarbors(jsonResponse(HARBORS));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
   });
 });
