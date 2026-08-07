@@ -335,7 +335,13 @@ function AppShell() {
   //
   // No-ops on `plan === null`: GPX import deliberately calls setPlan(null)
   // *and* seeds the draft directly in the same batch (handleImportRoute
-  // below) — syncing here would clobber that import.
+  // below) — syncing here would clobber that import. handleImportRoute also
+  // resets this ref to null alongside its setPlan(null): without that reset,
+  // re-loading the SAME plan id later (e.g. re-opening plan A from PlansList
+  // after a GPX import) would find the ref already advanced to that id from
+  // an earlier load and silently skip the sync, leaving the form on stale
+  // GPX-draft values while planFormDirty reads the freshly-loaded plan as
+  // dirty — backwards, since the form would actually be WRONG.
   const syncedPlanIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!plan || !harborsLoaded) return;
@@ -508,6 +514,12 @@ function AppShell() {
   const handleImportRoute = useCallback(
     (o: PickedPoint, d: PickedPoint, vias: LatLon[]) => {
       setPlan(null);
+      // #301: also clear the sync guard so a later re-load of the SAME plan
+      // id (e.g. the user re-opens plan A from PlansList after importing a
+      // GPX) re-syncs the form instead of finding the ref already advanced
+      // to that id from an earlier load and silently skipping the sync —
+      // see the guard's own comment at its declaration above.
+      syncedPlanIdRef.current = null;
       setDraftViaPoints(vias);
       handlePickOrigin(o);
       handlePickDestination(d);
@@ -685,9 +697,13 @@ function AppShell() {
   // effect above hasn't yet written origin/destination — reading false there
   // (nothing to compare yet) avoids a one-frame false-dirty flicker rather
   // than feeding planFormDirty a stale/null form.
+  // `harbors.length > 0` (PR #443 review, Minor) tells planFormDirty whether
+  // a harborId mismatch is trustworthy — see planForm.ts's own comment on
+  // the `harborsAvailable` parameter for why an empty list must suppress
+  // just that one comparison.
   const formDirty =
     plan && origin && destination
-      ? planFormDirty(plan, { origin, destination, departureMs, settings })
+      ? planFormDirty(plan, { origin, destination, departureMs, settings }, harbors.length > 0)
       : false;
 
   return (

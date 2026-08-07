@@ -171,36 +171,36 @@ describe('departureSeedMs (#301, extracted from PlansList.tsx:152)', () => {
 
 describe('planFormDirty (#301)', () => {
   it('is NOT dirty when the form matches the plan request exactly', () => {
-    expect(planFormDirty(makePlan(), matchingForm())).toBe(false);
+    expect(planFormDirty(makePlan(), matchingForm(), true)).toBe(false);
   });
 
   it('is dirty when departureMs differs', () => {
     const form = { ...matchingForm(), departureMs: ORIGINAL_REQUEST.departureMs + 3_600_000 };
-    expect(planFormDirty(makePlan(), form)).toBe(true);
+    expect(planFormDirty(makePlan(), form, true)).toBe(true);
   });
 
   it('is dirty when the origin point differs', () => {
     const form = matchingForm();
     form.origin = { ...form.origin, point: { lat: 54.8, lon: 9.435 } };
-    expect(planFormDirty(makePlan(), form)).toBe(true);
+    expect(planFormDirty(makePlan(), form, true)).toBe(true);
   });
 
   it('is dirty when the origin harbor id differs (a different harbor pick at the same point is very unlikely, but the id is compared independently)', () => {
     const form = matchingForm();
     form.origin = { source: 'tap', point: form.origin.point, label: 'tap label' };
-    expect(planFormDirty(makePlan(), form)).toBe(true);
+    expect(planFormDirty(makePlan(), form, true)).toBe(true);
   });
 
   it('is dirty when the destination point differs', () => {
     const form = matchingForm();
     form.destination = { ...form.destination, point: { lat: 54.9, lon: 10.52 } };
-    expect(planFormDirty(makePlan(), form)).toBe(true);
+    expect(planFormDirty(makePlan(), form, true)).toBe(true);
   });
 
   it('is dirty when the destination harbor id differs', () => {
     const form = matchingForm();
     form.destination = { source: 'tap', point: form.destination.point, label: 'tap label' };
-    expect(planFormDirty(makePlan(), form)).toBe(true);
+    expect(planFormDirty(makePlan(), form, true)).toBe(true);
   });
 
   // One row per routing-relevant field — each alone must flip the predicate.
@@ -212,7 +212,7 @@ describe('planFormDirty (#301)', () => {
       [key]: typeof current === 'boolean' ? !current : current + 1,
     };
     form.settings = bumped;
-    expect(planFormDirty(makePlan(), form)).toBe(true);
+    expect(planFormDirty(makePlan(), form, true)).toBe(true);
   });
 
   // The falsifiable rows (#301 design doc §2): these three Settings fields
@@ -221,19 +221,19 @@ describe('planFormDirty (#301)', () => {
   it('is NOT dirty when showOwnship changes', () => {
     const form = matchingForm();
     form.settings = { ...form.settings, showOwnship: !form.settings.showOwnship };
-    expect(planFormDirty(makePlan(), form)).toBe(false);
+    expect(planFormDirty(makePlan(), form, true)).toBe(false);
   });
 
   it('is NOT dirty when aisApiKey is set', () => {
     const form = matchingForm();
     form.settings = { ...form.settings, aisApiKey: 'a-key' };
-    expect(planFormDirty(makePlan(), form)).toBe(false);
+    expect(planFormDirty(makePlan(), form, true)).toBe(false);
   });
 
   it('is NOT dirty when ownMmsi is set', () => {
     const form = matchingForm();
     form.settings = { ...form.settings, ownMmsi: '123456789' };
-    expect(planFormDirty(makePlan(), form)).toBe(false);
+    expect(planFormDirty(makePlan(), form, true)).toBe(false);
   });
 
   // #243 fix-wave-style backfill: a plan saved before depthComfortMarginM
@@ -249,7 +249,7 @@ describe('planFormDirty (#301)', () => {
     const form = matchingForm();
     form.settings = { ...form.settings, depthComfortMarginM: DEFAULT_SETTINGS.depthComfortMarginM };
 
-    expect(planFormDirty(plan, form)).toBe(false);
+    expect(planFormDirty(plan, form, true)).toBe(false);
   });
 
   it('IS dirty on a pre-#243-shaped plan when the live depthComfortMarginM differs from the default it was backfilled with', () => {
@@ -263,18 +263,54 @@ describe('planFormDirty (#301)', () => {
       depthComfortMarginM: DEFAULT_SETTINGS.depthComfortMarginM + 1,
     };
 
-    expect(planFormDirty(plan, form)).toBe(true);
+    expect(planFormDirty(plan, form, true)).toBe(true);
+  });
+
+  // PR #443 review (Minor): pickedPointOf's tap-point fallback (fires when
+  // harbors is [] — a permanent asset-load failure, or a harbor since pruned
+  // from the curated list) drops a REAL originHarborId/destinationHarborId
+  // from the sync-produced form, so a byte-identical, freshly-loaded plan
+  // used to read harbor-id-mismatched and therefore dirty. These three rows
+  // use pickedPointsOfPlan itself (not a hand-built form) to reproduce
+  // exactly what App.tsx's sync effect would write when harbors is empty.
+  describe('harborsAvailable gate (PR #443 review, Minor)', () => {
+    function formFromEmptyHarborSync(plan: Plan): PlanFormSnapshot {
+      const { origin, destination } = pickedPointsOfPlan(plan, [], 'de');
+      return {
+        origin,
+        destination,
+        departureMs: ORIGINAL_REQUEST.departureMs,
+        settings: { ...ORIGINAL_REQUEST.settings },
+      };
+    }
+
+    it('is NOT dirty when harborsAvailable=false, even though the tap-point fallback dropped both real harbor ids', () => {
+      const plan = makePlan();
+      expect(planFormDirty(plan, formFromEmptyHarborSync(plan), false)).toBe(false);
+    });
+
+    it('the SAME sync-produced form reads dirty when harborsAvailable=true — proving the gate, not a broader bug, is what closes the false positive', () => {
+      const plan = makePlan();
+      expect(planFormDirty(plan, formFromEmptyHarborSync(plan), true)).toBe(true);
+    });
+
+    it('harborsAvailable=false does not mask an actually-dirty form (departureMs is still compared)', () => {
+      const plan = makePlan();
+      const form = { ...formFromEmptyHarborSync(plan), departureMs: ORIGINAL_REQUEST.departureMs + 3_600_000 };
+      expect(planFormDirty(plan, form, false)).toBe(true);
+    });
   });
 
   // Mutation check (repo rule: a predicate that only reds in one direction is
   // half-tested), MEASURED by hand against this file before trusting it, not
   // merely asserted: forcing planFormDirty to `return true` unconditionally
-  // reds exactly the 5 'is NOT dirty' rows above (the matching-form baseline,
-  // showOwnship, aisApiKey, ownMmsi, and the pre-#243-backfill 'NOT dirty'
-  // row) — 21/26 still pass. Forcing it to `return false` unconditionally
-  // reds exactly the 14 'is dirty'/'IS dirty' rows (departure, origin point,
-  // origin harbor id, destination point, destination harbor id, all 8
-  // routing-relevant settings via it.each, and the pre-#243-backfill 'IS
-  // dirty' row) — 12/26 still pass. Both directions discriminate on
-  // DIFFERENT rows, so the predicate is not half-tested.
+  // reds exactly the 6 'is NOT dirty' rows above (the matching-form baseline,
+  // showOwnship, aisApiKey, ownMmsi, the pre-#243-backfill 'NOT dirty' row,
+  // and the harborsAvailable=false 'NOT dirty' row) — 23/29 still pass.
+  // Forcing it to `return false` unconditionally reds exactly the 16 'is
+  // dirty'/'IS dirty' rows (departure, origin point, origin harbor id,
+  // destination point, destination harbor id, all 8 routing-relevant
+  // settings via it.each, the pre-#243-backfill 'IS dirty' row, and the two
+  // remaining harborsAvailable rows) — 13/29 still pass. Both directions
+  // discriminate on DIFFERENT rows, so the predicate is not half-tested.
 });

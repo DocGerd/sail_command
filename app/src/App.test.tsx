@@ -1651,6 +1651,90 @@ describe('plan-form sync (#301)', () => {
     expect(within(originSection).queryByText('Flensburg')).not.toBeInTheDocument();
   });
 
+  // PR #443 review (MAJOR): handleImportRoute's setPlan(null) must also reset
+  // syncedPlanIdRef, or re-loading the SAME plan id later finds the ref
+  // already advanced to that id from the earlier load and silently skips the
+  // sync — leaving the form on the stale GPX-draft values while planFormDirty
+  // reads the freshly (re-)loaded plan as dirty, backwards from reality.
+  it('#443: re-loading the same plan id after a GPX import re-syncs the form (does not stay on the GPX draft)', async () => {
+    const plan = prefillPlan('prefill-reload-after-gpx');
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Step 1: load plan A — the sync fires, advancing syncedPlanIdRef to A's id.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('region', { name: de['planner.origin.label'] })).getByText(
+          'Flensburg',
+        ),
+      ).toBeInTheDocument(),
+    );
+
+    // Step 2: GPX import — setPlan(null) plus a fresh draft, same shape as
+    // the sibling "no-clobber" test above.
+    const importOrigin = { lat: 54.79, lon: 9.43 };
+    const importDest = { lat: 54.9, lon: 10.5 };
+    const gpx =
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><rte>' +
+      `<rtept lat="${importOrigin.lat}" lon="${importOrigin.lon}"/>` +
+      `<rtept lat="${importDest.lat}" lon="${importDest.lon}"/>` +
+      '</rte></gpx>';
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) throw new Error('import file input not found');
+
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [new File([gpx], 'route.gpx', { type: 'application/gpx+xml' })] },
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('region', { name: de['planner.origin.label'] })).getByText(
+          formatLatLon(importOrigin),
+          { selector: 'p' },
+        ),
+      ).toBeInTheDocument(),
+    );
+
+    // Step 3: load plan A again — the SAME id as step 1. Without the #443
+    // fix, syncedPlanIdRef.current is still 'prefill-reload-after-gpx' from
+    // step 1, so the sync effect's guard (`syncedPlanIdRef.current ===
+    // plan.id`) short-circuits and the form is left showing the GPX import's
+    // origin instead of plan A's real request.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+    expect(
+      within(originSection).queryByText(formatLatLon(importOrigin), { selector: 'p' }),
+    ).not.toBeInTheDocument();
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    await waitFor(() =>
+      expect(
+        within(destSection).getByText(formatLatLon(PREFILL_DEST), { selector: 'p' }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(destSection).queryByText(formatLatLon(importDest), { selector: 'p' }),
+    ).not.toBeInTheDocument();
+
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs));
+  });
+
   it('harbors landing AFTER the plan becomes active still prefills labels once they resolve', async () => {
     // A harbors.json fetch this test controls the resolution of — everything
     // else answers immediately, same as the shared fetchMock() helper.

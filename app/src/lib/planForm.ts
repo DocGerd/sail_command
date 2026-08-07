@@ -118,8 +118,27 @@ export const ROUTING_RELEVANT_SETTINGS_KEYS = [
  * same harbor yields the byte-identical harbor.snap, so exact equality is
  * already correct — an epsilon would invent a "close enough" notion the
  * router has no concept of.
+ *
+ * `harborsAvailable` gates ONLY the two harborId-equality checks below, never
+ * lat/lon/departure/settings (PR #443 review, Minor). When the curated
+ * harbor list is empty — a permanent asset-load failure (App.tsx's `.catch`
+ * still flips `harborsLoaded`) or a harbor since pruned from the list —
+ * `pickedPointOf`'s tap-point fallback drops a REAL `originHarborId`/
+ * `destinationHarborId` from the synced form even though nothing was
+ * touched, so comparing it unconditionally would read a freshly, correctly
+ * loaded plan as dirty. Safe to suppress: harborId doesn't influence what a
+ * re-run produces (it's a display/bookkeeping field only, per
+ * `pickedPointOf`'s own comment above), and the lat/lon check just above
+ * already independently catches an actual endpoint change — HarborPicker
+ * itself shows no results while harbors are unavailable, so the only way a
+ * form's point can change then is a raw map tap, which the lat/lon check
+ * alone already detects.
  */
-export function planFormDirty(plan: Plan, form: PlanFormSnapshot): boolean {
+export function planFormDirty(
+  plan: Plan,
+  form: PlanFormSnapshot,
+  harborsAvailable: boolean,
+): boolean {
   const req = plan.request;
 
   if (form.departureMs !== req.departureMs) return true;
@@ -128,7 +147,7 @@ export function planFormDirty(plan: Plan, form: PlanFormSnapshot): boolean {
     return true;
   }
   const formOriginHarborId = form.origin.source === 'harbor' ? form.origin.harborId : null;
-  if (formOriginHarborId !== req.originHarborId) return true;
+  if (harborsAvailable && formOriginHarborId !== req.originHarborId) return true;
 
   if (
     form.destination.point.lat !== req.destination.lat ||
@@ -138,7 +157,7 @@ export function planFormDirty(plan: Plan, form: PlanFormSnapshot): boolean {
   }
   const formDestinationHarborId =
     form.destination.source === 'harbor' ? form.destination.harborId : null;
-  if (formDestinationHarborId !== req.destinationHarborId) return true;
+  if (harborsAvailable && formDestinationHarborId !== req.destinationHarborId) return true;
 
   // Backfilled from DEFAULT_SETTINGS before comparing — mirrors lib/
   // recalc.ts's identical backfill. A plan saved before a Settings field
