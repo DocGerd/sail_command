@@ -48,6 +48,21 @@ export interface PlanFlowDeps {
 // which helps a crashed worker or an undeserializable message, but cannot
 // change the outcome of an input-deterministic failure (the same solve
 // hits the same timeout or throw again).
+// #433 fix-wave (review Minor 1): 'worker-fatal' bundles TWO different
+// causes protocol.ts's catch(err) cannot tell apart — a deterministic
+// planRoute() throw (retry genuinely can't help, same inputs reproduce it)
+// and a resource-exhaustion throw (retry CAN help, since dispose() frees the
+// failed worker's whole heap before the retry builds a fresh one; CLAUDE.md's
+// #433 bullet). `err` at protocol.ts:60 is only ever `unknown`/`Error` — no
+// field distinguishes "ran out of memory" from "hit a logic bug", and
+// sniffing `err.constructor`/`instanceof RangeError` would be exactly as
+// unreliable as matching on `.message` (a RangeError can just as easily come
+// from an ordinary bounds bug), which is the discriminator-fabrication this
+// file's own header comment warns against. So the two stay ONE kind, and
+// error.routingFailed's copy hedges rather than asserting retry is futile —
+// still under the safe direction (no retry BUTTON offered either,
+// RETRY_MAY_HELP_KEYS in App.tsx), but honest about the possibility a retry
+// helps.
 const ROUTING_FAILURE_MESSAGE_KEY: Record<
   RoutingFailureKind | 'worker-init' | 'persist-failed' | 'wind-unclassified',
   MsgKey

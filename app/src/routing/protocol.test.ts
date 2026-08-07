@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHandler, type WorkerResponse } from './protocol';
+import { planRoute } from './planRoute';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PolarTable } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
@@ -8,6 +9,18 @@ import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
 // files keep vitest's 5s default so hang detection stays meaningful there.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
+
+// #433 review Minor 2: wraps the REAL planRoute as the default mock
+// implementation (vi.fn(actual.planRoute)) — every existing test below still
+// exercises the real solver unmodified. Only the two new tests at the bottom
+// of this file override it, one call at a time (mockImplementationOnce
+// self-reverts to this real-passthrough default after firing once), so they
+// can force a throw with an exact, known shape without touching planRoute.ts
+// itself or risking any other test in this solver-heavy file.
+vi.mock('./planRoute', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./planRoute')>();
+  return { ...actual, planRoute: vi.fn(actual.planRoute) };
+});
 
 const FOCK: PolarTable = { ...TEST_POLAR, rig: 'fock' };
 
@@ -131,5 +144,76 @@ describe('worker protocol handler', () => {
     });
     const fatal = out.find((m) => m.type === 'fatal');
     expect(fatal).toMatchObject({ type: 'fatal', id: 'p1' });
+  });
+});
+
+// #433/#435 spike §12, review Minor 2: protocol.ts:69's `stack` population is
+// the actual reason protocol.ts changed for #433 — tested directly here
+// rather than only through workerClient.test.ts's CONSUMPTION-side tests
+// (which fabricate a `stack` value on the incoming WorkerResponse and never
+// exercise protocol.ts's own catch(err) at all).
+describe('worker protocol handler: fatal.stack population (#433 review Minor 2)', () => {
+  function planFatal(out: WorkerResponse[]) {
+    const handle = createHandler((m) => out.push(m));
+    handle({
+      type: 'init',
+      maskMeta: TEST_MASK_META,
+      maskBuffer: openWaterBuffer(),
+      polarGenoa: TEST_POLAR,
+      polarFock: FOCK,
+    });
+    handle({
+      type: 'plan',
+      id: 'p1',
+      request: {
+        origin: { lat: 54.7525, lon: 10.0025 },
+        destination: { lat: 54.7525, lon: 10.3025 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
+        settings: DEFAULT_SETTINGS,
+      },
+      windGrid: uniformWindGrid(12, 0),
+    });
+  }
+
+  it('a throw carrying a stack produces a fatal message whose stack is exactly that stack', () => {
+    const thrown = new Error('mid-plan throw, exact site');
+    // Overwritten with a KNOWN value rather than relying on whatever V8
+    // auto-captures — makes the assertion below an exact-equality check
+    // against a value this test controls, not a truthy-only guess.
+    thrown.stack = 'Error: mid-plan throw, exact site\n    at planRoute (planRoute.ts:242:9)';
+    vi.mocked(planRoute).mockImplementationOnce(() => {
+      throw thrown;
+    });
+
+    const out: WorkerResponse[] = [];
+    planFatal(out);
+
+    const fatal = out.find((m) => m.type === 'fatal');
+    if (!fatal || fatal.type !== 'fatal') throw new Error('expected a fatal message');
+    expect(fatal.stack).toBe(thrown.stack);
+  });
+
+  it('a throw with no stack (a non-Error throw) produces a fatal with the stack property ABSENT, not present-and-undefined', () => {
+    vi.mocked(planRoute).mockImplementationOnce(() => {
+      // Deliberately not an Error — err.stack is undefined for ANY non-Error
+      // throw, and exactOptionalPropertyTypes means the `stack` key must be
+      // OMITTED entirely (protocol.ts's `...(stack !== undefined ? {stack} : {})`
+      // spread), never present with the value undefined.
+      throw 'a plain string throw, no .stack at all';
+    });
+
+    const out: WorkerResponse[] = [];
+    planFatal(out);
+
+    const fatal = out.find((m) => m.type === 'fatal');
+    if (!fatal || fatal.type !== 'fatal') throw new Error('expected a fatal message');
+    // Object.prototype.hasOwnProperty (not just `fatal.stack === undefined`,
+    // which a present-but-undefined property would also satisfy) is what
+    // actually distinguishes OMITTED from present-and-undefined.
+    expect(Object.prototype.hasOwnProperty.call(fatal, 'stack')).toBe(false);
+    expect(fatal.stack).toBeUndefined();
   });
 });

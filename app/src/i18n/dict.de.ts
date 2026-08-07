@@ -103,8 +103,12 @@ export const de = {
     'Der Routenplaner konnte nicht gestartet werden — erforderliche Daten konnten nicht geladen werden. App neu laden und erneut versuchen.',
   'error.routingTimeout':
     'Die Routenberechnung hat das Zeitlimit überschritten. Ein erneuter Versuch dürfte genauso am Zeitlimit scheitern — eine einfachere Route oder ein schnelleres Gerät könnten helfen.',
+  // #433 review Minor 1: behauptet NICHT, dass ein erneuter Versuch
+  // zwecklos ist — diese Ursache umfasst auch einen Ressourcenerschöpfungs-
+  // Fehler, bei dem ein frischer Worker tatsächlich helfen kann (siehe
+  // Kommentar zu usePlanFlow.ts's ROUTING_FAILURE_MESSAGE_KEY).
   'error.routingFailed':
-    'Bei der Routenberechnung ist ein interner Fehler aufgetreten. Ein erneuter Versuch schlägt vermutlich genauso fehl — eine andere Route oder andere Einstellungen könnten helfen.',
+    'Bei der Routenberechnung ist ein interner Fehler aufgetreten. Eine andere Route oder andere Einstellungen helfen eher als ein erneuter Versuch mit derselben Anfrage.',
   'error.routingCrashed':
     'Die Routen-Engine ist unerwartet abgestürzt. Erneut versuchen — sie startet dabei neu.',
   'error.routingMessageError':

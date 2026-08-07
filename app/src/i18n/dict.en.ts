@@ -101,8 +101,11 @@ export const en = {
     'The route planner could not be started — required data failed to load. Reload the app and try again.',
   'error.routingTimeout':
     'Routing did not finish within the time limit. Trying again will likely time out the same way — a simpler route or a faster device may help.',
+  // #433 review Minor 1: does NOT claim retry is futile — this cause also
+  // covers a resource-exhaustion throw, where a retry's fresh worker CAN
+  // help (see usePlanFlow.ts's ROUTING_FAILURE_MESSAGE_KEY comment).
   'error.routingFailed':
-    'Route planning failed with an internal routing error. Trying again will likely fail the same way — a different route or settings may avoid it.',
+    'Route planning failed with an internal routing error. A different route or settings are more likely to help than trying again with the same request.',
   'error.routingCrashed': 'The routing engine crashed unexpectedly. Try again — it restarts fresh.',
   'error.routingMessageError':
     'The routing engine sent back a reply that could not be read. Try again — it restarts fresh.',
