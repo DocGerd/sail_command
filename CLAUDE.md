@@ -114,7 +114,10 @@ deviate from it.
   `npm run test` or CI; run it deliberately with `--config
   sweep/vitest.config.ts`. vitest 4 has NO `--include` (`CACError: Unknown
   option`, measured) and `--dir` only narrows, which is why it needs its own
-  config rather than a flag. Budget ~48 min for all three runs. Two known
+  config rather than a flag. Timing: `sweep/README.md` budgets ~20 min per
+  run; ~16 min per run was measured 2026-08-07 on this dev machine WHILE the
+  config was still over-collecting, so that figure times mostly-unrelated work
+  and stops being meaningful the moment #451 lands. Two known
   defects (#451): the config's `include` glob resolves against `app/` not
   `app/sweep/`, so it over-collects the whole `.ts` suite and a run exits 1 on
   an unrelated `changelog.test.ts` (`server.fs.allow` denies `CHANGELOG.md?raw`
@@ -494,9 +497,14 @@ deviate from it.
 - E2E: `npm --prefix app run e2e` (the `pree2e` hook regenerates
   `app/public/test-fixtures/wind-sw12.json` with fresh timestamps and builds —
   a dirty fixture diff after an e2e run is expected churn, restore it, don't
-  commit it). The COMMITTED fixture is stale by design (last forecast hour
-  2026-07-22), so any MANUAL dev-server browser pass fails 'beyond horizon'
-  until `node scripts/gen-wind-fixture.mjs` is run — restore it afterwards.
+  commit it). The COMMITTED fixture is stale (last forecast hour 2026-07-22)
+  and reachable ONLY through the `?windFixture=` escape hatch
+  (`usePlanFlow.ts`, its sole consumer) — so a browser pass that USES that
+  parameter fails 'beyond horizon' until
+  `node app/scripts/gen-wind-fixture.mjs` is run; restore it afterwards. An
+  ordinary dev-server pass fetches live Open-Meteo and is unaffected by the
+  fixture's age — do NOT regenerate it reflexively, that just creates the
+  dirty-fixture churn warned about above.
   One-time setup: `npm --prefix app exec playwright install chromium`.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
@@ -1900,10 +1908,15 @@ deviate from it.
   (#433/PR #442 and #432/PR #453, both shipped 2026-08-07; this bullet
   previously described the pre-fix state and is rewritten, not amended).
   `RoutingError` in `workerClient.ts` carries a `readonly kind:
-  RoutingFailureKind` (8 kinds: `timeout`, `worker-fatal`, `worker-error`,
-  `messageerror`, `disposed`, `worker-init`, `persist-failed`,
-  `wind-unclassified`), `protocol.ts`'s `fatal` arm carries `stack?: string`,
-  and the banner's remedy differs PER PATH with each one true of that path:
+  RoutingFailureKind` — FIVE members (`timeout`, `worker-fatal`,
+  `worker-error`, `messageerror`, `disposed`), and that five-vs-eight
+  distinction IS the layering, not a detail: `ROUTING_FAILURE_MESSAGE_KEY`
+  (`replan.ts`) keys on `RoutingFailureKind | 'worker-init' |
+  'persist-failed' | 'wind-unclassified'`, and those three extra causes
+  NEVER REACH `workerClient.ts` at all — `new RoutingError('persist-failed',
+  …)` does not typecheck. `protocol.ts`'s `fatal` arm carries `stack?:
+  string`, and the banner's remedy differs PER PATH with each one true of
+  that path:
   a retry hands the user a genuinely FRESH worker (helps
   `onerror`/`onmessageerror`/`disposed`), a wind blip is helped by
   RE-FETCHING with no worker involved, and the input-deterministic pair
@@ -1921,17 +1934,28 @@ deviate from it.
   rather than by margin: the worker's clock starts at the plan handler,
   strictly LATER than the client's at `plan()` (postMessage + clone between),
   so the new wall is >= the old one and anything that fitted the old client
-  window fits the new worker window. The four bare catches in
-  `replan.ts`/`reroute.ts` now preserve the discriminator AND dispose (with
-  `RoutingClient.isDisposed` + an `ensureClient()` rebuild — dispose alone
-  would make every later replan fail `disposed`).
-  STILL TRUE and load-bearing: `routing/` contains ZERO `console.*` calls, so
-  an empty console is DESIGNED behaviour, not evidence nothing happened —
-  never ask a reporter to check it. Measure that inventory with BOTH
+  window fits the new worker window. All four former bare catches in
+  `replan.ts`/`reroute.ts` now preserve the discriminator, but only the TWO
+  wrapping `plan()` dispose — the two wrapping `save()` deliberately do NOT,
+  and their comments say why: routing SUCCEEDED and only the write failed, so
+  the worker is healthy. Disposing there would be wrong. The plan-path pair
+  pairs with `RoutingClient.isDisposed` + an `ensureClient()` rebuild —
+  dispose alone would make every later replan fail `disposed`.
+  Solver bounds are now THREE, not one: the wall-clock budget above,
+  `MAX_FRONTIER = 30_000` (a PER-RING frontier-size cap, still live), and the
+  forecast-horizon guard.
+  STILL TRUE and load-bearing: `routing/` **and `state/usePlanFlow.ts`**
+  contain ZERO `console.*` calls, so an empty console is DESIGNED behaviour,
+  not evidence nothing happened — never ask a reporter to check it.
+  `usePlanFlow.ts` matters most here: it handles the plan-failure path, so it
+  is the file a triager would expect to log. Measure that inventory with BOTH
   `console\.[a-z]+\(` (invocations) and `console\.[a-z]+[^(a-z]` (bare refs
   like `.catch(console.error)` plus comment mentions): the invocation-only
   grep UNDER-counts, and the composition shifts between merges even when the
-  total does not.
+  total does not. Also still true: **"reload the app" helps essentially only
+  the asset/init case**, and it still ships on a non-init key
+  (`error.routingFailed`, the `worker-fatal` kind) — so that advice is still
+  over-broad for the path a user most often meets it on.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
@@ -2172,15 +2196,21 @@ deviate from it.
   global/personal, unversioned, shared across concurrent sessions) — NOT
   covered by #216, which is the notices-regen and nudge hooks; #233
   audited this guard specifically and declined to touch it. The heredoc-prose
-  case is now CONFIRMED, cleanly reproduced 2026-08-07: a `cat > file <<'EOF'`
-  whose body merely LISTED dangerous git subcommands as prose — no git command
-  invoked anywhere — was blocked, because the guard matches the raw command
-  string and a heredoc body is part of it. Note the irony and the remedy: it
-  blocks you from DOCUMENTING why the thing it guards is dangerous, and the
-  fix is to use the **Write tool**, which does not route through the Bash
-  guard. Do NOT reword the prose to appease the matcher — that lets a
-  substring check silently shape the documentation. Separately, a command
-  containing `gh api -f` was blocked —
+  case was OBSERVED again 2026-08-07 and its grep half reproduced: a
+  `cat > file <<'EOF'` whose body merely LISTED dangerous git subcommands as
+  prose — no git command invoked — was denied, and feeding that exact
+  tool-input JSON to the script reproduces the deny, because the script builds
+  its haystack from the whole JSON and a heredoc body is inside it. NOT fully
+  established: why the hook RAN for a `cat` at all, since its
+  `settings.json` wiring is gated `if: "Bash(git *)"`. The likely
+  reconciliation — inference, not measurement — is that the gate is itself a
+  string match satisfied by the same prose, so a body mentioning `git …` opens
+  the gate it would otherwise fail. Verify before relying on it. The remedy
+  needs no such certainty: use the **Write tool**, which does not route
+  through the Bash guard. Do NOT reword the prose to appease the matcher —
+  that lets a substring check silently shape the documentation, and note the
+  irony that the block lands on DOCUMENTING why the guarded thing is
+  dangerous. Separately, a command containing `gh api -f` was blocked —
   the precise trigger for the second case is unconfirmed (a reviewer could
   not reproduce it in isolation). `--raw-field` avoided the block in
   practice; treat that as an observed workaround, not a documented fix. A
@@ -2261,19 +2291,16 @@ deviate from it.
   SECOND stall, TAKE the watch: arm the monitor in the main session and hand
   the agent the result. The orchestrator holds the watch; the worker holds
   the code.
-  2026-08-07 CORRECTION, and it cost the worst mistake of that session: an
-  idle notification means the agent STOPPED; its ABSENCE means it is STILL
-  WORKING. Reading absence as "died silently" led to spawning a duplicate
-  agent into a LIVE worktree, which detached its HEAD mid-test-run (nothing
-  lost — the branch ref survived and the intruded-upon agent noticed the
-  foreign write itself and discarded the contaminated run). Check the
-  ARTIFACT — branch, commit, `git status`, the process table — never the
-  notification. And because an agent that shells out to a long command is
-  invisible to the harness, BOTH the notification and its absence are
-  ambiguous: it can legitimately idle mid-run. So when in doubt ASK ("what is
-  your state?") before inferring — a question costs one round-trip and cannot
-  be wrong, whereas every inference available from outside is blind to an
-  uncommitted worktree.
+  2026-08-07 CORRECTION: agent state is NOT inferable from outside. An idle
+  notification fires when an agent has no live harness-tracked children — but
+  an agent that shelled out to a long command has none either, so it can idle
+  mid-run. Absence of a notification is equally weak. Reading absence as "died
+  silently" cost a duplicate agent spawned into a LIVE worktree, detaching its
+  HEAD mid-test-run (nothing lost — the branch ref survived and the
+  intruded-upon agent flagged the foreign write itself). So: check the ARTIFACT
+  (branch, commit, `git status`, process table), and if that is still
+  ambiguous ASK — a question costs one round-trip and cannot be wrong, while
+  every external signal is blind to an uncommitted worktree.
 - Monitors, three failure modes all measured 2026-08-07: `pgrep -f <pat>`
   SELF-MATCHES a watcher whose own command line contains `<pat>` (so the count
   never reaches zero and the watch times out claiming "still running") — watch
