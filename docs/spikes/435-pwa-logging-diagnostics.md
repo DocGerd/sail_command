@@ -3,7 +3,7 @@
 - Issue: [#435](https://github.com/DocGerd/sail_command/issues/435)
 - Date: 2026-08-07
 - Status: Recommendation (no implementation in this change)
-- **Verdict: build a bounded in-memory ring buffer written only by app code, with no live log view and no persistence — its single user-facing surface is a "copy / download diagnostics" pair in the About dialog — and pay for it with exactly one worker-protocol type change (`fatal` gains an optional `stack`) plus a typed `RoutingError` on the client, so the same discriminator that makes the log useful is the one #433 uses to make the banner accurate.**
+- **Verdict: build a bounded ring buffer written only by app code, held in memory and mirrored to a single capped `sessionStorage` key so it survives the reload the failing banner itself advises, with no live log view and nothing that outlives the tab — its single user-facing surface is a "copy / download diagnostics" pair in the About dialog — and pay for it with exactly one worker-protocol type change (`fatal` gains an optional `stack`) plus a typed `RoutingError` on the client, so the same discriminator that makes the log useful is the one #433 uses to make the banner accurate.**
 
 This document answers all 13 questions in #435's "Questions to answer"
 section, under its own three headings (How / Where applicable / What to
@@ -49,12 +49,21 @@ grep -rnoE 'console\.[a-z]+[^(a-z]' . --include='*.ts' --include='*.tsx' | grep 
 | CSP `connect-src 'self' https://api.open-meteo.com wss://stream.aisstream.io` | `app/vite.config.ts:161`, inside `cspMeta()`'s `directives` array |
 | IndexedDB: two stores, schema version 1 | stores typed at `db.ts:4-7`; `openDB<SailDB>('sailcommand', 1, …)` and both `createObjectStore` calls at `db.ts:12-17` |
 
-### WRONG — the planning-flow error does not render where #435 says it does
+### WRONG — the planning-flow error did not render where #435 said it did
 
-> #435: *"It renders at `components/RouteSummary.tsx:154` as a single
-> `<p role="alert">` holding one generic translated string: no detail, no
-> stack, nothing copyable, and byte-identical across every distinct
-> cause."*
+**Status: FIXED IN #435 ITSELF on 2026-08-07, after this document was
+written.** The issue body now carries a "CORRECTED 2026-08-07 (found by
+the spike itself, PR #438)" block and points at `App.tsx:806-823`. The
+quotation below is the **pre-correction text** and is no longer findable
+in the issue — verified against the current body:
+`grep -c 'holding one generic translated string'` returns **0**. This
+section is kept because it is the finding's evidence, not because the
+issue is still wrong.
+
+> #435, as written before 2026-08-07: *"It renders at
+> `components/RouteSummary.tsx:154` as a single `<p role="alert">`
+> holding one generic translated string: no detail, no stack, nothing
+> copyable, and byte-identical across every distinct cause."*
 
 `RouteSummary.tsx:154` is real and is one generic `<p role="alert">`:
 
@@ -148,9 +157,12 @@ Two consequences that fall straight out:
 
 ## Q2. Is there a runtime log buffer, and where does it live?
 
-**A bounded in-memory ring buffer in a module-scope singleton
-(`app/src/lib/diagnostics.ts`). No IndexedDB. No persistence of any
-kind.**
+**A bounded ring buffer in a module-scope singleton
+(`app/src/lib/diagnostics.ts`), held in memory and mirrored to one capped
+`sessionStorage` key. No IndexedDB, no `localStorage` — nothing that
+outlives the tab.** (The `sessionStorage` half is the outcome of the
+reload argument below; the first draft of this section rejected all
+persistence, and that was wrong.)
 
 Capacity: 200 records. This is a **judgement call, not a measurement**,
 and is recorded as one so a later reader does not mistake it for a
@@ -182,20 +194,57 @@ already budgets for.
   diagnostics feature contributes to evicting the offline chart. Trading
   the product's core promise for a log is not a trade worth making.
 
-Two further reasons that are not about storage mechanics at all:
+One further reason that is not about storage mechanics at all:
 
-- **The interesting failures are in-session.** #433's incident is a user
-  looking at a banner. The buffer is read out *before* any reload, so
-  persistence buys nothing there. The one case persistence genuinely wins
-  is a full tab crash — real, but rare, and not what was reported.
 - **A persisted log is a privacy artifact that outlives the session.**
-  It would carry GPS positions (Q7) at rest, on a possibly-shared device,
-  with no user action having created it. In-memory data dies with the tab.
+  It would carry coarsened GPS positions (Q7) at rest, on a
+  possibly-shared device, with no user action having created it.
 
-**What would change this answer:** a reported failure class that kills the
-page itself (tab OOM, an iOS background eviction mid-passage). If that
-arrives, revisit — and revisit it as a *separate*, opt-in, capped store,
-not as a widening of this buffer.
+### The reload problem, and a capped `sessionStorage` mirror — ADOPTED
+
+An earlier draft of this section asserted that "the buffer is read out
+*before* any reload, so persistence buys nothing". **That was a
+behavioural premise stated as a fact, and it is very likely false.**
+Nothing here measures how often About is opened before a reload, and the
+app's own copy pushes the user the other way — `dict.en.ts:96`:
+
+> Route planning failed unexpectedly. Try again; if it keeps happening,
+> **reload the app.**
+
+An in-memory-only buffer is therefore destroyed by the user following the
+instruction the failing banner gives them. Q1 also fixes the target as an
+installed PWA on a phone, a device class that discards backgrounded tabs.
+The premise is withdrawn.
+
+The earlier rejection also considered **only IndexedDB**, which left the
+cheap option unexamined. `sessionStorage` dodges all three of the
+IndexedDB objections above — no schema, no migration on the version-1
+plans database, ~40 KB against the ~44 MB the document already cites —
+**and preserves the privacy bullet intact, because `sessionStorage` still
+dies with the tab.** It is also not a new dependency here:
+`services/swRecovery.ts:66,81` already uses `sessionStorage`, with an
+explicit unreadable-path fallback at `:67-71`, and `lib/storage.ts`
+supplies the safe-wrapper precedent for the localStorage sibling.
+
+**Adopted:** the ring buffer mirrors to `sessionStorage` under a single
+capped key, written coalesced (not per record), and restored on load.
+Same capacity bound, same redaction, same lifetime as the tab.
+
+**Still rejected: IndexedDB, and `localStorage`.** IndexedDB for the three
+reasons above. `localStorage` because it survives tab close, which
+reinstates exactly the at-rest privacy artifact the `sessionStorage`
+choice avoids — that is the constraint that separates the two siblings,
+and it is the whole reason `sessionStorage` is the adopted one.
+
+**What would change the IndexedDB answer:** a reported failure class that
+survives the tab (an iOS background eviction mid-passage, a device
+restart between failure and report). Note the earlier version of this
+trigger was **circular** — it fired on "a reported failure class that
+kills the page", which is precisely the report the mechanism could not
+produce. The `sessionStorage` mirror breaks that circularity: it survives
+the reload, so a report *can* now arrive describing a failure that
+survived one, and only a failure surviving the whole tab would justify
+going further.
 
 ## Q3. Does `protocol.ts`'s closed union grow a diagnostics message type?
 
@@ -220,11 +269,23 @@ populated at `protocol.ts:62-66`, which already has the `Error` in hand:
 message: err instanceof Error ? err.message : String(err),
 ```
 
-— so `stack: err instanceof Error ? err.stack : undefined` is a
-one-expression addition at a site that is already doing the narrowing.
-(`exactOptionalPropertyTypes` is on, so an absent stack must omit the key
-rather than set `undefined` — the same shape `workerClient.ts:129-135`
-already handles for `onProgress`/`onProbe`.)
+— so the `Error` is already narrowed at that site.
+
+**Write it as a conditional key, not a ternary.**
+`exactOptionalPropertyTypes` is on, so `stack: err instanceof Error ?
+err.stack : undefined` assigns `undefined` to `stack?: string` and `tsc`
+rejects it. `workerClient.ts:129-135` is the precedent and is written
+that way for exactly this reason:
+
+```ts
+const msg: Extract<WorkerResponse, { type: 'fatal' }> = {
+  type: 'fatal',
+  id: req.type === 'plan' ? req.id : null,
+  message: err instanceof Error ? err.message : String(err),
+};
+if (err instanceof Error && err.stack) msg.stack = err.stack;
+post(msg);
+```
 
 Argued against the type safety the closed union buys:
 
@@ -273,12 +334,30 @@ Four reasons, in descending weight:
    `console.*` call in the entire file. Building a message channel,
    a page-side listener, and a lifecycle for both, to relay one warning,
    is not proportionate.
-3. **That one site already has real assurance.**
-   `e2e/basemap-fallback.spec.ts:76-77` installs a console listener and
-   `:125` asserts `consoleMessages.some((m) => m.includes('[#118]'))` is
-   `true`; `e2e/offline.spec.ts:134-136` asserts the offline reload
-   produces **zero** console errors. Those are stronger checks than a
-   relayed buffer would provide, and they already exist.
+3. **That one site has no direct assurance — stated precisely, because
+   the obvious citation is wrong.** `sw.ts:31`'s message is
+   `'[sw] pmtiles precache miss, falling through to network:'`, and **no
+   spec asserts on it**. It is tempting to credit
+   `e2e/basemap-fallback.spec.ts:125`
+   (`expect(consoleMessages.some((m) => m.includes('[#118]'))).toBe(true)`)
+   — but `grep -rn '\[#118\]' app/src` at `3979bae` returns exactly one
+   hit, `services/basemapSource.ts:111`, a **main-window** module. That
+   assertion covers a different file.
+
+   The closest *indirect* cover is `e2e/offline.spec.ts:233`
+   (`expect(offlineConsoleErrors).toEqual([])`), and it covers the
+   **route's hit branch** (`sw.ts:24-26`), not the warn: the spec's own
+   comment at `:128-131` records that an un-cached resource "fails
+   loudly — MapLibre errors land in the console via MapView's handler",
+   so a precache miss offline surfaces as a MapLibre *error*. Note the
+   collector at `:135` filters `msg.type() === 'error'`, so `sw.ts:31`'s
+   `console.warn` could never enter that collection even if it fired.
+
+   This cuts **toward** the verdict rather than against it: relaying an
+   unasserted warning to the page is even less justified than relaying an
+   asserted one. But the earlier framing — that existing coverage is
+   "stronger than a relayed buffer" — is withdrawn, and reasons 1, 2 and
+   4 are what carry the decision.
 4. **`sw.ts` is ~0% unit-covered by design** (CLAUDE.md), so any change
    there is paid for in new e2e. Spending that budget on one message is
    the wrong allocation — see Q10.
@@ -329,16 +408,20 @@ in the About dialog (`AboutDialog.tsx`), both offline, neither requiring
 devtools.** The export is plain, human-readable text.
 
 - **Home is the About dialog.** It already exists, already opens offline,
-  already displays build identity (`AboutDialog.tsx:5,115` read
+  already displays build identity (`AboutDialog.tsx:115` reads
   `__SC_APP_VERSION__`) — which is the first thing any report needs and
   the thing users most reliably get wrong. Putting diagnostics next to
   the version number means one place to point a reporter at.
 - **Two buttons, not one — and the download is not a nicety.**
   `navigator.clipboard` has **zero** uses in `app/src` today (grep) and
-  is unavailable in insecure contexts and unreliable on some iOS PWA
-  paths. The download is the fallback that makes the feature reachable
-  on the exact device class this is for. The mechanism already exists in
-  this codebase: `RouteSummary.tsx:64-67`'s GPX export builds a Blob,
+  is unavailable in insecure contexts and requires a user gesture — both
+  spec facts. (An earlier draft added "unreliable on some iOS PWA paths".
+  That is an **UNVERIFIED** external behavioural claim, uncited, and it is
+  now listed in the Claim-strength note rather than left reading as
+  established. The conclusion does not depend on it.) The download is the
+  fallback that makes the feature reachable on the exact device class
+  this is for. The mechanism already exists in
+  this codebase: `RouteSummary.tsx:61-68`'s GPX export builds a Blob (`:63`),
   `URL.createObjectURL`s it and sets `a.download` — a proven, fully
   offline pattern to reuse rather than invent.
 - **Plain text, deliberately.** Q7 makes the user the last redaction
@@ -385,8 +468,13 @@ the key here: it identifies the boat, and the log will already carry
 where the boat is.
 
 **Rule 3 — positions are coarsened, not removed.** GPS fixes, origin,
-destination and via points round to **3 decimal places** (~110 m at this
-latitude). That is enough to identify the region, the harbour pair and
+destination and via points round to **3 decimal places** — a cell of
+**≤ ~111 m**: 0.001° of latitude is ~111 m everywhere, and 0.001° of
+longitude at 54.8°N is ~64 m (`111320 × cos(54.8°) × 0.001`), so the
+latitude correction makes the longitude cell *smaller*, not larger. (An
+earlier draft wrote "~110 m at this latitude", which reads as if the
+latitude were the qualifier producing the figure; it is not.) That is
+enough to identify the region, the harbour pair and
 the mask cell class — which is what makes a routing report reproducible —
 and not enough to constitute a track. Removing positions entirely would
 make a route report useless; #433's incident was route-specific.
@@ -400,9 +488,31 @@ Float32Array wind grids (CLAUDE.md: structured-clone-safe but not
 JSON-safe) and full route geometry. Log the plan `id`, `name`, the
 coarsened endpoints and the `recommended` rig — never the record.
 
-**Rule 6 — the user sees the text before sending it.** Guaranteed by Q6's
+**Rule 6 — `Error.message` and `fatal.stack` are captured VERBATIM, and
+Rules 1-2 do not reach them.** This is the gap in the allowlist, and it
+sits under the payload this design newly introduces. The allowlist
+governs the `Settings` projection only; an exception thrown out of
+`services/aisStream.ts` — which holds `this.apiKey` (`:256`) and
+serialises it into the subscription frame at `:387` — is free text that
+no projection filters. Two requirements follow, and Q8's AIS row is
+wrong to cite Rules 1-2 alone for them:
+
+- **Never interpolate a secret into an error message or a thrown value**
+  anywhere near `aisStream.ts:256`/`:387`.
+- **The export runs a final scrub pass** over the assembled text against
+  the stored `aisApiKey` and `ownMmsi` values, replacing any literal
+  occurrence. This is a backstop for free text, not a substitute for the
+  allowlist — and it is the reason the scrub must read the *stored*
+  values rather than a pattern: an aisstream key has no distinctive
+  shape to regex for.
+
+No concrete leak path is claimed here — this is a rule-coverage gap, not
+a demonstrated bug. It is recorded because it is a gap in the one rule
+this document calls its highest-consequence property.
+
+**Rule 7 — the user sees the text before sending it.** Guaranteed by Q6's
 plain-text-in-a-visible-surface requirement. This is a backstop for the
-first five rules, not a substitute: a reporter cannot be expected to spot
+first six rules, not a substitute: a reporter cannot be expected to spot
 a leaked key, but they can be expected to notice a position they do not
 want to share.
 
@@ -439,8 +549,8 @@ neither is a table that only lists the yes rows.
 | Map / style lifecycle | Service worker | n/a | — | — |
 | SW cache routes | Main window (`ReloadPrompt.tsx`, `services/swRecovery.ts`) | **Yes — SW *state*, not SW logs** | `event` / `error` | `event`: `navigator.serviceWorker.controller` present/absent at capture time — the single fact that separates a real regression from the stale-SW false alarm (CLAUDE.md's UAT triage rule). `error`: `ReloadPrompt.tsx:33`'s `onRegisterError` |
 | SW cache routes | Web Worker | n/a | — | — |
-| SW cache routes | Service worker (`sw.ts`) | **NO — unchanged** | — | Q4. `sw.ts:31`'s existing `console.warn` stays byte-for-byte; it is asserted by `e2e/basemap-fallback.spec.ts:125`, and `sw.ts` is ~0%-unit-covered by design |
-| AIS | Main window (`services/aisStream.ts`, `state/useAisTraffic.ts`) | **Yes — state TRANSITIONS only** | `event` / `warn` | `event` on connection open/close; `warn` on the terminal `keyError`. **Never per message.** AIS is a per-second source published at ≤1 Hz (`useAisTraffic.ts:128-141`, the `setInterval(…, 1000)` tick); a per-message record is a performance bug. **The API key and `ownMmsi` never appear** (Q7 Rules 1-2) |
+| SW cache routes | Service worker (`sw.ts`) | **NO — unchanged** | — | Q4. `sw.ts:31`'s existing `console.warn` stays byte-for-byte. **No spec asserts on it** — `basemap-fallback.spec.ts:125`'s `[#118]` check covers `services/basemapSource.ts:111`, a main-window module (Q4 reason 3). `sw.ts` is ~0%-unit-covered by design, so a change here would need new e2e, not existing e2e |
+| AIS | Main window (`services/aisStream.ts`, `state/useAisTraffic.ts`) | **Yes — state TRANSITIONS only** | `event` / `warn` | `event` on connection open/close; `warn` on the terminal `keyError`. **Never per message.** AIS is a per-second source published at ≤1 Hz (`useAisTraffic.ts:128-141`, the `setInterval(…, 1000)` tick); a per-message record is a performance bug. **The API key and `ownMmsi` never appear** — Q7 Rules 1-2 for the `Settings` projection, **and Rule 6 for the free text**, since an error thrown out of `aisStream.ts` (which holds `this.apiKey` at `:256`) is not covered by the allowlist |
 | AIS | Web Worker | n/a | — | — |
 | AIS | Service worker | n/a | — | AIS is a WebSocket; the SW never sees it |
 | GPS | Main window (`state/useOwnshipGps.ts`, `services/geolocation.ts`) | **Yes — permission/error transitions only** | `event` / `warn` | `event` on watch start/stop; `warn` on a `GeolocationPositionError`. **Never per fix.** `useOwnshipGps.ts:35-41` subscribes `watchPosition` straight into `setRawFix`, so fixes arrive at roughly 1 Hz — a per-fix record fills the 200-entry buffer in under four minutes. The sharp cost is not CPU: it is that the buffer would have **evicted the plan-failure records it exists to hold**. Positions coarsened per Rule 3 |
@@ -479,7 +589,8 @@ simply out of scope, and #288 stays where it is.**
   repo-specific ground beyond the general distaste**: three existing e2e
   assertions read the *real* console —
   `e2e/basemap-fallback.spec.ts:76-77,125-126`,
-  `e2e/labels.spec.ts:333-337`, `e2e/offline.spec.ts:134-136`. Two of
+  `e2e/labels.spec.ts:333-337`, `e2e/offline.spec.ts:133-136` (the
+  collector; its assertion is `:233`). Two of
   those are among the only functional assurance `sw.ts` has. A
   diagnostics feature must not perturb the observation channel that the
   app's least-covered file depends on.
@@ -521,20 +632,60 @@ property of this recommendation, not a coincidence.**
 
 So the answer to "name the e2e assurance that would cover it" is that no
 such assurance is needed, because the change is placed where unit tests
-already reach. Stating what the *existing* e2e would cover if a change
-were forced there anyway, for completeness: `e2e/offline.spec.ts`'s
-console-error-free offline reload and `e2e/basemap-fallback.spec.ts`'s
-`[#118]` presence assertion.
+already reach.
+
+Stating what the *existing* e2e would cover if a change were forced into
+`sw.ts` anyway — and stating it accurately, since the obvious answer is
+wrong (Q4 reason 3): `e2e/offline.spec.ts:233`'s
+`expect(offlineConsoleErrors).toEqual([])` would catch a change that
+broke the precache **hit** branch (`sw.ts:24-26`), because an un-cached
+resource offline surfaces as a MapLibre error (`offline.spec.ts:128-131`).
+It would **not** catch a change to the miss branch or to `sw.ts:31`'s
+warning: `:135` collects only `msg.type() === 'error'`.
+`e2e/basemap-fallback.spec.ts:125`'s `[#118]` assertion covers **no part
+of `sw.ts`** — that string exists only at `services/basemapSource.ts:111`.
+So a change to `sw.ts` would need a genuinely new spec, which is a
+further reason not to make one.
 
 **One NEW e2e assertion this recommendation does need**, and it is the
 redaction rule, not the logging: set an AIS key in Options
-(`OptionsPanel.tsx:203-211`), plan or open About, export diagnostics, and
-assert the key string is **absent** from the exported text. This is
-reachable today with the existing harness, it is the highest-consequence
-property in the whole design (Q7), and it is exactly the kind of check a
-unit test can pass while the real assembled export leaks — because the
-export is assembled from several sources and only the browser sees the
-whole of it.
+(`OptionsPanel.tsx:203-211`), plan a route, open About, export
+diagnostics, and assert the key string is **absent** from the exported
+text. It is the highest-consequence property in the whole design (Q7),
+and it is exactly the kind of check a unit test can pass while the real
+assembled export leaks — the export is assembled from several sources
+and only the browser sees the whole of it.
+
+**That absence assertion must be LICENSED, or it is vacuous.** On its
+own it passes when the export is empty, when the button did not render,
+when the dialog did not open, or when the key was never stored — and
+under this very design the key is never written to the buffer on the
+healthy path either, so "absent" is the expected reading for the correct
+behaviour *and* for several broken ones. The spec cannot separate them.
+This repo already has the pattern: `app/e2e/labels.spec.ts`'s header
+records that its rendered-feature check **licenses** the zero-warnings
+assertion and must not be deleted as redundant — CLAUDE.md's rule that
+"an absence assertion carries no information until the
+evidence-generating process is established to have run". (This document
+invoked "what class of failure can this method not detect" against a
+*different* test two paragraphs below, and failed to turn it on its own
+— the gap the licensing below closes.)
+
+Two licensing checks, in the same capture, neither deletable as
+redundant:
+
+1. **A positive control on the export itself** — assert the exported
+   text *contains* a token that must be there: the rendered
+   `__SC_APP_VERSION__` value (`AboutDialog.tsx:115`) and the harbour
+   name of the plan just run. This establishes that an export was
+   produced and is non-empty, which is what licenses reading "absent" as
+   evidence.
+2. **A positive control on the input** — confirm the key was actually
+   persisted before the export is taken (read it back from the Options
+   field, or from the `settings` store), so "absent" cannot be satisfied
+   by a key that was never stored.
+
+Only with both does the absence assertion carry information.
 
 Deliberately **not** recommended, per the "what class of failure can this
 method not detect" rule: an e2e test that forces a worker OOM or a
@@ -555,17 +706,55 @@ Build, in this order (sizes in Q13):
 1. **`app/src/lib/diagnostics.ts`** — a module-scope ring buffer,
    capacity 200, three levels (`error`/`warn`/`event`), a `record()`
    entry point taking a level, a short stable code, and a typed payload,
-   and a `formatDiagnostics()` producing plain text. Redaction lives here
-   and only here, as an allowlist (Q7 Rule 1), so there is exactly one
-   place to audit.
-2. **Bind the discarded errors.** `usePlanFlow.ts:133`, `:143`, `:228`,
-   `:238`, `:264` become `catch (err)` and hand `err` to `record()`.
-   `replan.ts:206` and `reroute.ts:213` likewise — both currently
-   evaluate `err instanceof ReplanError ? err.messageKey : 'error.internal'`
-   and then drop `err` on the non-`ReplanError` branch, which is the
-   branch that matters.
+   and a `formatDiagnostics()` producing plain text. Mirrored to one
+   capped `sessionStorage` key, written coalesced rather than per record
+   and restored on load (Q2), guarded like
+   `services/swRecovery.ts:65-71` so an unreadable `sessionStorage` in
+   privacy mode degrades to in-memory-only rather than throwing.
+   Redaction lives here and only here — the `Settings` allowlist (Q7
+   Rule 1) **and** the free-text scrub (Q7 Rule 6) — so there is exactly
+   one place to audit.
+2. **Bind the discarded errors — eleven sites, in two groups that fail
+   differently.**
+
+   *Group A, `state/usePlanFlow.ts`* — `:133`, `:143`, `:228`, `:238`,
+   `:264` become `catch (err)` and hand `err` to `record()`.
+
+   *Group B, the OUTER catches* — `state/replan.ts:206` and
+   `state/reroute.ts:213` already bind `err`; both evaluate
+   `err instanceof ReplanError ? err.messageKey : 'error.internal'` and
+   then drop `err` on the non-`ReplanError` branch. Add the `record()`
+   call.
+
+   *Group C, the four INNER bare catches — and these are the ones that
+   destroy the discriminator §12 designs.*
+   `grep -n '} catch {' app/src/state/replan.ts app/src/state/reroute.ts`
+   at `3979bae` returns four, and they split by what they erase:
+
+   | Site | Wraps | Erases |
+   |---|---|---|
+   | `state/replan.ts:111` | `deps.client.plan(...)` (`:110`) | the `RoutingError` — i.e. the `kind` |
+   | `state/reroute.ts:114` | `deps.client.plan(...)` (`:113`) | the `RoutingError` — i.e. the `kind` |
+   | `state/replan.ts:123` | `save(updated)` (`:122`) | the IndexedDB error — the `persist-failed` cause |
+   | `state/reroute.ts:142` | `save(rerouted)` (`:141`) | the IndexedDB error — the `persist-failed` cause |
+
+   Each rethrows a `ReplanError` carrying a **hardcoded**
+   `'error.internal'` and a fixed string (`state/replan.ts:112`, `:124`;
+   `state/reroute.ts:115`, `:143`). So by the time Group B runs, `err` is a
+   `ReplanError` whose `messageKey` was decided before the cause was
+   known: **handing it to `record()` records the erasure, not the
+   cause.** Without Group C, §12's `kind` never reaches the replan or
+   reroute paths at all — this is a hole in the recommendation, not a
+   wording problem.
+
+   **Ownership: #432 owns closing Group C**, because those same two
+   sites are already #432's item 3 (they reject *without* disposing, so a
+   timeout via replan/reroute leaves the worker running). #433 should
+   **document the gap and not fix it**, so the two issues do not
+   double-implement the same four catches.
 3. **`AboutDialog.tsx`** — "copy diagnostics" + "download diagnostics",
-   the latter reusing `RouteSummary.tsx:64-67`'s Blob pattern. i18n keys
+   the latter reusing `RouteSummary.tsx:61-68`'s Blob pattern (Blob at
+   `:63`, `URL.createObjectURL` at `:64`, `a.download` at `:67`). i18n keys
    in **both** `dict.de.ts` and `dict.en.ts` (`satisfies Record<MsgKey,
    string>` enforces parity).
 4. **`protocol.ts`** — `fatal` gains `stack?: string` (Q3).
@@ -622,9 +811,17 @@ Build, in this order (sizes in Q13):
    worst case is a diagnostics feature contributing to the eviction of
    the offline chart; and it creates an at-rest privacy artifact carrying
    coarsened GPS positions that outlives the session on a possibly-shared
-   device. The one thing it buys over the in-memory buffer — surviving a
-   full tab crash — is not the reported failure mode. Named
-   reconsideration trigger in Q2.
+   device. The one thing it buys over the adopted buffer — surviving the
+   whole tab, not merely a reload — is not the reported failure mode.
+   Named, non-circular reconsideration trigger in Q2.
+
+   **Note the scope of this rejection, because an earlier draft
+   overstated it:** what is rejected is *IndexedDB*, and separately
+   `localStorage` (it outlives the tab, reinstating the privacy
+   artifact). Persistence as such is **not** rejected — a capped
+   `sessionStorage` mirror is adopted in Q2, because the failing banner's
+   own copy (`dict.en.ts:96`) tells the user to reload, which destroys an
+   in-memory-only buffer.
 
 5. **A third-party error reporter (Sentry or equivalent).** Rejected
    twice over, and the record matters so it cannot return as a fresh
@@ -680,7 +877,7 @@ third pattern:
 
 - `OpenMeteoError` (`openMeteo.ts:16-24`): `readonly kind`, plus the
   Error's own message.
-- `ReplanError` (`replan.ts:50-58`): `readonly messageKey: MsgKey`, plus
+- `ReplanError` (`state/replan.ts:50-58`): `readonly messageKey: MsgKey`, plus
   the Error's own message — and its comment at `:46-49` already states
   the caveat that applies here too ("NOT structured-clone-safe … never
   let this cross a postMessage/IndexedDB boundary").
@@ -748,10 +945,18 @@ German and English copy, and which action each cause offers.
 - **Subsumed by this spike: nothing.** #432's substance is three
   engineering facts — a fixed, un-scaled `DEFAULT_PLAN_TIMEOUT_MS =
   120_000` (`workerClient.ts:16`); `isochrone.ts` having no wall-clock
-  budget at all; and `replan.ts:110-113` / `reroute.ts:113` rejecting
-  **without** disposing, so a timeout reached via replan or reroute
-  genuinely leaves the worker running. None of those is a logging
+  budget at all; and `state/replan.ts:109-113` / `state/reroute.ts:112-116`
+  rejecting **without** disposing, so a timeout reached via replan or
+  reroute genuinely leaves the worker running. None of those is a logging
   problem and none is improved by a log.
+
+  **But #432 does own one thing this spike depends on:** those are the
+  same two `try`/`catch` blocks as Q11 step 2's Group C
+  (`state/replan.ts:111`, `state/reroute.ts:114`), which bind nothing and
+  so destroy the `RoutingError` before any recorder or any banner can
+  see it. Whoever adds the missing `dispose()` there is already editing
+  those exact lines — so #432 should bind `err` in the same edit, and
+  #433 should document the gap rather than fix it.
 - **Shared with #433, not with this spike: the `'timeout'` cause.**
   #432's user-facing half — "a timeout is reported as *unexpected* and
   advised to reload" — is precisely #433's cause 4. If #433 lands the
@@ -774,9 +979,19 @@ German and English copy, and which action each cause offers.
 
 ### The minimum that makes "a bug happened and nothing was visible" go away
 
-**Steps 1 + 2 + 3 of Q11, shipped together: the ring buffer, the five
-bound catches, and the About-dialog export.** Roughly one new ~120-line
-module, seven one-line catch edits, one dialog section, four i18n keys.
+**Steps 1 + 2 + 3 of Q11, shipped together: the ring buffer, the bound
+catches, and the About-dialog export.** Roughly one new ~120-line
+module, **eleven** catch-site edits (Q11 step 2: five in
+`state/usePlanFlow.ts`, two outer in `state/replan.ts`/`state/reroute.ts`,
+four inner — of which the four inner are one-liners only if #432 has not
+yet claimed them, since it must edit the same blocks to add the missing
+`dispose()`), one dialog section, four i18n keys.
+
+Sequencing consequence worth naming: the minimum is shippable **without**
+Group C. It records every failure reachable through `run()` — which is
+the path #433's incident took — and the replan/reroute paths stay
+`error.internal`-shaped until #432 lands. Say so in the issue rather than
+letting a later reader assume step 1 covered all four.
 
 **Why the minimum is not smaller, against #433's own suggestion.** #433
 proposes "a single `console.error` at `usePlanFlow.ts:228`" as the
@@ -829,23 +1044,32 @@ to file after review:
 3. **Global `unhandledrejection`/`onerror` capture** (Q13 step 4a).
 4. **React error boundary** (Q13 step 4b) — currently zero across
    `app/src`; a render crash today produces a blank page and no record.
-5. **Correct #435's body** (or note it in the closing comment): the
-   planning-flow error renders at `App.tsx:806-823`, not
-   `RouteSummary.tsx:154` (§0). Worth doing because #433 is implemented
-   next and an issue text is not ground truth for states it does not
-   describe (CLAUDE.md).
+*(A fifth item — "correct #435's body" — was listed here and is now
+**done**: the correction landed in the issue on 2026-08-07, after this
+document was written. See §0.)*
 
 ## Claim-strength note
 
 Everything in §0 and every `file:line` in Parts A-C was read from this
-worktree at `develop`@`3979bae`. Three things are deliberately **not**
+worktree at `develop`@`3979bae`. Four things are deliberately **not**
 claimed:
 
-- **The `maplibre-gl` glyph-warning line number was not re-derived.**
-  `app/package-lock.json` pins 6.1.0, but `node_modules` is not installed
-  in this worktree, so Q9 cites CLAUDE.md's finding and says so rather
-  than repeating a number it could not check against the installed
-  artefact.
+- **The `maplibre-gl` glyph-warning line number was not re-derived**, for
+  two independent reasons — the second found by this PR's review, and it
+  is the stronger one. (1) `node_modules` is not installed in this
+  worktree, so there was no installed artefact to read. (2) The review
+  checked the **main** checkout and found it serving `maplibre-gl`
+  **6.0.0** while `app/package-lock.json` pins **6.1.0** — CLAUDE.md's
+  #392 stale-`node_modules` trap, live in this repo right now. So
+  re-deriving the number from the nearest available `node_modules` would
+  have produced a **wrong-version citation presented as verified**, which
+  is worse than declining. Q9 cites CLAUDE.md's finding and names the
+  version it was read against.
+- **"`navigator.clipboard` is unreliable on some iOS PWA paths" (Q6) is
+  UNVERIFIED.** It is an uncited external behavioural claim. The two
+  facts that carry Q6's two-button conclusion — zero `navigator.clipboard`
+  uses in `app/src` (reproducible grep) and the secure-context plus
+  user-gesture requirements (spec) — stand without it.
 - **The 200-record capacity and the 3-decimal position rounding are
   judgement calls**, labelled as such at both sites. Neither is derived
   from a measurement, and neither should be cited later as if it were.
