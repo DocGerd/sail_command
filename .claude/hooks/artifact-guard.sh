@@ -262,13 +262,46 @@
 #     so the production predicate is what answered — the #404 twin trap).
 #     BASELINE: 1,075 of the 27,040 name a protected path; 18 are already
 #     suppressed by the exemption above; 1,057 ASK.
+#     THESE ARE A SNAPSHOT, and the transcript tree only grows — a re-harvest
+#     will legitimately report MORE. Independently re-harvested hours later
+#     during review: 1,233 transcripts / 29,800 calls / 27,762 distinct /
+#     1,092 naming a protected path / 1,074 fires, every delta proportionate
+#     and in the growth direction, with the 18 already-suppressed matching to
+#     the unit and EVERY prompt-removal count below matching exactly. Compare
+#     RATIOS and prompt-removal COUNTS across harvests, never the absolute
+#     corpus sizes.
 #     WHAT THOSE 1,057 ARE, classified with a quote-aware segmenter (analysis
 #     only — this guard still refuses to segment): 799 TRUE POSITIVE (75.6%;
 #     a redirect, a writer, a code runner, a heredoc, a mutating git/gh call
 #     or a script invocation genuinely reaching a protected path), 246 NOISE
-#     (23.3%), 12 unresolved (1.1%). The NOISE is dominated by families this
-#     design has already settled and #437 put out of scope: grep 121 (the
-#     ugrep shim), read-only git 40, cd 34. THE MAINTAINER'S OWN REPORTED
+#     (23.3%), 12 unresolved (1.1%).
+#     READ THAT SPLIT WITH ONE CAVEAT (PR #445 review, Minor 2): unlike every
+#     DECISION-RELEVANT number in this block, it is NOT independently
+#     re-derivable from this repo — the classifier is a throwaway analysis
+#     script, never committed. Everything a decision rests on WAS reproduced
+#     by the reviewer from an independent harvest (the 18 already-suppressed,
+#     exact; every candidate's prompt-removal count, exact; the 20/0
+#     enabling-shape figure, exact; the shipped script's 1-removed/0-newly-
+#     asking delta). The 799/246/12 breakdown is DESCRIPTIVE ONLY, and no
+#     decision here turns on it.
+#     TWO DIFFERENT COUNTS PER FAMILY — quote the right one. The NOISE is
+#     dominated by families this design has already settled and #437 put out
+#     of scope, and each has a FAMILY TOTAL (fires whose first word is that
+#     verb — a one-line count anyone can re-derive) and a smaller
+#     NOISE-CLASSIFIED SUBSET (that family's fires the classifier judged
+#     read-only END TO END, so a `grep … && cp …` compound is excluded):
+#         grep  family 158, of which 121 noise   (the ugrep shim)
+#         git   family 120, of which  40 noise   (read-only git as a WHOLE
+#                                                 command, not merely a
+#                                                 read-only subcommand)
+#         cd    family 268, of which  34 noise
+#     The three families are 546 of the 1,057 fires (51.7%); their noise
+#     subsets are 195 of the 246 noise commands (79.3%). A future reader
+#     counting first words the obvious way gets the FAMILY figures and will
+#     not match the noise ones — that is the two definitions disagreeing, not
+#     an error. Anything citing these outside this repo should quote the
+#     FAMILY totals, which are reproducible.
+#     THE MAINTAINER'S OWN REPORTED
 #     COMMAND IS IN THE CORPUS AND IS A TRUE POSITIVE — `sed -n '60,100p'
 #     ...; ls app/public/data/ | head -20; node -e "...harbors.json..."` is
 #     ONE Bash call, and a Bash hook sees the whole command string, never a
@@ -278,23 +311,49 @@
 #     script):
 #       * SPLIT ON `|` ONLY, requiring EVERY pipe segment's first word to be
 #         an allowlisted verb — the one candidate #404's rejection record did
-#         not cover: **0**. Not rejected as unsound: the fail-closed argument
-#         holds and was attacked rather than assumed. Naive `|`-split
-#         segments REFINE the real pipeline's segments (the real ones split
-#         only at UNQUOTED pipes), so each real segment's first word is the
-#         first word of its leading naive segment — equal when that segment
-#         is non-empty, and an empty or quote-truncated fragment (`'l`,
-#         `cat'`) exact-matches no verb and therefore asks. `||` yields an
-#         empty segment and asks; `|&` still carries `&`. No wrong
-#         suppression could be constructed. It is rejected on YIELD alone,
-#         and the zero is a WEAK zero worth distinguishing from the two
-#         below: the enabling shape (a pipeline of nothing but allowlisted
-#         verbs) occurs 20 times corpus-wide, and 0 of those 20 name a
-#         protected path — but only 4.0% of all commands name one, so the
-#         expected yield is ~0.8, BELOW this corpus's one-command resolution.
-#         Re-propose it only with a corpus large enough to resolve that, or
-#         on a fresh maintainer ruling; do not re-propose it on the argument
-#         alone, which is already accepted here.
+#         not cover: **0**. The fail-closed argument was attacked rather than
+#         assumed, and it SURVIVED — but only in a form narrower than it
+#         first looks, so read the qualifier before reusing it. Naive
+#         `|`-split segments REFINE the real pipeline's segments (the real
+#         ones split only at UNQUOTED pipes), so each real segment's first
+#         word is the first word of its leading naive segment — equal when
+#         that segment is non-empty, and an empty or quote-truncated
+#         fragment (`'l`, `cat'`) exact-matches no verb and therefore asks.
+#         `||` yields an INTERIOR empty segment and asks; `|&` still carries
+#         `&`.
+#         **THE QUALIFIER, and it is the whole finding: that argument is
+#         IMPLEMENTATION-CONDITIONAL, not a property of `|`-splitting.** It
+#         holds only for a split that PRESERVES A TRAILING EMPTY SEGMENT,
+#         and the most natural bash spelling does not. `IFS='|' read -ra
+#         SEGS <<<"ls app/public/data |"` yields ONE element (bash drops the
+#         trailing empty field), whose first word is `ls` — so that spelling
+#         ALLOWS a command whose second stage it never examined. MEASURED
+#         twice independently: the implementer hit it in the measurement
+#         harness (a loop that broke before checking the final segment) and
+#         the reviewer reproduced it clean-room from the `read -ra` spelling
+#         before reading that half of the PR. Reasoning from `||` to the
+#         general case is exactly the step that misses it — the interior
+#         empty field is preserved and the trailing one is not. Two
+#         independently written segmenters got this wrong in one afternoon,
+#         which is itself evidence about the candidate.
+#         WHY IT IS DECLINED, stated no more strongly than the measurement
+#         supports: NOT "the yield is low" — the yield COULD NOT BE
+#         RESOLVED. The enabling shape (a pipeline of nothing but
+#         allowlisted verbs) occurs 20 times corpus-wide with 0 of those 20
+#         naming a protected path, but only ~4% of all commands name one, so
+#         the expectation is ~0.8 and observing 0 is uninformative
+#         (Poisson(0.79) puts P(0) near 45%). That is a WEAK zero, and the
+#         two CONTROLS below are STRONG zeros — do not quote the three as if
+#         they were the same result. With the measurement underpowered, what
+#         actually decides it is the guard's own default, unrebutted: the
+#         SMALLER allowlist, and no segmentation of any kind inside a
+#         predicate whose stated value is REFUSING to segment (the PR #233
+#         shape this design was closed over). That ground survives a bigger
+#         corpus; "the yield is low" would not.
+#         Re-propose it only with a corpus large enough to resolve ~0.8, or
+#         on a fresh maintainer ruling — and never on the soundness argument
+#         alone, which is accepted here ONLY together with the
+#         trailing-empty-segment qualifier above.
 #       * READONLY_VERBS additions, each scored ALONE: cmp, od, xxd, hexdump,
 #         nl, base64, sort, uniq, cut, tr, rev, comm, column, jq — **0** each.
 #         `diff` removed **1** and is still declined: same evidence as `tail`,
