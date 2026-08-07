@@ -584,9 +584,125 @@ jobs:
     permissions:
       pages: write
       id-token: write
-    environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
+    # #415: the OUTER job timeout must strictly EXCEED the worst case of the
+    # inner retry below — this repo has a documented lesson that a job
+    # `timeout-minutes` and a per-step/per-operation timeout are DIFFERENT
+    # failure surfaces, and raising one cannot rescue the other (cost three
+    # red CI runs to learn on the app suite; see CLAUDE.md's coverage-timeout
+    # section). Derivation: attempt 1 runs against actions/deploy-pages'
+    # own DEFAULT 10-minute poll ceiling (`action.yml`'s `timeout: 600000`
+    # default, NOT overridden by anything in this file — see the step
+    # comment below) before it cancels itself and returns control (absorbed
+    # as a non-fatal step failure by `continue-on-error` below); the
+    # deliberate wait is 1 min; attempt 2 runs against that same default
+    # ceiling again — 21 min of worst-case in-action time. 25 min adds ~4
+    # min of margin for runner queueing/startup and the warning-annotation
+    # step, without masking a genuinely stuck attempt 2 (attempt 2 has no
+    # `continue-on-error`, so a stuck attempt 2 fails the job on its OWN
+    # ~10 min budget, well inside 25 min, not by hitting this outer bound).
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: "${{ steps.deployment.outcome == 'success' && steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}"
     steps:
+      # #415: actions/deploy-pages v5.0.0 can wedge in a NON-TERMINAL status
+      # and never advance to a terminal one — an UPSTREAM/server-side defect
+      # (https://github.com/actions/deploy-pages/issues/406, open and active
+      # with independent reporters as of 2026-08-06), not caused by anything
+      # in this repo. The status string itself is INCIDENTAL, not
+      # diagnostic — do not triage a future occurrence by matching one
+      # string. Measured here 2026-08-06: 7 of 8 `deploy` runs between
+      # 10:31Z-14:49Z hit this — five of them (runs 31093607195, 31096256283,
+      # 31100994863, 31104388080, 31106535866) logged
+      # `Current status: deployment_queued` throughout, but the most recent,
+      # run 31112750086 (`fb2481c8`, 14:49Z — the 8th run in this same
+      # window and the current `develop` tip), logged
+      # `deployment_in_progress` x118 and NEVER `deployment_queued` — same
+      # shape (a non-terminal status that never advances), different
+      # string. Upstream corroborates the string is incidental:
+      # actions/deploy-pages#406's opening report wedges on `syncing_files`,
+      # and a 2026-08-06T12:19Z v5 reporter (`cpkb-bluezoo`) describes
+      # "the identical pattern... just with a different intermediate status
+      # string". Whichever status it stalls on, the action polls every 5s
+      # until its own poll ceiling, then emits "Timeout reached, aborting!"
+      # and cancels its own wedged deployment (job duration 10m05s-10m09s
+      # every time; zero failures in the 26 runs before this window). KEY
+      # MEASUREMENT: on commit e303e496, attempt 1 timed out after the full
+      # ceiling; a manual attempt 2 on the IDENTICAL commit and artifact
+      # succeeded in 11 SECONDS. So waiting longer does not clear a wedged
+      # deployment, but abandoning it and creating a fresh one does —
+      # GitHub Status read all-operational throughout, and the repo's own
+      # `concurrency: cancel-in-progress` was checked and ruled out (no run
+      # was cancelled, no non-terminal Pages deployment existed).
+      #
+      # REJECTED options, recorded so they cannot quietly return:
+      #  - Raising the `timeout` input: rejected on evidence, not taste —
+      #    upstream reporters describe it as ineffective, and the 11-second
+      #    successful retry above shows the wedge does not clear by waiting;
+      #    a longer timeout would only make each failed attempt slower.
+      #  - Bumping the action version: already pinned at v5.0.0, the newest
+      #    release — nothing to bump.
+      #  - Changing artifact size/content: flat at ~70.75 MB, far under
+      #    Pages' documented 1 GB limit, and not implicated by any evidence.
+      #
+      # Verified safe to invoke this action TWICE in one job (source read
+      # against the pinned v5.0.0 tag commit
+      # cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 — `gh api
+      # repos/actions/deploy-pages/git/refs/tags/v5.0.0` confirms that exact
+      # SHA is what `v5.0.0` points at): `src/index.js` instantiates `const
+      # deployment = new Deployment()` at MODULE scope and requests a fresh
+      # `idToken` via `core.getIDToken()` inside `main()` on every run; a
+      # `uses:` step invocation of a Node-runtime action is a brand-new
+      # `node dist/index.js` OS process, so neither that singleton nor the
+      # token carries over between attempt 1 and attempt 2 — there is no
+      # shared in-process state to poison. `src/internal/deployment.js`'s
+      # `create()` always POSTs a fresh `createPagesDeployment` call (a new
+      # deployment resource, new ID) and its `check()` timeout branch
+      # explicitly calls `this.cancel()` on the wedged deployment before
+      # returning — attempt 1's own deployment is actively cancelled, not
+      # merely abandoned, before attempt 2 ever starts.
+      #
+      # #398 interaction: Pages keys a deployment by commit SHA, so a repeat
+      # deployment of the SAME sha no-ops IF an earlier one already
+      # SUCCEEDED — the failure mode #398 exists to guard against, and the
+      # one that would make this whole mitigation #398 reproduced one level
+      # down if it applied here. MEASURED that it does not: run 31109710670
+      # (`e303e496`) attempt 2 (`run_attempt: 2`) deployed
+      # 14:30:26Z->14:30:37Z (11s, success), and its downstream
+      # `smoke-probe` — #398's own version-aware entry-chunk probe, built
+      # precisely to distinguish "a real new deployment" from "reported
+      # success and no-opped against a prior one" — ALSO succeeded
+      # (14:30:39Z->14:30:43Z). That same run's `build` job kept attempt-1's
+      # original timestamps (14:13:11Z->14:13:58Z) and did not re-run,
+      # which is what makes the "IDENTICAL commit AND artifact" claim above
+      # a measurement rather than an assumption. Mechanistically this is
+      # expected too — this retry step only runs when attempt 1's outcome
+      # was 'failure' (never 'success'), so attempt 1's deployment was
+      # cancelled/failed, not successful, and attempt 2 creates a genuinely
+      # NEW deployment for the same sha rather than colliding with a prior
+      # success — but run 31109710670 above is the direct evidence, not
+      # just the mechanism.
       - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+      # Keep a rescued run VISIBLE rather than letting the retry silently
+      # mask how often the upstream defect fires — a mitigation that hides
+      # its own trigger rate is a defect in this repo's terms.
+      - name: Warn on rescued deploy (#415)
+        if: steps.deployment.outcome == 'failure'
+        run: |
+          echo "::warning::#415 actions/deploy-pages attempt 1 failed — retrying once after a deliberate wait. This is LIKELY the upstream non-terminal-status wedge tracked at https://github.com/actions/deploy-pages/issues/406 (NOT something this repo caused) UNLESS the attempt-1 log above ends in deployment_content_failed or deployment_cancelled — those are FINAL errors (e.g. a symlink/hard link in the built artifact) that this repo's own build CAN cause, will not be fixed by this retry, and should be fixed at the source rather than escalated upstream. If the wedge fires often, escalate upstream rather than quietly raising the retry count."
+      # #415: ~60s is a maintainer JUDGEMENT call, not a measurement — the
+      # one measured successful retry followed a ~6 minute gap between the
+      # timed-out attempt and a later manual re-run, and an IMMEDIATE retry
+      # is unverified. Named and justified rather than silently chosen, per
+      # this repo's house style for judgement constants (see
+      # PANEL_MAP_RESERVE_PX in app/src/lib/panelWidth.ts).
+      - name: Deliberate wait before retry (#415)
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+      - id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
   uat-environment:
     needs: deploy
