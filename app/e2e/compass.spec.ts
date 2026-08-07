@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type CDPSession, type Page } from '@playwright/test';
-import { startPreview, mapReady } from './helpers';
+import { startPreview, mapReady, bannerHeightVar } from './helpers';
 
 // #155 map orientation chrome: the north arrow / track-up toggle and the
 // nautical scale bar, against the REAL MapLibre camera (jsdom has none, so
@@ -589,6 +589,27 @@ const OCCLUSION_VIEWPORTS = [
 ];
 const OCCLUSION_TABS = ['Planen', 'Routen'] as const;
 
+// #412 fix-wave (PR #419 review, Minor 1): formats an overlap tracker that
+// was initialised to `null` (never `0` — see the two `#368` overlap guards
+// below) so a failure message can say "unmeasured" instead of fabricating a
+// "0" that reads as a genuine clean measurement.
+function fmtOverlap(v: number | null): string {
+  return v === null ? 'unmeasured' : String(v);
+}
+
+// No 3-CONSECUTIVE stability requirement on the overlap polls below or on
+// the Major-1 hit-test poll in the `"Major 3"` test further down this file
+// (#412 fix-wave, PR #419 review, Minor 2 — considered and declined here,
+// not silently skipped). See `layout.spec.ts`'s `settledHitDescription`
+// comment for the full argument: `labels.spec.ts`'s three-consecutive-at-
+// 400ms pattern exists to outlast a value that can go stale AFTER first
+// matching (MapLibre's placement throttle re-running a query); the
+// `--sc-banner-height` push these polls depend on only GROWS within any one
+// test's poll window here, so a single satisfying tick has no live producer
+// left that could shrink the clearance back a tick later. Reachability of a
+// stale-LARGE-then-settles-lower transient is assessed LOW, not proven
+// impossible.
+
 /** Every element (tag+class) at a point, front-to-back — used only for the
  * diagnostic dump attached to a failing assertion below. */
 function elementsAt(page: Page, x: number, y: number): Promise<{ tag: string; cls: string }[]> {
@@ -907,28 +928,73 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     // same region at all — asserted here as zero overlap, replacing the old
     // "who's on top at the overlap point" probe (still exercised, in more
     // depth, by layout.spec.ts's own #368 regression test).
-    const bannerBox = (await banner.boundingBox())!;
-    const stackBox = (await page.locator('.map-stack-tl').boundingBox())!;
-    const overlapWidth = Math.max(
-      0,
-      Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width) -
-        Math.max(bannerBox.x, stackBox.x),
-    );
-    const overlapHeight = Math.max(
-      0,
-      Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height) -
-        Math.max(bannerBox.y, stackBox.y),
-    );
-    // AREA, not the two dimensions separately: both clusters are left-
-    // anchored, so they always share an x-range (overlapWidth > 0) even once
-    // the fix moves them fully clear of each other vertically — asserting
-    // `overlapWidth === 0` would fail on that harmless shared x-range, not on
-    // a real overlap. Two rects only truly intersect when BOTH dimensions
-    // overlap; the product is 0 whenever either one is.
-    expect(
-      overlapWidth * overlapHeight,
-      `overlapWidth=${overlapWidth} overlapHeight=${overlapHeight}`,
-    ).toBe(0);
+    // #412: geometry is RE-SAMPLED on every poll tick below, never frozen
+    // from a single read taken before the `--sc-banner-height` ResizeObserver
+    // write (and the CSS push it drives) has settled — a stale pre-push read
+    // and a genuine, still-live overlap would otherwise produce the
+    // byte-identical `toBe(0)` failure. `lastOverlapWidth`/`lastOverlapHeight`
+    // are tracked outside the poll purely so the catch below can still name
+    // the actual last-observed numbers (`expect.poll`'s own `message` option
+    // must be a static string, not a function of the polled value).
+    //
+    // #412 fix-wave (PR #419 review, Minor 1): initialised to `null`, NOT
+    // `0` — a `0` initial value is indistinguishable from a genuine "no
+    // overlap" MEASUREMENT. If `boundingBox()` ever returns `null` (element
+    // not visible/detached), the `!` assertion below throws inside the poll
+    // callback — and, MECHANISM CORRECTED (Minor 6, verified against the
+    // installed `@playwright/test@1.62.1`, matching `app/package-lock.json`'s
+    // pin — `node_modules/playwright/lib/matchers/expect.js:13387-13388`
+    // calls `await actual()` OUTSIDE its own `try`, and the `raceAgainstDeadline`/
+    // `pollAgainstDeadline` helpers it calls into
+    // (`node_modules/playwright-core/lib/coreBundle.js:4270-4305`) never
+    // `.catch()` that call either): a throwing poll callback is NOT retried
+    // as a non-matching tick — it propagates immediately and fails the WHOLE
+    // `expect.poll(...)` on the spot, same-tick. So this is a single-tick
+    // failure mode, not a "throws every tick and never gets assigned" one:
+    // the only way these trackers stay at their initial value is a `null`
+    // box on the very FIRST read, which throws straight out to the `catch`
+    // below before ever assigning anything. Without this fix the catch would
+    // report `overlapWidth=0 overlapHeight=0` as if it had actually measured
+    // a clean, non-overlapping layout — a fabricated measurement, not an
+    // honest "never observed".
+    let lastOverlapWidth: number | null = null;
+    let lastOverlapHeight: number | null = null;
+    try {
+      await expect
+        .poll(
+          async () => {
+            const bannerBox = (await banner.boundingBox())!;
+            const stackBox = (await page.locator('.map-stack-tl').boundingBox())!;
+            lastOverlapWidth = Math.max(
+              0,
+              Math.min(bannerBox.x + bannerBox.width, stackBox.x + stackBox.width) -
+                Math.max(bannerBox.x, stackBox.x),
+            );
+            lastOverlapHeight = Math.max(
+              0,
+              Math.min(bannerBox.y + bannerBox.height, stackBox.y + stackBox.height) -
+                Math.max(bannerBox.y, stackBox.y),
+            );
+            // AREA, not the two dimensions separately: both clusters are
+            // left-anchored, so they always share an x-range
+            // (overlapWidth > 0) even once the fix moves them fully clear of
+            // each other vertically — asserting `overlapWidth === 0` would
+            // fail on that harmless shared x-range, not on a real overlap.
+            // Two rects only truly intersect when BOTH dimensions overlap;
+            // the product is 0 whenever either one is.
+            return lastOverlapWidth * lastOverlapHeight;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(0);
+    } catch (e) {
+      const height = await bannerHeightVar(page);
+      throw new Error(
+        `overlapWidth=${fmtOverlap(lastOverlapWidth)} overlapHeight=${fmtOverlap(lastOverlapHeight)} ` +
+          `bannerHeight=${height || '(unset)'}\n${(e as Error).message}`,
+        { cause: e },
+      );
+    }
 
     // The banner itself must still be fully legible — nothing else in the
     // map-chrome tier may cover IT either, now that they no longer share
@@ -944,8 +1010,12 @@ test('#208 review "Major 2" / #368: the offline banner and .map-stack-tl no long
     // assertion — a future change that legitimately reopens an overlap
     // would have no test left to answer whether the tier order still wins
     // it correctly.
-    const bannerCenterX = bannerBox.x + bannerBox.width / 2;
-    const bannerCenterY = bannerBox.y + bannerBox.height / 2;
+    //
+    // Fresh read, taken AFTER the poll above has already confirmed the
+    // geometry settled — not a re-use of a pre-settle value.
+    const settledBannerBox = (await banner.boundingBox())!;
+    const bannerCenterX = settledBannerBox.x + settledBannerBox.width / 2;
+    const bannerCenterY = settledBannerBox.y + settledBannerBox.height / 2;
     const onTop = await topmostIsWithin(page, bannerCenterX, bannerCenterY, '.banner-area');
     if (!onTop) {
       const hitStack = await elementsAt(page, bannerCenterX, bannerCenterY);
@@ -1047,22 +1117,54 @@ test('#368 fix-wave: partial-push band (375x667) — checkbox clears the banner,
     await expect(page.locator('.banner-area .banner')).toHaveCount(1);
 
     const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
-    const toggleBox = (await depthToggle.boundingBox())!;
-    const bannerBox = (await banner.boundingBox())!;
-    const overlapWidth = Math.max(
-      0,
-      Math.min(bannerBox.x + bannerBox.width, toggleBox.x + toggleBox.width) -
-        Math.max(bannerBox.x, toggleBox.x),
-    );
-    const overlapHeight = Math.max(
-      0,
-      Math.min(bannerBox.y + bannerBox.height, toggleBox.y + toggleBox.height) -
-        Math.max(bannerBox.y, toggleBox.y),
-    );
-    expect(
-      overlapWidth * overlapHeight,
-      `overlapWidth=${overlapWidth} overlapHeight=${overlapHeight}`,
-    ).toBe(0);
+    // #412: this was the MORE exposed of the two `#368` guards named in the
+    // issue — a single, un-polled `boundingBox()` read on each side feeding
+    // an IMMEDIATE one-shot `toBe(0)`, with zero settle tolerance for a
+    // coordinate sampled before the `--sc-banner-height` push. Both boxes are
+    // now RE-SAMPLED on every poll tick; `lastOverlapWidth`/`lastOverlapHeight`
+    // are tracked outside the poll purely so the catch below can still name
+    // the actual last-observed numbers (`expect.poll`'s own `message` option
+    // must be a static string, not a function of the polled value).
+    //
+    // #412 fix-wave (PR #419 review, Minor 1): initialised to `null`, not
+    // `0` — see `fmtOverlap`'s own comment for why a `0` default would
+    // fabricate a measurement that never happened. Per the `"Major 2"` test's
+    // own comment above (Minor 6, mechanism verified against the installed
+    // `@playwright/test@1.62.1`): a `null` box throws on the FIRST tick and
+    // propagates immediately — `expect.poll` does not retry a throwing
+    // callback — so these trackers stay unassigned only in that single-tick
+    // case, never because of repeated per-tick throws.
+    let lastOverlapWidth: number | null = null;
+    let lastOverlapHeight: number | null = null;
+    try {
+      await expect
+        .poll(
+          async () => {
+            const toggleBox = (await depthToggle.boundingBox())!;
+            const bannerBox = (await banner.boundingBox())!;
+            lastOverlapWidth = Math.max(
+              0,
+              Math.min(bannerBox.x + bannerBox.width, toggleBox.x + toggleBox.width) -
+                Math.max(bannerBox.x, toggleBox.x),
+            );
+            lastOverlapHeight = Math.max(
+              0,
+              Math.min(bannerBox.y + bannerBox.height, toggleBox.y + toggleBox.height) -
+                Math.max(bannerBox.y, toggleBox.y),
+            );
+            return lastOverlapWidth * lastOverlapHeight;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(0);
+    } catch (e) {
+      const height = await bannerHeightVar(page);
+      throw new Error(
+        `overlapWidth=${fmtOverlap(lastOverlapWidth)} overlapHeight=${fmtOverlap(lastOverlapHeight)} ` +
+          `bannerHeight=${height || '(unset)'}\n${(e as Error).message}`,
+        { cause: e },
+      );
+    }
 
     // Poll the class STRING, not a derived boolean — a bare
     // `.toBe(true)` here would discard exactly which class was present on
@@ -1168,24 +1270,57 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     for (const vp of viewports) {
       await test.step(`${vp.width}x${vp.height}`, async () => {
         await page.setViewportSize(vp);
-        const box = (await controls.boundingBox())!;
-        expect(box.x).toBeGreaterThanOrEqual(0);
-        expect(box.y).toBeGreaterThanOrEqual(0);
-        expect(box.x + box.width).toBeLessThanOrEqual(vp.width);
-        expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
 
         // The cluster's LOWER edge is the row most likely to reach into the
         // sheet — the review's own finding was that its lower rows, not its
         // top, hit-tested to the tab-strip button.
-        const lowerX = box.x + box.width / 2;
-        const lowerY = box.y + box.height - 4;
-        const onTop = await topmostIsWithin(page, lowerX, lowerY, '.route-layer-controls');
-        if (!onTop) {
-          const hitStack = await elementsAt(page, lowerX, lowerY);
-          throw new Error(
-            `.route-layer-controls is not the topmost hit at its lower edge (${vp.width}x${vp.height}): ${JSON.stringify(hitStack)}`,
-          );
-        }
+        //
+        // #412 fix-wave (PR #419 review, Major 1 + Minor 8): this test never
+        // dismisses the SW's one-shot "offline ready" toast, so a
+        // late-mounting toast can push `.route-layer-controls` (one of the
+        // two selectors the `--sc-banner-height` narrow-layout clearance
+        // rule mirrors) down mid-test. Every geometry-dependent assertion
+        // below — the four viewport-bounds checks AND the lower-edge hit
+        // test — is now folded into ONE poll that RE-SAMPLES a fresh
+        // `controls.boundingBox()` on every tick, never a `box` frozen
+        // before the loop's own actions run. Minor 8: the bounds checks used
+        // to read that same frozen `box`, so a push landing between the read
+        // and the (separate) hit-test poll could leave the bounds checks
+        // silently validating stale, pre-push geometry — folding them into
+        // the same re-sampling poll removes that gap entirely, at zero extra
+        // cost (one `boundingBox()` call already had to happen every tick
+        // for the hit test).
+        //
+        // Reachability of the underlying race here is UNKNOWN, not
+        // "low"/"dormant" — see this PR's own Major-3 review finding: the
+        // window that matters is the roughly-10ms gap between consecutive
+        // CDP round trips (`boundingBox()`, then `elementsFromPoint`), and no
+        // construction attempted in this PR's mutation-check hit it. The fix
+        // is applied regardless because it is strictly more correct and
+        // costs nothing.
+        //
+        // Polls the VALUE, never a collapsed boolean: `'in-bounds & on-top'`
+        // on success, or a string naming EXACTLY which check failed and with
+        // what numbers — a `.toBe(true)` here would discard which of the two
+        // failure classes (out of viewport vs. wrong topmost element) or the
+        // frozen bounds checks' inaccuracy.
+        await expect
+          .poll(
+            async () => {
+              const b = (await controls.boundingBox())!;
+              if (b.x < 0 || b.y < 0 || b.x + b.width > vp.width || b.y + b.height > vp.height) {
+                return `out of bounds: box=${JSON.stringify(b)} viewport=${vp.width}x${vp.height}`;
+              }
+              const lx = b.x + b.width / 2;
+              const ly = b.y + b.height - 4;
+              const onTop = await topmostIsWithin(page, lx, ly, '.route-layer-controls');
+              if (onTop) return 'in-bounds & on-top';
+              const hitStack = await elementsAt(page, lx, ly);
+              return JSON.stringify(hitStack);
+            },
+            { timeout: 10_000 },
+          )
+          .toBe('in-bounds & on-top');
 
         // #208 round-2 "R2-1" (the actual Blocker): the cluster being on
         // top of itself proves nothing about the TAB STRIP surviving next
