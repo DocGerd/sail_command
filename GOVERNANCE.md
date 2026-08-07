@@ -187,9 +187,10 @@ Reasoning:
   explicitly states otherwise. Opening a pull request against this repository is
   such a submission. Inbound equals outbound, by the license the project already
   ships.
-- **There is nothing a sign-off would add here.** Every human-authored commit to
-  date — 400+ of them — comes from the single maintainer, who is also the
-  copyright holder (the only other author is `dependabot[bot]`). A solo
+- **There is nothing a sign-off would add here.** Every human-authored commit
+  to date comes from the single maintainer, who is also the copyright holder
+  (the only other author is `dependabot[bot]`; run `git shortlog -sne --all`
+  for the current count, which grows with every commit). A solo
   maintainer certifying their own authorship to themselves conveys no
   information Apache-2.0 §5 does not already carry.
 - **An unenforced requirement would be a false claim.** No commit in this
