@@ -624,3 +624,109 @@ test('#277: .data-layer-controls and .route-layer-controls never intersect at 32
     server.kill();
   }
 });
+
+// #231: on a SHORT LANDSCAPE narrow viewport, the base COLUMN layout for
+// `.map-stack-tl` (DataLayers' two toggles stacked, then the compass) was
+// measured (#231's own issue text) to occupy ~46% of a 360px-tall viewport,
+// leaving ScaleBar.tsx's own geometric suppression rule (#208/#228) no clear
+// position on ANY tab at 740x360, and on the Plan tab at 844x390/932x430.
+// The fix (app.css, `@media (max-width: 1023.98px) and (max-height: 500px)
+// and (orientation: landscape)`) flips both `.map-stack-tl` and
+// `.data-layer-controls` to a ROW, spending width a landscape phone has
+// plenty of to buy back the height ScaleBar needs.
+//
+// Deliberately only the three LANDSCAPE entries of EDGE_VIEWPORTS, not the
+// whole matrix: the PORTRAIT entries (`narrowPortrait360`, `deepPortrait320`,
+// `partialPushBand375`, `wrapForcing280`) are untouched by this fix — their
+// `.map-stack-tl` stays the base COLUMN layout, which is the space-efficient
+// choice for a tall-narrow viewport (see the media query's own comment) —
+// and two of them (`deepPortrait320`, `wrapForcing280`) suppress ScaleBar for
+// an unrelated, PRE-EXISTING reason confirmed live on this fix's own dev
+// server before this test was written (a narrow-but-tall viewport's sheet
+// content alone reaches the same #208 suppression ceiling `.map-stack-tl`
+// does here). Asserting non-suppression there would be a false claim about
+// unrelated, out-of-scope layout, not a regression pin for #231.
+const SHORT_LANDSCAPE_VIEWPORTS: Record<string, Viewport> = {
+  shortLandscape844: EDGE_VIEWPORTS.shortLandscape844,
+  shortLandscape740: EDGE_VIEWPORTS.shortLandscape740,
+  shortLandscape932: EDGE_VIEWPORTS.shortLandscape932,
+};
+for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
+  test(`#231: ScaleBar is not suppressed and .map-stack-tl stays reachable on short landscape (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      // Dismiss the incidental SW "offline ready" toast (a `.banner-area`
+      // banner in its own right — MEASURED: without this the test's own
+      // first run failed here, `.map-stack-tl` pushed down by the toast's
+      // height on top of #231's own compaction, re-exhausting the margin
+      // this fix bought back). Best-effort like the #368 tests above: a
+      // no-op if it never appears.
+      await page
+        .locator('.reload-prompt .banner-dismiss')
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+
+      const scaleBar = page.locator('.scale-bar');
+      const mapStack = page.locator('.map-stack-tl');
+      const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+      const seamarksToggle = page.getByRole('checkbox', { name: 'Seezeichen' });
+      const compassBtn = page.locator('.compass-btn');
+
+      await expect(depthToggle).toBeVisible();
+      await expect(seamarksToggle).toBeVisible();
+      await expect(compassBtn).toBeVisible();
+
+      // The compaction reflows `.map-stack-tl` into a single short row; the
+      // suppression state itself settles asynchronously (ScaleBar.tsx's
+      // ResizeObservers on the sheet/bar/live card, see that file's own
+      // comment) — poll the CLASS rather than reading it once.
+      await expect
+        .poll(async () => (await scaleBar.getAttribute('class')) ?? '', { timeout: 10_000 })
+        .not.toMatch(/scale-bar-suppressed/);
+
+      // #412: re-derive both boxes on every poll tick, never a coordinate
+      // frozen from a single read taken before layout has settled.
+      await expect
+        .poll(async () => overlapArea(await box(scaleBar), await box(mapStack)), {
+          timeout: 10_000,
+        })
+        .toBe(0);
+
+      // DoD's own named concern: the compass in particular stays reachable
+      // and FUNCTIONAL, not merely present. With no GPS fix the tap is
+      // rejected (track-up unavailable), which is itself a real, observable
+      // side effect of the click actually landing on the button rather than
+      // on something painted over it — Playwright's own `.click()` already
+      // fails loudly if an overlay intercepts the point, but polling the
+      // live-region text is a second, independent signal that the CORRECT
+      // element received it.
+      const compassStatus = page.locator('.compass-control [role="status"]');
+      await expect(compassStatus).toHaveText('');
+      await compassBtn.click();
+      await expect
+        .poll(async () => (await compassStatus.textContent())?.trim() ?? '', {
+          timeout: 5_000,
+        })
+        .not.toBe('');
+
+      // Both toggles remain real, tappable checkboxes, not just visible —
+      // the compaction touches this row's own layout (row instead of
+      // column, a trimmed padding, a smaller `min-height` on the checkbox
+      // itself), so a regression here would be a control rendered but
+      // unclickable.
+      const before = await depthToggle.isChecked();
+      await depthToggle.click();
+      await expect(depthToggle).toBeChecked({ checked: !before });
+      await depthToggle.click();
+      await expect(depthToggle).toBeChecked({ checked: before });
+    } finally {
+      server.kill();
+    }
+  });
+}
