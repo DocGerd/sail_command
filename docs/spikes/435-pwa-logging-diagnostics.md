@@ -3,7 +3,7 @@
 - Issue: [#435](https://github.com/DocGerd/sail_command/issues/435)
 - Date: 2026-08-07
 - Status: Recommendation (no implementation in this change)
-- **Verdict: build a bounded ring buffer written only by app code, held in memory and mirrored to a single capped `sessionStorage` key so it survives the reload the failing banner itself advises, with no live log view and nothing that outlives the tab — its single user-facing surface is a "copy / download diagnostics" pair in the About dialog — and pay for it with exactly one worker-protocol type change (`fatal` gains an optional `stack`) plus a typed `RoutingError` on the client, so the same discriminator that makes the log useful is the one #433 uses to make the banner accurate.**
+- **Verdict: build a bounded ring buffer written only by app code, redacted at its single entry point, held in memory and mirrored to one capped `sessionStorage` key — which covers an IN-TAB reload but NOT a close-and-reopen, a named residual on exactly the installed-PWA case Q1 serves — with no live log view and nothing addressable from a fresh browsing context; its single user-facing surface is a "copy / download diagnostics" pair in the About dialog, and it is paid for with exactly one worker-protocol type change (`fatal` gains an optional `stack`) plus a typed `RoutingError` on the client, so the same discriminator that makes the log useful is the one #433 uses to make the banner accurate.**
 
 This document answers all 13 questions in #435's "Questions to answer"
 section, under its own three headings (How / Where applicable / What to
@@ -59,6 +59,16 @@ in the issue — verified against the current body:
 `grep -c 'holding one generic translated string'` returns **0**. This
 section is kept because it is the finding's evidence, not because the
 issue is still wrong.
+
+**Trap for the next re-checker, recorded here because this is where you
+will hit it.** The quotation's *other* distinctive fragment,
+`byte-identical across every distinct cause`, **still matches** #435's
+current body — but inside the correction's own sentence at `:118`: "So
+the banner is **not** byte-identical across every distinct cause…". A hit
+on that fragment therefore means the **opposite** of what it looks like:
+it is the correction, not the surviving error. Grep the first fragment
+(which returns 0) or read `:108-112`'s `> CORRECTED 2026-08-07` block —
+never grep the second one alone.
 
 > #435, as written before 2026-08-07: *"It renders at
 > `components/RouteSummary.tsx:154` as a single `<p role="alert">`
@@ -159,10 +169,13 @@ Two consequences that fall straight out:
 
 **A bounded ring buffer in a module-scope singleton
 (`app/src/lib/diagnostics.ts`), held in memory and mirrored to one capped
-`sessionStorage` key. No IndexedDB, no `localStorage` — nothing that
-outlives the tab.** (The `sessionStorage` half is the outcome of the
-reload argument below; the first draft of this section rejected all
-persistence, and that was wrong.)
+`sessionStorage` key. No IndexedDB, no `localStorage` — nothing
+addressable from a fresh browsing context.** (The `sessionStorage` half
+is the outcome of the reload argument below; the first draft of this
+section rejected all persistence, and that was wrong. "Addressable from
+a fresh browsing context" rather than "outlives the tab" is deliberate —
+see the lifetime note below: `sessionStorage` is disk-backed for session
+restore, so the API lifetime and the at-rest story differ.)
 
 Capacity: 200 records. This is a **judgement call, not a measurement**,
 and is recorded as one so a later reader does not mistake it for a
@@ -184,8 +197,12 @@ already budgets for.
   a real migration risk taken for a diagnostics feature.
 - *Rotation and size policy*: a persisted log needs a trim pass, and the
   trim pass needs its own failure handling, and that failure handling
-  needs somewhere to log to. The in-memory ring has no such recursion —
-  eviction is the data structure.
+  needs somewhere to log to. A ring buffer has no such recursion —
+  eviction is the data structure. (Precisely: that is a property of the
+  **ring**, not of being in-memory. The adopted mirror does add a
+  `sessionStorage` write that can fail, so Q11 step 1 requires the
+  `swRecovery.ts:67-71`-style guard that degrades to in-memory-only. The
+  no-recursion property now rests on that guard.)
 - *Quota eviction*: this is the decisive one, in the opposite direction
   from the obvious. `main.tsx:14` calls `navigator.storage?.persist?.()`
   and discards the result; per the Storage API that is a *request*, not a
@@ -211,6 +228,9 @@ app's own copy pushes the user the other way — `dict.en.ts:96`:
 > Route planning failed unexpectedly. Try again; if it keeps happening,
 > **reload the app.**
 
+The German twin agrees — `dict.de.ts:98`, "…bei wiederholtem Auftreten die
+App neu laden" — so the argument does not rest on one dictionary.
+
 An in-memory-only buffer is therefore destroyed by the user following the
 instruction the failing banner gives them. Q1 also fixes the target as an
 installed PWA on a phone, a device class that discards backgrounded tabs.
@@ -220,15 +240,56 @@ The earlier rejection also considered **only IndexedDB**, which left the
 cheap option unexamined. `sessionStorage` dodges all three of the
 IndexedDB objections above — no schema, no migration on the version-1
 plans database, ~40 KB against the ~44 MB the document already cites —
-**and preserves the privacy bullet intact, because `sessionStorage` still
-dies with the tab.** It is also not a new dependency here:
-`services/swRecovery.ts:66,81` already uses `sessionStorage`, with an
-explicit unreadable-path fallback at `:67-71`, and `lib/storage.ts`
-supplies the safe-wrapper precedent for the localStorage sibling.
+**and keeps the privacy bullet very nearly intact** (see the lifetime
+note below for the part that is weaker than "dies with the tab"). It is
+also not a new dependency here: `services/swRecovery.ts:66,81` already
+uses `sessionStorage`, with an explicit unreadable-path fallback at
+`:67-71`, and `lib/storage.ts` supplies the safe-wrapper precedent for
+the localStorage sibling.
 
 **Adopted:** the ring buffer mirrors to `sessionStorage` under a single
 capped key, written coalesced (not per record), and restored on load.
-Same capacity bound, same redaction, same lifetime as the tab.
+Same capacity bound, same redaction (Q7 Rule 6 — at `record()`, so the
+mirror can never receive unscrubbed text).
+
+### NARROWED, not closed: what the mirror does and does not cover
+
+The mirror covers **part** of the gap the banner's own copy opens, and
+the uncovered part is the reading a phone user is most likely to take.
+Stated as a split rather than a guarantee:
+
+| User action | Mirror survives? |
+|---|---|
+| In-tab reload — pull-to-refresh, reload button, desktop tab reload | **Yes** |
+| Close the tab and reopen | **No** — new browsing context, key gone |
+| Swipe away an installed PWA and relaunch from the home screen | **No** — same reason |
+| OS evicts a backgrounded PWA, user relaunches | **No** |
+| `sessionStorage` unavailable (privacy mode) | **No** — degrades to in-memory-only |
+
+**The residual is on exactly the device class Q1 exists to serve.** An
+installed PWA in standalone mode has no address bar and no reload button
+(Q1/Q6), so "reload the app" / "die App neu laden" is most naturally
+executed by swiping the app away and relaunching — precisely the row that
+loses the buffer. The adoption is still worth it (the in-tab reload is
+the ordinary desktop and mobile-browser case, and the mirror is nearly
+free), but it is **narrowed, not closed**, and this residual should not
+be quietly dropped when the follow-up issue is written.
+
+### Lifetime: an API guarantee, not an at-rest one
+
+"Dies with the tab" is what the *API* gives, and it is weaker than "never
+written to disk". Chromium and Firefox both back `sessionStorage` with
+on-disk state for crash recovery and session restore, and a restored
+session can bring the values back into a new tab. The honest statement is:
+**cleared on normal tab close and not addressable from a fresh browsing
+context — but disk-backed for session restore.**
+
+This does not overturn the `localStorage` split: `localStorage` is
+unconditionally durable *and* addressable, `sessionStorage` is neither.
+But it is the concrete reason the Q7 Rule 6 scrub had to move to
+`record()` rather than stay at export — if the mirror's bytes can reach
+disk, an unscrubbed secret reaching the mirror is an at-rest leak, not a
+transient one.
 
 **Still rejected: IndexedDB, and `localStorage`.** IndexedDB for the three
 reasons above. `localStorage` because it survives tab close, which
@@ -236,13 +297,14 @@ reinstates exactly the at-rest privacy artifact the `sessionStorage`
 choice avoids — that is the constraint that separates the two siblings,
 and it is the whole reason `sessionStorage` is the adopted one.
 
-**What would change the IndexedDB answer:** a reported failure class that
-survives the tab (an iOS background eviction mid-passage, a device
-restart between failure and report). Note the earlier version of this
-trigger was **circular** — it fired on "a reported failure class that
-kills the page", which is precisely the report the mechanism could not
-produce. The `sessionStorage` mirror breaks that circularity: it survives
-the reload, so a report *can* now arrive describing a failure that
+**What would change the IndexedDB answer:** a report describing a failure
+that **survived an app restart** — sharpened from the vaguer "survives the
+tab" now that the table above says exactly which actions the mirror does
+not cover. Note the earlier version of this trigger was **circular** — it
+fired on "a reported failure class that kills the page", which is
+precisely the report the mechanism could not produce. The
+`sessionStorage` mirror breaks that circularity: it survives an in-tab
+reload, so a report *can* now arrive describing a failure that
 survived one, and only a failure surviving the whole tab would justify
 going further.
 
@@ -499,12 +561,61 @@ wrong to cite Rules 1-2 alone for them:
 
 - **Never interpolate a secret into an error message or a thrown value**
   anywhere near `aisStream.ts:256`/`:387`.
-- **The export runs a final scrub pass** over the assembled text against
-  the stored `aisApiKey` and `ownMmsi` values, replacing any literal
-  occurrence. This is a backstop for free text, not a substitute for the
-  allowlist — and it is the reason the scrub must read the *stored*
-  values rather than a pattern: an aisstream key has no distinctive
-  shape to regex for.
+- **The scrub runs inside `record()`, at the single ENTRY point** —
+  before the record enters the buffer, and therefore before the
+  `sessionStorage` mirror can write it. It replaces any literal
+  occurrence of the stored `aisApiKey` / `ownMmsi`, and it must read the
+  *stored values* rather than match a pattern: an aisstream key has no
+  distinctive shape to regex for. The `Settings` allowlist (Rule 1) runs
+  at the same point, so both redaction mechanisms sit at the one
+  chokepoint.
+
+  **This placement is a correction, and the reason is worth keeping.**
+  An earlier version of this rule ran the scrub *at export*. That was
+  correct while the buffer was in-memory-only — unscrubbed free text
+  never left RAM — and Q2's adoption of a `sessionStorage` mirror
+  silently falsified it: the mirror writes long before any export, so
+  `Error.message` and `fatal.stack` (the exact payload this rule exists
+  for) would have reached a disk-backed store unscrubbed. Neither hunk
+  was wrong alone; only the pair was.
+
+  **Entry, not exit, is the structural point.** The buffer now has **two**
+  exits — the export and the mirror — and the second was added without
+  anyone noticing it needed its own scrub. Redacting at N exits is N
+  sites to keep in sync and fails **open** the moment someone adds exit
+  N+1; redacting at the one entry dominates every exit, present and
+  future. This is also what finally makes Q11 step 1's "redaction lives
+  here and only here" claim true rather than aspirational.
+
+  **What it costs — four things, none free:**
+
+  1. **A registration dependency.** `lib/diagnostics.ts` must know the
+     current secrets at record time and must *not* import settings state
+     (import cycle, and it would make the leaf module untestable). So it
+     exposes `setRedactionSecrets(...)`, called by the settings owner —
+     `AppState.tsx:76-99`, where the reconciled baseline is produced —
+     and on every later change.
+  2. **A cold window that fails OPEN, and it must be named.** Records
+     made before the first `setRedactionSecrets()` call cannot be
+     scrubbed against a secret nobody has supplied yet. For **today's
+     two** secrets the window is provably empty rather than merely small:
+     no AIS error can carry the key before settings load, because
+     `useAisTraffic.ts:148-156` refuses to create a client without a
+     non-empty `apiKey`, which does not exist until settings have loaded.
+     That bound is a property of today's code, not of the design — a
+     future secret available earlier would reopen it.
+  3. **A re-scrub obligation on change.** If a user pastes a key *after*
+     records were buffered, those records were scrubbed against the older
+     secret set. `setRedactionSecrets()` must therefore re-scrub the
+     existing buffer **and rewrite the mirror**, not just affect
+     subsequent records. This is the non-obvious cost.
+  4. **Per-record work**: one or two `String.replaceAll` over short
+     strings. Bounded to noise by Q8, which puts no record on a hot path
+     or a per-second source.
+
+  The export keeps a scrub pass as a **labelled backstop only** — never
+  the mechanism, or the "which site is authoritative" ambiguity that
+  caused this defect returns.
 
 No concrete leak path is claimed here — this is a rule-coverage gap, not
 a demonstrated bug. It is recorded because it is a gap in the one rule
@@ -684,8 +795,35 @@ redundant:
    persisted before the export is taken (read it back from the Options
    field, or from the `settings` store), so "absent" cannot be satisfied
    by a key that was never stored.
+3. **A positive control on the CHANNEL** — assert the export contains a
+   **non-secret allowlisted `Settings` field**, e.g. `safetyDepthM`.
+   Without this, controls 1 and 2 both pass even if `loggableSettings()`
+   never reached the assembled text at all (the version string and
+   harbour name come from elsewhere) — so a real leak through that same
+   projection would be invisible, because the spec never demonstrated the
+   projection has a path into the output. This is the licensing question
+   one level in: not "did an export happen" but "did the thing being
+   redacted have a route into it".
 
-Only with both does the absence assertion carry information.
+Only with all three does the absence assertion carry information.
+
+**Named residual — the FREE-TEXT half of Q7 is not e2e-coverable.** These
+three controls license the `Settings`-projection path (Rule 1). They say
+nothing about Rule 6's path, `Error.message` / `fatal.stack` out of
+`aisStream.ts`, because exercising it needs a live AIS error — and
+`useAisTraffic.ts:148-156` only creates a client given a non-empty
+`apiKey` **plus** `online`, `visible` and non-empty `bboxes`, i.e. a real
+socket. CLAUDE.md is explicit that the network-free e2e suite depends on
+no key meaning zero sockets, so a spec that provoked a genuine AIS error
+would break a property the whole suite rests on. (Note this cuts the
+other way for the test above: setting a key in Options alone does **not**
+connect, precisely because of that four-way gate — so the recommended
+spec is safe.)
+
+That residual is the strongest argument for M2's placement: since the
+free-text scrub cannot be proven by test, it must be **structurally
+unavoidable** — one scrub at `record()` that every exit passes through —
+rather than a rule applied at each exit and verified by inspection.
 
 Deliberately **not** recommended, per the "what class of failure can this
 method not detect" rule: an e2e test that forces a worker OOM or a
@@ -711,9 +849,14 @@ Build, in this order (sizes in Q13):
    and restored on load (Q2), guarded like
    `services/swRecovery.ts:65-71` so an unreadable `sessionStorage` in
    privacy mode degrades to in-memory-only rather than throwing.
-   Redaction lives here and only here — the `Settings` allowlist (Q7
-   Rule 1) **and** the free-text scrub (Q7 Rule 6) — so there is exactly
-   one place to audit.
+   Redaction lives here and only here, and specifically **inside
+   `record()` — the single entry point, before the buffer and therefore
+   before the mirror**: the `Settings` allowlist (Q7 Rule 1) **and** the
+   free-text scrub (Q7 Rule 6). Secrets arrive via
+   `setRedactionSecrets(...)`, which must also re-scrub the existing
+   buffer and rewrite the mirror. One place to audit — which is true only
+   because redaction is at the entry rather than at each of the two
+   exits.
 2. **Bind the discarded errors — eleven sites, in two groups that fail
    differently.**
 
@@ -789,11 +932,11 @@ Build, in this order (sizes in Q13):
    accumulating records over a session. **Partially adopted**: steps 1-2
    above *are* that cheap fix, plus a destination the reporter can reach.
 
-3. **An in-memory ring buffer surfaced in the UI as a live log view.**
-   Stated precisely because the recommendation is an in-memory ring
-   buffer and it would be dishonest to file the whole option under
-   "rejected": what is rejected is the **live viewer** — a scrolling
-   console panel in the app. Rejected because it is UI surface, and
+3. **A ring buffer surfaced in the UI as a live log view.**
+   Stated precisely because the recommendation *is* a ring buffer (in
+   memory, mirrored to `sessionStorage` — Q2) and it would be dishonest
+   to file the whole option under "rejected": what is rejected is the
+   **live viewer** — a scrolling console panel in the app. Rejected because it is UI surface, and
    therefore i18n surface, layout surface, and z-index surface (CLAUDE.md
    documents a declared stacking-tier order and four cascading
    regressions from getting it wrong) — all for a view whose audience
@@ -820,8 +963,14 @@ Build, in this order (sizes in Q13):
    `localStorage` (it outlives the tab, reinstating the privacy
    artifact). Persistence as such is **not** rejected — a capped
    `sessionStorage` mirror is adopted in Q2, because the failing banner's
-   own copy (`dict.en.ts:96`) tells the user to reload, which destroys an
-   in-memory-only buffer.
+   own copy (`dict.en.ts:96` / `dict.de.ts:98`) tells the user to reload,
+   which destroys an in-memory-only buffer. **That adoption is narrowed,
+   not a fix for the whole gap**: the mirror survives an in-tab reload but
+   not a close-and-reopen, and on an installed PWA "reload the app" most
+   likely means relaunch — see Q2's coverage table. So this rejection of
+   IndexedDB is a rejection *on current evidence*, and Q2's trigger ("a
+   report describing a failure that survived an app restart") is the
+   thing that would reopen it.
 
 5. **A third-party error reporter (Sentry or equivalent).** Rejected
    twice over, and the record matters so it cannot return as a fresh
@@ -1051,7 +1200,7 @@ document was written. See §0.)*
 ## Claim-strength note
 
 Everything in §0 and every `file:line` in Parts A-C was read from this
-worktree at `develop`@`3979bae`. Four things are deliberately **not**
+worktree at `develop`@`3979bae`. Five things are deliberately **not**
 claimed:
 
 - **The `maplibre-gl` glyph-warning line number was not re-derived**, for
@@ -1070,6 +1219,17 @@ claimed:
   facts that carry Q6's two-button conclusion — zero `navigator.clipboard`
   uses in `app/src` (reproducible grep) and the secure-context plus
   user-gesture requirements (spec) — stand without it.
+- **"Chromium and Firefox back `sessionStorage` with on-disk state for
+  session restore" (Q2's lifetime note) is NOT INDEPENDENTLY VERIFIED
+  here.** It came from this PR's review and no browser-source or spec
+  citation was checked for it — the same class as the clipboard claim
+  above, and flagged the same way rather than left reading as
+  established. It is recorded because it argues in the **safe**
+  direction: it makes the privacy claim weaker and is part of why the
+  Rule 6 scrub moved to `record()`. If it turned out false, that move
+  would be belt-and-braces rather than necessary — the move is justified
+  independently by the single-chokepoint argument, so nothing downstream
+  depends on this claim being true.
 - **The 200-record capacity and the 3-decimal position rounding are
   judgement calls**, labelled as such at both sites. Neither is derived
   from a measurement, and neither should be cited later as if it were.
