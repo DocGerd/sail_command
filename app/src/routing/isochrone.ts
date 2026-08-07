@@ -1,4 +1,4 @@
-import type { Board, Leg, LegKind, LatLon, ManeuverKind, NoRouteReason, Settings } from '../types';
+import type { Board, Leg, LegKind, LatLon, ManeuverKind, Settings } from '../types';
 import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
@@ -34,12 +34,39 @@ export interface SolveParams {
   comfortDepthM?: number;
 }
 
+/**
+ * #282: WHY a solve failed, in the solver's own INTERNAL control vocabulary.
+ *
+ * This is deliberately a DIFFERENT type from the user-facing `NoRouteReason`,
+ * and deliberately NOT exported through `types.ts`, so it cannot leak into UI
+ * code. `planRoute.ts` translates it to a label exactly once, at its own
+ * presentation boundary (`NO_ROUTE_LABEL_OF_CAUSE`); nothing else in the app
+ * ever sees a cause.
+ *
+ * Why the solver must not speak the presentational vocabulary: the #243 retry
+ * gate and the #53 relaxation gate both branch on why a solve failed. While
+ * `solve()` returned a `NoRouteReason`, those gates were reading — one
+ * lookup-table hop away — the very string the planner shows the user, so
+ * rewording or re-granularising that string changed which retry tiers ran, and
+ * therefore which route the boat got. It lives HERE rather than in
+ * `planRoute.ts` because `planRoute.ts` already imports from this module: a
+ * back-import would be a cycle, and because this is `solve()`'s OWN output the
+ * solver is its natural owner.
+ *
+ * WHAT THIS DOES NOT FIX, stated plainly because the next reader will ask:
+ * changing the CLASSIFICATION — the `blockedDeaths >= calmDeaths` heuristic
+ * below, or the horizon guard's placement — still changes which cause comes
+ * out and therefore still moves routes. That coupling is intrinsic and is
+ * meant to exist: a gate has to know why the solve failed. What #282 removes is
+ * the ACCIDENTAL half — a change to the user-facing label set can no longer
+ * reach the solver at all. A classification change is now visibly an edit to a
+ * control value rather than to a display string, and per #282 it still needs
+ * the full Flensburg->all-harbours sweep before it is trusted.
+ */
+export type SolveFailureCause = 'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded';
+
 export type SolveResult =
-  | { status: 'ok'; legs: Leg[]; etaMs: number }
-  | {
-      status: 'no-route';
-      reason: Extract<NoRouteReason, 'unreachable' | 'beyond-horizon' | 'calm-motor-off'>;
-    };
+  { status: 'ok'; legs: Leg[]; etaMs: number } | { status: 'no-route'; cause: SolveFailureCause };
 
 interface Node {
   lat: number;
@@ -267,7 +294,7 @@ export function solve(p: SolveParams): SolveResult {
     const dtS = minDist < 2 ? 150 : minDist < 5 ? 300 : 600;
     if (minTMs + dtS * 1000 > horizonMs) {
       if (best) break;
-      return { status: 'no-route', reason: 'beyond-horizon' };
+      return { status: 'no-route', cause: 'horizon-exceeded' };
     }
 
     const byKey = new Map<string, Node>();
@@ -528,7 +555,8 @@ export function solve(p: SolveParams): SolveResult {
     // plus a handful of consumed-without-registering paths (a blocked direct-arrival attempt; a zero-effective-speed candidate after a maneuver penalty).
     return {
       status: 'no-route',
-      reason: blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'unreachable' : 'calm-motor-off',
+      cause:
+        blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'mask-blocked' : 'calm-without-motor',
     };
   }
   return { status: 'ok', legs: backtrack(best.last, p.departureMs), etaMs: best.etaMs };
