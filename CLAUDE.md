@@ -1419,15 +1419,20 @@ deviate from it.
   **The CORRECTION is the highest-risk moment, not the original** — session
   30's PR #434 ran the class repeatedly within one PR, each instance inside
   the fix for the previous one: a false MECHANISM inside a correction of a
-  misleading claim; an unmeasured magnitude plus a citation to a measurement
-  that did not exist, inside the fix for an unreproducible magnitude; an
-  over-broad "helps" inside the fix for an over-broad count. A replacement
-  arrives sounding authoritative and nobody re-attacks it as hard as the
-  original, so brief the reviewer at the REPLACEMENT TEXT specifically and
-  expect a further instance rather than assuming the last fix stopped it.
-  Every one was a GROUP NOUN ("the gate", "the measurement", "the
-  worker-fatal paths") and became falsifiable the moment it was split into
-  members — which is the same PER-SITE remedy above, one round later.
+  misleading claim; an unmeasured magnitude plus a citation to a figure that
+  had ALREADY BEEN RETRACTED as unreproducible, inside the fix for that same
+  unreproducible magnitude; an over-broad "helps" inside the fix for an
+  over-broad count. (Cite the retracted-figure form precisely: "cited a
+  measurement that did not exist" is a fabrication nobody commits, while
+  citing one already retracted is the error people actually make.) A
+  replacement arrives sounding authoritative and nobody re-attacks it as hard
+  as the original, so brief the reviewer at the REPLACEMENT TEXT specifically
+  and expect a further instance rather than assuming the last fix stopped it.
+  SEVERAL were GROUP NOUNS ("the measurement", "the worker-fatal paths") and
+  became falsifiable the moment they were split into members — the same
+  PER-SITE remedy above, one round later. But not all: the false-mechanism
+  instance was caught instead by checking the suspect field's ONE call site,
+  so per-site beats group-splitting as the general form.
 - Documenting a rule fixes nothing already in flight. #412 (the #368-guard
   stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
@@ -1897,13 +1902,18 @@ deviate from it.
   genuinely leaves the worker running. Nothing in
   `protocol.ts`/`workerClient.ts` distinguishes a worker that died from one
   merely still running, so those two cases are indistinguishable today. The
-  banner's advice splits PER PATH, not per group — three categories, no count:
-  "try again" hands the user a genuinely FRESH worker (`:241-242`) rather than
-  a poisoned client, so it helps the TRANSIENT failures (`onerror`,
-  `onmessageerror`, a wind-fetch blip); it CANNOT help the DETERMINISTIC ones,
-  since a timeout or a `planRoute()` throw recomputes identical inputs against
-  an identical budget and reproduces; and "reload the app" helps essentially
-  only the asset/init case.
+  banner's advice splits PER PATH, not per group — and note the paths differ
+  in WHY a retry helps, so don't glue them: "try again" hands the user a
+  genuinely FRESH worker (`:241-242`) rather than a poisoned client, which
+  helps `onerror`/`onmessageerror`; a wind-fetch blip is helped too but by
+  RE-FETCHING, not by the worker (`usePlanFlow.ts:195-199` returns at `:199`,
+  before `ensureClient()` at `:202`, so no worker is involved); a
+  resource-exhaustion throw can also escape, since `dispose()` released the
+  failed worker's whole heap first. What a retry CANNOT help is the
+  input-deterministic pair — the 120 s timeout recomputes the same solve
+  against the same fixed budget, and a DETERMINISTIC `planRoute()` throw
+  reproduces on identical inputs. "Reload the app" helps essentially only the
+  asset/init case.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
