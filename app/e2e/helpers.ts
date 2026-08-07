@@ -218,3 +218,20 @@ async function mapReadyState(page: Page): Promise<string> {
 export async function mapReady(page: Page): Promise<void> {
   await expect.poll(() => mapReadyState(page), { timeout: 60_000 }).toBe('loaded');
 }
+
+// #412: the live `--sc-banner-height` custom property on `:root`, published
+// by `lib/useBannerHeight.ts`'s ResizeObserver and read by app.css's
+// narrow-layout banner-clearance rule (`--sc-banner-clear-top: calc(3.5rem +
+// var(--sc-banner-height, 176px))`). Several e2e guards assert geometry that
+// only settles into its final position AFTER this property is written — a
+// `boundingBox()` read taken before that write observes the pre-push
+// position, and a real interception (the defect these guards exist to
+// catch) produces the SAME failure signature as that measurement race. This
+// helper lets an assertion report the live value alongside the coordinate/
+// element it probed, so a CI failure names which signal was stale instead of
+// leaving the two causes indistinguishable.
+export function bannerHeightVar(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--sc-banner-height').trim(),
+  );
+}
