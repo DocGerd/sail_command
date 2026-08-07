@@ -79,6 +79,13 @@ export interface PlannerPanelProps {
   // plan-completion announcement. Null before the first plan.
   plan: Plan | null;
   rig: Rig | null;
+  // #301: true when the form (origin/destination/departure/live settings)
+  // has drifted from `plan` — a re-run right now would produce a DIFFERENT
+  // route than the one shown in the Ergebnis card below. Drives a second
+  // Chip there plus a sentence folded into the panel's one live region;
+  // never a second live region and never map styling (#324's dash+opacity
+  // vocabulary already means "the other rig").
+  formDirty: boolean;
   // "Details ansehen": switch to the Routes tab and focus its Ergebnis heading.
   onViewDetails: () => void;
 }
@@ -125,6 +132,7 @@ export default function PlannerPanel({
   planning,
   plan,
   rig,
+  formDirty,
   onViewDetails,
 }: PlannerPanelProps) {
   const t = useT();
@@ -265,7 +273,16 @@ export default function PlannerPanel({
       rig: t(RIG_LABEL_KEY[planning.rig]),
     });
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
-  else if (planning.phase === 'idle') statusText = announcement;
+  else if (planning.phase === 'idle') {
+    // #301: the same dirty-form sentence the Ergebnis card's Chip shows,
+    // folded into this ONE existing live region rather than a second one —
+    // joined (not concatenated) so a plan-less mount (empty announcement)
+    // still reads as a clean single sentence, not a leading space. Changes
+    // only when formDirty flips (announcement itself is frozen per plan —
+    // see announcedResult above), so it announces once, not per keystroke.
+    const staleSuffix = formDirty && summary ? t('planner.result.stale') : '';
+    statusText = [announcement, staleSuffix].filter(Boolean).join(' ');
+  }
   // §3.4 (fix wave): the idle completion announcement is screen-reader-only —
   // the visible surface is the prominent Ergebnis card, so a visible sentence
   // here just duplicates it. Progress/probing stay visible.
@@ -550,15 +567,25 @@ export default function PlannerPanel({
           ansehen" jumps to the full card. */}
       {summary && (
         <Card title={t('planner.card.result')} className="planner-result">
-          {/* #259: mirrors RouteSummary's rig-comparison chip — an ETA tie or
-              an all-motor comparison must not silently badge one rig as
-              recommended here either (this strip is the FIRST surface a user
-              sees a result on). */}
-          <Chip className="chip-faster-rig">
-            {summary.rigRecommendation.kind === 'decided'
-              ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[summary.rigRecommendation.rig]) })
-              : t(summary.rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
-          </Chip>
+          <div className="planner-result-chips">
+            {/* #259: mirrors RouteSummary's rig-comparison chip — an ETA tie
+                or an all-motor comparison must not silently badge one rig as
+                recommended here either (this strip is the FIRST surface a
+                user sees a result on). */}
+            <Chip className="chip-faster-rig">
+              {summary.rigRecommendation.kind === 'decided'
+                ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[summary.rigRecommendation.rig]) })
+                : t(summary.rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
+            </Chip>
+            {/* #301: the form has drifted from this displayed route — a
+                re-run right now would produce something different. Sits ON
+                the stale thing (this card / the map route below it), not a
+                tab-independent Banner (#368's contested space) and not map
+                dimming/dashing (#324's dash+opacity already means "the other
+                rig"). The same sentence is folded into the live region above
+                (statusText) — this Chip is the sighted-user surface only. */}
+            {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
+          </div>
           <div className="planner-result-primary">
             <div className="ergebnis-stat ergebnis-stat-lg">
               <span className="ergebnis-stat-label">{t('route.totals.eta')}</span>

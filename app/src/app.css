@@ -1769,6 +1769,19 @@ select {
   font-weight: 600;
 }
 
+/* #301: the Ergebnis card's chip row — a flex ROW (not plain siblings inside
+   the card's own column-flex .sc-card, which would stretch a bare .chip to
+   the card's full width with no align-self override of its own) so the
+   dirty-form Chip sits beside chip-faster-rig with its own content-sized
+   box, wrapping to a second line on a narrow panel rather than overflowing
+   or stretching full-width. */
+.planner-result-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 /* Stat grid (full Ergebnis card) + compact-strip stat rows. */
 .ergebnis-stats {
   display: grid;
