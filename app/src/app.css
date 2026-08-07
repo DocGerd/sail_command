@@ -847,6 +847,89 @@ select {
   }
 }
 
+/* #231: on a SHORT LANDSCAPE narrow viewport (a landscape phone), the base
+   COLUMN layout above — DataLayers' two toggle rows stacked, then the
+   compass below them — was measured (#231's own issue text, PR #228 review)
+   to occupy `top: 3.5rem` to roughly 222px, ~46% of a 360px-tall viewport.
+   Combined with `.app-bottom-sheet`'s 55vh cap, that left ScaleBar.tsx's own
+   geometric suppression rule (#208/#228 — see its "Recorded consequence"
+   comment) no clear position on ANY tab at 740x360, and on the Plan tab at
+   844x390/932x430/667x375: correct, honest suppression given the layout, but
+   this cluster's height was the actual constraint, not the sheet.
+   The fix spends WIDTH, which a landscape phone has plenty of (740-932px
+   measured across the matrix above), to buy back HEIGHT: both this column
+   and DataLayers' own two-checkbox list flip from a column to a ROW, so what
+   used to be up to 3 stacked rows (2 checkboxes + the compass) collapses to
+   1 short strip — reclaiming the headroom ScaleBar needs without touching
+   the compass's own touch-target size (`flex-shrink: 0` below is preserved
+   unchanged; nothing here shrinks a hit target, only re-flows them
+   sideways).
+   Scoped INSIDE the same narrow (`max-width: 1023.98px`) query this
+   cluster's positioning already lives under: the wide layout resets
+   `.map-stack-tl` to `top: 0.75rem; max-height: none` (see that rule, below
+   the `min-width: 1024px` block) and never had a column-height problem to
+   begin with, so this rule would be dead weight there regardless.
+   `orientation: landscape` + a height ceiling is what actually distinguishes
+   a short landscape phone (where the column layout is the problem) from a
+   tall narrow-PORTRAIT phone (`narrowPortrait360`, `deepPortrait320`,
+   `partialPushBand375`, `wrapForcing280` in EDGE_VIEWPORTS — all width <
+   height, all comfortably taller than they are wide) — those still want the
+   space-efficient COLUMN layout the base rule already gives them; flipping
+   them to a row would spend their scarce WIDTH instead of their (comparatively
+   ample) height. `max-height: 500px` is chosen headroom above the tallest
+   short-landscape case in the matrix above (932x430) rather than a measured
+   device figure — no viewport this repo tests sits between 430px and 500px,
+   so the exact value has slack on both sides. Flat `and`-joined conditions,
+   deliberately not nested `@media` blocks: matches this file's own
+   `max-width: 1023.98px` Level-3-syntax rule above (nesting is a separate CSS
+   Nesting feature, unrelated to that MQ3-vs-MQ4 concern, but there is no
+   reason to reach for it here when a flat query says the same thing more
+   portably). */
+@media (max-width: 1023.98px) and (max-height: 500px) and (orientation: landscape) {
+  .map-stack-tl {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  /* Overrides the column-squeeze trio from the base rule above (`flex: 1 1
+     auto; min-height: 2.75rem; overflow-y: auto`) — that trio exists to let
+     this element shrink/scroll as the LAST resort when the column is too
+     tall for its `max-height` budget. In row mode there is nothing to
+     squeeze: `flex: none` keeps this box sized to its own single row of two
+     checkboxes instead of stretching to fill `.map-stack-tl`'s row (its own
+     `flex: 1 1 auto` would otherwise grow this box across the whole
+     available row width, pushing the compass toward the far edge for no
+     reason); `overflow-y: visible` matches — a single row at full natural
+     height never needs the scroll affordance the column layout does.
+     `padding` trimmed from the base rule's `0.5rem` (8px/side) to `0.35rem`
+     (~5.6px/side): pure breathing room, not a hit target, so shrinking it
+     costs nothing tappable. */
+  .data-layer-controls {
+    flex: none;
+    flex-direction: row;
+    min-height: 0;
+    overflow-y: visible;
+    padding: 0.35rem 0.5rem;
+  }
+
+  /* MEASURED (#231): the base `input, select { min-height: 40px }` rule (top
+     of this file) is sized for text INPUTS, not a checkbox — applied to a
+     checkbox it still inflates its own box to 40px tall even though the
+     visible control is native-sized, and at 740x360 that 40px was the single
+     largest contributor to `.map-stack-tl`'s row height (measured: shrinking
+     it to `24px` alone took the row from 62px to 44px — the compass, not the
+     toggles, then became the tall side of the row — closing a 2px shortfall
+     against ScaleBar's suppression ceiling into a 16px margin). `24px` keeps
+     a real, larger-than-text touch box (each checkbox's own `<label>` wraps
+     the checkbox AND its text, so the actual tap target is the whole label
+     row, not just this 24px checkbox glyph — clicking the label text toggles
+     it natively) while giving back the height the base 40px rule spent for a
+     control that was never text input in the first place. */
+  .data-layer-controls input[type='checkbox'] {
+    min-height: 24px;
+  }
+}
+
 /* ---- #155 north arrow / track-up toggle ---- */
 
 /* `flex-shrink: 0`: the compass never shrinks or scrolls away when
