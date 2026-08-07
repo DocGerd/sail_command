@@ -32,6 +32,33 @@ export interface SolveParams {
    * preference" otherwise rather than dividing by a non-positive span).
    */
   comfortDepthM?: number;
+  /**
+   * #432 plan-level wall-clock budget. ABSENT ⇒ unbudgeted ⇒ byte-identical
+   * to a pre-#432 solve (the check below is the only new statement in the
+   * ring loop, and `p.deadline?.expired()` on an absent deadline is a single
+   * undefined test). Deliberately NOT defaulted here: `solve()` and
+   * `planRoute()` are pure functions with test call sites whose wall-clock
+   * cost is environment-dependent (CLAUDE.md's ~2.1x CI / 8x coverage
+   * solver multipliers), so a default would make the vitest suite fail on a
+   * slow runner. The deadline is imposed by the one caller that has a human
+   * waiting on it — routing/protocol.ts, from the budget routing/
+   * workerClient.ts ships in the plan request.
+   */
+  deadline?: SolveDeadline;
+}
+
+/**
+ * #432: the plan-level wall-clock budget, as seen by `solve()`. A one-method
+ * interface rather than a raw `deadlineMs` + clock pair so a test can inject
+ * a deterministic "expire after N rings" fake without faking Date.now() for
+ * the whole module, and so the budget stays PER-PLAN even though it is
+ * enforced inside a per-segment, per-rig `solve()`: every solve of one plan
+ * shares ONE deadline object, so four tier-3/tier-4 solves cannot each get a
+ * fresh allowance.
+ */
+export interface SolveDeadline {
+  /** True once the plan's wall-clock budget is spent. */
+  expired(): boolean;
 }
 
 export type SolveResult =
@@ -39,7 +66,15 @@ export type SolveResult =
   | {
       status: 'no-route';
       reason: Extract<NoRouteReason, 'unreachable' | 'beyond-horizon' | 'calm-motor-off'>;
-    };
+    }
+  // #432: a THIRD arm, deliberately not a `no-route` reason. `no-route` means
+  // a search that RAN TO COMPLETION and found nothing; this means the search
+  // was cut short and we do not know. Folding it in as a fourth reason would
+  // also have forced a new member into the presentational `NoRouteReason`
+  // union that `solve()` is typed against here — exactly the label-as-control
+  // -input coupling #282/#411 paid to narrow. This arm carries no string at
+  // all, so it cannot be confused with one.
+  | { status: 'budget-exhausted' };
 
 interface Node {
   lat: number;
@@ -246,6 +281,30 @@ export function solve(p: SolveParams): SolveResult {
   let calmDeaths = 0;
 
   while (frontier.length > 0) {
+    // #432 plan-level wall-clock budget. Checked FIRST in the ring, before
+    // any expansion work, so a solve entered with an already-spent budget
+    // (a later tier, or a later waypoint segment) costs one predicate rather
+    // than one ring.
+    //
+    // ABORT GRANULARITY is one ring, so the real abort overshoots the
+    // deadline by up to one ring's duration. Measured on this app's most
+    // expensive real input (Flensburg -> Marstal, DEFAULT_SETTINGS, real
+    // committed mask+polars, 2026-08-07, one dev machine): 132 rings,
+    // 41.4 s total, slowest ring 1045 ms, frontier peaking at MAX_FRONTIER.
+    // The client-side backstop is sized to absorb that overshoot with room
+    // for a much slower device — see PLAN_TIMEOUT_GRACE_MS in workerClient.ts.
+    //
+    // A `best` already found is DISCARDED rather than returned. It is a
+    // complete, fully mask-validated route, but the loop has not yet proven
+    // no cheaper one exists (that is the `minCostMs >= best.costMs` guard
+    // right below), so returning it would be returning a route of unproven
+    // optimality with nothing in PlanResult saying so. #432's requirement is
+    // that exceeding the budget is a FAILURE and says so; a silently
+    // possibly-suboptimal route is the one outcome it rules out. The
+    // alternative — return it with a `truncated` warning alongside, mirroring
+    // ShallowInfo — is a real design and is recorded as rejected-for-now in
+    // the PR body, not foreclosed.
+    if (p.deadline?.expired()) return { status: 'budget-exhausted' };
     // Substepped nodes lag the global clock, so the termination guards use the
     // earliest node clock in the frontier (=== tMs/costMs when no substeps
     // occurred). The "no further improvement possible" guard below ranks on

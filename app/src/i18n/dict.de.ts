@@ -136,6 +136,11 @@ export const de = {
     'Das Ziel ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
   'error.noRoute.snapVia':
     'Ein Zwischenpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+  // #432: die Suche wurde abgebrochen, BEVOR sie fertig war — anders als die
+  // übrigen error.noRoute.*-Texte ist das ausdrücklich keine Aussage darüber,
+  // ob es eine Route gibt.
+  'error.noRoute.searchBudget':
+    'Die Routenberechnung hat ihr Zeitlimit erreicht, bevor sie fertig war — das heißt nicht, dass es keine Route gibt. Ein näheres Ziel, weniger Zwischenpunkte oder eine kleinere Tiefen-Komfortspanne helfen; ein schnelleres Gerät ebenfalls.',
   'error.replanStaleWind':
     'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.replanInit':

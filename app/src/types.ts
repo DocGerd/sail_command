@@ -162,7 +162,13 @@ export type NoRouteReason =
   | 'calm-motor-off' // no progress possible under sail, motor disabled
   | 'snap-failed-origin' // origin not navigable within 300 m
   | 'snap-failed-destination'
-  | 'snap-failed-via'; // a via point not navigable within 300 m
+  | 'snap-failed-via' // a via point not navigable within 300 m
+  // #432: the plan's wall-clock budget ran out mid-search. Unlike every other
+  // member this is NOT a finding about the route — the search never finished,
+  // so it is explicitly not a claim that no route exists. Deliberately spelled
+  // unlike its internal cause ('budget-exhausted', routing/planRoute.ts) so the
+  // presentational and control vocabularies stay greppable apart (#282).
+  | 'search-budget-exceeded';
 
 export interface PlanRequest {
   origin: LatLon;

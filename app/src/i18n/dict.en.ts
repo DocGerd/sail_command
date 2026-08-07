@@ -132,6 +132,11 @@ export const en = {
     'The destination is not navigable — pick a point at least 300 m from land or shallow water.',
   'error.noRoute.snapVia':
     'A via point is not navigable — pick a point at least 300 m from land or shallow water.',
+  // #432: the search was cut short BEFORE it finished — unlike every other
+  // error.noRoute.* string, this deliberately makes no claim about whether a
+  // route exists.
+  'error.noRoute.searchBudget':
+    'Route planning hit its time limit before finishing — this does not mean no route exists. A nearer destination, fewer via points, or a smaller depth-comfort span will help; so will a faster device.',
   'error.replanStaleWind':
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':

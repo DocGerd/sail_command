@@ -217,3 +217,58 @@ describe('worker protocol handler: fatal.stack population (#433 review Minor 2)'
     expect(fatal.stack).toBeUndefined();
   });
 });
+
+// #432: the worker side of the plan budget. This is the only test that
+// exercises the whole wire — a budgetMs on the request becoming a deadline
+// object that planRoute()/solve() actually honour.
+describe('#432 worker plan budget', () => {
+  function planWithBudget(out: WorkerResponse[], budgetMs?: number) {
+    const handle = createHandler((m) => out.push(m));
+    handle({
+      type: 'init',
+      maskMeta: TEST_MASK_META,
+      maskBuffer: openWaterBuffer(),
+      polarGenoa: TEST_POLAR,
+      polarFock: FOCK,
+    });
+    handle({
+      type: 'plan',
+      id: 'budget-1',
+      request: {
+        origin: { lat: 54.7525, lon: 10.0025 },
+        destination: { lat: 54.7525, lon: 10.3025 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
+        settings: DEFAULT_SETTINGS,
+      },
+      windGrid: uniformWindGrid(12, 0),
+      ...(budgetMs !== undefined ? { budgetMs } : {}),
+    });
+    const msg = out.find((m) => m.type === 'result');
+    if (!msg || msg.type !== 'result') throw new Error('expected a result message');
+    return msg.result;
+  }
+
+  it('a zero budget is already spent, so the plan reports search-budget-exceeded', () => {
+    const result = planWithBudget([], 0);
+    expect(result.status).toBe('error');
+    if (result.status !== 'error') return;
+    expect(result.reason).toBe('search-budget-exceeded');
+  });
+
+  it('an ABSENT budgetMs leaves the worker unbudgeted — the same plan succeeds', () => {
+    // The control that makes the row above mean something: the identical
+    // request, with no budget, is a perfectly ordinary successful plan. Without
+    // this, a zero budget could be "failing" for any unrelated reason.
+    const result = planWithBudget([]);
+    expect(result.status).toBe('ok');
+  });
+
+  it('a budget far larger than the solve does not disturb the result', () => {
+    const unbudgeted = planWithBudget([]);
+    const generous = planWithBudget([], 10 * 60_000);
+    expect(generous).toEqual(unbudgeted);
+  });
+});

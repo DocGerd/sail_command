@@ -1,12 +1,26 @@
 import 'fake-indexeddb/auto';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { dedupeViaPoints, ReplanError, replanWithVias, useViaReplan, type ReplanClient } from './replan';
+import {
+  dedupeViaPoints,
+  ReplanError,
+  replanWithVias,
+  useViaReplan,
+  type ReplanClient,
+} from './replan';
 import { destinationPoint } from '../lib/geo';
+import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
+import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
 import { uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type LatLon, type NoRouteReason, type Plan, type PlanResultOk } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type LatLon,
+  type NoRouteReason,
+  type Plan,
+  type PlanResultOk,
+} from '../types';
 
 const ORIGIN: LatLon = { lat: 54.75, lon: 10.0 };
 const DESTINATION: LatLon = { lat: 54.75, lon: 10.4 };
@@ -15,8 +29,13 @@ const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
   genoa: {
-    rig: 'genoa', legs: [], etaMs: DEPARTURE_MS + 3_600_000, durationMs: 3_600_000,
-    distanceNm: 10, maneuverCount: 0, motorDistanceNm: 0,
+    rig: 'genoa',
+    legs: [],
+    etaMs: DEPARTURE_MS + 3_600_000,
+    durationMs: 3_600_000,
+    distanceNm: 10,
+    maneuverCount: 0,
+    motorDistanceNm: 0,
   },
   fock: null,
   genoaReason: null,
@@ -107,13 +126,16 @@ describe('replanWithVias', () => {
     await __resetDbForTests();
   });
 
-  it('reuses the plan\'s stored windGrid (same object identity) and never calls fetchWindGrid', async () => {
+  it("reuses the plan's stored windGrid (same object identity) and never calls fetchWindGrid", async () => {
     const plan = makePlan();
     const via = { lat: 54.9, lon: 10.2 };
     const fetchWindSpy = vi.spyOn(openMeteoModule, 'fetchWindGrid');
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
 
-    const updated = await replanWithVias(plan, [via], { client, save: vi.fn().mockResolvedValue(undefined) });
+    const updated = await replanWithVias(plan, [via], {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
 
     expect(fetchWindSpy).not.toHaveBeenCalled();
     expect(client.plan).toHaveBeenCalledTimes(1);
@@ -169,13 +191,15 @@ describe('replanWithVias', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it('does not throw when departureMs sits exactly on the grid\'s last hour (boundary inclusive)', async () => {
+  it("does not throw when departureMs sits exactly on the grid's last hour (boundary inclusive)", async () => {
     const plan = makePlan();
     const horizonMs = plan.windGrid.timesMs[plan.windGrid.timesMs.length - 1];
     const boundaryPlan = makePlan({ request: { ...plan.request, departureMs: horizonMs } });
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
 
-    await expect(replanWithVias(boundaryPlan, [], { client, save: vi.fn().mockResolvedValue(undefined) })).resolves.toBeDefined();
+    await expect(
+      replanWithVias(boundaryPlan, [], { client, save: vi.fn().mockResolvedValue(undefined) }),
+    ).resolves.toBeDefined();
   });
 
   it.each<[NoRouteReason, string]>([
@@ -193,19 +217,85 @@ describe('replanWithVias', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it('maps a rejected client.plan() (worker fatal) to ReplanError(error.internal)', async () => {
+  // #432: this catch used to be a bare `catch {}` that threw away the
+  // RoutingError and reported 'error.internal' for every kind alike — #433's
+  // typed discriminator existed but had no effect on this path. The expected
+  // keys below are hand-written from each kind's own meaning, NOT read off
+  // ROUTING_FAILURE_MESSAGE_KEY, so a change to that table reds these rows
+  // instead of silently following it (#50/#388).
+  it.each<[RoutingFailureKind, MsgKey]>([
+    ['timeout', 'error.routingTimeout'],
+    ['worker-fatal', 'error.routingFailed'],
+    ['worker-error', 'error.routingCrashed'],
+    ['messageerror', 'error.routingMessageError'],
+    ['disposed', 'error.routingInterrupted'],
+  ])('preserves RoutingError kind %s as ReplanError(%s)', async (kind, messageKey) => {
+    const plan = makePlan();
+    const client: ReplanClient = {
+      plan: vi.fn().mockRejectedValue(new RoutingError(kind, `simulated ${kind}`)),
+    };
+
+    await expect(replanWithVias(plan, [], { client })).rejects.toMatchObject({ messageKey });
+  });
+
+  it('falls back to error.internal for a throw that is not a RoutingError', async () => {
     const plan = makePlan();
     const client: ReplanClient = { plan: vi.fn().mockRejectedValue(new Error('worker crashed')) };
 
-    await expect(replanWithVias(plan, [], { client })).rejects.toMatchObject({ messageKey: 'error.internal' });
+    await expect(replanWithVias(plan, [], { client })).rejects.toMatchObject({
+      messageKey: 'error.internal',
+    });
   });
 
-  it('maps a rejected save() to ReplanError(error.internal)', async () => {
+  // #432 part (b): the client is torn down so a RETRY is handed a fresh
+  // worker. Without this the abandoned solve keeps running (the deadline
+  // settles the promise, it does not terminate the thread) and the next
+  // replan stacks onto a saturated worker.
+  it('disposes the client after a rejected plan(), so a retry gets a fresh worker', async () => {
     const plan = makePlan();
-    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const dispose = vi.fn();
+    const client: ReplanClient = {
+      plan: vi.fn().mockRejectedValue(new RoutingError('timeout', 'routing timed out')),
+      dispose,
+    };
+
+    await expect(replanWithVias(plan, [], { client })).rejects.toBeInstanceOf(ReplanError);
+    expect(dispose, 'a timed-out replan must dispose its client').toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT dispose the client on a successful replan', async () => {
+    const plan = makePlan();
+    const dispose = vi.fn();
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT), dispose };
+
+    await replanWithVias(plan, [], { client, save: vi.fn().mockResolvedValue(undefined) });
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it('survives a client with no dispose() at all (the bare test-fake shape)', async () => {
+    const plan = makePlan();
+    const client: ReplanClient = {
+      plan: vi.fn().mockRejectedValue(new RoutingError('timeout', 'routing timed out')),
+    };
+
+    await expect(replanWithVias(plan, [], { client })).rejects.toMatchObject({
+      messageKey: 'error.routingTimeout',
+    });
+  });
+
+  // #432: routing SUCCEEDED and only the write failed, so the generic
+  // "route planning failed unexpectedly" copy was misleading about both what
+  // broke and what to do. No dispose either — the worker is healthy.
+  it('maps a rejected save() to ReplanError(error.planSaveFailed), and leaves the client alone', async () => {
+    const plan = makePlan();
+    const dispose = vi.fn();
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT), dispose };
     const save = vi.fn().mockRejectedValue(new Error('idb full'));
 
-    await expect(replanWithVias(plan, [], { client, save })).rejects.toMatchObject({ messageKey: 'error.internal' });
+    await expect(replanWithVias(plan, [], { client, save })).rejects.toMatchObject({
+      messageKey: 'error.planSaveFailed',
+    });
+    expect(dispose).not.toHaveBeenCalled();
   });
 
   it('drops a too-close via before submitting the request (ledgered intake, enforced regardless of caller)', async () => {
@@ -249,14 +339,23 @@ describe('useViaReplan', () => {
 
     expect(outcome).toBeNull();
     expect(ensureClient).toHaveBeenCalledTimes(1);
-    expect(result.current.state).toEqual({ replanning: false, error: 'error.replanInit', droppedCount: 0 });
+    expect(result.current.state).toEqual({
+      replanning: false,
+      error: 'error.replanInit',
+      droppedCount: 0,
+    });
   });
 
   it('a successful replace() transitions replanning true then false, and returns the updated plan', async () => {
     const plan = makePlan();
     let resolvePlan!: (r: PlanResultOk) => void;
     const client: ReplanClient = {
-      plan: vi.fn(() => new Promise<PlanResultOk>((res) => { resolvePlan = res; })),
+      plan: vi.fn(
+        () =>
+          new Promise<PlanResultOk>((res) => {
+            resolvePlan = res;
+          }),
+      ),
     };
     const { result } = renderHook(() =>
       useViaReplan(() => Promise.resolve(client), { save: vi.fn().mockResolvedValue(undefined) }),
@@ -280,10 +379,17 @@ describe('useViaReplan', () => {
     const plan = makePlan();
     let resolvePlan!: (r: PlanResultOk) => void;
     const client: ReplanClient = {
-      plan: vi.fn(() => new Promise<PlanResultOk>((res) => { resolvePlan = res; })),
+      plan: vi.fn(
+        () =>
+          new Promise<PlanResultOk>((res) => {
+            resolvePlan = res;
+          }),
+      ),
     };
     const ensureClient = vi.fn().mockResolvedValue(client);
-    const { result } = renderHook(() => useViaReplan(ensureClient, { save: vi.fn().mockResolvedValue(undefined) }));
+    const { result } = renderHook(() =>
+      useViaReplan(ensureClient, { save: vi.fn().mockResolvedValue(undefined) }),
+    );
 
     let first!: Promise<Plan | null>;
     let second!: Promise<Plan | null>;
@@ -313,7 +419,9 @@ describe('useViaReplan', () => {
 
   it('surfaces the ReplanError messageKey on a failed replace(), and clearError resets it', async () => {
     const plan = makePlan();
-    const client: ReplanClient = { plan: vi.fn().mockResolvedValue({ status: 'error', reason: 'unreachable' }) };
+    const client: ReplanClient = {
+      plan: vi.fn().mockResolvedValue({ status: 'error', reason: 'unreachable' }),
+    };
     const { result } = renderHook(() => useViaReplan(() => Promise.resolve(client)));
 
     await act(async () => {
@@ -338,8 +446,12 @@ describe('useViaReplan', () => {
     });
     expect(okResult.current.state.droppedCount).toBe(1);
 
-    const failClient: ReplanClient = { plan: vi.fn().mockResolvedValue({ status: 'error', reason: 'unreachable' }) };
-    const { result: failResult } = renderHook(() => useViaReplan(() => Promise.resolve(failClient)));
+    const failClient: ReplanClient = {
+      plan: vi.fn().mockResolvedValue({ status: 'error', reason: 'unreachable' }),
+    };
+    const { result: failResult } = renderHook(() =>
+      useViaReplan(() => Promise.resolve(failClient)),
+    );
     await act(async () => {
       await failResult.current.replace(plan, [tooClose]);
     });

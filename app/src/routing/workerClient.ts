@@ -17,23 +17,27 @@ const RIGS: readonly Rig[] = ['genoa', 'fock'];
 // must never leak into UI code as a control input, and never be re-derived
 // by matching THIS Error's own `.message` text — that is exactly the
 // #282/#411 label-as-control-input coupling this repo already paid to
-// narrow once. The presentation-boundary mapping (kind -> MsgKey) is wired
-// up ONLY at state/usePlanFlow.ts's run() — the PRIMARY plan path.
+// narrow once. The presentation-boundary mapping (kind -> MsgKey) lives in
+// state/replan.ts as ROUTING_FAILURE_MESSAGE_KEY and is applied at all THREE
+// call paths — usePlanFlow.ts's run(), replanWithVias() and
+// rerouteFromFix() (#432; before that it was wired only at run()).
 //
-// NARROWED, NOT CLOSED (#433/#432 boundary): the same RoutingClient.plan()
-// is also called from state/replan.ts:110 and state/reroute.ts:113, and
-// BOTH sites discard the caught error with a bare, unbound `catch {` before
-// rethrowing a fresh, unrelated ReplanError('error.internal', …) — see
-// replan.ts:111/:123 and reroute.ts:114/:142 (four sites total; the other
-// two are each file's own save()-failure catch, same shape). A RoutingError
-// thrown on a via-replan or a Live reroute therefore loses its `kind`
-// before anything can read it, so this discriminator has NO effect on
-// those two paths today. Left deliberately unfixed here: #432 already needs
-// to edit both files for their own missing dispose() calls on a timeout
-// (CLAUDE.md's #432 bullet), and editing them from this change too would
-// collide with that work.
+// CLOSED by #432 (it was recorded here as "narrowed, not closed" while #433
+// shipped): the same RoutingClient.plan() is also called from
+// state/replan.ts and state/reroute.ts, and both sites used to discard the
+// caught error with a bare, unbound `catch {` before rethrowing a fresh,
+// unrelated ReplanError('error.internal', …) — four sites in all, the other
+// two being each file's own save()-failure catch. All four now bind the
+// error and preserve its discriminator: the two plan() sites map
+// RoutingError.kind through ROUTING_FAILURE_MESSAGE_KEY (state/replan.ts,
+// which is where that table now lives so all three call paths share one
+// copy), and the two save() sites carry the distinct 'persist-failed' cause
+// instead of collapsing onto 'error.internal'.
 export type RoutingFailureKind =
-  | 'timeout' // plan()'s own client-side deadline (:DEFAULT_PLAN_TIMEOUT_MS) elapsed
+  // #432: no longer the routing wall — the worker's own PLAN_BUDGET_MS stops
+  // a merely-slow solve first and answers with a specific no-route reason.
+  // Reaching THIS deadline means the worker never replied at all.
+  | 'timeout' // plan()'s own client-side liveness deadline (:DEFAULT_PLAN_TIMEOUT_MS) elapsed
   | 'worker-fatal' // protocol.ts forwarded a real throw from inside the worker (+stack)
   | 'worker-error' // the Worker's global onerror fired
   | 'messageerror' // the Worker's onmessageerror fired (undeserializable message)
@@ -54,12 +58,48 @@ export class RoutingError extends Error {
   }
 }
 
-// Generous but finite: a real solve over the full 6-day forecast horizon
-// with both rigs can legitimately take tens of seconds on slow hardware, but
-// a hung worker (postMessage swallowed, or stuck in an infinite loop past
-// isochrone.ts's own step budget) must not leave the UI in "routing…"
-// forever with no way out.
-const DEFAULT_PLAN_TIMEOUT_MS = 120_000;
+// #432: the plan's WALL-CLOCK BUDGET, shipped to the worker in every plan
+// request and turned into a shared deadline there (routing/protocol.ts) that
+// every solve() of that plan checks per ring. Defined HERE, on the client,
+// and sent over the wire rather than duplicated worker-side, so there is
+// exactly one definition and no drift-guard test is needed to keep two in
+// step.
+//
+// The VALUE is deliberately unchanged from the pre-#432 client deadline
+// (120 s): #432 does not argue that number is wrong, only that exceeding it
+// was misreported and unbudgeted. Keeping it is what makes "no
+// currently-succeeding plan starts failing" true by construction rather than
+// by measurement — the wall a slow solve hits is the same wall, moved from
+// the client to the solver, which is the only side that can say where it got
+// to. For scale: this app's most expensive real input (Flensburg -> Marstal
+// at DEFAULT_SETTINGS, real committed mask+polars) measured 41-43 s of pure
+// solver time on one dev machine, 2026-08-07 — a device would have to be
+// ~3x slower to reach this budget at all.
+export const PLAN_BUDGET_MS = 120_000;
+
+// How much longer the CLIENT waits than the budget it handed the worker. The
+// solver must always win this race: it is the side that produces the honest,
+// specific "budget exceeded" answer, while this deadline can only ever say
+// "no reply". Sized to cover, in order: the worker's abort granularity of one
+// isochrone ring (MEASURED at 1045 ms worst case on the Flensburg -> Marstal
+// input above, so ~3 s even on a device 3x slower), plus postMessage +
+// structured-clone of the request on the way in (the client's clock starts
+// BEFORE the worker's, so the worker's deadline lands strictly later than
+// this one otherwise would), plus unwinding four tiers and posting the
+// result back.
+const PLAN_TIMEOUT_GRACE_MS = 15_000;
+
+// Now purely a LIVENESS backstop, not the routing wall it used to be: with
+// the budget above, a merely-slow solve is stopped worker-side and answers
+// honestly, so reaching this deadline means the worker never replied at all
+// (postMessage swallowed, thread wedged, or killed without firing onerror —
+// a Chromium OOM frequently does exactly that, #432). Raised from the
+// pre-#432 bare 120 s so it can no longer pre-empt the budget; the cost is
+// that a genuinely dead worker is reported PLAN_TIMEOUT_GRACE_MS later,
+// which is a small addition to an already ~2-minute wait and does not affect
+// worker.onerror/onmessageerror, which fail fast through failAll() and never
+// touch this timer.
+const DEFAULT_PLAN_TIMEOUT_MS = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
 
 interface PendingEntry {
   resolve: (r: PlanResult) => void;
@@ -76,6 +116,17 @@ export class RoutingClient {
   private readyReject!: (e: Error) => void;
   private disposed = false;
   private pending = new Map<string, PendingEntry>();
+  // #432: readable so an owner holding this client as a SINGLETON can notice
+  // it was disposed by someone else and rebuild instead of handing the dead
+  // one back forever. Before #432 the only two dispose() call sites both sat
+  // in usePlanFlow.ts and each nulled the singleton refs in the same breath,
+  // so the state was unobservable and did not need to be; state/replan.ts and
+  // state/reroute.ts are now a third and fourth disposer that cannot reach
+  // those refs, which is exactly what makes it observable — see
+  // usePlanFlow.ts's ensureClient().
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
   // throttle state: last-forwarded timestamp per `${id}:${rig}`, at most 1 progress callback per 100 ms per rig
   private lastProgressAt = new Map<string, number>();
 
@@ -196,7 +247,19 @@ export class RoutingClient {
       if (onProgress) entry.onProgress = onProgress;
       if (onProbe) entry.onProbe = onProbe;
       this.pending.set(id, entry);
-      this.worker.postMessage({ type: 'plan', id, request, windGrid } satisfies WorkerRequest);
+      // #432: `budgetMs` is derived from THIS call's own timeoutMs rather
+      // than read off the PLAN_BUDGET_MS constant, so a test (or any future
+      // caller) that shortens the client deadline shortens the worker's
+      // budget with it and the two can never invert — a worker budget longer
+      // than the client deadline would silently restore the pre-#432
+      // behaviour of the client pre-empting the solver's honest answer.
+      this.worker.postMessage({
+        type: 'plan',
+        id,
+        request,
+        windGrid,
+        budgetMs: Math.max(0, timeoutMs - PLAN_TIMEOUT_GRACE_MS),
+      } satisfies WorkerRequest);
     });
   }
 
