@@ -499,8 +499,8 @@ deviate from it.
   a dirty fixture diff after an e2e run is expected churn, restore it, don't
   commit it). The COMMITTED fixture is stale (last forecast hour 2026-07-22)
   and reachable ONLY through the `?windFixture=` escape hatch
-  (`usePlanFlow.ts`, its sole consumer) — so a browser pass that USES that
-  parameter fails 'beyond horizon' until
+  (`usePlanFlow.ts`, its sole consumer) — so a MANUAL browser pass that uses
+  that parameter fails 'beyond horizon' until
   `node app/scripts/gen-wind-fixture.mjs` is run; restore it afterwards. An
   ordinary dev-server pass fetches live Open-Meteo and is unaffected by the
   fixture's age — do NOT regenerate it reflexively, that just creates the
@@ -1941,9 +1941,16 @@ deviate from it.
   the worker is healthy. Disposing there would be wrong. The plan-path pair
   pairs with `RoutingClient.isDisposed` + an `ensureClient()` rebuild —
   dispose alone would make every later replan fail `disposed`.
-  Solver bounds are now THREE, not one: the wall-clock budget above,
-  `MAX_FRONTIER = 30_000` (a PER-RING frontier-size cap, still live), and the
-  forecast-horizon guard.
+  TWO things TERMINATE the search with a named cause — the wall-clock budget
+  above (`budget-exhausted`) and the forecast-horizon guard
+  (`horizon-exceeded`). `MAX_FRONTIER = 30_000` is NOT one of them and its
+  declaration says so: a "Perf safeguard, not a correctness bound" that
+  TRUNCATES the frontier by count and lets the loop CONTINUE. Do not group the
+  three as "bounds" — a no-route in the capped regime may reflect search
+  capacity rather than actual unreachability, and that distinction is
+  deliberately NOT surfaced to the caller (plan-amendment pending), so
+  implying such a failure is attributable is exactly backwards in a bullet
+  about typed failures.
   STILL TRUE and load-bearing: `routing/` **and `state/usePlanFlow.ts`**
   contain ZERO `console.*` calls, so an empty console is DESIGNED behaviour,
   not evidence nothing happened — never ask a reporter to check it.
@@ -1952,10 +1959,14 @@ deviate from it.
   `console\.[a-z]+\(` (invocations) and `console\.[a-z]+[^(a-z]` (bare refs
   like `.catch(console.error)` plus comment mentions): the invocation-only
   grep UNDER-counts, and the composition shifts between merges even when the
-  total does not. Also still true: **"reload the app" helps essentially only
-  the asset/init case**, and it still ships on a non-init key
-  (`error.routingFailed`, the `worker-fatal` kind) — so that advice is still
-  over-broad for the path a user most often meets it on.
+  total does not. And the old "'reload the app' helps essentially only the
+  asset/init case" caution is now SATISFIED, not residual — after #433/#432
+  that advice sits on exactly the two init keys (`error.workerInit`,
+  `error.replanInit`), where it is correct, plus the generic `error.internal`
+  fallback for non-`RoutingError` throws. It is absent from every typed
+  routing key, `error.routingFailed` included. Recorded because an earlier
+  revision of this bullet claimed the opposite from a mis-attributed dict
+  line: this is a place the fix WORKED.
 - `NavMask.segmentShallowestBelow` returns `null` for BOTH "no cell below the
   threshold" AND "the walk left the grid / tripped its iteration guard" — it
   cannot distinguish clear water from no coverage. Anything that renders a
