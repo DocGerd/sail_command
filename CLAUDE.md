@@ -52,6 +52,17 @@ deviate from it.
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
+  **`lint` is literally `eslint src`, so `app/e2e/**` is NEVER linted by CI**
+  (#420, open) — including the specs that are the ONLY functional assurance
+  for `src/sw.ts` and `src/routing/worker.ts` (both ~0% coverage by design).
+  Run `npm --prefix app run lint -- e2e` by hand after touching a spec (this
+  lints `src` AND `e2e` in one pass, so it cannot silently diverge from what
+  CI runs); a real error sat there unseen until PR #419's review found it.
+  Note the `run`, not `exec` — per the next bullet, `exec` does NOT chdir, so
+  `npm --prefix app exec eslint e2e` resolves `e2e` against the REPO ROOT and
+  exits 2 with "No files matching the pattern" (measured), silently linting
+  nothing. The e2e-only spelling that does work is
+  `npm --prefix app exec eslint app/e2e`.
 - `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
   exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
   executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
@@ -475,39 +486,42 @@ deviate from it.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
+- **Reproducing a settle race needs the write to land INSIDE the window, and
+  the window is smaller than it looks** (#412, PR #419). The target here is
+  the gap between `boundingBox()` and `elementsFromPoint` — two consecutive
+  CDP round-trips, roughly 10 ms. A multi-second delay puts the write BEYOND
+  both calls and a pre-loop CSS force puts it BEFORE both: **both sample the
+  two CONSISTENT states and can never reach the inconsistent one**, so three
+  such constructions "proved" a site was dormant when they had not tested it
+  at all. Worse, the supporting evidence (`box.y + box.height <= vp.height`
+  "trips first") read the SAME FROZEN BOX the assertion does, so it was blind
+  to exactly what it was credited with catching. Treat reachability as
+  UNMEASURED unless the construction demonstrably lands inside the window;
+  two residual sites are tracked in #422.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
   **The rule governs an assertion's INPUTS, not only its predicate.**
-  `app/e2e/layout.spec.ts`'s four `#368` banner-clearance guards (the
-  parametrized viewport sweep plus three named fix-wave tests, currently at
-  lines 287/359/417/485) each capture `depthToggle`'s `boundingBox()` ONCE,
-  then poll a COORDINATE frozen from that read
-  (`.poll(() => elementDescriptionAt(page, x, y), ...)`). If the box is read
-  before the `ResizeObserver` write of `--sc-banner-height` (and the
-  resulting CSS push) settles, the poll spends its whole budget watching the
-  checkbox's PRE-PUSH position — a real interception and a stale-coordinate
-  read produce a byte-identical signature, and the race can make the test
-  PASS with the defect live. Measured 0/100 locally on clean `develop` (rate
-  below ~3% at 95% confidence, rule of three); a loaded-CI reproduction was
-  NOT performed, so a load-dependent race is untested. Tracked as the
-  #368-guard stale-geometry issue (number pending). Polling a state signal is
-  not enough if the coordinate or handle being polled was itself sampled
-  before settle.
-  `app/e2e/compass.spec.ts` (test declared at `:995`) has a SIBLING shape,
-  not the same one, and is the more exposed of the two: `const toggleBox =
-  (await depthToggle.boundingBox())!` / `const bannerBox = (await
-  banner.boundingBox())!` at `:1050-1051` feed an IMMEDIATE one-shot
-  `expect(overlapWidth * overlapHeight, ...).toBe(0)` at `:1062-1065` — no
-  poll, no retry, zero settle tolerance. The shared root: both assert
-  against geometry sampled before the `ResizeObserver` write of
-  `--sc-banner-height` and the resulting CSS push have applied.
-  `layout.spec.ts`'s poll can then watch a stale point for its whole budget;
-  `compass.spec.ts`'s one-shot form has no tolerance for that window at all
-  — not polling is not the same as not needing a gate. The two also produce
-  DIFFERENT CI signatures for the same root cause, which is why recognising
-  them as one class matters: `layout.spec.ts` times out on the predicate,
-  `compass.spec.ts` fails an overlap-area comparison immediately.
+  The `#368` banner-clearance guards in `app/e2e/layout.spec.ts` (a
+  parametrized viewport sweep plus three named fix-wave tests) and the
+  SIBLING guard in `app/e2e/compass.spec.ts` each USED TO capture
+  `depthToggle`'s `boundingBox()` ONCE and then assert against a coordinate
+  frozen from that single read — taken before the `ResizeObserver` write of
+  `--sc-banner-height`, and the CSS push it causes, had settled. A real
+  interception and a stale-coordinate read produce a BYTE-IDENTICAL
+  signature, so the race could make a guard PASS with the defect live. The
+  two forms differed only in CI signature, which is exactly why recognising
+  them as ONE class mattered: `layout.spec.ts` polled a stale point until its
+  budget expired (a predicate timeout), while `compass.spec.ts` fed the
+  frozen boxes to an IMMEDIATE one-shot `expect(overlap area).toBe(0)` with
+  zero settle tolerance and failed an overlap comparison outright — not
+  polling is not the same as not needing a gate. FIXED in #412 / PR #419:
+  every one of those guards now RE-SAMPLES its geometry INSIDE the poll
+  callback, so no box survives across a tick; the specs carry `#412` comments
+  at each site saying so. Two residual frozen-geometry sites remain elsewhere
+  in the suite, tracked in #422. The durable rule outlives the fix: polling a
+  state signal is not enough if the coordinate or handle being polled was
+  itself sampled before settle.
 - `app/e2e/helpers.ts` exports a named viewport matrix — `STANDARD_VIEWPORTS`
   (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
@@ -738,21 +752,63 @@ deviate from it.
   6), whose push carries a DIFFERENT SHA and rebuilds the site root from
   `main` with the tag now visible.
 - **Deploy — `deploy` job timeout, a DIFFERENT failure mode from #398**
-  (#415, open): the Pages `deploy` job (the `actions/deploy-pages` step) can
-  time out while polling deployment status (`Current status:
-  deployment_queued` or `deployment_in_progress`, both observed) rather than
-  ever reaching `success` — `build` still succeeds, `deploy` fails, and
-  `prod-environment`/`uat-environment`/`smoke-probe` all SKIP (`needs:
-  deploy`). Failures began at `042c5d2` and had not recovered as of
-  `e303e49`, with at least one interleaved success in between — intermittent,
-  not a permanent break. Production is unaffected as long as `main` hasn't
-  moved past its last successful deploy; `/uat/` goes stale. GitHub's own
-  status page reported all-operational throughout — not an externally
-  visible incident. **`smoke-probe` structurally cannot catch this**: #398
-  is a deploy that reports success but silently doesn't take; this deploy
-  reports FAILURE outright and its downstream jobs never run — the probe
-  that closed #398 has nothing to probe here. Root cause not yet identified;
-  do not assume it shares #398's mechanism.
+  (#415): the Pages `deploy` job (the `actions/deploy-pages` step) aborts a
+  deployment that never reaches a terminal state — `build` still succeeds,
+  `deploy` fails, and `prod-environment`/`uat-environment`/`smoke-probe` all
+  SKIP (`needs: deploy`). Production is unaffected as long as `main` hasn't
+  moved past its last successful deploy; `/uat/` goes stale.
+  **Describe it by SHAPE, never by one status string**: `deployment_queued`
+  AND `deployment_in_progress` are both observed (`fb2481c` logged
+  `deployment_in_progress` x118 and `deployment_queued` x0), and upstream
+  reports `syncing_files` — a triage grepping for one string concludes it is
+  a different defect. The abort is the action's OWN DEFAULT poll ceiling
+  (`action.yml`'s `timeout: 600000`, not overridden here); every failure runs
+  10m05s-10m09s. **`smoke-probe` structurally cannot catch this**: #398 is a
+  deploy that reports success but silently doesn't take; this one reports
+  FAILURE outright and its downstream jobs never run — the probe that closed
+  #398 has nothing to probe here.
+  **Root cause is UPSTREAM and externally CONFIRMED**: `actions/deploy-pages#406`
+  (open, independent reporters) plus GitHub's own 2026-08-06 incidents
+  *"Pages - Deployment Lag"* (15:03Z) and *"Actions"* (15:22Z), both reaching
+  `major_outage`. TRAP worth keeping: the status page read ALL-OPERATIONAL
+  for hours first, and the community threads report the same — **absence of a
+  published incident is not evidence the fault is yours**.
+  **REJECTED — raising the `timeout` input.** Upstream reports it ineffective,
+  and on `e303e496` attempt 1 burned the full ceiling while a FRESH attempt 2
+  succeeded in **11 SECONDS** on the identical commit and artifact (run
+  `31109710670`), with `smoke-probe` PASSING on that rescued deployment. On
+  timeout the action CANCELS its own deployment, so a wedge clears by
+  RETRYING, never by waiting — the intuitive fix is the evidentially weaker
+  one here.
+  **FALSIFIED, do not revisit**: `concurrency: cancel-in-progress` did NOT
+  orphan a deployment — no deploy.yml run that day was cancelled at all, and
+  no non-terminal Pages deployment existed. Artifact size is flat (~70.75 MB
+  against a documented 1 GB Pages limit) and not implicated; both
+  `actions/deploy-pages` and `upload-pages-artifact` are already at v5.0.0,
+  the newest release, so there is nothing to bump.
+  The fix — `continue-on-error` on the first `deploy-pages` step, then a
+  `steps.deployment.outcome == 'failure'`-gated warn + wait + retry — landed
+  in PR #418. NOT YET EXERCISED as of 2026-08-07: on the first deploy after
+  that merge, attempt 1 succeeded in 11 s and all three retry steps SKIPPED.
+  A green deploy is therefore NOT evidence the retry works, and never will
+  be — only the `::warning::` firing marks a genuine rescue. That run also
+  cannot discriminate `.outcome` from `.conclusion` (see the next bullet):
+  on a SUCCEEDING step both read `success`, so the correct guard and the
+  broken one are indistinguishable there.
+- **GitHub Actions expression gotchas** (verified 2026-08-06 against the
+  documented Contexts grammar AND `actions/runner` source, not from memory):
+  a HYPHENATED step id IS valid in dot notation — `steps.deployment-retry
+  .outputs.page_url` parses correctly, no `steps['deployment-retry']` index
+  syntax needed —
+  `src/Sdk/DTExpressions2/Expressions2/Sdk/ExpressionUtility.cs`'s
+  `IsLegalKeyword` admits `-` at index >= 1 but NOT as the first character
+  (read against `actions/runner` `main` @ 2026-08-06 — a moving branch, so
+  re-derive after any upgrade), and `deploy.yml` already relies on this in
+  green production runs. And
+  `steps.<id>.outcome` is the result BEFORE `continue-on-error` is applied
+  while `.conclusion` is the result AFTER — so a retry must gate on
+  `.outcome == 'failure'`; `.conclusion` reads `success` on the very step
+  whose failure you are trying to detect.
 - **Deploy — concurrency and environments**: `concurrency: { group: pages,
   cancel-in-progress: true }` admits only one deploy run at a time, but it
   CANCEL-SUPERSEDES rather than queues — a newer run cancels the in-flight one
@@ -1285,6 +1341,17 @@ deviate from it.
   produced four cascading z-index regressions, each caused by the previous
   fix. Re-run the ORIGINAL defect class against the new code, and treat a
   passing selftest table as proof only of the shapes it lists.
+  Session 28 (2026-08-06/07) produced fresh instances in EVERY ONE of the
+  three PRs merged that night — including one inside a **comment-only**
+  wording correction, where the entire content of the change was a single
+  comment and it still reproduced the class. (Deliberately no count: the
+  first write-up said "five" and the enumeration found ~10, one PR alone
+  exceeding five — a bare number in a durable instruction reads as an
+  enumeration.) The invariant across every one of them: **a claim
+  about code, stated from memory instead of re-read from the code**. Prose has
+  no compiler, so nothing else catches it. The remedy that worked: make claims
+  PER-SITE, which are falsifiable one site at a time — every failure was a
+  GENERALISATION ("two tests", "only grows", "not precise hit-tests").
 - Documenting a rule fixes nothing already in flight. #412 (the #368-guard
   stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
@@ -1357,6 +1424,10 @@ deviate from it.
   real source and reach opposite, both-honest conclusions about the same
   line (measured: a reviewer filed a Major finding that a correct citation
   was wrong; the implementer refuted it with the version, #383/PR #390).
+  SECOND independent instance (2026-08-06, PR #419): the same checkout served
+  `@playwright/test` 1.62.0 while `app/package-lock.json` pinned 1.62.1 — two
+  different packages, same trap, so treat this as the normal state of a
+  long-lived checkout rather than a one-off.
   **The LOCKFILE is authoritative** — it is what `npm ci`, CI and production
   install. So: `npm ci` first, confirm the version you are about to read
   (`node -p "require('./app/node_modules/<pkg>/package.json').version"`),
@@ -1973,6 +2044,21 @@ deviate from it.
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
   fallback.
+- **PIN THE BASE BRANCH in every agent brief**, and require the agent to
+  report its merge-base as part of its deliverable — `isolation: worktree`
+  does NOT reliably inherit the session's checked-out branch. MEASURED
+  (2026-08-06, PR #418): an implementer branched off `main`/v0.9.0
+  (`c4e139d`) instead of `develop` and edited a `.github/workflows/deploy.yml`
+  177 lines stale that lacked PR #403's entire #398 probe. **Every per-diff
+  gate passed clean through it** — diff confined to the one allowlisted file,
+  YAML validated, `actionlint` clean, an opus review returning 0 Blockers, and
+  an independent 8/8 verification of Actions semantics from `actions/runner`
+  source. The ONLY signal was the PR object's `mergeable_state: "behind"`,
+  because no per-diff check looks at what a diff is BASED on. Durable rule:
+  **a review is valid only against the base it ran on** — when the base moves,
+  re-verify the MERGED artifact instead of carrying the review forward.
+  Nothing was lost that time only because the `deploy` job happened to be
+  byte-identical across both refs; that is luck, not a control.
 - Agent stall patterns (session 7, 6/6 recoveries): an implementer that stops
   "waiting on an armed watcher/monitor" while its notification shows NO live
   background children is asleep forever — nudge it to check the result in the
@@ -2038,9 +2124,20 @@ deviate from it.
   permission-blocked in the main session) — brief reviewers to remove their
   own worktree or verify without a local install.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
-  ask-gate hook must prompt the user) — never through subagents. Use the
-  Edit/Write tools for them: the hook does not match Bash appends (`cat >>`),
-  which silently skip the user prompt.
+  ask-gate hook must prompt the user) — never through subagents. The hook DOES
+  match Bash appends: `bash_hits_protected_path` substring-matches the RAW
+  command, so `cat >>` and heredoc forms ASK (MEASURED 2026-08-06 against
+  `origin/develop`). `>`/`<` are in `WRITE_CAPABLE_CHARS`, so a redirect
+  DISQUALIFIES the narrow read-only exemption rather than bypassing the
+  path-presence check — pinned by the hook's own `check ask "> redirect"` and
+  `"heredoc redirect"` selftest rows. An earlier claim here that appends
+  "silently skip the user prompt" was FALSE, and false in the DANGEROUS
+  direction (it advertised a bypass that does not exist, in the one bullet
+  about protecting user-approved specs). The real residuals are indirection a
+  string-level check cannot see — cwd + bare filename, variable or
+  programmatic path construction, quote-splitting — enumerated in the hook's
+  own "KNOWN SILENT-ALLOW PATHS" comment; read that, not this, for the
+  current list.
 - `.superpowers/` (SDD ledger) is gitignored — append session records
   directly, no PR needed.
 - **Claude Code config placement**: shared config is COMMITTED — `.mcp.json`
