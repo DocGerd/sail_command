@@ -41,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now report the real cause of a routing failure too (a timeout, a crashed
   engine, a failed save) rather than collapsing every one of them onto that
   same generic message, and they release the abandoned routing worker so
-  a retry starts from a clean engine instead of stacking onto a busy one.
+  a retry starts from a clean engine instead of stacking onto a busy one
+  (#432).
 - A route-planning failure that used to show the same generic "unexpected
   failure" message and advice for seven unrelated causes — a crashed
   routing engine, a routing timeout, an internal routing error, a save
