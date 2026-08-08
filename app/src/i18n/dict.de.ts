@@ -58,6 +58,12 @@ export const de = {
   // stable, atomic summary announced once per new plan (never on slider/
   // via-edit re-renders).
   'planner.result.announce': 'Route berechnet — Ankunft {arrival}, Dauer {duration}, {distance}.',
+  // #301: die Eingaben (Start/Ziel/Abfahrt/Einstellungen) weichen von der
+  // oben angezeigten Route ab — eine erneute Berechnung würde jetzt eine
+  // andere Route liefern. Als zweiter Chip in der Ergebnis-Karte gezeigt UND
+  // in die eine Live-Region dieses Panels eingefügt (nie eine zweite).
+  'planner.result.stale':
+    'Zeigt die zuvor berechnete Route — die Eingaben wurden seitdem geändert.',
   // GPX import (#3): the control, the success confirmation, one message per
   // rejection reason, and the non-blocking notices. "Import/Planung"-Sprache,
   // niemals "Navigation" — importierte Geometrie ist eine Planungseingabe.
@@ -96,6 +102,28 @@ export const de = {
     'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
   'error.internal':
     'Routenplanung unerwartet fehlgeschlagen. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+  // #433: Ursachen, die zuvor alle auf error.internal zusammenfielen, jetzt
+  // unterscheidbar — jeweils mit Hinweistext, der ehrlich sagt, ob „Erneut
+  // versuchen" tatsächlich helfen kann (siehe App.tsx's RETRY_MAY_HELP_KEYS).
+  'error.workerInit':
+    'Der Routenplaner konnte nicht gestartet werden — erforderliche Daten konnten nicht geladen werden. App neu laden und erneut versuchen.',
+  'error.routingTimeout':
+    'Die Routenberechnung hat das Zeitlimit überschritten. Ein erneuter Versuch dürfte genauso am Zeitlimit scheitern — eine einfachere Route oder ein schnelleres Gerät könnten helfen.',
+  // #433 review Minor 1: behauptet NICHT, dass ein erneuter Versuch
+  // zwecklos ist — diese Ursache umfasst auch einen Ressourcenerschöpfungs-
+  // Fehler, bei dem ein frischer Worker tatsächlich helfen kann (siehe
+  // Kommentar zu usePlanFlow.ts's ROUTING_FAILURE_MESSAGE_KEY).
+  'error.routingFailed':
+    'Bei der Routenberechnung ist ein interner Fehler aufgetreten. Eine andere Route oder andere Einstellungen helfen eher als ein erneuter Versuch mit derselben Anfrage.',
+  'error.routingCrashed':
+    'Die Routen-Engine ist unerwartet abgestürzt. Erneut versuchen — sie startet dabei neu.',
+  'error.routingMessageError':
+    'Die Routen-Engine hat eine nicht lesbare Antwort gesendet. Erneut versuchen — sie startet dabei neu.',
+  'error.routingInterrupted': 'Die Routenberechnung wurde unterbrochen. Erneut versuchen.',
+  'error.planSaveFailed':
+    'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
+  'error.windUnknown':
+    'Windvorhersage konnte aufgrund eines unerwarteten Fehlers nicht geladen werden. Bitte in Kürze erneut versuchen.',
   'error.noRoute.unreachable':
     'Keine Route gefunden — das Ziel ist ohne Landkontakt oder zu flaches Wasser nicht erreichbar.',
   'error.noRoute.beyondHorizon':
@@ -108,6 +136,11 @@ export const de = {
     'Das Ziel ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
   'error.noRoute.snapVia':
     'Ein Zwischenpunkt ist nicht befahrbar — einen Punkt mindestens 300 m von Land oder Flachwasser wählen.',
+  // #432: die Suche wurde abgebrochen, BEVOR sie fertig war — anders als die
+  // übrigen error.noRoute.*-Texte ist das ausdrücklich keine Aussage darüber,
+  // ob es eine Route gibt.
+  'error.noRoute.searchBudget':
+    'Die Routenberechnung hat ihr Zeitlimit erreicht, bevor sie fertig war — das heißt nicht, dass es keine Route gibt. Ein näheres Ziel, weniger Zwischenpunkte oder eine kleinere Tiefen-Komfortspanne helfen; ein schnelleres Gerät ebenfalls.',
   'error.replanStaleWind':
     'Die gespeicherte Windvorhersage deckt die Abfahrtszeit dieses Plans nicht mehr ab. Route neu planen, um eine aktuelle Vorhersage zu laden.',
   'error.replanInit':

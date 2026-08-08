@@ -91,28 +91,28 @@ describe('isochrone golden routes', () => {
     expect(dist).toBeLessThan(30);
   });
 
-  it('blocked destination → unreachable with reason', () => {
+  it('blocked destination → no-route with cause mask-blocked', () => {
     // solid wall, no gap
     const solid = { ...params({}) };
     const r = solve({
       ...solid,
       mask: makeMask((_: number, c: number) => (c === 160 ? 0 : 200)),
     });
-    expect(r).toEqual({ status: 'no-route', reason: 'unreachable' });
+    expect(r).toEqual({ status: 'no-route', cause: 'mask-blocked' });
   });
 
-  it('calm with motor off → calm-motor-off; beyond horizon reported', () => {
+  it('calm with motor off → calm-without-motor; horizon-exceeded reported', () => {
     // 0.1 kn TWS → polar speeds ~0.07 kn < MIN_SAIL_KN → every sail edge dies.
     // (At 0.5 kn the boat still "sails" at ~0.37 kn and would crawl in — not calm.)
     const calm = solve(params({ wind: new WindField(uniformWindGrid(0.1, 0)) }));
-    expect(calm).toEqual({ status: 'no-route', reason: 'calm-motor-off' });
+    expect(calm).toEqual({ status: 'no-route', cause: 'calm-without-motor' });
 
     const short = solve(
       params({
         wind: new WindField(uniformWindGrid(4, 90, { hours: 2 })), // 2h horizon, upwind, light
       }),
     );
-    expect(short).toEqual({ status: 'no-route', reason: 'beyond-horizon' });
+    expect(short).toEqual({ status: 'no-route', cause: 'horizon-exceeded' });
   });
 
   it('horizon boundary: eta just inside succeeds; one hour-bucket shorter reports beyond-horizon', () => {
@@ -146,7 +146,7 @@ describe('isochrone golden routes', () => {
         wind: new WindField(uniformWindGrid(12, 0, { hours: hoursInside - 1, t0Ms: departureMs })),
       }),
     );
-    expect(outside).toEqual({ status: 'no-route', reason: 'beyond-horizon' });
+    expect(outside).toEqual({ status: 'no-route', cause: 'horizon-exceeded' });
   });
 
   it('is deterministic', () => {
@@ -388,6 +388,6 @@ describe('#243 search-capacity effect (why the tier-ladder fallback is mandatory
       comfortDepthM: 5.0,
     });
     expect(withoutPref.status).toBe('ok');
-    expect(withPref).toEqual({ status: 'no-route', reason: 'unreachable' });
+    expect(withPref).toEqual({ status: 'no-route', cause: 'mask-blocked' });
   });
 });

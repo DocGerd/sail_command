@@ -15,7 +15,7 @@ import type {
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
-import { solve, type SolveResult } from './isochrone';
+import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
 import { BOAT_DRAFT_M, findRelaxedDepthM, type ProbeProgress } from './relaxedDepth';
 
@@ -28,59 +28,28 @@ export interface PlanDeps {
 export type RigProgress = (rig: Rig, info: { tMs: number; frontierSize: number }) => void;
 
 /**
- * #282: the INTERNAL control vocabulary for a failed solve — deliberately a
- * DIFFERENT type from the user-facing `NoRouteReason`, and deliberately not
- * exported through `types.ts`, so it cannot leak into UI code.
+ * #282: the ONE translation from the solver's internal control vocabulary
+ * (`SolveFailureCause`, declared next to `solve()` in isochrone.ts — read its
+ * doc comment for why the two vocabularies exist) to the label the user sees.
  *
- * Why the two must not be one field: the #243 retry gate and the #53
- * relaxation gate below both need to know WHY a solve failed. Until #282 they
- * read that from `NoRouteReason` — the same string the planner shows the user
- * — so a purely presentational improvement to the wording or the granularity
- * of that string silently changed which retry tiers ran, and therefore which
- * route the boat got — measured on a candidate reclassification patch (PR
- * #279) that was REVERTED and never merged, so those numbers are motivating
- * evidence recorded in #282, not reproducible from this branch. The
- * gates now branch on this cause, and `NoRouteReason` is produced from it by
- * `NO_ROUTE_LABEL_OF_CAUSE` at the plan boundary and nowhere else — so the
- * label is free to change without moving a single route.
+ * Purely presentational: nothing in this file branches on its VALUES, only on
+ * the cause. Changing this table — rewording a label, or re-granularising
+ * `NoRouteReason` altogether — cannot change any route, because no gate and no
+ * solver ever reads a label. That is the whole point of #282, and it is
+ * enforced structurally: planRoute.reasonDecoupling.test.ts fails the build if
+ * any code in THIS file names a solver-derived label outside this table, or if
+ * `isochrone.ts` names one at all.
  *
- * RESIDUAL, stated plainly because the next reader will ask: the CAUSE itself
- * is still derived from `SolveResult.reason`, because that is the only failure
- * signal `solve()` exposes today. So a change to the CLASSIFICATION inside
- * `isochrone.ts` (e.g. #265's calm-vs-blocked heuristic) still moves routes,
- * and still needs the full sweep. What #282 closes is everything downstream of
- * that classification. #282's own guidance is that a tier which must fire only
- * for a specific cause has to carry that distinction EXPLICITLY rather than
- * inherit it from user-facing copy — which is exactly what the two predicates
- * below now do.
- */
-export type SolveFailureCause = 'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded';
-
-/** The no-route reasons `solve()` can return (`snap-failed-*` never comes from it). */
-type SolveNoRouteReason = Extract<SolveResult, { status: 'no-route' }>['reason'];
-
-/**
- * Translation IN: solver classification -> internal cause. One of exactly two
- * places in this file allowed to name a solver-derived label; the structural
- * guard in planRoute.reasonDecoupling.test.ts fails the build if a third
- * appears.
- */
-const CAUSE_OF_SOLVE_REASON = {
-  unreachable: 'mask-blocked',
-  'calm-motor-off': 'calm-without-motor',
-  'beyond-horizon': 'horizon-exceeded',
-} as const satisfies Record<SolveNoRouteReason, SolveFailureCause>;
-
-/**
- * Translation OUT: internal cause -> the label the user sees. Purely
- * presentational — nothing in this file branches on its VALUES, only on the
- * cause. Changing this table (or making the label more accurate) cannot change
- * any route.
+ * The reverse direction no longer exists. `solve()` used to return a
+ * `NoRouteReason` that a second table translated back into a cause, so the
+ * gates were one lookup hop from the display string; the solver now emits the
+ * cause directly and this is the only table left.
  */
 export const NO_ROUTE_LABEL_OF_CAUSE = {
   'mask-blocked': 'unreachable',
   'calm-without-motor': 'calm-motor-off',
   'horizon-exceeded': 'beyond-horizon',
+  'budget-exhausted': 'search-budget-exceeded',
 } as const satisfies Record<SolveFailureCause, NoRouteReason>;
 
 interface RunOut {
@@ -105,11 +74,34 @@ function noRouteLabel(out: RunOut): NoRouteReason | null {
  * disagreement is rare — but the fold is deterministic so the result is stable.
  * Pre-#282 this folded the LABELS; the precedence and the both-null default are
  * unchanged, only the vocabulary moved.
+ *
+ * Exported for direct unit testing of the truth table, exactly as
+ * `comfortRetryMayHelp`/`depthRelaxationMayHelp` below are — and for the same
+ * reason. PR #453 review MEASURED that deleting the `'budget-exhausted'` arm
+ * below reds ZERO tests across all 25 `src/routing` + `src/state` files: a
+ * reachable behavioural claim with nothing falsifying it, which is the exact
+ * standard this file applies to the retry gates. `combineFailureCause` is
+ * called only where BOTH rigs failed with non-null causes, and a shared
+ * deadline expiring during the SECOND rig's solve after the first finished
+ * with 'mask-blocked'/'horizon-exceeded' produces precisely that mixed pair.
+ * planRoute.budget.test.ts now pins the whole 5x5 table (the four causes plus
+ * null in both argument positions), so the older `horizon > calm > mask`
+ * ordering — equally unpinned until now — is covered too.
  */
-function combineFailureCause(
+export function combineFailureCause(
   a: SolveFailureCause | null,
   b: SolveFailureCause | null,
 ): SolveFailureCause {
+  // #432 takes TOP precedence, ahead of the actionability order below, and
+  // for a different reason than the rest of it: the other three are all
+  // claims about a search that finished, so the most actionable one wins.
+  // 'budget-exhausted' is a claim that a search did NOT finish, and reporting
+  // a finished sibling's verdict alongside it would over-claim — telling the
+  // skipper "unreachable" (a statement about the water) when the honest
+  // answer is "we ran out of time and do not know". Reachable only in the
+  // mixed case where one rig completes and the shared deadline expires
+  // during the other.
+  if (a === 'budget-exhausted' || b === 'budget-exhausted') return 'budget-exhausted';
   if (a === 'horizon-exceeded' || b === 'horizon-exceeded') return 'horizon-exceeded';
   if (a === 'calm-without-motor' || b === 'calm-without-motor') return 'calm-without-motor';
   return 'mask-blocked';
@@ -172,6 +164,17 @@ export function compareRigs(genoa: RigResult, fock: RigResult): RigRecommendatio
  *
  * #282: takes the internal cause, NOT the user-facing reason. Exported for
  * direct unit testing of the truth table.
+ *
+ * #432: 'budget-exhausted' is excluded — a retry re-solves BOTH rigs against
+ * a deadline that has ALREADY passed, so every retried solve aborts at its
+ * first ring and the only effect is to burn further wall-clock past a budget
+ * the user is already waiting out. It falls out of the `===` list below
+ * rather than being rejected by an extra statement on purpose: a redundant
+ * `if (cause === 'budget-exhausted') return false;` would be unfalsifiable
+ * (no mutation could red it while the list stays as it is — PR #410's
+ * "a mutation the codebase cannot produce proves nothing"). What actually
+ * pins the exclusion is the EXHAUSTIVE four-cause truth table in
+ * planRoute.test.ts, which reds if this list is ever widened to admit it.
  */
 export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
   return cause === 'mask-blocked' || cause === 'horizon-exceeded';
@@ -186,6 +189,16 @@ export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
  *
  * #282: takes the internal cause, NOT the user-facing reason. Exported for
  * direct unit testing of the truth table.
+ *
+ * #432: 'budget-exhausted' is excluded for the same reason as
+ * `comfortRetryMayHelp` above, and pinned the same way (the exhaustive
+ * four-cause table in planRoute.test.ts, not a redundant statement here).
+ * Note this exclusion alone does NOT cover the case where tiers 1-2 spend
+ * the whole budget and still finish with a genuine 'mask-blocked' verdict —
+ * the cause is then honestly mask-blocked, this gate opens, and
+ * `findRelaxedDepthM`'s BFS probes would run past the deadline. That gap is
+ * closed by an explicit deadline check immediately before the relaxation
+ * block, not here.
  */
 export function depthRelaxationMayHelp(cause: SolveFailureCause): boolean {
   return cause === 'mask-blocked';
@@ -238,12 +251,30 @@ function flagShallowLegs(
   return minGateDepthM === Infinity ? null : { requestedDepthM, usedDepthM, minGateDepthM };
 }
 
+/**
+ * #432: the plan-level wall-clock budget, shared by every `solve()` this
+ * plan runs (up to 4 tiers x 2 rigs x N waypoint segments). ONE deadline
+ * object for the whole plan is the entire point — a per-`solve()` budget
+ * would bound each piece while leaving the user's actual wait unbounded and
+ * settings-dependent, since how many tiers fire is invisible to them.
+ *
+ * Absent ⇒ unbudgeted ⇒ byte-identical to a pre-#432 plan. That default is
+ * FAIL-OPEN by design, which is the correct asymmetry here: this is a
+ * diagnostic/UX bound, not a safety control, and the client-side deadline in
+ * workerClient.ts is the backstop that always exists — so degrading to
+ * "unbudgeted" degrades exactly to today's shipped behaviour, never to
+ * something unbounded that today bounds. It also keeps `planRoute()` a pure
+ * function for every vitest call site, whose wall-clock cost swings with the
+ * runner (CLAUDE.md: ~2.1x CI, and a separate 8x coverage multiplier for
+ * solver-heavy work) and must not decide a test outcome.
+ */
 export function planRoute(
   req: PlanRequest,
   windGrid: WindGrid,
   deps: PlanDeps,
   onProgress?: RigProgress,
   onProbe?: ProbeProgress,
+  deadline?: SolveDeadline,
 ): PlanResult {
   const { mask } = deps;
   const s = req.settings;
@@ -295,8 +326,17 @@ export function planRoute(
         settings,
         onProgress: (info) => onProgress?.(rig, info),
         ...(comfort !== undefined ? { comfortDepthM: comfort } : {}),
+        // exactOptionalPropertyTypes: omit the key entirely when unbudgeted,
+        // never pass `{ deadline: undefined }`. The SAME object goes to every
+        // solve of this plan — see the `deadline` parameter's doc comment.
+        ...(deadline !== undefined ? { deadline } : {}),
       });
-      if (res.status !== 'ok') return { rigResult: null, cause: CAUSE_OF_SOLVE_REASON[res.reason] };
+      // #282: the solver's own cause, taken verbatim — no label ever exists on
+      // this path. #432's 'budget-exhausted' needs no branch of its own here:
+      // folding it into SolveFailureCause (rather than giving it a separate
+      // SolveResult arm, as this change's pre-#450 draft did) means it arrives
+      // through exactly this line like any other cause.
+      if (res.status !== 'ok') return { rigResult: null, cause: res.cause };
       legs.push(...mergeCollinearLegs(res.legs, mask, wind, settings, comfort));
       departureMs = res.etaMs;
     }
@@ -449,6 +489,20 @@ export function planRoute(
   // the user-facing label — and this gate must stay HERE in the control flow:
   // the `combineFailureCause` assignments inside the block below are downstream
   // of it and presentational only.
+  //
+  // #432: the ONE place the budget needs an explicit check outside solve().
+  // `depthRelaxationMayHelp` already rejects 'budget-exhausted', but that
+  // does not cover the case this check exists for: tiers 1-2 can spend the
+  // ENTIRE budget and still finish with a genuine 'mask-blocked' verdict, so
+  // the cause is honestly mask-blocked, the gate opens, and
+  // `findRelaxedDepthM`'s BFS probes — the only work in this function that
+  // does not run inside solve()'s ring loop, and therefore the only work the
+  // per-ring check cannot stop — would run past a deadline that has already
+  // passed. Checked before the probes rather than after, so a spent budget
+  // costs one predicate instead of a full probe sweep.
+  if (deadline?.expired()) {
+    return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE['budget-exhausted'] };
+  }
   if (depthRelaxationMayHelp(cause) && s.safetyDepthM > BOAT_DRAFT_M) {
     const usedDepthM = findRelaxedDepthM(mask, waypoints, s.safetyDepthM, onProbe);
     if (usedDepthM !== null) {

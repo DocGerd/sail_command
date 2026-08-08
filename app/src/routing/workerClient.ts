@@ -8,12 +8,115 @@ type ProbeCb = (probeDepthM: number, done: number, total: number) => void;
 
 const RIGS: readonly Rig[] = ['genoa', 'fock'];
 
-// Generous but finite: a real solve over the full 6-day forecast horizon
-// with both rigs can legitimately take tens of seconds on slow hardware, but
-// a hung worker (postMessage swallowed, or stuck in an infinite loop past
-// isochrone.ts's own step budget) must not leave the UI in "routing…"
-// forever with no way out.
-const DEFAULT_PLAN_TIMEOUT_MS = 120_000;
+// #433/#435 spike §12: a typed discriminator for every failure RoutingClient
+// can produce, mirroring the two existing precedents in this codebase rather
+// than inventing a third shape — OpenMeteoError (services/openMeteo.ts:16-24,
+// `readonly kind`) and ReplanError (state/replan.ts:50-58, `readonly
+// messageKey`). Deliberately kept OUT of types.ts, same rule as
+// SolveFailureCause (routing/isochrone.ts): a routing-internal discriminator
+// must never leak into UI code as a control input, and never be re-derived
+// by matching THIS Error's own `.message` text — that is exactly the
+// #282/#411 label-as-control-input coupling this repo already paid to
+// narrow once. The presentation-boundary mapping (kind -> MsgKey) lives in
+// state/replan.ts as ROUTING_FAILURE_MESSAGE_KEY and is applied at all THREE
+// call paths — usePlanFlow.ts's run(), replanWithVias() and
+// rerouteFromFix() (#432; before that it was wired only at run()).
+//
+// CLOSED by #432 (it was recorded here as "narrowed, not closed" while #433
+// shipped): the same RoutingClient.plan() is also called from
+// state/replan.ts and state/reroute.ts, and both sites used to discard the
+// caught error with a bare, unbound `catch {` before rethrowing a fresh,
+// unrelated ReplanError('error.internal', …) — four sites in all, the other
+// two being each file's own save()-failure catch. All four now bind the
+// error and preserve its discriminator: the two plan() sites map
+// RoutingError.kind through ROUTING_FAILURE_MESSAGE_KEY (state/replan.ts,
+// which is where that table now lives so all three call paths share one
+// copy), and the two save() sites carry the distinct 'persist-failed' cause
+// instead of collapsing onto 'error.internal'.
+export type RoutingFailureKind =
+  // #432: no longer the routing wall — the worker's own PLAN_BUDGET_MS stops
+  // a merely-slow solve first and answers with a specific no-route reason.
+  // Reaching THIS deadline means the worker never replied at all.
+  | 'timeout' // plan()'s own client-side liveness deadline (:DEFAULT_PLAN_TIMEOUT_MS) elapsed
+  | 'worker-fatal' // protocol.ts forwarded a real throw from inside the worker (+stack)
+  | 'worker-error' // the Worker's global onerror fired
+  | 'messageerror' // the Worker's onmessageerror fired (undeserializable message)
+  | 'disposed'; // this client is (or became) disposed
+
+// NOT structured-clone-safe: Error subclasses lose their prototype chain
+// across postMessage/IndexedDB (mirrors OpenMeteoError's and ReplanError's
+// own caveat) — RoutingError must never cross a postMessage/IndexedDB
+// boundary; it is constructed here, client-side, from plain WorkerResponse
+// data, never sent as one.
+export class RoutingError extends Error {
+  readonly kind: RoutingFailureKind;
+
+  constructor(kind: RoutingFailureKind, message: string) {
+    super(message);
+    this.name = 'RoutingError';
+    this.kind = kind;
+  }
+}
+
+// #432: the plan's WALL-CLOCK BUDGET, shipped to the worker in every plan
+// request and turned into a shared deadline there (routing/protocol.ts) that
+// every solve() of that plan checks per ring. Defined HERE, on the client,
+// and sent over the wire rather than duplicated worker-side, so there is
+// exactly one definition and no drift-guard test is needed to keep two in
+// step.
+//
+// The VALUE is deliberately unchanged from the pre-#432 client deadline
+// (120 s): #432 does not argue that number is wrong, only that exceeding it
+// was misreported and unbudgeted. Keeping it is what makes "no
+// currently-succeeding plan starts failing" true by construction rather than
+// by measurement — the wall a slow solve hits is the same wall, moved from
+// the client to the solver, which is the only side that can say where it got
+// to.
+//
+// For scale, with the machine named next to every figure — the headroom is a
+// property of the DEVICE, not of the route, and PR #453 review caught the
+// first draft stating a one-machine ratio as a general property. This app's
+// most expensive real input is Flensburg -> Marstal at DEFAULT_SETTINGS
+// against the real committed mask and polars, 2026-08-07:
+//
+//   author's dev machine, uniformWindGrid(12, 225):  41-43 s  -> ~2.8x headroom there
+//   reviewer's machine,   uniformWindGrid(12, 270):  50.5 s   -> ~2.4x headroom there
+//
+// (Different wind directions, so these are SIBLING inputs rather than a
+// strict replication; the ~1.2x delta is consistent across total time, ring
+// count and worst ring, which is what a slower machine looks like.) So a
+// device roughly 2.4-2.9x slower than one of these reaches the budget at all
+// — and a phone, the case #432's report is about, is exactly the device for
+// which that multiplier is plausible. Do not restate this as an absolute
+// "~3x slower" without naming a machine.
+export const PLAN_BUDGET_MS = 120_000;
+
+// How much longer the CLIENT waits than the budget it handed the worker. The
+// solver must always win this race: it is the side that produces the honest,
+// specific "budget exceeded" answer, while this deadline can only ever say
+// "no reply". Sized to cover, in order: the worker's abort granularity of one
+// isochrone ring — worst ring MEASURED at 1045 ms (author, 132 rings) and
+// 1270 ms (reviewer, 144 rings) on the two machines above, so these are the
+// fastest observations anyone has taken and a LOWER BOUND on what a slow
+// device does; the 15 s margin is chosen to stay comfortable several
+// multiples above them rather than to sit just past 1270 ms — plus
+// postMessage + structured-clone of the request on the way in (the client's
+// clock starts BEFORE the worker's, so the worker's deadline lands strictly
+// later than this one otherwise would), plus unwinding four tiers and
+// posting the result back.
+const PLAN_TIMEOUT_GRACE_MS = 15_000;
+
+// Now purely a LIVENESS backstop, not the routing wall it used to be: with
+// the budget above, a merely-slow solve is stopped worker-side and answers
+// honestly, so reaching this deadline means the worker never replied at all
+// (postMessage swallowed, thread wedged, or killed without firing onerror —
+// a Chromium OOM frequently does exactly that, #432). Raised from the
+// pre-#432 bare 120 s so it can no longer pre-empt the budget; the cost is
+// that a genuinely dead worker is reported PLAN_TIMEOUT_GRACE_MS later,
+// which is a small addition to an already ~2-minute wait and does not affect
+// worker.onerror/onmessageerror, which fail fast through failAll() and never
+// touch this timer.
+const DEFAULT_PLAN_TIMEOUT_MS = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
 
 interface PendingEntry {
   resolve: (r: PlanResult) => void;
@@ -30,6 +133,17 @@ export class RoutingClient {
   private readyReject!: (e: Error) => void;
   private disposed = false;
   private pending = new Map<string, PendingEntry>();
+  // #432: readable so an owner holding this client as a SINGLETON can notice
+  // it was disposed by someone else and rebuild instead of handing the dead
+  // one back forever. Before #432 the only two dispose() call sites both sat
+  // in usePlanFlow.ts and each nulled the singleton refs in the same breath,
+  // so the state was unobservable and did not need to be; state/replan.ts and
+  // state/reroute.ts are now a third and fourth disposer that cannot reach
+  // those refs, which is exactly what makes it observable — see
+  // usePlanFlow.ts's ensureClient().
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
   // throttle state: last-forwarded timestamp per `${id}:${rig}`, at most 1 progress callback per 100 ms per rig
   private lastProgressAt = new Map<string, number>();
 
@@ -45,9 +159,23 @@ export class RoutingClient {
     // init(); init() still returns `this.ready` directly, so callers observe it.
     this.ready.catch(() => {});
     this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => this.handle(e.data);
-    this.worker.onerror = (e) => this.failAll(new Error(e.message || 'worker error'));
+    this.worker.onerror = (e) =>
+      this.failAll(new RoutingError('worker-error', e.message || 'worker error'));
     this.worker.onmessageerror = () =>
-      this.failAll(new Error('worker message could not be deserialized'));
+      this.failAll(new RoutingError('messageerror', 'worker message could not be deserialized'));
+  }
+
+  // #433: `stack` (protocol.ts's `fatal.stack`, populated at the real throw
+  // site inside the worker) replaces the default Error.stack a bare `new
+  // RoutingError(...)` would otherwise carry — which would only ever show
+  // THIS file's own construction site, not where the failure actually
+  // happened inside planRoute(). Without this, a forwarded worker throw
+  // (cause: a real exception inside planRoute()) arrives stripped of the
+  // one detail that identifies it.
+  private makeWorkerFatalError(message: string, stack: string | undefined): RoutingError {
+    const err = new RoutingError('worker-fatal', message);
+    if (stack !== undefined) err.stack = stack;
+    return err;
   }
 
   private handle(msg: WorkerResponse) {
@@ -64,9 +192,11 @@ export class RoutingClient {
     } else if (msg.type === 'result') {
       this.settle(msg.id, (entry) => entry.resolve(msg.result));
     } else if (msg.id) {
-      this.settle(msg.id, (entry) => entry.reject(new Error(msg.message)));
+      this.settle(msg.id, (entry) =>
+        entry.reject(this.makeWorkerFatalError(msg.message, msg.stack)),
+      );
     } else {
-      this.failAll(new Error(msg.message));
+      this.failAll(this.makeWorkerFatalError(msg.message, msg.stack));
     }
   }
 
@@ -113,7 +243,7 @@ export class RoutingClient {
     onProbe?: ProbeCb,
   ): Promise<PlanResult> {
     await this.ready;
-    if (this.disposed) throw new Error('RoutingClient disposed');
+    if (this.disposed) throw new RoutingError('disposed', 'RoutingClient disposed');
     const id = crypto.randomUUID();
     return new Promise<PlanResult>((resolve, reject) => {
       // A hung worker (message lost, or stuck past its own step budget)
@@ -124,7 +254,7 @@ export class RoutingClient {
       // silent no-op (settle() finds nothing left to settle) rather than a
       // second, conflicting resolution.
       const timer = setTimeout(() => {
-        this.settle(id, (entry) => entry.reject(new Error('routing timed out')));
+        this.settle(id, (entry) => entry.reject(new RoutingError('timeout', 'routing timed out')));
       }, timeoutMs);
       // exactOptionalPropertyTypes: `onProgress`/`onProbe` are `... | undefined`
       // here (omitted args), but the map's value type declares them as
@@ -134,13 +264,41 @@ export class RoutingClient {
       if (onProgress) entry.onProgress = onProgress;
       if (onProbe) entry.onProbe = onProbe;
       this.pending.set(id, entry);
-      this.worker.postMessage({ type: 'plan', id, request, windGrid } satisfies WorkerRequest);
+      // #432: `budgetMs` is derived from THIS call's own timeoutMs rather
+      // than read off the PLAN_BUDGET_MS constant, so a test (or any future
+      // caller) that shortens the client deadline shortens the worker's
+      // budget with it and the two can never invert — a worker budget longer
+      // than the client deadline would silently restore the pre-#432
+      // behaviour of the client pre-empting the solver's honest answer.
+      //
+      // PR #453 review, Minor 1: a deadline at or under the grace margin
+      // leaves no room for a budget, and the first draft clamped it to
+      // `Math.max(0, …)`. That made the budget UNSATISFIABLE rather than
+      // absent — `expired()` is `Date.now() - startedAtMs >= 0`, true on its
+      // first evaluation, so every such plan died before expanding one ring.
+      // Latent, not live (no production caller overrides timeoutMs today),
+      // but it satisfied "the two can never invert" by making the budget
+      // impossible, which is not what that sentence is for. Omitting the key
+      // instead degrades to the documented FAIL-OPEN unbudgeted path that
+      // planRoute()/solve()/protocol.ts all already take when the deadline is
+      // absent — the same direction as the rest of the design, and the client
+      // deadline still bounds the wait.
+      const budgetMs = timeoutMs - PLAN_TIMEOUT_GRACE_MS;
+      this.worker.postMessage({
+        type: 'plan',
+        id,
+        request,
+        windGrid,
+        // exactOptionalPropertyTypes: omit the key entirely, never send
+        // `budgetMs: undefined`.
+        ...(budgetMs > 0 ? { budgetMs } : {}),
+      } satisfies WorkerRequest);
     });
   }
 
   dispose() {
     this.disposed = true;
-    this.failAll(new Error('RoutingClient disposed'));
+    this.failAll(new RoutingError('disposed', 'RoutingClient disposed'));
     this.worker.terminate();
   }
 }

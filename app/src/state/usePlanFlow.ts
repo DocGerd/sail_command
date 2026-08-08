@@ -5,7 +5,7 @@ import { loadRoutingAssets } from '../services/assets';
 import { RoutingClient } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { dedupeViaPoints } from './replan';
+import { dedupeViaPoints, ROUTING_FAILURE_MESSAGE_KEY, routingFailureKey } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Plan, PlanRequest, PlanResult, Rig, Settings, WindGrid } from '../types';
 
@@ -33,6 +33,11 @@ export interface PlanFlowDeps {
   save?: typeof savePlan;
 }
 
+// #432: ROUTING_FAILURE_MESSAGE_KEY (and its `routingFailureKey` accessor)
+// moved to state/replan.ts — all three paths that can observe a RoutingError
+// share it now, not just this one. Its full rationale, including why
+// 'worker-fatal' deliberately bundles two causes, lives with the table.
+
 function mapWindError(err: unknown): MsgKey {
   if (err instanceof OpenMeteoError) {
     switch (err.kind) {
@@ -45,7 +50,7 @@ function mapWindError(err: unknown): MsgKey {
         return 'error.windService';
     }
   }
-  return 'error.internal';
+  return ROUTING_FAILURE_MESSAGE_KEY['wind-unclassified'];
 }
 
 // #114: options for run(). `replacePlanId` is the explicit-confirm
@@ -116,6 +121,19 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
   // rationale and the failure-recovery contract.
   const ensureClient = useCallback(async (): Promise<RoutingClient | null> => {
     try {
+      // #432: the singleton may have been disposed by a caller that cannot
+      // reach these refs — state/replan.ts's and state/reroute.ts's plan()
+      // catches now tear the client down so a retry is not handed a worker
+      // still grinding on an abandoned solve. Without this check that
+      // teardown would be strictly HARMFUL: `clientRef.current` stays
+      // truthy and `readyRef.current` stays resolved, so the next call would
+      // return the dead client and every subsequent replan would fail with
+      // 'disposed' -> error.routingInterrupted. The dispose and this check
+      // are one fix in two halves, not two independent improvements.
+      if (clientRef.current?.isDisposed) {
+        clientRef.current = null;
+        readyRef.current = null;
+      }
       if (!clientRef.current) {
         const assets = await loadRoutingAssets();
         clientRef.current = makeClient();
@@ -201,7 +219,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
 
       const client = await ensureClient();
       if (!client) {
-        transition({ phase: 'error', messageKey: 'error.internal' });
+        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['worker-init'] });
         return;
       }
 
@@ -225,7 +243,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
             transition({ phase: 'probing-depth' });
           },
         );
-      } catch {
+      } catch (err) {
         // Worker fatal (rejected promise) — a resolved PlanResult with
         // status 'error' is handled separately below. Mirrors ensureClient's
         // own recovery: without this, a mid-plan crash would leave the
@@ -240,7 +258,16 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         }
         clientRef.current = null;
         readyRef.current = null;
-        transition({ phase: 'error', messageKey: 'error.internal' });
+        // #433: client.plan() always rejects with a RoutingError (see
+        // workerClient.ts) — classify by its typed `kind`, NEVER by matching
+        // err.message (that would make a user-adjacent label a control
+        // input; see workerClient.ts's own RoutingFailureKind comment on the
+        // #282/#411 precedent this avoids repeating). #432 extracted the
+        // classification into replan.ts's shared `routingFailureKey`, which
+        // this path, replanWithVias() and rerouteFromFix() now all use — one
+        // classification, three call sites, instead of one classification
+        // and two bare `catch {}`s.
+        transition({ phase: 'error', messageKey: routingFailureKey(err) });
         return;
       }
 
@@ -262,7 +289,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       try {
         await save(plan);
       } catch {
-        transition({ phase: 'error', messageKey: 'error.internal' });
+        transition({ phase: 'error', messageKey: ROUTING_FAILURE_MESSAGE_KEY['persist-failed'] });
         return;
       }
       setPlan(plan);

@@ -1,4 +1,4 @@
-import type { Board, Leg, LegKind, LatLon, ManeuverKind, NoRouteReason, Settings } from '../types';
+import type { Board, Leg, LegKind, LatLon, ManeuverKind, Settings } from '../types';
 import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
@@ -32,14 +32,93 @@ export interface SolveParams {
    * preference" otherwise rather than dividing by a non-positive span).
    */
   comfortDepthM?: number;
+  /**
+   * #432 plan-level wall-clock budget. ABSENT ⇒ unbudgeted ⇒ byte-identical
+   * to a pre-#432 solve (the check below is the only new statement in the
+   * ring loop, and `p.deadline?.expired()` on an absent deadline is a single
+   * undefined test). Deliberately NOT defaulted here: `solve()` and
+   * `planRoute()` are pure functions with test call sites whose wall-clock
+   * cost is environment-dependent (CLAUDE.md's ~2.1x CI / 8x coverage
+   * solver multipliers), so a default would make the vitest suite fail on a
+   * slow runner. The deadline is imposed by the one caller that has a human
+   * waiting on it — routing/protocol.ts, from the budget routing/
+   * workerClient.ts ships in the plan request.
+   */
+  deadline?: SolveDeadline;
 }
 
+/**
+ * #432: the plan-level wall-clock budget, as seen by `solve()`. A one-method
+ * interface rather than a raw `deadlineMs` + clock pair so a test can inject
+ * a deterministic "expire after N rings" fake without faking Date.now() for
+ * the whole module, and so the budget stays PER-PLAN even though it is
+ * enforced inside a per-segment, per-rig `solve()`: every solve of one plan
+ * shares ONE deadline object, so four tier-3/tier-4 solves cannot each get a
+ * fresh allowance.
+ */
+export interface SolveDeadline {
+  /** True once the plan's wall-clock budget is spent. */
+  expired(): boolean;
+}
+
+/**
+ * #282: WHY a solve failed, in the solver's own INTERNAL control vocabulary.
+ *
+ * This is deliberately a DIFFERENT type from the user-facing `NoRouteReason`,
+ * and deliberately NOT exported through `types.ts`, so it cannot leak into UI
+ * code. `planRoute.ts` translates it to a label exactly once, at its own
+ * presentation boundary (`NO_ROUTE_LABEL_OF_CAUSE`); nothing else in the app
+ * ever sees a cause.
+ *
+ * Why the solver must not speak the presentational vocabulary: the #243 retry
+ * gate and the #53 relaxation gate both branch on why a solve failed. While
+ * `solve()` returned a `NoRouteReason`, those gates were reading — one
+ * lookup-table hop away — the very string the planner shows the user, so
+ * rewording or re-granularising that string changed which retry tiers ran, and
+ * therefore which route the boat got. It lives HERE rather than in
+ * `planRoute.ts` because `planRoute.ts` already imports from this module: a
+ * back-import would be a cycle, and because this is `solve()`'s OWN output the
+ * solver is its natural owner.
+ *
+ * WHAT THIS DOES NOT FIX, stated plainly because the next reader will ask:
+ * changing the CLASSIFICATION — the `blockedDeaths >= calmDeaths` heuristic
+ * below, or the horizon guard's placement — still changes which cause comes
+ * out and therefore still moves routes. That coupling is intrinsic and is
+ * meant to exist: a gate has to know why the solve failed. What #282 removes is
+ * the ACCIDENTAL half — a change to the user-facing label set can no longer
+ * reach the solver at all. A classification change is now visibly an edit to a
+ * control value rather than to a display string, and per #282 it still needs
+ * the full Flensburg->all-harbours sweep before it is trusted.
+ */
+export type SolveFailureCause =
+  | 'mask-blocked'
+  | 'calm-without-motor'
+  | 'horizon-exceeded'
+  // #432: the plan's wall-clock budget ran out mid-search.
+  //
+  // Unlike the other three this is NOT a product of the classification
+  // heuristic at the bottom of solve() — it is returned by the deadline check
+  // at the top of the ring loop, on a path no completing solve ever reaches.
+  // That is what keeps it outside #282's "a classification change moves
+  // routes" hazard: the partition of the pre-existing three is untouched, an
+  // UNBUDGETED solve (`SolveParams.deadline` absent — every vitest call site)
+  // can never produce it, and a budgeted one can only produce it where the
+  // client's own deadline was already about to abandon the plan.
+  //
+  // It shares the `no-route` arm with the others rather than getting a
+  // separate SolveResult arm, which is a deliberate reversal of this change's
+  // first draft: that draft predated PR #450 and needed the separate arm
+  // only because `solve()` was still typed against the presentational
+  // `NoRouteReason`, so a fourth member would have leaked a label into the
+  // solver. #450 removed that constraint. The remaining semantic objection —
+  // "no-route" overstates what a truncated search knows — is real but already
+  // true of 'horizon-exceeded', which is likewise a search LIMIT rather than
+  // a finding about the water; the honesty is carried where the user actually
+  // reads it, by the 'search-budget-exceeded' label's own copy.
+  | 'budget-exhausted';
+
 export type SolveResult =
-  | { status: 'ok'; legs: Leg[]; etaMs: number }
-  | {
-      status: 'no-route';
-      reason: Extract<NoRouteReason, 'unreachable' | 'beyond-horizon' | 'calm-motor-off'>;
-    };
+  { status: 'ok'; legs: Leg[]; etaMs: number } | { status: 'no-route'; cause: SolveFailureCause };
 
 interface Node {
   lat: number;
@@ -246,6 +325,30 @@ export function solve(p: SolveParams): SolveResult {
   let calmDeaths = 0;
 
   while (frontier.length > 0) {
+    // #432 plan-level wall-clock budget. Checked FIRST in the ring, before
+    // any expansion work, so a solve entered with an already-spent budget
+    // (a later tier, or a later waypoint segment) costs one predicate rather
+    // than one ring.
+    //
+    // ABORT GRANULARITY is one ring, so the real abort overshoots the
+    // deadline by up to one ring's duration. Measured on this app's most
+    // expensive real input (Flensburg -> Marstal, DEFAULT_SETTINGS, real
+    // committed mask+polars, 2026-08-07, one dev machine): 132 rings,
+    // 41.4 s total, slowest ring 1045 ms, frontier peaking at MAX_FRONTIER.
+    // The client-side backstop is sized to absorb that overshoot with room
+    // for a much slower device — see PLAN_TIMEOUT_GRACE_MS in workerClient.ts.
+    //
+    // A `best` already found is DISCARDED rather than returned. It is a
+    // complete, fully mask-validated route, but the loop has not yet proven
+    // no cheaper one exists (that is the `minCostMs >= best.costMs` guard
+    // right below), so returning it would be returning a route of unproven
+    // optimality with nothing in PlanResult saying so. #432's requirement is
+    // that exceeding the budget is a FAILURE and says so; a silently
+    // possibly-suboptimal route is the one outcome it rules out. The
+    // alternative — return it with a `truncated` warning alongside, mirroring
+    // ShallowInfo — is a real design and is recorded as rejected-for-now in
+    // the PR body, not foreclosed.
+    if (p.deadline?.expired()) return { status: 'no-route', cause: 'budget-exhausted' };
     // Substepped nodes lag the global clock, so the termination guards use the
     // earliest node clock in the frontier (=== tMs/costMs when no substeps
     // occurred). The "no further improvement possible" guard below ranks on
@@ -267,7 +370,7 @@ export function solve(p: SolveParams): SolveResult {
     const dtS = minDist < 2 ? 150 : minDist < 5 ? 300 : 600;
     if (minTMs + dtS * 1000 > horizonMs) {
       if (best) break;
-      return { status: 'no-route', reason: 'beyond-horizon' };
+      return { status: 'no-route', cause: 'horizon-exceeded' };
     }
 
     const byKey = new Map<string, Node>();
@@ -528,7 +631,8 @@ export function solve(p: SolveParams): SolveResult {
     // plus a handful of consumed-without-registering paths (a blocked direct-arrival attempt; a zero-effective-speed candidate after a maneuver penalty).
     return {
       status: 'no-route',
-      reason: blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'unreachable' : 'calm-motor-off',
+      cause:
+        blockedDeaths >= calmDeaths && blockedDeaths > 0 ? 'mask-blocked' : 'calm-without-motor',
     };
   }
   return { status: 'ok', legs: backtrack(best.last, p.departureMs), etaMs: best.etaMs };

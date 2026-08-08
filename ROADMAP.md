@@ -13,53 +13,66 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.9.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.10.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.10.0
+## Now — v0.11.0
 
-The `v0.10.0` cut (2026-08-07) closed out all 9 issues held in the
-[`v0.10.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-the resizable desktop left panel, so the route legs table is no longer
-cramped against a fixed-width column
-([#355](https://github.com/DocGerd/sail_command/issues/355)); a Duration
-column added to that table, and a correction of its "Heading" column label
-to "COG" (the value shown was always course over ground — this app has no
-leeway model, so it never computed true heading); the same issue's
-remaining distance-column scope carries into v0.11.0 below
-([#379](https://github.com/DocGerd/sail_command/issues/379)); and eight
-tooling/process items — two deploy-reliability fixes, an e2e hardening
-fix, two further artifact-guard fixes, and three documentation
-corrections
-([#415](https://github.com/DocGerd/sail_command/issues/415),
-[#398](https://github.com/DocGerd/sail_command/issues/398),
-[#412](https://github.com/DocGerd/sail_command/issues/412),
-[#405](https://github.com/DocGerd/sail_command/issues/405),
-[#404](https://github.com/DocGerd/sail_command/issues/404),
-[#393](https://github.com/DocGerd/sail_command/issues/393),
-[#365](https://github.com/DocGerd/sail_command/issues/365),
-[#341](https://github.com/DocGerd/sail_command/issues/341)) covered under
-"Development workflow" below.
+The `v0.11.0` cut (2026-08-08) closed out all 9 issues held in the
+[`v0.11.0` milestone](https://github.com/DocGerd/sail_command/milestones):
+re-planning from the Plan view now prefills the form from the currently
+displayed route and flags it as outdated once an input changes, rather
+than re-entering harbours/waypoints from scratch
+([#301](https://github.com/DocGerd/sail_command/issues/301)); the
+top-left map-chrome column now compacts into a row on short landscape
+phones, so the nautical scale bar is no longer suppressed on every tab
+there ([#231](https://github.com/DocGerd/sail_command/issues/231)); the
+About button's icon no longer bets on font coverage — a bare U+24D8
+glyph that measured as tofu on some Linux font sets is now an inline SVG
+([#427](https://github.com/DocGerd/sail_command/issues/427)); the solver
+now carries a wall-clock budget and reports a timeout honestly instead
+of the same generic "unexpected failure" message
+([#432](https://github.com/DocGerd/sail_command/issues/432)); and a
+route-planning failure shows a distinct message per cause instead of one
+identical banner for seven unrelated failure modes
+([#433](https://github.com/DocGerd/sail_command/issues/433)). Three
+further issues closed with no user-visible surface — the no-route
+`reason` control-input coupling, now fully decoupled behind a committed
+acceptance harness rather than merely narrowed; a logging/diagnostics
+spike; and an `artifact-guard` hook fix
+([#282](https://github.com/DocGerd/sail_command/issues/282),
+[#435](https://github.com/DocGerd/sail_command/issues/435),
+[#437](https://github.com/DocGerd/sail_command/issues/437)) — covered
+under "Development workflow" below.
+[#379](https://github.com/DocGerd/sail_command/issues/379) also closed
+this cut, but its full scope (duration, distance, course/heading per
+leg) had already shipped in `v0.10.0`; it stayed open only
+administratively and carries no new changes here.
 
-## Next — v0.11.0
+## Next — v0.12.0
 
 Tracked by the
-[`v0.11.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-with five issues: the remaining scope of
-[#379](https://github.com/DocGerd/sail_command/issues/379) — a per-leg
-distance column, having already shipped duration and the corrected
-course-over-ground label above;
-[#282](https://github.com/DocGerd/sail_command/issues/282) — the reopened
-no-route `reason` control-input coupling (PR #411 narrowed it but did not
-close it; see `CLAUDE.md`'s Domain-rules section for the full history);
-[#301](https://github.com/DocGerd/sail_command/issues/301) — re-plan from
-the Plan view, prefilling the form from the displayed route instead of
-re-entering harbours/waypoints;
-[#231](https://github.com/DocGerd/sail_command/issues/231) — compacting the
-top-left map-chrome column on short landscape viewports; and
-[#427](https://github.com/DocGerd/sail_command/issues/427) — the About
-button's `ⓘ` label glyph renders as tofu on at least one measured platform,
-with no font fallback and coverage on real user platforms unmeasured.
+[`v0.12.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+with seven issues: two SAFETY-labeled depth-mask defects — the mask
+overstating depth by up to 2.0 m on 48% of water cells with no warning
+at all ([#455](https://github.com/DocGerd/sail_command/issues/455)), and
+depth relaxation lowering the safety gate for the whole route rather
+than just the constrained segment, with the warning not on the first
+surface a user sees
+([#452](https://github.com/DocGerd/sail_command/issues/452)); two
+process spikes — whether the architecture still fits (layering,
+`App.tsx` concentration, prose-only invariants, the MapLibre call-site
+surface) ([#446](https://github.com/DocGerd/sail_command/issues/446))
+and a CLAUDE.md improvement run alongside an assessment of what Claude
+Code automation this project should adopt
+([#444](https://github.com/DocGerd/sail_command/issues/444)); a seamark
+symbol-size control plus a display-category policy for which marks to
+omit ([#353](https://github.com/DocGerd/sail_command/issues/353)); a
+settings menu separating static boat/skipper preferences from per-route
+plan inputs ([#299](https://github.com/DocGerd/sail_command/issues/299));
+and multiple boat types with per-boat foresail inventories, moved up
+from the "Routing depth" theme below
+([#54](https://github.com/DocGerd/sail_command/issues/54)).
 
 ## Themes for the next year
 
@@ -111,8 +124,7 @@ this repository. It requires a second person with standing release rights. See
 
 ### Routing depth
 
-The largest open product questions, all accepted into the backlog but none
-scheduled:
+The largest open product questions, all accepted into the backlog:
 
 - Currents, tides, and sea state (waves) in the isochrone cost
   ([#18](https://github.com/DocGerd/sail_command/issues/18)) — a design spec
@@ -125,7 +137,8 @@ scheduled:
   by the ~6-day forecast horizon.
 - Multiple boat types with per-boat foresail inventories
   ([#54](https://github.com/DocGerd/sail_command/issues/54)) — today the app is
-  hard-wired to one Salona 45 polar pair.
+  hard-wired to one Salona 45 polar pair. Now scheduled for `v0.12.0` (see
+  "Next" above).
 
 Investigated and **declined** as a routing input this cut: honouring
 buoyed fairways ([#244](https://github.com/DocGerd/sail_command/issues/244))
@@ -148,14 +161,31 @@ revisited, not that it has been lifted.
   behavior can be tested without sailing
   ([#143](https://github.com/DocGerd/sail_command/issues/143)). This is the
   prerequisite for confidently changing anything in the Live view.
-- Remaining map-chrome and small-screen issues beyond v0.6.0
-  ([#231](https://github.com/DocGerd/sail_command/issues/231),
-  [#232](https://github.com/DocGerd/sail_command/issues/232)).
+- Remaining map-chrome issues beyond v0.6.0
+  ([#232](https://github.com/DocGerd/sail_command/issues/232)).
 
 ### Development workflow
 
 Not user-visible, but it is where a meaningful share of the effort goes and it
-sets the pace of everything above. The `v0.10.0` cut fixed eight items in
+sets the pace of everything above. The `v0.11.0` cut fixed three items in
+this area: the no-route `reason` control-input coupling, previously only
+narrowed by PR #411, now fully decoupled behind a committed `app/sweep/`
+acceptance harness — 198 plans across six arms and 33 harbours, with a
+required BASE double-run control — so a future classification change has
+something real to compare against
+([#282](https://github.com/DocGerd/sail_command/issues/282)); a spike into
+how logging and diagnostics should work across this backend-less, offline
+PWA's three execution contexts (main thread, worker, service worker),
+recommending an in-memory ring buffer mirrored to a capped `sessionStorage`
+key with a copy/download pair in the About dialog — not yet implemented
+([#435](https://github.com/DocGerd/sail_command/issues/435)); and a second
+maintainer ruling narrowing the `artifact-guard` hook's over-firing on
+provably read-only pipelines, adding `tail` to its read-only-verb allowlist
+after measuring the guard's actual false-positive rate against real
+observed commands
+([#437](https://github.com/DocGerd/sail_command/issues/437)).
+
+The `v0.10.0` cut fixed eight items in
 this area: two deploy-reliability fixes — a retry for the Pages `deploy`
 job's `deployment_queued`/`deployment_in_progress` timeout wedge (upstream
 `actions/deploy-pages` was hanging on its own default poll ceiling), and a

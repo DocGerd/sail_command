@@ -187,10 +187,16 @@
 #     inherit non-exported functions, so the shim VANISHES and every verb
 #     reports a reassuring `file`. That exact false negative was produced
 #     while fixing this (`bash script.sh` said `file`; the same check run
-#     directly said `function`). Measured directly, 2026-08-05, all 14
-#     current entries: `test` and `[` are `builtin` (fine — a bash builtin
+#     directly said `function`). Measured directly, 2026-08-05, the 14
+#     entries of the day: `test` and `[` are `builtin` (fine — a bash builtin
 #     runs no external program and has no write capability), every other
-#     entry is `file`, and NOTHING is a function or alias.
+#     entry is `file`, and NOTHING is a function or alias. RE-MEASURED for
+#     the ONE entry added since, `tail` (#437, 2026-08-07, in the real Bash
+#     tool): `type tail` -> `tail is /usr/bin/tail`, `type -a tail` ->
+#     `/usr/bin/tail`, `/bin/tail` — a file, not a function or alias. That
+#     probe has teeth rather than being a formality: run in the same call,
+#     `type grep` answered `grep is a function`, so the check does
+#     distinguish the two.
 #   - DO NOT teach this guard about shims, functions or aliases. Detecting
 #     them is the shell-parsing road PR #233 was closed over. The correct
 #     response to a shimmed verb is to REMOVE IT FROM THE ALLOWLIST — a
@@ -234,8 +240,139 @@
 #         bytes). Keeping `file` would need `-C` in the disqualifying token
 #         list, an odd token that also over-fires on `ls -C`; excluding the
 #         verb is the smaller and more obviously-correct rule.
-#     `tail` is absent only because nothing asked for it — it is as safe as
-#     `head`; add it with its own rows if it becomes noise.
+#       * `tail` is INCLUDED as of #437, on the condition the previous
+#         revision of this bullet set for itself: it said "`tail` is absent
+#         only because nothing asked for it — it is as safe as `head`; add it
+#         with its own rows if it becomes noise", and the #437 corpus below
+#         measured it as noise (one real fire). It is the symmetric partner
+#         of `head`, which is already here, so it introduces NO new soundness
+#         class — that, not the size of the number, is why it is the one
+#         addition taken. Its whole GNU option surface is about what goes to
+#         stdout (-c/-f/-F/-n/--max-unchanged-stats/--pid/-q/--retry/-s/-v/-z)
+#         and contains no output-file option; `tail --help | grep -niE
+#         'write|output file'` matches nothing. Not shimmed (see the
+#         re-measured NAMED PRECONDITION above).
+#   - #437 — the SECOND over-restriction ruling ("please fix the hook, it is
+#     still blocking too much", maintainer, 2026-08-07; the first produced the
+#     conjunctive exemption above). Every candidate below was scored on a
+#     corpus HARVESTED from this project's own transcripts, never invented:
+#     29,009 Bash tool calls under ~/.claude/projects/-home-pkuhn-sail-command,
+#     27,040 DISTINCT command strings, each replayed through a byte-identical
+#     copy of THIS script (every variant is that copy with exactly one edit,
+#     so the production predicate is what answered — the #404 twin trap).
+#     BASELINE: 1,075 of the 27,040 name a protected path; 18 are already
+#     suppressed by the exemption above; 1,057 ASK.
+#     THESE ARE A SNAPSHOT, and the transcript tree only grows — a re-harvest
+#     will legitimately report MORE. Independently re-harvested hours later
+#     during review: 1,233 transcripts / 29,800 calls / 27,762 distinct /
+#     1,092 naming a protected path / 1,074 fires, every delta proportionate
+#     and in the growth direction, with the 18 already-suppressed matching to
+#     the unit and EVERY prompt-removal count below matching exactly. Compare
+#     RATIOS and prompt-removal COUNTS across harvests, never the absolute
+#     corpus sizes.
+#     WHAT THOSE 1,057 ARE, classified with a quote-aware segmenter (analysis
+#     only — this guard still refuses to segment): 799 TRUE POSITIVE (75.6%;
+#     a redirect, a writer, a code runner, a heredoc, a mutating git/gh call
+#     or a script invocation genuinely reaching a protected path), 246 NOISE
+#     (23.3%), 12 unresolved (1.1%).
+#     READ THAT SPLIT WITH ONE CAVEAT (PR #445 review, Minor 2): unlike every
+#     DECISION-RELEVANT number in this block, it is NOT independently
+#     re-derivable from this repo — the classifier is a throwaway analysis
+#     script, never committed. Everything a decision rests on WAS reproduced
+#     by the reviewer from an independent harvest (the 18 already-suppressed,
+#     exact; every candidate's prompt-removal count, exact; the 20/0
+#     enabling-shape figure, exact; the shipped script's 1-removed/0-newly-
+#     asking delta). The 799/246/12 breakdown is DESCRIPTIVE ONLY, and no
+#     decision here turns on it.
+#     TWO DIFFERENT COUNTS PER FAMILY — quote the right one. The NOISE is
+#     dominated by families this design has already settled and #437 put out
+#     of scope, and each has a FAMILY TOTAL (fires whose first word is that
+#     verb — a one-line count anyone can re-derive) and a smaller
+#     NOISE-CLASSIFIED SUBSET (that family's fires the classifier judged
+#     read-only END TO END, so a `grep … && cp …` compound is excluded):
+#         grep  family 158, of which 121 noise   (the ugrep shim)
+#         git   family 120, of which  40 noise   (read-only git as a WHOLE
+#                                                 command, not merely a
+#                                                 read-only subcommand)
+#         cd    family 268, of which  34 noise
+#     The three families are 546 of the 1,057 fires (51.7%); their noise
+#     subsets are 195 of the 246 noise commands (79.3%). A future reader
+#     counting first words the obvious way gets the FAMILY figures and will
+#     not match the noise ones — that is the two definitions disagreeing, not
+#     an error. Anything citing these outside this repo should quote the
+#     FAMILY totals, which are reproducible.
+#     THE MAINTAINER'S OWN REPORTED
+#     COMMAND IS IN THE CORPUS AND IS A TRUE POSITIVE — `sed -n '60,100p'
+#     ...; ls app/public/data/ | head -20; node -e "...harbors.json..."` is
+#     ONE Bash call, and a Bash hook sees the whole command string, never a
+#     part of it, so the prompt it drew was correct. Do not read #437 as
+#     evidence the guard misfired on the case that prompted it.
+#     MEASURED AND REJECTED (prompts removed / 1,057, through the real
+#     script):
+#       * SPLIT ON `|` ONLY, requiring EVERY pipe segment's first word to be
+#         an allowlisted verb — the one candidate #404's rejection record did
+#         not cover: **0**. The fail-closed argument was attacked rather than
+#         assumed, and it SURVIVED — but only in a form narrower than it
+#         first looks, so read the qualifier before reusing it. Naive
+#         `|`-split segments REFINE the real pipeline's segments (the real
+#         ones split only at UNQUOTED pipes), so each real segment's first
+#         word is the first word of its leading naive segment — equal when
+#         that segment is non-empty, and an empty or quote-truncated
+#         fragment (`'l`, `cat'`) exact-matches no verb and therefore asks.
+#         `||` yields an INTERIOR empty segment and asks; `|&` still carries
+#         `&`.
+#         **THE QUALIFIER, and it is the whole finding: that argument is
+#         IMPLEMENTATION-CONDITIONAL, not a property of `|`-splitting.** It
+#         holds only for a split that PRESERVES A TRAILING EMPTY SEGMENT,
+#         and the most natural bash spelling does not. `IFS='|' read -ra
+#         SEGS <<<"ls app/public/data |"` yields ONE element (bash drops the
+#         trailing empty field), whose first word is `ls` — so that spelling
+#         ALLOWS a command whose second stage it never examined. MEASURED
+#         twice independently: the implementer hit it in the measurement
+#         harness (a loop that broke before checking the final segment) and
+#         the reviewer reproduced it clean-room from the `read -ra` spelling
+#         before reading that half of the PR. Reasoning from `||` to the
+#         general case is exactly the step that misses it — the interior
+#         empty field is preserved and the trailing one is not. Two
+#         independently written segmenters got this wrong in one afternoon,
+#         which is itself evidence about the candidate.
+#         WHY IT IS DECLINED, stated no more strongly than the measurement
+#         supports: NOT "the yield is low" — the yield COULD NOT BE
+#         RESOLVED. The enabling shape (a pipeline of nothing but
+#         allowlisted verbs) occurs 20 times corpus-wide with 0 of those 20
+#         naming a protected path, but only ~4% of all commands name one, so
+#         the expectation is ~0.8 and observing 0 is uninformative
+#         (Poisson(0.79) puts P(0) near 45%). That is a WEAK zero, and the
+#         two CONTROLS below are STRONG zeros — do not quote the three as if
+#         they were the same result. With the measurement underpowered, what
+#         actually decides it is the guard's own default, unrebutted: the
+#         SMALLER allowlist, and no segmentation of any kind inside a
+#         predicate whose stated value is REFUSING to segment (the PR #233
+#         shape this design was closed over). That ground survives a bigger
+#         corpus; "the yield is low" would not.
+#         Re-propose it only with a corpus large enough to resolve ~0.8, or
+#         on a fresh maintainer ruling — and never on the soundness argument
+#         alone, which is accepted here ONLY together with the
+#         trailing-empty-segment qualifier above.
+#       * READONLY_VERBS additions, each scored ALONE: cmp, od, xxd, hexdump,
+#         nl, base64, sort, uniq, cut, tr, rev, comm, column, jq — **0** each.
+#         `diff` removed **1** and is still declined: same evidence as `tail`,
+#         but where `tail` is an existing entry's symmetric partner, `diff`
+#         is a new class (a multi-operand comparison tool with a large option
+#         surface) bought for 0.09% of the prompts — and this guard's own
+#         rule is that doubt resolves to the SMALLER allowlist. All 16
+#         together remove 2, i.e. exactly `tail` + `diff` and nothing
+#         emergent.
+#       * `|`-split AND all 16 verbs together: **2** — the same two, so the
+#         two candidates do not compose into anything.
+#     CONTROLS, so this corpus's zeros are not believed on their own: #404's
+#     two already-rejected loosenings were re-run here and REPRODUCED their
+#     published "exactly zero" on a corpus 164x larger — adding `cd` to
+#     READONLY_VERBS removes 0, and `;`-segmentation removes 0. Those are
+#     STRONG zeros, unlike the `|` one: 268 of the 1,057 fires already start
+#     with `cd` and 544 contain a `;`, so the shapes are abundant and the
+#     change still buys nothing, because those commands are compounds that
+#     genuinely write.
 #   - ACCEPTED RESIDUAL OVER-FIRES of the exemption (named so they read as
 #     decisions, not oversights): `!` is disqualified, so `test ! -f
 #     <protected>` — a legitimate read-only shape — still asks; `#` is
@@ -465,7 +602,7 @@ bash_hits_protected_path() {
 # PRECONDITION in DESIGN above. Also confirm the verb has no output-file or
 # command-executing option (`file` looked inert and writes `X.mgc`).
 READONLY_VERBS=(
-  stat ls wc du head cat sha256sum md5sum
+  stat ls wc du head tail cat sha256sum md5sum
   test "[" readlink realpath dirname basename
 )
 
@@ -578,7 +715,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # NOTE (#388 review): this total includes ONE case per READONLY_VERBS entry
   # (the reason-string twin check at the end), so adding or removing a verb
   # moves it by 2 - the verb's own decision row plus its twin case.
-  EXPECTED_CASES=199
+  # (#437) 199 -> 203: +2 for the `tail` addition (its own decision row plus
+  # the per-verb reason-string twin case, per the NOTE above) and +2 for the
+  # acceptance-pair rows.
+  EXPECTED_CASES=203
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -890,6 +1030,10 @@ if [ "${1:-}" = "--selftest" ]; then
   decide_exempt "EXEMPT: wc"                         "wc -c app/public/THIRD-PARTY-NOTICES.txt"
   decide_exempt "EXEMPT: du"                         "du -sh app/public/brand"
   decide_exempt "EXEMPT: head"                       "head -n 5 docs/superpowers/specs/foo.md"
+  # (#437) head's symmetric partner, added on the condition VERB SELECTION set
+  # for itself. Mutation-checked: removing `tail` from READONLY_VERBS reds this
+  # row plus its reason-string twin case.
+  decide_exempt "EXEMPT: tail (#437)"                "tail -n 5 docs/superpowers/specs/foo.md"
   decide_exempt "EXEMPT: cat"                        "cat app/public/data/mask.bin"
   decide_exempt "EXEMPT: sha256sum"                  "sha256sum app/public/data/mask.bin"
   decide_exempt "EXEMPT: md5sum"                     "md5sum app/public/data/mask.bin"
@@ -967,6 +1111,24 @@ if [ "${1:-}" = "--selftest" ]; then
   # anywhere" rule (the bare `;`) correctly still asks. This is the
   # maintainer's own reported reproduction command, unchanged.
   decide ask "MULTI-SEGMENT (#404): every segment individually looks read-only" "stat app/public/data/mask.bin; ls app/public/data"
+
+  # --- #437 ACCEPTANCE PAIR, pinned at the decision the MEASUREMENT reached.
+  # Row A is the shape #437 nominated as noise. It still ASKS, because the
+  # `|`-split that would suppress it measured 0 prompts removed across 27,040
+  # real commands and was rejected on that yield (full record, including why
+  # its zero is a WEAKER zero than #404's two, in DESIGN above). This row is
+  # therefore the REJECTION's pin, not the fix's: it reds the moment anyone
+  # takes `|` out of WRITE_CAPABLE_CHARS without re-running that measurement.
+  decide ask "#437 A: ls | head still asks (|-split measured 0, rejected)" "ls app/public/data/ | head -20"
+  # Row B is the half of #437's reported command that MUST keep asking - the
+  # issue says so itself ("no predicate short of running the JS can prove
+  # otherwise"). Unlike the clause-isolating rows above, this one deliberately
+  # carries SEVERAL independent triggers (`node` is not allowlisted, and the
+  # string also holds `(`, `)`, `;`, `$`): it is a verbatim acceptance case,
+  # not a row isolating one clause, so it must not be read as pinning verb
+  # membership - the MEMBERSHIP block above does that job.
+  # shellcheck disable=SC2016  # literal $HOME is the test input, not an expansion
+  decide ask "#437 B: node -e naming a protected path must still ask" 'node -e "const h=require($HOME/app/public/data/harbors.json); console.log(h.length)"'
 
   # --- MUST ASK: a WRITE-CAPABLE TOKEN is what fails. Each token appears as
   # an ARGUMENT of an allowlisted verb, which is contrived on purpose: the

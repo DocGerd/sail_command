@@ -61,6 +61,12 @@ export const en = {
   // via-edit re-renders).
   'planner.result.announce':
     'Route calculated — arrival {arrival}, duration {duration}, {distance}.',
+  // #301: the form (origin/destination/departure/settings) has drifted from
+  // the plan actually displayed above — a re-run right now would produce a
+  // different route. Shown as a second Chip in the Ergebnis card AND folded
+  // into this panel's one live region (never a second one).
+  'planner.result.stale':
+    'Showing the previously calculated route — the inputs have changed since.',
   // GPX import (#3): the control, the success confirmation, one message per
   // rejection reason, and the non-blocking notices. "Import/planning" language,
   // never "navigation" — imported geometry is a planning input, not a route.
@@ -94,6 +100,26 @@ export const en = {
   'error.windService': 'Wind forecast could not be loaded. Try again in a moment.',
   'error.internal':
     'Route planning failed unexpectedly. Try again; if it keeps happening, reload the app.',
+  // #433: causes that used to collapse onto error.internal above, now
+  // distinguishable — each with remedy copy honest about whether "Try
+  // again" can actually help (see App.tsx's RETRY_MAY_HELP_KEYS).
+  'error.workerInit':
+    'The route planner could not be started — required data failed to load. Reload the app and try again.',
+  'error.routingTimeout':
+    'Routing did not finish within the time limit. Trying again will likely time out the same way — a simpler route or a faster device may help.',
+  // #433 review Minor 1: does NOT claim retry is futile — this cause also
+  // covers a resource-exhaustion throw, where a retry's fresh worker CAN
+  // help (see usePlanFlow.ts's ROUTING_FAILURE_MESSAGE_KEY comment).
+  'error.routingFailed':
+    'Route planning failed with an internal routing error. A different route or settings are more likely to help than trying again with the same request.',
+  'error.routingCrashed': 'The routing engine crashed unexpectedly. Try again — it restarts fresh.',
+  'error.routingMessageError':
+    'The routing engine sent back a reply that could not be read. Try again — it restarts fresh.',
+  'error.routingInterrupted': 'Route planning was interrupted. Try again.',
+  'error.planSaveFailed':
+    'The route was calculated but could not be saved. Try again, or check available storage on this device.',
+  'error.windUnknown':
+    'Wind forecast could not be loaded due to an unexpected error. Try again in a moment.',
   'error.noRoute.unreachable':
     'No route found — the destination cannot be reached without crossing land or too-shallow water.',
   'error.noRoute.beyondHorizon':
@@ -106,6 +132,11 @@ export const en = {
     'The destination is not navigable — pick a point at least 300 m from land or shallow water.',
   'error.noRoute.snapVia':
     'A via point is not navigable — pick a point at least 300 m from land or shallow water.',
+  // #432: the search was cut short BEFORE it finished — unlike every other
+  // error.noRoute.* string, this deliberately makes no claim about whether a
+  // route exists.
+  'error.noRoute.searchBudget':
+    'Route planning hit its time limit before finishing — this does not mean no route exists. A nearer destination, fewer via points, or a smaller depth-comfort span will help; so will a faster device.',
   'error.replanStaleWind':
     "This plan's stored wind forecast no longer covers its departure time. Plan the route again to load a current forecast.",
   'error.replanInit':

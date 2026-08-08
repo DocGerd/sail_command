@@ -1,7 +1,7 @@
 # SailCommand security assurance case
 
-**Status:** current as of 2026-08-07, describing `develop` at the time of
-writing (`v0.10.0` cut). Reviewed at each release cut.
+**Status:** current as of 2026-08-08, describing `develop` at the time of
+writing (`v0.11.0` cut). Reviewed at each release cut.
 **Audience:** users deciding whether to trust the app, and reviewers assessing
 the project (this document is the artifact for the OpenSSF Best Practices
 `assurance_case` criterion).
@@ -330,7 +330,7 @@ place to occur, not that it was judged unlikely.
 | **A09 Logging and monitoring failures** | Accepted, documented | There is deliberately no telemetry — a privacy choice that means client-side attacks cannot be observed centrally. Repository-side monitoring exists (CodeQL, Dependabot, Scorecard, deploy smoke probe). For a client-only app with no user data on any server, the privacy benefit is judged to outweigh the lost visibility |
 | **A10 Server-side request forgery** | N/A by architecture | No server. The two outbound endpoints are compile-time constants; no user input ever forms a request URL |
 | CWE-20 Improper input validation | Countered | See [§5.1](#51-input-validation-tb2-tb3-tb4) |
-| CWE-400 / CWE-1333 Resource exhaustion, ReDoS | Countered | GPX size and element-count caps applied before traversal; via-point cap; the solver runs in a Web Worker so a long solve cannot freeze the UI thread; no user-supplied input is compiled into a regular expression |
+| CWE-400 / CWE-1333 Resource exhaustion, ReDoS | Countered | GPX size and element-count caps applied before traversal; via-point cap; the solver runs in a Web Worker so a long solve cannot freeze the UI thread; the solver itself now enforces a per-plan wall-clock budget (`PLAN_BUDGET_MS`), so an adversarial or pathological input cannot make it spin unbounded either ([#432](https://github.com/DocGerd/sail_command/issues/432)); no user-supplied input is compiled into a regular expression |
 | CWE-352 CSRF | N/A by architecture | No cookies, no session, no state-changing server endpoint |
 | CWE-522 Insufficiently protected credentials | Accepted, documented | The optional AIS key is stored as entered in IndexedDB. Local encryption would be theatre (the key material would live beside it); the honest control is that the key is user-supplied, revocable, and never leaves the device except to aisstream.io itself |
 | CWE-798 Hard-coded credentials | Countered | No credentials in the repository; secret scanning with push protection is enabled; the AIS overlay has no default key by design |

@@ -38,6 +38,7 @@ import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
+import { departureSeedMs, pickedPointsOfPlan, planFormDirty } from './lib/planForm';
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
 import { usePersistedNumber } from './lib/usePersistedNumber';
@@ -120,6 +121,33 @@ export function planErrorGroup(key: MsgKey): PlanErrorGroup {
 // eslint-disable-next-line react-refresh/only-export-components
 export function planErrorBannerKind(key: MsgKey): BannerKind {
   return planErrorGroup(key) === 'unexpected' ? 'error' : 'warning';
+}
+
+// #433: whether "Try again" (re-running handlePlan) can plausibly change the
+// outcome — a SEPARATE, orthogonal classification from planErrorGroup above
+// (which only picks banner paint). This used to just be
+// `planErrorGroup(key) === 'network'`, correct back when every non-network
+// failure collapsed onto the single error.internal key; now that #433 has
+// split that key by cause, causes differ in whether a retry can help at
+// all (CLAUDE.md's #433 bullet has the full per-path reasoning; short
+// version: usePlanFlow.ts's run() always disposes+nulls the client refs
+// before erroring out of a routing failure, so the NEXT run() builds an
+// entirely fresh RoutingClient — real for a crashed worker or an
+// undeserializable message, but irrelevant to an input-deterministic
+// timeout or a real throw inside planRoute(), which reproduce identically
+// against the identical request).
+const RETRY_MAY_HELP_KEYS: ReadonlySet<MsgKey> = new Set<MsgKey>([
+  ...NETWORK_ERROR_KEYS,
+  'error.windUnknown',
+  'error.routingCrashed',
+  'error.routingMessageError',
+  'error.routingInterrupted',
+  'error.planSaveFailed',
+]);
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function planErrorRetryMayHelp(key: MsgKey): boolean {
+  return RETRY_MAY_HELP_KEYS.has(key);
 }
 
 function AppShell() {
@@ -250,6 +278,20 @@ function AppShell() {
   // no retry path since the underlying map instance isn't recreated.
   const [mapError, setMapError] = useState(false);
   const [harbors, setHarbors] = useState<Harbor[]>([]);
+  // #301: true once the harbors asset load's Promise SETTLES (success OR
+  // permanent failure) — gates the plan-form sync effect below (next to
+  // planIdRef) so it doesn't write a plan's origin/destination labels before
+  // harbor names are resolvable (a harborId lookup would fall back to a raw
+  // lat/lon 'tap' label prematurely). Set in BOTH the .then and the .catch of
+  // the loadRoutingAssets() effect further down, so a permanently failed
+  // asset load (harbors stays [], the documented best-effort path) still
+  // lets the sync proceed with tap-labeled points rather than silently never
+  // firing.
+  const [harborsLoaded, setHarborsLoaded] = useState(false);
+  // #301: also written by the plan-form sync effect below (next to
+  // planIdRef) whenever a NEW plan.id becomes active — origin/destination
+  // from harborToPickedPoint-shaped picks, departureMs from PlansList's own
+  // future-else-next-full-hour rule (lib/planForm.ts's departureSeedMs).
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
   const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
@@ -298,18 +340,71 @@ function AppShell() {
     planIdRef.current = plan?.id ?? null;
   }, [plan?.id]);
 
+  // #301: prefills the planner FORM (origin/destination/departure) from the
+  // active plan's own stored request — one derivation keyed on plan
+  // identity, covering every setPlan caller (PlansList's Load, session
+  // restore, a completed run/via-replan/live-reroute) rather than patching
+  // each call site individually. Keyed on plan?.id + harborsLoaded
+  // DELIBERATELY, not on `plan`/`harbors`/`lang` object identity: a via-
+  // replan (state/replan.ts) produces a new `plan` object with the SAME id
+  // and must not clobber a departure the user has just edited (mirrors
+  // planIdRef's own clobber-guard rationale above) — same pattern as
+  // RouteLayer.tsx's fitBounds effect, which keys on plan identity rather
+  // than the (recreated) result object.
+  //
+  // syncedPlanIdRef makes the write happen at most ONCE per plan id
+  // (deterministic even under StrictMode's dev-only double-invoke): gated
+  // behind `harborsLoaded` so a plan that becomes active before the harbors
+  // asset load settles doesn't sync with premature (harbor-id-lookup-miss)
+  // tap labels — the ref is only advanced inside the gated branch, so once
+  // harborsLoaded flips true the effect re-fires for the SAME (still
+  // unsynced) plan id and resolves the real harbor labels then.
+  //
+  // No-ops on `plan === null`: GPX import deliberately calls setPlan(null)
+  // *and* seeds the draft directly in the same batch (handleImportRoute
+  // below) — syncing here would clobber that import. handleImportRoute also
+  // resets this ref to null alongside its setPlan(null): without that reset,
+  // re-loading the SAME plan id later (e.g. re-opening plan A from PlansList
+  // after a GPX import) would find the ref already advanced to that id from
+  // an earlier load and silently skip the sync, leaving the form on stale
+  // GPX-draft values while planFormDirty reads the freshly-loaded plan as
+  // dirty — backwards, since the form would actually be WRONG.
+  const syncedPlanIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!plan || !harborsLoaded) return;
+    if (syncedPlanIdRef.current === plan.id) return;
+    syncedPlanIdRef.current = plan.id;
+    const { origin: syncedOrigin, destination: syncedDestination } = pickedPointsOfPlan(
+      plan,
+      harbors,
+      lang,
+    );
+    setOrigin(syncedOrigin);
+    setDestination(syncedDestination);
+    setDepartureMs(departureSeedMs(plan));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id + harborsLoaded deliberately, see the comment above
+  }, [plan?.id, harborsLoaded]);
+
   // Eager load, matching spec §7's first-load budget (measured ~44 MB) —
   // mask/polars/harbors are meant to be fetched up front, not deferred to
   // first Plan tap. Best-effort: a failed fetch leaves `harbors` empty
   // (HarborPicker just shows no results; map tap-to-pick still works) rather
-  // than blocking the rest of the app.
+  // than blocking the rest of the app. Either branch also flips
+  // harborsLoaded (#301) — a permanent failure must still unblock the
+  // plan-form sync effect above, not silently leave it waiting forever.
   useEffect(() => {
     let cancelled = false;
     void loadRoutingAssets()
       .then((assets) => {
-        if (!cancelled) setHarbors(assets.harbors);
+        if (!cancelled) {
+          setHarbors(assets.harbors);
+          setHarborsLoaded(true);
+        }
       })
-      .catch(console.error);
+      .catch((err: unknown) => {
+        console.error(err);
+        if (!cancelled) setHarborsLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -446,6 +541,12 @@ function AppShell() {
   const handleImportRoute = useCallback(
     (o: PickedPoint, d: PickedPoint, vias: LatLon[]) => {
       setPlan(null);
+      // #301: also clear the sync guard so a later re-load of the SAME plan
+      // id (e.g. the user re-opens plan A from PlansList after importing a
+      // GPX) re-syncs the form instead of finding the ref already advanced
+      // to that id from an earlier load and silently skipping the sync —
+      // see the guard's own comment at its declaration above.
+      syncedPlanIdRef.current = null;
       setDraftViaPoints(vias);
       handlePickOrigin(o);
       handlePickDestination(d);
@@ -615,6 +716,22 @@ function AppShell() {
 
   const plannerStatus = toPlannerStatus(planning, t);
   const stale = plan !== null && isStaleForecast(plan);
+  // #301: true when the form (origin/destination/departure/live settings)
+  // has drifted from the plan actually on screen — a re-run right now would
+  // produce a DIFFERENT route than the displayed one. Guarded on
+  // origin/destination being non-null: right after loading a plan there's a
+  // one-effect-tick window where `plan` is already set but the #301 sync
+  // effect above hasn't yet written origin/destination — reading false there
+  // (nothing to compare yet) avoids a one-frame false-dirty flicker rather
+  // than feeding planFormDirty a stale/null form.
+  // `harbors.length > 0` (PR #443 review, Minor) tells planFormDirty whether
+  // a harborId mismatch is trustworthy — see planForm.ts's own comment on
+  // the `harborsAvailable` parameter for why an empty list must suppress
+  // just that one comparison.
+  const formDirty =
+    plan && origin && destination
+      ? planFormDirty(plan, { origin, destination, departureMs, settings }, harbors.length > 0)
+      : false;
 
   return (
     <div className="app-shell" ref={shellRef}>
@@ -761,8 +878,33 @@ function AppShell() {
           >
             {lang === 'de' ? t('nav.langToggle.en') : t('nav.langToggle.de')}
           </button>
+          {/* #427: was the bare U+24D8 CIRCLED LATIN SMALL LETTER I glyph —
+              measured (canvas-vs-notdef comparison) to render as tofu on a
+              thin Linux font set, since none of the installed families cover
+              that codepoint. Inline SVG removes the font dependency entirely,
+              matching the CompassControl.tsx pattern exactly: sizing/stroke/
+              fill live in app.css classes (currentColor resolves to the
+              button's inherited --sc-fg in both color schemes), not inline
+              attributes. The accessible name is unchanged — it was always
+              carried by aria-label, never by the glyph. */}
           <button type="button" aria-label={t('about.open')} onClick={() => setAboutOpen(true)}>
-            ⓘ
+            <svg
+              className="about-icon-svg"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle className="about-icon-ring" cx="12" cy="12" r="9.25" />
+              <circle className="about-icon-dot" cx="12" cy="7.6" r="1.2" />
+              <rect
+                className="about-icon-stem"
+                x="10.85"
+                y="10.6"
+                width="2.3"
+                height="7"
+                rx="1.15"
+              />
+            </svg>
           </button>
         </div>
       </header>
@@ -810,10 +952,12 @@ function AppShell() {
               // "Try again" re-runs the planner form, so it needs both
               // endpoints — a #114 recalculation can error without any form
               // state (handlePlan would silently no-op), in which case the
-              // user retries from the plan row instead.
-              planErrorGroup(planning.messageKey) === 'network' &&
-              origin !== null &&
-              destination !== null
+              // user retries from the plan row instead. #433: eligibility is
+              // now per-cause (planErrorRetryMayHelp), not the coarser
+              // per-group check this used to be — see that function's own
+              // comment for why the causes that used to collapse onto
+              // error.internal differ in whether a retry helps at all.
+              planErrorRetryMayHelp(planning.messageKey) && origin !== null && destination !== null
                 ? { label: t('banner.retry'), onClick: handlePlan }
                 : undefined
             }
@@ -933,6 +1077,7 @@ function AppShell() {
               planning={plannerStatus}
               plan={plan}
               rig={rig}
+              formDirty={formDirty}
               onViewDetails={handleViewDetails}
             />
           )}
