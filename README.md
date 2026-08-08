@@ -185,11 +185,13 @@ data; the code license is covered in the [License](#license) section below.
   language; they don't switch live when you toggle German/English mid-session.
 - The router does not yet account for currents, tides, or sea state (waves)
   in the routing cost.
-- The map chrome introduced in v0.5.0 still has one known rough edge: on
-  several short phone viewports, both landscape and narrow portrait, the
-  top-left chrome (layer toggles + compass) can leave no room for the scale
-  bar, so it is suppressed rather than drawn over other controls
-  ([#231](https://github.com/DocGerd/sail_command/issues/231)).
+- On some short, narrow **portrait** phone viewports, the top-left chrome
+  (layer toggles + compass) and the bottom sheet leave no room for the
+  scale bar, so it is suppressed rather than drawn over other controls —
+  deliberate: drawing it in the wrong place would be worse. Short
+  **landscape** phones had the same limitation until `v0.11.0`
+  ([#231](https://github.com/DocGerd/sail_command/issues/231)), which
+  compacted the top-left chrome into a row there and reclaimed the room.
 
 ## Out of scope (v1)
 

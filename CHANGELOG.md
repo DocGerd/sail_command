@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-08
+
+### Changed
+
+- Re-planning from the Plan view now prefills the form (start, destination,
+  waypoints, departure) from the currently displayed route, and flags it as
+  outdated with a chip in the results card whenever an input has changed
+  since that route was calculated (#301). Re-running always saves a new
+  plan — it never overwrites the one shown, so both stay available under
+  Routen for comparison.
+
+### Fixed
+
+- The nautical scale bar now renders on short landscape phones (e.g. 740x360)
+  instead of being suppressed on every tab: the top-left map controls
+  (water-depth and seamark toggles, compass) lay out as a compact row
+  instead of a stacked column there, freeing the vertical room the scale
+  bar needs. The scale bar can still be suppressed while an app banner
+  (e.g. an available-update notice) is showing, since a banner pushes this
+  control cluster down further (#441) (#231).
+- The About button no longer bets on font coverage for its icon — the
+  bare U+24D8 CIRCLED LATIN SMALL LETTER I character (measured to render
+  as tofu on some Linux font sets) is replaced with an inline SVG, matching
+  the map compass control's existing pattern (#427).
+- A route calculation that runs out of time now says so. The solver is
+  given a wall-clock budget for the whole plan and stops honestly when
+  it is spent, reporting that the search was cut short — explicitly not
+  that no route exists — instead of the previous "Route planning failed
+  unexpectedly. Try again; if it keeps happening, reload the app.", which
+  named neither the cause nor anything the skipper could act on. Adding
+  a via point to an existing route, and "reroute from here" in Live view,
+  now report the real cause of a routing failure too (a timeout, a crashed
+  engine, a failed save) rather than collapsing every one of them onto that
+  same generic message, and they release the abandoned routing worker so
+  a retry starts from a clean engine instead of stacking onto a busy one.
+- A route-planning failure that used to show the same generic "unexpected
+  failure" message and advice for seven unrelated causes — a crashed
+  routing engine, a routing timeout, an internal routing error, a save
+  failure after routing already succeeded, and more — now shows a distinct
+  message per cause, each with honest advice about whether "Try again"
+  can actually help (#433).
+
 ## [0.10.0] - 2026-08-07
 
 ### Added
@@ -488,7 +530,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/DocGerd/sail_command/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/DocGerd/sail_command/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/DocGerd/sail_command/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/DocGerd/sail_command/compare/v0.8.0...v0.8.1
