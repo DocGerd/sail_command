@@ -85,7 +85,8 @@ deviate from it.
   them) and cases to several existing ones — the count is stale again by
   more than a fixed delta this time, so it was re-measured rather than
   hand-added: a real `npm --prefix app run test` run gives **1294 tests, 109
-  files** (2026-08-04). The coverage PERCENTAGES above are UNTOUCHED — they
+  files** (2026-08-04); the FILE half is **116** as of 2026-08-09 (`find
+  app/src -name '*.test.ts*'`), the test count unmeasured since. The coverage PERCENTAGES above are UNTOUCHED — they
   were not re-measured this session (that needs `test:coverage`, a
   substantially longer run) and a scanning-only or assertion-adding test
   file is coverage-neutral to first order the same way PR #351's was; don't
@@ -123,7 +124,11 @@ deviate from it.
   an unrelated `changelog.test.ts` (`server.fs.allow` denies `CHANGELOG.md?raw`
   under that config); and `compare.mjs` fails closed on ZERO arms but not on
   FEWER THAN SIX, so assert six arm files per output directory yourself before
-  quoting any verdict.
+  quoting any verdict. **Two of the six arms are VACUOUS as safety evidence**:
+  `becalmed` and `deep-becalmed` produce ZERO routes (33/33 errors each), so
+  their byte-identity would survive any mask change including a catastrophic
+  one. Only `short-horizon` (2 `ok` plans) is a real unchanged-arm control —
+  never report three green arms as three pieces of evidence.
 - Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
   a ~40 s real-mask solver acceptance file). Use focused filters while
   iterating (`npm --prefix app run test -- <filter>`); give the full run a
@@ -232,8 +237,8 @@ deviate from it.
   warning. Measured (#223): reformatting `<meta charset="UTF-8" />` to
   `<meta charset="utf-8">` made `vite build` exit 0 with ZERO CSP metas in
   `dist`. `cspMeta()` (`app/vite.config.ts`) now throws if its marker is
-  missing; `subPathMeta()` in the same file still has the bare-`replace`
-  shape (#318, open — a silent failure there degrades to an indexable UAT).
+  missing; `subPathMeta()` gained the same fail-closed guard (#318, CLOSED
+  2026-08-04 — neither is unguarded now; re-read before citing either).
   Per the guard-asymmetry rule below: an absent security control is the
   expensive failure direction, so the check must fail closed.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
@@ -1243,6 +1248,26 @@ deviate from it.
   the unclipped barb ribbon was implemented and unit-test-pinned exactly as
   designed, yet yielded 0 barbs at harbor-approach zoom on long routes (#36) —
   the design doc itself encoded the bug.
+- **A mutation that cannot REACH the code path under test is ZERO evidence,
+  not weak evidence** (#455 session, 2026-08-09). Forcing `comfortDepthM =
+  undefined` looked like a discriminating control for a test running at
+  `depthComfortMarginM: 0` — where the code already computes `undefined`, so
+  the subject plan was bit-identical (fingerprint `6dfe0f53…` both ways). Its
+  green carried no information, yet reads as coverage to the next reader. Two
+  such probes occurred in one PR; both were replaced by perturbations that
+  provably MOVE the subject (a mask swap changing 18 legs to 16). For any
+  green mutation row, ask first whether the mutation could have changed the
+  subject at all — and beware `-t` filters, where `0 passed | 13 skipped` and
+  `1 passed | 12 skipped` look alike in a summary.
+- **`.gitignore` entries with a TRAILING SLASH match directories only**, so a
+  SYMLINK at that path is not ignored — and a committed symlink stores its
+  TARGET STRING as blob content, which is how an absolute home path reaches a
+  public repo without appearing in any source file. Found via
+  `pipeline/data-src` symlinked into a worktree; an enumeration then found
+  **12** entries with the same defect, not the 1 that was flagged. The rule now
+  sits once at the top of the file. `.github/scripts/check-no-home-paths.sh`
+  cannot catch this class (grep follows the link, the leak is in the blob) —
+  tracked as #479.
 - Mutation-check new tests before trusting them: an "equivalence" test
   deriving expectations from the function under test always passes (#50
   reached reviewer approval with three such false-pass holes, caught pre-merge
@@ -1680,10 +1705,13 @@ deviate from it.
   route/departure combinations for a screenshot (v0.11.0 cut) returned
   "100% sail, rigs tied" every time, which read as a robust finding; it was the
   SAME cached plan six times. TWO silent failures stacked: a DOM helper matched
-  `[role="region"][aria-label="Origin"]`, which never matches — those regions are
-  labelled by their `<h3>` via `aria-labelledby`, so Playwright's
-  `getByRole('region', { name: 'Origin' })` resolves them and the CSS
-  `[aria-label=…]` form silently does not — so the route never actually changed;
+  `[role="region"][aria-label="Origin"]`, which never matches — but NOT for the
+  mechanism first recorded here, which was fabricated: those sections carry
+  `aria-label` DIRECTLY (`PlannerPanel.tsx:353`, `:394`; `aria-labelledby` has
+  never appeared in that file's history). `[role="region"]` is a CSS ATTRIBUTE
+  selector needing a literal `role` attribute, which a bare `<section>` never
+  has, so only `getByRole('region', { name })` resolves them and the CSS form
+  silently does not — so the route never actually changed;
   and Open-Meteo began answering **429** under the probe loop, so the re-plans
   failed while the app kept DISPLAYING the previous result. Neither failure
   surfaced as an error in the reading. The tell was arithmetic — an 8.2 nm
@@ -1803,6 +1831,20 @@ deviate from it.
   stays connected for any user who lowers the gate). Licensed by a fidelity
   control the reviewer reproduced INDEPENDENTLY with their own
   reimplementation: 0 of 5,280,000 bytes differ.
+- **`TOLERANCE_M` = 0.9 is a STRUCTURAL bound, not a tuning knob** (#455, PR
+  #476, `docs/spikes/455-depth-mask-optimism.md`). `build_mask.py` takes
+  bilinear over the conservative `Resampling.max` only where they agree within
+  T, so `depth_blend <= depth_max + T` and a cell navigable at gate G has
+  conservative depth `>= G - T` — at the 3.0 m default that is exactly
+  `BOAT_DRAFT_M`. Navigable cells reading below the hull: **924 -> 0**;
+  gate-crossers 14,715 -> 10,746. **The wall is T <= 0.87** (Marstal
+  disconnects, reconnects from 0.88) — NOT the 0.8 a 0.1-sampled table
+  suggests, so 0.85 looks safe and strands Marstal permanently (it needs 1.8 m
+  against the 2.1 m draft floor). Aabenraa was NEVER the blocker: that claim
+  reproduces only under a fixed-snap convention the app does not use —
+  `planRoute.ts` re-snaps 46.3 m onto a conservative-3.0 m cell, losing zero
+  pairs. Gate-conditional: the floor degrades to 1.3 m at the UI's 2.2 m
+  minimum. ~10,746 crossers remain, so #455 stays OPEN.
 - **Buoyed fairways are DECLINED as a routing input** (#244,
   `docs/spikes/244-buoyed-fairways.md`). `seamark:type=fairway` does not
   exist in-region at all; the 258 `waterway=fairway` ways that do exist
@@ -1919,9 +1961,9 @@ deviate from it.
   NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
   measured against a chord that crossed LAND.
 - **No-route `reason` is a CONTROL INPUT, not just a status label** (#282,
-  REOPENED — PR #411's merge auto-closed it via an earlier commit's stray
-  keyword even though the PR body itself used `Refs`; do not let it be
-  closed again on this evidence). PR #411 NARROWED the coupling, it did not
+  CLOSED — it was auto-closed by an earlier commit's stray keyword despite the
+  PR body using `Refs`; whether to reopen is a maintainer call tracked in
+  #473, and the rule below holds either way). PR #411 NARROWED the coupling, it did not
   remove it: the two retry gates — named predicates `comfortRetryMayHelp` /
   `depthRelaxationMayHelp` — now branch on an INTERNAL `SolveFailureCause`
   (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded'`), deliberately
@@ -2149,6 +2191,19 @@ deviate from it.
   `--selftest`. It fails CLOSED where the old inline form emitted nothing:
   empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
   or non-repo `git` (verified across 15 constructed failure inputs).
+- **The Bash arm ADVISES now; only `docs/superpowers*` still ASKS** (#478,
+  2026-08-09). `app/public/{data,icons,brand}`, `THIRD-PARTY-NOTICES.txt` and
+  `.pmtiles` emit a non-blocking `additionalContext` advisory naming the
+  matched path and the generator that rebuilds it. It deliberately OMITS
+  `permissionDecision`: `"allow"` would BYPASS the user's own permission rules
+  rather than merely drop the hook's prompt. Rationale, measured: 1,115 asks
+  over 28,923 commands, only 53.3% genuinely write-capable — the maintainer
+  clicked through everything, so the guard cost attention and bought nothing.
+  The spec check is a SEPARATE pass, not a classification of the first matched
+  path — `PROTECTED_PATHS` is data-first, so a command naming BOTH would
+  otherwise downgrade a spec write. Guarantee holds for the LITERAL spelling
+  only; obscured spellings (glob, `//`, quote-splitting, brace expansion) fall
+  to the pre-existing silent-allow class, unchanged by that PR.
 - **A read-only EXEMPTION must be CONJUNCTIVE, and its allowlist rests on a
   named precondition** (#388, PR #387). `.claude/hooks/artifact-guard.sh`
   used to `ask` on any Bash command merely NAMING a protected path,
@@ -2196,20 +2251,24 @@ deviate from it.
   SUBSUMPTION-INVERTED — `docs/superpowers/specs`
   is a strict superstring of `docs/superpowers`, so the parent subsumes the
   child and removing the parent deletes the entry doing all the work. Adding
-  `cd` to `READONLY_VERBS` and segmenting the command on `;`/`&&`/newline
-  each removed EXACTLY ZERO prompts from a 165-command corpus of real
-  observed commands, and `cd` is actively harmful: the `ask` on `cd
-  app/public/data` is the ONLY visible moment of the two-call bypass the
-  hook's own design names as its one LIVE hole (Bash cwd persists across
-  calls). The general trap, worth more than the specific verdicts: **a
+  `cd` to `READONLY_VERBS` and segmenting on `;`/`&&`/newline were
+  RE-MEASURED 2026-08-09 over **28,923** distinct real commands (superseding
+  the earlier 165-command figure): the verdicts stand, the magnitudes were
+  wrong. `cd` removes ZERO of 1,115 asks; `;`-only and newline-only ZERO;
+  `&&`-only **2**. 89.5% of asks begin with a verb no allowlist widening can
+  reach (`cd` 286, `grep` 162, `git` 128, `python3` 65, `sed` 59), so this
+  whole class of fix has a small ceiling by construction. Segmentation is
+  additionally UNSAFE: it runs before the char check, so a 343 KB heredoc
+  timed the hook out against `settings.json`'s 5 s cap into a SILENT ALLOW —
+  a killed guard and a satisfied one emit the same nothing. The general trap, worth more than the specific verdicts: **a
   control that looks broader than its stated justification usually has a
   SECOND justification you have not found** — here the parent-path entry is
   not justified by the spec-edit rule at all, but by containment against
   commands that destroy `specs/` WITHOUT NAMING IT (#309's M4 fix). Look for
-  the second reason before narrowing anything. The real remaining gap runs
-  the other way: the Edit/Write arm hardcodes `*docs/superpowers/specs/*`,
-  so `plans/` has no ask-gate at all (#405) — WIDEN that arm, never narrow
-  the Bash one.
+  the second reason before narrowing anything. The `plans/` gap that bullet
+  used to name is CLOSED — #405/#421/#309 all shipped and the Edit/Write arm
+  now has four cases (`specs/` ask, `plans/` ask, a `docs/superpowers/*`
+  catch-all ask, and the `icon.svg` allow).
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
@@ -2406,11 +2465,13 @@ deviate from it.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
   ask-gate hook must prompt the user) — never through subagents. The hook DOES
   match Bash appends: `bash_hits_protected_path` substring-matches the RAW
-  command, so `cat >>` and heredoc forms ASK (MEASURED 2026-08-06 against
-  `origin/develop`). `>`/`<` are in `WRITE_CAPABLE_CHARS`, so a redirect
-  DISQUALIFIES the narrow read-only exemption rather than bypassing the
-  path-presence check — pinned by the hook's own `check ask "> redirect"` and
-  `"heredoc redirect"` selftest rows. An earlier claim here that appends
+  command, so `cat >>` and heredoc forms naming a SPEC path ASK (the same
+  shapes on a build-output path only ADVISE since #478). `>`/`<` are in
+  `WRITE_CAPABLE_CHARS`, so a redirect DISQUALIFIES the narrow read-only
+  exemption rather than bypassing the path-presence check — pinned by the
+  hook's own `check hit "> redirect"` / `"heredoc redirect"` rows (renamed
+  from `ask` in #478; they name a build-output path, so their DECISION is now
+  advisory — the disqualification they pin is unchanged). An earlier claim here that appends
   "silently skip the user prompt" was FALSE, and false in the DANGEROUS
   direction (it advertised a bypass that does not exist, in the one bullet
   about protecting user-approved specs). The real residuals are indirection a
