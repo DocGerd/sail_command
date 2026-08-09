@@ -16,7 +16,16 @@
 # directory, on any of the three OSes a contributor might run under, plus
 # this repo's own two Claude-Code-specific spellings (the raw per-session
 # scratchpad path and the flattened `~/.claude/projects/` directory name -
-# both of which happen to be exactly the shapes e5358d4 found).
+# both of which happen to be exactly the shapes e5358d4 found), plus three
+# WSL-specific spellings (added on maintainer review: this development
+# machine IS WSL2, per the environment banner - `uname -r` ends
+# `-microsoft-standard-WSL2` - which makes a Windows-side path a realistic
+# leak vector here, not a hypothetical one): the WSL view of the Windows
+# profile directory (`/mnt/c/Users/<name>`), and the two UNC forms Windows
+# Explorer/Windows-side tools use to reach a WSL distro's filesystem
+# (`\\wsl$\<distro>\...`, `\\wsl.localhost\<distro>\...`). A repo-wide scan
+# found ZERO occurrences of any WSL form at the time these three were added
+# - this is pure prevention, not a fix for anything found.
 #
 # Deriving the pattern from `$HOME` at run time is NOT sufficient on its own:
 # CI always runs as `runner`, so a `$HOME`-derived pattern would never match
@@ -59,7 +68,7 @@ set -uo pipefail
 # CLASS_APPLY_ALLOWLIST[i]=1 means the allowlist can excuse a match in that
 # class; =0 means it never can (see the tmp-scratchpad/flattened-projects
 # note below).
-CLASS_NAMES=(linux-home macos-home windows-home tmp-scratchpad flattened-projects)
+CLASS_NAMES=(linux-home macos-home windows-home tmp-scratchpad flattened-projects mnt-c-users wsl-unc-dollar wsl-unc-localhost)
 
 # `[A-Za-z0-9_.-]+` deliberately excludes `<`, `>`, `$`, `{`, `}`, space and
 # every other shell/markup metacharacter - so a bracket placeholder
@@ -68,32 +77,58 @@ CLASS_NAMES=(linux-home macos-home windows-home tmp-scratchpad flattened-project
 # no characters to consume there and the pattern doesn't match at that
 # position at all. Only a plausible literal username reaches the allowlist
 # check below.
+#
+# THE `/mnt/c/` TRAP (maintainer review): this repo's OWN CLAUDE.md contains
+# the literal string `/mnt/c/...` inside a rule that says never to invoke
+# `/mnt/c/...` binaries from WSL - a bare `/mnt/c` pattern would fire on
+# documentation ABOUT the hazard, the exact self-defeating shape as a guard
+# hardcoding the string it hunts. mnt-c-users is therefore anchored on
+# `/mnt/c/Users/` specifically (never bare `/mnt/c/`), so prose discussing
+# `/mnt/c/...` in the abstract - with no `Users` segment at all - stays
+# clean; see selftest cases for the exact CLAUDE.md sentence pinned as a
+# must-pass row. The two `\\wsl...\` UNC classes are similarly anchored on a
+# trailing `\home\` segment (not merely the UNC prefix), for the same
+# reason one level over: `\\wsl$\<distro>\` alone names a WSL distro, not a
+# person, and Windows-side WSL documentation can legitimately mention the
+# bare prefix.
 CLASS_GREP_ERE=(
   '/home/[A-Za-z0-9_.-]+'
   '/Users/[A-Za-z0-9_.-]+'
   'C:\\Users\\[A-Za-z0-9_.-]+'
   '/tmp/claude-[0-9]+/-home-[A-Za-z0-9._-]+'
   'projects/-home-[A-Za-z0-9._-]+'
+  '/mnt/c/Users/[A-Za-z0-9_.-]+'
+  '\\\\wsl\$\\[A-Za-z0-9_. -]+\\home\\[A-Za-z0-9_.-]+'
+  '\\\\wsl\.localhost\\[A-Za-z0-9_. -]+\\home\\[A-Za-z0-9_.-]+'
 )
 
 # Same shapes, anchored, one capturing group each - fed a single grep MATCH
 # (never a whole line), so `^...$` anchoring is exact rather than a prefix
-# check.
+# check. The two wsl-unc entries have no real capturing use (their class
+# never applies the allowlist - see CLASS_APPLY_ALLOWLIST below) but still
+# get an entry here so every array stays the same length/index-aligned;
+# never evaluated in practice since `&&` short-circuits on applyallow=0.
 CLASS_BASH_ERE=(
   '^/home/([A-Za-z0-9_.-]+)$'
   '^/Users/([A-Za-z0-9_.-]+)$'
   '^C:\\Users\\([A-Za-z0-9_.-]+)$'
   '^/tmp/claude-[0-9]+/-home-([A-Za-z0-9._-]+)$'
   '^projects/-home-([A-Za-z0-9._-]+)$'
+  '^/mnt/c/Users/([A-Za-z0-9_.-]+)$'
+  '^\\\\wsl\$\\[A-Za-z0-9_. -]+\\home\\([A-Za-z0-9_.-]+)$'
+  '^\\\\wsl\.localhost\\[A-Za-z0-9_. -]+\\home\\([A-Za-z0-9_.-]+)$'
 )
 
-# The tmp-scratchpad/flattened-projects classes get NO allowlist exemption:
-# unlike a plain OS home path, there is no realistic legitimate spelling of
-# these two shapes using real identifier characters - this repo's own
-# genuine placeholder for them is the bracket form `<flattened-repo-path>` /
-# `<scratchpad>`, which (per the class comment above) never reaches this
-# code path at all. Any literal match is real.
-CLASS_APPLY_ALLOWLIST=(1 1 1 0 0)
+# The tmp-scratchpad/flattened-projects/wsl-unc-* classes get NO allowlist
+# exemption: unlike a plain OS home path, there is no realistic legitimate
+# spelling of these shapes using real identifier characters - this repo's
+# own genuine placeholder for them is the bracket form
+# `<flattened-repo-path>` / `<scratchpad>` / `<distro>`, which (per the
+# class comment above) never reaches this code path at all. Any literal
+# match is real. mnt-c-users DOES get the allowlist - it is the WSL view of
+# the same Windows profile directory windows-home already covers, so the
+# same legitimate placeholder spellings (`/mnt/c/Users/user/...`) apply.
+CLASS_APPLY_ALLOWLIST=(1 1 1 0 0 1 0 0)
 
 # Placeholder spellings already used legitimately in this repo's own docs
 # (CONTRIBUTING.md, CLAUDE.md) - compared by EXACT (case-sensitive) string
@@ -202,6 +237,19 @@ scan_tree() {
 # directory can't be resolved - a missing exclusion only means this script's
 # own comments and code get scanned too, which fails safe (worst case: a
 # false-positive on this file, never a missed real leak).
+#
+# THIS CALL IS LOAD-BEARING, NOT COSMETIC - do not "simplify" it away on the
+# reasonable-looking assumption that a guard obviously wouldn't scan itself.
+# --selftest's own violating examples (`/home/alice/...` etc, a few dozen
+# lines below) are LITERAL STRINGS embedded in this very file, so once this
+# script is a TRACKED file in the real repo, scan_tree would find them and
+# the production run would fail on itself with every commit - the same
+# self-defeating shape as a guard hardcoding the string it hunts, one layer
+# up (source text instead of a real username). Verified for real, not only
+# in a synthetic --selftest repo: after `git add`ing this script in the
+# working tree that produced it, a plain production run (no arguments)
+# still reported clean - i.e. this exclusion was proven to fire against the
+# actual committed file, not merely a constructed stand-in for it.
 self_relative_path() {
   local abs root
   abs="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")" || return
@@ -216,7 +264,7 @@ self_relative_path() {
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
   total_cases=0
-  EXPECTED_CASES=22
+  EXPECTED_CASES=28
 
   case "$0" in
     */*) SELF="$0" ;;
@@ -392,6 +440,35 @@ if [ "${1:-}" = "--selftest" ]; then
   r=$(mkrepo); add "$r" docs/r.md 'compare /home/alice/repo against /Users/alice/repo'
   check "22 two different classes on one line" fail "$r"
   case "$LAST_OUT" in *linux-home*Users* | *Users*linux-home*) ;; *) echo "SELFTEST FAIL: 22 did not report both classes -> $LAST_OUT"; fail=1 ;; esac
+
+  # --- 23-28: WSL forms (maintainer review - this dev machine is WSL2, a
+  # real leak vector here, not a hypothetical one). One genuine violation
+  # per class, one allowlist pass, and the case 26 bounding negative is the
+  # whole reason these classes are anchored rather than bare-prefix-matched:
+  # this repo's own global CLAUDE.md guidance contains the literal string
+  # `/mnt/c/...` inside a rule warning never to invoke it from WSL - a
+  # pattern matching bare `/mnt/c/` would fire on documentation ABOUT the
+  # hazard, so this row pins that exact shape as a must-pass.
+  r=$(mkrepo); add "$r" docs/s.md 'cd /mnt/c/Users/alice/sail_command && npm test'
+  check "23 mnt-c-users leak" fail "$r"
+  case "$LAST_OUT" in *"mnt-c-users:/mnt/c/Users/alice"*) ;; *) echo "SELFTEST FAIL: 23 message did not name the mnt-c-users class -> $LAST_OUT"; fail=1 ;; esac
+
+  r=$(mkrepo); add "$r" docs/t.md 'browse via \\wsl$\Ubuntu\home\alice\sail_command in Explorer'
+  check "24 wsl-unc-dollar leak" fail "$r"
+  case "$LAST_OUT" in *"wsl-unc-dollar:"*'\\wsl$\Ubuntu\home\alice'*) ;; *) echo "SELFTEST FAIL: 24 message did not name the wsl-unc-dollar class -> $LAST_OUT"; fail=1 ;; esac
+
+  r=$(mkrepo); add "$r" docs/u.md 'browse via \\wsl.localhost\Ubuntu-22.04\home\alice\sail_command in Explorer'
+  check "25 wsl-unc-localhost leak" fail "$r"
+  case "$LAST_OUT" in *"wsl-unc-localhost:"*'\\wsl.localhost\Ubuntu-22.04\home\alice'*) ;; *) echo "SELFTEST FAIL: 25 message did not name the wsl-unc-localhost class -> $LAST_OUT"; fail=1 ;; esac
+
+  r=$(mkrepo); add "$r" docs/v.md 'Never invoke /mnt/c/... binaries from WSL. If a tool is missing, install the Linux equivalent.'
+  check "26 bare /mnt/c/... prose (the CLAUDE.md hazard sentence itself) must pass" pass "$r"
+
+  r=$(mkrepo); add "$r" docs/w.md 'example: /mnt/c/Users/user/repo is the allowlisted spelling'
+  check "27 allowlisted mnt-c-users token (user)" pass "$r"
+
+  r=$(mkrepo); add "$r" docs/x.md 'Explorer path: \\wsl$\Ubuntu-22.04\etc\wsl.conf names a distro, not a person'
+  check "28 wsl-unc-dollar prefix with no \\home\\ segment must pass" pass "$r"
 
   if ! [ "$total_cases" -eq "$EXPECTED_CASES" ] 2>/dev/null; then
     echo "SELFTEST FAILURES: ran $total_cases cases, expected ${EXPECTED_CASES:-<unset/empty>} - a case was skipped or silently dropped"
