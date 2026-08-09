@@ -551,9 +551,9 @@ jobs:
 - [ ] **Step 4: Rehearse the slim mask check locally (venv OUTSIDE the repo — a stray venv in pipeline/ would dirty the worktree)**
 
 ```bash
-python3 -m venv /tmp/claude-1000/-home-pkuhn-sail-command/91f5c167-e600-413c-8427-4319b7f088f3/scratchpad/slimvenv
-/tmp/claude-1000/-home-pkuhn-sail-command/91f5c167-e600-413c-8427-4319b7f088f3/scratchpad/slimvenv/bin/pip install numpy==2.5.1 scipy==1.18.0
-cd /home/pkuhn/sail_command/pipeline && /tmp/claude-1000/-home-pkuhn-sail-command/91f5c167-e600-413c-8427-4319b7f088f3/scratchpad/slimvenv/bin/python verify_mask.py; cd /home/pkuhn/sail_command
+python3 -m venv <scratchpad>/slimvenv
+<scratchpad>/slimvenv/bin/pip install numpy==2.5.1 scipy==1.18.0
+cd <repo>/pipeline && <scratchpad>/slimvenv/bin/python verify_mask.py; cd <repo>
 ```
 Expected: exit 0, output ends with the harbor-connectivity summary (KNOWN_DISCONNECTED allowlist entries reported as expected). This proves numpy+scipy suffice — `verify_mask.py` imports only `json/pathlib/sys/numpy/scipy.ndimage`. If it needs more, extend the pip list in Step 5 to match, never install the full geo stack.
 
@@ -639,7 +639,7 @@ jobs:
 - [ ] **Step 8: Verify all SHA pins in one sweep**
 
 ```bash
-grep -rn 'uses:' /home/pkuhn/sail_command/.github/workflows/ | grep -v '@[0-9a-f]\{40\}'
+grep -rn 'uses:' <repo>/.github/workflows/ | grep -v '@[0-9a-f]\{40\}'
 ```
 Expected: empty output (every `uses:` is a 40-hex-SHA pin).
 
@@ -665,11 +665,11 @@ PR body: `Closes #14`; list the four hardening moves + the two new workflows; st
 - [ ] **Step 1: Secrets scan of full history (gitleaks, pinned release binary into scratchpad)**
 
 ```bash
-cd /tmp/claude-1000/-home-pkuhn-sail-command/91f5c167-e600-413c-8427-4319b7f088f3/scratchpad
+cd <scratchpad>
 TAG=$(gh api repos/gitleaks/gitleaks/releases/latest --jq .tag_name)
 gh release download "$TAG" --repo gitleaks/gitleaks --pattern '*linux_x64.tar.gz' --output gitleaks.tar.gz
 tar -xzf gitleaks.tar.gz gitleaks
-./gitleaks git --no-banner --redact /home/pkuhn/sail_command; echo "gitleaks exit: $?"
+./gitleaks git --no-banner --redact <repo>; echo "gitleaks exit: $?"
 ```
 Expected: `no leaks found`, exit 0. **If leaks are reported: stop the task, do not push anything, report the redacted findings to the user** — history rewriting is an owner decision.
 
