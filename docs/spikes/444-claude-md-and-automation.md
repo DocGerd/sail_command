@@ -480,6 +480,54 @@ acting on is the COUNT class** — test/file counts and coverage percentages
 re-measurable by one command. Everything else in the table is either
 correctly hedged already or is evidence rather than state.
 
+### A3.4 A false claim about the CODE, carrying no citation at all — the axis both searches above are blind to
+
+§A3.1 audits claims that carry a `file.ext:NNN` citation; §A3.2 audits
+claims that assert an issue's state. A claim that describes the code and
+cites **neither** falls between them. One such claim in `CLAUDE.md` is
+false, and it was found by an outside reader rather than by either search
+here — which is the finding, more than the instance is.
+
+> `CLAUDE.md:1683-1686`, on a DOM helper that matched
+> `[role="region"][aria-label="Origin"]` and never resolved: *"those
+> regions are labelled by their `<h3>` via **`aria-labelledby`**, so
+> Playwright's `getByRole('region', { name: 'Origin' })` resolves them and
+> the CSS `[aria-label=…]` form silently does not"*.
+
+Measured at `7195787`, per site: `app/src/components/PlannerPanel.tsx:353`
+renders `<section aria-label={t('planner.origin.label')} …>` and `:394`
+the destination equivalent — **`aria-label` directly, and no `<h3>` is
+referenced by id**. `aria-labelledby` has never appeared in that file at
+all: `git log -S 'aria-labelledby' -- app/src/components/PlannerPanel.tsx`
+returns **zero commits**, and the only site anywhere in `app/src` is
+`components/AboutDialog.tsx:107`.
+
+**The bullet's operative advice is right, for a different reason — which
+is exactly why the false mechanism survived.** `[role="region"]` is a CSS
+attribute selector and needs a **literal** `role` attribute in the markup;
+a named `<section>` carries the `region` role **implicitly**, so
+`getByRole` resolves it while the attribute selector matches nothing. The
+observed behaviour the bullet records (the selector silently matching
+nothing, so the probed route never changed) is real, and *"use
+`getByRole`, not the CSS `[aria-label=…]` form"* remains correct. Only the
+stated mechanism is false.
+
+**Why this is a class and not a typo.** A wrong *mechanism* under a right
+*conclusion* is the shape `CLAUDE.md` itself names — *"a false MECHANISM
+inside a correction"* — and it is invisible to both audits above: there is
+no line number to go stale and no issue state to disagree with a tracker.
+Its cost is that a reader who trusts the mechanism fixes the wrong thing,
+or hardens the wrong selector.
+
+**Consequence for §A3.2's stated floor.** That section says its count is a
+floor because a third *axis* (an assertion spread over three lines, or a
+state word outside the keyword list) could hide a third instance. This is
+a **fourth** axis, and one no keyword search reaches at all. State the
+audit's reach at the strength the method supports: `CLAUDE.md`'s prose was
+audited along **two named axes — literal `file:line` citations and
+issue-state assertions — and is not audited as a whole.** Correcting this
+sentence is R1 item (6).
+
 ## A4. What must be resident, and does directory-scoping help? (Q3, Q4)
 
 **Q4's answer is YES, and it is the only mechanism in the toolchain that
@@ -973,12 +1021,31 @@ unspaced `area:tooling` happens to carry zero open issues today
 the tickets #437 spawned when it closed — so the count overstates the
 number of distinct problems;
 
-(d) **the ratio decays and has already done so within this session.**
-The sibling spike wrote 18 of **45** = 40.0 % hours before this
-measurement; #463 (`type: chore`, `priority: low`, no `area:` label) was
-opened on 2026-08-09 and lands in the denominator only. Both documents now
-carry 18/46 = 39.1 % with the date attached. **Re-run the two commands
-above; do not quote the ratio.**
+(d) **the ratio decays, and it has now done so TWICE inside one day.**
+Three readings of the same two commands, all on **2026-08-09**:
+
+| Reading | Value | What moved, and in which term |
+|---|---|---|
+| earliest (sibling spike's first revision) | 18 / **45** = **40.0 %** | — |
+| this document's headline above | 18 / **46** = **39.1 %** | **#463** opened `10:15:30Z` (`type: chore`, `priority: low`, **no** `area:` label) → **denominator only**, so the share FELL |
+| re-measured at review time | **17 / 45** = **37.8 %** | **#459** closed `11:45:09Z` carrying `area: tooling` → left **both** terms, so the share fell again |
+
+Both later movements were caused by ordinary same-day project activity —
+one issue opened, one closed — and neither is an error in the earlier
+reading. **The headline figure above is retained with its date rather than
+overwritten**, because replacing it with 37.8 % would mint a third
+timeless-looking number with the same half-life; what a reader needs is
+the two commands and the observation that the denominator moves on a
+timescale of hours. **Re-run them; do not quote the ratio.** The enumerated
+18 above is likewise a snapshot: #459 has since left it, leaving
+#72, #143, #346, #357, #359, #401, #406, #417, #420, #424, #428, #444,
+#446, #447, #448, #449, #451.
+
+None of this touches the conclusion, and that is worth stating explicitly
+so the decay is not read as instability in the finding: every reading lands
+between 37 % and 40 %, all three are far above the ~30 % both issue bodies
+assert, and the verdict below rests on the **composition** of the tooling
+work, not on any one ratio.
 
 The share is higher than believed either way. What follows from it is
 ruled in §*"The tooling-budget verdict (Q14's shared metric)"* below —
@@ -1008,7 +1075,9 @@ Q15, measured 2026-08-09 at `7195787`:
 
 with the backlog snapshot at **18 of 46 open non-PR issues = 39.1 %**
 (16 of 44 = 36.4 % excluding the two spikes, which carry the label
-themselves). #446 narrows the trend claim to the **three post-inception
+themselves) — a figure §G3(d) records decaying **twice on its measurement
+day**, to 37.8 % by review time; the verdict below rests on composition,
+not on the ratio. #446 narrows the trend claim to the **three post-inception
 points** (33.9 % → 39.6 % → 49.2 %), because W29 is the founding week and
 its 2.5 % is a base-rate artifact. This document adopts that narrowing
 rather than the stronger headline.
@@ -1070,7 +1139,7 @@ current a handful of its claims are*.
 
 | # | Change | Cost | Benefit | Risk if wrong |
 |---|---|---|---|---|
-| **R1** | **Fix the five measured currency defects in `CLAUDE.md`**: (1) delete "#318, open" and the false `subPathMeta()` claim at `:236`; (2) **correct #282's "REOPENED … do not let it be closed again" at `:1921-22`, which asserts a live state against a closed issue**; (3) re-anchor the five stale in-repo citations (§A3.1 rows 4–8) to their current lines *and* add a symbol anchor beside each; (4) drop the line number from the `isochrone.ts` historical citation; (5) re-measure the test-file count at `:87` (109 → **116**) | **Low** — one approval-gated main-session edit, ~12 lines. All five are located and the corrected values are in §A3 | **High** — **two** of them (`#318, open` and `#282, REOPENED`) are wrong in the dangerous direction, advertising closed work as live; the #318 one sits inside the guard-asymmetry paragraph itself | Near zero for (1), (3)–(5). **(2) carries a judgement the maintainer owns**: whether #282 *should* be reopened is a separate question from whether the text currently misdescribes the tracker. Fix the description; raise the reopening separately if wanted |
+| **R1** | **Fix the six measured accuracy defects in `CLAUDE.md`** — five currency, one false mechanism: (1) delete "#318, open" and the false `subPathMeta()` claim at `:236`; (2) **correct #282's "REOPENED … do not let it be closed again" at `:1921-22`, which asserts a live state against a closed issue**; (3) re-anchor the five stale in-repo citations (§A3.1 rows 4–8) to their current lines *and* add a symbol anchor beside each; (4) drop the line number from the `isochrone.ts` historical citation; (5) re-measure the test-file count at `:87` (109 → **116**); (6) **correct the `aria-labelledby` mechanism at `:1683-1686`** to `aria-label` + the implicit-`region`-role reason, keeping the bullet's advice unchanged (§A3.4) | **Low** — one approval-gated main-session edit, ~15 lines. All six are located and the corrected values are in §A3 | **High** — **two** of them (`#318, open` and `#282, REOPENED`) are wrong in the dangerous direction, advertising closed work as live; the #318 one sits inside the guard-asymmetry paragraph itself | Near zero for (1), (3)–(5). **(2) carries a judgement the maintainer owns**: whether #282 *should* be reopened is a separate question from whether the text currently misdescribes the tracker. Fix the description; raise the reopening separately if wanted |
 | **R2** | **Move `Domain rules` (5,563 tok) and `Code conventions` (5,121 tok) into a directory-scoped `app/CLAUDE.md`** carrying `paths:` frontmatter, leaving the root file's other seven sections resident. Nothing is deleted; the text moves verbatim | **Medium** — one file creation, one careful cut, and a verification pass (open a file under `app/src/`, confirm the nested memory attaches). Must be done in the main session with approval | **Split into its two halves, which have different evidential status — see below. MEASURED: the 10.7 k of 47.2 k tokens (23 %) that would move. UNVERIFIED: that moving them delivers that saving to a real session** | **This is the recommendation most likely to be wrong**, and the risk is specific: if the trigger does not fire in some path (a subagent that never opens an `app/` file but reasons about one; a `git`-only session), a hard-won rule silently stops being resident. Mitigation: verify empirically before committing, and start with **one** section, not two |
 | **R3** | **Add `workbox-strategies` to `PACKAGES`** (`app/scripts/gen-third-party-notices.mjs:25-37`) and regenerate `app/public/THIRD-PARTY-NOTICES.txt` | **Very low** — one array entry plus `npm --prefix app run notices` | **High relative to cost** — closes a real licence-notice omission for a package that provably ships (`app/src/sw.ts:8`) | Near zero; CI's `git diff --exit-code` gate proves the regeneration landed |
 
@@ -1197,11 +1266,26 @@ precisely why the scope is written down instead of assumed.
    a committed workflow executes for contributors who cannot run it.
 
 8. **Patch `artifact-guard.sh`'s Bash arm here. REJECTED — out of scope by
-   ownership, not by merit.** #437 owns the remedy, has an acceptance pair
-   (`ls … | head` suppressed, `node -e` still asking), and already carries
-   four measured-and-rejected loosenings. A second document proposing a
-   fix would either duplicate that work or contradict it. §B2 supplies the
-   corpus measurement #437's definition of done asks for and nothing more.
+   ownership, not by merit.** The remedy is owned by the three OPEN
+   successors **#447 / #448 / #449**, not by #437, which closed on
+   `2026-08-07T16:08:04Z` (§B2). #437's own record survives its closure and
+   still binds: an acceptance pair (`ls … | head` suppressed, `node -e`
+   still asking) and four measured-and-rejected loosenings. A second
+   document proposing a fix would either duplicate that work or contradict
+   it. §B2 supplies the corpus measurement those three need and nothing
+   more.
+
+   **This item was itself a second instance of the defect §B2 corrects, and
+   that is recorded rather than silently fixed.** §B2 named the wrong owner,
+   was corrected in place, and the correction was not enumerated across the
+   rest of the document — so this item and the *"Needs a maintainer
+   decision"* bullet below both kept handing the remedy to a closed issue
+   while §B2 and the Filing table said otherwise. One document, three
+   ownership claims, two of them stale: this repo's **enumerate,
+   don't patch** rule failing inside a document that quotes it. The check
+   that finds it is one command — `grep -n '#437'` over this file, then
+   classify each hit as an OWNERSHIP claim (must move) or a HISTORICAL
+   reference (#437's measurement, its rejections, its fan-out — all stay).
 
 9. **Auto-regenerate the self-staling counts (a CI job that rewrites
    `CLAUDE.md`'s test-file count). REJECTED.** `develop` is protected and
@@ -1248,7 +1332,8 @@ precisely why the scope is written down instead of assumed.
   `artifact-guard.sh`'s measured noise share from 74.2 % to 93.0 %
   (§B2). It is a policy question about whether the ask-gate protects the
   *edit* or the *commit*, and only the maintainer can settle it. It is
-  input to #437, not a decision for this document.
+  input to **#447 / #448 / #449** — #437 is closed — not a decision for
+  this document.
 - **Whether the label-taxonomy cleanup (G2) is worth scheduling** now that
   it is three issues wide.
 
