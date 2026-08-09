@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
-# PreToolUse Edit|Write guard for generated pipeline artifacts and the
-# source-of-truth spec docs — SailCommand #274 (extracted from the inline
-# one-liner it replaces; the specs `ask` branch is unchanged from before).
+# PreToolUse guard for generated pipeline artifacts and the source-of-truth
+# spec docs — SailCommand #274 (extracted from the inline one-liner it
+# replaces; the specs `ask` branch is unchanged from before).
 # Fix wave on PR #305 review (B1/B2/M1/M2+M4/M5): see below for what changed
 # and why.
+#
+# TWO ARMS, dispatched on tool_name (#309):
+#   - Edit|Write  -> `deny` on a generated artifact, `ask` on docs/superpowers/
+#                    (UNCHANGED by every later revision, including the 2026-08-09
+#                    advisory split below, which touches the Bash arm only).
+#   - Bash        -> path-presence match on the command string. Three outcomes:
+#                    provably read-only -> emit NOTHING; a docs/superpowers
+#                    path -> blocking `ask`; any other protected path -> a
+#                    NON-BLOCKING `additionalContext` ADVISORY carrying no
+#                    permissionDecision at all. See "TWO OUTCOMES FOR A
+#                    NON-EXEMPT HIT" in DESIGN below for the ruling, the
+#                    measurement and why the two halves differ.
 #
 # ---------------------------------------------------------------------------
 # INTENT (the acceptance criterion #274 asks be stated next to the guard):
@@ -120,8 +132,10 @@
 # DESIGN (settled by the user after reviewing alternatives — do not redesign
 # this without a new explicit decision):
 #   - PATH-PRESENCE MATCHING ONLY. For each string in PROTECTED_PATHS below,
-#     if it appears ANYWHERE in the Bash `command` string, emit `ask`. That
-#     is the entire rule — nothing else.
+#     if it appears ANYWHERE in the Bash `command` string, the guard FIRES.
+#     That is the entire matching rule — nothing else. (WHAT firing produces,
+#     `ask` or a non-blocking advisory, is decided by the 2026-08-09 split
+#     bullet further down, and by nothing else in this file.)
 #   - NO shell-syntax parsing. No segmentation, no heredoc awareness, no
 #     attempt to classify "is this command really a write". Command-string
 #     segmentation is the exact shape that got PR #233 closed — a shell
@@ -143,12 +157,13 @@
 #
 #     Both halves are load-bearing and neither is sufficient. `cat f >
 #     protected` fails the second half; `sed -i s/x/y/ protected` fails the
-#     first. Everything not PROVABLY safe still asks — an unrecognised verb,
+#     first. Everything not PROVABLY safe still fires — an unrecognised verb,
 #     an unparseable shape, any doubt at all. This is the guard-asymmetry
-#     principle (CLAUDE.md) held to: over-firing costs a stray prompt,
-#     under-firing costs a silently drifted artifact, so the exemption
-#     suppresses only shapes it can prove, and every ambiguity resolves to
-#     ask. Crucially, this is NOT the shell segmentation that got PR #233
+#     principle (CLAUDE.md) held to: over-firing costs a stray prompt (spec
+#     tree) or a paragraph of advisory context (everything else, since the
+#     2026-08-09 split), under-firing costs a silently drifted artifact, so
+#     the exemption suppresses only shapes it can prove, and every ambiguity
+#     resolves to FIRING. Crucially, this is NOT the shell segmentation that got PR #233
 #     closed: there is no attempt to split a command line into commands or
 #     to classify which one "really" runs. The predicate is the opposite —
 #     it REFUSES to reason about any string that could contain more than one
@@ -254,7 +269,16 @@
 #         re-measured NAMED PRECONDITION above).
 #   - #437 — the SECOND over-restriction ruling ("please fix the hook, it is
 #     still blocking too much", maintainer, 2026-08-07; the first produced the
-#     conjunctive exemption above). Every candidate below was scored on a
+#     conjunctive exemption above).
+#     READ THIS WHOLE BLOCK AS DATED: every "ASK" and "prompts removed" figure
+#     in it was measured against the PRE-SPLIT guard, when every non-exempt
+#     hit prompted. Since the 2026-08-09 split only the spec tree still
+#     prompts, so a "prompt removed" here means "fire removed" — the counts,
+#     the ratios and every verdict they support are unaffected (all of them
+#     are about which commands FIRE, which the split did not change), but the
+#     word no longer describes what a fire costs. The figures are deliberately
+#     NOT rewritten: they are a record of a measurement, not a description of
+#     current behaviour. Every candidate below was scored on a
 #     corpus HARVESTED from this project's own transcripts, never invented:
 #     29,009 Bash tool calls under ~/.claude/projects/<flattened-repo-path>,
 #     27,040 DISTINCT command strings, each replayed through a byte-identical
@@ -318,8 +342,8 @@
 #         ones split only at UNQUOTED pipes), so each real segment's first
 #         word is the first word of its leading naive segment — equal when
 #         that segment is non-empty, and an empty or quote-truncated
-#         fragment (`'l`, `cat'`) exact-matches no verb and therefore asks.
-#         `||` yields an INTERIOR empty segment and asks; `|&` still carries
+#         fragment (`'l`, `cat'`) exact-matches no verb and therefore fires.
+#         `||` yields an INTERIOR empty segment and fires; `|&` still carries
 #         `&`.
 #         **THE QUALIFIER, and it is the whole finding: that argument is
 #         IMPLEMENTATION-CONDITIONAL, not a property of `|`-splitting.** It
@@ -375,27 +399,115 @@
 #     genuinely write.
 #   - ACCEPTED RESIDUAL OVER-FIRES of the exemption (named so they read as
 #     decisions, not oversights): `!` is disqualified, so `test ! -f
-#     <protected>` — a legitimate read-only shape — still asks; `#` is
-#     disqualified, so a trailing comment still asks; `$` is disqualified
-#     wholesale, so `stat "$HOME/<protected>"` still asks. Each is the safe
+#     <protected>` — a legitimate read-only shape — still fires; `#` is
+#     disqualified, so a trailing comment still fires; `$` is disqualified
+#     wholesale, so `stat "$HOME/<protected>"` still fires. Each is the safe
 #     direction and none has a cheap sound alternative (a `#` cannot be told
 #     from a filename character without parsing, which is the thing this
 #     guard refuses to do).
 #   - A command that names a protected path and is NOT provably read-only
-#     still asks, including one that merely mentions the path in prose
+#     still fires, including one that merely mentions the path in prose
 #     (`echo mentions <protected>`) — `echo` is not on the verb allowlist.
-#     That over-fire is unchanged and still deliberate.
-#   - `ask`, NEVER `deny`, on this Bash arm — this is the guard-asymmetry
-#     principle (CLAUDE.md) applied in the OTHER direction from the Edit|
-#     Write arm above: that arm can `deny` because a file_path IS the write
-#     target, unambiguously. A Bash command string cannot reliably be told
-#     apart from a read (this guard does not parse shell syntax, by design,
-#     above) so `deny` here would routinely HALT legitimate read-only
-#     commands — the wrong failure mode for a guard whose over-firing costs
-#     one stray prompt and whose under-firing costs a silently drifted
-#     artifact. Accepted cost, stated here on purpose: any Bash command
-#     merely mentioning a protected path's string prompts for confirmation,
-#     even when the command is provably read-only.
+#     That over-fire is unchanged and still deliberate; since the 2026-08-09
+#     split it costs a line of advisory context rather than a prompt for
+#     every path except the spec tree, which is most of why the over-fire is
+#     now cheap enough to keep without argument.
+#   - NEVER `deny` on this Bash arm — this is the guard-asymmetry principle
+#     (CLAUDE.md) applied in the OTHER direction from the Edit|Write arm
+#     above: that arm can `deny` because a file_path IS the write target,
+#     unambiguously. A Bash command string cannot reliably be told apart
+#     from a read (this guard does not parse shell syntax, by design, above)
+#     so `deny` here would routinely HALT legitimate read-only commands.
+#     What a NON-EXEMPT hit gets instead is now SPLIT BY WHICH PATH MATCHED
+#     — see the next bullet.
+#   - **TWO OUTCOMES FOR A NON-EXEMPT HIT, split by matched path** (maintainer
+#     ruling, 2026-08-09: "it happens so often that i anyway press yes all the
+#     time" / "it was just some git read command as well"). The blanket `ask`
+#     this arm used to emit for EVERY hit was eroding itself: a guard that
+#     always asks trains the user to click through, the same failure CLAUDE.md
+#     records for `premerge-verify`, and that erosion is the defect this split
+#     fixes. MEASURED over 28,923 distinct real Bash commands from this
+#     project's own transcripts: 1,115 asks, only 53.3% of them genuinely
+#     write-capable; first words of the ask population were `cd` 286, `grep`
+#     162, `git` 128, `python3` 65, `sed` 59, `ls` 56, `cat` 50, and only
+#     10.5% start with an allowlisted verb — so no widening of READONLY_VERBS
+#     can fix this (that route was measured and rejected, see #437 above).
+#     BOTH SIDES OF THE LEDGER, since the measurement above prices only one of
+#     them (PR #478 review, Minor 3): what replaces each of those prompts is
+#     518-603 bytes of `additionalContext` (measured per protected path, the
+#     603 being `app/public/data`, whose generator hint carries the separate
+#     basemap command), injected into the assistant's context on every fire —
+#     so roughly the old prompt rate, order 1,000 times over a long working
+#     period. The FIRST CUT of that text measured 970-996 bytes and listed
+#     every generator on every fire; trimming it to the matched path's own
+#     generator is where most of the reduction came from. `bash_advisory`'s
+#     own header records what the four remaining sentences are for, and the
+#     selftest pins an upper bound so it cannot grow back unnoticed. That is
+#     the trade this split makes: context cost, paid continuously, in exchange
+#     for not interrupting the maintainer.
+#       * `docs/superpowers/specs` and its ancestor `docs/superpowers`
+#         (SPEC_GATED_PATHS below) KEEP the blocking `ask`, unchanged. This is
+#         load-bearing, not stylistic: CLAUDE.md makes a spec edit a
+#         MAIN-SESSION act, and this prompt is the mechanism that stops a
+#         subagent slipping one past the maintainer. Nothing regenerates a
+#         user-approved decision.
+#       * every OTHER protected path (app/public/{data,icons,brand},
+#         app/public/THIRD-PARTY-NOTICES.txt, .pmtiles) emits a NON-BLOCKING
+#         ADVISORY instead. These are committed BUILD OUTPUTS: the cost of a
+#         missed write is an artifact that has drifted from its generator and
+#         that `npm --prefix pipeline run ...` / `npm --prefix app run notices`
+#         regenerates — recoverable, unlike a silently rewritten spec.
+#     THE ADVISORY SHAPE, three points each load-bearing:
+#       1. `{"hookSpecificOutput":{"hookEventName":"PreToolUse",
+#          "additionalContext":"..."}}`, exit 0. `additionalContext` is the
+#          field that REACHES THE ASSISTANT; `permissionDecisionReason` goes
+#          to logs only, so an advisory built on that field would be a guard
+#          that silently does nothing — strictly worse than the blanket ask it
+#          replaces. Contract verified against Claude Code 2.1.226
+#          (`claude --version` in the guarded environment).
+#       2. `permissionDecision` is OMITTED ENTIRELY — deliberately NOT set to
+#          "allow". Omitting falls through to the user's own permission
+#          system, which still applies its normal rules; `"allow"` would
+#          BYPASS that system and auto-approve commands those rules would
+#          still question. The ruling was to drop THIS HOOK's prompt, not to
+#          widen the user's permission configuration. A selftest case parses
+#          the emitted advisory with jq and asserts the key is ABSENT, so this
+#          cannot regress silently.
+#       3. The read-only exemption is UNCHANGED and still evaluated FIRST: a
+#          provably read-only command emits NOTHING AT ALL — no prompt, and no
+#          advisory noise either. The advisory is only for the commands that
+#          used to prompt.
+#     NAMED ACCEPTED COST, because it is the one place this split genuinely
+#     weakens a hole this file already documents as LIVE: silent-allow path 1
+#     below (`cd` into a protected directory, then a bare-filename write in a
+#     LATER Bash call, since Bash cwd persists across calls) had exactly ONE
+#     visible moment — the prompt on the `cd` itself, which #404's rejection
+#     record calls out by name. That moment is now an ADVISORY rather than a
+#     prompt: still delivered to the assistant, still naming the path and
+#     saying not to hand-edit, but no longer stopping anything on its own. The
+#     ruling accepted that trade for the build-output paths; it does NOT apply
+#     to `cd docs/superpowers/...`, which still prompts.
+#     A command naming a spec path AND a build-output path in one string ASKS:
+#     the spec check runs FIRST, deliberately independent of PROTECTED_PATHS'
+#     first-match ordering, which would otherwise return `app/public/data` for
+#     `cp docs/superpowers/specs/x app/public/data/` and silently downgrade a
+#     spec edit to an advisory. Pinned by a MIXED selftest row.
+#     THAT HOLDS FOR THE LITERAL SPELLING, which is the only thing this arm
+#     ever sees (PATH-PRESENCE MATCHING ONLY, above). A spec path OBSCURED so
+#     the literal substring is absent - `docs/super*/specs/x`,
+#     `docs//superpowers/...`, `docs/superpo''wers/...`,
+#     `docs/{superpowers,other}/specs/x` - is not matched as a spec path, and
+#     if such a command ALSO names a build-output path it now ADVISES where it
+#     previously ASKED. Named because it is a real (small) behaviour change of
+#     this split. It is NOT a new hole: measured, all four of those commands
+#     with the build-output path REMOVED are SILENT on both sides of the
+#     split - they are KNOWN SILENT-ALLOW item 4 below (quote-splitting /
+#     escaping / brace expansion; a glob across the directory name is the same
+#     class). The old prompt was an incidental match on `app/public/data`,
+#     never spec coverage, so what the split removes here is a coincidence,
+#     not a control. Everything CONTAINING the literal `docs/superpowers` asks
+#     in every position, quoting, `./`/`../` prefix, backslash, `tar -C` and
+#     literal-preserving glob a reviewer could construct (19 constructions).
 #   - NO TRAILING SLASH on the directory entries (#309 fix-wave B1, reverting
 #     the first cut of this file). A trailing slash means a write to the
 #     protected directory's bare NAME never matches — measured, real hook
@@ -424,10 +536,18 @@
 #     which CLAUDE.md documents as restored routinely after every e2e run
 #     (`git restore app/public/test-fixtures/wind-sw12.json`) and which
 #     already has its own dedicated Bash hook (settings.json's other "Bash"
-#     PreToolUse entry) — adding `app/public` here would turn that routine
-#     command into a prompt on every e2e cycle, which is the exact "a guard
-#     that always asks trains you to click through" erosion CLAUDE.md warns
-#     about for `premerge-verify`. Bare `app` is far worse: it is a substring
+#     PreToolUse entry). RATIONALE RESTATED (2026-08-09 split): this used to
+#     read "adding `app/public` here would turn that routine command into a
+#     PROMPT on every e2e cycle, which is the exact click-through erosion
+#     CLAUDE.md warns about for `premerge-verify`" — and that premise is now
+#     false, because `app/public` is not spec-gated, so it would produce an
+#     ADVISORY, not a prompt. The DECISION is unchanged and the cost is real
+#     but different: it would inject the advisory into the assistant's context
+#     on every e2e cycle, for a path whose routine traffic is the wind fixture
+#     that a dedicated hook already covers. Judge any future re-proposal
+#     against THAT cost — context noise, not click-through erosion; do not
+#     revive the old wording, which would overstate the case. Bare `app` is
+#     far worse: it is a substring
 #     of nearly every command in this repo (`npm --prefix app run test`,
 #     `npm --prefix app run build`, ...), so it would fire constantly. The
 #     residual this leaves — `find app/public -name '*.bin' -delete`, `tar
@@ -488,8 +608,12 @@
 #   - PROTECTED_PATHS deliberately does NOT special-case
 #     app/public/icons/icon.svg the way the Edit|Write arm's B1 exception
 #     does — "no exemptions" applies uniformly on this arm, so a Bash command
-#     touching icon.svg by path still asks (Bash-mediated edits to that file
-#     get no free pass here, unlike the Edit/Write tool path).
+#     touching icon.svg by path still fires (Bash-mediated edits to that file
+#     get no free pass here, unlike the Edit/Write tool path). Since the
+#     2026-08-09 split that fire is an ADVISORY, `app/public/icons` being a
+#     build-output path — so the practical gap between the two arms for this
+#     one file is now wider than when this bullet was written: Edit/Write
+#     ALLOWS it outright (the B1 exception), Bash advises.
 #   - tool_name discriminates the two arms (this same script now serves BOTH
 #     the "Edit|Write" and "Bash" settings.json matchers): tool_name=="Bash"
 #     takes the path-presence branch below; anything else (Edit, Write, or a
@@ -526,13 +650,20 @@
 #      NOT demonstrate this hole — that string DOES contain the literal
 #      substring "app/public/data" (inside the assignment itself), so
 #      bash_hits_protected_path matches it, and the `;` then disqualifies
-#      the read-only exemption, so production correctly ASKS. Measured, not
-#      inferred: an example that does not demonstrate the hole it documents
-#      is worse than none.
+#      the read-only exemption, so production correctly FIRES (an advisory
+#      since the 2026-08-09 split — `app/public/data` is not spec-gated;
+#      before it, a prompt). Measured, not inferred: an example that does not
+#      demonstrate the hole it documents is worse than none.
 #   3. Programmatic path construction: `python3 -c "import os;
 #      open(os.path.join('app','public','data','mask.bin'),'w')"` — contrast
-#      with the SAME target spelled as a literal string, which correctly
-#      asks; the two differ only in how the path is built.
+#      with the SAME target spelled as a literal string, which is correctly
+#      MATCHED; the two differ only in how the path is built. NOTE HOW MUCH
+#      SMALLER THAT CONTRAST IS since the 2026-08-09 split: for a build-output
+#      path it is now "silently allowed" vs "allowed with an advisory
+#      attached", not "allowed" vs "stopped for confirmation". The hole is
+#      unchanged; what the literal spelling buys you over it is much less than
+#      this bullet used to imply. For a spec path the old contrast still
+#      holds in full.
 #   4. Quote-splitting / escaping / brace expansion inside the path string
 #      itself (`app/public/dat''a/mask.bin`, `app/public/data\/mask.bin`,
 #      `app/public/{data,icons}/mask.bin`) and indirection via `xargs`
@@ -579,6 +710,36 @@ PROTECTED_PATHS=(
 bash_hits_protected_path() {
   local cmd="$1" p
   for p in "${PROTECTED_PATHS[@]}"; do
+    case "$cmd" in
+      *"$p"*) printf '%s' "$p"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# The SUBSET of PROTECTED_PATHS that keeps the BLOCKING `ask` (2026-08-09
+# advisory split; see "TWO OUTCOMES FOR A NON-EXEMPT HIT" in DESIGN). Every
+# entry here MUST also be a PROTECTED_PATHS entry - an entry only listed here
+# would be checked for the ask/advisory split but never matched in the first
+# place, i.e. a silent allow. The selftest asserts that containment rather
+# than trusting it, and asserts the complement is non-empty too (a
+# SPEC_GATED_PATHS that swallowed every protected path would turn the whole
+# split back into the blanket ask it replaced, with no row noticing).
+SPEC_GATED_PATHS=(
+  "docs/superpowers/specs"
+  "docs/superpowers"
+)
+
+# Pure function: does $1 contain a SPEC-GATED path? Same substring rule as
+# bash_hits_protected_path, deliberately a SEPARATE pass rather than a
+# classification of that function's first match: PROTECTED_PATHS is ordered
+# for the reason message, so `cp docs/superpowers/specs/x app/public/data/`
+# returns `app/public/data` there and would downgrade a spec edit to an
+# advisory. Checking the spec set independently makes the spec `ask` win
+# whenever a spec path appears ANYWHERE in the command.
+bash_hits_spec_gated_path() {
+  local cmd="$1" p
+  for p in "${SPEC_GATED_PATHS[@]}"; do
     case "$cmd" in
       *"$p"*) printf '%s' "$p"; return 0 ;;
     esac
@@ -657,7 +818,8 @@ bash_is_provably_readonly() {
   # First word only. `read -r` strips leading IFS whitespace and performs no
   # expansion; IFS is pinned locally so a future edit elsewhere cannot change
   # what "first word" means here. An empty command yields an empty verb,
-  # which matches nothing below and therefore asks.
+  # which matches nothing below, so nothing is suppressed and the caller
+  # fires (ask or advisory, per the split).
   local IFS=$' \t'
   read -r verb rest <<<"$cmd"
 
@@ -674,6 +836,60 @@ bash_is_provably_readonly() {
 # entry appears in the emitted reason, so a future refactor that breaks the
 # derivation fails closed rather than shipping a wrong list. Safe to splice
 # into JSON as-is: every entry is bare ASCII with no quote or backslash.
+# regen_hint PATH - the regeneration command for ONE protected path. Split out
+# of the advisory so the advisory can name the generator for the path that
+# actually matched instead of listing every generator on every fire; that one
+# change is most of the trim recorded in bash_advisory's header below.
+# Sources, so a future reader can re-verify rather than trust: pipeline/
+# package.json's five scripts, build_icons.mjs:45-48 (which writes BOTH
+# app/public/icons/ and app/public/brand/social-card.png - one script, two
+# protected directories, which is why they share a hint), app/package.json's
+# `notices` script, and pipeline/README.md's "basemap.pmtiles.png" section.
+#
+# The default arm FAILS LOUD rather than silently generic: it names itself, and
+# the selftest asserts NO current PROTECTED_PATHS entry reaches it. Adding a
+# protected path without recording its generator therefore reds the suite
+# instead of shipping an advisory that tells the reader nothing.
+regen_hint() {
+  case "$1" in
+    "app/public/data")                    printf 'npm --prefix pipeline run polars|harbors|seamarks|mask (basemap.pmtiles.png: pipeline/extract_basemap.sh)' ;;
+    "app/public/icons"|"app/public/brand") printf 'npm --prefix pipeline run icons' ;;
+    "app/public/THIRD-PARTY-NOTICES.txt") printf 'npm --prefix app run notices' ;;
+    ".pmtiles")                           printf 'pipeline/extract_basemap.sh' ;;
+    *)                                    printf 'see pipeline/README.md - no generator recorded for this path' ;;
+  esac
+}
+
+# bash_advisory PATH - emits the NON-BLOCKING advisory for a non-exempt hit on
+# a build-output path (2026-08-09 split; DESIGN explains why this is not an
+# `ask` and why it carries no `permissionDecision`). Kept as its own one-line
+# emitter so the mutation check has something to stub: replacing this body
+# with `:` must red a selftest row, otherwise "advisory emitted" and "guard
+# silently did nothing" would be indistinguishable - the exact failure mode
+# that makes `permissionDecisionReason` the wrong field here.
+#
+# COST, because it is paid on EVERY fire and the DESIGN block measured only the
+# other side of the ledger (PR #478 review, Minor 3): this text is injected
+# into the assistant's context roughly as often as the old guard prompted -
+# order 1,000 times over a long working period. FIRST CUT measured 970-996
+# bytes (~250 tokens) per fire; it listed all three generators and closed with
+# a sentence about the spec tree that a build-output fire has no use for.
+# TRIMMED to the four things that make it ACTIONABLE, and nothing else:
+#   (1) which protected path matched, (2) that it is generated output rather
+#   than hand-editable source, (3) what to do instead if the command writes -
+#   the generator for THAT path, re-run, commit the output, and (4) the honest
+#   admission that this guard cannot tell a read from a write.
+# Measured after: see the selftest's advisory-size case, which pins an upper
+# bound so the text cannot quietly grow back.
+#
+# JSON-safety: $1 is always a PROTECTED_PATHS entry (bare ASCII, no quote or
+# backslash), and both the literal text and every regen_hint arm contain no
+# character JSON must escape. Do not splice user input in here.
+bash_advisory() {
+  local p="$1"
+  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"artifact-guard ADVISORY (no prompt, nothing to approve): this command names '"$p"', which is committed BUILD OUTPUT, not hand-editable source. Regenerate with: '"$(regen_hint "$p")"'. Reading it is fine; WRITING it is not - change the generator or its input, re-run, and commit the output, because a hand edit drifts from its generator and the next regeneration silently reverts it. This guard matches the path STRING only, never shell syntax, so it cannot tell your read from a write - that judgement is yours."}}'
+}
+
 readonly_verbs_sentence() {
   local out="" v
   for v in "${READONLY_VERBS[@]}"; do
@@ -718,7 +934,25 @@ if [ "${1:-}" = "--selftest" ]; then
   # (#437) 199 -> 203: +2 for the `tail` addition (its own decision row plus
   # the per-verb reason-string twin case, per the NOTE above) and +2 for the
   # acceptance-pair rows.
-  EXPECTED_CASES=203
+  # (2026-08-09 advisory split) 203 -> 212: +5 SPLIT rows (two spec-tree asks,
+  # one build-output advisory, one read-only-emits-nothing, one MIXED), +2 for
+  # the SPEC_GATED_PATHS containment loop (one case per entry, so this total
+  # moves with that array the same way it moves with READONLY_VERBS), +1 for
+  # the non-empty-complement case, +1 for the jq-parsed advisory-shape case.
+  # (PR #478 review, Minor 3) 212 -> 217: +1 per NON-spec PROTECTED_PATHS entry
+  # for the per-path advisory twin, so this total now moves with THAT array's
+  # non-spec subset as well.
+  # NOTE the 43 pre-existing `decide` rows that flipped ask -> advisory are
+  # NOT part of that delta: a row changing its expectation does not change the
+  # count, which is exactly why the count alone can never notice a decision
+  # regression - that is the rows' job. TWO COUNTS THAT LOOK LIKE ONE, so
+  # quote the right one: 43 is how many rows FLIPPED, while
+  # `grep -cE '^  decide advisory '` reads 44 - the difference is the one
+  # `decide advisory` row the SPLIT block adds new. Same shape as the #437
+  # family-vs-noise counts in DESIGN: a future reader counting the obvious way
+  # gets 44 and will not match 43, and that is two definitions disagreeing,
+  # not an error.
+  EXPECTED_CASES=217
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -745,10 +979,23 @@ if [ "${1:-}" = "--selftest" ]; then
   # MEASURED on scratch copies under /tmp before this gate existed: $SELF
   # non-executable, $SELF pointed at a directory, and $SELF exiting non-zero
   # with no output all produced the SAME signature - 41 of the want-`ask`
-  # rows red, 0 of the 22 want-`allow` rows red (the entire pinning of
-  # #388's conjunctive read-only exemption: the single `decide allow` row
-  # plus all 21 `decide_exempt` rows) - the suite failed closed only by
+  # rows red, 0 of the 22 want-`allow` rows AMONG THE decide/decide_exempt
+  # FAMILY red (that scope is load-bearing, not padding: it is what makes the
+  # count 22 rather than the unscoped figure, and 22 was the entire pinning of
+  # #388's conjunctive read-only exemption - the single `decide allow` row plus
+  # all 21 `decide_exempt` rows of the day) - the suite failed closed only by
   # ACCIDENT of the ask rows outnumbering the allow rows, not on purpose.
+  # (Those two counts are from that DATED measurement and are not re-derived
+  # here; the row composition has since changed twice over. RE-COUNTED as of
+  # the 2026-08-09 split, each figure `grep -cE`-derived rather than hedged:
+  # within that same decide/decide_exempt family the want-`allow` set is now
+  # 23 - 1 `decide allow` + 22 `decide_exempt`. OUTSIDE it there are 4
+  # `wrapper_check allow` rows, so the UNSCOPED want-`allow` set is 27; they
+  # were never part of the 22 above and naming both numbers is the point of
+  # this note. A dead $SELF additionally reads 44 `decide advisory` + 3
+  # `wrapper_check advisory` rows as `allow`, so the accident this gate
+  # replaces has grown MORE lopsided in the safe direction - a reason to keep
+  # the gate, never to rely on it.)
   # This catches the two STATIC failure shapes ($SELF not executable, $SELF
   # a directory) in one place with one clear diagnosis instead of 41
   # misleading "got [allow] want [ask]" lines that look like a decision
@@ -803,6 +1050,16 @@ if [ "${1:-}" = "--selftest" ]; then
   # row in this suite may legitimately want `inert` (the one row that DOES
   # reach this path - "Bash with no command field" - now asserts it
   # explicitly), so separating it out turns a silent pass into a red row.
+  #
+  # `advisory` (2026-08-09 split) is recognised by `additionalContext` — but
+  # ONLY after a `"permissionDecision"` check that is deliberately BROADER
+  # than the two value-specific ones above it. That ordering is the structural
+  # half of "the advisory must carry no permissionDecision": an advisory that
+  # sprouted `permissionDecision:"allow"` (the tempting spelling, which would
+  # BYPASS the user's own permission rules rather than defer to them) reads as
+  # `other` here and reds its row, instead of passing as a healthy advisory.
+  # The jq-parsed absence assertion further down is the explicit half; keep
+  # both — this one covers every advisory row for free, that one names the key.
   hook_decision() {
     local out="$1"
     if printf '%s' "$out" | grep -q 'protection is inert'; then
@@ -813,14 +1070,22 @@ if [ "${1:-}" = "--selftest" ]; then
       printf 'deny'
     elif printf '%s' "$out" | grep -q '"permissionDecision":"ask"'; then
       printf 'ask'
+    elif printf '%s' "$out" | grep -q '"permissionDecision"'; then
+      printf 'other'
+    elif printf '%s' "$out" | grep -q '"additionalContext"'; then
+      printf 'advisory'
     else
       printf 'other'
     fi
   }
 
   # check WANT DESC CMD - drives the pure bash_hits_protected_path() function
-  # directly (WANT is "ask" or "allow"). This tests PATH COVERAGE ONLY, which
-  # is deliberate and must stay that way (#309 read-only-exemption review):
+  # directly. WANT is "hit" or "miss" - deliberately NOT "ask"/"allow", which
+  # is what these rows used to say and which the 2026-08-09 advisory split
+  # made actively misleading: a hit on a build-output path now produces an
+  # ADVISORY, not an ask, so a row reading `check ask` would name a decision
+  # this helper never computes. This tests PATH COVERAGE ONLY, which is
+  # deliberate and must stay that way (#309 read-only-exemption review):
   # several rows below use `cat <path>` purely as a carrier to pin a
   # PROTECTED_PATHS decision (the B1 trailing-slash removal, the N1 bounding
   # rows). `cat` is now on READONLY_VERBS, so rebinding `check` to the full
@@ -830,7 +1095,7 @@ if [ "${1:-}" = "--selftest" ]; then
   check() {
     local want="$1" desc="$2" cmd="$3" got
     total=$((total + 1))
-    if bash_hits_protected_path "$cmd" >/dev/null; then got=ask; else got=allow; fi
+    if bash_hits_protected_path "$cmd" >/dev/null; then got=hit; else got=miss; fi
     if [ "$got" != "$want" ]; then
       echo "SELFTEST FAIL: $desc -> got [$got] want [$want] (cmd: $cmd)"
       fail=1
@@ -890,8 +1155,11 @@ if [ "${1:-}" = "--selftest" ]; then
     fi
     json="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$(json_escape "$cmd")\"}}"
     # (#421 review, Major 2) - same rc-before-decision discipline as decide()
-    # above; these are exactly the 21 rows the review found passing
-    # vacuously against a dead $SELF.
+    # above; this is the helper behind the 21 rows THAT REVIEW found passing
+    # vacuously against a dead $SELF. 21 is a DATED count, not a description
+    # of the block below: the 2026-08-09 advisory split added a 22nd
+    # `decide_exempt` row, so `grep -cE '^  decide_exempt '` reads 22 today
+    # and will keep moving. The count is incidental; the discipline is not.
     out=$(printf '%s' "$json" | "$SELF" 2>&1); rc=$?
     if [ "$rc" -ne 0 ]; then
       echo "SELFTEST FAIL [invocation]: $desc -> \$SELF exited $rc, not 0 - this is NOT a decision, it is a dead or crashing invocation (out: $out)"
@@ -908,79 +1176,81 @@ if [ "${1:-}" = "--selftest" ]; then
   nl=$'\n'
   cr=$'\r'
 
-  # --- POSITIVE: a real Bash-mediated write to a protected path must ask.
+  # --- POSITIVE: a real Bash-mediated write to a protected path must be
+  # MATCHED (what the resulting DECISION is - ask for the spec tree, advisory
+  # for a build output - is the `decide` block's job, not this one).
   # Each row isolates exactly ONE shell construct plus the path (#216
   # one-trigger-per-row rule) - no extra characters that could independently
   # explain a pass.
-  check ask "sed -i in place edit"      "sed -i s/x/y/ app/public/data/mask.bin"
-  check ask "cp into protected dir"     "cp /tmp/f app/public/data/mask.bin"
-  check ask "tee into protected dir"    "tee app/public/data/mask.bin"
-  check ask "> redirect"                "echo x > app/public/data/mask.bin"
-  check ask "heredoc redirect"          "cat > app/public/data/mask.bin <<EOF${nl}x${nl}EOF"
-  check ask "path after &&"             "git status && cat app/public/data/mask.bin"
-  check ask "path after ;"              "echo hi; cp /tmp/f app/public/data/mask.bin"
+  check hit  "sed -i in place edit"      "sed -i s/x/y/ app/public/data/mask.bin"
+  check hit  "cp into protected dir"     "cp /tmp/f app/public/data/mask.bin"
+  check hit  "tee into protected dir"    "tee app/public/data/mask.bin"
+  check hit  "> redirect"                "echo x > app/public/data/mask.bin"
+  check hit  "heredoc redirect"          "cat > app/public/data/mask.bin <<EOF${nl}x${nl}EOF"
+  check hit  "path after &&"             "git status && cat app/public/data/mask.bin"
+  check hit  "path after ;"              "echo hi; cp /tmp/f app/public/data/mask.bin"
   # shellcheck disable=SC2016  # literal $( ) is the test input, not an expansion
-  check ask 'path inside $( )'          'echo "$(cat app/public/data/mask.bin)"'
+  check hit  'path inside $( )'          'echo "$(cat app/public/data/mask.bin)"'
 
   # --- PATH MATCHING of a read-only mention. Both rows pin that the PATH is
   # seen; only the second is still an accepted over-fire at the DECISION
   # level. `grep -n foo <path>` now SUPPRESSES (#309 follow-up read-only
   # exemption) - its decision-level twin is in the exemption block below,
   # and this row's job is now solely to keep the path match pinned.
-  check ask "path match: read-only grep (decision: allow, see exemption block)" "grep -n foo app/public/data/mask.bin"
-  check ask "OVER-FIRE (accepted): prose mention"  "echo mentions app/public/data/mask.bin in passing"
+  check hit  "path match: read-only grep (decision: allow, see exemption block)" "grep -n foo app/public/data/mask.bin"
+  check hit  "OVER-FIRE (accepted): prose mention"  "echo mentions app/public/data/mask.bin in passing"
 
   # --- NEGATIVE: no protected path named anywhere.
-  check allow "git status"              "git status"
-  check allow "npm run build"           "npm run build"
-  check allow "unrelated source file"   "cat app/src/App.tsx"
-  check allow "empty command"           ""
+  check miss "git status"              "git status"
+  check miss "npm run build"           "npm run build"
+  check miss "unrelated source file"   "cat app/src/App.tsx"
+  check miss "empty command"           ""
 
   # --- POSITIVE (#309 fix-wave B1): a write to the protected directory's
-  # BARE NAME, not something inside it, must still ask. Measured ALLOW
+  # BARE NAME, not something inside it, must still MATCH. Measured ALLOW
   # before this fix (trailing slash on directory entries meant only a path
   # INSIDE the directory ever matched) - this is the guard's core purpose,
   # not a redesign.
-  check ask "B1: cp -r replaces the directory itself"   "cp -r /tmp/d app/public/data"
-  check ask "B1: rsync -a writes into the bare dir"     "rsync -a /tmp/d/ app/public/icons"
-  check ask "B1: mv stashes the directory itself"       "mv app/public/data /tmp/stash"
-  check ask "B1: write to the bare specs directory"     "cp /tmp/f docs/superpowers/specs"
+  check hit  "B1: cp -r replaces the directory itself"   "cp -r /tmp/d app/public/data"
+  check hit  "B1: rsync -a writes into the bare dir"     "rsync -a /tmp/d/ app/public/icons"
+  check hit  "B1: mv stashes the directory itself"       "mv app/public/data /tmp/stash"
+  check hit  "B1: write to the bare specs directory"     "cp /tmp/f docs/superpowers/specs"
 
   # --- POSITIVE (#309 fix-wave M4): ancestor coverage for docs/superpowers -
   # no collision found with any routine command, so added outright (see
   # DESIGN above for why app/public and bare app are NOT given the same
   # treatment).
-  check ask "M4: mv the docs/superpowers ancestor"      "mv docs/superpowers /tmp/stash"
-  check ask "M4: find -delete under the ancestor"       "find docs/superpowers -name *.md -delete"
+  check hit  "M4: mv the docs/superpowers ancestor"      "mv docs/superpowers /tmp/stash"
+  check hit  "M4: find -delete under the ancestor"       "find docs/superpowers -name *.md -delete"
 
   # --- NEGATIVE (#309 fix-wave N1): bounding row for the docs/superpowers
   # ancestor entry - a real path OUTSIDE it that shares only the "docs/"
   # prefix must not match. Without this row, over-broadening the entry to
   # bare "docs" (a one-character typo) reds nothing; measured, see DESIGN.
-  check allow "N1 near-miss: docs outside superpowers" "cat docs/security-assurance-case.md"
+  check miss "N1 near-miss: docs outside superpowers" "cat docs/security-assurance-case.md"
 
   # --- POSITIVE (#309 fix-wave M1): .pmtiles is now protected as a bare
   # substring - no noise source found (contrast the .bin residual row
   # below). .pmtiles.png files are covered too, via SUBSUMPTION, not a
   # second entry (see DESIGN - N2) - this row exercises that subsumption,
   # not an independent .pmtiles.png entry.
-  check ask "M1: .pmtiles extension"                              "cp /tmp/f app/dist/data/basemap.pmtiles"
-  check ask "M1: .pmtiles.png extension (via .pmtiles subsumption)" "cp /tmp/f app/dist/data/basemap.pmtiles.png"
+  check hit  "M1: .pmtiles extension"                              "cp /tmp/f app/dist/data/basemap.pmtiles"
+  check hit  "M1: .pmtiles.png extension (via .pmtiles subsumption)" "cp /tmp/f app/dist/data/basemap.pmtiles.png"
 
   # --- NEGATIVE (#309 fix-wave N1): bounding row for the .pmtiles entry - a
   # real command using an unrelated ".py" extension must not match. Without
   # this row, over-broadening the entry to bare ".p" reds nothing; measured,
   # see DESIGN.
-  check allow "N1 near-miss: .py is not .pmtiles" "python3 pipeline/verify_mask.py"
+  check miss "N1 near-miss: .py is not .pmtiles" "python3 pipeline/verify_mask.py"
 
   # --- RESIDUAL (documented, not fixed - see DESIGN and the "KNOWN
   # SILENT-ALLOW PATHS" list above): the .bin extension and the app/public
   # and app ancestors are deliberately NOT protected. Pinned as ALLOW here so
   # a future accidental narrowing (or widening) of PROTECTED_PATHS is caught
   # either way, not just silently drifted.
-  check allow "RESIDUAL (documented): bare .bin outside protected dirs" "cp /tmp/f app/dist/data/mask.bin"
-  check allow "RESIDUAL (documented): bare app/public ancestor"         "find app/public -name *.bin -delete"
-  check allow "RESIDUAL (documented): bare app ancestor"                "find app -name mask.bin -delete"
+  check miss "RESIDUAL (documented): bare .bin outside protected dirs" "cp /tmp/f app/dist/data/mask.bin"
+  check miss "RESIDUAL (documented): bare app/public ancestor"         "find app/public -name *.bin -delete"
+  check miss "RESIDUAL (documented): bare app ancestor"                "find app -name mask.bin -delete"
 
   # --- PATH MATCHING (#309 fix-wave B1): removing the trailing slash from
   # the directory entries means a sibling directory sharing the same PREFIX
@@ -995,10 +1265,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # entry; both are legitimate and there is no way to isolate one from the
   # other for this family, since anything under docs/superpowers/specs-old
   # is definitionally nested under docs/superpowers too.
-  check ask "OVER-FIRE (accepted): sibling database/ shares the data prefix"   "cat app/public/database/config.json"
-  check ask "OVER-FIRE (accepted): sibling iconsets/ shares the icons prefix"  "cat app/public/iconsets/foo.svg"
-  check ask "OVER-FIRE (accepted): sibling specs-old/ (also via ancestor)"    "cat docs/superpowers/specs-old/draft.md"
-  check allow "sibling file: NOTICES-OLD.txt" "cat app/public/THIRD-PARTY-NOTICES-OLD.txt"
+  check hit  "OVER-FIRE (accepted): sibling database/ shares the data prefix"   "cat app/public/database/config.json"
+  check hit  "OVER-FIRE (accepted): sibling iconsets/ shares the icons prefix"  "cat app/public/iconsets/foo.svg"
+  check hit  "OVER-FIRE (accepted): sibling specs-old/ (also via ancestor)"    "cat docs/superpowers/specs-old/draft.md"
+  check miss "sibling file: NOTICES-OLD.txt" "cat app/public/THIRD-PARTY-NOTICES-OLD.txt"
 
   # --- ACCEPTED OVER-FIRE (bare filename, no trailing delimiter to bound it):
   # a literal file path has no natural "next char must be /" boundary the way
@@ -1006,7 +1276,7 @@ if [ "${1:-}" = "--selftest" ]; then
   # does contain the protected string and is correctly MATCHED - not a bug,
   # but worth pinning so it isn't mistaken for one later. (Same carrier-verb
   # note as the block above: at the DECISION level this `cat` now suppresses.)
-  check ask "path match: NOTICES.txt.bak" "cat app/public/THIRD-PARTY-NOTICES.txt.bak"
+  check hit  "path match: NOTICES.txt.bak" "cat app/public/THIRD-PARTY-NOTICES.txt.bak"
 
   # ======================================================================
   # #309 FOLLOW-UP: the read-only exemption. Driven through `decide` (the
@@ -1018,8 +1288,9 @@ if [ "${1:-}" = "--selftest" ]; then
   # exemption deleted (#216's near-miss lesson, whose original instance was a
   # membership row that a `<` redirect had already disqualified).
   #
-  # Each MUST-ASK row carries exactly ONE reason to ask beyond the path, so
-  # it isolates the clause it pins. Where two conditions cannot be separated
+  # Each MUST-FIRE row carries exactly ONE reason to fire beyond the path, so
+  # it isolates the clause it pins. (These rows want `advisory`, not `ask` -
+  # every one names a build-output path; see the 2026-08-09 split.) Where two conditions cannot be separated
   # (`$(` necessarily contains both `$` and `(`), the row says so and the
   # separable halves get their own rows.
 
@@ -1050,77 +1321,84 @@ if [ "${1:-}" = "--selftest" ]; then
   # longer reach the user, because the command that produces each is a bare
   # `cat`. All four get a decision-level twin (#388 review, Finding 4 - three
   # of them had none, leaving the user-visible half of the change unpinned:
-  # nothing would have failed if one started prompting again, which is the
-  # regression this PR exists to prevent).
+  # nothing would have failed if one started prompting or advising again,
+  # which is the regression this PR exists to prevent).
   decide_exempt "EXEMPT: sibling database/ read no longer prompts"  "cat app/public/database/config.json"
   decide_exempt "EXEMPT: sibling iconsets/ read no longer prompts"  "cat app/public/iconsets/foo.svg"
   decide_exempt "EXEMPT: sibling specs-old/ read no longer prompts" "cat docs/superpowers/specs-old/draft.md"
   decide_exempt "EXEMPT: NOTICES.txt.bak read no longer prompts"    "cat app/public/THIRD-PARTY-NOTICES.txt.bak"
 
-  # --- MUST ASK: verb MEMBERSHIP is what fails. No disqualifying construct
+  # --- MUST NOT SUPPRESS (advisory, per the 2026-08-09 split - every row
+  # here names a BUILD-OUTPUT path, so a non-exempt hit advises rather than
+  # asks; the SPLIT block further down carries the spec-tree twins): verb
+  # MEMBERSHIP is what fails. No disqualifying construct
   # in any of these - strip one clause and only these rows can catch it.
-  decide ask "MEMBERSHIP: sed is not read-only"      "sed -i s/x/y/ app/public/data/mask.bin"
-  decide ask "MEMBERSHIP: cp is not read-only"       "cp /tmp/f app/public/data/mask.bin"
-  decide ask "MEMBERSHIP: touch is not read-only"    "touch app/public/data/mask.bin"
-  decide ask "MEMBERSHIP: find is EXCLUDED (-delete/-exec surface)" "find app/public/data -name x"
-  decide ask "MEMBERSHIP: file is EXCLUDED (file -C -m X writes X.mgc)" "file app/public/data/mask.bin"
+  decide advisory "MEMBERSHIP: sed is not read-only"      "sed -i s/x/y/ app/public/data/mask.bin"
+  decide advisory "MEMBERSHIP: cp is not read-only"       "cp /tmp/f app/public/data/mask.bin"
+  decide advisory "MEMBERSHIP: touch is not read-only"    "touch app/public/data/mask.bin"
+  decide advisory "MEMBERSHIP: find is EXCLUDED (-delete/-exec surface)" "find app/public/data -name x"
+  decide advisory "MEMBERSHIP: file is EXCLUDED (file -C -m X writes X.mgc)" "file app/public/data/mask.bin"
   # #388 review Finding 1: `grep` is a Claude Code shell FUNCTION shimming to
   # ugrep, whose option surface contains writers/executors - so it is NOT on
-  # the allowlist and a bare read-only grep correctly asks. Removing it flips
-  # exactly this row's former `allow` twin; nothing else moved.
-  decide ask "MEMBERSHIP: grep is EXCLUDED (shell function shimming to ugrep)" "grep -n foo app/public/data/mask.bin"
-  decide ask "MEMBERSHIP: exact match, not prefix"   "statx app/public/data/mask.bin"
-  decide ask "MEMBERSHIP: exact match, not a path-qualified spelling" "/usr/bin/stat app/public/data/mask.bin"
-  decide ask "MEMBERSHIP: a bare path as the verb"   "app/public/data/mask.bin"
+  # the allowlist and a bare read-only grep correctly FIRES - measured as an
+  # ADVISORY since the 2026-08-09 split (`app/public/data` is not spec-gated),
+  # a prompt before it. Removing `grep` from the allowlist flips exactly this
+  # row's former `allow` twin; nothing else moved.
+  decide advisory "MEMBERSHIP: grep is EXCLUDED (shell function shimming to ugrep)" "grep -n foo app/public/data/mask.bin"
+  decide advisory "MEMBERSHIP: exact match, not prefix"   "statx app/public/data/mask.bin"
+  decide advisory "MEMBERSHIP: exact match, not a path-qualified spelling" "/usr/bin/stat app/public/data/mask.bin"
+  decide advisory "MEMBERSHIP: a bare path as the verb"   "app/public/data/mask.bin"
 
-  # --- MUST ASK: a WRITE-CAPABLE CHARACTER is what fails. Every row is an
+  # --- MUST NOT SUPPRESS (advisory): a WRITE-CAPABLE CHARACTER is what fails. Every row is an
   # allowlisted verb + a protected path, so the named character is the only
   # thing standing between it and suppression. These are the fail-open shapes
   # a first-word-only allowlist would have let through.
-  decide ask "CHAR >: redirect makes cat a write"    "cat app/public/data/mask.bin > /tmp/x"
-  decide ask "CHAR >>: append redirect"              "cat app/public/data/mask.bin >> /tmp/x"
-  decide ask "CHAR <: input redirect"                "wc -l < app/public/data/mask.bin"
-  decide ask "CHAR <<: heredoc"                      "cat app/public/data/mask.bin << EOF"
-  decide ask "CHAR |: pipe (could pipe into tee)"    "cat app/public/data/mask.bin | wc -l"
-  decide ask "CHAR ||: or-list"                      "stat app/public/data/mask.bin || true"
-  decide ask "CHAR &: background"                    "stat app/public/data/mask.bin &"
-  decide ask "CHAR &&: and-list (stat foo && rm bar shape)" "stat app/public/data/mask.bin && true"
-  decide ask "CHAR ;: separator"                     "stat app/public/data/mask.bin ; true"
+  decide advisory "CHAR >: redirect makes cat a write"    "cat app/public/data/mask.bin > /tmp/x"
+  decide advisory "CHAR >>: append redirect"              "cat app/public/data/mask.bin >> /tmp/x"
+  decide advisory "CHAR <: input redirect"                "wc -l < app/public/data/mask.bin"
+  decide advisory "CHAR <<: heredoc"                      "cat app/public/data/mask.bin << EOF"
+  decide advisory "CHAR |: pipe (could pipe into tee)"    "cat app/public/data/mask.bin | wc -l"
+  decide advisory "CHAR ||: or-list"                      "stat app/public/data/mask.bin || true"
+  decide advisory "CHAR &: background"                    "stat app/public/data/mask.bin &"
+  decide advisory "CHAR &&: and-list (stat foo && rm bar shape)" "stat app/public/data/mask.bin && true"
+  decide advisory "CHAR ;: separator"                     "stat app/public/data/mask.bin ; true"
   # shellcheck disable=SC2016  # the literal backtick IS the test input
-  decide ask 'CHAR backtick: command substitution'   'stat app/public/data/mask.bin `true`'
+  decide advisory 'CHAR backtick: command substitution'   'stat app/public/data/mask.bin `true`'
   # shellcheck disable=SC2016  # literal $ is the test input, not an expansion
-  decide ask 'CHAR $: parameter expansion'           'stat $HOME/app/public/data/mask.bin'
+  decide advisory 'CHAR $: parameter expansion'           'stat $HOME/app/public/data/mask.bin'
   # shellcheck disable=SC2016
-  decide ask 'CHAR $( ): substitution - inseparable from $ and ( )' 'stat $(echo app/public/data/mask.bin)'
+  decide advisory 'CHAR $( ): substitution - inseparable from $ and ( )' 'stat $(echo app/public/data/mask.bin)'
   # shellcheck disable=SC2016
-  decide ask 'CHAR ${ }: inseparable from $ and { }'  'stat ${HOME}/app/public/data/mask.bin'
-  decide ask "CHAR ( ): subshell"                    "stat (app/public/data/mask.bin)"
-  decide ask "CHAR { }: brace expansion"             "stat app/public/data/{mask,x}.bin"
-  decide ask "CHAR backslash: escaping"              'stat app/public/data/mask.bin\x'
-  decide ask "CHAR !: negation/history"              "test ! -f app/public/data/mask.bin"
-  decide ask "CHAR #: comment"                       "stat app/public/data/mask.bin # note"
-  decide ask "CHAR newline: second command"          "stat app/public/data/mask.bin${nl}true"
-  decide ask "CHAR carriage return"                  "stat app/public/data/mask.bin${cr}true"
+  decide advisory 'CHAR ${ }: inseparable from $ and { }'  'stat ${HOME}/app/public/data/mask.bin'
+  decide advisory "CHAR ( ): subshell"                    "stat (app/public/data/mask.bin)"
+  decide advisory "CHAR { }: brace expansion"             "stat app/public/data/{mask,x}.bin"
+  decide advisory "CHAR backslash: escaping"              'stat app/public/data/mask.bin\x'
+  decide advisory "CHAR !: negation/history"              "test ! -f app/public/data/mask.bin"
+  decide advisory "CHAR #: comment"                       "stat app/public/data/mask.bin # note"
+  decide advisory "CHAR newline: second command"          "stat app/public/data/mask.bin${nl}true"
+  decide advisory "CHAR carriage return"                  "stat app/public/data/mask.bin${cr}true"
 
-  # --- MUST ASK (#404): a multi-segment command where EVERY segment
+  # --- MUST NOT SUPPRESS (#404): a multi-segment command where EVERY segment
   # independently looks read-only. This is the exact shape that let the
   # since-removed bash_decision() twin diverge from production undetected:
   # a `;`-segmenter checking each segment's first word against
   # READONLY_VERBS independently would ALLOW this (both `stat` and `ls` are
   # on the allowlist), while the real predicate's "any disqualifying char
-  # anywhere" rule (the bare `;`) correctly still asks. This is the
+  # anywhere" rule (the bare `;`) correctly still fires. This is the
   # maintainer's own reported reproduction command, unchanged.
-  decide ask "MULTI-SEGMENT (#404): every segment individually looks read-only" "stat app/public/data/mask.bin; ls app/public/data"
+  decide advisory "MULTI-SEGMENT (#404): every segment individually looks read-only" "stat app/public/data/mask.bin; ls app/public/data"
 
   # --- #437 ACCEPTANCE PAIR, pinned at the decision the MEASUREMENT reached.
-  # Row A is the shape #437 nominated as noise. It still ASKS, because the
+  # Row A is the shape #437 nominated as noise. It still FIRES (as an
+  # advisory since the 2026-08-09 split; it ASKED when #437 measured it),
+  # because the
   # `|`-split that would suppress it measured 0 prompts removed across 27,040
   # real commands and was rejected on that yield (full record, including why
   # its zero is a WEAKER zero than #404's two, in DESIGN above). This row is
   # therefore the REJECTION's pin, not the fix's: it reds the moment anyone
   # takes `|` out of WRITE_CAPABLE_CHARS without re-running that measurement.
-  decide ask "#437 A: ls | head still asks (|-split measured 0, rejected)" "ls app/public/data/ | head -20"
-  # Row B is the half of #437's reported command that MUST keep asking - the
+  decide advisory "#437 A: ls | head still fires (|-split measured 0, rejected)" "ls app/public/data/ | head -20"
+  # Row B is the half of #437's reported command that MUST keep firing - the
   # issue says so itself ("no predicate short of running the JS can prove
   # otherwise"). Unlike the clause-isolating rows above, this one deliberately
   # carries SEVERAL independent triggers (`node` is not allowlisted, and the
@@ -1128,29 +1406,119 @@ if [ "${1:-}" = "--selftest" ]; then
   # not a row isolating one clause, so it must not be read as pinning verb
   # membership - the MEMBERSHIP block above does that job.
   # shellcheck disable=SC2016  # literal $HOME is the test input, not an expansion
-  decide ask "#437 B: node -e naming a protected path must still ask" 'node -e "const h=require($HOME/app/public/data/harbors.json); console.log(h.length)"'
+  decide advisory "#437 B: node -e naming a protected path must still fire" 'node -e "const h=require($HOME/app/public/data/harbors.json); console.log(h.length)"'
 
-  # --- MUST ASK: a WRITE-CAPABLE TOKEN is what fails. Each token appears as
+  # --- MUST NOT SUPPRESS (advisory): a WRITE-CAPABLE TOKEN is what fails. Each token appears as
   # an ARGUMENT of an allowlisted verb, which is contrived on purpose: the
   # natural spelling (`xargs stat <path>`) would also fail verb membership
   # and so could not isolate the token (#216). These rows are defence in
   # depth - the token is already unreachable as an executable here.
-  decide ask "TOKEN tee"                             "stat tee app/public/data/mask.bin"
-  decide ask "TOKEN xargs"                           "stat xargs app/public/data/mask.bin"
-  decide ask "TOKEN -exec"                           "stat -exec app/public/data/mask.bin"
-  decide ask "TOKEN -execdir (via -exec subsumption, not its own entry)" "stat -execdir app/public/data/mask.bin"
-  decide ask "TOKEN -delete"                         "stat -delete app/public/data/mask.bin"
-  decide ask "TOKEN -ok"                             "stat -ok app/public/data/mask.bin"
-  decide ask "TOKEN -okdir (via -ok subsumption, not its own entry)"     "stat -okdir app/public/data/mask.bin"
-  decide ask "TOKEN sudo"                            "stat sudo app/public/data/mask.bin"
-  decide ask "TOKEN eval"                            "stat eval app/public/data/mask.bin"
-  decide ask "TOKEN sh -c"                           "stat sh -c app/public/data/mask.bin"
-  decide ask "TOKEN bash -c (via sh -c subsumption, not its own entry)" "stat bash -c app/public/data/mask.bin"
+  decide advisory "TOKEN tee"                             "stat tee app/public/data/mask.bin"
+  decide advisory "TOKEN xargs"                           "stat xargs app/public/data/mask.bin"
+  decide advisory "TOKEN -exec"                           "stat -exec app/public/data/mask.bin"
+  decide advisory "TOKEN -execdir (via -exec subsumption, not its own entry)" "stat -execdir app/public/data/mask.bin"
+  decide advisory "TOKEN -delete"                         "stat -delete app/public/data/mask.bin"
+  decide advisory "TOKEN -ok"                             "stat -ok app/public/data/mask.bin"
+  decide advisory "TOKEN -okdir (via -ok subsumption, not its own entry)"     "stat -okdir app/public/data/mask.bin"
+  decide advisory "TOKEN sudo"                            "stat sudo app/public/data/mask.bin"
+  decide advisory "TOKEN eval"                            "stat eval app/public/data/mask.bin"
+  decide advisory "TOKEN sh -c"                           "stat sh -c app/public/data/mask.bin"
+  decide advisory "TOKEN bash -c (via sh -c subsumption, not its own entry)" "stat bash -c app/public/data/mask.bin"
 
   # --- The exemption must not widen the guard either: an allowlisted verb
   # with NO protected path is allowed for the ordinary reason (no hit), and
   # that has to stay independent of the exemption.
   decide allow "no path named: unrelated read" "cat app/src/App.tsx"
+
+  # ======================================================================
+  # 2026-08-09 ADVISORY SPLIT. The block above pins the DECISION MACHINERY
+  # (which shapes suppress, which do not); these rows pin the SPLIT ITSELF -
+  # that a non-exempt hit lands on `ask` or `advisory` according to WHICH path
+  # matched. They are deliberately three named rows rather than a note on the
+  # rows above, because the whole point of the change is that two commands
+  # with identical SHAPE now get different answers, and that difference has to
+  # be visible as its own assertion.
+  #
+  # The spec-tree rows are the load-bearing half: they are what stops a future
+  # "simplify the two branches into one" from silently removing the prompt
+  # that keeps a spec edit in the main session (CLAUDE.md).
+  decide ask "SPLIT: spec write still ASKS (blocking, unchanged)"        "cp /tmp/f docs/superpowers/specs/foo.md"
+  decide ask "SPLIT: docs/superpowers ancestor write still ASKS"         "mv docs/superpowers /tmp/stash"
+  decide advisory "SPLIT: build-output write ADVISES, does not ask"      "cp /tmp/f app/public/data/mask.bin"
+  # The exemption is evaluated BEFORE the split, so a provably read-only
+  # command emits NOTHING - not an advisory either. decide_exempt's `allow`
+  # is exactly "$SELF printed zero bytes", so this row IS that assertion
+  # (deliberately a different verb+path from the EXEMPT block above, so it
+  # cannot pass by sharing that row's reasons).
+  decide_exempt "SPLIT: provably read-only emits NOTHING, not an advisory" "head -n 1 app/public/data/mask.bin"
+  # MIXED: names a spec path AND a build-output path. PROTECTED_PATHS is
+  # ordered data-first, so its first match here is `app/public/data` - if the
+  # split classified THAT match instead of running its own spec pass, this
+  # command would be downgraded to an advisory and a spec write would lose its
+  # prompt. Mutation-checked: replacing the bash_hits_spec_gated_path() call
+  # with a classification of `$p` reds exactly this row.
+  decide ask "SPLIT MIXED: spec path + build-output path in one command ASKS" "cp docs/superpowers/specs/foo.md app/public/data/x"
+
+  # PER-PATH ADVISORY TWIN (PR #478 review, Minor 3). One case per NON-spec
+  # protected path, each asserting three things about the real emitted
+  # advisory: it NAMES the matched path, it does NOT fall through regen_hint's
+  # generic default (so a protected path added without recording its generator
+  # reds the suite instead of shipping an advisory that says nothing), and its
+  # additionalContext stays within ADVISORY_MAX_BYTES.
+  #
+  # The bound is the point of the case, not decoration: this text is injected
+  # into the assistant's context on EVERY fire - order 1,000 times over a long
+  # working period - so it is the one part of this guard whose SIZE is a
+  # standing cost. The first cut measured 970-996 bytes per fire; the trimmed
+  # text measures well under the bound below, and a revert to anything like
+  # that first cut reds here rather than passing quietly. Raising the bound is
+  # a deliberate act with a number attached, which is exactly what was missing
+  # when the first cut shipped.
+  ADVISORY_MAX_BYTES=700
+  for p in "${PROTECTED_PATHS[@]}"; do
+    bash_hits_spec_gated_path "$p" >/dev/null && continue
+    total=$((total + 1))
+    adv=$(printf '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f %s/probe"}}' "$p" | "$SELF" 2>&1)
+    advlen=${#adv}
+    case "$adv" in
+      *"$p"*) ;;
+      *) echo "SELFTEST FAIL [advisory per-path]: the advisory for [$p] does not name the matched path (out: $adv)"; fail=1; continue ;;
+    esac
+    case "$adv" in
+      *"no generator recorded"*) echo "SELFTEST FAIL [advisory per-path]: PROTECTED_PATHS entry [$p] has no regen_hint arm - it falls through to the generic default, so its advisory cannot tell a reader what to run."; fail=1; continue ;;
+    esac
+    if [ "$advlen" -gt "$((ADVISORY_MAX_BYTES + 100))" ]; then
+      echo "SELFTEST FAIL [advisory per-path]: the advisory object for [$p] is $advlen bytes, over the ${ADVISORY_MAX_BYTES}-byte additionalContext budget (+100 for the JSON envelope). Trim it, or raise ADVISORY_MAX_BYTES deliberately."
+      fail=1
+    fi
+  done
+
+  # SPEC_GATED_PATHS CONTAINMENT TWIN. Every spec-gated entry must also be a
+  # PROTECTED_PATHS entry: an entry present only in SPEC_GATED_PATHS would be
+  # classified but never MATCHED, i.e. a silent allow dressed up as the
+  # strictest branch. Asserted against the real bash_hits_protected_path(),
+  # not against a second copy of the array.
+  for p in "${SPEC_GATED_PATHS[@]}"; do
+    total=$((total + 1))
+    if ! bash_hits_protected_path "$p" >/dev/null; then
+      echo "SELFTEST FAIL [spec containment]: SPEC_GATED_PATHS entry [$p] is not covered by PROTECTED_PATHS - it would be classified as spec-gated but never matched at all (a silent allow)."
+      fail=1
+    fi
+  done
+  # ... and the complement must be NON-EMPTY. A SPEC_GATED_PATHS that grew to
+  # swallow every protected path would turn the split back into the blanket
+  # `ask` it replaced, and every row above would still pass: the advisory rows
+  # are all `app/public/...`, so this checks the property directly rather than
+  # relying on them.
+  total=$((total + 1))
+  spec_complement=0
+  for p in "${PROTECTED_PATHS[@]}"; do
+    if ! bash_hits_spec_gated_path "$p" >/dev/null; then spec_complement=$((spec_complement + 1)); fi
+  done
+  if [ "$spec_complement" -lt 1 ]; then
+    echo "SELFTEST FAIL [spec complement]: every PROTECTED_PATHS entry is spec-gated, so nothing can ever reach the advisory branch - the split is inert and the guard is back to prompting on everything."
+    fail=1
+  fi
 
   # ---- mechanism enumeration: every Bash-mediated write mechanism named in
   # #309 (plus a few more of the same shape) must be caught against EACH
@@ -1196,10 +1564,11 @@ if [ "${1:-}" = "--selftest" ]; then
   # extract a file_path" fallback ALSO answers `ask`, so a fully DISABLED
   # Bash dispatch (mutation: `if [ "$tn" = "NEVER" ]`) left the positive row
   # green, having fallen through to that unrelated fallback. REASON_SUBSTR
-  # is required whenever WANT is ask/deny and must appear in the actual
-  # permissionDecisionReason, not just match the decision keyword - pass ""
-  # only for allow rows, which have no reason to check.
-  wrapper_check() { # WANT(ask|deny|allow|inert) REASON_SUBSTR DESC JSON
+  # is required whenever WANT is ask/deny/advisory and must appear in the
+  # actual permissionDecisionReason (or, for an advisory, its
+  # additionalContext), not just match the decision keyword - pass "" only for
+  # allow rows, which emit nothing at all and so have no text to check.
+  wrapper_check() { # WANT(ask|deny|allow|inert|advisory) REASON_SUBSTR DESC JSON
     local want="$1" reason_substr="$2" desc="$3" json="$4" out rc decision
     total=$((total + 1))
     # (#421 review, Major 2) - same rc-before-decision discipline as
@@ -1225,7 +1594,7 @@ if [ "${1:-}" = "--selftest" ]; then
       esac
     fi
   }
-  wrapper_check ask   "mentions protected path" "Bash cp through the wrapper"         '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f app/public/data/mask.bin"}}'
+  wrapper_check advisory "artifact-guard ADVISORY" "Bash cp through the wrapper"      '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f app/public/data/mask.bin"}}'
   wrapper_check allow ""                        "Bash git status through the wrapper" '{"tool_name":"Bash","tool_input":{"command":"git status"}}'
   # (#309 fix-wave m2): a missing/empty Bash command now asks (see DESIGN) -
   # was `allow` before the m2 fix; the reason must be the Bash arm's OWN
@@ -1264,8 +1633,8 @@ if [ "${1:-}" = "--selftest" ]; then
   # second is the same verb and the same path plus a redirect, i.e. the
   # fail-open shape a first-word-only allowlist would have suppressed.
   wrapper_check allow ""                        "EXEMPT: stat through the wrapper"    '{"tool_name":"Bash","tool_input":{"command":"stat app/public/data/mask.bin"}}'
-  wrapper_check ask   "mentions protected path" "stat + redirect still asks"          '{"tool_name":"Bash","tool_input":{"command":"stat app/public/data/mask.bin > /tmp/x"}}'
-  wrapper_check ask   "mentions protected path" "non-allowlisted verb still asks"     '{"tool_name":"Bash","tool_input":{"command":"sed -i s/x/y/ app/public/data/mask.bin"}}'
+  wrapper_check advisory "artifact-guard ADVISORY" "stat + redirect still fires"      '{"tool_name":"Bash","tool_input":{"command":"stat app/public/data/mask.bin > /tmp/x"}}'
+  wrapper_check advisory "artifact-guard ADVISORY" "non-allowlisted verb still fires" '{"tool_name":"Bash","tool_input":{"command":"sed -i s/x/y/ app/public/data/mask.bin"}}'
 
   # TWIN CHECK (#388 review, Finding 2): the user-facing reason string claims
   # to name the exempt set exhaustively. It is DERIVED from READONLY_VERBS,
@@ -1287,7 +1656,12 @@ if [ "${1:-}" = "--selftest" ]; then
   # twin check at all - a needle and a haystack both built from
   # READONLY_VERBS would agree with each other no matter what production
   # actually printed, which is a tautology, not a test.
-  reason_out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f app/public/data/mask.bin"}}' | "$SELF" 2>/dev/null)
+  # (2026-08-09) the probe command MOVED from app/public/data to the spec
+  # tree: the verb list lives in the `ask` reason, and after the advisory
+  # split a build-output path no longer produces one - probing the old command
+  # would find no "no-write verb (" marker and trip the fail-closed extraction
+  # guard below on every run.
+  reason_out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f docs/superpowers/specs/foo.md"}}' | "$SELF" 2>/dev/null)
   # Fail CLOSED on extraction: if the marker is gone (reason reworded,
   # renamed, or not emitted at all) say so loudly rather than letting the
   # `#`/`%%` expansions below silently yield a nonsense haystack that might
@@ -1313,6 +1687,41 @@ if [ "${1:-}" = "--selftest" ]; then
         ;;
     esac
   done
+
+  # ADVISORY SHAPE TWIN (2026-08-09): parse the emitted advisory with a REAL
+  # JSON parser and assert `permissionDecision` is ABSENT - not merely that it
+  # is not "ask"/"deny". This is the explicit half of the rule hook_decision()
+  # enforces structurally; both are kept deliberately. Setting the key to
+  # "allow" is the tempting spelling and the wrong one: omitting it defers to
+  # the user's own permission system, while "allow" BYPASSES that system and
+  # auto-approves commands the user's own rules would still question - a
+  # change to their configuration that this hook has no mandate to make.
+  # Checked at BOTH nesting levels, since a stray top-level `permissionDecision`
+  # is the other way the key could reappear.
+  # Fails CLOSED with neither jq nor python3 available: the production script
+  # cannot parse its own input in that environment either, so a silent skip
+  # here would be a hole, not a convenience.
+  total=$((total + 1))
+  adv_out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"cp /tmp/f app/public/data/mask.bin"}}' | "$SELF" 2>/dev/null)
+  adv_shape=""
+  adv_parser=0
+  if command -v jq >/dev/null 2>&1; then
+    adv_parser=1
+    adv_shape=$(printf '%s' "$adv_out" | jq -r '[(.hookSpecificOutput|has("additionalContext")),(.hookSpecificOutput|has("permissionDecision")),(has("permissionDecision"))]|join(",")' 2>/dev/null)
+  elif command -v python3 >/dev/null 2>&1; then
+    adv_parser=1
+    adv_shape=$(printf '%s' "$adv_out" | python3 -c "import json,sys;d=json.load(sys.stdin);h=d.get('hookSpecificOutput',{});print(','.join('true' if b else 'false' for b in ('additionalContext' in h,'permissionDecision' in h,'permissionDecision' in d)))" 2>/dev/null)
+  else
+    echo "SELFTEST FAIL [advisory shape]: neither jq nor python3 is available, so the advisory JSON cannot be parsed - this check fails closed rather than skipping."
+    fail=1
+  fi
+  # An EMPTY adv_shape with a parser present means the parse itself failed
+  # (unparseable output, or no advisory emitted at all) - that must red too,
+  # not slip through as "nothing to compare".
+  if [ "$adv_parser" -eq 1 ] && [ "$adv_shape" != "true,false,false" ]; then
+    echo "SELFTEST FAIL [advisory shape]: expected [has additionalContext, has nested permissionDecision, has top-level permissionDecision] = true,false,false but parsed [$adv_shape] (out: $adv_out)"
+    fail=1
+  fi
 
   # Positive assertion, not `-ne` (PR #350 review round 2, R2-1): see
   # classify-docs-only.sh's matching comment for why `-ne` with an empty or
@@ -1368,11 +1777,22 @@ if [ "$tn" = "Bash" ]; then
   if p=$(bash_hits_protected_path "$cmd"); then
     # #309 follow-up: suppress ONLY a provably-single read-only command (see
     # DESIGN). Everything else - including anything this predicate cannot
-    # prove - falls through to `ask` below.
+    # prove - falls through to the split below.
     if bash_is_provably_readonly "$cmd"; then
       exit 0
     fi
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions protected path '"$p"' (#309: app/public/{data,icons,brand}/ are committed pipeline outputs, THIRD-PARTY-NOTICES.txt/.pmtiles (which also matches .pmtiles.png files) are generated artifacts, docs/superpowers/ is the source-of-truth spec dir and its ancestor). This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no redirect, pipe, separator, substitution, expansion or escape anywhere in it - which is suppressed silently. This command is not that, so it asks: it either uses a verb outside that set or contains a write-capable construct. Confirm intent before proceeding."}}'
+    # 2026-08-09 split (DESIGN, "TWO OUTCOMES FOR A NON-EXEMPT HIT"): the
+    # spec tree keeps the blocking prompt; every other protected path gets a
+    # non-blocking advisory. The spec check is its own pass, so a command
+    # naming BOTH still asks (PROTECTED_PATHS' order would otherwise decide
+    # it).
+    if sp=$(bash_hits_spec_gated_path "$cmd"); then
+      p=$sp
+    else
+      bash_advisory "$p"
+      exit 0
+    fi
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no redirect, pipe, separator, substitution, expansion or escape anywhere in it - which is suppressed silently. This command is not that, so it asks: it either uses a verb outside that set or contains a write-capable construct. Confirm intent before proceeding."}}'
   fi
   exit 0
 fi
