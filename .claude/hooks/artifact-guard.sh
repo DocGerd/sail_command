@@ -132,8 +132,10 @@
 # DESIGN (settled by the user after reviewing alternatives — do not redesign
 # this without a new explicit decision):
 #   - PATH-PRESENCE MATCHING ONLY. For each string in PROTECTED_PATHS below,
-#     if it appears ANYWHERE in the Bash `command` string, emit `ask`. That
-#     is the entire rule — nothing else.
+#     if it appears ANYWHERE in the Bash `command` string, the guard FIRES.
+#     That is the entire matching rule — nothing else. (WHAT firing produces,
+#     `ask` or a non-blocking advisory, is decided by the 2026-08-09 split
+#     bullet further down, and by nothing else in this file.)
 #   - NO shell-syntax parsing. No segmentation, no heredoc awareness, no
 #     attempt to classify "is this command really a write". Command-string
 #     segmentation is the exact shape that got PR #233 closed — a shell
@@ -155,7 +157,7 @@
 #
 #     Both halves are load-bearing and neither is sufficient. `cat f >
 #     protected` fails the second half; `sed -i s/x/y/ protected` fails the
-#     first. Everything not PROVABLY safe still asks — an unrecognised verb,
+#     first. Everything not PROVABLY safe still fires — an unrecognised verb,
 #     an unparseable shape, any doubt at all. This is the guard-asymmetry
 #     principle (CLAUDE.md) held to: over-firing costs a stray prompt,
 #     under-firing costs a silently drifted artifact, so the exemption
@@ -387,16 +389,19 @@
 #     genuinely write.
 #   - ACCEPTED RESIDUAL OVER-FIRES of the exemption (named so they read as
 #     decisions, not oversights): `!` is disqualified, so `test ! -f
-#     <protected>` — a legitimate read-only shape — still asks; `#` is
-#     disqualified, so a trailing comment still asks; `$` is disqualified
-#     wholesale, so `stat "$HOME/<protected>"` still asks. Each is the safe
+#     <protected>` — a legitimate read-only shape — still fires; `#` is
+#     disqualified, so a trailing comment still fires; `$` is disqualified
+#     wholesale, so `stat "$HOME/<protected>"` still fires. Each is the safe
 #     direction and none has a cheap sound alternative (a `#` cannot be told
 #     from a filename character without parsing, which is the thing this
 #     guard refuses to do).
 #   - A command that names a protected path and is NOT provably read-only
-#     still asks, including one that merely mentions the path in prose
+#     still fires, including one that merely mentions the path in prose
 #     (`echo mentions <protected>`) — `echo` is not on the verb allowlist.
-#     That over-fire is unchanged and still deliberate.
+#     That over-fire is unchanged and still deliberate; since the 2026-08-09
+#     split it costs a line of advisory context rather than a prompt for
+#     every path except the spec tree, which is most of why the over-fire is
+#     now cheap enough to keep without argument.
 #   - NEVER `deny` on this Bash arm — this is the guard-asymmetry principle
 #     (CLAUDE.md) applied in the OTHER direction from the Edit|Write arm
 #     above: that arm can `deny` because a file_path IS the write target,
@@ -556,8 +561,12 @@
 #   - PROTECTED_PATHS deliberately does NOT special-case
 #     app/public/icons/icon.svg the way the Edit|Write arm's B1 exception
 #     does — "no exemptions" applies uniformly on this arm, so a Bash command
-#     touching icon.svg by path still asks (Bash-mediated edits to that file
-#     get no free pass here, unlike the Edit/Write tool path).
+#     touching icon.svg by path still fires (Bash-mediated edits to that file
+#     get no free pass here, unlike the Edit/Write tool path). Since the
+#     2026-08-09 split that fire is an ADVISORY, `app/public/icons` being a
+#     build-output path — so the practical gap between the two arms for this
+#     one file is now wider than when this bullet was written: Edit/Write
+#     ALLOWS it outright (the B1 exception), Bash advises.
 #   - tool_name discriminates the two arms (this same script now serves BOTH
 #     the "Edit|Write" and "Bash" settings.json matchers): tool_name=="Bash"
 #     takes the path-presence branch below; anything else (Edit, Write, or a
