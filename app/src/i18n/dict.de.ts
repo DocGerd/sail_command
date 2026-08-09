@@ -163,11 +163,19 @@ export const de = {
   'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
-  // #53: honest passage-planning-aid copy — charted data may under- OR
-  // overstate real depths (dredged channels are exactly where chart data is
-  // pessimistic); never claim the route is verified safe.
+  // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
+  // for why {used} < {requested} always holds here, why the closing
+  // sentence deliberately does not imply unflagged water is safe, and why
+  // {minGate} is framed at plan level ("crossed by this plan", not "on this
+  // route"). review (PR #461 Minor 4): the previous opening
+  // ("...Sicherheitstiefe ... war nicht passierbar") was a direct calque of
+  // the English — a *Sicherheitstiefe* is a threshold, and a threshold is
+  // not itself *passierbar* (that adjective applies to a passage/channel/
+  // route, not a depth). Reworded to name what actually happened: the
+  // requested-depth solve found no continuous route, so the planner used a
+  // reduced one instead.
   'route.shallow.banner':
-    'Achtung: Diese Route quert Wasser, das flacher kartiert ist als die eingestellte Sicherheitstiefe von {requested} m — geringste kartierte Tiefe entlang der Route: {minGate} m. Kartendaten können reale Tiefen unter- wie überschätzen; insbesondere ausgebaggerte Fahrrinnen sind oft tiefer als kartiert. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
