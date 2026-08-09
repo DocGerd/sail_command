@@ -1,33 +1,49 @@
+# NO TRAILING SLASHES on directory entries in this file (#455).
+#
+# A trailing slash matches DIRECTORIES ONLY. Any of these paths can legitimately
+# be a SYMLINK instead — a worktree reaching a shared cache, a shared dependency
+# install — and the slashed form leaves a symlink untracked-but-NOT-ignored. A
+# committed symlink stores its TARGET STRING as blob content, i.e. an absolute
+# path off this machine, in a public repo.
+#
+# `.github/scripts/check-no-home-paths.sh` cannot catch that: it greps the
+# working-tree PATH, and grep follows the symlink into the target directory, so
+# it matches nothing while the blob itself holds the leaking string. This file is
+# the only defence against that specific leak, so it fails toward over-ignoring.
+#
+# Verified before this was applied: zero TRACKED paths match any of these names,
+# so dropping the slashes cannot shadow anything in the repo.
+
 # Dependencies
-node_modules/
-app/node_modules/
-pipeline/node_modules/
+node_modules
+app/node_modules
+pipeline/node_modules
 
 # Build outputs
-dist/
-app/dist/
+dist
+app/dist
 *.tsbuildinfo
 
 # Test artifacts
-coverage/
-playwright-report/
-app/playwright-report/
-test-results/
-app/test-results/
+coverage
+playwright-report
+app/playwright-report
+test-results
+app/test-results
 
 # Pipeline intermediate downloads (raw source data, not the packed outputs)
-pipeline/raw/
-pipeline/data-src/
-pipeline/.venv/
-pipeline/bin/
+pipeline/raw
+pipeline/data-src
+pipeline/.venv
+pipeline/bin
 
 # Local/session files
 .claude/settings.local.json
-.claude/worktrees/
-.superpowers/
-.remember/
-graphify-out/
-.playwright-mcp/
+.claude/worktrees
+.superpowers
+.remember
+graphify-out
+.playwright-mcp
 .env
 .env.*
 

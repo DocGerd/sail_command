@@ -6,6 +6,7 @@ import { NavMask } from '../lib/mask';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import { solve } from './isochrone';
+import { mergeCollinearLegs } from './postprocess';
 import { planRoute } from './planRoute';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS } from '../types';
@@ -387,10 +388,37 @@ describe('#243 depth comfort preference (real mask)', () => {
   );
 
   // §G.5: the strongest available guard against the preference leaking into
-  // the no-preference path. Literals captured independently from the
-  // baseline (pre-#243) solver on this exact mask/polar/wind fixture — never
-  // from this PR's own implementation.
-  it('depthComfortMarginM: 0 produces a route BYTE-IDENTICAL to the pre-#243 solver (feature-off identity, G.5)', () => {
+  // the no-preference path.
+  //
+  // #455 CHANGED THIS TEST'S METHOD, not just its numbers. It used to pin
+  // full-precision float literals captured from the pre-#243 solver
+  // (`git show 14fea97`) on the then-committed mask. Those literals were a
+  // SNAPSHOT of one route, so they were only valid for one mask — and #455's
+  // `TOLERANCE_M` correction legitimately moved the route, which broke the
+  // assertion without anything being wrong with the invariant it names.
+  // Worse, the route they pinned is one the corrected mask refuses on
+  // purpose: its minimum clearance reads 1.8 m under the conservative
+  // resampling (fock 2.0 m), i.e. below the 3.0 m gate AND below the boat's
+  // 2.1 m draft. The literals had stopped describing a baseline and started
+  // encoding the defect.
+  //
+  // So the claim is now tested as the INVARIANT it actually is, against a
+  // reference computed live on whatever mask is committed: with the margin
+  // at 0, `planRoute` must produce exactly what the pre-#243 pipeline
+  // produces — `solve()` with `SolveParams.comfortDepthM` ABSENT, followed
+  // by the same collinear merge with no comfort argument (planRoute.ts's
+  // `comfortDepthM` line and its `run()` spread; postprocess.ts's optional
+  // 5th parameter). That is byte-for-byte what planRoute did before #243.
+  //
+  // This is a DIFFERENTIAL test, not the #50 equivalence tautology: the
+  // reference is built from `solve` + `mergeCollinearLegs` directly, while
+  // the subject is `planRoute` — the layer that could leak a comfort term
+  // (a non-zero default margin, an unconditionally-applied derate, comfort
+  // surviving from a #53 relaxed tier). Legs are compared wholesale because
+  // every scalar `RigResult` field except `etaMs` is a pure function of them
+  // (planRoute.ts's `rigResult` literal), and `etaMs` is asserted separately
+  // so the clock is covered too.
+  it('depthComfortMarginM: 0 takes the pre-#243 path: identical to a solve() carrying NO comfortDepthM (feature-off identity, G.5)', () => {
     const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 };
     const res = planRoute(
       {
@@ -409,33 +437,95 @@ describe('#243 depth comfort preference (real mask)', () => {
     if (res.status !== 'ok') return;
     expect(res.recommended).toBe('genoa');
     expect('shallow' in res).toBe(false);
-    // Pinned to the exact pre-#243 baseline (git show 14fea97), full float
-    // precision — this is what "byte-identical" means for a plan whose
-    // geometry and clock are provably factor-independent at margin 0.
-    expect(res.genoa!.durationMs).toBe(10_724_310.589355469);
-    expect(res.genoa!.distanceNm).toBe(19.08677244874192);
-    expect(res.genoa!.etaMs).toBe(1_784_105_924_310.5894);
-    expect(res.genoa!.legs.length).toBe(16);
-    expect(res.genoa!.maneuverCount).toBe(2);
-    expect(res.fock!.durationMs).toBe(10_758_190.499267578);
-    expect(res.fock!.distanceNm).toBe(18.805359745715304);
-    expect(res.fock!.etaMs).toBe(1_784_105_958_190.4993);
-    expect(res.fock!.legs.length).toBe(19);
-    expect(res.fock!.maneuverCount).toBe(2);
+
+    /** The pre-#243 pipeline, reconstructed on today's code and this mask. */
+    const preFeatureReference = (table: PolarTable) => {
+      const o = mask.snapToNavigable(FLENSBURG, settings.safetyDepthM);
+      const d = mask.snapToNavigable(SOENDERBORG, settings.safetyDepthM);
+      expect(o, 'origin must snap').not.toBeNull();
+      expect(d, 'destination must snap').not.toBeNull();
+      const wind = new WindField(uniformWindGrid(12, 270));
+      const solved = solve({
+        origin: o!,
+        destination: d!,
+        departureMs: T0,
+        polar: new Polar(table, settings.performanceFactor),
+        wind,
+        mask,
+        settings,
+        // comfortDepthM DELIBERATELY ABSENT — that absence is the whole
+        // point of this reference; never add it "for symmetry".
+      });
+      expect(solved.status, 'the reference solve must itself succeed').toBe('ok');
+      if (solved.status !== 'ok') throw new Error('reference solve failed');
+      return {
+        legs: mergeCollinearLegs(solved.legs, mask, wind, settings),
+        etaMs: solved.etaMs,
+      };
+    };
+
+    for (const [rig, table] of [
+      ['genoa', polarGenoa],
+      ['fock', polarFock],
+    ] as const) {
+      const ref = preFeatureReference(table);
+      expect(res[rig]!.legs, `${rig}: margin-0 legs must equal the comfort-free solve`).toEqual(
+        ref.legs,
+      );
+      expect(res[rig]!.etaMs, `${rig}: margin-0 clock must equal the comfort-free solve`).toBe(
+        ref.etaMs,
+      );
+    }
   });
 
-  // Design §D.4 "minimum vs. integral", found in practice (fix-wave item 4):
-  // the preference minimizes total shallow-water exposure along a route
-  // (an integral of shortfall), not the route's single shallowest point, so
-  // the two CAN diverge. Documented beside DEPTH_DERATE_MAX and in
-  // CHANGELOG.md; pinned here with a THRESHOLD (never brittle exact
-  // equality — §E.3: the search is heuristic and non-monotone in the tuning
-  // constant) so a future change to this behavior is a deliberate, reviewed
-  // edit rather than a silent drift. Pre-change (baseline) literal: 3.7 m.
-  // This PR's own measured value: 3.0 m — safety-inert (every leg still
-  // gate-validated below) and exactly what this same passage's OTHER rig
-  // already touches today.
-  it('Aeroeskoebing -> Drejoe at DEFAULT_SETTINGS: the known minimum-clearance non-improvement stays within its documented, safety-inert band', () => {
+  // Design §D.4 "minimum vs. integral": the preference minimizes total
+  // shallow-water exposure along a route (an integral of shortfall), not the
+  // route's single shallowest point, so the two CAN diverge. This passage
+  // used to be the worked example of that divergence — turning the
+  // preference on made the MINIMUM worse (3.7 m off -> 3.0 m on).
+  //
+  // #455 ENDED THAT DIVERGENCE HERE, and the old prose is now false rather
+  // than merely stale, so it is rewritten rather than re-pinned. MEASURED on
+  // this passage, comfort-off vs comfort-on, on each mask:
+  //     pre-#455 mask:  3.7 m -> 3.0 m   (the documented non-improvement)
+  //     corrected mask: 3.7 m -> 4.1 m   (the preference now IMPROVES it)
+  // The comfort-OFF route is untouched by #455 (4.3465 nm, identical
+  // duration on both masks) — only the preference's own choice moved. Cause:
+  // the shallower corridor it used to accept was made of cells reading
+  // optimistically; reverted to the conservative max resampling, the
+  // integral-minimizing choice now lands on the deeper corridor too.
+  //
+  // §D.4 IS STILL TRUE AS A GENERAL CLAIM — min and integral can diverge,
+  // and nothing here promises they won't. This is a per-route drift
+  // detector, not a guarantee that the preference improves the minimum
+  // anywhere else.
+  //
+  // Asserted as a live RELATIONSHIP against a comfort-off run rather than a
+  // pinned literal (§E.3: the search is heuristic and non-monotone, and a
+  // literal here is mask-derived — it moves on any legitimate mask
+  // regeneration, which is exactly how the previous 3.5 m bound came to
+  // fail). The two figures above are documentation of this mask, not
+  // assertions; the relationship is what a future change must not silently
+  // reverse. A regression back to non-improvement reds this test.
+  //
+  // THIS DETECTOR IS ONE-DIRECTIONAL — say so rather than let a future reader
+  // assume otherwise. The removed `min < 3.5` was half of a two-sided band,
+  // and its own comment named BOTH directions: not silently regressed further,
+  // and not silently "fixed" back toward the baseline. `min > minOff` is
+  // strict but UNBOUNDED ABOVE, so after #455 nothing in this file detects
+  // drift in the IMPROVEMENT direction — an unexplained jump to, say, 12 m
+  // would pass silently. That is a deliberate trade, not an oversight: every
+  // ceiling available here is either mask-derived (the failure mode being
+  // fixed) or an arbitrary constant with no invariant behind it, and a
+  // one-directional detector that says so beats a two-directional one that
+  // reds on every regeneration. Reviewer note (PR #476): a "comfort target
+  // doubled" mutation was tried as a probe of the improvement side and is
+  // INCONCLUSIVE, not reassuring — it left the file 13/13 green because the
+  // Drejoe route did not move at all (min stayed 4.1 m, minOff 3.7 m), so the
+  // mutation was inert on this passage rather than the assertion being blind.
+  // The one-sidedness is a structural property of `toBeGreaterThan`, which no
+  // experiment here established or refuted.
+  it('Aeroeskoebing -> Drejoe at DEFAULT_SETTINGS: the comfort preference improves this passage minimum rather than degrading it', () => {
     const res = planRoute(
       {
         origin: AEROESKOEBING,
@@ -462,11 +552,35 @@ describe('#243 depth comfort preference (real mask)', () => {
     // Never below the hard gate (redundant with expectLegsNavigable above,
     // stated explicitly since it's the safety-relevant half of the claim).
     expect(min).toBeGreaterThanOrEqual(DEFAULT_SETTINGS.safetyDepthM);
-    // The known non-improvement is present (3.0 m), not silently regressed
-    // further, and not silently "fixed" back toward the 3.7 m baseline
-    // without anyone noticing — either would mean this documentation is
-    // stale.
-    expect(min).toBeLessThan(3.5);
+
+    // The same passage with the preference OFF — the comparison baseline,
+    // recomputed live so this survives a mask regeneration.
+    const off = planRoute(
+      {
+        origin: AEROESKOEBING,
+        destination: DREJOE,
+        viaPoints: [],
+        originHarborId: 'aeroeskoebing',
+        destinationHarborId: 'drejoe',
+        departureMs: T0,
+        settings: { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 },
+      },
+      uniformWindGrid(12, 270),
+      { polarGenoa, polarFock, mask },
+    );
+    expect(off.status).toBe('ok');
+    if (off.status !== 'ok') return;
+    const offRig = off.recommended === 'genoa' ? off.genoa : off.fock;
+    expect(offRig).not.toBeNull();
+    let minOff = Infinity;
+    for (const leg of offRig!.legs) {
+      const m = mask.segmentShallowestBelow(leg.start, leg.end, 1e6);
+      minOff = Math.min(minOff, m === null ? 25.4 : m);
+    }
+    expect(
+      min,
+      `comfort-on minimum ${min} m must beat comfort-off ${minOff} m on this passage`,
+    ).toBeGreaterThan(minOff);
   });
 });
 

@@ -141,7 +141,28 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           <ul>
             <li>{t('about.sources.protomaps')}</li>
             <li>{t('about.sources.osm')}</li>
-            <li>{t('about.sources.osmMask')}</li>
+            {/* #455: the mask's ODbL statement used to be a static item here
+                because the committed mask.meta.json predated that entry. The
+                regenerated mask carries it in `sources`, so it now arrives
+                through `maskSources` below — a static copy would show it
+                twice. Untranslated, like the other three mask sources: it is
+                the licence's own formal wording, not UI copy.
+
+                KNOWN CONSEQUENCE, accepted (PR #476 review): that statement is
+                now FETCH-DEPENDENT, and `fetchMaskSources()` ends
+                `.catch(() => undefined)`, so a failed mask.meta.json load
+                renders none of the four mask sources. Accepted rather than
+                re-adding a static copy, because ODbL attribution does not
+                depend on this path: `about.sources.osm` immediately above is
+                static, and MapView.tsx's ATTRIBUTION carries a persistent
+                on-map OSM/ODbL credit that is visible regardless of this
+                dialog. Only this specific derivative-database WORDING becomes
+                conditional, and the same fetch already gated the other three
+                mask sources before #455 — so this is a pre-existing pattern
+                inherited, not a new failure mode introduced here. If that
+                silent catch is ever judged unacceptable for a licence string,
+                fix it at `fetchMaskSources` for all four rather than by
+                reinstating one static duplicate. */}
             <li>{t('about.sources.openMeteo')}</li>
             <li>{t('about.sources.polars')}</li>
             <li>{t('about.sources.seamarks')}</li>
