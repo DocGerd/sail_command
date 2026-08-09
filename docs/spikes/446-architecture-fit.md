@@ -1100,6 +1100,23 @@ denominator and not in the numerator, so it *lowered* the share. A bare
 ratio reads as timeless and is not: this one has a half-life of about one
 issue.
 
+**It then decayed a SECOND time, the same day, in the other term.**
+Re-measured at review time with the identical two commands: **17 of 45 =
+37.8 %**. The cause is
+[#459](https://github.com/DocGerd/sail_command/issues/459), closed
+`2026-08-09T11:45:09Z` carrying `area: tooling` — so unlike #463 it left
+**both** terms, and the share fell again. The enumerated 18 above is a
+snapshot of the same instant as the headline; #459 has since left it.
+**Three readings of one ratio inside one day — 40.0 %, 39.1 %, 37.8 % —
+is the argument for quoting the commands rather than the number**, and
+#444 §G3(d) carries the same three-reading table so the two documents
+cannot drift apart on it. The headline is deliberately **not** overwritten
+with 37.8 %: that would mint a third timeless-looking figure with the same
+half-life. Nothing downstream moves — all three readings sit between 37 %
+and 40 %, all three are far above the "~30 %" both issue bodies assert,
+and the verdicts below rest on the creation-rate series, not on the
+snapshot.
+
 Three further qualifications, all load-bearing:
 
 - The label taxonomy carries space/no-space duplicates, so a
@@ -1454,7 +1471,7 @@ the two documents cannot quote different numbers.
 |---|---|---|
 | `CLAUDE.md` | 2,395 lines / 24,891 words / 154 distinct / 354 total issue refs | **2,522 lines / 26,281 words / 160 distinct / 365 total.** `wc -l -w CLAUDE.md`; `grep -oE '#[0-9]+' CLAUDE.md \| sort -u \| wc -l`. The 9 top-level sections do still reproduce |
 | `.claude/hooks/` | 4 scripts / 2,593 lines; `artifact-guard.sh` 1,276 | **2,755 lines**; `artifact-guard.sh` **1,438**. The other three are unchanged — `notices-nudge.sh` 604, `wind-fixture-guard.sh` 560, `premerge-verify.sh` 153 |
-| `area: tooling` backlog share | 13 of 44 open (~30%) | **18 of 46 open non-PR issues = 39.1 %** (2026-08-09); **16 of 44 = 36.4 %** excluding #444 and #446 themselves. Both commands, the enumerated 18, and the denominator's composition are in Q15 — **and this row is the one that decays fastest in the table**: it was written as 18/45 = 40.0 % hours earlier and #463's creation moved it. Re-run, do not quote |
+| `area: tooling` backlog share | 13 of 44 open (~30%) | **18 of 46 open non-PR issues = 39.1 %** (2026-08-09); **16 of 44 = 36.4 %** excluding #444 and #446 themselves. Both commands, the enumerated 18, and the denominator's composition are in Q15 — **and this row is the one that decays fastest in the table**: three readings inside one day — 18/45 = 40.0 %, then 18/46 = 39.1 % when #463 was opened, then **17/45 = 37.8 %** when #459 closed carrying the label. Re-run, do not quote |
 | Test file counts | 114 vitest, 12 Playwright | **116** under `vite.config.ts`'s own `src/**/*.test.{ts,tsx}` include glob; **12** Playwright. The six `app/sweep/arm-*.test.ts` are **outside** that glob by design and must not be added in |
 | Structural guards | seven | **seven** — reproduces exactly; enumerated with line counts in Q14 |
 
@@ -1499,7 +1516,11 @@ one bar: **attributable defect, or declined.**
 
 ## Claim-strength note
 
-Five things are deliberately **not** claimed.
+**Eight** things are deliberately **not** claimed. (An earlier revision
+opened this section with "Five" while listing eight — a count claim
+falsified by the list directly beneath it, which is the most falsifiable
+kind and therefore the least excusable. Corrected rather than dropped,
+because a document that audits count claims must survive its own audit.)
 
 1. **Hit rate of the structural guards is UNMEASURED, not zero** (Q14). A
    guard that fires in CI leaves no commit; the tree records only cost.
@@ -1526,10 +1547,12 @@ Five things are deliberately **not** claimed.
    (+31.4, +5.7, +9.6 points) do not support "accelerating"; the earlier
    "risen every single week of the project's life, from 2.5% to 50%"
    overclaimed on all three counts corrected in Q15.
-7. **The tooling-share ratio DECAYS and both documents say so.** It
-   changed from 18/45 to 18/46 within this session because #463 was
-   opened; the commands are quoted so it can be re-run rather than
-   trusted.
+7. **The tooling-share ratio DECAYS and both documents say so.** It read
+   18/45 = 40.0 %, then 18/46 = 39.1 % once #463 was opened, then 17/45 =
+   37.8 % once #459 closed carrying the label — **three readings in one
+   day, moving in both terms**; the commands are quoted so it can be
+   re-run rather than trusted. Only the SNAPSHOT decays this way: the
+   creation-rate series is bucketed by historical week and does not.
 8. **R4 is an OFFER, not a recommendation, and the reason is that the
    property it would pin is doubly held today** — no reachable single
    edit violates it, so the assertion cannot presently catch a defect.
