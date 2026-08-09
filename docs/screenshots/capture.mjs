@@ -1,9 +1,21 @@
 // docs/screenshots/capture.mjs — README screenshot capture (manual, not CI).
-// Run: node docs/screenshots/capture.mjs  (needs network: live app + wind fetch
-//   for start-view.png; plan-route.png routes against a committed, deterministic
-//   docs wind fixture — see the #459 section below — so it needs no live wind)
-// Run against a local build instead of production:
-// SC_SCREENSHOT_URL='http://localhost:PORT/sail_command/' node docs/screenshots/capture.mjs
+//
+// start-view.png: needs network (live app + wind fetch) — the bare default
+//   below (production) is fine for it.
+// plan-route.png: REQUIRES a local server (fix wave, PR #462 review Minor 2
+//   — the bare default is now actively wrong for this half, not just an
+//   alternative). It routes against a docs-only wind fixture
+//   (app/public/test-fixtures/wind-docs-plan-route.json) that is gitignored
+//   and must be regenerated locally before every capture (see the #459
+//   block below) — it is NEVER part of any deployment. Running the bare
+//   default against production instead resolves `?windFixture=...` against
+//   https://docgerd.github.io/sail_command/, which cannot serve a file that
+//   was never committed: the fetch 404s and the plan step fails outright,
+//   landing on the Minor-1 diagnostic further down rather than a screenshot.
+//   Required sequence for plan-route.png:
+//     node app/scripts/gen-docs-wind-fixture.mjs
+//     npm --prefix app run dev -- --port <port>          # or build+preview
+//     SC_SCREENSHOT_URL='http://localhost:<port>/sail_command/' node docs/screenshots/capture.mjs
 //
 // Selectors re-verified against app/src/App.tsx, PlannerPanel.tsx,
 // HarborPicker.tsx, RouteSummary.tsx, Disclosure.tsx and app/e2e/plan.spec.ts
@@ -41,30 +53,56 @@
 // among them), so touching its content for a docs concern would risk
 // destabilizing the whole e2e suite.
 //
-// `app/scripts/gen-docs-wind-fixture.mjs` generates a SEPARATE,
-// docs-scoped fixture (app/public/test-fixtures/wind-docs-plan-route.json,
-// gitignored-free but never read by any test or CI job) with wind that
-// varies smoothly across the forecast grid — see that script's own header
-// for the exact gradient and for why these constants (SE breeze, TWS
-// ~7-10 kn at the Flensburg-Sønderborg leg, TWA ~70-95°, a close-to-beam
-// reach) were chosen against this app's committed Salona 45 polars: genoa
-// reliably outsails fock by ~3-5% at this TWS/TWA band (a light-air reaching
-// advantage), which is enough over a ~14 nm leg to clear RIG_TIE_BAND_MS
-// (60 s) decisively, while staying comfortably above the ~3.7 kn
-// sail-speed floor that would otherwise plan motor legs. MEASURED against a
-// local dev server (2026-08-09): Flensburg->Sønderborg on this fixture
-// resolves to 81% sail / 19% motor on the (recommended, ★) Genoa tab and
-// 78%/22% on Fock, with `.chip-faster-rig` reading "Faster: Genoa" — both
-// #459 requirements (sail share > 50%, a decided ★) satisfied
-// simultaneously, on the SAME route/fixture pair, with no live-wind
-// dependency and no per-run variance.
+// `app/scripts/gen-docs-wind-fixture.mjs` generates a SEPARATE, docs-scoped,
+// GITIGNORED fixture (app/public/test-fixtures/wind-docs-plan-route.json —
+// see that script's header for why it isn't committed) with wind that
+// varies smoothly across a box scoped to the actual routed track — see that
+// script's own header for the exact gradient, the GPX-measured route box,
+// and for why these constants (SE breeze, TWS ~7-13 kn at the
+// Flensburg-Sønderborg leg, TWA mostly ~70-95° with a broader-reach/run tail
+// near the end) were chosen against this app's committed Salona 45 polars:
+// genoa reliably outsails fock by ~3-5% over most of this TWS/TWA band (a
+// light-air reaching advantage that narrows, but does not vanish, toward
+// the route's higher-wind final third), enough over a ~19 nm leg to clear
+// RIG_TIE_BAND_MS (60 s) decisively, while staying comfortably above the
+// ~3.7 kn sail-speed floor that would otherwise plan motor legs. MEASURED
+// against a local dev server (2026-08-09, fix wave, after retuning the
+// gradient's SCOPE to be visible in frame at all — Major 1 below — and then
+// again after WIDENING its span to actually cross a second barb bucket):
+// Flensburg->Sønderborg on this fixture resolves to 85% sail / 15% motor on
+// the (recommended, ★) Genoa tab and 86%/14% on Fock, with
+// `.chip-faster-rig` reading "Faster: Genoa" (2h59min vs 3h02min, a 180s
+// margin) — both #459 requirements (sail share > 50%, a decided ★)
+// satisfied simultaneously, on the SAME route/fixture pair, with no
+// live-wind dependency and no per-run variance.
 //
-// Reproduction: `node app/scripts/gen-docs-wind-fixture.mjs` (regenerates
-// the fixture with a fresh forecast-horizon start time — like
-// gen-wind-fixture.mjs's e2e fixture, the COMMITTED copy's `time[]` drifts
-// out of the app's forecast horizon after a few days; this is expected, not
-// a bug — always regenerate immediately before recapturing), then run this
-// script against a local build per the header above.
+// BARB VARIATION, judged from the rendered PNG itself, not the fixture's
+// numbers (per #462 review Major 2's own standard): the actual solved
+// route's 20 legs span TWS 6.8-13.4 kn (read off the rendered leg table,
+// not simulated), crossing `barbImageId()`'s 5 kn rounding buckets TWICE —
+// "5" near Flensburg, "10" through the middle majority, "15" over the final
+// ~5 nm/26% near Sønderborg. The 5->10 crossing is directly confirmed
+// VISIBLE AND UNOCCLUDED in the committed plan-route.png: an isolated
+// bucket-5 barb near Flensburg and an isolated bucket-10 barb near Schelde,
+// cropped at 8x zoom, show a visibly longer single tick on the latter (not
+// merely a different rotation — see barbSegments() in
+// app/src/lib/windBarbs.ts: bucket 10 draws a full-length feather, bucket 5
+// a half-length one). HONEST CAVEAT: the bucket-15 stretch, though real in
+// both the wind field and the solved route, sits near the route's
+// Sønderborg end, which in THIS capture's framing falls mostly behind the
+// on-map "Route layer controls" panel (top-right) — so it is not itself
+// confirmed visible in the committed image, only present in the underlying
+// data. This is a genuine, structural fix (no longer one identical glyph
+// varying only by <=17.5° of rotation, which is what #462 review Major 2
+// found), not a claim that all three bucket shapes are visible at once.
+//
+// Reproduction: `node app/scripts/gen-docs-wind-fixture.mjs` (this is the
+// ONLY source of the fixture now that it's gitignored — regenerates it with
+// a fresh forecast-horizon start time; like gen-wind-fixture.mjs's e2e
+// fixture, a stale copy's `time[]` drifts out of the app's forecast horizon
+// after a few days, which is why it's never committed at all), then run
+// this script against a LOCAL server via SC_SCREENSHOT_URL — see the header
+// above; the plain-default form no longer works for plan-route.png.
 //
 // #428 (was: "the ★-recommendation wait assumes Flensburg->Sønderborg
 // always resolves to a 'decided' rig comparison... currently doesn't... the
@@ -91,15 +129,15 @@ const { chromium } = await import(
 // SC_SCREENSHOT_URL overrides the target for a pre-release recapture — at
 // release-cut time production is, by definition, still serving the PREVIOUS
 // release, so capturing against it would recapture the OLD build rather than
-// the one being released. Defaults to production so normal (post-release)
-// usage is unchanged.
+// the one being released. Defaults to production, which is fine for
+// start-view.png but NOT for plan-route.png — see the header above.
 const APP = process.env.SC_SCREENSHOT_URL ?? 'https://docgerd.github.io/sail_command/';
 const START_HARBOR = 'Flensburg';
 const DEST_HARBOR = 'Sønderborg';
 // #459: docs-only fixture (see the header block above) — resolved relative
 // to APP by the browser, same convention app/e2e/*.spec.ts uses for
 // `?windFixture=test-fixtures/wind-sw12.json`.
-const WIND_FIXTURE_PARAM = 'windFixture=test-fixtures/wind-docs-plan-route.json';
+const WIND_FIXTURE_PATH = 'test-fixtures/wind-docs-plan-route.json';
 // #459 requirement 4: widen the left panel so the legs table's Time/
 // Duration/Type/COG columns are all visible without horizontal scroll.
 // Written directly to localStorage (usePersistedNumber's storage key,
@@ -112,7 +150,11 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 await page.addInitScript((px) => {
   window.localStorage.setItem('sc-panel-width', String(px));
 }, PANEL_WIDTH_PX);
-await page.goto(`${APP}?${WIND_FIXTURE_PARAM}`, { waitUntil: 'networkidle' });
+// #462 review nit: build via URL rather than string-concatenating `?` onto
+// APP, which would silently break if APP ever carried its own query string.
+const startUrl = new URL(APP);
+startUrl.searchParams.set('windFixture', WIND_FIXTURE_PATH);
+await page.goto(startUrl.toString(), { waitUntil: 'networkidle' });
 // Switch UI to English for the README's international audience. The button's
 // VISIBLE text is "EN", but its accessible name comes from its aria-label
 // (App.tsx), which overrides text content in accessible-name computation —
@@ -148,26 +190,46 @@ while ((await planButton.isDisabled()) && Date.now() < planDeadline) {
 // the "Routes" tab, not inline on "Plan" (App.tsx).
 await page.getByRole('tab', { name: 'Routes' }).click();
 
-// #428/#459: poll the rig-comparison chip's own TEXT rather than blindly
-// waiting on `getByText('★')`'s boolean presence — a timeout here now prints
-// what the chip actually says (tie/moot/decided-for-the-other-rig) instead
-// of hanging silently for two minutes on a route/fixture pairing that
-// doesn't decide. The docs fixture is tuned so this always reads
-// "Faster: Genoa" (MEASURED, see the header above), but the diagnostic
-// stays useful if that ever regresses.
+// #428/#459/#462: poll the rig-comparison chip's own TEXT rather than
+// blindly waiting on `getByText('★')`'s boolean presence — a timeout here
+// prints what the chip actually says instead of hanging silently for two
+// minutes on a route/fixture pairing that doesn't decide.
+//
+// #462 review Minor 1: the original form of this loop called
+// `chip.textContent()` directly, which — this script runs Playwright in
+// LIBRARY mode (`chromium.launch()`, no test runner) — carries Playwright's
+// own 30s actionability default. A no-route plan (the LIKELIEST failure,
+// caused by exactly the drifted-fixture case this diagnostic's own error
+// message names) never mounts RouteSummary at all (`plan && rig` gate,
+// App.tsx), so `.chip-faster-rig` never attaches — the first loop iteration
+// then blocked 30s and threw Playwright's bare TimeoutError, overshooting
+// this loop's own 20s budget and burying the crafted message entirely.
+// Fixed by polling `.count()` first: unlike `textContent()`/`waitFor()`,
+// Playwright's own docs specify `.count()` does NOT auto-wait — it is a
+// same-tick DOM query — so a still-unattached chip costs one cheap poll,
+// never a 30s stall, and this loop's own deadline is what actually governs.
 const chip = page.locator('.chip-faster-rig');
 const chipDeadline = Date.now() + 20_000;
 let chipText = '';
+let chipSeen = false;
 while (Date.now() < chipDeadline) {
-  chipText = (await chip.textContent())?.trim() ?? '';
-  if (chipText.startsWith('Faster:')) break;
+  if ((await chip.count()) > 0) {
+    chipSeen = true;
+    chipText = (await chip.first().textContent())?.trim() ?? '';
+    if (chipText.startsWith('Faster:')) break;
+  }
   await page.waitForTimeout(300);
 }
 if (!chipText.startsWith('Faster:')) {
   throw new Error(
-    `expected a decided rig recommendation ("Faster: …"), got "${chipText}" — ` +
-      'the docs wind fixture (app/scripts/gen-docs-wind-fixture.mjs) may need retuning, ' +
-      'or it needs regenerating (its forecast horizon drifts over time).',
+    chipSeen
+      ? `expected a decided rig recommendation ("Faster: …"), got "${chipText}" — ` +
+        'the docs wind fixture (app/scripts/gen-docs-wind-fixture.mjs) may need retuning.'
+      : '.chip-faster-rig never attached — RouteSummary only mounts once a plan ' +
+        'succeeds (`plan && rig`, App.tsx), so planning itself failed. Most likely ' +
+        'cause: the docs wind fixture has drifted past its forecast horizon (it is ' +
+        'gitignored and regenerated fresh before every capture — see the header ' +
+        'above). Run `node app/scripts/gen-docs-wind-fixture.mjs` and retry.',
   );
 }
 

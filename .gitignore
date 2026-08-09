@@ -31,5 +31,15 @@ graphify-out/
 .env
 .env.*
 
+# Docs-only wind fixtures (#459/#462): the generator is committed
+# (app/scripts/gen-docs-wind-fixture.mjs) and regenerating is already a
+# mandatory pre-recapture step (its forecast horizon drifts in ~6 days), so
+# the generated output would be dead weight in git history and in every
+# deployed ref (app/public/** is copied verbatim into dist) for bytes nobody
+# is ever meant to read against directly. Exact filename, not a glob over
+# test-fixtures/, so this can never shadow the E2E suite's committed
+# wind-sw12.json or any future e2e fixture added under the same directory.
+app/public/test-fixtures/wind-docs-plan-route.json
+
 # OS noise
 .DS_Store
