@@ -263,7 +263,7 @@ Stated here deliberately, so they are not discovered later as defects.
    different cells and are never compared). If the zigzag is to be addressed at
    all it is a **presentation** question, bounded by the standing rule that the
    only allowed post-processing is merging near-collinear legs with
-   re-validation. Evidence: `/home/pkuhn/sail-evidence/264-eta/`.
+   re-validation. Evidence: `<evidence-dir-outside-repo>/264-eta/`.
 
 ## 9. Evidence
 
@@ -361,7 +361,7 @@ for a margin.
 Session scratch (not committed; cite before relying, they are not durable):
 
 ```
-/tmp/claude-1000/-home-pkuhn-sail-command/7a969da0-a5e1-4546-874c-14d8cc0fd1e9/scratchpad/sweep254/
+<scratchpad>/sweep254/
   isochrone-floor.diff          the measured patch
   METHOD.md                     method, three-state discipline, faithfulness argument
   out/RESULTS.txt out/CLOSURE.txt out/HEADINGS.txt out/polarref.json out/sanity.json
