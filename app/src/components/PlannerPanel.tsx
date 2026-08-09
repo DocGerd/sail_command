@@ -26,6 +26,10 @@ import Button from './Button';
 import Chip from './Chip';
 import Disclosure from './Disclosure';
 import Skeleton from './Skeleton';
+// #452: the shallow-water warning is plan-level (RouteSummary's own note
+// explains why) — shared here so the FIRST surface a user sees a result on
+// carries the same warning as the Routes tab, not just a second copy of it.
+import { ShallowWarning } from './RouteSummary';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -230,6 +234,11 @@ export default function PlannerPanel({
   // compact Ergebnis strip below and the completion announcement.
   const result = plan && rig ? activeRigResult(plan, rig) : null;
   const summary = plan && result ? resultSummary(plan, result, lang) : null;
+  // #452: plan-level, like RouteSummary's own — both rigs solve at the same
+  // relaxed gate, so this must show regardless of which rig tab is active
+  // and is deliberately NOT derived from `result`/`summary` (a null-rig tab
+  // must still surface it if the plan as a whole carries it).
+  const shallow = plan?.result.shallow ?? null;
 
   // #64 §3.4 (Option B) a11y: announce the terminal result in the persistent
   // live region, ONCE per completed plan. We freeze the RESULT that completed
@@ -586,6 +595,11 @@ export default function PlannerPanel({
                 (statusText) — this Chip is the sighted-user surface only. */}
             {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
           </div>
+          {/* #452: shallow-water warning, promoted here from the Routes-tab-only
+              RouteSummary card so it's visible on the FIRST surface a user sees
+              a result on, without switching tabs. Plan-level (see `shallow`
+              above), same shared component and copy as RouteSummary's own. */}
+          {shallow && <ShallowWarning shallow={shallow} />}
           <div className="planner-result-primary">
             <div className="ergebnis-stat ergebnis-stat-lg">
               <span className="ergebnis-stat-label">{t('route.totals.eta')}</span>

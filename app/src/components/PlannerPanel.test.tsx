@@ -654,6 +654,48 @@ describe('PlannerPanel', () => {
     });
   });
 
+  // #452: the shallow-water warning + the effective (relaxed) depth must be
+  // visible on THIS strip — the first surface a user sees a result on —
+  // without switching to the Routes tab. Distinct requested/used/minGate
+  // values (3.0 / 2.5 / 2.3) so a test asserting on `usedDepthM` cannot pass
+  // by accident against `minGateDepthM` or `requestedDepthM` instead.
+  describe('shallow-water warning (#452)', () => {
+    function makeShallowPlan(): Plan {
+      const plan = makePlan();
+      plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 };
+      return plan;
+    }
+
+    it('renders the plan-level shallow warning, naming the effective (used) depth', () => {
+      renderPanel({ plan: makeShallowPlan(), rig: 'genoa' });
+      const banner = screen.getByText(/was not passable/);
+      expect(banner).toHaveAttribute('role', 'alert');
+      expect(banner).toHaveClass('shallow-warning');
+      // Requested depth.
+      expect(banner.textContent).toContain('3.0 m');
+      // #452: the effective depth the route was actually computed at — the
+      // defect this test guards was that usedDepthM rendered nowhere.
+      expect(banner.textContent).toContain('2.5 m');
+      // Shallowest charted cell actually crossed.
+      expect(banner.textContent).toContain('2.3 m');
+      // Honest passage-planning-aid copy (#455): never claims an unflagged
+      // section IS safe — only checked as a positive claim, since the copy's
+      // own "not guaranteed to be clear" disclaimer legitimately uses the word.
+      expect(banner.textContent).not.toMatch(/\bis (verified|guaranteed)\b/i);
+      expect(banner.textContent).toContain('not guaranteed to be clear');
+    });
+
+    it('is absent on a plan with no relaxation', () => {
+      renderPanel({ plan: makePlan(), rig: 'genoa' });
+      expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
+    });
+
+    it('is absent before any plan exists', () => {
+      renderPanel({ plan: null, rig: null });
+      expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
+    });
+  });
+
   // #301: the dirty-form indicator — a second Chip in the Ergebnis card plus
   // the same sentence folded into the panel's ONE existing live region.
   describe('dirty-form indicator (#301)', () => {

@@ -422,31 +422,40 @@ describe('RouteSummary', () => {
   });
 });
 
-describe('shallow-water warning banner (#53)', () => {
+describe('shallow-water warning banner (#53/#452)', () => {
+  // Distinct requested/used/minGate values so an assertion on one field
+  // cannot pass by accident against another (#452: usedDepthM used to render
+  // nowhere at all, so a test built on requestedDepthM === usedDepthM could
+  // not have caught its absence).
   function makeShallowPlan(): Plan {
     const plan = makePlan();
-    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 2.3 };
+    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 };
     return plan;
   }
 
-  it('renders the plan-level warning with the requested and minimum charted gate depths', () => {
+  it('renders the plan-level warning with the requested, effective (used) and minimum gate depths', () => {
     renderSummary({ plan: makeShallowPlan() });
-    const banner = screen.getByText(/charted shallower than your safety depth/);
+    const banner = screen.getByText(/was not passable/);
     expect(banner).toHaveAttribute('role', 'alert');
     expect(banner).toHaveClass('shallow-warning');
     expect(banner.textContent).toContain('3.0 m');
+    // #452: the effective (relaxed) depth the route was actually computed at.
+    expect(banner.textContent).toContain('2.5 m');
     expect(banner.textContent).toContain('2.3 m');
-    // Honest passage-planning-aid copy: never claims verified safety.
-    expect(banner.textContent).not.toMatch(/verified|guaranteed/i);
+    // Honest passage-planning-aid copy (#455): never claims an unflagged
+    // section IS safe — only checked as a positive claim, since the copy's
+    // own "not guaranteed to be clear" disclaimer legitimately uses the word.
+    expect(banner.textContent).not.toMatch(/\bis (verified|guaranteed)\b/i);
+    expect(banner.textContent).toContain('not guaranteed to be clear');
   });
 
   it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
     renderSummary({ plan: makeShallowPlan(), rig: 'fock' });
-    expect(screen.getByText(/charted shallower than your safety depth/)).toBeInTheDocument();
+    expect(screen.getByText(/was not passable/)).toBeInTheDocument();
   });
 
   it('is absent on plans without relaxation', () => {
     renderSummary();
-    expect(screen.queryByText(/charted shallower than your safety depth/)).toBeNull();
+    expect(screen.queryByText(/was not passable/)).toBeNull();
   });
 });

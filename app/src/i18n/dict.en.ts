@@ -159,11 +159,16 @@ export const en = {
   'route.rigMoot': 'Rig does not matter here — this passage runs entirely under engine',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
-  // #53: honest passage-planning-aid copy — charted data may under- OR
+  // #53/#452: honest passage-planning-aid copy — charted data may under- OR
   // overstate real depths (dredged channels are exactly where chart data is
-  // pessimistic); never claim the route is verified safe.
+  // pessimistic); never claim the route is verified safe. {used} names the
+  // relaxed gate the planner actually routed at (#53's graceful-degradation
+  // tier only fires when {used} < {requested}, so the two are never equal
+  // here) — and the closing sentence deliberately does NOT say "elsewhere is
+  // safe": the mask itself is known to overstate depth on some cells (#455),
+  // so an unflagged section is merely unflagged, not verified.
   'route.shallow.banner':
-    'Caution: this route crosses water charted shallower than your safety depth of {requested} m — shallowest charted depth along the route: {minGate} m. Chart data may understate or overstate real depths; dredged channels in particular are often deeper than charted. Verify the highlighted sections against official charts and your depth sounder.',
+    'Caution: your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth actually crossed: {minGate} m. Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
