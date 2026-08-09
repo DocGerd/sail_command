@@ -8,7 +8,7 @@ Your final message is a report to the orchestrator, not prose for the end user.
 
 ## Before touching code
 
-- Read `/home/pkuhn/sail_command/CLAUDE.md` in full.
+- Read `<repo>/CLAUDE.md` in full.
 - The design spec `docs/superpowers/specs/2026-07-14-sail-command-design.md` is the
   source of truth — never silently deviate; flag conflicts in your report instead.
 - Stay inside the brief. If the task turns out to require scope beyond it, stop and

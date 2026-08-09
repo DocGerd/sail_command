@@ -5,11 +5,32 @@ import { toGpx } from '../lib/gpx';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
 import type { MsgKey } from '../i18n/dict.de';
-import type { Board, Leg, NoRouteReason, Plan, Rig } from '../types';
+import type { Board, Leg, NoRouteReason, Plan, Rig, ShallowInfo } from '../types';
 import Card from './Card';
 import Chip from './Chip';
 import Button from './Button';
 import Disclosure from './Disclosure';
+
+// #452: plan-level shallow-water warning — shared by RouteSummary (Routes
+// tab, both rig tabs) and PlannerPanel's compact Ergebnis strip (the first
+// surface a user sees after planning), so the copy and honesty caveats can
+// never drift between the two. `shallow` is only ever present when the #53
+// relaxation tier actually fired, which by construction only happens when
+// usedDepthM < requestedDepthM (planRoute.ts's relaxation block only probes
+// a shallower gate after the REQUESTED gate failed to connect) — so
+// rendering `used` here is never redundant with `requested`.
+export function ShallowWarning({ shallow }: { shallow: ShallowInfo }) {
+  const t = useT();
+  return (
+    <p className="shallow-warning" role="alert">
+      {t('route.shallow.banner', {
+        requested: shallow.requestedDepthM.toFixed(1),
+        used: shallow.usedDepthM.toFixed(1),
+        minGate: shallow.minGateDepthM.toFixed(1),
+      })}
+    </p>
+  );
+}
 
 export interface RouteSummaryProps {
   plan: Plan;
@@ -140,15 +161,10 @@ export default function RouteSummary({
       {/* #53: plan-level shallow-water warning — both rigs solved at the same
           relaxed gate, so this renders on BOTH rig tabs (it sits outside the
           per-rig branch below). Persisted with the plan, so a reloaded plan
-          renders it identically. */}
-      {plan.result.shallow && (
-        <p className="shallow-warning" role="alert">
-          {t('route.shallow.banner', {
-            requested: plan.result.shallow.requestedDepthM.toFixed(1),
-            minGate: plan.result.shallow.minGateDepthM.toFixed(1),
-          })}
-        </p>
-      )}
+          renders it identically. #452: shared with PlannerPanel's compact
+          Ergebnis strip via the ShallowWarning component above, so the same
+          plan-level warning is visible without switching to this tab too. */}
+      {plan.result.shallow && <ShallowWarning shallow={plan.result.shallow} />}
 
       {!result || !summary ? (
         <p role="alert">{t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.internal')}</p>

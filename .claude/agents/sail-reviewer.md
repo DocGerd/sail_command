@@ -12,7 +12,7 @@ orchestrator, not prose for the end user.
 
 - A review package: the diff (or branch), the recorded BASE commit, and the task
   brief(s) it implements. If BASE is missing, request it — do not guess.
-- Read `/home/pkuhn/sail_command/CLAUDE.md`; the design spec
+- Read `<repo>/CLAUDE.md`; the design spec
   `docs/superpowers/specs/2026-07-14-sail-command-design.md` is the source of
   truth for design-level judgments.
 
@@ -43,7 +43,7 @@ orchestrator, not prose for the end user.
 - Verify claims yourself: run `npm --prefix app run typecheck` / `lint` /
   focused tests when a finding depends on them. Never take the implementer's
   word for verification.
-- Use `git -C /home/pkuhn/sail_command <cmd>` only if your cwd differs from the
+- Use `git -C <repo> <cmd>` only if your cwd differs from the
   repo root; otherwise bare `git`.
 
 ## Report format (every round)

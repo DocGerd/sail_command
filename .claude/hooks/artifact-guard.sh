@@ -256,7 +256,7 @@
 #     still blocking too much", maintainer, 2026-08-07; the first produced the
 #     conjunctive exemption above). Every candidate below was scored on a
 #     corpus HARVESTED from this project's own transcripts, never invented:
-#     29,009 Bash tool calls under ~/.claude/projects/-home-pkuhn-sail-command,
+#     29,009 Bash tool calls under ~/.claude/projects/<flattened-repo-path>,
 #     27,040 DISTINCT command strings, each replayed through a byte-identical
 #     copy of THIS script (every variant is that copy with exactly one edit,
 #     so the production predicate is what answered — the #404 twin trap).

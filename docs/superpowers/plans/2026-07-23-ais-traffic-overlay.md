@@ -2428,7 +2428,7 @@ Steps:
 
 - [ ] E2E smoke (the feature must not disturb existing Live-tab e2e; no key is set in e2e, so zero AIS network): `npm --prefix app run e2e -- live.spec.ts` (and `plan.spec.ts` if the interactive-layer-id change touched tap-to-pick). The `pree2e` hook rebuilds and rewrites `app/public/test-fixtures/wind-sw12.json` — restore that fixture afterward (`git checkout -- app/public/test-fixtures/wind-sw12.json`); never commit its churn.
 
-- [ ] Real-browser pass with the owner-provided key (the repo verification lesson: synthetic tests alone don't count). The live key is at `/tmp/claude-1000/-home-pkuhn-sail-command/1e915eec-a8e1-42c1-bc01-54708e58df08/scratchpad/aisstream-key.txt` — read it from that PATH at run time; never paste its contents into any file, test, commit, or log.
+- [ ] Real-browser pass with the owner-provided key (the repo verification lesson: synthetic tests alone don't count). The live key is at `<scratchpad>/aisstream-key.txt` — read it from that PATH at run time; never paste its contents into any file, test, commit, or log.
   - Start the dev server: `npm --prefix app run dev`.
   - Open the app, go to Options, paste the key into "AIS API key" and (optionally) enter your own MMSI. Switch to the Live tab. In the Flensburg Fjord / Danish South Sea viewport, confirm:
     - Vessels appear as green arrows rotated to heading/COG (dots where neither is reported), with COG vectors when moving; names at high zoom, dots at low zoom.

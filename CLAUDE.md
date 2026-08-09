@@ -2456,7 +2456,7 @@ deviate from it.
   cwd: spawning an `isolation: worktree` agent fails with "Cannot create agent
   worktree: not in a git repository" (worktree creation resolves from cwd), and
   `git worktree remove <abs-path>` fails "not a git repository" even though the
-  path is absolute. `cd /home/pkuhn/sail_command` before any worktree or merge
+  path is absolute. `cd <repo>` before any worktree or merge
   operation; a heredoc-heavy `python3 - <<PY` block earlier in the session is
   enough to leave you somewhere else.
   Quieter variant: with `--repo` the MERGE succeeds but the
