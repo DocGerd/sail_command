@@ -33,6 +33,7 @@ const PACKAGES = [
   'workbox-precaching',
   'workbox-range-requests',
   'workbox-routing',
+  'workbox-strategies',
   'workbox-window',
 ];
 
