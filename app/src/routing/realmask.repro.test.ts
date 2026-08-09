@@ -507,6 +507,24 @@ describe('#243 depth comfort preference (real mask)', () => {
   // fail). The two figures above are documentation of this mask, not
   // assertions; the relationship is what a future change must not silently
   // reverse. A regression back to non-improvement reds this test.
+  //
+  // THIS DETECTOR IS ONE-DIRECTIONAL — say so rather than let a future reader
+  // assume otherwise. The removed `min < 3.5` was half of a two-sided band,
+  // and its own comment named BOTH directions: not silently regressed further,
+  // and not silently "fixed" back toward the baseline. `min > minOff` is
+  // strict but UNBOUNDED ABOVE, so after #455 nothing in this file detects
+  // drift in the IMPROVEMENT direction — an unexplained jump to, say, 12 m
+  // would pass silently. That is a deliberate trade, not an oversight: every
+  // ceiling available here is either mask-derived (the failure mode being
+  // fixed) or an arbitrary constant with no invariant behind it, and a
+  // one-directional detector that says so beats a two-directional one that
+  // reds on every regeneration. Reviewer note (PR #476): a "comfort target
+  // doubled" mutation was tried as a probe of the improvement side and is
+  // INCONCLUSIVE, not reassuring — it left the file 13/13 green because the
+  // Drejoe route did not move at all (min stayed 4.1 m, minOff 3.7 m), so the
+  // mutation was inert on this passage rather than the assertion being blind.
+  // The one-sidedness is a structural property of `toBeGreaterThan`, which no
+  // experiment here established or refuted.
   it('Aeroeskoebing -> Drejoe at DEFAULT_SETTINGS: the comfort preference improves this passage minimum rather than degrading it', () => {
     const res = planRoute(
       {
