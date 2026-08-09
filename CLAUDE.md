@@ -793,6 +793,19 @@ deviate from it.
   release SHA has ever existed (main-mode runs do not save caches), so the SHA
   component alone missed. The version-in-key rationale is real and documented
   above; this run is not evidence for it.
+
+  **SECOND EXERCISE — v0.11.0 cut (2026-08-08): it did NOT fire, and the MARGIN
+  is not what decided that.** Merge-push Deploy created 12:21:46Z, tag Deploy
+  12:22:40Z — a **54-second** margin — and `cancel-in-progress` killed the merge
+  run MID-`build`, so its `deploy` job never created a Pages deployment and the
+  tag run's was the FIRST for that SHA. Compare v0.10.0's **43 seconds**, which
+  was NOT enough. A LONGER gap therefore came out safe where a shorter one did
+  not: never predict this from the gap, and do not read "fast tag push" as a
+  protection. The decisive fact is the earlier run's own `deploy` job conclusion —
+  `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq '.jobs[]|"\(.name): \(.conclusion)"'`;
+  `cancelled`/`null` means no deployment of that SHA exists (the tag run will
+  take), `success` means it does (the tag run will no-op). `smoke-probe` passing
+  on the tag run is then the positive proof it took.
 - **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
   on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
   describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
@@ -1648,6 +1661,36 @@ deviate from it.
   hardcoded to the PRODUCTION url can never capture a release candidate, since
   at cut time production IS by definition the previous release
   (`SC_SCREENSHOT_URL` now overrides it).
+  **SECOND, INDEPENDENT requirement (maintainer feedback at the v0.11.0 cut):
+  a docs image must REPRESENT THE PRODUCT, not merely be current.** That cut's
+  recapture was technically accurate and shipped a route that was **81% MOTOR** —
+  and this app is a time-optimal SAILING router, so it showcased the one part
+  that is not the differentiator. Freshness is necessary, not sufficient. A `★`
+  recommendation does NOT imply sail-dominance — MEASURED the same day, a 13:00
+  departure TIED at 72% motor while an 18:00 one decided `Faster: Genoa ★` at
+  *81%* motor — so check the sail/motor split explicitly rather than inferring it
+  from the `★`. Live wind can make a sail-dominant capture impossible on a given
+  day (2026-08-08: Flensburg→Sønderborg 13% sail; Maasholm→Bagenkop returns
+  no-route at the default 3.0 m), which is why the deterministic `?windFixture=`
+  path is the reproducible alternative — at the cost of a UNIFORM field, i.e.
+  identical wind barbs, a visible tell of synthetic data in a hero image. Open
+  as #459.
+- **Repeated identical readings can be ONE stale reading — agreement is not
+  convergence until each run is confirmed DISTINCT.** Probing six
+  route/departure combinations for a screenshot (v0.11.0 cut) returned
+  "100% sail, rigs tied" every time, which read as a robust finding; it was the
+  SAME cached plan six times. TWO silent failures stacked: a DOM helper matched
+  `[role="region"][aria-label="Origin"]`, which never matches — those regions are
+  labelled by their `<h3>` via `aria-labelledby`, so Playwright's
+  `getByRole('region', { name: 'Origin' })` resolves them and the CSS
+  `[aria-label=…]` form silently does not — so the route never actually changed;
+  and Open-Meteo began answering **429** under the probe loop, so the re-plans
+  failed while the app kept DISPLAYING the previous result. Neither failure
+  surfaced as an error in the reading. The tell was arithmetic — an 8.2 nm
+  "Maasholm→Bagenkop", a Kiel-Bight crossing — and the ground truth is the saved-
+  plan LIST ENTRY, which names the route (`Flensburg → Sønderborg …`); the summary
+  card does not name it at all. Verify an artifact's IDENTITY, not only its
+  numbers, before treating repeated agreement as evidence.
 - **A FIFTH way, adjacent to SAME-PR INVALIDATION: SIBLING-MERGE
   invalidation.** #423's CLAUDE.md prose was accurate when authored
   (2026-08-06T22:06:46Z) and was made FALSE by #419 merging 9 h 19 min later
