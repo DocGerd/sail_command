@@ -21,8 +21,10 @@ quoted and the disagreement is stated.
 
 **Hazard 1 — this checkout's `node_modules` is stale against its lockfile.**
 
+Both commands run from the repo root:
+
 ```
-$ node -p "require('/home/pkuhn/sail_command/app/node_modules/maplibre-gl/package.json').version"
+$ node -p "require('./app/node_modules/maplibre-gl/package.json').version"
 6.0.0
 $ grep -m1 -A2 '"node_modules/maplibre-gl"' app/package-lock.json | grep version
       "version": "6.1.0",
@@ -47,8 +49,10 @@ estimate". An exact Claude-tokenizer count of `CLAUDE.md` is **not
 obtainable in this environment** — there is no `anthropic` SDK, no
 `ANTHROPIC_API_KEY`, and Claude Code does not persist its system prompt
 into the session transcript (verified: a distinctive `CLAUDE.md` string
-appears in **0 of 174** `~/.claude/projects/-home-pkuhn-sail-command/*.jsonl`
-files, because only conversation messages are written there). §A1 therefore
+appears in **0 of 174** `*.jsonl` files under this project's transcript
+directory — `~/.claude/projects/<project-slug>/`, where `<project-slug>`
+is Claude Code's own slugification of the checkout's absolute path —
+because only conversation messages are written there). §A1 therefore
 reports three independent measurements that bracket the answer, and names
 the one instrument that would settle it — `/context`, a main-session
 action. That is a useful negative result, not a dodge.
