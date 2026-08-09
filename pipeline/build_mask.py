@@ -112,8 +112,8 @@ def main() -> None:
         # back to the conservative max value wherever they diverge by more
         # than TOLERANCE_M (a source discontinuity - shoal/channel boundary,
         # drop-off, or land/water edge - where bilinear's interpolation
-        # cannot be trusted). See TOLERANCE_M below for the measured
-        # trade-off this tolerance was chosen against.
+        # cannot be trusted). See TOLERANCE_M below: it is a safety bound
+        # tied to the boat's draft, not a tuning knob.
         reproject(
             source=rasterio.band(src, 1),
             destination=elev_max,
@@ -133,27 +133,67 @@ def main() -> None:
             resampling=Resampling.bilinear,
         )
 
-    # Tuned against two constraints, in priority order: (a) the connectivity
-    # gate in verify_mask.py must still pass every harbor that needed
-    # bilinear to reconnect (Aabenraa, Augustenborg's and Marstal's
-    # CONNECTIVITY_EXCEPTIONS_M thresholds, and the channels feeding them);
-    # (b) minimize land->water flips crossing the 3.0 m default safety
-    # depth. At TOLERANCE_M=2.0, both are satisfied: verify_mask.py reports
-    # the same 28 OK / 2 exceptions / 5 known-disconnected table as the
-    # unconditional-bilinear run, while land->water flips crossing 3.0 m
-    # (and 5.0 m) drop from 1,780 (663) under unconditional bilinear to
-    # ZERO under the blend - every flip the blend still allows stays below
-    # the default safety depth. Total land->water flips (any depth) also
-    # drop from 22,948 to 17,724, since most flipped cells were themselves
-    # close to the max/bilinear divergence that gates them out.
-    # Residual bound: where max() reads 0 (dry), the blend can report at
-    # most TOLERANCE_M of depth - the |bilinear - max| <= TOLERANCE_M test
-    # against a max of 0 provably never admits more than TOLERANCE_M itself.
-    # Measured 38 such cells (0.0007% of the grid), all reading exactly
-    # 2.00 m. Only reachable by a user who sets safetyDepthM <= 2.0 m, which
-    # is already below the boat's 2.1 m draft - the settings UI should clamp
-    # safetyDepthM above draft regardless of this (tracked for Phase E).
-    TOLERANCE_M = 2.0
+    # TOLERANCE_M is a SAFETY BOUND, not a tuned constant (#455).
+    #
+    # The blend substitutes bilinear for max only where the two agree within
+    # TOLERANCE_M, so by construction every cell satisfies
+    #     depth_blend <= depth_max + TOLERANCE_M
+    # Read that contrapositively, which is the property that matters: a cell
+    # the app calls navigable at safety depth G has a CONSERVATIVE
+    # (max-resampled) depth of at least G - TOLERANCE_M. At the default gate
+    # G = 3.0 m, TOLERANCE_M = 0.9 puts that floor at exactly 2.1 m -
+    # BOAT_DRAFT_M (app/src/routing/relaxedDepth.ts). So no cell the router
+    # may plan through at default settings is shallower than the hull, however
+    # far bilinear wanted to stray. This value is derived from the blend rule
+    # and the draft; it is not fitted to an outcome.
+    #
+    # THE GUARANTEE IS GATE-CONDITIONAL - never restate it as unconditional.
+    # It bounds G - TOLERANCE_M, so it decays as a user lowers safetyDepthM.
+    # Measured on this mask (cells navigable at the gate whose conservative
+    # depth is below the 2.1 m draft):
+    #     G = 3.0 m (default)     floor 2.1 m       0 cells
+    #     G = 2.5 m               floor 1.6 m   1,722 cells
+    #     G = 2.2 m (UI minimum)  floor 1.3 m   6,752 cells
+    # SAFETY_DEPTH_FIELD (app/src/components/OptionsPanel.tsx) does clamp the
+    # input to >= 2.2 m and NumberInput enforces it on commit, so the last row
+    # is the worst case actually reachable through the UI, not a hypothetical.
+    # That clamp holds the GATE above draft; it cannot hold this mask's floor
+    # above draft, and nothing here can.
+    #
+    # Why the previous TOLERANCE_M = 2.0 looked safe and was not: the comment
+    # here bounded only the sub-case where max() reads 0 (dry), where the
+    # |bilinear - max| test provably admits no more than TOLERANCE_M itself -
+    # 38 such cells, all at exactly 2.00 m, reachable only below a 2.0 m gate.
+    # That measurement was right and was mistaken for the whole bound. It says
+    # nothing about a cell whose max reads 2.0 m and whose blend reads 4.0 m,
+    # and 924 such below-draft cells were navigable at the DEFAULT 3.0 m gate.
+    #
+    # LOWER IS NOT SAFER - 0.9 sits just above a hard floor. verify_mask.py's
+    # connectivity gate must keep passing Marstal, whose approach reconnects
+    # only through bilinear-refined cells. MEASURED on this DTM: Marstal is
+    # DISCONNECTED at its 2.0 m exception gate for TOLERANCE_M <= 0.87 and
+    # connected from 0.88 up, so 0.9 clears the wall by ~0.03 m, not by a
+    # comfortable margin. Never tighten this without re-running verify_mask.py.
+    #
+    # Cost against TOLERANCE_M = 2.0: cells navigable at the 3.0 m default fall
+    # 2,473,845 -> 2,470,330 (-3,515, -0.14%), and cells the blend pushes
+    # across that gate fall 14,715 -> 10,746 (-27%). verify_mask.py's table is
+    # unchanged (28 OK, 2 of them via exception, 5 known-disconnected). 91,877
+    # of 5,280,000 mask bytes change value; the file size does not.
+    #
+    # That -3,515 is a NET, and reading it as a pure subset is wrong: it
+    # decomposes into -3,969 cells lost and +454 GAINED at the 3.0 m gate.
+    # The gain is not new optimism - it is the same convergence, seen from the
+    # other side. Bilinear is NOT bounded above by max here (a ~46 m
+    # destination cell is smaller than an EMODnet source pixel, so bilinear
+    # interpolates between pixel CENTRES the max window never covered, and can
+    # land either side of it). Wherever bilinear read SHALLOWER than max, the
+    # old tolerance shipped that pessimistic value; reverting to max makes the
+    # cell deeper. MEASURED: all 8,461 such cells now equal the max-resample
+    # EXACTLY - none exceeds it - and all 454 newly-navigable-at-3.0 cells have
+    # a conservative depth >= 3.0. Both directions land on the conservative
+    # reading, which is the whole point.
+    TOLERANCE_M = 0.9
     both_valid = ~np.isnan(elev_max) & ~np.isnan(elev_bilinear)
     diff = np.where(both_valid, np.abs(elev_bilinear - elev_max), np.inf)
     use_bilinear = both_valid & (diff <= TOLERANCE_M)
@@ -265,13 +305,12 @@ def main() -> None:
             "EMODnet Bathymetry Consortium (2024). EMODnet Digital Bathymetry (DTM 2024). doi:10.12770/cf51df64-56f9-4a99-b1aa-36b8d7b743a1 (CC-BY 4.0)",  # noqa: E501 -- DOI citation, not code; unwrappable
             "Land polygons (c) OpenStreetMap contributors (ODbL), osmdata.openstreetmap.de",
             "Schlei fjord water body (c) OpenStreetMap contributors (ODbL), relation 2340930 via nominatim.openstreetmap.org",  # noqa: E501 -- attribution string, not code; unwrappable
-            # NOTE: the About dialog currently shows this ODbL statement as a
-            # static i18n item (about.sources.osmMask) because the committed
-            # mask.meta.json predates this entry. When the mask is next
-            # regenerated (and this string lands in mask.meta.json's sources,
-            # which the About dialog also renders dynamically), remove the
-            # static about.sources.osmMask item from AboutDialog + both i18n
-            # dicts (or dedupe) to avoid showing the statement twice.
+            # The About dialog renders mask.meta.json's `sources` dynamically,
+            # so this string reaches the UI from here. It used to ALSO exist as
+            # a static i18n item (about.sources.osmMask) because the committed
+            # mask.meta.json predated this entry; #455's regeneration made that
+            # copy a visible duplicate, and it was removed from AboutDialog and
+            # both dicts then. Don't reintroduce a static copy.
             "The land/depth mask (mask.bin) is a Derivative Database of OpenStreetMap data and is made available under the Open Database License (ODbL). (c) OpenStreetMap contributors.",  # noqa: E501 -- license statement, not code; unwrappable
         ],
     }
