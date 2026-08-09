@@ -676,12 +676,27 @@ describe('PlannerPanel', () => {
       // #452: the effective depth the route was actually computed at — the
       // defect this test guards was that usedDepthM rendered nowhere.
       expect(banner.textContent).toContain('2.5 m');
-      // Shallowest charted cell actually crossed.
+      // Shallowest charted depth crossed by the plan (Minor 5, PR #461: not
+      // "actually crossed" — minGateDepthM folds over BOTH rigs' legs, so on
+      // one rig's tab it can name the OTHER rig's leg).
       expect(banner.textContent).toContain('2.3 m');
       // Honest passage-planning-aid copy (#455): never claims an unflagged
-      // section IS safe — only checked as a positive claim, since the copy's
-      // own "not guaranteed to be clear" disclaimer legitimately uses the word.
-      expect(banner.textContent).not.toMatch(/\bis (verified|guaranteed)\b/i);
+      // section IS safe. review (PR #461 Major 3): the ORIGINAL
+      // `/\bis (verified|guaranteed)\b/i` matched only those two exact word
+      // pairs, so appending "All unmarked water on this route is safe." to
+      // the EN string reproduced 91/91 GREEN — measured directly against
+      // this branch before this fix. Widened to also catch "is/are safe" and
+      // "is/are clear", the reviewer's specific counter-example. NARROWED,
+      // NOT CLOSED (re-run against MY OWN replacement, per the fix-wave
+      // brief): appending "This route poses no risk beyond the marked
+      // sections." to the EN string still passes the WIDENED regex too —
+      // no finite word list closes this class for free-form prose. The
+      // POSITIVE `toContain` below is what actually earns its
+      // keep (it reds the moment the required hedge clause is removed,
+      // added-to, or reworded away); this negative check is a regression pin
+      // against the two SPECIFIC phrasings already seen going wrong, not a
+      // content classifier.
+      expect(banner.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
       expect(banner.textContent).toContain('not guaranteed to be clear');
     });
 
@@ -693,6 +708,22 @@ describe('PlannerPanel', () => {
     it('is absent before any plan exists', () => {
       renderPanel({ plan: null, rig: null });
       expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
+    });
+
+    // Review finding (PR #461 Major 1): the warning is plan-level, but its
+    // OLD render site lived inside a `summary &&` gate, and `summary` is
+    // null whenever the ACTIVE rig's own result is null — so a user on the
+    // rig tab whose solve failed saw no warning for a plan that carries one.
+    // `makeShallowPlan()` -> `makePlan()` sets `fock: null` by default
+    // (`fockReason: 'calm-motor-off'`), which is exactly this shape; viewing
+    // it on the fock tab reproduces the reviewer's measured probe.
+    it('#452 Major 1: still renders when the ACTIVE rig itself has no result', () => {
+      renderPanel({ plan: makeShallowPlan(), rig: 'fock' });
+      expect(screen.getByText(/was not passable/)).toBeInTheDocument();
+      // No summary-dependent content exists for fock — the warning is the
+      // only thing this rig's strip has to show; "View details" needs
+      // `summary` too and must stay absent.
+      expect(screen.queryByRole('button', { name: /View details/ })).not.toBeInTheDocument();
     });
   });
 

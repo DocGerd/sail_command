@@ -443,15 +443,48 @@ describe('shallow-water warning banner (#53/#452)', () => {
     expect(banner.textContent).toContain('2.5 m');
     expect(banner.textContent).toContain('2.3 m');
     // Honest passage-planning-aid copy (#455): never claims an unflagged
-    // section IS safe — only checked as a positive claim, since the copy's
-    // own "not guaranteed to be clear" disclaimer legitimately uses the word.
-    expect(banner.textContent).not.toMatch(/\bis (verified|guaranteed)\b/i);
+    // section IS safe. review (PR #461 Major 3, twin of the identical
+    // PlannerPanel.test.tsx assertion — see its comment for the full
+    // measured mutation record): widened from `/\bis
+    // (verified|guaranteed)\b/i`, which let "...is safe." through 91/91
+    // GREEN, to also catch "is/are safe" and "is/are clear". NARROWED, NOT
+    // CLOSED — "poses no risk" still evades it; the POSITIVE `toContain`
+    // below is the assertion actually doing the work.
+    expect(banner.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
     expect(banner.textContent).toContain('not guaranteed to be clear');
   });
 
   it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
     renderSummary({ plan: makeShallowPlan(), rig: 'fock' });
     expect(screen.getByText(/was not passable/)).toBeInTheDocument();
+  });
+
+  // Review finding (PR #461 Major 2): German is the app's DEFAULT language
+  // (`I18nProvider` falls back to 'de' when nothing is stored), but every
+  // other test in this describe block forces 'en' via `renderSummary`'s
+  // hardcoded `localStorage.setItem('sc-lang', 'en')` — so the string most
+  // users actually see had zero coverage. Rendered directly (not through
+  // `renderSummary`) so this one case can set 'de' without touching the
+  // shared helper's default for every other test in the file.
+  it('#452 Major 2: renders the German copy with all three depths and the honesty hedge', () => {
+    localStorage.setItem('sc-lang', 'de');
+    render(
+      <I18nProvider>
+        <RouteSummary plan={makeShallowPlan()} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    const banner = screen.getByText(/keine durchgehende Route gefunden/);
+    expect(banner).toHaveAttribute('role', 'alert');
+    expect(banner).toHaveClass('shallow-warning');
+    // Requested / used / minGate — same three distinct values as the English
+    // case above, so a dropped placeholder in the DE string reds here too.
+    expect(banner.textContent).toContain('3.0 m');
+    expect(banner.textContent).toContain('2.5 m');
+    expect(banner.textContent).toContain('2.3 m');
+    // The honesty hedge, in German: never claims an unflagged section IS
+    // safe — this is the same #455 constraint as the English copy, and it
+    // has to hold independently since the two strings are maintained by hand.
+    expect(banner.textContent).toContain('nicht garantiert frei von Untiefen');
   });
 
   it('is absent on plans without relaxation', () => {

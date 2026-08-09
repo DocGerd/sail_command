@@ -237,7 +237,12 @@ export default function PlannerPanel({
   // #452: plan-level, like RouteSummary's own — both rigs solve at the same
   // relaxed gate, so this must show regardless of which rig tab is active
   // and is deliberately NOT derived from `result`/`summary` (a null-rig tab
-  // must still surface it if the plan as a whole carries it).
+  // must still surface it if the plan as a whole carries it). The RENDER
+  // site below must honour this too — it used to be nested inside a
+  // `summary &&` gate, which silently hid the warning on exactly a null-rig
+  // tab (review finding, PR #461 Major 1, measured: 0 nodes rendered for a
+  // shallow plan on a rig whose own result is null). The Card below is now
+  // gated on `summary || shallow`, not `summary` alone.
   const shallow = plan?.result.shallow ?? null;
 
   // #64 §3.4 (Option B) a11y: announce the terminal result in the persistent
@@ -573,56 +578,73 @@ export default function PlannerPanel({
 
       {/* §3.4 (Option B): compact Ergebnis strip, immediately after the status
           live region. A strict subset of the full Routes card; "Details
-          ansehen" jumps to the full card. */}
-      {summary && (
+          ansehen" jumps to the full card. #452: gated on `summary || shallow`,
+          NOT `summary` alone — `shallow` is plan-level and must still surface
+          here when the ACTIVE rig's own result is null (e.g. the active tab's
+          rig failed to route while the other rig succeeded at the relaxed
+          gate). Each summary-dependent section below carries its own
+          `summary &&` guard so the Card can render with just the warning and
+          no stats when that's all there is. */}
+      {(summary || shallow) && (
         <Card title={t('planner.card.result')} className="planner-result">
-          <div className="planner-result-chips">
-            {/* #259: mirrors RouteSummary's rig-comparison chip — an ETA tie
-                or an all-motor comparison must not silently badge one rig as
-                recommended here either (this strip is the FIRST surface a
-                user sees a result on). */}
-            <Chip className="chip-faster-rig">
-              {summary.rigRecommendation.kind === 'decided'
-                ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[summary.rigRecommendation.rig]) })
-                : t(summary.rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
-            </Chip>
-            {/* #301: the form has drifted from this displayed route — a
-                re-run right now would produce something different. Sits ON
-                the stale thing (this card / the map route below it), not a
-                tab-independent Banner (#368's contested space) and not map
-                dimming/dashing (#324's dash+opacity already means "the other
-                rig"). The same sentence is folded into the live region above
-                (statusText) — this Chip is the sighted-user surface only. */}
-            {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
-          </div>
+          {summary && (
+            <div className="planner-result-chips">
+              {/* #259: mirrors RouteSummary's rig-comparison chip — an ETA tie
+                  or an all-motor comparison must not silently badge one rig as
+                  recommended here either (this strip is the FIRST surface a
+                  user sees a result on). */}
+              <Chip className="chip-faster-rig">
+                {summary.rigRecommendation.kind === 'decided'
+                  ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[summary.rigRecommendation.rig]) })
+                  : t(summary.rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
+              </Chip>
+              {/* #301: the form has drifted from this displayed route — a
+                  re-run right now would produce something different. Sits ON
+                  the stale thing (this card / the map route below it), not a
+                  tab-independent Banner (#368's contested space) and not map
+                  dimming/dashing (#324's dash+opacity already means "the other
+                  rig"). The same sentence is folded into the live region above
+                  (statusText) — this Chip is the sighted-user surface only. */}
+              {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
+            </div>
+          )}
           {/* #452: shallow-water warning, promoted here from the Routes-tab-only
               RouteSummary card so it's visible on the FIRST surface a user sees
               a result on, without switching tabs. Plan-level (see `shallow`
-              above), same shared component and copy as RouteSummary's own. */}
+              above), same shared component and copy as RouteSummary's own —
+              and, unlike the sections below, NOT gated on `summary`. */}
           {shallow && <ShallowWarning shallow={shallow} />}
-          <div className="planner-result-primary">
-            <div className="ergebnis-stat ergebnis-stat-lg">
-              <span className="ergebnis-stat-label">{t('route.totals.eta')}</span>
-              <span className="ergebnis-stat-value tabular-nums">{summary.arrivalText}</span>
-            </div>
-            <div className="ergebnis-stat ergebnis-stat-lg">
-              <span className="ergebnis-stat-label">{t('route.totals.duration')}</span>
-              <span className="ergebnis-stat-value tabular-nums">{summary.durationText}</span>
-            </div>
-          </div>
-          <div className="planner-result-secondary">
-            <div className="ergebnis-stat">
-              <span className="ergebnis-stat-label">{t('route.totals.distance')}</span>
-              <span className="ergebnis-stat-value tabular-nums">{summary.distanceText}</span>
-            </div>
-            <div className="ergebnis-stat">
-              <span className="ergebnis-stat-label">{t('route.totals.avgSpeed')}</span>
-              <span className="ergebnis-stat-value tabular-nums">{summary.avgSpeedText}</span>
-            </div>
-          </div>
-          <Button variant="secondary" className="planner-result-details" onClick={onViewDetails}>
-            {t('planner.result.details')} <span aria-hidden="true">→</span>
-          </Button>
+          {summary && (
+            <>
+              <div className="planner-result-primary">
+                <div className="ergebnis-stat ergebnis-stat-lg">
+                  <span className="ergebnis-stat-label">{t('route.totals.eta')}</span>
+                  <span className="ergebnis-stat-value tabular-nums">{summary.arrivalText}</span>
+                </div>
+                <div className="ergebnis-stat ergebnis-stat-lg">
+                  <span className="ergebnis-stat-label">{t('route.totals.duration')}</span>
+                  <span className="ergebnis-stat-value tabular-nums">{summary.durationText}</span>
+                </div>
+              </div>
+              <div className="planner-result-secondary">
+                <div className="ergebnis-stat">
+                  <span className="ergebnis-stat-label">{t('route.totals.distance')}</span>
+                  <span className="ergebnis-stat-value tabular-nums">{summary.distanceText}</span>
+                </div>
+                <div className="ergebnis-stat">
+                  <span className="ergebnis-stat-label">{t('route.totals.avgSpeed')}</span>
+                  <span className="ergebnis-stat-value tabular-nums">{summary.avgSpeedText}</span>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                className="planner-result-details"
+                onClick={onViewDetails}
+              >
+                {t('planner.result.details')} <span aria-hidden="true">→</span>
+              </Button>
+            </>
+          )}
         </Card>
       )}
     </div>

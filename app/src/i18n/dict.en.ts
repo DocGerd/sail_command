@@ -159,16 +159,25 @@ export const en = {
   'route.rigMoot': 'Rig does not matter here — this passage runs entirely under engine',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
-  // #53/#452: honest passage-planning-aid copy — charted data may under- OR
-  // overstate real depths (dredged channels are exactly where chart data is
-  // pessimistic); never claim the route is verified safe. {used} names the
-  // relaxed gate the planner actually routed at (#53's graceful-degradation
-  // tier only fires when {used} < {requested}, so the two are never equal
-  // here) — and the closing sentence deliberately does NOT say "elsewhere is
-  // safe": the mask itself is known to overstate depth on some cells (#455),
-  // so an unflagged section is merely unflagged, not verified.
+  // #53/#452: honest passage-planning-aid copy — charted depth can be wrong
+  // in EITHER direction; never claim the route is verified safe. {used}
+  // names the relaxed gate the planner actually routed at (#53's
+  // graceful-degradation tier only fires when {used} < {requested}, so the
+  // two are never equal here) — and the closing sentence deliberately does
+  // NOT say "elsewhere is safe": the mask itself is known to OVERSTATE depth
+  // on ~45% of cells (#455), so an unflagged section is merely unflagged,
+  // not verified. review (PR #461 Minor 6): the pre-#452 string named the
+  // OPTIMISTIC case explicitly ("dredged channels ... often deeper than
+  // charted"); this copy deliberately DROPS that reassurance rather than
+  // keep a comment with no matching clause below — under #455 the direction
+  // that matters here is the dangerous one, not the reassuring one.
+  // review (PR #461 Minor 5): "shallowest charted depth actually crossed"
+  // overclaimed — `flagShallowLegs` (planRoute.ts) folds `minGateDepthM`
+  // over BOTH rigs' legs, so on a given rig's tab the number may describe
+  // the OTHER rig's leg, not one this route actually sails. "crossed by
+  // this plan" is the honest, plan-level framing.
   'route.shallow.banner':
-    'Caution: your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth actually crossed: {minGate} m. Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
+    'Caution: your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m. Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
