@@ -17,8 +17,13 @@ app/test-results/
 
 # Pipeline intermediate downloads (raw source data, not the packed outputs)
 pipeline/raw/
-pipeline/data-src/
-pipeline/.venv/
+# No trailing slash on these two: a trailing slash matches DIRECTORIES ONLY, and
+# a worktree that reaches the shared caches by SYMLINK has a symlink here, not a
+# directory — so the slashed form left both untracked-but-not-ignored. A
+# committed symlink stores its target STRING as blob content, i.e. an absolute
+# path off this machine, in a public repo.
+pipeline/data-src
+pipeline/.venv
 pipeline/bin/
 
 # Local/session files

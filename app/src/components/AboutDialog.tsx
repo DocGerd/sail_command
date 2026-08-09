@@ -141,7 +141,12 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           <ul>
             <li>{t('about.sources.protomaps')}</li>
             <li>{t('about.sources.osm')}</li>
-            <li>{t('about.sources.osmMask')}</li>
+            {/* #455: the mask's ODbL statement used to be a static item here
+                because the committed mask.meta.json predated that entry. The
+                regenerated mask carries it in `sources`, so it now arrives
+                through `maskSources` below — a static copy would show it
+                twice. Untranslated, like the other three mask sources: it is
+                the licence's own formal wording, not UI copy. */}
             <li>{t('about.sources.openMeteo')}</li>
             <li>{t('about.sources.polars')}</li>
             <li>{t('about.sources.seamarks')}</li>
