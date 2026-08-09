@@ -945,7 +945,13 @@ if [ "${1:-}" = "--selftest" ]; then
   # NOTE the 43 pre-existing `decide` rows that flipped ask -> advisory are
   # NOT part of that delta: a row changing its expectation does not change the
   # count, which is exactly why the count alone can never notice a decision
-  # regression - that is the rows' job.
+  # regression - that is the rows' job. TWO COUNTS THAT LOOK LIKE ONE, so
+  # quote the right one: 43 is how many rows FLIPPED, while
+  # `grep -cE '^  decide advisory '` reads 44 - the difference is the one
+  # `decide advisory` row the SPLIT block adds new. Same shape as the #437
+  # family-vs-noise counts in DESIGN: a future reader counting the obvious way
+  # gets 44 and will not match 43, and that is two definitions disagreeing,
+  # not an error.
   EXPECTED_CASES=217
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
@@ -973,15 +979,23 @@ if [ "${1:-}" = "--selftest" ]; then
   # MEASURED on scratch copies under /tmp before this gate existed: $SELF
   # non-executable, $SELF pointed at a directory, and $SELF exiting non-zero
   # with no output all produced the SAME signature - 41 of the want-`ask`
-  # rows red, 0 of the want-`allow` rows red - the suite failed closed only by
+  # rows red, 0 of the 22 want-`allow` rows AMONG THE decide/decide_exempt
+  # FAMILY red (that scope is load-bearing, not padding: it is what makes the
+  # count 22 rather than the unscoped figure, and 22 was the entire pinning of
+  # #388's conjunctive read-only exemption - the single `decide allow` row plus
+  # all 21 `decide_exempt` rows of the day) - the suite failed closed only by
   # ACCIDENT of the ask rows outnumbering the allow rows, not on purpose.
   # (Those two counts are from that DATED measurement and are not re-derived
-  # here; the row composition has since changed twice over. As of the
-  # 2026-08-09 split the want-`allow` set is the single `decide allow` row
-  # plus 22 `decide_exempt` rows, and there are now ~43 want-`advisory` rows
-  # which a dead $SELF also reads as `allow` - so the accident this gate
-  # replaces has grown MORE lopsided in the safe direction, which is a reason
-  # to keep the gate, never to rely on it.)
+  # here; the row composition has since changed twice over. RE-COUNTED as of
+  # the 2026-08-09 split, each figure `grep -cE`-derived rather than hedged:
+  # within that same decide/decide_exempt family the want-`allow` set is now
+  # 23 - 1 `decide allow` + 22 `decide_exempt`. OUTSIDE it there are 4
+  # `wrapper_check allow` rows, so the UNSCOPED want-`allow` set is 27; they
+  # were never part of the 22 above and naming both numbers is the point of
+  # this note. A dead $SELF additionally reads 44 `decide advisory` + 3
+  # `wrapper_check advisory` rows as `allow`, so the accident this gate
+  # replaces has grown MORE lopsided in the safe direction - a reason to keep
+  # the gate, never to rely on it.)
   # This catches the two STATIC failure shapes ($SELF not executable, $SELF
   # a directory) in one place with one clear diagnosis instead of 41
   # misleading "got [allow] want [ask]" lines that look like a decision
@@ -1141,8 +1155,11 @@ if [ "${1:-}" = "--selftest" ]; then
     fi
     json="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$(json_escape "$cmd")\"}}"
     # (#421 review, Major 2) - same rc-before-decision discipline as decide()
-    # above; these are exactly the 21 rows the review found passing
-    # vacuously against a dead $SELF.
+    # above; this is the helper behind the 21 rows THAT REVIEW found passing
+    # vacuously against a dead $SELF. 21 is a DATED count, not a description
+    # of the block below: the 2026-08-09 advisory split added a 22nd
+    # `decide_exempt` row, so `grep -cE '^  decide_exempt '` reads 22 today
+    # and will keep moving. The count is incidental; the discipline is not.
     out=$(printf '%s' "$json" | "$SELF" 2>&1); rc=$?
     if [ "$rc" -ne 0 ]; then
       echo "SELFTEST FAIL [invocation]: $desc -> \$SELF exited $rc, not 0 - this is NOT a decision, it is a dead or crashing invocation (out: $out)"
