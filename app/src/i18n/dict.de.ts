@@ -468,6 +468,8 @@ export const de = {
   'about.caveats.heading': 'Wichtige Hinweise',
   'about.caveats.polars':
     'Die Polardaten sind Schätzungen auf Basis ORC-artiger VPP-Daten, einstellbar über den Leistungsfaktor in den Optionen — nicht renngenau kalibriert.',
+  'about.caveats.depthMask':
+    'Die Tiefenwerte mischen zwei Lesarten derselben EMODnet-Bathymetriedaten, die um bis zu 0,9 m voneinander abweichen können — das beschreibt die Quelldaten, nicht den tatsächlichen Meeresgrund. Bei der Standard-Sicherheitstiefe von 3,0 m liegt die vorsichtigere Lesart jeder befahrbaren Zelle nie unter dem Tiefgang von 2,1 m; eine geringere Sicherheitstiefe verringert diesen Spielraum, bis auf 1,3 m beim Minimum von 2,2 m.',
   'about.dataSize':
     'Der erste Aufruf lädt ca. 44 MB (Basiskarte und Routendaten) herunter; spätere Aufrufe werden aus dem Cache bedient und funktionieren offline.',
   'about.sources.heading': 'Datenquellen',

@@ -598,8 +598,11 @@ Deltas at T = 0.9 against the shipped mask:
    navigable below the draft" holds at `safetyDepthM ≥ 3.0` because the floor
    is `G − T`. At 2.5 m it degrades to 1.6 m (1,722 cells below draft) and at
    2.1 m to 1.2 m (10,081). `build_mask.py`'s own comment already notes the
-   settings UI should clamp `safetyDepthM` above draft; that clamp is still
-   unbuilt and is now load-bearing for this guarantee.
+   settings UI should clamp `safetyDepthM` above draft; that clamp is BUILT —
+   `SAFETY_DEPTH_FIELD.min = 2.2` in `app/src/components/OptionsPanel.tsx`,
+   enforced by `NumberInput` on blur — and is load-bearing for this
+   guarantee — correcting this spike's earlier claim that it was still
+   unbuilt (verified against current code on `develop`).
 5. **`CONNECTIVITY_EXCEPTIONS_M` is tolerance-coupled**, and the scan in §4.4
    is a re-implementation of `verify_mask.py`'s gate, not that script itself.
    Run the real thing on the real regenerated artifact.

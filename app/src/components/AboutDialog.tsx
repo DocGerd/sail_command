@@ -128,6 +128,11 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           <h3>{t('about.caveats.heading')}</h3>
           <ul>
             <li>{t('about.caveats.polars')}</li>
+            {/* #455: depth-mask tolerance disclosure. TOLERANCE_M and
+                BOAT_DRAFT_M in this copy are cross-checked against
+                pipeline/build_mask.py by app/src/test/maskTolerance.test.ts —
+                update both together. */}
+            <li>{t('about.caveats.depthMask')}</li>
             <li>{t('about.dataSize')}</li>
           </ul>
         </section>

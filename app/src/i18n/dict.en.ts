@@ -371,6 +371,8 @@ export const en = {
   'about.caveats.heading': 'Important notes',
   'about.caveats.polars':
     'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
+  'about.caveats.depthMask':
+    "Depth values blend two readings of the same EMODnet bathymetry data, which can disagree by up to 0.9 m — that describes the source data, not the real seabed. At the default 3.0 m safety depth, the more cautious reading of every routable cell stays at or above the boat's 2.1 m draft; lowering the safety depth narrows that margin, down to 1.3 m at the 2.2 m minimum.",
   'about.dataSize':
     'First load downloads ~44 MB (basemap and route data); later loads are served from cache and work offline.',
   'about.sources.heading': 'Data sources',
