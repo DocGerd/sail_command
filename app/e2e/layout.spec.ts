@@ -561,6 +561,71 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
   }
 });
 
+// #299: proves the FOUR-tab strip (Plan/Routes/Live/Boat, added for the
+// dedicated Boat/skipper-settings tab) fits at the two narrowest
+// EDGE_VIEWPORTS entries by MEASUREMENT, never by trusting character counts
+// — the same "structural, not estimated" discipline the #368 tests above
+// apply to banner geometry. `.app-tabs` is a FIXED-height row (`height:
+// var(--sc-tabbar-h)`, no `min-height`, no wrap allowance) whose four
+// buttons are `flex: 1` — a label too wide to fit on one line would overflow
+// the row's fixed height rather than growing it, so this measures the
+// rendered geometry directly instead of assuming four short words fit.
+// "Boot"/"Boat" (4 chars, shorter than the existing "Routen"/"Routes") was
+// chosen specifically to keep this margin, per the #299 design decision.
+const FOUR_TAB_VIEWPORTS: Record<string, Viewport> = {
+  wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
+  deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
+};
+for (const [label, viewport] of Object.entries(FOUR_TAB_VIEWPORTS)) {
+  test(`#299: the four-tab strip fits without overlap, crowding or row growth (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      const tablist = page.getByRole('tablist');
+      await expect(tablist).toBeVisible();
+      const tabs = page.getByRole('tab');
+      await expect(tabs).toHaveCount(4);
+
+      const tabBoxes = await Promise.all([0, 1, 2, 3].map((i) => box(tabs.nth(i))));
+      const stripBox = await box(tablist);
+
+      // Every tab keeps a real, positive width — never squeezed to 0 by an
+      // overflowing sibling.
+      for (const b of tabBoxes) expect(b.width).toBeGreaterThan(0);
+
+      // The four tabs tile the strip left-to-right with no gap and no
+      // overlap: each box starts where the previous one ends (within 1px of
+      // rounding), and the FIRST/LAST box's outer edges match the strip's
+      // own bounding box — the signature of a `flex: 1` row genuinely
+      // fitting all four buttons, not three-and-a-bit squeezed under
+      // overflow.
+      expect(tabBoxes[0].x).toBeCloseTo(stripBox.x, 0);
+      for (let i = 1; i < tabBoxes.length; i++) {
+        expect(tabBoxes[i].x).toBeCloseTo(tabBoxes[i - 1].x + tabBoxes[i - 1].width, 0);
+      }
+      const lastTab = tabBoxes[tabBoxes.length - 1];
+      expect(lastTab.x + lastTab.width).toBeCloseTo(stripBox.x + stripBox.width, 0);
+
+      // The row's own height stays at the fixed tab-bar height for every
+      // tab — if a label had wrapped to two lines under the fixed-height
+      // row, its content would visually overflow rather than growing the
+      // row, so a per-tab height mismatch against the strip is exactly the
+      // failure mode this catches. A 3px tolerance absorbs `.app-tabs`'s own
+      // 1px border-bottom (measured: buttons render 44px inside a 45px
+      // strip) without masking a real wrap, which adds a full text line
+      // (~16-20px) — an order of magnitude more than this slack.
+      for (const b of tabBoxes) expect(Math.abs(b.height - stripBox.height)).toBeLessThanOrEqual(3);
+    } finally {
+      server.kill();
+    }
+  });
+}
+
 // #277: pins #276's fix for #205 (the narrow-width overlap between
 // `.data-layer-controls`, top-left, and `.route-layer-controls`, top-right)
 // against regression. That fix is a `max-width: calc(100% - 9.5rem)` bound on

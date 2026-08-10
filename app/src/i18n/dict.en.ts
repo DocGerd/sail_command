@@ -12,6 +12,11 @@ export const en = {
   'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
   'options.safetyDepth.label': 'Safety depth (m)',
+  // #299: the depth comfort margin and the rest of the boat settings now
+  // live in their own "Boat" tab (SettingsPanel) — this link right next to
+  // the (still here) safety depth stops anyone concluding the comfort
+  // margin was deleted just because it's no longer right beside it.
+  'planner.safetyDepth.boatLink': 'Depth comfort margin & more boat settings',
   'options.depthComfortMargin.label': 'Depth comfort margin (m)',
   'options.depthComfortMargin.help':
     'Beyond the safety depth, the planner also prefers water at least this much deeper when it costs little extra time — 0 disables the preference. It never allows shallower water than the safety depth allows, and the recommended rig can change as a result.',
@@ -28,13 +33,11 @@ export const en = {
   'options.showOwnship.label': 'Show my position',
   'options.showOwnship.help':
     'Shows your GPS position and accuracy circle on the map wherever it is open — planning, no plan, or Live view — not just during Live guidance. Consumer-GPS accuracy, not chart-grade positioning; this is a passage-planning aid, not a navigation device. Turning this on will ask for location permission.',
-  // One-line glance of the collapsed "Advanced" disclosure, joined with " · ".
-  'options.summary.motorOn': 'Motor on',
-  'options.summary.motorOff': 'Motor off',
-  'options.summary.maneuver': 'Maneuver {seconds} s',
-  'options.summary.performance': '×{factor}',
+  // #299: section headings on the Boat tab (SettingsPanel).
+  'settings.section.boatSafety': 'Boat & safety',
+  'settings.section.propulsion': 'Propulsion',
+  'settings.section.liveAis': 'Live & AIS',
   'planner.card.trip': 'Trip',
-  'planner.card.advanced': 'Advanced',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',
   'planner.destination.label': 'Destination',
@@ -359,6 +362,9 @@ export const en = {
   'nav.plan': 'Plan',
   'nav.routes': 'Routes',
   'nav.live': 'Live',
+  // #299: kept short, shorter even than "Routes" — avoids the 280px squeeze
+  // that would have been the tab option's cost with a word like "Settings".
+  'nav.boat': 'Boat',
   'nav.langToggle': 'Auf Deutsch anzeigen',
   'nav.langToggle.de': 'DE',
   'nav.langToggle.en': 'EN',

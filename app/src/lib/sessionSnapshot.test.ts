@@ -57,6 +57,35 @@ describe('sessionSnapshot (#113)', () => {
     expect(parseSessionSnapshot(raw)).toBeNull();
   });
 
+  // #299: 'boat' is a real, persistable Tab value (App.tsx's write-back
+  // effect saves it like any other), but must never be a tab a fresh boot
+  // restores INTO — a sailor reopening the PWA on deck must land on a
+  // content tab, not the boat/skipper settings form.
+  it("#299: coerces a persisted 'boat' tab to 'plan' on parse — never a restore target", () => {
+    expect(parseSessionSnapshot('{"v":1,"planId":"p1","tab":"boat","rig":"fock"}')).toEqual({
+      v: 1,
+      planId: 'p1',
+      tab: 'plan',
+      rig: 'fock',
+    });
+  });
+
+  it("#299: the no-plan variant also coerces a persisted 'boat' tab to 'plan'", () => {
+    expect(parseSessionSnapshot('{"v":1,"planId":null,"tab":"boat","rig":null}')).toEqual({
+      v: 1,
+      planId: null,
+      tab: 'plan',
+      rig: null,
+    });
+  });
+
+  it("#299: writeSessionSnapshot still persists 'boat' verbatim — the coercion is a READ-time restore decision, not a write-time one", () => {
+    writeSessionSnapshot({ v: 1, planId: 'p1', tab: 'boat', rig: null });
+    expect(localStorage.getItem(SESSION_SNAPSHOT_KEY)).toBe(
+      '{"v":1,"planId":"p1","tab":"boat","rig":null}',
+    );
+  });
+
   it('readSessionSnapshot returns null when localStorage access throws (private mode)', () => {
     localStorage.setItem(SESSION_SNAPSHOT_KEY, '{"v":1,"planId":null,"tab":"live","rig":null}');
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {

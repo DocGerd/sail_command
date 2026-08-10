@@ -8,7 +8,6 @@ import { FORECAST_DAYS } from '../services/openMeteo';
 import {
   formatDateTime,
   formatDuration,
-  formatKn,
   formatLatLon,
   formatNm,
   toLocalInputValue,
@@ -18,13 +17,12 @@ import { activeRigResult } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
-import OptionsPanel, { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
+import { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
 import NumberInput from './NumberInput';
 import Card from './Card';
 import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
-import Disclosure from './Disclosure';
 import Skeleton from './Skeleton';
 // #452: the shallow-water warning is plan-level (RouteSummary's own note
 // explains why) — shared here so the FIRST surface a user sees a result on
@@ -92,6 +90,10 @@ export interface PlannerPanelProps {
   formDirty: boolean;
   // "Details ansehen": switch to the Routes tab and focus its Ergebnis heading.
   onViewDetails: () => void;
+  // #299: discoverable route from the (still inline) safety-depth field to
+  // the dedicated Boat tab, which now hosts the depth comfort margin and the
+  // rest of the boat/propulsion/AIS settings — switches App.tsx's active tab.
+  onOpenBoatSettings: () => void;
 }
 
 /**
@@ -138,6 +140,7 @@ export default function PlannerPanel({
   rig,
   formDirty,
   onViewDetails,
+  onOpenBoatSettings,
 }: PlannerPanelProps) {
   const t = useT();
   const [lang] = useLang();
@@ -314,14 +317,6 @@ export default function PlannerPanel({
   // `error.offline` disabled reason is the more actionable message there.
   const showOnboarding = online && !plan && (!origin || !destination);
 
-  // One-line glance of the collapsed advanced disclosure, from current settings.
-  const advancedSummary = [
-    settings.motorEnabled ? t('options.summary.motorOn') : t('options.summary.motorOff'),
-    formatKn(settings.motorSpeedKn),
-    t('options.summary.maneuver', { seconds: settings.maneuverPenaltyS }),
-    t('options.summary.performance', { factor: settings.performanceFactor }),
-  ].join(' · ');
-
   return (
     <div className="planner-panel">
       <Card title={t('planner.card.trip')} className="planner-trip">
@@ -475,7 +470,13 @@ export default function PlannerPanel({
       </Card>
 
       {/* §3.3: the two most-changed inputs — departure + safety depth — stay
-          visible in a compact row above the advanced disclosure. */}
+          visible in this compact row. #299: the rest of what used to sit
+          behind the "Erweitert" disclosure (depth comfort margin, motor/sail
+          preference, AIS, …) moved to the dedicated Boat tab (SettingsPanel);
+          only safety depth stays inline here, sharing SAFETY_DEPTH_FIELD as
+          its single source of truth with that tab's own render of it — there
+          is no second copy of the value, only a second RENDER of the same
+          settings.safetyDepthM via the same commitSetting helper. */}
       <div className="planner-compact-row">
         <Field
           className="planner-departure"
@@ -510,19 +511,14 @@ export default function PlannerPanel({
         </Field>
       </div>
 
-      {/* §3.3: the remaining five advanced inputs move behind an "Erweitert"
-          disclosure with a collapsed one-line value summary. */}
-      <Disclosure
-        className="planner-advanced"
-        summary={
-          <>
-            <span className="planner-advanced-label">{t('planner.card.advanced')}</span>
-            <span className="planner-advanced-values">{advancedSummary}</span>
-          </>
-        }
-      >
-        <OptionsPanel value={settings} onChange={onSettingsChange} />
-      </Disclosure>
+      {/* #299: a discoverable route from safety depth to the depth comfort
+          margin (and the rest of the boat settings) now that the two "depth"
+          controls live on two different surfaces — without this, a user
+          hunting for the comfort margin right next to safety depth (where it
+          used to be) could reasonably conclude it was removed. */}
+      <Button variant="ghost" className="planner-boat-settings-link" onClick={onOpenBoatSettings}>
+        {t('planner.safetyDepth.boatLink')} <span aria-hidden="true">→</span>
+      </Button>
 
       {/* §3.3: the primary action stays reachable at the panel bottom (sticky),
           never below a long scroll. §3.5: a single guidance/reason line under

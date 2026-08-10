@@ -25,6 +25,7 @@ import PlannerPanel, {
   type PlannerStatus,
   type TapTarget,
 } from './components/PlannerPanel';
+import SettingsPanel from './components/SettingsPanel';
 import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
@@ -619,6 +620,16 @@ function AppShell() {
     }
   }, [tab]);
 
+  // #299: the safety-depth field's discoverable link to the Boat tab (see
+  // PlannerPanel.tsx's own comment) — a plain tab switch, mirroring
+  // handleViewDetails above (no focus-move needed here: SettingsPanel's own
+  // first Card heading is the natural landing spot, and switching tabs
+  // already moves the browser's visual focus for a sighted user the same
+  // way "Details ansehen" does).
+  const handleOpenBoatSettings = useCallback(() => {
+    handleTabChange('boat');
+  }, [handleTabChange]);
+
   // Escape is the keyboard equivalent of the banner's cancel button below.
   // Gated on !aboutOpen (and not attached at all while About is open, rather
   // than checking aboutOpen inside the handler) so a single Escape with both
@@ -918,6 +929,24 @@ function AppShell() {
           </Banner>
         )}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
+        {/* #299: the displayed plan is stale relative to the current form —
+            previously ONLY surfaced as a Chip inside PlannerPanel's Ergebnis
+            strip (still there, unchanged), which mounts ONLY on the Plan tab.
+            Now that a solver-affecting setting can be changed from a THIRD
+            surface (the Boat tab) as well as the Plan tab itself, a user on
+            Routes/Live/Boat had no on-screen indication that the route on
+            screen no longer matches their inputs — a safety-shaped silence
+            for a depth-margin parameter, not a polish gap. Tab-independent
+            like every other banner-area entry (deliberately NOT gated on
+            `tab !== 'plan'`): this repo already has the identical
+            "duplicated with an inline surface" shape for `route.staleForecast`
+            above (RouteSummary's own inline alert on the Routes tab) and
+            treats that duplication as legitimate, not a bug — see
+            App.test.tsx's "the stale-forecast banner renders through the
+            real App tree" test comment. `formDirty` (computed above) is
+            already exactly "a plan is active AND its inputs no longer match
+            the form" — no new derivation needed. */}
+        {formDirty && <Banner kind="warning">{t('planner.result.stale')}</Banner>}
         {/* #25 addendum: reuses the SAME one-time hint LiveView shows on its
             own GPS denial (lib/gpsHint.ts's shared claim, live.gpsHint copy)
             — whichever of the two consumers hits the denial first is the one
@@ -1050,6 +1079,17 @@ function AppShell() {
           >
             {t('nav.live')}
           </button>
+          {/* #299: static boat/skipper settings — a peer content tab, not a
+              modal, and named for its referent rather than "Settings" (see
+              the design decision recorded on the issue). */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'boat'}
+            onClick={() => handleTabChange('boat')}
+          >
+            {t('nav.boat')}
+          </button>
         </nav>
 
         <div className="app-panel">
@@ -1079,8 +1119,10 @@ function AppShell() {
               rig={rig}
               formDirty={formDirty}
               onViewDetails={handleViewDetails}
+              onOpenBoatSettings={handleOpenBoatSettings}
             />
           )}
+          {tab === 'boat' && <SettingsPanel value={settings} onChange={setSettings} />}
           {tab === 'routes' && (
             <>
               {plan && rig && (

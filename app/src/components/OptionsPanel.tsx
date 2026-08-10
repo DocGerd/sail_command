@@ -68,20 +68,57 @@ export const SAIL_PREFERENCE_FIELD: FieldSpec = {
   step: 0.1,
 };
 
-// The four plain advanced numeric inputs that live behind the "Erweitert"
-// disclosure (DEPTH_COMFORT_MARGIN_FIELD and SAIL_PREFERENCE_FIELD above
-// render separately, each with its own help paragraph, ahead of these).
+// The four plain advanced numeric inputs that used to live behind the
+// (now-removed, #299) "Erweitert" disclosure (DEPTH_COMFORT_MARGIN_FIELD and
+// SAIL_PREFERENCE_FIELD above render separately, each with its own help
+// paragraph, ahead of these). #299 exports each individually — rather than
+// only the bundled array below — because SettingsPanel.tsx (the Boat tab)
+// splits them across TWO different section groups (Boat & safety vs.
+// Propulsion), so a single combined array can no longer be `.map()`-ed over
+// in one place the way this file's own (legacy, see the default export's own
+// comment) rendering still does.
+// eslint-disable-next-line react-refresh/only-export-components
+export const MOTOR_SPEED_FIELD: FieldSpec = {
+  key: 'motorSpeedKn',
+  labelKey: 'options.motorSpeed.label',
+  min: 1,
+  max: 10,
+  step: 0.1,
+};
+// eslint-disable-next-line react-refresh/only-export-components
+export const MOTOR_THRESHOLD_FIELD: FieldSpec = {
+  key: 'motorThresholdKn',
+  labelKey: 'options.motorThreshold.label',
+  min: 0,
+  max: 5,
+  step: 0.1,
+};
+// eslint-disable-next-line react-refresh/only-export-components
+export const MANEUVER_PENALTY_FIELD: FieldSpec = {
+  key: 'maneuverPenaltyS',
+  labelKey: 'options.maneuverPenalty.label',
+  min: 0,
+  max: 300,
+  step: 1,
+};
+// eslint-disable-next-line react-refresh/only-export-components
+export const PERFORMANCE_FACTOR_FIELD: FieldSpec = {
+  key: 'performanceFactor',
+  labelKey: 'options.performanceFactor.label',
+  min: 0.5,
+  max: 1.1,
+  step: 0.05,
+};
+
+// Recomposed from the four named exports above — same objects, same order,
+// so this file's own default-export rendering below (kept byte-behavior-
+// identical for its pre-existing test suite, see that component's own
+// comment) is unaffected by the split.
 const ADVANCED_FIELDS: FieldSpec[] = [
-  { key: 'motorSpeedKn', labelKey: 'options.motorSpeed.label', min: 1, max: 10, step: 0.1 },
-  { key: 'motorThresholdKn', labelKey: 'options.motorThreshold.label', min: 0, max: 5, step: 0.1 },
-  { key: 'maneuverPenaltyS', labelKey: 'options.maneuverPenalty.label', min: 0, max: 300, step: 1 },
-  {
-    key: 'performanceFactor',
-    labelKey: 'options.performanceFactor.label',
-    min: 0.5,
-    max: 1.1,
-    step: 0.05,
-  },
+  MOTOR_SPEED_FIELD,
+  MOTOR_THRESHOLD_FIELD,
+  MANEUVER_PENALTY_FIELD,
+  PERFORMANCE_FACTOR_FIELD,
 ];
 
 /** Commit a single numeric setting, skipping a redundant update on an unchanged blur. */
@@ -96,6 +133,19 @@ export function commitSetting(
   onChange({ ...value, [key]: n });
 }
 
+// #299: this component is no longer RENDERED anywhere in the live app —
+// PlannerPanel's "Erweitert" Disclosure that used to host it was replaced by
+// the dedicated Boat tab (SettingsPanel.tsx), which groups these same fields
+// (imported from this file: SAFETY_DEPTH_FIELD stays in PlannerPanel's
+// compact row; DEPTH_COMFORT_MARGIN_FIELD/SAIL_PREFERENCE_FIELD/the four
+// MOTOR_*/MANEUVER_*/PERFORMANCE_* specs above/commitSetting are the shared
+// source of truth both surfaces read) under section headings instead of one
+// flat list. This function's OWN body is deliberately left byte-behavior-
+// identical to its pre-#299 shape — OptionsPanel.test.tsx exercises it
+// directly and is out of #299's file scope — rather than being deleted or
+// rewritten to call SettingsPanel; a follow-up PR can remove both this
+// component and its test file once #299 has landed and nothing depends on
+// the old shape anymore.
 export default function OptionsPanel({ value, onChange }: OptionsPanelProps) {
   const t = useT();
 

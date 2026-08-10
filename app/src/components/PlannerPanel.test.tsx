@@ -120,6 +120,7 @@ interface Overrides {
   rig?: Rig | null;
   formDirty?: boolean;
   onViewDetails?: () => void;
+  onOpenBoatSettings?: () => void;
 }
 
 function baseProps(overrides: Overrides = {}) {
@@ -148,6 +149,7 @@ function baseProps(overrides: Overrides = {}) {
     rig: null as Rig | null,
     formDirty: false,
     onViewDetails: vi.fn(),
+    onOpenBoatSettings: vi.fn(),
     ...overrides,
   };
 }
@@ -495,9 +497,12 @@ describe('PlannerPanel', () => {
     });
   });
 
-  // §3.3: advanced-options progressive disclosure.
-  describe('advanced disclosure (§3.3)', () => {
-    it('keeps departure AND safety depth visible in the compact row (not behind the disclosure)', () => {
+  // §3.3 / #299: safety depth stays inline in the compact row; the rest of
+  // what used to sit behind "Erweitert" moved to the dedicated Boat tab
+  // (SettingsPanel.tsx, covered by SettingsPanel.test.tsx) — this panel no
+  // longer renders it at all, only a discoverable link back to it.
+  describe('safety depth compact row + boat-settings link (§3.3, #299)', () => {
+    it('keeps departure AND safety depth visible in the compact row', () => {
       renderPanel();
       expect(screen.getByLabelText('Departure')).toBeInTheDocument();
       expect(screen.getByLabelText('Safety depth (m)')).toBeInTheDocument();
@@ -527,37 +532,26 @@ describe('PlannerPanel', () => {
       });
     });
 
-    it('hides the five advanced fields behind a collapsed "Advanced" disclosure', () => {
+    it('no longer renders the advanced fields/disclosure inline — they moved to the Boat tab', () => {
       localStorage.setItem('sc-lang', 'en');
       const { container } = render(
         <I18nProvider>
           <PlannerPanel {...baseProps()} />
         </I18nProvider>,
       );
-      const details = container.querySelector('details.planner-advanced') as HTMLDetailsElement;
-      expect(details).not.toBeNull();
-      expect(details.open).toBe(false);
-      // The advanced fields live inside the disclosure (native details keeps
-      // them in the DOM even when collapsed).
-      expect(within(details).getByLabelText('Motoring speed (kn)')).toBeInTheDocument();
-      expect(within(details).getByLabelText('Performance factor (×)')).toBeInTheDocument();
+      expect(container.querySelector('details.planner-advanced')).toBeNull();
+      expect(screen.queryByLabelText('Motoring speed (kn)')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Depth comfort margin (m)')).not.toBeInTheDocument();
     });
 
-    it('shows a one-line value summary of the advanced settings when collapsed', () => {
-      localStorage.setItem('sc-lang', 'en');
-      const { container } = render(
-        <I18nProvider>
-          <PlannerPanel {...baseProps()} />
-        </I18nProvider>,
-      );
-      const values = container.querySelector('.planner-advanced-values');
-      expect(values).not.toBeNull();
-      // DEFAULT_SETTINGS: motor on, 6.5 kn, 45 s penalty, ×0.9.
-      const text = values!.textContent ?? '';
-      expect(text).toContain('Motor on');
-      expect(text).toContain('6.5 kn');
-      expect(text).toContain('Maneuver 45 s');
-      expect(text).toContain('×0.9');
+    it('renders a discoverable link to the Boat tab next to safety depth, naming the depth comfort margin', () => {
+      const props = renderPanel();
+      const link = screen.getByRole('button', {
+        name: /Depth comfort margin & more boat settings/,
+      });
+      expect(link).toBeInTheDocument();
+      fireEvent.click(link);
+      expect(props.onOpenBoatSettings).toHaveBeenCalledTimes(1);
     });
   });
 

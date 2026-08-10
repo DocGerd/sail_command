@@ -16,9 +16,14 @@ import type { Rig } from '../types';
 // every plan change by design, and persisting it would turn every slider drag
 // step into a localStorage write.
 
-// The bottom-sheet tab strip's three tabs. Defined here (App.tsx imports it)
-// so this module can validate a persisted value without importing a component.
-export type Tab = 'plan' | 'routes' | 'live';
+// The bottom-sheet tab strip's tabs. Defined here (App.tsx imports it) so
+// this module can validate a persisted value without importing a component.
+// #299: 'boat' (the static boat/skipper-profile settings tab) is a REAL,
+// persistable tab value — the write-back effect below saves it like any
+// other whenever it's the active tab — but it must never be a tab a fresh
+// boot RESTORES INTO (see parseSessionSnapshot's own comment on `tab` for
+// why and how that's enforced).
+export type Tab = 'plan' | 'routes' | 'live' | 'boat';
 
 export const SESSION_SNAPSHOT_KEY = 'sc-session';
 
@@ -32,7 +37,7 @@ export interface SessionSnapshot {
 }
 
 function isTab(x: unknown): x is Tab {
-  return x === 'plan' || x === 'routes' || x === 'live';
+  return x === 'plan' || x === 'routes' || x === 'live' || x === 'boat';
 }
 
 function isRig(x: unknown): x is Rig {
@@ -54,7 +59,21 @@ export function parseSessionSnapshot(raw: string | null): SessionSnapshot | null
     if (!isTab(tab)) return null;
     if (planId !== null && typeof planId !== 'string') return null;
     if (rig !== null && !isRig(rig)) return null;
-    return { v: 1, planId, tab, rig };
+    // #299: 'boat' is a syntactically VALID persisted tab (isTab accepts it
+    // above, so a snapshot naming it is not treated as corrupt — planId/rig
+    // survive intact), but it is deliberately never a RESTORE target: a
+    // sailor reopening the PWA on deck must land on a content tab, not the
+    // boat/skipper settings form. Coerced here, at the single parse boundary
+    // every restore read (readSessionSnapshot -> useSessionRestore.ts) goes
+    // through, rather than in the restore hook itself, so this can't be
+    // forgotten at a second call site. The WRITE path (writeSessionSnapshot)
+    // is untouched — it still persists 'boat' verbatim whenever that's
+    // genuinely the active tab when a plan/tab/rig change fires, which is
+    // what makes the next restore's fallback-to-'plan' correct rather than
+    // merely convenient (the raw value is preserved in storage, only the
+    // RESTORE read coerces it).
+    const restoreTab: Tab = tab === 'boat' ? 'plan' : tab;
+    return { v: 1, planId, tab: restoreTab, rig };
   } catch {
     return null;
   }
