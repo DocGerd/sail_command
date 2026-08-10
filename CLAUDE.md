@@ -364,8 +364,10 @@ deviate from it.
   `color-mix()` nor `var()`) — only the `background` SHORTHAND discriminates.
   The same cascade means `.chip-shallow`'s amber hazard fill has NEVER
   rendered (#506, open); fixing it by REORDERING `.chip` above its modifiers
-  would repair every modifier at once but changes an existing surface, which
-  is why #504 took the narrow compound-selector route instead.
+  would repair every BROKEN modifier at once (not every modifier — e.g.
+  `.chip-faster-rig` already sits below `.chip` and is unaffected) but
+  changes an existing surface, which is why #504 took the narrow
+  compound-selector route instead.
 - **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
   `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
   primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
@@ -1553,9 +1555,10 @@ deviate from it.
   than run another unreviewed wave); and prefer RETRIEVING the primary
   artifact over constructing an argument — a disputed claim was settled by
   reading the run's own JSON instead of arguing comparability.
-  Session 31 (2026-08-10, #493/PR #504) ran the class in EVERY wave of a
-  multi-wave branch, comment-only waves included, each instance sitting
-  inside the fix for the previous one: a wrong "tightest tolerance" claim;
+  Session 31 (2026-08-10, #493/PR #504) reproduced the class in wave after
+  wave of a multi-wave branch, comment-only waves included, each instance
+  sitting inside the fix for the previous one: a wrong "tightest tolerance"
+  claim;
   then a correction that invented a DERIVATION the source explicitly denies
   (every number in it verbatim correct — the defect was the *because*, which
   is the form that survives a numeric check); then a `Chip`-primitive tidy-up
@@ -1871,7 +1874,8 @@ deviate from it.
   nothing was LOST and never re-asks whether the moved claim was ever TRUE.
   A "~45% of cells" figure survived a move with the wrong denominator — the
   #455 spike says ~45% of WATER cells on the ENCODED basis (1,192,923 of
-  2,646,047), while most of the mask's 5,280,000 cells are land, and that
+  2,646,047), and water is only about HALF of the mask's 5,280,000 cells
+  (2,646,047, i.e. 50.1%), so the two denominators differ by roughly 2x; that
   same spike had already rejected draft copy for mixing bases ("the right
   response is a stated basis, not the largest number"). Verify a moved claim
   as if you were writing it fresh.
