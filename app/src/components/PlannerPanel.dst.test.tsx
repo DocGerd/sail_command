@@ -75,6 +75,7 @@ function renderPanel(overrides: Overrides = {}) {
     rig: null,
     formDirty: false,
     onViewDetails: vi.fn(),
+    onOpenBoatSettings: vi.fn(),
     ...overrides,
   };
   render(
