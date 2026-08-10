@@ -612,8 +612,12 @@ export default function PlannerPanel({
               RouteSummary card so it's visible on the FIRST surface a user sees
               a result on, without switching tabs. Plan-level (see `shallow`
               above), same shared component and copy as RouteSummary's own —
-              and, unlike the sections below, NOT gated on `summary`. */}
-          {shallow && <ShallowWarning shallow={shallow} />}
+              and, unlike the sections below, NOT gated on `summary`. #452 gap
+              3: `legs` is the ACTIVE rig's own legs (`result` above) — null
+              whenever that rig has no result of its own, in which case the
+              shared component's locator sentence safely stays absent while
+              the banner itself still renders. */}
+          {shallow && <ShallowWarning shallow={shallow} legs={result?.legs ?? null} />}
           {summary && (
             <>
               <div className="planner-result-primary">

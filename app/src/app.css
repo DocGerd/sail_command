@@ -1610,6 +1610,17 @@ select {
   font-weight: 500;
 }
 
+/* #452 gap 3: per-leg shallow marker in the legs table — same
+   --sc-depth-warning-* family as .shallow-warning above (#251), so the
+   hazard reads consistently between the plan-level banner and the row that
+   locates it. Text carries the meaning (see ShallowLegMarker's own comment
+   in RouteSummary.tsx); colour is reinforcement, never the sole signal. */
+.chip-shallow {
+  background: var(--sc-depth-warning-bg);
+  color: var(--sc-depth-warning-text);
+  font-weight: 600;
+}
+
 .route-totals {
   display: grid;
   grid-template-columns: max-content max-content;
