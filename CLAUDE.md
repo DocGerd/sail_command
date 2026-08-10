@@ -371,9 +371,16 @@ deviate from it.
 - `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx`, not via a later
   `setMaxPitch`/`setPitch` — and pinned by
   `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
-  (The "which a style reload could undo" reason once given here is FALSE and
-  was never true in any 6.x — no such mechanism exists. The CONCLUSION stands;
-  only its reason was wrong — wrong-from-the-start, not staleness.)
+  The old "a style reload could undo it" reason is HALF right, and the half
+  that is wrong is the one that names `setMaxPitch` (read against 6.2.0):
+  `setMaxPitch` DOES survive — `_maxPitch` is written only by it, the
+  constructor and `transform.apply()`, and `map.ts`'s constructor-registered
+  `style.load` handler re-applies only `center/zoom/bearing/pitch/roll`.
+  `setPitch` does NOT survive: that handler fires whenever
+  `transform.unmodified`, and `setPitch(0)` on an already-flat map
+  early-returns BEFORE clearing that flag, so a later `setStyle` whose root
+  sets `pitch` jumps the camera. Construction is still the right place — but
+  do not "correct" this to an absolute negative in either direction.
   Pitch is deliberately unreachable; don't re-enable it without re-auditing
   for terrain/sky/3D layers and pitch readers (there are none today, #207).
 - GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
@@ -390,7 +397,8 @@ deviate from it.
   not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:589` vs
   `ui/camera.ts:284`, both re-verified against `maplibre-gl@6.2.0`; they are
   siblings), and the method survives only on the
-  `_camera` field (no TS `private` modifier — convention, not enforced). `CompassControl.tsx`'s `onMoveEnd` guard is now a
+  `_camera` field (no TS `private` modifier — convention, not enforced;
+  always so, not a 6.2.0 change). `CompassControl.tsx`'s `onMoveEnd` guard is now a
   TWO-TERM derivation: `e.originalEvent !== undefined &&
   commandedBearingRef.current !== null &&
   !bearingReached(map.getBearing(), commandedBearingRef.current)`. Both terms
@@ -406,7 +414,8 @@ deviate from it.
   (`camera.ts:1197-1210`, 6.2.0 — file byte-identical since 6.1.0) deletes
   `_easeFrameId` and only THEN invokes `_onEaseEnd` at `:1210` — and
   `_afterEase` (`:982`) is what `_onEaseEnd` RESOLVES TO (one closure hop, not
-  the same binding), bound in `_ease` (`:1232`) — so `isEasing()` was already
+  the same binding; always so, not a 6.2.0 change), bound in `_ease`
+  (`:1232`) — so `isEasing()` was already
   false at every
   ease-emitted `moveend` even in v5, which is why the absence of
   `originalEvent` discriminates a camera-internal ease termination from a
@@ -456,7 +465,7 @@ deviate from it.
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
   `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
-  against `maplibre-gl@6.2.0`, the version `app/package-lock.json` pins,
+  re-verified against `maplibre-gl@6.2.0`,
   re-checked after the #253 v6 upgrade, the 6.1.0 bump and the 6.2.0 bump:
   still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
   !sortKey.isConstant();` at the same line; re-check again after any future
