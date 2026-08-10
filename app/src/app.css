@@ -1598,44 +1598,70 @@ select {
   gap: 0.2rem;
 }
 
-/* #53: prominent shallow-water warning on the route summary (both rig tabs).
-   Safety-depth warning color family (#E69F00) — matches the map casing and
-   the depth profile emphasis. #251 moved the family into --sc-depth-warning-*
-   so the Live view's heading caution uses the same one. */
+/* #53/#504: prominent shallow-water warning on the route summary (both rig
+   tabs). Safety-depth warning color family (#E69F00) — matches the map
+   casing and the depth profile emphasis. #251 moved the family into
+   --sc-depth-warning-* so the Live view's heading caution uses the same one.
+   Wave 4: restructured from a single dense, uniformly-bold paragraph into a
+   role="alert" CONTAINER (this rule, now a <div>) holding three <p> parts —
+   .shallow-warning__lead/__detail/__caveat below — so the most severe,
+   actionable fact (the lead) stands out and the rest reads at normal
+   weight; emphasising everything emphasised nothing. */
 .shallow-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   margin: 0;
   padding: 0.6rem 0.75rem;
   border-left: 4px solid var(--sc-depth-warning-fg);
   border-radius: 4px;
   background: var(--sc-depth-warning-bg);
-  font-weight: 500;
 }
 
-/* #504 fix wave: MODIFIER on .shallow-warning above (was a second, standalone
-   `.shallow-warning-cautious` element — folded to ONE <p> per the review
-   finding that isSevere is unconditionally true at default settings, so the
-   old second paragraph was really always-on for a default-settings user).
-   Applied together with the base .shallow-warning class, never alone, when
-   the mask's own TOLERANCE_M means this plan's used depth could have a
-   cautious reading below the boat's draft — overrides only the
-   severity-carrying properties (border/background/color/font-weight);
-   margin/padding/border-radius stay inherited from .shallow-warning. A
+.shallow-warning p {
+  margin: 0;
+}
+
+/* The ONLY emphasised part — the #493 cautious-floor fact, the most severe
+   and most actionable thing this warning says. */
+.shallow-warning__lead {
+  font-weight: 700;
+}
+
+/* What happened (requested/used/minGate + the locator sentence) — normal
+   weight, no longer competing with the lead for attention. */
+.shallow-warning__detail {
+  font-weight: 400;
+}
+
+/* The chart-accuracy caveat: visually secondary (smaller text) but NEVER
+   hidden behind a Disclosure or any click — it is a safety statement about
+   the limits of the warning above it, in an app with no chart authority of
+   its own, so it stays fully legible, only de-emphasised by size. */
+.shallow-warning__caveat {
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+/* #504: MODIFIER on .shallow-warning above — applied together with the base
+   class, never alone, when the mask's own TOLERANCE_M means this plan's
+   used depth could have a cautious reading below the boat's draft. A
    DISTINCT, more severe tier: reuses --sc-banner-error-* (the app's existing
    red/error severity family — see .banner-error above), not a deepened
    shade of .shallow-warning's amber --sc-depth-warning-* family, so the
    escalation reads as a different tier rather than the same one turned up.
    No new dark-mode block is needed: --sc-banner-error-fg/-bg already carry
-   their own dark variants (see the @media block above .banner-error's
-   definition), so this rule inherits correct colours in both modes purely
-   through the tokens. Severity is NOT colour alone (WCAG 1.4.1): a full
-   border plus a thicker border-left and bolder text (700 vs
-   .shallow-warning's 500) carry the same signal non-visually too. */
+   their own dark variants (verified by reading the @media block above
+   .banner-error's definition, not assumed). `color` here is inherited by
+   every child <p>, so severity tints the whole warning uniformly — only
+   font-weight (bold on the lead alone) varies BETWEEN parts, not colour.
+   Severity is NOT colour alone (WCAG 1.4.1): a full border plus a thicker
+   border-left carry the same signal non-visually too. */
 .shallow-warning--severe {
   border: 1px solid var(--sc-banner-error-fg);
   border-left-width: 6px;
   background: var(--sc-banner-error-bg);
   color: var(--sc-banner-error-fg);
-  font-weight: 700;
 }
 
 /* #452 gap 3: per-leg shallow marker in the legs table — same
@@ -1653,34 +1679,32 @@ select {
    .chip-shallow above (never replacing it), so it must read as secondary to
    the shipped figure rather than compete with it. Same --sc-depth-warning-*
    family as the chip it sits next to (one hazard family, not a second one),
-   but OUTLINED rather than filled, plus a smaller size and lighter weight
-   than the shipped chip's 0.8rem/600 — shape and weight carry the
-   primary/secondary distinction, not colour intensity alone. No separate
-   dark-mode block needed for the same reason as .chip-shallow above: the
-   tokens already vary by mode. Uses the `Chip` primitive (RouteSummary.tsx)
-   for the pill shape/layout — only what genuinely DIFFERS from `.chip`'s own
-   `display: inline-flex; align-items: center; border-radius: 999px;`
-   (identical values, previously re-declared here on a raw span) is set
-   below: spacing from the sibling chip, the outline itself, tighter padding,
-   smaller/lighter text.
+   but OUTLINED rather than filled, plus a smaller size — shape and size
+   carry the primary/secondary distinction, not colour intensity alone. No
+   separate dark-mode block needed for the same reason as .chip-shallow
+   above: the tokens already vary by mode. Uses the `Chip` primitive
+   (RouteSummary.tsx) for the pill shape/layout — only what genuinely
+   DIFFERS from `.chip`'s own `display: inline-flex; align-items: center;
+   border-radius: 999px;` (identical values, previously re-declared here on
+   a raw span) is set below: spacing from the sibling chip, the outline
+   itself, tighter padding, smaller text.
    SELECTOR IS `.chip.chip-shallow-cautious`, not the bare modifier class —
-   `.chip` is declared LATER in this file (~:1700), and two single-class
-   selectors tie on specificity, so source order alone would hand every
-   overlapping property to `.chip` (#504 review round 3, MEASURED: on
-   `class="chip chip-shallow-cautious"` with the bare-modifier selector,
-   `background` resolved to `.chip`'s own `color-mix(...)` fill, `font-size`
-   to `.chip`'s 0.8rem, `padding` to `.chip`'s 0.1rem 0.5rem — none of this
-   rule's own values took effect). The compound selector raises specificity
-   so THIS rule wins regardless of declaration order, which is what actually
-   makes `background: transparent` below cancel `.chip`'s own filled
-   background — an outline reads as filled otherwise. */
+   `.chip` is declared LATER in this file, and two single-class selectors
+   tie on specificity, so source order alone would hand every overlapping
+   property to `.chip` (#504 review round 3, MEASURED: on `class="chip
+   chip-shallow-cautious"` with the bare-modifier selector, `background`
+   resolved to `.chip`'s own `color-mix(...)` fill, `font-size` to `.chip`'s
+   0.8rem, `padding` to `.chip`'s 0.1rem 0.5rem — none of this rule's own
+   values took effect). The compound selector raises specificity so THIS
+   rule wins regardless of declaration order, which is what actually makes
+   `background: transparent` below cancel `.chip`'s own filled background —
+   an outline reads as filled otherwise. */
 .chip.chip-shallow-cautious {
   margin-inline-start: 0.35rem;
   padding: 0.05rem 0.4rem;
   border: 1px solid var(--sc-depth-warning-fg);
   background: transparent;
   font-size: 0.75rem;
-  font-weight: 400;
   color: var(--sc-depth-warning-text);
 }
 

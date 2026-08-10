@@ -48,36 +48,47 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
   // means the used gate's own more-cautious reading can run as low as
   // usedDepthM - MASK_TOLERANCE_M — recomputed from THIS plan's usedDepthM
   // every render, never a fixed number, so it can never go stale as
-  // usedDepthM varies plan to plan. #504 review: at DEFAULT settings this is
-  // UNCONDITIONALLY true (#53's relaxation only searches [BOAT_DRAFT_M,
-  // requestedDepthM), so at the 3.0 m default gate every usedDepthM lands in
-  // [2.1, 2.9] and `usedDepthM - 0.9 < 2.1` always holds) — so this is ONE
-  // banner with a severity MODIFIER, never a second element: a single <p>
-  // that ALWAYS carries the cautious floor, with severe wording/styling
-  // layered on top rather than a duplicate paragraph most users would always
-  // see anyway.
+  // usedDepthM varies plan to plan.
   const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M;
-  const bannerClassName = isSevere ? 'shallow-warning shallow-warning--severe' : 'shallow-warning';
-  const bannerKey = isSevere ? 'route.shallow.bannerCautious' : 'route.shallow.banner';
+  const containerClassName = isSevere
+    ? 'shallow-warning shallow-warning--severe'
+    : 'shallow-warning';
+  const cautiousM = cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1);
+  // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
+  // children — lead/detail/caveat — so a screen reader still announces one
+  // region while sighted users get a real visual hierarchy instead of one
+  // dense, uniformly-bold paragraph. LEAD carries the new #493 cautious-floor
+  // fact (the most severe, most actionable thing this warning says) and is
+  // the only emphasised part; DETAIL is the "what happened" mechanism at
+  // normal weight; CAVEAT is the chart-accuracy hedge, visually secondary but
+  // never hidden behind a click — it is a safety statement about the limits
+  // of this warning in an app with no chart authority of its own.
   return (
-    <p className={bannerClassName} role="alert">
-      {t(bannerKey, {
-        requested: shallow.requestedDepthM.toFixed(1),
-        used: shallow.usedDepthM.toFixed(1),
-        minGate: shallow.minGateDepthM.toFixed(1),
-        cautious: cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1),
-        draft: BOAT_DRAFT_M.toFixed(1),
-      })}
-      {locator && (
-        <>
-          {' '}
-          {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
-            count: locator.count,
-            time: formatTime(locator.firstTimeMs, lang),
-          })}
-        </>
-      )}
-    </p>
+    <div className={containerClassName} role="alert">
+      <p className="shallow-warning__lead">
+        {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
+          cautious: cautiousM,
+          draft: BOAT_DRAFT_M.toFixed(1),
+        })}
+      </p>
+      <p className="shallow-warning__detail">
+        {t('route.shallow.detail', {
+          requested: shallow.requestedDepthM.toFixed(1),
+          used: shallow.usedDepthM.toFixed(1),
+          minGate: shallow.minGateDepthM.toFixed(1),
+        })}
+        {locator && (
+          <>
+            {' '}
+            {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
+              count: locator.count,
+              time: formatTime(locator.firstTimeMs, lang),
+            })}
+          </>
+        )}
+      </p>
+      <p className="shallow-warning__caveat">{t('route.shallow.caveat')}</p>
+    </div>
   );
 }
 

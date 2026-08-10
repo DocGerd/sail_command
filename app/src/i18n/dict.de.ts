@@ -182,35 +182,40 @@ export const de = {
   // route, not a depth). Reworded to name what actually happened: the
   // requested-depth solve found no continuous route, so the planner used a
   // reduced one instead.
-  // #504 Korrekturwelle: zu EINEM Banner-Element zusammengeführt —
-  // ShallowWarning (RouteSummary.tsx) rendert genau ein <p>, nie zwei. Dies
-  // ist die NICHT-eskalierte Variante; route.shallow.bannerCautious unten
-  // ist die eskalierte. Beide tragen IMMER die #493-Untergrenzen-Klausel
-  // ("Eine vorsichtigere Lesart ... kann ... sinken") — sie unterscheiden
-  // sich nur darin, ob diese Untergrenze zusätzlich als unter dem Tiefgang
-  // des Boots liegend benannt wird. Die Zusammenführung ersetzt ein früheres
-  // Design mit einem ZWEITEN, zusätzlichen Absatz für den eskalierten Fall —
-  // verworfen, weil usedDepthM bei der Standardtiefe 3,0 m nie über
-  // requestedDepthM - MASK_TOLERANCE_M hinausgeht (#53s Suchbereich der
-  // Tiefenrelaxation), sodass dieser zweite Absatz für jede
-  // Standardeinstellung unbedingt vorhanden war.
-  'route.shallow.banner':
-    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+  // #504 Korrekturwelle 4: von EINEM dichten Absatz zu drei Teilen innerhalb
+  // EINER role="alert"-Region restrukturiert (ShallowWarning,
+  // RouteSummary.tsx: ein <div> mit .lead/.detail/.caveat-Kindern) — führt
+  // mit der schwerwiegendsten, handlungsrelevanten Tatsache (der
+  // Untergrenze), statt alles gleich stark zu betonen. Jeder Satz unten ist
+  // wortgleich mit dem früheren zusammengeführten Banner-Text, nur neu
+  // angeordnet — keine neue Formulierung. lead/leadSevere tragen IMMER die
+  // #493-Untergrenzen-Klausel; leadSevere fügt zusätzlich die
+  // Bootstiefgang-Klausel an (nicht "Tiefgang des Boots von {draft} m" — das
+  // "von" hing dort mehrdeutig). "Achtung:" ist von detail hierher
+  // gewandert, da lead jetzt der prominenteste Teil ist.
+  'route.shallow.lead':
+    'Achtung: Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken.',
+  'route.shallow.leadSevere':
+    'Achtung: Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m.',
+  // Was passiert ist: die eingestellte Sicherheitstiefe war nicht
+  // passierbar, die tatsächlich verwendete Tiefe, die geringste gequerte
+  // Kartentiefe. Normale Textstärke (nicht mehr hervorgehoben) — siehe
+  // dict.en.ts's Kommentar für den vollen Hintergrund ({used} < {requested},
+  // {minGate} als Plan-weite Angabe).
+  'route.shallow.detail':
+    'Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m.',
   // #452 gap 3: siehe dict.en.ts's Kommentar für Zweck und Konvention
-  // (Singular/`.plural`, wie banner.viaTooClose(.plural)).
+  // (Singular/`.plural`, wie banner.viaTooClose(.plural)). An .detail
+  // angehängt (die "was passiert ist"-Aussage, zu der diese Ortsangabe
+  // gehört), nicht an .lead oder .caveat.
   'route.shallow.locator': 'Die betroffene Etappe beginnt um {time}.',
   'route.shallow.locator.plural': '{count} Etappen sind betroffen — die erste beginnt um {time}.',
-  // #504: die ESKALIERTE Schwester von route.shallow.banner oben — derselbe
-  // Satz, mit einer zusätzlichen Klausel zum Bootstiefgang (nicht "Tiefgang
-  // des Boots von {draft} m" — das "von" hängt dort mehrdeutig, als gehöre
-  // es zu "Boots" statt zum Tiefgangswert). Wird ANSTELLE von (nie
-  // zusätzlich zu) der nicht-eskalierten Variante gerendert, ausgewählt
-  // durch ShallowWarnings `isSevere` (siehe about.caveats.depthMask für den
-  // Mechanismus). Eine Untergrenze, kein Messwert: "kann ... sinken", nie
-  // "ist" — und an {used}/{cautious} gebunden statt an feste Zahlen, weil
-  // sich beide mit der verwendeten Tiefe verschieben.
-  'route.shallow.bannerCautious':
-    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+  // Die Kartengenauigkeits-Einschränkung — visuell sekundär (kleinere
+  // Schrift), aber NIE hinter einem Klick verborgen: eine
+  // Sicherheitsaussage über die Grenzen der obigen Warnung, in einer App
+  // ohne eigene Kartenautorität.
+  'route.shallow.caveat':
+    'Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
