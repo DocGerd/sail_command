@@ -4,6 +4,45 @@ import { haversineNm, toRad } from './geo';
 const LAND = 0;
 const NM_PER_M = 1 / 1852;
 
+/**
+ * Mirrors pipeline/build_mask.py's TOLERANCE_M (mask-build tolerance) on the
+ * TypeScript side — nothing compiles across that Python/TS boundary, so
+ * app/src/test/maskTolerance.test.ts reads the Python source and fails
+ * closed if this value ever drifts from it. build_mask.py blends bilinear
+ * over the conservative Resampling.max reading only where the two agree
+ * within this bound, so for every cell: depth_blend <= depth_max +
+ * MASK_TOLERANCE_M (see that file's own derivation comment for the full
+ * argument, including why 0.9 — not a rounder number — is the value: it is
+ * the tightest tolerance that still keeps Marstal connected).
+ */
+export const MASK_TOLERANCE_M = 0.9;
+
+/**
+ * #493: a SOUND LOWER BOUND on the mask's more cautious (conservative,
+ * Resampling.max) reading for a cell whose SHIPPED (blended) depth is
+ * `shippedDepthM` — never the true cautious value itself, only a floor it
+ * cannot be below. Directly from build_mask.py's blend rule: depth_blend <=
+ * depth_max + MASK_TOLERANCE_M, so depth_max >= depth_blend -
+ * MASK_TOLERANCE_M. Gate-independent — a property of the mask build, not of
+ * any safety gate a user picks.
+ *
+ * Floors to 0.1 m (never rounds), so the displayed figure can never read
+ * deeper than this bound provably allows, and clamps at 0 (depth cannot be
+ * negative). The floor is nudged by a sub-decimetre epsilon before
+ * quantizing: `shippedDepthM - MASK_TOLERANCE_M` is exact in real-number
+ * arithmetic for many inputs (e.g. 2.3 - 0.9 = 1.4) but IEEE754 double
+ * precision can land a hair below the true value for others (1.4 - 0.9 =
+ * 0.4999999999999999) — a bare `Math.floor` on that residue would silently
+ * cost an extra, unearned decimetre of pessimism. The epsilon is far smaller
+ * than any real 0.1 m quantization step, so it can never round a genuine
+ * fractional depth UP.
+ */
+export function cautiousDepthLowerBoundM(shippedDepthM: number): number {
+  const bound = shippedDepthM - MASK_TOLERANCE_M;
+  const flooredTenthsM = Math.floor(bound * 10 + 1e-9);
+  return Math.max(0, flooredTenthsM / 10);
+}
+
 export class NavMask {
   readonly meta: MaskMeta;
   private data: Uint8Array;

@@ -645,3 +645,108 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
     expect(banner.textContent).toContain(expected);
   });
 });
+
+describe('#493: cautious depth disclosure', () => {
+  // 2.3 is deliberately the same figure used in the #452 gap 3 fixtures
+  // above, so the resulting cautious bound (2.3 - MASK_TOLERANCE_M(0.9) =
+  // 1.4 exactly, per app/src/lib/mask.test.ts's own hand-derived literal)
+  // is pinned against a value already independently verified elsewhere.
+  const ONE_SHALLOW_LEG: Leg[] = [
+    {
+      kind: 'sail',
+      board: 'starboard',
+      start: { lat: 54.79, lon: 9.43 },
+      end: { lat: 54.8, lon: 10.0 },
+      startTimeMs: DEPARTURE_MS,
+      endTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+      headingDeg: 88,
+      twaDeg: 92,
+      twsKn: 10,
+      speedKn: 7,
+      distanceNm: 15,
+      maneuverAtStart: null,
+      shallow: { minDepthM: 2.3 },
+    },
+  ];
+
+  function makeLegPlan(): Plan {
+    const plan = makePlan();
+    plan.result.genoa = { ...GENOA_RESULT, legs: ONE_SHALLOW_LEG };
+    plan.result.shallow = { requestedDepthM: 3.5, usedDepthM: 2.3, minGateDepthM: 2.3 };
+    return plan;
+  }
+
+  it('renders the cautious lower bound ALONGSIDE the shipped per-leg figure, never in place of it', () => {
+    const { container } = renderSummary({ plan: makeLegPlan(), rig: 'genoa' });
+    const row = container.querySelector('table.route-legs tbody tr');
+    // Unchanged shipped-figure chip — proves the new surface is additive.
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.3 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe('≥ 1.4 m cautious');
+  });
+
+  it('renders the German cautious lower bound with the same two-number contract', () => {
+    localStorage.setItem('sc-lang', 'de');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeLegPlan()} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Untiefe 2.3 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe('≥ 1.4 m vorsichtig');
+  });
+
+  // The escalated banner's own condition, restated for the test names:
+  // usedDepthM - MASK_TOLERANCE_M(0.9) < BOAT_DRAFT_M(2.1). requestedDepthM
+  // is set above usedDepthM in every case (3.5) to keep the fixture a
+  // realistic #53-relaxation shape, even though ShallowWarning itself does
+  // not enforce that invariant.
+  describe('escalated banner boundary', () => {
+    function makeSeverityPlan(usedDepthM: number): Plan {
+      const plan = makePlan();
+      plan.result.shallow = { requestedDepthM: 3.5, usedDepthM, minGateDepthM: usedDepthM };
+      return plan;
+    }
+
+    it('does NOT escalate right at the boundary (3.0 - 0.9 = 2.1 = BOAT_DRAFT_M, not strictly below)', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(3.0) });
+      // The ordinary #53 banner still renders — only the ESCALATION is absent.
+      expect(screen.getByText(/was not passable/)).toBeInTheDocument();
+      expect(container.querySelector('.shallow-warning-cautious')).toBeNull();
+    });
+
+    it('escalates one decimetre below the boundary (2.9 - 0.9 = 2.0 < BOAT_DRAFT_M)', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(2.9) });
+      const severe = container.querySelector('.shallow-warning-cautious');
+      expect(severe).not.toBeNull();
+      expect(severe).toHaveAttribute('role', 'alert');
+      expect(severe?.textContent).toContain('2.9 m'); // usedDepthM, restated
+      expect(severe?.textContent).toContain('2.0 m'); // cautious floor: 2.9 - 0.9
+      expect(severe?.textContent).toContain('2.1 m'); // BOAT_DRAFT_M
+      // Floor language ("can sink ... this is a floor, not a measured
+      // depth"), and never the absolutist phrasing #455's honesty hedge
+      // already forbids for the plain banner above.
+      expect(severe?.textContent).toContain('can sink');
+      expect(severe?.textContent).toContain('floor, not a measured depth');
+      expect(severe?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+    });
+
+    it('German copy: escalates with the same three numbers and the honesty hedge', () => {
+      localStorage.setItem('sc-lang', 'de');
+      render(
+        <I18nProvider>
+          <RouteSummary plan={makeSeverityPlan(2.9)} rig="genoa" onRigChange={vi.fn()} />
+        </I18nProvider>,
+      );
+      const severe = document.querySelector('.shallow-warning-cautious');
+      expect(severe).not.toBeNull();
+      // Dynamic values are formatted via toFixed(1) regardless of language
+      // (unchanged from the existing plain-banner DE test above), so these
+      // stay period-formatted even in German.
+      expect(severe?.textContent).toContain('2.9 m');
+      expect(severe?.textContent).toContain('2.0 m');
+      expect(severe?.textContent).toContain('2.1 m');
+      expect(severe?.textContent).toContain('Das ist eine Untergrenze, keine gemessene Tiefe');
+    });
+  });
+});

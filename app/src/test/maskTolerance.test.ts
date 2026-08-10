@@ -6,6 +6,7 @@ import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import { DEFAULT_SETTINGS } from '../types';
 import { en } from '../i18n/dict.en';
 import { de } from '../i18n/dict.de';
+import { MASK_TOLERANCE_M } from '../lib/mask';
 
 // #455: pipeline/build_mask.py's TOLERANCE_M is the structural bound behind
 // the About dialog's `about.caveats.depthMask` disclosure — no compiler
@@ -81,6 +82,16 @@ function containsMeasurement(text: string, value: number, locale: 'en' | 'de'): 
 describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact guard', () => {
   it('TOLERANCE_M is 0.9 — the value the disclosure copy is written against', () => {
     expect(readToleranceM()).toBe(0.9);
+  });
+
+  // #493: app/src/lib/mask.ts's cautiousDepthLowerBoundM (the per-leg and
+  // banner disclosure helper) mirrors this same constant under its own name,
+  // TypeScript-side — nothing compiles across the Python/TS boundary, so this
+  // is the only thing that keeps the mirror honest. Preserves the file's
+  // fail-closed property: readToleranceM() itself asserts not.toBeNull()
+  // before this comparison ever runs.
+  it('#493: mask.ts MASK_TOLERANCE_M mirrors the same Python TOLERANCE_M', () => {
+    expect(MASK_TOLERANCE_M).toBe(readToleranceM());
   });
 
   it('encodes the METHOD, not just the value: safetyDepthM(default) - TOLERANCE_M === BOAT_DRAFT_M', () => {

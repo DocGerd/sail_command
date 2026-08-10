@@ -188,6 +188,15 @@ export const de = {
   // (Singular/`.plural`, wie banner.viaTooClose(.plural)).
   'route.shallow.locator': 'Die betroffene Etappe beginnt um {time}.',
   'route.shallow.locator.plural': '{count} Etappen sind betroffen — die erste beginnt um {time}.',
+  // #493: eskalierte, eigenständige Warnung — nicht dieselbe Formulierung wie
+  // route.shallow.banner oben, sondern zusätzlich gerendert, wenn die
+  // vorsichtige Untergrenze der bei diesem Plan verwendeten Tiefe unter den
+  // Tiefgang des Boots fallen kann (siehe about.caveats.depthMask für den
+  // Mechanismus). Untergrenze, nicht Messwert: "kann sinken", nie "ist" —
+  // und an {used} gebunden statt an eine feste Zahl, weil sie sich mit der
+  // verwendeten Tiefe verschiebt.
+  'route.shallow.bannerCautious':
+    'Die vorsichtigere Lesart derselben Tiefendaten kann für diese Route bei der verwendeten Tiefe von {used} m bis auf {cautious} m sinken — unter den Tiefgang des Boots von {draft} m. Das ist eine Untergrenze, keine gemessene Tiefe, und wie pessimistisch sie tatsächlich ausfällt, hängt von der Route ab. Markierte Abschnitte vor Fahrtantritt mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -211,6 +220,11 @@ export const de = {
   // Text statt reiner Farbe).
   'route.legs.shallow': 'Untiefe',
   'route.legs.shallowMarker': 'Untiefe {depth} m',
+  // #493: vorsichtige Untergrenze derselben Zelle, NEBEN der obigen Marke
+  // gerendert (nie ersetzend) — siehe cautiousDepthLowerBoundM in
+  // app/src/lib/mask.ts für die Herleitung. "≥" markiert sie als Untergrenze,
+  // im selben Stil wie profile.deepCap ('≥ 25 m').
+  'route.legs.shallowCautious': '≥ {depth} m vorsichtig',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   'route.legs.disclosure': 'Etappen ({count})',
   'route.kind.motor': 'Motor',

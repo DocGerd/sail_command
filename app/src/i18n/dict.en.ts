@@ -193,6 +193,14 @@ export const en = {
   // ("leg" alone already says "one").
   'route.shallow.locator': 'The affected leg starts at {time}.',
   'route.shallow.locator.plural': '{count} legs are affected — the first starts at {time}.',
+  // #493: escalated, distinct warning — not a reuse of route.shallow.banner's
+  // sentence, rendered ADDITIONALLY when the cautious lower bound of the
+  // used depth can fall below the boat's draft (see about.caveats.depthMask
+  // for the mechanism). A floor, not a measurement: "can sink", never "is" —
+  // and tied to {used}, not a fixed number, since it moves with the gate a
+  // given plan actually used.
+  'route.shallow.bannerCautious':
+    "This route's more cautious reading of the same depth data can sink as low as {cautious} m at the {used} m depth this plan used — below this boat's {draft} m draft. This is a floor, not a measured depth, and how pessimistic it turns out to be depends on the route. Verify the flagged sections against official charts and your depth sounder before relying on this route.",
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -218,6 +226,11 @@ export const en = {
   // table context (e.g. by a screen reader in linear mode).
   'route.legs.shallow': 'Shallow',
   'route.legs.shallowMarker': 'Shallow {depth} m',
+  // #493: cautious lower bound for the SAME cell, rendered ALONGSIDE the
+  // marker above (never replacing it) — see cautiousDepthLowerBoundM in
+  // app/src/lib/mask.ts for the derivation. "≥" marks it as a floor, the
+  // same convention as profile.deepCap ('≥ 25 m').
+  'route.legs.shallowCautious': '≥ {depth} m cautious',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
   'route.legs.disclosure': 'Legs ({count})',
   'route.kind.motor': 'Motor',

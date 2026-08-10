@@ -2,8 +2,10 @@ import type { Ref } from 'react';
 import { useT, useLang } from '../i18n';
 import { formatHeading, formatKn, formatLegDuration, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
+import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
+import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, Rig, ShallowInfo } from '../types';
 import Card from './Card';
@@ -42,23 +44,41 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
   const t = useT();
   const [lang] = useLang();
   const locator = firstShallowLeg(legs);
+  // #493: the mask build's TOLERANCE_M bound (about.caveats.depthMask) means
+  // the used gate's own more-cautious reading can run as low as usedDepthM -
+  // MASK_TOLERANCE_M. Escalate to a second, distinct warning whenever that
+  // floor would fall below the boat's actual draft — recomputed from THIS
+  // plan's usedDepthM every render, never a fixed number, so it can never go
+  // stale as usedDepthM varies plan to plan.
+  const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M;
   return (
-    <p className="shallow-warning" role="alert">
-      {t('route.shallow.banner', {
-        requested: shallow.requestedDepthM.toFixed(1),
-        used: shallow.usedDepthM.toFixed(1),
-        minGate: shallow.minGateDepthM.toFixed(1),
-      })}
-      {locator && (
-        <>
-          {' '}
-          {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
-            count: locator.count,
-            time: formatTime(locator.firstTimeMs, lang),
+    <>
+      <p className="shallow-warning" role="alert">
+        {t('route.shallow.banner', {
+          requested: shallow.requestedDepthM.toFixed(1),
+          used: shallow.usedDepthM.toFixed(1),
+          minGate: shallow.minGateDepthM.toFixed(1),
+        })}
+        {locator && (
+          <>
+            {' '}
+            {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
+              count: locator.count,
+              time: formatTime(locator.firstTimeMs, lang),
+            })}
+          </>
+        )}
+      </p>
+      {isSevere && (
+        <p className="shallow-warning-cautious" role="alert">
+          {t('route.shallow.bannerCautious', {
+            used: shallow.usedDepthM.toFixed(1),
+            cautious: cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1),
+            draft: BOAT_DRAFT_M.toFixed(1),
           })}
-        </>
+        </p>
       )}
-    </p>
+    </>
   );
 }
 
@@ -124,9 +144,22 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: Rig }) {
 function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
   const t = useT();
   return (
-    <Chip className="chip-shallow">
-      {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
-    </Chip>
+    <>
+      <Chip className="chip-shallow">
+        {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
+      </Chip>
+      {/* #493: sound lower bound on the mask's more cautious (conservative)
+          reading, derived from the SAME shipped figure the chip above
+          already shows — see cautiousDepthLowerBoundM's own doc comment
+          (app/src/lib/mask.ts) for the derivation. Rendered alongside, never
+          replacing, the shipped number: the two are meant to read
+          differently, and the user must be able to tell them apart. */}
+      <span className="chip-shallow-cautious">
+        {t('route.legs.shallowCautious', {
+          depth: cautiousDepthLowerBoundM(minDepthM).toFixed(1),
+        })}
+      </span>
+    </>
   );
 }
 
