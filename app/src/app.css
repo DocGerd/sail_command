@@ -1661,10 +1661,20 @@ select {
    for the pill shape/layout — only what genuinely DIFFERS from `.chip`'s own
    `display: inline-flex; align-items: center; border-radius: 999px;`
    (identical values, previously re-declared here on a raw span) is set
-   below: spacing from the sibling chip, the outline itself (with an explicit
-   transparent background to cancel `.chip`'s own filled background — an
-   outline reads as filled otherwise), tighter padding, smaller/lighter text. */
-.chip-shallow-cautious {
+   below: spacing from the sibling chip, the outline itself, tighter padding,
+   smaller/lighter text.
+   SELECTOR IS `.chip.chip-shallow-cautious`, not the bare modifier class —
+   `.chip` is declared LATER in this file (~:1700), and two single-class
+   selectors tie on specificity, so source order alone would hand every
+   overlapping property to `.chip` (#504 review round 3, MEASURED: on
+   `class="chip chip-shallow-cautious"` with the bare-modifier selector,
+   `background` resolved to `.chip`'s own `color-mix(...)` fill, `font-size`
+   to `.chip`'s 0.8rem, `padding` to `.chip`'s 0.1rem 0.5rem — none of this
+   rule's own values took effect). The compound selector raises specificity
+   so THIS rule wins regardless of declaration order, which is what actually
+   makes `background: transparent` below cancel `.chip`'s own filled
+   background — an outline reads as filled otherwise. */
+.chip.chip-shallow-cautious {
   margin-inline-start: 0.35rem;
   padding: 0.05rem 0.4rem;
   border: 1px solid var(--sc-depth-warning-fg);

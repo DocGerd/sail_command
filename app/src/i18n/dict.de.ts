@@ -238,8 +238,8 @@ export const de = {
   // Marke gerendert (nie ersetzend) — siehe cautiousDepthLowerBoundM in
   // app/src/lib/mask.ts für die Herleitung. Als GEFAHR formuliert, nicht als
   // Komfort-Untergrenze — "≥ {depth} m vorsichtig" hing "vorsichtig" als
-  // Adverb hinter die Zahl (unidiomatisch) und las sich neben dem Banners
-  // "kann bis auf {depth} m sinken" für denselben Sachverhalt beruhigend;
+  // Adverb hinter die Zahl (unidiomatisch) und las sich neben dem "kann bis
+  // auf … sinken" des Banners für denselben Sachverhalt beruhigend;
   // "bis auf ... m" benennt dieselbe Gefahr konsistent in beiden Texten.
   'route.legs.shallowCautious': 'vorsichtig: bis auf {depth} m',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
