@@ -76,8 +76,36 @@ describe('SEAMARKS_LAYOUT (#144 priority-culled, zoom-sized seamark icons)', () 
   // and measurably culls more marks at the same zoom. Zeroing the padding
   // (MapLibre default 2px/side) claws back part of that growth without
   // touching the z12 overlap threshold or the icon-size taper.
-  it('drops icon-padding to 0 (MapLibre default 2px/side) to offset the #191 collision-box growth', () => {
-    expect(SEAMARKS_LAYOUT['icon-padding']).toBe(0);
+  //
+  // #353 PR1: icon-padding is now a per-zoom-stop interpolate expression
+  // (compensated from SEAMARK_SIZE_SCALE — see SEAMARKS_LAYOUT's own doc
+  // comment for the derivation), not a bare literal. At the shipped default
+  // scale of 1 every stop must still evaluate to exactly 0 — this is the
+  // "byte-identical at scale=1" claim for the ONE value in this layer that
+  // is not a straight `base * scale` multiplication (icon-size's `x * 1`
+  // is exact by IEEE-754 construction; icon-padding's `(1 - 1) * x / 2`
+  // needs its own pin because it's a different formula shape).
+  it('compensates icon-padding to exactly 0 at every zoom stop at the default SEAMARK_SIZE_SCALE=1 (#353 PR1), still offsetting the #191 collision-box growth', () => {
+    expect(SEAMARKS_LAYOUT['icon-padding']).toEqual([
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      8,
+      0,
+      11,
+      0,
+      13,
+      0,
+    ]);
+    // Object.is, not toEqual/toBe: CLAUDE.md's #203 rule is that
+    // Object.is(-0, 0) === false even where a looser equality treats them
+    // the same, and the compensation formula is specifically written
+    // (`1 - scale`, never negated after the fact) to land on +0 rather than
+    // a numerically-equal-but-sign-different -0 at scale = 1.
+    const padding = SEAMARKS_LAYOUT['icon-padding'] as readonly unknown[];
+    for (const stopValue of [padding[4], padding[6], padding[8]]) {
+      expect(Object.is(stopValue, -0), `expected +0, got ${String(stopValue)}`).toBe(false);
+    }
   });
 });
 

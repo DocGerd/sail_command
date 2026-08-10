@@ -17,14 +17,44 @@ const IMAGE_SIZE = 24; // smaller than windBarbs' 32: seamarks are a much
 // every offset/line-width in the logical box scales up together instead of
 // only a subset of hardcoded pixels being bumped (#191).
 const CENTER = IMAGE_SIZE / 2;
+
+// #353 PR1: a single scale-factor parameter for the whole seamark size axis —
+// raster resolution here (CANVAS_SIZE/PIXEL_RATIO below), on-screen icon-size
+// and the collision-padding compensation that keeps it in seamarkGeoJson.ts's
+// SEAMARKS_LAYOUT. This PR ships NO visible change: the default is 1, which
+// reproduces every value below byte-for-byte (seamarkGeoJson.test.ts pins the
+// EVALUATED layout, not just this constant). The user-facing control (a size
+// slider + display-category tiers) has no home until #299's settings surface
+// exists and is deliberately NOT part of this PR — see #353.
+export const SEAMARK_SIZE_SCALE = 1;
+
 // #191: on-screen seamarks were only ~13-20px (IMAGE_SIZE=24 registered at
 // the implicit default pixelRatio 1) — too small to read at planning zooms.
 // Raising the raster resolution with a MATCHING pixelRatio (rather than only
 // widening seamarkGeoJson.ts's icon-size stops, which would upscale/blur the
 // old 24px bitmap) grows the natural footprint from 24 to
-// CANVAS_SIZE/PIXEL_RATIO = 32 logical px while keeping the glyph crisp.
-const CANVAS_SIZE = 64;
-const PIXEL_RATIO = 2;
+// BASE_CANVAS_SIZE/BASE_PIXEL_RATIO = 32 logical px while keeping the glyph
+// crisp.
+const BASE_CANVAS_SIZE = 64;
+const BASE_PIXEL_RATIO = 2;
+// CANVAS_SIZE and PIXEL_RATIO scale TOGETHER with SEAMARK_SIZE_SCALE, so
+// their ratio — the glyph's "natural" on-screen footprint at icon-size 1,
+// exported below as SEAMARK_NATURAL_ICON_PX — never moves. CANVAS_SIZE alone
+// governs RASTER resolution (enough raw pixels for a larger on-screen render,
+// via SEAMARKS_LAYOUT's icon-size, to stay crisp); the layer's icon-size is
+// the ONLY thing that actually grows the on-screen size. This is deliberate:
+// if the natural footprint moved too, the visible growth would come from TWO
+// independent multipliers instead of one, and the icon-padding compensation
+// formula in seamarkGeoJson.ts — which assumes a single, well-defined
+// growth-per-zoom-stop — would be wrong.
+const CANVAS_SIZE = BASE_CANVAS_SIZE * SEAMARK_SIZE_SCALE;
+const PIXEL_RATIO = BASE_PIXEL_RATIO * SEAMARK_SIZE_SCALE;
+// Exported so seamarkGeoJson.ts's icon-padding compensation is derived from
+// the SAME number rather than a duplicated literal (CLAUDE.md's "twin
+// search" prose-rot rule — a duplicated 32 could silently drift from this
+// one). Scale-INVARIANT by construction (see above): always
+// BASE_CANVAS_SIZE / BASE_PIXEL_RATIO, whatever SEAMARK_SIZE_SCALE is.
+export const SEAMARK_NATURAL_ICON_PX = BASE_CANVAS_SIZE / BASE_PIXEL_RATIO;
 const INK = '#1a1a1a'; // standard black used for topmarks/outlines, not data-driven
 // Cardinal-mark yellow: raw CSS `yellow` (#ffff00) is too garish / low-contrast
 // against the yellow-vs-black R1001 banding, so a defined IALA-style amber-yellow
