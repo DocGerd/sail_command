@@ -769,7 +769,14 @@ function AppShell() {
   // no user edit at all, which would otherwise make the banner cry wolf the
   // instant a reroute succeeds; Routes/Live/Boat have no UI to touch
   // origin/destination/departure regardless, only Settings). PlannerPanel's
-  // own Chip/live-region keep reading `formDirty` unchanged.
+  // own Chip keeps reading the broader `formDirty` unchanged; its live
+  // region does NOT (Refs #299, cross-PR composition fix over PR #486 —
+  // see PlannerPanel.tsx's own `statusText` comment): folding the full
+  // `formDirty` there would double-announce exactly the cases this Banner
+  // already covers, so PlannerPanel computes this SAME `settingsDirty`
+  // predicate itself (it already receives `plan`/`settings` as props) and
+  // folds the stale sentence only for `formDirty && !settingsDirty` — the
+  // complement this Banner cannot see.
   const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
 
   return (
