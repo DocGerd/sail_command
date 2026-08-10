@@ -1398,9 +1398,13 @@ deviate from it.
   fringe scales with icon size — pick zooms whose apertures match (#353).
 - **`boundingBox()` returns the BORDER box and never sees overflow.** A
   tab-strip fit guard passed while `.app-tabs` overflowed 93px at 280px
-  (scrollWidth 373 vs clientWidth 280); `flex: 1` + an explicit `min-width`
-  + `align-items: stretch` made it unfailable three ways. Assert
-  `scrollWidth <= clientWidth` on the container (#299).
+  (scrollWidth 373 vs clientWidth 280): `flex: 1` with flex's default
+  `min-width: auto` forces every button's border box to an equal viewport/4
+  width whatever its label needs, and with no `overflow: hidden` in that
+  chain a too-long label spills silently past its own box edge instead of
+  growing, wrapping or clipping — so a border-box read cannot see it. Assert
+  `scrollWidth <= clientWidth` on the container (#299;
+  `app/e2e/layout.spec.ts`'s own comment carries the full mechanism).
 - A green workflow run proves the RUN was healthy, not that the intended
   VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
   workflow FILE from X's tip. Verify by inspecting the artifact it produced,
@@ -1612,7 +1616,7 @@ deviate from it.
   number decays on the next commit that inserts a line above it, and a
   currency check verifies at the instant of writing, so it structurally
   cannot catch that class. Write `App.tsx`'s `<div className="banner-area">`
-  (~:912): the name is the identity, the number is a hint. A citation to a
+  (~:958): the name is the identity, the number is a hint. A citation to a
   never-merged diff gets no line number at all. Validated same-day: hints
   written at 09:00 drifted 46 lines by 13:00 when a sibling PR inserted above
   them — the symbol anchor still found the site where a bare number would
