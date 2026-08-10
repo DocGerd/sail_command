@@ -15,6 +15,12 @@
   the work: the configuration that actually needs this fix was never
   identified, and the repo's own acceptance sweep cannot currently tell the
   difference between a correct implementation and a silently broken one.**
+- **Both of those two clauses have MOVED since this verdict was written —
+  read [Measured 2026-08-10](#measured-2026-08-10) before acting on it.** The
+  configuration is now identified, and the same answer argues *against*
+  proceeding rather than for it (`Refs #492`, §4(a)); PR #488 has added the
+  three relaxation-exercising sweep arms the second clause asked for, while
+  the BASE re-record it equally requires is still outstanding (§4(b)).
 
 > Companions: [`245-depth-mask-resolution.md`](./245-depth-mask-resolution.md)
 > (why the 46 m mask grid is source-limited — upstream of this question) and
@@ -307,13 +313,20 @@ doubly-sourced, not merely asserted:
   **Minimum radius that reconnects Flensburg↔Marstal at gate 2.3 m: 1068 m —
   identical to the global search's answer at every radius from there up.**
   So on the one live case, scoping costs nothing in relaxation depth.
+  **CONTRADICTED, UNRESOLVED — do not quote this 1068 m minimum on its own.**
+  The 2026-08-10 sweep ([Measured 2026-08-10](#measured-2026-08-10)) reads
+  0/55 pinch at **1060 m**, i.e. no plan in that population loses
+  connectivity 8 m *below* this stated minimum. Both cannot be "the smallest
+  radius at which scoped relaxation still works" under one definition; which
+  definition each measured was not established. That section lists the
+  candidate differences and marks the conflict open.
 - Route-wide, the *global* mechanism today licenses 44,159 cells in the
   [2.3, 3.0) band. An approach-scoped field for a Flensburg↔Marstal plan
   licenses **488 cells at R = 1852 m** or **1,298 at R = 3704 m** — a 90× or
   34× reduction.
 - Region-wide sanity: of 193 non-main-component pockets, 103 are rescued by
   relaxation at gate 2.3; **all 103 are covered at R = 1852 m**, worst-case
-  extent 1,839 m (a 12 m margin over the chosen 1852 m radius — see §3.3).
+  extent 1,839 m (a 13 m margin over the chosen 1852 m radius — see §3.3).
 
 **Kill switch, and why it is the strongest of the three.**
 `APPROACH_RADIUS_M = Infinity` makes every cell a disc member, so
@@ -353,7 +366,8 @@ or merely intended), P3's invariant is checkable by reading one function
 following a BFS into a dilation into a bitmap into three consumers, and P3's
 central trade (it can lower `usedDepthM` versus P1's provable non-lowering)
 was measured, not merely argued, to cost nothing on the only live case
-(Marstal: 2.3 m either way, at every radius from 1068 m up).
+(Marstal: 2.3 m either way, at every radius from 1068 m up — a figure the
+2026-08-10 sweep contradicts without resolving; see §2.3's marker on it).
 
 ### 3.2 Required grafts before implementation
 
@@ -408,11 +422,37 @@ cells at R = 1852 m against 1,298 at R = 3704 m — the "free" 2× radius
 headroom is a **34×-vs-90×** difference in how much shallow water is
 licensed, not a free safety margin. The safety-lens judge's counter-proposal:
 **R ≈ 2400–2600 m**, presented explicitly as a *measured margin* over the
-1,840 m worst case, not as "2× headroom." At the *smaller* end of the
+1,840 m worst case, not as "2× headroom."
+
+> **~~R ≈ 2400–2600 m~~ IS SUPERSEDED — 2026-08-10 recommends R = 1852 m
+> (1 nm)**, see [Measured 2026-08-10](#measured-2026-08-10). The band is left
+> in place above because the *reasoning* that produced it — margin against a
+> measured worst case rather than a round multiple — is what the replacement
+> also rests on. Do not carry the number forward.
+
+At the *smaller* end of the
 originally proposed range — R = 1852 m — the margin over the 1,839 m worst
-case (§2.3) is **12 metres**, a knife-edge, not a buffer; the original
-1852 m/3704 m pairing in the source material should not be read as two
-comparably-safe choices.
+case (§2.3) is **13 metres** (1852 − 1839), a knife-edge, not a buffer; the
+original 1852 m/3704 m pairing in the source material should not be read as
+two comparably-safe choices.
+
+> **The worst-case pocket extent appears in this document as BOTH 1,839 m
+> and 1,840 m**, on both sides of §3 and in the 2026-08-10 section — grep
+> both spellings rather than trusting any list of sites here. Which is the
+> real measurement is not settled and needs the underlying run — tracked as
+> `Refs #502`. Operating rule until it is: state each subtraction against
+> the baseline its own site names, so a site quoting 1,840 m reads 12 m and
+> a site quoting 1,839 m reads 13 m, and never carry one site's difference
+> across to the other.
+
+**The knife-edge SURVIVES that supersession — it is not the margin the
+2026-08-10 section quotes.** That section margins R = 1852 m against the
+1050→1060 m pinch cliff and gets ~790 m. These are two *different*
+constraints at the same radius, and the pocket-coverage one above is the
+larger, so it is the one that binds: nothing measured on 2026-08-10 retires
+the requirement that a disc reach the 1,839 m worst-case pocket extent. Read
+"R = 1852 m" as clearing the cliff comfortably and the pocket extent by
+13 m — never as having ~790 m of margin outright.
 
 ---
 
@@ -456,6 +496,44 @@ If it was observed at tier 4 or `depthComfortMarginM: 0`, the fix is real,
 narrower, and worth doing. **This must be asked and answered before code is
 written, and the answer recorded here or in the tracking issue either way.**
 
+**ANSWERED 2026-08-10 — and the answer argues AGAINST proceeding, not for
+it.** See [Measured 2026-08-10](#measured-2026-08-10) below for the full
+record. The maintainer confirmed the reported route was Flensburg→Marstal at
+`DEFAULT_SETTINGS` — the *first* branch of the question above, i.e. the one
+this section's own text says does "not obviously justify a change carrying a
+full `app/sweep/` acceptance cycle". The same response went further and
+reproduced that route: minimum charted depth on the delivered track
+**4.10 m**, **zero** cells below the requested gate — no routing defect at
+all, the shallow appearance being an artifact of the absolute-depth colour
+ramp rather than of where the router put the boat (a separate, live concern,
+`Refs #492`). **So condition 4(a) is answered, not cleared**: the
+configuration is identified AND the incident that motivated #452's framing
+did not reproduce as a relaxation-locality problem. Reading this block as a
+green light inverts its evidence.
+
+Separately, 29 of the 55 shallow-bearing plans in the
+current re-solve population have a sub-requested-gate cell beyond 2400 m
+from every waypoint.
+
+**Per-ARM breakdown of the 55 — NOT a tier split of the 29** (an earlier
+revision of this paragraph labelled it as one): `no-comfort` 1 (tier 3),
+`margin-zero` 27 (all tier 3), `relaxation-dense` 16 tier 3 + 11 tier 4.
+These are each arm's *total* shallow-bearing row count, and they sum to
+1 + 27 + 27 = **55**, which is why they cannot be a split of a 29-plan
+subset. Twin-checked against `app/sweep/`'s own committed sources, written
+from a separate instrumented run: `README.md` records `margin-zero` 27/33
+and `relaxation-dense` 27/33 rows carrying a `shallow` block, and
+`sweepArms.ts`'s arm-role comment records that `margin-zero` "can NEVER
+produce a tier2/tier4 row by construction" while `relaxation-dense` resolves
+11 of its 27 via tier 4 under its documented TIER-REACH METHOD — leaving the
+16. (That 16 is arithmetic on the tier-4 count. It is *not*
+`app/sweep/README.md`'s unrelated `margin-zero`-vs-`relaxation-dense`
+"16 / 33 plans differing" figure — two different 16s, do not twin them.)
+**The tier split of the 29-plan >2400 m subset is stated nowhere in this
+document and was not measured.** It is a subset selected by a distance
+criterion that cuts across arms, so it cannot be derived from the per-arm
+numbers above — leave it as the gap it is.
+
 ### 4(b) The sweep cannot currently discriminate a correct fix from a silently broken one
 
 **The load-bearing figure, verifiable in-repo**: `sweepArms.ts`'s own
@@ -493,9 +571,35 @@ Both judges: add a relaxation-exercising arm (a Marstal-destination arm, and
 a `depthComfortMarginM: 0` arm to reach §4(a)'s genuinely-unprotected
 population) and re-record BASE — including the required BASE double-run
 control — **before** any BASE-vs-HEAD comparison is quoted for this change.
-Per the standing repo rule, `compare.mjs` fails closed on zero arm files but
-not on fewer than six (now seven), so the arm-file count must be asserted by
-hand.
+
+**PARTIALLY SATISFIED 2026-08-10 — the ARM half only; condition (b) is
+NARROWED, not discharged.** PR #488 added three arms, taking the harness to
+**nine arms × 33 harbours = 297 plans** (`app/sweep/armNames.ts` lists the
+nine; `README.md` states the 297). What shipped is Marstal-**origin**, not
+the Marstal-*destination* shape asked for above; `sweepArms.ts`'s
+`Arm.originId` doc comment carries the substitution argument — all three
+designs scope relaxation on the unordered *snapped-waypoint set*, so
+`{marstal_snap, X_snap}` is the identical set whichever end Marstal sits at
+— read that argument rather than assuming the two are equivalent.
+`margin-zero` supplies the `depthComfortMarginM: 0` arm, deliberately at
+Marstal origin because a Flensburg-origin one would have been byte-identical
+to the existing `no-comfort`. Measured discriminating power, from
+`README.md`'s own 2026-08-10 run: each of the three carries a `shallow`
+block on **27 of 33** rows, against the 2-of-198 the paragraph above
+records for the original six.
+
+**The BASE half is still outstanding.** Nothing in this document records a
+re-recorded BASE, and the repo's standing rule is that the double-run
+control must be taken against the **merge-base of the branch it will
+certify** — one taken against a `develop` that then moves certifies
+nothing. Until that exists, no BASE-vs-HEAD comparison for this change may
+be quoted, three good arms notwithstanding.
+
+The hand-count caveat this section used to carry — that `compare.mjs` fails
+closed on zero arm files but not on a short arm set — is **superseded**
+(#451): `compare.mjs` now derives its expected set from `armNames.ts` and
+fails closed on an INCOMPLETE one, printing the missing and unexpected arm
+names. The arm-file count no longer has to be asserted by hand.
 
 **Escalation trigger, stated by the safety-lens judge and worth repeating
 verbatim as the stop condition**: on the new arm, any `ok → error`
@@ -531,6 +635,13 @@ re-litigating the same argument:
    *before* implementation, not discovered by the sweep afterward. If it is
    confirmed to be tier 4 or `depthComfortMarginM: 0`, the case for
    proceeding is strong and narrower in scope than #452's original framing.
+   **ANSWERED 2026-08-10, on the branch that calls for reconsideration** —
+   see [Measured 2026-08-10](#measured-2026-08-10) below and §4(a): the
+   maintainer confirmed `DEFAULT_SETTINGS`, *and* reproduced the reported
+   route as not a routing defect (minimum charted 4.10 m, zero sub-gate
+   cells; a colour-ramp artifact, `Refs #492`). Both halves point at this
+   item's first branch — "a much smaller undertaking (or a deferral)" — so
+   this is an answer to act on, not a box to tick.
 2. **A relaxation-exercising sweep arm exists and BASE is re-recorded.**
    Until then, no BASE-vs-HEAD comparison for this change means anything,
    regardless of which design is chosen.
@@ -546,6 +657,34 @@ re-litigating the same argument:
    #455-class tolerance change, or a #245-class resolution change, would
    both invalidate the 1,840 m worst-case measurement this radius is based
    on).
+   **ANSWERED 2026-08-10** — see [Measured 2026-08-10](#measured-2026-08-10)
+   below: R = 1852 m (1 nm) is now recommended, superseding §3.3's
+   2400–2600 m band (marked superseded in place there too, so a top-down
+   reader of §3 cannot meet the stale figure first). The 1,840 m worst-case
+   pocket extent this item names is **not** superseded with it: R = 1852 m
+   still clears it by only 12 m (1852 − 1840, the baseline THIS item names;
+   §2.3 and §3.3 quote 1,839 m and therefore 13 m — `Refs #502`), and
+   re-deriving it after a mask change remains required.
+   **ACCEPTANCE RULE for that re-derivation, so the outcome is decided
+   before the number is known.** Pocket coverage is a floor, so:
+   a re-derived worst case **ABOVE 1852 m INVALIDATES this radius** — R must
+   be raised to clear the new figure, and "1 nm is a natural constant" is
+   explicitly *not* a reason to keep it (roundness is a tie-break among radii
+   that already clear the floor, per the recommendation's own bullets). A
+   figure landing **exactly at 1852 m** leaves zero margin, and whether an
+   extent equal to R counts as covered is a boundary convention this
+   document nowhere states — a maintainer call, not a silent pass. A
+   re-derived figure
+   anywhere **below** 1852 m keeps R valid and only moves the margin, in
+   which case §3.3's knife-edge wording must be restated at the new
+   difference rather than left at 12/13 m — and R should then be
+   reconsidered downward for the same reason 1852 m was preferred to §3.3's
+   2400–2600 m band: whichever proposed radius is the smallest one still
+   above the floor buys no licensing slack it has to pay for.
+   What this rule deliberately does
+   NOT settle: whether a knife-edge is an acceptable place to sit at all —
+   that is the judgement recorded in the recommendation, and it is an
+   argument from documented pressures, not a measurement.
 5. **Evidence that P3's per-disc gate can genuinely come out lower than the
    global search's answer on some real harbour** — not just Marstal, where
    it measurably does not. If such a harbour exists, the §3.2 grafted
@@ -582,3 +721,340 @@ re-litigating the same argument:
 - **No backend, offline-first.** All three designs are solver-worker-local
   changes; none introduces a network dependency or changes what is
   precached.
+
+---
+
+## Measured 2026-08-10
+
+Driven off the shallow-bearing plans in the current `app/sweep/` fixture
+rather than the single Flensburg↔Marstal case §2.3/§3.3 measured, this
+section answers two of §6's open items and adds three further findings.
+
+**The fixture, stated exactly**: **nine arms × 33 harbours = 297 plans**
+since PR #488. **Three arms were run here** — `no-comfort`, `margin-zero`,
+`relaxation-dense`, i.e. **99 plans** — of which **55** carry a `shallow`
+block. `breeze`, `short-horizon`, `light-motorless`, `becalmed`,
+`deep-becalmed` and `margin-extreme` were not run for this section.
+
+**PROVENANCE DIFFERS BY SUBSECTION, and is stated per subsection rather
+than once here** — an earlier revision of this preamble attributed the whole
+section to one tool and was wrong about its largest part. In summary: the P3
+re-solve and ETA figures come from an **uncommitted TypeScript driver
+calling the app's own real solver**, not from a Python mask model (see that
+subsection for the mechanism and for why the figures are not re-runnable
+from this repo as it stands); the conservative-depth cross-check under
+"The cliff-driving cell" *is* the design workflow's `pipeline/.venv`
+numpy/scipy mask reimplementation, which is where that attribution belongs
+and stays. The radius/pinch sweep's own driver was **not re-verified in this
+correction pass** — its method is recorded below as the classifier describes
+itself, not as a confirmed provenance; re-derive it before building on it.
+
+Figures below are measured for this section **except where they explicitly
+cite §0–§7**: the 27-of-528 harbour-pair figure quoted under "Scope limits"
+is INHERITED from a maintainer issue comment (§0, §4(b)) and was not re-run
+here.
+
+### Positive control
+
+Before trusting any "0 pinch" reading below, the classifier that reports
+pinch (mask-level connectivity loss under a candidate `APPROACH_RADIUS_M`)
+was checked for a true positive first: swept over all 55 shallow-bearing
+plans, radii 0 / 100 / 250 / 500 / 1000 / 1050 m all read **55/55 pinch**.
+
+Those readings do not all carry the same weight, and the distinction matters
+because only some of them are evidence. **At R = 0 the 55/55 is a theorem,
+not a measurement**, and the derivation is short: snapping happens at the
+*requested* gate (§1.4), so no snapped waypoint can sit on a sub-requested
+cell; a disc of radius 0 therefore contains no sub-requested cell at all,
+licenses no relaxed water anywhere, and every plan that routes only because
+relaxation fired — which is what carrying a `shallow` block means, so all 55
+— must lose connectivity. **At 100–1050 m it is empirical**: nothing in the
+mechanism forces a plan to pinch at those radii, and those readings are
+informative precisely because they could have come out otherwise. (An
+earlier revision wrote "as it must" across the whole row; that holds only of
+the R = 0 column.) It is the empirical columns that license every 0-pinch
+row below as informative rather than a classifier that never fires — the
+R = 0 column alone could not, because at R = 0 the answer is forced by
+construction (the derivation just above), so a classifier correct *only* on
+the forced case would still read 55/55 there. The 100–1050 m columns are
+what show it firing where the answer was NOT forced. (An earlier revision
+named the wrong null hypothesis here — "a classifier hardwired to report
+pinch" — which the 0/55 rows at 1060–3704 m already exclude on their own;
+the failure a positive control exists to exclude is the opposite one, a
+classifier that never fires, and against that the R = 0 column is
+insufficient rather than irrelevant.)
+
+### The `APPROACH_RADIUS_M` cliff (§6 item 4, ANSWERED)
+
+Same sweep, continued: 1060 / 1852 / 2400 / 3704 m all read **0/55 pinch**.
+The transition sits inside a single **10 m band, 1050→1060 m** — finer than
+the ~46 m mask cell size — and lands at the identical band across all three
+arms run here (`no-comfort`, `margin-zero`, `relaxation-dense`; per-arm
+breakdown below).
+
+**UNRESOLVED CONTRADICTION with §2.3 / §3.1 — flagged, not reconciled.**
+§2.3 records **1068 m** as the minimum radius that reconnects
+Flensburg↔Marstal at gate 2.3 m, "identical to the global search's answer at
+every radius from there up". But 1060 m reads 0/55 pinch here — no plan in
+this population loses connectivity 8 m *below* that stated minimum.
+
+**The two figures describe the SAME ROUTE, so a POPULATION difference cannot
+explain the gap.** An earlier revision of this paragraph offered one as a
+candidate ("the 1068 m route may simply not be among the 55"); it is refuted
+by this document's own per-arm split plus two committed files, each link
+checkable on its own:
+
+- the 55 split 1 + 27 + 27 across `no-comfort`, `margin-zero` and
+  `relaxation-dense` (per-ARM breakdown below), so 54 of the 55 do come from
+  the two Marstal-*origin* arms — but the 55th is `no-comfort`'s;
+- `app/sweep/sweepArms.ts`'s `no-comfort` arm sets no `originId`, and
+  `runArm` reads `arm.originId ?? 'flensburg'`, so that arm is
+  Flensburg-origin;
+- this section's OWN 2026-08-10 three-arm run settles the identity with no
+  cross-run argument needed: of `no-comfort`'s 33 rows, exactly ONE carries
+  a `shallow` block — **`marstal`**, at `requestedDepthM 3.0` /
+  `usedDepthM 2.3` / `minGateDepthM 2.3`. It is the same run the 55 comes
+  from (its three arms give 1 + 27 + 27), so the row and the population are
+  read off one run.
+  **Why not `app/sweep/README.md`, which names the same row.** Its recorded
+  outcome mix does list a `no-comfort/marstal` `ok+shallow` row, but that
+  baseline is the 2026-08-07 six-arm run (`dbcd519`), and commit `c359a5c`
+  (2026-08-09, #455 / PR #476, `TOLERANCE_M 0.9`) rewrote `mask.bin` and
+  `mask.meta.json` BETWEEN the two runs. `sweepArms.ts` reads both files off
+  disk and hands the resulting `NavMask` to every `planRoute()` call, so the
+  committed mask is an input to each arm just as its settings, wind field,
+  `T0` and origin are — and it is the one such input the "never edit an
+  existing arm" rule does not govern. Read that README row as corroboration
+  from the far side of the rebuild, never as this identity's source.
+
+So `no-comfort`'s 1 IS Flensburg→Marstal, and it is one of the 55; the
+0/55 reading at 1060 m therefore includes it reading 0-pinch. The GATE lines
+up too: `no-comfort` is `DEFAULT_SETTINGS` with `depthComfortMarginM: 0`, so
+its `safetyDepthM` is the 3.0 m default, and 2.3 m is the mask's own
+reconnection gate for that pair — `realmask.repro.test.ts`'s
+`'Flensburg -> Marstal at DEFAULT_SETTINGS degrades gracefully with shallow
+warnings (#53)'` case pins, in one test, the independent oracle
+(`cellsConnected(…, 2.3)` **true** and `cellsConnected(…, 2.4)` **false**,
+so 2.3 is the flip, not merely a value that works) alongside the solver's
+own `requestedDepthM === 3.0` / `usedDepthM ≈ 2.3`. Same route, same
+requested gate, and the two radius figures 8 m apart on it.
+
+**Of the two candidates this document enumerated, that leaves ONE standing,
+and this pass established it no better than it established the other: the
+CRITERIA differ** — reconnection of one named harbour pair at a fixed 2.3 m
+gate, against plan-level connectivity loss at each plan's own gate. Say
+"of the two enumerated" rather than "the only one": the enumeration was
+never shown to be complete, and this section's own preamble records that the
+radius/pinch sweep's driver was not re-verified, so a METHOD difference is a
+third possibility nobody has excluded. Narrowing the candidate set is not
+resolving the conflict, and this one stays **OPEN**. A
+third difference is worth recording but is **not** a candidate explanation:
+this sweep takes no sample between 1060 m and 1852 m, which limits its
+resolution above the cliff but cannot explain a 0-pinch reading *at* 1060 m.
+Until both figures are re-derived under one definition, neither should be
+the sole basis for choosing R.
+
+**Recommendation: R = 1852 m (1 nm)** — unchanged, and superseding §3.3's
+2400–2600 m counter-proposal (marked in place there). Reasons, each with
+what it does and does not rest on:
+
+- **~790 m of margin over the 1050→1060 m cliff** — and name that baseline
+  explicitly, because it is *not* §3.3's. §3.3 margins against the 1,839 m
+  worst-case pocket extent, a **larger and still-live constraint**, against
+  which R = 1852 m retains only the **13 m** (1852 − 1839) knife-edge §3.3
+  named. Two margins, two constraints, one radius: the larger constraint
+  binds, so "~790 m of margin" must never be quoted as this radius's margin
+  outright.
+- **Why sit at the BOTTOM of the feasible range rather than above it — the
+  reconciliation the other three reasons in this list do not supply.** None
+  of those three addresses the constraint the bullet above declares binding,
+  and without this step a reader is told the pocket-coverage requirement
+  binds, told R = 1852 m clears it by 13 m, and given no reason to prefer
+  that knife-edge over §3.3's 2400–2600 m band, which was chosen
+  *explicitly* as a measured margin over the same worst case and clears the
+  same 1,839 m figure by ~561–761 m.
+  The two pressures run in opposite directions and both are documented here:
+  pocket coverage is a **floor** (R must reach the 1,839 m worst-case
+  extent, or a rescued pocket falls outside every disc), while licensing
+  restriction pushes **down**, because licensed area scales as R² and a
+  larger disc licenses more *distant* sub-gate water — §3.3's 488 cells at
+  1852 m against 1,298 at 3704 m, and the measured 1025-vs-996 forbidden-cell
+  comparison in the LAST bullet of this list. Of the three radii this
+  document has ever PROPOSED as `APPROACH_RADIUS_M` (1852 m, §3.3's
+  2400–2600 m band, the original design's 3704 m — the other radii it names
+  are sweep samples, not candidates), 1852 m is the smallest that is above
+  the floor at all, so it is the one that buys no slack it has to pay for in
+  licensing. **State the status of that step
+  honestly: it is an ARGUMENT from two documented pressures, not a
+  measurement.** Nothing here measures a safety cost of the 561–761 m of
+  extra licensing §3.3's band would carry; what is measured is only the
+  direction (a larger disc forbids fewer cells, including fewer sub-draft
+  ones). The 13 m is thin ON PURPOSE under that argument — which is exactly
+  why §6 item 4's acceptance rule, not the roundness of 1 nm, is what holds
+  the choice together if the floor ever moves.
+- A natural constant (one nautical mile) rather than a fitted
+  cliff-plus-delta. This is a TIE-BREAK among radii that already clear the
+  floor, never a reason of its own — see the acceptance rule in §6 item 4.
+- **On the axes measured at BOTH radii, 1852 m is at least as strict as
+  2400 m**: both read 0/55 pinch, and 1852 m forbids more cells from
+  relaxation licensing — **1025 against 996** — including more of the
+  sub-draft cells (**11 against 9**; denominators in the re-solve
+  subsection). An earlier revision claimed it "dominates 2400 m on every
+  axis measured here", which over-reaches: the re-solve and the ETA deltas
+  below were both measured at **R = 2400 m only**, and since 1852 m forbids
+  **29 more cells** than 2400 m does (1025 − 996 — a numerical coincidence
+  with the 29-plan subset below, not a relation to it), a clean re-solve at
+  2400 m is evidence about the *more permissive* of the two radii and does
+  not transfer to 1852 m.
+
+### §4(a), the configuration question (ANSWERED for the DEFAULT and comfort-0 populations)
+
+The maintainer confirmed the route that produced the original #452 complaint
+was Flensburg→Marstal at `DEFAULT_SETTINGS` — the first branch of §4(a)'s
+open question, and the branch both §4(a) and §6 item 1 say should trigger a
+reconsideration of scope rather than an implementation.
+
+**The same response also answers the question AGAINST the premise, and that
+half must travel with the first.** The maintainer reproduced the reported
+route and found no routing defect: minimum charted depth on the delivered
+track **4.10 m**, **zero** cells below the requested gate. The shallow
+appearance came from the absolute-depth colour ramp, not from where the
+router put the boat — a real but separate concern (`Refs #492`). So the
+configuration is now identified *and* the motivating incident did not
+reproduce as a relaxation-locality problem. §4(a) is **answered, not
+cleared**.
+
+Separately, of the 55 shallow-bearing plans, **29** have a
+sub-requested-gate cell lying beyond 2400 m from every waypoint — i.e.
+outside even §3.3's rejected, more generous radius.
+
+**Per-ARM breakdown of the 55 — not a tier split of the 29.**
+`no-comfort` 1 plan (tier 3), `margin-zero` 27 plans (all tier 3),
+`relaxation-dense` 16 plans tier 3 + 11 plans tier 4. Each figure is that
+arm's *total* shallow-bearing row count; they sum to 1 + 27 + 27 = **55**,
+so they cannot be a split of the 29-plan subset (an earlier revision of this
+paragraph presented them as one). Corroborated against `app/sweep/`'s own
+committed sources, which were written from a separate instrumented run:
+`README.md`'s 2026-08-10 figures (`margin-zero` 27/33, `relaxation-dense`
+27/33 rows with a `shallow` block) and `sweepArms.ts`'s arm-role comment
+(`margin-zero` "can NEVER produce a tier2/tier4 row by construction";
+`relaxation-dense` resolves 11 of its 27 via tier 4 under its TIER-REACH
+METHOD, leaving 16). **The 29-plan subset's own tier split is stated nowhere
+in this document and was not measured** — it is selected by a distance
+criterion that cuts across arms, so it is not derivable from the numbers
+above. Left as a gap on purpose.
+
+### P3 safety re-solve — hygiene, not sub-draft mitigation
+
+**METHOD — and it is not what an earlier revision of this document said.**
+These figures did not come from the numpy/scipy mask reimplementation. They
+come from an untracked TypeScript driver (`run.analyze.ts`) that lived only
+in an ephemeral scratchpad and **is not committed**, so **they are not
+re-runnable from this repo as it stands** — treat them as a recorded
+observation and rebuild the driver before relying on them. What it did: call
+the app's own real `planRoute()` (`app/src/routing/planRoute.ts`) against the
+real `NavMask` (`app/src/lib/mask.ts`) and the real `polar-genoa.json` /
+`polar-fock.json`, reusing `app/sweep/sweepArms.ts`'s own `ARMS` and `T0` so
+that wind, settings and departure instant match the sweep's BASE exactly.
+
+**This is a SIMULATION of P3, not P3 — P3 is unimplemented.** The disc was
+imposed at the MASK level: for each plan, every cell BOTH farther than
+**R = 2400 m** from every snapped waypoint AND below `requestedDepthM` was
+forced to LAND in a clone of `mask.bin`, and the real solver was then run
+against that modified mask. **That construction bounds what the rows below
+prove.** Forbidding cells outright is a different mechanism from P3's
+per-cell gate *field*: `findRelaxedDepthM` still searched against a single
+scalar gate here, merely over a mask with cells removed, so the run never
+exercises §2.3's named P3 trade — a localized `connectedAt` returning a
+*lower* connecting gate than the global search would. "0/29 worse
+`usedDepthM`" is therefore evidence that removing distant sub-gate water did
+not force a deeper relaxation on these plans; it is **not** evidence about
+that trade, and §3.2's grafted `minGateDepthM`-regression guard remains
+unexercised against the failure mode it was grafted in for.
+
+With that scope stated: re-solving all 29 of the plans above under the
+simulated disc, **29/29**
+return `status: ok`; **0/29** show a worse (lower) `usedDepthM`; **0/29** show
+a worse (lower) `minGateDepthM` — the specific regression §3.2's grafted
+guard exists to catch, subject to the bound just stated.
+
+Sub-draft exposure, **with its denominator named**: across these 55 plans
+there are **2,044** deduped cells below the requested gate, of which **171**
+also read below `BOAT_DRAFT_M` on the conservative mask. 171 is of those
+2,044 plan-touched sub-gate cells — it is *not* a count of sub-draft cells
+on the mask as a whole, a much larger and different population. (This
+cell-set geometry is a distance computation over the same plan set; this
+correction pass verified the provenance of the re-solve and ETA figures
+above and below, not separately of these counts.) Of those 171 cells,
+93.6% lie within 1852 m of a waypoint (inside any
+workable disc), so a 1852 m P3 disc excludes 11/171 = 6.4% of them from
+relaxation licensing — protection, not elimination. This is structural, not
+a tuning accident: at R = 500 m the disc forbids 170/171 of those same
+sub-draft cells **and** breaks all 55 plans (the positive-control pinch
+above), because the sub-draft cells are the connectivity-critical ones — a
+radius small enough to exclude nearly all of them is also small enough to
+disconnect nearly every route.
+
+### The cliff-driving cell
+
+The cell pair at lat 54.8502–54.8506, lon 10.5378–10.5385 (conservative
+depth 1.8–2.1 m) is Marstal's own approach, and is **the plausible driver of
+the 1050→1060 m cliff above — not established as its cause.** An earlier
+revision said it "sets" the cliff; nothing measured supports that verb. The
+classifier behind the cliff reports whether a PLAN pinches at a candidate
+radius — it does not report WHICH cell caused the pinch, so no output of
+that sweep attributes the transition to any cell at all. Attributing it
+needs exactly one number this pass does not have: **this cell's distance to
+the nearest snapped waypoint, which was not measured.** A distance landing
+inside the 1050–1060 m band would be a real explanation; any other distance
+would refute it. Measure it before repeating the stronger claim.
+
+What *is* independently established about this cell, by a genuinely
+different method — the design workflow's `pipeline/.venv` numpy/scipy mask
+reimplementation, re-run here as a conservative-depth cross-check — is that
+it is the shallowest conservative reading (**1.80 m**) on the delivered
+Flensburg→Marstal track. That makes it the most dangerous water in the set
+whether or not it also drives the radius transition.
+
+### New residual — South Funen archipelago ETA cost
+
+Re-solving under the simulated disc (same uncommitted driver, same
+R = 2400 m, same "this is not P3 itself" bound as the subsection above) is
+not free even where it returns `ok` with no depth regression. ETA cost,
+worst cases first: Svendborg +6527 s (+108.8 min, recommended rig flips
+fock→genoa), Rudkøbing +1691 s, Troense +1567 s, Svendborg +1360 s,
+Rudkøbing +1297 s. Those five are the South Funen archipelago tail; the
+**median delta is +23 s across all 29 re-solved plans**, not across the
+archipelago subset — an earlier revision put "the archipelago population"
+and "the population" one clause apart while meaning two different sets, so
+state which set each number describes.
+
+Read the deltas for what they are: **the cost of withdrawing relaxation
+OUTSIDE the disc, not a regression per se** — the scoped run declines
+distant water the user's `safetyDepthM` never asked to be given, and pays
+for the detour. Say that precisely rather than as "the cost of honouring the
+user's own depth setting", which an earlier revision did and which
+overstates it: the simulation forces to LAND only cells that are BOTH
+sub-gate AND farther than R = 2400 m from every snapped waypoint, so
+sub-gate water INSIDE the disc stays licensed exactly as today. These
+deltas are therefore a LOWER BOUND on what honouring `safetyDepthM` outright
+would cost — and a loose one, since the honour-it-outright case is R = 0,
+where this section's own positive control reads 55/55 pinch: those plans
+lose connectivity rather than paying a delta at all. That does not make the
+cost small, and it is the honest argument against the scoping premise: P3's
+"relax only near the waypoint" does not hold where the whole channel, not
+just the approach, is thin water.
+
+### Scope limits of this measurement
+
+Stable across the settings arms exercised (`no-comfort`, `margin-zero`,
+`relaxation-dense` — three of the harness's nine) — UNTESTED across
+geography and mask rebuilds, since Marstal is the only harbour in this
+33-harbour curated set that relaxes at all (§0/§4(b)'s 27-of-528 figure,
+INHERITED from a maintainer issue comment and not re-run here; it is the one
+place this section quotes §0–§7 rather than measuring). The re-solve
+population above is the 2400 m population only (the 29 plans with a cell
+beyond that radius): it does not cover the full 55, and it was run at
+**R = 2400 m only — never at the recommended 1852 m**, which forbids 29 more
+cells. And its driver is uncommitted, so no re-solve or ETA figure here is
+reproducible from this repo without first rebuilding that driver.
