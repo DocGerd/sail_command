@@ -385,6 +385,8 @@ export const en = {
   'about.caveats.heading': 'Important notes',
   'about.caveats.polars':
     'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
+  'about.caveats.depthMask':
+    "Depth values blend two readings of the same EMODnet bathymetry data: the smoothed reading is used only where it agrees with the more cautious one to within 0.9 m, so the depth value the app uses is never more than 0.9 m deeper than the cautious reading — that bounds the source data, not the real seabed. A cell the router plans through at safety depth G has a cautious reading of at least G − 0.9 m: 2.1 m, the boat's draft, at the 3.0 m default — but as little as 1.2 m where a route falls back to a shallower depth to stay connected, flagged on the resulting route.",
   'about.dataSize':
     'First load downloads ~44 MB (basemap and route data); later loads are served from cache and work offline.',
   'about.sources.heading': 'Data sources',

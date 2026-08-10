@@ -128,6 +128,18 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           <h3>{t('about.caveats.heading')}</h3>
           <ul>
             <li>{t('about.caveats.polars')}</li>
+            {/* #455: depth-mask tolerance disclosure. The four numbers named
+                in this string — the 0.9 m TOLERANCE_M bound, the 3.0 m
+                default safety depth, the 2.1 m BOAT_DRAFT_M floor it implies,
+                and the 1.2 m #53 relaxed-depth floor — are each read out of
+                pipeline/build_mask.py / app/src/types.ts /
+                app/src/routing/relaxedDepth.ts and asserted to appear
+                (locale-formatted) IN THIS DICT STRING by
+                app/src/test/maskTolerance.test.ts. That test asserts
+                containment in the shipped copy, not just a relationship
+                among the constants — update the copy's numbers and the
+                pipeline/TS constants together, or the guard reds. */}
+            <li>{t('about.caveats.depthMask')}</li>
             <li>{t('about.dataSize')}</li>
           </ul>
         </section>
