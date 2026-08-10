@@ -109,28 +109,35 @@ deviate from it.
   jsdom-mocked service-worker test — that would be the #50 equivalence-test
   tautology (statements execute without modeling real CacheStorage/Range/CDN
   semantics, the bug class that actually bit in #96 and #118).
-- `app/sweep/` (#450) is the committed 198-plan #282 acceptance harness — six
-  arms x 33 harbours, a README carrying the full rebuild spec, and a REQUIRED
-  BASE double-run control (two BASE runs must be byte-identical to each other
-  before any BASE-vs-HEAD comparison means anything). It sits OUTSIDE
+- `app/sweep/` (#450) is the committed #282 acceptance harness — **NINE arms x
+  33 harbours** since #488 (six original Flensburg-origin, plus three
+  Marstal-origin ones added because the original six could not discriminate a
+  depth-relaxation change at all), a README carrying the full rebuild spec,
+  and a REQUIRED BASE double-run control (two BASE runs must be byte-identical
+  to each other before any BASE-vs-HEAD comparison means anything). Record
+  that control against the merge-base of the branch it will certify — one
+  taken against a `develop` that then moves certifies nothing. It sits OUTSIDE
   `app/src/` so `vite.config.ts`'s `include` never collects it into
   `npm run test` or CI; run it deliberately with `--config
   sweep/vitest.config.ts`. vitest 4 has NO `--include` (`CACError: Unknown
   option`, measured) and `--dir` only narrows, which is why it needs its own
-  config rather than a flag. Timing: `sweep/README.md` budgets ~20 min per
-  run; ~16 min per run was measured 2026-08-07 on this dev machine WHILE the
-  config was still over-collecting, so that figure times mostly-unrelated work
-  and stops being meaningful the moment #451 lands. Two known
-  defects (#451): the config's `include` glob resolves against `app/` not
-  `app/sweep/`, so it over-collects the whole `.ts` suite and a run exits 1 on
-  an unrelated `changelog.test.ts` (`server.fs.allow` denies `CHANGELOG.md?raw`
-  under that config); and `compare.mjs` fails closed on ZERO arms but not on
-  FEWER THAN SIX, so assert six arm files per output directory yourself before
-  quoting any verdict. **Two of the six arms are VACUOUS as safety evidence**:
-  `becalmed` and `deep-becalmed` produce ZERO routes (33/33 errors each), so
-  their byte-identity would survive any mask change including a catastrophic
-  one. Only `short-horizon` (2 `ok` plans) is a real unchanged-arm control —
-  never report three green arms as three pieces of evidence.
+  config rather than a flag. Both #451 defects are FIXED: `root: here` stops
+  the `include` glob over-collecting (deleting that line takes the sweep
+  config from 9 collected files to 89 — the fix is causal, and the main suite
+  still collects 117 files with zero from `app/sweep/`), and `compare.mjs`
+  now fails closed on FEWER arms than expected, with the expectation derived
+  from the arm definitions rather than a hardcoded count.
+  **`becalmed` and `deep-becalmed` remain VACUOUS as safety evidence** —
+  ZERO routes (33/33 errors each), so their byte-identity would survive any
+  mask change including a catastrophic one; never count them as evidence.
+  For a DEPTH-RELAXATION change the discriminating arms are the three new
+  ones (`margin-zero`, `relaxation-dense`, `margin-extreme`), each carrying
+  **27 of 33** plans with a `shallow` block against **2 of 198** across the
+  original six — measured, and the reason the old sweep was green through
+  its own blast radius. `margin-extreme` is NOT the tier-4 arm despite its
+  history: inflating the comfort margin SUPPRESSES tier-4 entry (11 rows at
+  `DEFAULT_SETTINGS` vs 3 at margin 8.0, a strict subset, measured twice),
+  so `relaxation-dense` is the broader tier-4 exerciser.
 - Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
   a ~40 s real-mask solver acceptance file). Use focused filters while
   iterating (`npm --prefix app run test -- <filter>`); give the full run a
