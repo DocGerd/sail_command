@@ -311,9 +311,9 @@ deviate from it.
   so by the time ScaleBar's own `[isWide, bannerHeight]` effect reads
   `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
   correct regardless of which call site's commit lands first. NAMED
-  COUPLING now points at `App.tsx:687` (renders `.banner-area`
-  unconditionally) and `App.tsx:132` (the App-level `useBannerHeight()`
-  call, kept purely for that write side-effect). Any rule that moves
+  COUPLING now points at `App.tsx`'s `<div className="banner-area">`
+  (rendered unconditionally, ~:912) and its App-level `useBannerHeight()`
+  call (~:163, kept purely for that write side-effect). Any rule that moves
   `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
   connected only through that runtime-measured layout value, invisible in
   the CSS, in the diff, and to any test that checks the two components
@@ -1220,11 +1220,12 @@ deviate from it.
   settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
   `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as `realmask.repro.test.ts`'s own
   DEFAULT_SETTINGS case asserts. The mechanism is #53's relaxation tier, which
-  fires on `depthRelaxationMayHelp(cause)` (`planRoute.ts:452`) whenever the
-  failure cause is mask-unreachability — **independent of
-  `depthComfortMarginM`**, which is #243's soft comfort PREFERENCE
-  (`planRoute.ts:271`, its only production call site) and does not gate
-  relaxation at all; `planRoute.ts:445` says so itself ("Unaffected by #243").
+  fires on `depthRelaxationMayHelp(cause)` (defined and called in
+  `planRoute.ts`, ~:203 / ~:506) whenever the failure cause is
+  mask-unreachability — **independent of `depthComfortMarginM`**, which is
+  #243's soft comfort PREFERENCE (`planRoute.ts`'s only production use of
+  it, ~:302) and does not gate relaxation at all; `planRoute.ts`'s own
+  "Unaffected by #243" comment (~:485) says so.
   Set `depthComfortMarginM: 0` and it still routes. The older "routes only at
   ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
   experiences; it misdirected a live production triage for two rounds
@@ -1583,6 +1584,13 @@ deviate from it.
   within one file (6.0.0 → 6.1.0 left `ui/map.ts:539` untouched while
   `:576` became `:589` — a bulk shift would be a fresh fabrication
   replacing a stale one).
+  **Anchor a citation to the SYMBOL or literal string, never to a bare line
+  number alone** — five citations here rotted at once (#467) because a line
+  number decays on the next commit that inserts a line above it, and a
+  currency check verifies at the instant of writing, so it structurally
+  cannot catch that class. Write `App.tsx`'s `<div className="banner-area">`
+  (~:912): the name is the identity, the number is a hint. A citation to a
+  never-merged diff gets no line number at all.
 - A Playwright `expect.poll` predicate that returns a BOOLEAN discards the
   diagnostic. `return deg >= 330 || deg <= 30` + `.toBe(true)` can only report
   `Expected: true / Received: false` plus a timeout — and a Playwright timeout
@@ -1973,8 +1981,9 @@ deviate from it.
   is now safe — free to reword or re-granularise with zero routing effect. A
   CLASSIFICATION change is NOT: the cause is still DERIVED from
   `SolveResult.reason`, the only failure signal `solve()` exposes. Proven,
-  not theoretical: PR #279's pre-revert change (`isochrone.ts:530-531`)
-  flipped `'unreachable'` → `'calm-motor-off'`, which now maps to cause
+  not theoretical: PR #279's pre-revert change in `isochrone.ts` (a
+  never-merged diff — no live line to cite) flipped `'unreachable'` →
+  `'calm-motor-off'`, which now maps to cause
   `'calm-without-motor'`, which `comfortRetryMayHelp` still rejects — tier 2
   is still suppressed, and the same slower route (the motivating incident
   behind the reverted, never-merged reclassification patch — Bagenkop,

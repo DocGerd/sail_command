@@ -595,11 +595,27 @@ Deltas at T = 0.9 against the shipped mask:
    of distance on five uniform-wind routes at T = 2.0; that is not re-derived
    here and it is not the post-fix figure.
 4. **The guarantee is gate-conditional and must not be stated flat.** "Never
-   navigable below the draft" holds at `safetyDepthM ≥ 3.0` because the floor
-   is `G − T`. At 2.5 m it degrades to 1.6 m (1,722 cells below draft) and at
-   2.1 m to 1.2 m (10,081). `build_mask.py`'s own comment already notes the
-   settings UI should clamp `safetyDepthM` above draft; that clamp is still
-   unbuilt and is now load-bearing for this guarantee.
+   navigable below the draft" holds only while the router plans at
+   `safetyDepthM ≥ 3.0`, because the floor is `G − T` for whichever gate `G`
+   is actually used, not the gate the user requested. At 2.5 m it degrades
+   to 1.6 m (1,722 cells below draft) and at 2.1 m to 1.2 m (10,081).
+   `build_mask.py`'s own comment already notes the settings UI should clamp
+   `safetyDepthM` above draft; that clamp is BUILT — `SAFETY_DEPTH_FIELD.min
+   = 2.2` in `app/src/components/OptionsPanel.tsx`, enforced by
+   `NumberInput` on blur — correcting this spike's earlier claim that it was
+   still unbuilt (verified against current code on `develop`). **But the
+   clamp is NOT what holds this guarantee up** (PR #481 review, F4): it
+   bounds only what a user can TYPE into `safetyDepthM`. `relaxedDepth.ts`'s
+   `findRelaxedDepthM` (#53) probes an internal gate down to `BOAT_DRAFT_M`
+   itself (2.1 m) whenever the requested depth is unreachable, entirely
+   independent of that clamp, and it fires at DEFAULT settings with no user
+   input at all — `realmask.repro.test.ts` pins `usedDepthM ≈ 2.3` for
+   Flensburg→Marstal at `DEFAULT_SETTINGS`. So the 2.1 m / 1.2 m row above is
+   reachable at default settings via relaxation, not only via a directly-typed
+   low `safetyDepthM` the clamp would block — nothing holds this guarantee up
+   at that floor, which is the honest statement and the reason the About
+   dialog's disclosure copy (`about.caveats.depthMask`) now names the
+   relaxation floor explicitly instead of stating an unconditional one.
 5. **`CONNECTIVITY_EXCEPTIONS_M` is tolerance-coupled**, and the scan in §4.4
    is a re-implementation of `verify_mask.py`'s gate, not that script itself.
    Run the real thing on the real regenerated artifact.
