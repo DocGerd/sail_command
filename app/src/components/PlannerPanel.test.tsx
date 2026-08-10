@@ -16,6 +16,7 @@ import {
   type Rig,
   type RigRecommendation,
   type RigResult,
+  type Settings,
 } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
 
@@ -160,6 +161,7 @@ interface Overrides {
   onReorderVia?: (index: number, direction: 'up' | 'down') => void;
   viaReplanning?: boolean;
   onDepartureChange?: (ms: number) => void;
+  settings?: Settings;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
   canPlan?: boolean;
   planDisabledReason?: string | null;
@@ -826,16 +828,34 @@ describe('PlannerPanel', () => {
     });
   });
 
-  // #301: the dirty-form indicator — a second Chip in the Ergebnis card.
-  // Originally ALSO folded the same sentence into the panel's live region;
-  // that folding was REMOVED (PR #486 review, Minor 5 — see the live-region
-  // tests further down) once #299 added a tab-independent Banner (App.tsx)
-  // carrying the identical sentence, which would otherwise double-announce
-  // it. The Chip is now the ONLY place this text renders inside this panel.
-  describe('dirty-form indicator (#301)', () => {
+  // #301: the dirty-form indicator — a second Chip in the Ergebnis card,
+  // always on the broad `formDirty` regardless of `settingsDirty`.
+  //
+  // The live region is more subtle. #486 review (Minor 5) originally removed
+  // an EARLIER fold of the stale sentence into this region entirely,
+  // reasoning that App.tsx's tab-independent `settingsDirty` Banner "already
+  // announces this exact sentence whenever it's true" — TRUE only for the
+  // settings-only subset of dirtiness the Banner can see, and FALSE for
+  // `formDirty && !settingsDirty` (e.g. only the destination changed): that
+  // case left the panel's ONE live region silently announcing nothing,
+  // re-opening the exact accessibility gap #301 existed to close. Found by
+  // an adversarial cross-PR composition sweep over the cumulative diff
+  // (Refs #299) — no single hunk of #486 contained both the Banner add and
+  // this removal, which is why per-hunk review passed it. Fixed by folding
+  // on the COMPLEMENT of what the Banner covers: `settingsDirty` true → stay
+  // silent (the Banner alone announces, preserving #486's real fix — no
+  // double announcement); `formDirty && !settingsDirty` → fold the sentence
+  // in (the Banner cannot see this case, so nothing else will announce it).
+  describe('dirty-form indicator (#301) and the #299 live-region complement', () => {
     it('renders a second Chip when formDirty && summary', () => {
       renderPanel({ plan: makePlan(), rig: 'genoa', formDirty: true });
-      expect(screen.getByText(en['planner.result.stale'])).toBeInTheDocument();
+      // `{ selector: 'span' }` targets the Chip specifically — with the
+      // default (unchanged) settings, `settingsDirty` is false, so the live
+      // region ALSO folds this same sentence in (a `<p>`, asserted in its
+      // own tests below); scoping here keeps this test about the Chip only.
+      expect(
+        screen.getByText(en['planner.result.stale'], { selector: 'span' }),
+      ).toBeInTheDocument();
       // Beside the existing faster-rig chip, not replacing it.
       expect(screen.getByText('Faster: Genoa')).toBeInTheDocument();
     });
@@ -850,24 +870,53 @@ describe('PlannerPanel', () => {
       expect(screen.queryByText(en['planner.result.stale'])).not.toBeInTheDocument();
     });
 
-    // #301 originally folded the same sentence into this live region too;
-    // REMOVED (PR #486 review, Minor 5) once #299 added a tab-independent,
-    // role="alert" Banner (App.tsx) carrying the identical sentence — a
-    // Plan-tab user with a dirty form used to hear it TWICE. This panel's
-    // own role="status" region no longer mentions staleness at all; the
-    // Chip above stays the sighted-user surface only (see its own comment).
-    it('does NOT fold the stale sentence into the panel status region — the Banner (App.tsx) is the single announcing surface (#486 Minor 5 fix)', () => {
+    // Case 1 (Refs #299): formDirty for a reason the Banner cannot see —
+    // renderPanel()'s default `settings` prop is byte-identical to
+    // makePlan()'s own `request.settings` (both DEFAULT_SETTINGS), so
+    // `settingsDirty` is false here and `formDirty: true` can only be
+    // standing in for an endpoint/departure edit. The status region must
+    // announce it — mutation check: reverting the `!settingsDirty` fold back
+    // to the #486 shape (statusText = announcement only) fails this with
+    // `Received: ""`.
+    it('DOES fold the stale sentence into the panel status region when formDirty && !settingsDirty', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
       expect(screen.getAllByRole('status')).toHaveLength(1);
-      // No fresh announcement fired on this mount (seeded from the mount plan
-      // id, per the test above), and formDirty no longer feeds statusText at
-      // all — so the status region is empty even though the Chip (asserted
-      // above) is visibly showing the stale sentence.
+      // No fresh completion announcement fires on this mount (seeded from
+      // the mount plan id, per the transition tests above), so the region's
+      // entire text is the folded stale sentence.
+      expect(screen.getByRole('status').textContent).toBe(en['planner.result.stale']);
+      // The Chip (asserted above) stays visible too — both surfaces show it,
+      // this is not a replacement. `{ selector: 'span' }` targets the Chip
+      // specifically, since the live region just asserted above ALSO
+      // contains this exact text now.
+      expect(
+        screen.getByText(en['planner.result.stale'], { selector: 'span' }),
+      ).toBeInTheDocument();
+    });
+
+    // Case 2 (Refs #299): settingsDirty true — the Banner (App.tsx) already
+    // announces this. The panel's live region MUST stay silent, or a
+    // Plan-tab user hears the identical sentence twice — exactly the
+    // double-announcement #486 was right to remove. Mutation check: folding
+    // unconditionally on `formDirty` (dropping the `!settingsDirty` term)
+    // fails this with `Received: "<en['planner.result.stale']>"` — the
+    // sentence appearing where it must not.
+    it('does NOT fold the stale sentence into the panel status region when settingsDirty is true', () => {
+      const driftedSettings: Settings = { ...DEFAULT_SETTINGS, maneuverPenaltyS: 999 };
+      renderPanel({
+        planning: { phase: 'idle' },
+        plan: makePlan(),
+        rig: 'genoa',
+        formDirty: true,
+        settings: driftedSettings,
+      });
       expect(screen.getByRole('status').textContent).toBe('');
+      // The Chip still shows — it stays on the broader `formDirty`
+      // regardless of `settingsDirty` (see its own comment in the source).
       expect(screen.getByText(en['planner.result.stale'])).toBeInTheDocument();
     });
 
-    it('a genuine completion announcement is unaffected by formDirty (no suffix joined on, before or after the #486 fix)', () => {
+    it('a genuine completion announcement folds the stale suffix on when formDirty && !settingsDirty', () => {
       localStorage.setItem('sc-lang', 'en');
       const { rerender } = render(
         <I18nProvider>
@@ -884,6 +933,35 @@ describe('PlannerPanel', () => {
               plan: makePlan(),
               rig: 'genoa',
               formDirty: true,
+            })}
+          />
+        </I18nProvider>,
+      );
+      const status = screen.getByRole('status');
+      const text = status.textContent ?? '';
+      expect(text).toContain('Route calculated');
+      expect(text).toContain(en['planner.result.stale']);
+    });
+
+    it('a genuine completion announcement does NOT fold the stale suffix on when settingsDirty is true', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const driftedSettings: Settings = { ...DEFAULT_SETTINGS, maneuverPenaltyS: 999 };
+      const { rerender } = render(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+          />
+        </I18nProvider>,
+      );
+      rerender(
+        <I18nProvider>
+          <PlannerPanel
+            {...baseProps({
+              planning: { phase: 'idle' },
+              plan: makePlan(),
+              rig: 'genoa',
+              formDirty: true,
+              settings: driftedSettings,
             })}
           />
         </I18nProvider>,
