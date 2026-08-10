@@ -544,9 +544,12 @@ describe('App', () => {
     expect(
       screen.getByRole('heading', { name: de['settings.section.liveAis'] }),
     ).toBeInTheDocument();
-    // Safety depth itself never appears here — it stays inline on the Plan
-    // tab (single-sourced, see PlannerPanel.test.tsx).
-    expect(screen.queryByLabelText(de['options.safetyDepth.label'])).not.toBeInTheDocument();
+    // #299 correction (coordinator, after PR #486 review): safety depth
+    // DOES also appear here now — its canonical home, per issue #299's own
+    // design question 2 — alongside the inline PlannerPanel quick-access
+    // copy (single-sourced; see the dedicated single-source-of-truth test
+    // below).
+    expect(screen.getByLabelText(de['options.safetyDepth.label'])).toBeInTheDocument();
   });
 
   // #299: the safety-depth field's discoverable route to the Boat tab.
@@ -554,9 +557,15 @@ describe('App', () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: new RegExp(de['planner.safetyDepth.boatLink']) }),
-    );
+    // Plain string, not `new RegExp(dictString)`: the DE copy now contains
+    // literal `(`/`)`/`.` (regex metacharacters), and wrapping an unescaped
+    // dict string in `new RegExp()` is fragile in general, not just for this
+    // string — measured while writing this fix, `new RegExp('X(a. b)').test`
+    // against its OWN source can return `false` (a `.` wildcard inside a
+    // capture group after a non-empty prefix). A plain string arg to
+    // `getByRole`'s `name` does an exact accessible-name match with no
+    // regex parsing at all, sidestepping the whole class.
+    fireEvent.click(screen.getByRole('button', { name: de['planner.safetyDepth.boatLink'] }));
     expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -564,6 +573,39 @@ describe('App', () => {
     expect(
       screen.getByRole('heading', { name: de['settings.section.boatSafety'] }),
     ).toBeInTheDocument();
+  });
+
+  // #299 (coordinator correction after PR #486 review): safety depth now
+  // renders on BOTH surfaces — PlannerPanel's inline compact-row field and
+  // SettingsPanel's Boat-tab "Boat & safety" Card — sharing ONE
+  // `settings.safetyDepthM` value (App.tsx's own `useSettings()`), never two
+  // copies. Pins the single-source-of-truth property directly: an edit made
+  // on ONE surface must be visible on the OTHER the next time it mounts, in
+  // BOTH directions.
+  it('safety depth is single-sourced between the Plan-tab inline field and the Boat-tab SettingsPanel field, in both directions (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plan tab is the default — edit the inline field there.
+    const inlineInput = screen.getByLabelText(de['options.safetyDepth.label']);
+    fireEvent.change(inlineInput, { target: { value: '5.5' } });
+    fireEvent.blur(inlineInput);
+    expect(inlineInput).toHaveValue(5.5);
+
+    // Switch to the Boat tab — its OWN safety-depth field must already show
+    // the value just committed on the Plan tab.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    const boatInput = screen.getByLabelText(de['options.safetyDepth.label']);
+    expect(boatInput).toHaveValue(5.5);
+
+    // Edit it from the Boat tab this time.
+    fireEvent.change(boatInput, { target: { value: '4.0' } });
+    fireEvent.blur(boatInput);
+    expect(boatInput).toHaveValue(4);
+
+    // Back to the Plan tab — the inline field must reflect the Boat-tab edit.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    expect(screen.getByLabelText(de['options.safetyDepth.label'])).toHaveValue(4);
   });
 
   // #299 fix (PR #486 review, Major 1): the boat-settings link lives inside
@@ -576,8 +618,10 @@ describe('App', () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });
 
+    // Plain string — see the sibling test above for why `new RegExp` on this
+    // dict string is unsafe.
     const link = screen.getByRole('button', {
-      name: new RegExp(de['planner.safetyDepth.boatLink']),
+      name: de['planner.safetyDepth.boatLink'],
     });
     link.focus();
     expect(document.activeElement).toBe(link);

@@ -12,11 +12,15 @@ export const en = {
   'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
   'options.safetyDepth.label': 'Safety depth (m)',
-  // #299: the depth comfort margin and the rest of the boat settings now
-  // live in their own "Boat" tab (SettingsPanel) — this link right next to
-  // the (still here) safety depth stops anyone concluding the comfort
-  // margin was deleted just because it's no longer right beside it.
-  'planner.safetyDepth.boatLink': 'Depth comfort margin & more boat settings',
+  // #299: safety depth now appears in TWO places — here for quick access
+  // and on the Boat tab (SettingsPanel) as its canonical home, one shared
+  // source (PR #486 review). The depth comfort margin and the rest of the
+  // boat settings still live EXCLUSIVELY there — this link stops anyone
+  // concluding the margin was deleted just because it's no longer right
+  // beside safety depth. No longer "&": safety depth (visible right next to
+  // this link) is no longer exclusive to that tab, so "more" reads better
+  // than a list, with the comfort margin kept as the concrete anchor.
+  'planner.safetyDepth.boatLink': 'More boat settings (incl. depth comfort margin)',
   'options.depthComfortMargin.label': 'Depth comfort margin (m)',
   'options.depthComfortMargin.help':
     'Beyond the safety depth, the planner also prefers water at least this much deeper when it costs little extra time — 0 disables the preference. It never allows shallower water than the safety depth allows, and the recommended rig can change as a result.',

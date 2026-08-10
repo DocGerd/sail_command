@@ -11,6 +11,7 @@ import {
   MOTOR_SPEED_FIELD,
   MOTOR_THRESHOLD_FIELD,
   PERFORMANCE_FACTOR_FIELD,
+  SAFETY_DEPTH_FIELD,
   SAIL_PREFERENCE_FIELD,
   commitSetting,
   type FieldSpec,
@@ -20,20 +21,23 @@ import {
 // own explicit props (value/onChange only, no App.tsx/PlannerPanel wiring
 // baked in) so the host that renders it is swappable later without touching
 // this file. This is now the ONLY place these fields are actually rendered
-// in the live app; OptionsPanel.tsx's own default export (still exercised by
-// its own pre-existing test suite) is kept byte-behavior-identical but is
-// dead code in the running app — see that file's own comment. The field
-// SPECS (bounds, i18n label keys) and the commit helper are shared from
-// there (one source of truth for validation), but the actual JSX here is
-// independent, not a re-render of OptionsPanel's tree — deliberately, so
-// touching that legacy, test-pinned component can never change what ships
-// on the Boat tab.
+// in the live app; OptionsPanel.tsx's own default export (deleted in the
+// #486 fix wave — see the git history / that PR's review) is gone entirely.
+// The field SPECS (bounds, i18n label keys) and the commit helper still
+// live in OptionsPanel.tsx (one source of truth for validation), but the
+// actual JSX here is independent.
 //
-// SAFETY DEPTH ITSELF DOES NOT APPEAR HERE — it stays inline in
-// PlannerPanel's compact row (§3.3, one of the two most-changed inputs,
-// SAFETY_DEPTH_FIELD in OptionsPanel.tsx is its single source of truth,
-// shared unchanged). This panel only carries the fields §3.3 originally
-// hid behind "Erweitert" plus the pre-existing AIS/ownship toggles.
+// SAFETY DEPTH (PR #486 review — issue #299's design question 2, corrected):
+// renders BOTH here (canonical home, per the issue's own recommendation) AND
+// inline in PlannerPanel's compact row (quick access — one of the two
+// most-changed inputs, §3.3). Both surfaces share ONE source of truth —
+// SAFETY_DEPTH_FIELD's spec and commitSetting from OptionsPanel.tsx, reading
+// and writing the SAME `value.safetyDepthM` App.tsx passes to both — so
+// editing in either place is immediately reflected in the other on the next
+// render (there is no local component state to go stale; both surfaces are
+// pure functions of the same `settings` prop). Pinned by
+// SettingsPanel.test.tsx / PlannerPanel.test.tsx's shared "single source of
+// truth" tests.
 export interface SettingsPanelProps {
   value: Settings;
   onChange: (settings: Settings) => void;
@@ -92,13 +96,15 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
 
   return (
     <div className="settings-panel">
-      {/* #299 grouping: static boat characteristics + the depth SAFETY
-          preference (safetyDepthM itself stays inline in PlannerPanel; this
-          is only its comfort margin) — the two boat-handling numbers
-          (maneuver penalty, performance factor) belong here rather than
-          under Propulsion because they describe THIS boat/crew, not the
-          sail-vs-motor decision. */}
+      {/* #299 grouping: static boat characteristics + the depth safety
+          preference — the two boat-handling numbers (maneuver penalty,
+          performance factor) belong here rather than under Propulsion
+          because they describe THIS boat/crew, not the sail-vs-motor
+          decision. Safety depth leads the group (canonical home, PR #486
+          review) — see this file's own top-of-file comment for why it also
+          stays inline in PlannerPanel and how the two stay single-sourced. */}
       <Card title={t('settings.section.boatSafety')} titleRef={titleRef} titleTabIndex={-1}>
+        <NumericField spec={SAFETY_DEPTH_FIELD} value={value} onChange={onChange} />
         <NumericField
           spec={DEPTH_COMFORT_MARGIN_FIELD}
           value={value}

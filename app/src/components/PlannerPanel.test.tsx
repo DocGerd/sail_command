@@ -597,7 +597,7 @@ describe('PlannerPanel', () => {
     it('renders a discoverable link to the Boat tab next to safety depth, naming the depth comfort margin', () => {
       const props = renderPanel();
       const link = screen.getByRole('button', {
-        name: /Depth comfort margin & more boat settings/,
+        name: /More boat settings.*depth comfort margin/,
       });
       expect(link).toBeInTheDocument();
       fireEvent.click(link);

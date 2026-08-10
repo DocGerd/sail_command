@@ -10,12 +10,16 @@ export const de = {
   'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
-  // #299: die Tiefenkomfort-Spanne und die übrigen Boot-Einstellungen wohnen
-  // jetzt im eigenen „Boot"-Tab (SettingsPanel) — dieser Link direkt bei der
-  // (weiterhin hier verbleibenden) Sicherheitstiefe verhindert, dass jemand
-  // die Komfort-Spanne für gelöscht hält, weil sie nicht mehr direkt daneben
-  // steht.
-  'planner.safetyDepth.boatLink': 'Tiefenkomfort-Spanne & weitere Boot-Einstellungen',
+  // #299: die Sicherheitstiefe erscheint jetzt an ZWEI Stellen — hier als
+  // Schnellzugriff und im Boot-Tab (SettingsPanel) als kanonisches Zuhause,
+  // eine gemeinsame Quelle (PR #486 review). Die Tiefenkomfort-Spanne und
+  // die übrigen Boot-Einstellungen wohnen weiterhin AUSSCHLIESSLICH dort —
+  // dieser Link verhindert, dass jemand sie für gelöscht hält, weil sie
+  // nicht mehr direkt neben der Sicherheitstiefe steht. Nicht mehr "&", weil
+  // die Sicherheitstiefe (rechts daneben sichtbar) nicht mehr exklusiv dort
+  // wohnt — "weitere" statt einer Aufzählung, mit der Komfort-Spanne als
+  // konkretem Anker.
+  'planner.safetyDepth.boatLink': 'Weitere Boot-Einstellungen (u. a. Tiefenkomfort-Spanne)',
   'options.depthComfortMargin.label': 'Tiefenkomfort-Spanne (m)',
   'options.depthComfortMargin.help':
     'Über die Sicherheitstiefe hinaus bevorzugt die Planung zusätzlich Wasser, das mindestens um diesen Wert tiefer ist, sofern das kaum zusätzliche Zeit kostet — 0 deaktiviert die Präferenz. Sie erlaubt niemals flacheres Wasser, als die Sicherheitstiefe zulässt, und die empfohlene Besegelung kann sich dadurch ändern.',

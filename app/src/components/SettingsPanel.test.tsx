@@ -39,12 +39,28 @@ describe('SettingsPanel (#299 Boat tab)', () => {
     expect(screen.getByRole('heading', { name: 'Live & AIS' })).toBeInTheDocument();
   });
 
-  // §3.3/#299: safety depth is the one field that stays OUT of this panel —
-  // it remains inline in PlannerPanel's compact row, single-sourced from the
-  // same SAFETY_DEPTH_FIELD spec.
-  it('does NOT render safety depth (it stays inline in PlannerPanel)', () => {
+  // §3.3/#299 (corrected after PR #486 review — issue #299's design
+  // question 2 says safety depth belongs in BOTH places, this panel as its
+  // canonical home): safety depth DOES render here now, leading the "Boat &
+  // safety" group, from the SAME SAFETY_DEPTH_FIELD spec + commitSetting
+  // PlannerPanel's inline compact-row field also uses — one value, two
+  // renders. See App.test.tsx's dedicated single-source-of-truth test for
+  // the cross-surface pin (this file only renders SettingsPanel standalone,
+  // so it cannot exercise "edit in one surface, see it in the other" itself).
+  it('renders safety depth leading the Boat & safety group, from its default value', () => {
     renderPanel();
-    expect(screen.queryByLabelText('Safety depth (m)')).not.toBeInTheDocument();
+    const section = sectionOf('Boat & safety');
+    const input = within(section).getByLabelText('Safety depth (m)');
+    expect(input).toHaveValue(DEFAULT_SETTINGS.safetyDepthM);
+  });
+
+  it('commits safety depth on blur and clamps to its 2.2-10 bounds (same SAFETY_DEPTH_FIELD spec as the inline field)', () => {
+    const onChange = renderPanel();
+    const input = screen.getByLabelText('Safety depth (m)');
+    fireEvent.change(input, { target: { value: '1' } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue(2.2);
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, safetyDepthM: 2.2 });
   });
 
   describe('Boat & safety group', () => {
