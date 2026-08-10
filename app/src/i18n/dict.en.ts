@@ -181,6 +181,14 @@ export const en = {
   // this plan" is the honest, plan-level framing.
   'route.shallow.banner':
     'Caution: your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m. Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
+  // #452 gap 3: one-sentence locator appended to the banner above — names how
+  // many legs are individually flagged shallow and when the first one
+  // starts, so the warning points at a row in the legs table instead of
+  // being a bare status. Singular/`.plural` follows the same convention as
+  // banner.viaTooClose(.plural): the singular form omits the count entirely
+  // ("leg" alone already says "one").
+  'route.shallow.locator': 'The affected leg starts at {time}.',
+  'route.shallow.locator.plural': '{count} legs are affected — the first starts at {time}.',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -200,6 +208,12 @@ export const en = {
   'route.legs.speed': 'Speed',
   'route.legs.distance': 'Distance',
   'route.legs.maneuver': 'Maneuver',
+  // #452 gap 3: per-leg shallow marker column — text, not colour-only (see
+  // ShallowLegMarker's own comment in RouteSummary.tsx). The marker's own
+  // label repeats "Shallow" so it stays self-explanatory even read out of
+  // table context (e.g. by a screen reader in linear mode).
+  'route.legs.shallow': 'Shallow',
+  'route.legs.shallowMarker': 'Shallow {depth} m',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
   'route.legs.disclosure': 'Legs ({count})',
   'route.kind.motor': 'Motor',

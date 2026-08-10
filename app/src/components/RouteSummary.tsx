@@ -19,8 +19,29 @@ import Disclosure from './Disclosure';
 // usedDepthM < requestedDepthM (planRoute.ts's relaxation block only probes
 // a shallower gate after the REQUESTED gate failed to connect) — so
 // rendering `used` here is never redundant with `requested`.
-export function ShallowWarning({ shallow }: { shallow: ShallowInfo }) {
+
+// #452 gap 3: locator for the shared warning above — `legs` is the ACTIVE
+// rig's own legs (both call sites already have `result` in hand). Returns
+// null (never a "0 legs" sentence) both when no legs were passed at all
+// (the active tab's own rig has no result — #452 Major 1, the plan-level
+// warning still renders there) and when the relaxation fired but flagged no
+// individual leg — the absent-data path must fail SAFE, i.e. silently drop
+// the locator sentence rather than render a nonsensical one.
+function firstShallowLeg(
+  legs: Leg[] | null | undefined,
+): { count: number; firstTimeMs: number } | null {
+  const flagged = (legs ?? []).filter((leg) => leg.shallow);
+  if (flagged.length === 0) return null;
+  // Legs are chronological — the legs table below renders leg.startTimeMs
+  // in plain array order with no re-sort — so the first FLAGGED array entry
+  // is also the first flagged leg in time, not merely the first array entry.
+  return { count: flagged.length, firstTimeMs: flagged[0].startTimeMs };
+}
+
+export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?: Leg[] | null }) {
   const t = useT();
+  const [lang] = useLang();
+  const locator = firstShallowLeg(legs);
   return (
     <p className="shallow-warning" role="alert">
       {t('route.shallow.banner', {
@@ -28,6 +49,15 @@ export function ShallowWarning({ shallow }: { shallow: ShallowInfo }) {
         used: shallow.usedDepthM.toFixed(1),
         minGate: shallow.minGateDepthM.toFixed(1),
       })}
+      {locator && (
+        <>
+          {' '}
+          {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
+            count: locator.count,
+            time: formatTime(locator.firstTimeMs, lang),
+          })}
+        </>
+      )}
     </p>
   );
 }
@@ -76,6 +106,27 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: Rig }) {
       />
       {t(RIG_LABEL_KEY[rig])} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
     </span>
+  );
+}
+
+// #452 gap 3: per-leg shallow marker for the legs table — the table already
+// gives every leg a time-ordered row, so this reuses that coordinate system
+// instead of inventing a separate one. Text-based, not colour-only (WCAG
+// 1.4.1): the chip's own VISIBLE CONTENT is the accessibility mechanism — it
+// names the hazard and the depth directly, so a colour-blind or
+// screen-reader user gets the same information a sighted user reading the
+// depth-warning colour does. No `title` tooltip: it's unreliable for
+// assistive tech and unreachable on touch, and would only duplicate text
+// that's already visible (`.route-legs` scrolls horizontally rather than
+// truncating, so there's nothing here for a tooltip to reveal). Shares the
+// --sc-depth-warning-* family (#251) with the plan-level ShallowWarning
+// banner above, so the same hazard reads consistently wherever it appears.
+function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
+  const t = useT();
+  return (
+    <Chip className="chip-shallow">
+      {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
+    </Chip>
   );
 }
 
@@ -164,7 +215,9 @@ export default function RouteSummary({
           renders it identically. #452: shared with PlannerPanel's compact
           Ergebnis strip via the ShallowWarning component above, so the same
           plan-level warning is visible without switching to this tab too. */}
-      {plan.result.shallow && <ShallowWarning shallow={plan.result.shallow} />}
+      {plan.result.shallow && (
+        <ShallowWarning shallow={plan.result.shallow} legs={result?.legs ?? null} />
+      )}
 
       {!result || !summary ? (
         <p role="alert">{t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.internal')}</p>
@@ -252,6 +305,7 @@ export default function RouteSummary({
                   <th>{t('route.legs.speed')}</th>
                   <th>{t('route.legs.distance')}</th>
                   <th>{t('route.legs.maneuver')}</th>
+                  <th>{t('route.legs.shallow')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -282,6 +336,7 @@ export default function RouteSummary({
                         </span>
                       )}
                     </td>
+                    <td>{leg.shallow && <ShallowLegMarker minDepthM={leg.shallow.minDepthM} />}</td>
                   </tr>
                 ))}
               </tbody>

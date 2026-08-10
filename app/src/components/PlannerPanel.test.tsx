@@ -2,6 +2,7 @@ import { render, screen, fireEvent, within, cleanup } from '@testing-library/rea
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
+import { formatTime } from '../lib/format';
 import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
@@ -63,6 +64,55 @@ const GENOA_RESULT: RigResult = {
   motorDistanceNm: 5,
   legs: GENOA_LEGS,
 };
+
+// #452 gap 3: two flagged legs (index 0 and 2) with an UNFLAGGED leg between
+// them (index 1) — non-contiguous on purpose, so a "first" that's really
+// "last", or a count that's really "total legs", would both be caught.
+const NON_CONTIGUOUS_SHALLOW_LEGS: Leg[] = [
+  {
+    kind: 'sail',
+    board: 'starboard',
+    start: { lat: 54.79, lon: 9.43 },
+    end: { lat: 54.8, lon: 10.0 },
+    startTimeMs: PLAN_DEPARTURE_MS,
+    endTimeMs: PLAN_DEPARTURE_MS + 2 * 3_600_000,
+    headingDeg: 88,
+    twaDeg: 92,
+    twsKn: 10,
+    speedKn: 7,
+    distanceNm: 15,
+    maneuverAtStart: null,
+    shallow: { minDepthM: 2.3 },
+  },
+  {
+    kind: 'motor',
+    board: null,
+    start: { lat: 54.8, lon: 10.0 },
+    end: { lat: 54.85, lon: 10.3 },
+    startTimeMs: PLAN_DEPARTURE_MS + 2 * 3_600_000,
+    endTimeMs: PLAN_DEPARTURE_MS + 4 * 3_600_000,
+    headingDeg: 90,
+    twsKn: 2,
+    speedKn: 6.5,
+    distanceNm: 5,
+    maneuverAtStart: null,
+  },
+  {
+    kind: 'sail',
+    board: 'port',
+    start: { lat: 54.85, lon: 10.3 },
+    end: { lat: 54.85, lon: 10.52 },
+    startTimeMs: PLAN_DEPARTURE_MS + 4 * 3_600_000,
+    endTimeMs: PLAN_DEPARTURE_MS + 5 * 3_600_000,
+    headingDeg: 60,
+    twaDeg: -80,
+    twsKn: 10,
+    speedKn: 6,
+    distanceNm: 1.5,
+    maneuverAtStart: 'tack',
+    shallow: { minDepthM: 1.9 },
+  },
+];
 
 function makePlan(
   over: { id?: string; distanceNm?: number; rigRecommendation?: RigRecommendation } = {},
@@ -713,11 +763,66 @@ describe('PlannerPanel', () => {
     // it on the fock tab reproduces the reviewer's measured probe.
     it('#452 Major 1: still renders when the ACTIVE rig itself has no result', () => {
       renderPanel({ plan: makeShallowPlan(), rig: 'fock' });
-      expect(screen.getByText(/was not passable/)).toBeInTheDocument();
+      const banner = screen.getByText(/was not passable/);
+      expect(banner).toBeInTheDocument();
       // No summary-dependent content exists for fock — the warning is the
       // only thing this rig's strip has to show; "View details" needs
       // `summary` too and must stay absent.
       expect(screen.queryByRole('button', { name: /View details/ })).not.toBeInTheDocument();
+      // #452 gap 3: fock has no result here (no legs at all to inspect), so
+      // the locator sentence must fail safe rather than crash or invent one.
+      expect(banner.textContent).not.toContain('starts at');
+    });
+  });
+
+  // #452 gap 3: the locator sentence appended to the shared ShallowWarning
+  // banner — same shared component as RouteSummary's, so this only needs to
+  // pin PlannerPanel's OWN call site (result.legs -> the `legs` prop) rather
+  // than re-prove the sentence-selection logic itself (covered exhaustively
+  // in RouteSummary.test.tsx).
+  describe('shallow-water locator sentence (#452 gap 3)', () => {
+    function makeNonContiguousShallowPlan(): Plan {
+      const plan = makePlan();
+      plan.result.genoa = { ...GENOA_RESULT, legs: NON_CONTIGUOUS_SHALLOW_LEGS };
+      plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 1.9 };
+      return plan;
+    }
+
+    it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
+      renderPanel({ plan: makeNonContiguousShallowPlan(), rig: 'genoa' });
+      const banner = screen.getByText(/was not passable/);
+      const expected = en['route.shallow.locator.plural']
+        .replace('{count}', '2')
+        .replace('{time}', formatTime(PLAN_DEPARTURE_MS, 'en'));
+      expect(banner.textContent).toContain(expected);
+    });
+
+    it('uses the singular sentence (no count) when exactly one leg is flagged', () => {
+      const plan = makeNonContiguousShallowPlan();
+      // Drop the second flagged leg (index 2) — exactly one remains.
+      plan.result.genoa = {
+        ...GENOA_RESULT,
+        legs: [NON_CONTIGUOUS_SHALLOW_LEGS[0], NON_CONTIGUOUS_SHALLOW_LEGS[1]],
+      };
+      renderPanel({ plan, rig: 'genoa' });
+      const banner = screen.getByText(/was not passable/);
+      const expected = en['route.shallow.locator'].replace(
+        '{time}',
+        formatTime(PLAN_DEPARTURE_MS, 'en'),
+      );
+      expect(banner.textContent).toContain(expected);
+      expect(banner.textContent).not.toContain('legs are affected');
+    });
+
+    it('omits the locator sentence when relaxation fired but no individual leg is flagged', () => {
+      // The default GENOA_LEGS fixture never sets leg.shallow — the
+      // plan-level banner still renders, but the locator sentence must fail
+      // safe rather than render a nonsensical "0 legs" sentence.
+      const plan = makePlan();
+      plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 };
+      renderPanel({ plan, rig: 'genoa' });
+      const banner = screen.getByText(/was not passable/);
+      expect(banner.textContent).not.toContain('starts at');
     });
   });
 

@@ -1,8 +1,10 @@
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
+import { en } from '../i18n/dict.en';
+import { de } from '../i18n/dict.de';
 import { uniformWindGrid } from '../test/fixtures';
-import { formatDateTime } from '../lib/format';
+import { formatDateTime, formatTime } from '../lib/format';
 import {
   DEFAULT_SETTINGS,
   type Leg,
@@ -291,7 +293,7 @@ describe('RouteSummary', () => {
     expect(screen.getByText('088°')).toBeInTheDocument();
   });
 
-  it('renders the nine legs-table headers in order, including Duration (#379)', () => {
+  it('renders the ten legs-table headers in order, including Duration (#379) and Shallow (#452)', () => {
     const { container } = renderSummary({ rig: 'genoa' });
     const headers = Array.from(container.querySelectorAll('table.route-legs thead th')).map(
       (th) => th.textContent,
@@ -306,6 +308,7 @@ describe('RouteSummary', () => {
       'Speed',
       'Distance',
       'Maneuver',
+      'Shallow',
     ]);
   });
 
@@ -490,5 +493,155 @@ describe('shallow-water warning banner (#53/#452)', () => {
   it('is absent on plans without relaxation', () => {
     renderSummary();
     expect(screen.queryByText(/was not passable/)).toBeNull();
+  });
+});
+
+describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
+  // Two flagged legs (index 0 and 2) with an UNFLAGGED leg between them
+  // (index 1) — non-contiguous on purpose: a "first" that's really "last",
+  // or a count that's really "total legs", would both be caught by this
+  // shape but not by an all-flagged or a first-two-flagged fixture.
+  const NON_CONTIGUOUS_SHALLOW_LEGS: Leg[] = [
+    {
+      kind: 'sail',
+      board: 'starboard',
+      start: { lat: 54.79, lon: 9.43 },
+      end: { lat: 54.8, lon: 10.0 },
+      startTimeMs: DEPARTURE_MS,
+      endTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+      headingDeg: 88,
+      twaDeg: 92,
+      twsKn: 10,
+      speedKn: 7,
+      distanceNm: 15,
+      maneuverAtStart: null,
+      shallow: { minDepthM: 2.3 },
+    },
+    {
+      kind: 'motor',
+      board: null,
+      start: { lat: 54.8, lon: 10.0 },
+      end: { lat: 54.85, lon: 10.3 },
+      startTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+      endTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+      headingDeg: 90,
+      twsKn: 2,
+      speedKn: 6.5,
+      distanceNm: 5,
+      maneuverAtStart: null,
+    },
+    {
+      kind: 'sail',
+      board: 'port',
+      start: { lat: 54.85, lon: 10.3 },
+      end: { lat: 54.86, lon: 10.55 },
+      startTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+      endTimeMs: DEPARTURE_MS + 5 * 3_600_000,
+      headingDeg: 60,
+      twaDeg: -80,
+      twsKn: 10,
+      speedKn: 6,
+      distanceNm: 1.5,
+      maneuverAtStart: 'tack',
+      shallow: { minDepthM: 1.9 },
+    },
+  ];
+
+  // Same three legs, but only the FIRST is flagged — for the singular-vs-
+  // plural sentence test.
+  const SINGLE_SHALLOW_LEGS: Leg[] = [
+    NON_CONTIGUOUS_SHALLOW_LEGS[0],
+    NON_CONTIGUOUS_SHALLOW_LEGS[1],
+    {
+      kind: 'sail',
+      board: 'port',
+      start: { lat: 54.85, lon: 10.3 },
+      end: { lat: 54.86, lon: 10.55 },
+      startTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+      endTimeMs: DEPARTURE_MS + 5 * 3_600_000,
+      headingDeg: 60,
+      twaDeg: -80,
+      twsKn: 10,
+      speedKn: 6,
+      distanceNm: 1.5,
+      maneuverAtStart: 'tack',
+      // No `shallow` key (exactOptionalPropertyTypes: omitted, not undefined).
+    },
+  ];
+
+  function makeShallowPlan(legs: Leg[]): Plan {
+    const plan = makePlan();
+    plan.result.genoa = { ...GENOA_RESULT, legs };
+    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 1.9 };
+    return plan;
+  }
+
+  it('marks only the flagged legs in the table, each with its own charted depth', () => {
+    const { container } = renderSummary({
+      plan: makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS),
+      rig: 'genoa',
+    });
+    const rows = container.querySelectorAll('table.route-legs tbody tr');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.3 m');
+    expect(rows[1]?.querySelector('.chip-shallow')).toBeNull();
+    expect(rows[2]?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 1.9 m');
+  });
+
+  it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
+    renderSummary({ plan: makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS), rig: 'genoa' });
+    const banner = screen.getByText(/was not passable/);
+    const expected = en['route.shallow.locator.plural']
+      .replace('{count}', '2')
+      .replace('{time}', formatTime(DEPARTURE_MS, 'en'));
+    expect(banner.textContent).toContain(expected);
+  });
+
+  it('uses the singular sentence (no count) when exactly one leg is flagged', () => {
+    renderSummary({ plan: makeShallowPlan(SINGLE_SHALLOW_LEGS), rig: 'genoa' });
+    const banner = screen.getByText(/was not passable/);
+    const expected = en['route.shallow.locator'].replace('{time}', formatTime(DEPARTURE_MS, 'en'));
+    expect(banner.textContent).toContain(expected);
+    // The plural form must not ALSO appear (a mis-picked key would add it).
+    expect(banner.textContent).not.toContain('legs are affected');
+  });
+
+  it('omits the locator sentence when relaxation fired but no individual leg is flagged', () => {
+    // GENOA_LEGS (the default fixture) never sets leg.shallow — the
+    // plan-level banner still renders (see the sibling describe block
+    // above), but nothing in the table is flagged, so the locator sentence
+    // must fail safe rather than render a nonsensical "0 legs" sentence.
+    const plan = makePlan();
+    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 };
+    renderSummary({ plan });
+    const banner = screen.getByText(/was not passable/);
+    expect(banner.textContent).not.toContain('starts at');
+  });
+
+  it('omits the locator sentence when the active tab’s own rig has no result', () => {
+    const plan = makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS);
+    plan.result.fock = null;
+    plan.result.fockReason = 'unreachable';
+    renderSummary({ plan, rig: 'fock' });
+    const banner = screen.getByText(/was not passable/);
+    expect(banner.textContent).not.toContain('starts at');
+  });
+
+  it('renders the German locator sentence with the same count/time contract', () => {
+    localStorage.setItem('sc-lang', 'de');
+    render(
+      <I18nProvider>
+        <RouteSummary
+          plan={makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS)}
+          rig="genoa"
+          onRigChange={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    const banner = screen.getByText(/keine durchgehende Route gefunden/);
+    const expected = de['route.shallow.locator.plural']
+      .replace('{count}', '2')
+      .replace('{time}', formatTime(DEPARTURE_MS, 'de'));
+    expect(banner.textContent).toContain(expected);
   });
 });
