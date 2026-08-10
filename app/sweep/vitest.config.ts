@@ -20,14 +20,35 @@ const here = dirname(fileURLToPath(import.meta.url));
  * produced under jsdom with that setup file; keeping them identical means a
  * future run is comparing like with like. That is the same
  * "baseline parameters are load-bearing" rule the arm definitions follow.
+ *
+ * #451: `root` MUST be pinned to this directory explicitly. `npm --prefix
+ * app run test -- --config sweep/vitest.config.ts` chdirs into `app/`
+ * BEFORE vitest ever reads this file (that's what `--prefix app` does), and
+ * Vite's `root` defaults to `process.cwd()` when unset — so without this,
+ * `include: ['**\/*.test.ts']` resolved against `app/`, not `app/sweep/`,
+ * and over-collected the ENTIRE app test suite (MEASURED via `vitest list
+ * --config sweep/vitest.config.ts`: it tried to collect
+ * `src/lib/changelog.test.ts`, which then hit `server.fs.allow` denying its
+ * `CHANGELOG.md?raw` import under this narrower config and exited 1 on a
+ * file with nothing to do with the sweep). Pinning `root` here makes the
+ * glob resolve against `app/sweep/` regardless of the invoking cwd.
  */
 export default defineConfig({
+  root: here,
   test: {
     globals: true,
     environment: 'jsdom',
     setupFiles: [resolve(here, '../src/test/setup.ts')],
     include: ['**/*.test.ts'],
-    // Six arms in six parallel workers: ~20 min wall instead of ~50 serial.
+    // #452 added three arms (nine total, up from six): serial cost grows to
+    // ~90 min (the original six ran ~50 min serial; the three new
+    // Marstal-origin arms measured 2401 s = ~40 min of solver time between
+    // them, PR #488 review). `fileParallelism: true` runs one worker per
+    // arm file, so wall time stays close to the SLOWEST single arm rather
+    // than the sum — but that ~20 min figure is a PARALLEL number, not a
+    // fixed constant: it holds on a machine with enough cores to run nine
+    // workers concurrently and degrades toward the serial figure on a
+    // smaller one.
     fileParallelism: true,
   },
 });
