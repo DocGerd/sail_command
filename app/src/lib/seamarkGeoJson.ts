@@ -4,7 +4,12 @@
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import type { SymbolLayerSpecification } from 'maplibre-gl';
 import type { SeamarkProperties } from '../types';
-import { seamarkImageId, seamarkPriority } from './seamarkGlyphs';
+import {
+  SEAMARK_NATURAL_ICON_PX,
+  SEAMARK_SIZE_SCALE,
+  seamarkImageId,
+  seamarkPriority,
+} from './seamarkGlyphs';
 
 export type SeamarkFeatureCollection = FeatureCollection<Point, SeamarkProperties>;
 
@@ -133,26 +138,135 @@ export function pickSeamarkByPriority<T extends { properties?: unknown }>(
  *   overlapping pair would have collided — so (a) is a no-op.)
  * - `icon-size` tapers from the pre-#144 constant 0.85 (kept at z13) down
  *   to 0.55 at z8 so survivors overprint less at medium zoom (same
- *   interpolate pattern as AisLayer's vessel icons).
- * - `icon-padding` is 0 (MapLibre default is 2px/side): the collision box
- *   fed to the below-z12 culling above is the icon box PLUS this padding,
- *   and #191's raster resize (24->32 logical px natural footprint) already
- *   grew that box +33%, which measurably culls MORE marks below z12 for the
- *   same on-screen crowding (a dense-channel regression, not a design goal —
- *   see the #191/#192 PR review). Dropping the padding claws back part of
- *   that growth at zero visual cost (padding is invisible collision margin,
- *   not rendered pixels) without touching the z12 overlap threshold (#144)
- *   or re-tuning icon-size (would trade away #191's readability fix).
+ *   interpolate pattern as AisLayer's vessel icons). #353 PR1: every stop is
+ *   now `base * SEAMARK_SIZE_SCALE` (seamarkGlyphs.ts) rather than a bare
+ *   literal — at the default scale of 1 this is byte-for-byte the same
+ *   values (`x * 1 === x` exactly for every IEEE-754 double, no rounding).
+ * - `icon-padding` is 0 at every zoom stop (MapLibre default is 2px/side):
+ *   the collision box fed to the below-z12 culling above is the icon box
+ *   PLUS this padding, and #191's raster resize (24->32 logical px natural
+ *   footprint) already grew that box +33%, which measurably culls MORE
+ *   marks below z12 for the same on-screen crowding (a dense-channel
+ *   regression, not a design goal — see the #191/#192 PR review). Dropping
+ *   the padding claws back part of that growth at zero visual cost (padding
+ *   is invisible collision margin, not rendered pixels) without touching
+ *   the z12 overlap threshold (#144) or re-tuning icon-size (would trade
+ *   away #191's readability fix).
+ *   #353 PR1: `icon-padding` is now a per-zoom-stop EXPRESSION
+ *   (`iconPaddingAt`, below), derived exactly from the same
+ *   BASE_ICON_SIZE_STOPS table `icon-size` uses plus SEAMARK_SIZE_SCALE, so
+ *   a future non-1 scale keeps the collision footprint (displayed icon size
+ *   + 2*padding — MapLibre applies padding per side, see
+ *   `collision_feature.ts:71-74`'s `x1 -= padding[3]; x2 += padding[1]` etc.,
+ *   read against `maplibre-gl@6.1.0` — confirmed via `npm ci` against
+ *   `app/package-lock.json`'s pin, not just grepped from a possibly-stale
+ *   `node_modules`, #392's documented trap) from growing in lockstep with a
+ *   bigger on-screen icon — the #191/#192 lesson this parameterization
+ *   exists not to repeat.
+ *
+ *   #484 F3: `Padding.parse` (@maplibre/maplibre-gl-style-spec@26.2.1, the
+ *   lockfile's pin) has no floor at 0 on any branch, and the v8 style-spec's
+ *   `icon-padding` entry declares no `minimum` either, so the validator will
+ *   not reject a negative value — a scale > 1 genuinely shrinks the
+ *   collision box below the bare icon box, not merely clawing back part of
+ *   the growth the way the old flat `icon-padding: 0` did. But this is an
+ *   ABSENCE in the spec, not a documented guarantee — unspecified behaviour
+ *   this formula depends on. If a future MapLibre release adds a floor
+ *   (in `Padding.parse`, in `getIconPadding`, or in the spec entry), the
+ *   compensation below becomes a SILENT no-op: padding stays clamped to 0,
+ *   the collision box grows in lockstep with icon size again exactly as
+ *   #191/#192 did, nothing throws or warns, and no test at scale 1 (where
+ *   padding is 0 already and a clamp is indistinguishable from no clamp)
+ *   can see it. `seamarkGeoJson.test.ts`'s "#484 F3" test is the guard: it
+ *   asserts the resolved expression is actually negative at scale > 1, so a
+ *   future clamp reds a test instead of silently culling navigation marks.
+ *   At the default scale of 1 every stop evaluates to `0` exactly (see
+ *   `iconPaddingAt`'s own comment for why it's `+0`, never `-0`),
+ *   reproducing today's flat value.
  * - NO minzoom, NO ['zoom'] filters here — layout expressions only (the
  *   RouteLayer rule).
  */
-export const SEAMARKS_LAYOUT: NonNullable<SymbolLayerSpecification['layout']> = {
-  // Precomputed per feature (seamarkFeatureCollectionWithIcons) —
-  // seamarkType/category alone can't distinguish e.g. a red from a
-  // green lateral buoy, which the glyph fidelity needs (seamarkGlyphs.ts).
-  'icon-image': ['get', 'icon'],
-  'icon-overlap': ['step', ['zoom'], 'never', 12, 'always'],
-  'symbol-sort-key': ['get', 'priority'],
-  'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.55, 11, 0.7, 13, 0.85],
-  'icon-padding': 0,
-};
+
+/**
+ * Base icon-size zoom stops at SEAMARK_SIZE_SCALE = 1 (today's exact
+ * values, #144/#191) — the single table every size-axis expression below is
+ * derived from, so there is exactly one place encoding "how big at each
+ * zoom" and one place (seamarkGlyphs.ts's SEAMARK_SIZE_SCALE) encoding "how
+ * big overall".
+ */
+const BASE_ICON_SIZE_STOPS = [
+  [8, 0.55],
+  [11, 0.7],
+  [13, 0.85],
+] as const;
+
+/**
+ * #353 PR1: the icon-padding compensation for one zoom stop. Derivation,
+ * with base icon-size value `v` and the glyph's SEAMARK_SIZE_SCALE-INVARIANT
+ * natural footprint `SEAMARK_NATURAL_ICON_PX` (CSS px at icon-size 1 —
+ * invariant because seamarkGlyphs.ts scales CANVAS_SIZE and PIXEL_RATIO
+ * together, so their ratio never moves):
+ *   displayed(scale) = v * scale * NATURAL
+ *   displayed(1)      = v * NATURAL                          (today's value)
+ *   growth            = displayed(scale) - displayed(1)
+ *                     = (scale - 1) * v * NATURAL
+ *   padding(scale)    = padding(1) - growth / 2, padding(1) = 0 today
+ *                     = ((1 - scale) * v * NATURAL) / 2
+ * Written as `(1 - scale)`, never negated after computing a positive growth
+ * value, so scale = 1 evaluates to `+0` at every stop, not `-0`
+ * (`Object.is(-0, 0) === false` — CLAUDE.md's #203 rule) — reproducing
+ * today's flat `icon-padding: 0` exactly rather than a numerically-equal but
+ * sign-different value.
+ */
+function iconPaddingAt(baseIconSize: number, scale: number): number {
+  return ((1 - scale) * baseIconSize * SEAMARK_NATURAL_ICON_PX) / 2;
+}
+
+/**
+ * #484 F1: `SEAMARKS_LAYOUT` used to be a module constant computed once from
+ * the module-level `SEAMARK_SIZE_SCALE` import — which meant, since that
+ * constant is fixed at 1 for the whole of PR1, that NOTHING in the committed
+ * suite ever evaluated `iconPaddingAt` at a scale where it returns anything
+ * other than `0`. Replacing every `iconPaddingAt(...)` call site with a
+ * literal `0` left the entire committed suite green (measured — see the PR
+ * description's F1 entry). Factored into a plain function of `scale` so
+ * `seamarkGeoJson.test.ts` can drive a non-1 scale directly, the same
+ * shape as seamarkGlyphs.ts's `seamarkRasterConfig(scale)` (#484 F4).
+ * `SEAMARKS_LAYOUT` below is just `seamarksLayout(SEAMARK_SIZE_SCALE)` —
+ * every existing consumer (DataLayers.tsx) is unaffected.
+ */
+export function seamarksLayout(scale: number): NonNullable<SymbolLayerSpecification['layout']> {
+  return {
+    // Precomputed per feature (seamarkFeatureCollectionWithIcons) —
+    // seamarkType/category alone can't distinguish e.g. a red from a
+    // green lateral buoy, which the glyph fidelity needs (seamarkGlyphs.ts).
+    'icon-image': ['get', 'icon'],
+    'icon-overlap': ['step', ['zoom'], 'never', 12, 'always'],
+    'symbol-sort-key': ['get', 'priority'],
+    'icon-size': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      BASE_ICON_SIZE_STOPS[0][0],
+      BASE_ICON_SIZE_STOPS[0][1] * scale,
+      BASE_ICON_SIZE_STOPS[1][0],
+      BASE_ICON_SIZE_STOPS[1][1] * scale,
+      BASE_ICON_SIZE_STOPS[2][0],
+      BASE_ICON_SIZE_STOPS[2][1] * scale,
+    ],
+    'icon-padding': [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      BASE_ICON_SIZE_STOPS[0][0],
+      iconPaddingAt(BASE_ICON_SIZE_STOPS[0][1], scale),
+      BASE_ICON_SIZE_STOPS[1][0],
+      iconPaddingAt(BASE_ICON_SIZE_STOPS[1][1], scale),
+      BASE_ICON_SIZE_STOPS[2][0],
+      iconPaddingAt(BASE_ICON_SIZE_STOPS[2][1], scale),
+    ],
+  };
+}
+
+export const SEAMARKS_LAYOUT: NonNullable<SymbolLayerSpecification['layout']> =
+  seamarksLayout(SEAMARK_SIZE_SCALE);
