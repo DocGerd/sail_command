@@ -147,17 +147,19 @@ function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
       <Chip className="chip-shallow">
         {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
       </Chip>
-      {/* #493: sound lower bound on the mask's more cautious (conservative)
+      {/* #493/#504: sound lower bound on the mask's more cautious (conservative)
           reading, derived from the SAME shipped figure the chip above
           already shows — see cautiousDepthLowerBoundM's own doc comment
           (app/src/lib/mask.ts) for the derivation. Rendered alongside, never
           replacing, the shipped number: the two are meant to read
-          differently, and the user must be able to tell them apart. */}
-      <span className="chip-shallow-cautious">
+          differently, and the user must be able to tell them apart. Uses the
+          Chip primitive (not a raw span) so it shares the base `.chip` pill
+          styling with its sibling above instead of re-declaring it. */}
+      <Chip className="chip-shallow-cautious">
         {t('route.legs.shallowCautious', {
           depth: cautiousDepthLowerBoundM(minDepthM).toFixed(1),
         })}
-      </span>
+      </Chip>
     </>
   );
 }

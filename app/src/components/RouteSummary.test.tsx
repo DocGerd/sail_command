@@ -703,7 +703,9 @@ describe('#493: cautious depth disclosure', () => {
     // minGateDepthM(2.6) above — a field mix-up here would render 2.9 or 2.6
     // instead of 2.3 and both assertions below would red.
     expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.3 m');
-    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe('≥ 1.4 m cautious');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'cautious: as low as 1.4 m',
+    );
   });
 
   it('renders the German cautious lower bound with the same two-number contract', () => {
@@ -715,7 +717,9 @@ describe('#493: cautious depth disclosure', () => {
     );
     const row = container.querySelector('table.route-legs tbody tr');
     expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Untiefe 2.3 m');
-    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe('≥ 1.4 m vorsichtig');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'vorsichtig: bis auf 1.4 m',
+    );
   });
 
   // #504: the banner is now ONE <p> (see ShallowWarning, RouteSummary.tsx) —
@@ -769,6 +773,13 @@ describe('#493: cautious depth disclosure', () => {
         cautious: CAUTIOUS_AT_BOUNDARY_M,
       });
       expect(banner?.textContent).toBe(expected);
+      // #504 review round 2: `expected` above is built FROM the same dict
+      // entry it is compared against, so deleting the cautious clause from
+      // the dict template moves both sides together and this .toBe() alone
+      // cannot catch it (MEASURED by the reviewer: 107/107 still passed with
+      // that clause removed). This literal is typed here, never read from
+      // `en[...]` at runtime, so it cannot shrink along with the dict.
+      expect(banner?.textContent).toContain('could run as low as 2.1 m');
     });
 
     it('escalates one decimetre below the boundary — full sentence pinned to its exact slots', () => {
@@ -785,6 +796,12 @@ describe('#493: cautious depth disclosure', () => {
         draft: BOAT_DRAFT_M.toFixed(1),
       });
       expect(banner?.textContent).toBe(expected);
+      // Same dict-independence requirement as the non-severe test above,
+      // for THIS key's own {cautious} and {draft} clauses (the reviewer's
+      // "same hole for the severe key's {draft} clause" finding) — both
+      // literals are typed here, not read from `en[...]`.
+      expect(banner?.textContent).toContain('as low as 2.0 m');
+      expect(banner?.textContent).toContain("below this boat's 2.1 m draft");
       // Regression pin, unchanged from before the fold (#455's honesty hedge
       // must hold for the severe wording too).
       expect(banner?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
@@ -812,6 +829,10 @@ describe('#493: cautious depth disclosure', () => {
         draft: BOAT_DRAFT_M.toFixed(1),
       });
       expect(banner?.textContent).toBe(expected);
+      // Same dict-independence requirement as the EN severe test above,
+      // typed here rather than read from `de[...]`.
+      expect(banner?.textContent).toContain('kann bis auf 2.0 m sinken');
+      expect(banner?.textContent).toContain('unter den Bootstiefgang von 2.1 m');
     });
   });
 });

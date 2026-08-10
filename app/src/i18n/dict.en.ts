@@ -238,11 +238,13 @@ export const en = {
   // table context (e.g. by a screen reader in linear mode).
   'route.legs.shallow': 'Shallow',
   'route.legs.shallowMarker': 'Shallow {depth} m',
-  // #493: cautious lower bound for the SAME cell, rendered ALONGSIDE the
-  // marker above (never replacing it) — see cautiousDepthLowerBoundM in
-  // app/src/lib/mask.ts for the derivation. "≥" marks it as a floor, the
-  // same convention as profile.deepCap ('≥ 25 m').
-  'route.legs.shallowCautious': '≥ {depth} m cautious',
+  // #493/#504: cautious lower bound for the SAME cell, rendered ALONGSIDE
+  // the marker above (never replacing it) — see cautiousDepthLowerBoundM in
+  // app/src/lib/mask.ts for the derivation. Worded as a HAZARD, not a
+  // comfort floor — "≥ {depth} m cautious" (the original wording) read as
+  // reassurance sitting next to the banner's "could run as low as {depth} m"
+  // for the same fact; "as low as" names the same hazard consistently.
+  'route.legs.shallowCautious': 'cautious: as low as {depth} m',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
   'route.legs.disclosure': 'Legs ({count})',
   'route.kind.motor': 'Motor',

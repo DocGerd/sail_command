@@ -1649,7 +1649,7 @@ select {
   font-weight: 600;
 }
 
-/* #493: cautious lower bound for the SAME cell — rendered ALONGSIDE
+/* #493/#504: cautious lower bound for the SAME cell — rendered ALONGSIDE
    .chip-shallow above (never replacing it), so it must read as secondary to
    the shipped figure rather than compete with it. Same --sc-depth-warning-*
    family as the chip it sits next to (one hazard family, not a second one),
@@ -1657,14 +1657,18 @@ select {
    than the shipped chip's 0.8rem/600 — shape and weight carry the
    primary/secondary distinction, not colour intensity alone. No separate
    dark-mode block needed for the same reason as .chip-shallow above: the
-   tokens already vary by mode. */
+   tokens already vary by mode. Uses the `Chip` primitive (RouteSummary.tsx)
+   for the pill shape/layout — only what genuinely DIFFERS from `.chip`'s own
+   `display: inline-flex; align-items: center; border-radius: 999px;`
+   (identical values, previously re-declared here on a raw span) is set
+   below: spacing from the sibling chip, the outline itself (with an explicit
+   transparent background to cancel `.chip`'s own filled background — an
+   outline reads as filled otherwise), tighter padding, smaller/lighter text. */
 .chip-shallow-cautious {
-  display: inline-flex;
-  align-items: center;
   margin-inline-start: 0.35rem;
   padding: 0.05rem 0.4rem;
   border: 1px solid var(--sc-depth-warning-fg);
-  border-radius: 999px;
+  background: transparent;
   font-size: 0.75rem;
   font-weight: 400;
   color: var(--sc-depth-warning-text);

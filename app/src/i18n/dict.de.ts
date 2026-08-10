@@ -201,15 +201,16 @@ export const de = {
   'route.shallow.locator': 'Die betroffene Etappe beginnt um {time}.',
   'route.shallow.locator.plural': '{count} Etappen sind betroffen — die erste beginnt um {time}.',
   // #504: die ESKALIERTE Schwester von route.shallow.banner oben — derselbe
-  // Satz, mit einer zusätzlichen Klausel zum Tiefgang des Boots. Wird
-  // ANSTELLE von (nie zusätzlich zu) der nicht-eskalierten Variante
-  // gerendert, ausgewählt durch ShallowWarnings `isSevere` (siehe
-  // about.caveats.depthMask für den Mechanismus). Eine Untergrenze, kein
-  // Messwert: "kann ... sinken", nie "ist" — und an {used}/{cautious}
-  // gebunden statt an feste Zahlen, weil sich beide mit der verwendeten
-  // Tiefe verschieben.
+  // Satz, mit einer zusätzlichen Klausel zum Bootstiefgang (nicht "Tiefgang
+  // des Boots von {draft} m" — das "von" hängt dort mehrdeutig, als gehöre
+  // es zu "Boots" statt zum Tiefgangswert). Wird ANSTELLE von (nie
+  // zusätzlich zu) der nicht-eskalierten Variante gerendert, ausgewählt
+  // durch ShallowWarnings `isSevere` (siehe about.caveats.depthMask für den
+  // Mechanismus). Eine Untergrenze, kein Messwert: "kann ... sinken", nie
+  // "ist" — und an {used}/{cautious} gebunden statt an feste Zahlen, weil
+  // sich beide mit der verwendeten Tiefe verschieben.
   'route.shallow.bannerCautious':
-    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken — unter den Tiefgang des Boots von {draft} m. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -233,11 +234,14 @@ export const de = {
   // Text statt reiner Farbe).
   'route.legs.shallow': 'Untiefe',
   'route.legs.shallowMarker': 'Untiefe {depth} m',
-  // #493: vorsichtige Untergrenze derselben Zelle, NEBEN der obigen Marke
-  // gerendert (nie ersetzend) — siehe cautiousDepthLowerBoundM in
-  // app/src/lib/mask.ts für die Herleitung. "≥" markiert sie als Untergrenze,
-  // im selben Stil wie profile.deepCap ('≥ 25 m').
-  'route.legs.shallowCautious': '≥ {depth} m vorsichtig',
+  // #493/#504: vorsichtige Untergrenze derselben Zelle, NEBEN der obigen
+  // Marke gerendert (nie ersetzend) — siehe cautiousDepthLowerBoundM in
+  // app/src/lib/mask.ts für die Herleitung. Als GEFAHR formuliert, nicht als
+  // Komfort-Untergrenze — "≥ {depth} m vorsichtig" hing "vorsichtig" als
+  // Adverb hinter die Zahl (unidiomatisch) und las sich neben dem Banners
+  // "kann bis auf {depth} m sinken" für denselben Sachverhalt beruhigend;
+  // "bis auf ... m" benennt dieselbe Gefahr konsistent in beiden Texten.
+  'route.legs.shallowCautious': 'vorsichtig: bis auf {depth} m',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   'route.legs.disclosure': 'Etappen ({count})',
   'route.kind.motor': 'Motor',

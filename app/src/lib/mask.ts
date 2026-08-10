@@ -11,13 +11,21 @@ const NM_PER_M = 1 / 1852;
  * closed if this value ever drifts from it. build_mask.py blends bilinear
  * over the conservative Resampling.max reading only where the two agree
  * within this bound, so for every cell: depth_blend <= depth_max +
- * MASK_TOLERANCE_M (see that file's own derivation comment for the full
- * argument). Why 0.9 — not a rounder number — is the value: that comment's
- * own MEASUREMENT on the DTM (~build_mask.py:171-176) is that Marstal, at
- * its 2.0 m exception gate, is DISCONNECTED for TOLERANCE_M <= 0.87 m and
- * connects from 0.88 m up — so 0.88, not 0.9, is the tightest tolerance that
- * still keeps it connected; 0.9 clears that wall by only ~0.03 m, not by a
- * comfortable margin.
+ * MASK_TOLERANCE_M (see that file's own derivation comment, at the
+ * `TOLERANCE_M` assignment, for the full argument).
+ *
+ * Why 0.9 is the value: that comment derives it directly from the blend rule
+ * and the boat's draft — at the default gate G = 3.0 m, G - TOLERANCE_M =
+ * 2.1 m, exactly BOAT_DRAFT_M (app/src/routing/relaxedDepth.ts). In the
+ * source's own words, "this value is derived from the blend rule and the
+ * draft; it is not fitted to an outcome."
+ *
+ * Separately, under that same comment's "LOWER IS NOT SAFER" heading: 0.9
+ * cannot simply be tightened (lowered) either — that heading records a
+ * measured limit on how far down it can go, not the reason 0.9 was chosen.
+ * On the DTM the pipeline builds from, Marstal's approach (at its 2.0 m
+ * exception gate) is DISCONNECTED for TOLERANCE_M <= 0.87 m and connects
+ * from 0.88 m up, so 0.9 clears that wall by only ~0.03 m.
  */
 export const MASK_TOLERANCE_M = 0.9;
 
