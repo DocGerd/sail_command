@@ -85,10 +85,9 @@ deviate from it.
   them) and cases to several existing ones — the count is stale again by
   more than a fixed delta this time, so it was re-measured rather than
   hand-added: a real `npm --prefix app run test` run gives **1294 tests, 109
-  files** (2026-08-04); the FILE half is **117** as of 2026-08-10 (`find
-  app/src -name '*.test.ts*'`; net +1 — #486 deleted `OptionsPanel.test.tsx`,
-  #486/#481 added `SettingsPanel.test.tsx` + `test/maskTolerance.test.ts`),
-  the test count STILL unmeasured. The coverage PERCENTAGES above are UNTOUCHED — they
+  files** (2026-08-04); BOTH halves re-measured 2026-08-10 on develop
+  @ `9940b32` with maplibre-gl 6.2.0 installed — **1515 tests, 117 files**,
+  all passing, 234 s. The coverage PERCENTAGES above are UNTOUCHED — they
   were not re-measured this session (that needs `test:coverage`, a
   substantially longer run) and a scanning-only or assertion-adding test
   file is coverage-neutral to first order the same way PR #351's was; don't
@@ -1518,6 +1517,21 @@ deviate from it.
   produced four cascading z-index regressions, each caused by the previous
   fix. Re-run the ORIGINAL defect class against the new code, and treat a
   passing selftest table as proof only of the shapes it lists.
+  MEASURED 2026-08-10 across three fix waves on #499 and again inside #500's
+  OWN self-review: the vector is prose the agent adds UNREQUESTED while
+  trying to be thorough — an honest "unresolved" followed by a confident
+  wrong reason; an unrequested comparability caveat whose listed invariants
+  did not span the mask rebuild it crossed; one inherited word carried from
+  a DESCRIPTIVE claim into a PRESCRIPTIVE one, making a rule self-cancelling;
+  and a "correction" replacing a HALF-TRUE statement with an absolute
+  negative that was false for the other half. Four cheap remedies that
+  worked: brief an explicit ESCAPE HATCH — if a claim cannot be supported
+  from evidence read in a file during the task, DELETE it rather than hedge
+  it; require the do-not-touch list confirmed BY DIFF, not by trust;
+  announce a stopping rule and honour it (file the remaining Minors rather
+  than run another unreviewed wave); and prefer RETRIEVING the primary
+  artifact over constructing an argument — a disputed claim was settled by
+  reading the run's own JSON instead of arguing comparability.
   Session 28 (2026-08-06/07) produced fresh instances in EVERY ONE of the
   three PRs merged that night — including one inside a **comment-only**
   wording correction, where the entire content of the change was a single
@@ -1733,6 +1747,14 @@ deviate from it.
   derived from an unverified claim about the code is the enumerate-don't-patch
   failure relocated one level up, into the brief. Same reason issue texts
   are not ground truth for states they do not describe.
+- **State a verified fact as a past-tense EVENT, never as a current-state
+  claim.** "re-verified against `maplibre-gl@6.2.0`" survives the next bump;
+  "…, the version `app/package-lock.json` pins" goes FALSE at it — and a
+  currency check structurally cannot catch that, because it verified true at
+  the instant it was written. Bit TWICE in one lineage (2026-08-10): the
+  original text, and again inside the PR that existed to fix it, where five
+  of six moved markers got the immune phrasing and the one line the PR was
+  ABOUT kept the decaying one.
 - **IMAGES rot the same way prose does, and the #132 sweep must check them.**
   At the v0.10.0 cut `docs/screenshots/plan-route.png` still showed the
   pre-#408/#410 legs table, contradicting two of the three user-visible changes
