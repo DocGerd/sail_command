@@ -1,11 +1,15 @@
 /**
  * #282 ACCEPTANCE SWEEP — the shared engine.
  *
- * Flensburg -> every harbour in the shipped `harbors.json`, across six settings
- * arms, against the REAL committed mask and polars. Every `PlanResult` is
- * serialised deterministically so a BASE run and a HEAD run can be compared
- * byte-for-byte: #282's standing requirement is that a change which is meant to
- * be presentational moves NO route.
+ * Every harbour in the shipped `harbors.json`, across nine settings arms
+ * (33 destinations x 9 = 297 plans), against the REAL committed mask and
+ * polars. Every `PlanResult` is serialised deterministically so a BASE run
+ * and a HEAD run can be compared byte-for-byte: #282's standing requirement
+ * is that a change which is meant to be presentational moves NO route.
+ *
+ * The origin is Flensburg for the original six arms (#450) and Marstal for
+ * the three #452 relaxation arms (`margin-zero`, `relaxation-dense`,
+ * `tier4-forcing`) — see `Arm.originId`'s own doc comment for why.
  *
  * DELIBERATELY OUTSIDE `app/src/`. `vite.config.ts`'s `test.include` is
  * `['src/**\/*.test.{ts,tsx}']`, so nothing here is collected by
@@ -34,6 +38,7 @@ import { uniformWindGrid } from '../src/test/fixtures';
 import { DEFAULT_SETTINGS } from '../src/types';
 import type { LatLon, MaskMeta, PolarTable, Settings, WindGrid } from '../src/types';
 import { solverTimeoutMs } from '../src/test/timeouts';
+import { ARM_NAMES } from './armNames';
 
 const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
 /** Absolute output directory. REQUIRED — fail closed rather than silently overwrite a default. */
@@ -52,14 +57,29 @@ export interface Arm {
   label: string;
   settings: Settings;
   wind: () => WindGrid;
+  /**
+   * #452: origin harbour id, defaulting to `flensburg` when absent. Every
+   * PRE-#452 arm omits this, so it resolves exactly as before — byte-identical
+   * to the recorded baseline. Only the three #452 relaxation arms below set
+   * it, because Flensburg is the wrong origin for what they need to
+   * demonstrate: a mask-connectivity probe over all 33x33 harbour pairs
+   * (`cellsConnected` BFS at the 3.0 m gate vs. down to the 2.1 m
+   * `BOAT_DRAFT_M` floor, run once as a one-off exploration, not part of this
+   * committed harness) found that from ANY origin other than Marstal, only 1
+   * of the other 32 harbours needs depth relaxation at all (Marstal itself);
+   * from Marstal, 27 of 32 do (the remaining 5 are the #9 KNOWN_DISCONNECTED
+   * harbours — arnis, kappeln, maasholm, dyvig, graasten — unreachable at any
+   * gate down to the draft floor, so relaxation cannot help them either).
+   */
+  originId?: string;
 }
 
 /** Departure instant. Part of the baseline identity — never "refresh" it. */
 export const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
 
 /**
- * The six arms, with the role each one actually plays — MEASURED on the
- * 2026-08-07 baseline (198 plans), not assumed. Gate counts below are
+ * The first six arms below, with the role each one actually plays — MEASURED
+ * on the 2026-08-07 baseline (198 plans), not assumed. Gate counts below are
  * `depthRelaxationMayHelp` true/false and come from an instrumented run.
  *
  *   breeze          - ordinary sailing breeze; 27 `ok`. The happy path, and
@@ -92,8 +112,63 @@ export const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
  *                     becalmed, so a deeper gate does NOT relax "far more
  *                     often" (an earlier version of this comment claimed it
  *                     did; the counters refute it). Gate 6/24.
+ *
+ * #452 ADDS the three arms below, all Marstal-origin, because the six arms
+ * above are structurally unable to discriminate a depth-relaxation change:
+ * relaxation fires on only 27 of the 528 unique harbour pairs in
+ * `harbors.json` (33 choose 2), and every one of the 27 involves Marstal —
+ * measured via a `cellsConnected` BFS probe over every pair at the 3.0 m gate
+ * (see `Arm.originId`'s doc comment). At Flensburg origin only ONE of the 33
+ * per-arm rows (the Marstal leg) ever touches relaxation at all, so the
+ * existing arms carry at most 1/33 discriminating power for this whole
+ * mechanism — `breeze` and `no-comfort` are, per the header above, the
+ * source of the ONLY two plans across all 198 with a #53 shallow warning.
+ *
+ *   margin-zero       - `depthComfortMarginM: 0` at Marstal origin — the
+ *                     purest unprotected relaxation case. `edgeFactor`
+ *                     (isochrone.ts) short-circuits to a bare
+ *                     `mask.segmentNavigable(a, b, gateM) ? 1 : null` whenever
+ *                     `comfortDepthM === undefined` (verified by reading
+ *                     `edgeFactor`'s own guard, `if (comfortDepthM ===
+ *                     undefined || comfortDepthM <= gateM) return
+ *                     mask.segmentNavigable(a, b, gateM) ? 1 : null;`), so
+ *                     there is no comfort pricing and no #243 merge
+ *                     protection at all — every relaxed-tier leg is priced
+ *                     exactly as the pre-#243 solver priced it. DELIBERATELY
+ *                     NOT Flensburg-origin: the existing `no-comfort` arm
+ *                     already IS `depthComfortMarginM: 0` at Flensburg with
+ *                     this same wind field, so a literal Flensburg-origin
+ *                     reading of "margin-zero" would be byte-identical to
+ *                     `no-comfort` — a second arm testing nothing `no-comfort`
+ *                     doesn't already, the exact "another `becalmed`" trap
+ *                     this issue exists to avoid. Marstal origin makes it a
+ *                     genuinely new arm: 27 of 32 rows exercise relaxation,
+ *                     all of them with comfort pricing OFF end to end.
+ *   relaxation-dense  - Marstal origin, plain DEFAULT_SETTINGS (comfort
+ *                     margin 2.0 m, the shipped default) — the normal-usage
+ *                     counterpart to margin-zero: relaxation WITH #243
+ *                     comfort pricing active, across the same 27 pairs.
+ *   tier4-forcing     - Marstal origin, `depthComfortMarginM: 8.0` +
+ *                     `safetyDepthM: 2.9`. #243's tier 4 (relaxed gate,
+ *                     comfort preference OFF) only runs when tier 3 (relaxed
+ *                     gate, comfort ON) fails on a rig with a retriable cause
+ *                     — see `needsUnpreferencedRetry` and the tier 3/4 block
+ *                     in planRoute.ts. An inflated comfort margin against a
+ *                     safety depth just above `BOAT_DRAFT_M` (2.1 m) makes
+ *                     nearly the whole relaxed corridor price below comfort
+ *                     depth, which is what can push tier 3 into the
+ *                     search-capacity failure `comfortRetryMayHelp` exists to
+ *                     catch. VERIFIED empirically, not asserted: a one-off
+ *                     probe (temporary `__SWEEP_TIER_DEBUG` instrumentation in
+ *                     `planRoute.ts`, reverted before commit — see this PR's
+ *                     description) tagged which tier actually produced each
+ *                     of the 27 Marstal-origin relaxable destinations' results
+ *                     under these settings; `damp`, `olpenitz` and
+ *                     `schleimuende` resolved via tier 4, the rest via tier 3
+ *                     — so this arm is confirmed to reach every tier the #53/
+ *                     #243 interaction defines, not just tiers 1-3.
  */
-export const ARMS: Record<string, Arm> = {
+export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
   breeze: { label: 'breeze', settings: DEFAULT_SETTINGS, wind: () => uniformWindGrid(12, 225) },
   'no-comfort': {
     label: 'no-comfort',
@@ -120,6 +195,24 @@ export const ARMS: Record<string, Arm> = {
     settings: { ...DEFAULT_SETTINGS, motorEnabled: false, safetyDepthM: 4.0 },
     wind: () => uniformWindGrid(0.15, 0),
   },
+  'margin-zero': {
+    label: 'margin-zero',
+    settings: { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 },
+    wind: () => uniformWindGrid(12, 225),
+    originId: 'marstal',
+  },
+  'relaxation-dense': {
+    label: 'relaxation-dense',
+    settings: DEFAULT_SETTINGS,
+    wind: () => uniformWindGrid(12, 225),
+    originId: 'marstal',
+  },
+  'tier4-forcing': {
+    label: 'tier4-forcing',
+    settings: { ...DEFAULT_SETTINGS, depthComfortMarginM: 8.0, safetyDepthM: 2.9 },
+    wind: () => uniformWindGrid(12, 225),
+    originId: 'marstal',
+  },
 };
 
 /**
@@ -137,7 +230,7 @@ export function serialize(value: unknown): string {
   );
 }
 
-export function runArm(label: string): void {
+export function runArm(label: (typeof ARM_NAMES)[number]): void {
   const arm = ARMS[label];
   if (!arm) throw new Error(`unknown sweep arm ${label}`);
 
@@ -150,11 +243,14 @@ export function runArm(label: string): void {
     readFileSync(resolve(dataDir, 'polar-fock.json'), 'utf8'),
   ) as PolarTable;
   const harbors = JSON.parse(readFileSync(resolve(dataDir, 'harbors.json'), 'utf8')) as Harbor[];
-  const flensburg = harbors.find((h) => h.id === 'flensburg');
-  if (!flensburg) throw new Error('#282 sweep: harbors.json has no `flensburg` entry');
+  // #452: origin defaults to flensburg — every pre-#452 arm omits `originId`,
+  // so this resolves exactly as it always has.
+  const originId = arm.originId ?? 'flensburg';
+  const origin = harbors.find((h) => h.id === originId);
+  if (!origin) throw new Error(`#282/#452 sweep: harbors.json has no \`${originId}\` entry`);
 
   it(
-    `#282 sweep arm ${label}: Flensburg -> all harbours`,
+    `#282 sweep arm ${label}: ${originId} -> all harbours`,
     () => {
       // Fail closed, and inside the test so the whole file still collects when
       // the variable is unset (a thrown error at module scope reads as a
@@ -171,10 +267,10 @@ export function runArm(label: string): void {
         const t = Date.now();
         rows[h.id] = planRoute(
           {
-            origin: flensburg.snap,
+            origin: origin.snap,
             destination: h.snap,
             viaPoints: [],
-            originHarborId: 'flensburg',
+            originHarborId: originId,
             destinationHarborId: h.id,
             departureMs: T0,
             settings: arm.settings,

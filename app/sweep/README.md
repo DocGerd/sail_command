@@ -1,13 +1,27 @@
 # #282 acceptance sweep
 
-Flensburg → all 33 harbours × 6 settings arms = **198 plans**, against the real
-committed mask and polars, with every `PlanResult` serialised for byte-for-byte
+All 33 harbours × 9 settings arms = **297 plans**, against the real committed
+mask and polars, with every `PlanResult` serialised for byte-for-byte
 comparison between two revisions.
 
 Issue #282 makes this a **standing requirement**: the no-route cause is a
 control input, so any change to how `solve()` *classifies* a failure can move
 real routes. Run this before trusting such a change. A change that is only
 meant to be presentational must move nothing.
+
+**#452**: the original six arms (Flensburg origin) exercise #53 depth
+relaxation on only 1 of their 33 rows each (the Marstal leg) — a
+`cellsConnected` connectivity probe over all 528 unique harbour pairs
+(33 choose 2) found relaxation is needed on 27 pairs, and EVERY one of them
+involves Marstal. `margin-zero`, `relaxation-dense` and `tier4-forcing` (see
+their doc comments in `sweepArms.ts`) use Marstal as origin instead, so 27 of
+their 33 rows carry a `shallow` block — verified by running them once
+(2026-08-10): `margin-zero` 27/33, `relaxation-dense` 27/33, `tier4-forcing`
+27/33 (5 `unreachable` = the #9 KNOWN_DISCONNECTED harbours; 1 trivial
+Marstal→Marstal `ok` row with no `shallow` block). All three arms are
+byte-distinct from each other and from the original six (different sha256 per
+arm file), so this is real discriminating coverage, not three more
+`becalmed`s.
 
 ## Why it lives here and not under `src/`
 
