@@ -178,8 +178,8 @@ export const en = {
   // directly instead of pointing at it. Checking every cross-sentence
   // reference is a REQUIRED step of any future re-sequencing here, not an
   // assumption — .detail and .caveat were both checked too (wave 6) and
-  // carry no such reference (each is self-contained: "this route"/"this
-  // warning" are deictic to the whole alert, not position-dependent).
+  // carry no reference into another PART: "this route"/"this warning" are
+  // deictic to the whole alert, not position-dependent.
   // lead/leadSevere ALWAYS carry the #493 cautious-floor clause; leadSevere
   // additionally states the boat's-draft clause. "Caution:" moved here from
   // detail, since lead is now the most prominent part.
@@ -210,8 +210,9 @@ export const en = {
   // hidden behind a click: a safety statement about the limits of the
   // warning above it, in an app with no chart authority of its own. Honest
   // passage-planning-aid copy (#455): never claims an unflagged section IS
-  // safe — the mask itself is known to OVERSTATE depth on ~45% of cells
-  // (#455), so an unflagged section is merely unflagged, not verified.
+  // safe — the mask itself is known to OVERSTATE depth on ~45% of WATER
+  // cells, encoded basis (#455), so an unflagged section is merely
+  // unflagged, not verified.
   // review (PR #461 Minor 6): the pre-#452 string named the OPTIMISTIC case
   // explicitly ("dredged channels ... often deeper than charted"); this
   // copy deliberately DROPS that reassurance rather than assert something
