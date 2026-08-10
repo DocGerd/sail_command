@@ -166,37 +166,27 @@ export const en = {
   'route.rigMoot': 'Rig does not matter here — this passage runs entirely under engine',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
-  // #53/#452: honest passage-planning-aid copy — charted depth can be wrong
-  // in EITHER direction; never claim the route is verified safe. {used}
-  // names the relaxed gate the planner actually routed at (#53's
-  // graceful-degradation tier only fires when {used} < {requested}, so the
-  // two are never equal here) — and the closing sentence deliberately does
-  // NOT say "elsewhere is safe": the mask itself is known to OVERSTATE depth
-  // on ~45% of cells (#455), so an unflagged section is merely unflagged,
-  // not verified. review (PR #461 Minor 6): the pre-#452 string named the
-  // OPTIMISTIC case explicitly ("dredged channels ... often deeper than
-  // charted"); this copy deliberately DROPS that reassurance rather than
-  // keep a comment with no matching clause below — under #455 the direction
-  // that matters here is the dangerous one, not the reassuring one.
-  // review (PR #461 Minor 5): "shallowest charted depth actually crossed"
-  // overclaimed — `flagShallowLegs` (planRoute.ts) folds `minGateDepthM`
-  // over BOTH rigs' legs, so on a given rig's tab the number may describe
-  // the OTHER rig's leg, not one this route actually sails. "crossed by
-  // this plan" is the honest, plan-level framing.
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts
   // inside ONE role="alert" region (ShallowWarning, RouteSummary.tsx: a
   // <div> with .lead/.detail/.caveat children) — leads with the most
   // severe, actionable fact (the cautious floor) instead of emphasising
-  // everything equally. Every sentence below is verbatim from the earlier
-  // folded banner text, only re-sequenced — no new wording. lead/leadSevere
-  // ALWAYS carry the #493 cautious-floor clause ("a more cautious reading
-  // ... could run as low as {cautious} m"); leadSevere additionally states
-  // the boat's-draft clause. "Caution:" moved here from detail, since lead
-  // is now the most prominent part.
+  // everything equally. Re-sequencing a sentence is NOT automatically safe:
+  // wave 6 found the lead's original "that same depth data" was an
+  // ANAPHORA pointing back at {minGate}, which now lives in .detail BELOW
+  // the lead — the headline of a safety warning referred to something the
+  // reader had not yet seen. Fixed by naming "the charted depth data"
+  // directly instead of pointing at it. Checking every cross-sentence
+  // reference is a REQUIRED step of any future re-sequencing here, not an
+  // assumption — .detail and .caveat were both checked too (wave 6) and
+  // carry no such reference (each is self-contained: "this route"/"this
+  // warning" are deictic to the whole alert, not position-dependent).
+  // lead/leadSevere ALWAYS carry the #493 cautious-floor clause; leadSevere
+  // additionally states the boat's-draft clause. "Caution:" moved here from
+  // detail, since lead is now the most prominent part.
   'route.shallow.lead':
-    'Caution: a more cautious reading of that same depth data could run as low as {cautious} m.',
+    'Caution: a more cautious reading of the charted depth data could run as low as {cautious} m.',
   'route.shallow.leadSevere':
-    "Caution: a more cautious reading of that same depth data could run as low as {cautious} m, below this boat's {draft} m draft.",
+    "Caution: a more cautious reading of the charted depth data could run as low as {cautious} m, below this boat's {draft} m draft.",
   // What happened: the requested safety depth was not passable, the depth
   // actually used, the shallowest charted depth crossed. Normal weight (no
   // longer emphasised) — review (PR #461 Minor 5): "shallowest charted
@@ -220,7 +210,15 @@ export const en = {
   // hidden behind a click: a safety statement about the limits of the
   // warning above it, in an app with no chart authority of its own. Honest
   // passage-planning-aid copy (#455): never claims an unflagged section IS
-  // safe. review (PR #461 Major 3): widened from `/\bis
+  // safe — the mask itself is known to OVERSTATE depth on ~45% of cells
+  // (#455), so an unflagged section is merely unflagged, not verified.
+  // review (PR #461 Minor 6): the pre-#452 string named the OPTIMISTIC case
+  // explicitly ("dredged channels ... often deeper than charted"); this
+  // copy deliberately DROPS that reassurance rather than assert something
+  // with no supporting measurement — under #455 the direction that matters
+  // here is the dangerous one, not the reassuring one, which is why "can
+  // both understate and overstate" below states both but reassures on
+  // neither. review (PR #461 Major 3): widened from `/\bis
   // (verified|guaranteed)\b/i`, which let "...is safe." through 91/91
   // GREEN, to also catch "is/are safe" and "is/are clear". NARROWED, NOT
   // CLOSED — "poses no risk" still evades it.

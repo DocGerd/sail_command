@@ -186,17 +186,26 @@ export const de = {
   // EINER role="alert"-Region restrukturiert (ShallowWarning,
   // RouteSummary.tsx: ein <div> mit .lead/.detail/.caveat-Kindern) — führt
   // mit der schwerwiegendsten, handlungsrelevanten Tatsache (der
-  // Untergrenze), statt alles gleich stark zu betonen. Jeder Satz unten ist
-  // wortgleich mit dem früheren zusammengeführten Banner-Text, nur neu
-  // angeordnet — keine neue Formulierung. lead/leadSevere tragen IMMER die
+  // Untergrenze), statt alles gleich stark zu betonen. Sätze umzuordnen ist
+  // NICHT automatisch sicher: Korrekturwelle 6 fand, dass leads ursprüngliches
+  // "derselben Tiefendaten" eine ANAPHER war, die auf {minGate} zurückwies —
+  // und {minGate} lebt jetzt in .detail, UNTER dem lead. Die Schlagzeile
+  // einer Sicherheitswarnung verwies auf etwas, das die Leserin noch nicht
+  // gesehen hatte. Behoben, indem "der Kartentiefen" direkt benannt wird,
+  // statt darauf zu verweisen. Jede satzübergreifende Referenz zu prüfen ist
+  // jetzt ein PFLICHTSCHRITT bei jeder künftigen Umordnung hier, keine
+  // Annahme — .detail und .caveat wurden ebenfalls geprüft (Welle 6) und
+  // tragen keine solche Referenz (beide sind in sich geschlossen: "diese
+  // Route"/"diese Warnung" sind deiktisch auf die gesamte Warnung bezogen,
+  // nicht positionsabhängig). lead/leadSevere tragen IMMER die
   // #493-Untergrenzen-Klausel; leadSevere fügt zusätzlich die
   // Bootstiefgang-Klausel an (nicht "Tiefgang des Boots von {draft} m" — das
   // "von" hing dort mehrdeutig). "Achtung:" ist von detail hierher
   // gewandert, da lead jetzt der prominenteste Teil ist.
   'route.shallow.lead':
-    'Achtung: Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken.',
+    'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken.',
   'route.shallow.leadSevere':
-    'Achtung: Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m.',
+    'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m.',
   // Was passiert ist: die eingestellte Sicherheitstiefe war nicht
   // passierbar, die tatsächlich verwendete Tiefe, die geringste gequerte
   // Kartentiefe. Normale Textstärke (nicht mehr hervorgehoben) — siehe
