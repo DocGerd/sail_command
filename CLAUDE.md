@@ -85,8 +85,10 @@ deviate from it.
   them) and cases to several existing ones — the count is stale again by
   more than a fixed delta this time, so it was re-measured rather than
   hand-added: a real `npm --prefix app run test` run gives **1294 tests, 109
-  files** (2026-08-04); the FILE half is **116** as of 2026-08-09 (`find
-  app/src -name '*.test.ts*'`), the test count unmeasured since. The coverage PERCENTAGES above are UNTOUCHED — they
+  files** (2026-08-04); the FILE half is **117** as of 2026-08-10 (`find
+  app/src -name '*.test.ts*'`; net +1 — #486 deleted `OptionsPanel.test.tsx`,
+  #486/#481 added `SettingsPanel.test.tsx` + `test/maskTolerance.test.ts`),
+  the test count STILL unmeasured. The coverage PERCENTAGES above are UNTOUCHED — they
   were not re-measured this session (that needs `test:coverage`, a
   substantially longer run) and a scanning-only or assertion-adding test
   file is coverage-neutral to first order the same way PR #351's was; don't
@@ -312,8 +314,8 @@ deviate from it.
   `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
   correct regardless of which call site's commit lands first. NAMED
   COUPLING now points at `App.tsx`'s `<div className="banner-area">`
-  (rendered unconditionally, ~:912) and its App-level `useBannerHeight()`
-  call (~:163, kept purely for that write side-effect). Any rule that moves
+  (rendered unconditionally, ~:958) and its App-level `useBannerHeight()`
+  call (~:169, kept purely for that write side-effect). Any rule that moves
   `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
   connected only through that runtime-measured layout value, invisible in
   the CSS, in the diff, and to any test that checks the two components
@@ -1370,7 +1372,14 @@ deviate from it.
   the CUMULATIVE diff found 3 real bugs (#158/#159/#160) that every
   individual reviewer had correctly approved past. Run such a sweep after
   any multi-PR burst touching shared subsystems; expect refuters to kill
-  ~2/3 of candidates — the survivors are load-bearing.
+  ~2/3 of candidates — the survivors are load-bearing. Re-confirmed
+  2026-08-10 (8-PR train, 10 candidates → 1 survivor): TWO individually
+  correct fixes in ONE PR — narrowing a banner's gate, and deleting a
+  live-region fold justified BY that banner — silenced a screen-reader
+  announcement on the complement of the two conditions. No single hunk held
+  both; the tests were rewritten in the same PR to pin the gap as intended,
+  and two comments asserted the opposite. Fix shape: make two surfaces
+  COMPLEMENTARY, never assume one subsumes the other.
 - Enlarging map icons CULLS them below the z12 `icon-overlap` threshold —
   measure BASE vs. HEAD with `idle`-gated `queryRenderedFeatures`, never by
   eye; identical feature counts at z≥12 (`overlap:'always'`) is the signature
@@ -1378,6 +1387,24 @@ deviate from it.
   fixed by ranking `symbol-sort-key` per R1001 danger content, #200/#225;
   four residuals — z≥12 paint-order inversion, cross-tile ordering, unpinned
   tap wiring, popup anchoring — tracked in #232).
+- **A measurement can move two variables at once and read BACKWARDS** — the
+  sharper sibling of "what class of failure can this method not detect": this
+  one reports the INVERSE, confidently. A whole-viewport
+  `queryRenderedFeatures` comparison across zooms changes the sampled
+  GEOGRAPHY and the collision REGIME together — measured 64 at z10 vs 56 at
+  z13, the opposite of the true signature. Use a FIXED geographic box via
+  `map.project()`. The aperture must also not be COUPLED to the axis under
+  test: `queryRenderedFeatures` matches the COLLISION box, so the capture
+  fringe scales with icon size — pick zooms whose apertures match (#353).
+- **`boundingBox()` returns the BORDER box and never sees overflow.** A
+  tab-strip fit guard passed while `.app-tabs` overflowed 93px at 280px
+  (scrollWidth 373 vs clientWidth 280): `flex: 1` with flex's default
+  `min-width: auto` forces every button's border box to an equal viewport/4
+  width whatever its label needs, and with no `overflow: hidden` in that
+  chain a too-long label spills silently past its own box edge instead of
+  growing, wrapping or clipping — so a border-box read cannot see it. Assert
+  `scrollWidth <= clientWidth` on the container (#299;
+  `app/e2e/layout.spec.ts`'s own comment carries the full mechanism).
 - A green workflow run proves the RUN was healthy, not that the intended
   VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
   workflow FILE from X's tip. Verify by inspecting the artifact it produced,
@@ -1589,8 +1616,11 @@ deviate from it.
   number decays on the next commit that inserts a line above it, and a
   currency check verifies at the instant of writing, so it structurally
   cannot catch that class. Write `App.tsx`'s `<div className="banner-area">`
-  (~:912): the name is the identity, the number is a hint. A citation to a
-  never-merged diff gets no line number at all.
+  (~:958): the name is the identity, the number is a hint. A citation to a
+  never-merged diff gets no line number at all. Validated same-day: hints
+  written at 09:00 drifted 46 lines by 13:00 when a sibling PR inserted above
+  them — the symbol anchor still found the site where a bare number would
+  have been flatly wrong.
 - A Playwright `expect.poll` predicate that returns a BOOLEAN discards the
   diagnostic. `return deg >= 330 || deg <= 30` + `.toBe(true)` can only report
   `Expected: true / Received: false` plus a timeout — and a Playwright timeout
@@ -1715,8 +1745,9 @@ deviate from it.
   SAME cached plan six times. TWO silent failures stacked: a DOM helper matched
   `[role="region"][aria-label="Origin"]`, which never matches — but NOT for the
   mechanism first recorded here, which was fabricated: those sections carry
-  `aria-label` DIRECTLY (`PlannerPanel.tsx:353`, `:394`; `aria-labelledby` has
-  never appeared in that file's history). `[role="region"]` is a CSS ATTRIBUTE
+  `aria-label` DIRECTLY (`PlannerPanel.tsx`'s Origin/Destination
+  `<section aria-label={…}>`, ~:376 / ~:417; `aria-labelledby` has never
+  appeared in that file's history). `[role="region"]` is a CSS ATTRIBUTE
   selector needing a literal `role` attribute, which a bare `<section>` never
   has, so only `getByRole('region', { name })` resolves them and the CSS form
   silently does not — so the route never actually changed;
@@ -1844,7 +1875,13 @@ deviate from it.
   bilinear over the conservative `Resampling.max` only where they agree within
   T, so `depth_blend <= depth_max + T` and a cell navigable at gate G has
   conservative depth `>= G - T` — at the 3.0 m default that is exactly
-  `BOAT_DRAFT_M`. Navigable cells reading below the hull: **924 -> 0**;
+  `BOAT_DRAFT_M`. **That is the MASK at the REQUESTED gate, not what the app
+  serves**: #53 relaxation lowers the EFFECTIVE gate and fires at DEFAULT
+  settings — `realmask.repro.test.ts` pins Flensburg→Marstal at
+  `requestedDepthM 3.0` / `usedDepthM ~2.3` (reproduced in a live browser
+  2026-08-10), so the real floor there is **1.4 m under a 2.1 m hull**. Same
+  shape as the "routes only at <= 2.3 m" defect: true of the GATE, misleading
+  about the user. Navigable cells reading below the hull: **924 -> 0**;
   gate-crossers 14,715 -> 10,746. **The wall is T <= 0.87** (Marstal
   disconnects, reconnects from 0.88) — NOT the 0.8 a 0.1-sampled table
   suggests, so 0.85 looks safe and strands Marstal permanently (it needs 1.8 m

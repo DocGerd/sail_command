@@ -123,8 +123,15 @@ export const ROUTING_RELEVANT_SETTINGS_KEYS = [
  * reroute SUCCEEDS is a cry-wolf false positive on exactly the tab where
  * attention is scarcest; scoping the banner to settings avoids it, since
  * rerouteFromFix carries the ORIGINAL plan's settings forward unchanged.
- * PlannerPanel's own Chip/live-region keep using the full planFormDirty
- * unchanged — origin/destination/departure edits ARE reachable there.
+ * PlannerPanel's own Chip keeps using the full planFormDirty unchanged —
+ * origin/destination/departure edits ARE reachable there. Its live region
+ * does NOT stay on the full planFormDirty (Refs #299, cross-PR composition
+ * fix over PR #486 — see PlannerPanel.tsx's `statusText` comment for the
+ * full story): it calls THIS function itself with its own `plan`/`settings`
+ * props and folds the stale sentence only when `formDirty &&
+ * !routingSettingsDirty(...)`, i.e. exactly the part of a dirty form the
+ * App-level Banner above cannot see — announcing the settings-only case
+ * would double it.
  *
  * Backfilled from DEFAULT_SETTINGS before comparing — mirrors lib/
  * recalc.ts's identical backfill. A plan saved before a Settings field

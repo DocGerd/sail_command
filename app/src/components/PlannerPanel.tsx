@@ -14,6 +14,7 @@ import {
 } from '../lib/format';
 import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
+import { routingSettingsDirty } from '../lib/planForm';
 import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
@@ -248,6 +249,17 @@ export default function PlannerPanel({
   // gated on `summary || shallow`, not `summary` alone.
   const shallow = plan?.result.shallow ?? null;
 
+  // Cross-PR composition fix (Refs #299, found by an adversarial cumulative-
+  // diff sweep over PR #486): computed independently of App.tsx's own
+  // `settingsDirty` — same predicate (`routingSettingsDirty`), same two
+  // inputs (`plan`, `settings`), both already props here — so this panel can
+  // tell which PART of a dirty form the App-level Banner already covers.
+  // `formDirty` folds origin/destination/departure/settings together;
+  // `settingsDirty` is the settings-only subset the Banner announces. See the
+  // `staleSuffix` comment below for why the difference between the two is
+  // exactly what this live region needs.
+  const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
+
   // #64 §3.4 (Option B) a11y: announce the terminal result in the persistent
   // live region, ONCE per completed plan. We freeze the RESULT that completed
   // (not the rendered string) and re-derive the sentence from the CURRENT
@@ -290,21 +302,32 @@ export default function PlannerPanel({
       rig: t(RIG_LABEL_KEY[planning.rig]),
     });
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
-  // #301 ORIGINALLY also folded a dirty-form sentence in here — REMOVED (PR
-  // #486 review, Minor 5): App.tsx now has a tab-independent `settingsDirty`
-  // Banner (role="alert", #299) that already announces this exact sentence
-  // whenever it's true, including while this panel is mounted (Plan tab).
-  // Keeping both meant a Plan-tab user with a dirty form heard it TWICE —
-  // once from the assertive Banner, once from this polite status region.
-  // Mirrors this repo's existing rule for plan-run errors ("the
-  // tab-independent <Banner> ... is the SINGLE alert surface, so the error
-  // isn't announced twice") applied to the same signal. The Ergebnis card's
-  // Chip below still shows the sentence VISUALLY (sighted-user surface,
-  // driven by the broader `formDirty` — origin/destination/departure edits
-  // ARE reachable from this tab, unlike the Banner's narrower
-  // `settingsDirty`) — a static DOM insertion outside a live region is not
-  // itself announced, so the Chip does not reintroduce the duplicate.
-  else if (planning.phase === 'idle') statusText = announcement;
+  else if (planning.phase === 'idle') {
+    // #301 originally folded the dirty-form sentence in here unconditionally
+    // on `formDirty`. PR #486 review (Minor 5) removed the fold entirely,
+    // reasoning that App.tsx's new tab-independent `settingsDirty` Banner
+    // (role="alert", #299) "already announces this exact sentence whenever
+    // it's true" — TRUE only for the settings-only subset of dirtiness the
+    // Banner can see. It is FALSE for `formDirty && !settingsDirty`: a user
+    // who changes only the destination, origin, or departure (all reachable
+    // from THIS tab, none reachable from Routes/Live/Boat, and none part of
+    // `settingsDirty`) leaves the panel's live region silent with no
+    // announcement anywhere — the #486 fix over-removed and re-opened the
+    // exact gap #301 existed to close (found by a cross-PR composition
+    // sweep over the cumulative diff, Refs #299).
+    //
+    // Fixed by folding on the COMPLEMENT of what the Banner covers, so every
+    // true case is announced exactly once: `settingsDirty` true → the Banner
+    // is the sole announcer (this region stays silent, avoiding the
+    // original double-announcement #486 was right to kill); `formDirty &&
+    // !settingsDirty` → the Banner cannot see it, so this region announces
+    // it. The Ergebnis card's Chip below stays on the broader `formDirty`
+    // unconditionally — it's a static DOM insertion outside a live region,
+    // never itself announced, so showing it regardless of `settingsDirty`
+    // does not reintroduce any duplicate announcement.
+    const staleSuffix = formDirty && !settingsDirty && summary ? t('planner.result.stale') : '';
+    statusText = [announcement, staleSuffix].filter(Boolean).join(' ');
+  }
   // §3.4 (fix wave): the idle completion announcement is screen-reader-only —
   // the visible surface is the prominent Ergebnis card, so a visible sentence
   // here just duplicates it. Progress/probing stay visible.
@@ -603,19 +626,22 @@ export default function PlannerPanel({
                   re-run right now would produce something different. Sits ON
                   the stale thing (this card / the map route below it), not
                   map dimming/dashing (#324's dash+opacity already means "the
-                  other rig"). CORRECTED (PR #486 review, Minor 5): #299 DID
-                  add a tab-independent Banner for this same underlying
-                  signal (App.tsx, gated on the narrower `settingsDirty`),
-                  contradicting what this comment used to claim — but the
-                  sentence is NOT folded into the live region above anymore
-                  (see statusText's own comment on why), so this Chip stays
-                  the sighted-user surface WITHOUT re-introducing a double
-                  announcement: a Chip is a plain DOM insertion, not itself a
-                  live region, so screen readers don't announce it on their
-                  own regardless of whether the Banner is also on screen.
-                  Deliberately still `formDirty`, not `settingsDirty` — this
-                  tab CAN edit origin/destination/departure, unlike the
-                  Banner's narrower scope (see settingsDirty's own comment in
+                  other rig"). #299 ALSO added a tab-independent Banner for
+                  this same underlying signal (App.tsx, gated on the
+                  narrower `settingsDirty`). This Chip stays unconditionally
+                  on the broader `formDirty` regardless of whether the Banner
+                  is also on screen — a Chip is a plain DOM insertion, not
+                  itself a live region, so screen readers don't announce it
+                  on their own and it never duplicates anything the Banner or
+                  the live region below announce. The live region ABOVE
+                  (statusText) DOES now fold this same sentence in — but only
+                  for `formDirty && !settingsDirty`, the complement of what
+                  the Banner covers (Refs #299; see statusText's own comment
+                  for the full reasoning and why an earlier revision of this
+                  comment claiming the opposite was wrong). Deliberately
+                  still `formDirty`, not `settingsDirty`, here — this tab CAN
+                  edit origin/destination/departure, unlike the Banner's
+                  narrower scope (see settingsDirty's own comment in
                   App.tsx). */}
               {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
             </div>
