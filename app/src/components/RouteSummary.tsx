@@ -2,8 +2,10 @@ import type { Ref } from 'react';
 import { useT, useLang } from '../i18n';
 import { formatHeading, formatKn, formatLegDuration, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
+import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
+import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, Rig, ShallowInfo } from '../types';
 import Card from './Card';
@@ -42,23 +44,51 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
   const t = useT();
   const [lang] = useLang();
   const locator = firstShallowLeg(legs);
+  // #493/#504: the mask build's TOLERANCE_M bound (about.caveats.depthMask)
+  // means the used gate's own more-cautious reading can run as low as
+  // usedDepthM - MASK_TOLERANCE_M — recomputed from THIS plan's usedDepthM
+  // every render, never a fixed number, so it can never go stale as
+  // usedDepthM varies plan to plan.
+  const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M;
+  const containerClassName = isSevere
+    ? 'shallow-warning shallow-warning--severe'
+    : 'shallow-warning';
+  const cautiousM = cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1);
+  // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
+  // children — lead/detail/caveat — so a screen reader still announces one
+  // region while sighted users get a real visual hierarchy instead of one
+  // dense, uniformly-bold paragraph. LEAD carries the new #493 cautious-floor
+  // fact (the most severe, most actionable thing this warning says) and is
+  // the only emphasised part; DETAIL is the "what happened" mechanism at
+  // normal weight; CAVEAT is the chart-accuracy hedge, visually secondary but
+  // never hidden behind a click — it is a safety statement about the limits
+  // of this warning in an app with no chart authority of its own.
   return (
-    <p className="shallow-warning" role="alert">
-      {t('route.shallow.banner', {
-        requested: shallow.requestedDepthM.toFixed(1),
-        used: shallow.usedDepthM.toFixed(1),
-        minGate: shallow.minGateDepthM.toFixed(1),
-      })}
-      {locator && (
-        <>
-          {' '}
-          {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
-            count: locator.count,
-            time: formatTime(locator.firstTimeMs, lang),
-          })}
-        </>
-      )}
-    </p>
+    <div className={containerClassName} role="alert">
+      <p className="shallow-warning__lead">
+        {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
+          cautious: cautiousM,
+          draft: BOAT_DRAFT_M.toFixed(1),
+        })}
+      </p>
+      <p className="shallow-warning__detail">
+        {t('route.shallow.detail', {
+          requested: shallow.requestedDepthM.toFixed(1),
+          used: shallow.usedDepthM.toFixed(1),
+          minGate: shallow.minGateDepthM.toFixed(1),
+        })}
+        {locator && (
+          <>
+            {' '}
+            {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
+              count: locator.count,
+              time: formatTime(locator.firstTimeMs, lang),
+            })}
+          </>
+        )}
+      </p>
+      <p className="shallow-warning__caveat">{t('route.shallow.caveat')}</p>
+    </div>
   );
 }
 
@@ -124,9 +154,24 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: Rig }) {
 function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
   const t = useT();
   return (
-    <Chip className="chip-shallow">
-      {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
-    </Chip>
+    <>
+      <Chip className="chip-shallow">
+        {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
+      </Chip>
+      {/* #493/#504: sound lower bound on the mask's more cautious (conservative)
+          reading, derived from the SAME shipped figure the chip above
+          already shows — see cautiousDepthLowerBoundM's own doc comment
+          (app/src/lib/mask.ts) for the derivation. Rendered alongside, never
+          replacing, the shipped number: the two are meant to read
+          differently, and the user must be able to tell them apart. Uses the
+          Chip primitive (not a raw span) so it shares the base `.chip` pill
+          styling with its sibling above instead of re-declaring it. */}
+      <Chip className="chip-shallow-cautious">
+        {t('route.legs.shallowCautious', {
+          depth: cautiousDepthLowerBoundM(minDepthM).toFixed(1),
+        })}
+      </Chip>
+    </>
   );
 }
 

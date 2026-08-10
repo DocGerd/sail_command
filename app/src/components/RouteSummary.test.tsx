@@ -5,6 +5,8 @@ import { en } from '../i18n/dict.en';
 import { de } from '../i18n/dict.de';
 import { uniformWindGrid } from '../test/fixtures';
 import { formatDateTime, formatTime } from '../lib/format';
+import { MASK_TOLERANCE_M } from '../lib/mask';
+import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import {
   DEFAULT_SETTINGS,
   type Leg,
@@ -437,14 +439,22 @@ describe('shallow-water warning banner (#53/#452)', () => {
   }
 
   it('renders the plan-level warning with the requested, effective (used) and minimum gate depths', () => {
-    renderSummary({ plan: makeShallowPlan() });
-    const banner = screen.getByText(/was not passable/);
+    // #504 wave 4: the warning is now a role="alert" CONTAINER (a <div>)
+    // holding three <p> parts, not one <p>. `screen.getByText(/was not
+    // passable/)` would now resolve to the .shallow-warning__detail leaf
+    // alone (Testing Library's getNodeText only considers a node's OWN
+    // direct text-node children, so the wrapping <div> — which has no
+    // direct text of its own, only element children — never matches) —
+    // querying the container by class is what actually asserts on the
+    // element role/class live on.
+    const { container } = renderSummary({ plan: makeShallowPlan() });
+    const banner = container.querySelector('.shallow-warning');
+    expect(banner).not.toBeNull();
     expect(banner).toHaveAttribute('role', 'alert');
-    expect(banner).toHaveClass('shallow-warning');
-    expect(banner.textContent).toContain('3.0 m');
+    expect(banner?.textContent).toContain('3.0 m');
     // #452: the effective (relaxed) depth the route was actually computed at.
-    expect(banner.textContent).toContain('2.5 m');
-    expect(banner.textContent).toContain('2.3 m');
+    expect(banner?.textContent).toContain('2.5 m');
+    expect(banner?.textContent).toContain('2.3 m');
     // Honest passage-planning-aid copy (#455): never claims an unflagged
     // section IS safe. review (PR #461 Major 3, twin of the identical
     // PlannerPanel.test.tsx assertion — see its comment for the full
@@ -453,8 +463,8 @@ describe('shallow-water warning banner (#53/#452)', () => {
     // GREEN, to also catch "is/are safe" and "is/are clear". NARROWED, NOT
     // CLOSED — "poses no risk" still evades it; the POSITIVE `toContain`
     // below is the assertion actually doing the work.
-    expect(banner.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
-    expect(banner.textContent).toContain('not guaranteed to be clear');
+    expect(banner?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+    expect(banner?.textContent).toContain('not guaranteed to be clear');
   });
 
   it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
@@ -471,23 +481,23 @@ describe('shallow-water warning banner (#53/#452)', () => {
   // shared helper's default for every other test in the file.
   it('#452 Major 2: renders the German copy with all three depths and the honesty hedge', () => {
     localStorage.setItem('sc-lang', 'de');
-    render(
+    const { container } = render(
       <I18nProvider>
         <RouteSummary plan={makeShallowPlan()} rig="genoa" onRigChange={vi.fn()} />
       </I18nProvider>,
     );
-    const banner = screen.getByText(/keine durchgehende Route gefunden/);
+    const banner = container.querySelector('.shallow-warning');
+    expect(banner).not.toBeNull();
     expect(banner).toHaveAttribute('role', 'alert');
-    expect(banner).toHaveClass('shallow-warning');
     // Requested / used / minGate — same three distinct values as the English
     // case above, so a dropped placeholder in the DE string reds here too.
-    expect(banner.textContent).toContain('3.0 m');
-    expect(banner.textContent).toContain('2.5 m');
-    expect(banner.textContent).toContain('2.3 m');
+    expect(banner?.textContent).toContain('3.0 m');
+    expect(banner?.textContent).toContain('2.5 m');
+    expect(banner?.textContent).toContain('2.3 m');
     // The honesty hedge, in German: never claims an unflagged section IS
     // safe — this is the same #455 constraint as the English copy, and it
     // has to hold independently since the two strings are maintained by hand.
-    expect(banner.textContent).toContain('nicht garantiert frei von Untiefen');
+    expect(banner?.textContent).toContain('nicht garantiert frei von Untiefen');
   });
 
   it('is absent on plans without relaxation', () => {
@@ -643,5 +653,212 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
       .replace('{count}', '2')
       .replace('{time}', formatTime(DEPARTURE_MS, 'de'));
     expect(banner.textContent).toContain(expected);
+  });
+});
+
+// Builds the exact rendered text from a dict TEMPLATE (a real, hand-read
+// artifact) plus HAND-CHOSEN literal values — the same "needle from a real
+// artifact, haystack from the shipped dict string" shape maskTolerance.test.ts
+// uses, generalized to several placeholders via one replaceAll loop each
+// (matching useT()'s own per-key replaceAll semantics in i18n/index.tsx, so
+// a double-occurrence placeholder — none exist in these two templates today —
+// would still resolve identically to production). This is NOT deriving the
+// expectation from the code under test: ShallowWarning's own decision logic
+// (which key, which class, which values) is exercised for real by rendering
+// the component; this helper only stitches together values chosen here.
+function interpolate(template: string, vars: Record<string, string>): string {
+  let msg = template;
+  for (const [k, v] of Object.entries(vars)) msg = msg.replaceAll(`{${k}}`, v);
+  return msg;
+}
+
+describe('#493: cautious depth disclosure', () => {
+  // #504 review (finding #4): pairwise-DISTINCT requestedDepthM/usedDepthM/
+  // minGateDepthM/leg-minDepthM — the previous fixture collapsed all three
+  // shallow-info fields plus the leg's own minDepthM onto 2.3, so re-keying
+  // ShallowWarning's `used` interpolation (or isSevere) onto minGateDepthM
+  // would have kept every assertion here green.
+  const ONE_SHALLOW_LEG: Leg[] = [
+    {
+      kind: 'sail',
+      board: 'starboard',
+      start: { lat: 54.79, lon: 9.43 },
+      end: { lat: 54.8, lon: 10.0 },
+      startTimeMs: DEPARTURE_MS,
+      endTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+      headingDeg: 88,
+      twaDeg: 92,
+      twsKn: 10,
+      speedKn: 7,
+      distanceNm: 15,
+      maneuverAtStart: null,
+      shallow: { minDepthM: 2.3 },
+    },
+  ];
+
+  function makeLegPlan(): Plan {
+    const plan = makePlan();
+    plan.result.genoa = { ...GENOA_RESULT, legs: ONE_SHALLOW_LEG };
+    plan.result.shallow = { requestedDepthM: 3.5, usedDepthM: 2.9, minGateDepthM: 2.6 };
+    return plan;
+  }
+
+  it('renders the cautious lower bound ALONGSIDE the shipped per-leg figure, never in place of it', () => {
+    const { container } = renderSummary({ plan: makeLegPlan(), rig: 'genoa' });
+    const row = container.querySelector('table.route-legs tbody tr');
+    // Unchanged shipped-figure chip — proves the new surface is additive.
+    // Reads the LEG's own minDepthM (2.3), distinct from usedDepthM(2.9)/
+    // minGateDepthM(2.6) above — a field mix-up here would render 2.9 or 2.6
+    // instead of 2.3 and both assertions below would red.
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.3 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'cautious: as low as 1.4 m',
+    );
+  });
+
+  it('renders the German cautious lower bound with the same two-number contract', () => {
+    localStorage.setItem('sc-lang', 'de');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeLegPlan()} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Untiefe 2.3 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'vorsichtig: bis auf 1.4 m',
+    );
+  });
+
+  // #504 wave 4: the banner restructured from ONE dense <p> into a
+  // role="alert" CONTAINER (a <div>) holding three parts —
+  // .shallow-warning__lead/__detail/__caveat — chosen between
+  // route.shallow.lead/leadSevere by `usedDepthM - MASK_TOLERANCE_M <
+  // BOAT_DRAFT_M`, never both rendered at once. requestedDepthM(3.5) and
+  // minGateDepthM(2.6) are FIXED across every case here and distinct from
+  // both tested usedDepthM values (3.0, 2.9) and from each other (finding
+  // #4) — so a field mix-up moves a DIFFERENT number than the one under
+  // test.
+  describe('the restructured banner (#504 wave 4: lead/detail/caveat inside one alert)', () => {
+    const REQUESTED_M = '3.5';
+    const MIN_GATE_M = '2.6';
+    // Finding #5: derive the boundary from the SAME constants isSevere
+    // compares, rounded to one decimal, rather than hardcoding today's 3.0 —
+    // this tracks MASK_TOLERANCE_M/BOAT_DRAFT_M if either ever moves.
+    const BOUNDARY_USED_DEPTH_M = Math.round((BOAT_DRAFT_M + MASK_TOLERANCE_M) * 10) / 10;
+    const BELOW_BOUNDARY_USED_DEPTH_M = Math.round((BOUNDARY_USED_DEPTH_M - 0.1) * 10) / 10;
+
+    function makeSeverityPlan(usedDepthM: number): Plan {
+      const plan = makePlan();
+      plan.result.shallow = { requestedDepthM: 3.5, usedDepthM, minGateDepthM: 2.6 };
+      return plan;
+    }
+
+    // Hand-computed, not read from cautiousDepthLowerBoundM — see mask.test.ts
+    // for that function's own independently-pinned literals; this table only
+    // asserts the two values this suite needs, verified by hand:
+    // BOUNDARY(3.0) - 0.9 = 2.1 exactly; BELOW_BOUNDARY(2.9) - 0.9 = 2.0 exactly.
+    const CAUTIOUS_AT_BOUNDARY_M = '2.1';
+    const CAUTIOUS_BELOW_BOUNDARY_M = '2.0';
+
+    it('renders exactly ONE alert region for the shallow warning, not one per part', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M) });
+      // No stale-forecast or no-route alert exists in this fixture (result
+      // is present, forecast is fresh) — every role="alert" here comes from
+      // ShallowWarning, so this directly catches a regression to a separate
+      // role="alert" per lead/detail/caveat part, under ANY class name.
+      const alerts = container.querySelectorAll('[role="alert"]');
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]?.tagName).toBe('DIV');
+    });
+
+    it('does NOT escalate right at the boundary — lead/detail/caveat each pinned to their exact slots', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BOUNDARY_USED_DEPTH_M) });
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveAttribute('role', 'alert');
+      expect(banner).not.toHaveClass('shallow-warning--severe');
+      const lead = banner?.querySelector('.shallow-warning__lead');
+      const detail = banner?.querySelector('.shallow-warning__detail');
+      const caveat = banner?.querySelector('.shallow-warning__caveat');
+      expect(lead?.textContent).toBe(
+        interpolate(en['route.shallow.lead'], { cautious: CAUTIOUS_AT_BOUNDARY_M }),
+      );
+      expect(detail?.textContent).toBe(
+        interpolate(en['route.shallow.detail'], {
+          requested: REQUESTED_M,
+          used: BOUNDARY_USED_DEPTH_M.toFixed(1),
+          minGate: MIN_GATE_M,
+        }),
+      );
+      expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
+      // #504 review round 2's dict-independence requirement, extended to the
+      // new lead/detail/caveat structure: this literal is typed here, never
+      // read from `en[...]` at runtime, so it cannot shrink along with the
+      // dict (MEASURED at wave 2 by the reviewer: deleting the cautious
+      // clause from the dict left the old .toBe() pin 107/107 GREEN).
+      expect(lead?.textContent).toContain('could run as low as 2.1 m');
+    });
+
+    it('escalates one decimetre below the boundary — lead carries the draft clause, pinned to its slot', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M) });
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveAttribute('role', 'alert');
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const lead = banner?.querySelector('.shallow-warning__lead');
+      const detail = banner?.querySelector('.shallow-warning__detail');
+      const caveat = banner?.querySelector('.shallow-warning__caveat');
+      expect(lead?.textContent).toBe(
+        interpolate(en['route.shallow.leadSevere'], {
+          cautious: CAUTIOUS_BELOW_BOUNDARY_M,
+          draft: BOAT_DRAFT_M.toFixed(1),
+        }),
+      );
+      expect(detail?.textContent).toBe(
+        interpolate(en['route.shallow.detail'], {
+          requested: REQUESTED_M,
+          used: BELOW_BOUNDARY_USED_DEPTH_M.toFixed(1),
+          minGate: MIN_GATE_M,
+        }),
+      );
+      expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
+      // Same dict-independence requirement as the non-severe test above,
+      // for THIS key's own {cautious} and {draft} slots (the reviewer's
+      // "same hole for the severe key's {draft} clause" finding) — both
+      // literals are typed here, not read from `en[...]`.
+      expect(lead?.textContent).toContain('as low as 2.0 m');
+      expect(lead?.textContent).toContain("below this boat's 2.1 m draft");
+      // Regression pin, unchanged from before the fold (#455's honesty hedge
+      // must hold for the caveat too).
+      expect(caveat?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+    });
+
+    it('German copy: severe case pins the same slots', () => {
+      localStorage.setItem('sc-lang', 'de');
+      const { container } = render(
+        <I18nProvider>
+          <RouteSummary
+            plan={makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M)}
+            rig="genoa"
+            onRigChange={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const lead = banner?.querySelector('.shallow-warning__lead');
+      expect(lead?.textContent).toBe(
+        interpolate(de['route.shallow.leadSevere'], {
+          cautious: CAUTIOUS_BELOW_BOUNDARY_M,
+          draft: BOAT_DRAFT_M.toFixed(1),
+        }),
+      );
+      // Dict-independence requirement, typed here rather than read from
+      // `de[...]`.
+      expect(lead?.textContent).toContain('kann bis auf 2.0 m sinken');
+      expect(lead?.textContent).toContain('unter den Bootstiefgang von 2.1 m');
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
+import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from './mask';
 
 const CELL_LAT = (TEST_MASK_META.north - TEST_MASK_META.south) / TEST_MASK_META.rows; // 0.005
 const CELL_LON = (TEST_MASK_META.east - TEST_MASK_META.west) / TEST_MASK_META.cols; // 0.005
@@ -209,5 +210,42 @@ describe('NavMask.depthInfoM', () => {
   it('depthM() is unchanged by the new accessor (255 -> 25.4, 254 -> 25.4)', () => {
     expect(makeMask(() => 255).depthM(inBounds)).toBeCloseTo(25.4, 5);
     expect(makeMask(() => 254).depthM(inBounds)).toBeCloseTo(25.4, 5);
+  });
+});
+
+// #493: cautiousDepthLowerBoundM is a SOUND LOWER BOUND on the mask's more
+// cautious (Resampling.max) reading for a cell whose SHIPPED (blended) depth
+// is `shippedDepthM` — derived directly from pipeline/build_mask.py's blend
+// rule (depth_blend <= depth_max + MASK_TOLERANCE_M, so depth_max >=
+// depth_blend - MASK_TOLERANCE_M). Never the true cautious value itself, only
+// a floor it cannot be below. See app/src/test/maskTolerance.test.ts for the
+// cross-artifact guard pinning MASK_TOLERANCE_M against the Python constant
+// it mirrors.
+describe('#493: cautiousDepthLowerBoundM', () => {
+  it('floors to 0.1 m even where IEEE754 residue would otherwise cost an extra decimetre', () => {
+    // 1.4 - MASK_TOLERANCE_M(0.9) is mathematically exactly 0.5, but in
+    // double precision evaluates to 0.4999999999999999 (verified via a
+    // scratch node -e). A naive Math.floor(x*10)/10 on that residue floors
+    // to 0.4 — an EXTRA decimetre of pessimism the pipeline's blend rule
+    // never actually proves. Hand-derived expected value (0.5), not
+    // computed from the function under test — the #50 equivalence-test
+    // tautology this repo has been bitten by before.
+    expect(cautiousDepthLowerBoundM(1.4)).toBe(0.5);
+  });
+
+  it('pins an ordinary shipped reading (2.3 -> 1.4, exact in double precision)', () => {
+    expect(cautiousDepthLowerBoundM(2.3)).toBe(1.4);
+  });
+
+  it('floors a genuine fractional remainder down, never rounds it', () => {
+    // 2.15 - 0.9 = 1.25 exactly; flooring gives 1.2, rounding would give 1.3
+    // (Math.round(12.5) rounds up in JS) and would overstate the floor.
+    expect(cautiousDepthLowerBoundM(2.15)).toBe(1.2);
+  });
+
+  it('clamps at 0 rather than emitting a negative depth', () => {
+    expect(cautiousDepthLowerBoundM(0.5)).toBe(0);
+    expect(cautiousDepthLowerBoundM(0)).toBe(0);
+    expect(cautiousDepthLowerBoundM(MASK_TOLERANCE_M)).toBe(0);
   });
 });

@@ -714,9 +714,12 @@ describe('PlannerPanel', () => {
 
     it('renders the plan-level shallow warning, naming the effective (used) depth', () => {
       renderPanel({ plan: makeShallowPlan(), rig: 'genoa' });
-      const banner = screen.getByText(/was not passable/);
-      expect(banner).toHaveAttribute('role', 'alert');
-      expect(banner).toHaveClass('shallow-warning');
+      // #504 wave 5: pin the PROPERTY (the shallow warning is announced as an
+      // alert region), not which tag happens to carry role="alert" — the
+      // wave 4 restructure moved it onto a wrapping <div>, an implementation
+      // detail this assertion no longer depends on.
+      const banner = screen.getByRole('alert');
+      expect(banner).toHaveTextContent(/was not passable/);
       // Requested depth.
       expect(banner.textContent).toContain('3.0 m');
       // #452: the effective depth the route was actually computed at — the

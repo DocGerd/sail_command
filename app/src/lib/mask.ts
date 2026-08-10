@@ -4,6 +4,57 @@ import { haversineNm, toRad } from './geo';
 const LAND = 0;
 const NM_PER_M = 1 / 1852;
 
+/**
+ * Mirrors pipeline/build_mask.py's TOLERANCE_M (mask-build tolerance) on the
+ * TypeScript side — nothing compiles across that Python/TS boundary, so
+ * app/src/test/maskTolerance.test.ts reads the Python source and fails
+ * closed if this value ever drifts from it. build_mask.py blends bilinear
+ * over the conservative Resampling.max reading only where the two agree
+ * within this bound, so for every cell: depth_blend <= depth_max +
+ * MASK_TOLERANCE_M (see that file's own derivation comment, at the
+ * `TOLERANCE_M` assignment, for the full argument).
+ *
+ * Why 0.9 is the value: that comment derives it directly from the blend rule
+ * and the boat's draft — at the default gate G = 3.0 m, G - TOLERANCE_M =
+ * 2.1 m, exactly BOAT_DRAFT_M (app/src/routing/relaxedDepth.ts). In the
+ * source's own words, "this value is derived from the blend rule and the
+ * draft; it is not fitted to an outcome."
+ *
+ * Separately, under that same comment's "LOWER IS NOT SAFER" heading: 0.9
+ * cannot simply be tightened (lowered) either — that heading records a
+ * measured limit on how far down it can go, not the reason 0.9 was chosen.
+ * On the DTM the pipeline builds from, Marstal's approach (at its 2.0 m
+ * exception gate) is DISCONNECTED for TOLERANCE_M <= 0.87 m and connects
+ * from 0.88 m up, so 0.9 clears that wall by only ~0.03 m.
+ */
+export const MASK_TOLERANCE_M = 0.9;
+
+/**
+ * #493: a SOUND LOWER BOUND on the mask's more cautious (conservative,
+ * Resampling.max) reading for a cell whose SHIPPED (blended) depth is
+ * `shippedDepthM` — never the true cautious value itself, only a floor it
+ * cannot be below. Directly from build_mask.py's blend rule: depth_blend <=
+ * depth_max + MASK_TOLERANCE_M, so depth_max >= depth_blend -
+ * MASK_TOLERANCE_M. Gate-independent — a property of the mask build, not of
+ * any safety gate a user picks.
+ *
+ * Floors to 0.1 m (never rounds), so the displayed figure can never read
+ * deeper than this bound provably allows, and clamps at 0 (depth cannot be
+ * negative). The floor is nudged by a sub-decimetre epsilon before
+ * quantizing: `shippedDepthM - MASK_TOLERANCE_M` is exact in real-number
+ * arithmetic for many inputs (e.g. 2.3 - 0.9 = 1.4) but IEEE754 double
+ * precision can land a hair below the true value for others (1.4 - 0.9 =
+ * 0.4999999999999999) — a bare `Math.floor` on that residue would silently
+ * cost an extra, unearned decimetre of pessimism. The epsilon is far smaller
+ * than any real 0.1 m quantization step, so it can never round a genuine
+ * fractional depth UP.
+ */
+export function cautiousDepthLowerBoundM(shippedDepthM: number): number {
+  const bound = shippedDepthM - MASK_TOLERANCE_M;
+  const flooredTenthsM = Math.floor(bound * 10 + 1e-9);
+  return Math.max(0, flooredTenthsM / 10);
+}
+
 export class NavMask {
   readonly meta: MaskMeta;
   private data: Uint8Array;

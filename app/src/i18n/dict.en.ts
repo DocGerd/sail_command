@@ -166,33 +166,65 @@ export const en = {
   'route.rigMoot': 'Rig does not matter here — this passage runs entirely under engine',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
-  // #53/#452: honest passage-planning-aid copy — charted depth can be wrong
-  // in EITHER direction; never claim the route is verified safe. {used}
-  // names the relaxed gate the planner actually routed at (#53's
-  // graceful-degradation tier only fires when {used} < {requested}, so the
-  // two are never equal here) — and the closing sentence deliberately does
-  // NOT say "elsewhere is safe": the mask itself is known to OVERSTATE depth
-  // on ~45% of cells (#455), so an unflagged section is merely unflagged,
-  // not verified. review (PR #461 Minor 6): the pre-#452 string named the
-  // OPTIMISTIC case explicitly ("dredged channels ... often deeper than
-  // charted"); this copy deliberately DROPS that reassurance rather than
-  // keep a comment with no matching clause below — under #455 the direction
-  // that matters here is the dangerous one, not the reassuring one.
-  // review (PR #461 Minor 5): "shallowest charted depth actually crossed"
-  // overclaimed — `flagShallowLegs` (planRoute.ts) folds `minGateDepthM`
-  // over BOTH rigs' legs, so on a given rig's tab the number may describe
-  // the OTHER rig's leg, not one this route actually sails. "crossed by
-  // this plan" is the honest, plan-level framing.
-  'route.shallow.banner':
-    'Caution: your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m. Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
-  // #452 gap 3: one-sentence locator appended to the banner above — names how
-  // many legs are individually flagged shallow and when the first one
-  // starts, so the warning points at a row in the legs table instead of
-  // being a bare status. Singular/`.plural` follows the same convention as
-  // banner.viaTooClose(.plural): the singular form omits the count entirely
-  // ("leg" alone already says "one").
+  // #504 fix wave 4: restructured from ONE dense paragraph into three parts
+  // inside ONE role="alert" region (ShallowWarning, RouteSummary.tsx: a
+  // <div> with .lead/.detail/.caveat children) — leads with the most
+  // severe, actionable fact (the cautious floor) instead of emphasising
+  // everything equally. Re-sequencing a sentence is NOT automatically safe:
+  // wave 6 found the lead's original "that same depth data" was an
+  // ANAPHORA pointing back at {minGate}, which now lives in .detail BELOW
+  // the lead — the headline of a safety warning referred to something the
+  // reader had not yet seen. Fixed by naming "the charted depth data"
+  // directly instead of pointing at it. Checking every cross-sentence
+  // reference is a REQUIRED step of any future re-sequencing here, not an
+  // assumption — .detail and .caveat were both checked too (wave 6) and
+  // carry no reference into another PART: "this route"/"this warning" are
+  // deictic to the whole alert, not position-dependent.
+  // lead/leadSevere ALWAYS carry the #493 cautious-floor clause; leadSevere
+  // additionally states the boat's-draft clause. "Caution:" moved here from
+  // detail, since lead is now the most prominent part.
+  'route.shallow.lead':
+    'Caution: a more cautious reading of the charted depth data could run as low as {cautious} m.',
+  'route.shallow.leadSevere':
+    "Caution: a more cautious reading of the charted depth data could run as low as {cautious} m, below this boat's {draft} m draft.",
+  // What happened: the requested safety depth was not passable, the depth
+  // actually used, the shallowest charted depth crossed. Normal weight (no
+  // longer emphasised) — review (PR #461 Minor 5): "shallowest charted
+  // depth actually crossed" overclaimed — `flagShallowLegs` (planRoute.ts)
+  // folds `minGateDepthM` over BOTH rigs' legs, so on a given rig's tab the
+  // number may describe the OTHER rig's leg, not one this route actually
+  // sails. "crossed by this plan" is the honest, plan-level framing. `used`
+  // < `requested` always holds here (#53's relaxation only runs after the
+  // requested gate failed to connect).
+  'route.shallow.detail':
+    'Your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m.',
+  // #452 gap 3: one-sentence locator appended to .detail above (the "what
+  // happened" statement this locates a row against) — names how many legs
+  // are individually flagged shallow and when the first one starts.
+  // Singular/`.plural` follows the same convention as banner.viaTooClose
+  // (.plural): the singular form omits the count entirely ("leg" alone
+  // already says "one").
   'route.shallow.locator': 'The affected leg starts at {time}.',
   'route.shallow.locator.plural': '{count} legs are affected — the first starts at {time}.',
+  // The chart-accuracy caveat — visually secondary (smaller text) but NEVER
+  // hidden behind a click: a safety statement about the limits of the
+  // warning above it, in an app with no chart authority of its own. Honest
+  // passage-planning-aid copy (#455): never claims an unflagged section IS
+  // safe — the mask itself is known to OVERSTATE depth on ~45% of WATER
+  // cells, encoded basis (#455), so an unflagged section is merely
+  // unflagged, not verified.
+  // review (PR #461 Minor 6): the pre-#452 string named the OPTIMISTIC case
+  // explicitly ("dredged channels ... often deeper than charted"); this
+  // copy deliberately DROPS that reassurance rather than assert something
+  // with no supporting measurement — under #455 the direction that matters
+  // here is the dangerous one, not the reassuring one, which is why "can
+  // both understate and overstate" below states both but reassures on
+  // neither. review (PR #461 Major 3): widened from `/\bis
+  // (verified|guaranteed)\b/i`, which let "...is safe." through 91/91
+  // GREEN, to also catch "is/are safe" and "is/are clear". NARROWED, NOT
+  // CLOSED — "poses no risk" still evades it.
+  'route.shallow.caveat':
+    'Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -218,6 +250,13 @@ export const en = {
   // table context (e.g. by a screen reader in linear mode).
   'route.legs.shallow': 'Shallow',
   'route.legs.shallowMarker': 'Shallow {depth} m',
+  // #493/#504: cautious lower bound for the SAME cell, rendered ALONGSIDE
+  // the marker above (never replacing it) — see cautiousDepthLowerBoundM in
+  // app/src/lib/mask.ts for the derivation. Worded as a HAZARD, not a
+  // comfort floor — "≥ {depth} m cautious" (the original wording) read as
+  // reassurance sitting next to the banner's "could run as low as {depth} m"
+  // for the same fact; "as low as" names the same hazard consistently.
+  'route.legs.shallowCautious': 'cautious: as low as {depth} m',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
   'route.legs.disclosure': 'Legs ({count})',
   'route.kind.motor': 'Motor',

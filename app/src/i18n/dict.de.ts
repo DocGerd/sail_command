@@ -182,12 +182,49 @@ export const de = {
   // route, not a depth). Reworded to name what actually happened: the
   // requested-depth solve found no continuous route, so the planner used a
   // reduced one instead.
-  'route.shallow.banner':
-    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+  // #504 Korrekturwelle 4: von EINEM dichten Absatz zu drei Teilen innerhalb
+  // EINER role="alert"-Region restrukturiert (ShallowWarning,
+  // RouteSummary.tsx: ein <div> mit .lead/.detail/.caveat-Kindern) — führt
+  // mit der schwerwiegendsten, handlungsrelevanten Tatsache (der
+  // Untergrenze), statt alles gleich stark zu betonen. Sätze umzuordnen ist
+  // NICHT automatisch sicher: Korrekturwelle 6 fand, dass leads ursprüngliches
+  // "derselben Tiefendaten" eine ANAPHER war, die auf {minGate} zurückwies —
+  // und {minGate} lebt jetzt in .detail, UNTER dem lead. Die Schlagzeile
+  // einer Sicherheitswarnung verwies auf etwas, das die Leserin noch nicht
+  // gesehen hatte. Behoben, indem "der Kartentiefen" direkt benannt wird,
+  // statt darauf zu verweisen. Jede satzübergreifende Referenz zu prüfen ist
+  // jetzt ein PFLICHTSCHRITT bei jeder künftigen Umordnung hier, keine
+  // Annahme — .detail und .caveat wurden ebenfalls geprüft (Welle 6) und
+  // tragen keine solche Referenz (beide sind in sich geschlossen: "diese
+  // Route"/"diese Warnung" sind deiktisch auf die gesamte Warnung bezogen,
+  // nicht positionsabhängig). lead/leadSevere tragen IMMER die
+  // #493-Untergrenzen-Klausel; leadSevere fügt zusätzlich die
+  // Bootstiefgang-Klausel an (nicht "Tiefgang des Boots von {draft} m" — das
+  // "von" hing dort mehrdeutig). "Achtung:" ist von detail hierher
+  // gewandert, da lead jetzt der prominenteste Teil ist.
+  'route.shallow.lead':
+    'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken.',
+  'route.shallow.leadSevere':
+    'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m.',
+  // Was passiert ist: die eingestellte Sicherheitstiefe war nicht
+  // passierbar, die tatsächlich verwendete Tiefe, die geringste gequerte
+  // Kartentiefe. Normale Textstärke (nicht mehr hervorgehoben) — siehe
+  // dict.en.ts's Kommentar für den vollen Hintergrund ({used} < {requested},
+  // {minGate} als Plan-weite Angabe).
+  'route.shallow.detail':
+    'Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m.',
   // #452 gap 3: siehe dict.en.ts's Kommentar für Zweck und Konvention
-  // (Singular/`.plural`, wie banner.viaTooClose(.plural)).
+  // (Singular/`.plural`, wie banner.viaTooClose(.plural)). An .detail
+  // angehängt (die "was passiert ist"-Aussage, zu der diese Ortsangabe
+  // gehört), nicht an .lead oder .caveat.
   'route.shallow.locator': 'Die betroffene Etappe beginnt um {time}.',
   'route.shallow.locator.plural': '{count} Etappen sind betroffen — die erste beginnt um {time}.',
+  // Die Kartengenauigkeits-Einschränkung — visuell sekundär (kleinere
+  // Schrift), aber NIE hinter einem Klick verborgen: eine
+  // Sicherheitsaussage über die Grenzen der obigen Warnung, in einer App
+  // ohne eigene Kartenautorität.
+  'route.shallow.caveat':
+    'Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -211,6 +248,14 @@ export const de = {
   // Text statt reiner Farbe).
   'route.legs.shallow': 'Untiefe',
   'route.legs.shallowMarker': 'Untiefe {depth} m',
+  // #493/#504: vorsichtige Untergrenze derselben Zelle, NEBEN der obigen
+  // Marke gerendert (nie ersetzend) — siehe cautiousDepthLowerBoundM in
+  // app/src/lib/mask.ts für die Herleitung. Als GEFAHR formuliert, nicht als
+  // Komfort-Untergrenze — "≥ {depth} m vorsichtig" hing "vorsichtig" als
+  // Adverb hinter die Zahl (unidiomatisch) und las sich neben dem "kann bis
+  // auf … sinken" des Banners für denselben Sachverhalt beruhigend;
+  // "bis auf ... m" benennt dieselbe Gefahr konsistent in beiden Texten.
+  'route.legs.shallowCautious': 'vorsichtig: bis auf {depth} m',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   'route.legs.disclosure': 'Etappen ({count})',
   'route.kind.motor': 'Motor',
