@@ -87,7 +87,11 @@ deviate from it.
   hand-added: a real `npm --prefix app run test` run gives **1294 tests, 109
   files** (2026-08-04); BOTH halves re-measured 2026-08-10 on develop
   @ `9940b32` with maplibre-gl 6.2.0 installed — **1515 tests, 117 files**,
-  all passing, 234 s. The coverage PERCENTAGES above are UNTOUCHED — they
+  all passing, 234 s; re-measured again 2026-08-10 on develop @ `74fcd35`
+  after #504 — **1526 tests, 117 files**, all passing, 233.8 s. The file
+  count did NOT move because #504 added cases to four EXISTING test files
+  and no new one, which is the ordinary shape: re-measure both halves rather
+  than inferring either from the other. The coverage PERCENTAGES above are UNTOUCHED — they
   were not re-measured this session (that needs `test:coverage`, a
   substantially longer run) and a scanning-only or assertion-adding test
   file is coverage-neutral to first order the same way PR #351's was; don't
@@ -345,6 +349,25 @@ deviate from it.
   independently justified regardless — app.css's own updated comment: a
   Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
   on its own" — not merely a residual of the now-gone `:has()` pairing.
+- **A single-class MODIFIER loses to its base rule when the base is declared
+  LATER** — specificity ties, source order decides. `app/src/app.css`'s
+  `.chip` base sits BELOW its modifiers, so switching a hand-rolled span to
+  the `Chip` primitive silently reverted the modifier: `.chip-shallow-cautious`
+  rendered FILLED at full size until raised to the compound
+  `.chip.chip-shallow-cautious` (#493/PR #504 — MEASURED in a real browser,
+  background `color-mix(…)` → `rgba(0,0,0,0)`, 12.8px → 12px, padding
+  1.6px/8px → 0.8px/6.4px). The markup, the tokens and the rule each look
+  correct in isolation and only the RESOLVED style shows it, so verify with
+  `getComputedStyle` (real browser or jsdom against the real `app.css`),
+  never by reading the CSS. **jsdom caveat: its `backgroundColor` reads
+  `rgba(0,0,0,0)` in BOTH the broken and fixed states** (it parses neither
+  `color-mix()` nor `var()`) — only the `background` SHORTHAND discriminates.
+  The same cascade means `.chip-shallow`'s amber hazard fill has NEVER
+  rendered (#506, open); fixing it by REORDERING `.chip` above its modifiers
+  would repair every BROKEN modifier at once (not every modifier — e.g.
+  `.chip-faster-rig` already sits below `.chip` and is unaffected) but
+  changes an existing surface, which is why #504 took the narrow
+  compound-selector route instead.
 - **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
   `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
   primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
@@ -1532,6 +1555,19 @@ deviate from it.
   than run another unreviewed wave); and prefer RETRIEVING the primary
   artifact over constructing an argument — a disputed claim was settled by
   reading the run's own JSON instead of arguing comparability.
+  Session 31 (2026-08-10, #493/PR #504) reproduced the class in wave after
+  wave of a multi-wave branch, comment-only waves included, each instance
+  sitting inside the fix for the previous one: a wrong "tightest tolerance"
+  claim;
+  then a correction that invented a DERIVATION the source explicitly denies
+  (every number in it verbatim correct — the defect was the *because*, which
+  is the form that survives a numeric check); then a `Chip`-primitive tidy-up
+  that regressed the rendered chip; then a restructure that broke an anaphor.
+  What ended it: briefing the REVIEWER at the replacement text specifically
+  and telling it to EXPECT a successor rather than assume the last fix
+  stopped it, plus an explicit minimal-diff stopping rule on the final wave —
+  whereupon the implementer caught its own unrequested explanatory clause and
+  cut it before running anything.
   Session 28 (2026-08-06/07) produced fresh instances in EVERY ONE of the
   three PRs merged that night — including one inside a **comment-only**
   wording correction, where the entire content of the change was a single
@@ -1819,6 +1855,42 @@ deviate from it.
   repo's own timestamps and would have taught future sessions to distrust the
   control that worked. A claim about the RECORD, stated from memory instead
   of re-read from the record, is the same class as a claim about the code.
+- **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
+  PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
+  lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
+  DERSELBEN Tiefendaten" while its referent moved into a paragraph rendered
+  BELOW it — so the headline sentence of a safety warning pointed at
+  something the reader had not seen yet. Every string was individually
+  unchanged and individually correct; only the ORDER was wrong, which no
+  compiler, no test and no hunk-by-hunk review can see, and the wave's own
+  comment ("verbatim … only re-sequenced — no new wording") read as a safety
+  guarantee and was not one. "That same", "this", "the above", "derselben"
+  are bindings to POSITION. After any re-sequencing, check every referring
+  expression, and distinguish DEICTIC references ("this route", "diese
+  Warnung" — to the whole region, valid from any position) from ANAPHORIC
+  ones pointing INTO another part; a definite description whose referent
+  appears only in a LATER part is the same defect wearing different clothes.
+  RELOCATING a claim RE-ENDORSES it: a reviewer reading the diff checks that
+  nothing was LOST and never re-asks whether the moved claim was ever TRUE.
+  A "~45% of cells" figure survived a move with the wrong denominator — the
+  #455 spike says ~45% of WATER cells on the ENCODED basis (1,192,923 of
+  2,646,047), and water is only about HALF of the mask's 5,280,000 cells
+  (2,646,047, i.e. 50.1%), so the two denominators differ by roughly 2x; that
+  same spike had already rejected draft copy for mixing bases ("the right
+  response is a stated basis, not the largest number"). Verify a moved claim
+  as if you were writing it fresh.
+- **A capture's EXISTENCE is not evidence of its CONTENT** (PR #504). A
+  browser pass reported "all 6 present" for screenshots whose subject was
+  scrolled out of frame: two showed no banner at all, and the chip the PR
+  existed to add appeared in ZERO of them — the results panel is its own
+  `overflow:auto` container (not part of outer page scroll) and the legs
+  table scrolls horizontally, so a viewport capture misses both. The file
+  list was verified; the frame was not. Scroll the target into view before
+  shooting, prefer full-page captures, and RE-OPEN every file to confirm the
+  subject is actually in it. Sibling of "what class of failure can this
+  method not detect?" — here the answer was "anything outside the viewport".
+  Same pass also measured the honest narrow-viewport frame: raising the
+  height to make a banner fit is not the 390x844 experience a user gets.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -1933,6 +2005,28 @@ deviate from it.
   `planRoute.ts` re-snaps 46.3 m onto a conservative-3.0 m cell, losing zero
   pairs. Gate-conditional: the floor degrades to 1.3 m at the UI's 2.2 m
   minimum. ~10,746 crossers remain, so #455 stays OPEN.
+- **The cautious floor is now DISCLOSED at the leg, not fixed** (#493, PR #504,
+  shipped 2026-08-10). Because the mask is built so `depth_blend <= depth_max
+  + T`, the inequality runs BACKWARDS too — `conservative >= shipped - T` per
+  cell, and a min over the same swept cells preserves it, so
+  `leg.shallow.minDepthM - MASK_TOLERANCE_M` is a SOUND lower bound derivable
+  from data already on disk. `app/src/lib/mask.ts` :: `cautiousDepthLowerBoundM`
+  floors it to 0.1 m (never rounds — a depth figure must not read deeper than
+  provable) and clamps at 0; `MASK_TOLERANCE_M` is the TS twin of
+  `build_mask.py`'s `TOLERANCE_M`, pinned against it by
+  `app/src/test/maskTolerance.test.ts` (no compiler spans Python and
+  TypeScript). Surfaced in the legs-table cautious chip and in the
+  `ShallowWarning` banner, which is ONE `role="alert"` container with
+  lead/detail/caveat children — the lead carries the floor and, when
+  `usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M`, that it falls below the
+  draft. That gate is UNCONDITIONALLY TRUE at the 3.0 m default (relaxation
+  searches `[BOAT_DRAFT_M, requestedDepthM)`, so `usedDepthM <= 2.9`); it only
+  discriminates above a 3.0 m gate — which is why the two-tier banner was
+  folded into one. DELIBERATELY presentation-only: no field was added to
+  `ShallowInfo`/`Leg.shallow`, so `PlanResult` stays byte-identical, the
+  `app/sweep/` baseline stays comparable and NO #282 sweep is owed. The
+  measured conservative reading (1.80 m on Flensburg->Marstal) still needs
+  shipped data; the bound renders 1.40 m there — pessimistic, never optimistic.
 - **Buoyed fairways are DECLINED as a routing input** (#244,
   `docs/spikes/244-buoyed-fairways.md`). `seamark:type=fairway` does not
   exist in-region at all; the 258 `waterway=fairway` ways that do exist
