@@ -456,6 +456,14 @@ If it was observed at tier 4 or `depthComfortMarginM: 0`, the fix is real,
 narrower, and worth doing. **This must be asked and answered before code is
 written, and the answer recorded here or in the tracking issue either way.**
 
+**ANSWERED 2026-08-10, for the DEFAULT and comfort-0 populations** — see
+[Measured 2026-08-10](#measured-2026-08-10) below for the full record. The
+maintainer confirmed the reported route was Flensburg→Marstal at
+`DEFAULT_SETTINGS`. Separately, 29 of the 55 shallow-bearing plans in the
+current re-solve population have a sub-requested-gate cell beyond 2400 m
+from every waypoint; tier split across those 29: `no-comfort` 1 (tier 3),
+`margin-zero` 27 (all tier 3), `relaxation-dense` 16 tier 3 + 11 tier 4.
+
 ### 4(b) The sweep cannot currently discriminate a correct fix from a silently broken one
 
 **The load-bearing figure, verifiable in-repo**: `sweepArms.ts`'s own
@@ -531,6 +539,8 @@ re-litigating the same argument:
    *before* implementation, not discovered by the sweep afterward. If it is
    confirmed to be tier 4 or `depthComfortMarginM: 0`, the case for
    proceeding is strong and narrower in scope than #452's original framing.
+   **ANSWERED 2026-08-10** — see [Measured 2026-08-10](#measured-2026-08-10)
+   below: the maintainer confirmed `DEFAULT_SETTINGS`.
 2. **A relaxation-exercising sweep arm exists and BASE is re-recorded.**
    Until then, no BASE-vs-HEAD comparison for this change means anything,
    regardless of which design is chosen.
@@ -546,6 +556,9 @@ re-litigating the same argument:
    #455-class tolerance change, or a #245-class resolution change, would
    both invalidate the 1,840 m worst-case measurement this radius is based
    on).
+   **ANSWERED 2026-08-10** — see [Measured 2026-08-10](#measured-2026-08-10)
+   below: R = 1852 m (1 nm) is now recommended, superseding §3.3's
+   2400–2600 m band.
 5. **Evidence that P3's per-disc gate can genuinely come out lower than the
    global search's answer on some real harbour** — not just Marstal, where
    it measurably does not. If such a harbour exists, the §3.2 grafted
@@ -582,3 +595,95 @@ re-litigating the same argument:
 - **No backend, offline-first.** All three designs are solver-worker-local
   changes; none introduces a network dependency or changes what is
   precached.
+
+---
+
+## Measured 2026-08-10
+
+Re-running the design workflow's `pipeline/.venv` numpy/scipy mask
+reimplementation against the committed mask, this time driven off the 55
+shallow-bearing plans in the current `app/sweep/` fixture rather than the
+single Flensburg↔Marstal case §2.3/§3.3 measured, answers two of §6's open
+items and adds three further findings. Every figure below is freshly
+measured on this branch; none is carried forward from §0–§7 above.
+
+### Positive control
+
+Before trusting any "0 pinch" reading below, the classifier that reports
+pinch (mask-level connectivity loss under a candidate `APPROACH_RADIUS_M`)
+was checked for a true positive first: swept over all 55 shallow-bearing
+plans, radii 0 / 100 / 250 / 500 / 1000 / 1050 m all read **55/55 pinch** —
+every plan loses connectivity at a disc that small, as it must. This is what
+licenses every 0-pinch row that follows as informative rather than a
+classifier that never fires.
+
+### The `APPROACH_RADIUS_M` cliff (§6 item 4, ANSWERED)
+
+Same sweep, continued: 1060 / 1852 / 2400 / 3704 m all read **0/55 pinch**.
+The transition sits inside a single **10 m band, 1050→1060 m** — finer than
+the ~46 m mask cell size — and lands at the identical band across the three
+arms carrying shallow-bearing plans in this population (`no-comfort`,
+`margin-zero`, `relaxation-dense`; tier split below).
+
+**Recommendation: R = 1852 m (1 nm)**, superseding §3.3's 2400–2600 m
+counter-proposal. Reasons, all measured rather than argued: a ~790 m margin
+over the measured floor (the 1050→1060 m cliff, not the 1,840 m worst-case
+extent §3.3 margined against); a natural constant (one nautical mile) rather
+than a fitted cliff-plus-delta; and it dominates 2400 m on every axis
+measured here — both read 0/55 pinch, but 1852 m forbids 1025 cells from
+relaxation licensing against 2400 m's 996, and protects 11 of the 171
+sub-draft cells (below) against 2400 m's 9.
+
+### §4(a), the configuration question (ANSWERED for the DEFAULT and comfort-0 populations)
+
+The maintainer confirmed the route that produced the original #452 complaint
+was Flensburg→Marstal at `DEFAULT_SETTINGS` — the first branch of §4(a)'s
+open question. Separately, of the 55 shallow-bearing plans, **29** have a
+sub-requested-gate cell lying beyond 2400 m from every waypoint — i.e.
+outside even §3.3's rejected, more generous radius. Tier split across those
+29: `no-comfort` 1 plan (tier 3), `margin-zero` 27 plans (all tier 3),
+`relaxation-dense` 16 plans tier 3 + 11 plans tier 4.
+
+### P3 safety re-solve — hygiene, not sub-draft mitigation
+
+Re-solving all 29 of the plans above under the P3 disc mechanism: **29/29**
+return `status: ok`; **0/29** show a worse (lower) `usedDepthM`; **0/29** show
+a worse (lower) `minGateDepthM` — the specific regression §3.2's grafted
+guard exists to catch. Of the 171 cells reading below `BOAT_DRAFT_M` on the
+conservative mask, 93.6% lie within 1852 m of a waypoint (inside any
+workable disc), so a 1852 m P3 disc excludes 11/171 = 6.4% of them from
+relaxation licensing — protection, not elimination. This is structural, not
+a tuning accident: at R = 500 m the disc forbids 170/171 of those same
+sub-draft cells **and** breaks all 55 plans (the positive-control pinch
+above), because the sub-draft cells are the connectivity-critical ones — a
+radius small enough to exclude nearly all of them is also small enough to
+disconnect nearly every route.
+
+### The cliff-driving cell
+
+The single cell pair that sets the 1050→1060 m cliff above (lat
+54.8502–54.8506, lon 10.5378–10.5385, conservative depth 1.8–2.1 m) is
+Marstal's own approach — and is independently identified, by a different
+method, as the shallowest conservative reading (1.80 m) on the delivered
+Flensburg→Marstal track. The same cell is simultaneously the connectivity
+floor for the whole radius measurement and the most dangerous water in the
+set.
+
+### New residual — South Funen archipelago ETA cost
+
+Re-solving under P3 is not free even where it returns `ok` with no depth
+regression. ETA cost across the archipelago population, worst cases first:
+Svendborg +6527 s (+108.8 min, recommended rig flips fock→genoa), Rudkøbing
++1691 s, Troense +1567 s, Svendborg +1360 s, Rudkøbing +1297 s — against a
+median delta of only +23 s across the population. P3's approach-scoping
+premise (relax only near the waypoint) does not hold where the whole
+channel, not just the approach, is thin water.
+
+### Scope limits of this measurement
+
+Stable across the settings arms exercised (`no-comfort`, `margin-zero`,
+`relaxation-dense`) — UNTESTED across geography and mask rebuilds, since
+Marstal is the only harbour in this 33-harbour curated set that relaxes at
+all (§0/§4(b)'s 27-of-528 figure). The re-solve population above is the
+2400 m population only (the 29 plans with a cell beyond that radius); it
+does not cover the full 55.
