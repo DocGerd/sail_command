@@ -326,7 +326,7 @@ doubly-sourced, not merely asserted:
   34× reduction.
 - Region-wide sanity: of 193 non-main-component pockets, 103 are rescued by
   relaxation at gate 2.3; **all 103 are covered at R = 1852 m**, worst-case
-  extent 1,839 m (a 12 m margin over the chosen 1852 m radius — see §3.3).
+  extent 1,839 m (a 13 m margin over the chosen 1852 m radius — see §3.3).
 
 **Kill switch, and why it is the strongest of the three.**
 `APPROACH_RADIUS_M = Infinity` makes every cell a disc member, so
@@ -432,18 +432,27 @@ licensed, not a free safety margin. The safety-lens judge's counter-proposal:
 
 At the *smaller* end of the
 originally proposed range — R = 1852 m — the margin over the 1,839 m worst
-case (§2.3) is **12 metres**, a knife-edge, not a buffer; the original
-1852 m/3704 m pairing in the source material should not be read as two
-comparably-safe choices.
+case (§2.3) is **13 metres** (1852 − 1839), a knife-edge, not a buffer; the
+original 1852 m/3704 m pairing in the source material should not be read as
+two comparably-safe choices.
 
-**The 12 m knife-edge SURVIVES that supersession — it is not the margin the
+> **The worst-case pocket extent appears in this document as BOTH 1,839 m
+> and 1,840 m**, on both sides of §3 and in the 2026-08-10 section — grep
+> both spellings rather than trusting any list of sites here. Which is the
+> real measurement is not settled and needs the underlying run — tracked as
+> `Refs #502`. Operating rule until it is: state each subtraction against
+> the baseline its own site names, so a site quoting 1,840 m reads 12 m and
+> a site quoting 1,839 m reads 13 m, and never carry one site's difference
+> across to the other.
+
+**The knife-edge SURVIVES that supersession — it is not the margin the
 2026-08-10 section quotes.** That section margins R = 1852 m against the
 1050→1060 m pinch cliff and gets ~790 m. These are two *different*
 constraints at the same radius, and the pocket-coverage one above is the
 larger, so it is the one that binds: nothing measured on 2026-08-10 retires
 the requirement that a disc reach the 1,839 m worst-case pocket extent. Read
 "R = 1852 m" as clearing the cliff comfortably and the pocket extent by
-12 m — never as having ~790 m of margin outright.
+13 m — never as having ~790 m of margin outright.
 
 ---
 
@@ -653,8 +662,25 @@ re-litigating the same argument:
    2400–2600 m band (marked superseded in place there too, so a top-down
    reader of §3 cannot meet the stale figure first). The 1,840 m worst-case
    pocket extent this item names is **not** superseded with it: R = 1852 m
-   still clears it by only 12 m, and re-deriving it after a mask change
-   remains required.
+   still clears it by only 12 m (1852 − 1840, the baseline THIS item names;
+   §2.3 and §3.3 quote 1,839 m and therefore 13 m — `Refs #502`), and
+   re-deriving it after a mask change remains required.
+   **ACCEPTANCE RULE for that re-derivation, so the outcome is decided
+   before the number is known.** Pocket coverage is a floor, so:
+   a re-derived worst case **ABOVE 1852 m INVALIDATES this radius** — R must
+   be raised to clear the new figure, and "1 nm is a natural constant" is
+   explicitly *not* a reason to keep it (roundness is a tie-break among radii
+   that already clear the floor, per the recommendation's own bullets). A
+   figure landing **exactly at 1852 m** leaves zero margin, and whether an
+   extent equal to R counts as covered is a boundary convention this
+   document nowhere states — a maintainer call, not a silent pass. A
+   re-derived figure
+   anywhere **below** 1852 m keeps R valid and only moves the margin, in
+   which case §3.3's knife-edge wording must be restated at the new
+   difference rather than left at 12/13 m. What this rule deliberately does
+   NOT settle: whether a knife-edge is an acceptable place to sit at all —
+   that is the judgement recorded in the recommendation, and it is an
+   argument from documented pressures, not a measurement.
 5. **Evidence that P3's per-disc gate can genuinely come out lower than the
    global search's answer on some real harbour** — not just Marstal, where
    it measurably does not. If such a harbour exists, the §3.2 grafted
@@ -744,8 +770,15 @@ informative precisely because they could have come out otherwise. (An
 earlier revision wrote "as it must" across the whole row; that holds only of
 the R = 0 column.) It is the empirical columns that license every 0-pinch
 row below as informative rather than a classifier that never fires — the
-R = 0 column alone could not, since a classifier hardwired to report pinch
-would produce it too.
+R = 0 column alone could not, because at R = 0 the answer is forced by
+construction (the derivation just above), so a classifier correct *only* on
+the forced case would still read 55/55 there. The 100–1050 m columns are
+what show it firing where the answer was NOT forced. (An earlier revision
+named the wrong null hypothesis here — "a classifier hardwired to report
+pinch" — which the 0/55 rows at 1060–3704 m already exclude on their own;
+the failure a positive control exists to exclude is the opposite one, a
+classifier that never fires, and against that the R = 0 column is
+insufficient rather than irrelevant.)
 
 ### The `APPROACH_RADIUS_M` cliff (§6 item 4, ANSWERED)
 
@@ -759,18 +792,54 @@ breakdown below).
 §2.3 records **1068 m** as the minimum radius that reconnects
 Flensburg↔Marstal at gate 2.3 m, "identical to the global search's answer at
 every radius from there up". But 1060 m reads 0/55 pinch here — no plan in
-this population loses connectivity 8 m *below* that stated minimum. **Two**
-differences are candidate explanations and **this pass established
-neither**: the POPULATIONS differ (one Flensburg↔Marstal route against 55
-plans, 54 of which come from two Marstal-*origin* arms — so the 1068 m
-route may simply not be among the 55), and the CRITERIA differ (reconnection
-of one named harbour pair at a fixed 2.3 m gate, against plan-level
-connectivity loss at each plan's own gate). A third difference is worth
-recording but is **not** a candidate explanation: this sweep takes no sample
-between 1060 m and 1852 m, which limits its resolution above the cliff but
-cannot explain a 0-pinch reading *at* 1060 m. Until both figures are
-re-derived under one definition, neither should be the sole basis for
-choosing R.
+this population loses connectivity 8 m *below* that stated minimum.
+
+**The two figures describe the SAME ROUTE, so a POPULATION difference cannot
+explain the gap.** An earlier revision of this paragraph offered one as a
+candidate ("the 1068 m route may simply not be among the 55"); it is refuted
+by this document's own per-arm split plus two committed files, each link
+checkable on its own:
+
+- the 55 split 1 + 27 + 27 across `no-comfort`, `margin-zero` and
+  `relaxation-dense` (per-ARM breakdown below), so 54 of the 55 do come from
+  the two Marstal-*origin* arms — but the 55th is `no-comfort`'s;
+- `app/sweep/sweepArms.ts`'s `no-comfort` arm sets no `originId`, and
+  `runArm` reads `arm.originId ?? 'flensburg'`, so that arm is
+  Flensburg-origin;
+- `app/sweep/README.md`'s recorded outcome mix names `no-comfort`'s single
+  `ok+shallow` row as **`no-comfort/marstal`** — and `ok+shallow` is the
+  only shallow-carrying category in that mix. That baseline is the
+  2026-08-07 six-arm run, a DIFFERENT run from this section's; they are
+  comparable because the arm's settings, wind field, `T0` and origin are all
+  baseline-fixed constants (`sweepArms.ts`'s own "never edit an existing
+  arm" rule), and both runs put `no-comfort`'s shallow count at exactly 1.
+
+So `no-comfort`'s 1 IS Flensburg→Marstal, and it is one of the 55; the
+0/55 reading at 1060 m therefore includes it reading 0-pinch. The GATE lines
+up too: `no-comfort` is `DEFAULT_SETTINGS` with `depthComfortMarginM: 0`, so
+its `safetyDepthM` is the 3.0 m default, and 2.3 m is the mask's own
+reconnection gate for that pair — `realmask.repro.test.ts`'s
+`'Flensburg -> Marstal at DEFAULT_SETTINGS degrades gracefully with shallow
+warnings (#53)'` case pins, in one test, the independent oracle
+(`cellsConnected(…, 2.3)` **true** and `cellsConnected(…, 2.4)` **false**,
+so 2.3 is the flip, not merely a value that works) alongside the solver's
+own `requestedDepthM === 3.0` / `usedDepthM ≈ 2.3`. Same route, same
+requested gate, and the two radius figures 8 m apart on it.
+
+**Of the two candidates this document enumerated, that leaves ONE standing,
+and this pass established it no better than it established the other: the
+CRITERIA differ** — reconnection of one named harbour pair at a fixed 2.3 m
+gate, against plan-level connectivity loss at each plan's own gate. Say
+"of the two enumerated" rather than "the only one": the enumeration was
+never shown to be complete, and this section's own preamble records that the
+radius/pinch sweep's driver was not re-verified, so a METHOD difference is a
+third possibility nobody has excluded. Narrowing the candidate set is not
+resolving the conflict, and this one stays **OPEN**. A
+third difference is worth recording but is **not** a candidate explanation:
+this sweep takes no sample between 1060 m and 1852 m, which limits its
+resolution above the cliff but cannot explain a 0-pinch reading *at* 1060 m.
+Until both figures are re-derived under one definition, neither should be
+the sole basis for choosing R.
 
 **Recommendation: R = 1852 m (1 nm)** — unchanged, and superseding §3.3's
 2400–2600 m counter-proposal (marked in place there). Reasons, each with
@@ -779,11 +848,40 @@ what it does and does not rest on:
 - **~790 m of margin over the 1050→1060 m cliff** — and name that baseline
   explicitly, because it is *not* §3.3's. §3.3 margins against the 1,839 m
   worst-case pocket extent, a **larger and still-live constraint**, against
-  which R = 1852 m retains only the **12 m** knife-edge §3.3 named. Two
-  margins, two constraints, one radius: the larger constraint binds, so
-  "~790 m of margin" must never be quoted as this radius's margin outright.
+  which R = 1852 m retains only the **13 m** (1852 − 1839) knife-edge §3.3
+  named. Two margins, two constraints, one radius: the larger constraint
+  binds, so "~790 m of margin" must never be quoted as this radius's margin
+  outright.
+- **Why sit at the BOTTOM of the feasible range rather than above it — the
+  reconciliation the other three reasons in this list do not supply.** None
+  of those three addresses the constraint the bullet above declares binding,
+  and without this step a reader is told the pocket-coverage requirement
+  binds, told R = 1852 m clears it by 13 m, and given no reason to prefer
+  that knife-edge over §3.3's 2400–2600 m band, which was chosen
+  *explicitly* as a measured margin over the same worst case and clears the
+  same 1,839 m figure by ~561–761 m.
+  The two pressures run in opposite directions and both are documented here:
+  pocket coverage is a **floor** (R must reach the 1,839 m worst-case
+  extent, or a rescued pocket falls outside every disc), while licensing
+  restriction pushes **down**, because licensed area scales as R² and a
+  larger disc licenses more *distant* sub-gate water — §3.3's 488 cells at
+  1852 m against 1,298 at 3704 m, and the measured 1025-vs-996 forbidden-cell
+  comparison in the LAST bullet of this list. Of the three radii this
+  document has ever PROPOSED as `APPROACH_RADIUS_M` (1852 m, §3.3's
+  2400–2600 m band, the original design's 3704 m — the other radii it names
+  are sweep samples, not candidates), 1852 m is the smallest that is above
+  the floor at all, so it is the one that buys no slack it has to pay for in
+  licensing. **State the status of that step
+  honestly: it is an ARGUMENT from two documented pressures, not a
+  measurement.** Nothing here measures a safety cost of the 561–761 m of
+  extra licensing §3.3's band would carry; what is measured is only the
+  direction (a larger disc forbids fewer cells, including fewer sub-draft
+  ones). The 13 m is thin ON PURPOSE under that argument — which is exactly
+  why §6 item 4's acceptance rule, not the roundness of 1 nm, is what holds
+  the choice together if the floor ever moves.
 - A natural constant (one nautical mile) rather than a fitted
-  cliff-plus-delta.
+  cliff-plus-delta. This is a TIE-BREAK among radii that already clear the
+  floor, never a reason of its own — see the acceptance rule in §6 item 4.
 - **On the axes measured at BOTH radii, 1852 m is at least as strict as
   2400 m**: both read 0/55 pinch, and 1852 m forbids more cells from
   relaxation licensing — **1025 against 996** — including more of the
@@ -918,12 +1016,21 @@ archipelago subset — an earlier revision put "the archipelago population"
 and "the population" one clause apart while meaning two different sets, so
 state which set each number describes.
 
-Read the deltas for what they are: **the cost of honouring the user's own
-depth setting, not a regression per se** — the scoped run declines water the
-user's `safetyDepthM` never asked to be given, and pays for the detour. That
-does not make the cost small, and it is the honest argument against the
-scoping premise: P3's "relax only near the waypoint" does not hold where the
-whole channel, not just the approach, is thin water.
+Read the deltas for what they are: **the cost of withdrawing relaxation
+OUTSIDE the disc, not a regression per se** — the scoped run declines
+distant water the user's `safetyDepthM` never asked to be given, and pays
+for the detour. Say that precisely rather than as "the cost of honouring the
+user's own depth setting", which an earlier revision did and which
+overstates it: the simulation forces to LAND only cells that are BOTH
+sub-gate AND farther than R = 2400 m from every snapped waypoint, so
+sub-gate water INSIDE the disc stays licensed exactly as today. These
+deltas are therefore a LOWER BOUND on what honouring `safetyDepthM` outright
+would cost — and a loose one, since the honour-it-outright case is R = 0,
+where this section's own positive control reads 55/55 pinch: those plans
+lose connectivity rather than paying a delta at all. That does not make the
+cost small, and it is the honest argument against the scoping premise: P3's
+"relax only near the waypoint" does not hold where the whole channel, not
+just the approach, is thin water.
 
 ### Scope limits of this measurement
 
