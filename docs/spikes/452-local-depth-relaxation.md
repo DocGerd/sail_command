@@ -677,7 +677,11 @@ re-litigating the same argument:
    re-derived figure
    anywhere **below** 1852 m keeps R valid and only moves the margin, in
    which case §3.3's knife-edge wording must be restated at the new
-   difference rather than left at 12/13 m. What this rule deliberately does
+   difference rather than left at 12/13 m — and R should then be
+   reconsidered downward for the same reason 1852 m was preferred to §3.3's
+   2400–2600 m band: whichever proposed radius is the smallest one still
+   above the floor buys no licensing slack it has to pay for.
+   What this rule deliberately does
    NOT settle: whether a knife-edge is an acceptable place to sit at all —
    that is the judgement recorded in the recommendation, and it is an
    argument from documented pressures, not a measurement.
@@ -806,13 +810,22 @@ checkable on its own:
 - `app/sweep/sweepArms.ts`'s `no-comfort` arm sets no `originId`, and
   `runArm` reads `arm.originId ?? 'flensburg'`, so that arm is
   Flensburg-origin;
-- `app/sweep/README.md`'s recorded outcome mix names `no-comfort`'s single
-  `ok+shallow` row as **`no-comfort/marstal`** — and `ok+shallow` is the
-  only shallow-carrying category in that mix. That baseline is the
-  2026-08-07 six-arm run, a DIFFERENT run from this section's; they are
-  comparable because the arm's settings, wind field, `T0` and origin are all
-  baseline-fixed constants (`sweepArms.ts`'s own "never edit an existing
-  arm" rule), and both runs put `no-comfort`'s shallow count at exactly 1.
+- this section's OWN 2026-08-10 three-arm run settles the identity with no
+  cross-run argument needed: of `no-comfort`'s 33 rows, exactly ONE carries
+  a `shallow` block — **`marstal`**, at `requestedDepthM 3.0` /
+  `usedDepthM 2.3` / `minGateDepthM 2.3`. It is the same run the 55 comes
+  from (its three arms give 1 + 27 + 27), so the row and the population are
+  read off one run.
+  **Why not `app/sweep/README.md`, which names the same row.** Its recorded
+  outcome mix does list a `no-comfort/marstal` `ok+shallow` row, but that
+  baseline is the 2026-08-07 six-arm run (`dbcd519`), and commit `c359a5c`
+  (2026-08-09, #455 / PR #476, `TOLERANCE_M 0.9`) rewrote `mask.bin` and
+  `mask.meta.json` BETWEEN the two runs. `sweepArms.ts` reads both files off
+  disk and hands the resulting `NavMask` to every `planRoute()` call, so the
+  committed mask is an input to each arm just as its settings, wind field,
+  `T0` and origin are — and it is the one such input the "never edit an
+  existing arm" rule does not govern. Read that README row as corroboration
+  from the far side of the rebuild, never as this identity's source.
 
 So `no-comfort`'s 1 IS Flensburg→Marstal, and it is one of the 55; the
 0/55 reading at 1060 m therefore includes it reading 0-pinch. The GATE lines
