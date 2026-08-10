@@ -170,6 +170,7 @@ interface Overrides {
   rig?: Rig | null;
   formDirty?: boolean;
   onViewDetails?: () => void;
+  onOpenBoatSettings?: () => void;
 }
 
 function baseProps(overrides: Overrides = {}) {
@@ -198,6 +199,7 @@ function baseProps(overrides: Overrides = {}) {
     rig: null as Rig | null,
     formDirty: false,
     onViewDetails: vi.fn(),
+    onOpenBoatSettings: vi.fn(),
     ...overrides,
   };
 }
@@ -545,9 +547,12 @@ describe('PlannerPanel', () => {
     });
   });
 
-  // §3.3: advanced-options progressive disclosure.
-  describe('advanced disclosure (§3.3)', () => {
-    it('keeps departure AND safety depth visible in the compact row (not behind the disclosure)', () => {
+  // §3.3 / #299: safety depth stays inline in the compact row; the rest of
+  // what used to sit behind "Erweitert" moved to the dedicated Boat tab
+  // (SettingsPanel.tsx, covered by SettingsPanel.test.tsx) — this panel no
+  // longer renders it at all, only a discoverable link back to it.
+  describe('safety depth compact row + boat-settings link (§3.3, #299)', () => {
+    it('keeps departure AND safety depth visible in the compact row', () => {
       renderPanel();
       expect(screen.getByLabelText('Departure')).toBeInTheDocument();
       expect(screen.getByLabelText('Safety depth (m)')).toBeInTheDocument();
@@ -577,37 +582,26 @@ describe('PlannerPanel', () => {
       });
     });
 
-    it('hides the five advanced fields behind a collapsed "Advanced" disclosure', () => {
+    it('no longer renders the advanced fields/disclosure inline — they moved to the Boat tab', () => {
       localStorage.setItem('sc-lang', 'en');
       const { container } = render(
         <I18nProvider>
           <PlannerPanel {...baseProps()} />
         </I18nProvider>,
       );
-      const details = container.querySelector('details.planner-advanced') as HTMLDetailsElement;
-      expect(details).not.toBeNull();
-      expect(details.open).toBe(false);
-      // The advanced fields live inside the disclosure (native details keeps
-      // them in the DOM even when collapsed).
-      expect(within(details).getByLabelText('Motoring speed (kn)')).toBeInTheDocument();
-      expect(within(details).getByLabelText('Performance factor (×)')).toBeInTheDocument();
+      expect(container.querySelector('details.planner-advanced')).toBeNull();
+      expect(screen.queryByLabelText('Motoring speed (kn)')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Depth comfort margin (m)')).not.toBeInTheDocument();
     });
 
-    it('shows a one-line value summary of the advanced settings when collapsed', () => {
-      localStorage.setItem('sc-lang', 'en');
-      const { container } = render(
-        <I18nProvider>
-          <PlannerPanel {...baseProps()} />
-        </I18nProvider>,
-      );
-      const values = container.querySelector('.planner-advanced-values');
-      expect(values).not.toBeNull();
-      // DEFAULT_SETTINGS: motor on, 6.5 kn, 45 s penalty, ×0.9.
-      const text = values!.textContent ?? '';
-      expect(text).toContain('Motor on');
-      expect(text).toContain('6.5 kn');
-      expect(text).toContain('Maneuver 45 s');
-      expect(text).toContain('×0.9');
+    it('renders a discoverable link to the Boat tab next to safety depth, naming the depth comfort margin', () => {
+      const props = renderPanel();
+      const link = screen.getByRole('button', {
+        name: /More boat settings.*depth comfort margin/,
+      });
+      expect(link).toBeInTheDocument();
+      fireEvent.click(link);
+      expect(props.onOpenBoatSettings).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -832,17 +826,16 @@ describe('PlannerPanel', () => {
     });
   });
 
-  // #301: the dirty-form indicator — a second Chip in the Ergebnis card plus
-  // the same sentence folded into the panel's ONE existing live region.
+  // #301: the dirty-form indicator — a second Chip in the Ergebnis card.
+  // Originally ALSO folded the same sentence into the panel's live region;
+  // that folding was REMOVED (PR #486 review, Minor 5 — see the live-region
+  // tests further down) once #299 added a tab-independent Banner (App.tsx)
+  // carrying the identical sentence, which would otherwise double-announce
+  // it. The Chip is now the ONLY place this text renders inside this panel.
   describe('dirty-form indicator (#301)', () => {
     it('renders a second Chip when formDirty && summary', () => {
       renderPanel({ plan: makePlan(), rig: 'genoa', formDirty: true });
-      // Scoped to the Chip's <span> — the identical sentence is ALSO folded
-      // into the sr-only status <p> below (see the live-region tests further
-      // down), so an unscoped query would match two elements.
-      expect(
-        screen.getByText(en['planner.result.stale'], { selector: 'span' }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(en['planner.result.stale'])).toBeInTheDocument();
       // Beside the existing faster-rig chip, not replacing it.
       expect(screen.getByText('Faster: Genoa')).toBeInTheDocument();
     });
@@ -857,16 +850,24 @@ describe('PlannerPanel', () => {
       expect(screen.queryByText(en['planner.result.stale'])).not.toBeInTheDocument();
     });
 
-    it('folds the same sentence into the panel status region, and there is still exactly ONE role="status" region', () => {
+    // #301 originally folded the same sentence into this live region too;
+    // REMOVED (PR #486 review, Minor 5) once #299 added a tab-independent,
+    // role="alert" Banner (App.tsx) carrying the identical sentence — a
+    // Plan-tab user with a dirty form used to hear it TWICE. This panel's
+    // own role="status" region no longer mentions staleness at all; the
+    // Chip above stays the sighted-user surface only (see its own comment).
+    it('does NOT fold the stale sentence into the panel status region — the Banner (App.tsx) is the single announcing surface (#486 Minor 5 fix)', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
       expect(screen.getAllByRole('status')).toHaveLength(1);
       // No fresh announcement fired on this mount (seeded from the mount plan
-      // id, per the test above) — so the status text is the stale sentence
-      // ALONE, with no leading space from an empty announcement half.
-      expect(screen.getByRole('status').textContent).toBe(en['planner.result.stale']);
+      // id, per the test above), and formDirty no longer feeds statusText at
+      // all — so the status region is empty even though the Chip (asserted
+      // above) is visibly showing the stale sentence.
+      expect(screen.getByRole('status').textContent).toBe('');
+      expect(screen.getByText(en['planner.result.stale'])).toBeInTheDocument();
     });
 
-    it('joins a genuine completion announcement AND the stale sentence into the one region, space-separated', () => {
+    it('a genuine completion announcement is unaffected by formDirty (no suffix joined on, before or after the #486 fix)', () => {
       localStorage.setItem('sc-lang', 'en');
       const { rerender } = render(
         <I18nProvider>
@@ -890,41 +891,7 @@ describe('PlannerPanel', () => {
       const status = screen.getByRole('status');
       const text = status.textContent ?? '';
       expect(text).toContain('Route calculated');
-      expect(text.endsWith(en['planner.result.stale'])).toBe(true);
-      // Exactly ONE space joins the two halves — not glued together (zero
-      // spaces) and not a double space (would read as two run-on sentences).
-      const beforeSuffix = text.slice(0, text.length - en['planner.result.stale'].length);
-      expect(beforeSuffix.endsWith(' ')).toBe(true);
-      expect(beforeSuffix.endsWith('  ')).toBe(false);
-    });
-
-    it('does NOT change the status text when formDirty flips false→false (only the boolean flip drives a change)', () => {
-      const { rerender } = render(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'idle' },
-              plan: makePlan(),
-              rig: 'genoa',
-              formDirty: false,
-            })}
-          />
-        </I18nProvider>,
-      );
-      const before = screen.getByRole('status').textContent;
-      rerender(
-        <I18nProvider>
-          <PlannerPanel
-            {...baseProps({
-              planning: { phase: 'idle' },
-              plan: makePlan(),
-              rig: 'genoa',
-              formDirty: false,
-            })}
-          />
-        </I18nProvider>,
-      );
-      expect(screen.getByRole('status').textContent).toBe(before);
+      expect(text).not.toContain(en['planner.result.stale']);
     });
   });
 

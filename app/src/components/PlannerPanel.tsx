@@ -8,7 +8,6 @@ import { FORECAST_DAYS } from '../services/openMeteo';
 import {
   formatDateTime,
   formatDuration,
-  formatKn,
   formatLatLon,
   formatNm,
   toLocalInputValue,
@@ -18,13 +17,12 @@ import { activeRigResult } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
-import OptionsPanel, { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
+import { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
 import NumberInput from './NumberInput';
 import Card from './Card';
 import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
-import Disclosure from './Disclosure';
 import Skeleton from './Skeleton';
 // #452: the shallow-water warning is plan-level (RouteSummary's own note
 // explains why) — shared here so the FIRST surface a user sees a result on
@@ -92,6 +90,10 @@ export interface PlannerPanelProps {
   formDirty: boolean;
   // "Details ansehen": switch to the Routes tab and focus its Ergebnis heading.
   onViewDetails: () => void;
+  // #299: discoverable route from the (still inline) safety-depth field to
+  // the dedicated Boat tab, which now hosts the depth comfort margin and the
+  // rest of the boat/propulsion/AIS settings — switches App.tsx's active tab.
+  onOpenBoatSettings: () => void;
 }
 
 /**
@@ -138,6 +140,7 @@ export default function PlannerPanel({
   rig,
   formDirty,
   onViewDetails,
+  onOpenBoatSettings,
 }: PlannerPanelProps) {
   const t = useT();
   const [lang] = useLang();
@@ -287,16 +290,21 @@ export default function PlannerPanel({
       rig: t(RIG_LABEL_KEY[planning.rig]),
     });
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
-  else if (planning.phase === 'idle') {
-    // #301: the same dirty-form sentence the Ergebnis card's Chip shows,
-    // folded into this ONE existing live region rather than a second one —
-    // joined (not concatenated) so a plan-less mount (empty announcement)
-    // still reads as a clean single sentence, not a leading space. Changes
-    // only when formDirty flips (announcement itself is frozen per plan —
-    // see announcedResult above), so it announces once, not per keystroke.
-    const staleSuffix = formDirty && summary ? t('planner.result.stale') : '';
-    statusText = [announcement, staleSuffix].filter(Boolean).join(' ');
-  }
+  // #301 ORIGINALLY also folded a dirty-form sentence in here — REMOVED (PR
+  // #486 review, Minor 5): App.tsx now has a tab-independent `settingsDirty`
+  // Banner (role="alert", #299) that already announces this exact sentence
+  // whenever it's true, including while this panel is mounted (Plan tab).
+  // Keeping both meant a Plan-tab user with a dirty form heard it TWICE —
+  // once from the assertive Banner, once from this polite status region.
+  // Mirrors this repo's existing rule for plan-run errors ("the
+  // tab-independent <Banner> ... is the SINGLE alert surface, so the error
+  // isn't announced twice") applied to the same signal. The Ergebnis card's
+  // Chip below still shows the sentence VISUALLY (sighted-user surface,
+  // driven by the broader `formDirty` — origin/destination/departure edits
+  // ARE reachable from this tab, unlike the Banner's narrower
+  // `settingsDirty`) — a static DOM insertion outside a live region is not
+  // itself announced, so the Chip does not reintroduce the duplicate.
+  else if (planning.phase === 'idle') statusText = announcement;
   // §3.4 (fix wave): the idle completion announcement is screen-reader-only —
   // the visible surface is the prominent Ergebnis card, so a visible sentence
   // here just duplicates it. Progress/probing stay visible.
@@ -313,14 +321,6 @@ export default function PlannerPanel({
   // plan exists and an endpoint is unpicked. Suppressed offline — the
   // `error.offline` disabled reason is the more actionable message there.
   const showOnboarding = online && !plan && (!origin || !destination);
-
-  // One-line glance of the collapsed advanced disclosure, from current settings.
-  const advancedSummary = [
-    settings.motorEnabled ? t('options.summary.motorOn') : t('options.summary.motorOff'),
-    formatKn(settings.motorSpeedKn),
-    t('options.summary.maneuver', { seconds: settings.maneuverPenaltyS }),
-    t('options.summary.performance', { factor: settings.performanceFactor }),
-  ].join(' · ');
 
   return (
     <div className="planner-panel">
@@ -475,7 +475,13 @@ export default function PlannerPanel({
       </Card>
 
       {/* §3.3: the two most-changed inputs — departure + safety depth — stay
-          visible in a compact row above the advanced disclosure. */}
+          visible in this compact row. #299: the rest of what used to sit
+          behind the "Erweitert" disclosure (depth comfort margin, motor/sail
+          preference, AIS, …) moved to the dedicated Boat tab (SettingsPanel);
+          only safety depth stays inline here, sharing SAFETY_DEPTH_FIELD as
+          its single source of truth with that tab's own render of it — there
+          is no second copy of the value, only a second RENDER of the same
+          settings.safetyDepthM via the same commitSetting helper. */}
       <div className="planner-compact-row">
         <Field
           className="planner-departure"
@@ -510,19 +516,14 @@ export default function PlannerPanel({
         </Field>
       </div>
 
-      {/* §3.3: the remaining five advanced inputs move behind an "Erweitert"
-          disclosure with a collapsed one-line value summary. */}
-      <Disclosure
-        className="planner-advanced"
-        summary={
-          <>
-            <span className="planner-advanced-label">{t('planner.card.advanced')}</span>
-            <span className="planner-advanced-values">{advancedSummary}</span>
-          </>
-        }
-      >
-        <OptionsPanel value={settings} onChange={onSettingsChange} />
-      </Disclosure>
+      {/* #299: a discoverable route from safety depth to the depth comfort
+          margin (and the rest of the boat settings) now that the two "depth"
+          controls live on two different surfaces — without this, a user
+          hunting for the comfort margin right next to safety depth (where it
+          used to be) could reasonably conclude it was removed. */}
+      <Button variant="ghost" className="planner-boat-settings-link" onClick={onOpenBoatSettings}>
+        {t('planner.safetyDepth.boatLink')} <span aria-hidden="true">→</span>
+      </Button>
 
       {/* §3.3: the primary action stays reachable at the panel bottom (sticky),
           never below a long scroll. §3.5: a single guidance/reason line under
@@ -600,11 +601,22 @@ export default function PlannerPanel({
               </Chip>
               {/* #301: the form has drifted from this displayed route — a
                   re-run right now would produce something different. Sits ON
-                  the stale thing (this card / the map route below it), not a
-                  tab-independent Banner (#368's contested space) and not map
-                  dimming/dashing (#324's dash+opacity already means "the other
-                  rig"). The same sentence is folded into the live region above
-                  (statusText) — this Chip is the sighted-user surface only. */}
+                  the stale thing (this card / the map route below it), not
+                  map dimming/dashing (#324's dash+opacity already means "the
+                  other rig"). CORRECTED (PR #486 review, Minor 5): #299 DID
+                  add a tab-independent Banner for this same underlying
+                  signal (App.tsx, gated on the narrower `settingsDirty`),
+                  contradicting what this comment used to claim — but the
+                  sentence is NOT folded into the live region above anymore
+                  (see statusText's own comment on why), so this Chip stays
+                  the sighted-user surface WITHOUT re-introducing a double
+                  announcement: a Chip is a plain DOM insertion, not itself a
+                  live region, so screen readers don't announce it on their
+                  own regardless of whether the Banner is also on screen.
+                  Deliberately still `formDirty`, not `settingsDirty` — this
+                  tab CAN edit origin/destination/departure, unlike the
+                  Banner's narrower scope (see settingsDirty's own comment in
+                  App.tsx). */}
               {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
             </div>
           )}

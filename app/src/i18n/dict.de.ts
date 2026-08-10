@@ -10,6 +10,16 @@ export const de = {
   'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
+  // #299: die Sicherheitstiefe erscheint jetzt an ZWEI Stellen — hier als
+  // Schnellzugriff und im Boot-Tab (SettingsPanel) als kanonisches Zuhause,
+  // eine gemeinsame Quelle (PR #486 review). Die Tiefenkomfort-Spanne und
+  // die übrigen Boot-Einstellungen wohnen weiterhin AUSSCHLIESSLICH dort —
+  // dieser Link verhindert, dass jemand sie für gelöscht hält, weil sie
+  // nicht mehr direkt neben der Sicherheitstiefe steht. Nicht mehr "&", weil
+  // die Sicherheitstiefe (rechts daneben sichtbar) nicht mehr exklusiv dort
+  // wohnt — "weitere" statt einer Aufzählung, mit der Komfort-Spanne als
+  // konkretem Anker.
+  'planner.safetyDepth.boatLink': 'Weitere Boot-Einstellungen (u. a. Tiefenkomfort-Spanne)',
   'options.depthComfortMargin.label': 'Tiefenkomfort-Spanne (m)',
   'options.depthComfortMargin.help':
     'Über die Sicherheitstiefe hinaus bevorzugt die Planung zusätzlich Wasser, das mindestens um diesen Wert tiefer ist, sofern das kaum zusätzliche Zeit kostet — 0 deaktiviert die Präferenz. Sie erlaubt niemals flacheres Wasser, als die Sicherheitstiefe zulässt, und die empfohlene Besegelung kann sich dadurch ändern.',
@@ -26,13 +36,11 @@ export const de = {
   'options.showOwnship.label': 'Meine Position anzeigen',
   'options.showOwnship.help':
     'Zeigt deine GPS-Position und den Genauigkeitskreis überall auf der Karte an — beim Planen, ohne Plan oder in der Live-Ansicht, nicht nur während der Live-Führung. Consumer-GPS-Genauigkeit, keine kartengenaue Positionsbestimmung; dies ist eine Törnplanungshilfe, kein Navigationsgerät. Das Aktivieren fragt nach dem Standortzugriff.',
-  // One-line glance of the collapsed "Erweitert" disclosure, joined with " · ".
-  'options.summary.motorOn': 'Motor an',
-  'options.summary.motorOff': 'Motor aus',
-  'options.summary.maneuver': 'Wende {seconds} s',
-  'options.summary.performance': '×{factor}',
+  // #299: Abschnittsüberschriften im Boot-Tab (SettingsPanel).
+  'settings.section.boatSafety': 'Boot & Sicherheit',
+  'settings.section.propulsion': 'Antrieb',
+  'settings.section.liveAis': 'Live & AIS',
   'planner.card.trip': 'Reise',
-  'planner.card.advanced': 'Erweitert',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
   'planner.destination.label': 'Ziel',
@@ -464,6 +472,9 @@ export const de = {
   'nav.plan': 'Planen',
   'nav.routes': 'Routen',
   'nav.live': 'Live',
+  // #299: kurz gehalten, kürzer sogar als "Routen" — vermeidet die 280px-
+  // Enge, die für eine Tab-Option gegen ein Wort wie "Einstellungen" spräche.
+  'nav.boat': 'Boot',
   'nav.langToggle': 'English anzeigen',
   'nav.langToggle.de': 'DE',
   'nav.langToggle.en': 'EN',
