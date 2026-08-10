@@ -112,17 +112,20 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: Rig }) {
 // #452 gap 3: per-leg shallow marker for the legs table — the table already
 // gives every leg a time-ordered row, so this reuses that coordinate system
 // instead of inventing a separate one. Text-based, not colour-only (WCAG
-// 1.4.1): the chip's own visible content names the hazard and the depth, so
-// a colour-blind or screen-reader user gets the same information a sighted
-// user reading the depth-warning colour does. Shares the --sc-depth-warning-*
-// family (#251) with the plan-level ShallowWarning banner above, so the same
-// hazard reads consistently wherever it appears.
+// 1.4.1): the chip's own VISIBLE CONTENT is the accessibility mechanism — it
+// names the hazard and the depth directly, so a colour-blind or
+// screen-reader user gets the same information a sighted user reading the
+// depth-warning colour does. No `title` tooltip: it's unreliable for
+// assistive tech and unreachable on touch, and would only duplicate text
+// that's already visible (`.route-legs` scrolls horizontally rather than
+// truncating, so there's nothing here for a tooltip to reveal). Shares the
+// --sc-depth-warning-* family (#251) with the plan-level ShallowWarning
+// banner above, so the same hazard reads consistently wherever it appears.
 function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
   const t = useT();
-  const label = t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) });
   return (
-    <Chip className="chip-shallow" title={label}>
-      {label}
+    <Chip className="chip-shallow">
+      {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
     </Chip>
   );
 }
