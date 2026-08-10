@@ -17,14 +17,98 @@ const IMAGE_SIZE = 24; // smaller than windBarbs' 32: seamarks are a much
 // every offset/line-width in the logical box scales up together instead of
 // only a subset of hardcoded pixels being bumped (#191).
 const CENTER = IMAGE_SIZE / 2;
+
+// #353 PR1: a single scale-factor parameter for the whole seamark size axis —
+// raster resolution here (CANVAS_SIZE/PIXEL_RATIO below), on-screen icon-size
+// and the collision-padding compensation that keeps it in seamarkGeoJson.ts's
+// SEAMARKS_LAYOUT. This PR ships NO visible change: the default is 1, which
+// reproduces every value below byte-for-byte (seamarkGeoJson.test.ts pins the
+// EVALUATED layout, not just this constant). The user-facing control (a size
+// slider + display-category tiers) has no home until #299's settings surface
+// exists and is deliberately NOT part of this PR — see #353.
+export const SEAMARK_SIZE_SCALE = 1;
+
 // #191: on-screen seamarks were only ~13-20px (IMAGE_SIZE=24 registered at
 // the implicit default pixelRatio 1) — too small to read at planning zooms.
 // Raising the raster resolution with a MATCHING pixelRatio (rather than only
 // widening seamarkGeoJson.ts's icon-size stops, which would upscale/blur the
 // old 24px bitmap) grows the natural footprint from 24 to
-// CANVAS_SIZE/PIXEL_RATIO = 32 logical px while keeping the glyph crisp.
-const CANVAS_SIZE = 64;
-const PIXEL_RATIO = 2;
+// BASE_CANVAS_SIZE/BASE_PIXEL_RATIO = 32 logical px while keeping the glyph
+// crisp.
+const BASE_CANVAS_SIZE = 64;
+const BASE_PIXEL_RATIO = 2;
+// CANVAS_SIZE and PIXEL_RATIO are intended to scale TOGETHER with
+// SEAMARK_SIZE_SCALE, so their ratio — the glyph's "natural" on-screen
+// footprint at icon-size 1, exported below as SEAMARK_NATURAL_ICON_PX —
+// stays put. CANVAS_SIZE alone is meant to govern RASTER resolution (enough
+// raw pixels for a larger on-screen render, via SEAMARKS_LAYOUT's icon-size,
+// to stay crisp); the layer's icon-size is meant to be the ONLY thing that
+// actually grows the on-screen size — if the natural footprint moved too,
+// the visible growth would come from TWO independent multipliers instead of
+// one, and the icon-padding compensation formula in seamarkGeoJson.ts —
+// which assumes a single, well-defined growth-per-zoom-stop — would be
+// wrong.
+//
+// #484 F4: that intent is NOT met by a bare `BASE_CANVAS_SIZE *
+// SEAMARK_SIZE_SCALE`, because `canvas.width`/`canvas.height` and
+// `ctx.getImageData`'s `sw`/`sh` are WebIDL `unsigned long`/`long`, so a
+// fractional value TRUNCATES silently — no throw, no warning. Measured in
+// real Chromium at scale 1.6 (this PR's own mutation-check scale):
+// `Math.round(64 * 1.6)` = 102.4, `canvas.width` reads back **102**, and the
+// real natural footprint becomes `102 / (2*1.6)` = 31.875 px — 0.125 px
+// short of the idealized 32 a bare `BASE_CANVAS_SIZE / BASE_PIXEL_RATIO`
+// would still claim. At scale 1 (this PR's shipped default) `64 * 1` is
+// already an integer, so the truncation is a no-op and every value below is
+// byte-identical to before this comment. `Math.round()` here makes
+// CANVAS_SIZE the ACTUAL integer the browser will use, so
+// SEAMARK_NATURAL_ICON_PX (derived from it below, not from the idealized
+// BASE_CANVAS_SIZE/BASE_PIXEL_RATIO ratio) always reflects the raster that
+// is really registered — the invariant holds by DEFINITION now, not "by
+// construction" of an untruncated ratio that the canvas never actually
+// stores. This also fixes the smaller sibling defect the truncation caused:
+// `drawSeamark()`'s `ctx.scale(CANVAS_SIZE / IMAGE_SIZE, ...)` now scales by
+// the SAME rounded value the canvas was actually sized to, instead of an
+// untruncated `102.4 / 24` against a 102px-wide canvas (~0.4 px clipped off
+// the right/bottom edge at scale 1.6, invisible there but growing with the
+// fractional part at other scales).
+export interface SeamarkRasterConfig {
+  canvasSize: number;
+  pixelRatio: number;
+  /** The natural CSS-px footprint at icon-size 1 — always canvasSize /
+   * pixelRatio using the ACTUAL rounded canvasSize, never the idealized
+   * BASE_CANVAS_SIZE/BASE_PIXEL_RATIO ratio (#484 F4). */
+  naturalIconPx: number;
+}
+
+/**
+ * Pure, scale-parameterized raster config (#484 F4, mirroring
+ * seamarkGeoJson.ts's `seamarksLayout(scale)` factory) — exported so a test
+ * can drive a non-1 scale without a module constant standing in the way.
+ * `canvasSize` is ALWAYS an integer (`Math.round`): `canvas.width`/
+ * `canvas.height` and `ctx.getImageData`'s `sw`/`sh` are WebIDL
+ * `unsigned long`/`long`, which TRUNCATE a fractional assignment silently —
+ * no throw, no warning. Rounding here, once, makes canvasSize the value the
+ * browser will actually store, so naturalIconPx (derived from THIS
+ * canvasSize, not from an untruncated `BASE_CANVAS_SIZE * scale`) always
+ * matches the raster that is really registered.
+ */
+export function seamarkRasterConfig(scale: number): SeamarkRasterConfig {
+  const canvasSize = Math.round(BASE_CANVAS_SIZE * scale);
+  const pixelRatio = BASE_PIXEL_RATIO * scale;
+  return { canvasSize, pixelRatio, naturalIconPx: canvasSize / pixelRatio };
+}
+
+const {
+  canvasSize: CANVAS_SIZE,
+  pixelRatio: PIXEL_RATIO,
+  naturalIconPx: DEFAULT_NATURAL_ICON_PX,
+} = seamarkRasterConfig(SEAMARK_SIZE_SCALE);
+// Exported so seamarkGeoJson.ts's icon-padding compensation is derived from
+// the SAME number rather than a duplicated literal (CLAUDE.md's "twin
+// search" prose-rot rule — a duplicated 32 could silently drift from this
+// one). At scale 1 this is still exactly 64/2 = 32, byte-identical to
+// before #484.
+export const SEAMARK_NATURAL_ICON_PX = DEFAULT_NATURAL_ICON_PX;
 const INK = '#1a1a1a'; // standard black used for topmarks/outlines, not data-driven
 // Cardinal-mark yellow: raw CSS `yellow` (#ffff00) is too garish / low-contrast
 // against the yellow-vs-black R1001 banding, so a defined IALA-style amber-yellow
