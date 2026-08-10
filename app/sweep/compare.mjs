@@ -19,6 +19,16 @@
  * script `import()`s that file directly under plain Node (no vite/vitest);
  * see `armNames.ts`'s own doc comment for why it must stay import-free for
  * that to keep working.
+ *
+ * NAMED RESIDUAL (PR #488 review): this only checks that BOTH SIDES agree on
+ * which arms exist and which harbours each arm covers — it has no idea that
+ * a real run always covers all 33 harbours, so it cannot distinguish a
+ * genuine full comparison from two `SC_SWEEP_LIMIT`-truncated runs compared
+ * against each other (README.md's own "never for a real comparison" caveat
+ * on that env var is not mechanically enforced here). The summary line below
+ * therefore names the arm and per-arm-harbour counts explicitly rather than
+ * a bare fraction, so a truncated run is visible in the output even though
+ * it is not rejected.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -96,7 +106,13 @@ for (const arm of arms) {
   );
 }
 
-console.log(`\n${same}/${total} plans byte-identical`);
+// Named per-arm harbour count rather than a bare fraction (see the NAMED
+// RESIDUAL header comment above): makes a SC_SWEEP_LIMIT-truncated run
+// visible in the summary instead of reading identically to a full one.
+const harboursPerArm = arms.length > 0 ? total / arms.length : 0;
+console.log(
+  `\n${same}/${total} plans byte-identical across ${arms.length} arms x ${harboursPerArm} harbours/arm`,
+);
 console.log('A-side outcome distribution:', JSON.stringify(outcomes));
 if (diffs.length) {
   console.log('\nDIFFERING PLANS:');

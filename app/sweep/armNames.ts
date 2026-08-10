@@ -9,11 +9,18 @@
  *     ERROR for `ARMS`'s keys to ever diverge from this list — add a key to
  *     one without the other and `npm --prefix app run typecheck` fails.
  *   - `compare.mjs` `import()`s this file directly under PLAIN Node (no vite,
- *     no vitest, no `--prefix app run`) — Node 24's native TypeScript
+ *     no vitest, no `--prefix app run`) — Node's native TypeScript
  *     type-stripping handles a file this simple (no other imports, no
  *     non-erasable syntax: `erasableSyntaxOnly` is already ON repo-wide, see
- *     the root CLAUDE.md) with zero tooling. MEASURED: a file with any import
- *     of its own (e.g. `sweepArms.ts` itself, which pulls in
+ *     the root CLAUDE.md) with zero tooling. Requires Node >= 22.18 (PR #488
+ *     review measurement: an older Node throws `ERR_UNKNOWN_FILE_EXTENSION`
+ *     trying to import a bare `.ts` file at all — unflagged type-stripping
+ *     is not available below that floor). `ci.yml` pins `node-version: 22`,
+ *     which `actions/setup-node` resolves to the latest 22.x patch at
+ *     install time — comfortably past 22.18 for any CI run — but
+ *     `compare.mjs` is a manual tool `ci.yml` never invokes, so this floor
+ *     is a LOCAL-machine concern, not a CI gate. MEASURED: a file with any
+ *     import of its own (e.g. `sweepArms.ts` itself, which pulls in
  *     `../src/lib/mask` and onward) fails under plain `node` with
  *     `Cannot find module '.../src/lib/mask'` — Node's loader does not do
  *     Vite's bundler-style extensionless resolution. This file must stay
@@ -34,5 +41,5 @@ export const ARM_NAMES = [
   'deep-becalmed',
   'margin-zero',
   'relaxation-dense',
-  'tier4-forcing',
+  'margin-extreme',
 ] as const;

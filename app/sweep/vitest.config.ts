@@ -40,7 +40,15 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: [resolve(here, '../src/test/setup.ts')],
     include: ['**/*.test.ts'],
-    // Six arms in six parallel workers: ~20 min wall instead of ~50 serial.
+    // #452 added three arms (nine total, up from six): serial cost grows to
+    // ~90 min (the original six ran ~50 min serial; the three new
+    // Marstal-origin arms measured 2401 s = ~40 min of solver time between
+    // them, PR #488 review). `fileParallelism: true` runs one worker per
+    // arm file, so wall time stays close to the SLOWEST single arm rather
+    // than the sum — but that ~20 min figure is a PARALLEL number, not a
+    // fixed constant: it holds on a machine with enough cores to run nine
+    // workers concurrently and degrades toward the serial figure on a
+    // smaller one.
     fileParallelism: true,
   },
 });

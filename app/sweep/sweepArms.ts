@@ -9,7 +9,7 @@
  *
  * The origin is Flensburg for the original six arms (#450) and Marstal for
  * the three #452 relaxation arms (`margin-zero`, `relaxation-dense`,
- * `tier4-forcing`) — see `Arm.originId`'s own doc comment for why.
+ * `margin-extreme`) — see `Arm.originId`'s own doc comment for why.
  *
  * DELIBERATELY OUTSIDE `app/src/`. `vite.config.ts`'s `test.include` is
  * `['src/**\/*.test.{ts,tsx}']`, so nothing here is collected by
@@ -62,14 +62,45 @@ export interface Arm {
    * PRE-#452 arm omits this, so it resolves exactly as before — byte-identical
    * to the recorded baseline. Only the three #452 relaxation arms below set
    * it, because Flensburg is the wrong origin for what they need to
-   * demonstrate: a mask-connectivity probe over all 33x33 harbour pairs
-   * (`cellsConnected` BFS at the 3.0 m gate vs. down to the 2.1 m
-   * `BOAT_DRAFT_M` floor, run once as a one-off exploration, not part of this
-   * committed harness) found that from ANY origin other than Marstal, only 1
-   * of the other 32 harbours needs depth relaxation at all (Marstal itself);
-   * from Marstal, 27 of 32 do (the remaining 5 are the #9 KNOWN_DISCONNECTED
-   * harbours — arnis, kappeln, maasholm, dyvig, graasten — unreachable at any
-   * gate down to the draft floor, so relaxation cannot help them either).
+   * demonstrate: a mask-connectivity probe over all 528 unique harbour pairs
+   * in `harbors.json` (33 choose 2 — the SAME 528 the file-level comment
+   * above cites; twin-searched to agree, see #488 review) — `cellsConnected`
+   * BFS at the 3.0 m gate vs. down to the 2.1 m `BOAT_DRAFT_M` floor, run
+   * once per origin against all 32 other harbours as destinations, as a
+   * one-off exploration, not part of this committed harness — found that
+   * from any of the 27 GIANT-COMPONENT origins (every harbour except the 5
+   * below), exactly 1 of the other 32 harbours needs depth relaxation at all
+   * (Marstal itself); from Marstal, 27 of 32 do; from any of the 5 #9
+   * KNOWN_DISCONNECTED harbours — arnis, kappeln, maasholm, dyvig,
+   * graasten — ZERO of the other 32 do, not 1: those 5 are unreachable at
+   * any gate down to the draft floor, INCLUDING from each other and from
+   * Marstal, so relaxation cannot help them regardless of which harbour
+   * they are paired with. (A prior version of this comment said "from ANY
+   * origin other than Marstal, only 1 … needs depth relaxation", which is
+   * false for exactly these 5 — corrected in the #452 fix wave.)
+   *
+   * WHY MARSTAL-AS-ORIGIN (not Marstal-as-destination, which
+   * `docs/spikes/452-local-depth-relaxation.md:492` recommends) IS A SOUND
+   * SUBSTITUTE. `cellsConnected` being symmetric only establishes that
+   * relaxation FIRES the same way for `(marstal, X)` and `(X, marstal)` — it
+   * says nothing about whether a future SCOPED implementation would COVER
+   * both directions identically, and a one-ended design (e.g. "only widen
+   * the gate near the origin") would falsify that on its own. What actually
+   * carries the substitution: all three spike designs scope relaxation on
+   * the SNAPPED WAYPOINT SET, not on a direction — P3's `gateAtCell` widens
+   * the gate for any cell within `APPROACH_RADIUS_M` of "a snapped waypoint"
+   * (`docs/spikes/452-local-depth-relaxation.md:272`), and P1/P2 are
+   * likewise keyed off "origin, destination, and every via" as an unordered
+   * set (`:170`, `:283`). `{marstal_snap, X_snap}` is the IDENTICAL set
+   * whichever end Marstal sits at, so any of the three scoped designs would
+   * treat a `margin-zero`/`relaxation-dense`/#-forcing plan through this
+   * arm's Marstal-origin pairs exactly as it would treat the spike's
+   * suggested Marstal-destination pairs. This arm is Marstal-origin purely
+   * because it reuses `runArm()`'s existing destination-loop shape
+   * unmodified — the alternative needs a second, structurally different
+   * origin-loop shape for no additional discriminating coverage. See #452's
+   * issue thread for the reconciliation note against the spike's literal
+   * wording.
    */
   originId?: string;
 }
@@ -114,15 +145,41 @@ export const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
  *                     did; the counters refute it). Gate 6/24.
  *
  * #452 ADDS the three arms below, all Marstal-origin, because the six arms
- * above are structurally unable to discriminate a depth-relaxation change:
- * relaxation fires on only 27 of the 528 unique harbour pairs in
- * `harbors.json` (33 choose 2), and every one of the 27 involves Marstal —
- * measured via a `cellsConnected` BFS probe over every pair at the 3.0 m gate
- * (see `Arm.originId`'s doc comment). At Flensburg origin only ONE of the 33
- * per-arm rows (the Marstal leg) ever touches relaxation at all, so the
- * existing arms carry at most 1/33 discriminating power for this whole
- * mechanism — `breeze` and `no-comfort` are, per the header above, the
- * source of the ONLY two plans across all 198 with a #53 shallow warning.
+ * above are structurally unable to discriminate a depth-relaxation change.
+ * `depthRelaxationMayHelp` is consulted (and answers true) 51 of 198 times
+ * across the six arms — README.md's gate-coverage table — so the GATE itself
+ * is not rare: `planRoute.ts`'s relaxation block opens on `mask-blocked`
+ * alone, and the five #9 KNOWN_DISCONNECTED harbours (arnis, kappeln,
+ * maasholm, dyvig, graasten) enter it too on EVERY Flensburg-origin row that
+ * names one — they run `findRelaxedDepthM`'s full probe search and take its
+ * `usedDepthM === null` path before falling through to `unreachable`, real
+ * if weak coverage (a future scoping bug that made one of them suddenly
+ * relax would be caught here). What IS rare is a SUCCESSFUL relaxation: only
+ * 27 of the 528 unique harbour pairs in `harbors.json` (33 choose 2) are
+ * mask-connected at a relaxed gate at all, and every one of the 27 involves
+ * Marstal — measured via a `cellsConnected` BFS probe over every pair at the
+ * 3.0 m gate (see `Arm.originId`'s doc comment). At Flensburg origin only
+ * ONE of the 33 per-arm rows (the Marstal leg) can ever carry a SUCCESSFUL
+ * relaxation (a `shallow` block) — so the existing arms carry at most 1/33
+ * discriminating power for the mechanism this PR needs coverage of —
+ * `breeze` and `no-comfort` are, per the header above, the source of the
+ * ONLY two plans across all 198 with a #53 shallow warning.
+ *
+ * TIER-REACH METHOD, shared by `relaxation-dense` and `margin-extreme`
+ * below: temporary `__SWEEP_TIER_DEBUG: string[]` instrumentation added to
+ * `planRoute.ts` (one `push('tier1'|'tier2'|'tier3'|'tier4'|…)` immediately
+ * before each of its `return assemble(...)` call sites, reverted before
+ * commit — zero diff under `app/src/` in the shipped PR), read after each
+ * `planRoute()` call in a throwaway probe script run against the real
+ * committed mask/polars for all 27 Marstal-origin relaxable destinations.
+ * VALIDATED behaviour-neutral: every `result.status` produced by the
+ * instrumented run matched the corresponding row of the already-generated
+ * (uninstrumented) arm output file, so the instrumentation observed the real
+ * control flow rather than perturbing it. Independently reproduced twice —
+ * once during PR #488 review, once in the fix wave that followed — with
+ * identical tier-4 row sets both times. Re-run this method (not just cited
+ * numbers) to verify any claim below against a future `planRoute.ts` — the
+ * tier boundaries themselves are not pinned by any committed test.
  *
  *   margin-zero       - `depthComfortMarginM: 0` at Marstal origin — the
  *                     purest unprotected relaxation case. `edgeFactor`
@@ -134,39 +191,70 @@ export const T0 = Date.UTC(2026, 6, 15, 6, 0, 0);
  *                     mask.segmentNavigable(a, b, gateM) ? 1 : null;`), so
  *                     there is no comfort pricing and no #243 merge
  *                     protection at all — every relaxed-tier leg is priced
- *                     exactly as the pre-#243 solver priced it. DELIBERATELY
- *                     NOT Flensburg-origin: the existing `no-comfort` arm
- *                     already IS `depthComfortMarginM: 0` at Flensburg with
- *                     this same wind field, so a literal Flensburg-origin
- *                     reading of "margin-zero" would be byte-identical to
- *                     `no-comfort` — a second arm testing nothing `no-comfort`
- *                     doesn't already, the exact "another `becalmed`" trap
- *                     this issue exists to avoid. Marstal origin makes it a
- *                     genuinely new arm: 27 of 32 rows exercise relaxation,
- *                     all of them with comfort pricing OFF end to end.
+ *                     exactly as the pre-#243 solver priced it, and neither
+ *                     retry gate is even reachable (`comfortDepthM !==
+ *                     undefined` guards both, planRoute.ts), so this arm can
+ *                     NEVER produce a tier2/tier4 row by construction.
+ *                     DELIBERATELY NOT Flensburg-origin: the existing
+ *                     `no-comfort` arm already IS `depthComfortMarginM: 0` at
+ *                     Flensburg with this same wind field, so a literal
+ *                     Flensburg-origin reading of "margin-zero" would be
+ *                     byte-identical to `no-comfort` — a second arm testing
+ *                     nothing `no-comfort` doesn't already, the exact
+ *                     "another `becalmed`" trap this issue exists to avoid.
+ *                     Marstal origin makes it a genuinely new arm: 27 of 32
+ *                     rows exercise relaxation, all of them with comfort
+ *                     pricing OFF end to end.
  *   relaxation-dense  - Marstal origin, plain DEFAULT_SETTINGS (comfort
  *                     margin 2.0 m, the shipped default) — the normal-usage
  *                     counterpart to margin-zero: relaxation WITH #243
- *                     comfort pricing active, across the same 27 pairs.
- *   tier4-forcing     - Marstal origin, `depthComfortMarginM: 8.0` +
- *                     `safetyDepthM: 2.9`. #243's tier 4 (relaxed gate,
- *                     comfort preference OFF) only runs when tier 3 (relaxed
- *                     gate, comfort ON) fails on a rig with a retriable cause
- *                     — see `needsUnpreferencedRetry` and the tier 3/4 block
- *                     in planRoute.ts. An inflated comfort margin against a
- *                     safety depth just above `BOAT_DRAFT_M` (2.1 m) makes
- *                     nearly the whole relaxed corridor price below comfort
- *                     depth, which is what can push tier 3 into the
- *                     search-capacity failure `comfortRetryMayHelp` exists to
- *                     catch. VERIFIED empirically, not asserted: a one-off
- *                     probe (temporary `__SWEEP_TIER_DEBUG` instrumentation in
- *                     `planRoute.ts`, reverted before commit — see this PR's
- *                     description) tagged which tier actually produced each
- *                     of the 27 Marstal-origin relaxable destinations' results
- *                     under these settings; `damp`, `olpenitz` and
- *                     `schleimuende` resolved via tier 4, the rest via tier 3
- *                     — so this arm is confirmed to reach every tier the #53/
- *                     #243 interaction defines, not just tiers 1-3.
+ *                     comfort pricing active, across the same 27 pairs. THE
+ *                     BROADEST tier-4 exerciser of the three #452 arms —
+ *                     by the TIER-REACH METHOD above, 11 of its 27 rows
+ *                     (`aabenraa`, `augustenborg`, `damp`, `flensburg`,
+ *                     `gelting-mole`, `hoeruphav`, `mommark`, `olpenitz`,
+ *                     `schleimuende`, `soenderborg`, `wackerballig`) resolve
+ *                     via tier 4, a STRICT SUPERSET of `margin-extreme`'s 3
+ *                     below. Also the arm with the most genuinely NEW route
+ *                     geometry over `margin-zero`: only 16 of 33 rows differ
+ *                     from it byte-for-byte (PR #488 review), so the shipped
+ *                     2.0 m default margin changes fewer routes than it
+ *                     might look like from the arm count alone.
+ *   margin-extreme    - Marstal origin, `depthComfortMarginM: 8.0` +
+ *                     `safetyDepthM: 2.9` — an inflated comfort margin
+ *                     against a safety depth just above `BOAT_DRAFT_M`
+ *                     (2.1 m). NOT a "tier-4-forcing" arm — an EARLIER
+ *                     version of this comment claimed inflating the margin
+ *                     forces tier 4, which is BACKWARDS: by the TIER-REACH
+ *                     METHOD above, this arm resolves via tier 4 on only 3 of
+ *                     its 27 rows (`damp`, `olpenitz`, `schleimuende`) — a
+ *                     STRICT SUBSET of `relaxation-dense`'s 11, not a
+ *                     superset. `depthComfortMarginM: 4.0` at the same
+ *                     `safetyDepthM: 2.9`, and `depthComfortMarginM: 8.0` at
+ *                     the default `safetyDepthM: 3.0`, both reproduce the
+ *                     IDENTICAL 3-row set (PR #488 review, independently
+ *                     re-verified in this fix wave) — so those 3 rows are a
+ *                     margin-INDEPENDENT structural core (they resolve via
+ *                     tier 4 at every tested margin >= 4.0), while the other
+ *                     8 of `relaxation-dense`'s 11 are specific to the
+ *                     shipped 2.0 m default and vanish at any larger margin
+ *                     tested. What this arm actually discriminates: it
+ *                     isolates that ROBUST 3-row core from the
+ *                     margin-SPECIFIC remainder — real, useful evidence, just
+ *                     not "more tier-4 coverage than relaxation-dense". Its
+ *                     mechanism, for a future investigator: comfort pricing
+ *                     derates an edge's ranking cost toward
+ *                     `(1 - DEPTH_DERATE_MAX)` as clearance approaches the
+ *                     gate REGARDLESS of margin size (the ramp's endpoint is
+ *                     margin-invariant — see `edgeFactor`'s shortfall
+ *                     arithmetic), but a SMALL margin reaches that endpoint
+ *                     over a much SHORTER clearance range, concentrating the
+ *                     ranking distortion sharply at the pinch point; a LARGE
+ *                     margin spreads the same ramp over a wider depth range,
+ *                     diluting it. This is a plausible mechanical account of
+ *                     why a large margin SUPPRESSES rather than forces tier-4
+ *                     entry — stated as a hypothesis, not verified by tracing
+ *                     the search itself.
  */
 export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
   breeze: { label: 'breeze', settings: DEFAULT_SETTINGS, wind: () => uniformWindGrid(12, 225) },
@@ -207,8 +295,8 @@ export const ARMS: Record<(typeof ARM_NAMES)[number], Arm> = {
     wind: () => uniformWindGrid(12, 225),
     originId: 'marstal',
   },
-  'tier4-forcing': {
-    label: 'tier4-forcing',
+  'margin-extreme': {
+    label: 'margin-extreme',
     settings: { ...DEFAULT_SETTINGS, depthComfortMarginM: 8.0, safetyDepthM: 2.9 },
     wind: () => uniformWindGrid(12, 225),
     originId: 'marstal',

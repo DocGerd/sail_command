@@ -9,19 +9,54 @@ control input, so any change to how `solve()` *classifies* a failure can move
 real routes. Run this before trusting such a change. A change that is only
 meant to be presentational must move nothing.
 
-**#452**: the original six arms (Flensburg origin) exercise #53 depth
-relaxation on only 1 of their 33 rows each (the Marstal leg) — a
-`cellsConnected` connectivity probe over all 528 unique harbour pairs
-(33 choose 2) found relaxation is needed on 27 pairs, and EVERY one of them
-involves Marstal. `margin-zero`, `relaxation-dense` and `tier4-forcing` (see
-their doc comments in `sweepArms.ts`) use Marstal as origin instead, so 27 of
-their 33 rows carry a `shallow` block — verified by running them once
-(2026-08-10): `margin-zero` 27/33, `relaxation-dense` 27/33, `tier4-forcing`
-27/33 (5 `unreachable` = the #9 KNOWN_DISCONNECTED harbours; 1 trivial
-Marstal→Marstal `ok` row with no `shallow` block). All three arms are
-byte-distinct from each other and from the original six (different sha256 per
-arm file), so this is real discriminating coverage, not three more
-`becalmed`s.
+**#452**: the original six arms (Flensburg origin) can each carry a
+*successful* #53 depth relaxation (a `shallow` block) on only 1 of their 33
+rows (the Marstal leg) — a `cellsConnected` connectivity probe over all 528
+unique harbour pairs in `harbors.json` (33 choose 2) found a relaxed gate
+connects on 27 of them, and EVERY one of the 27 involves Marstal. The
+relaxation-*attempt* gate itself is not rare (`depthRelaxationMayHelp` true
+51/198, table below — the five #9 KNOWN_DISCONNECTED harbours enter the same
+block on every Flensburg-origin row that names one, they just never find a
+gate), but a successful one is. `margin-zero`, `relaxation-dense` and
+`margin-extreme` (see their doc comments in `sweepArms.ts`) use Marstal as
+origin instead, so 27 of their 33 rows carry a `shallow` block — verified by
+running them once (2026-08-10): `margin-zero` 27/33, `relaxation-dense`
+27/33, `margin-extreme` 27/33 (5 `unreachable` = the #9 KNOWN_DISCONNECTED
+harbours; 1 trivial Marstal→Marstal `ok` row with no `shallow` block).
+
+This is real discriminating coverage, not three more `becalmed`s — verified
+plan-by-plan (a whole-file sha256, unlike this, cannot tell "16 routes
+changed" from "one timestamp changed", and `becalmed`/`deep-becalmed` are
+already this repo's own named example of byte-distinct arms that prove
+nothing):
+
+| pair | plans differing |
+|---|---|
+| `margin-zero` vs `relaxation-dense` | 16 / 33 |
+| `relaxation-dense` vs `margin-extreme` | 27 / 33 |
+| `margin-zero` vs `margin-extreme` | 27 / 33 |
+
+The `margin-zero` vs `relaxation-dense` figure has a structural explanation
+that cannot rot the way a measured number can: `comfortDepthM` is `undefined`
+whenever `depthComfortMarginM === 0` (`planRoute.ts:301-302`), and both #243
+retry gates are guarded `comfortDepthM !== undefined && …`
+(`planRoute.ts:440`, `:515`) — so `margin-zero` can **never** reach tier 2 or
+tier 4, while `relaxation-dense` and `margin-extreme` can. Turning the
+comfort margin from 0 to the shipped 2.0 m default therefore moves 16 of 33
+routes, not all 27 — the remaining 11 rows are ones where the extra pricing
+changes nothing observable.
+
+**Determinism control (partial, PR #488 review): `margin-zero` run twice,
+byte-identical** — `sha256 44f1e2…4f2342b` both times (matches this
+session's own run too). The three #452 arms otherwise share `README.md`'s
+"no `deadline` argument passed" structural argument for why a byte-identical
+BASE double-run is expected (`runArm` never budgets `planRoute()`, so #432's
+wall-clock `PLAN_BUDGET_MS` never engages and nothing time-dependent feeds
+the solver) — but only one of the three has actually been run twice.
+`relaxation-dense` and `margin-extreme` are UNMEASURED for determinism;
+`margin-extreme` is the one to double-run first if this ever needs full
+confidence, since it is the only one of the three whose control flow depends
+on a tier-3 *failure* rather than a tier-3 success.
 
 ## Why it lives here and not under `src/`
 
@@ -59,6 +94,15 @@ node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/base2   # the control
 node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/head    # the result
 ```
 
+`compare.mjs` needs **Node >= 22.18** to run standalone (it `import()`s
+`armNames.ts` directly under plain Node — see that file's own doc comment):
+below that floor, unflagged TypeScript type-stripping is unavailable and it
+fails loudly with `ERR_UNKNOWN_FILE_EXTENSION` rather than silently. CI's
+`node-version: 22` resolves to the latest 22.x patch at install time
+(comfortably past 22.18 for any recent run), but `compare.mjs` is a manual
+tool CI never invokes, so a contributor on an older local Node needs to
+upgrade before this works.
+
 `SC_SWEEP_OUT` is required (absolute path); the run fails closed without it.
 `SC_SWEEP_LIMIT=N` restricts to the first N destinations — for calibrating a
 change to the harness itself, never for a real comparison. A trailing
@@ -72,13 +116,24 @@ licenses the comparison at all.
 ## The baseline is defined by these parameters
 
 Everything in `sweepArms.ts` that shapes the input is part of the baseline's
-identity: the six arms and their wind fields, the `{ hours: 3 }` override on
-`short-horizon`, the settings deltas, the origin (`harbors.json`'s
-`flensburg.snap`), `T0`, and `serialize()`'s replacer and 1-space indent.
-Change any one of them and previously recorded output is no longer comparable.
-**Add an arm rather than editing one.**
+identity: the arm list and their wind fields, the `{ hours: 3 }` override on
+`short-horizon`, the settings deltas, **each arm's origin** (`Arm.originId`,
+`harbors.json`'s `flensburg.snap` by default, `marstal.snap` for the three
+#452 relaxation arms — added #452, PR #488: a PRE-#452 baseline's implicit
+"the origin is always flensburg.snap" is no longer true of the file as a
+whole, only of arms that omit `originId`), `T0`, and `serialize()`'s replacer
+and 1-space indent. Change any one of them and previously recorded output is
+no longer comparable. **Add an arm rather than editing one.**
 
 ## Recorded baseline — 2026-08-07, PR #450 (`dbcd519`)
+
+**Covers only the ORIGINAL six arms (198 of the 297 plans this harness now
+produces).** No baseline has been recorded for the three #452 arms below
+(`margin-zero`, `relaxation-dense`, `tier4-forcing`) — the BASE double-run
+control for those was deliberately deferred to whenever a real
+depth-relaxation change is actually implemented, so it can be recorded
+against that change's own merge-base rather than a `develop` that keeps
+moving underneath it (see this PR's description).
 
 | | |
 |---|---|
