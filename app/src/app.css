@@ -1584,7 +1584,8 @@ select {
 .planner-panel,
 .route-summary,
 .plans-list,
-.options-panel {
+.options-panel,
+.settings-panel {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1682,8 +1683,8 @@ select {
   border: 0;
 }
 
-/* §3.3 compact row: departure + safety depth side by side above the advanced
-   disclosure. Collapses to one column when the panel is very narrow. */
+/* §3.3 compact row: departure + safety depth side by side. Collapses to one
+   column when the panel is very narrow. */
 .planner-compact-row {
   display: grid;
   grid-template-columns: 1fr minmax(7rem, 10rem);
@@ -1697,25 +1698,15 @@ select {
   }
 }
 
-/* §3.3 advanced disclosure summary: bold label + a muted, ellipsized one-line
-   value glance that is hidden once the disclosure is open (the fields show). */
-.planner-advanced-label {
-  font-weight: 600;
-}
-
-.planner-advanced-values {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.8rem;
-  font-weight: 400;
-  color: color-mix(in srgb, var(--sc-fg) 60%, transparent);
-}
-
-.sc-disclosure.planner-advanced[open] .planner-advanced-values {
-  display: none;
+/* #299: discoverable link from the (still inline) safety-depth field to the
+   Boat tab's depth comfort margin + the rest of the boat settings — a quiet
+   ghost link, not a second primary action, so it reads as secondary
+   navigation rather than competing with "Route planen" below it. Mirrors
+   .planner-result-details's own align-self (a Button primitive stretches to
+   the panel's full width by default, like every flex child of the
+   `display:flex; flex-direction:column` panel containers above). */
+.planner-boat-settings-link {
+  align-self: flex-start;
 }
 
 /* §3.3 sticky primary action — reachable without scrolling past a long panel. */
@@ -1890,6 +1881,17 @@ select {
    (heading is tabIndex -1, so :focus only ever fires from that programmatic
    jump). */
 .route-ergebnis > .sc-card-title:focus {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* #299 fix (PR #486 review): same treatment for the safety-depth field's
+   boat-settings link, which moves focus to the Boat tab's first Card
+   heading (SettingsPanel.tsx's own `titleTabIndex={-1}`) — only that one
+   heading in this subtree is ever focusable, so the descendant selector
+   never needs a :first-of-type qualifier. */
+.settings-panel .sc-card-title:focus {
   outline: 2px solid var(--sc-accent);
   outline-offset: 3px;
   border-radius: 4px;

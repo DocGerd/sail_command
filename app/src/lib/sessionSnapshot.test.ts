@@ -57,6 +57,54 @@ describe('sessionSnapshot (#113)', () => {
     expect(parseSessionSnapshot(raw)).toBeNull();
   });
 
+  // #299: 'boat' is a real, persistable Tab value (App.tsx's write-back
+  // effect saves it like any other) and a SYNTACTICALLY VALID parse result —
+  // parseSessionSnapshot is a pure shape validator with no restore policy
+  // (PR #486 review, Minor 6), so it round-trips 'boat' like any other Tab
+  // rather than silently returning something the caller didn't write. The
+  // "never restore INTO 'boat'" DECISION lives one level up, in
+  // readSessionSnapshot, tested separately below.
+  it("#299: parseSessionSnapshot round-trips a 'boat' tab UNCHANGED — it is a pure parser, no restore policy", () => {
+    expect(parseSessionSnapshot('{"v":1,"planId":"p1","tab":"boat","rig":"fock"}')).toEqual({
+      v: 1,
+      planId: 'p1',
+      tab: 'boat',
+      rig: 'fock',
+    });
+  });
+
+  it("#299: writeSessionSnapshot persists 'boat' verbatim (unaffected by the read-time restore policy)", () => {
+    writeSessionSnapshot({ v: 1, planId: 'p1', tab: 'boat', rig: null });
+    expect(localStorage.getItem(SESSION_SNAPSHOT_KEY)).toBe(
+      '{"v":1,"planId":"p1","tab":"boat","rig":null}',
+    );
+  });
+
+  describe("readSessionSnapshot's restore policy (#299, PR #486 review Minor 6)", () => {
+    it("coerces a persisted 'boat' tab to 'plan' — a sailor reopening the PWA on deck must land on a content tab, not the boat/skipper settings form", () => {
+      localStorage.setItem(SESSION_SNAPSHOT_KEY, '{"v":1,"planId":"p1","tab":"boat","rig":"fock"}');
+      expect(readSessionSnapshot()).toEqual({ v: 1, planId: 'p1', tab: 'plan', rig: 'fock' });
+    });
+
+    it("the no-plan variant also coerces a persisted 'boat' tab to 'plan'", () => {
+      localStorage.setItem(SESSION_SNAPSHOT_KEY, '{"v":1,"planId":null,"tab":"boat","rig":null}');
+      expect(readSessionSnapshot()).toEqual({ v: 1, planId: null, tab: 'plan', rig: null });
+    });
+
+    it('every OTHER tab passes through unchanged', () => {
+      localStorage.setItem(SESSION_SNAPSHOT_KEY, '{"v":1,"planId":"p1","tab":"routes","rig":null}');
+      expect(readSessionSnapshot()).toEqual({ v: 1, planId: 'p1', tab: 'routes', rig: null });
+    });
+
+    // The coercion must not SWALLOW a genuinely corrupt value — it only
+    // ever runs on an already-successfully-parsed snapshot, gated behind
+    // `snapshot === null` short-circuiting first.
+    it('a genuinely corrupt persisted value still returns null — the restore policy never masks a parse failure', () => {
+      localStorage.setItem(SESSION_SNAPSHOT_KEY, '{"v":1,"planId":"p1","tab":"nonsense"');
+      expect(readSessionSnapshot()).toBeNull();
+    });
+  });
+
   it('readSessionSnapshot returns null when localStorage access throws (private mode)', () => {
     localStorage.setItem(SESSION_SNAPSHOT_KEY, '{"v":1,"planId":null,"tab":"live","rig":null}');
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {

@@ -520,6 +520,119 @@ describe('App', () => {
     expect(await screen.findByText(de['live.noPlan'])).toBeInTheDocument();
   });
 
+  // #299: the fourth "Boot"/"Boat" tab renders SettingsPanel's grouped
+  // content — a peer content tab like the other three, not a modal.
+  it('adds a fourth Boot tab that renders the grouped Boat-settings content (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('heading', { name: de['settings.section.boatSafety'] }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: de['settings.section.propulsion'] }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: de['settings.section.liveAis'] }),
+    ).toBeInTheDocument();
+    // #299 correction (coordinator, after PR #486 review): safety depth
+    // DOES also appear here now — its canonical home, per issue #299's own
+    // design question 2 — alongside the inline PlannerPanel quick-access
+    // copy (single-sourced; see the dedicated single-source-of-truth test
+    // below).
+    expect(screen.getByLabelText(de['options.safetyDepth.label'])).toBeInTheDocument();
+  });
+
+  // #299: the safety-depth field's discoverable route to the Boat tab.
+  it('the safety-depth boat-settings link switches to the Boat tab (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plain string, not `new RegExp(dictString)`: the DE copy now contains
+    // literal `(`/`)`/`.` (regex metacharacters), and wrapping an unescaped
+    // dict string in `new RegExp()` is fragile in general, not just for this
+    // string — measured while writing this fix, `new RegExp('X(a. b)').test`
+    // against its OWN source can return `false` (a `.` wildcard inside a
+    // capture group after a non-empty prefix). A plain string arg to
+    // `getByRole`'s `name` does an exact accessible-name match with no
+    // regex parsing at all, sidestepping the whole class.
+    fireEvent.click(screen.getByRole('button', { name: de['planner.safetyDepth.boatLink'] }));
+    expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('heading', { name: de['settings.section.boatSafety'] }),
+    ).toBeInTheDocument();
+  });
+
+  // #299 (coordinator correction after PR #486 review): safety depth now
+  // renders on BOTH surfaces — PlannerPanel's inline compact-row field and
+  // SettingsPanel's Boat-tab "Boat & safety" Card — sharing ONE
+  // `settings.safetyDepthM` value (App.tsx's own `useSettings()`), never two
+  // copies. Pins the single-source-of-truth property directly: an edit made
+  // on ONE surface must be visible on the OTHER the next time it mounts, in
+  // BOTH directions.
+  it('safety depth is single-sourced between the Plan-tab inline field and the Boat-tab SettingsPanel field, in both directions (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plan tab is the default — edit the inline field there.
+    const inlineInput = screen.getByLabelText(de['options.safetyDepth.label']);
+    fireEvent.change(inlineInput, { target: { value: '5.5' } });
+    fireEvent.blur(inlineInput);
+    expect(inlineInput).toHaveValue(5.5);
+
+    // Switch to the Boat tab — its OWN safety-depth field must already show
+    // the value just committed on the Plan tab.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    const boatInput = screen.getByLabelText(de['options.safetyDepth.label']);
+    expect(boatInput).toHaveValue(5.5);
+
+    // Edit it from the Boat tab this time.
+    fireEvent.change(boatInput, { target: { value: '4.0' } });
+    fireEvent.blur(boatInput);
+    expect(boatInput).toHaveValue(4);
+
+    // Back to the Plan tab — the inline field must reflect the Boat-tab edit.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    expect(screen.getByLabelText(de['options.safetyDepth.label'])).toHaveValue(4);
+  });
+
+  // #299 fix (PR #486 review, Major 1): the boat-settings link lives inside
+  // PlannerPanel, which UNMOUNTS the instant the tab switches away from
+  // 'plan' — without an explicit focus move, activating it drops keyboard
+  // focus to document.body (measured in review). Pins that focus lands on
+  // the Boat tab's first Card heading instead, mirroring "Details ansehen"'s
+  // routeResultHeadingRef precedent exactly.
+  it('the safety-depth boat-settings link moves focus to the Boat tab heading, not document.body (#299 fix, PR #486 Major 1)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plain string — see the sibling test above for why `new RegExp` on this
+    // dict string is unsafe.
+    const link = screen.getByRole('button', {
+      name: de['planner.safetyDepth.boatLink'],
+    });
+    link.focus();
+    expect(document.activeElement).toBe(link);
+
+    fireEvent.click(link);
+
+    const heading = screen.getByRole('heading', { name: de['settings.section.boatSafety'] });
+    expect(document.activeElement).toBe(heading);
+    expect(document.activeElement?.tagName).not.toBe('BODY');
+  });
+
   it('shows the offline banner when the browser goes offline, and it clears when back online', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });
@@ -942,6 +1055,40 @@ describe('banner surfacing (PR self-review fix wave)', () => {
       'aria-selected',
       'true',
     );
+  });
+
+  // #299: a solver-affecting settings change (routing-relevant per
+  // lib/planForm.ts's ROUTING_RELEVANT_SETTINGS_KEYS) marks the displayed
+  // plan stale on this App-level, tab-independent banner surface too — not
+  // only via PlannerPanel's own Chip, which mounts ONLY on the Plan tab. The
+  // risk this pins: before #299, a settings change made from a tab other
+  // than Plan (now including the new Boat tab) left NO on-screen indication
+  // that the displayed route no longer matched the form.
+  it('a solver-affecting Boat-tab settings change surfaces a tab-independent stale-route banner, visible on the Routes tab (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // No banner yet — the form still matches the displayed plan.
+    expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+
+    // Edit a ROUTING-RELEVANT setting (motorEnabled) from the new Boat tab.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    fireEvent.click(screen.getByLabelText(de['options.motorEnabled.label']));
+
+    // Visible immediately while still on the Boat tab...
+    expect(await screen.findByText(de['planner.result.stale'])).toBeInTheDocument();
+    // ...and still visible after switching to Routes — the exact surface the
+    // #299 risk named as silently uninformed before this fix.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    expect(screen.getByText(de['planner.result.stale'])).toBeInTheDocument();
   });
 
   it('the stale-forecast banner renders through the real App tree for a loaded plan whose windGrid predates departure by >12h', async () => {
@@ -1558,6 +1705,34 @@ describe('session restore (#113)', () => {
     // (beforeEach) additionally rejects any non-asset URL loudly, so a
     // sneaked-in direct fetch could not pass either.
     expect(fetchWindGrid).not.toHaveBeenCalled();
+  });
+
+  // #299: 'boat' is a real, persistable Tab value (the write-back effect
+  // saves it like any other), but a fresh boot must never restore INTO it —
+  // a sailor reopening the PWA on deck should land on a content tab, not the
+  // settings form. Unit-pinned at the parse boundary in
+  // lib/sessionSnapshot.test.ts; this is the integration-level twin,
+  // exercising the real restore path end to end.
+  it("#299: a persisted 'boat' tab never restores into the Boat tab — lands on Plan instead", async () => {
+    await db.savePlan(savedPlan('restore-boat'));
+    localStorage.setItem(
+      'sc-session',
+      '{"v":1,"planId":"restore-boat","tab":"boat","rig":"genoa"}',
+    );
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: de['nav.plan'] })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
   });
 
   it('restoring into the Live tab never starts a GPS watch — tracking stays opt-in', async () => {

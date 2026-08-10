@@ -106,6 +106,40 @@ export const ROUTING_RELEVANT_SETTINGS_KEYS = [
 ] as const satisfies readonly (keyof Settings)[];
 
 /**
+ * True when the LIVE settings (App.tsx's `useSettings()`, editable from the
+ * Boat tab or the Plan tab's compact safety-depth field) have drifted from
+ * the settings the displayed plan actually ran with, on any of the eight
+ * ROUTING_RELEVANT_SETTINGS_KEYS. Extracted from planFormDirty below (#299
+ * PR #486 review) as its own export: App.tsx's cross-tab staleness BANNER
+ * uses this NARROWER signal rather than the full planFormDirty, because
+ * Routes/Live/Boat have no UI to edit origin/destination/departure at all —
+ * a Setting is the only thing reachable from those tabs — and because
+ * origin/departure drift can arise WITHOUT any user edit (state/reroute.ts's
+ * rerouteFromFix sets `departureMs: nowMs` at reroute time, and by the time
+ * the #301 sync effect's `departureSeedMs` reseeds the form a moment later
+ * "now" has already advanced past it, so the reseeded value is structurally
+ * never equal to the stored one — a correct-by-construction mismatch, not a
+ * user change). Showing "your route is stale, replan" the instant a Live
+ * reroute SUCCEEDS is a cry-wolf false positive on exactly the tab where
+ * attention is scarcest; scoping the banner to settings avoids it, since
+ * rerouteFromFix carries the ORIGINAL plan's settings forward unchanged.
+ * PlannerPanel's own Chip/live-region keep using the full planFormDirty
+ * unchanged — origin/destination/departure edits ARE reachable there.
+ *
+ * Backfilled from DEFAULT_SETTINGS before comparing — mirrors lib/
+ * recalc.ts's identical backfill. A plan saved before a Settings field
+ * existed (e.g. depthComfortMarginM, added #243) simply lacks that key in
+ * its stored snapshot; without this, every such plan would read
+ * permanently dirty on a field the user never touched, since live settings
+ * (always backfilled at load — see state/AppState.tsx) would carry a real
+ * number against the plan's `undefined`.
+ */
+export function routingSettingsDirty(plan: Plan, formSettings: Settings): boolean {
+  const planSettings: Settings = { ...DEFAULT_SETTINGS, ...plan.request.settings };
+  return ROUTING_RELEVANT_SETTINGS_KEYS.some((key) => formSettings[key] !== planSettings[key]);
+}
+
+/**
  * True when the form (current origin/destination/departure/settings) has
  * drifted from the plan actually displayed — i.e. a re-run right now would
  * produce a DIFFERENT route than the one on screen. Vias are deliberately
@@ -159,17 +193,5 @@ export function planFormDirty(
     form.destination.source === 'harbor' ? form.destination.harborId : null;
   if (harborsAvailable && formDestinationHarborId !== req.destinationHarborId) return true;
 
-  // Backfilled from DEFAULT_SETTINGS before comparing — mirrors lib/
-  // recalc.ts's identical backfill. A plan saved before a Settings field
-  // existed (e.g. depthComfortMarginM, added #243) simply lacks that key in
-  // its stored snapshot; without this, every such plan would read
-  // permanently dirty on a field the user never touched, since live
-  // settings (always backfilled at load — see state/AppState.tsx) would
-  // carry a real number against the plan's `undefined`.
-  const planSettings: Settings = { ...DEFAULT_SETTINGS, ...req.settings };
-  for (const key of ROUTING_RELEVANT_SETTINGS_KEYS) {
-    if (form.settings[key] !== planSettings[key]) return true;
-  }
-
-  return false;
+  return routingSettingsDirty(plan, form.settings);
 }
