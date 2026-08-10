@@ -176,6 +176,10 @@ export const de = {
   // reduced one instead.
   'route.shallow.banner':
     'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+  // #452 gap 3: siehe dict.en.ts's Kommentar für Zweck und Konvention
+  // (Singular/`.plural`, wie banner.viaTooClose(.plural)).
+  'route.shallow.locator': 'Die betroffene Etappe beginnt um {time}.',
+  'route.shallow.locator.plural': '{count} Etappen sind betroffen — die erste beginnt um {time}.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -195,6 +199,10 @@ export const de = {
   'route.legs.speed': 'Geschwindigkeit',
   'route.legs.distance': 'Distanz',
   'route.legs.maneuver': 'Manöver',
+  // #452 gap 3: siehe dict.en.ts's Kommentar (per-Etappe Untiefen-Markierung,
+  // Text statt reiner Farbe).
+  'route.legs.shallow': 'Untiefe',
+  'route.legs.shallowMarker': 'Untiefe {depth} m',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   'route.legs.disclosure': 'Etappen ({count})',
   'route.kind.motor': 'Motor',
