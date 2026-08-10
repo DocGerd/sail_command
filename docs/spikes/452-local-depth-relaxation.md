@@ -51,16 +51,35 @@ and only four" claim); `postprocess.ts`'s merge-clearance re-validation
 (`:22`) and the comfort-gated per-leg comparison (`:35-38`);
 `DEFAULT_SETTINGS.safetyDepthM = 3.0` / `depthComfortMarginM = 2.0`
 (`types.ts:68-69`); the `exposureNm` assertions and their in-comment
-pre-/post-#243 literals in `realmask.repro.test.ts:359-386`; the six-arm
-header comment in `app/sweep/sweepArms.ts:60-95`, including the "only two
-plans carrying a #53 shallow warning" line; and the `MAX_FRONTIER` /
-`DEPTH_DERATE_MAX` comments in `isochrone.ts:157-186`, including the
-Ærøskøbing→Drejø "derate-insensitive" residual P2 and the safety judge both
-cite. All matched the workflow's citations exactly. The repo moved one
+pre-/post-#243 literals in `realmask.repro.test.ts`'s "the relaxed gate is
+localized to the pinch, not the whole passage" test (~:359-386); the
+six-arm role comment above `sweepArms.ts`'s `export const ARMS` (~:60-95),
+including the "only two plans carrying a #53 shallow warning" line; and the
+`MAX_FRONTIER` / `DEPTH_DERATE_MAX` comment block in `isochrone.ts`
+(~:157-186), including the Ærøskøbing→Drejø "derate-insensitive" residual P2
+and the safety judge both cite. All matched the workflow's citations
+exactly. The repo moved one
 docs-only commit past the workflow's `836be3f` reference point before this
 branch was cut (`4f0c786`, CLAUDE.md citation anchoring only, verified via
 `git show --stat` to touch no `app/` file) — nothing below is stale on that
 account.
+
+**A conflation this document made and then corrected, recorded so it is not
+repeated**: an earlier draft described "27 of 528" as a figure produced by
+the six-arm sweep. It is not. `sweepArms.ts`'s own six-arm role comment
+(~:60-95) and `app/sweep/README.md:3` both state the harness is **6 arms ×
+33 harbours = 198 plans** — 528 is not a number the sweep produces at all.
+528 = C(33,2), all harbour *pairs* (verified: `math.comb(33, 2) == 528`),
+and the "27 of 528" figure comes from a maintainer comment on issue #452
+itself (`gh api repos/DocGerd/sail_command/issues/452/comments`,
+2026-08-07T21:04:54Z — read directly in this session, not paraphrased):
+*"Component-labelling all 33 harbour snaps at every gate from 2.1 to 3.0 m,
+528 pairs: 351 connect at 3.0 m and never relax ... relaxation succeeds in
+exactly 27 — every one of them involving Marstal."* That is a harbour×gate
+component-connectivity analysis run directly against the mask, independent
+of the sweep's arm structure. §4(b) and §6 cite it with that provenance now;
+do not re-attach it to the sweep, and do not read "528" as anything other
+than harbour pairs.
 
 **What this document did NOT independently re-run**: the numpy/scipy mask
 measurements P3 and its feasibility-judge grafter report (component counts,
@@ -93,10 +112,10 @@ partition is identical on both branches.
 There are exactly four call sites, confirmed by grep and independently
 re-confirmed in this session:
 
-- `isochrone.ts:435-441` — direct-candidate arrival test (`from` → `destination`)
-- `isochrone.ts:487` — the full step (`from` → `end`)
-- `isochrone.ts:508` — the substep retry, inside the `[2,4,8]`-divisor loop
-- `isochrone.ts:556-562` — the endpoint-capture hop (`end` → `destination`)
+- `isochrone.ts`'s `directFactor = edgeFactor(...)` call (~:435) — direct-candidate arrival test (`from` → `destination`)
+- `isochrone.ts`'s `fullFactor = edgeFactor(...)` call (~:487) — the full step (`from` → `end`)
+- `isochrone.ts`'s `subFactor = edgeFactor(...)` call, inside the `[2,4,8]`-divisor loop (~:508) — the substep retry
+- `isochrone.ts`'s `captureFactor = edgeFactor(...)` call (~:556) — the endpoint-capture hop (`end` → `destination`)
 
 Every one passes `settings.safetyDepthM` as `gateM`. No other code in
 `solve()` reads `safetyDepthM` at all — not `sailFloorKn`, not `pruneKey`, not
@@ -209,8 +228,9 @@ theorem given the dilation's own frontier test and would be exactly the #410
 unreachable-mutation trap; a merge-pass locality test whose mutation is
 "pass no corridor to `mergeCollinearLegs`," without which forgetting
 `postprocess.ts:22` is invisible; and a byte-identity row proving the
-non-relaxing path (501 of 528 pairs) is structurally, not just hopefully,
-unchanged.
+non-relaxing path (P1's own figure: 501 of the 528 harbour pairs — see §0's
+note on that count's real source, a maintainer issue-comment analysis, not
+the sweep) is structurally, not just hopefully, unchanged.
 
 ### 2.2 P2 — Requested-depth toll
 
@@ -375,6 +395,12 @@ overlapping grafts:
 
 ### 3.3 The radius caution
 
+Figures in this section are the same §2.3 numbers re-quoted, so the same
+provenance applies: **MEASURED-BY-THE-SOURCE** (P3's own numpy/scipy
+reimplementation, independently re-run by the feasibility-lens judge against
+the committed mask — doubly-sourced, not independently re-derived by this
+document).
+
 `APPROACH_RADIUS_M = 3704 m` is presented in the original design as "2×
 headroom" over the measured 1,840 m worst case. Licensed area scales as
 `R²`, and P3's own numbers show the cost of that headroom directly: 488
@@ -401,7 +427,8 @@ implementation begins.
 
 At `DEFAULT_SETTINGS`, the #243 comfort ramp **already** localizes
 Flensburg→Marstal to a small fraction of the passage. Pinned today by
-`exposureNm(legs, 3.0) < 0.6` in `realmask.repro.test.ts:359-386`, with
+`exposureNm(legs, 3.0) < 0.6` in `realmask.repro.test.ts`'s "the relaxed gate
+is localized to the pinch, not the whole passage" test (~:359-386), with
 in-comment measured literals: **1.33 nm** pre-#243, **~0.23 nm** measured
 after. `DEFAULT_SETTINGS.depthComfortMarginM = 2.0` (`types.ts:69`) puts the
 default path in tier 3, where that ramp is active — so a user on default
@@ -431,22 +458,36 @@ written, and the answer recorded here or in the tracking issue either way.**
 
 ### 4(b) The sweep cannot currently discriminate a correct fix from a silently broken one
 
-`app/sweep/sweepArms.ts`'s own header comment (`:60-95`, quoted verbatim)
-records: *breeze* — 27 `ok`, and (paired with *no-comfort*) "the source of
-the only two plans carrying a #53 shallow warning" across the entire 198-plan
-run. The sweep is Flensburg→33-harbours, and every pair that relaxes at all
-is Marstal-destination — **27 of 528** plan/setting combinations across all
-six arms.
+**The load-bearing figure, verifiable in-repo**: `sweepArms.ts`'s own
+six-arm role comment (~:60-95, quoted verbatim) records *breeze* — 27 `ok`,
+and (paired with *no-comfort*) "the source of the only two plans carrying a
+#53 shallow warning" — across the entire **198-plan** run (`app/sweep/README.md:3`:
+6 arms × 33 harbours). So today, an aggregate byte-identity comparison
+across the six arms is dominated by routes this class of change **cannot
+touch at all** — exactly the same shape as the sweep's own documented
+`becalmed`/`deep-becalmed` vacuity (33/33 errors each, byte-identical to a
+catastrophic mask change or to no change at all). **A green six-arm
+comparison run against the current sweep would be evidence about routes the
+change provably cannot reach, not evidence the change is correct.** Shipping
+on that evidence would be worse than shipping with no sweep evidence,
+because it would read as a passed acceptance gate.
 
-So today, an aggregate byte-identity comparison across the six arms is
-dominated by routes this class of change **cannot touch at all** — exactly
-the same shape as the sweep's own documented `becalmed`/`deep-becalmed`
-vacuity (33/33 errors each, byte-identical to a catastrophic mask change or
-to no change at all). **A green six-arm comparison run against the current
-sweep would be evidence about routes the change provably cannot reach, not
-evidence the change is correct.** Shipping on that evidence would be worse
-than shipping with no sweep evidence, because it would read as a passed
-acceptance gate.
+**A separate, broader fact about the same population, from a different
+source** — do not conflate the two. A maintainer comment on issue #452
+itself (2026-08-07T21:04:54Z, *not* the sweep) reports a direct
+harbour×gate component-connectivity analysis run against the committed
+mask: of all **528** harbour *pairs* (C(33,2), every one of the 33 curated
+harbours against every other), 351 connect at the 3.0 m gate and never
+relax, and relaxation succeeds in exactly **27** — every one involving
+Marstal. This is independent evidence that the reachable population is
+narrow (27 of 528 *pairs*, not plans or sweep arms), and it corroborates the
+sweep's own "only two plans" figure without being the same measurement —
+INHERITED from that comment, re-read verbatim in this session but not
+independently re-run against the mask here. Cite each figure to its own
+source: the sweep's is a fact about `app/sweep/`'s current fixture, checkable
+by reading `sweepArms.ts`; the 528/27 figure is a fact about the mask itself,
+checkable only by re-running the component-labelling analysis the issue
+comment describes.
 
 Both judges: add a relaxation-exercising arm (a Marstal-destination arm, and
 a `depthComfortMarginM: 0` arm to reach §4(a)'s genuinely-unprotected
@@ -484,8 +525,9 @@ re-litigating the same argument:
 1. **The maintainer names the configuration that produced the #452
    complaint.** If it is confirmed to be `DEFAULT_SETTINGS`, the size of this
    effort should be reconsidered against a sub-quarter-nautical-mile
-   measured win on 27 of 528 pairs — a much smaller undertaking (or a
-   deferral) may be the right call, and that reconsideration should happen
+   measured win on the 27 of 528 harbour *pairs* that relax at all (§4b's
+   issue-comment figure, not a sweep-arm count) — a much smaller undertaking
+   (or a deferral) may be the right call, and that reconsideration should happen
    *before* implementation, not discovered by the sweep afterward. If it is
    confirmed to be tier 4 or `depthComfortMarginM: 0`, the case for
    proceeding is strong and narrower in scope than #452's original framing.
