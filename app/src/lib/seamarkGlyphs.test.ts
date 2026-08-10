@@ -4,10 +4,47 @@ import {
   registerSeamarkImages,
   seamarkImageId,
   seamarkPriority,
+  seamarkRasterConfig,
   seamarkSegments,
   type SeamarkSegment,
 } from './seamarkGlyphs';
 import type { SeamarkProperties } from '../types';
+
+// #484 F4: canvasSize/naturalIconPx at a non-integer scale, where a bare
+// `BASE_CANVAS_SIZE * scale` would silently truncate against
+// canvas.width/getImageData's WebIDL integer types (measured in real
+// Chromium, not inferred from the spec — see seamarkGlyphs.ts's own #484 F4
+// comment). Every expected value below is HAND-DERIVED from
+// BASE_CANVAS_SIZE=64 / BASE_PIXEL_RATIO=2 (both read directly off
+// seamarkGlyphs.ts, not copied from seamarkRasterConfig's own output), not
+// computed by calling seamarkRasterConfig itself — the #50 equivalence-test
+// tautology this repo has been bitten by before.
+describe('seamarkRasterConfig (#484 F4): CANVAS_SIZE rounding at a non-integer scale', () => {
+  it("at scale 1.6 (this PR's own mutation-check scale), canvasSize rounds 102.4 to 102 and naturalIconPx becomes 31.875, not the idealized 32", () => {
+    // Hand math: canvasSize = round(64 * 1.6) = round(102.4) = 102.
+    // pixelRatio = 2 * 1.6 = 3.2 (never rounded — only canvasSize feeds a
+    // WebIDL-integer canvas property; pixelRatio is a plain numeric option
+    // to map.addImage with no such constraint).
+    // naturalIconPx = 102 / 3.2 = 31.875.
+    const config = seamarkRasterConfig(1.6);
+    expect(config.canvasSize).toBe(102);
+    expect(config.pixelRatio).toBe(3.2);
+    expect(config.naturalIconPx).toBe(31.875);
+  });
+
+  it('at the shipped default scale of 1, every value is byte-identical to before #484 (64 / 2 / 32)', () => {
+    const config = seamarkRasterConfig(1);
+    expect(config.canvasSize).toBe(64);
+    expect(config.pixelRatio).toBe(2);
+    expect(config.naturalIconPx).toBe(32);
+  });
+
+  it('canvasSize is always an integer, at every scale — the property canvas.width/getImageData actually require', () => {
+    for (const scale of [1, 1.1, 1.5, 1.6, 1.75, 2, 2.4, 0.5]) {
+      expect(Number.isInteger(seamarkRasterConfig(scale).canvasSize)).toBe(true);
+    }
+  });
+});
 
 describe('classifySeamark (family bucketing by seamark:type suffix)', () => {
   it('buckets buoy_/beacon_ variants of the same family together', () => {

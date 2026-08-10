@@ -3,6 +3,7 @@ import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
   seamarkFeatureCollectionWithIcons,
+  seamarksLayout,
   type SeamarkFeatureCollection,
 } from './seamarkGeoJson';
 import { seamarkImageId } from './seamarkGlyphs';
@@ -97,14 +98,95 @@ describe('SEAMARKS_LAYOUT (#144 priority-culled, zoom-sized seamark icons)', () 
       13,
       0,
     ]);
-    // Object.is, not toEqual/toBe: CLAUDE.md's #203 rule is that
-    // Object.is(-0, 0) === false even where a looser equality treats them
-    // the same, and the compensation formula is specifically written
-    // (`1 - scale`, never negated after the fact) to land on +0 rather than
-    // a numerically-equal-but-sign-different -0 at scale = 1.
+    // #484 F8: `toBe` in vitest IS `Object.is` — it would already catch a
+    // `-0` here perfectly well; the contrast CLAUDE.md's #203 rule draws is
+    // with `toEqual`, which treats -0 and 0 as the same. This explicit
+    // `Object.is` check below is not needed to distinguish `toBe` from
+    // `toEqual` (both would already work); it exists because `-0` here is
+    // otherwise BEHAVIOURALLY INERT — `icon.x1 - (-0) === icon.x1` in
+    // `collision_feature.ts`, `-0 === 0` for any style diffing, and
+    // `JSON.stringify(-0)` is `"0"` — so a `-0` would never actually reach
+    // MapLibre or change rendering. What this pins is the compensation
+    // FORMULA'S SPELLING, not runtime behaviour: the natural alternative
+    // spelling `-(scale - 1) * baseIconSize * SEAMARK_NATURAL_ICON_PX / 2`
+    // is a reachable refactor that DOES produce `-0` at scale = 1 (negating
+    // a positive-zero result), so this row is a real, non-vacuous mutation
+    // guard against that rewrite — just not a guard against any actual
+    // rendering defect.
     const padding = SEAMARKS_LAYOUT['icon-padding'] as readonly unknown[];
     for (const stopValue of [padding[4], padding[6], padding[8]]) {
       expect(Object.is(stopValue, -0), `expected +0, got ${String(stopValue)}`).toBe(false);
+    }
+  });
+});
+
+// #484 F1: the two tests above only ever exercise SEAMARK_SIZE_SCALE = 1
+// (a module constant fixed for the whole of PR1), where `iconPaddingAt`
+// returns `+0` at every stop — so replacing every `iconPaddingAt(...)` call
+// site with a literal `0` left BOTH tests above green (measured; see the PR
+// description). `seamarksLayout(scale)` (seamarkGeoJson.ts) exists so this
+// file can drive a scale the module constant can't reach.
+//
+// Every expected value below is HAND-DERIVED from the growth formula in
+// `iconPaddingAt`'s own doc comment (`padding(scale) = ((1 - scale) *
+// baseIconSize * NATURAL) / 2`, NATURAL = SEAMARK_NATURAL_ICON_PX = 32 at
+// scale 1, from seamarkGlyphs.ts's BASE_CANVAS_SIZE/BASE_PIXEL_RATIO) —
+// scale 2 is chosen because every operation involved (multiply/divide by a
+// power of two) is EXACT in IEEE-754, so the hand math and the production
+// formula's actual floating-point output agree bit-for-bit with no rounding
+// ambiguity either could hide behind (verified via a throwaway `node -e`
+// during review, not asserted from memory):
+//   icon-size:    base * 2            -> 0.55*2=1.1, 0.7*2=1.4, 0.85*2=1.7
+//   icon-padding: (1-2)*base*32/2 = -16*base -> -16*0.55=-8.8,
+//                 -16*0.7=-11.2, -16*0.85=-13.6
+// This test file NEVER calls iconPaddingAt/seamarksLayout to derive its own
+// expectations — only to produce the ACTUAL value under test — so it cannot
+// pass by the #50 equivalence-test tautology.
+describe('seamarksLayout(scale) at a non-default scale (#484 F1) — pinned against HAND-DERIVED values, not the production formula', () => {
+  it('scales icon-size to 1.1 / 1.4 / 1.7 at scale=2', () => {
+    expect(seamarksLayout(2)['icon-size']).toEqual([
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      8,
+      1.1,
+      11,
+      1.4,
+      13,
+      1.7,
+    ]);
+  });
+
+  it('compensates icon-padding to -8.8 / -11.2 / -13.6 at scale=2', () => {
+    expect(seamarksLayout(2)['icon-padding']).toEqual([
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      8,
+      -8.8,
+      11,
+      -11.2,
+      13,
+      -13.6,
+    ]);
+  });
+
+  // #484 F3: negative icon-padding is UNSPECIFIED MapLibre behaviour this
+  // formula depends on (no floor in `Padding.parse`
+  // @maplibre/maplibre-gl-style-spec@26.2.1, no `minimum` in the v8 spec's
+  // `icon-padding` entry — an ABSENCE, not a guarantee). If a future
+  // MapLibre release adds a floor at 0, the compensation above silently
+  // becomes a no-op, the collision box grows in lockstep with icon size
+  // exactly as #191/#192 did, and nothing throws or warns. This assertion
+  // is what would catch that: it fails the moment a stop stops being
+  // negative, independent of the exact literal values pinned above (which
+  // could be retuned without this guard's intent changing).
+  it('#484 F3: the compensation actually goes NEGATIVE at scale > 1 — a future MapLibre padding floor must red this', () => {
+    const padding = seamarksLayout(2)['icon-padding'] as readonly unknown[];
+    const stops = [padding[4], padding[6], padding[8]];
+    for (const stopValue of stops) {
+      expect(typeof stopValue).toBe('number');
+      expect(stopValue as number).toBeLessThan(0);
     }
   });
 });
