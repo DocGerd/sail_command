@@ -368,9 +368,12 @@ deviate from it.
   the CSS/JS drift guard (this repo's `useBannerHeight.test.ts` pattern): it
   `readFileSync`s `app.css`, regexes out the `320px` literal, and asserts it
   equals `PANEL_MIN_WIDTH_PX`.
-- `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx` — not via a later
-  `setMaxPitch`/`setPitch`, which a style reload could undo — and pinned by
+- `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx`, not via a later
+  `setMaxPitch`/`setPitch` — and pinned by
   `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
+  (The "which a style reload could undo" reason once given here is FALSE and
+  was never true in any 6.x — no such mechanism exists. The CONCLUSION stands;
+  only its reason was wrong — wrong-from-the-start, not staleness.)
   Pitch is deliberately unreachable; don't re-enable it without re-auditing
   for terrain/sky/3D layers and pitch readers (there are none today, #207).
 - GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
@@ -385,9 +388,9 @@ deviate from it.
   against a settle delivered from inside our OWN `easeTo`. **Post-maplibre-gl-6
   (#253): `map.isEasing()` is GONE from `Map`** — v6's `Map extends Evented`,
   not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:589` vs
-  `ui/camera.ts:284`, both read against `maplibre-gl@6.1.0`; they are
+  `ui/camera.ts:284`, both re-verified against `maplibre-gl@6.2.0`; they are
   siblings), and the method survives only on the
-  private `_camera` field. `CompassControl.tsx`'s `onMoveEnd` guard is now a
+  `_camera` field (no TS `private` modifier — convention, not enforced). `CompassControl.tsx`'s `onMoveEnd` guard is now a
   TWO-TERM derivation: `e.originalEvent !== undefined &&
   commandedBearingRef.current !== null &&
   !bearingReached(map.getBearing(), commandedBearingRef.current)`. Both terms
@@ -400,9 +403,11 @@ deviate from it.
   is true for EVERY handler `moveend` whether or not an ease is live; it is
   only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
   gave us on the reachable paths. What makes that conjunction sound: `_stop`
-  (`camera.ts:1197-1210`, 6.1.0) deletes `_easeFrameId` and only THEN invokes
-  `_onEaseEnd` at `:1210` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
-  bound in `_ease` (`:1232`) — so `isEasing()` was already false at every
+  (`camera.ts:1197-1210`, 6.2.0 — file byte-identical since 6.1.0) deletes
+  `_easeFrameId` and only THEN invokes `_onEaseEnd` at `:1210` — and
+  `_afterEase` (`:982`) is what `_onEaseEnd` RESOLVES TO (one closure hop, not
+  the same binding), bound in `_ease` (`:1232`) — so `isEasing()` was already
+  false at every
   ease-emitted `moveend` even in v5, which is why the absence of
   `originalEvent` discriminates a camera-internal ease termination from a
   handler-gesture settle. ACCEPTED NARROWING: the new
@@ -451,9 +456,9 @@ deviate from it.
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
   `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
-  against `maplibre-gl@6.1.0`, the version `app/package-lock.json` pins,
-  re-checked after the #253 v6 upgrade and again after the 6.1.0 bump: still
-  `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
+  against `maplibre-gl@6.2.0`, the version `app/package-lock.json` pins,
+  re-checked after the #253 v6 upgrade, the 6.1.0 bump and the 6.2.0 bump:
+  still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
   !sortKey.isConstant();` at the same line; re-check again after any future
   maplibre-gl upgrade),
   disabling the placement priority entirely. Within one symbol layer,
@@ -597,7 +602,7 @@ deviate from it.
   require three consecutive matches at 400ms, fail CLOSED on budget
   exhaustion with the count history and last three label sets. Three-at-400ms
   is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
-  (`symbol/placement.ts:1268-1277`, 6.1.0) gates re-runs on `commitTime +
+  (`symbol/placement.ts:1268-1277`, 6.2.0) gates re-runs on `commitTime +
   fadeDuration * durationAdjustment > now` with `fadeDuration: 300` defaulted
   at `ui/map.ts:539` (same version). Measured effect: spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
@@ -962,7 +967,7 @@ deviate from it.
   `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
 - Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
   loads them via `getArrayBuffer`/`fetch`
-  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, 6.1.0); `font-src`
+  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, 6.2.0); `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
   Nothing in the suite yet asserts a label actually renders (#320).
 - `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
@@ -1554,7 +1559,7 @@ deviate from it.
 - MapLibre glyph loading has NO observable failure signal by design:
   `GlyphManager._downloadAndCacheRangePromise`
   (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`; every line
-  number in this bullet read against `maplibre-gl@6.1.0`) catches EVERY
+  number in this bullet re-verified against `maplibre-gl@6.2.0`) catches EVERY
   glyph-range fetch failure and falls back unconditionally to a
   locally-drawn TinySDF glyph — the symbol is still placed, so
   `queryRenderedFeatures` returns identical counts and names whether glyphs
