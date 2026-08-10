@@ -62,6 +62,12 @@
   // its ~20 min of solver time into `npm run test` or CI; it is listed here
   // only so `tsc -b` still typechecks it, because an unchecked harness rots
   // and #282 makes re-running this one a standing requirement.
+  // maskTolerance.test.ts (#455): reads pipeline/build_mask.py via `node:fs`
+  // to structurally guard TOLERANCE_M stays in sync with the About dialog's
+  // `about.caveats.depthMask` disclosure copy and with BOAT_DRAFT_M — same
+  // reason as useBannerHeight.test.ts/panelWidth.test.ts (a cross-language
+  // invariant, here Python-to-TypeScript rather than CSS-to-TypeScript, with
+  // no compiler spanning both).
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -73,6 +79,7 @@
     "src/**/useBannerHeight.test.ts",
     "src/**/legDistanceReconciliation.test.ts",
     "src/**/panelWidth.test.ts",
+    "src/**/maskTolerance.test.ts",
     "sweep/**/*.ts"
   ]
 }

@@ -130,6 +130,19 @@ describe('AboutDialog', () => {
     expect(screen.getByText(de['about.changelog.langNote'])).toBeInTheDocument();
   });
 
+  it('shows the depth-mask tolerance caveat alongside the polars caveat (#455)', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <AboutDialog open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(de['about.caveats.polars'])).toBeInTheDocument();
+    expect(screen.getByText(de['about.caveats.depthMask'])).toBeInTheDocument();
+  });
+
   it('calls onClose when the close button is clicked', async () => {
     vi.stubGlobal('fetch', fetchMock());
     const onClose = vi.fn();

@@ -50,6 +50,9 @@
   // app/src/app.css via `node:fs` to structurally guard the `320px` grid
   // literal stays in sync with PANEL_MIN_WIDTH_PX, same pattern as
   // useBannerHeight.test.ts above.
+  // maskTolerance.test.ts (#455) is the same shape again — reads
+  // pipeline/build_mask.py via `node:fs` to structurally guard TOLERANCE_M
+  // stays in sync with the About dialog's disclosure copy.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -60,6 +63,7 @@
     "src/**/glyphFallbackWarningGuard.test.ts",
     "src/**/useBannerHeight.test.ts",
     "src/**/legDistanceReconciliation.test.ts",
-    "src/**/panelWidth.test.ts"
+    "src/**/panelWidth.test.ts",
+    "src/**/maskTolerance.test.ts"
   ]
 }
