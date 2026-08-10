@@ -182,21 +182,34 @@ export const de = {
   // route, not a depth). Reworded to name what actually happened: the
   // requested-depth solve found no continuous route, so the planner used a
   // reduced one instead.
+  // #504 Korrekturwelle: zu EINEM Banner-Element zusammengeführt —
+  // ShallowWarning (RouteSummary.tsx) rendert genau ein <p>, nie zwei. Dies
+  // ist die NICHT-eskalierte Variante; route.shallow.bannerCautious unten
+  // ist die eskalierte. Beide tragen IMMER die #493-Untergrenzen-Klausel
+  // ("Eine vorsichtigere Lesart ... kann ... sinken") — sie unterscheiden
+  // sich nur darin, ob diese Untergrenze zusätzlich als unter dem Tiefgang
+  // des Boots liegend benannt wird. Die Zusammenführung ersetzt ein früheres
+  // Design mit einem ZWEITEN, zusätzlichen Absatz für den eskalierten Fall —
+  // verworfen, weil usedDepthM bei der Standardtiefe 3,0 m nie über
+  // requestedDepthM - MASK_TOLERANCE_M hinausgeht (#53s Suchbereich der
+  // Tiefenrelaxation), sodass dieser zweite Absatz für jede
+  // Standardeinstellung unbedingt vorhanden war.
   'route.shallow.banner':
-    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   // #452 gap 3: siehe dict.en.ts's Kommentar für Zweck und Konvention
   // (Singular/`.plural`, wie banner.viaTooClose(.plural)).
   'route.shallow.locator': 'Die betroffene Etappe beginnt um {time}.',
   'route.shallow.locator.plural': '{count} Etappen sind betroffen — die erste beginnt um {time}.',
-  // #493: eskalierte, eigenständige Warnung — nicht dieselbe Formulierung wie
-  // route.shallow.banner oben, sondern zusätzlich gerendert, wenn die
-  // vorsichtige Untergrenze der bei diesem Plan verwendeten Tiefe unter den
-  // Tiefgang des Boots fallen kann (siehe about.caveats.depthMask für den
-  // Mechanismus). Untergrenze, nicht Messwert: "kann sinken", nie "ist" —
-  // und an {used} gebunden statt an eine feste Zahl, weil sie sich mit der
-  // verwendeten Tiefe verschiebt.
+  // #504: die ESKALIERTE Schwester von route.shallow.banner oben — derselbe
+  // Satz, mit einer zusätzlichen Klausel zum Tiefgang des Boots. Wird
+  // ANSTELLE von (nie zusätzlich zu) der nicht-eskalierten Variante
+  // gerendert, ausgewählt durch ShallowWarnings `isSevere` (siehe
+  // about.caveats.depthMask für den Mechanismus). Eine Untergrenze, kein
+  // Messwert: "kann ... sinken", nie "ist" — und an {used}/{cautious}
+  // gebunden statt an feste Zahlen, weil sich beide mit der verwendeten
+  // Tiefe verschieben.
   'route.shallow.bannerCautious':
-    'Die vorsichtigere Lesart derselben Tiefendaten kann für diese Route bei der verwendeten Tiefe von {used} m bis auf {cautious} m sinken — unter den Tiefgang des Boots von {draft} m. Das ist eine Untergrenze, keine gemessene Tiefe, und wie pessimistisch sie tatsächlich ausfällt, hängt von der Route ab. Markierte Abschnitte vor Fahrtantritt mit amtlicher Seekarte und Echolot prüfen.',
+    'Achtung: Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m. Eine vorsichtigere Lesart derselben Tiefendaten kann bis auf {cautious} m sinken — unter den Tiefgang des Boots von {draft} m. Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',

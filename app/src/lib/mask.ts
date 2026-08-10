@@ -12,8 +12,12 @@ const NM_PER_M = 1 / 1852;
  * over the conservative Resampling.max reading only where the two agree
  * within this bound, so for every cell: depth_blend <= depth_max +
  * MASK_TOLERANCE_M (see that file's own derivation comment for the full
- * argument, including why 0.9 — not a rounder number — is the value: it is
- * the tightest tolerance that still keeps Marstal connected).
+ * argument). Why 0.9 — not a rounder number — is the value: that comment's
+ * own MEASUREMENT on the DTM (~build_mask.py:171-176) is that Marstal, at
+ * its 2.0 m exception gate, is DISCONNECTED for TOLERANCE_M <= 0.87 m and
+ * connects from 0.88 m up — so 0.88, not 0.9, is the tightest tolerance that
+ * still keeps it connected; 0.9 clears that wall by only ~0.03 m, not by a
+ * comfortable margin.
  */
 export const MASK_TOLERANCE_M = 0.9;
 

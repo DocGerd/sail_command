@@ -1611,26 +1611,28 @@ select {
   font-weight: 500;
 }
 
-/* #493: escalated shallow-water warning — rendered ADDITIONALLY to
-   .shallow-warning above (never replacing it) when the mask's own
-   TOLERANCE_M means this plan's used depth could have a cautious reading
-   below the boat's draft. A DISTINCT, more severe tier: reuses
-   --sc-banner-error-* (the app's existing red/error severity family — see
-   .banner-error above), not a deepened shade of .shallow-warning's amber
-   --sc-depth-warning-* family, so the escalation reads as a different tier
-   rather than the same one turned up. No new dark-mode block is needed:
-   --sc-banner-error-fg/-bg already carry their own dark variants (see the
-   @media block above .banner-error's definition), so this rule inherits
-   correct colours in both modes purely through the tokens. Severity is NOT
-   colour alone (WCAG 1.4.1): a full border plus a thicker border-left and
-   bolder text (700 vs .shallow-warning's 500) carry the same signal
-   non-visually too. */
-.shallow-warning-cautious {
-  margin: 0.4rem 0 0;
-  padding: 0.6rem 0.75rem;
+/* #504 fix wave: MODIFIER on .shallow-warning above (was a second, standalone
+   `.shallow-warning-cautious` element — folded to ONE <p> per the review
+   finding that isSevere is unconditionally true at default settings, so the
+   old second paragraph was really always-on for a default-settings user).
+   Applied together with the base .shallow-warning class, never alone, when
+   the mask's own TOLERANCE_M means this plan's used depth could have a
+   cautious reading below the boat's draft — overrides only the
+   severity-carrying properties (border/background/color/font-weight);
+   margin/padding/border-radius stay inherited from .shallow-warning. A
+   DISTINCT, more severe tier: reuses --sc-banner-error-* (the app's existing
+   red/error severity family — see .banner-error above), not a deepened
+   shade of .shallow-warning's amber --sc-depth-warning-* family, so the
+   escalation reads as a different tier rather than the same one turned up.
+   No new dark-mode block is needed: --sc-banner-error-fg/-bg already carry
+   their own dark variants (see the @media block above .banner-error's
+   definition), so this rule inherits correct colours in both modes purely
+   through the tokens. Severity is NOT colour alone (WCAG 1.4.1): a full
+   border plus a thicker border-left and bolder text (700 vs
+   .shallow-warning's 500) carry the same signal non-visually too. */
+.shallow-warning--severe {
   border: 1px solid var(--sc-banner-error-fg);
   border-left-width: 6px;
-  border-radius: 4px;
   background: var(--sc-banner-error-bg);
   color: var(--sc-banner-error-fg);
   font-weight: 700;

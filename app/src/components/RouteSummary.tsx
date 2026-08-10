@@ -44,41 +44,40 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
   const t = useT();
   const [lang] = useLang();
   const locator = firstShallowLeg(legs);
-  // #493: the mask build's TOLERANCE_M bound (about.caveats.depthMask) means
-  // the used gate's own more-cautious reading can run as low as usedDepthM -
-  // MASK_TOLERANCE_M. Escalate to a second, distinct warning whenever that
-  // floor would fall below the boat's actual draft — recomputed from THIS
-  // plan's usedDepthM every render, never a fixed number, so it can never go
-  // stale as usedDepthM varies plan to plan.
+  // #493/#504: the mask build's TOLERANCE_M bound (about.caveats.depthMask)
+  // means the used gate's own more-cautious reading can run as low as
+  // usedDepthM - MASK_TOLERANCE_M — recomputed from THIS plan's usedDepthM
+  // every render, never a fixed number, so it can never go stale as
+  // usedDepthM varies plan to plan. #504 review: at DEFAULT settings this is
+  // UNCONDITIONALLY true (#53's relaxation only searches [BOAT_DRAFT_M,
+  // requestedDepthM), so at the 3.0 m default gate every usedDepthM lands in
+  // [2.1, 2.9] and `usedDepthM - 0.9 < 2.1` always holds) — so this is ONE
+  // banner with a severity MODIFIER, never a second element: a single <p>
+  // that ALWAYS carries the cautious floor, with severe wording/styling
+  // layered on top rather than a duplicate paragraph most users would always
+  // see anyway.
   const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M;
+  const bannerClassName = isSevere ? 'shallow-warning shallow-warning--severe' : 'shallow-warning';
+  const bannerKey = isSevere ? 'route.shallow.bannerCautious' : 'route.shallow.banner';
   return (
-    <>
-      <p className="shallow-warning" role="alert">
-        {t('route.shallow.banner', {
-          requested: shallow.requestedDepthM.toFixed(1),
-          used: shallow.usedDepthM.toFixed(1),
-          minGate: shallow.minGateDepthM.toFixed(1),
-        })}
-        {locator && (
-          <>
-            {' '}
-            {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
-              count: locator.count,
-              time: formatTime(locator.firstTimeMs, lang),
-            })}
-          </>
-        )}
-      </p>
-      {isSevere && (
-        <p className="shallow-warning-cautious" role="alert">
-          {t('route.shallow.bannerCautious', {
-            used: shallow.usedDepthM.toFixed(1),
-            cautious: cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1),
-            draft: BOAT_DRAFT_M.toFixed(1),
+    <p className={bannerClassName} role="alert">
+      {t(bannerKey, {
+        requested: shallow.requestedDepthM.toFixed(1),
+        used: shallow.usedDepthM.toFixed(1),
+        minGate: shallow.minGateDepthM.toFixed(1),
+        cautious: cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1),
+        draft: BOAT_DRAFT_M.toFixed(1),
+      })}
+      {locator && (
+        <>
+          {' '}
+          {t(locator.count === 1 ? 'route.shallow.locator' : 'route.shallow.locator.plural', {
+            count: locator.count,
+            time: formatTime(locator.firstTimeMs, lang),
           })}
-        </p>
+        </>
       )}
-    </>
+    </p>
   );
 }
 

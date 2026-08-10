@@ -5,6 +5,8 @@ import { en } from '../i18n/dict.en';
 import { de } from '../i18n/dict.de';
 import { uniformWindGrid } from '../test/fixtures';
 import { formatDateTime, formatTime } from '../lib/format';
+import { MASK_TOLERANCE_M } from '../lib/mask';
+import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import {
   DEFAULT_SETTINGS,
   type Leg,
@@ -646,11 +648,28 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
   });
 });
 
+// Builds the exact rendered text from a dict TEMPLATE (a real, hand-read
+// artifact) plus HAND-CHOSEN literal values — the same "needle from a real
+// artifact, haystack from the shipped dict string" shape maskTolerance.test.ts
+// uses, generalized to several placeholders via one replaceAll loop each
+// (matching useT()'s own per-key replaceAll semantics in i18n/index.tsx, so
+// a double-occurrence placeholder — none exist in these two templates today —
+// would still resolve identically to production). This is NOT deriving the
+// expectation from the code under test: ShallowWarning's own decision logic
+// (which key, which class, which values) is exercised for real by rendering
+// the component; this helper only stitches together values chosen here.
+function interpolate(template: string, vars: Record<string, string>): string {
+  let msg = template;
+  for (const [k, v] of Object.entries(vars)) msg = msg.replaceAll(`{${k}}`, v);
+  return msg;
+}
+
 describe('#493: cautious depth disclosure', () => {
-  // 2.3 is deliberately the same figure used in the #452 gap 3 fixtures
-  // above, so the resulting cautious bound (2.3 - MASK_TOLERANCE_M(0.9) =
-  // 1.4 exactly, per app/src/lib/mask.test.ts's own hand-derived literal)
-  // is pinned against a value already independently verified elsewhere.
+  // #504 review (finding #4): pairwise-DISTINCT requestedDepthM/usedDepthM/
+  // minGateDepthM/leg-minDepthM — the previous fixture collapsed all three
+  // shallow-info fields plus the leg's own minDepthM onto 2.3, so re-keying
+  // ShallowWarning's `used` interpolation (or isSevere) onto minGateDepthM
+  // would have kept every assertion here green.
   const ONE_SHALLOW_LEG: Leg[] = [
     {
       kind: 'sail',
@@ -672,7 +691,7 @@ describe('#493: cautious depth disclosure', () => {
   function makeLegPlan(): Plan {
     const plan = makePlan();
     plan.result.genoa = { ...GENOA_RESULT, legs: ONE_SHALLOW_LEG };
-    plan.result.shallow = { requestedDepthM: 3.5, usedDepthM: 2.3, minGateDepthM: 2.3 };
+    plan.result.shallow = { requestedDepthM: 3.5, usedDepthM: 2.9, minGateDepthM: 2.6 };
     return plan;
   }
 
@@ -680,6 +699,9 @@ describe('#493: cautious depth disclosure', () => {
     const { container } = renderSummary({ plan: makeLegPlan(), rig: 'genoa' });
     const row = container.querySelector('table.route-legs tbody tr');
     // Unchanged shipped-figure chip — proves the new surface is additive.
+    // Reads the LEG's own minDepthM (2.3), distinct from usedDepthM(2.9)/
+    // minGateDepthM(2.6) above — a field mix-up here would render 2.9 or 2.6
+    // instead of 2.3 and both assertions below would red.
     expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.3 m');
     expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe('≥ 1.4 m cautious');
   });
@@ -696,57 +718,100 @@ describe('#493: cautious depth disclosure', () => {
     expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe('≥ 1.4 m vorsichtig');
   });
 
-  // The escalated banner's own condition, restated for the test names:
-  // usedDepthM - MASK_TOLERANCE_M(0.9) < BOAT_DRAFT_M(2.1). requestedDepthM
-  // is set above usedDepthM in every case (3.5) to keep the fixture a
-  // realistic #53-relaxation shape, even though ShallowWarning itself does
-  // not enforce that invariant.
-  describe('escalated banner boundary', () => {
+  // #504: the banner is now ONE <p> (see ShallowWarning, RouteSummary.tsx) —
+  // route.shallow.banner (non-severe) or route.shallow.bannerCautious
+  // (severe) is chosen by `usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M`,
+  // never both rendered at once. requestedDepthM(3.5) and minGateDepthM(2.6)
+  // are FIXED across every case here and distinct from both tested
+  // usedDepthM values (3.0, 2.9) and from each other (finding #4) — so a
+  // field mix-up moves a DIFFERENT number than the one under test.
+  describe('the folded banner (#504: one <p>, never two)', () => {
+    const REQUESTED_M = '3.5';
+    const MIN_GATE_M = '2.6';
+    // Finding #5: derive the boundary from the SAME constants isSevere
+    // compares, rounded to one decimal, rather than hardcoding today's 3.0 —
+    // this tracks MASK_TOLERANCE_M/BOAT_DRAFT_M if either ever moves.
+    const BOUNDARY_USED_DEPTH_M = Math.round((BOAT_DRAFT_M + MASK_TOLERANCE_M) * 10) / 10;
+    const BELOW_BOUNDARY_USED_DEPTH_M = Math.round((BOUNDARY_USED_DEPTH_M - 0.1) * 10) / 10;
+
     function makeSeverityPlan(usedDepthM: number): Plan {
       const plan = makePlan();
-      plan.result.shallow = { requestedDepthM: 3.5, usedDepthM, minGateDepthM: usedDepthM };
+      plan.result.shallow = { requestedDepthM: 3.5, usedDepthM, minGateDepthM: 2.6 };
       return plan;
     }
 
-    it('does NOT escalate right at the boundary (3.0 - 0.9 = 2.1 = BOAT_DRAFT_M, not strictly below)', () => {
-      const { container } = renderSummary({ plan: makeSeverityPlan(3.0) });
-      // The ordinary #53 banner still renders — only the ESCALATION is absent.
-      expect(screen.getByText(/was not passable/)).toBeInTheDocument();
-      expect(container.querySelector('.shallow-warning-cautious')).toBeNull();
+    // Hand-computed, not read from cautiousDepthLowerBoundM — see mask.test.ts
+    // for that function's own independently-pinned literals; this table only
+    // asserts the two values this suite needs, verified by hand:
+    // BOUNDARY(3.0) - 0.9 = 2.1 exactly; BELOW_BOUNDARY(2.9) - 0.9 = 2.0 exactly.
+    const CAUTIOUS_AT_BOUNDARY_M = '2.1';
+    const CAUTIOUS_BELOW_BOUNDARY_M = '2.0';
+
+    it('renders exactly ONE alert element for the shallow warning (not two)', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M) });
+      // No stale-forecast or no-route alert exists in this fixture (result
+      // is present, forecast is fresh) — every role="alert" here comes from
+      // ShallowWarning, so this directly catches a regression back to two
+      // separate <p role="alert"> elements, under ANY class name.
+      expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
     });
 
-    it('escalates one decimetre below the boundary (2.9 - 0.9 = 2.0 < BOAT_DRAFT_M)', () => {
-      const { container } = renderSummary({ plan: makeSeverityPlan(2.9) });
-      const severe = container.querySelector('.shallow-warning-cautious');
-      expect(severe).not.toBeNull();
-      expect(severe).toHaveAttribute('role', 'alert');
-      expect(severe?.textContent).toContain('2.9 m'); // usedDepthM, restated
-      expect(severe?.textContent).toContain('2.0 m'); // cautious floor: 2.9 - 0.9
-      expect(severe?.textContent).toContain('2.1 m'); // BOAT_DRAFT_M
-      // Floor language ("can sink ... this is a floor, not a measured
-      // depth"), and never the absolutist phrasing #455's honesty hedge
-      // already forbids for the plain banner above.
-      expect(severe?.textContent).toContain('can sink');
-      expect(severe?.textContent).toContain('floor, not a measured depth');
-      expect(severe?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+    it('does NOT escalate right at the boundary — full sentence pinned to its exact slots', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BOUNDARY_USED_DEPTH_M) });
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveAttribute('role', 'alert');
+      expect(banner).not.toHaveClass('shallow-warning--severe');
+      const expected = interpolate(en['route.shallow.banner'], {
+        requested: REQUESTED_M,
+        used: BOUNDARY_USED_DEPTH_M.toFixed(1),
+        minGate: MIN_GATE_M,
+        cautious: CAUTIOUS_AT_BOUNDARY_M,
+      });
+      expect(banner?.textContent).toBe(expected);
     });
 
-    it('German copy: escalates with the same three numbers and the honesty hedge', () => {
+    it('escalates one decimetre below the boundary — full sentence pinned to its exact slots', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M) });
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveAttribute('role', 'alert');
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const expected = interpolate(en['route.shallow.bannerCautious'], {
+        requested: REQUESTED_M,
+        used: BELOW_BOUNDARY_USED_DEPTH_M.toFixed(1),
+        minGate: MIN_GATE_M,
+        cautious: CAUTIOUS_BELOW_BOUNDARY_M,
+        draft: BOAT_DRAFT_M.toFixed(1),
+      });
+      expect(banner?.textContent).toBe(expected);
+      // Regression pin, unchanged from before the fold (#455's honesty hedge
+      // must hold for the severe wording too).
+      expect(banner?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+    });
+
+    it('German copy: severe case pins the same slots', () => {
       localStorage.setItem('sc-lang', 'de');
-      render(
+      const { container } = render(
         <I18nProvider>
-          <RouteSummary plan={makeSeverityPlan(2.9)} rig="genoa" onRigChange={vi.fn()} />
+          <RouteSummary
+            plan={makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M)}
+            rig="genoa"
+            onRigChange={vi.fn()}
+          />
         </I18nProvider>,
       );
-      const severe = document.querySelector('.shallow-warning-cautious');
-      expect(severe).not.toBeNull();
-      // Dynamic values are formatted via toFixed(1) regardless of language
-      // (unchanged from the existing plain-banner DE test above), so these
-      // stay period-formatted even in German.
-      expect(severe?.textContent).toContain('2.9 m');
-      expect(severe?.textContent).toContain('2.0 m');
-      expect(severe?.textContent).toContain('2.1 m');
-      expect(severe?.textContent).toContain('Das ist eine Untergrenze, keine gemessene Tiefe');
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const expected = interpolate(de['route.shallow.bannerCautious'], {
+        requested: REQUESTED_M,
+        used: BELOW_BOUNDARY_USED_DEPTH_M.toFixed(1),
+        minGate: MIN_GATE_M,
+        cautious: CAUTIOUS_BELOW_BOUNDARY_M,
+        draft: BOAT_DRAFT_M.toFixed(1),
+      });
+      expect(banner?.textContent).toBe(expected);
     });
   });
 });

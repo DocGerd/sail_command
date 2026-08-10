@@ -183,8 +183,19 @@ export const en = {
   // over BOTH rigs' legs, so on a given rig's tab the number may describe
   // the OTHER rig's leg, not one this route actually sails. "crossed by
   // this plan" is the honest, plan-level framing.
+  // #504 fix wave: folded into ONE banner element — ShallowWarning
+  // (RouteSummary.tsx) renders exactly one <p>, never two. This is the
+  // NON-severe sibling; route.shallow.bannerCautious below is the severe
+  // one. Both ALWAYS carry the #493 cautious-floor clause ("a more cautious
+  // reading ... could run as low as {cautious} m") — they differ only in
+  // whether that floor is additionally stated as falling below the boat's
+  // draft. The fold replaced an earlier design that rendered the severe
+  // sentence as a SECOND, additional paragraph — reviewed away because
+  // usedDepthM never exceeds requestedDepthM - MASK_TOLERANCE_M at the 3.0 m
+  // default (#53's relaxation search range), so that second paragraph was
+  // unconditionally present for every default-settings user.
   'route.shallow.banner':
-    'Caution: your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m. Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
+    'Caution: your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m. A more cautious reading of that same depth data could run as low as {cautious} m. Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
   // #452 gap 3: one-sentence locator appended to the banner above — names how
   // many legs are individually flagged shallow and when the first one
   // starts, so the warning points at a row in the legs table instead of
@@ -193,14 +204,15 @@ export const en = {
   // ("leg" alone already says "one").
   'route.shallow.locator': 'The affected leg starts at {time}.',
   'route.shallow.locator.plural': '{count} legs are affected — the first starts at {time}.',
-  // #493: escalated, distinct warning — not a reuse of route.shallow.banner's
-  // sentence, rendered ADDITIONALLY when the cautious lower bound of the
-  // used depth can fall below the boat's draft (see about.caveats.depthMask
-  // for the mechanism). A floor, not a measurement: "can sink", never "is" —
-  // and tied to {used}, not a fixed number, since it moves with the gate a
+  // #504: the SEVERE sibling of route.shallow.banner above — same sentence,
+  // with one clause added naming the boat's draft. Rendered INSTEAD OF
+  // (never alongside) the non-severe key, chosen by ShallowWarning's
+  // `isSevere` (see about.caveats.depthMask for the underlying mechanism). A
+  // floor, not a measurement: "could run as low as", never "is" — and tied
+  // to {used}/{cautious}, not fixed numbers, since both move with the gate a
   // given plan actually used.
   'route.shallow.bannerCautious':
-    "This route's more cautious reading of the same depth data can sink as low as {cautious} m at the {used} m depth this plan used — below this boat's {draft} m draft. This is a floor, not a measured depth, and how pessimistic it turns out to be depends on the route. Verify the flagged sections against official charts and your depth sounder before relying on this route.",
+    "Caution: your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m. A more cautious reading of that same depth data could run as low as {cautious} m, below this boat's {draft} m draft. Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.",
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
