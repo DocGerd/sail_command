@@ -57,7 +57,7 @@ Every quotation was re-verified character-for-character against `docs/superpower
 
 → §E.
 
-**A.6 — Addendum 2026-07-17 (#53), the draft floor.** Three phrases, quoted exactly (the third wraps a line in the source, inside that addendum's **Acceptance** bullet):
+**A.6 — Addendum 2026-07-17 (#53), the draft floor.** Three phrases, quoted exactly. **Two of them wrap a line in the source** — the second across `~:257-258`, the third inside that addendum's **Acceptance** bullet — which defeats a naive single-line grep. Search for a distinctive fragment, not the whole phrase:
 
 > floor = boat draft 2.1 m
 
@@ -65,7 +65,7 @@ Every quotation was re-verified character-for-character against `docs/superpower
 
 > If requested ≤ 2.1 m, no relaxation is attempted and today's `unreachable` error stands.
 
-(`~:258`)
+(`~:257-258`)
 
 > relaxation never gates below 2.1 m
 
@@ -147,25 +147,30 @@ The floor is `G_effective − T`, and `G_effective` is **not** the user's `safet
 
 **(b) The violation is exactly `T` deep at the floor, for every boat, always.** Setting the relaxation floor to the draft makes its conservative floor `d_b − T` by definition — 0.9 m under the hull, invariant across the fleet, neither worse for a deeper boat nor better for a shallower one. It is disclosed today (every such leg is `shallow`-flagged and bannered by #53) and stays disclosed. **It is #452 territory, not #54's to fix** — but #54 must not deepen it, and (a) is what prevents that.
 
-**(c) A useful structural consequence.** Once the default gate is `ceil₁₀(d_b + T)`, the relaxation window `[d_b, G_default)` is **exactly `T` wide for every boat** — nine decimetre candidates at `T = 0.9`, identical to today's `[2.1, 3.0)`. Probe counts and #53's progress reporting are unchanged for every boat.
+**(c) A useful structural consequence — which DEPENDS on §C.8's ceiling rule.** With the relaxation floor quantised as `ceil₁₀(d_b)` and the default gate as `ceil₁₀(d_b + T)`, the window `[ceil₁₀(d_b), ceil₁₀(d_b + T))` is **exactly `T` wide for every boat** — nine decimetre candidates at `T = 0.9`, identical to today's `[2.1, 3.0)` — because `T` is itself a whole number of decimetres. Under `Math.round` it is not: a 1.73 m draft gives a 0.97 m window and **ten** candidates, a 2.25 m draft 0.95 m. Probe counts and #53's progress reporting are unchanged for every boat **only under the ceiling rule**.
 
 ### C.5 The fleet, with real numbers
 
-Required gate = `ceil₁₀(draft + 0.9)`; margin at today's 3.0 m default = `2.1 − draft`.
+Required gate = `ceil₁₀(draft + 0.9)`. **Two different margins matter here and they are not the same number**, so the table gives both — conflating them understates the Bavaria's shortfall by a third:
+
+- **Floor margin** = `2.1 − draft` — where the keel sits against the 2.1 m conservative floor that today's 3.0 m gate actually delivers.
+- **Gate deficit** = `3.0 − required gate` — how far today's default gate falls short of what the boat needs. A **breach** is a negative gate deficit.
+
+They coincide wherever `draft + 0.9` lands exactly on a decimetre and diverge where the ceiling rounds up; 1.73 m and 2.25 m are the two such rows here.
 
 > **Provenance.** Every draft below comes from **outside this repository** — a research pass cross-checking each figure against a second independent manufacturer source. The repo contains exactly one draft (`BOAT_DRAFT_M = 2.1`) and no fleet data of any kind. These are **inputs to be re-verified per hull, and per keel variant, before that boat ships** (§J OQ-6, §M.1). §C's arithmetic is correct whatever they turn out to be.
 
-| Model | Boat(s) | Draft | Required gate | Margin at 3.0 default | Flensburg-stated? |
-|---|---|---|---|---|---|
-| Jeanneau Sun Odyssey 519 | RUBIN, TOPAS | 1.73 | 2.7 | +0.37 | mixed |
-| Elan Impression 45 | BARRACUDA | 1.90 | 2.8 | +0.20 | mixed |
-| Elan Impression 444 | PIRANJA | 1.90 | 2.8 | +0.20 | **yes** |
-| Beneteau 50.5 | QUEEN F. | 2.00 | 2.9 | +0.10 | no (Mallorca) |
-| Beneteau Oceanis 473 | SPIRIT, ANDROMEDA, SAPHIR | 2.10 | **3.0** | **0.00** | no (Med/Split) |
-| Salona 44 | SPEEDY GO!, EASY GO! | 2.10 | **3.0** | **0.00** | **yes** |
-| Bavaria Cruiser 51 | KARIBU | 2.25 | **3.2** | **−0.15 breach** | unstated |
-| Beneteau First 47.7 | SKIATHOS, SUNRISE | 2.30 | **3.2** | **−0.20 breach** | no (Atlantic/Med) |
-| Grand Soleil 46 | MARIN | 2.30 | **3.2** | **−0.20 breach** | **yes** |
+| Model | Boat(s) | Draft | Required gate | Floor margin | Gate deficit | Flensburg-stated? |
+|---|---|---|---|---|---|---|
+| Jeanneau Sun Odyssey 519 | RUBIN, TOPAS | 1.73 | 2.7 | +0.37 | +0.30 | mixed |
+| Elan Impression 45 | BARRACUDA | 1.90 | 2.8 | +0.20 | +0.20 | mixed |
+| Elan Impression 444 | PIRANJA | 1.90 | 2.8 | +0.20 | +0.20 | **yes** |
+| Beneteau 50.5 | QUEEN F. | 2.00 | 2.9 | +0.10 | +0.10 | no (Mallorca) |
+| Beneteau Oceanis 473 | SPIRIT, ANDROMEDA, SAPHIR | 2.10 | **3.0** | **0.00** | **0.00** | no (Med/Split) |
+| Salona 44 | SPEEDY GO!, EASY GO! | 2.10 | **3.0** | **0.00** | **0.00** | **yes** |
+| Bavaria Cruiser 51 | KARIBU | 2.25 | **3.2** | −0.15 | **−0.20 breach** | unstated |
+| Beneteau First 47.7 | SKIATHOS, SUNRISE | 2.30 | **3.2** | −0.20 | **−0.20 breach** | no (Atlantic/Med) |
+| Grand Soleil 46 | MARIN | 2.30 | **3.2** | −0.20 | **−0.20 breach** | **yes** |
 
 **Three models breach today's default gate**, and **Grand Soleil 46 is explicitly Flensburg-based** — the breach is not confined to boats that would be deprioritised on location grounds anyway. A per-boat default is therefore not a tidiness improvement: without it, three of nine models ship a silent below-hull exposure of exactly the class #455 closed.
 
@@ -229,7 +234,7 @@ The generalised guard must assert:
 - **R8 — zero-margin visibility.** Report (not fail) every boat whose `defaultSafetyDepthM(b) − T − b.draftM` is 0.0, so §C.5's Oceanis 473 / Salona 44 cases are visible rather than merely passing.
 - **R9 — the gap this guard still cannot close.** The test reads `T` from the pipeline *source*; it never establishes that the committed `mask.bin` was *built* with that value — edit the constant without regenerating and every row stays green. Recommend `build_mask.py` write `toleranceM` into `mask.meta.json` (which already carries optional provenance fields `encoding`, `verticalDatum`, `sources`, declared optional and display-only on `MaskMeta`, `app/src/types.ts ~:288`) and the guard assert `maskMeta.toleranceM === T`, converting a source-level claim into an artifact-level one. Strictly outside #54, but the same cross-artifact class, and multi-boat raises the stakes.
 
-**Arithmetic precision — do not use floating-point equality.** Measured 2026-08-10 in node: `3.0 - 0.9 === 2.1` is exactly `true`, but `2.1 - 0.9` is `1.2000000000000002` and `2.2 - 0.9` is `1.3000000000000003`. PR #481 already handles this — every row above goes through its `round1` helper, and `findRelaxedDepthM` carries a `1e-9` nudge for the same reason. **Do R2–R8 in integer decimetres**, following `relaxedDepth.ts`'s own precedent (`Math.round(draftM * 10)`); the one exact-equality case is luck that does not generalise across a fleet. The pipeline has the same family of trap on the other side of the boundary: #455 §0 measured that quantising the elevation field in float64 rather than float32 changes 330 of 5,280,000 mask bytes.
+**Arithmetic precision — do not use floating-point equality.** Measured 2026-08-10 in node: `3.0 - 0.9 === 2.1` is exactly `true`, but `2.1 - 0.9` is `1.2000000000000002` and `2.2 - 0.9` is `1.3000000000000003`. PR #481 already handles this — every row above goes through its `round1` helper, and `findRelaxedDepthM` carries a `1e-9` nudge for the same reason. **Do R2–R8 in integer decimetres — but quantise a DRAFT with a CEILING, never `Math.round`.** Use `ceil₁₀(x) = Math.ceil(x * 10 − 1e-9) / 10`. `relaxedDepth.ts`'s existing `Math.round(draftM * 10)` is safe only because today's single draft already sits on a decimetre; it does **not** generalise. Measured: `Math.round(1.73 * 10) === 17`, so a 1.73 m boat's relaxation floor would become a **1.7 m gate under its own 1.73 m keel** — conservative floor 0.8 m, i.e. 0.93 m under the hull, and §C.4(b)'s "exactly `T` deep for every boat" would be false. That is §C.4(a)'s shortcut re-entering through the rounding rule two sections after it is named, which is precisely why §C.3 says quantise **up, never down**. The one exact-equality case is luck that does not generalise across a fleet. The pipeline has the same family of trap on the other side of the boundary: #455 §0 measured that quantising the elevation field in float64 rather than float32 changes 330 of 5,280,000 mask bytes.
 
 ### C.9 Mask regeneration is NOT part of this feature
 
@@ -300,7 +305,7 @@ Recorded so a future N > 2 does not rediscover it. Two things break, neither a p
 
 Suggested layout: `app/src/data/boats.ts` (catalogue); `app/public/data/polars/<boat-id>-<sail-id>.json` (tables, committed, precached).
 
-> **Filename collision, live today.** `build_polars.mjs` writes ``join(outDir, `polar-${rig}.json`)`` (`~:56`) with **no boat identifier** — a second boat's files would overwrite the first's. The output naming must change in the same PR that adds the second boat, not later.
+> **Filename collision, live today.** `build_polars.mjs` writes ``join(outDir, `polar-${rig}.json`)`` (`~:57`) with **no boat identifier** — a second boat's files would overwrite the first's. The output naming must change in the same PR that adds the second boat, not later.
 
 ### F.2 The record
 
@@ -331,7 +336,7 @@ BoatDef {
 
 `Rig = 'genoa' | 'fock'` (`types.ts ~:6`) → a catalogue-derived `SailId` union. **Naming matters**: today's `Rig` really names a *sail combination* (main+genoa, main+fock) and the polar tables are combination tables. What the user now selects is the **foresail**, with the main implied. Rename to `SailId` and state in its docstring that the polar it keys is a main + foresail table — otherwise the next reader assumes a headsail-only polar.
 
-**This is a breaking type change.** Measured 2026-08-10: **27 files reference `Rig`**; **9 non-test files name `'genoa'` / `'fock'` as literals** — `types.ts`, `routing/planRoute.ts`, `routing/workerClient.ts`, `state/usePlanFlow.ts`, `components/RouteLayer.tsx`, `components/RouteSummary.tsx`, `lib/plan.ts`, `lib/gpx.ts`, `lib/sessionSnapshot.ts`. (`routing/protocol.ts` references the *type* but not the literals.) Structural sites:
+**This is a breaking type change.** Measured 2026-08-10, scoped to CODE files under `app/src`: **27 files reference `Rig`** (a raw `git grep -lE '\bRig\b' app/src` returns 28; the extra is a comment in `app/src/app.css`); **9 non-test files name `'genoa'` / `'fock'` as literals** — `types.ts`, `routing/planRoute.ts`, `routing/workerClient.ts`, `state/usePlanFlow.ts`, `components/RouteLayer.tsx`, `components/RouteSummary.tsx`, `lib/plan.ts`, `lib/gpx.ts`, `lib/sessionSnapshot.ts`. (`routing/protocol.ts` references the *type* but not the literals.) Structural sites:
 
 - `PlanResultOk.genoa` / `.fock` / `.genoaReason` / `.fockReason` / `.recommended` → a per-sail result list. `recommendedResult()`'s invariant ("status 'ok' guarantees the recommended sail has a non-null result — throw rather than fabricate an ETA") is **preserved verbatim**; it is why `listPlans` needs §I's unreadable-row handling.
 - `lib/plan.ts`'s `activeRigResult(plan, rig)` — a two-way ternary today.
@@ -456,7 +461,7 @@ The only open question. #54 itself says *"confirm which models are actually stat
 ## K. Acceptance
 
 - **Reduces to today.** With only the Salona 45 in the catalogue, a plan is byte-identical to a pre-#54 plan: `draftM 2.1` → default gate 3.0 → mask floor 2.1; relaxation window `[2.1, 3.0)`; two sails; same solve order; same budget; same tiers. Verify with `app/sweep/` (BASE double-run control first, six arm files asserted per output directory per #451) — this addendum changes solve *ordering* plumbing even where it changes no value. **State the strength honestly:** at one boat with two sails the sweep proves *no regression*; it cannot exercise the new N-generality at all, because there is no third sail and no second boat to exercise it with.
-- **The safety invariant is guarded, per boat.** §C.8's R0–R8 pass; R1's non-vacuity twin is mutation-checked in both directions; **R4** reds under a mutation that restores a module constant; R6's Salona literals still read 2.1 / 3.0 / 2.1 / 1.2. **Also honest:** with a one-entry catalogue, R2/R3/R5/R7/R8 iterate a single row and cannot fail differently from R6, so R1's hand-written expected list (`['salona-45']`) and its discriminating experiment are the *only* thing standing between this guard and vacuity in release 1 — run that experiment, do not assume it.
+- **The safety invariant is guarded, per boat.** §C.8's R0–R8 pass; R1's non-vacuity twin is mutation-checked in both directions; **R4** reds under a mutation that restores a module constant; R6's Salona literals still read 2.1 / 3.0 / 2.1 / 1.2. **Also honest:** with a one-entry catalogue, R2/R3/R8 iterate a single row and cannot fail differently from R6, so R1's hand-written expected list (`['salona-45']`) and its discriminating experiment are what stand between *those* rows and vacuity in release 1 — run that experiment, do not assume it. R5 and R7 do retain independent failure modes even at one boat: R5 reads the two i18n dictionaries, so a copy edit reds it without touching the catalogue, and R7 reads `SAFETY_DEPTH_FIELD.max`, so a range change reds it the same way.
 - **`verify_mask.py` exits 0 at every catalogue boat's derived gate**, and its report names each boat's connected / exception / disconnected harbour sets plus each harbour's snap-cell margin.
 - **Per-boat polar validation fails closed**: a boat added without its own sanity anchors, or without a `polarProvenance` tier, fails the pipeline build rather than inheriting the Salona's.
 - **Saved plans survive.** A pre-#54 plan opens, renders identically, exports GPX identically, and reports the Salona 45. A plan whose boat has left the catalogue still opens and renders; only re-planning is unavailable and the UI says so. An unmigratable record is **listed as unreadable, never skipped and never deleted**.
@@ -497,7 +502,7 @@ The only open question. #54 itself says *"confirm which models are actually stat
 | **Model displacement in the boat record** | Nothing in the router consumes it. Present in the type, it invites a future contributor to build a fake physical model on top of an estimated polar. Add it only when a UI surface displays it, marked display-only. |
 | **Ship estimated polars with only the existing source-note disclosure** | The About dialog is opt-in, so a disclosure living only there is *structurally withheld* at the moment of exposure — #455 §6 makes exactly this argument about the depth disclosure. Tier C needs a plan-time label (§G.3). |
 | **Reuse the Salona 45's polar sanity anchors for other hulls** | Research-verified magnitudes for one 45 ft cruiser-racer. An anchor that silently validates the wrong hull is worse than no anchor: it converts "unvalidated" into "validated against the wrong thing". Fail the build instead. |
-| **Refine the mask so deeper boats reach more harbours** | Already decided in `docs/spikes/245-depth-mask-resolution.md`: 0 of 5 `KNOWN_DISCONNECTED` harbours reconnect at 23 m or 12 m, while `aabenraa` disconnects at 23 m and `augustenborg` additionally at 12 m. A finer grid makes the deep-boat case *worse*. Do not re-open without new bathymetry. |
+| **Refine the mask so deeper boats reach more harbours** | Already decided in `docs/spikes/245-depth-mask-resolution.md`: 0 of 5 `KNOWN_DISCONNECTED` harbours reconnect at 23 m or 12 m, while `aabenraa` disconnects at 23 m and `augustenborg` additionally at 12 m. A finer grid makes the deep-boat case *worse*. Note the scope: #245 measured that at the **3.0 m** gate, and the effect at the 3.2 m gates the deepest models need is unmeasured (§M.2) — this row rejects the option on the evidence that exists, not on a measurement at those gates. Do not re-open without new bathymetry. |
 | **Treat a harbour dropping out at a deeper boat's gate as a defect** | It is correct — a 2.30 m keel cannot enter a 2.0 m basin. The defect would be silently offering it. Fix the *presentation* (per-harbour minimum gate, greyed-out picker entries), not the routing. |
 | **Build user-supplied polar import in this addendum** | The strongest honesty story long-term (the user owns the claim), but it needs its own validation and persistence design. File as a follow-up issue (§G.3 rule 3). |
 
