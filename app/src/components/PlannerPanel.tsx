@@ -290,16 +290,21 @@ export default function PlannerPanel({
       rig: t(RIG_LABEL_KEY[planning.rig]),
     });
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
-  else if (planning.phase === 'idle') {
-    // #301: the same dirty-form sentence the Ergebnis card's Chip shows,
-    // folded into this ONE existing live region rather than a second one —
-    // joined (not concatenated) so a plan-less mount (empty announcement)
-    // still reads as a clean single sentence, not a leading space. Changes
-    // only when formDirty flips (announcement itself is frozen per plan —
-    // see announcedResult above), so it announces once, not per keystroke.
-    const staleSuffix = formDirty && summary ? t('planner.result.stale') : '';
-    statusText = [announcement, staleSuffix].filter(Boolean).join(' ');
-  }
+  // #301 ORIGINALLY also folded a dirty-form sentence in here — REMOVED (PR
+  // #486 review, Minor 5): App.tsx now has a tab-independent `settingsDirty`
+  // Banner (role="alert", #299) that already announces this exact sentence
+  // whenever it's true, including while this panel is mounted (Plan tab).
+  // Keeping both meant a Plan-tab user with a dirty form heard it TWICE —
+  // once from the assertive Banner, once from this polite status region.
+  // Mirrors this repo's existing rule for plan-run errors ("the
+  // tab-independent <Banner> ... is the SINGLE alert surface, so the error
+  // isn't announced twice") applied to the same signal. The Ergebnis card's
+  // Chip below still shows the sentence VISUALLY (sighted-user surface,
+  // driven by the broader `formDirty` — origin/destination/departure edits
+  // ARE reachable from this tab, unlike the Banner's narrower
+  // `settingsDirty`) — a static DOM insertion outside a live region is not
+  // itself announced, so the Chip does not reintroduce the duplicate.
+  else if (planning.phase === 'idle') statusText = announcement;
   // §3.4 (fix wave): the idle completion announcement is screen-reader-only —
   // the visible surface is the prominent Ergebnis card, so a visible sentence
   // here just duplicates it. Progress/probing stay visible.
@@ -596,11 +601,22 @@ export default function PlannerPanel({
               </Chip>
               {/* #301: the form has drifted from this displayed route — a
                   re-run right now would produce something different. Sits ON
-                  the stale thing (this card / the map route below it), not a
-                  tab-independent Banner (#368's contested space) and not map
-                  dimming/dashing (#324's dash+opacity already means "the other
-                  rig"). The same sentence is folded into the live region above
-                  (statusText) — this Chip is the sighted-user surface only. */}
+                  the stale thing (this card / the map route below it), not
+                  map dimming/dashing (#324's dash+opacity already means "the
+                  other rig"). CORRECTED (PR #486 review, Minor 5): #299 DID
+                  add a tab-independent Banner for this same underlying
+                  signal (App.tsx, gated on the narrower `settingsDirty`),
+                  contradicting what this comment used to claim — but the
+                  sentence is NOT folded into the live region above anymore
+                  (see statusText's own comment on why), so this Chip stays
+                  the sighted-user surface WITHOUT re-introducing a double
+                  announcement: a Chip is a plain DOM insertion, not itself a
+                  live region, so screen readers don't announce it on their
+                  own regardless of whether the Banner is also on screen.
+                  Deliberately still `formDirty`, not `settingsDirty` — this
+                  tab CAN edit origin/destination/departure, unlike the
+                  Banner's narrower scope (see settingsDirty's own comment in
+                  App.tsx). */}
               {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
             </div>
           )}

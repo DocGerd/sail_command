@@ -349,8 +349,10 @@ test('#230: a pan flick inside MapLibre’s default bearingSnap window keeps tra
     await mapReady(page);
 
     // --- engage course-up: "show my position" is what feeds the compass a fix ---
-    await page.getByRole('tab', { name: 'Planen' }).click();
-    await page.getByText('Erweitert').click();
+    // #299: "Meine Position anzeigen" moved off the Plan tab's "Erweitert"
+    // disclosure onto the dedicated Boot tab (SettingsPanel) — no Plan-tab
+    // detour needed first, the control is reachable directly.
+    await page.getByRole('tab', { name: 'Boot' }).click();
     await page.getByLabel('Meine Position anzeigen').check();
 
     const compass = page.locator('.compass-btn');

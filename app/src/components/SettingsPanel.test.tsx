@@ -155,6 +155,17 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       fireEvent.blur(input);
       expect(input).toHaveValue(10);
     });
+
+    // Ported from OptionsPanel.test.tsx (PR #486 review, Minor 4) before
+    // deleting that now-dead component/test file — a blur that never
+    // changed the value must not fire a redundant onChange.
+    it('does not call onChange when blurring without changing the value', () => {
+      const onChange = renderPanel();
+      const input = screen.getByLabelText('Motoring speed (kn)');
+      fireEvent.focus(input);
+      fireEvent.blur(input);
+      expect(onChange).not.toHaveBeenCalled();
+    });
   });
 
   describe('Live & AIS group', () => {
@@ -170,6 +181,31 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       const onChange = renderPanel();
       fireEvent.click(screen.getByLabelText('Show my position'));
       expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, showOwnship: true });
+    });
+
+    // Ported from OptionsPanel.test.tsx (PR #486 review, Minor 4).
+    it('describes the ownship checkbox with a visible help paragraph via aria-describedby, not a title tooltip', () => {
+      renderPanel();
+      const input = screen.getByLabelText('Show my position');
+      const describedBy = input.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      expect(input).not.toHaveAttribute('title');
+      const help = document.getElementById(describedBy!);
+      expect(help).not.toBeNull();
+      expect(help).toHaveClass('options-help');
+      // Framing (#25 addendum): the caveat travels with the toggle, not just
+      // the app-wide disclaimer.
+      expect(help).toHaveTextContent(/not a navigation device/);
+    });
+
+    // Ported from OptionsPanel.test.tsx (PR #486 review, Minor 4).
+    it('renders the AIS API-key and MMSI fields with the privacy help text', () => {
+      renderPanel();
+      expect(screen.getByLabelText('AIS API key (aisstream.io)')).toBeInTheDocument();
+      expect(screen.getByLabelText('Your MMSI (optional)')).toBeInTheDocument();
+      expect(screen.getByText(/stay on this device/)).toBeInTheDocument();
+      expect(screen.getByText(/only to aisstream\.io/)).toBeInTheDocument();
+      expect(screen.getByText(/never transmitted/)).toBeInTheDocument();
     });
 
     it('commits the AIS API key on change', () => {
@@ -203,6 +239,12 @@ describe('SettingsPanel (#299 Boat tab)', () => {
         'aria-invalid',
         'false',
       );
+    });
+
+    // Ported from OptionsPanel.test.tsx (PR #486 review, Minor 4).
+    it('shows no MMSI validation message when the field is empty (feature simply off)', () => {
+      renderPanel();
+      expect(screen.queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
     });
   });
 });

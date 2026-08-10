@@ -566,6 +566,29 @@ describe('App', () => {
     ).toBeInTheDocument();
   });
 
+  // #299 fix (PR #486 review, Major 1): the boat-settings link lives inside
+  // PlannerPanel, which UNMOUNTS the instant the tab switches away from
+  // 'plan' — without an explicit focus move, activating it drops keyboard
+  // focus to document.body (measured in review). Pins that focus lands on
+  // the Boat tab's first Card heading instead, mirroring "Details ansehen"'s
+  // routeResultHeadingRef precedent exactly.
+  it('the safety-depth boat-settings link moves focus to the Boat tab heading, not document.body (#299 fix, PR #486 Major 1)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    const link = screen.getByRole('button', {
+      name: new RegExp(de['planner.safetyDepth.boatLink']),
+    });
+    link.focus();
+    expect(document.activeElement).toBe(link);
+
+    fireEvent.click(link);
+
+    const heading = screen.getByRole('heading', { name: de['settings.section.boatSafety'] });
+    expect(document.activeElement).toBe(heading);
+    expect(document.activeElement?.tagName).not.toBe('BODY');
+  });
+
   it('shows the offline banner when the browser goes offline, and it clears when back online', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });

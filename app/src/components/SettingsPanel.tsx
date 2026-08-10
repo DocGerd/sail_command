@@ -1,3 +1,4 @@
+import type { Ref } from 'react';
 import type { Settings } from '../types';
 import { useT } from '../i18n';
 import { isValidMmsi } from '../lib/mmsi';
@@ -36,6 +37,15 @@ import {
 export interface SettingsPanelProps {
   value: Settings;
   onChange: (settings: Settings) => void;
+  // #299 fix (PR #486 review): focus target for the safety-depth field's
+  // "boat settings" link (App.tsx forwards it onto this panel's first Card
+  // heading, tabIndex -1, focused on jump) — mirrors RouteSummary's own
+  // `resultHeadingRef`/"Details ansehen" precedent (Card.tsx's docstring
+  // names it). Optional so a host that never needs to move focus here
+  // (there is none today, but the whole point of this panel's own props
+  // surface is that a future one shouldn't need to change this file) can
+  // simply omit it.
+  titleRef?: Ref<HTMLHeadingElement>;
 }
 
 interface NumericFieldProps {
@@ -75,7 +85,7 @@ function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
   );
 }
 
-export default function SettingsPanel({ value, onChange }: SettingsPanelProps) {
+export default function SettingsPanel({ value, onChange, titleRef }: SettingsPanelProps) {
   const t = useT();
   const mmsi = value.ownMmsi ?? '';
   const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
@@ -88,7 +98,7 @@ export default function SettingsPanel({ value, onChange }: SettingsPanelProps) {
           (maneuver penalty, performance factor) belong here rather than
           under Propulsion because they describe THIS boat/crew, not the
           sail-vs-motor decision. */}
-      <Card title={t('settings.section.boatSafety')}>
+      <Card title={t('settings.section.boatSafety')} titleRef={titleRef} titleTabIndex={-1}>
         <NumericField
           spec={DEPTH_COMFORT_MARGIN_FIELD}
           value={value}

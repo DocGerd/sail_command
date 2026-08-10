@@ -1875,6 +1875,17 @@ select {
   border-radius: 4px;
 }
 
+/* #299 fix (PR #486 review): same treatment for the safety-depth field's
+   boat-settings link, which moves focus to the Boat tab's first Card
+   heading (SettingsPanel.tsx's own `titleTabIndex={-1}`) — only that one
+   heading in this subtree is ever focusable, so the descendant selector
+   never needs a :first-of-type qualifier. */
+.settings-panel .sc-card-title:focus {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 /* Depth profile inside its card: drop the inner details border so card +
    details read as a single surface (#64 phase 3). */
 .depth-profile-card .depth-profile {

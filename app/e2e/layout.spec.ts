@@ -563,21 +563,38 @@ test('#368: a banner that wraps to two lines (280px width) does not intercept th
 
 // #299: proves the FOUR-tab strip (Plan/Routes/Live/Boat, added for the
 // dedicated Boat/skipper-settings tab) fits at the two narrowest
-// EDGE_VIEWPORTS entries by MEASUREMENT, never by trusting character counts
-// — the same "structural, not estimated" discipline the #368 tests above
-// apply to banner geometry. `.app-tabs` is a FIXED-height row (`height:
-// var(--sc-tabbar-h)`, no `min-height`, no wrap allowance) whose four
-// buttons are `flex: 1` — a label too wide to fit on one line would overflow
-// the row's fixed height rather than growing it, so this measures the
-// rendered geometry directly instead of assuming four short words fit.
+// EDGE_VIEWPORTS entries by MEASUREMENT, never by trusting character counts.
 // "Boot"/"Boat" (4 chars, shorter than the existing "Routen"/"Routes") was
 // chosen specifically to keep this margin, per the #299 design decision.
+//
+// FIXED (PR #486 review, Major 2 — the original version of this test was a
+// THEOREM, not a guard): a per-tab `boundingBox()` read is STRUCTURALLY
+// BLIND to a too-long label here. `.app-tabs button` is `flex: 1`, and
+// app.css's global `button { min-width: 44px }` OVERRIDES flex's own
+// default `min-width: auto` — so every button's BORDER BOX is forced to an
+// EQUAL, viewport/4 width regardless of what its label actually needs, and
+// with no `overflow: hidden` anywhere in that chain, a too-long label just
+// spills silently past its own box edge (`overflow: visible`, the default)
+// instead of growing the box, wrapping, or clipping. MEASURED directly
+// (mutating `nav.boat` to `'Bootseinstellungen'`, 18 chars, then reverting):
+// with the OLD version of this test's four `boundingBox()`-only checks
+// (width>0, edge-to-edge tiling, height vs. the strip), all four still
+// PASSED unchanged at both viewports while the real page silently
+// overflowed. With THIS version's `scrollWidth - clientWidth` assertion,
+// the same mutation reds both cases — `93` at wrapForcing280 (280px) and
+// `83` at deepPortrait320 (320px), both `> 0`; reverting the label back to
+// `'Boot'` returns both to `<= 0` (passing). `scrollWidth` does NOT share
+// the boundingBox blindness — it reflects the element's actual laid-out
+// content extent regardless of the `overflow` property's value — so
+// `scrollWidth > clientWidth` on the STRIP itself is the one signal here
+// that can actually distinguish "fits" from "silently overflows", and is
+// now the test's primary assertion.
 const FOUR_TAB_VIEWPORTS: Record<string, Viewport> = {
   wrapForcing280: EDGE_VIEWPORTS.wrapForcing280,
   deepPortrait320: EDGE_VIEWPORTS.deepPortrait320,
 };
 for (const [label, viewport] of Object.entries(FOUR_TAB_VIEWPORTS)) {
-  test(`#299: the four-tab strip fits without overlap, crowding or row growth (${label}, ${viewport.width}x${viewport.height})`, async ({
+  test(`#299: the four-tab strip fits without horizontal overflow (${label}, ${viewport.width}x${viewport.height})`, async ({
     page,
   }) => {
     const server = await startPreview();
@@ -591,40 +608,114 @@ for (const [label, viewport] of Object.entries(FOUR_TAB_VIEWPORTS)) {
       const tabs = page.getByRole('tab');
       await expect(tabs).toHaveCount(4);
 
+      // THE discriminating assertion — see this block's own header comment
+      // for why scrollWidth, not boundingBox(), is what can actually fail
+      // here. Polls the OVERFLOW AMOUNT (scrollWidth - clientWidth), not a
+      // boolean, so a CI failure names the actual px overrun instead of just
+      // timing out (this repo's own "poll the value" rule). Polled (not a
+      // one-shot read) purely as a settle margin for the page's own
+      // first-paint layout, not because this value is expected to change
+      // afterwards.
+      await expect
+        .poll(() => tablist.evaluate((el) => el.scrollWidth - el.clientWidth), { timeout: 5_000 })
+        .toBeLessThanOrEqual(0);
+
+      // Structural sanity below — real geometry, but NOT the overflow guard
+      // (see header comment: these are unfalsifiable theorems for THIS
+      // failure mode under this app's flexbox setup). Kept only to catch a
+      // DIFFERENT regression — a tab collapsing to 0 width, or the strip
+      // itself losing its own full-viewport width.
       const tabBoxes = await Promise.all([0, 1, 2, 3].map((i) => box(tabs.nth(i))));
-      const stripBox = await box(tablist);
-
-      // Every tab keeps a real, positive width — never squeezed to 0 by an
-      // overflowing sibling.
       for (const b of tabBoxes) expect(b.width).toBeGreaterThan(0);
-
-      // The four tabs tile the strip left-to-right with no gap and no
-      // overlap: each box starts where the previous one ends (within 1px of
-      // rounding), and the FIRST/LAST box's outer edges match the strip's
-      // own bounding box — the signature of a `flex: 1` row genuinely
-      // fitting all four buttons, not three-and-a-bit squeezed under
-      // overflow.
-      expect(tabBoxes[0].x).toBeCloseTo(stripBox.x, 0);
-      for (let i = 1; i < tabBoxes.length; i++) {
-        expect(tabBoxes[i].x).toBeCloseTo(tabBoxes[i - 1].x + tabBoxes[i - 1].width, 0);
-      }
+      const stripBox = await box(tablist);
       const lastTab = tabBoxes[tabBoxes.length - 1];
       expect(lastTab.x + lastTab.width).toBeCloseTo(stripBox.x + stripBox.width, 0);
-
-      // The row's own height stays at the fixed tab-bar height for every
-      // tab — if a label had wrapped to two lines under the fixed-height
-      // row, its content would visually overflow rather than growing the
-      // row, so a per-tab height mismatch against the strip is exactly the
-      // failure mode this catches. A 3px tolerance absorbs `.app-tabs`'s own
-      // 1px border-bottom (measured: buttons render 44px inside a 45px
-      // strip) without masking a real wrap, which adds a full text line
-      // (~16-20px) — an order of magnitude more than this slack.
-      for (const b of tabBoxes) expect(Math.abs(b.height - stripBox.height)).toBeLessThanOrEqual(3);
     } finally {
       server.kill();
     }
   });
 }
+
+// #299 (PR #486 review, Minor 3): the #368 clearance MECHANISM (a
+// ResizeObserver on `.banner-area`'s real rendered height, publishing
+// `--sc-banner-height` — see lib/useBannerHeight.ts) is generic to whatever
+// banner is present, but every #368 test above sources its banner from
+// offline/mapError/the reload prompt, each running with NO plan loaded — so
+// the #299 stale-route banner (App.tsx, gated on `settingsDirty`) never
+// actually renders in any of them, and the PR's own report overstated what
+// they covered. This test closes that specific evidence gap: it plans a
+// real route, then dirties a ROUTING-RELEVANT setting from the Boat tab (the
+// exact #299 scenario a solver-affecting change made off the Plan tab), and
+// re-runs the SAME depth-checkbox hit test the #368 guards above pin — the
+// new banner is now the one actually under test, not merely assumed to
+// share its siblings' geometry.
+test('#299: the stale-route banner (a Boat-tab settings change) does not intercept the depth checkbox at 320x568', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize(EDGE_VIEWPORTS.deepPortrait320);
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    await expect(depthToggle).toBeVisible();
+    await mapReady(page);
+
+    // Dismiss the incidental SW "offline ready" toast so the stale-route
+    // banner below is the ONLY banner present — an attributable signal,
+    // not "some banner-area content, mixed with an unrelated toast, didn't
+    // intercept".
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    const originResults = originSection.getByRole('option');
+    await expect(originResults).toHaveCount(1);
+    await originResults.first().click();
+
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    const destResults = destSection.getByRole('option');
+    await expect(destResults).toHaveCount(1);
+    await destResults.first().click();
+
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    // Gate on run() settling (button re-enabled) rather than a fixed wait —
+    // this is a readiness GATE, not the geometry assertion itself.
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    // Dirty a routing-relevant setting from the Boat tab — the exact #299
+    // scenario (a setting changed from a non-Plan surface).
+    await page.getByRole('tab', { name: 'Boot' }).click();
+    await page.getByLabel('Motor aktiviert').click();
+
+    const staleBanner = page.locator('.banner-message', {
+      hasText: 'Zeigt die zuvor berechnete Route',
+    });
+    await expect(staleBanner).toBeVisible();
+    // Pin WHICH case this is (mirrors the #368 tests' own comment on this):
+    // exactly one banner, so the geometry below is attributable to the new
+    // banner alone, not diluted by a stray second one.
+    await expect(page.locator('.banner-area .banner')).toHaveCount(1);
+
+    await expect
+      .poll(() => settledHitDescription(page, depthToggle), { timeout: 10_000 })
+      .toMatch(/^INPUT\b/);
+    await expect
+      .poll(
+        async () => overlapArea(await box(page.locator('.banner-area')), await box(depthToggle)),
+        { timeout: 10_000 },
+      )
+      .toBe(0);
+  } finally {
+    server.kill();
+  }
+});
 
 // #277: pins #276's fix for #205 (the narrow-width overlap between
 // `.data-layer-controls`, top-left, and `.route-layer-controls`, top-right)

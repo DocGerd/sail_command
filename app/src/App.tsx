@@ -39,7 +39,12 @@ import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
-import { departureSeedMs, pickedPointsOfPlan, planFormDirty } from './lib/planForm';
+import {
+  departureSeedMs,
+  pickedPointsOfPlan,
+  planFormDirty,
+  routingSettingsDirty,
+} from './lib/planForm';
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
 import { usePersistedNumber } from './lib/usePersistedNumber';
@@ -621,14 +626,28 @@ function AppShell() {
   }, [tab]);
 
   // #299: the safety-depth field's discoverable link to the Boat tab (see
-  // PlannerPanel.tsx's own comment) — a plain tab switch, mirroring
-  // handleViewDetails above (no focus-move needed here: SettingsPanel's own
-  // first Card heading is the natural landing spot, and switching tabs
-  // already moves the browser's visual focus for a sighted user the same
-  // way "Details ansehen" does).
+  // PlannerPanel.tsx's own comment). MIRRORS handleViewDetails/
+  // routeResultHeadingRef above exactly, corrected from an earlier version
+  // of this comment that WRONGLY claimed switching tabs alone moves focus
+  // (PR #486 review, Major 1 — measured: activating the link left
+  // `document.activeElement` on `document.body`, since the button lives
+  // inside PlannerPanel, which UNMOUNTS the instant `tab` becomes 'boat',
+  // taking the focused element with it). SettingsPanel's first Card heading
+  // is only a "landing spot" once this effect actually focuses it —
+  // `titleTabIndex={-1}` alone (SettingsPanel.tsx) makes it a focus TARGET,
+  // it does not by itself receive focus.
+  const boatSettingsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const pendingBoatFocusRef = useRef(false);
   const handleOpenBoatSettings = useCallback(() => {
     handleTabChange('boat');
+    pendingBoatFocusRef.current = true;
   }, [handleTabChange]);
+  useEffect(() => {
+    if (tab === 'boat' && pendingBoatFocusRef.current) {
+      pendingBoatFocusRef.current = false;
+      boatSettingsHeadingRef.current?.focus();
+    }
+  }, [tab]);
 
   // Escape is the keyboard equivalent of the banner's cancel button below.
   // Gated on !aboutOpen (and not attached at all while About is open, rather
@@ -743,6 +762,15 @@ function AppShell() {
     plan && origin && destination
       ? planFormDirty(plan, { origin, destination, departureMs, settings }, harbors.length > 0)
       : false;
+  // #299 fix (PR #486 review): the cross-tab staleness BANNER (.banner-area,
+  // below) intentionally uses this NARROWER signal instead of `formDirty` —
+  // see routingSettingsDirty's own comment in lib/planForm.ts for why (in
+  // short: origin/departure can legitimately drift after a Live reroute with
+  // no user edit at all, which would otherwise make the banner cry wolf the
+  // instant a reroute succeeds; Routes/Live/Boat have no UI to touch
+  // origin/destination/departure regardless, only Settings). PlannerPanel's
+  // own Chip/live-region keep reading `formDirty` unchanged.
+  const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
 
   return (
     <div className="app-shell" ref={shellRef}>
@@ -929,24 +957,27 @@ function AppShell() {
           </Banner>
         )}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
-        {/* #299: the displayed plan is stale relative to the current form —
-            previously ONLY surfaced as a Chip inside PlannerPanel's Ergebnis
-            strip (still there, unchanged), which mounts ONLY on the Plan tab.
-            Now that a solver-affecting setting can be changed from a THIRD
-            surface (the Boat tab) as well as the Plan tab itself, a user on
-            Routes/Live/Boat had no on-screen indication that the route on
-            screen no longer matches their inputs — a safety-shaped silence
-            for a depth-margin parameter, not a polish gap. Tab-independent
-            like every other banner-area entry (deliberately NOT gated on
-            `tab !== 'plan'`): this repo already has the identical
-            "duplicated with an inline surface" shape for `route.staleForecast`
-            above (RouteSummary's own inline alert on the Routes tab) and
-            treats that duplication as legitimate, not a bug — see
-            App.test.tsx's "the stale-forecast banner renders through the
-            real App tree" test comment. `formDirty` (computed above) is
-            already exactly "a plan is active AND its inputs no longer match
-            the form" — no new derivation needed. */}
-        {formDirty && <Banner kind="warning">{t('planner.result.stale')}</Banner>}
+        {/* #299: a ROUTING-RELEVANT setting has changed since the displayed
+            plan was computed — previously ONLY surfaced as a Chip inside
+            PlannerPanel's Ergebnis strip (still there, unchanged, and driven
+            by the broader `formDirty`), which mounts ONLY on the Plan tab.
+            Now that settings can be changed from a THIRD surface (the Boat
+            tab) as well as the Plan tab itself, a user on Routes/Live/Boat
+            had no on-screen indication that the route on screen no longer
+            matches their inputs — a safety-shaped silence for a depth-margin
+            parameter, not a polish gap. Tab-independent like every other
+            banner-area entry (deliberately NOT gated on `tab !== 'plan'`):
+            this repo already has the identical "duplicated with an inline
+            surface" shape for `route.staleForecast` above (RouteSummary's
+            own inline alert on the Routes tab) and treats that duplication
+            as legitimate, not a bug — see App.test.tsx's "the stale-forecast
+            banner renders through the real App tree" test comment.
+            DELIBERATELY `settingsDirty`, NOT the broader `formDirty` —
+            see that constant's own comment above for why (a Live reroute
+            legitimately drifts origin/departure with no user edit at all,
+            and gating on settings alone both avoids that false positive AND
+            covers exactly what's editable from a non-Plan tab). */}
+        {settingsDirty && <Banner kind="warning">{t('planner.result.stale')}</Banner>}
         {/* #25 addendum: reuses the SAME one-time hint LiveView shows on its
             own GPS denial (lib/gpsHint.ts's shared claim, live.gpsHint copy)
             — whichever of the two consumers hits the denial first is the one
@@ -1122,7 +1153,13 @@ function AppShell() {
               onOpenBoatSettings={handleOpenBoatSettings}
             />
           )}
-          {tab === 'boat' && <SettingsPanel value={settings} onChange={setSettings} />}
+          {tab === 'boat' && (
+            <SettingsPanel
+              value={settings}
+              onChange={setSettings}
+              titleRef={boatSettingsHeadingRef}
+            />
+          )}
           {tab === 'routes' && (
             <>
               {plan && rig && (
