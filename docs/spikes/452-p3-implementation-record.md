@@ -420,3 +420,103 @@ whereas `sweepArms.ts` gives that arm plain `DEFAULT_SETTINGS` (3.0 m) with
 BASE↔HEAD, so those plans are untouched by this change. With the table
 corrected the count is 0. The tell was that the "violations" were confined to a
 single arm that the diff says did not move.
+
+---
+
+## 8. ETA cost at R = 1852 — the spike's headline objection REPRODUCES, and is LARGER
+
+The spike's ETA regressions were all measured at **R = 2400 m, never at 1852**.
+These are the equivalent figures at the shipped radius, from the same sweep
+artifacts as §7 (no additional solver run). Deltas are on the RECOMMENDED rig
+— what a user actually sees — with a same-rig control alongside, because a
+recommended-rig delta silently mixes routing cost with a rig FLIP.
+
+### Distribution across the 60 changed rows
+
+| | value |
+|---|---|
+| median ETA delta | **+41.8 s** |
+| slower / faster / unchanged | **43 / 11 / 6** |
+| sum of all increases | **+49,814 s** |
+| sum of all decreases | **−7,774 s** |
+
+The median is small; the distribution is heavily tailed. The tail is the story,
+so it is listed in full rather than described.
+
+### Every row worse than +300 s
+
+| row | ETA delta | recommended rig |
+|---|---|---|
+| `relaxation-dense/svendborg` | **+13,702 s (+228.4 min)** | fock → genoa **FLIP** |
+| `margin-extreme/rudkoebing` | **+13,282 s (+221.4 min)** | genoa |
+| `margin-zero/svendborg` | **+8,895 s (+148.2 min)** | genoa |
+| `margin-zero/rudkoebing` | +4,722 s (+78.7 min) | genoa → fock **FLIP** (same-rig +13,424 s) |
+| `relaxation-dense/rudkoebing` | +4,594 s (+76.6 min) | genoa |
+| `margin-extreme/troense` | +690 s (+11.5 min) | fock |
+| `relaxation-dense/assens` | +398 s (+6.6 min) | genoa |
+| `margin-zero/assens` | +398 s (+6.6 min) | fock |
+| `margin-extreme/assens` | +318 s (+5.3 min) | genoa |
+| `margin-extreme/aeroeskoebing` | +303 s (+5.1 min) | genoa |
+
+Everything else is under +300 s; 20 rows are under +100 s.
+
+### Rows that got FASTER — 11, and 3 of them are flip artifacts
+
+`relaxation-dense/troense` **−2,329 s (−38.8 min)** is the largest genuine
+improvement (no flip, same-rig identical). Then `relaxation-dense/aeroeskoebing`
+−130 s, `margin-extreme/faldsled` −90 s, `margin-extreme/faaborg` −38 s,
+`breeze/marstal` −31 s, `relaxation-dense/soeby` −27 s, `margin-extreme/fynshav`
+−18 s, `margin-zero/langballigau` −7 s, `margin-extreme/gelting-mole` −3 s,
+`relaxation-dense/fynshav` −3 s.
+
+**`margin-extreme/svendborg` reads −5,099 s (−85.0 min) and that number must not
+be quoted alone**: it flips genoa → fock, and the same-rig delta is **+8,439 s**.
+The rig that was recommended at BASE got much slower; a faster alternative was
+already available and now wins. Same shape at `margin-zero/rudkoebing`
+(+4,722 s recommended, **+13,424 s** same-rig) and `margin-zero/troense`
+(+294 s recommended, **+11,602 s** same-rig).
+
+### Recommended-rig flips — 10
+
+`margin-extreme`: drejoe (genoa→fock, decided→tie), faldsled (genoa→fock),
+soeby (fock→genoa, tie→decided), **svendborg (genoa→fock, decided→decided)**.
+`margin-zero`: aeroeskoebing (genoa→fock, tie→tie), rudkoebing (genoa→fock,
+tie→decided), troense (genoa→fock, decided→decided).
+`relaxation-dense`: aeroeskoebing (genoa→fock, tie→decided), drejoe
+(fock→genoa, tie→tie), **svendborg (fock→genoa, decided→decided)**.
+
+Four of the ten cross a `tie` boundary, where the flip is a 60 s tie-band
+artifact rather than a meaningful preference change (`RIG_TIE_BAND_MS`).
+
+### Direct comparison with the spike's R = 2400 m figures
+
+| route | spike @ 2400 m | this build @ 1852 m | verdict |
+|---|---|---|---|
+| Svendborg | +6,527 s (+108.8 min), fock→genoa flip | **+13,702 s (+228.4 min)**, fock→genoa flip (`relaxation-dense`) | **~2.1× WORSE**; the flip reproduces in the same direction |
+| Svendborg | +1,360 s | +8,895 s (`margin-zero`) | worse |
+| Rudkøbing | +1,691 s | **+13,282 s** (`margin-extreme`) | worse |
+| Rudkøbing | +1,297 s | +4,594 s (`relaxation-dense`) | worse |
+| Troense | +1,567 s | +690 s (`margin-extreme`); **−2,329 s** (`relaxation-dense`) | better, and improves outright on one arm |
+
+The spike's arm for each figure is not recorded, so these are matched by route
+only — every arm in which each route moved is listed rather than one picked.
+
+### The plain statement
+
+**The spike's headline ETA objection REPRODUCES at the shipped radius, and on
+Svendborg it is roughly twice as large as the 2400 m figure that motivated the
+objection.** A smaller radius forbids more water, so a longer legal route is
+the mechanism, not a surprise — but the magnitude was not known before this
+run, and "R = 1852 clears both cliff figures" says nothing about ETA cost.
+
+What that cost buys is §7's invariant: BASE routed 41 of 157 ok plans through
+sub-gate water up to 18.86 nm from any waypoint; HEAD routes none. The
++228 min Svendborg route is the legal one — it carries zero out-of-disc
+sub-gate cells, like every other HEAD plan.
+
+**NOT established, and it is the obvious next question:** whether a +228 min
+route is one a skipper would accept, or whether they would rather be told the
+passage is unreachable at 3.0 m. That is a product judgement this document
+cannot make, and it is the strongest argument for graft 4 (#516) — a user who
+can see "2.4 m minimum, 0.2 nm of it" can decide for themselves. No such
+disclosure ships in this PR.
