@@ -68,6 +68,11 @@
   // reason as useBannerHeight.test.ts/panelWidth.test.ts (a cross-language
   // invariant, here Python-to-TypeScript rather than CSS-to-TypeScript, with
   // no compiler spanning both).
+  // chipShallowFill.test.ts (#506): reads app.css via `node:fs` to resolve
+  // `.chip-shallow`'s real cascade against a jsdom stylesheet and to
+  // structurally scan for any other bare single-class `.chip-*` modifier
+  // declared above `.chip`'s base rule — same reason and same pattern as
+  // useBannerHeight.test.ts/panelWidth.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -80,6 +85,7 @@
     "src/**/legDistanceReconciliation.test.ts",
     "src/**/panelWidth.test.ts",
     "src/**/maskTolerance.test.ts",
+    "src/**/chipShallowFill.test.ts",
     "sweep/**/*.ts"
   ]
 }
