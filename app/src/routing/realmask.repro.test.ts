@@ -9,6 +9,7 @@ import { solve } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
 import { planRoute } from './planRoute';
 import { uniformWindGrid } from '../test/fixtures';
+import { uniformGate } from '../lib/depthGate';
 import { DEFAULT_SETTINGS } from '../types';
 import type { LatLon, Leg, MaskMeta, PolarTable, Settings } from '../types';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
@@ -70,7 +71,7 @@ function solveGenoa(
 function expectLegsNavigable(legs: Leg[], safetyDepthM: number) {
   for (const leg of legs)
     expect(
-      mask.segmentNavigable(leg.start, leg.end, safetyDepthM),
+      mask.segmentNavigable(leg.start, leg.end, uniformGate(safetyDepthM)),
       `leg ${JSON.stringify(leg.start)} -> ${JSON.stringify(leg.end)} crosses non-navigable water`,
     ).toBe(true);
 }
@@ -226,8 +227,8 @@ describe('real mask routing (issue #20)', () => {
       expect(o).not.toBeNull();
       expect(d).not.toBeNull();
       // The independently-derived connectivity flip pinning usedDepthM = 2.3:
-      expect(mask.cellsConnected(o!, d!, 2.3)).toBe(true);
-      expect(mask.cellsConnected(o!, d!, 2.4)).toBe(false);
+      expect(mask.cellsConnected(o!, d!, uniformGate(2.3))).toBe(true);
+      expect(mask.cellsConnected(o!, d!, uniformGate(2.4))).toBe(false);
 
       const res = planRoute(
         {
@@ -263,6 +264,103 @@ describe('real mask routing (issue #20)', () => {
           expect(leg.shallow!.minDepthM).toBeLessThan(3.0);
         }
       }
+    },
+  );
+
+  // #452's INVARIANT, asserted directly against the real mask: no leg of a
+  // returned plan crosses a cell charted below the requested depth unless
+  // that cell lies within APPROACH_RADIUS_M of a snapped waypoint.
+  //
+  // WHY depthComfortMarginM: 0 SPECIFICALLY, and why this test is worthless
+  // at DEFAULT_SETTINGS. The maintainer's own measurement on issue #452
+  // (2026-08-07T21:04:54Z) records that at DEFAULT settings the sub-requested
+  // crossings on this passage are ALREADY "all inside ~1 km of the Marstal
+  // approach" — so at DEFAULT the assertion below holds with or without the
+  // fix, and the kill-switch mutation would not red it. At margin 0 that same
+  // measurement records "5 separate sites spread along the whole passage",
+  // two of them inside Flensburg Fjord roughly 40 nm from the pinch. Margin 0
+  // is therefore the only configuration in which this assertion has teeth.
+  //
+  // The geometry here is computed from the leg polylines and the plan's own
+  // snapped waypoints with a local haversine — it never calls into
+  // depthGate.ts, so needle and haystack are independently sourced.
+  it(
+    '#452: at margin 0, every sub-requested cell the route crosses lies within one approach disc',
+    { timeout: solverTimeoutMs(600_000) },
+    () => {
+      const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 };
+      const res = planRoute(
+        {
+          origin: FLENSBURG,
+          destination: MARSTAL,
+          viaPoints: [],
+          originHarborId: 'flensburg',
+          destinationHarborId: 'marstal',
+          departureMs: T0,
+          settings,
+        },
+        uniformWindGrid(12, 270),
+        { polarGenoa, polarFock, mask },
+      );
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+
+      const R_EARTH_M = 6_371_000;
+      const toRadLocal = (d: number) => (d * Math.PI) / 180;
+      const metresBetween = (a: LatLon, b: LatLon): number => {
+        const dLat = toRadLocal(b.lat - a.lat);
+        const dLon = toRadLocal(b.lon - a.lon);
+        const h =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRadLocal(a.lat)) * Math.cos(toRadLocal(b.lat)) * Math.sin(dLon / 2) ** 2;
+        return 2 * R_EARTH_M * Math.asin(Math.sqrt(h));
+      };
+      const latStep = (maskMeta.north - maskMeta.south) / maskMeta.rows;
+      const lonStep = (maskMeta.east - maskMeta.west) / maskMeta.cols;
+      // The cell CENTRE is what disc membership is defined on, so a sampled
+      // point is snapped back to its own cell centre before measuring.
+      const centreOf = (p: LatLon): LatLon => ({
+        lat: maskMeta.south + (Math.floor((p.lat - maskMeta.south) / latStep) + 0.5) * latStep,
+        lon: maskMeta.west + (Math.floor((p.lon - maskMeta.west) / lonStep) + 0.5) * lonStep,
+      });
+      const anchors = [res.snappedOrigin, res.snappedDestination];
+      // The implementation tests an ellipse in GRID space (a linearised
+      // metres-per-degree at the waypoint's own latitude); this test measures
+      // an exact haversine. Over 1852 m the two differ by well under 1%, so a
+      // 2% allowance absorbs the difference without weakening anything that
+      // matters: the violations this test exists to catch were measured tens
+      // of nautical miles out, four orders of magnitude past the allowance.
+      const LIMIT_M = 1852 * 1.02;
+
+      const offenders: string[] = [];
+      for (const rig of [res.genoa, res.fock]) {
+        if (!rig) continue;
+        for (const leg of rig.legs) {
+          // Sample far finer than the ~46 m cell pitch so no crossed cell is
+          // stepped over.
+          const legM = metresBetween(leg.start, leg.end);
+          const steps = Math.max(2, Math.ceil(legM / 10));
+          for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            const p: LatLon = {
+              lat: leg.start.lat + (leg.end.lat - leg.start.lat) * t,
+              lon: leg.start.lon + (leg.end.lon - leg.start.lon) * t,
+            };
+            const info = mask.depthInfoM(p);
+            // Deep-capped cells are a floor, never a shallow reading (#53).
+            if (info.capped || info.depthM >= settings.safetyDepthM) continue;
+            const centre = centreOf(p);
+            const nearestM = Math.min(...anchors.map((a) => metresBetween(a, centre)));
+            if (nearestM > LIMIT_M)
+              offenders.push(
+                `${info.depthM.toFixed(1)} m at ${centre.lat.toFixed(4)},${centre.lon.toFixed(4)} — ${(nearestM / 1852).toFixed(2)} nm from the nearest waypoint`,
+              );
+          }
+        }
+      }
+      // Report the actual offending cells, not a bare boolean: at 3am in CI
+      // the depth and the distance are the whole diagnostic.
+      expect(offenders.slice(0, 10)).toEqual([]);
     },
   );
 });
@@ -459,7 +557,7 @@ describe('#243 depth comfort preference (real mask)', () => {
       expect(solved.status, 'the reference solve must itself succeed').toBe('ok');
       if (solved.status !== 'ok') throw new Error('reference solve failed');
       return {
-        legs: mergeCollinearLegs(solved.legs, mask, wind, settings),
+        legs: mergeCollinearLegs(solved.legs, mask, wind, uniformGate(settings.safetyDepthM)),
         etaMs: solved.etaMs,
       };
     };
@@ -604,8 +702,8 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
     const d = mask.snapToNavigable(MARSTAL, settings.safetyDepthM);
     expect(o).not.toBeNull();
     expect(d).not.toBeNull();
-    expect(mask.cellsConnected(o!, d!, 3.0)).toBe(false);
-    expect(mask.cellsConnected(o!, d!, 2.3)).toBe(true);
+    expect(mask.cellsConnected(o!, d!, uniformGate(3.0))).toBe(false);
+    expect(mask.cellsConnected(o!, d!, uniformGate(2.3))).toBe(true);
   });
 
   it(

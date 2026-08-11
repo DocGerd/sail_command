@@ -5,6 +5,7 @@ import { WindField } from '../lib/wind';
 import { makeMask, openWaterMask, TEST_POLAR, uniformWindGrid, wallMask } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type MaskMeta } from '../types';
 import { haversineNm } from '../lib/geo';
+import { uniformGate } from '../lib/depthGate';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
@@ -71,7 +72,7 @@ describe('isochrone golden routes', () => {
     const detourA = { lat: 54.6, lon: 10.0 };
     const detourB = { lat: 54.6, lon: 10.4 };
     const m = wallMask();
-    expect(m.segmentNavigable(detourA, detourB, 3)).toBe(false); // direct is blocked
+    expect(m.segmentNavigable(detourA, detourB, uniformGate(3))).toBe(false); // direct is blocked
     const r = solve(
       params({
         origin: detourA,
@@ -82,7 +83,7 @@ describe('isochrone golden routes', () => {
     );
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    for (const l of r.legs) expect(m.segmentNavigable(l.start, l.end, 3)).toBe(true);
+    for (const l of r.legs) expect(m.segmentNavigable(l.start, l.end, uniformGate(3))).toBe(true);
     // the route genuinely detours through the gap
     const maxLat = Math.max(...r.legs.map((l) => Math.max(l.start.lat, l.end.lat)));
     expect(maxLat).toBeGreaterThan(54.74); // reached the gap band
@@ -171,39 +172,39 @@ describe('#243 edgeFactor arithmetic', () => {
     // shortfall = (5.0 - 4.0) / (5.0 - 3.0) = 0.5
     // factor    = 1 - DEPTH_DERATE_MAX(0.30) * 0.5 = 0.85
     const m = makeMask((_, c) => (c === 160 ? 40 : 200));
-    expect(edgeFactor(m, a, b, gateM, comfortDepthM)).toBeCloseTo(0.85, 6);
+    expect(edgeFactor(m, a, b, uniformGate(gateM), comfortDepthM)).toBeCloseTo(0.85, 6);
   });
 
   it('clearance at or above the comfort depth -> factor exactly 1 (free)', () => {
     const deep = makeMask(() => 200); // 20 m, well above 5.0 m comfort
-    expect(edgeFactor(deep, a, b, gateM, comfortDepthM)).toBe(1);
+    expect(edgeFactor(deep, a, b, uniformGate(gateM), comfortDepthM)).toBe(1);
     // Boundary: clearance exactly AT the comfort depth is also free.
     const atComfort = makeMask((_, c) => (c === 160 ? 50 : 200));
-    expect(edgeFactor(atComfort, a, b, gateM, comfortDepthM)).toBe(1);
+    expect(edgeFactor(atComfort, a, b, uniformGate(gateM), comfortDepthM)).toBe(1);
   });
 
   it('clearance exactly at the gate -> factor exactly 1 - DEPTH_DERATE_MAX (0.70)', () => {
     const atGate = makeMask((_, c) => (c === 160 ? 30 : 200)); // 3.0 m exactly
-    expect(edgeFactor(atGate, a, b, gateM, comfortDepthM)).toBeCloseTo(0.7, 6);
+    expect(edgeFactor(atGate, a, b, uniformGate(gateM), comfortDepthM)).toBeCloseTo(0.7, 6);
   });
 
   it('blocked segment -> null, identical to segmentNavigable === false', () => {
     const wall = makeMask((_, c) => (c === 160 ? 0 : 200));
-    expect(wall.segmentNavigable(a, b, gateM)).toBe(false);
-    expect(edgeFactor(wall, a, b, gateM, comfortDepthM)).toBeNull();
+    expect(wall.segmentNavigable(a, b, uniformGate(gateM))).toBe(false);
+    expect(edgeFactor(wall, a, b, uniformGate(gateM), comfortDepthM)).toBeNull();
   });
 
   it('comfortDepthM absent -> collapses to plain segmentNavigable (1 or null)', () => {
     const m = makeMask((_, c) => (c === 160 ? 40 : 200));
-    expect(edgeFactor(m, a, b, gateM, undefined)).toBe(1); // 4.0 m clears a 3.0 m gate
+    expect(edgeFactor(m, a, b, uniformGate(gateM), undefined)).toBe(1); // 4.0 m clears a 3.0 m gate
     const wall = makeMask((_, c) => (c === 160 ? 0 : 200));
-    expect(edgeFactor(wall, a, b, gateM, undefined)).toBeNull();
+    expect(edgeFactor(wall, a, b, uniformGate(gateM), undefined)).toBeNull();
   });
 
   it('comfortDepthM not strictly above the gate -> degrades to plain segmentNavigable (defensive, never divides by <=0)', () => {
     const m = makeMask((_, c) => (c === 160 ? 40 : 200));
-    expect(edgeFactor(m, a, b, gateM, gateM)).toBe(1); // comfort === gate
-    expect(edgeFactor(m, a, b, gateM, gateM - 0.5)).toBe(1); // comfort < gate
+    expect(edgeFactor(m, a, b, uniformGate(gateM), gateM)).toBe(1); // comfort === gate
+    expect(edgeFactor(m, a, b, uniformGate(gateM), gateM - 0.5)).toBe(1); // comfort < gate
   });
 });
 

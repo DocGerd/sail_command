@@ -4,6 +4,7 @@ import { planRoute } from './planRoute';
 import { makeMask, makeWindGrid, TEST_POLAR } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PolarTable } from '../types';
 import { haversineNm } from '../lib/geo';
+import { uniformGate } from '../lib/depthGate';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
@@ -75,7 +76,7 @@ describe('router invariants', () => {
             for (let i = 0; i < rig.legs.length; i++) {
               const leg = rig.legs[i];
               // 1. no leg crosses land/shallow
-              expect(mask.segmentNavigable(leg.start, leg.end, DEFAULT_SETTINGS.safetyDepthM)).toBe(
+              expect(mask.segmentNavigable(leg.start, leg.end, uniformGate(DEFAULT_SETTINGS.safetyDepthM))).toBe(
                 true,
               );
               // 2. times strictly increasing

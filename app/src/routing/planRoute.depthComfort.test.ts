@@ -220,10 +220,16 @@ describe('#243 planRoute tier ladder (relaxed gate: tier 3 -> tier 4)', () => {
       if (c === 160) return r >= 90 && r <= 99 ? gapDm : 0;
       return 200;
     });
+  // #452: the destination sits at col 165, five columns (~1606 m at
+  // 54.7525°N) east of the col-160 wall, so the gap falls INSIDE its 1852 m
+  // approach disc and relaxation still fires. At the pre-#452 col 200 the
+  // gap would be ~12.8 km from either waypoint, outside every disc, and
+  // these tier-3/tier-4 cases would never run — see
+  // planRoute.shallow.test.ts, which pins both sides of that distinction.
   const relaxedReq: PlanRequest = {
     ...req,
     origin: { lat: 54.7525, lon: 10.0025 },
-    destination: { lat: 54.7525, lon: 10.4025 },
+    destination: { lat: 54.7525, lon: 10.2275 },
   };
 
   it('retries BOTH rigs without the preference when the relaxed-gate solve fails mask-blocked, discarding a successful tier-3 rig', () => {

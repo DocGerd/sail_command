@@ -6,6 +6,7 @@ import { makeMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS } from '../types';
 import type { MaskMeta } from '../types';
 import { destinationPoint, haversineNm } from '../lib/geo';
+import { uniformGate } from '../lib/depthGate';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // Regression tests for issue #21 — three follow-up gaps from the #20 review.
@@ -82,9 +83,9 @@ describe('issue #21 gap 2: blocked direct arrivals get the substep retry', () =>
     // Fixture preconditions, checked with the independent geo/mask libs.
     expect(haversineNm(O, D)).toBeGreaterThan(0.26);
     expect(haversineNm(O, D)).toBeLessThan(0.3);
-    expect(mask.segmentNavigable(O, D, settings.safetyDepthM)).toBe(false);
+    expect(mask.segmentNavigable(O, D, uniformGate(settings.safetyDepthM))).toBe(false);
     const sub = destinationPoint(O, 90, 0.15); // 7.2 kn × 75 s substep endpoint
-    expect(mask.segmentNavigable(O, sub, settings.safetyDepthM)).toBe(true);
+    expect(mask.segmentNavigable(O, sub, uniformGate(settings.safetyDepthM))).toBe(true);
 
     const spy = vi.spyOn(mask, 'segmentNavigable');
     const r = solve({ origin: O, destination: D, departureMs: T0, polar, wind, mask, settings });
@@ -117,10 +118,10 @@ describe('issue #21 gap 3: the endpoint-capture hop is mask-validated', () => {
     const mask = wallCol135Mask();
 
     const child85 = destinationPoint(O, 85, 0.15);
-    expect(mask.segmentNavigable(O, child85, settings.safetyDepthM)).toBe(true);
+    expect(mask.segmentNavigable(O, child85, uniformGate(settings.safetyDepthM))).toBe(true);
     expect(haversineNm(child85, D)).toBeLessThan(0.1);
     expect(haversineNm(child85, D)).toBeGreaterThan(0.09); // outside a ring-1 direct arrival
-    expect(mask.segmentNavigable(child85, D, settings.safetyDepthM)).toBe(false);
+    expect(mask.segmentNavigable(child85, D, uniformGate(settings.safetyDepthM))).toBe(false);
 
     const r = solve({ origin: O, destination: D, departureMs: T0, polar, wind, mask, settings });
     expect(r).toEqual({ status: 'no-route', cause: 'mask-blocked' });
@@ -178,8 +179,8 @@ describe('issue #67: a capped-out node must not seal its prune cell', () => {
     const mask = trapMask();
     // Independent oracles (NOT the solver): the direct track is blocked, yet a
     // navigable 4-connected chain trapO→trapD exists, so a route MUST exist.
-    expect(mask.segmentNavigable(trapO, trapD, trapSettings.safetyDepthM)).toBe(false);
-    expect(mask.cellsConnected(trapO, trapD, trapSettings.safetyDepthM)).toBe(true);
+    expect(mask.segmentNavigable(trapO, trapD, uniformGate(trapSettings.safetyDepthM))).toBe(false);
+    expect(mask.cellsConnected(trapO, trapD, uniformGate(trapSettings.safetyDepthM))).toBe(true);
     // Straight-line lower bound (geo lib, not the solver): ≈ 6.03 nm. Any real
     // path is ≥ this by the triangle inequality, and strictly longer here since
     // the direct segment is blocked — so the route is a genuine detour.
@@ -206,7 +207,7 @@ describe('issue #67: a capped-out node must not seal its prune cell', () => {
       // phantom capture across land).
       for (const l of r.legs)
         expect(
-          mask.segmentNavigable(l.start, l.end, trapSettings.safetyDepthM),
+          mask.segmentNavigable(l.start, l.end, uniformGate(trapSettings.safetyDepthM)),
           `cap=${maxFrontier} leg`,
         ).toBe(true);
       const dist = r.legs.reduce((s, l) => s + l.distanceNm, 0);
