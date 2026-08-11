@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from './mask';
-import { uniformGate } from './depthGate';
+import { APPROACH_RADIUS_M, approachGate, uniformGate } from './depthGate';
 
 const CELL_LAT = (TEST_MASK_META.north - TEST_MASK_META.south) / TEST_MASK_META.rows; // 0.005
 const CELL_LON = (TEST_MASK_META.east - TEST_MASK_META.west) / TEST_MASK_META.cols; // 0.005
@@ -118,7 +118,9 @@ describe('NavMask.cellsConnected (#53)', () => {
 
   it('out-of-bbox endpoints are never connected', () => {
     const m = makeMask(() => 200);
-    expect(m.cellsConnected({ lat: 60, lon: 20 }, { lat: 54.75, lon: 10.2 }, uniformGate(3))).toBe(false);
+    expect(m.cellsConnected({ lat: 60, lon: 20 }, { lat: 54.75, lon: 10.2 }, uniformGate(3))).toBe(
+      false,
+    );
   });
 });
 
@@ -248,5 +250,48 @@ describe('#493: cautiousDepthLowerBoundM', () => {
     expect(cautiousDepthLowerBoundM(0.5)).toBe(0);
     expect(cautiousDepthLowerBoundM(0)).toBe(0);
     expect(cautiousDepthLowerBoundM(MASK_TOLERANCE_M)).toBe(0);
+  });
+});
+
+// #452: the three NavMask predicates the solver uses now take a per-cell gate.
+// Every case here is built as a PAIR — the same mask and the same relaxed
+// depth, with the disc ON the shallow cell and then OFF it. Only a gate that
+// is genuinely consulted per cell can separate the two, and both halves are
+// load-bearing: a cellNavigable that ignored gateAtCell and used
+// requestedDepthM would pass the reject half while failing the accept half,
+// and one using minGateM would do exactly the reverse.
+describe('NavMask under a #452 ApproachGate', () => {
+  // Row 90 is 20 m everywhere except col 150, charted 2.5 m — below the 3.0 m
+  // requested gate, above a 2.3 m relaxed one.
+  const shoal = makeMask((r, c) => (r === 90 && c === 150 ? 25 : 200));
+  // Cell centres on row 90 (lat 54.3 + 90.5*0.005 = 54.7525).
+  const lonOfCol = (col: number) => 9.4 + (col + 0.5) * 0.005;
+  const A = { lat: 54.7525, lon: lonOfCol(145) };
+  const B = { lat: 54.7525, lon: lonOfCol(155) };
+  const ON = { lat: 54.7525, lon: lonOfCol(150) }; // disc centred on the shoal
+  // 30 columns east (~9.6 km at this latitude) — far outside a 1852 m disc.
+  const OFF = { lat: 54.7525, lon: lonOfCol(180) };
+  const covering = approachGate(TEST_MASK_META, [ON], 3.0, [2.3], APPROACH_RADIUS_M);
+  const elsewhere = approachGate(TEST_MASK_META, [OFF], 3.0, [2.3], APPROACH_RADIUS_M);
+
+  it('segmentNavigable accepts a sub-requested cell inside a disc and rejects it outside', () => {
+    expect(shoal.segmentNavigable(A, B, covering)).toBe(true);
+    expect(shoal.segmentNavigable(A, B, elsewhere)).toBe(false);
+    // Control: the same segment at a plain requested-depth gate is blocked,
+    // so the accept above is the disc doing the work, not the mask being deep.
+    expect(shoal.segmentNavigable(A, B, uniformGate(3.0))).toBe(false);
+  });
+
+  it('segmentClearanceM reports a minimum BELOW the requested depth inside a disc', () => {
+    expect(shoal.segmentClearanceM(A, B, covering)).toBeCloseTo(2.5, 6);
+    expect(shoal.segmentClearanceM(A, B, elsewhere)).toBeNull();
+  });
+
+  it('cellsConnected routes through an in-disc sub-requested cell, not an out-of-disc one', () => {
+    // A wall on row 90 would not isolate anything on its own, so this fixture
+    // makes col 150 the ONLY water in an otherwise-land column.
+    const pinch = makeMask((r, c) => (c === 150 ? (r === 90 ? 25 : 0) : 200));
+    expect(pinch.cellsConnected(A, B, covering)).toBe(true);
+    expect(pinch.cellsConnected(A, B, elsewhere)).toBe(false);
   });
 });
