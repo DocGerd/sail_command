@@ -13,7 +13,6 @@ import {
   seamarksLayout,
 } from '../lib/seamarkGeoJson';
 import {
-  DEFAULT_SEAMARK_DISPLAY_TIER,
   SEAMARK_DISPLAY_TIER_ALL,
   SEAMARK_DISPLAY_TIER_BASE,
   SEAMARK_SIZE_MAX,
@@ -21,7 +20,7 @@ import {
   SEAMARK_SIZE_SCALE,
   registerSeamarkImages,
   seamarkImageIds,
-  type SeamarkDisplayTier,
+  toSeamarkDisplayTier,
 } from '../lib/seamarkGlyphs';
 import { resolveSeamarkPopoverValue, seamarkPopoverRows } from '../lib/seamarkPopover';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
@@ -247,8 +246,7 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     SEAMARK_DISPLAY_TIER_BASE,
     SEAMARK_DISPLAY_TIER_ALL,
   );
-  const seamarkDisplayTier = (seamarkDisplayTierStored ??
-    DEFAULT_SEAMARK_DISPLAY_TIER) as SeamarkDisplayTier;
+  const seamarkDisplayTier = toSeamarkDisplayTier(seamarkDisplayTierStored);
   const [assets, setAssets] = useState<RoutingAssets | null>(null);
   // Same pattern and rationale as RouteLayer's styleEpoch: 0 = this
   // component's sources/layers don't exist yet; 1 once style AND assets are
@@ -381,11 +379,13 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     map.setLayoutProperty(SEAMARKS_LAYER, 'icon-padding', layout['icon-padding']);
   }, [map, styleEpoch, assets, seamarkSizeScale]);
 
-  // #353 PR2: the display-category filter. `seamarkDisplayFilter` is
-  // cumulative (SEAMARK_DISPLAY_TIER_ALL reproduces the unfiltered pre-#353
-  // layer exactly), and the Base tier (isolatedDanger/cardinal/lateral) is
-  // NEVER excluded by any selection — see seamarkGlyphs.ts's
-  // `seamarkDisplayTier` doc comment for the R1001-grounded floor.
+  // #353 PR2 (mapping corrected #513 F1/F2): the display-category filter.
+  // `seamarkDisplayFilter` is cumulative (SEAMARK_DISPLAY_TIER_ALL
+  // reproduces the unfiltered pre-#353 layer exactly), and the Base tier
+  // (isolatedDanger/cardinal/lateral/safeWater/lightMajor) is NEVER excluded
+  // by any selection — see seamarkGlyphs.ts's `seamarkDisplayTier` doc
+  // comment for the full MSC.232(82)-informed mapping and why Base is a
+  // product-specific floor rather than a literal ECDIS Display Base.
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
     map.setFilter(SEAMARKS_LAYER, seamarkDisplayFilter(seamarkDisplayTier));

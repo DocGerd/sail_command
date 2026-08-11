@@ -279,59 +279,149 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
 };
 
 /**
- * #353 PR2: the display-CATEGORY floor/ladder — a coarser, user-facing
- * grouping than FAMILY_RANK above, built on the SAME R1001 citations but
- * grouped by a different question: not "which mark wins a pixel collision"
- * but "which marks may EVER be hidden by a declutter preference". Three
- * tiers, cumulative (each includes every family in the tiers below it):
+ * #353 PR2 (mapping corrected in review — #513 F1/F2): the display-CATEGORY
+ * floor/ladder — a coarser, user-facing grouping than FAMILY_RANK above.
+ * Named after, and INFORMED BY, IMO Resolution MSC.232(82) (adopted
+ * 2006-12-05) Appendix 2, "SENC INFORMATION AVAILABLE FOR DISPLAY DURING
+ * ROUTE PLANNING AND ROUTE MONITORING" — the ECDIS Display Base / Standard
+ * Display / All Other Information split, verified against the resolution's
+ * own text (not a paraphrase) — but NOT a literal rendering of it: Appendix
+ * 2 item 1 (Display Base) lists only coastline, the safety contour, and
+ * isolated (underwater and fixed) dangers, and explicitly does NOT include
+ * any aid-to-navigation class — "buoys, beacons, other aids to navigation
+ * and fixed structures" is item 2.3, i.e. STANDARD, undivided (no
+ * distinction between cardinal/lateral/safe-water/light buoys). This app's
+ * BASE tier is a DELIBERATE, product-specific safety floor broader than
+ * IMO's own Display Base, keeping `cardinal`/`lateral` (channel-edge and
+ * danger-passing marks) plus `safeWater`/`lightMajor` (scarce
+ * landfall/passage anchors) non-optional even at the most restrictive
+ * declutter setting — never a literal "this is what Display Base contains"
+ * claim. An EARLIER revision of this comment made exactly that false claim,
+ * citing superseded IMO A.817(19) §1.4 (whose "including buoys and beacons"
+ * clause was REMOVED when MSC.232(82) superseded it) — that citation was
+ * wrong and is not used here. Three tiers, cumulative (each includes every
+ * family in the tiers below it):
  *
- * - BASE (never hidden, mirrors S-52's non-optional Display Base floor):
- *   `isolatedDanger`, `cardinal`, `lateral` — exactly the families R1001
- *   §3.1 Table 16's "New Danger" column lists (Lateral, Cardinal, Isolated
- *   Danger, Emergency Wreck — see FAMILY_RANK's own TIER 3 paragraph above
- *   for the full citation chain), i.e. every family this file's own ranking
- *   already documents as danger-bearing. A user who dials the size/category
- *   controls all the way down still sees every hazard mark.
- * - STANDARD (default): + `lightMajor`, `safeWater` — FAMILY_RANK's own
- *   TIER 2, the scarce, no-danger-information marks that anchor a passage at
- *   planning scale (6 lighthouses / 23 safe-water marks in-area).
- * - ALL: + `lightMinor`, `specialPurpose`, `unknown` — FAMILY_RANK's TIER 4,
- *   neither danger-bearing nor scarce. Selecting ALL reproduces today's
- *   pre-#353 rendering (every family, always shown) exactly.
+ * - BASE (product floor, broader than IMO's Display Base — see above):
+ *   `isolatedDanger`, `cardinal`, `lateral`, `safeWater`, `lightMajor`.
+ * - STANDARD (default) adds: `lightMinor`, `unknown`, and every
+ *   `specialPurpose` mark EXCEPT the two categories named below — Appendix
+ *   2 item 2.3's undivided AtoN group and item 2.6's "prohibited and
+ *   restricted areas" together cover most `specialPurpose` categories in
+ *   the shipped data (`no_entry`, `firing_danger_area`, `warning`,
+ *   `foul_ground`, `degaussing_range`, `marine_farm`, `target`,
+ *   `recreation_zone`, `anchorage`, and an untagged/`(none)` category — 281
+ *   of 703, the plurality — which cannot be shown to be anything OTHER
+ *   than Standard-tier AtoN content, so it defaults to the more visible
+ *   tier, not the more hidden one, per the guard-asymmetry principle #513
+ *   F2 applies to `unknown`). `unknown` moved here from ALL for the same
+ *   reason F2 raised: an unclassifiable mark must fail toward being SHOWN.
+ * - ALL adds: the two `specialPurpose` categories Appendix 2 item 3.2 names
+ *   BY EXAMPLE as "all other information": `cable` (117 marks) and
+ *   `pipeline` (2) — literally "submarine cables and pipelines". Nothing
+ *   else in the shipped data matches any All-Other-Information item.
  *
- * This is a DIFFERENT split from FAMILY_RANK's own four culling tiers —
- * `lateral` sits in FAMILY_RANK's TIER 3, on its own, but joins
- * `isolatedDanger`/`cardinal` in the display floor here, because "may this
- * ever be hidden" and "who wins a pixel collision" are different questions
- * answered from the SAME danger-content facts.
+ * At the shipped data (measured against `app/public/data/seamarks.json`,
+ * 1794 features: lateral 828, specialPurpose 703 [cable 117, pipeline 2,
+ * everything else 584], cardinal 121, lightMinor 107, safeWater 23,
+ * lightMajor 6, isolatedDanger 6, unknown 0), the default (STANDARD) hides
+ * exactly the 119 cable/pipeline marks — not the 810 the family-level
+ * mapping in the FIRST #353 PR2 revision hid, which is what #513's Blocker
+ * (F1) was about. That 119-hidden figure does NOT depend on whether
+ * `safeWater`/`lightMajor` sit in BASE or STANDARD (both are shown at the
+ * STANDARD default either way) — only on the `specialPurpose` split.
  */
 export type SeamarkDisplayTier = 0 | 1 | 2;
 export const SEAMARK_DISPLAY_TIER_BASE = 0;
 export const SEAMARK_DISPLAY_TIER_STANDARD = 1;
 export const SEAMARK_DISPLAY_TIER_ALL = 2;
-/** Standard, per the #353 issue's own design sketch ("Standard (default)") —
- * every hazard-bearing AND scale-anchoring family shown out of the box;
- * only the dense, no-danger-information TIER 4 families are hidden until a
- * user opts into ALL. */
+/** Standard, per the #353 issue's own design sketch ("Standard (default)")
+ * — Standard Display is also ECDIS's own load default under MSC.232(82)
+ * §3.4. Post #513 F1/F2: everything except the two ALL-tier
+ * `specialPurpose` categories (`cable`/`pipeline`) is shown out of the box. */
 export const DEFAULT_SEAMARK_DISPLAY_TIER: SeamarkDisplayTier = SEAMARK_DISPLAY_TIER_STANDARD;
 
-const DISPLAY_TIER_OF_FAMILY: Record<SeamarkFamily, SeamarkDisplayTier> = {
+/** `specialPurpose` categories that match MSC.232(82) Appendix 2 item 3.2's
+ * "all other information" example ("submarine cables and pipelines")
+ * literally — the ONLY `specialPurpose` marks tiered ALL rather than
+ * STANDARD (#513 F1/F2). Measured against the shipped data: neither value
+ * ever co-occurs with another category in the same `;`-joined tag (`cable`
+ * is always the WHOLE category string, 117 times; so is `pipeline`, twice)
+ * — but `specialPurposeDisplayTier` below still splits and checks every
+ * token, not just an exact match, so a future compound tag (e.g.
+ * `cable;warning`) still lands ALL rather than silently falling to
+ * STANDARD. */
+const SPECIAL_PURPOSE_ALL_CATEGORIES = new Set(['cable', 'pipeline']);
+
+/** The `specialPurpose` family alone is NOT a uniform display tier (#513
+ * F1/F2) — most of it (no_entry/firing_danger_area/warning/... and the
+ * untagged plurality) is Standard-tier "prohibited and restricted areas" /
+ * general AtoN content per MSC.232(82) Appendix 2 item 2.6, while only
+ * `cable`/`pipeline` match an All-Other-Information example (item 3.2). */
+function specialPurposeDisplayTier(category: string | undefined): SeamarkDisplayTier {
+  const tokens = (category ?? '').split(';').map((s) => s.trim());
+  return tokens.some((t) => SPECIAL_PURPOSE_ALL_CATEGORIES.has(t))
+    ? SEAMARK_DISPLAY_TIER_ALL
+    : SEAMARK_DISPLAY_TIER_STANDARD;
+}
+
+const DISPLAY_TIER_OF_FAMILY: Record<
+  Exclude<SeamarkFamily, 'specialPurpose'>,
+  SeamarkDisplayTier
+> = {
   isolatedDanger: SEAMARK_DISPLAY_TIER_BASE,
   cardinal: SEAMARK_DISPLAY_TIER_BASE,
   lateral: SEAMARK_DISPLAY_TIER_BASE,
-  lightMajor: SEAMARK_DISPLAY_TIER_STANDARD,
-  safeWater: SEAMARK_DISPLAY_TIER_STANDARD,
-  lightMinor: SEAMARK_DISPLAY_TIER_ALL,
-  specialPurpose: SEAMARK_DISPLAY_TIER_ALL,
-  unknown: SEAMARK_DISPLAY_TIER_ALL,
+  safeWater: SEAMARK_DISPLAY_TIER_BASE,
+  lightMajor: SEAMARK_DISPLAY_TIER_BASE,
+  lightMinor: SEAMARK_DISPLAY_TIER_STANDARD,
+  unknown: SEAMARK_DISPLAY_TIER_STANDARD,
 };
 
 /** The display-category tier a seamark belongs to (#353 PR2) — the LOWEST
  * tier a user must select to still see this mark; `seamarkGeoJson.ts` stamps
  * this onto every feature as `displayTier` and the `sc-seamarks` layer's
- * `filter` keeps a feature only while the selected tier is >= its own. */
+ * `filter` keeps a feature only while the selected tier is >= its own.
+ * `specialPurpose` is the one family whose tier is NOT a pure function of
+ * the family alone — see `specialPurposeDisplayTier` above. */
 export function seamarkDisplayTier(props: SeamarkProperties): SeamarkDisplayTier {
-  return DISPLAY_TIER_OF_FAMILY[classifySeamark(props.seamarkType)];
+  const family = classifySeamark(props.seamarkType);
+  if (family === 'specialPurpose') return specialPurposeDisplayTier(props.category);
+  return DISPLAY_TIER_OF_FAMILY[family];
+}
+
+/**
+ * Narrows a `usePersistedNumber` read (`number | null`) to a real
+ * `SeamarkDisplayTier`, replacing an unchecked `as SeamarkDisplayTier` cast
+ * at both call sites (#513 F8). localStorage is user-writable and survives
+ * across app versions, so `n` can be a hand-edited or legacy value that
+ * passed `usePersistedNumber`'s own `clamp(n, 0, 2)` without being one of
+ * the three real tiers — e.g. `1.5`, or an ordinal a FUTURE version defines
+ * that this one does not recognize. A bare cast asserts membership without
+ * checking it: that `1.5` would silently build
+ * `['<=', ['get','displayTier'], 1.5]`, which happens to behave like
+ * STANDARD — a wrong answer with no visible failure.
+ *
+ * Two DIFFERENT fallbacks for two DIFFERENT situations, not one:
+ * - `n === null` means "no override stored" — the legitimate empty state
+ *   `usePersistedNumber`'s own contract documents — and falls back to the
+ *   product default (`DEFAULT_SEAMARK_DISPLAY_TIER`).
+ * - Any OTHER non-tier value is corrupt/unrecognized DATA, not an absence,
+ *   and falls back to the MOST-VISIBLE tier (ALL) — the same guard-asymmetry
+ *   principle as `unknown`'s family fallback above (#513 F2): an
+ *   unrecognized value must fail toward SHOWING more, never toward
+ *   whatever number happened to survive the clamp.
+ */
+export function toSeamarkDisplayTier(n: number | null): SeamarkDisplayTier {
+  if (n === null) return DEFAULT_SEAMARK_DISPLAY_TIER;
+  if (
+    n === SEAMARK_DISPLAY_TIER_BASE ||
+    n === SEAMARK_DISPLAY_TIER_STANDARD ||
+    n === SEAMARK_DISPLAY_TIER_ALL
+  ) {
+    return n;
+  }
+  return SEAMARK_DISPLAY_TIER_ALL;
 }
 
 /**

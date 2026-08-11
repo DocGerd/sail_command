@@ -3,14 +3,13 @@ import type { Settings } from '../types';
 import { useT } from '../i18n';
 import { isValidMmsi } from '../lib/mmsi';
 import {
-  DEFAULT_SEAMARK_DISPLAY_TIER,
   SEAMARK_DISPLAY_TIER_ALL,
   SEAMARK_DISPLAY_TIER_BASE,
   SEAMARK_DISPLAY_TIER_STANDARD,
   SEAMARK_SIZE_MAX,
   SEAMARK_SIZE_MIN,
   SEAMARK_SIZE_SCALE,
-  type SeamarkDisplayTier,
+  toSeamarkDisplayTier,
 } from '../lib/seamarkGlyphs';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
 import Card from './Card';
@@ -125,8 +124,13 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
     SEAMARK_DISPLAY_TIER_BASE,
     SEAMARK_DISPLAY_TIER_ALL,
   );
-  const seamarkDisplayTier = (seamarkDisplayTierStored ??
-    DEFAULT_SEAMARK_DISPLAY_TIER) as SeamarkDisplayTier;
+  const seamarkDisplayTier = toSeamarkDisplayTier(seamarkDisplayTierStored);
+  // #513 F6: computed ONCE and reused for both the visible `<output>` text
+  // and the Slider's `aria-valuetext` — the two must never drift apart, or
+  // the sighted and screen-reader experiences would disagree with each other.
+  const seamarkSizePercentLabel = t('settings.seamarkSize.value', {
+    percent: Math.round(seamarkSizeScale * 100),
+  });
 
   return (
     <div className="settings-panel">
@@ -227,8 +231,11 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
 
       {/* #353 PR2: seamark symbol size (a continuous slider — precedented by
           OpenCPN's own "Chart Objects" scale-factor slider, #353's own
-          research) and display category (discrete tiers — precedented by
-          S-52's Display Base/Standard/Other, same research). Grouped
+          research) and display category (discrete tiers — informed by IMO
+          MSC.232(82) Appendix 2's ECDIS Display Base/Standard Display/All
+          Other Information split, verified against the resolution's own
+          text — see seamarkGlyphs.ts's `seamarkDisplayTier` doc comment for
+          the exact mapping, corrected in review at #513 F1/F2). Grouped
           separately from Boat & safety/Propulsion/Live & AIS: this is map
           CHROME, not a boat characteristic or a routing input. */}
       <Card title={t('settings.section.mapDisplay')}>
@@ -246,10 +253,21 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
               max={SEAMARK_SIZE_MAX}
               step={0.1}
               aria-describedby="settings-seamarkSize-help"
+              aria-valuetext={seamarkSizePercentLabel}
               onChange={setSeamarkSizeScale}
             />
-            <output htmlFor="settings-seamarkSize" className="settings-seamark-size-value">
-              {t('settings.seamarkSize.value', { percent: Math.round(seamarkSizeScale * 100) })}
+            {/* #513 F6: `role="status"` is implicit on `<output>` (a polite
+                live region) — without `aria-live="off"` it would queue its
+                OWN announcement on every drag tick, on top of the slider's
+                `aria-valuetext` announcement above, double-speaking the same
+                value. The visible text still updates normally; only the
+                live-region behavior is suppressed. */}
+            <output
+              htmlFor="settings-seamarkSize"
+              className="settings-seamark-size-value"
+              aria-live="off"
+            >
+              {seamarkSizePercentLabel}
             </output>
           </div>
         </Field>
@@ -259,6 +277,7 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
           <div
             role="radiogroup"
             aria-labelledby="settings-seamarkCategory-legend"
+            aria-describedby="settings-seamarkCategory-help"
             className="settings-seamark-category"
           >
             <label>

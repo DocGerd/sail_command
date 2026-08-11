@@ -46,13 +46,13 @@ export const en = {
   'settings.seamarkSize.label': 'Symbol size (seamarks)',
   'settings.seamarkSize.value': '{percent}%',
   'settings.seamarkSize.help':
-    'Changes the on-screen size of seamark symbols on the map. The collision spacing scales automatically so larger symbols never hide other marks.',
+    'Changes the on-screen size of seamark symbols on the map. Below zoom 12 the collision spacing scales with the symbols; at higher zoom levels larger symbols overlap each other more.',
   'settings.seamarkCategory.label': 'Displayed seamarks',
   'settings.seamarkCategory.base': 'Base',
   'settings.seamarkCategory.standard': 'Standard',
   'settings.seamarkCategory.all': 'All',
   'settings.seamarkCategory.help':
-    'Cardinal, lateral and isolated-danger marks are always shown, even at "Base".',
+    'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything except submarine cable and pipeline markers — choose "All" to show those too.',
   'planner.card.trip': 'Trip',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',

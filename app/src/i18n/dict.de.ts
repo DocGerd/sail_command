@@ -45,13 +45,13 @@ export const de = {
   'settings.seamarkSize.label': 'Symbolgröße (Seezeichen)',
   'settings.seamarkSize.value': '{percent} %',
   'settings.seamarkSize.help':
-    'Ändert die Anzeigegröße der Seezeichen-Symbole auf der Karte. Der Kollisionsabstand wird automatisch mitskaliert, damit größere Symbole keine anderen Zeichen verdecken.',
+    'Ändert die Anzeigegröße der Seezeichen-Symbole auf der Karte. Unterhalb von Zoomstufe 12 skaliert der Kollisionsabstand mit den Symbolen; bei höheren Zoomstufen überlappen sich größere Symbole stärker.',
   'settings.seamarkCategory.label': 'Angezeigte Seezeichen',
   'settings.seamarkCategory.base': 'Basis',
   'settings.seamarkCategory.standard': 'Standard',
   'settings.seamarkCategory.all': 'Alle',
   'settings.seamarkCategory.help':
-    'Kardinal-, Lateral- und Gefahrenzeichen werden immer angezeigt, auch bei „Basis“.',
+    'Kardinal-, Lateral- und Fahrwasserzeichen, Gefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles außer Unterwasserkabeln und Pipelines — wähle „Alle“, um auch diese anzuzeigen.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',

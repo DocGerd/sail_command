@@ -8,6 +8,17 @@ export interface SliderProps {
   /** Forwarded so a describing help paragraph can be linked (mirrors
       NumberInput.tsx's identical prop). */
   'aria-describedby'?: string;
+  /**
+   * Overrides what a screen reader announces for the CURRENT value (#513
+   * F6) — without it, a range input announces its bare numeric `value`
+   * ("0.5", "1", "1.5"), which disagrees with whatever unit the caller
+   * displays visually (e.g. a percent readout showing "50%"/"100%"/"150%").
+   * Kept as an OPTIONAL prop rather than baking in percent formatting here:
+   * this primitive is meant to stay reusable for a future non-percent
+   * caller, so unit formatting is the caller's concern, same as the label
+   * text itself.
+   */
+  'aria-valuetext'?: string;
 }
 
 /**
@@ -31,6 +42,7 @@ export default function Slider({
   step,
   onChange,
   'aria-describedby': ariaDescribedby,
+  'aria-valuetext': ariaValuetext,
 }: SliderProps) {
   return (
     <input
@@ -42,6 +54,7 @@ export default function Slider({
       step={step}
       value={value}
       aria-describedby={ariaDescribedby}
+      aria-valuetext={ariaValuetext}
       onChange={(e) => onChange(Number(e.target.value))}
     />
   );

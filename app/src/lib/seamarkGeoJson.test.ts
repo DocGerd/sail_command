@@ -27,13 +27,18 @@ const FC: SeamarkFeatureCollection = {
       geometry: { type: 'Point', coordinates: [10.2, 54.9] },
       properties: { seamarkType: 'light_major' },
     },
+    {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [10.4, 54.7] },
+      properties: { seamarkType: 'light_minor' },
+    },
   ],
 };
 
 describe('seamarkFeatureCollectionWithIcons', () => {
   it('adds icon and priority properties, preserving geometry and existing properties', () => {
     const withIcons = seamarkFeatureCollectionWithIcons(FC);
-    expect(withIcons.features).toHaveLength(2);
+    expect(withIcons.features).toHaveLength(3);
     expect(withIcons.features[0].geometry).toEqual(FC.features[0].geometry);
     expect(withIcons.features[0].properties).toEqual({
       ...FC.features[0].properties,
@@ -51,9 +56,17 @@ describe('seamarkFeatureCollectionWithIcons', () => {
     // #200 hand-derived: unlit light_major = 4 (Tier 2 — R1001 §2.7 "other
     // marks", ranked on §2.7.1.1's stated long/medium range).
     expect(withIcons.features[1].properties.priority).toBe(4);
-    // #353 PR2 hand-derived: `lightMajor` is in the display-category
-    // STANDARD tier (scarce/scale-anchoring, no danger information).
-    expect(withIcons.features[1].properties.displayTier).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
+    // #513 F1/F2 hand-derived: `lightMajor` is in the display-category BASE
+    // floor (a scarce landfall/passage anchor this app's product-specific
+    // Base includes — see seamarkGlyphs.ts's `seamarkDisplayTier` doc
+    // comment; MSC.232(82)'s own Display Base contains no AtoN class at all).
+    expect(withIcons.features[1].properties.displayTier).toBe(SEAMARK_DISPLAY_TIER_BASE);
+    expect(withIcons.features[2].properties.icon).toBe('seamark-light-minor');
+    // #513 F1/F2 hand-derived: `lightMinor` is display-category STANDARD —
+    // MSC.232(82) Appendix 2 item 2.3's undivided "buoys, beacons, other
+    // aids to navigation" group is Standard Display, promoted here from the
+    // first #353 PR2 revision's (wrong) ALL placement.
+    expect(withIcons.features[2].properties.displayTier).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
   });
 });
 

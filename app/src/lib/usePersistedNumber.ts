@@ -35,6 +35,22 @@ function notify(key: string, next: number | null): void {
 }
 
 /**
+ * Test-only: the number of currently-subscribed listeners for `key` (0 if
+ * none, or if `key` has no entry at all — the cleanup below deletes an
+ * emptied entry rather than leaving a zero-size `Set` behind). Exported so a
+ * test can assert the subscribe/unsubscribe lifecycle DIRECTLY (#513 F4):
+ * calling a dead instance's `setRaw` after unmount is a silent no-op under
+ * React 18 (the "setState on an unmounted component" warning was removed),
+ * so a test that only checks "no crash, right final value" cannot tell a
+ * real unsubscribe from a leaked one that happens not to matter — MEASURED,
+ * not assumed: deleting the cleanup below left such a test, and the whole
+ * file, green. This probe reads the actual registry state instead.
+ */
+export function __listenerCountForKey(key: string): number {
+  return listenersByKey.get(key)?.size ?? 0;
+}
+
+/**
  * Numeric sibling of usePersistedToggle (#355) — same localStorage +
  * safe-wrapper degrade-to-session-only contract, but for a bounded number
  * rather than a boolean. `null` is a first-class return value meaning "no

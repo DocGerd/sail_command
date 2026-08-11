@@ -44,4 +44,25 @@ describe('Slider (#353)', () => {
     render(<Slider id="s" value={1} min={0} max={2} step={0.1} onChange={vi.fn()} />);
     expect(screen.getByRole('slider')).toHaveClass('sc-slider');
   });
+
+  // #513 F6: a screen reader announces `aria-valuetext` in place of the raw
+  // numeric `value` when present — without it, a percent-displaying caller
+  // like SettingsPanel's size control would announce "0.5"/"1"/"1.5" while
+  // the visible text reads "50%"/"100%"/"150%", disagreeing with itself.
+  it('forwards aria-valuetext when given, and omits it when not', () => {
+    const { rerender } = render(
+      <Slider
+        id="s"
+        value={1}
+        min={0.5}
+        max={1.5}
+        step={0.1}
+        onChange={vi.fn()}
+        aria-valuetext="100%"
+      />,
+    );
+    expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '100%');
+    rerender(<Slider id="s" value={1} min={0.5} max={1.5} step={0.1} onChange={vi.fn()} />);
+    expect(screen.getByRole('slider')).not.toHaveAttribute('aria-valuetext');
+  });
 });
