@@ -298,6 +298,11 @@ export const en = {
   // 'min.' with the period: disambiguates from the panel's minutes ('x h yy
   // min', '+12 min') on this time-axis chart.
   'profile.minDepth': 'min.',
+  // #512 review F8: the exhaustive minimum is unavailable (defensively, when
+  // a leg endpoint falls outside mask coverage) — an em dash plus a word so
+  // it can never be mistaken for a measurement or for "0". Rendered INSTEAD
+  // OF the number, never alongside it.
+  'profile.minDepthUnknown': 'min. — unknown',
   'map.depth.toggle': 'Water depths',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
   'map.seamarks.toggle': 'Seamarks',

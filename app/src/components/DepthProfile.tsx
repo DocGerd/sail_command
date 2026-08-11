@@ -230,19 +230,22 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
   // (the sparse series is a SUBSET of the route's cells, so its minimum is
   // >= the true one — a headline that falls back to it can read DEEPER than
   // truth, exactly the optimistic failure #505 exists to eliminate). When
-  // `exhaustiveMin` is null — legs/mask not yet loaded, or (never expected
-  // in practice: solver-validated legs stay inside mask.meta by
-  // construction — see exhaustiveMinDepth's comment) a leg endpoint outside
-  // mask coverage — the correct degrade is to "unknown" (`summaryValue`
-  // below renders '' for a null headlineMin), never to a plausible-looking
-  // wrong number. If even the true minimum is deep-capped, the whole route
-  // is >= 25 m — show the honest cap label, never the fake 25.4 sentinel.
+  // `exhaustiveMin` is null — mask not yet loaded, or (never expected in
+  // practice: solver-validated legs stay inside mask.meta by construction —
+  // see exhaustiveMinDepth's comment) a leg endpoint outside mask coverage —
+  // the correct degrade is to a VISIBLE "unknown" placeholder (#512 review
+  // F8), never a blank: a blank `<summary>` still renders a clickable 44px
+  // strip (app.css) carrying nothing but the disclosure triangle, which
+  // reads as "nothing to report" — the exact optimistic failure this whole
+  // fix exists to eliminate, one layer up in the UI. If even the true
+  // minimum is deep-capped, the whole route is >= 25 m — show the honest cap
+  // label, never the fake 25.4 sentinel.
   const headlineMin = exhaustiveMin;
   // The <summary> carries ONLY the min-depth glance — the Card <h2> is the
   // single section title, so the label is not rendered (or announced) twice.
   const summaryValue =
     headlineMin === null
-      ? ''
+      ? t('profile.minDepthUnknown')
       : `${t('profile.minDepth')} ${headlineMin.capped ? t('profile.deepCap') : `${headlineMin.depthM.toFixed(1)} m`}`;
 
   // #64 phase 3: the profile gets the card treatment for visual consistency

@@ -297,6 +297,11 @@ export const de = {
   // 'min.' with the period: disambiguates from the panel's minutes ('x h yy
   // min', '+12 min') on this time-axis chart (German abbreviations take a dot).
   'profile.minDepth': 'min.',
+  // #512 review F8: the exhaustive minimum is unavailable (defensively, when
+  // a leg endpoint falls outside mask coverage) — an em dash plus a word so
+  // it can never be mistaken for a measurement or for "0". Rendered INSTEAD
+  // OF the number, never alongside it.
+  'profile.minDepthUnknown': 'min. — unbekannt',
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',
