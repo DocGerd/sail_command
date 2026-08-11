@@ -87,7 +87,7 @@ homes, because there is no BASE at runtime. In TEST:
 scoping bug that shrinks the search lowers it, so that row IS the falsifiable
 runtime form of this guard. In ACCEPTANCE: `app/sweep/README.md`'s escalation
 trigger (any `ok → error`, any `usedDepthM` below BASE's, any `minGateDepthM`
-below BASE's) — NOT YET RUN, see §6.
+below BASE's) — RUN, none fired, see §7.
 
 **Graft 4 — `ShallowInfo.shallowDistanceNm` + `radiusM`.** DEFERRED by
 orchestrator ruling, tracked as **issue #516**. Both fields change the
@@ -267,13 +267,10 @@ produce proves nothing. Its code comment says it is inert.
 
 ## 6. What remains UNVERIFIED
 
-**The `app/sweep/` acceptance cycle has NOT been run.** Deliberate: the BASE
-double-run control is still being recorded at this same merge-base, and a HEAD
-run is meaningless until that BASE control is byte-identity-verified. Nine arms
-x 33 harbours = 297 plans. `becalmed` and `deep-becalmed` are VACUOUS as safety
-evidence (33/33 errors each); the discriminating arms are `margin-zero`,
-`relaxation-dense` and `margin-extreme`. **This change moves routing values, so
-the full cycle is OWED before merge.**
+**The `app/sweep/` acceptance cycle HAS been run — see §7. NO stop condition
+fired.** It certifies this branch ONLY while it stays based at `d73fa0d`;
+`develop` has since moved to `2195661`, so a re-record is owed whenever this
+branch is re-synced for merge.
 
 **R3 — P3's named trade is UNEXERCISED by every measurement that exists.**
 Spike §2.3's trade is that a localized `connectedAt` can return a LOWER
@@ -321,3 +318,105 @@ pass of any kind.
 pairing is deliberately absent from every comment: they license 34x-vs-90x
 different amounts of shallow water and must never read as comparable
 alternatives.
+
+---
+
+## 7. Acceptance sweep — BASE `d73fa0d` vs HEAD
+
+BASE control: `run1` vs `run2` returned 297/297 plans byte-identical at this
+branch's own merge-base, which is what licenses the comparison below.
+
+```
+node app/sweep/compare.mjs <base>/run1 <head>
+```
+
+```
+arm becalmed         33 plans  sha A=8dc119cd9a1fdced B=8dc119cd9a1fdced IDENTICAL
+arm breeze           33 plans  sha A=a5c90069ff08ca43 B=463ef93a41777330 *** DIFFERS ***
+arm deep-becalmed    33 plans  sha A=7e7ac2e14d5305ae B=7e7ac2e14d5305ae IDENTICAL
+arm light-motorless  33 plans  sha A=e8a1778afbc95dae B=e8a1778afbc95dae IDENTICAL
+arm margin-extreme   33 plans  sha A=897495f53da137f6 B=d6d1b6b35a0bee04 *** DIFFERS ***
+arm margin-zero      33 plans  sha A=44f1e20c908032f4 B=deea356f595a27bc *** DIFFERS ***
+arm no-comfort       33 plans  sha A=f9680d75231d17d8 B=5fe0fa8f5f464745 *** DIFFERS ***
+arm relaxation-dense 33 plans  sha A=471f32a87d1b0986 B=372e41b565451d00 *** DIFFERS ***
+arm short-horizon    33 plans  sha A=3b205013ed1a5fea B=3b205013ed1a5fea IDENTICAL
+
+237/297 plans byte-identical across 9 arms x 33 harbours/arm
+```
+
+### Per-arm
+
+| arm | rows changed | usedDepthM | minGateDepthM | leg count | ETA | outcome class |
+|---|---|---|---|---|---|---|
+| becalmed | 0 | 0 | 0 | 0 | 0 | 0 |
+| breeze | 1 | 0 | 0 | 1 | 1 | 0 |
+| deep-becalmed | 0 | 0 | 0 | 0 | 0 | 0 |
+| light-motorless | 0 | 0 | 0 | 0 | 0 | 0 |
+| margin-extreme | 18 | 0 | 0 | 16 | 16 | 0 |
+| margin-zero | 21 | 0 | 0 | 19 | 21 | 0 |
+| no-comfort | 1 | 0 | 0 | 1 | 1 | 0 |
+| relaxation-dense | 19 | 0 | 0 | 13 | 15 | 0 |
+| short-horizon | 0 | 0 | 0 | 0 | 0 | 0 |
+
+The three discriminating arms all MOVED, so the change is not inert on the only
+arms that can see it. `becalmed`/`deep-becalmed` are byte-identical and that is
+VACUOUS (0 ok / 33 errors each) — not counted as reassurance. The other four
+byte-identical arms are meaningful: `light-motorless` and `short-horizon` carry
+real routes and did not move.
+
+### Stop conditions: NONE FIRED
+
+- `ok -> error`: **0**. Every changed row kept its outcome class exactly
+  (157 ok plans on both sides).
+- `usedDepthM` worse than BASE: **0** — not one row's value moved at all.
+- `minGateDepthM` worse than BASE: **0** — likewise unmoved.
+
+### The explanation
+
+**All 60 changed rows carry a `shallow` block on at least one side — i.e.
+relaxation fired on every row that moved, and no row where relaxation did not
+fire moved at all.** That containment is the primary result: the change touches
+exactly the population it is supposed to touch.
+
+The invariant, measured across the whole population by an independent scan of
+the raw mask bytes (sub-gate cells on either rig's legs, farther than 1852 m
+from every snapped waypoint):
+
+| | ok plans | plans routing through out-of-disc sub-gate water | farthest such cell |
+|---|---|---|---|
+| BASE | 157 | **41** | **18.86 nm** |
+| HEAD | 157 | **0** | — |
+
+Per changed row, on the recommended rig:
+
+- **39 of 60** have direct de-licensing evidence: BASE's route crossed
+  out-of-disc sub-gate cells (worst `margin-zero/flensburg`, 10 such cells with
+  the farthest 34,935 m ≈ 18.9 nm from any waypoint) and HEAD's crosses none.
+- **21 of 60** complied on both sides, so the final route was never the thing
+  being corrected; what changed is the SEARCH. Removing route-wide relaxed
+  water changes the navigable set the isochrone explores (and, with
+  `MAX_FRONTIER` live, which candidates survive), so the solver converges
+  elsewhere. Of these, 6 differ only on the non-recommended rig or in leg
+  segmentation with an identical polyline and identical ETA — graft 5's merge
+  pass re-validating against the field. ETA deltas across the 21 are small and
+  two-directional (−2.2 to +5.3 min).
+
+Two rows moved in the six original Flensburg-origin arms — `breeze/marstal` and
+`no-comfort/marstal` — which is exactly the 2-of-198 shallow-block population
+`app/sweep/README.md` records for those arms. Every shallow row in the original
+six moved and nothing else did.
+
+**No row moved that the approach-radius rule does not account for.**
+
+### A correction to this analysis, recorded because it nearly shipped
+
+A first pass reported 14 HEAD plans still routing through out-of-disc sub-gate
+water, farthest 22.74 nm. That was an error in the ANALYSIS, not the code: the
+hand-built per-arm gate table used `safetyDepthM: 4.0` for `light-motorless`,
+whereas `sweepArms.ts` gives that arm plain `DEFAULT_SETTINGS` (3.0 m) with
+`motorEnabled: false` — only `deep-becalmed` is 4.0. Every one of the 14 was in
+`light-motorless`, carried NO shallow block, and had a minimum depth of
+3.0–3.1 m, i.e. at or above its real gate. `light-motorless` is byte-identical
+BASE↔HEAD, so those plans are untouched by this change. With the table
+corrected the count is 0. The tell was that the "violations" were confined to a
+single arm that the diff says did not move.
