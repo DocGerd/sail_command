@@ -1669,8 +1669,14 @@ select {
    --sc-depth-warning-* family as .shallow-warning above (#251), so the
    hazard reads consistently between the plan-level banner and the row that
    locates it. Text carries the meaning (see ShallowLegMarker's own comment
-   in RouteSummary.tsx); colour is reinforcement, never the sole signal. */
-.chip-shallow {
+   in RouteSummary.tsx); colour is reinforcement, never the sole signal.
+   SELECTOR IS `.chip.chip-shallow`, not the bare modifier class — `.chip` is
+   declared LATER in this file, and two single-class selectors tie on
+   specificity, so source order alone hands `background` to `.chip`'s own
+   `color-mix(...)` fill (#506, same cascade as `.chip-shallow-cautious`
+   below). The compound selector raises specificity so this rule wins
+   regardless of declaration order. */
+.chip.chip-shallow {
   background: var(--sc-depth-warning-bg);
   color: var(--sc-depth-warning-text);
   font-weight: 600;
