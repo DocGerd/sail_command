@@ -189,6 +189,19 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
   const endMs = legs.length ? legs[legs.length - 1].endTimeMs : 0;
   const durationMs = endMs - startMs;
 
+  // #505: the plotted seabed CURVE stays on this sparse time-sampled series
+  // deliberately — it is a rendering budget (60-240 points sized for chart
+  // legibility), not a correctness contract, and resampling it per-leg is
+  // out of scope here (a follow-up issue for adaptive per-leg curve sampling
+  // would be reasonable). The one place sparseness was unsafe was the
+  // HEADLINE scalar below, which is why only that moved to an exhaustive
+  // walk. A route whose headline min. therefore reads shallower than any
+  // point the curve shows is expected, not a bug: the review-identified
+  // hazardous sub-case (a leg actually charted below the REQUESTED safety
+  // gate) is still marked regardless, via the `.dp-shallow-leg` band below
+  // — driven by `leg.shallow`, planRoute.ts's own exhaustive walk, not by
+  // `samples` — so the gap left here is a legibility one (no point on the
+  // curve matches the stated number), never a missed hazard.
   const samples = useMemo(
     () => (mask && legs.length ? profileSamples(legs, mask, sampleCount(durationMs)) : []),
     [mask, legs, durationMs],
@@ -211,14 +224,20 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
 
   if (!result || legs.length === 0) return null;
 
-  // #505: the exhaustive per-leg walk is authoritative; the sparse sample
-  // series is only a fallback for the (never expected in practice — see
-  // exhaustiveMinDepth's comment) case where it returns null. If even the
-  // resulting shallowest reading is deep-capped, the whole route is >= 25 m
-  // — show the honest cap label, never the fake 25.4 sentinel number.
-  const headlineMin =
-    exhaustiveMin ??
-    (samples.length ? samples.reduce((m, s) => (s.depthM < m.depthM ? s : m)) : null);
+  // #505: the exhaustive walk IS the headline — no fallback to the sparse
+  // sample series. A prior version fell back to `samples`' own minimum when
+  // `exhaustiveMin` was null; that direction is unsafe for a depth figure
+  // (the sparse series is a SUBSET of the route's cells, so its minimum is
+  // >= the true one — a headline that falls back to it can read DEEPER than
+  // truth, exactly the optimistic failure #505 exists to eliminate). When
+  // `exhaustiveMin` is null — legs/mask not yet loaded, or (never expected
+  // in practice: solver-validated legs stay inside mask.meta by
+  // construction — see exhaustiveMinDepth's comment) a leg endpoint outside
+  // mask coverage — the correct degrade is to "unknown" (`summaryValue`
+  // below renders '' for a null headlineMin), never to a plausible-looking
+  // wrong number. If even the true minimum is deep-capped, the whole route
+  // is >= 25 m — show the honest cap label, never the fake 25.4 sentinel.
+  const headlineMin = exhaustiveMin;
   // The <summary> carries ONLY the min-depth glance — the Card <h2> is the
   // single section title, so the label is not rendered (or announced) twice.
   const summaryValue =

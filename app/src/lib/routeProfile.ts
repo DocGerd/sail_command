@@ -129,9 +129,11 @@ function withinMask(meta: MaskMeta, p: LatLon): boolean {
  * still returns null) makes this return null for the WHOLE route rather
  * than silently omitting just that leg's contribution: an omitted leg could
  * have been the true minimum, and a headline reading deeper than the true
- * minimum is the unsafe direction for a safety figure. Callers should fall
- * back to a less precise minimum (e.g. the sparse sample series) when this
- * returns null.
+ * minimum is the unsafe direction for a safety figure. A caller must NOT
+ * paper over a null with a less precise (and therefore possibly deeper)
+ * fallback minimum — that reintroduces the exact optimistic-reading risk
+ * this function exists to remove. The correct degrade is "unknown" (e.g.
+ * omit the headline figure), never a plausible-looking wrong number.
  */
 export function exhaustiveMinDepth(
   legs: Leg[],

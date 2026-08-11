@@ -244,14 +244,34 @@ export class NavMask {
    * caller building a route-wide headline figure never misses a cell either
    * of those gated methods would exclude. Land (byte 0) is included as a
    * 0 m reading rather than aborting the walk, matching
-   * segmentShallowestBelow's treatment (not segmentClearanceM's) — the
-   * intended callers hand this legs a solver already validated as
-   * land-free, so this only matters as a well-defined, maximally-honest
-   * fallback. `capped` is true only when the MINIMUM-depth cell itself is
-   * deep-capped (byte 255): since a capped cell always decodes to the
-   * encoding's deepest representable value (25.4 m), that can only happen
-   * when every cell the segment touches is deep-capped — mirroring
-   * depthInfoM's per-point "≥ 25 m" contract at route-wide scale.
+   * segmentShallowestBelow's treatment (not segmentClearanceM's) — the safe
+   * direction, since 0 m is the shallowest possible reading. This diverges
+   * from headingDepth.ts's checkHeadingDepth, whose own comment argues at
+   * length that a land crossing must render as a DISTINCT `hazard: 'land'`
+   * state rather than a depth number ("dressing land up as a depth reading
+   * understates it, and 0.0 m is not a depth anyone can compare against a
+   * safety depth"). That argument is about a live, per-fix caution banner
+   * that needs to NAME which hazard is ahead; this method instead feeds one
+   * scalar "how shallow does the route get" figure with no hazard-type
+   * vocabulary of its own, so a 0 m reading is both the most honest and the
+   * only representable answer here. Unreachable in practice either way — the
+   * legs handed to this method are a solver already validated as land-free.
+   *
+   * `capped` reflects the byte at whichever cell first achieves the running
+   * minimum (the `if (depthM < minDepthM)` comparison below is strict, so a
+   * tie keeps the FIRST-visited winner): true when that cell is byte 255
+   * (the deep-cap sentinel, 25.4 m), false otherwise. That is weaker than
+   * "every touched cell is deep-capped" — byte 254 (the reserved "measured
+   * 25.4 m" byte) decodes to the SAME 25.4 m (`byteToDepthM`:
+   * `b === 255 ? 25.4 : b / 10`, and `254 / 10 === 25.4` exactly) but is
+   * never flagged capped, so a segment touching both a 255 cell and a 254
+   * cell reports `capped` true or false purely by visit ORDER, for the same
+   * physical water. Don't derive "every cell is deep-capped" from a true
+   * `capped` — that would be a claim about the PIPELINE (the committed mask
+   * emits zero 254 bytes today), and depthInfoM's own comment above already
+   * warns that leaning on that fact would be fragile. Harmless either way
+   * (25.4 m is deep water regardless of which byte won), but the guarantee
+   * is about the cell that won the minimum, not about the whole segment.
    *
    * Returns null exactly when the walk leaves the grid or trips its
    * iteration guard. There is no "no cell" case to confuse that with (every

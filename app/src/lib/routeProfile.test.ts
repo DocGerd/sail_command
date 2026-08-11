@@ -197,8 +197,22 @@ describe('exhaustiveMinDepth (#505)', () => {
     expect(exhaustiveMinDepth(legs, mask)).toEqual({ depthM: 0.5, capped: false });
   });
 
-  it('returns null (never a silently-optimistic minimum) when a leg endpoint is outside mask coverage', () => {
-    const legs: Leg[] = [sailLeg(T0, T0 + HOUR, { lat: 54.5, lon: 10.0 }, { lat: 60, lon: 20 })];
+  // #512 review Major: a single-leg fixture cannot discriminate "return null
+  // for the WHOLE route" (the shipped, safe behaviour) from "silently drop
+  // the uncoverable leg and keep going" (the unsafe behaviour the doc-comment
+  // forbids) — both produce `null` from a one-leg route, so the earlier
+  // version of this test passed unchanged even when `exhaustiveMinDepth`'s
+  // both `return null`s were mutated to `continue`. This two-leg fixture
+  // discriminates: under the shipped code the whole route is null; under the
+  // unsafe mutation it silently reports leg 1's own reading as the route's
+  // minimum instead.
+  it('a later out-of-coverage leg makes the WHOLE result null, never silently drops just that leg', () => {
+    const legs: Leg[] = [
+      // Leg 1: fully inside coverage, 20 m open water.
+      sailLeg(T0, T0 + HOUR, { lat: 54.5, lon: 10.0 }, { lat: 54.5, lon: 10.1 }),
+      // Leg 2: starts in coverage, ends outside mask.meta.
+      sailLeg(T0 + HOUR, T0 + 2 * HOUR, { lat: 54.5, lon: 10.1 }, { lat: 60, lon: 20 }),
+    ];
     expect(exhaustiveMinDepth(legs, openWaterMask())).toBeNull();
   });
 
