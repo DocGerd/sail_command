@@ -416,13 +416,13 @@ the committed mask — doubly-sourced, not independently re-derived by this
 document).
 
 `APPROACH_RADIUS_M = 3704 m` is presented in the original design as "2×
-headroom" over the measured 1,840 m worst case. Licensed area scales as
+headroom" over the measured 1,839 m worst case. Licensed area scales as
 `R²`, and P3's own numbers show the cost of that headroom directly: 488
 cells at R = 1852 m against 1,298 at R = 3704 m — the "free" 2× radius
 headroom is a **34×-vs-90×** difference in how much shallow water is
 licensed, not a free safety margin. The safety-lens judge's counter-proposal:
 **R ≈ 2400–2600 m**, presented explicitly as a *measured margin* over the
-1,840 m worst case, not as "2× headroom."
+1,839 m worst case, not as "2× headroom."
 
 > **~~R ≈ 2400–2600 m~~ IS SUPERSEDED — 2026-08-10 recommends R = 1852 m
 > (1 nm)**, see [Measured 2026-08-10](#measured-2026-08-10). The band is left
@@ -436,14 +436,12 @@ case (§2.3) is **13 metres** (1852 − 1839), a knife-edge, not a buffer; the
 original 1852 m/3704 m pairing in the source material should not be read as
 two comparably-safe choices.
 
-> **The worst-case pocket extent appears in this document as BOTH 1,839 m
-> and 1,840 m**, on both sides of §3 and in the 2026-08-10 section — grep
-> both spellings rather than trusting any list of sites here. Which is the
-> real measurement is not settled and needs the underlying run — tracked as
-> `Refs #502`. Operating rule until it is: state each subtraction against
-> the baseline its own site names, so a site quoting 1,840 m reads 12 m and
-> a site quoting 1,839 m reads 13 m, and never carry one site's difference
-> across to the other.
+> **RESOLVED (`Refs #502`): the worst-case pocket extent is 1,839 m.** This
+> section states its own figures are "the same §2.3 numbers re-quoted"
+> (above); §2.3's own "Region-wide sanity" bullet records 1,839 m, so the
+> two instances above that read 1,840 m did not match the source they claim
+> to re-quote — corrected in place. The margin over R = 1852 m is **13 m**
+> throughout, never 12 m.
 
 **The knife-edge SURVIVES that supersession — it is not the margin the
 2026-08-10 section quotes.** That section margins R = 1852 m against the
@@ -586,7 +584,14 @@ Marstal origin because a Flensburg-origin one would have been byte-identical
 to the existing `no-comfort`. Measured discriminating power, from
 `README.md`'s own 2026-08-10 run: each of the three carries a `shallow`
 block on **27 of 33** rows, against the 2-of-198 the paragraph above
-records for the original six.
+records for the original six. That contrast spans the `c359a5c` mask
+rebuild (2026-08-09, #455 / PR #476, `TOLERANCE_M 0.9`): 2-of-198 predates
+it (the 2026-08-07 six-arm baseline) and 27-of-33 postdates it. The rebuild
+only tightened the mask —
+[`455-depth-mask-optimism.md`](./455-depth-mask-optimism.md)'s own
+measurement shows gate-crossing cells falling from 14,715 to 10,746 and
+sub-draft cells from 924 to 0 — so 2-of-198 is an upper bound on the
+pre-rebuild population and the contrast's direction survives.
 
 **The BASE half is still outstanding.** Nothing in this document records a
 re-recorded BASE, and the repo's standing rule is that the double-run
@@ -655,15 +660,14 @@ re-litigating the same argument:
    (§3.3's ~2400–2600 m band) rather than inherited as "2× headroom" from the
    original design — and re-derived if the committed mask ever changes (a
    #455-class tolerance change, or a #245-class resolution change, would
-   both invalidate the 1,840 m worst-case measurement this radius is based
+   both invalidate the 1,839 m worst-case measurement this radius is based
    on).
    **ANSWERED 2026-08-10** — see [Measured 2026-08-10](#measured-2026-08-10)
    below: R = 1852 m (1 nm) is now recommended, superseding §3.3's
    2400–2600 m band (marked superseded in place there too, so a top-down
-   reader of §3 cannot meet the stale figure first). The 1,840 m worst-case
+   reader of §3 cannot meet the stale figure first). The 1,839 m worst-case
    pocket extent this item names is **not** superseded with it: R = 1852 m
-   still clears it by only 12 m (1852 − 1840, the baseline THIS item names;
-   §2.3 and §3.3 quote 1,839 m and therefore 13 m — `Refs #502`), and
+   still clears it by only 13 m (1852 − 1839; `Refs #502`), and
    re-deriving it after a mask change remains required.
    **ACCEPTANCE RULE for that re-derivation, so the outcome is decided
    before the number is known.** Pocket coverage is a floor, so:
@@ -677,10 +681,9 @@ re-litigating the same argument:
    re-derived figure
    anywhere **below** 1852 m keeps R valid and only moves the margin, in
    which case §3.3's knife-edge wording must be restated at the new
-   difference rather than left at 12/13 m — and R should then be
-   reconsidered downward for the same reason 1852 m was preferred to §3.3's
-   2400–2600 m band: whichever proposed radius is the smallest one still
-   above the floor buys no licensing slack it has to pay for.
+   difference rather than left at 13 m — and R should then be reset to the
+   smallest radius that clears the new floor, proposing a new candidate if
+   none of this document's existing three is that radius.
    What this rule deliberately does
    NOT settle: whether a knife-edge is an acceptable place to sit at all —
    that is the judgement recorded in the recommendation, and it is an
