@@ -584,14 +584,17 @@ Marstal origin because a Flensburg-origin one would have been byte-identical
 to the existing `no-comfort`. Measured discriminating power, from
 `README.md`'s own 2026-08-10 run: each of the three carries a `shallow`
 block on **27 of 33** rows, against the 2-of-198 the paragraph above
-records for the original six. That contrast spans the `c359a5c` mask
-rebuild (2026-08-09, #455 / PR #476, `TOLERANCE_M 0.9`): 2-of-198 predates
-it (the 2026-08-07 six-arm baseline) and 27-of-33 postdates it. The rebuild
-only tightened the mask —
-[`455-depth-mask-optimism.md`](./455-depth-mask-optimism.md)'s own
-measurement shows gate-crossing cells falling from 14,715 to 10,746 and
-sub-draft cells from 924 to 0 — so 2-of-198 is an upper bound on the
-pre-rebuild population and the contrast's direction survives.
+records for the original six. That contrast is primarily a consequence of
+ARM DESIGN, not the mask: `sweepArms.ts`'s own arm-role comment states that
+at Flensburg origin only ONE of a per-arm's 33 rows — the Marstal leg — can
+ever carry a successful relaxation (every one of the 27 pairs, of all 528
+harbour pairs, that are mask-connected at a relaxed gate involves Marstal),
+so a Flensburg-origin arm's discriminating power is capped **at most 1/33**;
+Marstal-origin instead pairs Marstal with all 32 other harbours directly.
+The two counts were also measured across the
+`c359a5c` mask-tolerance rebuild (#455/PR #476, between the 2026-08-07
+six-arm baseline and the 2026-08-10 three-arm run) — whether and how much
+that also contributed is **not established** from evidence read this wave.
 
 **The BASE half is still outstanding.** Nothing in this document records a
 re-recorded BASE, and the repo's standing rule is that the double-run
