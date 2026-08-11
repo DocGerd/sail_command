@@ -41,6 +41,18 @@ export const en = {
   'settings.section.boatSafety': 'Boat & safety',
   'settings.section.propulsion': 'Propulsion',
   'settings.section.liveAis': 'Live & AIS',
+  // #353 PR2: map-display controls for seamarks (symbol size + display category).
+  'settings.section.mapDisplay': 'Map display',
+  'settings.seamarkSize.label': 'Symbol size (seamarks)',
+  'settings.seamarkSize.value': '{percent}%',
+  'settings.seamarkSize.help':
+    'Changes the on-screen size of seamark symbols on the map. The collision spacing scales automatically so larger symbols never hide other marks.',
+  'settings.seamarkCategory.label': 'Displayed seamarks',
+  'settings.seamarkCategory.base': 'Base',
+  'settings.seamarkCategory.standard': 'Standard',
+  'settings.seamarkCategory.all': 'All',
+  'settings.seamarkCategory.help':
+    'Cardinal, lateral and isolated-danger marks are always shown, even at "Base".',
   'planner.card.trip': 'Trip',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',

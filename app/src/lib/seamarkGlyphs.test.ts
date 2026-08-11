@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  SEAMARK_DISPLAY_TIER_ALL,
+  SEAMARK_DISPLAY_TIER_BASE,
+  SEAMARK_DISPLAY_TIER_STANDARD,
   classifySeamark,
   registerSeamarkImages,
+  seamarkDisplayTier,
   seamarkImageId,
+  seamarkImageIds,
   seamarkPriority,
   seamarkRasterConfig,
   seamarkSegments,
@@ -1150,6 +1155,93 @@ describe('registerSeamarkImages', () => {
     expect(addImage).toHaveBeenCalledTimes(1);
     expect(addImage.mock.calls[0][0]).toBe('seamark-light-major');
   });
+
+  // #353 PR2: registerSeamarkImages' third `scale` argument, which #484's
+  // suite never drove (it always used the default). A NON-default scale must
+  // change the registered raster size/pixelRatio, not just be accepted
+  // syntactically — that's the actual mechanism a live size-slider change
+  // depends on.
+  it('at a non-default scale, registers the canvas at seamarkRasterConfig(scale)`s size/pixelRatio, not the default', () => {
+    const ctx = recordingContext([]);
+    // Same convention as the first test in this describe block: capture the
+    // ACTUAL canvas element(s) production code creates and sizes, rather
+    // than reading a width/height back off getImageData (recordingContext's
+    // own stub returns `{}` there — it exists to record draw-call ops, not
+    // to model a real ImageData).
+    const canvases: { width: number; height: number }[] = [];
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      if (tag === 'canvas') {
+        const canvas = { width: 0, height: 0, getContext: () => ctx };
+        canvases.push(canvas);
+        return canvas as unknown as HTMLCanvasElement;
+      }
+      return document.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement;
+    });
+    const addImage = vi.fn();
+    const map = { hasImage: () => false, addImage } as unknown as Parameters<
+      typeof registerSeamarkImages
+    >[0];
+
+    try {
+      registerSeamarkImages(map, [{ seamarkType: 'light_major' }], 1.6);
+    } finally {
+      createSpy.mockRestore();
+    }
+
+    // Hand-derived from seamarkRasterConfig's own formula (pinned
+    // independently above, not re-derived from the function under test):
+    // canvasSize = round(64 * 1.6) = 102, pixelRatio = 2 * 1.6 = 3.2.
+    expect(addImage).toHaveBeenCalledTimes(1);
+    expect(addImage.mock.calls[0][2]).toEqual({ pixelRatio: 3.2 });
+    expect(canvases).toHaveLength(1);
+    expect(canvases[0].width).toBe(102);
+    expect(canvases[0].height).toBe(102);
+  });
+
+  it('omitting scale reproduces the default (SEAMARK_SIZE_SCALE = 1) exactly', () => {
+    const ctx = recordingContext([]);
+    const canvases: { width: number; height: number }[] = [];
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      if (tag === 'canvas') {
+        const canvas = { width: 0, height: 0, getContext: () => ctx };
+        canvases.push(canvas);
+        return canvas as unknown as HTMLCanvasElement;
+      }
+      return document.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement;
+    });
+    const addImage = vi.fn();
+    const map = { hasImage: () => false, addImage } as unknown as Parameters<
+      typeof registerSeamarkImages
+    >[0];
+
+    try {
+      registerSeamarkImages(map, [{ seamarkType: 'light_major' }]);
+    } finally {
+      createSpy.mockRestore();
+    }
+
+    expect(addImage.mock.calls[0][2]).toEqual({ pixelRatio: 2 });
+    expect(canvases[0].width).toBe(64);
+  });
+});
+
+describe('seamarkImageIds (#353 PR2: the id set DataLayers.tsx removeImage()s before a rescale)', () => {
+  it('dedupes to one id per distinct seamarkImageId, in first-seen order', () => {
+    const props: SeamarkProperties[] = [
+      { seamarkType: 'buoy_lateral', colour: 'red', category: 'port' },
+      { seamarkType: 'light_major' },
+      // same id as the first — must collapse, not appear twice.
+      { seamarkType: 'beacon_lateral', colour: 'red', category: 'port' },
+    ];
+    expect(seamarkImageIds(props)).toEqual([
+      'seamark-lateral-pillar-red-port',
+      'seamark-light-major',
+    ]);
+  });
+
+  it('returns an empty array for an empty input', () => {
+    expect(seamarkImageIds([])).toEqual([]);
+  });
 });
 
 // Expected values hand-derived from the design formula
@@ -1296,5 +1388,42 @@ describe('seamarkPriority (#144/#200 symbol-sort-key: lower = placed first = win
       seamarkPriority({ seamarkType: 'buoy_lateral' }),
     );
     expect(seamarkPriority({ seamarkType: 'beacon_isolated_danger' })).toBe(0);
+  });
+});
+
+// #353 PR2: expected tiers hand-derived from the design grouping (BASE =
+// every family R1001 §3.1 Table 16 lists as danger-bearing; STANDARD adds
+// the scarce, no-danger-information families; ALL adds the dense,
+// no-danger-information families) — see seamarkGlyphs.ts's own
+// `seamarkDisplayTier` doc comment for the full citation chain.
+describe('seamarkDisplayTier (#353 PR2: the display-category floor/ladder)', () => {
+  it('BASE: isolatedDanger, cardinal and lateral are NEVER hidden by any selection', () => {
+    for (const seamarkType of ['buoy_isolated_danger', 'beacon_cardinal', 'buoy_lateral']) {
+      expect(seamarkDisplayTier({ seamarkType })).toBe(SEAMARK_DISPLAY_TIER_BASE);
+    }
+  });
+
+  it('STANDARD: lightMajor and safeWater', () => {
+    for (const seamarkType of ['light_major', 'buoy_safe_water']) {
+      expect(seamarkDisplayTier({ seamarkType })).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
+    }
+  });
+
+  it('ALL: lightMinor, specialPurpose and unknown', () => {
+    for (const seamarkType of ['light_minor', 'buoy_special_purpose', 'mooring']) {
+      expect(seamarkDisplayTier({ seamarkType })).toBe(SEAMARK_DISPLAY_TIER_ALL);
+    }
+  });
+
+  it('classifies buoy_ and beacon_ variants of the same family identically', () => {
+    expect(seamarkDisplayTier({ seamarkType: 'beacon_lateral' })).toBe(
+      seamarkDisplayTier({ seamarkType: 'buoy_lateral' }),
+    );
+  });
+
+  it('is independent of lit-ness (unlike seamarkPriority, which promotes lit marks)', () => {
+    expect(seamarkDisplayTier({ seamarkType: 'buoy_lateral', lightCharacter: 'Fl' })).toBe(
+      seamarkDisplayTier({ seamarkType: 'buoy_lateral' }),
+    );
   });
 });

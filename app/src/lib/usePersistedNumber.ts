@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { safeGetItem, safeRemoveItem, safeSetItem } from './storage';
 
 function clamp(n: number, min: number, max: number): number {
@@ -12,6 +12,26 @@ function parseStored(raw: string | null): number | null {
   if (raw === null || raw.trim() === '') return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+// #353 PR2: cross-instance live sync. Every consumer before this (App.tsx's
+// panel width, #355) had exactly ONE mounted instance at a time, so a write
+// through `set()` was always observed by re-reading that SAME component's
+// own state — there was no gap. #353's seamark size/display-tier controls
+// are the first case with TWO simultaneously-mounted consumers of the SAME
+// key (SettingsPanel.tsx renders the control, DataLayers.tsx applies the
+// live value to the MapLibre layer, and DataLayers stays mounted whether or
+// not the Settings tab is open) — without this, a slider drag would write
+// localStorage correctly but the map would only pick it up on the next full
+// remount. Keyed by the storage key so unrelated keys never cross-notify;
+// every mounted hook instance for a key is notified on any `set()` call for
+// that key (itself included, since it registers its own setter on mount) —
+// the same-tab analogue of a cross-tab `storage` event, which fires only in
+// OTHER documents and would not close this gap.
+const listenersByKey = new Map<string, Set<(next: number | null) => void>>();
+
+function notify(key: string, next: number | null): void {
+  listenersByKey.get(key)?.forEach((listener) => listener(next));
 }
 
 /**
@@ -40,16 +60,34 @@ export function usePersistedNumber(
 ): [number | null, (next: number | null) => void] {
   const [raw, setRaw] = useState<number | null>(() => parseStored(safeGetItem(key)));
 
+  // Registers THIS instance's setter for `key` so a `set()` call from ANY
+  // instance (including a sibling component reading the same key) reaches
+  // it — see the module-level comment above. Re-subscribes only if `key`
+  // itself changes; `setRaw` has a stable identity across renders (a React
+  // guarantee), so this never re-registers on every render.
+  useEffect(() => {
+    let listeners = listenersByKey.get(key);
+    if (!listeners) {
+      listeners = new Set();
+      listenersByKey.set(key, listeners);
+    }
+    listeners.add(setRaw);
+    return () => {
+      listeners.delete(setRaw);
+      if (listeners.size === 0) listenersByKey.delete(key);
+    };
+  }, [key]);
+
   const set = useCallback(
     (next: number | null) => {
       if (next === null) {
-        setRaw(null);
         safeRemoveItem(key);
+        notify(key, null);
         return;
       }
       const clamped = clamp(next, min, max);
-      setRaw(clamped);
       safeSetItem(key, String(clamped));
+      notify(key, clamped);
     },
     [key, min, max],
   );

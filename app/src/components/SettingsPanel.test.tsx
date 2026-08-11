@@ -263,4 +263,77 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       expect(screen.queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
     });
   });
+
+  // #353 PR2: the seamark size slider + display-category radiogroup. Both
+  // persist via usePersistedNumber (localStorage, NOT the `Settings`/
+  // IndexedDB `value` prop this file's other fields use) — asserted here by
+  // reading `localStorage` directly, mirroring PanelResizer.test.tsx's own
+  // convention for the #355 panel-width control.
+  describe('Map display group (#353 PR2)', () => {
+    it('renders the size slider at its default (100%, no stored override) and the category radiogroup defaulting to Standard, grouped under Map display', () => {
+      renderPanel();
+      const section = sectionOf('Map display');
+      const slider = within(section).getByRole('slider', { name: 'Symbol size (seamarks)' });
+      expect(slider).toHaveValue('1');
+      expect(within(section).getByText('100%')).toBeInTheDocument();
+      expect(within(section).getByRole('radio', { name: 'Base' })).not.toBeChecked();
+      expect(within(section).getByRole('radio', { name: 'Standard' })).toBeChecked();
+      expect(within(section).getByRole('radio', { name: 'All' })).not.toBeChecked();
+    });
+
+    it('a stored size override renders as the persisted value/percent, not the default', () => {
+      localStorage.setItem('sc-seamark-size-scale', '1.3');
+      renderPanel();
+      const section = sectionOf('Map display');
+      expect(within(section).getByRole('slider', { name: 'Symbol size (seamarks)' })).toHaveValue(
+        '1.3',
+      );
+      expect(within(section).getByText('130%')).toBeInTheDocument();
+    });
+
+    it('dragging the size slider persists the new value to localStorage and updates the percent readout', () => {
+      renderPanel();
+      const slider = screen.getByRole('slider', { name: 'Symbol size (seamarks)' });
+      fireEvent.change(slider, { target: { value: '0.7' } });
+      expect(localStorage.getItem('sc-seamark-size-scale')).toBe('0.7');
+      expect(screen.getByText('70%')).toBeInTheDocument();
+    });
+
+    it('the size slider clamps to its bounds (0.5-1.5) — a MapLibre collision-safety bound, not just an input attribute', () => {
+      renderPanel();
+      const slider = screen.getByRole('slider', { name: 'Symbol size (seamarks)' });
+      expect(slider).toHaveAttribute('min', '0.5');
+      expect(slider).toHaveAttribute('max', '1.5');
+    });
+
+    it('selecting Base persists tier 0 and checks only Base', () => {
+      renderPanel();
+      fireEvent.click(screen.getByRole('radio', { name: 'Base' }));
+      expect(localStorage.getItem('sc-seamark-display-tier')).toBe('0');
+      expect(screen.getByRole('radio', { name: 'Base' })).toBeChecked();
+      expect(screen.getByRole('radio', { name: 'Standard' })).not.toBeChecked();
+      expect(screen.getByRole('radio', { name: 'All' })).not.toBeChecked();
+    });
+
+    it('selecting All persists tier 2', () => {
+      renderPanel();
+      fireEvent.click(screen.getByRole('radio', { name: 'All' }));
+      expect(localStorage.getItem('sc-seamark-display-tier')).toBe('2');
+      expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+    });
+
+    it('describes the size slider with a visible help paragraph via aria-describedby', () => {
+      renderPanel();
+      const slider = screen.getByRole('slider', { name: 'Symbol size (seamarks)' });
+      const describedBy = slider.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      const help = document.getElementById(describedBy!);
+      expect(help).toHaveTextContent(/collision spacing scales automatically/);
+    });
+
+    it('states the non-optional Base floor in the category help text', () => {
+      renderPanel();
+      expect(screen.getByText(/always shown, even at "Base"/)).toBeInTheDocument();
+    });
+  });
 });

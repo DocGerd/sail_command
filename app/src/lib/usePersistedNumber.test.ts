@@ -99,4 +99,58 @@ describe('usePersistedNumber', () => {
     act(() => result.current[1](450));
     expect(result.current[0]).toBe(450);
   });
+
+  // #353 PR2: cross-instance live sync. Two simultaneously-mounted hook
+  // instances for the SAME key — the shape SettingsPanel.tsx (writer) and
+  // DataLayers.tsx (reader) now use for the seamark size/display-tier
+  // controls, where DataLayers stays mounted whether or not the Settings tab
+  // (SettingsPanel) is. Before this, a `set()` in one instance only updated
+  // ITS OWN React state; a sibling instance would not observe the change
+  // until it happened to unmount/remount and re-read localStorage.
+  describe('cross-instance sync (#353 PR2)', () => {
+    it('set() in ONE instance is observed by a second, simultaneously-mounted instance of the SAME key', () => {
+      const a = renderHook(() => usePersistedNumber('sc-test-num', 100, 200));
+      const b = renderHook(() => usePersistedNumber('sc-test-num', 100, 200));
+      expect(a.result.current[0]).toBeNull();
+      expect(b.result.current[0]).toBeNull();
+      act(() => a.result.current[1](150));
+      expect(a.result.current[0]).toBe(150);
+      expect(b.result.current[0]).toBe(150);
+      a.unmount();
+      b.unmount();
+    });
+
+    it('set(null) in one instance is observed as a reset by a second instance', () => {
+      localStorage.setItem('sc-test-num', '150');
+      const a = renderHook(() => usePersistedNumber('sc-test-num', 100, 200));
+      const b = renderHook(() => usePersistedNumber('sc-test-num', 100, 200));
+      expect(b.result.current[0]).toBe(150);
+      act(() => a.result.current[1](null));
+      expect(b.result.current[0]).toBeNull();
+      a.unmount();
+      b.unmount();
+    });
+
+    it('a DIFFERENT key never cross-notifies — two keys stay fully independent', () => {
+      const a = renderHook(() => usePersistedNumber('sc-test-num-a', 0, 10));
+      const b = renderHook(() => usePersistedNumber('sc-test-num-b', 0, 10));
+      act(() => a.result.current[1](5));
+      expect(a.result.current[0]).toBe(5);
+      expect(b.result.current[0]).toBeNull();
+      a.unmount();
+      b.unmount();
+    });
+
+    it('an UNMOUNTED instance is not notified (no crash, no stale listener) — a fresh remount reads storage directly', () => {
+      const a = renderHook(() => usePersistedNumber('sc-test-num', 100, 200));
+      a.unmount();
+      const b = renderHook(() => usePersistedNumber('sc-test-num', 100, 200));
+      // Nothing throws from notifying a listener set that no longer contains
+      // `a`'s (unmounted) setter — the mutation this guards against is an
+      // unsubscribe that silently fails to run.
+      act(() => b.result.current[1](180));
+      expect(b.result.current[0]).toBe(180);
+      b.unmount();
+    });
+  });
 });

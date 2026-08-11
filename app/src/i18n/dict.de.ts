@@ -40,6 +40,18 @@ export const de = {
   'settings.section.boatSafety': 'Boot & Sicherheit',
   'settings.section.propulsion': 'Antrieb',
   'settings.section.liveAis': 'Live & AIS',
+  // #353 PR2: Kartenanzeige-Regler für Seezeichen (Größe + Anzeigekategorie).
+  'settings.section.mapDisplay': 'Kartenanzeige',
+  'settings.seamarkSize.label': 'Symbolgröße (Seezeichen)',
+  'settings.seamarkSize.value': '{percent} %',
+  'settings.seamarkSize.help':
+    'Ändert die Anzeigegröße der Seezeichen-Symbole auf der Karte. Der Kollisionsabstand wird automatisch mitskaliert, damit größere Symbole keine anderen Zeichen verdecken.',
+  'settings.seamarkCategory.label': 'Angezeigte Seezeichen',
+  'settings.seamarkCategory.base': 'Basis',
+  'settings.seamarkCategory.standard': 'Standard',
+  'settings.seamarkCategory.all': 'Alle',
+  'settings.seamarkCategory.help':
+    'Kardinal-, Lateral- und Gefahrenzeichen werden immer angezeigt, auch bei „Basis“.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',

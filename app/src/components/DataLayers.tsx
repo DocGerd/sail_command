@@ -8,13 +8,26 @@ import { harborFeatureCollection } from '../lib/harborGeoJson';
 import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
+  seamarkDisplayFilter,
   seamarkFeatureCollectionWithIcons,
+  seamarksLayout,
 } from '../lib/seamarkGeoJson';
-import { registerSeamarkImages } from '../lib/seamarkGlyphs';
+import {
+  DEFAULT_SEAMARK_DISPLAY_TIER,
+  SEAMARK_DISPLAY_TIER_ALL,
+  SEAMARK_DISPLAY_TIER_BASE,
+  SEAMARK_SIZE_MAX,
+  SEAMARK_SIZE_MIN,
+  SEAMARK_SIZE_SCALE,
+  registerSeamarkImages,
+  seamarkImageIds,
+  type SeamarkDisplayTier,
+} from '../lib/seamarkGlyphs';
 import { resolveSeamarkPopoverValue, seamarkPopoverRows } from '../lib/seamarkPopover';
 import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
+import { usePersistedNumber } from '../lib/usePersistedNumber';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
 import type { Harbor, MaskMeta, SeamarkProperties } from '../types';
@@ -216,6 +229,26 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // #7: default OFF — ~1,794 points is a dense specialist layer (vs. 33
   // harbor markers) that would clutter the map before the user opts in.
   const [seamarksVisible, setSeamarksVisible] = usePersistedToggle('sc-seamarks-visible', false);
+  // #353 PR2: the seamark size/display-category controls live in
+  // SettingsPanel.tsx, not here — this component only APPLIES the persisted
+  // value to the map. Both hooks call `usePersistedNumber` with the SAME
+  // keys SettingsPanel uses; the hook's own cross-instance sync (see its
+  // module comment) is what keeps this always-mounted component in step
+  // with a change made in the (conditionally-mounted) Settings tab, without
+  // either component needing a prop from a shared ancestor.
+  const [seamarkSizeScaleStored] = usePersistedNumber(
+    'sc-seamark-size-scale',
+    SEAMARK_SIZE_MIN,
+    SEAMARK_SIZE_MAX,
+  );
+  const seamarkSizeScale = seamarkSizeScaleStored ?? SEAMARK_SIZE_SCALE;
+  const [seamarkDisplayTierStored] = usePersistedNumber(
+    'sc-seamark-display-tier',
+    SEAMARK_DISPLAY_TIER_BASE,
+    SEAMARK_DISPLAY_TIER_ALL,
+  );
+  const seamarkDisplayTier = (seamarkDisplayTierStored ??
+    DEFAULT_SEAMARK_DISPLAY_TIER) as SeamarkDisplayTier;
   const [assets, setAssets] = useState<RoutingAssets | null>(null);
   // Same pattern and rationale as RouteLayer's styleEpoch: 0 = this
   // component's sources/layers don't exist yet; 1 once style AND assets are
@@ -313,21 +346,50 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the
   // user opts in, no flash of unstyled icons). registerSeamarkImages is
-  // idempotent (hasImage guard), so this is safe to re-run.
+  // idempotent (hasImage guard) AT AN UNCHANGED scale, so this is safe to
+  // re-run; #353 PR2 adds `seamarkSizeScale` to the dependency array
+  // because that guard is scale-BLIND — an id already registered at the OLD
+  // raster size would otherwise never be redrawn at the new one, so a live
+  // slider change removes every id first (seamarkImageIds — same dedup
+  // logic registerSeamarkImages itself uses) before re-registering.
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets) return;
     const withIcons = seamarkFeatureCollectionWithIcons(assets.seamarks);
-    registerSeamarkImages(
-      map,
-      withIcons.features.map((f) => f.properties),
-    );
+    const props = withIcons.features.map((f) => f.properties);
+    for (const id of seamarkImageIds(props)) {
+      if (map.hasImage(id)) map.removeImage(id);
+    }
+    registerSeamarkImages(map, props, seamarkSizeScale);
     (map.getSource(SEAMARKS_SOURCE) as GeoJSONSource | undefined)?.setData(withIcons);
-  }, [map, styleEpoch, assets]);
+  }, [map, styleEpoch, assets, seamarkSizeScale]);
 
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
     map.setLayoutProperty(SEAMARKS_LAYER, 'visibility', seamarksVisible ? 'visible' : 'none');
   }, [map, styleEpoch, assets, seamarksVisible]);
+
+  // #353 PR2: the layer is CREATED (setupLayers) at the SEAMARKS_LAYOUT
+  // default (scale 1) — this effect corrects icon-size/icon-padding to the
+  // persisted scale, same "hidden/default at creation, synced by an effect"
+  // convention as the visibility toggle above. Only these two layout
+  // properties vary with scale (icon-image/icon-overlap/symbol-sort-key do
+  // not), so only these two are re-set rather than the whole layout object.
+  useEffect(() => {
+    if (!map || styleEpoch === 0 || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
+    const layout = seamarksLayout(seamarkSizeScale);
+    map.setLayoutProperty(SEAMARKS_LAYER, 'icon-size', layout['icon-size']);
+    map.setLayoutProperty(SEAMARKS_LAYER, 'icon-padding', layout['icon-padding']);
+  }, [map, styleEpoch, assets, seamarkSizeScale]);
+
+  // #353 PR2: the display-category filter. `seamarkDisplayFilter` is
+  // cumulative (SEAMARK_DISPLAY_TIER_ALL reproduces the unfiltered pre-#353
+  // layer exactly), and the Base tier (isolatedDanger/cardinal/lateral) is
+  // NEVER excluded by any selection — see seamarkGlyphs.ts's
+  // `seamarkDisplayTier` doc comment for the R1001-grounded floor.
+  useEffect(() => {
+    if (!map || styleEpoch === 0 || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
+    map.setFilter(SEAMARKS_LAYER, seamarkDisplayFilter(seamarkDisplayTier));
+  }, [map, styleEpoch, assets, seamarkDisplayTier]);
 
   // Click a seamark glyph -> a small info popover (type/category/colour,
   // light character/colour/period when tagged) — never a route pick (#7):

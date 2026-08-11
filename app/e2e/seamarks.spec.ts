@@ -23,6 +23,20 @@ import { startPreview, mapReady } from './helpers';
 // resulting counts are reported in the PR description rather than
 // hardcoded here as a second, easily-stale copy of the same numbers.
 //
+// #353 PR2 adds the user-facing controls this file's own PR1 comments named
+// as deferred: a size slider (SettingsPanel.tsx, wired to the same
+// SEAMARK_SIZE_SCALE axis measured above) and a display-CATEGORY filter
+// (Base/Standard/All, `seamarkGlyphs.ts`'s `seamarkDisplayTier`) defaulting
+// to STANDARD — per the #353 issue's own design sketch — not ALL. That
+// default HIDES the `lightMinor`/`specialPurpose`/`unknown` families
+// (FAMILY_RANK's Tier 4) until a user opts into "Alle", so the PIN VALUES
+// below are SMALLER than PR1's own committed baseline at the identical
+// cluster/zoom pair, by construction rather than by regression — this test
+// re-measures the "category=All" case afterwards specifically to prove that
+// selection reproduces PR1's original, unfiltered counts byte-for-byte (the
+// BASE-vs-HEAD control this PR owes per CLAUDE.md's #191/#192 rule, now one
+// level indirect: HEAD's "All" selection must equal BASE's only selection).
+//
 // Two zoom regimes are measured because they behave OPPOSITELY
 // (SEAMARKS_LAYOUT's own `icon-overlap` is `['step', ['zoom'], 'never', 12,
 // 'always']`), and that contrast IS the signature — a single-zoom
@@ -99,11 +113,14 @@ interface ScTestMap {
 // this point by raw coordinate, chosen specifically because a dense cluster
 // is what makes below-z12 culling observable at all — a sparse area would
 // show no contrast between the two zoom regimes regardless of icon size.
-// The z>=12 pin below is 44, not 43: `queryRenderedFeatures` matches a
-// symbol's RENDERED collision-box extent against the query box, not just
-// its anchor coordinate (see the file header's #484 F2 note), so one mark
-// whose anchor sits just outside the box still qualifies because its icon
-// overlaps the edge — expected, not a discrepancy to chase.
+// The z>=12 pin at category=ALL (below) is 44, not 43: `queryRenderedFeatures`
+// matches a symbol's RENDERED collision-box extent against the query box,
+// not just its anchor coordinate (see the file header's #484 F2 note), so
+// one mark whose anchor sits just outside the box still qualifies because
+// its icon overlaps the edge — expected, not a discrepancy to chase. #353
+// PR2 adds a SECOND, SMALLER z>=12 pin at the default category (Standard,
+// hiding the ALL-only families) — that reduction is the new display-category
+// filter working as designed, not a re-occurrence of this same effect.
 const CLUSTER_CENTER: [number, number] = [10.515, 54.855];
 const CLUSTER_HALF_DEGREES = 0.015;
 // #484 F2: 11.5, not 10 — see the file header for why. Still comfortably
@@ -230,7 +247,7 @@ async function settledSeamarkIconIds(page: Page, label: string): Promise<Settled
   );
 }
 
-test('#353: seamark size-axis guard — icon-overlap collision culling below z12 vs. none at/above z12', async ({
+test('#353: seamark size-axis guard — icon-overlap collision culling below z12 vs. none at/above z12, at both display categories', async ({
   page,
 }) => {
   const server = await startPreview();
@@ -247,26 +264,33 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
     await expect(seamarksToggle).toBeChecked();
 
     await jumpToCluster(page, ZOOM_BELOW_12);
-    const low = await settledSeamarkIconIds(page, `z${ZOOM_BELOW_12} (<12)`);
+    const low = await settledSeamarkIconIds(page, `z${ZOOM_BELOW_12} (<12) category=Standard`);
     console.log(
-      `[#353 seamarks.spec.ts] z${ZOOM_BELOW_12} settled after ${low.reads} reads ` +
+      `[#353 seamarks.spec.ts] z${ZOOM_BELOW_12} category=Standard settled after ${low.reads} reads ` +
         `(${low.elapsedMs}ms), ${low.iconIds.length} features in the cluster box: ${JSON.stringify(low.iconIds)}`,
     );
 
     await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
-    const high = await settledSeamarkIconIds(page, `z${ZOOM_AT_OR_ABOVE_12} (>=12)`);
+    const high = await settledSeamarkIconIds(
+      page,
+      `z${ZOOM_AT_OR_ABOVE_12} (>=12) category=Standard`,
+    );
     console.log(
-      `[#353 seamarks.spec.ts] z${ZOOM_AT_OR_ABOVE_12} settled after ${high.reads} reads ` +
+      `[#353 seamarks.spec.ts] z${ZOOM_AT_OR_ABOVE_12} category=Standard settled after ${high.reads} reads ` +
         `(${high.elapsedMs}ms), ${high.iconIds.length} features in the cluster box: ${JSON.stringify(high.iconIds)}`,
     );
 
-    // Regression pins at SEAMARK_SIZE_SCALE = 1 (today's shipped default),
-    // measured against the real committed seamarks.json — not hand-guessed.
-    // A future size-axis change that breaks the icon-padding compensation
-    // would move the z<12 SET away from its pin while the z>=12 set
-    // (structurally collision-immune, and querying the exact same
-    // geographic box) stays exactly where it is — the #191/#192 signature
-    // this file exists to catch.
+    // Regression pins at SEAMARK_SIZE_SCALE = 1 and the DEFAULT display
+    // category (Standard — #353 PR2), measured against the real committed
+    // seamarks.json — not hand-guessed. A future size-axis change that
+    // breaks the icon-padding compensation would move the z<12 SET away from
+    // its pin while the z>=12 set (structurally collision-immune, and
+    // querying the exact same geographic box) stays exactly where it is —
+    // the #191/#192 signature this file exists to catch. These two sets are
+    // SMALLER than PR1's own baseline at the identical cluster/zoom pair,
+    // because Standard hides the specialPurpose/lightMinor families present
+    // in this box — expected (see the file header), re-verified below by
+    // reproducing PR1's original counts at category=All.
     //
     // #484 F6: pinned as the FULL SORTED ID ARRAY, not `.length` — the
     // settle gate above already refuses to call a read "stable" on a
@@ -287,7 +311,103 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
     // should not have to rediscover why.
     expect(
       low.iconIds,
-      `z${ZOOM_BELOW_12} (<12, collision culling live) id set drifted from its pin`,
+      `z${ZOOM_BELOW_12} (<12, collision culling live, category=Standard) id set drifted from its pin`,
+    ).toEqual([
+      'seamark-cardinal-north',
+      'seamark-cardinal-south',
+      'seamark-lateral-pillar-green-starboard',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-red-port',
+    ]);
+    expect(
+      high.iconIds,
+      `z${ZOOM_AT_OR_ABOVE_12} (>=12, no culling, category=Standard) id set drifted from its pin`,
+    ).toEqual([
+      'seamark-cardinal-north',
+      'seamark-cardinal-south',
+      'seamark-lateral-pillar-green-starboard',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-green-starboard',
+      'seamark-lateral-spar-green-starboard',
+      'seamark-lateral-spar-green-starboard',
+      'seamark-lateral-spar-green-starboard',
+      'seamark-lateral-spar-green-starboard',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+    ]);
+
+    // Below z12 must actually cull something relative to the uncollided
+    // z>=12 view of the SAME geographic box, or this spec would not be
+    // exercising the collision code path it exists to guard at all.
+    expect(
+      low.iconIds.length,
+      `expected z${ZOOM_BELOW_12} to cull at least one mark relative to z${ZOOM_AT_OR_ABOVE_12}'s ` +
+        `uncollided ${high.iconIds.length} in the same box — got the same count, so this cluster/zoom ` +
+        `pair is not exercising collision culling at all`,
+    ).toBeLessThan(high.iconIds.length);
+
+    // #353 PR2's own BASE-vs-HEAD regression control (CLAUDE.md's #191/#192
+    // rule): selecting "Alle" (All — SEAMARK_DISPLAY_TIER_ALL) via the new
+    // Boat-tab control must reproduce PR1's original, unfiltered baseline at
+    // this exact cluster/zoom pair BYTE-FOR-BYTE — proving the display-
+    // category filter and the pre-existing size-axis/collision guard compose
+    // correctly rather than one silently masking a regression in the other.
+    // The Boat tab is reachable from anywhere (it only swaps the bottom-
+    // sheet content — MapView stays mounted and keeps its current camera),
+    // so no re-navigation back to the map view is needed afterwards.
+    await page.getByRole('tab', { name: 'Boot' }).click();
+    await page.getByRole('radio', { name: 'Alle' }).click();
+    await expect(page.getByRole('radio', { name: 'Alle' })).toBeChecked();
+
+    await jumpToCluster(page, ZOOM_BELOW_12);
+    const lowAll = await settledSeamarkIconIds(page, `z${ZOOM_BELOW_12} (<12) category=All`);
+    console.log(
+      `[#353 seamarks.spec.ts] z${ZOOM_BELOW_12} category=All settled after ${lowAll.reads} reads ` +
+        `(${lowAll.elapsedMs}ms), ${lowAll.iconIds.length} features in the cluster box: ${JSON.stringify(lowAll.iconIds)}`,
+    );
+    await jumpToCluster(page, ZOOM_AT_OR_ABOVE_12);
+    const highAll = await settledSeamarkIconIds(
+      page,
+      `z${ZOOM_AT_OR_ABOVE_12} (>=12) category=All`,
+    );
+    console.log(
+      `[#353 seamarks.spec.ts] z${ZOOM_AT_OR_ABOVE_12} category=All settled after ${highAll.reads} reads ` +
+        `(${highAll.elapsedMs}ms), ${highAll.iconIds.length} features in the cluster box: ${JSON.stringify(highAll.iconIds)}`,
+    );
+
+    // Exactly PR1's own committed pins (`git log` on this file before #353
+    // PR2) — reproduced here rather than only in history, so a future
+    // regression in EITHER the category filter or the underlying
+    // size/collision mechanism reds this test directly instead of requiring
+    // a diff against a past commit.
+    expect(
+      lowAll.iconIds,
+      `z${ZOOM_BELOW_12} (<12, collision culling live, category=All) id set drifted from PR1's original pin`,
     ).toEqual([
       'seamark-cardinal-north',
       'seamark-cardinal-south',
@@ -299,8 +419,8 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
       'seamark-special-default',
     ]);
     expect(
-      high.iconIds,
-      `z${ZOOM_AT_OR_ABOVE_12} (>=12, no culling) id set drifted from its pin`,
+      highAll.iconIds,
+      `z${ZOOM_AT_OR_ABOVE_12} (>=12, no culling, category=All) id set drifted from PR1's original pin`,
     ).toEqual([
       'seamark-cardinal-north',
       'seamark-cardinal-south',
@@ -347,16 +467,11 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
       'seamark-special-default',
       'seamark-special-default',
     ]);
-
-    // Below z12 must actually cull something relative to the uncollided
-    // z>=12 view of the SAME geographic box, or this spec would not be
-    // exercising the collision code path it exists to guard at all.
     expect(
-      low.iconIds.length,
+      lowAll.iconIds.length,
       `expected z${ZOOM_BELOW_12} to cull at least one mark relative to z${ZOOM_AT_OR_ABOVE_12}'s ` +
-        `uncollided ${high.iconIds.length} in the same box — got the same count, so this cluster/zoom ` +
-        `pair is not exercising collision culling at all`,
-    ).toBeLessThan(high.iconIds.length);
+        `uncollided ${highAll.iconIds.length} in the same box at category=All too`,
+    ).toBeLessThan(highAll.iconIds.length);
   } finally {
     server.kill();
   }
