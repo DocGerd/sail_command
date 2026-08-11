@@ -6,6 +6,7 @@ import { NavMask } from '../lib/mask';
 import { WindField } from '../lib/wind';
 import { barbSegments } from '../lib/windBarbs';
 import {
+  exhaustiveMinDepth,
   indicatorTimes,
   legPositionAt,
   profileSamples,
@@ -192,6 +193,17 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
     () => (mask && legs.length ? profileSamples(legs, mask, sampleCount(durationMs)) : []),
     [mask, legs, durationMs],
   );
+  // #505: the headline "min." figure is computed EXHAUSTIVELY over every
+  // leg's actual geometry (see exhaustiveMinDepth's own comment) rather than
+  // from the sparse time-sampled series above — a short leg could otherwise
+  // fall between two sample ticks and be skipped, understating how shallow
+  // the route actually gets. Memoized separately from `samples` (which the
+  // "safety change doesn't resample" regression test pins the identity of)
+  // since this never depends on the plotted curve.
+  const exhaustiveMin = useMemo(
+    () => (mask && legs.length ? exhaustiveMinDepth(legs, mask) : null),
+    [mask, legs],
+  );
   // WindField wraps the stored grid only (never re-fetched); it does not
   // depend on the legs. Constructed unconditionally — the empty-route early
   // return below means the unused instance is thrown away harmlessly.
@@ -199,16 +211,20 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
 
   if (!result || legs.length === 0) return null;
 
-  // The shallowest sample drives the summary glance value. If even the
-  // shallowest point is deep-capped, the whole route is >= 25 m — show the
-  // honest cap label, never the fake 25.4 sentinel number (design rule).
-  const minSample = samples.length ? samples.reduce((m, s) => (s.depthM < m.depthM ? s : m)) : null;
+  // #505: the exhaustive per-leg walk is authoritative; the sparse sample
+  // series is only a fallback for the (never expected in practice — see
+  // exhaustiveMinDepth's comment) case where it returns null. If even the
+  // resulting shallowest reading is deep-capped, the whole route is >= 25 m
+  // — show the honest cap label, never the fake 25.4 sentinel number.
+  const headlineMin =
+    exhaustiveMin ??
+    (samples.length ? samples.reduce((m, s) => (s.depthM < m.depthM ? s : m)) : null);
   // The <summary> carries ONLY the min-depth glance — the Card <h2> is the
   // single section title, so the label is not rendered (or announced) twice.
   const summaryValue =
-    minSample === null
+    headlineMin === null
       ? ''
-      : `${t('profile.minDepth')} ${minSample.capped ? t('profile.deepCap') : `${minSample.depthM.toFixed(1)} m`}`;
+      : `${t('profile.minDepth')} ${headlineMin.capped ? t('profile.deepCap') : `${headlineMin.depthM.toFixed(1)} m`}`;
 
   // #64 phase 3: the profile gets the card treatment for visual consistency
   // with the Ergebnis card. The inner <details> keeps its own collapse + SVG

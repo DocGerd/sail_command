@@ -399,4 +399,66 @@ describe('DepthProfile', () => {
     await waitForChart(container);
     expect(container.querySelectorAll('.dp-shallow-leg').length).toBe(0);
   });
+
+  it('#505: summary min. reflects the exhaustive route minimum, not just the time-sampled series', async () => {
+    // 20 m everywhere except ONE cell (row 100, col 150 -> lat [54.800,
+    // 54.805), lon [10.150, 10.155)) charted 0.5 m (byte 5).
+    const data = new Uint8Array(TEST_MASK_META.rows * TEST_MASK_META.cols).fill(200);
+    data[100 * TEST_MASK_META.cols + 150] = 5;
+    mockedLoad.mockResolvedValue({ ...assetsWith(200), maskBuffer: data.buffer });
+
+    const legs: Leg[] = [
+      {
+        kind: 'sail',
+        board: 'starboard',
+        start: { lat: 54.79, lon: 9.43 },
+        end: { lat: 54.8, lon: 10.0 },
+        startTimeMs: DEPARTURE_MS,
+        endTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+        headingDeg: 88,
+        twaDeg: 92,
+        twsKn: 10,
+        speedKn: 7,
+        distanceNm: 15,
+        maneuverAtStart: null,
+      },
+      {
+        // 30 s, entirely inside the one shallow cell — far shorter than the
+        // ~4-minute sample interval this 4 h trip's 60 samples produce, so
+        // the sparse series (used before #505) never lands on it.
+        kind: 'sail',
+        board: 'starboard',
+        start: { lat: 54.8025, lon: 10.1525 },
+        end: { lat: 54.8026, lon: 10.1526 },
+        startTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+        endTimeMs: DEPARTURE_MS + 2 * 3_600_000 + 30_000,
+        headingDeg: 90,
+        twaDeg: 90,
+        twsKn: 10,
+        speedKn: 6,
+        distanceNm: 0.01,
+        maneuverAtStart: null,
+      },
+      {
+        kind: 'sail',
+        board: 'starboard',
+        start: { lat: 54.82, lon: 10.3 },
+        end: { lat: 54.85, lon: 10.52 },
+        startTimeMs: DEPARTURE_MS + 2 * 3_600_000 + 30_000,
+        endTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+        headingDeg: 85,
+        twaDeg: 95,
+        twsKn: 9,
+        speedKn: 6,
+        distanceNm: 14,
+        maneuverAtStart: null,
+      },
+    ];
+    const plan = makePlan({ genoa: { ...GENOA_RESULT, legs, durationMs: 4 * 3_600_000 } });
+    const { container } = renderProfile({ plan });
+    await waitForChart(container);
+
+    const summary = container.querySelector('.depth-profile-summary')?.textContent ?? '';
+    expect(summary).toContain('min. 0.5 m');
+  });
 });

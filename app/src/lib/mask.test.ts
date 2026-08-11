@@ -144,6 +144,49 @@ describe('NavMask.segmentShallowestBelow (#53)', () => {
   });
 });
 
+describe('NavMask.segmentMinDepthInfoM (#505)', () => {
+  // Same shoal-line fixture as segmentShallowestBelow above: col 160 charted
+  // 2.5 m, col 162 charted 2.8 m, rest 20 m.
+  const m = makeMask((_, c) => (c === 160 ? 25 : c === 162 ? 28 : 200));
+  const a = { lat: 54.7525, lon: 10.1925 }; // col 158
+  const b = { lat: 54.7525, lon: 10.2225 }; // col 164
+
+  it('reports the true minimum over every touched cell, unconditionally — no threshold', () => {
+    // Crossed cols 158..164: min is the 2.5 m cell, same as
+    // segmentShallowestBelow(a, b, 3.0) above, but with no threshold to pass.
+    expect(m.segmentMinDepthInfoM(a, b)).toEqual({ depthM: 2.5, capped: false });
+  });
+
+  it('a cell shallower than any threshold segmentShallowestBelow would be asked for is still found', () => {
+    // segmentShallowestBelow(a, b, 2.0) returns null (2.5 is not < 2.0) — the
+    // whole point of this method is to have no such blind spot.
+    expect(m.segmentMinDepthInfoM(a, b)).toEqual({ depthM: 2.5, capped: false });
+    expect(m.segmentShallowestBelow(a, b, 2.0)).toBeNull();
+  });
+
+  it("an all-deep-capped segment reports capped: true at the encoding's deepest value", () => {
+    const deep = makeMask(() => 255);
+    expect(deep.segmentMinDepthInfoM(a, b)).toEqual({ depthM: 25.4, capped: true });
+  });
+
+  it('one real reading anywhere on the segment wins over deep-capped cells, uncapped', () => {
+    // Deep-capped everywhere except col 160, charted 2.5 m — the finite
+    // reading is shallower than 25.4 m, so it is the minimum and capped
+    // flips to false (mirrors depthInfoM: capped tracks the WINNING cell).
+    const mostlyCapped = makeMask((_, c) => (c === 160 ? 25 : 255));
+    expect(mostlyCapped.segmentMinDepthInfoM(a, b)).toEqual({ depthM: 2.5, capped: false });
+  });
+
+  it('land (byte 0) is included as a 0 m reading, unlike segmentClearanceM which aborts on land', () => {
+    const land = makeMask((_, c) => (c === 160 ? 0 : 200));
+    expect(land.segmentMinDepthInfoM(a, b)).toEqual({ depthM: 0, capped: false });
+  });
+
+  it('returns null when the walk leaves the grid, like segmentShallowestBelow/segmentClearanceM', () => {
+    expect(m.segmentMinDepthInfoM({ lat: 60, lon: 20 }, b)).toBeNull();
+  });
+});
+
 describe('NavMask.segmentClearanceM (#243)', () => {
   // Same shoal-line fixture as segmentShallowestBelow above: col 160 charted
   // 2.5 m, col 162 charted 2.8 m, rest 20 m.

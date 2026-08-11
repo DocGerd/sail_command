@@ -228,6 +228,58 @@ export class NavMask {
   }
 
   /**
+   * #505: exhaustive per-cell minimum depth reading over the a→b segment —
+   * the same {depthM, capped} shape {@link depthInfoM} returns for one point,
+   * but walked over EVERY cell the segment touches (the same Amanatides–Woo
+   * walk as segmentShallowestBelow/segmentClearanceM) instead of read at a
+   * single point. Built for the depth-profile chart's headline "min." figure,
+   * which previously came from a uniform-in-TIME sample series (up to 240
+   * points, sized for chart rendering, not route coverage) that could step
+   * over a leg shorter than the sample interval and understate how shallow
+   * the route actually gets.
+   *
+   * Unlike segmentShallowestBelow (only reports cells below a threshold) and
+   * segmentClearanceM (aborts the whole segment below a gate), this has no
+   * threshold or gate: it always reports the unconditional minimum, so a
+   * caller building a route-wide headline figure never misses a cell either
+   * of those gated methods would exclude. Land (byte 0) is included as a
+   * 0 m reading rather than aborting the walk, matching
+   * segmentShallowestBelow's treatment (not segmentClearanceM's) — the
+   * intended callers hand this legs a solver already validated as
+   * land-free, so this only matters as a well-defined, maximally-honest
+   * fallback. `capped` is true only when the MINIMUM-depth cell itself is
+   * deep-capped (byte 255): since a capped cell always decodes to the
+   * encoding's deepest representable value (25.4 m), that can only happen
+   * when every cell the segment touches is deep-capped — mirroring
+   * depthInfoM's per-point "≥ 25 m" contract at route-wide scale.
+   *
+   * Returns null exactly when the walk leaves the grid or trips its
+   * iteration guard. There is no "no cell" case to confuse that with (every
+   * completed walk visits at least one cell), so unlike
+   * segmentShallowestBelow this method's null is unambiguous on its own —
+   * but per the #251/#255 rule, a caller building a SAFETY figure should
+   * still bound-check both endpoints against `meta` first, since silently
+   * skipping a leg whose walk aborted (rather than treating the whole
+   * result as unavailable) risks excluding the leg that was actually the
+   * route's true minimum, which is the unsafe direction for a depth figure.
+   */
+  segmentMinDepthInfoM(a: LatLon, b: LatLon): { depthM: number; capped: boolean } | null {
+    let minDepthM = Infinity;
+    let minCapped = false;
+    const completed = this.walkCells(a, b, (row, col) => {
+      if (row < 0 || row >= this.meta.rows || col < 0 || col >= this.meta.cols) return false;
+      const byte = this.depthByte(row, col);
+      const depthM = this.byteToDepthM(byte);
+      if (depthM < minDepthM) {
+        minDepthM = depthM;
+        minCapped = byte === 255;
+      }
+      return true;
+    });
+    return completed && minDepthM !== Infinity ? { depthM: minDepthM, capped: minCapped } : null;
+  }
+
+  /**
    * True when a's cell and b's cell are 4-connected through cells navigable at
    * `safetyDepthM` (query-time gate, like every navigability decision). A
    * cheap BFS over the raw byte grid — #53's relaxed-depth discovery probes
