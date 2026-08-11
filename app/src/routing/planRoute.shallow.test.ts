@@ -142,6 +142,54 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     expect(req.settings.safetyDepthM).toBe(3.0);
   });
 
+  // #452 graft 5, at PLAN level: proves planRoute hands mergeCollinearLegs
+  // the GATE FIELD and not some other correctly-typed gate.
+  //
+  // Why this needs its own fixture. The obvious mutation — planRoute passing
+  // uniformGate(s.safetyDepthM) to the merge pass while solve() still gets
+  // the field — is UNREACHABLE on the reqNearApproach fixture above, because
+  // genoa's result there is a single leg and the merge pass is a no-op on it.
+  // A green battery on that fixture would be zero evidence, not weak
+  // evidence. Origin col 5 makes the route ~27.7 nm, long enough that the
+  // solver emits several collinear legs and merging is genuinely load-bearing.
+  //
+  // What the assertion pins: the whole route merges into ONE span, and that
+  // span crosses the 2.5 m gap. The merged span is navigable ONLY because the
+  // destination's approach disc licenses that cell — so a merge pass handed a
+  // uniform REQUESTED-depth gate must reject it and the route stays split.
+  //
+  // This test and postprocess.test.ts's graft-5 pair cover opposite errors and
+  // neither is sufficient alone: this one reds when the merge pass is handed a
+  // gate that is too STRICT (uniform requested), that one reds when it is
+  // handed one that is too PERMISSIVE (uniform at the relaxed floor, the
+  // pre-#452 hazard).
+  it('#452 graft 5: the merge pass re-validates against the field, not a uniform gate', () => {
+    const mask = corridorGapMask(25);
+    const r = planRoute(
+      { ...reqNearApproach, origin: { lat: 54.7525, lon: 9.4275 } }, // col 5
+      uniformWindGrid(12, 0),
+      depsWith(mask),
+    );
+    expect(r.status).toBe('ok');
+    if (r.status !== 'ok') return;
+    const legs = r.genoa!.legs;
+    // One span for the whole passage: every collinear leg merged, across the
+    // gap included. Handed a uniform 3.0 m gate the merge across the gap is
+    // rejected and this splits.
+    expect(legs.length).toBe(1);
+    // ...and that single span really does cross the sub-requested water, so
+    // the merge above was gate-relevant rather than merely unobstructed.
+    const GAP_W = 9.4 + 160 * 0.005;
+    const GAP_E = 9.4 + 161 * 0.005;
+    const leg = legs[0];
+    expect(Math.min(leg.start.lon, leg.end.lon)).toBeLessThan(GAP_W);
+    expect(Math.max(leg.start.lon, leg.end.lon)).toBeGreaterThan(GAP_E);
+    expect(leg.shallow?.minDepthM).toBeCloseTo(2.5, 6);
+    // The merged span is NOT navigable at the requested depth — the disc is
+    // the only thing licensing it.
+    expect(mask.segmentNavigable(leg.start, leg.end, uniformGate(3.0))).toBe(false);
+  });
+
   it('a plan that never relaxed carries no shallow fields at all (omitted, not undefined)', () => {
     const r = planRoute(req, uniformWindGrid(12, 0), depsWith(openWaterMask()));
     expect(r.status).toBe('ok');

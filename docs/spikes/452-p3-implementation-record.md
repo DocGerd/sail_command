@@ -132,19 +132,38 @@ Every mutation was applied to a clean tree, run, and reverted with an empty
 M9a and M9b are a deliberate pair: a one-sided test would pass under one of
 them, so both halves of each accept/reject pair are load-bearing.
 
-**M7 — a mutation that turned out to be UNREACHABLE, recorded as such.**
+**M7 — initially UNREACHABLE, then made reachable with a new fixture.**
 Making `planRoute.ts :: run` pass `uniformGate(settings.safetyDepthM)` to
 `mergeCollinearLegs` while still passing the field to `solve()` — the plan's
-own §5.5 "forgot graft 5" mutation — reds ZERO tests. It is not weak evidence;
-it is NO evidence. Measured why: on the `corridorGapMask` fixture the genoa
-result is a SINGLE leg (`GENOA legs=1 … maxLegNm=7.796`, byte-identical with
-and without the mutation), so the merge pass is a no-op there and the mutation
-cannot reach the behaviour. **Consequence, stated plainly: the `planRoute` →
-`mergeCollinearLegs` WIRING is pinned only by the type system** (the parameter
-is a `DepthGate` and the only gate in `run`'s scope is the one handed to
-`solve`), not by any test. M7′ proves `mergeCollinearLegs` itself honours the
-field; nothing proves `planRoute` hands it the right one. A fixture that
-produces a genuine cross-disc merge would close this and does not exist yet.
+own §5.5 "forgot graft 5" mutation — first red ZERO tests. That was not weak
+evidence, it was NO evidence: measured, the genoa result on the
+`reqNearApproach` fixture is a SINGLE leg (`GENOA legs=1 … maxLegNm=7.796`,
+byte-identical with and without the mutation), so the merge pass is a no-op
+and the mutation cannot reach the behaviour.
+
+**Closed by fixture, not by argument.** A probe across origin columns found
+the merge pass is load-bearing once the route is long enough for the solver
+to emit several collinear legs:
+
+| origin col | genoa legs (HEAD) | genoa legs (M7) | max leg nm HEAD → M7 |
+|---|---|---|---|
+| 5 | **1** | **2** | 27.72 → 21.59 |
+| 20 | 3 | 4 | 24.01 → 24.01 |
+| 40 | 3 | 4 | 20.51 → 20.51 |
+| 80 | 1 | 1 (fock 1 → 2) | 14.73 → 14.73 |
+| 165-adjacent (`reqNearApproach`) | 1 | 1 | 7.796 → 7.796 (unreachable) |
+
+Origin col 5 is the case built on: at HEAD the whole ~27.7 nm passage merges
+into ONE span that crosses the 2.5 m gap, navigable only because the
+destination's approach disc licenses that cell. `planRoute.shallow.test.ts ::
+'#452 graft 5: the merge pass re-validates against the field, not a uniform
+gate'` pins it. M7 now REDS: `expected 2 to be 1`.
+
+**The two graft-5 tests cover opposite errors and neither is sufficient
+alone**: this one reds when the merge pass is handed a gate that is too
+STRICT (uniform requested); `postprocess.test.ts`'s pair reds when it is
+handed one too PERMISSIVE (uniform at the relaxed floor — the pre-#452
+hazard). Together they pin the wiring in both directions.
 
 ---
 
