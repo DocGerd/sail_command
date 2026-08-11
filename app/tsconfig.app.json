@@ -53,6 +53,9 @@
   // maskTolerance.test.ts (#455) is the same shape again — reads
   // pipeline/build_mask.py via `node:fs` to structurally guard TOLERANCE_M
   // stays in sync with the About dialog's disclosure copy.
+  // chipShallowFill.test.ts (#506) is the same shape once more — reads
+  // app.css via `node:fs`, same pattern as useBannerHeight.test.ts/
+  // panelWidth.test.ts above.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -64,6 +67,7 @@
     "src/**/useBannerHeight.test.ts",
     "src/**/legDistanceReconciliation.test.ts",
     "src/**/panelWidth.test.ts",
-    "src/**/maskTolerance.test.ts"
+    "src/**/maskTolerance.test.ts",
+    "src/**/chipShallowFill.test.ts"
   ]
 }
