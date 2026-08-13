@@ -40,6 +40,18 @@ export const de = {
   'settings.section.boatSafety': 'Boot & Sicherheit',
   'settings.section.propulsion': 'Antrieb',
   'settings.section.liveAis': 'Live & AIS',
+  // #353 PR2: Kartenanzeige-Regler für Seezeichen (Größe + Anzeigekategorie).
+  'settings.section.mapDisplay': 'Kartenanzeige',
+  'settings.seamarkSize.label': 'Symbolgröße (Seezeichen)',
+  'settings.seamarkSize.value': '{percent} %',
+  'settings.seamarkSize.help':
+    'Ändert die Anzeigegröße der Seezeichen-Symbole auf der Karte. Unterhalb von Zoomstufe 12 skaliert der Kollisionsabstand mit den Symbolen; bei höheren Zoomstufen überlappen sich größere Symbole stärker.',
+  'settings.seamarkCategory.label': 'Angezeigte Seezeichen',
+  'settings.seamarkCategory.base': 'Basis',
+  'settings.seamarkCategory.standard': 'Standard',
+  'settings.seamarkCategory.all': 'Alle',
+  'settings.seamarkCategory.help':
+    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles außer Unterwasserkabeln und Pipelines — wähle „Alle“, um auch diese anzuzeigen.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
