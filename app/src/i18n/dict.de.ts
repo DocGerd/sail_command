@@ -218,6 +218,30 @@ export const de = {
     'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken.',
   'route.shallow.leadSevere':
     'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m.',
+  // #516 Zuwachs 1: siehe dict.en.ts's Kommentar für Zweck, Herkunft und
+  // Anaphern-Disziplin (rein präsentativ, in RouteSummary.tsx zur Laufzeit
+  // gegen die geladene Maske berechnet, nie in PlanResult gespeichert) —
+  // einschließlich der Begründung, warum "Bis zu" / "Up to" entfällt.
+  // Die beiden deutschen Fragen sind in der Durchsicht von PR #523 (Minor 4)
+  // entschieden, nicht mehr offen: PLURAL "verlaufen" bleibt, weil formatNm
+  // immer eine Dezimalzahl liefert ("0.3 nm"), die Seemeilen im Plural
+  // verlangt — der Singular wäre nur für "eine Seemeile" richtig, was dieser
+  // Code nie erzeugen kann. "durch Wasser" statt "in Wasser", weil
+  // "verlaufen in" + Flüssigkeit die Alltagsbedeutung von zerlaufender Farbe
+  // trägt.
+  'route.shallow.exposure':
+    '{dist} dieser Route verlaufen durch Wasser, das flacher als die eingestellte Sicherheitstiefe von {requested} m kartiert ist.',
+  // #516: die explizite Produktentscheidung des Maintainers (im
+  // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
+  // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen
+  // entschieden). Zuletzt in .detail gerendert, nach dem Mechanismus-Satz,
+  // auf den er antwortet (PR #523, Minor 3). In RouteSummary.tsx an drei
+  // Bedingungen gekoppelt — `showRemedy`: dieselbe gemessene Exposition
+  // größer als null wie die Zahl davor, das breite Layout, und usedDepthM
+  // über SAFETY_DEPTH_FIELD.min. Die Begründung zu jeder einzelnen steht an
+  // dieser Deklaration; sie ist die einzige Stelle zum Nachlesen und Ändern.
+  'route.shallow.remedy':
+    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden.',
   // Was passiert ist: die eingestellte Sicherheitstiefe war nicht
   // passierbar, die tatsächlich verwendete Tiefe, die geringste gequerte
   // Kartentiefe. Normale Textstärke (nicht mehr hervorgehoben) — siehe
