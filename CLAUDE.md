@@ -118,12 +118,20 @@ deviate from it.
   and a REQUIRED BASE double-run control (two BASE runs must be byte-identical
   to each other before any BASE-vs-HEAD comparison means anything). Record
   that control against the merge-base of the branch it will certify. A moved
-  `develop` does NOT automatically invalidate it — state the REVALIDATION
-  CONDITION instead: re-run only if a SOLVER-INPUT path moved
-  (`app/src/routing/`, `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts`,
-  `app/public/data/`, `app/sweep/`, `pipeline/`), not merely because develop
-  advanced (measured 2026-08-13 on #518 — its evidence survived three merges
-  touching none of them). A STRONGER control than the required double-run
+  `develop` does not AUTOMATICALLY invalidate it — but that exemption fails
+  OPEN, so DEFAULT TO RE-RUNNING and skip only after checking the sweep's
+  actual TRANSITIVE input closure, never a remembered path list. The closure
+  is wider than the obvious paths: besides `app/src/routing/`,
+  `app/src/lib/mask.ts`, `app/public/data/`, `app/sweep/` and `pipeline/`,
+  `sweepArms.ts` pulls `DEFAULT_SETTINGS` from `app/src/types.ts`,
+  `uniformWindGrid` from `app/src/test/fixtures` and `solverTimeoutMs` from
+  `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
+  `app/src/test/setup.ts`; and the solver reaches `lib/geo.ts`,
+  `lib/polar.ts` and `lib/wind.ts`. One `DEFAULT_SETTINGS` field edit moves
+  all 297 plans while touching none of the obvious paths — which is why the
+  list form of this rule was wrong (measured 2026-08-13: #518's evidence did
+  survive #513, #522 and #523, which touched no input at all).
+  A STRONGER control than the required double-run
   exists once a prior run is on record: BASE *and* HEAD arm sha256 prefixes
   matching that run on a different machine, day and merge-base proves the
   baseline stable against the very thing that would invalidate it, where a
@@ -1415,8 +1423,9 @@ deviate from it.
   unreachable, the coverage vanishes and every test stays GREEN. Two rules
   follow. (1) Pin the PROPERTY, not just the detection logic. (2) In a
   multi-assertion pin, check each assertion is INDIVIDUALLY load-bearing by
-  deleting them one at a time — here `x0 === y0` alone was insufficient (it
-  survives a 256→255 perturbation; only `Number.isInteger(x0)` reds).
+  deleting them one at a time — here `x0 === y0` alone was insufficient: it
+  survives a 256→255 perturbation, where the `Number.isInteger` and
+  `dx === dy` assertions both red.
   Same move for an ABSENCE assertion: copy the test, change ONE input that
   should make the thing APPEAR (`deepMask()` → `shallowMask()`), keep the
   settle sequence identical, and confirm it renders — otherwise the green
@@ -1447,8 +1456,8 @@ deviate from it.
 - **A duplicated ALGORITHM must be proven equivalent by DIFFERENTIAL
   TESTING, never by reading.** `shallowExposureNm` re-implements `NavMask`'s
   private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
-  so no #282 sweep is owed. A duplicated PREDICATE fails loudly; a duplicated
-  TRAVERSAL fails as a subtly wrong safety NUMBER with no signal at all.
+  so no #282 sweep is owed. A duplicated TRAVERSAL fails as a subtly wrong
+  safety NUMBER with no signal at all.
   Method that worked (#516/PR #523): the consumer reads cells only through
   `mask.depthInfoM(centre)`, so a facade carrying the real `meta` plus a
   recording `depthInfoM` captures the shipped walk's visited-cell sequence,
@@ -1599,9 +1608,9 @@ deviate from it.
   the CSS literal to `0px` fails with `Expected: 176, Received: 0`; deleting
   the fallback entirely trips the `not.toBeNull()` guard first.
 - **When a reviewer supplies EXACT replacement text, adopt it VERBATIM.**
-  Every successor defect measured 2026-08-13 across ten-odd fix waves came
-  from prose an implementer wrote itself while trying to be thorough —
-  comment-only waves included. Reviewer-supplied text is already measured and
+  On 2026-08-13 successor defects repeatedly came from prose an implementer
+  wrote itself while trying to be thorough — comment-only waves included.
+  Reviewer-supplied text is already measured and
   pre-approved, so copying it byte-for-byte leaves no new claim to be wrong.
   Standing exception, and it must stay open: a supplied sentence believed
   WRONG is reported, never silently improved.
