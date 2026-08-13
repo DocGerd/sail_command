@@ -319,12 +319,12 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   and an untagged/`(none)` category (281 of 703, the plurality) — which
  *   cannot be shown to be anything OTHER than Standard-tier AtoN content,
  *   so it defaults to the more visible tier, not the more hidden one, per
- *   the guard-asymmetry principle #513 F2 applies to `unknown`). `unknown`
+ *   the guard-asymmetry principle #513 F2 applies to `unknown`. `unknown`
  *   moved here from ALL for the same reason F2 raised: an unclassifiable
  *   mark must fail toward being SHOWN. An earlier revision also cited item
- *   2.6's "prohibited and restricted areas" here; dropped, because 2.6
- *   names AREA object classes while every shipped feature is a Point — the
- *   same category error as the item-3.2 claim corrected in the next bullet.
+ *   2.6's "prohibited and restricted areas" here; dropped, because every
+ *   shipped feature is a Point — the same category error as the item-3.2
+ *   claim corrected in the next bullet.
  * - ALL adds two `specialPurpose` categories: `cable` (117 marks) and
  *   `pipeline` (2). This is a DELIBERATE DECLUTTERING CHOICE — a departure
  *   from the ECDIS convention, not an application of it. An earlier
