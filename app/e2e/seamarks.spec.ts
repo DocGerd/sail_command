@@ -28,15 +28,21 @@ import { startPreview, mapReady } from './helpers';
 // SEAMARK_SIZE_SCALE axis measured above) and a display-CATEGORY filter
 // (Base/Standard/All, `seamarkGlyphs.ts`'s `seamarkDisplayTier`) defaulting
 // to STANDARD — per the #353 issue's own design sketch. The mapping was
-// CORRECTED in review (#513 F1/F2) against IMO MSC.232(82) Appendix 2's
+// CORRECTED in review (#513 F1/F2), informed by IMO MSC.232(82) Appendix 2's
 // ECDIS Display Base/Standard Display/All Other Information split: the
 // FIRST #353 PR2 revision put whole families (lightMinor/specialPurpose/
 // unknown) behind STANDARD, hiding 810 of 1794 shipped marks at the
 // default, including 259 explicitly hazard/prohibition-categorised ones —
-// see `seamarkGlyphs.ts`'s `seamarkDisplayTier` doc comment for the full
-// citation. The CORRECTED default hides only the two `specialPurpose`
-// categories (`cable`/`pipeline`, 119 of 1794) Appendix 2 item 3.2 names
-// BY EXAMPLE as "all other information" — so the PIN VALUES below are
+// see `seamarkGlyphs.ts`'s `seamarkDisplayTier` doc comment for the mapping
+// and its reasoning. The CORRECTED default hides 119 of 1794: the two
+// `specialPurpose` categories `cable` (117) and `pipeline` (2), a
+// deliberate decluttering choice rather than an application of Appendix 2
+// item 3.2 (whose "submarine cables and pipelines" names LINE object
+// classes, while all 1794 shipped features are Points — object-class
+// question tracked in #521). Those 119 are themselves part of the 259
+// above, so the correction did not clear that set: 140 of the 259 are shown
+// at the default and 119 are not (measured 2026-08-13 against the committed
+// `app/public/data/seamarks.json`). So the PIN VALUES below are
 // SMALLER than PR1's own committed baseline at the identical cluster/zoom
 // pair, by construction, but only by however many of THOSE two categories
 // happen to sit in this specific geographic box (measured per-pin below,

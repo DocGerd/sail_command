@@ -306,9 +306,9 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   `isolatedDanger`, `cardinal`, `lateral`, `safeWater`, `lightMajor`.
  * - STANDARD (default) adds: `lightMinor`, `unknown`, and every
  *   `specialPurpose` mark EXCEPT the two categories named below — Appendix
- *   2 item 2.3's undivided AtoN group and item 2.6's "prohibited and
- *   restricted areas" together cover the STANDARD-tier `specialPurpose`
- *   categories in the shipped data: **584 of 703** (26 distinct raw
+ *   2 item 2.3's undivided AtoN group covers the STANDARD-tier
+ *   `specialPurpose` categories in the shipped data, every one of which is
+ *   a point mark whatever it annotates: **584 of 703** (26 distinct raw
  *   category strings total; measured, not assumed), e.g. `leading` (64 —
  *   the second-largest category in the whole family, after `cable`),
  *   `clearing` (3 — the *Gefahrenpeilung* this repo's own German-
@@ -321,11 +321,26 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   so it defaults to the more visible tier, not the more hidden one, per
  *   the guard-asymmetry principle #513 F2 applies to `unknown`). `unknown`
  *   moved here from ALL for the same reason F2 raised: an unclassifiable
- *   mark must fail toward being SHOWN.
- * - ALL adds: the two `specialPurpose` categories Appendix 2 item 3.2 names
- *   BY EXAMPLE as "all other information": `cable` (117 marks) and
- *   `pipeline` (2) — literally "submarine cables and pipelines". Nothing
- *   else in the shipped data matches any All-Other-Information item.
+ *   mark must fail toward being SHOWN. An earlier revision also cited item
+ *   2.6's "prohibited and restricted areas" here; dropped, because 2.6
+ *   names AREA object classes while every shipped feature is a Point — the
+ *   same category error as the item-3.2 claim corrected in the next bullet.
+ * - ALL adds two `specialPurpose` categories: `cable` (117 marks) and
+ *   `pipeline` (2). This is a DELIBERATE DECLUTTERING CHOICE — a departure
+ *   from the ECDIS convention, not an application of it. An earlier
+ *   revision justified it with Appendix 2 item 3.2's "submarine cables and
+ *   pipelines"; that is a CATEGORY ERROR and is not used here. Item 3.2
+ *   names the `CBLSUB` (Line) / `PIPSOL` object classes, whereas all 1794
+ *   features in the shipped data are POINTS (measured 2026-08-13: zero
+ *   lines, zero areas) — `category=cable` is S-57 CATSPM 6, "cable mark", a
+ *   point aid to navigation under item 2.3 exactly like the STANDARD-tier
+ *   marks above. Whether these two categories should be tiered ALL at all
+ *   is therefore OPEN, tracked in **#521**. Residual, stated rather than
+ *   implied: these 119 marks are hidden at the STANDARD default and they
+ *   are part of the 259 the #513 review counted as
+ *   hazard/prohibition-categorised, so 140 of those 259 are shown at the
+ *   default and 119 are not (measured 2026-08-13 against
+ *   `app/public/data/seamarks.json`).
  *
  * At the shipped data (measured against `app/public/data/seamarks.json`,
  * 1794 features: lateral 828, specialPurpose 703 [cable 117, pipeline 2,
@@ -342,17 +357,22 @@ export const SEAMARK_DISPLAY_TIER_BASE = 0;
 export const SEAMARK_DISPLAY_TIER_STANDARD = 1;
 export const SEAMARK_DISPLAY_TIER_ALL = 2;
 /** Standard, per the #353 issue's own design sketch ("Standard (default)")
- * — Standard Display is also ECDIS's own load default under MSC.232(82)
- * §3.4. Post #513 F1/F2: everything except the two ALL-tier
- * `specialPurpose` categories (`cable`/`pipeline`) is shown out of the box. */
+ * — and MSC.232(82) §3.4 makes Standard Display the mode "intended to be
+ * used as a minimum during route planning", which is what this app is for.
+ * NOT because ECDIS loads into it: an earlier revision of this comment
+ * cited §3.4 for a load default, which the resolution does not say — §5.4
+ * has power-up return to "the most recent manually selected settings".
+ * Post #513 F1/F2: everything except the two ALL-tier `specialPurpose`
+ * categories (`cable`/`pipeline`) is shown out of the box. */
 export const DEFAULT_SEAMARK_DISPLAY_TIER: SeamarkDisplayTier = SEAMARK_DISPLAY_TIER_STANDARD;
 
-/** `specialPurpose` categories that match MSC.232(82) Appendix 2 item 3.2's
- * "all other information" example ("submarine cables and pipelines")
- * literally — the ONLY `specialPurpose` marks tiered ALL rather than
- * STANDARD (#513 F1/F2). Measured against the shipped data: neither value
- * ever co-occurs with another category in the same `;`-joined tag (`cable`
- * is always the WHOLE category string, 117 times; so is `pipeline`, twice)
+/** The `specialPurpose` categories this app declutters to the ALL tier — the
+ * ONLY `specialPurpose` marks tiered ALL rather than STANDARD (#513 F1/F2).
+ * A product choice, NOT an Appendix 2 item 3.2 application; see
+ * `seamarkDisplayTier`'s doc comment above and #521. Measured against the
+ * shipped data: neither value ever co-occurs with another category in the
+ * same `;`-joined tag (`cable` is always the WHOLE category string, 117
+ * times; so is `pipeline`, twice)
  * — but `specialPurposeDisplayTier` below still splits and checks every
  * token, not just an exact match, so a future compound tag (e.g.
  * `cable;warning`) still lands ALL rather than silently falling to
@@ -361,9 +381,9 @@ const SPECIAL_PURPOSE_ALL_CATEGORIES = new Set(['cable', 'pipeline']);
 
 /** The `specialPurpose` family alone is NOT a uniform display tier (#513
  * F1/F2) — most of it (no_entry/firing_danger_area/warning/... and the
- * untagged plurality) is Standard-tier "prohibited and restricted areas" /
- * general AtoN content per MSC.232(82) Appendix 2 item 2.6, while only
- * `cable`/`pipeline` match an All-Other-Information example (item 3.2). */
+ * untagged plurality) stays STANDARD as point AtoN content (MSC.232(82)
+ * Appendix 2 item 2.3), while `cable`/`pipeline` are decluttered to ALL by
+ * product choice rather than by any Appendix 2 item (#521). */
 function specialPurposeDisplayTier(category: string | undefined): SeamarkDisplayTier {
   const tokens = (category ?? '').split(';').map((s) => s.trim());
   return tokens.some((t) => SPECIAL_PURPOSE_ALL_CATEGORIES.has(t))
