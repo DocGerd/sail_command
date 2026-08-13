@@ -380,9 +380,17 @@ deviate from it.
   bare single-class `.chip-*` modifier sitting above `.chip`'s base rule, so
   a new `.chip-*` instance now fails loudly instead of silently not
   rendering. That guard is `.chip-*`-ONLY — the general rule above still has
-  no keeper for other primitives (`.sc-btn`, `.sc-card`, `.sc-field` each
-  declare their base ABOVE their modifiers today, so none is currently
-  broken).
+  no keeper for other primitives. None is broken today, but for DIFFERENT
+  reasons, so do not generalise from one: `.sc-card` and `.sc-field` declare
+  their base ABOVE their modifiers, whereas `.sc-btn` is ALSO named in a
+  later GROUPED rule inside `@media (prefers-reduced-motion: reduce)`
+  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`, ~:2167) that
+  sits below `.sc-btn-primary`/`-secondary`/`-ghost` and wins on source
+  order — media queries add no specificity. It is harmless only because it
+  sets `transition` alone, which no `.sc-btn-*` modifier touches. So a
+  `.chip-*`-style guard generalised to `.sc-btn` would report all three
+  modifiers broken today. Note the grouped form is why an anchored
+  `^\.sc-btn\s*\{` grep misses it: that line ends in a comma, not a brace.
 - **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
   `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
   primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
