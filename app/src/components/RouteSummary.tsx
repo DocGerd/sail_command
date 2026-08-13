@@ -8,6 +8,7 @@ import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/result
 import { roundExposureNm, shallowExposureNm } from '../lib/shallowExposure';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import { useNavMask } from '../state/useNavMask';
+import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, Rig, ShallowInfo } from '../types';
 import Card from './Card';
@@ -81,6 +82,15 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
     if (nm === null || nm <= 0) return null;
     return formatNm(roundExposureNm(nm));
   }, [legs, mask, shallow.requestedDepthM]);
+  // PR #523 review, Minor 5: the remedy names an action — set a LOWER safety
+  // depth — that is unavailable at the bottom of the input's own range.
+  // findRelaxedDepthM searches [BOAT_DRAFT_M, requestedDepthM) while
+  // SAFETY_DEPTH_FIELD clamps the input to >= its own min (2.1 and 2.2
+  // respectively today), so at a usedDepthM of either, every value the user
+  // can pick is at or above the gate this route already used and there is no
+  // lower setting to choose. Suppressed there rather than hedged: this is
+  // safety copy, and advice that cannot be acted on is worse than none.
+  const remedyActionable = shallow.usedDepthM > SAFETY_DEPTH_FIELD.min;
   // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
   // children — lead/detail/caveat — so a screen reader still announces one
   // region while sighted users get a real visual hierarchy instead of one
@@ -124,10 +134,10 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
         {/* PR #523 review, Minor 3: the remedy renders LAST, after the
             mechanism sentence that justifies it — a reader must learn the
             router already reduced the gate on their behalf before being
-            advised to reduce it themselves. Still gated on the SAME
-            exposureDist as the figure above, so the two appear together or
-            not at all. */}
-        {exposureDist !== null && (
+            advised to reduce it themselves. Gated on exposureDist AND on
+            remedyActionable (Minor 5), so it never appears without the figure
+            and never appears where no reachable setting is lower. */}
+        {exposureDist !== null && remedyActionable && (
           <>
             {' '}
             {t('route.shallow.remedy')}

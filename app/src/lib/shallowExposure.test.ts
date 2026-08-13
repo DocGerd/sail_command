@@ -259,14 +259,54 @@ describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
     ['pure latitude (dx = 0)', mask, pointAt(40.3, 60.5), pointAt(90.7, 60.5)],
     ['a single cell', mask, pointAt(30.2, 30.2), pointAt(30.8, 30.8)],
     ['zero length', mask, pointAt(30.5, 30.5), pointAt(30.5, 30.5)],
-    ['start exactly on a cell boundary', mask, pointAt(20, 20), pointAt(35.4, 48.9)],
-    ['end exactly on a cell boundary', mask, pointAt(35.4, 48.9), pointAt(20, 20)],
+    // PR #523 review, Minor 6: pointAt(20, 20) is NOT boundary-exact, and the
+    // names say so. Measured on TEST_MASK_META, whose two steps are different
+    // doubles (CELL_LAT 0.005, CELL_LON 0.004999999999999999): x0 =
+    // 19.999999999999932 floors to 19 while y0 = 20.000000000000284 floors to
+    // 20 — the two axes land on OPPOSITE sides of the same nominal boundary.
+    // Still worth keeping (a differential comparison of the harder float case);
+    // the boundary-EXACT regime is the two TIE_META rows below.
+    [
+      'start just off a cell boundary (one axis under, one over)',
+      mask,
+      pointAt(20, 20),
+      pointAt(35.4, 48.9),
+    ],
+    [
+      'end just off a cell boundary (one axis under, one over)',
+      mask,
+      pointAt(35.4, 48.9),
+      pointAt(20, 20),
+    ],
     ['steep (|dy| >> |dx|)', mask, pointAt(10.3, 100.4), pointAt(180.6, 103.1)],
     ['shallow slope (|dx| >> |dy|)', mask, pointAt(80.3, 10.4), pointAt(83.1, 300.6)],
     ['both axes negative', mask, pointAt(150.6, 250.7), pointAt(20.2, 30.1)],
     ['exact 45 degrees through cell corners, ascending', tieMask, tiePoint(10), tiePoint(60)],
     ['exact 45 degrees through cell corners, descending', tieMask, tiePoint(60), tiePoint(10)],
   ];
+  // PR #523 review, Major 2 — the DATUM the two 45-degree rows rest on. They
+  // are the only rows that can observe the corner tie-break, and only while
+  // TIE_META's steps stay exact binary fractions. Nothing asserted that, so a
+  // meta edit with no obvious meaning (cols/rows 256 -> 300) left every row
+  // GREEN *and* made the tie-break mutation undetectable — #411's
+  // unpinned-guard-data defect, one level out. The equality assertion does
+  // NOT stand alone: at cols/rows 255, x0 === y0 still holds
+  // (9.999999999999964) and the integer assertion is what reds — measured.
+  it('TIE_META really produces exact ties (precondition for the two 45-degree rows)', () => {
+    const latStep = (TIE_META.north - TIE_META.south) / TIE_META.rows;
+    const a = tiePoint(10);
+    const b = tiePoint(60);
+    const x0 = (a.lon - TIE_META.west) / TIE_STEP;
+    const y0 = (a.lat - TIE_META.south) / latStep;
+    // toBe is Object.is, so a -0/+0 split fails here rather than passing.
+    expect(x0).toBe(y0);
+    // An integer x0 puts the start exactly ON a cell corner — what makes
+    // tMaxX equal tMaxY at the FIRST step.
+    expect(Number.isInteger(x0)).toBe(true);
+    // dx === dy is what keeps them equal at EVERY later step.
+    expect((b.lon - TIE_META.west) / TIE_STEP - x0).toBe((b.lat - TIE_META.south) / latStep - y0);
+  });
+
   for (const [name, m, a, b] of cases) {
     it(`visits the same cells in the same order: ${name}`, () => {
       const shipped = shippedWalk(m, a, b);

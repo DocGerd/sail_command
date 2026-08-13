@@ -222,24 +222,24 @@ export const de = {
   // Anaphern-Disziplin (rein präsentativ, in RouteSummary.tsx zur Laufzeit
   // gegen die geladene Maske berechnet, nie in PlanResult gespeichert) —
   // einschließlich der Begründung, warum "Bis zu" / "Up to" entfällt.
-  // Die drei deutschen Fragen sind in der Durchsicht von PR #523 (Minor 4)
+  // Die beiden deutschen Fragen sind in der Durchsicht von PR #523 (Minor 4)
   // entschieden, nicht mehr offen: PLURAL "verlaufen" bleibt, weil formatNm
   // immer eine Dezimalzahl liefert ("0.3 nm"), die Seemeilen im Plural
   // verlangt — der Singular wäre nur für "eine Seemeile" richtig, was dieser
   // Code nie erzeugen kann. "durch Wasser" statt "in Wasser", weil
   // "verlaufen in" + Flüssigkeit die Alltagsbedeutung von zerlaufender Farbe
-  // trägt. Der Dezimalpunkt in {dist} bleibt: er stammt aus formatNm und
-  // gilt app-weit, hier allein geändert wäre er die einzige deutsche
-  // Distanzangabe mit Komma — das gehört zu formatNm, nicht zu #516.
+  // trägt.
   'route.shallow.exposure':
     '{dist} dieser Route verlaufen durch Wasser, das flacher als die eingestellte Sicherheitstiefe von {requested} m kartiert ist.',
   // #516: die explizite Produktentscheidung des Maintainers (im
   // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
   // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen
   // entschieden). Zuletzt in .detail gerendert, nach dem Mechanismus-Satz,
-  // auf den er antwortet (PR #523, Minor 3), und an dieselbe Bedingung in
-  // RouteSummary.tsx gekoppelt (eine gemessene Exposition größer als null),
-  // sodass beide Sätze immer zusammen erscheinen oder gar nicht.
+  // auf den er antwortet (PR #523, Minor 3). In RouteSummary.tsx an zwei
+  // Bedingungen gekoppelt: an dieselbe gemessene Exposition größer als null
+  // wie die Zahl davor, und daran, dass usedDepthM über SAFETY_DEPTH_FIELD.min
+  // liegt (Minor 5) — darunter ist kein einstellbarer Wert geringer als die
+  // ohnehin verwendete Tiefe, der Rat also nicht umsetzbar.
   'route.shallow.remedy':
     'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden.',
   // Was passiert ist: die eingestellte Sicherheitstiefe war nicht

@@ -220,10 +220,11 @@ export const en = {
   // call, flagged rather than designed" — since ruled on). Rendered LAST in
   // .detail, after the mechanism sentence it responds to (PR #523 review,
   // Minor 3 — advice must not precede the fact that the router has already
-  // reduced the gate), and gated on the SAME positive exposure figure in
-  // RouteSummary.tsx, so the two always appear together or not at all: a
-  // remedy with no quantified problem statement is a weaker pairing, and one
-  // offered at zero exposure is wrong advice outright.
+  // reduced the gate). Gated in RouteSummary.tsx on the positive exposure
+  // figure — a remedy with no quantified problem statement is a weaker
+  // pairing, and one offered at zero exposure is wrong advice outright — AND
+  // on usedDepthM exceeding SAFETY_DEPTH_FIELD.min (Minor 5), since below
+  // that no setting the user can choose is lower than the gate already used.
   'route.shallow.remedy':
     'A lower safety depth setting might let the planner find a more direct route.',
   // What happened: the requested safety depth was not passable, the depth

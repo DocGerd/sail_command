@@ -15,6 +15,7 @@ import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
 
 vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
 import { loadRoutingAssets } from '../services/assets';
+import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import RouteSummary from './RouteSummary';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
@@ -87,7 +88,7 @@ function deepMask() {
   return assetsWithMask(() => 200 /* 20 m */);
 }
 
-function makePlan(legs: Leg[]): Plan {
+function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
   return {
     id: 'plan-1',
     name: 'Exposure test plan',
@@ -126,16 +127,16 @@ function makePlan(legs: Leg[]): Plan {
       genoaReason: null,
       fockReason: 'unreachable',
       recommended: 'genoa',
-      shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.0 },
+      shallow: { requestedDepthM: 3.0, usedDepthM, minGateDepthM: 2.0 },
       snappedOrigin: START,
       snappedDestination: END,
     },
   };
 }
 
-async function renderAndSettle(legs: Leg[]) {
+async function renderAndSettle(legs: Leg[], usedDepthM?: number) {
   localStorage.setItem('sc-lang', 'en');
-  const plan = makePlan(legs);
+  const plan = usedDepthM === undefined ? makePlan(legs) : makePlan(legs, usedDepthM);
   const { container } = render(
     <I18nProvider>
       <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
@@ -234,6 +235,22 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(detail?.textContent).not.toContain('lower safety depth setting');
     // Not merely "no sentence": the formatted zero itself must never appear.
     expect(detail?.textContent).not.toContain('0.0 nm');
+  });
+
+  it('keeps the figure but drops the remedy when no selectable safety depth is lower', async () => {
+    // PR #523 review, Minor 5. SAFETY_DEPTH_FIELD clamps the user's input to
+    // >= its own min, so at a usedDepthM equal to that min every value they
+    // can choose is at or above the gate already used and "lower your safety
+    // depth" cannot be acted on. Only the advice is suppressed — the measured
+    // figure is still true and still renders.
+    mockedLoad.mockResolvedValue(shallowMask());
+    const container = await renderAndSettle([EXPOSURE_LEG], SAFETY_DEPTH_FIELD.min);
+    await waitFor(() => {
+      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const detail = container.querySelector('.shallow-warning__detail');
+    expect(detail?.textContent).toContain('3.0 nm of this route crosses water charted shallower');
+    expect(detail?.textContent).not.toContain('lower safety depth setting');
   });
 
   it('omits the exposure sentence when the active rig has no legs at all', async () => {
