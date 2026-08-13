@@ -253,11 +253,14 @@ deviate from it.
   Per the guard-asymmetry rule below: an absent security control is the
   expensive failure direction, so the check must fail closed.
 - **Markdown bold immediately before a slash TERMINATES a block comment.**
-  `**584**/119` inside JSDoc contains `*/`, so the comment ends there, and
-  eslint reports a bare `Parsing error: ';' expected` pointing at the
-  FOLLOWING line, never at the cause (measured 2026-08-13, PR #513 wave 5).
-  Reading the diff cannot catch it — only running lint does. This repo's own
-  convention of long, markdown-rich JSDoc prose is what makes it reachable.
+  `**584**/119` inside JSDoc contains `*/`, so the comment ends there and
+  eslint reports a bare `Parsing error: ';' expected` at or after the `*/`,
+  never naming the markdown that caused it. The exact line varies with what
+  follows on it — measured 2026-08-13 against this repo's own eslint, one
+  layout reported the cause's own line and another the line after, so do
+  not expect a fixed offset. Reading the diff cannot catch it; only running
+  lint does. This repo's convention of long, markdown-rich JSDoc prose is
+  what makes it reachable (PR #513 wave 5).
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -375,8 +378,11 @@ deviate from it.
   base rule) but changed an existing surface. #509 also added
   `app/src/test/chipShallowFill.test.ts`, a structural scan for any other
   bare single-class `.chip-*` modifier sitting above `.chip`'s base rule, so
-  a new instance of this class now fails loudly instead of silently not
-  rendering.
+  a new `.chip-*` instance now fails loudly instead of silently not
+  rendering. That guard is `.chip-*`-ONLY — the general rule above still has
+  no keeper for other primitives (`.sc-btn`, `.sc-card`, `.sc-field` each
+  declare their base ABOVE their modifiers today, so none is currently
+  broken).
 - **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
   `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
   primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
@@ -1792,17 +1798,21 @@ deviate from it.
   derived from an unverified claim about the code is the enumerate-don't-patch
   failure relocated one level up, into the brief. Same reason issue texts
   are not ground truth for states they do not describe.
-- **A verification grep scoped to TOKENS finds only what its token list
+- **A verification grep scoped to TOKENS checks only what its token list
   names — enumerate by CLAIM SHAPE.** PR #513's wave-5 twin check grepped
-  `CBLSUB|PIPSOL|item 3.2|item 2.3|§3.4`, a list written into the BRIEF, and
-  was structurally blind to an identical false attribution on `item 2.6`
-  three lines away, which the next review found (2026-08-13) — the blind
-  spot was in the instruction, not the work. Wave 6 enumerated every
-  `item[ -]?[0-9]+\.[0-9]+` whatever the number, and every object-class
-  claim whatever the class, and came back clean. A token list is a
-  hypothesis about where the defect lives; a claim-shape pattern tests the
-  property itself. Same failure as the delegation corollary above, one level
-  further in: scoping a search from what you already know.
+  `CBLSUB|PIPSOL|item 3.2|item 2.3|§3.4`, a list written into the BRIEF,
+  and passed clean while an identical false attribution sat on `item 2.6`.
+  It was NOT blind to the text: measured in the wave-5 tree
+  (`git show d880693^:app/src/lib/seamarkGlyphs.ts`), the missed `item 2.6`
+  shares a LINE with the grepped `item 2.3`, so the grep printed the defect
+  in its own output. It was blind to the CLAIM, because only the listed
+  tokens were interrogated. The next review found it (2026-08-13). Wave 6
+  enumerated every `item[ -]?[0-9]+\.[0-9]+` whatever the number, and every
+  object-class claim whatever the class, and came back clean. A token list
+  is a hypothesis about where the defect lives; a claim-shape pattern tests
+  the property itself. Same failure as the delegation corollary above, one
+  level further in: scoping a search from what you already know — and note
+  that the output being on screen is no defence.
 - **State a verified fact as a past-tense EVENT, never as a current-state
   claim.** "re-verified against `maplibre-gl@6.2.0`" survives the next bump;
   "…, the version `app/package-lock.json` pins" goes FALSE at it — and a
