@@ -101,6 +101,12 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
   //    against a 418 px panel viewport at 390x844, putting ~71 px of a safety
   //    warning below the fold — a fourth sentence costs more than it gives on
   //    the likeliest on-deck device.
+  //    Consequence, accepted: because this is inside the role="alert"
+  //    container, crossing the breakpoint mutates a live region in place
+  //    (measured: same DOM node, remedy added/removed) and an assertive
+  //    re-read is the expected result — a tablet rotation is enough.
+  //    Mount-gating is still correct; display:none would leave a wide-only
+  //    sentence in the accessibility tree on narrow, which is worse.
   // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedDepthM
   //    searches [BOAT_DRAFT_M, requestedDepthM) while SAFETY_DEPTH_FIELD
   //    clamps the input to >= its own min (2.1 and 2.2 respectively today),

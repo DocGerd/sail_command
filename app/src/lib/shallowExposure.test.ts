@@ -300,8 +300,12 @@ describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
     const y0 = (a.lat - TIE_META.south) / latStep;
     // toBe is Object.is, so a -0/+0 split fails here rather than passing.
     expect(x0).toBe(y0);
-    // An integer x0 puts the start exactly ON a cell corner — what makes
-    // tMaxX equal tMaxY at the FIRST step.
+    // An integer x0 is not what creates the tie — `x0 === y0` with `dx === dy`
+    // does that at every step, for any offset (measured: a k + 0.5 fixture still
+    // reds the tie-break mutation on both 45-degree rows). This pins the
+    // SIMPLEST such fixture, so a future tiePoint edit that keeps the symmetry
+    // but moves the origin off the corner reds here and gets re-read rather than
+    // silently accepted.
     expect(Number.isInteger(x0)).toBe(true);
     // dx === dy is what keeps them equal at EVERY later step.
     expect((b.lon - TIE_META.west) / TIE_STEP - x0).toBe((b.lat - TIE_META.south) / latStep - y0);
