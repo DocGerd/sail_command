@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
+  seamarkDisplayFilter,
   seamarkFeatureCollectionWithIcons,
   seamarksLayout,
   type SeamarkFeatureCollection,
 } from './seamarkGeoJson';
-import { seamarkImageId } from './seamarkGlyphs';
+import {
+  SEAMARK_DISPLAY_TIER_ALL,
+  SEAMARK_DISPLAY_TIER_BASE,
+  SEAMARK_DISPLAY_TIER_STANDARD,
+  seamarkImageId,
+} from './seamarkGlyphs';
 
 const FC: SeamarkFeatureCollection = {
   type: 'FeatureCollection',
@@ -21,13 +27,18 @@ const FC: SeamarkFeatureCollection = {
       geometry: { type: 'Point', coordinates: [10.2, 54.9] },
       properties: { seamarkType: 'light_major' },
     },
+    {
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [10.4, 54.7] },
+      properties: { seamarkType: 'light_minor' },
+    },
   ],
 };
 
 describe('seamarkFeatureCollectionWithIcons', () => {
   it('adds icon and priority properties, preserving geometry and existing properties', () => {
     const withIcons = seamarkFeatureCollectionWithIcons(FC);
-    expect(withIcons.features).toHaveLength(2);
+    expect(withIcons.features).toHaveLength(3);
     expect(withIcons.features[0].geometry).toEqual(FC.features[0].geometry);
     expect(withIcons.features[0].properties).toEqual({
       ...FC.features[0].properties,
@@ -36,11 +47,48 @@ describe('seamarkFeatureCollectionWithIcons', () => {
       // R1001 §3.1 Table 16 "New Danger", but one datum on a channel edge, so
       // below the Tier 1 warnings and the Tier 2 scarce marks).
       priority: 8,
+      // #353 PR2 hand-derived: `lateral` is in the display-category BASE
+      // floor (danger-bearing per the same Table 16 citation as `priority`
+      // above) — see seamarkGlyphs.ts's `seamarkDisplayTier` doc comment.
+      displayTier: SEAMARK_DISPLAY_TIER_BASE,
     });
     expect(withIcons.features[1].properties.icon).toBe('seamark-light-major');
     // #200 hand-derived: unlit light_major = 4 (Tier 2 — R1001 §2.7 "other
     // marks", ranked on §2.7.1.1's stated long/medium range).
     expect(withIcons.features[1].properties.priority).toBe(4);
+    // #513 F1/F2 hand-derived: `lightMajor` is in the display-category BASE
+    // floor (a scarce landfall/passage anchor this app's product-specific
+    // Base includes — see seamarkGlyphs.ts's `seamarkDisplayTier` doc
+    // comment; MSC.232(82)'s own Display Base contains no AtoN class at all).
+    expect(withIcons.features[1].properties.displayTier).toBe(SEAMARK_DISPLAY_TIER_BASE);
+    expect(withIcons.features[2].properties.icon).toBe('seamark-light-minor');
+    // #513 F1/F2 hand-derived: `lightMinor` is display-category STANDARD —
+    // MSC.232(82) Appendix 2 item 2.3's undivided "buoys, beacons, other
+    // aids to navigation" group is Standard Display, promoted here from the
+    // first #353 PR2 revision's (wrong) ALL placement.
+    expect(withIcons.features[2].properties.displayTier).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
+  });
+});
+
+// #353 PR2: the display-category filter expression, unit-tested directly so
+// a typo'd MapLibre expression fails at test time rather than only at
+// runtime (mirrors the #144 rationale on SEAMARKS_LAYOUT's own pin below —
+// enum/expression shapes typo silently past `tsc`).
+describe('seamarkDisplayFilter (#353 PR2)', () => {
+  it('is cumulative: ALL reproduces the pre-#353 "show everything" shape (tier <= 2 matches every real tier)', () => {
+    expect(seamarkDisplayFilter(SEAMARK_DISPLAY_TIER_ALL)).toEqual([
+      '<=',
+      ['get', 'displayTier'],
+      SEAMARK_DISPLAY_TIER_ALL,
+    ]);
+  });
+
+  it('BASE (0) only matches features whose own displayTier is 0', () => {
+    expect(seamarkDisplayFilter(SEAMARK_DISPLAY_TIER_BASE)).toEqual([
+      '<=',
+      ['get', 'displayTier'],
+      0,
+    ]);
   });
 });
 

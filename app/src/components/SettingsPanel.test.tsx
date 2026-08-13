@@ -263,4 +263,153 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       expect(screen.queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
     });
   });
+
+  // #353 PR2: the seamark size slider + display-category radiogroup. Both
+  // persist via usePersistedNumber (localStorage, NOT the `Settings`/
+  // IndexedDB `value` prop this file's other fields use) — asserted here by
+  // reading `localStorage` directly, mirroring PanelResizer.test.tsx's own
+  // convention for the #355 panel-width control.
+  describe('Map display group (#353 PR2)', () => {
+    it('renders the size slider at its default (100%, no stored override) and the category radiogroup defaulting to Standard, grouped under Map display', () => {
+      renderPanel();
+      const section = sectionOf('Map display');
+      const slider = within(section).getByRole('slider', { name: 'Symbol size (seamarks)' });
+      expect(slider).toHaveValue('1');
+      expect(within(section).getByText('100%')).toBeInTheDocument();
+      expect(within(section).getByRole('radio', { name: 'Base' })).not.toBeChecked();
+      expect(within(section).getByRole('radio', { name: 'Standard' })).toBeChecked();
+      expect(within(section).getByRole('radio', { name: 'All' })).not.toBeChecked();
+    });
+
+    it('a stored size override renders as the persisted value/percent, not the default', () => {
+      localStorage.setItem('sc-seamark-size-scale', '1.3');
+      renderPanel();
+      const section = sectionOf('Map display');
+      expect(within(section).getByRole('slider', { name: 'Symbol size (seamarks)' })).toHaveValue(
+        '1.3',
+      );
+      expect(within(section).getByText('130%')).toBeInTheDocument();
+    });
+
+    it('dragging the size slider persists the new value to localStorage and updates the percent readout', () => {
+      renderPanel();
+      const slider = screen.getByRole('slider', { name: 'Symbol size (seamarks)' });
+      fireEvent.change(slider, { target: { value: '0.7' } });
+      expect(localStorage.getItem('sc-seamark-size-scale')).toBe('0.7');
+      expect(screen.getByText('70%')).toBeInTheDocument();
+    });
+
+    it('the size slider clamps to its bounds (0.5-1.5) — a MapLibre collision-safety bound, not just an input attribute', () => {
+      renderPanel();
+      const slider = screen.getByRole('slider', { name: 'Symbol size (seamarks)' });
+      expect(slider).toHaveAttribute('min', '0.5');
+      expect(slider).toHaveAttribute('max', '1.5');
+    });
+
+    it('selecting Base persists tier 0 and checks only Base', () => {
+      renderPanel();
+      fireEvent.click(screen.getByRole('radio', { name: 'Base' }));
+      expect(localStorage.getItem('sc-seamark-display-tier')).toBe('0');
+      expect(screen.getByRole('radio', { name: 'Base' })).toBeChecked();
+      expect(screen.getByRole('radio', { name: 'Standard' })).not.toBeChecked();
+      expect(screen.getByRole('radio', { name: 'All' })).not.toBeChecked();
+    });
+
+    it('selecting All persists tier 2', () => {
+      renderPanel();
+      fireEvent.click(screen.getByRole('radio', { name: 'All' }));
+      expect(localStorage.getItem('sc-seamark-display-tier')).toBe('2');
+      expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+    });
+
+    // #513 R4: the REAL pipeline (usePersistedNumber -> toSeamarkDisplayTier),
+    // not just the pure function in isolation. `seamarkGlyphs.test.ts`
+    // already pins `toSeamarkDisplayTier(-1)` === ALL, but that alone proved
+    // nothing about what actually renders: before this fix, both call sites
+    // read `usePersistedNumber('sc-seamark-display-tier', BASE, ALL)`, whose
+    // OWN clamp laundered a stored `-1` into `0` (= BASE) before
+    // `toSeamarkDisplayTier` ever saw anything but an in-range number — a
+    // unit test that passed while the integrated behaviour did the opposite.
+    // This seeds the SAME corrupt value the unit test uses, through
+    // localStorage (the real transport), and checks the rendered radio.
+    it('a corrupt negative stored value (a hand-edited "-1") renders as All, never Base — the pipeline, not just the pure function', () => {
+      localStorage.setItem('sc-seamark-display-tier', '-1');
+      renderPanel();
+      expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+      expect(screen.getByRole('radio', { name: 'Base' })).not.toBeChecked();
+    });
+
+    // #513 F3: the old text claimed "larger symbols never hide other
+    // marks", which is false at z>=12 (icon-overlap: 'always' — nothing is
+    // culled there, so bigger icons overlap MORE). The corrected text
+    // states BOTH regimes, so this asserts both halves rather than a single
+    // substring — a fix that only patched the false clause without adding
+    // the true one would still pass a narrower regex.
+    it('describes the size slider with a visible, ACCURATE help paragraph (both zoom regimes) via aria-describedby', () => {
+      renderPanel();
+      const slider = screen.getByRole('slider', { name: 'Symbol size (seamarks)' });
+      const describedBy = slider.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      const help = document.getElementById(describedBy!);
+      expect(help).toHaveTextContent(/collision spacing scales with the symbols/);
+      expect(help).toHaveTextContent(/larger symbols overlap each other more/);
+      expect(help).not.toHaveTextContent(/never hide other marks/);
+    });
+
+    it('states the non-optional Base floor in the category help text', () => {
+      renderPanel();
+      expect(screen.getByText(/always shown, even at "Base"/)).toBeInTheDocument();
+    });
+
+    // #513 F7 (content half): the old help text said only what Base keeps,
+    // never what the DEFAULT (Standard) hides — a user reading it concluded
+    // nothing important was hidden, when 810 marks were (F1's Blocker). The
+    // corrected mapping only hides cable/pipeline markers at the default;
+    // the help text must say so explicitly, not leave it implied.
+    it('states what the DEFAULT (Standard) tier hides — cable and pipeline markers, not a vague "some marks"', () => {
+      renderPanel();
+      expect(
+        screen.getByText(/shows everything except submarine cable and pipeline markers/),
+      ).toBeInTheDocument();
+    });
+
+    // #513 F6: the announced value must match what a sighted user sees, not
+    // the raw range-input number.
+    it('the size slider announces the same percent text the visible readout shows, via aria-valuetext', () => {
+      renderPanel();
+      const slider = screen.getByRole('slider', { name: 'Symbol size (seamarks)' });
+      expect(slider).toHaveAttribute('aria-valuetext', '100%');
+      fireEvent.change(slider, { target: { value: '0.6' } });
+      // Re-query: SettingsPanel is the value's SOURCE of truth (controlled
+      // by the persisted hook), so the re-rendered slider is what carries
+      // the updated announcement.
+      expect(screen.getByRole('slider', { name: 'Symbol size (seamarks)' })).toHaveAttribute(
+        'aria-valuetext',
+        '60%',
+      );
+      expect(screen.getByText('60%')).toBeInTheDocument();
+    });
+
+    // #513 F6: the visible percent readout must not ALSO be a live region —
+    // `aria-valuetext` above already carries the announcement, and a live
+    // `<output>` would double-speak on every drag tick.
+    it('the percent readout output element opts out of its implicit live-region role', () => {
+      renderPanel();
+      expect(screen.getByText('100%')).toHaveAttribute('aria-live', 'off');
+    });
+
+    // #513 F7: the radiogroup's help paragraph was rendered but never
+    // referenced — orphaned from assistive tech. Verify the REAL
+    // association (id equality both ways), not just that both elements
+    // exist independently.
+    it('associates the category radiogroup with its help paragraph via aria-describedby', () => {
+      renderPanel();
+      const radiogroup = screen.getByRole('radiogroup', { name: 'Displayed seamarks' });
+      const describedBy = radiogroup.getAttribute('aria-describedby');
+      expect(describedBy).toBeTruthy();
+      const help = document.getElementById(describedBy!);
+      expect(help).not.toBeNull();
+      expect(help).toHaveTextContent(/always shown, even at "Base"/);
+    });
+  });
 });

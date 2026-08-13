@@ -2,25 +2,34 @@
 // MapLibre wiring lives in components/DataLayers.tsx, mirroring how
 // harborGeoJson.ts backs DataLayers' harbor markers.
 import type { Feature, FeatureCollection, Point } from 'geojson';
-import type { SymbolLayerSpecification } from 'maplibre-gl';
+import type { FilterSpecification, SymbolLayerSpecification } from 'maplibre-gl';
 import type { SeamarkProperties } from '../types';
 import {
   SEAMARK_NATURAL_ICON_PX,
   SEAMARK_SIZE_SCALE,
+  seamarkDisplayTier,
   seamarkImageId,
   seamarkPriority,
+  type SeamarkDisplayTier,
 } from './seamarkGlyphs';
 
 export type SeamarkFeatureCollection = FeatureCollection<Point, SeamarkProperties>;
 
-export type SeamarkPropertiesWithIcon = SeamarkProperties & { icon: string; priority: number };
+export type SeamarkPropertiesWithIcon = SeamarkProperties & {
+  icon: string;
+  priority: number;
+  /** #353 PR2 — see `seamarkDisplayTier()`'s own doc comment. */
+  displayTier: SeamarkDisplayTier;
+};
 
 /**
  * Adds the `icon` property (the `map.addImage()` id `seamarkImageId()`
  * resolves to) to every feature, so the `sc-seamarks` layer's `icon-image`
  * can be a plain `['get', 'icon']` instead of re-deriving the family/colour/
- * shape logic in a MapLibre expression — and the `priority` collision rank
- * (#144) next to it, read by `symbol-sort-key` the same way.
+ * shape logic in a MapLibre expression — the `priority` collision rank
+ * (#144) next to it, read by `symbol-sort-key` the same way — and the
+ * `displayTier` display-category rank (#353 PR2), read by the layer's
+ * `filter` via `seamarkDisplayFilter()` below.
  */
 export function seamarkFeatureCollectionWithIcons(
   fc: SeamarkFeatureCollection,
@@ -33,9 +42,21 @@ export function seamarkFeatureCollectionWithIcons(
         ...f.properties,
         icon: seamarkImageId(f.properties),
         priority: seamarkPriority(f.properties),
+        displayTier: seamarkDisplayTier(f.properties),
       },
     })),
   };
+}
+
+/**
+ * MapLibre `filter` expression for the `sc-seamarks` layer's display
+ * category (#353 PR2): keeps a feature only while its own `displayTier`
+ * (stamped by `seamarkFeatureCollectionWithIcons` above) is at or below the
+ * user's selected tier — tiers are CUMULATIVE (`SEAMARK_DISPLAY_TIER_ALL`
+ * shows everything, matching the pre-#353 unfiltered layer exactly).
+ */
+export function seamarkDisplayFilter(selectedTier: SeamarkDisplayTier): FilterSpecification {
+  return ['<=', ['get', 'displayTier'], selectedTier];
 }
 
 /**

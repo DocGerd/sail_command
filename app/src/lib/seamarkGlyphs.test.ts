@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_SEAMARK_DISPLAY_TIER,
+  SEAMARK_DISPLAY_TIER_ALL,
+  SEAMARK_DISPLAY_TIER_BASE,
+  SEAMARK_DISPLAY_TIER_STANDARD,
   classifySeamark,
   registerSeamarkImages,
+  seamarkDisplayTier,
   seamarkImageId,
+  seamarkImageIds,
   seamarkPriority,
   seamarkRasterConfig,
   seamarkSegments,
+  toSeamarkDisplayTier,
   type SeamarkSegment,
 } from './seamarkGlyphs';
 import type { SeamarkProperties } from '../types';
@@ -1150,6 +1157,93 @@ describe('registerSeamarkImages', () => {
     expect(addImage).toHaveBeenCalledTimes(1);
     expect(addImage.mock.calls[0][0]).toBe('seamark-light-major');
   });
+
+  // #353 PR2: registerSeamarkImages' third `scale` argument, which #484's
+  // suite never drove (it always used the default). A NON-default scale must
+  // change the registered raster size/pixelRatio, not just be accepted
+  // syntactically — that's the actual mechanism a live size-slider change
+  // depends on.
+  it('at a non-default scale, registers the canvas at seamarkRasterConfig(scale)`s size/pixelRatio, not the default', () => {
+    const ctx = recordingContext([]);
+    // Same convention as the first test in this describe block: capture the
+    // ACTUAL canvas element(s) production code creates and sizes, rather
+    // than reading a width/height back off getImageData (recordingContext's
+    // own stub returns `{}` there — it exists to record draw-call ops, not
+    // to model a real ImageData).
+    const canvases: { width: number; height: number }[] = [];
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      if (tag === 'canvas') {
+        const canvas = { width: 0, height: 0, getContext: () => ctx };
+        canvases.push(canvas);
+        return canvas as unknown as HTMLCanvasElement;
+      }
+      return document.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement;
+    });
+    const addImage = vi.fn();
+    const map = { hasImage: () => false, addImage } as unknown as Parameters<
+      typeof registerSeamarkImages
+    >[0];
+
+    try {
+      registerSeamarkImages(map, [{ seamarkType: 'light_major' }], 1.6);
+    } finally {
+      createSpy.mockRestore();
+    }
+
+    // Hand-derived from seamarkRasterConfig's own formula (pinned
+    // independently above, not re-derived from the function under test):
+    // canvasSize = round(64 * 1.6) = 102, pixelRatio = 2 * 1.6 = 3.2.
+    expect(addImage).toHaveBeenCalledTimes(1);
+    expect(addImage.mock.calls[0][2]).toEqual({ pixelRatio: 3.2 });
+    expect(canvases).toHaveLength(1);
+    expect(canvases[0].width).toBe(102);
+    expect(canvases[0].height).toBe(102);
+  });
+
+  it('omitting scale reproduces the default (SEAMARK_SIZE_SCALE = 1) exactly', () => {
+    const ctx = recordingContext([]);
+    const canvases: { width: number; height: number }[] = [];
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      if (tag === 'canvas') {
+        const canvas = { width: 0, height: 0, getContext: () => ctx };
+        canvases.push(canvas);
+        return canvas as unknown as HTMLCanvasElement;
+      }
+      return document.createElementNS('http://www.w3.org/1999/xhtml', tag) as HTMLElement;
+    });
+    const addImage = vi.fn();
+    const map = { hasImage: () => false, addImage } as unknown as Parameters<
+      typeof registerSeamarkImages
+    >[0];
+
+    try {
+      registerSeamarkImages(map, [{ seamarkType: 'light_major' }]);
+    } finally {
+      createSpy.mockRestore();
+    }
+
+    expect(addImage.mock.calls[0][2]).toEqual({ pixelRatio: 2 });
+    expect(canvases[0].width).toBe(64);
+  });
+});
+
+describe('seamarkImageIds (#353 PR2: the id set DataLayers.tsx removeImage()s before a rescale)', () => {
+  it('dedupes to one id per distinct seamarkImageId, in first-seen order', () => {
+    const props: SeamarkProperties[] = [
+      { seamarkType: 'buoy_lateral', colour: 'red', category: 'port' },
+      { seamarkType: 'light_major' },
+      // same id as the first — must collapse, not appear twice.
+      { seamarkType: 'beacon_lateral', colour: 'red', category: 'port' },
+    ];
+    expect(seamarkImageIds(props)).toEqual([
+      'seamark-lateral-pillar-red-port',
+      'seamark-light-major',
+    ]);
+  });
+
+  it('returns an empty array for an empty input', () => {
+    expect(seamarkImageIds([])).toEqual([]);
+  });
 });
 
 // Expected values hand-derived from the design formula
@@ -1296,5 +1390,175 @@ describe('seamarkPriority (#144/#200 symbol-sort-key: lower = placed first = win
       seamarkPriority({ seamarkType: 'buoy_lateral' }),
     );
     expect(seamarkPriority({ seamarkType: 'beacon_isolated_danger' })).toBe(0);
+  });
+});
+
+// #353 PR2, mapping corrected #513 F1/F2: BASE is a PRODUCT-SPECIFIC safety
+// floor broader than IMO MSC.232(82) Appendix 2's own Display Base (which
+// contains no AtoN class at all — see seamarkGlyphs.ts's own
+// `seamarkDisplayTier` doc comment for the full citation and the reasoning
+// for keeping cardinal/lateral/safeWater/lightMajor there anyway). STANDARD
+// adds lightMinor, unknown, and every `specialPurpose` mark except
+// cable/pipeline; ALL adds those last two.
+describe('seamarkDisplayTier (#353 PR2: the display-category floor/ladder)', () => {
+  it('BASE: isolatedDanger, cardinal, lateral, safeWater and lightMajor are NEVER hidden by any selection', () => {
+    for (const seamarkType of [
+      'buoy_isolated_danger',
+      'beacon_cardinal',
+      'buoy_lateral',
+      'buoy_safe_water',
+      'light_major',
+    ]) {
+      expect(seamarkDisplayTier({ seamarkType })).toBe(SEAMARK_DISPLAY_TIER_BASE);
+    }
+  });
+
+  it('STANDARD: lightMinor and unknown', () => {
+    for (const seamarkType of ['light_minor', 'mooring']) {
+      expect(seamarkDisplayTier({ seamarkType })).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
+    }
+  });
+
+  // #513: specialPurpose is SPLIT by `category`, not a uniform family tier —
+  // see the dedicated describe block below for the full category matrix.
+  // This just pins the two ends: an untagged mark (the 281-of-703 plurality
+  // in the shipped data) and a `cable` mark.
+  it('specialPurpose: untagged lands STANDARD, cable lands ALL', () => {
+    expect(seamarkDisplayTier({ seamarkType: 'buoy_special_purpose' })).toBe(
+      SEAMARK_DISPLAY_TIER_STANDARD,
+    );
+    expect(seamarkDisplayTier({ seamarkType: 'buoy_special_purpose', category: 'cable' })).toBe(
+      SEAMARK_DISPLAY_TIER_ALL,
+    );
+  });
+
+  it('classifies buoy_ and beacon_ variants of the same family identically', () => {
+    expect(seamarkDisplayTier({ seamarkType: 'beacon_lateral' })).toBe(
+      seamarkDisplayTier({ seamarkType: 'buoy_lateral' }),
+    );
+  });
+
+  it('is independent of lit-ness (unlike seamarkPriority, which promotes lit marks)', () => {
+    expect(seamarkDisplayTier({ seamarkType: 'buoy_lateral', lightCharacter: 'Fl' })).toBe(
+      seamarkDisplayTier({ seamarkType: 'buoy_lateral' }),
+    );
+  });
+});
+
+// #513 F1/F2: the specialPurpose category split — the substantive new
+// logic. Every category value ACTUALLY PRESENT in the shipped
+// `app/public/data/seamarks.json` (measured directly, not assumed) is
+// covered, split into the two real ALL-tier categories and every other
+// observed value (including compound `;`-joined tags and the untagged
+// case), so a category this table omits reads as a gap, not silent
+// coverage.
+describe('specialPurposeDisplayTier via seamarkDisplayTier (#513 F1/F2: cable/pipeline split)', () => {
+  it('cable and pipeline (117 + 2 marks in the shipped data) land ALL — the ONLY two that do', () => {
+    for (const category of ['cable', 'pipeline']) {
+      expect(seamarkDisplayTier({ seamarkType: 'buoy_special_purpose', category })).toBe(
+        SEAMARK_DISPLAY_TIER_ALL,
+      );
+    }
+  });
+
+  it('every OTHER category value observed in the shipped data lands STANDARD, including compounds and untagged', () => {
+    const observedNonAllCategories = [
+      undefined, // untagged — 281 of 703, the plurality
+      'warning',
+      'no_entry',
+      'firing_danger_area',
+      'degaussing_range',
+      'degaussing_range;anchorage;no_entry',
+      'yachting',
+      'wave_recorder',
+      'leading',
+      'recreational',
+      'recreation_zone',
+      'mooring',
+      'firing_danger_area;warning',
+      'clearing',
+      'notice',
+      'recording',
+      'marine_farm',
+      'lanby',
+      'target',
+      'unknown_purpose',
+      'no_entry;foul_ground',
+      'odas',
+      'warning;firing_danger_area',
+      'anchorage',
+    ];
+    for (const category of observedNonAllCategories) {
+      const props =
+        category === undefined
+          ? { seamarkType: 'buoy_special_purpose' }
+          : { seamarkType: 'buoy_special_purpose', category };
+      expect(
+        seamarkDisplayTier(props),
+        `category ${JSON.stringify(category)} should be STANDARD, not ALL`,
+      ).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
+    }
+  });
+
+  // A category value neither observed today nor named as an ALL example —
+  // must fail toward STANDARD (the more visible tier), the same
+  // guard-asymmetry direction as `unknown`'s family fallback (#513 F2), not
+  // toward ALL (more hidden) by some accidental substring match.
+  it('an unrecognized category (not cable/pipeline) falls back to STANDARD, never ALL', () => {
+    expect(
+      seamarkDisplayTier({ seamarkType: 'buoy_special_purpose', category: 'a_future_category' }),
+    ).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
+  });
+
+  // A compound tag naming cable/pipeline ALONGSIDE something else still
+  // lands ALL — the split checks every `;`-joined token, not just an exact
+  // whole-string match (none of the 703 shipped specialPurpose marks
+  // combine cable/pipeline with another category today, but the logic must
+  // not silently regress if a future pull introduces one).
+  it('a compound category containing cable/pipeline alongside another value still lands ALL', () => {
+    expect(
+      seamarkDisplayTier({ seamarkType: 'buoy_special_purpose', category: 'cable;warning' }),
+    ).toBe(SEAMARK_DISPLAY_TIER_ALL);
+  });
+});
+
+// #513 F8: `toSeamarkDisplayTier` replaces an unchecked `as SeamarkDisplayTier`
+// cast at both call sites (DataLayers.tsx, SettingsPanel.tsx) on a value that
+// comes from localStorage — user-writable, and surviving across app
+// versions, so it can hold something other than 0/1/2 even after
+// `usePersistedNumber`'s own `clamp(n, 0, 2)`.
+describe('toSeamarkDisplayTier (#513 F8: validates a usePersistedNumber read, never casts)', () => {
+  it('passes through each of the three real tiers unchanged', () => {
+    expect(toSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_BASE)).toBe(SEAMARK_DISPLAY_TIER_BASE);
+    expect(toSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_STANDARD)).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
+    expect(toSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_ALL)).toBe(SEAMARK_DISPLAY_TIER_ALL);
+  });
+
+  it('null (no override stored — the legitimate empty state) falls back to the product DEFAULT, not the most-visible tier', () => {
+    expect(toSeamarkDisplayTier(null)).toBe(DEFAULT_SEAMARK_DISPLAY_TIER);
+  });
+
+  // The guard-asymmetry case (#513 F8, same principle as F2's `unknown`
+  // family fallback): a non-null value that survived the clamp but is not
+  // one of the three real tiers is CORRUPT DATA, not an absence, and must
+  // fail toward SHOWING more — the most-visible tier (ALL) — never toward
+  // whatever number happened to be stored or toward the (possibly more
+  // restrictive) product default.
+  it.each([1.5, -1, 3, 0.5, 100])(
+    'an unrecognized non-null value (%j) falls back to ALL (the most-visible tier), not the default',
+    (corrupt) => {
+      expect(toSeamarkDisplayTier(corrupt)).toBe(SEAMARK_DISPLAY_TIER_ALL);
+    },
+  );
+
+  it('the corrupt-value fallback is ALL even when the product default is something else', () => {
+    // Sanity check that the two fallbacks are genuinely different branches,
+    // not the same value read two ways: DEFAULT_SEAMARK_DISPLAY_TIER is
+    // STANDARD today (#353's own design sketch), strictly less visible than
+    // ALL — if a future change made them equal, this assertion would stop
+    // being able to tell the branches apart.
+    expect(DEFAULT_SEAMARK_DISPLAY_TIER).not.toBe(SEAMARK_DISPLAY_TIER_ALL);
+    expect(toSeamarkDisplayTier(1.5)).toBe(SEAMARK_DISPLAY_TIER_ALL);
+    expect(toSeamarkDisplayTier(null)).toBe(DEFAULT_SEAMARK_DISPLAY_TIER);
   });
 });
