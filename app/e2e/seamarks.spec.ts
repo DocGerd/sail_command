@@ -37,15 +37,16 @@ import { startPreview, mapReady } from './helpers';
 // and its reasoning. The CORRECTED default hides 119 of 1794: the two
 // `specialPurpose` categories `cable` (117) and `pipeline` (2), a
 // deliberate decluttering choice rather than an application of Appendix 2
-// item 3.2 (whose "submarine cables and pipelines" names LINE object
-// classes, while all 1794 shipped features are Points — object-class
-// question tracked in #521). Those 119 are themselves part of the 259
+// item 3.2, whose "submarine cables and pipelines" is plain English naming
+// no object class; in S-57 that content is `CBLSUB` (Line) / `PIPSOL`,
+// while all 1794 shipped features are Points — object-class question
+// tracked in #521. Those 119 are themselves part of the 259
 // above, so the correction did not clear that set: 140 of the 259 are shown
 // at the default and 119 are not (measured 2026-08-13 against the committed
-// `app/public/data/seamarks.json`). So the PIN VALUES below are
-// SMALLER than PR1's own committed baseline at the identical cluster/zoom
-// pair, by construction, but only by however many of THOSE two categories
-// happen to sit in this specific geographic box (measured per-pin below,
+// `app/public/data/seamarks.json`). So hiding THOSE two categories makes
+// the PIN VALUES below SMALLER than PR1's own committed baseline at the
+// identical cluster/zoom pair, by construction, but only by however many of
+// them happen to sit in this specific geographic box (measured per-pin below,
 // not assumed) — this test re-measures the "category=All" case afterwards
 // specifically to prove that selection reproduces PR1's original,
 // unfiltered counts byte-for-byte (the BASE-vs-HEAD control this PR owes

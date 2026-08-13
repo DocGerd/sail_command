@@ -306,11 +306,11 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   `isolatedDanger`, `cardinal`, `lateral`, `safeWater`, `lightMajor`.
  * - STANDARD (default) adds: `lightMinor`, `unknown`, and every
  *   `specialPurpose` mark EXCEPT the two categories named below — Appendix
- *   2 item 2.3's undivided AtoN group covers the STANDARD-tier
- *   `specialPurpose` categories in the shipped data, every one of which is
- *   a point mark whatever it annotates: **584 of 703** (26 distinct raw
- *   category strings total; measured, not assumed), e.g. `leading` (64 —
- *   the second-largest category in the whole family, after `cable`),
+ *   2 item 2.3's undivided AtoN group covers the whole `specialPurpose`
+ *   family, all 703 (26 distinct raw category strings; measured, not
+ *   assumed), every one of which is a point mark whatever it annotates; the
+ *   584/119 split is this app's, not the standard's. The **584** shown at
+ *   STANDARD are e.g. `leading` (64),
  *   `clearing` (3 — the *Gefahrenpeilung* this repo's own German-
  *   terminology notes name, #300), `no_entry`, `firing_danger_area`,
  *   `warning`, `yachting`, `recording`, `odas`, `recreation_zone`,
@@ -329,10 +329,11 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   `pipeline` (2). This is a DELIBERATE DECLUTTERING CHOICE — a departure
  *   from the ECDIS convention, not an application of it. An earlier
  *   revision justified it with Appendix 2 item 3.2's "submarine cables and
- *   pipelines"; that is a CATEGORY ERROR and is not used here. Item 3.2
- *   names the `CBLSUB` (Line) / `PIPSOL` object classes, whereas all 1794
- *   features in the shipped data are POINTS (measured 2026-08-13: zero
- *   lines, zero areas) — `category=cable` is S-57 CATSPM 6, "cable mark", a
+ *   pipelines"; that is a CATEGORY ERROR and is not used here. Item 3.2 is
+ *   plain English and names no object class; in S-57 that content is
+ *   `CBLSUB` (Line) / `PIPSOL`, whereas all 1794 features in the shipped
+ *   data are POINTS (measured 2026-08-13: zero lines, zero areas) —
+ *   `category=cable` is S-57 CATSPM 6, "cable mark", a
  *   point aid to navigation under item 2.3 exactly like the STANDARD-tier
  *   marks above. Whether these two categories should be tiered ALL at all
  *   is therefore OPEN, tracked in **#521**. Residual, stated rather than
@@ -340,7 +341,11 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   are part of the 259 the #513 review counted as
  *   hazard/prohibition-categorised, so 140 of those 259 are shown at the
  *   default and 119 are not (measured 2026-08-13 against
- *   `app/public/data/seamarks.json`).
+ *   `app/public/data/seamarks.json`). That 259 is the distinct features of
+ *   `seamarkType` `buoy_special_purpose`, `beacon_special_purpose` or
+ *   `light_minor` whose `category`, split on `;`, contains any of `cable`,
+ *   `no_entry`, `firing_danger_area`, `warning`, `marine_farm`, `target`,
+ *   `clearing`, `pipeline`, `foul_ground` — re-run it to check the figure.
  *
  * At the shipped data (measured against `app/public/data/seamarks.json`,
  * 1794 features: lateral 828, specialPurpose 703 [cable 117, pipeline 2,
@@ -358,7 +363,8 @@ export const SEAMARK_DISPLAY_TIER_STANDARD = 1;
 export const SEAMARK_DISPLAY_TIER_ALL = 2;
 /** Standard, per the #353 issue's own design sketch ("Standard (default)")
  * — and MSC.232(82) §3.4 makes Standard Display the mode "intended to be
- * used as a minimum during route planning", which is what this app is for.
+ * used as a minimum during route planning and route monitoring"; route
+ * planning is what this app is for.
  * NOT because ECDIS loads into it: an earlier revision of this comment
  * cited §3.4 for a load default, which the resolution does not say — §5.4
  * has power-up return to "the most recent manually selected settings".
