@@ -117,8 +117,27 @@ deviate from it.
   depth-relaxation change at all), a README carrying the full rebuild spec,
   and a REQUIRED BASE double-run control (two BASE runs must be byte-identical
   to each other before any BASE-vs-HEAD comparison means anything). Record
-  that control against the merge-base of the branch it will certify — one
-  taken against a `develop` that then moves certifies nothing. It sits OUTSIDE
+  that control against the merge-base of the branch it will certify. A moved
+  `develop` does not AUTOMATICALLY invalidate it — but that exemption fails
+  OPEN, so DEFAULT TO RE-RUNNING and skip only after checking the sweep's
+  actual TRANSITIVE input closure, never a remembered path list. The closure
+  is wider than the obvious paths: besides `app/src/routing/`,
+  `app/src/lib/mask.ts`, `app/public/data/`, `app/sweep/` and `pipeline/`,
+  `sweepArms.ts` pulls `DEFAULT_SETTINGS` from `app/src/types.ts`,
+  `uniformWindGrid` from `app/src/test/fixtures` and `solverTimeoutMs` from
+  `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
+  `app/src/test/setup.ts`; and the solver reaches `lib/geo.ts`,
+  `lib/polar.ts` and `lib/wind.ts`. One `DEFAULT_SETTINGS` field edit moves
+  plans across every arm that does not spread-override that field, while
+  touching none of the obvious paths — which is why the list form of this
+  rule was wrong (measured 2026-08-13: #518's evidence did survive #513,
+  #522 and #523, verified by running the closure check this rule prescribes
+  — none of the 22 files they changed is in the closure).
+  A STRONGER control than the required double-run
+  exists once a prior run is on record: BASE *and* HEAD arm sha256 prefixes
+  matching that run on a different machine, day and merge-base proves the
+  baseline stable against the very thing that would invalidate it, where a
+  self double-run only proves a run deterministic against itself. It sits OUTSIDE
   `app/src/` so `vite.config.ts`'s `include` never collects it into
   `npm run test` or CI; run it deliberately with `--config
   sweep/vitest.config.ts`. vitest 4 has NO `--include` (`CACError: Unknown
@@ -1399,6 +1418,20 @@ deviate from it.
   structural row; changing the test's own table reds two rows. Had the
   needle come from production, that second probe would have been
   unobservable.
+  SHARPER INSTANCE (#516/PR #523): the critical datum can be a numeric
+  property of a FIXTURE. The differential DDA keeper only works because
+  `TIE_META` uses a power-of-two grid step — that is what makes an exact
+  `tMaxX === tMaxY` tie constructible at all; change the step and the tie is
+  unreachable, the coverage vanishes and every test stays GREEN. Two rules
+  follow. (1) Pin the PROPERTY, not just the detection logic. (2) In a
+  multi-assertion pin, check each assertion is INDIVIDUALLY load-bearing by
+  deleting them one at a time — here `x0 === y0` alone was insufficient: it
+  survives a 256→255 perturbation, where the `Number.isInteger` and
+  `dx === dy` assertions both red.
+  Same move for an ABSENCE assertion: copy the test, change ONE input that
+  should make the thing APPEAR (`deepMask()` → `shallowMask()`), keep the
+  settle sequence identical, and confirm it renders — otherwise the green
+  may be proving the loading path rather than the zero path.
 - A mutation battery can pass for the WRONG reason when a test row carries
   MORE THAN ONE trigger for the same expected outcome. A near-miss row meant
   to pin allowlist MEMBERSHIP was written as `xargs npm install < pkgs.txt` —
@@ -1422,6 +1455,25 @@ deviate from it.
   test written to catch its absence can still be the wrong fix.** The
   discriminating experiment was to break the SPLICE while leaving the
   DERIVATION intact: correct form reds 1, suggested form reds 0.
+- **A duplicated ALGORITHM must be proven equivalent by DIFFERENTIAL
+  TESTING, never by reading.** `shallowExposureNm` re-implements `NavMask`'s
+  private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
+  so no #282 sweep is owed. A duplicated TRAVERSAL fails as a subtly wrong
+  safety NUMBER with no signal at all.
+  Method that worked (#516/PR #523): the consumer reads cells only through
+  `mask.depthInfoM(centre)`, so a facade carrying the real `meta` plus a
+  recording `depthInfoM` captures the shipped walk's visited-cell sequence,
+  while `(mask as unknown as { walkCells }).walkCells` reaches the
+  TS-only-private original — then compare SEQUENCES over named shapes plus
+  seeded random segments. Reading the two side by side finds them "similar"
+  and misses a tie-break divergence.
+- **Two measurements of DIFFERENT subjects cannot be differenced — isolate
+  by construction.** A before/after banner-height comparison used two
+  different route plans (10 vs 5 flagged legs), so 489 px and 432 px were
+  not comparable at all. Fix: clone the live element off-screen, append the
+  removed sentence, and measure BOTH states of the SAME element (432.4 /
+  489.4) — which reproduced the earlier figure and isolated the sentence's
+  own 57.0 px cost. Applies to any A/B where the subject moved between runs.
 - CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
   `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
   mime-insensitive, but an `application/xml` parse is inert (no script exec, no
@@ -1557,6 +1609,13 @@ deviate from it.
   a build with zero CSP metas, #223). Mutation-checked both ways: reverting
   the CSS literal to `0px` fails with `Expected: 176, Received: 0`; deleting
   the fallback entirely trips the `not.toBeNull()` guard first.
+- **When a reviewer supplies EXACT replacement text, adopt it VERBATIM.**
+  On 2026-08-13 successor defects repeatedly came from prose an implementer
+  wrote itself while trying to be thorough — comment-only waves included.
+  Reviewer-supplied text is already measured and
+  pre-approved, so copying it byte-for-byte leaves no new claim to be wrong.
+  Standing exception, and it must stay open: a supplied sentence believed
+  WRONG is reported, never silently improved.
 - A fix INHERITS its bug's blind spot. #233's hook fix drew six Blockers over
   two rounds, and all three of round 2's were the same mention-vs-invocation
   class the fix existed to close, now living inside the fix itself; #228
