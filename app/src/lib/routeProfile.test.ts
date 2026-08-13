@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeMask, openWaterMask } from '../test/fixtures';
 import type { Leg } from '../types';
 import {
+  exhaustiveMinDepth,
   indicatorTimes,
   legPositionAt,
   profileSamples,
@@ -146,6 +147,77 @@ describe('profileSamples', () => {
 
   it('returns [] for an empty route', () => {
     expect(profileSamples([], openWaterMask(), 60)).toEqual([]);
+  });
+});
+
+// #505: the depth-profile's "min." headline used to come straight from
+// profileSamples' uniform-in-TIME series, which can skip a leg entirely if
+// it is shorter than the sample interval. exhaustiveMinDepth is the fix —
+// this pins the RED/GREEN shape of the regression: the sparse series' own
+// minimum is provably wrong (20 m, not the true 0.5 m) BEFORE asserting
+// exhaustiveMinDepth gets it right, so the test cannot pass by accident.
+describe('exhaustiveMinDepth (#505)', () => {
+  // 20 m everywhere except ONE cell (row 100, col 150 -> lat [54.800,
+  // 54.805), lon [10.150, 10.155)) charted 0.5 m (byte 5).
+  const shallowCellMask = () => makeMask((r, c) => (r === 100 && c === 150 ? 5 : 200));
+
+  it('finds a shallow leg that sparse time-sampling skips entirely', () => {
+    const mask = shallowCellMask();
+    const legs: Leg[] = [
+      sailLeg(T0, T0 + 2 * HOUR, { lat: 54.79, lon: 9.43 }, { lat: 54.8, lon: 10.0 }),
+      // 30 s, entirely inside the shallow cell — far shorter than
+      // sampleCount(4h)'s ~4-minute sample interval, so no time sample
+      // lands on it (asserted below via profileSamples' real output).
+      sailLeg(
+        T0 + 2 * HOUR,
+        T0 + 2 * HOUR + 30_000,
+        { lat: 54.8025, lon: 10.1525 },
+        { lat: 54.8026, lon: 10.1526 },
+      ),
+      sailLeg(
+        T0 + 2 * HOUR + 30_000,
+        T0 + 4 * HOUR,
+        { lat: 54.82, lon: 10.3 },
+        { lat: 54.85, lon: 10.52 },
+      ),
+    ];
+    const durationMs = legs[legs.length - 1].endTimeMs - legs[0].startTimeMs;
+
+    // Proves the defect mechanism: the sparse series never samples the short
+    // leg (legIndex 1), so ITS OWN minimum is the deep 20 m reading — the
+    // exact wrong-headline shape #505 reports.
+    const samples = profileSamples(legs, mask, sampleCount(durationMs));
+    expect(samples.some((s) => s.legIndex === 1)).toBe(false);
+    expect(Math.min(...samples.map((s) => s.depthM))).toBe(20);
+
+    // The exhaustive walk visits the short leg's own geometry directly and
+    // finds the true minimum regardless of sampling — this is what a
+    // reachable code change (a shallower cell anywhere on any leg) can
+    // actually move, unlike a theorem the code already guarantees.
+    expect(exhaustiveMinDepth(legs, mask)).toEqual({ depthM: 0.5, capped: false });
+  });
+
+  // #512 review Major: a single-leg fixture cannot discriminate "return null
+  // for the WHOLE route" (the shipped, safe behaviour) from "silently drop
+  // the uncoverable leg and keep going" (the unsafe behaviour the doc-comment
+  // forbids) — both produce `null` from a one-leg route, so the earlier
+  // version of this test passed unchanged even when `exhaustiveMinDepth`'s
+  // both `return null`s were mutated to `continue`. This two-leg fixture
+  // discriminates: under the shipped code the whole route is null; under the
+  // unsafe mutation it silently reports leg 1's own reading as the route's
+  // minimum instead.
+  it('a later out-of-coverage leg makes the WHOLE result null, never silently drops just that leg', () => {
+    const legs: Leg[] = [
+      // Leg 1: fully inside coverage, 20 m open water.
+      sailLeg(T0, T0 + HOUR, { lat: 54.5, lon: 10.0 }, { lat: 54.5, lon: 10.1 }),
+      // Leg 2: starts in coverage, ends outside mask.meta.
+      sailLeg(T0 + HOUR, T0 + 2 * HOUR, { lat: 54.5, lon: 10.1 }, { lat: 60, lon: 20 }),
+    ];
+    expect(exhaustiveMinDepth(legs, openWaterMask())).toBeNull();
+  });
+
+  it('returns null for an empty leg list', () => {
+    expect(exhaustiveMinDepth([], openWaterMask())).toBeNull();
   });
 });
 

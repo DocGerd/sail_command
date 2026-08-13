@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8",
-    "lint": "eslint src",
+    "lint": "eslint src e2e",
     "notices": "node scripts/gen-third-party-notices.mjs",
     "typecheck": "tsc -b --noEmit",
     "pree2e": "node scripts/gen-wind-fixture.mjs && npm run build",

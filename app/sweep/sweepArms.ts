@@ -80,8 +80,11 @@ export interface Arm {
    * false for exactly these 5 — corrected in the #452 fix wave.)
    *
    * WHY MARSTAL-AS-ORIGIN (not Marstal-as-destination, which
-   * `docs/spikes/452-local-depth-relaxation.md:492` recommends) IS A SOUND
-   * SUBSTITUTE. `cellsConnected` being symmetric only establishes that
+   * `docs/spikes/452-local-depth-relaxation.md` §4(b) "The sweep cannot
+   * currently discriminate a correct fix from a silently broken one"
+   * ("Both judges: add a relaxation-exercising arm (a Marstal-destination
+   * arm...)") recommends) IS A SOUND SUBSTITUTE. `cellsConnected` being
+   * symmetric only establishes that
    * relaxation FIRES the same way for `(marstal, X)` and `(X, marstal)` — it
    * says nothing about whether a future SCOPED implementation would COVER
    * both directions identically, and a one-ended design (e.g. "only widen
@@ -89,9 +92,14 @@ export interface Arm {
    * carries the substitution: all three spike designs scope relaxation on
    * the SNAPPED WAYPOINT SET, not on a direction — P3's `gateAtCell` widens
    * the gate for any cell within `APPROACH_RADIUS_M` of "a snapped waypoint"
-   * (`docs/spikes/452-local-depth-relaxation.md:272`), and P1/P2 are
-   * likewise keyed off "origin, destination, and every via" as an unordered
-   * set (`:170`, `:283`). `{marstal_snap, X_snap}` is the IDENTICAL set
+   * (same doc, §2.3 "P3 — Approach-scoped relaxation ('relaxation discs')",
+   * Mechanism paragraph: "gateAtCell(cell) returns the relaxed gate..."),
+   * and P1/P2 are likewise keyed off "origin, destination, and every via"
+   * as an unordered set (§1.4 "Snapping happens at the requested gate and
+   * is not relaxable", same phrase verbatim; and §2.3's own Invariant
+   * paragraph, "No leg ... unless that cell lies within
+   * `APPROACH_RADIUS_M` of a snapped waypoint"). `{marstal_snap, X_snap}`
+   * is the IDENTICAL set
    * whichever end Marstal sits at, so any of the three scoped designs would
    * treat a `margin-zero`/`relaxation-dense`/#-forcing plan through this
    * arm's Marstal-origin pairs exactly as it would treat the spike's

@@ -4,7 +4,7 @@
 // the cached buffer); wind and the safety-depth overlay are layered on by the
 // DepthProfile component, never baked into these samples (the profile stores
 // absolute depth; the safety line is a render-time overlay).
-import type { LatLon, Leg } from '../types';
+import type { LatLon, Leg, MaskMeta } from '../types';
 import type { NavMask } from './mask';
 
 const HOUR_MS = 3_600_000;
@@ -88,6 +88,65 @@ export function profileSamples(legs: Leg[], mask: NavMask, n: number): ProfileSa
     });
   }
   return samples;
+}
+
+// Mirrors lib/headingDepth.ts's private withinMask: the mask is a lat/lon
+// rectangle (MaskMeta west/south/east/north), so testing both endpoints is
+// enough to know the whole segment stays inside coverage. Upper bounds are
+// exclusive, matching NavMask.cellOf's row/col range check. Duplicated
+// (rather than imported/exported from headingDepth.ts) to keep this fix's
+// diff inside routeProfile.ts/mask.ts — headingDepth.ts is a different
+// feature (#251's Live heading-to-steer check) with its own review surface.
+function withinMask(meta: MaskMeta, p: LatLon): boolean {
+  return p.lat >= meta.south && p.lat < meta.north && p.lon >= meta.west && p.lon < meta.east;
+}
+
+/**
+ * #505: the depth-profile's headline "min." figure, computed EXHAUSTIVELY
+ * over every leg's actual geometry via NavMask.segmentMinDepthInfoM — the
+ * same Amanatides–Woo cell walk planRoute.ts's flagShallowLegs uses to build
+ * the shallow-water banner's minGateDepthM — rather than from
+ * {@link profileSamples}' uniform-in-TIME series. That series is sized for
+ * chart rendering (60-240 points across the whole trip) and can step clean
+ * over a leg shorter than the sample interval, understating the true
+ * minimum depth; this cannot, because it visits every cell every leg
+ * touches. The plotted CURVE keeps using the sparse series unchanged — this
+ * only replaces the single scalar headline figure.
+ *
+ * This is NOT expected to always equal the shallow-water banner's
+ * minGateDepthM: planRoute.ts's flagShallowLegs folds minGateDepthM over
+ * BOTH rigs' legs and only counts cells charted below the plan's REQUESTED
+ * safety depth (see app/src/i18n/dict.en.ts's route.shallow.detail comment),
+ * while this is the ACTIVE rig's own true minimum with no threshold at all.
+ * What this closes is the SAMPLING gap the issue is about — a short leg the
+ * two figures could disagree over only because one of them skipped it — not
+ * that scope difference, which is a separate, already-documented and
+ * deliberate #452 design choice.
+ *
+ * Per #251/#255, `segmentMinDepthInfoM`'s null return must not be trusted
+ * without first bound-checking both of a leg's endpoints against
+ * `mask.meta` — so a leg whose endpoints fail that check (or whose walk
+ * still returns null) makes this return null for the WHOLE route rather
+ * than silently omitting just that leg's contribution: an omitted leg could
+ * have been the true minimum, and a headline reading deeper than the true
+ * minimum is the unsafe direction for a safety figure. A caller must NOT
+ * paper over a null with a less precise (and therefore possibly deeper)
+ * fallback minimum — that reintroduces the exact optimistic-reading risk
+ * this function exists to remove. The correct degrade is "unknown" (e.g.
+ * omit the headline figure), never a plausible-looking wrong number.
+ */
+export function exhaustiveMinDepth(
+  legs: Leg[],
+  mask: NavMask,
+): { depthM: number; capped: boolean } | null {
+  let min: { depthM: number; capped: boolean } | null = null;
+  for (const leg of legs) {
+    if (!withinMask(mask.meta, leg.start) || !withinMask(mask.meta, leg.end)) return null;
+    const info = mask.segmentMinDepthInfoM(leg.start, leg.end);
+    if (info === null) return null;
+    if (min === null || info.depthM < min.depthM) min = info;
+  }
+  return min;
 }
 
 /** Adaptive X-axis tick interval: trip <= 4 h -> 30 min, <= 12 h -> 1 h, else 2 h. */
