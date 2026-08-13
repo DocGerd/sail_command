@@ -2,9 +2,20 @@ import type { Ref } from 'react';
 import type { Settings } from '../types';
 import { useT } from '../i18n';
 import { isValidMmsi } from '../lib/mmsi';
+import {
+  SEAMARK_DISPLAY_TIER_ALL,
+  SEAMARK_DISPLAY_TIER_BASE,
+  SEAMARK_DISPLAY_TIER_STANDARD,
+  SEAMARK_SIZE_MAX,
+  SEAMARK_SIZE_MIN,
+  SEAMARK_SIZE_SCALE,
+  toSeamarkDisplayTier,
+} from '../lib/seamarkGlyphs';
+import { usePersistedNumber } from '../lib/usePersistedNumber';
 import Card from './Card';
 import Field from './Field';
 import NumberInput from './NumberInput';
+import Slider from './Slider';
 import {
   DEPTH_COMFORT_MARGIN_FIELD,
   MANEUVER_PENALTY_FIELD,
@@ -93,6 +104,36 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
   const t = useT();
   const mmsi = value.ownMmsi ?? '';
   const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
+
+  // #353 PR2: seamark symbol size + display category are map CHROME, not a
+  // domain `Settings` field — same localStorage/usePersistedNumber contract
+  // as #355's panel width, deliberately NOT threaded through `value`/
+  // `onChange` (those round-trip through IndexedDB with the rest of
+  // `Settings`, per `AppState.tsx`'s `useSettings()`). DataLayers.tsx reads
+  // the SAME keys to apply the live value to the map; the hook's own
+  // cross-instance sync (see its module comment) is what keeps the two in
+  // step despite this panel unmounting whenever the Boat tab isn't active.
+  const [seamarkSizeScaleStored, setSeamarkSizeScale] = usePersistedNumber(
+    'sc-seamark-size-scale',
+    SEAMARK_SIZE_MIN,
+    SEAMARK_SIZE_MAX,
+  );
+  const seamarkSizeScale = seamarkSizeScaleStored ?? SEAMARK_SIZE_SCALE;
+  // #513 R4: unclamped bounds — see DataLayers.tsx's identical call site for
+  // why [BASE, ALL] would launder a corrupt negative value past
+  // `toSeamarkDisplayTier`'s own guard before it ever runs.
+  const [seamarkDisplayTierStored, setSeamarkDisplayTier] = usePersistedNumber(
+    'sc-seamark-display-tier',
+    -Infinity,
+    Infinity,
+  );
+  const seamarkDisplayTier = toSeamarkDisplayTier(seamarkDisplayTierStored);
+  // #513 F6: computed ONCE and reused for both the visible `<output>` text
+  // and the Slider's `aria-valuetext` — the two must never drift apart, or
+  // the sighted and screen-reader experiences would disagree with each other.
+  const seamarkSizePercentLabel = t('settings.seamarkSize.value', {
+    percent: Math.round(seamarkSizeScale * 100),
+  });
 
   return (
     <div className="settings-panel">
@@ -189,6 +230,91 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
             {t('options.ais.mmsi.invalid')}
           </p>
         )}
+      </Card>
+
+      {/* #353 PR2: seamark symbol size (a continuous slider — precedented by
+          OpenCPN's own "Chart Objects" scale-factor slider, #353's own
+          research) and display category (discrete tiers — informed by IMO
+          MSC.232(82) Appendix 2's ECDIS Display Base/Standard Display/All
+          Other Information split, verified against the resolution's own
+          text — see seamarkGlyphs.ts's `seamarkDisplayTier` doc comment for
+          the exact mapping, corrected in review at #513 F1/F2). Grouped
+          separately from Boat & safety/Propulsion/Live & AIS: this is map
+          CHROME, not a boat characteristic or a routing input. */}
+      <Card title={t('settings.section.mapDisplay')}>
+        <Field
+          label={t('settings.seamarkSize.label')}
+          htmlFor="settings-seamarkSize"
+          help={t('settings.seamarkSize.help')}
+          helpId="settings-seamarkSize-help"
+        >
+          <div className="settings-seamark-size-row">
+            <Slider
+              id="settings-seamarkSize"
+              value={seamarkSizeScale}
+              min={SEAMARK_SIZE_MIN}
+              max={SEAMARK_SIZE_MAX}
+              step={0.1}
+              aria-describedby="settings-seamarkSize-help"
+              aria-valuetext={seamarkSizePercentLabel}
+              onChange={setSeamarkSizeScale}
+            />
+            {/* #513 F6: `role="status"` is implicit on `<output>` (a polite
+                live region) — without `aria-live="off"` it would queue its
+                OWN announcement on every drag tick, on top of the slider's
+                `aria-valuetext` announcement above, double-speaking the same
+                value. The visible text still updates normally; only the
+                live-region behavior is suppressed. */}
+            <output
+              htmlFor="settings-seamarkSize"
+              className="settings-seamark-size-value"
+              aria-live="off"
+            >
+              {seamarkSizePercentLabel}
+            </output>
+          </div>
+        </Field>
+
+        <div className="options-field">
+          <span id="settings-seamarkCategory-legend">{t('settings.seamarkCategory.label')}</span>
+          <div
+            role="radiogroup"
+            aria-labelledby="settings-seamarkCategory-legend"
+            aria-describedby="settings-seamarkCategory-help"
+            className="settings-seamark-category"
+          >
+            <label>
+              <input
+                type="radio"
+                name="settings-seamarkCategory"
+                checked={seamarkDisplayTier === SEAMARK_DISPLAY_TIER_BASE}
+                onChange={() => setSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_BASE)}
+              />
+              {t('settings.seamarkCategory.base')}
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="settings-seamarkCategory"
+                checked={seamarkDisplayTier === SEAMARK_DISPLAY_TIER_STANDARD}
+                onChange={() => setSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_STANDARD)}
+              />
+              {t('settings.seamarkCategory.standard')}
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="settings-seamarkCategory"
+                checked={seamarkDisplayTier === SEAMARK_DISPLAY_TIER_ALL}
+                onChange={() => setSeamarkDisplayTier(SEAMARK_DISPLAY_TIER_ALL)}
+              />
+              {t('settings.seamarkCategory.all')}
+            </label>
+          </div>
+          <p className="options-help" id="settings-seamarkCategory-help">
+            {t('settings.seamarkCategory.help')}
+          </p>
+        </div>
       </Card>
     </div>
   );

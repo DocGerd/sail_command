@@ -1598,6 +1598,42 @@ select {
   gap: 0.2rem;
 }
 
+/* #353 PR2: seamark size slider + its live numeric readout, same
+   flex/min-width shrink pattern as .route-layer-time-slider's range input
+   (above) so the track can shrink inside the settings panel's own width
+   rather than overflowing it. */
+.settings-seamark-size-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-seamark-size-row .sc-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-seamark-size-value {
+  flex: none;
+  min-width: 3.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* #353 PR2: the display-category radiogroup — wraps rather than overflows
+   at the panel's narrow-viewport minimum width. */
+.settings-seamark-category {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+}
+
+.settings-seamark-category label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 /* #53/#504: prominent shallow-water warning on the route summary (both rig
    tabs). Safety-depth warning color family (#E69F00) — matches the map
    casing and the depth profile emphasis. #251 moved the family into

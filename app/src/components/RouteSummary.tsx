@@ -1,11 +1,15 @@
-import type { Ref } from 'react';
+import { useMemo, type Ref } from 'react';
 import { useT, useLang } from '../i18n';
 import { formatHeading, formatKn, formatLegDuration, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
+import { roundExposureNm, shallowExposureNm } from '../lib/shallowExposure';
+import { useWideLayout } from '../lib/useWideLayout';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
+import { useNavMask } from '../state/useNavMask';
+import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, Rig, ShallowInfo } from '../types';
 import Card from './Card';
@@ -54,6 +58,62 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
     ? 'shallow-warning shallow-warning--severe'
     : 'shallow-warning';
   const cautiousM = cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1);
+  // #516 increment 1: presentation-only exposure figure — how much of the
+  // ACTIVE rig's own legs cross cells the mask charts below the REQUESTED
+  // depth, re-walked at render time against the currently-loaded mask
+  // (never the mask this plan was originally routed against — see
+  // lib/shallowExposure.ts's own doc comment for that residual, shared with
+  // #505's exhaustiveMinDepth). Gated on legs being present at all: an empty
+  // or absent legs array (the active tab's own rig has no result, #452
+  // Major 1) has nothing to walk. `mask` starts null and resolves
+  // asynchronously (useNavMask), so this is null on first paint and fills
+  // in once routing assets load — never a fallback number in between.
+  // A MEASURED ZERO is gated out too (PR #523 review, Blocker 1): the plan's
+  // `shallow` block folds over BOTH rigs' legs while this walks only the
+  // ACTIVE rig's, and the walk uses the currently-loaded mask, so an
+  // honest 0 is reachable — and "0.0 nm of this route crosses shallow
+  // water, try lowering your safety depth" is wrong on both halves. The
+  // banner then degrades to lead + detail + caveat, the same fail-safe
+  // shape firstShallowLeg already uses for the locator. Resolved to the
+  // FORMATTED distance so that gate has exactly one home.
+  const mask = useNavMask();
+  const exposureDist = useMemo(() => {
+    if (!mask || !legs || legs.length === 0) return null;
+    const nm = shallowExposureNm(legs, mask, shallow.requestedDepthM);
+    if (nm === null || nm <= 0) return null;
+    return formatNm(roundExposureNm(nm));
+  }, [legs, mask, shallow.requestedDepthM]);
+  const isWide = useWideLayout();
+  // The remedy sentence's ONE gate. Three conditions, one home — splitting
+  // them across the JSX is how the figure and the remedy diverged before
+  // (PR #523 review, Blocker 1). Each is an independent reason to say
+  // nothing: this is safety copy, so a sentence that is wrong, unreadable, or
+  // impossible to act on costs more than its absence.
+  //
+  // 1. exposureDist !== null — Blocker 1. Reuses the SAME resolved value the
+  //    figure renders, so the two can never disagree about whether there is a
+  //    measured, non-zero problem to advise about.
+  // 2. isWide — #516 item 5, the maintainer's call. Mount-gated on
+  //    lib/useWideLayout.ts's single 1024 px breakpoint, never CSS-hidden, so
+  //    a narrow layout does not carry a wide-only sentence in the
+  //    accessibility tree either (#355's resizer set that precedent). Reason:
+  //    a real-browser pass on 2026-08-13 measured the German banner at 489 px
+  //    against a 418 px panel viewport at 390x844, putting ~71 px of a safety
+  //    warning below the fold — a fourth sentence costs more than it gives on
+  //    the likeliest on-deck device.
+  //    Consequence, accepted: because this is inside the role="alert"
+  //    container, crossing the breakpoint mutates a live region in place
+  //    (measured: same DOM node, remedy added/removed) and an assertive
+  //    re-read is the expected result — a tablet rotation is enough.
+  //    Mount-gating is still correct; display:none would leave a wide-only
+  //    sentence in the accessibility tree on narrow, which is worse.
+  // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedDepthM
+  //    searches [BOAT_DRAFT_M, requestedDepthM) while SAFETY_DEPTH_FIELD
+  //    clamps the input to >= its own min (2.1 and 2.2 respectively today),
+  //    so at a usedDepthM of either there is no lower setting to choose and
+  //    "set a lower safety depth" names an unavailable action.
+  const showRemedy =
+    exposureDist !== null && isWide && shallow.usedDepthM > SAFETY_DEPTH_FIELD.min;
   // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
   // children — lead/detail/caveat — so a screen reader still announces one
   // region while sighted users get a real visual hierarchy instead of one
@@ -72,6 +132,14 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
         })}
       </p>
       <p className="shallow-warning__detail">
+        {exposureDist !== null && (
+          <>
+            {t('route.shallow.exposure', {
+              dist: exposureDist,
+              requested: shallow.requestedDepthM.toFixed(1),
+            })}{' '}
+          </>
+        )}
         {t('route.shallow.detail', {
           requested: shallow.requestedDepthM.toFixed(1),
           used: shallow.usedDepthM.toFixed(1),
@@ -84,6 +152,17 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
               count: locator.count,
               time: formatTime(locator.firstTimeMs, lang),
             })}
+          </>
+        )}
+        {/* PR #523 review, Minor 3: the remedy renders LAST, after the
+            mechanism sentence that justifies it — a reader must learn the
+            router already reduced the gate on their behalf before being
+            advised to reduce it themselves. Gated on showRemedy, whose three
+            conditions are enumerated at its declaration. */}
+        {showRemedy && (
+          <>
+            {' '}
+            {t('route.shallow.remedy')}
           </>
         )}
       </p>

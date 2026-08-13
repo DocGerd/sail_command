@@ -41,6 +41,18 @@ export const en = {
   'settings.section.boatSafety': 'Boat & safety',
   'settings.section.propulsion': 'Propulsion',
   'settings.section.liveAis': 'Live & AIS',
+  // #353 PR2: map-display controls for seamarks (symbol size + display category).
+  'settings.section.mapDisplay': 'Map display',
+  'settings.seamarkSize.label': 'Symbol size (seamarks)',
+  'settings.seamarkSize.value': '{percent}%',
+  'settings.seamarkSize.help':
+    'Changes the on-screen size of seamark symbols on the map. Below zoom 12 the collision spacing scales with the symbols; at higher zoom levels larger symbols overlap each other more.',
+  'settings.seamarkCategory.label': 'Displayed seamarks',
+  'settings.seamarkCategory.base': 'Base',
+  'settings.seamarkCategory.standard': 'Standard',
+  'settings.seamarkCategory.all': 'All',
+  'settings.seamarkCategory.help':
+    'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything except submarine cable and pipeline markers — choose "All" to show those too.',
   'planner.card.trip': 'Trip',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',
@@ -187,6 +199,33 @@ export const en = {
     'Caution: a more cautious reading of the charted depth data could run as low as {cautious} m.',
   'route.shallow.leadSevere':
     "Caution: a more cautious reading of the charted depth data could run as low as {cautious} m, below this boat's {draft} m draft.",
+  // #516 increment 1: presentation-only shallow-EXPOSURE figure (a distance,
+  // not a per-leg minimum) — computed at render time in
+  // lib/shallowExposure.ts against the CURRENTLY LOADED mask, never stored
+  // in PlanResult (see #516's design doc, "Option (a), presentation-only":
+  // app/sweep/'s byte-diff acceptance harness stays valid only because
+  // PlanResult never grows a field for this). Rendered FIRST in .detail,
+  // ahead of the existing "what happened" mechanism sentence below —
+  // self-contained (refers to nothing rendered elsewhere), per the #493/
+  // #504 anaphora lesson recorded in this file's own comment above.
+  // NO "Up to" (PR #523 review, Minor 5): that phrasing asserts a ceiling,
+  // and the figure only bounds the CHART — the mask overstates depth on a
+  // large fraction of water cells (#455), which is what .lead's cautious
+  // floor and .caveat exist to say. The scoping word that must stay is
+  // `charted`; the ceil rounding is display precision, not a bound claim.
+  'route.shallow.exposure':
+    '{dist} of this route crosses water charted shallower than your safety depth of {requested} m.',
+  // #516: the maintainer's own explicit product decision (the #516 design
+  // doc had deliberately left this UNRECOMMENDED, "a maintainer product
+  // call, flagged rather than designed" — since ruled on). Rendered LAST in
+  // .detail, after the mechanism sentence it responds to (PR #523 review,
+  // Minor 3 — advice must not precede the fact that the router has already
+  // reduced the gate). RouteSummary.tsx's `showRemedy` gates it on three
+  // conditions — a positive exposure figure, the wide layout, and usedDepthM
+  // exceeding SAFETY_DEPTH_FIELD.min — and that declaration carries the
+  // reason for each; it is the single place to read or change them.
+  'route.shallow.remedy':
+    'A lower safety depth setting might let the planner find a more direct route.',
   // What happened: the requested safety depth was not passable, the depth
   // actually used, the shallowest charted depth crossed. Normal weight (no
   // longer emphasised) — review (PR #461 Minor 5): "shallowest charted
