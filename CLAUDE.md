@@ -52,17 +52,12 @@ deviate from it.
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
-  **`lint` is literally `eslint src`, so `app/e2e/**` is NEVER linted by CI**
-  (#420, open) — including the specs that are the ONLY functional assurance
-  for `src/sw.ts` and `src/routing/worker.ts` (both ~0% coverage by design).
-  Run `npm --prefix app run lint -- e2e` by hand after touching a spec (this
-  lints `src` AND `e2e` in one pass, so it cannot silently diverge from what
-  CI runs); a real error sat there unseen until PR #419's review found it.
-  Note the `run`, not `exec` — per the next bullet, `exec` does NOT chdir, so
-  `npm --prefix app exec eslint e2e` resolves `e2e` against the REPO ROOT and
-  exits 2 with "No files matching the pattern" (measured), silently linting
-  nothing. The e2e-only spelling that does work is
-  `npm --prefix app exec eslint app/e2e`.
+  **CI's `lint` covers `app/e2e/**` — the script is `eslint src e2e`** (PR
+  #508 closed #420 on 2026-08-11; before that it was `eslint src`, and the
+  gap let a real error sit unseen until PR #419's review found it). Those
+  specs are the ONLY functional assurance for `src/sw.ts` and
+  `src/routing/worker.ts` (both ~0% coverage by design), so a lint gap there
+  was never cosmetic. No hand-run is needed any more.
 - `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
   exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
   executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
@@ -88,10 +83,14 @@ deviate from it.
   files** (2026-08-04); BOTH halves re-measured 2026-08-10 on develop
   @ `9940b32` with maplibre-gl 6.2.0 installed — **1515 tests, 117 files**,
   all passing, 234 s; re-measured again 2026-08-10 on develop @ `74fcd35`
-  after #504 — **1526 tests, 117 files**, all passing, 233.8 s. The file
+  after #504 — **1526 tests, 117 files**, all passing, 233.8 s (the file
   count did NOT move because #504 added cases to four EXISTING test files
-  and no new one, which is the ordinary shape: re-measure both halves rather
-  than inferring either from the other. The coverage PERCENTAGES above are UNTOUCHED — they
+  and no new one, the ordinary shape); re-measured 2026-08-13 on develop
+  @ `2195661` after the #508–#512 train — **1539 tests, 118 files**, all
+  passing. That run's 393 s wall time is NOT comparable to the 234 s figures
+  above — it was measured while a CPU-heavy `app/sweep/` run occupied the
+  machine; counts are load-independent, durations are not. Re-measure both
+  halves rather than inferring either from the other. The coverage PERCENTAGES above are UNTOUCHED — they
   were not re-measured this session (that needs `test:coverage`, a
   substantially longer run) and a scanning-only or assertion-adding test
   file is coverage-neutral to first order the same way PR #351's was; don't
@@ -127,7 +126,7 @@ deviate from it.
   config rather than a flag. Both #451 defects are FIXED: `root: here` stops
   the `include` glob over-collecting (deleting that line takes the sweep
   config from 9 collected files to 89 — the fix is causal, and the main suite
-  still collects 117 files with zero from `app/sweep/`), and `compare.mjs`
+  still collects zero files from `app/sweep/`), and `compare.mjs`
   now fails closed on FEWER arms than expected, with the expectation derived
   from the arm definitions rather than a hardcoded count.
   **`becalmed` and `deep-becalmed` remain VACUOUS as safety evidence** —
@@ -253,6 +252,15 @@ deviate from it.
   2026-08-04 — neither is unguarded now; re-read before citing either).
   Per the guard-asymmetry rule below: an absent security control is the
   expensive failure direction, so the check must fail closed.
+- **Markdown bold immediately before a slash TERMINATES a block comment.**
+  `**584**/119` inside JSDoc contains `*/`, so the comment ends there and
+  eslint reports a bare `Parsing error: ';' expected` at or after the `*/`,
+  never naming the markdown that caused it. The exact line varies with what
+  follows on it — measured 2026-08-13 against this repo's own eslint, one
+  layout reported the cause's own line and another the line after, so do
+  not expect a fixed offset. Reading the diff cannot catch it; only running
+  lint does. This repo's convention of long, markdown-rich JSDoc prose is
+  what makes it reachable (PR #513 wave 5).
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -362,12 +370,27 @@ deviate from it.
   never by reading the CSS. **jsdom caveat: its `backgroundColor` reads
   `rgba(0,0,0,0)` in BOTH the broken and fixed states** (it parses neither
   `color-mix()` nor `var()`) — only the `background` SHORTHAND discriminates.
-  The same cascade means `.chip-shallow`'s amber hazard fill has NEVER
-  rendered (#506, open); fixing it by REORDERING `.chip` above its modifiers
-  would repair every BROKEN modifier at once (not every modifier — e.g.
-  `.chip-faster-rig` already sits below `.chip` and is unaffected) but
-  changes an existing surface, which is why #504 took the narrow
-  compound-selector route instead.
+  The same cascade kept `.chip-shallow`'s amber hazard fill from ever
+  rendering until PR #509 raised it to the compound `.chip.chip-shallow`
+  (#506, closed 2026-08-11) — the same narrow route #504 took, again in
+  preference to REORDERING `.chip` above its modifiers, which would have
+  repaired every BROKEN modifier at once (only those declared above the
+  base rule) but changed an existing surface. #509 also added
+  `app/src/test/chipShallowFill.test.ts`, a structural scan for any other
+  bare single-class `.chip-*` modifier sitting above `.chip`'s base rule, so
+  a new `.chip-*` instance now fails loudly instead of silently not
+  rendering. That guard is `.chip-*`-ONLY — the general rule above still has
+  no keeper for other primitives. None is broken today, but for DIFFERENT
+  reasons, so do not generalise from one: `.sc-card` and `.sc-field` declare
+  their base ABOVE their modifiers, whereas `.sc-btn` is ALSO named in a
+  later GROUPED rule inside `@media (prefers-reduced-motion: reduce)`
+  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`, ~:2167) that
+  sits below `.sc-btn-primary`/`-secondary`/`-ghost` and wins on source
+  order — media queries add no specificity. It is harmless only because it
+  sets `transition` alone, which no `.sc-btn-*` modifier touches. So a
+  `.chip-*`-style guard generalised to `.sc-btn` would report all three
+  modifiers broken today. Note the grouped form is why an anchored
+  `^\.sc-btn\s*\{` grep misses it: that line ends in a comma, not a brace.
 - **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
   `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
   primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
@@ -1783,6 +1806,21 @@ deviate from it.
   derived from an unverified claim about the code is the enumerate-don't-patch
   failure relocated one level up, into the brief. Same reason issue texts
   are not ground truth for states they do not describe.
+- **A verification grep scoped to TOKENS checks only what its token list
+  names — enumerate by CLAIM SHAPE.** PR #513's wave-5 twin check grepped
+  `CBLSUB|PIPSOL|item 3.2|item 2.3|§3.4`, a list written into the BRIEF,
+  and passed clean while an identical false attribution sat on `item 2.6`.
+  It was NOT blind to the text: measured in the wave-5 tree
+  (`git show d880693^:app/src/lib/seamarkGlyphs.ts`), the missed `item 2.6`
+  shares a LINE with the grepped `item 2.3`, so the grep printed the defect
+  in its own output. It was blind to the CLAIM, because only the listed
+  tokens were interrogated. The next review found it (2026-08-13). Wave 6
+  enumerated every `item[ -]?[0-9]+\.[0-9]+` whatever the number, and every
+  object-class claim whatever the class, and came back clean. A token list
+  is a hypothesis about where the defect lives; a claim-shape pattern tests
+  the property itself. Same failure as the delegation corollary above, one
+  level further in: scoping a search from what you already know — and note
+  that the output being on screen is no defence.
 - **State a verified fact as a past-tense EVENT, never as a current-state
   claim.** "re-verified against `maplibre-gl@6.2.0`" survives the next bump;
   "…, the version `app/package-lock.json` pins" goes FALSE at it — and a
