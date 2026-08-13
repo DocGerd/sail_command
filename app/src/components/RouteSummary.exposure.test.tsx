@@ -134,6 +134,23 @@ function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
   };
 }
 
+// #516 item 5: the remedy is wide-layout only, so most rows here need the wide
+// branch. jsdom leaves `window.matchMedia` undefined and lib/useWideLayout.ts
+// treats that absence as NARROW — same stub + same afterEach delete as
+// ScaleBar.test.tsx, so a wide row cannot leak into the next test.
+function setWideLayout(matches: boolean) {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+}
+
 async function renderAndSettle(legs: Leg[], usedDepthM?: number) {
   localStorage.setItem('sc-lang', 'en');
   const plan = usedDepthM === undefined ? makePlan(legs) : makePlan(legs, usedDepthM);
@@ -151,11 +168,18 @@ beforeEach(() => {
   // a resolved mask, so this file's own tests don't need boilerplate in the
   // common "no mask yet" case.
   mockedLoad.mockImplementation(() => new Promise(() => {}));
+  // Wide by default: the exposure FIGURE renders at every width, so most rows
+  // here are about the figure and only the narrow row below is about the
+  // remedy's own layout gate.
+  setWideLayout(true);
 });
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  // @ts-expect-error -- restore the untouched jsdom default (no matchMedia),
+  // which lib/useWideLayout.ts reads as the narrow layout.
+  delete window.matchMedia;
   vi.restoreAllMocks();
 });
 
@@ -235,6 +259,43 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(detail?.textContent).not.toContain('lower safety depth setting');
     // Not merely "no sentence": the formatted zero itself must never appear.
     expect(detail?.textContent).not.toContain('0.0 nm');
+  });
+
+  it('drops the remedy on a narrow layout — everything else renders at both widths', async () => {
+    // #516 item 5: a real-browser pass on 2026-08-13 measured the German
+    // banner overrunning the panel viewport at 390x844, so the remedy is
+    // wide-only. Mount-gated, not CSS-hidden — it must be ABSENT from the DOM,
+    // so a screen reader on narrow does not read a sentence a sighted user
+    // cannot see.
+    mockedLoad.mockResolvedValue(shallowMask());
+    setWideLayout(false);
+    const narrow = await renderAndSettle([EXPOSURE_LEG]);
+    await waitFor(() => {
+      expect(narrow.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const narrowBanners = narrow.querySelectorAll('[role="alert"].shallow-warning');
+    expect(narrowBanners).toHaveLength(1);
+    const narrowDetail = narrowBanners[0].querySelector('.shallow-warning__detail');
+    expect(narrowBanners[0].querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
+    expect(narrowBanners[0].querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
+    expect(narrowDetail?.textContent).toContain('3.0 nm of this route crosses water charted');
+    expect(narrowDetail?.textContent).toContain('was not passable');
+    expect(narrowDetail?.textContent).not.toContain('lower safety depth setting');
+
+    cleanup();
+    setWideLayout(true);
+    const wide = await renderAndSettle([EXPOSURE_LEG]);
+    await waitFor(() => {
+      expect(wide.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const wideBanners = wide.querySelectorAll('[role="alert"].shallow-warning');
+    expect(wideBanners).toHaveLength(1);
+    const wideDetail = wideBanners[0].querySelector('.shallow-warning__detail');
+    expect(wideBanners[0].querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
+    expect(wideBanners[0].querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
+    expect(wideDetail?.textContent).toContain('3.0 nm of this route crosses water charted');
+    expect(wideDetail?.textContent).toContain('was not passable');
+    expect(wideDetail?.textContent).toContain('lower safety depth setting');
   });
 
   it('keeps the figure but drops the remedy when no selectable safety depth is lower', async () => {

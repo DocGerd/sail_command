@@ -235,11 +235,11 @@ export const de = {
   // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
   // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen
   // entschieden). Zuletzt in .detail gerendert, nach dem Mechanismus-Satz,
-  // auf den er antwortet (PR #523, Minor 3). In RouteSummary.tsx an zwei
-  // Bedingungen gekoppelt: an dieselbe gemessene Exposition größer als null
-  // wie die Zahl davor, und daran, dass usedDepthM über SAFETY_DEPTH_FIELD.min
-  // liegt (Minor 5) — darunter ist kein einstellbarer Wert geringer als die
-  // ohnehin verwendete Tiefe, der Rat also nicht umsetzbar.
+  // auf den er antwortet (PR #523, Minor 3). In RouteSummary.tsx an drei
+  // Bedingungen gekoppelt — `showRemedy`: dieselbe gemessene Exposition
+  // größer als null wie die Zahl davor, das breite Layout, und usedDepthM
+  // über SAFETY_DEPTH_FIELD.min. Die Begründung zu jeder einzelnen steht an
+  // dieser Deklaration; sie ist die einzige Stelle zum Nachlesen und Ändern.
   'route.shallow.remedy':
     'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden.',
   // Was passiert ist: die eingestellte Sicherheitstiefe war nicht

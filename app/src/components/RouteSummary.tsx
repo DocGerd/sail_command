@@ -6,6 +6,7 @@ import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
 import { roundExposureNm, shallowExposureNm } from '../lib/shallowExposure';
+import { useWideLayout } from '../lib/useWideLayout';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import { useNavMask } from '../state/useNavMask';
 import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
@@ -82,15 +83,31 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
     if (nm === null || nm <= 0) return null;
     return formatNm(roundExposureNm(nm));
   }, [legs, mask, shallow.requestedDepthM]);
-  // PR #523 review, Minor 5: the remedy names an action — set a LOWER safety
-  // depth — that is unavailable at the bottom of the input's own range.
-  // findRelaxedDepthM searches [BOAT_DRAFT_M, requestedDepthM) while
-  // SAFETY_DEPTH_FIELD clamps the input to >= its own min (2.1 and 2.2
-  // respectively today), so at a usedDepthM of either, every value the user
-  // can pick is at or above the gate this route already used and there is no
-  // lower setting to choose. Suppressed there rather than hedged: this is
-  // safety copy, and advice that cannot be acted on is worse than none.
-  const remedyActionable = shallow.usedDepthM > SAFETY_DEPTH_FIELD.min;
+  const isWide = useWideLayout();
+  // The remedy sentence's ONE gate. Three conditions, one home — splitting
+  // them across the JSX is how the figure and the remedy diverged before
+  // (PR #523 review, Blocker 1). Each is an independent reason to say
+  // nothing: this is safety copy, so a sentence that is wrong, unreadable, or
+  // impossible to act on costs more than its absence.
+  //
+  // 1. exposureDist !== null — Blocker 1. Reuses the SAME resolved value the
+  //    figure renders, so the two can never disagree about whether there is a
+  //    measured, non-zero problem to advise about.
+  // 2. isWide — #516 item 5, the maintainer's call. Mount-gated on
+  //    lib/useWideLayout.ts's single 1024 px breakpoint, never CSS-hidden, so
+  //    a narrow layout does not carry a wide-only sentence in the
+  //    accessibility tree either (#355's resizer set that precedent). Reason:
+  //    a real-browser pass on 2026-08-13 measured the German banner at 489 px
+  //    against a 418 px panel viewport at 390x844, putting ~71 px of a safety
+  //    warning below the fold — a fourth sentence costs more than it gives on
+  //    the likeliest on-deck device.
+  // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedDepthM
+  //    searches [BOAT_DRAFT_M, requestedDepthM) while SAFETY_DEPTH_FIELD
+  //    clamps the input to >= its own min (2.1 and 2.2 respectively today),
+  //    so at a usedDepthM of either there is no lower setting to choose and
+  //    "set a lower safety depth" names an unavailable action.
+  const showRemedy =
+    exposureDist !== null && isWide && shallow.usedDepthM > SAFETY_DEPTH_FIELD.min;
   // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
   // children — lead/detail/caveat — so a screen reader still announces one
   // region while sighted users get a real visual hierarchy instead of one
@@ -134,10 +151,9 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
         {/* PR #523 review, Minor 3: the remedy renders LAST, after the
             mechanism sentence that justifies it — a reader must learn the
             router already reduced the gate on their behalf before being
-            advised to reduce it themselves. Gated on exposureDist AND on
-            remedyActionable (Minor 5), so it never appears without the figure
-            and never appears where no reachable setting is lower. */}
-        {exposureDist !== null && remedyActionable && (
+            advised to reduce it themselves. Gated on showRemedy, whose three
+            conditions are enumerated at its declaration. */}
+        {showRemedy && (
           <>
             {' '}
             {t('route.shallow.remedy')}
