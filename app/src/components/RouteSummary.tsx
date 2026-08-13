@@ -1,11 +1,13 @@
-import type { Ref } from 'react';
+import { useMemo, type Ref } from 'react';
 import { useT, useLang } from '../i18n';
 import { formatHeading, formatKn, formatLegDuration, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
+import { roundExposureNm, shallowExposureNm } from '../lib/shallowExposure';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
+import { useNavMask } from '../state/useNavMask';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, Rig, ShallowInfo } from '../types';
 import Card from './Card';
@@ -54,6 +56,21 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
     ? 'shallow-warning shallow-warning--severe'
     : 'shallow-warning';
   const cautiousM = cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1);
+  // #516 increment 1: presentation-only exposure figure — how much of the
+  // ACTIVE rig's own legs cross cells the mask charts below the REQUESTED
+  // depth, re-walked at render time against the currently-loaded mask
+  // (never the mask this plan was originally routed against — see
+  // lib/shallowExposure.ts's own doc comment for that residual, shared with
+  // #505's exhaustiveMinDepth). Gated on legs being present at all: an empty
+  // or absent legs array (the active tab's own rig has no result, #452
+  // Major 1) has nothing to walk. `mask` starts null and resolves
+  // asynchronously (useNavMask), so this is null on first paint and fills
+  // in once routing assets load — never a fallback number in between.
+  const mask = useNavMask();
+  const exposureNm = useMemo(() => {
+    if (!mask || !legs || legs.length === 0) return null;
+    return shallowExposureNm(legs, mask, shallow.requestedDepthM);
+  }, [legs, mask, shallow.requestedDepthM]);
   // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
   // children — lead/detail/caveat — so a screen reader still announces one
   // region while sighted users get a real visual hierarchy instead of one
@@ -72,6 +89,15 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
         })}
       </p>
       <p className="shallow-warning__detail">
+        {exposureNm !== null && (
+          <>
+            {t('route.shallow.exposure', {
+              dist: formatNm(roundExposureNm(exposureNm)),
+              requested: shallow.requestedDepthM.toFixed(1),
+            })}{' '}
+            {t('route.shallow.remedy')}{' '}
+          </>
+        )}
         {t('route.shallow.detail', {
           requested: shallow.requestedDepthM.toFixed(1),
           used: shallow.usedDepthM.toFixed(1),

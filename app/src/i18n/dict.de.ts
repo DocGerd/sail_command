@@ -218,6 +218,27 @@ export const de = {
     'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken.',
   'route.shallow.leadSevere':
     'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m.',
+  // #516 Zuwachs 1: siehe dict.en.ts's Kommentar für Zweck, Herkunft und
+  // Anaphern-Disziplin (rein präsentativ, in RouteSummary.tsx zur Laufzeit
+  // gegen die geladene Maske berechnet, nie in PlanResult gespeichert).
+  // OFFENE FRAGE, bewusst nicht still entschieden (siehe PR-Bericht): ob
+  // nach der Maßangabe "Bis zu {dist}" das Verb Singular ("verläuft") oder
+  // Plural ("verlaufen") nehmen sollte — hier vorläufig Plural, dem
+  // #516-Entwurfsdokument §7 folgend. Ebenfalls offen: der Dezimalpunkt aus
+  // formatNm ({dist}) mitten in einem deutschen Satz, und ob "Wegpunkt"
+  // (wie planner.via.*) oder "Zwischenpunkt" (wie route.legend.via) die
+  // richtige Wahl wäre — hier kommt keins von beiden vor, aber die
+  // Inkonsistenz besteht im Wörterbuch bereits.
+  'route.shallow.exposure':
+    'Bis zu {dist} dieser Route verlaufen in Wasser, das flacher als die eingestellte Sicherheitstiefe von {requested} m kartiert ist.',
+  // #516: die explizite Produktentscheidung des Maintainers (im
+  // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
+  // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen
+  // entschieden). Direkt nach .exposure gerendert und an dieselbe Bedingung
+  // in RouteSummary.tsx gekoppelt (die Maske ist geladen), sodass beide
+  // Sätze immer zusammen erscheinen oder gar nicht.
+  'route.shallow.remedy':
+    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden.',
   // Was passiert ist: die eingestellte Sicherheitstiefe war nicht
   // passierbar, die tatsächlich verwendete Tiefe, die geringste gequerte
   // Kartentiefe. Normale Textstärke (nicht mehr hervorgehoben) — siehe

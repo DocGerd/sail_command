@@ -199,6 +199,26 @@ export const en = {
     'Caution: a more cautious reading of the charted depth data could run as low as {cautious} m.',
   'route.shallow.leadSevere':
     "Caution: a more cautious reading of the charted depth data could run as low as {cautious} m, below this boat's {draft} m draft.",
+  // #516 increment 1: presentation-only shallow-EXPOSURE figure (a distance,
+  // not a per-leg minimum) — computed at render time in
+  // lib/shallowExposure.ts against the CURRENTLY LOADED mask, never stored
+  // in PlanResult (see #516's design doc, "Option (a), presentation-only":
+  // app/sweep/'s byte-diff acceptance harness stays valid only because
+  // PlanResult never grows a field for this). Rendered FIRST in .detail,
+  // ahead of the existing "what happened" mechanism sentence below —
+  // self-contained (refers to nothing rendered elsewhere), per the #493/
+  // #504 anaphora lesson recorded in this file's own comment above.
+  'route.shallow.exposure':
+    'Up to {dist} of this route crosses water charted shallower than your safety depth of {requested} m.',
+  // #516: the maintainer's own explicit product decision (the #516 design
+  // doc had deliberately left this UNRECOMMENDED, "a maintainer product
+  // call, flagged rather than designed" — since ruled on). Rendered
+  // immediately after .exposure above and gated on the SAME condition in
+  // RouteSummary.tsx (the mask being loaded), so the two always appear
+  // together or not at all — a remedy with no quantified problem statement
+  // above it would be a weaker pairing.
+  'route.shallow.remedy':
+    'A lower safety depth setting might let the planner find a more direct route.',
   // What happened: the requested safety depth was not passable, the depth
   // actually used, the shallowest charted depth crossed. Normal weight (no
   // longer emphasised) — review (PR #461 Minor 5): "shallowest charted
