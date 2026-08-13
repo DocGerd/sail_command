@@ -7,7 +7,7 @@
 // unconfigured `vi.fn()` factory returns `undefined` from
 // `loadRoutingAssets()`, and `undefined.then(...)` throws synchronously
 // inside useNavMask's effect. This file owns its own mock end to end instead.
-import { render, cleanup, waitFor } from '@testing-library/react';
+import { act, render, cleanup, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { TEST_MASK_META, TEST_POLAR } from '../test/fixtures';
@@ -76,6 +76,15 @@ function shallowMask() {
     (row, col) =>
       row === ROW && (col === 55 || col === 56 || col === 57) ? 20 /* 2.0 m */ : 200 /* 20 m */,
   );
+}
+
+// Every cell 20 m — the SAME leg then measures an exposure of exactly 0
+// against a fully loaded mask (PR #523 review, Blocker 1). Reachable in
+// production two ways: `shallow` folds over BOTH rigs' legs while the walk
+// uses only the ACTIVE rig's, and the walk uses the currently-loaded mask
+// rather than the one the plan was routed against.
+function deepMask() {
+  return assetsWithMask(() => 200 /* 20 m */);
 }
 
 function makePlan(legs: Leg[]): Plan {
@@ -161,12 +170,18 @@ describe('#516: ShallowWarning exposure sentence', () => {
     // this exact leg/mask geometry yields ~3.0 nm, which formatNm renders as
     // "3.0 nm" (toFixed(1)). Asserting the VALUE, not that SOME sentence
     // rendered — the #388 prose-vs-value trap.
-    expect(detail?.textContent).toContain('Up to 3.0 nm of this route');
+    expect(detail?.textContent).toContain('3.0 nm of this route crosses water charted shallower');
     expect(detail?.textContent).toContain('safety depth of 3.0 m');
     // The remedy line is paired with it (same gating condition) — always
     // appears alongside the exposure figure, never alone.
-    expect(detail?.textContent).toContain(
+    const text = detail?.textContent ?? '';
+    expect(text).toContain(
       'A lower safety depth setting might let the planner find a more direct route.',
+    );
+    // PR #523 review, Minor 3: the remedy must follow the mechanism sentence
+    // that justifies it, never precede it.
+    expect(text.indexOf('A lower safety depth setting')).toBeGreaterThan(
+      text.indexOf('was not passable'),
     );
   });
 
@@ -181,7 +196,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(lead?.textContent).toBeTruthy();
     expect(detail?.textContent).toBeTruthy();
     expect(caveat?.textContent).toBeTruthy();
-    expect(detail?.textContent).not.toContain('Up to');
+    expect(detail?.textContent).not.toContain('of this route crosses');
     expect(detail?.textContent).not.toContain('lower safety depth setting');
     // The pre-existing "what happened" mechanism sentence is unaffected.
     expect(detail?.textContent).toContain('was not passable');
@@ -195,8 +210,30 @@ describe('#516: ShallowWarning exposure sentence', () => {
       expect(mockedLoad).toHaveBeenCalled();
     });
     const detail = container.querySelector('.shallow-warning__detail');
-    expect(detail?.textContent).not.toContain('Up to');
+    expect(detail?.textContent).not.toContain('of this route crosses');
     expect(detail?.textContent).toContain('was not passable');
+  });
+
+  it('omits BOTH sentences when the mask has loaded and the measured exposure is exactly zero', async () => {
+    // PR #523 review, Blocker 1. The mask here RESOLVES — the distinguishing
+    // condition against the three rows around it is that the walk really ran
+    // and returned 0, not that it never ran. "0.0 nm of this route crosses
+    // shallow water" plus "try lowering your safety depth" is wrong on both
+    // halves; the banner must degrade to lead + detail + caveat, the same
+    // fail-safe shape firstShallowLeg already uses for the locator.
+    mockedLoad.mockResolvedValue(deepMask());
+    const container = await renderAndSettle([EXPOSURE_LEG]);
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    const banner = container.querySelector('.shallow-warning');
+    const detail = container.querySelector('.shallow-warning__detail');
+    expect(banner?.querySelector('.shallow-warning__lead')?.textContent).toBeTruthy();
+    expect(banner?.querySelector('.shallow-warning__caveat')?.textContent).toBeTruthy();
+    expect(detail?.textContent).toContain('was not passable');
+    expect(detail?.textContent).not.toContain('of this route crosses');
+    expect(detail?.textContent).not.toContain('lower safety depth setting');
+    // Not merely "no sentence": the formatted zero itself must never appear.
+    expect(detail?.textContent).not.toContain('0.0 nm');
   });
 
   it('omits the exposure sentence when the active rig has no legs at all', async () => {
@@ -204,6 +241,6 @@ describe('#516: ShallowWarning exposure sentence', () => {
     const container = await renderAndSettle([]);
     await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
     const detail = container.querySelector('.shallow-warning__detail');
-    expect(detail?.textContent).not.toContain('Up to');
+    expect(detail?.textContent).not.toContain('of this route crosses');
   });
 });

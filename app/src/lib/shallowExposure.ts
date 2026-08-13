@@ -69,9 +69,14 @@ function withinMask(meta: MaskMeta, p: LatLon): boolean {
  * rule) — `depthInfoM`'s explicit `capped` flag is the only honest
  * discriminator.
  *
- * Returns null when the walk's bounded iteration guard trips — mirrors
- * NavMask.walkCells's own guard exactly (same `rows + cols + 4` bound).
- * Should be unreachable in practice: both endpoints are bound-checked
+ * Returns null when the walk's bounded iteration guard trips — the same
+ * `rows + cols + 4` constant as NavMask.walkCells, though not the same
+ * allowance: walkCells visits its first cell BEFORE its loop and so
+ * tolerates one more cell than this loop, which counts the first cell
+ * inside the bound. Immaterial in both directions — a full diagonal of the
+ * shipped 2400x2200 mask visits `rows + cols - 1` = 4599 cells against a
+ * 4604 bound, and this walk's stricter bound fails to `null`, the safe
+ * direction. Should be unreachable in practice: both endpoints are bound-checked
  * against `meta` by the caller first, and the mask's coverage rectangle is
  * convex, so a straight segment between two in-rectangle points can never
  * leave it. Kept anyway as a defensive fail-to-null, per the #251/#255 rule
@@ -115,9 +120,10 @@ function shallowFractionOfLeg(
 
   let fraction = 0;
   let tEntry = 0;
-  // Same iteration bound as NavMask.walkCells (private) — a bounded guard,
-  // not a correctness bound; both endpoints being inside the (convex) mask
-  // rectangle is what actually guarantees termination.
+  // Same `rows + cols + 4` constant as NavMask.walkCells (private); the two
+  // allowances differ by one cell — see this function's doc comment. A
+  // bounded guard, not a correctness bound; both endpoints being inside the
+  // (convex) mask rectangle is what actually guarantees termination.
   for (let iter = 0; iter < meta.rows + meta.cols + 4; iter++) {
     const atEnd = cx === ex && cy === ey;
     const tExit = atEnd ? 1 : Math.min(tMaxX, tMaxY);

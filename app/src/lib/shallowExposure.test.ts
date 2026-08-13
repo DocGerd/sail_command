@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
 import { shallowExposureNm, roundExposureNm } from './shallowExposure';
-import type { LatLon, Leg } from '../types';
+import type { NavMask } from './mask';
+import type { LatLon, Leg, MaskMeta } from '../types';
 
 const CELL_LAT = (TEST_MASK_META.north - TEST_MASK_META.south) / TEST_MASK_META.rows; // 0.005
 const CELL_LON = (TEST_MASK_META.east - TEST_MASK_META.west) / TEST_MASK_META.cols; // 0.005
@@ -99,7 +100,19 @@ describe('shallowExposureNm (#516)', () => {
     expect(result!).toBeLessThan(leg.distanceNm / 10);
   });
 
-  it('a deep-capped (byte 255) band never counts as shallow, even above the threshold', () => {
+  it('parity with segmentShallowestBelow byte-255 rule: a deep-capped band never counts as shallow (UNREACHABLE at the 10 m safetyDepthM cap)', () => {
+    // NOT coverage of user-visible behaviour (#410, and PR #523 review Minor
+    // 2): this row runs at thresholdM 26.0, but shallowExposureNm is only
+    // ever called with `shallow.requestedDepthM`, i.e. the safetyDepthM
+    // OptionsPanel's SAFETY_DEPTH_FIELD bounds to [2.2, 10]. A capped cell
+    // decodes to 25.4 m, so at every threshold a user can reach
+    // `depthM < thresholdM` is already false and the `!info.capped` term
+    // cannot change the verdict. Kept because it pins PARITY with
+    // NavMask.segmentShallowestBelow's own byte-255 rule, so the two cannot
+    // drift if either bound ever widens — the same reason mask.ts's
+    // segmentClearanceM carries its "revisit if either bound widens past
+    // 25.4 m" note.
+    //
     // Threshold set HIGHER than the deep-cap's 25.4 m reading — a naive
     // `depthM < thresholdM` check with no capped exemption would wrongly
     // flag every cell here as shallow.
@@ -127,12 +140,18 @@ describe('shallowExposureNm (#516)', () => {
     expect(result).toBeNull();
   });
 
-  // #516 design doc §8 item 6: a seeded property test guarding the
-  // duplicated Amanatides-Woo walk against drift from NavMask's own private
-  // walkCells — needle (shallowExposureNm's boolean) from THIS module,
-  // haystack (segmentShallowestBelow's boolean) from NavMask, independently
-  // sourced (per #411's "needle and haystack from the same source is the
-  // worse tautology").
+  // #516 design doc §8 item 6, NARROWED (PR #523 review, Major 1): a seeded
+  // property that the two implementations agree on the shallow/deep VERDICT
+  // — needle (shallowExposureNm's boolean) from THIS module, haystack
+  // (segmentShallowestBelow's boolean) from NavMask, independently sourced
+  // (per #411's "needle and haystack from the same source is the worse
+  // tautology"). It is NOT the drift guard for the duplicated
+  // Amanatides-Woo walk and must not be described as one: a boolean
+  // equivalence cannot see WHICH cells were visited or in what order, so it
+  // stayed 8/8 GREEN under a measured convention divergence (the corner
+  // tie-break, `tMaxX < tMaxY` -> `<=`). The visited-cell sequence
+  // comparison below is the drift keeper; this row catches a different,
+  // cheaper class.
   it('property: shallowExposureNm finds shallow water iff NavMask.segmentShallowestBelow does (seeded)', () => {
     // Scattered shallow cells amid deep water — an arbitrary deterministic
     // pattern, not a simple band, so the property exercises many different
@@ -163,6 +182,122 @@ describe('shallowExposureNm (#516)', () => {
         expect((exposure as number) > 0).toBe(shallowestBelow !== null);
       }),
       { numRuns: 200, seed: 42 }, // deterministic CI
+    );
+  });
+});
+
+// PR #523 review, Major 1 — the DRIFT KEEPER for the Amanatides-Woo walk
+// shallowExposure.ts duplicates from NavMask.walkCells. The two walks are
+// byte-identical TODAY; the duplication's whole risk is a FUTURE edit to
+// either copy diverging silently, producing a wrong safety number with no
+// signal. So this compares the VISITED-CELL SEQUENCES, not a verdict — the
+// boolean property above cannot see a traversal change and measurably did
+// not (8/8 green under a corner tie-break flip).
+//
+// Needle: shallowExposureNm touches the mask only through
+// `mask.depthInfoM(centre)`, so a facade carrying the real `meta` plus a
+// recording `depthInfoM` captures the shipped walk's own sequence with NO
+// production change.
+//
+// Haystack: `NavMask.walkCells` is `private` in TYPESCRIPT ONLY — an
+// ordinary method at runtime. Reaching it through a cast is deliberate and
+// is the only way to compare the two walks at all: nothing public reports a
+// visited-cell sequence, and re-deriving one inside this test would make
+// needle and haystack share a source, the worse tautology (#411).
+interface WalkCellsHost {
+  walkCells(a: LatLon, b: LatLon, visit: (row: number, col: number) => boolean): boolean;
+}
+
+function shippedWalk(mask: NavMask, a: LatLon, b: LatLon): string[] {
+  const meta = mask.meta;
+  const latStep = (meta.north - meta.south) / meta.rows;
+  const lonStep = (meta.east - meta.west) / meta.cols;
+  const seq: string[] = [];
+  const recorder = {
+    meta,
+    depthInfoM(p: LatLon) {
+      const row = Math.floor((p.lat - meta.south) / latStep);
+      const col = Math.floor((p.lon - meta.west) / lonStep);
+      seq.push(`${row},${col}`);
+      return mask.depthInfoM(p);
+    },
+  };
+  // The threshold cannot change WHICH cells are visited — every visited cell
+  // is probed before its depth is compared — so any value serves here.
+  shallowExposureNm([makeLeg(a, b, 1)], recorder as unknown as NavMask, 3.0);
+  return seq;
+}
+
+function navMaskWalk(mask: NavMask, a: LatLon, b: LatLon): string[] {
+  const seq: string[] = [];
+  (mask as unknown as WalkCellsHost).walkCells(a, b, (row, col) => {
+    seq.push(`${row},${col}`);
+    return true;
+  });
+  return seq;
+}
+
+// Exact-tie grid: west/south and both steps are exact binary fractions
+// (step = 2^-7 = 0.0078125), so a point offset by the SAME multiple of the
+// step in both axes yields x0 === y0 bit-for-bit. A 45-degree segment across
+// it therefore has tMaxX === tMaxY at EVERY step — the only regime in which
+// the corner tie-break convention is observable at all. On TEST_MASK_META
+// neither step is a binary fraction, so an exact tie is not constructible
+// there and every named shape below would leave the tie-break untested.
+const TIE_META: MaskMeta = { west: 8, south: 54, east: 10, north: 56, cols: 256, rows: 256 };
+const TIE_STEP = (TIE_META.east - TIE_META.west) / TIE_META.cols;
+const tiePoint = (k: number): LatLon => ({
+  lat: TIE_META.south + k * TIE_STEP,
+  lon: TIE_META.west + k * TIE_STEP,
+});
+
+describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
+  const mask = makeMask((row, col) => ((row * 7 + col * 13) % 5 === 0 ? 20 : 200));
+  const tieMask = makeMask(() => 200, TIE_META);
+  const cases: Array<[string, NavMask, LatLon, LatLon]> = [
+    ['pure longitude (dy = 0)', mask, pointAt(100.5, 50.3), pointAt(100.5, 70.7)],
+    ['pure latitude (dx = 0)', mask, pointAt(40.3, 60.5), pointAt(90.7, 60.5)],
+    ['a single cell', mask, pointAt(30.2, 30.2), pointAt(30.8, 30.8)],
+    ['zero length', mask, pointAt(30.5, 30.5), pointAt(30.5, 30.5)],
+    ['start exactly on a cell boundary', mask, pointAt(20, 20), pointAt(35.4, 48.9)],
+    ['end exactly on a cell boundary', mask, pointAt(35.4, 48.9), pointAt(20, 20)],
+    ['steep (|dy| >> |dx|)', mask, pointAt(10.3, 100.4), pointAt(180.6, 103.1)],
+    ['shallow slope (|dx| >> |dy|)', mask, pointAt(80.3, 10.4), pointAt(83.1, 300.6)],
+    ['both axes negative', mask, pointAt(150.6, 250.7), pointAt(20.2, 30.1)],
+    ['exact 45 degrees through cell corners, ascending', tieMask, tiePoint(10), tiePoint(60)],
+    ['exact 45 degrees through cell corners, descending', tieMask, tiePoint(60), tiePoint(10)],
+  ];
+  for (const [name, m, a, b] of cases) {
+    it(`visits the same cells in the same order: ${name}`, () => {
+      const shipped = shippedWalk(m, a, b);
+      // Fails CLOSED: a segment that never walked at all would make the
+      // sequence comparison below vacuously true (two empty arrays).
+      expect(shipped.length).toBeGreaterThan(0);
+      expect(shipped).toEqual(navMaskWalk(m, a, b));
+    });
+  }
+
+  it('visits the same cells in the same order over seeded random segments', () => {
+    const MARGIN = 0.02;
+    const arbPoint = fc.record({
+      lat: fc.double({
+        min: TEST_MASK_META.south + MARGIN,
+        max: TEST_MASK_META.north - MARGIN,
+        noNaN: true,
+      }),
+      lon: fc.double({
+        min: TEST_MASK_META.west + MARGIN,
+        max: TEST_MASK_META.east - MARGIN,
+        noNaN: true,
+      }),
+    });
+    fc.assert(
+      fc.property(arbPoint, arbPoint, (a, b) => {
+        const shipped = shippedWalk(mask, a, b);
+        expect(shipped.length).toBeGreaterThan(0);
+        expect(shipped).toEqual(navMaskWalk(mask, a, b));
+      }),
+      { numRuns: 500, seed: 42 }, // deterministic CI
     );
   });
 });

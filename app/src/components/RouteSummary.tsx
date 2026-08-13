@@ -66,10 +66,20 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
   // Major 1) has nothing to walk. `mask` starts null and resolves
   // asynchronously (useNavMask), so this is null on first paint and fills
   // in once routing assets load — never a fallback number in between.
+  // A MEASURED ZERO is gated out too (PR #523 review, Blocker 1): the plan's
+  // `shallow` block folds over BOTH rigs' legs while this walks only the
+  // ACTIVE rig's, and the walk uses the currently-loaded mask, so an
+  // honest 0 is reachable — and "0.0 nm of this route crosses shallow
+  // water, try lowering your safety depth" is wrong on both halves. The
+  // banner then degrades to lead + detail + caveat, the same fail-safe
+  // shape firstShallowLeg already uses for the locator. Resolved to the
+  // FORMATTED distance so that gate has exactly one home.
   const mask = useNavMask();
-  const exposureNm = useMemo(() => {
+  const exposureDist = useMemo(() => {
     if (!mask || !legs || legs.length === 0) return null;
-    return shallowExposureNm(legs, mask, shallow.requestedDepthM);
+    const nm = shallowExposureNm(legs, mask, shallow.requestedDepthM);
+    if (nm === null || nm <= 0) return null;
+    return formatNm(roundExposureNm(nm));
   }, [legs, mask, shallow.requestedDepthM]);
   // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
   // children — lead/detail/caveat — so a screen reader still announces one
@@ -89,13 +99,12 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
         })}
       </p>
       <p className="shallow-warning__detail">
-        {exposureNm !== null && (
+        {exposureDist !== null && (
           <>
             {t('route.shallow.exposure', {
-              dist: formatNm(roundExposureNm(exposureNm)),
+              dist: exposureDist,
               requested: shallow.requestedDepthM.toFixed(1),
             })}{' '}
-            {t('route.shallow.remedy')}{' '}
           </>
         )}
         {t('route.shallow.detail', {
@@ -110,6 +119,18 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
               count: locator.count,
               time: formatTime(locator.firstTimeMs, lang),
             })}
+          </>
+        )}
+        {/* PR #523 review, Minor 3: the remedy renders LAST, after the
+            mechanism sentence that justifies it — a reader must learn the
+            router already reduced the gate on their behalf before being
+            advised to reduce it themselves. Still gated on the SAME
+            exposureDist as the figure above, so the two appear together or
+            not at all. */}
+        {exposureDist !== null && (
+          <>
+            {' '}
+            {t('route.shallow.remedy')}
           </>
         )}
       </p>
