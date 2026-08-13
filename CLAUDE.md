@@ -128,9 +128,11 @@ deviate from it.
   `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
   `app/src/test/setup.ts`; and the solver reaches `lib/geo.ts`,
   `lib/polar.ts` and `lib/wind.ts`. One `DEFAULT_SETTINGS` field edit moves
-  all 297 plans while touching none of the obvious paths — which is why the
-  list form of this rule was wrong (measured 2026-08-13: #518's evidence did
-  survive #513, #522 and #523, which touched no input at all).
+  plans across every arm that does not spread-override that field, while
+  touching none of the obvious paths — which is why the list form of this
+  rule was wrong (measured 2026-08-13: #518's evidence did survive #513,
+  #522 and #523, verified by running the closure check this rule prescribes
+  — none of the 22 files they changed is in the closure).
   A STRONGER control than the required double-run
   exists once a prior run is on record: BASE *and* HEAD arm sha256 prefixes
   matching that run on a different machine, day and merge-base proves the
