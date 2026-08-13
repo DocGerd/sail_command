@@ -399,4 +399,121 @@ describe('DepthProfile', () => {
     await waitForChart(container);
     expect(container.querySelectorAll('.dp-shallow-leg').length).toBe(0);
   });
+
+  it('#505: summary min. reflects the exhaustive route minimum, not just the time-sampled series', async () => {
+    // 20 m everywhere except ONE cell (row 100, col 150 -> lat [54.800,
+    // 54.805), lon [10.150, 10.155)) charted 0.5 m (byte 5).
+    const data = new Uint8Array(TEST_MASK_META.rows * TEST_MASK_META.cols).fill(200);
+    data[100 * TEST_MASK_META.cols + 150] = 5;
+    mockedLoad.mockResolvedValue({ ...assetsWith(200), maskBuffer: data.buffer });
+
+    const legs: Leg[] = [
+      {
+        kind: 'sail',
+        board: 'starboard',
+        start: { lat: 54.79, lon: 9.43 },
+        end: { lat: 54.8, lon: 10.0 },
+        startTimeMs: DEPARTURE_MS,
+        endTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+        headingDeg: 88,
+        twaDeg: 92,
+        twsKn: 10,
+        speedKn: 7,
+        distanceNm: 15,
+        maneuverAtStart: null,
+      },
+      {
+        // 30 s, entirely inside the one shallow cell — far shorter than the
+        // ~4-minute sample interval this 4 h trip's 60 samples produce, so
+        // the sparse series (used before #505) never lands on it.
+        kind: 'sail',
+        board: 'starboard',
+        start: { lat: 54.8025, lon: 10.1525 },
+        end: { lat: 54.8026, lon: 10.1526 },
+        startTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+        endTimeMs: DEPARTURE_MS + 2 * 3_600_000 + 30_000,
+        headingDeg: 90,
+        twaDeg: 90,
+        twsKn: 10,
+        speedKn: 6,
+        distanceNm: 0.01,
+        maneuverAtStart: null,
+      },
+      {
+        kind: 'sail',
+        board: 'starboard',
+        start: { lat: 54.82, lon: 10.3 },
+        end: { lat: 54.85, lon: 10.52 },
+        startTimeMs: DEPARTURE_MS + 2 * 3_600_000 + 30_000,
+        endTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+        headingDeg: 85,
+        twaDeg: 95,
+        twsKn: 9,
+        speedKn: 6,
+        distanceNm: 14,
+        maneuverAtStart: null,
+      },
+    ];
+    const plan = makePlan({ genoa: { ...GENOA_RESULT, legs, durationMs: 4 * 3_600_000 } });
+    const { container } = renderProfile({ plan });
+    await waitForChart(container);
+
+    const summary = container.querySelector('.depth-profile-summary')?.textContent ?? '';
+    expect(summary).toContain('min. 0.5 m');
+  });
+
+  // #512 review findings 7 & 8: mask loaded, legs present, `samples`
+  // non-empty (profileSamples has no bound check, so it still produces a
+  // full series even over an out-of-coverage stretch), and one leg endpoint
+  // outside TEST_MASK_META so exhaustiveMinDepth returns null — the one
+  // reachable trigger for the null-headline path. Before this wave nothing
+  // exercised this state at all, so a future re-introduction of the removed
+  // sparse-minimum fallback (`exhaustiveMin ?? samples.reduce(...)`) would
+  // silently restore the exact optimistic reading #505 exists to eliminate.
+  it('#512 F7/F8: an unreachable exhaustive minimum shows the "unknown" placeholder, never a number', async () => {
+    mockedLoad.mockResolvedValue(assetsWith(200)); // 20 m everywhere within coverage
+    const legs: Leg[] = [
+      {
+        // Fully inside TEST_MASK_META coverage (west 9.4/south 54.3/east
+        // 11.0/north 55.3).
+        kind: 'sail',
+        board: 'starboard',
+        start: { lat: 54.5, lon: 10.0 },
+        end: { lat: 54.5, lon: 10.1 },
+        startTimeMs: DEPARTURE_MS,
+        endTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+        headingDeg: 90,
+        twaDeg: 90,
+        twsKn: 10,
+        speedKn: 6,
+        distanceNm: 4,
+        maneuverAtStart: null,
+      },
+      {
+        // Ends outside mask coverage entirely.
+        kind: 'sail',
+        board: 'starboard',
+        start: { lat: 54.5, lon: 10.1 },
+        end: { lat: 60, lon: 20 },
+        startTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+        endTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+        headingDeg: 85,
+        twaDeg: 95,
+        twsKn: 9,
+        speedKn: 6,
+        distanceNm: 14,
+        maneuverAtStart: null,
+      },
+    ];
+    const plan = makePlan({ genoa: { ...GENOA_RESULT, legs, durationMs: 4 * 3_600_000 } });
+    const { container } = renderProfile({ plan });
+    await waitForChart(container);
+
+    const summary = container.querySelector('.depth-profile-summary')?.textContent ?? '';
+    // F8: a visible, unmistakable placeholder — not blank.
+    expect(summary).toContain('min. — unknown');
+    // F7: reds under the deleted fallback, which would render 'min. 20.0 m'
+    // (leg 1's own reading) instead of the placeholder.
+    expect(summary).not.toMatch(/\d/);
+  });
 });
