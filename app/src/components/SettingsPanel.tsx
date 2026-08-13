@@ -119,10 +119,13 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
     SEAMARK_SIZE_MAX,
   );
   const seamarkSizeScale = seamarkSizeScaleStored ?? SEAMARK_SIZE_SCALE;
+  // #513 R4: unclamped bounds — see DataLayers.tsx's identical call site for
+  // why [BASE, ALL] would launder a corrupt negative value past
+  // `toSeamarkDisplayTier`'s own guard before it ever runs.
   const [seamarkDisplayTierStored, setSeamarkDisplayTier] = usePersistedNumber(
     'sc-seamark-display-tier',
-    SEAMARK_DISPLAY_TIER_BASE,
-    SEAMARK_DISPLAY_TIER_ALL,
+    -Infinity,
+    Infinity,
   );
   const seamarkDisplayTier = toSeamarkDisplayTier(seamarkDisplayTierStored);
   // #513 F6: computed ONCE and reused for both the visible `<output>` text

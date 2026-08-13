@@ -322,6 +322,23 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
     });
 
+    // #513 R4: the REAL pipeline (usePersistedNumber -> toSeamarkDisplayTier),
+    // not just the pure function in isolation. `seamarkGlyphs.test.ts`
+    // already pins `toSeamarkDisplayTier(-1)` === ALL, but that alone proved
+    // nothing about what actually renders: before this fix, both call sites
+    // read `usePersistedNumber('sc-seamark-display-tier', BASE, ALL)`, whose
+    // OWN clamp laundered a stored `-1` into `0` (= BASE) before
+    // `toSeamarkDisplayTier` ever saw anything but an in-range number — a
+    // unit test that passed while the integrated behaviour did the opposite.
+    // This seeds the SAME corrupt value the unit test uses, through
+    // localStorage (the real transport), and checks the rendered radio.
+    it('a corrupt negative stored value (a hand-edited "-1") renders as All, never Base — the pipeline, not just the pure function', () => {
+      localStorage.setItem('sc-seamark-display-tier', '-1');
+      renderPanel();
+      expect(screen.getByRole('radio', { name: 'All' })).toBeChecked();
+      expect(screen.getByRole('radio', { name: 'Base' })).not.toBeChecked();
+    });
+
     // #513 F3: the old text claimed "larger symbols never hide other
     // marks", which is false at z>=12 (icon-overlap: 'always' — nothing is
     // culled there, so bigger icons overlap MORE). The corrected text

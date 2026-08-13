@@ -499,7 +499,7 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
         `uncollided ${highAll.iconIds.length} in the same box at category=All too`,
     ).toBeLessThan(highAll.iconIds.length);
 
-    // #513 F5: the SIZE axis — the PR's headline feature — had no
+    // #513 F5/R1: the SIZE axis — the PR's headline feature — had no
     // end-to-end evidence at any scale but the default (1). Both ends of
     // the 0.5-1.5 range are exercised here via the REAL slider control
     // (native Home/End keys — a focused `<input type="range">`'s standard
@@ -508,19 +508,30 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
     // the category filter (a category-caused count change would otherwise
     // be indistinguishable from a size-caused one).
     //
-    // Two DIFFERENT evidentiary standards per zoom regime, deliberately:
-    // - z>=12 (`icon-overlap:'always'`, nothing culled): the set is
-    //   STRUCTURALLY INVARIANT to icon size — it must equal `highAll.iconIds`
-    //   EXACTLY at both 0.5 and 1.5. Any drift here is the #191/#192
-    //   signature (something moved besides the size).
-    // - z<12 (collision culling live): REPORTED via console.log, not
-    //   asserted equal to the scale-1 baseline. `queryRenderedFeatures`
-    //   matches the symbol's COLLISION BOX, so the capture APERTURE this
-    //   z11.5/z13 pair was calibrated to match (#484 F2) was calibrated at
-    //   scale=1 — a bigger icon at z11.5 genuinely captures a wider fringe
-    //   around the query box, a measurement artifact of THIS harness, not a
-    //   rendering regression. Only a liveness check (culls at least one
-    //   mark relative to the uncollided z>=12 view) is asserted there.
+    // z>=12 (`icon-overlap:'always'`, nothing culled): the set must equal
+    // `highAll.iconIds` EXACTLY at both 0.5 and 1.5. Any drift here is the
+    // #191/#192 signature (something moved besides the size) — and it is
+    // the STRUCTURALLY sound half: `iconPaddingAt`'s compensation is built
+    // so `displayed + 2*padding` has no `scale` term (derivation in
+    // `seamarkGeoJson.ts`'s own comment), so the collision box —
+    // `queryRenderedFeatures`'s match target — cannot widen with icon size.
+    //
+    // z<12 (collision culling live) is PINNED, not merely reported — an
+    // earlier revision of this comment argued the z<12 set couldn't be
+    // pinned because "a bigger icon captures a wider fringe around the
+    // query box"; that argument is REFUTED by this file's own measured
+    // output (#513 R1): scale=1.5, where a widened fringe would have to
+    // show if the argument were true, is BYTE-IDENTICAL to the scale=1
+    // baseline (`lowAll.iconIds`), while scale=0.5 — the shrinking
+    // direction — is the one that differs, which the "wider fringe"
+    // mechanism cannot explain at all. The scale=0.5 difference is a
+    // same-COUNT SWAP (`seamark-lateral-pillar-green-starboard` culled,
+    // a second `seamark-lateral-spar-red-port` placed instead) that a
+    // `.length`-only check cannot see — the exact blindness this file's own
+    // settle gate exists to prevent. No cause is asserted for the swap here
+    // (the collision box is scale-invariant by the compensation formula, so
+    // something OUTSIDE it is deciding placement, and what that is remains
+    // undetermined) — only that it is measured and pinned, not argued away.
     const sizeSlider = page.getByRole('slider', { name: 'Symbolgröße (Seezeichen)' });
 
     await sizeSlider.focus();
@@ -543,11 +554,12 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
       highMax.iconIds,
       `z${ZOOM_AT_OR_ABOVE_12} (>=12, scale=1.5) drifted from the scale=1 baseline — the #191/#192 signature`,
     ).toEqual(highAll.iconIds);
+    // Measured identical to the scale=1 baseline (`lowAll.iconIds`) — the
+    // strongest guard available, and it passes today.
     expect(
-      lowMax.iconIds.length,
-      `expected z${ZOOM_BELOW_12} scale=1.5 to still cull at least one mark relative to the ` +
-        `uncollided z${ZOOM_AT_OR_ABOVE_12} view (${highMax.iconIds.length})`,
-    ).toBeLessThan(highMax.iconIds.length);
+      lowMax.iconIds,
+      `z${ZOOM_BELOW_12} (<12, scale=1.5) drifted from the scale=1 baseline — expected byte-identical`,
+    ).toEqual(lowAll.iconIds);
 
     await sizeSlider.focus();
     await page.keyboard.press('Home'); // jumps to min = 0.5
@@ -569,11 +581,26 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
       highMin.iconIds,
       `z${ZOOM_AT_OR_ABOVE_12} (>=12, scale=0.5) drifted from the scale=1 baseline — the #191/#192 signature`,
     ).toEqual(highAll.iconIds);
+    // #513 R1: a same-COUNT SWAP relative to the scale=1 baseline, measured
+    // and pinned rather than argued away (see the block comment above) —
+    // `seamark-lateral-pillar-green-starboard` (present in `lowAll.iconIds`)
+    // is culled at scale=0.5, and a SECOND `seamark-lateral-spar-red-port`
+    // is placed instead of the one it displaces. Cause undetermined; the
+    // collision box is scale-invariant by construction (see above), so
+    // something outside it decides this — left for a follow-up, not this PR.
     expect(
-      lowMin.iconIds.length,
-      `expected z${ZOOM_BELOW_12} scale=0.5 to still cull at least one mark relative to the ` +
-        `uncollided z${ZOOM_AT_OR_ABOVE_12} view (${highMin.iconIds.length})`,
-    ).toBeLessThan(highMin.iconIds.length);
+      lowMin.iconIds,
+      `z${ZOOM_BELOW_12} (<12, scale=0.5) drifted from its measured pin`,
+    ).toEqual([
+      'seamark-cardinal-north',
+      'seamark-cardinal-south',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-black-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-lateral-spar-red-port',
+      'seamark-special-black',
+      'seamark-special-default',
+    ]);
   } finally {
     server.kill();
   }

@@ -13,8 +13,6 @@ import {
   seamarksLayout,
 } from '../lib/seamarkGeoJson';
 import {
-  SEAMARK_DISPLAY_TIER_ALL,
-  SEAMARK_DISPLAY_TIER_BASE,
   SEAMARK_SIZE_MAX,
   SEAMARK_SIZE_MIN,
   SEAMARK_SIZE_SCALE,
@@ -241,10 +239,17 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     SEAMARK_SIZE_MAX,
   );
   const seamarkSizeScale = seamarkSizeScaleStored ?? SEAMARK_SIZE_SCALE;
+  // #513 R4: bounds are UNCLAMPED (-Infinity/Infinity), deliberately not
+  // [BASE, ALL] — `usePersistedNumber`'s own clamp runs BEFORE
+  // `toSeamarkDisplayTier` ever sees the value, so a [0, 2]-bounded read
+  // would launder a corrupt negative value (e.g. a hand-edited "-1") into a
+  // seemingly-valid `0` = BASE, the MOST-HIDDEN tier — exactly backwards
+  // from `toSeamarkDisplayTier`'s "fail toward showing" guarantee. Leaving
+  // this read unclamped makes `toSeamarkDisplayTier` the SOLE validator.
   const [seamarkDisplayTierStored] = usePersistedNumber(
     'sc-seamark-display-tier',
-    SEAMARK_DISPLAY_TIER_BASE,
-    SEAMARK_DISPLAY_TIER_ALL,
+    -Infinity,
+    Infinity,
   );
   const seamarkDisplayTier = toSeamarkDisplayTier(seamarkDisplayTierStored);
   const [assets, setAssets] = useState<RoutingAssets | null>(null);

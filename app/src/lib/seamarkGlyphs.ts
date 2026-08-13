@@ -307,15 +307,21 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  * - STANDARD (default) adds: `lightMinor`, `unknown`, and every
  *   `specialPurpose` mark EXCEPT the two categories named below — Appendix
  *   2 item 2.3's undivided AtoN group and item 2.6's "prohibited and
- *   restricted areas" together cover most `specialPurpose` categories in
- *   the shipped data (`no_entry`, `firing_danger_area`, `warning`,
- *   `foul_ground`, `degaussing_range`, `marine_farm`, `target`,
- *   `recreation_zone`, `anchorage`, and an untagged/`(none)` category — 281
- *   of 703, the plurality — which cannot be shown to be anything OTHER
- *   than Standard-tier AtoN content, so it defaults to the more visible
- *   tier, not the more hidden one, per the guard-asymmetry principle #513
- *   F2 applies to `unknown`). `unknown` moved here from ALL for the same
- *   reason F2 raised: an unclassifiable mark must fail toward being SHOWN.
+ *   restricted areas" together cover the STANDARD-tier `specialPurpose`
+ *   categories in the shipped data: **584 of 703** (26 distinct raw
+ *   category strings total; measured, not assumed), e.g. `leading` (64 —
+ *   the second-largest category in the whole family, after `cable`),
+ *   `clearing` (3 — the *Gefahrenpeilung* this repo's own German-
+ *   terminology notes name, #300), `no_entry`, `firing_danger_area`,
+ *   `warning`, `yachting`, `recording`, `odas`, `recreation_zone`,
+ *   `recreational`, `mooring`, `marine_farm`, `target`, `degaussing_range`,
+ *   `foul_ground`, `lanby`, `unknown_purpose`, `wave_recorder`, `notice`,
+ *   and an untagged/`(none)` category (281 of 703, the plurality) — which
+ *   cannot be shown to be anything OTHER than Standard-tier AtoN content,
+ *   so it defaults to the more visible tier, not the more hidden one, per
+ *   the guard-asymmetry principle #513 F2 applies to `unknown`). `unknown`
+ *   moved here from ALL for the same reason F2 raised: an unclassifiable
+ *   mark must fail toward being SHOWN.
  * - ALL adds: the two `specialPurpose` categories Appendix 2 item 3.2 names
  *   BY EXAMPLE as "all other information": `cable` (117 marks) and
  *   `pipeline` (2) — literally "submarine cables and pipelines". Nothing
@@ -394,11 +400,10 @@ export function seamarkDisplayTier(props: SeamarkProperties): SeamarkDisplayTier
  * Narrows a `usePersistedNumber` read (`number | null`) to a real
  * `SeamarkDisplayTier`, replacing an unchecked `as SeamarkDisplayTier` cast
  * at both call sites (#513 F8). localStorage is user-writable and survives
- * across app versions, so `n` can be a hand-edited or legacy value that
- * passed `usePersistedNumber`'s own `clamp(n, 0, 2)` without being one of
- * the three real tiers — e.g. `1.5`, or an ordinal a FUTURE version defines
- * that this one does not recognize. A bare cast asserts membership without
- * checking it: that `1.5` would silently build
+ * across app versions, so `n` can be a hand-edited or legacy value that is
+ * not one of the three real tiers — e.g. `1.5`, or an ordinal a FUTURE
+ * version defines that this one does not recognize. A bare cast asserts
+ * membership without checking it: that `1.5` would silently build
  * `['<=', ['get','displayTier'], 1.5]`, which happens to behave like
  * STANDARD — a wrong answer with no visible failure.
  *
@@ -410,7 +415,19 @@ export function seamarkDisplayTier(props: SeamarkProperties): SeamarkDisplayTier
  *   and falls back to the MOST-VISIBLE tier (ALL) — the same guard-asymmetry
  *   principle as `unknown`'s family fallback above (#513 F2): an
  *   unrecognized value must fail toward SHOWING more, never toward
- *   whatever number happened to survive the clamp.
+ *   whatever number happened to be stored.
+ *
+ * That second guarantee depends on BOTH call sites (`DataLayers.tsx`,
+ * `SettingsPanel.tsx`) reading `usePersistedNumber('sc-seamark-display-tier',
+ * -Infinity, Infinity)` — UNCLAMPED (#513 R4). `usePersistedNumber`'s own
+ * `clamp(n, min, max)` runs BEFORE this function ever sees the value, so a
+ * [BASE, ALL]-bounded read would launder a stored `-1` into `0` = BASE — the
+ * MOST-HIDDEN tier — before this guard could see anything but a
+ * legitimate-looking in-range number. Only a value OUTSIDE [0, 2], or a
+ * non-integer inside it, reaches the `SEAMARK_DISPLAY_TIER_ALL` branch below;
+ * an integer that happens to equal a real tier is indistinguishable from a
+ * deliberate choice and is honoured as one — this function narrows valid
+ * values, it does not second-guess them.
  */
 export function toSeamarkDisplayTier(n: number | null): SeamarkDisplayTier {
   if (n === null) return DEFAULT_SEAMARK_DISPLAY_TIER;
