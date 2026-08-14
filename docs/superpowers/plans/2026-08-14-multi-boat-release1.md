@@ -505,8 +505,15 @@ Refs #54"
 
 **Interfaces:**
 - Consumes: `relaxationFloorM` (Task 2), `BoatDef` (Task 1).
-- Produces: `findRelaxedGate` gains a `floorM` parameter. It currently reads the module
-  constant at `relaxedDepth.ts` ~:92 — `const loDm = Math.round(BOAT_DRAFT_M * 10);`.
+- Produces:
+  - `findRelaxedGate` gains a `floorM` parameter. It currently reads the module constant at
+    `relaxedDepth.ts` ~:92 — `const loDm = Math.round(BOAT_DRAFT_M * 10);`.
+  - **`PlanDeps` gains `boat: BoatDef`** (`planRoute.ts` ~:23, threaded at ~:275).
+    Deliberately `PlanDeps` and not `PlanRequest`: `PlanRequest.boat` arrives only in
+    Task 11, and `types.ts` is not in this task's Files list, so routing it through the
+    request here would be a forward dependency on a field that does not yet exist.
+    Task 11 introduces `PlanRequest.boat: BoatSnapshot` for *persistence*; the two coexist
+    (deps carries the live catalogue entry, the request carries the saved snapshot).
 
 > **⚠️ The function is NOT called `findRelaxedDepthM`.** #452 P3 (merged 2026-08-13, PR
 > #518) **renamed** it to `findRelaxedGate`, changed its return from `number | null` to
@@ -535,25 +542,63 @@ With one boat at `draftM: 2.1`, `relaxationFloorM` returns `2.1` — **numerical
 
 Two rows, because they fail for different reasons and a later mutation check must be able to red them independently.
 
+**The boat reaches the solver through `PlanDeps`** (`planRoute.ts` ~:23, threaded at ~:275), *not* through `PlanRequest`. This is deliberate: `PlanRequest.boat` does not exist until Task 11, seven tasks and one phase later, and `types.ts` is not in this task's Files list. `PlanDeps` is already owned by this task via `planRoute.ts`, so the channel is buildable here with no forward dependency.
+
 ```ts
 // (a) DERIVATION: the search window follows floorM.
 it('#54: findRelaxedGate searches from the given floor, not a module constant', () => {
   const shallow = findRelaxedGate(mask, wps, 3.0, Infinity, undefined, 1.8);
   const deep = findRelaxedGate(mask, wps, 3.0, Infinity, undefined, 2.3);
   expect(deep?.usedDepthM).not.toBe(shallow?.usedDepthM);
-  expect(deep!.usedDepthM).toBeGreaterThanOrEqual(2.3);
 });
 
-// (b) WIRING: planRoute actually passes the SELECTED boat's floor. This row is
-// what Task 4 itself changes; (a) would stay green if the wiring were reverted.
-it('#54: planRoute takes the relaxation floor from the SELECTED boat', () => {
-  const deep = { ...boatById('salona-45'), id: 'deep-test', draftM: 2.3 } as BoatDef;
-  const res = planRoute({ ...req, boat: deep }, windGrid, deps);
-  expect(res.status).toBe('ok');
-  if (res.status !== 'ok') return;
-  expect(res.shallow!.usedDepthM).toBeGreaterThanOrEqual(2.3);
+// (b) WIRING: planRoute actually passes the SELECTED boat's floor.
+it('#54: planRoute takes the relaxation floor from the boat in PlanDeps', () => {
+  const deep = { ...boatById('salona-45'), id: 'deep-test', draftM: 2.3 };
+  const res = planRoute(req, windGrid, { ...deps, boat: deep });
+  // …assertion: see the WARNING below. Do NOT write it before measuring.
 });
 ```
+
+> **⚠️ Row (b)'s assertion must be MEASURED into existence, not written from intuition.**
+> A naive `expect(res.shallow!.usedDepthM).toBeGreaterThanOrEqual(2.3)` guarded by
+> `expect(res.status).toBe('ok')` is a **theorem**, and would give you a mutation check that
+> cannot fail — the exact defect this row replaces.
+>
+> Why: `findRelaxedGate` **maximises** the connecting gate over `[floorM, requested)` — its
+> binary search keeps `best = mid; lo = mid + 1` (`relaxedDepth.ts` ~:129-143), and phase 2
+> only ever raises gates. So for a fixture whose maximum connecting gate is `B`:
+> - `B ≥ 2.3` → both floors return the identical `B`, and the assertion passes for the
+>   correct **and** the mutated build.
+> - `B < 2.3` → the correct build returns `null`, so no relaxation happens, and the
+>   `status === 'ok'` precondition fails for the **correct** build.
+>
+> Either way the row cannot discriminate.
+>
+> **What to do instead.** First find a fixture where the two floors provably diverge:
+> instrument `findRelaxedGate` directly (row (a)'s call shape) across candidate
+> origin/destination pairs at floors 2.1 and 2.3, and keep the first pair whose
+> `usedDepthM` differs. Record that pair and both measured values in the test's header
+> comment. Then assert the divergence you measured, and handle both outcomes explicitly
+> rather than preconditioning on `'ok'`:
+>
+> ```ts
+> // Fixture: <origin>→<destination>. MEASURED <date>: floor 2.1 → usedDepthM <X>,
+> // floor 2.3 → <Y or no route>. That divergence is what this row pins.
+> if (res.status === 'ok') {
+>   expect(res.shallow?.usedDepthM ?? Infinity).toBeGreaterThanOrEqual(2.3);
+> } else {
+>   expect(res.reason).toBe('unreachable');
+> }
+> ```
+>
+> And add a companion row asserting the **mutated** behaviour is reachable — that the same
+> fixture at floor 2.1 *does* return `'ok'` with `usedDepthM < 2.3`. Without it you cannot
+> tell a discriminating row from one that passes vacuously.
+>
+> If no such fixture exists on the committed mask, say so in the PR and pin the wiring at
+> the `PlanDeps` boundary instead (assert the value `planRoute` hands `findRelaxedGate`,
+> via a spy). Do **not** ship a row that cannot fail.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -595,9 +640,8 @@ Expected: PASS, including `realmask.repro.test.ts`'s DEFAULT_SETTINGS Flensburg�
 R4 alone is **not** sufficient here, and assuming it was would be the defect this step exists to prevent: R4 calls only Task 2's pure `relaxationFloorM`, which lives in `boatDepth.ts` — a file **not in this task's list** — so reverting Task 4's own wiring leaves R4 green. Each half needs its own mutation.
 
 ```bash
-# Mutation A — the WIRING (what Task 4 changes). In planRoute.ts, pass
-# relaxationFloorM(boatById(DEFAULT_BOAT_ID)) unconditionally instead of the
-# selected boat's floor.
+# Mutation A — the WIRING (what Task 4 changes). In planRoute.ts, ignore
+# deps.boat and pass relaxationFloorM(boatById(DEFAULT_BOAT_ID)) unconditionally.
 npm --prefix app run test -- relaxedDepth    # Step 1's row (b) MUST red
 
 # Mutation B — the DERIVATION (Task 2's helper, outside this task's file list).
@@ -605,7 +649,9 @@ npm --prefix app run test -- relaxedDepth    # Step 1's row (b) MUST red
 npm --prefix app run test -- maskTolerance   # R4 MUST red
 ```
 
-Record both. If Mutation A reds nothing, the wiring is untested and the SAFETY-CRITICAL label on this task is unearned.
+**Record the MEASURED result of each, not the prediction.** If Mutation A reds nothing, row (b) is not discriminating — go back to Step 1's warning and find a fixture that diverges, or move the pin to the `PlanDeps` boundary. A green Mutation A means the wiring is untested and the SAFETY-CRITICAL label on this task is unearned; it does not mean the code is fine.
+
+Note the two mutations must red **different** rows. If both red the same row, the split is theatre and one of them is not reaching the code it names.
 
 - [ ] **Step 6: Commit**
 
@@ -907,12 +953,16 @@ Refs #54"
 
 ### Task 9: `Rig` → `SailId` and the per-sail result list
 
-**Files:** this is the widest task in the plan — **19 non-test files** reference `Rig`, measured 2026-08-14 with `grep -rlE '\bRig\b' app/src --include=*.ts --include=*.tsx | grep -v '\.test\.'`. Re-run that command rather than trusting this list, which decays.
+**Files:** this is the widest task in the plan. `grep -rlE '\bRig\b' app/src --include=*.ts --include=*.tsx | grep -v '\.test\.'` returned **19 files** on 2026-08-14. Re-run it — but do **not** treat its output as the file list: it over-reports (`dict.en.ts` matches only English prose) and under-reports (`dict.de.ts`, which defines `MsgKey`, matches nothing because German spells it "Rigg"). Of the 19, 18 reference the type; `dict.de.ts` must be added by hand.
 
 - Modify: `app/src/types.ts` — `Rig` → `SailId`, `PlanResultOk`'s `genoa`/`fock`/`genoaReason`/`fockReason` → a per-sail list; **delete `RIG_ORDER`** (spec §E.3)
 - Modify (literal-naming, the nine from §F.3): `routing/planRoute.ts`, `routing/workerClient.ts`, `state/usePlanFlow.ts`, `components/RouteLayer.tsx`, `components/RouteSummary.tsx`, `lib/plan.ts`, `lib/gpx.ts`, `lib/sessionSnapshot.ts` (+ `types.ts` above)
 - Modify (Record **property keys** — invisible to a quoted-literal grep, per §F.3's added bullet): `lib/resultSummary.ts`, `components/PlansList.tsx`
-- Modify (type position only — these red loudly at typecheck, so they need no design decision, but they are real edits): `components/AisTraffic.tsx`, `components/DepthProfile.tsx`, `components/PlannerPanel.tsx`, `lib/polar.ts`, `routing/protocol.ts`, `services/db.ts`, `state/AppState.tsx`, `i18n/dict.en.ts`
+- Modify (type position only — these red loudly at typecheck, so they need no design decision, but they are real edits): `components/AisTraffic.tsx`, `components/DepthProfile.tsx`, `components/PlannerPanel.tsx`, `lib/polar.ts`, `routing/protocol.ts`, `services/db.ts`, `state/AppState.tsx`
+- Modify (**i18n — and the grep is wrong in BOTH directions here, so do not derive this bucket from it**): `i18n/dict.de.ts` **first**, then `i18n/dict.en.ts`.
+  - `dict.de.ts` defines `export type MsgKey = keyof typeof de` (~:652) and is therefore the source of truth for every message key — yet it matches `\bRig\b` **zero** times, because German spells it "Rigg" (`route.rigTabs`: `'Riggvergleich'`). A grep-derived file list structurally cannot see it.
+  - `dict.en.ts` matches `\bRig\b` only inside two prose message **values** (~:171 `'Rig comparison'`, ~:178 `'Rig does not matter here…'`) and imports only `MsgKey` — so it produces **zero** typecheck errors from the rename and does not belong in the bucket above.
+  - Order matters: rename the keys in `dict.de.ts`, and `dict.en.ts`'s `satisfies Record<MsgKey, string>` (~:557) then reds until it matches. Measured 2026-08-14.
 - Modify: `app/src/routing/planRoute.test.ts` — the #340 guard
 - Test: all of the above
 
@@ -998,9 +1048,12 @@ Expected: every arm CANONICALLY IDENTICAL. Record explicitly that the **byte** c
     closure `state`, and `PlanDeps`.
   - `buildPlanMessage(request): WorkerRequest` — an existing-or-new helper in
     `workerClient.ts` that assembles the `plan` message; it gains
-    `polarKeys: readonly string[]`, derived from `request.boatId` × `request.sailIds`.
-    If no such helper exists yet, create it in this task rather than inlining the
-    assembly, so Step 1's test has something to call.
+    `polarKeys: readonly string[]`, derived from the boat id × `request.sailIds`.
+    **`PlanRequest` has no `boatId` field and the plan never adds one** — Task 9 adds
+    `sailIds`, Task 11 adds `boat: BoatSnapshot`. Until Task 11 lands, take the boat id as
+    an explicit argument: `buildPlanMessage(request, boatId)`. If no such helper exists
+    yet, create it in this task rather than inlining the assembly, so Step 1's test has
+    something to call.
 
 §F.3: `init` carries a **keyed map** of every boat's polars (single-digit KB, structured-cloned once at startup) and `plan` names which keys to run — preserving "init once, plan many" at zero per-plan cost. Polars are plain objects and are **cloned, never transferred**; only the mask buffer is transferred, always as a `.slice(0)` copy.
 
@@ -1023,7 +1076,7 @@ it('#54: transfers ONLY the mask buffer — polars are cloned', async () => {
 });
 
 it('#54: a plan names which keys to run', () => {
-  const msg = buildPlanMessage({ ...req, boatId: 'salona-45', sailIds: ['genoa', 'fock'] });
+  const msg = buildPlanMessage({ ...req, sailIds: ['genoa', 'fock'] }, 'salona-45');
   expect(msg.polarKeys).toEqual(['salona-45/genoa', 'salona-45/fock']);
 });
 ```
@@ -1264,15 +1317,19 @@ Expected: exit 0, with the report naming the 3.0 m gate as the Salona 45's deriv
 
 ## Acceptance (from §K, scoped to release 1)
 
-- [ ] **Reduces to today.** With only the Salona 45 in the catalogue: `draftM 2.1` → default gate 3.0 → mask floor 2.1; relaxation window `[2.1, 3.0)`; two sails; same solve order; same budget; same tiers.
-- [ ] **Phase 1 certified by the byte comparator**, BASE double-run control recorded first, reported per-arm with `becalmed` / `deep-becalmed` named as vacuous.
-- [ ] **Phase 2 certified by the canonical comparator**, with the byte difference explicitly recorded as expected.
-- [ ] **The safety invariant is guarded, per boat.** R0–R8 pass; R1's discriminating experiment RUN (1 row vs 2 rows), not assumed; R4 reds under a mutation restoring the module constant; R6's Salona literals still read 2.1 / 3.0 / 2.1 / 1.2.
-- [ ] **`verify_mask.py` exits 0** at the catalogue boat's derived gate, with the snap-cell margin report.
-- [ ] **Per-boat polar validation fails closed** on a missing tier or missing anchors.
-- [ ] **Saved plans survive.** A pre-#54 plan opens, renders identically, exports GPX identically, and reports the Salona 45. An unmigratable record is **listed as unreadable, never skipped and never deleted**.
-- [ ] **de/en `MsgKey` parity** for every new string.
-- [ ] **No changelog fragment for the internal tasks**; one fragment for the release-1 feature as a whole, describing what a user can observe (saved plans keep working; nothing else changes yet, because the UI is a separate workstream).
+- [ ] **Reduces to today** *(Tasks 1, 2, 5)*. With only the Salona 45 in the catalogue: `draftM 2.1` → default gate 3.0 → mask floor 2.1; relaxation window `[2.1, 3.0)`; two sails; same budget; same tiers. Solve order is still genoa-then-fock — but after Task 9 it comes from `request.sailIds`, not from the deleted `RIG_ORDER`.
+- [ ] **Phase 1 certified by the byte comparator** *(Tasks 0, 6)*, BASE double-run control recorded first, reported per-arm with `becalmed` / `deep-becalmed` named as vacuous.
+- [ ] **Phase 2 certified by the canonical comparator** *(Tasks 8, 9)*, with the byte difference explicitly recorded as expected.
+- [ ] **The safety invariant is guarded, per boat** *(Tasks 3, 4)*. R0–R8 pass. Every clause below states a MEASURED result, not a prediction — this line has now been wrong twice for the same reason, so verify each against the task it restates rather than reading it as a summary:
+  - R1's discriminating experiment RUN: production-only perturbation reds **1 row** (R1); test-table-only perturbation reds **1 row** (R1). R6 is independent by design and does not red from either.
+  - Task 4 mutation-checked in **both halves separately**, and they red **different** rows: Mutation A (the `planRoute` wiring, ignoring `deps.boat`) reds Step 1's row (b); Mutation B (`relaxationFloorM` in `boatDepth.ts`) reds R4. R4 alone is **not** sufficient evidence for Task 4 — it exercises only the pure helper.
+  - Row (b) is confirmed DISCRIMINATING against a measured fixture, not merely present — see Task 4 Step 1's warning.
+  - R6's Salona literals still read 2.1 / 3.0 / 2.1 / 1.2.
+- [ ] **`verify_mask.py` exits 0** *(Task 13)* at the catalogue boat's derived gate, with the snap-cell margin report.
+- [ ] **Per-boat polar validation fails closed** *(Task 12)* on a missing tier or missing anchors.
+- [ ] **Saved plans survive** *(Task 11)*. A pre-#54 plan opens, renders identically, exports GPX identically, and reports the Salona 45. An unmigratable record is **listed as unreadable, never skipped and never deleted**.
+- [ ] **de/en `MsgKey` parity** for every new string *(Task 9)*. Note `MsgKey = keyof typeof de` (`dict.de.ts` ~:652), so parity is enforced by `dict.en.ts`'s `satisfies Record<MsgKey, string>` (~:557) — rename in the German dict first or the check reds on the wrong file.
+- [ ] **Changelog: a JUDGEMENT CALL, not a rule application.** Release 1 changes no user-visible behaviour — the UI is a separate workstream — so the #131 "config/tooling PRs add no fragment" case arguably applies and **no fragment** is correct. The counter-argument is that the persisted plan shape changes, which a user could notice only if migration went wrong. Decide explicitly at PR time and say which way and why; do not add a fragment describing an invisible change.
 
 ## Out of scope — do not build
 
