@@ -48,9 +48,13 @@ The order is forced by what can certify each change, not by convenience.
 
 ```bash
 git merge-base HEAD origin/develop          # note the SHA in the PR body
-npm --prefix app run test -- --config sweep/vitest.config.ts   # run 1 -> out-base-1/
-npm --prefix app run test -- --config sweep/vitest.config.ts   # run 2 -> out-base-2/
-node app/sweep/compare.mjs out-base-1 out-base-2
+
+# SC_SWEEP_OUT is REQUIRED and must be ABSOLUTE — sweepArms.ts fails closed
+# without it (`expect(OUT_DIR, '#282 sweep: set SC_SWEEP_OUT to an absolute
+# output directory').toBeTruthy()`).
+SC_SWEEP_OUT=/tmp/sweep/base1 npm --prefix app run test -- --config sweep/vitest.config.ts
+SC_SWEEP_OUT=/tmp/sweep/base2 npm --prefix app run test -- --config sweep/vitest.config.ts
+node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/base2
 ```
 
 Expected: every arm IDENTICAL. If the two BASE runs differ, stop — nothing downstream is interpretable.
@@ -311,7 +315,12 @@ import { MASK_TOLERANCE_M } from './mask';
  * Never Math.round: measured, Math.round(1.73 * 10) === 17, which would give a
  * 1.73 m boat a 1.7 m relaxation floor UNDER ITS OWN KEEL (spec C.8).
  *
- * The 1e-9 nudge mirrors findRelaxedDepthM's: 2.1 * 10 is not exactly 21.
+ * The 1e-9 nudge is not decoration. MEASURED 2026-08-14 in node: for draftM 3.2,
+ * `3.2 + 0.9` is `4.1000000000000005` and `× 10` is `41.00000000000001`, so a
+ * bare Math.ceil quantises to 4.2 m — a whole decimetre of gate the boat never
+ * asked for. `3.7` is the same case; they are the only two in [1.00, 4.00].
+ * The nudge absorbs it. Note `2.1 * 10` is EXACTLY 21 and is NOT an example of
+ * the problem — do not cite it as one.
  */
 export function ceilToDecimetre(x: number): number {
   return Math.ceil(x * 10 - 1e-9) / 10;
@@ -374,7 +383,7 @@ Refs #54"
 - Modify: `app/src/test/maskTolerance.test.ts`
 
 **Interfaces:**
-- Consumes: `BOATS`, `boatById` (Task 1); `defaultSafetyDepthM`, `relaxationFloorM`, `ceilToDecimetre` (Task 2).
+- Consumes: `BOATS`, `boatById` (Task 1); `defaultSafetyDepthM`, `relaxationFloorM`, `ceilToDecimetre` (Task 2); `MASK_TOLERANCE_M` and the existing `round1` helper already in this test file; **`SAFETY_DEPTH_FIELD`** — R7 reads its `.max`, and the target file does **not** import it today, so add the import from `app/src/components/OptionsPanel.tsx` (or hoist the constant if importing a component module into a test proves awkward).
 - Produces: nothing consumed by later tasks.
 
 This guard must exist **before** Task 4 changes the relaxation floor. R4 is the row that would catch a 2.30 m boat relaxing to 2.1 m, and it is the highest-value row in the table (§C.8).
@@ -390,7 +399,11 @@ Add to the existing file, keeping R0 exactly as it is (its fail-closed `not.toBe
 //
 // Discriminating experiment, recorded so it is run rather than assumed:
 //   perturb production alone (add a boat) -> 1 row reds (this one)
-//   perturb this table alone              -> 2 rows red (this one and R6)
+//   perturb this table alone              -> 1 row reds (this one)
+// R6 is independent BY DESIGN: it anchors the Salona literals against a
+// hardcoded id and shares no identifier with this table, so it cannot red
+// from a perturbation here. That independence is the point — R6 is what
+// catches an arithmetic generalisation that is self-consistent but wrong.
 const EXPECTED_BOAT_IDS = ['salona-45'];
 
 it('R1: the catalogue matches the hand-written expected list', () => {
@@ -461,11 +474,11 @@ npm --prefix app run test -- maskTolerance    # expect exactly 1 row red (R1)
 git checkout app/src/data/boats.ts
 
 # perturb the test's own table alone: change EXPECTED_BOAT_IDS
-npm --prefix app run test -- maskTolerance    # expect 2 rows red (R1 and R6)
+npm --prefix app run test -- maskTolerance    # expect exactly 1 row red (R1)
 git checkout app/src/test/maskTolerance.test.ts
 ```
 
-Record both counts in the PR body. If either count differs, the guard is not doing what it claims.
+Record both counts in the PR body **as measured, not as predicted**. The two perturbations reaching the same row is what proves R1 is comparing two genuinely independent sources; if either count differs, investigate before proceeding.
 
 - [ ] **Step 4: Commit**
 
@@ -474,7 +487,9 @@ git add app/src/test/maskTolerance.test.ts
 git commit -m "test(depth): generalise the #455 drift guard to the catalogue
 
 R1's discriminating experiment was RUN, not assumed: production-only
-perturbation reds 1 row, test-table-only reds 2.
+perturbation reds 1 row (R1), test-table-only reds 1 row (R1). R6 is
+independent by design — it anchors the Salona literals against a hardcoded
+id rather than against R1's table.
 
 Refs #54"
 ```
@@ -490,35 +505,64 @@ Refs #54"
 
 **Interfaces:**
 - Consumes: `relaxationFloorM` (Task 2), `BoatDef` (Task 1).
-- Produces: `findRelaxedDepthM` now takes the floor as a parameter instead of reading a module constant.
+- Produces: `findRelaxedGate` gains a `floorM` parameter. It currently reads the module
+  constant at `relaxedDepth.ts` ~:92 — `const loDm = Math.round(BOAT_DRAFT_M * 10);`.
+
+> **⚠️ The function is NOT called `findRelaxedDepthM`.** #452 P3 (merged 2026-08-13, PR
+> #518) **renamed** it to `findRelaxedGate`, changed its return from `number | null` to
+> `RelaxedGate | null`, and added an explicit `approachRadiusM` parameter. Verified against
+> `develop @ 0a76f20` on 2026-08-14: `app/src/routing/relaxedDepth.ts` exports exactly
+> `BOAT_DRAFT_M`, `ProbeInfo`, `ProbeProgress`, `RelaxedGate`, `findRelaxedGate` — there is
+> no `findRelaxedDepthM`. **Do not restore the old shape**; the `{ gate, usedDepthM }`
+> return is what carries per-disc relaxation. (Stale mentions of the old name survive in
+> comments — that is issue #527.)
+
+Current signature, read from source:
+
+```ts
+export function findRelaxedGate(
+  mask: NavMask,
+  waypoints: LatLon[],
+  requestedDepthM: number,
+  approachRadiusM: number,
+  onProbe?: ProbeProgress,
+): RelaxedGate | null
+```
 
 With one boat at `draftM: 2.1`, `relaxationFloorM` returns `2.1` — **numerically identical to today's `BOAT_DRAFT_M`**, so this task changes no plan. That is exactly why it is safe to do while the byte comparator is still the instrument.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests — BOTH the derivation and the wiring**
+
+Two rows, because they fail for different reasons and a later mutation check must be able to red them independently.
 
 ```ts
-it('#54: searches from the BOAT\'s floor, not a module constant', () => {
-  // Same inputs, two different floors -> two different search windows.
-  const shallowFloor = findRelaxedDepthM({ ...args, floorM: 1.8 });
-  const deepFloor = findRelaxedDepthM({ ...args, floorM: 2.3 });
-  expect(deepFloor).not.toBe(shallowFloor);
-  expect(deepFloor).toBeGreaterThanOrEqual(2.3);
+// (a) DERIVATION: the search window follows floorM.
+it('#54: findRelaxedGate searches from the given floor, not a module constant', () => {
+  const shallow = findRelaxedGate(mask, wps, 3.0, Infinity, undefined, 1.8);
+  const deep = findRelaxedGate(mask, wps, 3.0, Infinity, undefined, 2.3);
+  expect(deep?.usedDepthM).not.toBe(shallow?.usedDepthM);
+  expect(deep!.usedDepthM).toBeGreaterThanOrEqual(2.3);
 });
 
-it('#54: reproduces today\'s behaviour at the Salona 45 floor', () => {
-  expect(findRelaxedDepthM({ ...args, floorM: relaxationFloorM(boatById('salona-45')) }))
-    .toBe(findRelaxedDepthM({ ...args, floorM: 2.1 }));
+// (b) WIRING: planRoute actually passes the SELECTED boat's floor. This row is
+// what Task 4 itself changes; (a) would stay green if the wiring were reverted.
+it('#54: planRoute takes the relaxation floor from the SELECTED boat', () => {
+  const deep = { ...boatById('salona-45'), id: 'deep-test', draftM: 2.3 } as BoatDef;
+  const res = planRoute({ ...req, boat: deep }, windGrid, deps);
+  expect(res.status).toBe('ok');
+  if (res.status !== 'ok') return;
+  expect(res.shallow!.usedDepthM).toBeGreaterThanOrEqual(2.3);
 });
 ```
 
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `npm --prefix app run test -- relaxedDepth`
-Expected: FAIL — `findRelaxedDepthM` takes no `floorM`.
+Expected: FAIL — `findRelaxedGate` accepts five parameters, not six.
 
 - [ ] **Step 3: Implement**
 
-Replace the module constant read with a required parameter. Delete `BOAT_DRAFT_M`'s use as a floor; keep the symbol only if something else consumes it, and if nothing does, delete it and let the compiler find every reader.
+Add `floorM` as a sixth parameter and replace the module-constant read at ~:92. Keep everything else about the function — the `RelaxedGate` return, the `approachRadiusM` disc scoping, the `hiDm` cap — exactly as #452 P3 left it.
 
 ```ts
 /**
@@ -526,22 +570,42 @@ Replace the module constant read with a required parameter. Delete `BOAT_DRAFT_M
  * constant. Left global, relaxation would take a 2.30 m boat to a 2.1 m gate
  * while the shallow banner reported it as the Salona's.
  */
-export function findRelaxedDepthM(args: { /* … */ floorM: number }): number | null {
-  // search [floorM, requested) exactly as before
+export function findRelaxedGate(
+  mask: NavMask,
+  waypoints: LatLon[],
+  requestedDepthM: number,
+  approachRadiusM: number,
+  onProbe: ProbeProgress | undefined,
+  floorM: number,
+): RelaxedGate | null {
+  const loDm = Math.round(floorM * 10);   // was: Math.round(BOAT_DRAFT_M * 10)
+  // …rest unchanged
 }
 ```
+
+`BOAT_DRAFT_M` stays exported for now (other readers exist); Task 5 and the guard decide its fate. Do **not** delete it in this task.
 
 - [ ] **Step 4: Run the full routing suite**
 
 Run: `npm --prefix app run test -- routing && npm --prefix app run typecheck`
 Expected: PASS, including `realmask.repro.test.ts`'s DEFAULT_SETTINGS Flensburg→Marstal case pinning `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`.
 
-- [ ] **Step 5: Mutation-check R4**
+- [ ] **Step 5: Mutation-check BOTH halves separately**
+
+R4 alone is **not** sufficient here, and assuming it was would be the defect this step exists to prevent: R4 calls only Task 2's pure `relaxationFloorM`, which lives in `boatDepth.ts` — a file **not in this task's list** — so reverting Task 4's own wiring leaves R4 green. Each half needs its own mutation.
 
 ```bash
-# restore the module constant as the floor
+# Mutation A — the WIRING (what Task 4 changes). In planRoute.ts, pass
+# relaxationFloorM(boatById(DEFAULT_BOAT_ID)) unconditionally instead of the
+# selected boat's floor.
+npm --prefix app run test -- relaxedDepth    # Step 1's row (b) MUST red
+
+# Mutation B — the DERIVATION (Task 2's helper, outside this task's file list).
+# In boatDepth.ts, make relaxationFloorM `return BOAT_DRAFT_M`.
 npm --prefix app run test -- maskTolerance   # R4 MUST red
 ```
+
+Record both. If Mutation A reds nothing, the wiring is untested and the SAFETY-CRITICAL label on this task is unearned.
 
 - [ ] **Step 6: Commit**
 
@@ -549,9 +613,13 @@ npm --prefix app run test -- maskTolerance   # R4 MUST red
 git add app/src/routing/relaxedDepth.ts app/src/routing/planRoute.ts app/src/routing/relaxedDepth.test.ts
 git commit -m "feat(routing)!: take the #53 relaxation floor from the boat
 
+findRelaxedGate gains a floorM parameter, replacing its BOAT_DRAFT_M read.
 Numerically a no-op at the Salona 45's 2.1 m draft; the point is that the
 floor is now the selected boat's, so a deeper hull cannot inherit it.
-R4 mutation-checked: restoring the module constant reds it.
+
+Mutation-checked in BOTH halves separately, because R4 alone exercises only
+the pure helper and stays green if the wiring is reverted: mutating the
+wiring reds the planRoute row, mutating the helper reds R4.
 
 Refs #54"
 ```
@@ -640,8 +708,8 @@ Refs #54"
 - [ ] **Step 1: Run HEAD and compare against the Task 0 BASE**
 
 ```bash
-npm --prefix app run test -- --config sweep/vitest.config.ts   # -> out-head/
-node app/sweep/compare.mjs out-base-1 out-head
+SC_SWEEP_OUT=/tmp/sweep/head npm --prefix app run test -- --config sweep/vitest.config.ts
+node app/sweep/compare.mjs /tmp/sweep/base1 /tmp/sweep/head
 ```
 
 Expected: **every arm IDENTICAL**. Phase 1 changed no `PlanResult` field and, at a one-boat catalogue, no derived value — so any difference is a real defect, not an expected shape change.
@@ -731,6 +799,7 @@ Refs #54"
 
 **Files:**
 - Create: `app/sweep/canonicalize.mjs`
+- Create: `app/sweep/canonicalize.test.mjs` (Step 2 runs it, Step 6 stages it)
 - Modify: `app/sweep/compare.mjs` (accept `--canonical`)
 - Modify: `app/sweep/README.md`
 
@@ -741,14 +810,24 @@ Refs #54"
 
 - [ ] **Step 1: Write the failing test**
 
+Make the fixture pair **asymmetric in every way the rename actually is** — otherwise the test passes against a canonicaliser that ignores the nested key:
+
 ```js
+// legacy: named fields, RigResult.rig, NO comparisonComplete
+const legacyShapePlan = { status: 'ok', genoa: { rig: 'genoa', etaMs: 111, legs: [] },
+  fock: null, genoaReason: null, fockReason: 'unreachable', recommended: 'genoa' };
+// renamed: sails list, RigResult.sailId, comparisonComplete present
+const renamedShapePlan = { status: 'ok', comparisonComplete: true, recommended: 'genoa',
+  sails: [{ sailId: 'genoa', result: { sailId: 'genoa', etaMs: 111, legs: [] }, reason: null },
+          { sailId: 'fock', result: null, reason: 'unreachable' }] };
+
 // A pre-rename and a post-rename plan carrying the SAME routes must canonicalize equal.
 assert.deepStrictEqual(canonicalizePlan(legacyShapePlan), canonicalizePlan(renamedShapePlan));
 // …and two plans whose ROUTES differ must NOT.
 assert.notDeepStrictEqual(canonicalizePlan(planA), canonicalizePlan(planBWithOneLegMoved));
 ```
 
-The second assertion is the one that matters: a canonicaliser that flattens everything would make every comparison pass.
+The second assertion is the one that matters: a canonicaliser that flattens everything would make every comparison pass. The first only has teeth because the fixtures differ on `rig`/`sailId` **and** on `comparisonComplete` — a symmetric pair would pass against a canonicaliser that handles neither.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -768,16 +847,29 @@ Expected: FAIL — module not found.
 // comparison pass, which is the failure mode this file exists to avoid.
 export function canonicalizePlan(plan) {
   if (plan?.status !== 'ok') return plan;                 // errors are already shape-stable
+  // NESTED rename too: Task 9 renames RigResult.rig -> sailId. Normalising only
+  // the outer container would leave every row differing on that inner key while
+  // claiming the comparison certifies the rename.
+  const norm = (r) =>
+    r == null ? null : (({ rig, sailId, ...rr }) => ({ sailId: sailId ?? rig, ...rr }))(r);
   const sails = plan.sails
-    ? plan.sails.map((s) => ({ sailId: s.sailId, result: s.result ?? null, reason: s.reason ?? null }))
+    ? plan.sails.map((s) => ({ sailId: s.sailId, result: norm(s.result), reason: s.reason ?? null }))
     : [
-        { sailId: 'genoa', result: plan.genoa ?? null, reason: plan.genoaReason ?? null },
-        { sailId: 'fock', result: plan.fock ?? null, reason: plan.fockReason ?? null },
+        { sailId: 'genoa', result: norm(plan.genoa), reason: plan.genoaReason ?? null },
+        { sailId: 'fock', result: norm(plan.fock), reason: plan.fockReason ?? null },
       ];
-  const { genoa, fock, genoaReason, fockReason, ...rest } = plan;
-  return { ...rest, sails: sails.sort((a, b) => a.sailId.localeCompare(b.sailId)) };
+  // comparisonComplete is NEW in Task 9 and absent on BASE — default it, or every
+  // row differs on a field the legacy shape never had.
+  const { genoa, fock, genoaReason, fockReason, comparisonComplete, ...rest } = plan;
+  return {
+    ...rest,
+    comparisonComplete: comparisonComplete ?? true,
+    sails: sails.sort((a, b) => a.sailId.localeCompare(b.sailId)),
+  };
 }
 ```
+
+**Apply it per harbour ROW**, not to an arm file as a whole — `sweepArms.ts` writes `rows[harbourId] = planRoute(...)` and then serialises the map, so the plans are nested one level down.
 
 - [ ] **Step 4: Run to verify it passes, then mutation-check it**
 
@@ -815,10 +907,12 @@ Refs #54"
 
 ### Task 9: `Rig` → `SailId` and the per-sail result list
 
-**Files:**
-- Modify: `app/src/types.ts` — `Rig` → `SailId`, `PlanResultOk`'s `genoa`/`fock`/`genoaReason`/`fockReason` → a per-sail list; delete `RIG_ORDER`
-- Modify: the nine literal-naming files listed in §F.3, plus `lib/resultSummary.ts` and `components/PlansList.tsx` (§F.3's added bullet — they hold `genoa`/`fock` as Record **property keys**, so the nine-file grep never saw them)
-- Modify: `app/src/routing/planRoute.ts` — `runBoth` iterates `request.sailIds`
+**Files:** this is the widest task in the plan — **19 non-test files** reference `Rig`, measured 2026-08-14 with `grep -rlE '\bRig\b' app/src --include=*.ts --include=*.tsx | grep -v '\.test\.'`. Re-run that command rather than trusting this list, which decays.
+
+- Modify: `app/src/types.ts` — `Rig` → `SailId`, `PlanResultOk`'s `genoa`/`fock`/`genoaReason`/`fockReason` → a per-sail list; **delete `RIG_ORDER`** (spec §E.3)
+- Modify (literal-naming, the nine from §F.3): `routing/planRoute.ts`, `routing/workerClient.ts`, `state/usePlanFlow.ts`, `components/RouteLayer.tsx`, `components/RouteSummary.tsx`, `lib/plan.ts`, `lib/gpx.ts`, `lib/sessionSnapshot.ts` (+ `types.ts` above)
+- Modify (Record **property keys** — invisible to a quoted-literal grep, per §F.3's added bullet): `lib/resultSummary.ts`, `components/PlansList.tsx`
+- Modify (type position only — these red loudly at typecheck, so they need no design decision, but they are real edits): `components/AisTraffic.tsx`, `components/DepthProfile.tsx`, `components/PlannerPanel.tsx`, `lib/polar.ts`, `routing/protocol.ts`, `services/db.ts`, `state/AppState.tsx`, `i18n/dict.en.ts`
 - Modify: `app/src/routing/planRoute.test.ts` — the #340 guard
 - Test: all of the above
 
@@ -857,7 +951,10 @@ readonly sailIds: readonly SailId[];      // THE SOLVE ORDER. At most 2 (OQ-3).
 ```ts
 it('#340/#54: solve order matches request.sailIds', () => {
   const seen: SailId[] = [];
-  planRoute({ ...req, sailIds: ['fock', 'genoa'] }, deps, (sailId) => {
+  // NOTE the argument order — planRoute takes (request, windGrid, deps, onProgress).
+  // Check the real signature before writing this; an arity slip here lands `deps`
+  // in the windGrid slot and fails for a reason unrelated to what is being pinned.
+  planRoute({ ...req, sailIds: ['fock', 'genoa'] }, windGrid, deps, (sailId) => {
     if (!seen.includes(sailId)) seen.push(sailId);
   });
   expect(seen).toEqual(['fock', 'genoa']);   // reversed order must be honoured
@@ -876,8 +973,8 @@ Cap N at 2 (§J OQ-3). Do **not** generalise `RigRecommendation` to N-way — §
 - [ ] **Step 4: Certify with the canonical comparator, NOT the byte one**
 
 ```bash
-npm --prefix app run test -- --config sweep/vitest.config.ts   # -> out-head-2/
-node app/sweep/compare.mjs --canonical out-base-1 out-head-2
+SC_SWEEP_OUT=/tmp/sweep/head2 npm --prefix app run test -- --config sweep/vitest.config.ts
+node app/sweep/compare.mjs --canonical /tmp/sweep/base1 /tmp/sweep/head2
 ```
 
 Expected: every arm CANONICALLY IDENTICAL. Record explicitly that the **byte** comparison is expected to differ on every `status:'ok'` row and that this is not evidence of a regression.
@@ -890,6 +987,20 @@ Expected: every arm CANONICALLY IDENTICAL. Record explicitly that the **byte** c
 
 **Files:**
 - Modify: `app/src/services/assets.ts`, `app/src/routing/protocol.ts`, `app/src/routing/workerClient.ts`, `app/src/routing/planRoute.ts`, `app/sweep/sweepArms.ts`
+- Test: `app/src/routing/workerClient.test.ts`
+
+**Interfaces:**
+- Consumes: `BOATS`, `SailId` (Task 1); the keyed-map shape below.
+- Produces — **declare these; Step 1's test names them and nothing else defines them:**
+  - `polarKey(boatId: BoatId, sailId: SailId): string` — returns `` `${boatId}/${sailId}` ``.
+  - `RoutingAssets.polars: Readonly<Record<string, PolarTable>>`, replacing the named
+    `polarGenoa` / `polarFock` fields; same shape on `protocol.ts`'s `init` arm, its
+    closure `state`, and `PlanDeps`.
+  - `buildPlanMessage(request): WorkerRequest` — an existing-or-new helper in
+    `workerClient.ts` that assembles the `plan` message; it gains
+    `polarKeys: readonly string[]`, derived from `request.boatId` × `request.sailIds`.
+    If no such helper exists yet, create it in this task rather than inlining the
+    assembly, so Step 1's test has something to call.
 
 §F.3: `init` carries a **keyed map** of every boat's polars (single-digit KB, structured-cloned once at startup) and `plan` names which keys to run — preserving "init once, plan many" at zero per-plan cost. Polars are plain objects and are **cloned, never transferred**; only the mask buffer is transferred, always as a `.slice(0)` copy.
 
@@ -933,8 +1044,8 @@ Replace the two named fields on `RoutingAssets`, on `protocol.ts`'s `init` arm, 
 - [ ] **Step 5: Verify with the canonical comparator**
 
 ```bash
-npm --prefix app run test -- --config sweep/vitest.config.ts   # -> out-head-3/
-node app/sweep/compare.mjs --canonical out-base-1 out-head-3
+SC_SWEEP_OUT=/tmp/sweep/head3 npm --prefix app run test -- --config sweep/vitest.config.ts
+node app/sweep/compare.mjs --canonical /tmp/sweep/base1 /tmp/sweep/head3
 ```
 
 Expected: every arm CANONICALLY IDENTICAL — this task moves inputs, not results.
@@ -1104,7 +1215,7 @@ Refs #54"
 - Modify: `pipeline/polars-source.json`, `pipeline/build_polars.mjs`
 - Move: `app/public/data/polar-*.json` → `app/public/data/polars/salona-45-*.json`
 
-§H, with the 2026-08-14 addition: `build_polars.mjs` enumerates the sail set **twice** (loop `~:45`, `SOURCE_NOTES` `~:9-21`) and neither list derives from the other, so a sail in one but not the other writes `"source": undefined` into a shipped asset with no throw. Derive the loop from the data and delete `SOURCE_NOTES`.
+§H, with the 2026-08-14 addition: `build_polars.mjs` enumerates the sail set **twice** (loop `~:45`, `SOURCE_NOTES` `~:9-21`) and neither list derives from the other, so a sail in one but not the other ships an asset with **no `source` key at all** — `JSON.stringify` drops an `undefined` value rather than emitting it, making the provenance note silently absent rather than visibly wrong. Derive the loop from the data and delete `SOURCE_NOTES`.
 
 Also §F.1's live collision: `build_polars.mjs` writes ``join(outDir, `polar-${rig}.json`)`` (`~:57`) with **no boat identifier**, so a second boat's files would overwrite the first's.
 
