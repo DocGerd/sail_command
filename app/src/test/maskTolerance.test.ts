@@ -107,7 +107,7 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
   it('encodes the RELAXATION floor: BOAT_DRAFT_M - TOLERANCE_M is the true worst case at default settings', () => {
     const toleranceM = readToleranceM();
     // PR #481 review (F2, MEASURED): #53's relaxed-depth search
-    // (relaxedDepth.ts's findRelaxedDepthM) probes an internal gate down to
+    // (relaxedDepth.ts's findRelaxedGate) probes an internal gate down to
     // BOAT_DRAFT_M itself whenever the requested depth is unreachable —
     // independent of SAFETY_DEPTH_FIELD's 2.2 m UI clamp (OptionsPanel.tsx),
     // which bounds only what a user can TYPE — and it fires at DEFAULT

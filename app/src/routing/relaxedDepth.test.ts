@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOAT_DRAFT_M, findRelaxedDepthM, type ProbeInfo } from './relaxedDepth';
+import { BOAT_DRAFT_M, findRelaxedGate, type ProbeInfo } from './relaxedDepth';
 import { makeMask } from '../test/fixtures';
 
 // Wall at col 160 (lon ≈ 10.2) except a gap (rows 90..99) charted `gapDm`
@@ -11,9 +11,29 @@ const WEST = { lat: 54.7525, lon: 10.1025 };
 const EAST = { lat: 54.7525, lon: 10.3025 };
 const FAR_EAST = { lat: 54.7525, lon: 10.5025 };
 
-describe('findRelaxedDepthM (#53)', () => {
+/**
+ * #452 KILL SWITCH REGRESSION SUITE. Every case in this describe block is the
+ * pre-#452 `findRelaxedDepthM` test verbatim — the same fixtures, the same
+ * probe sequences, the same expected gates, not one literal touched. What
+ * they assert now is that `approachRadiusM = Infinity` reproduces the
+ * pre-#452 route-wide behaviour EXACTLY, which is the whole value of running
+ * them unchanged: an updated expectation here would delete that evidence.
+ *
+ * `Infinity` is passed positionally rather than through `APPROACH_RADIUS_M`
+ * deliberately — these cases must keep testing the neutralized state even if
+ * the production radius changes.
+ */
+const relaxedM = (
+  mask: Parameters<typeof findRelaxedGate>[0],
+  waypoints: Parameters<typeof findRelaxedGate>[1],
+  requestedDepthM: number,
+  onProbe?: Parameters<typeof findRelaxedGate>[4],
+): number | null =>
+  findRelaxedGate(mask, waypoints, requestedDepthM, Infinity, onProbe)?.usedDepthM ?? null;
+
+describe('findRelaxedGate under the #452 kill switch (#53 behaviour, unchanged)', () => {
   it('finds the highest decimeter gate that still connects (2.4 m gap, 3.0 m requested)', () => {
-    expect(findRelaxedDepthM(gapMask(24), [WEST, EAST], 3.0)).toBeCloseTo(2.4, 6);
+    expect(relaxedM(gapMask(24), [WEST, EAST], 3.0)).toBeCloseTo(2.4, 6);
   });
 
   it('probes exactly the binary-search sequence 2.5, 2.2, 2.3, 2.4 for that case', () => {
@@ -21,7 +41,7 @@ describe('findRelaxedDepthM (#53)', () => {
     // hi=24; mid 22 → connects, lo=23; mid 23 → connects, lo=24; mid 24 →
     // connects → answer 2.4 after exactly 4 probes.
     const probes: ProbeInfo[] = [];
-    findRelaxedDepthM(gapMask(24), [WEST, EAST], 3.0, (p) => probes.push(p));
+    relaxedM(gapMask(24), [WEST, EAST], 3.0, (p) => probes.push(p));
     expect(probes.map((p) => p.probeDepthM)).toEqual([2.5, 2.2, 2.3, 2.4]);
     expect(probes.map((p) => p.done)).toEqual([1, 2, 3, 4]);
     // ceil(log2(9 candidates + 1)) = 4 — the reported upper bound
@@ -35,33 +55,31 @@ describe('findRelaxedDepthM (#53)', () => {
       if (c === 200) return r >= 90 && r <= 99 ? 22 : 0;
       return 200;
     });
-    expect(findRelaxedDepthM(m, [WEST, FAR_EAST], 3.0)).toBeCloseTo(2.2, 6);
+    expect(relaxedM(m, [WEST, FAR_EAST], 3.0)).toBeCloseTo(2.2, 6);
   });
 
   it('candidate ceiling is exclusive of the requested depth', () => {
     // requested 2.5 → candidates 2.1..2.4; gap charted 2.4 → 2.4 (never 2.5)
-    expect(findRelaxedDepthM(gapMask(24), [WEST, EAST], 2.5)).toBeCloseTo(2.4, 6);
+    expect(relaxedM(gapMask(24), [WEST, EAST], 2.5)).toBeCloseTo(2.4, 6);
   });
 
   it('floating-point requested values quantize safely (requested 2.2 → only candidate 2.1)', () => {
     // 2.2 * 10 = 22.000000000000004 in IEEE 754 — the ceiling computation must
     // not let the rounding error admit 2.2 itself as a candidate.
-    expect(findRelaxedDepthM(gapMask(30), [WEST, EAST], 2.2)).toBeCloseTo(2.1, 6);
+    expect(relaxedM(gapMask(30), [WEST, EAST], 2.2)).toBeCloseTo(2.1, 6);
   });
 
   it('never relaxes below boat draft: requested <= 2.1 yields null without probing', () => {
     const probes: ProbeInfo[] = [];
-    expect(
-      findRelaxedDepthM(gapMask(24), [WEST, EAST], BOAT_DRAFT_M, (p) => probes.push(p)),
-    ).toBeNull();
-    expect(findRelaxedDepthM(gapMask(24), [WEST, EAST], 2.0)).toBeNull();
+    expect(relaxedM(gapMask(24), [WEST, EAST], BOAT_DRAFT_M, (p) => probes.push(p))).toBeNull();
+    expect(relaxedM(gapMask(24), [WEST, EAST], 2.0)).toBeNull();
     expect(probes).toEqual([]);
   });
 
   it('a gap below draft depth never connects: null after the failing probe descent', () => {
     // Hand-derived: 2.5 fails (hi=24), 2.2 fails (hi=21), 2.1 fails → null.
     const probes: ProbeInfo[] = [];
-    expect(findRelaxedDepthM(gapMask(15), [WEST, EAST], 3.0, (p) => probes.push(p))).toBeNull();
+    expect(relaxedM(gapMask(15), [WEST, EAST], 3.0, (p) => probes.push(p))).toBeNull();
     expect(probes.map((p) => p.probeDepthM)).toEqual([2.5, 2.2, 2.1]);
   });
 
@@ -73,7 +91,7 @@ describe('findRelaxedDepthM (#53)', () => {
       if (c === 200) return 0;
       return 200;
     });
-    expect(findRelaxedDepthM(m, [WEST, EAST], 3.0)).toBeCloseTo(2.5, 6);
-    expect(findRelaxedDepthM(m, [WEST, EAST, FAR_EAST], 3.0)).toBeNull();
+    expect(relaxedM(m, [WEST, EAST], 3.0)).toBeCloseTo(2.5, 6);
+    expect(relaxedM(m, [WEST, EAST, FAR_EAST], 3.0)).toBeNull();
   });
 });

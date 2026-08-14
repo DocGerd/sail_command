@@ -1,5 +1,6 @@
 import type { LatLon, MaskMeta } from '../types';
 import { haversineNm, toRad } from './geo';
+import { gateAtCell, uniformGate, type DepthGate } from './depthGate';
 
 const LAND = 0;
 const NM_PER_M = 1 / 1852;
@@ -115,10 +116,10 @@ export class NavMask {
     return b !== LAND && this.byteToDepthM(b) >= safetyDepthM;
   }
 
-  private cellNavigable(row: number, col: number, safetyDepthM: number): boolean {
+  private cellNavigable(row: number, col: number, gate: DepthGate): boolean {
     if (row < 0 || row >= this.meta.rows || col < 0 || col >= this.meta.cols) return false;
     const b = this.depthByte(row, col);
-    return b !== LAND && this.byteToDepthM(b) >= safetyDepthM;
+    return b !== LAND && this.byteToDepthM(b) >= gateAtCell(gate, row, col);
   }
 
   /**
@@ -163,14 +164,14 @@ export class NavMask {
   }
 
   /** Every cell the a→b segment touches must be navigable at the given gate. */
-  segmentNavigable(a: LatLon, b: LatLon, safetyDepthM: number): boolean {
-    return this.walkCells(a, b, (row, col) => this.cellNavigable(row, col, safetyDepthM));
+  segmentNavigable(a: LatLon, b: LatLon, gate: DepthGate): boolean {
+    return this.walkCells(a, b, (row, col) => this.cellNavigable(row, col, gate));
   }
 
   /**
    * Minimum charted depth over every cell the a→b segment touches, or null
    * exactly when {@link segmentNavigable} would report false (any touched
-   * cell below `gateM`, land, or out of bounds) — one `walkCells` pass with
+   * cell below its own cell's gate, land, or out of bounds) — one `walkCells` pass with
    * the SAME gate check as `segmentNavigable`'s, inlined here (rather than
    * calling `cellNavigable`, which would decode the same byte a second
    * time per cell — this is a hot path, walked for every candidate edge the
@@ -189,7 +190,7 @@ export class NavMask {
    * 15 m — a 25.4 m cell can never end up the binding minimum. Revisit this
    * if either bound widens past 25.4 m.
    */
-  segmentClearanceM(a: LatLon, b: LatLon, gateM: number): number | null {
+  segmentClearanceM(a: LatLon, b: LatLon, gate: DepthGate): number | null {
     let min = Infinity;
     const { rows, cols } = this.meta;
     const completed = this.walkCells(a, b, (row, col) => {
@@ -197,7 +198,7 @@ export class NavMask {
       const byte = this.depthByte(row, col);
       if (byte === LAND) return false;
       const depthM = this.byteToDepthM(byte);
-      if (depthM < gateM) return false;
+      if (depthM < gateAtCell(gate, row, col)) return false;
       if (depthM < min) min = depthM;
       return true;
     });
@@ -301,21 +302,20 @@ export class NavMask {
 
   /**
    * True when a's cell and b's cell are 4-connected through cells navigable at
-   * `safetyDepthM` (query-time gate, like every navigability decision). A
+   * `gate` (query-time, like every navigability decision — and per-cell since
+   * #452, so a relaxed gate can connect a pinch near a waypoint without
+   * licensing the same depth along the whole passage). A
    * cheap BFS over the raw byte grid — #53's relaxed-depth discovery probes
    * this per candidate gate instead of running the isochrone solver. Any
    * solver-emitted route implies such a chain (segmentNavigable's traversal
    * steps one cell at a time in x or y, so its swept cells are themselves
    * 4-connected), which is what makes "disconnected ⇒ unreachable" sound.
    */
-  cellsConnected(a: LatLon, b: LatLon, safetyDepthM: number): boolean {
+  cellsConnected(a: LatLon, b: LatLon, gate: DepthGate): boolean {
     const ca = this.cellOf(a);
     const cb = this.cellOf(b);
     if (!ca || !cb) return false;
-    if (
-      !this.cellNavigable(ca.row, ca.col, safetyDepthM) ||
-      !this.cellNavigable(cb.row, cb.col, safetyDepthM)
-    )
+    if (!this.cellNavigable(ca.row, ca.col, gate) || !this.cellNavigable(cb.row, cb.col, gate))
       return false;
     const { rows, cols } = this.meta;
     const target = cb.row * cols + cb.col;
@@ -342,7 +342,7 @@ export class NavMask {
         if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
         const nIdx = nr * cols + nc;
         if (visited[nIdx]) continue;
-        if (!this.cellNavigable(nr, nc, safetyDepthM)) continue;
+        if (!this.cellNavigable(nr, nc, gate)) continue;
         if (nIdx === target) return true;
         visited[nIdx] = 1;
         queue[tail++] = nIdx;
@@ -351,8 +351,17 @@ export class NavMask {
     return false;
   }
 
-  /** Expanding ring search; returns center of nearest navigable cell within maxRadiusM. */
+  /**
+   * Expanding ring search; returns center of nearest navigable cell within
+   * maxRadiusM.
+   *
+   * #452: stays SCALAR at the REQUESTED gate and takes no {@link DepthGate} —
+   * snapping is not relaxable (spike §1.4), and the relaxation discs are
+   * defined AROUND the points this returns, so a gate field cannot exist
+   * before it has run. It builds one uniform gate here rather than taking one.
+   */
   snapToNavigable(p: LatLon, safetyDepthM: number, maxRadiusM = 300): LatLon | null {
+    const gate = uniformGate(safetyDepthM);
     const start = {
       row: Math.floor((p.lat - this.meta.south) / this.latStep),
       col: Math.floor((p.lon - this.meta.west) / this.lonStep),
@@ -373,7 +382,7 @@ export class NavMask {
           if (Math.max(Math.abs(dr), Math.abs(dc)) !== ring) continue;
           const row = start.row + dr;
           const col = start.col + dc;
-          if (!this.cellNavigable(row, col, safetyDepthM)) continue;
+          if (!this.cellNavigable(row, col, gate)) continue;
           const center = {
             lat: this.meta.south + (row + 0.5) * this.latStep,
             lon: this.meta.west + (col + 0.5) * this.lonStep,

@@ -2,10 +2,11 @@ import { useMemo, type Ref } from 'react';
 import { useT, useLang } from '../i18n';
 import { formatHeading, formatKn, formatLegDuration, formatNm, formatTime } from '../lib/format';
 import { toGpx } from '../lib/gpx';
+import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
-import { roundExposureNm, shallowExposureNm } from '../lib/shallowExposure';
+import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from '../lib/shallowExposure';
 import { useWideLayout } from '../lib/useWideLayout';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import { useNavMask } from '../state/useNavMask';
@@ -44,7 +45,21 @@ function firstShallowLeg(
   return { count: flagged.length, firstTimeMs: flagged[0].startTimeMs };
 }
 
-export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?: Leg[] | null }) {
+export function ShallowWarning({
+  shallow,
+  legs,
+  plan,
+}: {
+  shallow: ShallowInfo;
+  legs?: Leg[] | null;
+  // #516 increment 2: only the confinement sentence needs this — snappedOrigin/
+  // snappedDestination and the unsnapped request.viaPoints all live on `plan`,
+  // not on `shallow` or `legs`. Both call sites already have a non-null `plan`
+  // whenever `shallow` is present (RouteSummary's is a required prop;
+  // PlannerPanel's guard adds an explicit `plan &&` alongside its existing
+  // `shallow &&` for exactly this).
+  plan: Plan;
+}) {
   const t = useT();
   const [lang] = useLang();
   const locator = firstShallowLeg(legs);
@@ -83,6 +98,41 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
     if (nm === null || nm <= 0) return null;
     return formatNm(roundExposureNm(nm));
   }, [legs, mask, shallow.requestedDepthM]);
+  // #516 increment 2 (requires #518): whether the exposure just measured
+  // above is entirely inside #452's relaxation discs. Waypoints/allowances
+  // per shallowConfinedWithinM's own contract: the SNAPPED origin/destination
+  // (exact, allowance 0) plus the UNSNAPPED request.viaPoints (the snapped
+  // vias are not stored on `Plan` at all — allowance 300 m, snapToNavigable's
+  // documented default, spent so the claim can only be harder to establish).
+  // MEASURED, never assumed from the router: a plan saved before #518 shipped
+  // is byte-indistinguishable from one computed after, so this re-derives the
+  // guarantee from the CURRENTLY loaded mask rather than trusting the plan's
+  // own provenance.
+  const confinedWithin = useMemo(() => {
+    if (!mask || !legs || legs.length === 0) return null;
+    const waypoints = [
+      plan.result.snappedOrigin,
+      ...plan.request.viaPoints,
+      plan.result.snappedDestination,
+    ];
+    const allowanceM = [0, ...plan.request.viaPoints.map(() => 300), 0];
+    return shallowConfinedWithinM(
+      legs,
+      mask,
+      shallow.requestedDepthM,
+      waypoints,
+      allowanceM,
+      APPROACH_RADIUS_M,
+    );
+  }, [legs, mask, shallow.requestedDepthM, plan]);
+  // Gated on exposureDist too (not just confinedWithin === true): a
+  // MEASURED-ZERO exposure (see exposureDist's own comment above) makes
+  // shallowConfinedWithinM vacuously true — no shallow cell is ever visited
+  // to fail the check — which would otherwise render a confinement claim
+  // with no stated exposure for it to describe. false/null both suppress
+  // silently, per shallowConfinedWithinM's own contract: an alarming "not
+  // confined" line would fire on every legitimately pre-#518 saved plan.
+  const showConfined = exposureDist !== null && confinedWithin === true;
   const isWide = useWideLayout();
   // The remedy sentence's ONE gate. Three conditions, one home — splitting
   // them across the JSX is how the figure and the remedy diverged before
@@ -107,13 +157,12 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
   //    re-read is the expected result — a tablet rotation is enough.
   //    Mount-gating is still correct; display:none would leave a wide-only
   //    sentence in the accessibility tree on narrow, which is worse.
-  // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedDepthM
+  // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedGate
   //    searches [BOAT_DRAFT_M, requestedDepthM) while SAFETY_DEPTH_FIELD
   //    clamps the input to >= its own min (2.1 and 2.2 respectively today),
   //    so at a usedDepthM of either there is no lower setting to choose and
   //    "set a lower safety depth" names an unavailable action.
-  const showRemedy =
-    exposureDist !== null && isWide && shallow.usedDepthM > SAFETY_DEPTH_FIELD.min;
+  const showRemedy = exposureDist !== null && isWide && shallow.usedDepthM > SAFETY_DEPTH_FIELD.min;
   // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
   // children — lead/detail/caveat — so a screen reader still announces one
   // region while sighted users get a real visual hierarchy instead of one
@@ -140,6 +189,15 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
             })}{' '}
           </>
         )}
+        {/* #516 increment 2: rendered right after the exposure sentence above,
+            never re-sequenced relative to it — a self-contained sentence
+            (never "all of it", which would bind to the exposure sentence's
+            position, the #493/#504 anaphora lesson). Stays ahead of the
+            existing mechanism/locator sentences below, whose own referents
+            are untouched. */}
+        {showConfined && (
+          <>{t('route.shallow.confined', { radius: formatNm(APPROACH_RADIUS_M / 1852) })} </>
+        )}
         {t('route.shallow.detail', {
           requested: shallow.requestedDepthM.toFixed(1),
           used: shallow.usedDepthM.toFixed(1),
@@ -159,12 +217,7 @@ export function ShallowWarning({ shallow, legs }: { shallow: ShallowInfo; legs?:
             router already reduced the gate on their behalf before being
             advised to reduce it themselves. Gated on showRemedy, whose three
             conditions are enumerated at its declaration. */}
-        {showRemedy && (
-          <>
-            {' '}
-            {t('route.shallow.remedy')}
-          </>
-        )}
+        {showRemedy && <> {t('route.shallow.remedy')}</>}
       </p>
       <p className="shallow-warning__caveat">{t('route.shallow.caveat')}</p>
     </div>
@@ -340,7 +393,7 @@ export default function RouteSummary({
           Ergebnis strip via the ShallowWarning component above, so the same
           plan-level warning is visible without switching to this tab too. */}
       {plan.result.shallow && (
-        <ShallowWarning shallow={plan.result.shallow} legs={result?.legs ?? null} />
+        <ShallowWarning shallow={plan.result.shallow} legs={result?.legs ?? null} plan={plan} />
       )}
 
       {!result || !summary ? (

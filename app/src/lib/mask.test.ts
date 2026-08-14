@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from './mask';
+import { APPROACH_RADIUS_M, approachGate, uniformGate } from './depthGate';
 
 const CELL_LAT = (TEST_MASK_META.north - TEST_MASK_META.south) / TEST_MASK_META.rows; // 0.005
 const CELL_LON = (TEST_MASK_META.east - TEST_MASK_META.west) / TEST_MASK_META.cols; // 0.005
@@ -29,16 +30,16 @@ describe('NavMask', () => {
     const b = { lat: 54.76, lon: 10.22 };
     expect(m.isNavigable(a, 3)).toBe(true);
     expect(m.isNavigable(b, 3)).toBe(true);
-    expect(m.segmentNavigable(a, b, 3)).toBe(false);
-    expect(m.segmentNavigable(a, { lat: 54.76, lon: 10.19 }, 3)).toBe(true);
+    expect(m.segmentNavigable(a, b, uniformGate(3))).toBe(false);
+    expect(m.segmentNavigable(a, { lat: 54.76, lon: 10.19 }, uniformGate(3))).toBe(true);
   });
 
   it('segment test respects safety depth at query time', () => {
     const m = makeMask((_, c) => (c === 160 ? 25 : 200)); // 2.5 m shoal line
     const a = { lat: 54.75, lon: 10.19 };
     const b = { lat: 54.75, lon: 10.22 };
-    expect(m.segmentNavigable(a, b, 3.0)).toBe(false);
-    expect(m.segmentNavigable(a, b, 2.0)).toBe(true);
+    expect(m.segmentNavigable(a, b, uniformGate(3.0))).toBe(false);
+    expect(m.segmentNavigable(a, b, uniformGate(2.0))).toBe(true);
   });
 
   it('snaps to the nearest navigable cell within 300 m, else null', () => {
@@ -94,9 +95,9 @@ describe('NavMask.cellsConnected (#53)', () => {
 
   it('connects across a 2.3 m gap at gates <= 2.3, not above (query-time navigability)', () => {
     const m = gapMask();
-    expect(m.cellsConnected(WEST, EAST, 2.3)).toBe(true);
+    expect(m.cellsConnected(WEST, EAST, uniformGate(2.3))).toBe(true);
     // 2.3 >= 2.4 is false → the gap cells drop out of the navigable set
-    expect(m.cellsConnected(WEST, EAST, 2.4)).toBe(false);
+    expect(m.cellsConnected(WEST, EAST, uniformGate(2.4))).toBe(false);
   });
 
   it('is 4-connectivity: a diagonal-only corner touch does not connect', () => {
@@ -104,20 +105,22 @@ describe('NavMask.cellsConnected (#53)', () => {
     const m = makeMask((r, c) => ((r === 100 && c === 100) || (r === 101 && c === 101) ? 200 : 0));
     const a = { lat: 54.3 + 100.5 * 0.005, lon: 9.4 + 100.5 * 0.005 };
     const b = { lat: 54.3 + 101.5 * 0.005, lon: 9.4 + 101.5 * 0.005 };
-    expect(m.cellsConnected(a, b, 3)).toBe(false);
+    expect(m.cellsConnected(a, b, uniformGate(3))).toBe(false);
   });
 
   it('same cell is trivially connected; a non-navigable endpoint is not connected', () => {
     const m = gapMask();
-    expect(m.cellsConnected(WEST, WEST, 3)).toBe(true);
+    expect(m.cellsConnected(WEST, WEST, uniformGate(3))).toBe(true);
     const onWall = { lat: 54.3025, lon: 10.2025 }; // row 0, col 160 → land byte 0
-    expect(m.cellsConnected(WEST, onWall, 2.0)).toBe(false);
-    expect(m.cellsConnected(onWall, WEST, 2.0)).toBe(false);
+    expect(m.cellsConnected(WEST, onWall, uniformGate(2.0))).toBe(false);
+    expect(m.cellsConnected(onWall, WEST, uniformGate(2.0))).toBe(false);
   });
 
   it('out-of-bbox endpoints are never connected', () => {
     const m = makeMask(() => 200);
-    expect(m.cellsConnected({ lat: 60, lon: 20 }, { lat: 54.75, lon: 10.2 }, 3)).toBe(false);
+    expect(m.cellsConnected({ lat: 60, lon: 20 }, { lat: 54.75, lon: 10.2 }, uniformGate(3))).toBe(
+      false,
+    );
   });
 });
 
@@ -200,25 +203,25 @@ describe('NavMask.segmentClearanceM (#243)', () => {
     // both are "min depth actually crossed", the difference is the threshold
     // semantics (shallowestBelow filters below a threshold; clearance is
     // gated by navigability and returns the true minimum).
-    expect(m.segmentClearanceM(a, b, 2.0)).toBeCloseTo(2.5, 6);
+    expect(m.segmentClearanceM(a, b, uniformGate(2.0))).toBeCloseTo(2.5, 6);
   });
 
   it('returns null exactly when segmentNavigable would (any touched cell below the gate)', () => {
-    expect(m.segmentNavigable(a, b, 2.6)).toBe(false); // the 2.5 m cell fails a 2.6 m gate
-    expect(m.segmentClearanceM(a, b, 2.6)).toBeNull();
-    expect(m.segmentNavigable(a, b, 2.5)).toBe(true); // 2.5 m cell passes an exact 2.5 m gate
-    expect(m.segmentClearanceM(a, b, 2.5)).toBeCloseTo(2.5, 6);
+    expect(m.segmentNavigable(a, b, uniformGate(2.6))).toBe(false); // the 2.5 m cell fails a 2.6 m gate
+    expect(m.segmentClearanceM(a, b, uniformGate(2.6))).toBeNull();
+    expect(m.segmentNavigable(a, b, uniformGate(2.5))).toBe(true); // 2.5 m cell passes an exact 2.5 m gate
+    expect(m.segmentClearanceM(a, b, uniformGate(2.5))).toBeCloseTo(2.5, 6);
   });
 
   it('deep-capped cells (byte 255) contribute 25.4 m, never a lower "reading"', () => {
     const deep = makeMask(() => 255);
-    expect(deep.segmentClearanceM(a, b, 3.0)).toBeCloseTo(25.4, 6);
+    expect(deep.segmentClearanceM(a, b, uniformGate(3.0))).toBeCloseTo(25.4, 6);
   });
 
   it('is null out of bounds or on land, like segmentNavigable', () => {
     const land = makeMask(() => 0);
-    expect(land.segmentClearanceM(a, b, 1.0)).toBeNull();
-    expect(m.segmentClearanceM({ lat: 60, lon: 20 }, b, 2.0)).toBeNull();
+    expect(land.segmentClearanceM(a, b, uniformGate(1.0))).toBeNull();
+    expect(m.segmentClearanceM({ lat: 60, lon: 20 }, b, uniformGate(2.0))).toBeNull();
   });
 });
 
@@ -290,5 +293,48 @@ describe('#493: cautiousDepthLowerBoundM', () => {
     expect(cautiousDepthLowerBoundM(0.5)).toBe(0);
     expect(cautiousDepthLowerBoundM(0)).toBe(0);
     expect(cautiousDepthLowerBoundM(MASK_TOLERANCE_M)).toBe(0);
+  });
+});
+
+// #452: the three NavMask predicates the solver uses now take a per-cell gate.
+// Every case here is built as a PAIR — the same mask and the same relaxed
+// depth, with the disc ON the shallow cell and then OFF it. Only a gate that
+// is genuinely consulted per cell can separate the two, and both halves are
+// load-bearing: a cellNavigable that ignored gateAtCell and used
+// requestedDepthM would pass the reject half while failing the accept half,
+// and one using minGateM would do exactly the reverse.
+describe('NavMask under a #452 ApproachGate', () => {
+  // Row 90 is 20 m everywhere except col 150, charted 2.5 m — below the 3.0 m
+  // requested gate, above a 2.3 m relaxed one.
+  const shoal = makeMask((r, c) => (r === 90 && c === 150 ? 25 : 200));
+  // Cell centres on row 90 (lat 54.3 + 90.5*0.005 = 54.7525).
+  const lonOfCol = (col: number) => 9.4 + (col + 0.5) * 0.005;
+  const A = { lat: 54.7525, lon: lonOfCol(145) };
+  const B = { lat: 54.7525, lon: lonOfCol(155) };
+  const ON = { lat: 54.7525, lon: lonOfCol(150) }; // disc centred on the shoal
+  // 30 columns east (~9.6 km at this latitude) — far outside a 1852 m disc.
+  const OFF = { lat: 54.7525, lon: lonOfCol(180) };
+  const covering = approachGate(TEST_MASK_META, [ON], 3.0, [2.3], APPROACH_RADIUS_M);
+  const elsewhere = approachGate(TEST_MASK_META, [OFF], 3.0, [2.3], APPROACH_RADIUS_M);
+
+  it('segmentNavigable accepts a sub-requested cell inside a disc and rejects it outside', () => {
+    expect(shoal.segmentNavigable(A, B, covering)).toBe(true);
+    expect(shoal.segmentNavigable(A, B, elsewhere)).toBe(false);
+    // Control: the same segment at a plain requested-depth gate is blocked,
+    // so the accept above is the disc doing the work, not the mask being deep.
+    expect(shoal.segmentNavigable(A, B, uniformGate(3.0))).toBe(false);
+  });
+
+  it('segmentClearanceM reports a minimum BELOW the requested depth inside a disc', () => {
+    expect(shoal.segmentClearanceM(A, B, covering)).toBeCloseTo(2.5, 6);
+    expect(shoal.segmentClearanceM(A, B, elsewhere)).toBeNull();
+  });
+
+  it('cellsConnected routes through an in-disc sub-requested cell, not an out-of-disc one', () => {
+    // A wall on row 90 would not isolate anything on its own, so this fixture
+    // makes col 150 the ONLY water in an otherwise-land column.
+    const pinch = makeMask((r, c) => (c === 150 ? (r === 90 ? 25 : 0) : 200));
+    expect(pinch.cellsConnected(A, B, covering)).toBe(true);
+    expect(pinch.cellsConnected(A, B, elsewhere)).toBe(false);
   });
 });

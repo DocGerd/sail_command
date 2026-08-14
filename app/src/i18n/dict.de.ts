@@ -231,6 +231,13 @@ export const de = {
   // trägt.
   'route.shallow.exposure':
     '{dist} dieser Route verlaufen durch Wasser, das flacher als die eingestellte Sicherheitstiefe von {requested} m kartiert ist.',
+  // #516 Zuwachs 2 (setzt #518 voraus): siehe dict.en.ts's Kommentar für
+  // Zweck, Messung statt Annahme, Reihenfolge und Anaphern-Disziplin.
+  // "eingestellte Sicherheitstiefe" statt des Entwurfsdokuments "eingestellte
+  // Tiefe", zur Angleichung an .exposure oben und .detail unten, die
+  // denselben Begriff schon zweimal in dieser Datei verwenden.
+  'route.shallow.confined':
+    'Jeder Abschnitt unterhalb der eingestellten Sicherheitstiefe liegt im Umkreis von {radius} um Start, Ziel oder Wegpunkte.',
   // #516: die explizite Produktentscheidung des Maintainers (im
   // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
   // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen

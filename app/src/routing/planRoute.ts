@@ -17,7 +17,8 @@ import { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
 import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
-import { BOAT_DRAFT_M, findRelaxedDepthM, type ProbeProgress } from './relaxedDepth';
+import { APPROACH_RADIUS_M, uniformGate, type DepthGate } from '../lib/depthGate';
+import { BOAT_DRAFT_M, findRelaxedGate, type ProbeProgress } from './relaxedDepth';
 
 export interface PlanDeps {
   polarGenoa: PolarTable;
@@ -196,7 +197,7 @@ export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
  * Note this exclusion alone does NOT cover the case where tiers 1-2 spend
  * the whole budget and still finish with a genuine 'mask-blocked' verdict —
  * the cause is then honestly mask-blocked, this gate opens, and
- * `findRelaxedDepthM`'s BFS probes would run past the deadline. That gap is
+ * `findRelaxedGate`'s BFS probes would run past the deadline. That gap is
  * closed by an explicit deadline check immediately before the relaxation
  * block, not here.
  */
@@ -301,11 +302,16 @@ export function planRoute(
   const comfortDepthM =
     s.depthComfortMarginM > 0 ? s.safetyDepthM + s.depthComfortMarginM : undefined;
 
+  // #452: the gate every tier that solves at the REQUESTED depth uses. Built
+  // once — `solve()` and `mergeCollinearLegs` take it by reference.
+  const requestedGate = uniformGate(s.safetyDepthM);
+
   const wind = new WindField(windGrid);
   const run = (
     rig: Rig,
     table: PolarTable,
     settings: Settings,
+    gate: DepthGate,
     comfort: number | undefined,
   ): RunOut => {
     const polar = new Polar(table, settings.performanceFactor);
@@ -324,6 +330,7 @@ export function planRoute(
         wind,
         mask,
         settings,
+        gate,
         onProgress: (info) => onProgress?.(rig, info),
         ...(comfort !== undefined ? { comfortDepthM: comfort } : {}),
         // exactOptionalPropertyTypes: omit the key entirely when unbudgeted,
@@ -337,7 +344,9 @@ export function planRoute(
       // SolveResult arm, as this change's pre-#450 draft did) means it arrives
       // through exactly this line like any other cause.
       if (res.status !== 'ok') return { rigResult: null, cause: res.cause };
-      legs.push(...mergeCollinearLegs(res.legs, mask, wind, settings, comfort));
+      // #452 graft 5: the merge pass re-validates against the SAME gate this
+      // segment solved at — never a route-wide scalar.
+      legs.push(...mergeCollinearLegs(res.legs, mask, wind, gate, comfort));
       departureMs = res.etaMs;
     }
     const etaMs = departureMs;
@@ -362,9 +371,9 @@ export function planRoute(
   // on. Reordering these two properties changes the real solve order and
   // must fail that guard test — if it doesn't, the guard is broken, not this
   // code.
-  const runBoth = (settings: Settings, comfort: number | undefined) => ({
-    genoa: run('genoa', deps.polarGenoa, settings, comfort),
-    fock: run('fock', deps.polarFock, settings, comfort),
+  const runBoth = (settings: Settings, gate: DepthGate, comfort: number | undefined) => ({
+    genoa: run('genoa', deps.polarGenoa, settings, gate, comfort),
+    fock: run('fock', deps.polarFock, settings, gate, comfort),
   });
 
   const assemble = (genoa: RunOut, fock: RunOut, shallow: ShallowInfo | null): PlanResult => {
@@ -413,9 +422,16 @@ export function planRoute(
     };
   };
 
-  const connectedAt = (depthM: number): boolean => {
+  // #452 DELIBERATE DIVERGENCE — do not re-unify this with `findRelaxedGate`'s
+  // own connectivity probe. Before #452 the two were textually identical and
+  // had to be changed together. They are now different by design: this one is
+  // the fast-path classifier and asks a question about the REQUESTED gate
+  // route-wide, while the search's probe asks about a per-cell FIELD. Merging
+  // them back into one helper would hand this classifier a relaxed field and
+  // silently re-globalise the relaxation — the exact defect #452 closes.
+  const connectedAt = (gate: DepthGate): boolean => {
     for (let i = 0; i < waypoints.length - 1; i++) {
-      if (!mask.cellsConnected(waypoints[i], waypoints[i + 1], depthM)) return false;
+      if (!mask.cellsConnected(waypoints[i], waypoints[i + 1], gate)) return false;
     }
     return true;
   };
@@ -433,10 +449,10 @@ export function planRoute(
   // gate below — never the label. The label is derived from it exactly once,
   // at the `return` at the end of this function.
   let cause: SolveFailureCause = 'mask-blocked';
-  if (connectedAt(s.safetyDepthM)) {
+  if (connectedAt(requestedGate)) {
     // #243 tier 1: requested gate, preference on — the happy path, nothing
     // extra paid.
-    const tier1 = runBoth(s, comfortDepthM);
+    const tier1 = runBoth(s, requestedGate, comfortDepthM);
     if (comfortDepthM !== undefined && needsUnpreferencedRetry(tier1)) {
       // #243 tier 2: requested gate, preference off — bit-identical to the
       // pre-#243 single `runBoth(s)` call this replaces (comfortDepthM
@@ -445,7 +461,7 @@ export function planRoute(
       // failed with a reason it could plausibly have caused (see
       // needsUnpreferencedRetry) — this is what makes "no plan can get worse
       // than pre-#243" true by construction rather than by argument.
-      const tier2 = runBoth(s, undefined);
+      const tier2 = runBoth(s, requestedGate, undefined);
       if (tier2.genoa.rigResult || tier2.fock.rigResult)
         return assemble(tier2.genoa, tier2.fock, null);
       // #243 fix-wave item 5: tier 2 failed on BOTH rigs, but tier 1 may
@@ -479,9 +495,12 @@ export function planRoute(
   // class relaxes — a calm forecast and an exhausted horizon keep their errors
   // — and never at or below the boat-draft floor. The relaxed gate is
   // discovered once (cheap mask BFS probes, no solver runs), then BOTH rigs
-  // solve at that single gate, so the rig comparison stays apples-to-apples by
-  // construction. The user's safetyDepthM setting is NEVER mutated: the relaxed
-  // gate lives only in a solver-local Settings copy, per-plan, never sticky.
+  // solve against that single gate FIELD, so the rig comparison stays
+  // apples-to-apples by construction. The user's safetyDepthM setting is
+  // NEVER mutated — and since #452 it is never even COPIED-AND-OVERWRITTEN:
+  // the relaxed depth lives in a per-plan DepthGate passed alongside the
+  // unchanged Settings, so no object anywhere carries a relaxed
+  // `safetyDepthM` that a later reader could mistake for the user's own.
   // Unaffected by #243: this decision is a pure mask/cause fact, made before
   // either relaxed tier runs.
   //
@@ -495,7 +514,7 @@ export function planRoute(
   // does not cover the case this check exists for: tiers 1-2 can spend the
   // ENTIRE budget and still finish with a genuine 'mask-blocked' verdict, so
   // the cause is honestly mask-blocked, the gate opens, and
-  // `findRelaxedDepthM`'s BFS probes — the only work in this function that
+  // `findRelaxedGate`'s BFS probes — the only work in this function that
   // does not run inside solve()'s ring loop, and therefore the only work the
   // per-ring check cannot stop — would run past a deadline that has already
   // passed. Checked before the probes rather than after, so a spent budget
@@ -504,19 +523,23 @@ export function planRoute(
     return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE['budget-exhausted'] };
   }
   if (depthRelaxationMayHelp(cause) && s.safetyDepthM > BOAT_DRAFT_M) {
-    const usedDepthM = findRelaxedDepthM(mask, waypoints, s.safetyDepthM, onProbe);
-    if (usedDepthM !== null) {
-      const relaxedSettings: Settings = { ...s, safetyDepthM: usedDepthM };
+    const relaxed = findRelaxedGate(mask, waypoints, s.safetyDepthM, APPROACH_RADIUS_M, onProbe);
+    if (relaxed !== null) {
+      const { gate: relaxedGate, usedDepthM } = relaxed;
       // #243 tier 3: relaxed gate, preference on — the mechanism-2 fix.
       // comfortDepthM stays anchored to the REQUESTED `s` (computed once,
       // above), never to usedDepthM: the relaxed gate only widens what is
       // *possible*, it must not also widen what is *comfortable*.
-      const tier3 = runBoth(relaxedSettings, comfortDepthM);
+      //
+      // #452: `s` is passed UNCHANGED — the relaxed depth now travels in the
+      // gate field, so `Settings.safetyDepthM` is never overwritten with a
+      // relaxed value anywhere. The pre-#452 `{ ...s, safetyDepthM:
+      // usedDepthM }` copy is deleted, which spike §7 records as a
+      // correctness improvement independent of locality.
+      const tier3 = runBoth(s, relaxedGate, comfortDepthM);
       if (comfortDepthM !== undefined && needsUnpreferencedRetry(tier3)) {
-        // #243 tier 4: relaxed gate, preference off — bit-identical to the
-        // pre-#243 relaxed `runBoth({ ...s, safetyDepthM: usedDepthM })` call
-        // this replaces.
-        const tier4 = runBoth(relaxedSettings, undefined);
+        // #243 tier 4: relaxed gate, preference off.
+        const tier4 = runBoth(s, relaxedGate, undefined);
         if (tier4.genoa.rigResult || tier4.fock.rigResult) {
           const shallow = flagShallowLegs(mask, tier4, s.safetyDepthM, usedDepthM);
           return assemble(tier4.genoa, tier4.fock, shallow);

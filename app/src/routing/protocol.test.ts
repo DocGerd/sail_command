@@ -88,7 +88,13 @@ describe('worker protocol handler', () => {
       id: 'p53',
       request: {
         origin: { lat: 54.7525, lon: 10.0025 },
-        destination: { lat: 54.7525, lon: 10.4025 },
+        // #452: col 165, five columns (~1606 m at this latitude) east of the
+        // col-160 wall, so the gap falls inside the destination's 1852 m
+        // approach disc and relaxation still fires. At the pre-#452 col 200
+        // the gap would sit ~12.8 km from either waypoint, outside every
+        // disc, and this plan would report unreachable instead — see
+        // planRoute.shallow.test.ts, which pins both sides of that split.
+        destination: { lat: 54.7525, lon: 10.2275 },
         viaPoints: [],
         originHarborId: null,
         destinationHarborId: null,
@@ -98,8 +104,14 @@ describe('worker protocol handler', () => {
       windGrid: uniformWindGrid(12, 0),
     });
     const probes = out.filter((m) => m.type === 'probe');
-    // Hand-derived binary search over candidates 2.1..2.9: 2.5 ok, 2.7 fail, 2.6 fail.
-    expect(probes.map((m) => m.probeDepthM)).toEqual([2.5, 2.7, 2.6]);
+    // Hand-derived, both #452 phases. PHASE 1 (shared gate) over candidates
+    // 2.1..2.9: 2.5 ok, 2.7 fail, 2.6 fail -> 2.5. PHASE 2 (per-disc ascent):
+    // the origin disc holds only 20 m water so every probe connects and it
+    // rises 2.7, 2.8, 2.9; the destination disc closes the 2.5 m gap as soon
+    // as it is raised, so 2.7 and 2.6 both fail and it stays at 2.5. Same
+    // sequence as planRoute.shallow.test.ts's approach-pinch case, which
+    // carries the disc-membership derivation in full.
+    expect(probes.map((m) => m.probeDepthM)).toEqual([2.5, 2.7, 2.6, 2.7, 2.8, 2.9, 2.7, 2.6]);
     const result = out.find((m) => m.type === 'result');
     if (!result || result.type !== 'result' || result.result.status !== 'ok')
       throw new Error('expected an ok result');

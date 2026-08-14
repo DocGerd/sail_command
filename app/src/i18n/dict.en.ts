@@ -215,6 +215,17 @@ export const en = {
   // `charted`; the ceil rounding is display precision, not a bound claim.
   'route.shallow.exposure':
     '{dist} of this route crosses water charted shallower than your safety depth of {requested} m.',
+  // #516 increment 2 (requires #518): whether the exposure above is entirely
+  // inside #452's relaxation discs — MEASURED at render time
+  // (lib/shallowExposure.ts's shallowConfinedWithinM), never assumed from the
+  // router, since a plan saved before #518 shipped is byte-indistinguishable
+  // from one computed after. Rendered right after .exposure (RouteSummary.tsx's
+  // `showConfined`), never re-sequenced relative to it, and deliberately
+  // SELF-CONTAINED — not "All of it lies within…", which would bind to
+  // .exposure's position (the #493/#504 anaphora lesson). false/null both
+  // suppress this sentence silently; it is never rendered as a negation.
+  'route.shallow.confined':
+    'Every stretch below your safety depth lies within {radius} of your origin, destination or waypoints.',
   // #516: the maintainer's own explicit product decision (the #516 design
   // doc had deliberately left this UNRECOMMENDED, "a maintainer product
   // call, flagged rather than designed" — since ruled on). Rendered LAST in

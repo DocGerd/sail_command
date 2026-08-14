@@ -1,5 +1,6 @@
-import type { Leg, Settings } from '../types';
+import type { Leg } from '../types';
 import type { NavMask } from '../lib/mask';
+import type { DepthGate } from '../lib/depthGate';
 import type { WindField } from '../lib/wind';
 import { haversineNm, initialBearingDeg, normalizeDeg180 } from '../lib/geo';
 import { boardOf } from './maneuver';
@@ -11,7 +12,7 @@ function tryMerge(
   b: Leg,
   mask: NavMask,
   wind: WindField,
-  s: Settings,
+  gate: DepthGate,
   comfortDepthM: number | undefined,
 ): Leg | null {
   if (a.kind !== b.kind || a.board !== b.board || b.maneuverAtStart !== null) return null;
@@ -19,7 +20,16 @@ function tryMerge(
   // The merged span must itself stay navigable at the gate — unconditional,
   // exactly the pre-#243 check (segmentClearanceM returns null exactly when
   // segmentNavigable would report false; see mask.ts).
-  const mergedClearanceM = mask.segmentClearanceM(a.start, b.end, s.safetyDepthM);
+  //
+  // #452 graft 5: this re-validation takes the SAME per-cell gate the solve
+  // used. Straightening a dogleg can cut a corner neither original leg
+  // touched — and a corner OUTSIDE every relaxation disc. Handing this pass
+  // a route-wide relaxed scalar (what `settings.safetyDepthM` was before
+  // #452) would let the merged span re-cross relaxed water anywhere on the
+  // passage, silently undoing the confinement the gate field exists to
+  // provide. The parameter is the gate rather than Settings precisely so
+  // that cannot be spelled.
+  const mergedClearanceM = mask.segmentClearanceM(a.start, b.end, gate);
   if (mergedClearanceM === null) return null;
   // #243 §D.4: straightening a dogleg can cut a corner neither original leg
   // touched, silently undoing some of the depth comfort preference even
@@ -33,8 +43,8 @@ function tryMerge(
   // both legs already crossed is never rejected here, however shallow that
   // floor is.
   if (comfortDepthM !== undefined) {
-    const aClearanceM = mask.segmentClearanceM(a.start, a.end, s.safetyDepthM) ?? Infinity;
-    const bClearanceM = mask.segmentClearanceM(b.start, b.end, s.safetyDepthM) ?? Infinity;
+    const aClearanceM = mask.segmentClearanceM(a.start, a.end, gate) ?? Infinity;
+    const bClearanceM = mask.segmentClearanceM(b.start, b.end, gate) ?? Infinity;
     if (mergedClearanceM < Math.min(aClearanceM, bClearanceM)) return null;
   }
   const headingDeg = initialBearingDeg(a.start, b.end);
@@ -58,7 +68,9 @@ export function mergeCollinearLegs(
   legs: Leg[],
   mask: NavMask,
   wind: WindField,
-  settings: Settings,
+  // #452 graft 5: the SAME gate object the corresponding solve() ran with —
+  // see tryMerge's re-validation comment for why this must not be a scalar.
+  gate: DepthGate,
   // #243: same requested-depth-anchored comfort depth planRoute.ts passes to
   // solve() — undefined on the pre-#243 / feature-off / preference-off-tier
   // paths, which keeps this pass byte-identical to before in those cases.
@@ -71,7 +83,7 @@ export function mergeCollinearLegs(
     const next: Leg[] = [];
     for (const leg of out) {
       const prev = next[next.length - 1];
-      const merged = prev ? tryMerge(prev, leg, mask, wind, settings, comfortDepthM) : null;
+      const merged = prev ? tryMerge(prev, leg, mask, wind, gate, comfortDepthM) : null;
       if (merged) {
         next[next.length - 1] = merged;
         changed = true;

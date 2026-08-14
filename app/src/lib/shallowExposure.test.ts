@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { APPROACH_RADIUS_M } from './depthGate';
+import { haversineNm } from './geo';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
-import { shallowExposureNm, roundExposureNm } from './shallowExposure';
+import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from './shallowExposure';
 import type { NavMask } from './mask';
 import type { LatLon, Leg, MaskMeta } from '../types';
 
@@ -237,6 +239,41 @@ function navMaskWalk(mask: NavMask, a: LatLon, b: LatLon): string[] {
   return seq;
 }
 
+// PR #518 review, "Checked and clean" §2 — the keeper above drives the walk
+// through shallowExposureNm ONLY, so a future edit giving legConfinedWithin
+// its own copy of the DDA would not be caught. Same recording facade as
+// shippedWalk, driven through shallowConfinedWithinM instead: legConfinedWithin
+// calls isShallowAt (hence mask.depthInfoM) unconditionally for every cell
+// walkLegCells visits, exactly like shallowFractionOfLeg does, so the recorded
+// sequence is the walk itself, not a confinement verdict. Neither the
+// threshold nor the waypoints/allowance/radius change WHICH cells are
+// visited, so any values serve here — same reasoning as shippedWalk's own
+// comment on its threshold argument.
+function confinedWalk(mask: NavMask, a: LatLon, b: LatLon): string[] {
+  const meta = mask.meta;
+  const latStep = (meta.north - meta.south) / meta.rows;
+  const lonStep = (meta.east - meta.west) / meta.cols;
+  const seq: string[] = [];
+  const recorder = {
+    meta,
+    depthInfoM(p: LatLon) {
+      const row = Math.floor((p.lat - meta.south) / latStep);
+      const col = Math.floor((p.lon - meta.west) / lonStep);
+      seq.push(`${row},${col}`);
+      return mask.depthInfoM(p);
+    },
+  };
+  shallowConfinedWithinM(
+    [makeLeg(a, b, 1)],
+    recorder as unknown as NavMask,
+    3.0,
+    [],
+    [],
+    APPROACH_RADIUS_M,
+  );
+  return seq;
+}
+
 // Exact-tie grid: west/south and both steps are exact binary fractions
 // (step = 2^-7 = 0.0078125), so a point offset by the SAME multiple of the
 // step in both axes yields x0 === y0 bit-for-bit. A 45-degree segment across
@@ -251,7 +288,7 @@ const tiePoint = (k: number): LatLon => ({
   lon: TIE_META.west + k * TIE_STEP,
 });
 
-describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
+describe("shallowExposureNm's and shallowConfinedWithinM's walks vs NavMask.walkCells (#516)", () => {
   const mask = makeMask((row, col) => ((row * 7 + col * 13) % 5 === 0 ? 20 : 200));
   const tieMask = makeMask(() => 200, TIE_META);
   const cases: Array<[string, NavMask, LatLon, LatLon]> = [
@@ -314,10 +351,13 @@ describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
   for (const [name, m, a, b] of cases) {
     it(`visits the same cells in the same order: ${name}`, () => {
       const shipped = shippedWalk(m, a, b);
+      const confined = confinedWalk(m, a, b);
       // Fails CLOSED: a segment that never walked at all would make the
       // sequence comparison below vacuously true (two empty arrays).
       expect(shipped.length).toBeGreaterThan(0);
-      expect(shipped).toEqual(navMaskWalk(m, a, b));
+      const expected = navMaskWalk(m, a, b);
+      expect(shipped).toEqual(expected);
+      expect(confined).toEqual(expected);
     });
   }
 
@@ -339,7 +379,9 @@ describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
       fc.property(arbPoint, arbPoint, (a, b) => {
         const shipped = shippedWalk(mask, a, b);
         expect(shipped.length).toBeGreaterThan(0);
-        expect(shipped).toEqual(navMaskWalk(mask, a, b));
+        const expected = navMaskWalk(mask, a, b);
+        expect(shipped).toEqual(expected);
+        expect(confinedWalk(mask, a, b)).toEqual(expected);
       }),
       { numRuns: 500, seed: 42 }, // deterministic CI
     );
@@ -357,5 +399,177 @@ describe('roundExposureNm (#516)', () => {
 
   it('normalizes a zero-length exposure to +0, never -0 (Object.is(-0, 0) is false)', () => {
     expect(Object.is(roundExposureNm(0), 0)).toBe(true);
+  });
+});
+
+// #516 increment 2 (requires #518). Every geometry below is a PURE-LATITUDE
+// leg/waypoint pair at the same longitude (col 50) — dLon = 0, so haversineNm
+// reduces to a plain great-circle distance along one meridian with no
+// cos(lat) factor to reason about, which is what makes the row-offset
+// arithmetic in each test's own comment tractable by hand. Every "just
+// inside"/"just outside" claim is nonetheless verified by a PRECONDITION
+// assertion against the actual haversineNm output (this file's own TIE_META
+// precondition pattern), never trusted from the hand arithmetic alone.
+describe('shallowConfinedWithinM (#516 increment 2)', () => {
+  const WAYPOINT = pointAt(100.5, 50.5);
+
+  function singleShallowRowMask(shallowRow: number): NavMask {
+    return makeMask((row, col) => (row === shallowRow && col === 50 ? 20 /* 2.0 m */ : 200));
+  }
+
+  // Spans 5 rows either side of shallowRow — comfortably brackets every row
+  // used below (98..109) while staying a single, pure-latitude (same-column)
+  // segment, so the walk visits every integer row in between including
+  // shallowRow itself.
+  function legThroughRow(shallowRow: number): Leg {
+    return makeLeg(pointAt(shallowRow - 5, 50.5), pointAt(shallowRow + 5, 50.5), 20);
+  }
+
+  function shallowCellCenter(shallowRow: number): LatLon {
+    return pointAt(shallowRow + 0.5, 50.5);
+  }
+
+  it('a shallow cell just OUTSIDE APPROACH_RADIUS_M of the only waypoint suppresses confinement', () => {
+    // Row 104's cell centre sits 4.0 grid-rows from WAYPOINT's own row
+    // (100.5 -> 104.5) — roughly 4 * 555.6 m =~ 2222 m, comfortably past the
+    // 1852 m radius (a ~371 m / 20% margin, not "a few metres").
+    const shallowRow = 104;
+    const distanceM = haversineNm(WAYPOINT, shallowCellCenter(shallowRow)) * 1852;
+    expect(distanceM).toBeGreaterThan(APPROACH_RADIUS_M); // precondition: really outside
+    const result = shallowConfinedWithinM(
+      [legThroughRow(shallowRow)],
+      singleShallowRowMask(shallowRow),
+      3.0,
+      [WAYPOINT],
+      [0],
+      APPROACH_RADIUS_M,
+    );
+    expect(result).toBe(false);
+  });
+
+  it('a shallow cell just INSIDE APPROACH_RADIUS_M of the only waypoint confirms confinement', () => {
+    // Row 103's cell centre sits 3.0 grid-rows from WAYPOINT (100.5 -> 103.5)
+    // — roughly 3 * 555.6 m =~ 1667 m, under the 1852 m radius (a ~185 m /
+    // 10% margin).
+    const shallowRow = 103;
+    const distanceM = haversineNm(WAYPOINT, shallowCellCenter(shallowRow)) * 1852;
+    expect(distanceM).toBeLessThan(APPROACH_RADIUS_M); // precondition: really inside
+    const result = shallowConfinedWithinM(
+      [legThroughRow(shallowRow)],
+      singleShallowRowMask(shallowRow),
+      3.0,
+      [WAYPOINT],
+      [0],
+      APPROACH_RADIUS_M,
+    );
+    expect(result).toBe(true);
+  });
+
+  it('#516 design doc §8: mutation-check — shrinking/growing radiusM moves BOTH verdicts', () => {
+    // Same two geometries as the two rows above, at a radius chosen on the
+    // OTHER side of each cell's own measured distance from the two rows
+    // above — a mutation that stopped comparing against radiusM at all (e.g.
+    // hardcoding the verdict) would leave at least one of these four checks
+    // unmoved.
+    const insideDistanceM = haversineNm(WAYPOINT, shallowCellCenter(103)) * 1852;
+    const outsideDistanceM = haversineNm(WAYPOINT, shallowCellCenter(104)) * 1852;
+    const shrunkRadius = insideDistanceM - 1; // now excludes row 103's own cell
+    const grownRadius = outsideDistanceM + 1; // now includes row 104's own cell
+    expect(
+      shallowConfinedWithinM(
+        [legThroughRow(103)],
+        singleShallowRowMask(103),
+        3.0,
+        [WAYPOINT],
+        [0],
+        shrunkRadius,
+      ),
+    ).toBe(false);
+    expect(
+      shallowConfinedWithinM(
+        [legThroughRow(104)],
+        singleShallowRowMask(104),
+        3.0,
+        [WAYPOINT],
+        [0],
+        grownRadius,
+      ),
+    ).toBe(true);
+  });
+
+  it('a via allowance can flip a would-be-confined cell to NOT confined, conservatively', () => {
+    // shallowConfinedWithinM's own contract: allowanceM[j] is ADDED to the
+    // measured distance before the <= radiusM test, so a LARGER allowance can
+    // only make confinement HARDER to establish — never easier. `via` is a
+    // raw LatLon (not a cell centre), mirroring a real UNSNAPPED via point.
+    const shallowRow = 100;
+    const via = pointAt(103.5, 50.5);
+    const distanceM = haversineNm(via, shallowCellCenter(shallowRow)) * 1852;
+    // Precondition: the measured distance alone reads confined (<= radius),
+    // but +300 m (snapToNavigable's own maxRadiusM default) pushes it past —
+    // exactly the case the allowance exists to catch.
+    expect(distanceM).toBeLessThanOrEqual(APPROACH_RADIUS_M);
+    expect(distanceM + 300).toBeGreaterThan(APPROACH_RADIUS_M);
+    const leg = legThroughRow(shallowRow);
+    const mask = singleShallowRowMask(shallowRow);
+    expect(shallowConfinedWithinM([leg], mask, 3.0, [via], [0], APPROACH_RADIUS_M)).toBe(true);
+    expect(shallowConfinedWithinM([leg], mask, 3.0, [via], [300], APPROACH_RADIUS_M)).toBe(false);
+  });
+
+  it('a shallow cell far from one waypoint but close to another is confined via the closer one (OR across waypoints)', () => {
+    const shallowRow = 100;
+    const near = pointAt(103.5, 50.5); // same point as the allowance test's own `via` — already ~1667 m away, see its precondition
+    const far = pointAt(103.5, 250.5); // 200 grid-columns away — clearly outside any radius
+    const result = shallowConfinedWithinM(
+      [legThroughRow(shallowRow)],
+      singleShallowRowMask(shallowRow),
+      3.0,
+      [far, near],
+      [0, 0],
+      APPROACH_RADIUS_M,
+    );
+    expect(result).toBe(true);
+  });
+
+  it('a leg with no shallow cell at all is vacuously confined (true, never checked against any waypoint)', () => {
+    const leg = legThroughRow(103);
+    const deepMask = makeMask(() => 200); // no cell anywhere is below thresholdM
+    const result = shallowConfinedWithinM([leg], deepMask, 3.0, [], [], APPROACH_RADIUS_M);
+    expect(result).toBe(true);
+  });
+
+  it('a shallow cell with NO waypoints at all is never confined (false, not vacuously true)', () => {
+    // Contrasts with the row above: an empty ARRAY of shallow cells is
+    // vacuously true, but a genuine shallow cell against an EMPTY waypoint
+    // list can satisfy "for some j" over an empty set only as false.
+    const shallowRow = 103;
+    const result = shallowConfinedWithinM(
+      [legThroughRow(shallowRow)],
+      singleShallowRowMask(shallowRow),
+      3.0,
+      [],
+      [],
+      APPROACH_RADIUS_M,
+    );
+    expect(result).toBe(false);
+  });
+
+  it('an out-of-bounds leg endpoint nulls the WHOLE route, never just skips that leg', () => {
+    // Mirrors shallowExposureNm's own out-of-bounds test: if this leg were
+    // silently SKIPPED instead of nulling the whole route, the result would
+    // be the first leg's own true verdict (see the row-103 test above)
+    // rather than null.
+    const shallowRow = 103;
+    const validLeg = legThroughRow(shallowRow);
+    const outOfBoundsLeg = makeLeg({ lat: 56.0, lon: 10.0 }, { lat: 56.01, lon: 10.01 }, 5);
+    const result = shallowConfinedWithinM(
+      [validLeg, outOfBoundsLeg],
+      singleShallowRowMask(shallowRow),
+      3.0,
+      [WAYPOINT],
+      [0],
+      APPROACH_RADIUS_M,
+    );
+    expect(result).toBeNull();
   });
 });
