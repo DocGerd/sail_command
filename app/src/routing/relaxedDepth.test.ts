@@ -27,9 +27,10 @@ const relaxedM = (
   mask: Parameters<typeof findRelaxedGate>[0],
   waypoints: Parameters<typeof findRelaxedGate>[1],
   requestedDepthM: number,
-  onProbe?: Parameters<typeof findRelaxedGate>[4],
+  onProbe?: Parameters<typeof findRelaxedGate>[5],
 ): number | null =>
-  findRelaxedGate(mask, waypoints, requestedDepthM, Infinity, onProbe)?.usedDepthM ?? null;
+  findRelaxedGate(mask, waypoints, requestedDepthM, Infinity, BOAT_DRAFT_M, onProbe)?.usedDepthM ??
+  null;
 
 describe('findRelaxedGate under the #452 kill switch (#53 behaviour, unchanged)', () => {
   it('finds the highest decimeter gate that still connects (2.4 m gap, 3.0 m requested)', () => {
@@ -94,4 +95,19 @@ describe('findRelaxedGate under the #452 kill switch (#53 behaviour, unchanged)'
     expect(relaxedM(m, [WEST, EAST], 3.0)).toBeCloseTo(2.5, 6);
     expect(relaxedM(m, [WEST, EAST, FAR_EAST], 3.0)).toBeNull();
   });
+});
+
+it('#54: findRelaxedGate searches from the given floor, not a module constant', () => {
+  // Gap charted 2.0 m: a 1.8 m floor connects at 2.0 (the gap's own depth,
+  // capped by hiDm); a 2.3 m floor starts its search ABOVE the gap and finds
+  // nothing. A build that still reads the module constant (BOAT_DRAFT_M =
+  // 2.1 m) instead of this parameter would ignore both floors and return the
+  // same answer either way.
+  const mask = gapMask(20);
+  const waypoints = [WEST, EAST];
+  const shallow = findRelaxedGate(mask, waypoints, 3.0, Infinity, 1.8);
+  const deep = findRelaxedGate(mask, waypoints, 3.0, Infinity, 2.3);
+  expect(shallow?.usedDepthM).toBeCloseTo(2.0, 6);
+  expect(deep).toBeNull();
+  expect(deep?.usedDepthM).not.toBe(shallow?.usedDepthM);
 });

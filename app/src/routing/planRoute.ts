@@ -523,7 +523,14 @@ export function planRoute(
     return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE['budget-exhausted'] };
   }
   if (depthRelaxationMayHelp(cause) && s.safetyDepthM > BOAT_DRAFT_M) {
-    const relaxed = findRelaxedGate(mask, waypoints, s.safetyDepthM, APPROACH_RADIUS_M, onProbe);
+    const relaxed = findRelaxedGate(
+      mask,
+      waypoints,
+      s.safetyDepthM,
+      APPROACH_RADIUS_M,
+      BOAT_DRAFT_M,
+      onProbe,
+    );
     if (relaxed !== null) {
       const { gate: relaxedGate, usedDepthM } = relaxed;
       // #243 tier 3: relaxed gate, preference on — the mechanism-2 fix.

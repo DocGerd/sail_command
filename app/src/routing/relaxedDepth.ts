@@ -79,7 +79,12 @@ export interface RelaxedGate {
  * tests inject `Infinity` for the kill switch, and the production constant's
  * single use site stays visible at the `planRoute.ts` call.
  *
- * Returns null when requestedDepthM <= 2.1 m (nothing to relax within the
+ * `floorM` is likewise a PARAMETER, never read from `BOAT_DRAFT_M` here (#54):
+ * the search never goes below it, and a requested depth at or below it yields
+ * null without probing. `BOAT_DRAFT_M` remains the Salona 45 constant and is
+ * what the single production call site passes.
+ *
+ * Returns null when requestedDepthM <= floorM (nothing to relax within the
  * floor) or no candidate gate connects.
  */
 export function findRelaxedGate(
@@ -87,9 +92,10 @@ export function findRelaxedGate(
   waypoints: LatLon[],
   requestedDepthM: number,
   approachRadiusM: number,
+  floorM: number,
   onProbe?: ProbeProgress,
 ): RelaxedGate | null {
-  const loDm = Math.round(BOAT_DRAFT_M * 10);
+  const loDm = Math.round(floorM * 10);
   // Highest decimeter strictly below the requested depth. The 1e-9 nudge
   // absorbs IEEE 754 artifacts like 2.2 * 10 === 22.000000000000004, which
   // would otherwise admit the requested depth itself as a candidate.
