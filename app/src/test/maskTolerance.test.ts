@@ -174,9 +174,18 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
 // that appears to cover the wiring would be trusted for something it never
 // tested.
 describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', () => {
-  // R1 — the non-vacuity twin. Every row below iterates the catalogue, so a
-  // catalogue stubbed to [] leaves the whole guard green (#411, "a guard's DATA
-  // needs a twin"). This list is HAND-WRITTEN and must never be derived from BOATS.
+  // R1 — the non-vacuity twin. This list is HAND-WRITTEN and must never be derived
+  // from BOATS (#411, "a guard's DATA needs a twin").
+  // MEASURED 2026-08-14, perturbing boats.ts one way at a time (8 rows in this block):
+  //   ADD a second entry, 'salona-45' intact -> only R1 reds.
+  //   RENAME the sole entry's id             -> R1 reds, and R4/R6/R7b THROW via
+  //                                             boatById('salona-45').
+  //   WRONG draftM under an unchanged id     -> R1 stays GREEN; R6 and R7b catch it
+  //                                             via their own hardcoded literals.
+  //   BOATS = []                             -> R1 reds, and R4/R6/R7b throw.
+  // So R1 is the only row that sees an EXTRA entry, and it is blind to a wrong VALUE
+  // under a correct id — which is what R6 and R7b are for. An empty or renamed
+  // catalogue fails loudly rather than silently.
   //
   // Discriminating experiment, recorded so it is run rather than assumed:
   //   perturb production alone (add a boat) -> 1 row reds (this one)
