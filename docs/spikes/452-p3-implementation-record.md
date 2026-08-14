@@ -268,9 +268,20 @@ produce proves nothing. Its code comment says it is inert.
 ## 6. What remains UNVERIFIED
 
 **The `app/sweep/` acceptance cycle HAS been run — see §7. NO stop condition
-fired.** It certifies this branch ONLY while it stays based at `d73fa0d`;
-`develop` has since moved to `2195661`, so a re-record is owed whenever this
-branch is re-synced for merge.
+fired.** A comparison certifies this branch only against the merge-base it was
+recorded at. It was first recorded against `d73fa0d`; the branch was later
+re-synced, and on 2026-08-13 both the BASE control and the HEAD run were
+re-recorded and reproduced bit-for-bit — on a different machine and day, which
+is a STRONGER control than the required self double-run, because it tests the
+baseline against the very thing that would invalidate it rather than only
+against itself.
+
+A control taken against a `develop` that then moves certifies nothing, so after
+any further re-sync re-check the sweep's transitive input closure
+(`app/src/routing/`, `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts`,
+`app/public/data/`, `app/sweep/`, `pipeline/`) before relying on it. That
+exemption fails OPEN, so default to re-running and skip only after checking the
+closure itself — never a remembered path list.
 
 **R3 — P3's named trade is UNEXERCISED by every measurement that exists.**
 Spike §2.3's trade is that a localized `connectedAt` can return a LOWER
@@ -384,14 +395,18 @@ from every snapped waypoint):
 
 | | ok plans | plans routing through out-of-disc sub-gate water | farthest such cell |
 |---|---|---|---|
-| BASE | 157 | **41** | **18.86 nm** |
+| BASE | 157 | **41** | **18.86 nm** (2026-08-11 scan) / **18.89 nm** (2026-08-13 re-scan) — see "Two scans, one row" below |
 | HEAD | 157 | **0** | — |
 
 Per changed row, on the recommended rig:
 
 - **39 of 60** have direct de-licensing evidence: BASE's route crossed
-  out-of-disc sub-gate cells (worst `margin-zero/flensburg`, 10 such cells with
-  the farthest 34,935 m ≈ 18.9 nm from any waypoint) and HEAD's crosses none.
+  out-of-disc sub-gate cells and HEAD's crosses none. The worst row is
+  `margin-zero/flensburg`, and the two scans of that row disagree: the
+  2026-08-11 scan counted **10 cells**, farthest **34,935 m (18.86 nm)** from
+  any waypoint; the 2026-08-13 re-scan, over byte-identical BASE data, counted
+  **12 cells**, farthest **34,981 m (18.89 nm)**. Both agree HEAD crosses none.
+  Read "Two scans, one row" below before quoting either figure.
 - **21 of 60** complied on both sides, so the final route was never the thing
   being corrected; what changed is the SEARCH. Removing route-wide relaxed
   water changes the navigable set the isochrone explores (and, with
@@ -420,6 +435,68 @@ whereas `sweepArms.ts` gives that arm plain `DEFAULT_SETTINGS` (3.0 m) with
 BASE↔HEAD, so those plans are untouched by this change. With the table
 corrected the count is 0. The tell was that the "violations" were confined to a
 single arm that the diff says did not move.
+
+### Two scans, one row — a disagreement that was NOT resolved
+
+Two independently written scans of byte-identical BASE data disagree on the
+per-cell detail of one row. On 2026-08-11 this section's scan reported
+`margin-zero/flensburg` at **10 cells / 34,935 m / 18.86 nm**; on 2026-08-13 a
+re-implemented scan reported **12 cells / 34,981 m / 18.89 nm**. Both classified
+the same **41 of 157** BASE plans and **0** HEAD plans as routing through
+out-of-disc sub-gate water, and the 2026-08-13 per-arm split
+(1 + 8 + 20 + 1 + 11) sums to that same 41 — so the disagreement is confined to
+which CELLS one scan enumerated on one route.
+
+Ruled out from the two records alone:
+
+- **Not the unit conversion.** 34,935 / 1852 = 18.8634 and 34,981 / 1852 =
+  18.8882 — each quoted nm value rounds correctly from its own metre value at
+  the same 1852 m/nm divisor.
+- **Not the gate-table correction recorded just above.** That correction moved
+  `light-motorless` from a wrong `safetyDepthM: 4.0` to the real 3.0 and touched
+  no other arm. `margin-zero` is
+  `{ ...DEFAULT_SETTINGS, depthComfortMarginM: 0 }` (`app/sweep/sweepArms.ts`),
+  i.e. `safetyDepthM` 3.0 under BOTH tables, so no version of that table can
+  move this row. Independently, this section's BASE figures were already on the
+  corrected basis: `light-motorless` is byte-identical BASE↔HEAD, so under the
+  uncorrected 4.0 m table those same 14 plans would have counted on the BASE
+  side too and this table would read 55 or more, not 41.
+- **Not the waypoint set on its own.** §4 measured the snap offsets at 24.7 m
+  (Flensburg) and 31.6 m (Marstal). Swapping snapped for unsnapped waypoints
+  moves a cell's distance-to-nearest-waypoint by at most those offsets; the two
+  scans differ by 46 m, so that swap cannot by itself move a farthest cell
+  sitting ~34.9 km out.
+
+What remains, none of it discriminated:
+
+- **Rig scope** — the one candidate with direct textual support on both sides.
+  The table above declares the invariant over "either rig's legs" while the
+  34,935 m figure was produced under a bullet scoped "on the recommended rig",
+  and that table's 18.86 nm is numerically the same recommended-rig value. An
+  either-rig scan enumerates a superset.
+- **Traversal convention** — step length, 4- vs 8-connected, supercover vs DDA.
+  The 46 m gap is one mask cell (46.4 m north–south, 46.8 m east–west at
+  54.8 N, from `app/public/data/mask.meta.json`).
+- **The sub-gate comparison at the quantisation boundary.** Depth is stored in
+  whole decimetres, so `depth < gate` and `depth <= gate` differ by exactly the
+  cells reading 3.0 m.
+- **Distinct vs visited cells**, and **cell centre vs sampled point** as the
+  distance reference. A counting convention alone is insufficient — the farthest
+  cell moved, so the enumerated set genuinely differs.
+
+**This was not settled by measurement.** Deciding between these requires
+re-running both scans, and NEITHER DRIVER WAS EVER COMMITTED — `app/sweep/`
+holds the nine arm files, `armNames.ts`, `sweepArms.ts`, `compare.mjs` and
+`vitest.config.ts`, and no safety scan at all; neither script survives in git
+history or in any scratchpad. Note also that the bit-for-bit reproduction
+recorded for this branch is of the 297-plan sweep ARTIFACTS, not of either scan
+over them — so neither cell enumeration is reproduced, and the newer figure is
+not thereby the more trustworthy one. Until one scan is rebuilt, committed for
+provenance and re-run, quote the range with its scan date attached, or quote
+neither.
+
+**Nothing above touches the headline.** 41 → 0, stop conditions 0 / 0 / 0, and
+237/297 byte-identity are reported identically by both scans.
 
 ---
 
@@ -510,9 +587,11 @@ the mechanism, not a surprise — but the magnitude was not known before this
 run, and "R = 1852 clears both cliff figures" says nothing about ETA cost.
 
 What that cost buys is §7's invariant: BASE routed 41 of 157 ok plans through
-sub-gate water up to 18.86 nm from any waypoint; HEAD routes none. The
-+228 min Svendborg route is the legal one — it carries zero out-of-disc
-sub-gate cells, like every other HEAD plan.
+sub-gate water, the farthest cell measured at 18.86 nm from any waypoint by the
+2026-08-11 scan and 18.89 nm by the 2026-08-13 re-scan (§7, "Two scans, one
+row" — the plan counts agree, the per-cell detail of one row does not); HEAD
+routes none. The +228 min Svendborg route is the legal one — it carries zero
+out-of-disc sub-gate cells, like every other HEAD plan.
 
 **NOT established, and it is the obvious next question:** whether a +228 min
 route is one a skipper would accept, or whether they would rather be told the
