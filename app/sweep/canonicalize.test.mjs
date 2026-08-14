@@ -3,7 +3,13 @@
 // collected by `npm --prefix app run test`, see README.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { canonicalizePlan, canonicalizeArmFile } from './canonicalize.mjs';
+import { ARM_NAMES } from './armNames.ts';
 
 // Fixture pair is asymmetric in EVERY way Task 9's rename actually is: the
 // OUTER container (named genoa/fock fields vs a sails list), the NESTED key
@@ -149,4 +155,92 @@ test('canonicalizeArmFile: same key order canonicalizes to the same serialisatio
     JSON.stringify(canonicalizeArmFile(forward)),
     JSON.stringify(canonicalizeArmFile(forwardAgain)),
   );
+});
+
+// #54 fix round 2 (CRITICAL, controller override): the row above pins
+// canonicalizeArmFile in ISOLATION — it proves the helper itself preserves
+// order, but the ACTUAL round-1 defect was never inside the helper, it was
+// at compare.mjs's CALL SITE (both sides were built from one shared sorted
+// key list before ever reaching canonicalizeArmFile). A unit test that
+// calls canonicalizeArmFile directly cannot see a regression that
+// reintroduces that call-site bug while leaving the helper itself correct
+// — reviewer-demonstrated: pre-sorting `ja`/`jb` before the
+// `canonicalizeArmFile(ja)` call reproduces the CRITICAL end to end while
+// this file's earlier rows all stayed green.
+//
+// So this runs `compare.mjs` as a real CHILD PROCESS, exactly the way a
+// human invokes it (`node app/sweep/compare.mjs --canonical <a> <b>`) —
+// not by importing an internal function, which would just relocate the
+// same blind spot one layer up.
+const here = dirname(fileURLToPath(import.meta.url));
+const compareMjs = resolve(here, 'compare.mjs');
+
+// Trivial per-harbour content — two harbours are enough to prove ORDER
+// matters; the values only need to be valid enough for compare.mjs's
+// per-plan loop to read `.status`/`.shallow`/`.reason` without throwing.
+const harbourAlpha = {
+  status: 'ok',
+  genoa: { rig: 'genoa', etaMs: 1, legs: [] },
+  fock: null,
+  genoaReason: null,
+  fockReason: 'unreachable',
+  recommended: 'genoa',
+};
+const harbourBeta = {
+  status: 'ok',
+  genoa: { rig: 'genoa', etaMs: 2, legs: [] },
+  fock: null,
+  genoaReason: null,
+  fockReason: 'unreachable',
+  recommended: 'genoa',
+};
+
+/**
+ * Writes a full, --canonical-compare.mjs-VALID output directory: one file
+ * per `ARM_NAMES` entry (compare.mjs fails closed on anything less — see
+ * its own header comment), every arm carrying the SAME per-harbour content,
+ * keyed in `harbourOrder`'s order. Two calls with `harbourOrder` reversed
+ * produce two directories identical in every per-plan value and differing
+ * ONLY in on-disk key order — exactly the reviewer's construction ("parse a
+ * real arm file, reverse Object.keys(), re-serialise; values byte-identical
+ * per harbour"), reproduced synthetically so this test owns its own fixture
+ * rather than depending on a manually-generated `/tmp/sweep/*` directory
+ * being present.
+ */
+function writeFixtureDir(harbourOrder) {
+  const dir = mkdtempSync(join(tmpdir(), 'sweep-t8-'));
+  const rows = {};
+  for (const id of harbourOrder) rows[id] = id === 'alpha' ? harbourAlpha : harbourBeta;
+  const body = JSON.stringify(rows, null, 1);
+  for (const arm of ARM_NAMES) writeFileSync(join(dir, `${arm}.json`), body);
+  return dir;
+}
+
+test('#54 fix round 2 (CRITICAL): compare.mjs --canonical, run END TO END as a real child process, reports DIFFERS for a harbour-order regression — not just canonicalizeArmFile in isolation', () => {
+  const forward = writeFixtureDir(['alpha', 'beta']);
+  const reversed = writeFixtureDir(['beta', 'alpha']);
+  try {
+    const out = execFileSync('node', [compareMjs, '--canonical', forward, reversed], { encoding: 'utf8' });
+    // Content is identical per harbour on both sides, so this is testing
+    // ONLY the whole-file digest (the per-plan compare is, correctly,
+    // order-independent and would report every plan equal either way).
+    assert.match(out, /\*\*\* DIFFERS \*\*\* \(canonical\)/);
+  } finally {
+    rmSync(forward, { recursive: true, force: true });
+    rmSync(reversed, { recursive: true, force: true });
+  }
+});
+
+test('#54 fix round 2: companion — SAME harbour order on both sides reports IDENTICAL end to end, so the row above cannot pass by always seeing a difference', () => {
+  const totalPlans = ARM_NAMES.length * 2;
+  const dirA = writeFixtureDir(['alpha', 'beta']);
+  const dirB = writeFixtureDir(['alpha', 'beta']);
+  try {
+    const out = execFileSync('node', [compareMjs, '--canonical', dirA, dirB], { encoding: 'utf8' });
+    assert.doesNotMatch(out, /DIFFERS/);
+    assert.match(out, new RegExp(`${totalPlans}/${totalPlans} plans canonically-identical`));
+  } finally {
+    rmSync(dirA, { recursive: true, force: true });
+    rmSync(dirB, { recursive: true, force: true });
+  }
 });
