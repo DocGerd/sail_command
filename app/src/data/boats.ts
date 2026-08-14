@@ -47,8 +47,19 @@ export interface BoatDef {
 // types.ts into any of those three would become a real TDZ hazard that
 // typecheck cannot see.
 
-const SALONA_45_NOTE =
-  'Estimate derived from ORC International 2026 certificate Salona 45 "Miles Ahead" (AUT 035/26).';
+// These two notes duplicate pipeline/build_polars.mjs's SOURCE_NOTES verbatim
+// with no derivation between them; Task 12 owns collapsing that into one source.
+const GENOA_NOTE =
+  'Estimate derived from ORC International 2026 certificate Salona 45 "Miles Ahead" (AUT 035/26) — ' +
+  'the ~135% genoa table is a modeled overlay on the certificate configuration (+3–5% light-air ' +
+  'upwind/reach, 0 at 14–20 kn, −2% upwind at 25 kn); downwind corrected to white sails via 23-boat ' +
+  'ORC non-spinnaker ratio study. ' +
+  'Flat-water racing VPP — tune with the performance factor. NOT race-calibrated.';
+const FOCK_NOTE =
+  'Estimate derived from ORC International 2026 certificate Salona 45 "Miles Ahead" (AUT 035/26) — ' +
+  'the measured ~110% jib makes this effectively the certificate configuration; downwind corrected to ' +
+  'white sails via 23-boat ORC non-spinnaker ratio study. ' +
+  'Flat-water racing VPP — tune with the performance factor. NOT race-calibrated.';
 
 export const BOATS = [
   {
@@ -66,19 +77,13 @@ export const BOATS = [
         id: 'genoa',
         label: 'Genoa 135 %',
         polarAsset: 'data/polar-genoa.json',
-        polarProvenance: {
-          tier: 'modelled',
-          note: `${SALONA_45_NOTE} Hand-modelled overlay on the certificate configuration. NOT race-calibrated.`,
-        },
+        polarProvenance: { tier: 'modelled', note: GENOA_NOTE },
       },
       {
         id: 'fock',
         label: 'Jib 110 %',
         polarAsset: 'data/polar-fock.json',
-        polarProvenance: {
-          tier: 'certificate',
-          note: `${SALONA_45_NOTE} The measured ~110 % jib makes this effectively the certificate configuration. NOT race-calibrated.`,
-        },
+        polarProvenance: { tier: 'certificate', note: FOCK_NOTE },
       },
     ],
   },
