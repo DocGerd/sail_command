@@ -155,8 +155,14 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
 
 // Generalises the #455 drift guard so every row iterates the boat catalogue
 // instead of hardcoding the Salona 45's numbers. What it pins is the
-// DERIVATION — that the pure helpers in lib/boatDepth.ts compute each boat's
-// gates from that boat's own draft. It deliberately CANNOT observe whether
+// DERIVATION: that lib/boatDepth.ts computes a gate from a boat's own draft
+// rather than from a module constant. Note the strength of that proof at a
+// ONE-BOAT catalogue — only relaxationFloorM has a non-tautological one, via
+// R4's synthetic 2.3 m boat, which is deliberately not a member of BOATS. R2
+// and R7b exercise their helpers against the Salona alone, so until a second
+// boat exists they cannot distinguish a real per-boat derivation from a
+// regression that ignores its argument and returns 2.1. Adding that second
+// boat is what upgrades them. It deliberately CANNOT observe whether
 // planRoute()'s #53 relaxation search actually calls those helpers per boat;
 // that wiring is a different artifact and is pinned separately by Task 10's
 // own mutation check. Keeping the two claims apart is the point: a guard
