@@ -153,15 +153,15 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
   });
 });
 
-// #54 (spec C.8): generalises the guard above from the hardcoded Salona
-// constants to every boat in the catalogue, so Task 10's per-boat relaxation
-// wiring cannot silently regress to a shared module constant. These rows are
-// cross-artifact twins of lib/boatDepth.ts's pure helpers (Task 2), which
-// already landed — so on arrival every row here PASSES, not fails; there is
-// no TDD red to expect. Their teeth come from the R1 discriminating
-// experiment below (run, not assumed) and from a later task's mutation check
-// against the real planRoute() wiring, not from a red-to-green transition
-// here.
+// Generalises the #455 drift guard so every row iterates the boat catalogue
+// instead of hardcoding the Salona 45's numbers. What it pins is the
+// DERIVATION — that the pure helpers in lib/boatDepth.ts compute each boat's
+// gates from that boat's own draft. It deliberately CANNOT observe whether
+// planRoute()'s #53 relaxation search actually calls those helpers per boat;
+// that wiring is a different artifact and is pinned separately by Task 10's
+// own mutation check. Keeping the two claims apart is the point: a guard
+// that appears to cover the wiring would be trusted for something it never
+// tested.
 describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', () => {
   // R1 — the non-vacuity twin. Every row below iterates the catalogue, so a
   // catalogue stubbed to [] leaves the whole guard green (#411, "a guard's DATA
