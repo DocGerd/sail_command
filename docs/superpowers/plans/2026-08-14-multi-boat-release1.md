@@ -390,7 +390,7 @@ Refs #54"
 - Consumes: `BOATS`, `boatById` (Task 1); `defaultSafetyDepthM`, `relaxationFloorM`, `ceilToDecimetre` (Task 2); `MASK_TOLERANCE_M` and the existing `round1` helper already in this test file; **`SAFETY_DEPTH_FIELD`** — R7 reads its `.max`, and the target file does **not** import it today, so add the import from `app/src/components/OptionsPanel.tsx` (or hoist the constant if importing a component module into a test proves awkward).
 - Produces: nothing consumed by later tasks.
 
-This guard must exist **before** Task 4 changes the relaxation floor. R4 is the row that would catch a 2.30 m boat relaxing to 2.1 m, and it is the highest-value row in the table (§C.8).
+This guard must exist **before** Task 10 wires the relaxation floor to the boat. R4 is the row that would catch a 2.30 m boat relaxing to 2.1 m, and it is the highest-value row in the table (§C.8).
 
 - [ ] **Step 1: Write the failing rows**
 
