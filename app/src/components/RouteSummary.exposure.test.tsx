@@ -370,7 +370,7 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
     expect(text).toContain(
       'Every stretch below your safety depth lies within 1.0 nm of your origin, destination or waypoints.',
     );
-    // Prepended alongside the exposure sentence (design §6): after it, before
+    // Rendered right after the exposure sentence (design §6): after it, before
     // the existing mechanism sentence — never re-sequenced past either.
     expect(text.indexOf('Every stretch below your safety depth')).toBeGreaterThan(
       text.indexOf('of this route crosses water charted'),

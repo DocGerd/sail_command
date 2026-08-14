@@ -288,7 +288,7 @@ const tiePoint = (k: number): LatLon => ({
   lon: TIE_META.west + k * TIE_STEP,
 });
 
-describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
+describe("shallowExposureNm's and shallowConfinedWithinM's walks vs NavMask.walkCells (#516)", () => {
   const mask = makeMask((row, col) => ((row * 7 + col * 13) % 5 === 0 ? 20 : 200));
   const tieMask = makeMask(() => 200, TIE_META);
   const cases: Array<[string, NavMask, LatLon, LatLon]> = [

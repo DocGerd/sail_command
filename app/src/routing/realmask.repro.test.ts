@@ -328,8 +328,9 @@ describe('real mask routing (issue #20)', () => {
       // metres-per-degree at the waypoint's own latitude); this test measures
       // an exact haversine. Over 1852 m the two differ by well under 1%, so a
       // 2% allowance absorbs the difference without weakening anything that
-      // matters: the violations this test exists to catch were measured tens
-      // of nautical miles out, four orders of magnitude past the allowance.
+      // matters: reverting to the pre-#452 route-wide gate (spike §3, M8) reds
+      // this test with offenders 7.46-8.01 nm from the nearest waypoint —
+      // 12.0-13.0 km past the 1852 m radius, against a 37 m allowance.
       const LIMIT_M = 1852 * 1.02;
 
       const offenders: string[] = [];
@@ -339,7 +340,7 @@ describe('real mask routing (issue #20)', () => {
           // Sample well below the ~46 m cell pitch, so any cell crossed for
           // more than a step is seen; a corner-clip shorter than one step can
           // still be missed, which is why this test is sized to catch gross
-          // violations tens of nm out rather than to certify an exact zero.
+          // violations kilometres out rather than to certify an exact zero.
           const legM = metresBetween(leg.start, leg.end);
           const steps = Math.max(2, Math.ceil(legM / 10));
           for (let i = 0; i <= steps; i++) {
