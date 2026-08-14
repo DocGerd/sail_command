@@ -154,10 +154,17 @@
 #         suppress  <=>  first word is in READONLY_VERBS (exact match)
 #                   AND  the command string contains NO write-capable
 #                        construct (see WRITE_CAPABLE_* below)
+#                   AND  that verb's own disqualifier, if it has one, says
+#                        yes (#530: `grep` and `sed` have one; no other
+#                        entry does)
 #
-#     Both halves are load-bearing and neither is sufficient. `cat f >
-#     protected` fails the second half; `sed -i s/x/y/ protected` fails the
-#     first. Everything not PROVABLY safe still fires — an unrecognised verb,
+#     Every conjunct is load-bearing and none is sufficient. `cat f >
+#     protected` fails the second; `statx protected` fails the first; and
+#     `sed -i s/x/y/ protected` fails the THIRD — note it used to fail the
+#     first, back when `sed` was off the allowlist, and that is exactly the
+#     kind of worked example a later change silently falsifies, so it is
+#     spelled out rather than left as "sed is not a read-only verb".
+#     Everything not PROVABLY safe still fires — an unrecognised verb,
 #     an unparseable shape, any doubt at all. This is the guard-asymmetry
 #     principle (CLAUDE.md) held to: over-firing costs a stray prompt (spec
 #     tree) or a paragraph of advisory context (everything else, since the
@@ -175,10 +182,15 @@
 #     an expansion, or an escape — so it is ONE simple command whose
 #     executable is its first word, and no expansion can introduce a second.
 #     The first word is then compared by EXACT equality against a small set
-#     of verbs that have no write capability at all (not "usually don't" —
-#     none of them accepts an output-file option). A path-qualified spelling
-#     (`/usr/bin/stat`) deliberately does NOT match: it could be any
-#     executable, including a local script named `stat`.
+#     of verbs, and for all but two of them that is the end of it, because
+#     they have no write capability at all (not "usually don't" — none of
+#     those accepts an output-file option). The two that DO have one, `grep`
+#     and `sed` (#530), do not weaken this argument: the same
+#     one-simple-command conclusion is what lets a verb-scoped disqualifier
+#     decide them from the string, since it means the tokens it scans are
+#     that command's own options and operands and nothing else. A
+#     path-qualified spelling (`/usr/bin/stat`) deliberately does NOT match:
+#     it could be any executable, including a local script named `stat`.
 #   - NAMED PRECONDITION OF THAT ARGUMENT — **no allowlisted verb may be a
 #     shell FUNCTION or ALIAS in the guarded shell** (#388 review, Finding 1).
 #     "The executable is its first word" is a statement about the shell that
@@ -194,7 +206,13 @@
 #     ugrep's option surface is not GNU grep's and contains writers and
 #     command-executors (`--save-config[=FILE]`, `--filter=COMMANDS`,
 #     `--pager`, `--view`), none of which needs a character this guard
-#     disqualifies. `grep` was therefore REMOVED (see VERB SELECTION).
+#     disqualifies. `grep` was therefore REMOVED - and RE-ADMITTED by #530,
+#     not by weakening this precondition but by pairing the verb with a
+#     disqualifier that MIRRORS the shim's own intercept list, so the
+#     exemption holds whichever of the two programs the word resolves to.
+#     The precondition still stands for every other entry: a shimmed verb
+#     with no such mirror is still removed, not reasoned about. See VERB
+#     SELECTION and GREP_SHIM_INTERCEPTED.
 #   - HOW TO CHECK IT, and the trap that makes the obvious check lie: run
 #     `type <verb>` in the REAL Claude Code Bash tool and paste what you saw
 #     into your PR. Do NOT measure it from inside a script (`bash probe.sh`
@@ -212,10 +230,14 @@
 #     probe has teeth rather than being a formality: run in the same call,
 #     `type grep` answered `grep is a function`, so the check does
 #     distinguish the two.
-#   - DO NOT teach this guard about shims, functions or aliases. Detecting
-#     them is the shell-parsing road PR #233 was closed over. The correct
-#     response to a shimmed verb is to REMOVE IT FROM THE ALLOWLIST — a
-#     smaller allowlist and an honest comment, never a smarter parser.
+#   - DO NOT teach this guard about shims, functions or aliases. DETECTING
+#     them at run time is the shell-parsing road PR #233 was closed over, and
+#     that half is unchanged: nothing here inspects what a word resolves to.
+#     The response to a shimmed verb is either to REMOVE IT FROM THE
+#     ALLOWLIST, or - since #530, and only under an explicit maintainer
+#     ruling - to admit it beside a STATIC, DATED, RE-VERIFIABLE mirror of
+#     the shim's own intercept list, which is a constant this file can be
+#     diffed against, not a parser. Never a smarter parser.
 #   - VERB SELECTION, and the three the brief for this change asked about:
 #       * `find` is EXCLUDED and would be a serious hole: `-delete`,
 #         `-exec`, `-execdir`, `-ok`, `-okdir`, `-fprint`, `-fprintf` and
@@ -233,21 +255,46 @@
 #         reader wants the strictest possible reading of the original "no
 #         exemptions" rule, dropping it from READONLY_VERBS is a one-line
 #         edit and reds only its own row.
-#       * `grep` is EXCLUDED, and it is the entry this whole design nearly
-#         got wrong (#388 review, Finding 1). The reasoning that first
-#         included it — "GNU grep has no output-file option" — described a
-#         program that IS NOT THE ONE RUNNING: `grep` is a Claude Code shell
-#         FUNCTION shimming to ugrep (see the NAMED PRECONDITION above).
-#         No write is reachable through it TODAY — the shim intercepts
-#         `--filter`/`--pager`/`--view`/`--save-config` and falls back to
-#         `command grep`, ugrep refuses long-option abbreviations, `--index`
-#         is read-only, and no `.ugrep` auto-loads under the `ugrep` exec
-#         name — but that safety would rest entirely on an UNVERSIONED
-#         EXTERNAL shim's intercept list that this repo neither controls,
-#         pins, nor tests. A Claude Code upgrade could widen a security
-#         guard with nothing here noticing. An exemption whose soundness
-#         depends on someone else's unpinned implementation detail is not an
-#         exemption this guard can carry.
+#       * `grep` is INCLUDED as of #530, WITH a disqualifier, reversing
+#         #388's exclusion on an explicit maintainer ruling. It is the entry
+#         this whole design has now got wrong in BOTH directions, so the
+#         history matters. The reasoning that first included it — "GNU grep
+#         has no output-file option" — described a program that IS NOT THE
+#         ONE RUNNING: `grep` is a Claude Code shell FUNCTION shimming to
+#         ugrep (NAMED PRECONDITION above), whose option surface contains
+#         writers and command-executors. #388 removed it on the ground that
+#         "an exemption whose soundness depends on someone else's unpinned
+#         implementation detail is not an exemption this guard can carry" —
+#         a real objection, NOT retracted here.
+#         WHAT CHANGED is not the objection but who bears it. #530 is the
+#         THIRD over-restriction ruling on this hook ("the hook is still
+#         firing for sed and grep reads. i want that gone.") and grep is the
+#         larger half of it — #437's own corpus below measures the grep
+#         family at 158 fires, the single biggest family after `cd`. The
+#         dependency is therefore ACCEPTED and made VISIBLE rather than
+#         declined: GREP_SHIM_INTERCEPTED mirrors the shim's intercept list
+#         verbatim, dated, with a re-verification procedure, so a Claude Code
+#         upgrade becomes a diff someone can run instead of a silent widening.
+#         Read that array's header for the measurement and the residual; it
+#         is deliberately the long comment, not this bullet.
+#       * `sed` is INCLUDED as of #530, WITH a disqualifier, and its
+#         exclusion had NOTHING to do with shimming — `type sed` is
+#         `/usr/bin/sed` (measured directly in the real Bash tool,
+#         2026-08-14), not a function, not an alias. It was excluded because
+#         of sed's OWN language: the `w` and `W` commands write a file with
+#         no command-line flag at all, `e` and `s///e` execute a shell
+#         command, and `-f script.sed` hides the whole script from any
+#         string-level check — so a blacklist of `-i` is nowhere near
+#         sufficient, and this file had never written that reason down.
+#         What makes an exemption possible anyway is ORDER, not cleverness:
+#         WRITE_CAPABLE_CHARS runs FIRST and has already rejected `;`, `$`,
+#         `!`, `\`, `{`, `}` and newline, so a sed call reaching the verb
+#         check can hold at most ONE command with at most ONE address. That
+#         is a shape a POSITIVE WHITELIST can decide — see sed_readonly_ok,
+#         which exempts only `p`/`d`/`q`/`=`/`n`/`N` under an optional
+#         numeric or regex address, with only `-n`/`-E`/`-r`-class flags,
+#         and fires on everything else. It is prove-it-else-fire, the same
+#         shape as bash_is_provably_readonly itself.
 #       * `file` is EXCLUDED despite looking as inert as `stat`, and this is
 #         the non-obvious one: `file -C -m X` COMPILES the magic file and
 #         WRITES `X.mgc`. MEASURED, not reasoned — `file -C -m magic.txt`
@@ -432,6 +479,18 @@
 #     162, `git` 128, `python3` 65, `sed` 59, `ls` 56, `cat` 50, and only
 #     10.5% start with an allowlisted verb — so no widening of READONLY_VERBS
 #     can fix this (that route was measured and rejected, see #437 above).
+#     SUPERSEDED IN PART BY #530 (2026-08-14), and only in part — the
+#     measurement stands, its sweeping conclusion does not. #530 added `grep`
+#     and `sed`, which are 162 + 59 = 221 of those 1,115 asks, i.e. 19.8% of
+#     the ask population, taking the allowlisted-verb share of that SAME
+#     population from 10.5% to roughly 30%. That is ARITHMETIC ON THE FIGURES
+#     IN THIS BULLET, not a re-measurement: how many of the 221 actually stop
+#     firing is UNMEASURED here, because each must still clear the char check
+#     AND the new verb-scoped disqualifier — the maintainer's own #437
+#     command quoted above is a `sed` that keeps firing on its `;` alone.
+#     What survives untouched is the LOAD-BEARING half: `cd` 286, `git` 128
+#     and `python3` 65 are still beyond any verb-list widening, so this
+#     bullet's argument for the advisory split is unaffected.
 #     BOTH SIDES OF THE LEDGER, since the measurement above prices only one of
 #     them (PR #478 review, Minor 3): what replaces each of those prompts is
 #     518-603 bytes of `additionalContext` (measured per protected path, the
@@ -682,7 +741,9 @@
 #      protected path when it is PROVABLY a single read-only command. This
 #      is an INTENDED allow, the direct analogue of the file_path arm's item
 #      4, not a gap — but it is the one entry on this list that a change to
-#      READONLY_VERBS or WRITE_CAPABLE_* can widen, so any such change must
+#      READONLY_VERBS, WRITE_CAPABLE_*, or either of the #530 verb-scoped
+#      disqualifiers (GREP_SHIM_INTERCEPTED, sed_readonly_ok) can widen, so
+#      any such change must
 #      be re-argued against the soundness paragraph in DESIGN, never made by
 #      adding a verb that "looks read-only" (`file` looked read-only and
 #      writes; see there).
@@ -751,20 +812,27 @@ bash_hits_spec_gated_path() {
 # rationale and the soundness argument). Three data sets, each with its own
 # job; the predicate below requires ALL of them to be satisfied.
 
-# Verbs with NO write capability whatsoever - not "usually read-only", but
-# "has no option that creates or modifies a file". Compared by EXACT equality
-# against the command's first word. `find`, `file` and `grep` are DELIBERATELY
-# absent (DESIGN explains all three, each with a measurement).
+# Verbs whose EVERY REACHABLE SHAPE here is read-only. For all but two that
+# is the original and stronger rule - "has no option that creates or modifies
+# a file" - and those entries need nothing beyond membership. `grep` and
+# `sed` (#530) are the two exceptions: both DO have a write surface, and each
+# is admitted only together with its own verb-scoped disqualifier below, so
+# membership alone never decides them. `find` and `file` remain DELIBERATELY
+# absent (DESIGN explains both, each with a measurement).
+#
+# Compared by EXACT equality against the command's first word.
 #
 # BEFORE ADDING A VERB: run `type <verb>` in the real Claude Code Bash tool
 # and paste the output in your PR - a verb that is a shell FUNCTION or ALIAS
 # breaks this predicate's soundness argument outright, and measuring it from
 # inside a script silently reports the wrong answer. See the NAMED
 # PRECONDITION in DESIGN above. Also confirm the verb has no output-file or
-# command-executing option (`file` looked inert and writes `X.mgc`).
+# command-executing option (`file` looked inert and writes `X.mgc`) - or, if
+# it has one, that it comes with a disqualifier the way these two do.
 READONLY_VERBS=(
   stat ls wc du head tail cat sha256sum md5sum
   test "[" readlink realpath dirname basename
+  grep sed
 )
 
 # Characters that can introduce a second command, a redirect, a substitution,
@@ -798,6 +866,207 @@ WRITE_CAPABLE_TOKENS=(
   tee xargs -exec -delete -ok sudo eval "sh -c"
 )
 
+# --- VERB-SCOPED DISQUALIFIERS (#530, the THIRD maintainer over-restriction
+# ruling: "the hook is still firing for sed and grep reads. i want that
+# gone."). `grep` and `sed` are the only two READONLY_VERBS entries that DO
+# have a write surface, so each carries its own extra condition on top of the
+# conjunctive exemption. Everything else in that array still qualifies on the
+# array's original "no option that creates or modifies a file" rule alone.
+#
+# ORDER IS LOAD-BEARING, and it is what makes a string-level check sufficient
+# here rather than the shell parsing PR #233 was closed over. Both functions
+# run INSIDE bash_is_provably_readonly(), AFTER its WRITE_CAPABLE_CHARS /
+# newline / WRITE_CAPABLE_TOKENS checks - so by the time either sees a
+# command, that command provably contains no `;` `$` `!` `\` `(` `)` `{` `}`
+# backtick `<` `>` `|` `&` `#` and no newline or CR. For `sed` that removes,
+# in one step, multi-command scripts (`;`, newline), the last-line address
+# (`$`), negation (`!`), escaped delimiters and the `\cREGEXPc` address form
+# (`\`), blocks (`{}`) and every substitution - which collapses what can
+# still arrive to AT MOST ONE COMMAND WITH AT MOST ONE ADDRESS, a shape a
+# pattern can decide. Neither function splits a command line, segments on an
+# operator, or decides which of several commands "really" runs; each scans
+# the tokens of a string already proven to be one simple command.
+#
+# STRIPPING QUOTES IS NOT PARSING, and it is required: this hook sees the RAW
+# command string, so a shell quote is a literal character in a token.
+# `grep '--filter=x' f` tokenises to `'--filter=x'`, which starts with a
+# quote rather than a dash and would slip past every dash-anchored pattern
+# below. unquote_token() removes ONE leading and ONE trailing `'` or `"`.
+# Deliberately one layer only: a doubled form (`""--filter`) stays in the
+# quote-splitting class this file already records as KNOWN SILENT-ALLOW item
+# 4, i.e. it is pre-existing and not newly opened here.
+unquote_token() {
+  local t="$1"
+  case "$t" in \'*|\"*) t=${t#?} ;; esac
+  case "$t" in *\'|*\") t=${t%?} ;; esac
+  printf '%s' "$t"
+}
+
+# The option patterns the Claude Code `grep` shim itself intercepts, mirrored
+# 1:1 so this exemption holds under EITHER program the word `grep` can
+# resolve to.
+#
+# WHY A MIRROR AT ALL (see the NAMED PRECONDITION in DESIGN): `grep` in the
+# guarded shell is a shell FUNCTION, so "the first word is the executable" -
+# the soundness argument the whole exemption rests on - is false for it. The
+# shim matches a fixed list of options and falls back to `command grep` for
+# them, running ugrep otherwise. Rejecting exactly that list means a command
+# this function exempts is read-only whether it resolves to GNU grep (which
+# has no output-file option at all) or to ugrep with its writers and
+# command-executors removed.
+#
+# MEASURED 2026-08-14 by reading the shim's own body - `type grep` run
+# DIRECTLY in the real Claude Code Bash tool, never from inside a script,
+# which does not inherit non-exported functions and reports a reassuring
+# `file` instead (HOW TO CHECK IT, in DESIGN, records that exact false
+# negative). The patterns below are that body's `case` list copied verbatim.
+# They are BROADER than the option names they cover - `-*-filter*` also
+# catches `--filter-magic-label`, and `-[!-]*[Zz]*` catches a BUNDLED `-nz`
+# that `-[Zz]*` alone would miss - and `-*-save-config*` is already subsumed
+# by `-*-config*` in the shim itself. It is kept anyway BECAUSE this is a
+# mirror, not a minimal rewrite: a future reader diffing this array against
+# `type grep` must find the two identical, which a subsumption-pruned copy
+# would defeat. (That is the one place this file's usual prune-the-subsumed
+# rule is deliberately not applied, and this is why.)
+#
+# WHAT THE MIRROR IS SOUND AGAINST, measured the same day against the ugrep
+# help text the Claude Code binary itself ships (`exec -a ugrep
+# "$CLAUDE_CODE_EXECPATH" --help`, scanned for write/exec wording): the ONLY
+# file-writing option is `--save-config[=FILE]`; the only command-executing
+# ones are `--filter=COMMANDS`, `--pager[=COMMAND]` and `--view[=COMMAND]`;
+# and `--config[=FILE]`/`---[FILE]` is the indirection that could re-introduce
+# any of them from a file. All five are intercepted. A `.ugrep` config does
+# NOT auto-load here either - the help states only the `ug` command does that,
+# and the shim execs as `ugrep`.
+#
+# THE RESIDUAL, stated rather than hidden, because this IS the dependency
+# #388 refused to take ("an exemption whose soundness depends on someone
+# else's unpinned implementation detail is not an exemption this guard can
+# carry") and the maintainer has now overruled it: the intercept list is an
+# UNVERSIONED EXTERNAL implementation detail this repo neither controls nor
+# pins, and the help scan above is a snapshot of one day's binary. A Claude
+# Code or ugrep upgrade could add a writer on neither list, and nothing here
+# would notice on its own.
+# RE-VERIFY ON ANY CLAUDE CODE UPGRADE: run `type grep` in the real Bash tool
+# and diff its `case` patterns against this array, then re-run the ugrep help
+# scan. Mirroring the list instead of trusting it is what makes that a
+# visible task rather than a silent hole.
+GREP_SHIM_INTERCEPTED=(
+  '-*-filter*' '-*-pager*' '-*-view*' '-*-format-open*' '-*-config*'
+  '---*' '-@*' '-*-save-config*' '-[Zz]*' '-[!-]*[Zz]*' '--null' '--null-data'
+)
+
+# grep_readonly_ok CMD - 0 when CMD names none of the intercepted options.
+# Scans EVERY token, including the leading `grep` (which matches no pattern),
+# mirroring the shim's own loop over all of "$@".
+grep_readonly_ok() {
+  local cmd="$1" tok p
+  local IFS=$' \t'
+  local -a toks
+  read -ra toks <<<"$cmd"
+  for tok in "${toks[@]}"; do
+    tok=$(unquote_token "$tok")
+    for p in "${GREP_SHIM_INTERCEPTED[@]}"; do
+      # shellcheck disable=SC2254  # $p IS a glob pattern here, by construction
+      case "$tok" in $p) return 1 ;; esac
+    done
+  done
+  return 0
+}
+
+# sed_readonly_ok CMD - 0 only for a sed call PROVEN to be a plain read.
+#
+# This is a POSITIVE WHITELIST, the same prove-it-else-fire shape as
+# bash_is_provably_readonly() itself, and NOT a blacklist of sed's write
+# surface - a blacklist cannot work here, because sed's `w` and `W` commands
+# write with NO command-line flag at all and `e`/`s///e` execute a shell
+# command, so the dangerous surface lives inside the script text rather than
+# in the options. Anything not matching one of the shapes below is NOT
+# exempt, and the fallback direction is therefore "still ask" on the spec
+# tree / "still advise" on a build output - never a silent exemption.
+#
+# WHY ONE SCRIPT IS ALL THERE CAN BE: sed's grammar is `sed [OPTION]...
+# {script} [input-file]...`, and only the FIRST non-option operand is the
+# script when neither `-e` nor `-f` is given. Both of those are rejected
+# below, and the ORDER note above has already removed every way to put a
+# second command inside the script, so the whitelist decides the whole
+# program, not a fragment of it.
+#
+# ADDING A LETTER TO THE COMMAND SET IS A SOUNDNESS DECISION, NOT A TYPO FIX.
+# `w` and `W` write a file, `e` executes a shell command, `r`/`R` read one
+# in, and `s` carries both the `w` and `e` flags - those are precisely the
+# surface this whitelist exists to exclude. `p`/`d`/`q`/`=`/`n`/`N` print,
+# delete from the pattern space, quit, print a line number, and advance the
+# input; none of them touches a file.
+#
+# BUNDLED SHORT FLAGS ARE PINNED EXPLICITLY because this is a scan, not a
+# real getopt parse: the short-flag test requires EVERY character after the
+# leading `-` to be one of the safe set, so `-ni` is rejected for its `i`
+# exactly as a bare `-i` is (its own selftest row). GNU sed also permutes
+# options after operands, so a flag appearing AFTER the script (`sed 5p f
+# -i`) is rejected by the operand check as well.
+#
+# ACCEPTED OVER-FIRES, all in the safe direction: a script containing a space
+# (`sed -n '1,5 p' f`) tokenises into two fragments and matches nothing; a
+# bare `-` or `--` operand is rejected; and legal read-only commands outside
+# the three shapes (`sed -n '0,/re/p' f`, `sed -n 5l f`) still fire.
+SED_SAFE_SHORT_FLAG_CHARS='nEr'
+SED_SAFE_LONG_FLAGS=(--quiet --silent --regexp-extended)
+sed_readonly_ok() {
+  local cmd="$1" tok f script="" have_script=0 matched
+  local IFS=$' \t'
+  local -a toks
+  read -ra toks <<<"$cmd"
+  for tok in "${toks[@]:1}"; do
+    if [ "$have_script" -eq 0 ]; then
+      matched=0
+      for f in "${SED_SAFE_LONG_FLAGS[@]}"; do
+        [ "$tok" = "$f" ] && { matched=1; break; }
+      done
+      [ "$matched" -eq 1 ] && continue
+      case "$tok" in
+        # Any OTHER long flag - `--in-place`, `--file=x`, `--expression=x`,
+        # `--separate`, and every one not yet invented - is not provably safe.
+        --*) return 1 ;;
+        # Short flags, bundled or not: every character must be in the safe
+        # set, so `-i`, `-f`, `-e`, `-s` and any bundle containing one of
+        # them is rejected. A bare `-` (empty after the dash) is rejected too.
+        -*)
+          case "${tok#-}" in
+            ""|*[!$SED_SAFE_SHORT_FLAG_CHARS]*) return 1 ;;
+          esac
+          continue
+          ;;
+      esac
+      script=$(unquote_token "$tok")
+      have_script=1
+      # numeric address form (`5p`, `1,40p`), regex address form
+      # (`/pattern/p`), or a bare command (`p`). Nothing else.
+      [[ $script =~ ^[0-9]+(,[0-9]+)?[pdq=nN]$ ]] && continue
+      [[ $script =~ ^/[^/]*/[pdq=nN]$ ]] && continue
+      [[ $script =~ ^[pdq=nN]$ ]] && continue
+      return 1
+    fi
+    # Past the script, every remaining token is an input-file operand. One
+    # that looks like a flag is GNU sed's option permutation (`sed 5p f -i`),
+    # which this scan cannot safely account for.
+    case "$tok" in -*) return 1 ;; esac
+  done
+  # Fail-closed default for a sed call that never produced a script token
+  # (`sed -n`). UNPINNABLE BY CONSTRUCTION, and deliberately kept anyway: a
+  # command reaching this function has already been proven to NAME a
+  # protected path, and a path never starts with `-`, so it is always taken
+  # as the script - which means no selftest row can exist for the
+  # script-less shape, and deleting this line reds 0 rows (MEASURED). That
+  # is NOT the `"bash -c"` case this file removed for being unfalsifiable:
+  # that entry was a redundant MATCHER whose removal changed no decision,
+  # whereas deleting this line flips an unreachable case from FIRE to
+  # EXEMPT, i.e. toward fail-open. The guard-asymmetry rule (DESIGN) keeps
+  # the fail-closed default even where nothing can pin it.
+  [ "$have_script" -eq 1 ] || return 1
+  return 0
+}
+
 # Pure function: is $1 (a Bash `command` string) PROVABLY a single read-only
 # command? Returns 0 only when it can be proven so; returns 1 for everything
 # else including every shape it does not understand. Never the other way
@@ -824,7 +1093,19 @@ bash_is_provably_readonly() {
   read -r verb rest <<<"$cmd"
 
   for v in "${READONLY_VERBS[@]}"; do
-    [ "$verb" = "$v" ] && return 0
+    if [ "$verb" = "$v" ]; then
+      # (#530) VERB-SCOPED DISQUALIFIERS, evaluated LAST - after the char,
+      # newline and token checks above, which is what makes a string-level
+      # decision sufficient for them (see their own header). Two verbs need
+      # one; every other entry qualifies on membership alone, exactly as
+      # before. A verb whose disqualifier says no falls through to the same
+      # answer as an unrecognised verb: fire.
+      case "$verb" in
+        grep) grep_readonly_ok "$cmd" || return 1 ;;
+        sed)  sed_readonly_ok  "$cmd" || return 1 ;;
+      esac
+      return 0
+    fi
   done
   return 1
 }
@@ -952,7 +1233,16 @@ if [ "${1:-}" = "--selftest" ]; then
   # family-vs-noise counts in DESIGN: a future reader counting the obvious way
   # gets 44 and will not match 43, and that is two definitions disagreeing,
   # not an error.
-  EXPECTED_CASES=217
+  # (#530) 217 -> 249: +30 rows in the verb-scoped-disqualifier block (10
+  # must-suppress, 7 sed must-fire, 13 grep must-fire) and +2 for the two
+  # verbs added to READONLY_VERBS, which move this total by their
+  # reason-string twin cases per the NOTE above. The two rows #530 REWROTE
+  # (the former "MEMBERSHIP: sed is not read-only" and "MEMBERSHIP: grep is
+  # EXCLUDED") are NOT part of that delta: one changed its title only and the
+  # other changed helper, `decide` -> `decide_exempt`, and both helpers
+  # increment `total` by exactly 1 - the same "a row changing its
+  # expectation does not change the count" point the note above makes.
+  EXPECTED_CASES=249
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -1194,9 +1484,11 @@ if [ "${1:-}" = "--selftest" ]; then
 
   # --- PATH MATCHING of a read-only mention. Both rows pin that the PATH is
   # seen; only the second is still an accepted over-fire at the DECISION
-  # level. `grep -n foo <path>` now SUPPRESSES (#309 follow-up read-only
-  # exemption) - its decision-level twin is in the exemption block below,
-  # and this row's job is now solely to keep the path match pinned.
+  # level. `grep -n foo <path>` SUPPRESSES (#530 admitted `grep` to
+  # READONLY_VERBS behind a verb-scoped disqualifier; #388 had removed it, so
+  # between those two this row's own comment described a decision the file did
+  # not make) - its decision-level twin is in the exemption block below, and
+  # this row's job is solely to keep the path match pinned.
   check hit  "path match: read-only grep (decision: allow, see exemption block)" "grep -n foo app/public/data/mask.bin"
   check hit  "OVER-FIRE (accepted): prose mention"  "echo mentions app/public/data/mask.bin in passing"
 
@@ -1333,18 +1625,30 @@ if [ "${1:-}" = "--selftest" ]; then
   # asks; the SPLIT block further down carries the spec-tree twins): verb
   # MEMBERSHIP is what fails. No disqualifying construct
   # in any of these - strip one clause and only these rows can catch it.
-  decide advisory "MEMBERSHIP: sed is not read-only"      "sed -i s/x/y/ app/public/data/mask.bin"
+  # (#530) RETITLED, not merely kept: `sed` IS on READONLY_VERBS now, so this
+  # row no longer pins verb membership at all. Leaving the old title would
+  # have described a decision this file stopped making in the same commit.
+  # What it pins is the OUTCOME - `sed -i` on a protected path must never be
+  # silent - and NOT any single branch: it has TWO independent triggers, the
+  # `-i` flag and the `s/x/y/` script, either of which alone makes
+  # sed_readonly_ok say no. MEASURED: deleting the short-flag whitelist
+  # outright leaves this row GREEN. The isolating twin for that branch is the
+  # `-ni 5p` row in the #530 block below, which carries a VALID script so the
+  # flag is the only trigger.
+  decide advisory "SED: -i must never be silent (outcome row, two triggers)" "sed -i s/x/y/ app/public/data/mask.bin"
   decide advisory "MEMBERSHIP: cp is not read-only"       "cp /tmp/f app/public/data/mask.bin"
   decide advisory "MEMBERSHIP: touch is not read-only"    "touch app/public/data/mask.bin"
   decide advisory "MEMBERSHIP: find is EXCLUDED (-delete/-exec surface)" "find app/public/data -name x"
   decide advisory "MEMBERSHIP: file is EXCLUDED (file -C -m X writes X.mgc)" "file app/public/data/mask.bin"
-  # #388 review Finding 1: `grep` is a Claude Code shell FUNCTION shimming to
-  # ugrep, whose option surface contains writers/executors - so it is NOT on
-  # the allowlist and a bare read-only grep correctly FIRES - measured as an
-  # ADVISORY since the 2026-08-09 split (`app/public/data` is not spec-gated),
-  # a prompt before it. Removing `grep` from the allowlist flips exactly this
-  # row's former `allow` twin; nothing else moved.
-  decide advisory "MEMBERSHIP: grep is EXCLUDED (shell function shimming to ugrep)" "grep -n foo app/public/data/mask.bin"
+  # (#530) REWRITTEN, title and reasoning both, because its claim is now
+  # false: #388 excluded `grep` outright (a Claude Code shell FUNCTION
+  # shimming to ugrep, whose option surface contains writers/executors), so
+  # this row wanted `advisory`. #530 re-admitted the verb behind
+  # GREP_SHIM_INTERCEPTED, so the SAME command is now EXEMPT and the row
+  # moves to decide_exempt - which additionally asserts the command really
+  # does name a protected path, so it cannot pass by a typo. It is the
+  # decision-level twin the path-matching block above points at.
+  decide_exempt "EXEMPT: grep (#530, re-admitted with a shim mirror)" "grep -n foo app/public/data/mask.bin"
   decide advisory "MEMBERSHIP: exact match, not prefix"   "statx app/public/data/mask.bin"
   decide advisory "MEMBERSHIP: exact match, not a path-qualified spelling" "/usr/bin/stat app/public/data/mask.bin"
   decide advisory "MEMBERSHIP: a bare path as the verb"   "app/public/data/mask.bin"
@@ -1424,6 +1728,104 @@ if [ "${1:-}" = "--selftest" ]; then
   decide advisory "TOKEN eval"                            "stat eval app/public/data/mask.bin"
   decide advisory "TOKEN sh -c"                           "stat sh -c app/public/data/mask.bin"
   decide advisory "TOKEN bash -c (via sh -c subsumption, not its own entry)" "stat bash -c app/public/data/mask.bin"
+
+  # ======================================================================
+  # #530 VERB-SCOPED DISQUALIFIERS. `grep` and `sed` are the only two
+  # READONLY_VERBS entries with a real write surface, so membership alone
+  # decides nothing for them and these rows pin BOTH directions: the shapes
+  # that must now be silent, and the shapes that must keep firing.
+  #
+  # The MUST-SUPPRESS rows are the issue's acceptance criteria 1-3 verbatim,
+  # plus one row per whitelist entry that would otherwise be unpinned (a
+  # whitelist entry no row exercises can be deleted with the suite still
+  # green - the same unfalsifiable-row defect that got `"bash -c"` removed
+  # from WRITE_CAPABLE_TOKENS).
+  #
+  # Most MUST-FIRE rows carry ONE trigger each beyond the path (#216), so
+  # deleting the single array entry or branch the row names reds that row and
+  # not the battery. Where that is NOT so it is said out loud at the row,
+  # because a row's title is a claim to be verified, not read. The measured
+  # exceptions, all structural rather than sloppy:
+  #   * `-*-save-config*` is SUBSUMED by `-*-config*` (any string holding
+  #     `-save-config` holds `-config`), so its own mutation reds 0 rows and
+  #     NO row can pin it. Kept regardless, because this array's job is to be
+  #     a diffable mirror of the shim - stated at the array itself.
+  #   * The three sed script-form alternatives share one branch, so deleting
+  #     the whole script whitelist reds all of their rows together; deleting
+  #     ONE alternative reds only the rows using that form.
+  #   * `sed_readonly_ok`'s closing `have_script` default is unpinnable by
+  #     construction - see its own note there.
+  #   * The `sed -i` and `sed -f` acceptance rows carry two triggers each and
+  #     say so; their isolating twins are the `-ni 5p` / `--in-place -n 5p`
+  #     rows, which use a VALID script so the flag is the only trigger.
+
+  # --- MUST SUPPRESS: acceptance criteria 1-3. The first three are on the
+  # SPEC arm, where the old behaviour was a BLOCKING ask, so they are the
+  # sharpest half of the complaint; the exemption is evaluated before the
+  # ask/advisory split, which is why a spec path can be silent at all.
+  decide_exempt "#530 AC1: grep on a spec path is silent"        "grep -n foo docs/superpowers/specs/x.md"
+  decide_exempt "#530 AC2: sed numeric range on a spec path"     "sed -n '20,60p' docs/superpowers/specs/x.md"
+  decide_exempt "#530 AC2: sed regex address on a spec path"     "sed -n '/pattern/p' docs/superpowers/specs/x.md"
+  decide_exempt "#530 AC3: grep on a build-output path"          "grep -n foo app/public/data/harbors.json"
+  decide_exempt "#530 AC3: sed numeric range on a build output"  "sed -n '1,40p' app/public/data/harbors.json"
+
+  # --- MUST SUPPRESS: one row per sed whitelist entry, so no entry can be
+  # dropped with the suite still green. Each also exercises a script form.
+  decide_exempt "#530 sed -n/-E bundled (safe bundle, unlike -ni)" "sed -nE 5p app/public/data/mask.bin"
+  decide_exempt "#530 sed -r"                                     "sed -r -n /foo/p app/public/data/mask.bin"
+  decide_exempt "#530 sed --quiet"                                "sed --quiet 1,3p app/public/data/mask.bin"
+  decide_exempt "#530 sed --silent + bare command script"         "sed --silent p app/public/data/mask.bin"
+  decide_exempt "#530 sed --regexp-extended + d command"          "sed --regexp-extended -n 5d app/public/data/mask.bin"
+
+  # --- MUST FIRE (advisory - every row names a build-output path): the sed
+  # whitelist. `w`, `e` and `s///w` need no command-line flag at all, which is
+  # why this is a positive whitelist and not a blacklist of `-i`.
+  # These two carry a VALID script (`5p`) on purpose, so the rejected FLAG is
+  # the ONLY trigger and each isolates the branch it names (#216). Their first
+  # cut used `s/x/y/`, which the script whitelist rejects independently - so
+  # both rows stayed green with the flag checks deleted outright, i.e. they
+  # pinned nothing at all. MEASURED by the mutation battery, then fixed; the
+  # PR's table records it. Both are also genuine in-place writes, not
+  # contrivances - `sed -ni 5p FILE` and `sed --in-place -n 5p FILE` overwrite
+  # FILE with its fifth line.
+  decide advisory "#530 sed: bundled -ni contains -i (scan, not getopt)" "sed -ni 5p app/public/data/mask.bin"
+  decide advisory "#530 sed: --in-place is not a safe long flag"         "sed --in-place -n 5p app/public/data/mask.bin"
+  # ACCEPTANCE row (issue #530 names it). TWO independent triggers - the `-f`
+  # AND the fact that `evil.sed` is then read as the script and rejected - so
+  # it pins the OUTCOME (this shape must never be silent), not a branch. Its
+  # isolating twin for the flag branch is the `-ni 5p` row above. The `sed -i
+  # s/x/y/` acceptance shape is already a row in the block further up and is
+  # deliberately not duplicated here.
+  decide advisory "#530 sed: -f hides the script from any string check"  "sed -f evil.sed app/public/data/mask.bin"
+  decide advisory "#530 sed: w command writes with no flag"             "sed -n '1,5w /tmp/out' app/public/data/mask.bin"
+  decide advisory "#530 sed: e command executes a shell command"         "sed '1e id' app/public/data/mask.bin"
+  decide advisory "#530 sed: s///w flag writes"                          "sed -n 's/a/b/w out' app/public/data/mask.bin"
+  decide advisory "#530 sed: flag AFTER the script (GNU permutes options)" "sed -n 5p app/public/data/mask.bin -i"
+
+  # --- MUST FIRE (advisory): the grep shim mirror. One row per
+  # GREP_SHIM_INTERCEPTED entry except `-*-save-config*`, which is subsumed
+  # (see the block header) - the `--save-config` row below fires through
+  # `-*-config*` and is kept because it is an acceptance case, not because it
+  # pins that entry.
+  decide advisory "#530 grep --filter (ugrep executes COMMANDS)"  "grep --filter='*:cat' app/public/data/mask.bin"
+  decide advisory "#530 grep --pager (executes a pager)"          "grep --pager app/public/data/mask.bin"
+  # The QUOTED spelling: this hook sees the raw command string, so the token
+  # is literally `'--pager'` and starts with a quote, not a dash - every
+  # dash-anchored pattern misses it unless unquote_token() runs first. This
+  # is the only row pinning that on the grep side (the sed rows pin it via
+  # their quoted scripts), and without it stubbing unquote_token to a no-op
+  # left the whole grep mirror bypassable by adding two quote characters.
+  decide advisory "#530 grep quoted option (pins unquote_token)"   "grep '--pager' app/public/data/mask.bin"
+  decide advisory "#530 grep --view (executes a viewer)"          "grep --view app/public/data/mask.bin"
+  decide advisory "#530 grep --format-open"                       "grep --format-open=x app/public/data/mask.bin"
+  decide advisory "#530 grep --config (loads options from a file)" "grep --config=x app/public/data/mask.bin"
+  decide advisory "#530 grep --save-config (the one ugrep writer)" "grep --save-config=x app/public/data/mask.bin"
+  decide advisory "#530 grep ---FILE (the --config short spelling)" "grep ---x app/public/data/mask.bin"
+  decide advisory "#530 grep -@"                                  "grep -@x app/public/data/mask.bin"
+  decide advisory "#530 grep -Z"                                  "grep -Z foo app/public/data/mask.bin"
+  decide advisory "#530 grep -nz (BUNDLED, missed by -[Zz]* alone)" "grep -nz foo app/public/data/mask.bin"
+  decide advisory "#530 grep --null"                              "grep --null foo app/public/data/mask.bin"
+  decide advisory "#530 grep --null-data"                         "grep --null-data foo app/public/data/mask.bin"
 
   # --- The exemption must not widen the guard either: an allowlisted verb
   # with NO protected path is allowed for the ordinary reason (no hit), and
@@ -1634,7 +2036,13 @@ if [ "${1:-}" = "--selftest" ]; then
   # fail-open shape a first-word-only allowlist would have suppressed.
   wrapper_check allow ""                        "EXEMPT: stat through the wrapper"    '{"tool_name":"Bash","tool_input":{"command":"stat app/public/data/mask.bin"}}'
   wrapper_check advisory "artifact-guard ADVISORY" "stat + redirect still fires"      '{"tool_name":"Bash","tool_input":{"command":"stat app/public/data/mask.bin > /tmp/x"}}'
-  wrapper_check advisory "artifact-guard ADVISORY" "non-allowlisted verb still fires" '{"tool_name":"Bash","tool_input":{"command":"sed -i s/x/y/ app/public/data/mask.bin"}}'
+  # (#530) RETITLED: this row's command is `sed -i`, and `sed` is now ON the
+  # allowlist, so "non-allowlisted verb" described the file's pre-#530 reason
+  # and would have been left asserting the opposite of what the code does.
+  # What it pins through REAL hook JSON is unchanged: a verb-scoped
+  # disqualifier's rejection reaches the production dispatch, not merely the
+  # pure predicate.
+  wrapper_check advisory "artifact-guard ADVISORY" "verb-scoped disqualifier (sed -i) still fires through the wrapper" '{"tool_name":"Bash","tool_input":{"command":"sed -i s/x/y/ app/public/data/mask.bin"}}'
 
   # TWIN CHECK (#388 review, Finding 2): the user-facing reason string claims
   # to name the exempt set exhaustively. It is DERIVED from READONLY_VERBS,
@@ -1792,7 +2200,7 @@ if [ "$tn" = "Bash" ]; then
       bash_advisory "$p"
       exit 0
     fi
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no redirect, pipe, separator, substitution, expansion or escape anywhere in it - which is suppressed silently. This command is not that, so it asks: it either uses a verb outside that set or contains a write-capable construct. Confirm intent before proceeding."}}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no redirect, pipe, separator, substitution, expansion or escape anywhere in it - which is suppressed silently. Two of those verbs, grep and sed, do have a write surface and so carry an ADDITIONAL per-verb condition (#530): grep must name none of the ugrep options the Claude Code shim intercepts, and sed must use only -n/-E/-r-class read-only flags with a single bare p/d/q/=/n/N script command under at most one address. This command is not that, so it asks: it uses a verb outside that set, fails one of those two per-verb conditions, or contains a write-capable construct. Confirm intent before proceeding."}}'
   fi
   exit 0
 fi
