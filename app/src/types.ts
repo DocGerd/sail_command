@@ -1,3 +1,6 @@
+import { defaultSafetyDepthM } from './lib/boatDepth';
+import { boatById, DEFAULT_BOAT_ID } from './data/boats';
+
 export interface LatLon {
   lat: number;
   lon: number;
@@ -65,7 +68,10 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  safetyDepthM: 3.0,
+  // #54: derived from the Salona 45's own draft (spec C.3) rather than a
+  // hand-written literal — evaluates to 3.0, preserving today's value by
+  // derivation instead of by hand.
+  safetyDepthM: defaultSafetyDepthM(boatById(DEFAULT_BOAT_ID)),
   depthComfortMarginM: 2.0,
   motorSpeedKn: 6.5,
   motorThresholdKn: 2.5,
