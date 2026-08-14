@@ -370,6 +370,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
             destinationHarborId: h.id,
             departureMs: T0,
             settings: arm.settings,
+            sailIds: ['genoa', 'fock'],
           },
           windGrid,
           { polarGenoa, polarFock, mask },

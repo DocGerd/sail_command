@@ -1,7 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import { planRoute } from './planRoute';
 import { makeMask, openWaterMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type PlanRequest, type PolarTable, type Settings } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type PlanRequest,
+  type PlanResultOk,
+  type PolarTable,
+  type SailId,
+  type Settings,
+} from '../types';
+
+// #54: the pre-#54 shape exposed `r.genoa`/`r.fock` directly.
+function sailResult(res: PlanResultOk, sailId: SailId) {
+  return res.sails.find((s) => s.sailId === sailId)?.result ?? null;
+}
 import type { ProbeInfo } from './relaxedDepth';
 import { uniformGate } from '../lib/depthGate';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
@@ -42,6 +54,7 @@ const req: PlanRequest = {
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
+  sailIds: ['genoa', 'fock'],
 };
 
 // #452 APPROACH-pinch variant: destination moved to col 165 (cell centre lon
@@ -106,7 +119,7 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     expect(r.shallow).toEqual({ requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.5 });
 
     // Both rigs relax to the SAME gate (apples-to-apples rig comparison).
-    for (const rig of [r.genoa, r.fock]) {
+    for (const rig of [sailResult(r, 'genoa'), sailResult(r, 'fock')]) {
       expect(rig).not.toBeNull();
       const flagged = rig!.legs.filter((l) => l.shallow);
       expect(flagged.length).toBeGreaterThan(0);
@@ -172,7 +185,7 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     );
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    const legs = r.genoa!.legs;
+    const legs = sailResult(r, 'genoa')!.legs;
     // One span for the whole passage: every collinear leg merged, across the
     // gap included. Handed a uniform 3.0 m gate the merge across the gap is
     // rejected and this splits.
@@ -195,7 +208,7 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
     expect('shallow' in r).toBe(false);
-    for (const leg of r.genoa!.legs) expect('shallow' in leg).toBe(false);
+    for (const leg of sailResult(r, 'genoa')!.legs) expect('shallow' in leg).toBe(false);
   });
 
   it('calm + motor off keeps its own error class — relaxation never fires', () => {

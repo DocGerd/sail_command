@@ -4,7 +4,7 @@ import { solve } from './isochrone';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import { openWaterMask, TEST_POLAR, uniformWindGrid, makeMask } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type PlanRequest } from '../types';
+import { DEFAULT_SETTINGS, type PlanRequest, type PlanResultOk } from '../types';
 import { haversineNm } from '../lib/geo';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
@@ -12,6 +12,11 @@ import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
 // files keep vitest's 5s default so hang detection stays meaningful there.
 vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
+
+// #54: the pre-#54 shape exposed `r.genoa` directly.
+function genoaResult(r: PlanResultOk) {
+  return r.sails.find((s) => s.sailId === 'genoa')?.result ?? null;
+}
 
 const baseReq: PlanRequest = {
   origin: { lat: 54.7525, lon: 10.0025 },
@@ -21,6 +26,7 @@ const baseReq: PlanRequest = {
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
   viaPoints: [],
+  sailIds: ['genoa', 'fock'],
 };
 const deps = { polarGenoa: TEST_POLAR, polarFock: TEST_POLAR, mask: openWaterMask() };
 
@@ -37,7 +43,7 @@ describe('planRoute via-waypoints', () => {
     const r = planRoute(req, wind, deps);
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    const rig = r.genoa!;
+    const rig = genoaResult(r)!;
     expect(rig).not.toBeNull();
 
     // the route actually visits the (snapped) via point
@@ -57,7 +63,7 @@ describe('planRoute via-waypoints', () => {
     }
 
     // detouring via a point well off the direct line meaningfully lengthens the route
-    expect(rig.distanceNm).toBeGreaterThan(direct.genoa!.distanceNm + 5);
+    expect(rig.distanceNm).toBeGreaterThan(genoaResult(direct)!.distanceNm + 5);
   });
 
   it('(b) viaPoints: [] behaves exactly as before (regression: equal ETA to a direct single-segment solve)', () => {
@@ -83,7 +89,7 @@ describe('planRoute via-waypoints', () => {
     expect(direct.status).toBe('ok');
     if (direct.status !== 'ok') return;
 
-    expect(r.genoa!.etaMs).toBe(direct.etaMs);
+    expect(genoaResult(r)!.etaMs).toBe(direct.etaMs);
   });
 
   it('(c) a via point that fails to snap fails the whole plan with snap-failed-via', () => {
@@ -132,7 +138,7 @@ describe('planRoute via-waypoints', () => {
     const r = planRoute(req, wind, deps);
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    const rig = r.genoa!;
+    const rig = genoaResult(r)!;
     expect(rig.legs[0].maneuverAtStart).toBeNull(); // first leg of segment 1 (origin→via)
     const viaLegIdx = rig.legs.findIndex((l) => haversineNm(l.start, via) < 0.05);
     expect(viaLegIdx).toBeGreaterThan(0);

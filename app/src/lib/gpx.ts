@@ -1,4 +1,4 @@
-import type { LatLon, Leg, MaskMeta, Plan, Rig } from '../types';
+import type { LatLon, Leg, MaskMeta, Plan, SailId } from '../types';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -15,8 +15,8 @@ function legDesc(leg: Leg): string {
   return man + what;
 }
 
-export function toGpx(plan: Plan, rig: Rig): string {
-  const result = rig === 'genoa' ? plan.result.genoa : plan.result.fock;
+export function toGpx(plan: Plan, rig: SailId): string {
+  const result = plan.result.sails.find((s) => s.sailId === rig)?.result ?? null;
   if (!result) throw new Error(`no ${rig} result on plan ${plan.id}`);
   if (result.legs.length === 0) throw new Error(`empty route on plan ${plan.id} (${rig})`);
   const pts = result.legs.map(

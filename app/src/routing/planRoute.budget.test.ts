@@ -63,6 +63,7 @@ function planWith(
     destinationHarborId: null,
     departureMs: T0,
     settings: DEFAULT_SETTINGS,
+    sailIds: ['genoa', 'fock'],
   };
   return planRoute(
     request,

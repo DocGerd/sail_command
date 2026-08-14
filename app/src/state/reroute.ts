@@ -110,6 +110,10 @@ export async function rerouteFromFix(
     destinationHarborId: plan.request.destinationHarborId,
     departureMs: nowMs,
     settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
+    // #54: reroute the SAME sails the plan being rerouted was originally
+    // solved with, not a fresh default — mirrors every other field here
+    // being copied from the original plan's own request.
+    sailIds: plan.request.sailIds,
   };
 
   let result: PlanResult;

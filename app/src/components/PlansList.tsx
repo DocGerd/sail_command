@@ -8,9 +8,9 @@ import { FORECAST_DAYS } from '../services/openMeteo';
 import { nextFullHourMs } from './PlannerPanel';
 import Button from './Button';
 import Field from './Field';
-import type { Plan, Rig } from '../types';
+import type { Plan, SailId } from '../types';
 
-const RIG_LABEL_KEY: Record<Rig, MsgKey> = {
+const RIG_LABEL_KEY: Record<SailId, MsgKey> = {
   genoa: 'route.rig.genoa',
   fock: 'route.rig.fock',
 };

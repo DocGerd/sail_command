@@ -7,7 +7,13 @@ import {
 } from './workerClient';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type PlanResult, type PolarTable, type Rig } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type PlanRequest,
+  type PlanResult,
+  type PolarTable,
+  type SailId,
+} from '../types';
 import { solverTimeoutMs } from '../test/timeouts';
 
 // #342 fix-wave (PR #351 review M2): this file has no `vi.setConfig`, so its
@@ -54,7 +60,7 @@ const INIT_ASSETS = {
   polarFock: FOCK,
 };
 
-const PLAN_REQUEST = {
+const PLAN_REQUEST: PlanRequest = {
   // cell centers (grid step 0.005°): keep the spec-mandated 300 m snap
   // radius and adapt test geometry rather than loosen it.
   origin: { lat: 54.7525, lon: 10.0025 },
@@ -64,6 +70,7 @@ const PLAN_REQUEST = {
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
+  sailIds: ['genoa', 'fock'],
 };
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -147,14 +154,14 @@ describe('RoutingClient promise settling', () => {
       const w = fakeWorker();
       const client = new RoutingClient(() => w as unknown as Worker);
       w.emit({ type: 'ready' });
-      const progress: [Rig, number, number][] = [];
-      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), (rig, tMs, frontierSize) =>
-        progress.push([rig, tMs, frontierSize]),
+      const progress: [SailId, number, number][] = [];
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), (sailId, tMs, frontierSize) =>
+        progress.push([sailId, tMs, frontierSize]),
       );
       await flush();
       const sent = w.posted[w.posted.length - 1];
       if (sent.type !== 'plan') throw new Error('expected a plan message');
-      w.emit({ type: 'progress', id: sent.id, rig: 'genoa', tMs: 1000, frontierSize: 5 });
+      w.emit({ type: 'progress', id: sent.id, sailId: 'genoa', tMs: 1000, frontierSize: 5 });
       const result: PlanResult = { status: 'error', reason: 'unreachable' };
       w.emit({ type: 'result', id: sent.id, result });
       await expect(p).resolves.toBe(result);

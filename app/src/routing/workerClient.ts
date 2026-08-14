@@ -1,12 +1,17 @@
-import type { PlanRequest, PlanResult, Rig, WindGrid } from '../types';
+import type { PlanRequest, PlanResult, SailId, WindGrid } from '../types';
 import type { WorkerRequest, WorkerResponse } from './protocol';
+import { BOATS } from '../data/boats';
 
-type ProgressCb = (rig: Rig, tMs: number, frontierSize: number) => void;
+type ProgressCb = (sailId: SailId, tMs: number, frontierSize: number) => void;
 // #53 relaxed-depth probe phase (one call per mask-connectivity probe). Not
 // throttled like ProgressCb: a whole search is at most a handful of probes.
 type ProbeCb = (probeDepthM: number, done: number, total: number) => void;
 
-const RIGS: readonly Rig[] = ['genoa', 'fock'];
+// #54: derived from the BOATS catalogue rather than a hand-written
+// two-element array literal — only used to enumerate throttle-map keys for
+// clearProgress() below, but the same centralisation the #54 structural
+// guard (test/sailLiteralCallSites.test.ts) expects everywhere else.
+const SAIL_IDS: readonly SailId[] = BOATS.flatMap((b) => b.sails.map((s) => s.id));
 
 // #433/#435 spike §12: a typed discriminator for every failure RoutingClient
 // can produce, mirroring the two existing precedents in this codebase rather
@@ -144,7 +149,7 @@ export class RoutingClient {
   get isDisposed(): boolean {
     return this.disposed;
   }
-  // throttle state: last-forwarded timestamp per `${id}:${rig}`, at most 1 progress callback per 100 ms per rig
+  // throttle state: last-forwarded timestamp per `${id}:${sailId}`, at most 1 progress callback per 100 ms per sail
   private lastProgressAt = new Map<string, number>();
 
   constructor(workerFactory?: () => Worker) {
@@ -181,12 +186,12 @@ export class RoutingClient {
   private handle(msg: WorkerResponse) {
     if (msg.type === 'ready') this.readyResolve();
     else if (msg.type === 'progress') {
-      const key = `${msg.id}:${msg.rig}`;
+      const key = `${msg.id}:${msg.sailId}`;
       const last = this.lastProgressAt.get(key);
       const now = Date.now();
       if (last !== undefined && now - last < 100) return;
       this.lastProgressAt.set(key, now);
-      this.pending.get(msg.id)?.onProgress?.(msg.rig, msg.tMs, msg.frontierSize);
+      this.pending.get(msg.id)?.onProgress?.(msg.sailId, msg.tMs, msg.frontierSize);
     } else if (msg.type === 'probe') {
       this.pending.get(msg.id)?.onProbe?.(msg.probeDepthM, msg.done, msg.total);
     } else if (msg.type === 'result') {
@@ -215,7 +220,7 @@ export class RoutingClient {
   }
 
   private clearProgress(id: string) {
-    for (const rig of RIGS) this.lastProgressAt.delete(`${id}:${rig}`);
+    for (const sailId of SAIL_IDS) this.lastProgressAt.delete(`${id}:${sailId}`);
   }
 
   private failAll(err: Error) {

@@ -1,5 +1,5 @@
 import { deleteDB, openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import { recommendedResult, type Plan, type Rig, type Settings } from '../types';
+import { recommendedResult, type Plan, type SailId, type Settings } from '../types';
 
 interface SailDB extends DBSchema {
   plans: { key: string; value: Plan; indexes: { 'by-createdAt': number } };
@@ -37,7 +37,7 @@ export interface PlanSummary {
   name: string;
   createdAtMs: number;
   departureMs: number;
-  recommended: Rig;
+  recommended: SailId;
   etaMs: number;
 }
 

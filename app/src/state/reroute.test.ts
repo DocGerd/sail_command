@@ -32,19 +32,24 @@ const NOW_MS = DEPARTURE_MS + 2 * HOUR;
 
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
-  genoa: {
-    rig: 'genoa',
-    legs: [],
-    etaMs: NOW_MS + HOUR,
-    durationMs: HOUR,
-    distanceNm: 10,
-    maneuverCount: 0,
-    motorDistanceNm: 0,
-  },
-  fock: null,
-  genoaReason: null,
-  fockReason: 'calm-motor-off',
+  sails: [
+    {
+      sailId: 'genoa',
+      result: {
+        sailId: 'genoa',
+        legs: [],
+        etaMs: NOW_MS + HOUR,
+        durationMs: HOUR,
+        distanceNm: 10,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
+      reason: null,
+    },
+    { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+  ],
   recommended: 'genoa',
+  comparisonComplete: true,
   snappedOrigin: FIX,
   snappedDestination: DESTINATION,
 };
@@ -63,6 +68,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
       destinationHarborId: 'dk-marstal',
       departureMs: DEPARTURE_MS,
       settings: { ...DEFAULT_SETTINGS },
+      sailIds: ['genoa', 'fock'],
     },
     windGrid,
     result: OK_RESULT,
@@ -117,6 +123,9 @@ describe('rerouteFromFix', () => {
       destinationHarborId: 'dk-marstal',
       departureMs: Date.UTC(2026, 6, 15, 10, 0, 0),
       settings: DEFAULT_SETTINGS,
+      // #54: rerouteFromFix reroutes the SAME sails the plan being rerouted
+      // was originally solved with — makePlan()'s fixture requests both.
+      sailIds: ['genoa', 'fock'],
     });
     // Copied, never aliased: mutating the request later must not reach the
     // caller's fix object or the original plan's request.

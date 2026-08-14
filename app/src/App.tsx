@@ -51,6 +51,7 @@ import { usePersistedNumber } from './lib/usePersistedNumber';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
+import { DEFAULT_SAIL_IDS } from './data/boats';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
 import type { Harbor, LatLon, PickedPoint, Plan } from './types';
@@ -93,7 +94,7 @@ export function toPlannerStatus(
     case 'fetching-wind':
       return { phase: 'fetching' };
     case 'routing':
-      return { phase: 'routing', rig: flow.rig };
+      return { phase: 'routing', sailId: flow.sailId, index: flow.index, total: flow.total };
     case 'probing-depth':
       return { phase: 'probing' };
     case 'error':
@@ -679,6 +680,11 @@ function AppShell() {
         destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
         departureMs,
         settings,
+        // #54: the one production call site with no existing plan to
+        // inherit sailIds from — every other constructor (recalcRequest,
+        // replanWithVias, rerouteFromFix) spreads/copies an existing
+        // request's own sailIds instead.
+        sailIds: DEFAULT_SAIL_IDS,
       },
       `${origin.label} → ${destination.label}`,
     );

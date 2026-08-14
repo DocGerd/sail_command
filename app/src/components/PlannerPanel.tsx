@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import type { Harbor, LatLon, PickedPoint, Plan, Rig, RigResult, Settings } from '../types';
-// #340 NAMED COUPLING: RIG_ORDER's coupling to the router's real solve order
-// is enforced by routing/planRoute.test.ts — see its definition in types.ts.
-import { RIG_ORDER } from '../types';
+import type { Harbor, LatLon, PickedPoint, Plan, RigResult, SailId, Settings } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import {
@@ -39,7 +36,7 @@ export type TapTarget = 'origin' | 'destination' | 'via';
 export type PlannerStatus =
   | { phase: 'idle' }
   | { phase: 'fetching' }
-  | { phase: 'routing'; rig: Rig }
+  | { phase: 'routing'; sailId: SailId; index: number; total: number }
   // #53: probing relaxed depth gates after an unreachable requested-depth solve
   | { phase: 'probing' }
   | { phase: 'error'; message: string };
@@ -81,7 +78,7 @@ export interface PlannerPanelProps {
   // #64 phase 3: the active plan + rig drive the compact Ergebnis strip and the
   // plan-completion announcement. Null before the first plan.
   plan: Plan | null;
-  rig: Rig | null;
+  rig: SailId | null;
   // #301: true when the form (origin/destination/departure/live settings)
   // has drifted from `plan` — a re-run right now would produce a DIFFERENT
   // route than the one shown in the Ergebnis card below. Drives a second
@@ -293,13 +290,14 @@ export default function PlannerPanel({
   let statusText = '';
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
   else if (planning.phase === 'routing')
-    // #340: phase readout ("sail N of 2") — RIG_ORDER is the router's actual,
-    // fixed solve order (genoa then fock), so the index always matches which
-    // solve is really running.
-    statusText = t('planner.status.routingRig', {
-      index: RIG_ORDER.indexOf(planning.rig) + 1,
-      total: RIG_ORDER.length,
-      rig: t(RIG_LABEL_KEY[planning.rig]),
+    // #340/#54: phase readout ("sail N of 2") — index/total now come straight
+    // off the PlannerStatus itself (usePlanFlow.ts derives them from
+    // request.sailIds, the router's actual solve order), not a module
+    // constant, so the index always matches which solve is really running.
+    statusText = t('planner.status.routingSail', {
+      index: planning.index,
+      total: planning.total,
+      sail: t(RIG_LABEL_KEY[planning.sailId]),
     });
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
   else if (planning.phase === 'idle') {

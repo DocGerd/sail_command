@@ -23,6 +23,7 @@ const ORIGINAL_REQUEST: PlanRequest = {
     motorEnabled: false,
     showOwnship: true,
   },
+  sailIds: ['genoa', 'fock'],
 };
 
 function makePlan(): Plan {
@@ -34,19 +35,24 @@ function makePlan(): Plan {
     windGrid: uniformWindGrid(12, 225),
     result: {
       status: 'ok',
-      genoa: {
-        rig: 'genoa',
-        legs: [],
-        etaMs: 1_780_010_000_000,
-        durationMs: 10_000_000,
-        distanceNm: 30,
-        maneuverCount: 2,
-        motorDistanceNm: 0,
-      },
-      fock: null,
-      genoaReason: null,
-      fockReason: 'calm-motor-off',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: {
+            sailId: 'genoa',
+            legs: [],
+            etaMs: 1_780_010_000_000,
+            durationMs: 10_000_000,
+            distanceNm: 30,
+            maneuverCount: 2,
+            motorDistanceNm: 0,
+          },
+          reason: null,
+        },
+        { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+      ],
       recommended: 'genoa',
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.81, lon: 9.44 },
       snappedDestination: { lat: 54.85, lon: 10.51 },
     },
@@ -77,6 +83,7 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
         motorEnabled: false,
         showOwnship: true,
       },
+      sailIds: ['genoa', 'fock'],
     });
   });
 

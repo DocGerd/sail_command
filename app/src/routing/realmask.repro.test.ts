@@ -11,8 +11,27 @@ import { planRoute } from './planRoute';
 import { uniformWindGrid } from '../test/fixtures';
 import { uniformGate } from '../lib/depthGate';
 import { DEFAULT_SETTINGS } from '../types';
-import type { LatLon, Leg, MaskMeta, PolarTable, Settings } from '../types';
+import type {
+  LatLon,
+  Leg,
+  MaskMeta,
+  PlanResultOk,
+  PolarTable,
+  RigResult,
+  SailId,
+  Settings,
+} from '../types';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+
+// #54: the pre-#54 shape had a direct `res.genoa`/`res.fock` field per sail;
+// this test file leaned on that shape heavily (11 planRoute() calls). Rather
+// than rewrite every call site to walk `res.sails` inline, this one helper
+// preserves the exact pre-#54 access pattern (`sailResult(res, 'genoa')`
+// reads identically to the old `res.genoa`) so the diff stays about the
+// shape change, not a rewrite of what each test actually asserts.
+function sailResult(res: PlanResultOk, sailId: SailId): RigResult | null {
+  return res.sails.find((s) => s.sailId === sailId)?.result ?? null;
+}
 
 // Regression tests for issue #20: the solver returned 'unreachable' for real
 // harbor-to-harbor routes because a full isochrone step (0.5-2 km) is longer
@@ -119,13 +138,14 @@ describe('real mask routing (issue #20)', () => {
         destinationHarborId: 'gluecksburg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    for (const rig of [res.genoa, res.fock]) {
+    for (const rig of [sailResult(res, 'genoa'), sailResult(res, 'fock')]) {
       expect(rig).not.toBeNull();
       // ~4 nm; anything over 1.5 h means the solver padded its way out
       expect(rig!.durationMs).toBeLessThan(1.5 * 3_600_000);
@@ -186,6 +206,7 @@ describe('real mask routing (issue #20)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings,
+          sailIds: ['genoa', 'fock'],
         },
         uniformWindGrid(12, 270),
         { polarGenoa, polarFock, mask },
@@ -194,7 +215,7 @@ describe('real mask routing (issue #20)', () => {
       if (res.status !== 'ok') return;
       // Explicitly-requested 2.3 m needs no relaxation: no shallow warnings.
       expect('shallow' in res).toBe(false);
-      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      const rig = sailResult(res, res.recommended);
       expect(rig).not.toBeNull();
       // ~38 nm great-circle; sane plans stay inside these envelopes
       expect(rig!.distanceNm).toBeGreaterThan(30);
@@ -239,6 +260,7 @@ describe('real mask routing (issue #20)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa', 'fock'],
         },
         uniformWindGrid(12, 270),
         { polarGenoa, polarFock, mask },
@@ -252,7 +274,7 @@ describe('real mask routing (issue #20)', () => {
       // because something charted below 3.0 m was actually crossed.
       expect(res.shallow!.minGateDepthM).toBeGreaterThanOrEqual(2.3);
       expect(res.shallow!.minGateDepthM).toBeLessThan(3.0);
-      for (const rig of [res.genoa, res.fock]) {
+      for (const rig of [sailResult(res, 'genoa'), sailResult(res, 'fock')]) {
         expect(rig).not.toBeNull();
         expect(rig!.distanceNm).toBeGreaterThan(30);
         expect(rig!.durationMs).toBeLessThan(12 * 3_600_000);
@@ -298,6 +320,7 @@ describe('real mask routing (issue #20)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings,
+          sailIds: ['genoa', 'fock'],
         },
         uniformWindGrid(12, 270),
         { polarGenoa, polarFock, mask },
@@ -334,7 +357,7 @@ describe('real mask routing (issue #20)', () => {
       const LIMIT_M = 1852 * 1.02;
 
       const offenders: string[] = [];
-      for (const rig of [res.genoa, res.fock]) {
+      for (const rig of [sailResult(res, 'genoa'), sailResult(res, 'fock')]) {
         if (!rig) continue;
         for (const leg of rig.legs) {
           // Sample well below the ~46 m cell pitch, so any cell crossed for
@@ -386,13 +409,14 @@ describe('#243 depth comfort preference (real mask)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+    const rig = sailResult(res, res.recommended);
     expect(rig).not.toBeNull();
     expectLegsNavigable(rig!.legs, DEFAULT_SETTINGS.safetyDepthM);
 
@@ -440,6 +464,7 @@ describe('#243 depth comfort preference (real mask)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa', 'fock'],
         },
         uniformWindGrid(12, 270),
         { polarGenoa, polarFock, mask },
@@ -448,7 +473,7 @@ describe('#243 depth comfort preference (real mask)', () => {
       if (res.status !== 'ok') return;
       expect(res.shallow).toBeDefined();
       expect(res.shallow!.usedDepthM).toBeCloseTo(2.3, 6);
-      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      const rig = sailResult(res, res.recommended);
       expect(rig).not.toBeNull();
       expectLegsNavigable(rig!.legs, res.shallow!.usedDepthM);
     },
@@ -474,6 +499,7 @@ describe('#243 depth comfort preference (real mask)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa', 'fock'],
         },
         uniformWindGrid(12, 270),
         { polarGenoa, polarFock, mask },
@@ -482,7 +508,7 @@ describe('#243 depth comfort preference (real mask)', () => {
       if (res.status !== 'ok') return;
       expect(res.shallow).toBeDefined();
       expect(res.shallow!.usedDepthM).toBeCloseTo(2.3, 6);
-      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      const rig = sailResult(res, res.recommended);
       expect(rig).not.toBeNull();
       expect(exposureNm(rig!.legs, 3.0)).toBeLessThan(0.6);
     },
@@ -530,6 +556,7 @@ describe('#243 depth comfort preference (real mask)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings,
+        sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
@@ -570,10 +597,11 @@ describe('#243 depth comfort preference (real mask)', () => {
       ['fock', polarFock],
     ] as const) {
       const ref = preFeatureReference(table);
-      expect(res[rig]!.legs, `${rig}: margin-0 legs must equal the comfort-free solve`).toEqual(
+      const sail = sailResult(res, rig);
+      expect(sail!.legs, `${rig}: margin-0 legs must equal the comfort-free solve`).toEqual(
         ref.legs,
       );
-      expect(res[rig]!.etaMs, `${rig}: margin-0 clock must equal the comfort-free solve`).toBe(
+      expect(sail!.etaMs, `${rig}: margin-0 clock must equal the comfort-free solve`).toBe(
         ref.etaMs,
       );
     }
@@ -636,13 +664,14 @@ describe('#243 depth comfort preference (real mask)', () => {
         destinationHarborId: 'drejoe',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+    const rig = sailResult(res, res.recommended);
     expect(rig).not.toBeNull();
     expectLegsNavigable(rig!.legs, DEFAULT_SETTINGS.safetyDepthM);
     let min = Infinity;
@@ -665,13 +694,14 @@ describe('#243 depth comfort preference (real mask)', () => {
         destinationHarborId: 'drejoe',
         departureMs: T0,
         settings: { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 },
+        sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
     );
     expect(off.status).toBe('ok');
     if (off.status !== 'ok') return;
-    const offRig = off.recommended === 'genoa' ? off.genoa : off.fock;
+    const offRig = sailResult(off, off.recommended);
     expect(offRig).not.toBeNull();
     let minOff = Infinity;
     for (const leg of offRig!.legs) {
@@ -731,6 +761,7 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings,
+          sailIds: ['genoa', 'fock'],
         },
         uniformWindGrid(3, 0),
         { polarGenoa, polarFock, mask },

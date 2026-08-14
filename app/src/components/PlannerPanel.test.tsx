@@ -13,9 +13,9 @@ import {
   type Leg,
   type PickedPoint,
   type Plan,
-  type Rig,
   type RigRecommendation,
   type RigResult,
+  type SailId,
   type Settings,
 } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
@@ -57,7 +57,7 @@ const GENOA_LEGS: Leg[] = [
 ];
 
 const GENOA_RESULT: RigResult = {
-  rig: 'genoa',
+  sailId: 'genoa',
   etaMs: PLAN_DEPARTURE_MS + 5 * 3_600_000,
   durationMs: 5 * 3_600_000,
   distanceNm: 21.5,
@@ -131,21 +131,35 @@ function makePlan(
       destinationHarborId: 'marstal',
       departureMs: PLAN_DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: PLAN_DEPARTURE_MS },
     result: {
       status: 'ok',
-      genoa: { ...GENOA_RESULT, distanceNm },
-      fock: null,
-      genoaReason: null,
-      fockReason: 'calm-motor-off',
+      sails: [
+        { sailId: 'genoa', result: { ...GENOA_RESULT, distanceNm }, reason: null },
+        { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+      ],
       recommended: 'genoa',
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
       // #259: only set when a test explicitly asks for it — most tests
       // exercise rigRecommendationOf's fallback (absent field).
       ...(over.rigRecommendation ? { rigRecommendation: over.rigRecommendation } : {}),
     },
+  };
+}
+
+// #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.shallow`
+// directly-mutable; the `sails` list's own entries and PlanResultOk's own
+// fields are now `readonly`, so a test that used to write
+// `plan.result.genoa = X` instead REPLACES the whole `result` object
+// (Plan.result itself is not readonly — only PlanResultOk's own fields are).
+function setSail(plan: Plan, sailId: SailId, patch: { result?: RigResult | null }): void {
+  plan.result = {
+    ...plan.result,
+    sails: plan.result.sails.map((s) => (s.sailId === sailId ? { ...s, ...patch } : s)),
   };
 }
 
@@ -169,7 +183,7 @@ interface Overrides {
   onPlan?: () => void;
   planning?: PlannerStatus;
   plan?: Plan | null;
-  rig?: Rig | null;
+  rig?: SailId | null;
   formDirty?: boolean;
   onViewDetails?: () => void;
   onOpenBoatSettings?: () => void;
@@ -198,7 +212,7 @@ function baseProps(overrides: Overrides = {}) {
     onPlan: vi.fn(),
     planning: { phase: 'idle' } as PlannerStatus,
     plan: null as Plan | null,
-    rig: null as Rig | null,
+    rig: null as SailId | null,
     formDirty: false,
     onViewDetails: vi.fn(),
     onOpenBoatSettings: vi.fn(),
@@ -477,12 +491,12 @@ describe('PlannerPanel', () => {
   // not a percentage — pinning literal text for both rigs so a mixed-up
   // index/rig-name substitution would fail visibly.
   it('renders the genoa routing phase as "sail 1 of 2 (Genoa)"', () => {
-    renderPanel({ planning: { phase: 'routing', rig: 'genoa' } });
+    renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } });
     expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
   });
 
   it('renders the fock routing phase as "sail 2 of 2 (Fock)" — the genoa->fock switch is not a regression', () => {
-    renderPanel({ planning: { phase: 'routing', rig: 'fock' } });
+    renderPanel({ planning: { phase: 'routing', sailId: 'fock', index: 2, total: 2 } });
     expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');
   });
 
@@ -634,7 +648,11 @@ describe('PlannerPanel', () => {
       const { rerender } = render(
         <I18nProvider>
           <PlannerPanel
-            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
           />
         </I18nProvider>,
       );
@@ -660,7 +678,11 @@ describe('PlannerPanel', () => {
       const { rerender } = render(
         <I18nProvider>
           <PlannerPanel
-            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
           />
         </I18nProvider>,
       );
@@ -708,7 +730,10 @@ describe('PlannerPanel', () => {
   describe('shallow-water warning (#452)', () => {
     function makeShallowPlan(): Plan {
       const plan = makePlan();
-      plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 };
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+      };
       return plan;
     }
 
@@ -788,8 +813,11 @@ describe('PlannerPanel', () => {
   describe('shallow-water locator sentence (#452 gap 3)', () => {
     function makeNonContiguousShallowPlan(): Plan {
       const plan = makePlan();
-      plan.result.genoa = { ...GENOA_RESULT, legs: NON_CONTIGUOUS_SHALLOW_LEGS };
-      plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 1.9 };
+      setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: NON_CONTIGUOUS_SHALLOW_LEGS } });
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 1.9 },
+      };
       return plan;
     }
 
@@ -805,10 +833,12 @@ describe('PlannerPanel', () => {
     it('uses the singular sentence (no count) when exactly one leg is flagged', () => {
       const plan = makeNonContiguousShallowPlan();
       // Drop the second flagged leg (index 2) — exactly one remains.
-      plan.result.genoa = {
-        ...GENOA_RESULT,
-        legs: [NON_CONTIGUOUS_SHALLOW_LEGS[0], NON_CONTIGUOUS_SHALLOW_LEGS[1]],
-      };
+      setSail(plan, 'genoa', {
+        result: {
+          ...GENOA_RESULT,
+          legs: [NON_CONTIGUOUS_SHALLOW_LEGS[0], NON_CONTIGUOUS_SHALLOW_LEGS[1]],
+        },
+      });
       renderPanel({ plan, rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
       const expected = en['route.shallow.locator'].replace(
@@ -824,7 +854,10 @@ describe('PlannerPanel', () => {
       // plan-level banner still renders, but the locator sentence must fail
       // safe rather than render a nonsensical "0 legs" sentence.
       const plan = makePlan();
-      plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 };
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+      };
       renderPanel({ plan, rig: 'genoa' });
       const banner = screen.getByText(/was not passable/);
       expect(banner.textContent).not.toContain('starts at');
@@ -924,7 +957,11 @@ describe('PlannerPanel', () => {
       const { rerender } = render(
         <I18nProvider>
           <PlannerPanel
-            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
           />
         </I18nProvider>,
       );
@@ -952,7 +989,11 @@ describe('PlannerPanel', () => {
       const { rerender } = render(
         <I18nProvider>
           <PlannerPanel
-            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
           />
         </I18nProvider>,
       );
@@ -1019,7 +1060,7 @@ describe('PlannerPanel', () => {
 
     it('renders a decorative skeleton in the result slot while a first plan is in flight', () => {
       const { container } = renderPanelReturningContainer({
-        planning: { phase: 'routing', rig: 'genoa' },
+        planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
         plan: null,
         rig: null,
       });
@@ -1051,7 +1092,7 @@ describe('PlannerPanel', () => {
       // gate must keep the real compact Ergebnis card and NOT overlay a skeleton
       // on top of it. Mutating the gate to drop `!summary` makes this fail.
       const { container } = renderPanelReturningContainer({
-        planning: { phase: 'routing', rig: 'genoa' },
+        planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
         plan: makePlan(),
         rig: 'genoa',
       });

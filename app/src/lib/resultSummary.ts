@@ -4,24 +4,24 @@
 // two never drift. Pure: reads the in-memory plan + the active rig's result
 // only (no re-fetch, no wind-grid sampling, offline-safe).
 import type { MsgKey } from '../i18n/dict.de';
-import type { Plan, PlanResultOk, Rig, RigResult, RigRecommendation } from '../types';
+import type { Plan, PlanResultOk, RigResult, RigRecommendation, SailId } from '../types';
 import { formatDateTime, formatDuration, formatKn, formatNm, type Lang } from './format';
 
-// Rig -> its display label key. Shared so RouteSummary and the planner strip
-// name the rig identically (the recommended rig is the faster one the router
-// picked — see the source spec's twice-per-plan rule).
-export const RIG_LABEL_KEY: Record<Rig, MsgKey> = {
+// SailId -> its display label key. Shared so RouteSummary and the planner
+// strip name the sail identically (the recommended sail is the faster one
+// the router picked — see the source spec's twice-per-plan rule).
+export const RIG_LABEL_KEY: Record<SailId, MsgKey> = {
   genoa: 'route.rig.genoa',
   fock: 'route.rig.fock',
 };
 
-// #340: RIG_ORDER (the router's actual, fixed solve order — used for the
-// planner panel's "rig N of 2" phase readout) lives in ../types.ts, next to
-// the `Rig` type, not here — its coupling to routing/planRoute.ts's real
-// solve order is ENFORCED by routing/planRoute.test.ts's guard test, and
-// types.ts is the neutral layer both that test and this presentation module
-// already depend on (importing it from here into a routing test would be
-// the layering inversion the other direction).
+// #340/#54: the router's actual, fixed solve order used to drive the
+// planner panel's "sail N of 2" phase readout is now `request.sailIds`
+// itself (types.ts's PlanRequest field) — no longer a module constant here
+// or in types.ts (the deleted RIG_ORDER). usePlanFlow.ts computes index/total
+// from it directly; that coupling is enforced by
+// routing/planRoute.test.ts's "#340/#54: solve order matches
+// request.sailIds" guard test.
 
 export interface ResultSummary {
   arrivalText: string;
@@ -60,7 +60,7 @@ export interface ResultSummary {
  * 'decided' pick of the recorded `recommended` rig when `rigRecommendation`
  * is absent — pre-#259 PlanResultOk literals across the test suite (and any
  * plan solved before this field existed) never set it, and a bare
- * `recommended: Rig` is exactly what those literals always meant. Exported so
+ * `recommended: SailId` is exactly what those literals always meant. Exported so
  * both display surfaces (this file's resultSummary() below, and RouteSummary
  * directly for the plan-level tab star that renders even when the active
  * rig's own result is null) resolve it identically — see the file banner on

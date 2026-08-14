@@ -6,9 +6,20 @@ import {
   DEFAULT_SETTINGS,
   type Leg,
   type PlanRequest,
+  type PlanResultOk,
   type PolarTable,
+  type SailId,
   type Settings,
 } from '../types';
+
+// #54: the pre-#54 shape exposed `res.genoa`/`res.fock`/`res.fockReason`/
+// `res.genoaReason` directly.
+function sailResult(res: PlanResultOk, sailId: SailId) {
+  return res.sails.find((s) => s.sailId === sailId)?.result ?? null;
+}
+function sailReason(res: PlanResultOk, sailId: SailId) {
+  return res.sails.find((s) => s.sailId === sailId)?.reason ?? null;
+}
 
 // #243 §G.6: the tier-ladder is the mandatory safety net (§D.4: "the
 // reachability argument is not a proof — the fallback ladder is"), so its
@@ -64,6 +75,7 @@ const req: PlanRequest = {
   destinationHarborId: null,
   departureMs: T0,
   settings: DEFAULT_SETTINGS,
+  sailIds: ['genoa', 'fock'],
 };
 const mask = openWaterMask(); // trivially connected at any gate: the #53 fast path always attempts tier 1
 const deps = { polarGenoa: TEST_POLAR, polarFock: TEST_POLAR as PolarTable, mask };
@@ -109,8 +121,8 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
     // #243 §D.1 piece 3: decided at PLAN level — fock's tier-1 success
     // (distanceNm 999) must be discarded, not reused, once genoa forced a
     // retry. Both rigs come from tier 2.
-    expect(res.genoa?.distanceNm).toBe(11);
-    expect(res.fock?.distanceNm).toBe(12);
+    expect(sailResult(res, 'genoa')?.distanceNm).toBe(11);
+    expect(sailResult(res, 'fock')?.distanceNm).toBe(12);
     expect(res.shallow).toBeUndefined();
     // Every SolveParams passed comfortDepthM on the first two calls, and
     // omitted it (exactOptionalPropertyTypes: absent, not undefined) on the
@@ -133,8 +145,8 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
     expect(solveMock).toHaveBeenCalledTimes(4);
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    expect(res.genoa?.distanceNm).toBe(21);
-    expect(res.fock?.distanceNm).toBe(22);
+    expect(sailResult(res, 'genoa')?.distanceNm).toBe(21);
+    expect(sailResult(res, 'fock')?.distanceNm).toBe(22);
   });
 
   it('never retries on calm-without-motor — that class is a wind/mask fact the preference cannot cause or cure', () => {
@@ -200,9 +212,9 @@ describe('#243 planRoute tier ladder (requested gate: tier 1 -> tier 2)', () => 
     if (res.status !== 'ok') return;
     // Tier 1's genoa (preference on), not an error — genoa/fock both come
     // from the SAME tier, so the rig comparison stays apples-to-apples.
-    expect(res.genoa?.distanceNm).toBe(41);
-    expect(res.fock).toBeNull();
-    expect(res.fockReason).toBe('unreachable');
+    expect(sailResult(res, 'genoa')?.distanceNm).toBe(41);
+    expect(sailResult(res, 'fock')).toBeNull();
+    expect(sailReason(res, 'fock')).toBe('unreachable');
   });
 });
 
@@ -248,8 +260,8 @@ describe('#243 planRoute tier ladder (relaxed gate: tier 3 -> tier 4)', () => {
     expect(solveMock).toHaveBeenCalledTimes(4);
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    expect(res.genoa?.distanceNm).toBe(31);
-    expect(res.fock?.distanceNm).toBe(32);
+    expect(sailResult(res, 'genoa')?.distanceNm).toBe(31);
+    expect(sailResult(res, 'fock')?.distanceNm).toBe(32);
     // #53's contract: the relaxed gate is still reported, even though the
     // legs themselves came from the un-preferenced retry. minGateDepthM is
     // NOT pinned here — flagShallowLegs derives it from these mocked legs'
@@ -277,9 +289,9 @@ describe('#243 planRoute tier ladder (relaxed gate: tier 3 -> tier 4)', () => {
     expect(solveMock).toHaveBeenCalledTimes(4);
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    expect(res.genoa?.distanceNm).toBe(51);
-    expect(res.fock).toBeNull();
-    expect(res.fockReason).toBe('unreachable');
+    expect(sailResult(res, 'genoa')?.distanceNm).toBe(51);
+    expect(sailResult(res, 'fock')).toBeNull();
+    expect(sailReason(res, 'fock')).toBe('unreachable');
     // Tier 3's shallow flag still applies to the fallback result.
     expect(res.shallow?.requestedDepthM).toBe(3.0);
     expect(res.shallow?.usedDepthM).toBe(2.5);

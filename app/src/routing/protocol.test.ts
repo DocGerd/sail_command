@@ -55,6 +55,7 @@ describe('worker protocol handler', () => {
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -100,6 +101,7 @@ describe('worker protocol handler', () => {
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -151,6 +153,7 @@ describe('worker protocol handler', () => {
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       windGrid: badWindGrid,
     });
@@ -185,6 +188,7 @@ describe('worker protocol handler: fatal.stack population (#433 review Minor 2)'
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -254,6 +258,7 @@ describe('#432 worker plan budget', () => {
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       windGrid: uniformWindGrid(12, 0),
       ...(budgetMs !== undefined ? { budgetMs } : {}),

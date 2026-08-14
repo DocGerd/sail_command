@@ -7,7 +7,7 @@ import { savePlan, __resetDbForTests } from '../services/db';
 import * as db from '../services/db';
 import * as openMeteo from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type Plan, type Rig, type WindGrid } from '../types';
+import { DEFAULT_SETTINGS, type Plan, type SailId, type WindGrid } from '../types';
 import PlansList, { type PlansListProps } from './PlansList';
 
 function makePlan(overrides: {
@@ -15,7 +15,7 @@ function makePlan(overrides: {
   createdAtMs: number;
   name?: string;
   windGrid?: WindGrid;
-  recommended?: Rig;
+  recommended?: SailId;
   etaMs?: number;
   departureMs?: number;
 }): Plan {
@@ -41,15 +41,25 @@ function makePlan(overrides: {
       destinationHarborId: null,
       departureMs: overrides.departureMs ?? overrides.createdAtMs,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
     },
     windGrid: overrides.windGrid ?? uniformWindGrid(10, 270),
     result: {
       status: 'ok',
-      genoa: recommended === 'genoa' ? { rig: 'genoa', ...rigResult } : null,
-      fock: recommended === 'fock' ? { rig: 'fock', ...rigResult } : null,
-      genoaReason: recommended === 'genoa' ? null : 'calm-motor-off',
-      fockReason: recommended === 'fock' ? null : 'calm-motor-off',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: recommended === 'genoa' ? { sailId: 'genoa', ...rigResult } : null,
+          reason: recommended === 'genoa' ? null : 'calm-motor-off',
+        },
+        {
+          sailId: 'fock',
+          result: recommended === 'fock' ? { sailId: 'fock', ...rigResult } : null,
+          reason: recommended === 'fock' ? null : 'calm-motor-off',
+        },
+      ],
       recommended,
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.0, lon: 9.0 },
       snappedDestination: { lat: 55.0, lon: 10.0 },
     },

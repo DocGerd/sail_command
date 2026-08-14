@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { BOATS } from '../data/boats';
 
-// #54 (multi-boat release-1, spec §F.3): nine non-test files enumerate the
-// sail set (today `'genoa' | 'fock'`) with NO derivation between any of
-// them. The compiler protects that asymmetrically: a `Record<SailId, X>`
-// reds loudly the moment a sail is added or removed, while a two-way
-// ternary (`rig === 'genoa' ? a : b`) keeps compiling and silently picks
-// the wrong sail once a third one exists. Task 9 centralises these nine
-// call sites onto BOATS-derived lookups; this guard exists so a NEW bare
-// sail-id literal cannot regrow silently in the meantime, and so Task 9's
-// own progress is visible as the offender list shrinking toward `[]`.
+// #54 (multi-boat release-1, spec §F.3): as of Task 7 landing, nine
+// non-test files enumerated the sail set (then `'genoa' | 'fock'`) with NO
+// derivation between any of them. The compiler protects that
+// asymmetrically: a `Record<SailId, X>` reds loudly the moment a sail is
+// added or removed, while a two-way ternary (`rig === 'genoa' ? a : b`)
+// keeps compiling and silently picks the wrong sail once a third one
+// exists. Task 9 centralised all nine call sites onto BOATS-derived
+// lookups (`KNOWN_OFFENDERS` below is now `[]`); this guard stays live so a
+// NEW bare sail-id literal cannot regrow it silently.
 //
 // Modeled on chipShallowFill.test.ts's structural-scan half (an offender
 // list pinned against an expected value, with an explanatory failure
@@ -102,28 +102,17 @@ function buildSailIdPattern(ids: readonly string[]): RegExp {
 // See the dedicated active check below instead of an allowlist entry.
 const ALLOWED = ['src/data/boats.ts'];
 
-// SNAPSHOT of today's nine known offenders — deliberately NOT an empty
-// array. Task 9 centralises every one of these onto BOATS-derived lookups;
-// until then, keeping the guard red-until-fixed (via `it.fails`) or the two
-// tasks' commits adjacent both leave a real window — a full task's worth of
-// commits under Task 8 — where the suite carries no working structural
-// signal, which is exactly when a genuinely NEW offender hides best.
-// Pinning the CURRENT set instead makes this guard a real, live check from
-// the moment it lands: a tenth file adding a bare sail-id literal reds it
-// immediately, and Task 9 shrinking the set (correctly) ALSO reds it,
-// forcing a deliberate, reviewed update to this list rather than silent
-// drift in either direction. Task 9 should shrink this to `[]`.
-const KNOWN_OFFENDERS = [
-  'src/components/RouteLayer.tsx',
-  'src/components/RouteSummary.tsx',
-  'src/lib/gpx.ts',
-  'src/lib/plan.ts',
-  'src/lib/sessionSnapshot.ts',
-  'src/routing/planRoute.ts',
-  'src/routing/workerClient.ts',
-  'src/state/usePlanFlow.ts',
-  'src/types.ts',
-];
+// #54 Task 9: every one of the original nine offenders (RouteLayer.tsx,
+// RouteSummary.tsx, gpx.ts, plan.ts, sessionSnapshot.ts, planRoute.ts,
+// workerClient.ts, usePlanFlow.ts, types.ts) is now centralised onto
+// BOATS-derived lookups (`plan.result.sails.find(...)`, a `Record<SailId,
+// PolarTable>`, a `BOATS`-derived id list/Set, or simply no longer needing a
+// bare literal at all once genoa/fock/genoaReason/fockReason became a
+// `sails` list) — the empty array below is a live assertion, not a
+// placeholder: a NEW bare sail-id literal anywhere in app/src reds this
+// immediately. Kept as a guard against regrowth (per this file's own header
+// comment) rather than deleted now that it reached `[]`.
+const KNOWN_OFFENDERS: string[] = [];
 
 function findOffenders(): string[] {
   const ids = BOATS.flatMap((b) => b.sails.map((s) => s.id));

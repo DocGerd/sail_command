@@ -1,5 +1,12 @@
 import { safeGetItem, safeSetItem } from './storage';
-import type { Rig } from '../types';
+import type { SailId } from '../types';
+import { BOATS } from '../data/boats';
+
+// #54: derived from the BOATS catalogue rather than a hand-written
+// two-branch equality check against the two sail ids, so this stays
+// correct if a boat with a different sail set is ever added — and stays
+// out of test/sailLiteralCallSites.test.ts's KNOWN_OFFENDERS.
+const VALID_SAIL_IDS: ReadonlySet<string> = new Set(BOATS.flatMap((b) => b.sails.map((s) => s.id)));
 
 // #113 session restore: a SMALL versioned UI-session snapshot — the pointer
 // to the active plan plus the selected tab and rig choice — persisted under
@@ -33,15 +40,19 @@ export interface SessionSnapshot {
   v: 1;
   planId: string | null;
   tab: Tab;
-  rig: Rig | null;
+  // #54: field NAME unchanged (retyped only) — this is a PERSISTED
+  // localStorage schema (real users' browsers), and renaming the key would
+  // silently drop every existing snapshot's rig choice rather than parse it,
+  // a migration concern outside this task's scope.
+  rig: SailId | null;
 }
 
 function isTab(x: unknown): x is Tab {
   return x === 'plan' || x === 'routes' || x === 'live' || x === 'boat';
 }
 
-function isRig(x: unknown): x is Rig {
-  return x === 'genoa' || x === 'fock';
+function isSailId(x: unknown): x is SailId {
+  return typeof x === 'string' && VALID_SAIL_IDS.has(x);
 }
 
 // Tolerant parse (mirrors parseRecentHarbors): malformed JSON, a non-object,
@@ -68,7 +79,7 @@ export function parseSessionSnapshot(raw: string | null): SessionSnapshot | null
     if (v !== 1) return null;
     if (!isTab(tab)) return null;
     if (planId !== null && typeof planId !== 'string') return null;
-    if (rig !== null && !isRig(rig)) return null;
+    if (rig !== null && !isSailId(rig)) return null;
     return { v: 1, planId, tab, rig };
   } catch {
     return null;

@@ -7,19 +7,23 @@ import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { dedupeViaPoints, ROUTING_FAILURE_MESSAGE_KEY, routingFailureKey } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
-import type { Plan, PlanRequest, PlanResult, Rig, Settings, WindGrid } from '../types';
+import type { Plan, PlanRequest, PlanResult, SailId, Settings, WindGrid } from '../types';
 
 export type PlanningState =
   | { phase: 'idle' }
   | { phase: 'fetching-wind' }
-  // #340: `rig` is the only progress signal — the router runs genoa then
-  // fock SEQUENTIALLY (routing/planRoute.ts's `runBoth` evaluates
-  // `run('genoa', …)` then `run('fock', …)` as plain object-literal
-  // properties, both synchronous, no interleaving), so "which rig is
-  // currently solving" is an honest, bounded phase indicator — unlike the
-  // removed simulatedToMs/FORECAST_HORIZON_MS percentage, which capped
-  // around 5% and reset to 0 at this exact rig switch (#340).
-  | { phase: 'routing'; rig: Rig }
+  // #340/#54: `sailId` is the only progress signal — the router runs
+  // req.sailIds SEQUENTIALLY (routing/planRoute.ts's `runAll` maps over
+  // them, one synchronous `run()` call per element, no interleaving), so
+  // "which sail is currently solving" is an honest, bounded phase indicator
+  // — unlike the removed simulatedToMs/FORECAST_HORIZON_MS percentage, which
+  // capped around 5% and reset to 0 at every sail switch (#340). `index`/
+  // `total` are computed HERE (from the same `req.sailIds` the solve order
+  // itself follows), not read from a module constant — §E.3 deleted the old
+  // `RIG_ORDER` for exactly this reason: the request's own ordered list is
+  // the one source of truth. PlannerPanel.tsx's "sail N of 2" phase readout
+  // renders these two fields directly.
+  | { phase: 'routing'; sailId: SailId; index: number; total: number }
   // #53: the worker is probing relaxed depth gates (mask connectivity BFS)
   // after an unreachable solve at the requested safety depth. Reported so the
   // UI shows the probe phase instead of a stalled routing bar; the relaxed
@@ -228,11 +232,18 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         result = await client.plan(
           req,
           windGrid,
-          // #340: only `rig` drives the UI now (phase indication, not a
-          // percentage) — the worker's tMs/frontierSize are still throttled
-          // upstream (workerClient.ts) but no longer consumed here.
-          (rig) => {
-            transition({ phase: 'routing', rig });
+          // #340/#54: only `sailId` drives the UI now (phase indication, not
+          // a percentage) — the worker's tMs/frontierSize are still
+          // throttled upstream (workerClient.ts) but no longer consumed
+          // here. `index`/`total` are derived from req.sailIds (the solve
+          // order itself), not a module constant.
+          (sailId) => {
+            transition({
+              phase: 'routing',
+              sailId,
+              index: req.sailIds.indexOf(sailId) + 1,
+              total: req.sailIds.length,
+            });
           },
           undefined,
           () => {

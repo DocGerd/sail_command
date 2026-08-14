@@ -3,14 +3,23 @@ import { compareRigs, planRoute, RIG_TIE_BAND_MS } from './planRoute';
 import { openWaterMask, TEST_POLAR, uniformWindGrid, makeMask } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
-  RIG_ORDER,
   type Leg,
   type PlanRequest,
+  type PlanResultOk,
   type PolarTable,
-  type Rig,
   type RigResult,
+  type SailId,
 } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+
+// #54: the pre-#54 shape exposed `r.genoa`/`r.fock`/`r.genoaReason`/
+// `r.fockReason` directly.
+function sailResult(res: PlanResultOk, sailId: SailId) {
+  return res.sails.find((s) => s.sailId === sailId)?.result ?? null;
+}
+function sailReason(res: PlanResultOk, sailId: SailId) {
+  return res.sails.find((s) => s.sailId === sailId)?.reason ?? null;
+}
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
@@ -32,6 +41,7 @@ const req: PlanRequest = {
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
+  sailIds: ['genoa', 'fock'],
 };
 const deps = { polarGenoa: TEST_POLAR, polarFock: SLOW_FOCK, mask: openWaterMask() };
 
@@ -40,14 +50,16 @@ describe('planRoute', () => {
     const r = planRoute(req, uniformWindGrid(12, 0), deps);
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    expect(r.genoa).not.toBeNull();
-    expect(r.fock).not.toBeNull();
+    const genoa = sailResult(r, 'genoa');
+    const fock = sailResult(r, 'fock');
+    expect(genoa).not.toBeNull();
+    expect(fock).not.toBeNull();
     expect(r.recommended).toBe('genoa');
     // #259: SLOW_FOCK is 12% slower — a multi-minute gap on an hours-long
     // passage, decisively outside the 60 s tie band.
     expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
-    expect(r.genoa!.etaMs).toBeLessThanOrEqual(r.fock!.etaMs);
-    expect(r.genoa!.maneuverCount).toBe(r.genoa!.legs.filter((l) => l.maneuverAtStart).length);
+    expect(genoa!.etaMs).toBeLessThanOrEqual(fock!.etaMs);
+    expect(genoa!.maneuverCount).toBe(genoa!.legs.filter((l) => l.maneuverAtStart).length);
   });
 
   it('snaps origin off land and reports snapped coordinates', () => {
@@ -83,23 +95,23 @@ describe('planRoute', () => {
     expect(seen).toEqual(new Set(['genoa', 'fock']));
   });
 
-  // #340 NAMED COUPLING guard: PlannerPanel.tsx's "sail N of 2" phase readout
-  // numbers rigs using RIG_ORDER (../types.ts), which only has the router's
-  // REAL solve order if `runBoth` (this file) genuinely evaluates genoa then
-  // fock. Unlike the count-only 'reports progress per rig' test above (a
-  // Set, order-blind by construction), this records the ORDER rigs are
-  // FIRST seen in — from a real (small) solve, not from reading the source —
-  // and pins it against RIG_ORDER, so a `runBoth` reorder fails this test
-  // instead of silently mislabeling the UI. Mutation-checked: swapping
-  // `runBoth`'s two properties (fock first) turns this red with
-  // `[ 'fock', 'genoa' ]` vs. the expected `RIG_ORDER`; reverting turns it
-  // green again.
-  it('#340: solve order matches RIG_ORDER — the router genuinely solves genoa then fock', () => {
-    const order: Rig[] = [];
-    planRoute(req, uniformWindGrid(12, 0), deps, (rig) => {
-      if (!order.includes(rig)) order.push(rig);
+  // #340/#54 NAMED COUPLING guard: PlannerPanel.tsx's "sail N of 2" phase
+  // readout numbers sails using `request.sailIds` itself (types.ts;
+  // §E.3 deleted the old RIG_ORDER module constant), which only carries the
+  // router's REAL solve order if `runAll` (planRoute.ts) genuinely evaluates
+  // the request's sails in the order given. Unlike the count-only 'reports
+  // progress per rig' test above (a Set, order-blind by construction), this
+  // records the ORDER sails are FIRST seen in — from a real (small) solve,
+  // not from reading the source — and pins it against `request.sailIds`,
+  // reversed so the test is non-vacuous (under the old module constant this
+  // would still report `['genoa', 'fock']` regardless of the request).
+  it('#340/#54: solve order matches request.sailIds', () => {
+    const seen: SailId[] = [];
+    // NOTE the argument order — planRoute takes (request, windGrid, deps, onProgress).
+    planRoute({ ...req, sailIds: ['fock', 'genoa'] }, uniformWindGrid(12, 0), deps, (sailId) => {
+      if (!seen.includes(sailId)) seen.push(sailId);
     });
-    expect(order).toEqual(RIG_ORDER);
+    expect(seen).toEqual(['fock', 'genoa']); // reversed order must be honoured
   });
 
   it('recommends genoa on an exact ETA tie between rigs, but reports the comparison as a tie (#259)', () => {
@@ -107,7 +119,7 @@ describe('planRoute', () => {
     const r = planRoute(req, uniformWindGrid(12, 0), tieDeps);
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    expect(r.genoa!.etaMs).toBe(r.fock!.etaMs);
+    expect(sailResult(r, 'genoa')!.etaMs).toBe(sailResult(r, 'fock')!.etaMs);
     // `recommended` keeps resolving to a concrete rig for non-badge consumers
     // (tab-seeding, saved-plan chip) — unchanged pre-#259 behavior.
     expect(r.recommended).toBe('genoa');
@@ -124,9 +136,11 @@ describe('planRoute', () => {
     const r = planRoute(req, uniformWindGrid(0, 0), deps);
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    expect(r.genoa!.legs.length).toBeGreaterThan(0);
-    expect(r.genoa!.legs.every((l) => l.kind === 'motor')).toBe(true);
-    expect(r.fock!.legs.every((l) => l.kind === 'motor')).toBe(true);
+    const genoa = sailResult(r, 'genoa')!;
+    const fock = sailResult(r, 'fock')!;
+    expect(genoa.legs.length).toBeGreaterThan(0);
+    expect(genoa.legs.every((l) => l.kind === 'motor')).toBe(true);
+    expect(fock.legs.every((l) => l.kind === 'motor')).toBe(true);
     expect(r.rigRecommendation).toEqual({ kind: 'moot' });
   });
 
@@ -144,10 +158,10 @@ describe('planRoute', () => {
     const r = planRoute({ ...req, settings }, uniformWindGrid(12, 0), calmDeps);
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    expect(r.genoa).not.toBeNull();
-    expect(r.genoaReason).toBeNull();
-    expect(r.fock).toBeNull();
-    expect(r.fockReason).toBe('calm-motor-off');
+    expect(sailResult(r, 'genoa')).not.toBeNull();
+    expect(sailReason(r, 'genoa')).toBeNull();
+    expect(sailResult(r, 'fock')).toBeNull();
+    expect(sailReason(r, 'fock')).toBe('calm-motor-off');
   });
 });
 
@@ -184,8 +198,15 @@ describe('compareRigs (#259 tie band)', () => {
   // Minimal single-leg all-sail RigResults so isAllMotor is false for both —
   // these pins are about the ETA-gap boundary, not the moot path (covered
   // below via a real solve and via makeMotorResult).
-  const makeResult = (etaMs: number): RigResult => ({
-    rig: 'genoa',
+  //
+  // #54: `sailId` is now a real parameter (default 'genoa') rather than a
+  // hardcoded literal — compareRigs derives its `decided` winner's identity
+  // from the RigResult's OWN sailId (byte-identical for every real caller,
+  // since planRoute always hands it the sail actually solved), no longer
+  // from argument POSITION. Callers that need a specific identity for the
+  // returned winner pass it explicitly.
+  const makeResult = (etaMs: number, sailId: SailId = 'genoa'): RigResult => ({
+    sailId,
     etaMs,
     durationMs: etaMs,
     distanceNm: 10,
@@ -194,8 +215,8 @@ describe('compareRigs (#259 tie band)', () => {
     legs: [sailLeg(etaMs)],
   });
 
-  const makeMotorResult = (etaMs: number): RigResult => ({
-    rig: 'genoa',
+  const makeMotorResult = (etaMs: number, sailId: SailId = 'genoa'): RigResult => ({
+    sailId,
     etaMs,
     durationMs: etaMs,
     distanceNm: 10,
@@ -206,8 +227,8 @@ describe('compareRigs (#259 tie band)', () => {
 
   // Mixed: one sail leg + one motor leg, so isAllMotor is false — distinct
   // from both makeResult (all-sail) and makeMotorResult (all-motor).
-  const makeMixedResult = (etaMs: number): RigResult => ({
-    rig: 'genoa',
+  const makeMixedResult = (etaMs: number, sailId: SailId = 'genoa'): RigResult => ({
+    sailId,
     etaMs,
     durationMs: etaMs,
     distanceNm: 20,
@@ -246,7 +267,7 @@ describe('compareRigs (#259 tie band)', () => {
   });
 
   it('picks fock when fock is the faster (lower etaMs) rig outside the band', () => {
-    expect(compareRigs(makeResult(61_000), makeResult(0))).toEqual({
+    expect(compareRigs(makeResult(61_000), makeResult(0, 'fock'))).toEqual({
       kind: 'decided',
       rig: 'fock',
     });
@@ -278,9 +299,18 @@ describe('compareRigs (#259 tie band)', () => {
   // route that motors out of harbour and then sails the rest would render
   // "rig does not matter" — confidently wrong, not merely unqualified.
   it('a MIXED sail+motor result is not moot, even paired against an all-motor rig', () => {
-    const mixed = makeMixedResult(0);
-    const motoring = makeMotorResult(10 * 60_000);
+    const mixed = makeMixedResult(0); // sailId 'genoa' (default)
+    const motoring = makeMotorResult(10 * 60_000, 'fock');
     expect(compareRigs(mixed, motoring)).toEqual({ kind: 'decided', rig: 'genoa' });
-    expect(compareRigs(motoring, mixed)).toEqual({ kind: 'decided', rig: 'fock' });
+    // #54: compareRigs now derives the winner's identity from the RigResult
+    // itself, not argument position — `mixed` (sailId 'genoa') is still the
+    // genuinely faster result in this call too (600_000 ms vs 0 ms), so it
+    // wins again under its OWN identity regardless of which position it's
+    // passed in. This is the same real property the pre-#54 positional
+    // version could not express: swapping the two arguments here still
+    // reds under both mutations the comment above names (`.some` instead of
+    // `.every`; dropping the `isAllMotor(fock)` conjunct) — only the
+    // expected identity label changed, not what the assertion catches.
+    expect(compareRigs(motoring, mixed)).toEqual({ kind: 'decided', rig: 'genoa' });
   });
 });

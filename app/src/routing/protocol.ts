@@ -1,4 +1,4 @@
-import type { MaskMeta, PlanRequest, PlanResult, PolarTable, Rig, WindGrid } from '../types';
+import type { MaskMeta, PlanRequest, PlanResult, PolarTable, SailId, WindGrid } from '../types';
 import { NavMask } from '../lib/mask';
 import { planRoute } from './planRoute';
 
@@ -34,7 +34,7 @@ export type WorkerRequest =
 
 export type WorkerResponse =
   | { type: 'ready' }
-  | { type: 'progress'; id: string; rig: Rig; tMs: number; frontierSize: number }
+  | { type: 'progress'; id: string; sailId: SailId; tMs: number; frontierSize: number }
   // #53: one message per relaxed-depth connectivity probe (mask BFS, no solver
   // run) so the UI can show the probe phase instead of a stalled routing bar.
   | { type: 'probe'; id: string; probeDepthM: number; done: number; total: number }
@@ -77,11 +77,11 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
         req.request,
         req.windGrid,
         state,
-        (rig, info) =>
+        (sailId, info) =>
           post({
             type: 'progress',
             id: req.id,
-            rig,
+            sailId,
             tMs: info.tMs,
             frontierSize: info.frontierSize,
           }),

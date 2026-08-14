@@ -65,20 +65,27 @@ describe('router invariants', () => {
               destinationHarborId: null,
               departureMs: Date.UTC(2026, 6, 15, 6, 0, 0),
               settings: DEFAULT_SETTINGS,
+              sailIds: ['genoa', 'fock'],
             },
             makeWindGrid(() => ({ speedKn: sc.windKn, dirFromDeg: sc.windDir }), { hours: 72 }),
             { polarGenoa: TEST_POLAR, polarFock: FOCK, mask },
           );
           if (r.status !== 'ok') return true; // unreachable scenarios are legitimate
           okScenarios++;
-          for (const rig of [r.genoa, r.fock]) {
+          const genoa = r.sails.find((s) => s.sailId === 'genoa')?.result ?? null;
+          const fock = r.sails.find((s) => s.sailId === 'fock')?.result ?? null;
+          for (const rig of [genoa, fock]) {
             if (!rig) continue;
             for (let i = 0; i < rig.legs.length; i++) {
               const leg = rig.legs[i];
               // 1. no leg crosses land/shallow
-              expect(mask.segmentNavigable(leg.start, leg.end, uniformGate(DEFAULT_SETTINGS.safetyDepthM))).toBe(
-                true,
-              );
+              expect(
+                mask.segmentNavigable(
+                  leg.start,
+                  leg.end,
+                  uniformGate(DEFAULT_SETTINGS.safetyDepthM),
+                ),
+              ).toBe(true);
               // 2. times strictly increasing
               expect(leg.endTimeMs).toBeGreaterThan(leg.startTimeMs);
               if (i > 0) {
@@ -99,8 +106,8 @@ describe('router invariants', () => {
             );
           }
           // 6. recommendation is the faster rig
-          if (r.genoa && r.fock)
-            expect(r.recommended).toBe(r.genoa.etaMs <= r.fock.etaMs ? 'genoa' : 'fock');
+          if (genoa && fock)
+            expect(r.recommended).toBe(genoa.etaMs <= fock.etaMs ? 'genoa' : 'fock');
           return true;
         }),
         { numRuns: 25, seed: 42 }, // deterministic CI; bump numRuns locally when touching the router

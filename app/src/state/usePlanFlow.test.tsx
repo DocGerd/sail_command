@@ -17,7 +17,13 @@ import { __resetDbForTests, getPlan, listPlans, savePlan } from '../services/db'
 import { destinationPoint } from '../lib/geo';
 import { recalcRequest } from '../lib/recalc';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type NoRouteReason, type Plan, type PlanResultOk } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type NoRouteReason,
+  type Plan,
+  type PlanRequest,
+  type PlanResultOk,
+} from '../types';
 import type { MsgKey } from '../i18n/dict.de';
 
 const FOCK_POLAR = { ...TEST_POLAR, rig: 'fock' as const };
@@ -64,7 +70,7 @@ function fakeWorker(opts: { failInit?: boolean } = {}) {
   return w;
 }
 
-const REQ = {
+const REQ: PlanRequest = {
   // cell centers, open water throughout TEST_MASK_META (see fixtures.ts).
   origin: { lat: 54.7525, lon: 10.0025 },
   destination: { lat: 54.7525, lon: 10.3025 },
@@ -73,23 +79,29 @@ const REQ = {
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
+  sailIds: ['genoa', 'fock'],
 };
 
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
-  genoa: {
-    rig: 'genoa',
-    legs: [],
-    etaMs: REQ.departureMs + 3_600_000,
-    durationMs: 3_600_000,
-    distanceNm: 10,
-    maneuverCount: 0,
-    motorDistanceNm: 0,
-  },
-  fock: null,
-  genoaReason: null,
-  fockReason: 'calm-motor-off',
+  sails: [
+    {
+      sailId: 'genoa',
+      result: {
+        sailId: 'genoa',
+        legs: [],
+        etaMs: REQ.departureMs + 3_600_000,
+        durationMs: 3_600_000,
+        distanceNm: 10,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
+      reason: null,
+    },
+    { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+  ],
   recommended: 'genoa',
+  comparisonComplete: true,
   snappedOrigin: REQ.origin,
   snappedDestination: REQ.destination,
 };
@@ -318,9 +330,9 @@ describe('usePlanFlow', () => {
     const planMsg = findPosted(w.posted, 'plan');
 
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 1000, frontierSize: 3 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 1000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
+    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 });
 
     // A regressing tMs at a via-segment joint (ledgered) is invisible to the
     // UI now — there is no number to clamp or regress, only the rig. `now`
@@ -328,17 +340,17 @@ describe('usePlanFlow', () => {
     // message genuinely reaches onProgress rather than being swallowed.
     now += 150;
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 800, frontierSize: 4 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 800, frontierSize: 4 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
+    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 });
 
     // The genoa->fock switch: the ONLY visible change is `rig` — this is the
     // exact transition the removed percentage rendered as a reset to 0.
     now += 150;
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'fock', tMs: 200, frontierSize: 1 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'fock', tMs: 200, frontierSize: 1 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock' });
+    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'fock', index: 2, total: 2 });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
@@ -377,9 +389,9 @@ describe('usePlanFlow', () => {
 
     // The doomed requested-depth solve reaches genoa.
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 5000, frontierSize: 3 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 5000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
+    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 });
 
     // The worker starts probing relaxed depth gates (mask BFS): the UI shows
     // its own named 'probing-depth' phase, not a routing readout frozen at
@@ -394,9 +406,9 @@ describe('usePlanFlow', () => {
     // above, which is correct: restarting the same rig is not a new phase.
     now += 150; // clear the 100 ms per-rig progress throttle
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 200, frontierSize: 2 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 200, frontierSize: 2 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
+    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });

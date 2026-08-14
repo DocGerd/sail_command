@@ -11,11 +11,24 @@ import {
   DEFAULT_SETTINGS,
   type Leg,
   type Plan,
-  type Rig,
   type RigRecommendation,
   type RigResult,
+  type SailId,
+  type SailResult,
 } from '../types';
 import RouteSummary from './RouteSummary';
+
+// #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.fockReason`
+// etc. as directly-mutable fields; the `sails` list's own entries are now
+// `readonly`, so a test that used to write `plan.result.genoa = X` instead
+// REPLACES the whole `result` object (Plan.result itself is not readonly —
+// only PlanResultOk's own fields are) with a new `sails` array.
+function setSail(plan: Plan, sailId: SailId, patch: Partial<SailResult>): void {
+  plan.result = {
+    ...plan.result,
+    sails: plan.result.sails.map((s) => (s.sailId === sailId ? { ...s, ...patch } : s)),
+  };
+}
 
 const FETCHED_AT_MS = Date.UTC(2026, 6, 15, 6, 0, 0);
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0); // 2h after fetch: not stale
@@ -65,7 +78,7 @@ const GENOA_LEGS: Leg[] = [
 ];
 
 const GENOA_RESULT: RigResult = {
-  rig: 'genoa',
+  sailId: 'genoa',
   etaMs: DEPARTURE_MS + 5 * 3_600_000,
   durationMs: 5 * 3_600_000,
   distanceNm: 21.5,
@@ -75,7 +88,7 @@ const GENOA_RESULT: RigResult = {
 };
 
 const FOCK_RESULT: RigResult = {
-  rig: 'fock',
+  sailId: 'fock',
   etaMs: DEPARTURE_MS + 6 * 3_600_000,
   durationMs: 6 * 3_600_000,
   distanceNm: 22.0,
@@ -102,7 +115,7 @@ const FOCK_RESULT: RigResult = {
 function makePlan(
   overrides: {
     departureMs?: number;
-    recommended?: Rig;
+    recommended?: SailId;
     // #259: omitted by default so most tests exercise rigRecommendationOf's
     // fallback (absent field -> `{ kind: 'decided', rig: recommended }`),
     // matching every pre-#259 PlanResultOk literal elsewhere in the suite.
@@ -121,15 +134,17 @@ function makePlan(
       destinationHarborId: 'marstal',
       departureMs: overrides.departureMs ?? DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: FETCHED_AT_MS },
     result: {
       status: 'ok',
-      genoa: GENOA_RESULT,
-      fock: FOCK_RESULT,
-      genoaReason: null,
-      fockReason: null,
+      sails: [
+        { sailId: 'genoa', result: GENOA_RESULT, reason: null },
+        { sailId: 'fock', result: FOCK_RESULT, reason: null },
+      ],
       recommended: overrides.recommended ?? 'genoa',
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
       ...(overrides.rigRecommendation ? { rigRecommendation: overrides.rigRecommendation } : {}),
@@ -138,8 +153,8 @@ function makePlan(
 }
 
 function renderSummary(
-  overrides: { plan?: Plan; rig?: Rig; onRigChange?: (r: Rig) => void } = {},
-): { plan: Plan; rig: Rig; onRigChange: (r: Rig) => void; container: HTMLElement } {
+  overrides: { plan?: Plan; rig?: SailId; onRigChange?: (r: SailId) => void } = {},
+): { plan: Plan; rig: SailId; onRigChange: (r: SailId) => void; container: HTMLElement } {
   localStorage.setItem('sc-lang', 'en');
   const plan = overrides.plan ?? makePlan();
   const rig = overrides.rig ?? 'genoa';
@@ -349,7 +364,7 @@ describe('RouteSummary', () => {
 
   it('omits the motor-note footnote when the selected rig result has no legs', () => {
     const plan = makePlan();
-    plan.result.genoa = { ...GENOA_RESULT, legs: [] };
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: [] } });
     renderSummary({ plan, rig: 'genoa' });
     expect(screen.queryByText(/Motor = engine only/)).not.toBeInTheDocument();
   });
@@ -367,8 +382,7 @@ describe('RouteSummary', () => {
 
   it('renders a no-route message instead of stats/legs when the selected rig has no result', () => {
     const plan = makePlan();
-    plan.result.fock = null;
-    plan.result.fockReason = 'unreachable';
+    setSail(plan, 'fock', { result: null, reason: 'unreachable' });
     renderSummary({ plan, rig: 'fock' });
     expect(screen.getByRole('alert')).toHaveTextContent(/cannot be reached/i);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -413,7 +427,7 @@ describe('RouteSummary', () => {
 
     try {
       const plan = makePlan();
-      plan.result.genoa = { ...GENOA_RESULT, legs: [] };
+      setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: [] } });
       renderSummary({ plan, rig: 'genoa' });
 
       const button = screen.getByRole('button', { name: 'Export GPX' });
@@ -434,7 +448,10 @@ describe('shallow-water warning banner (#53/#452)', () => {
   // not have caught its absence).
   function makeShallowPlan(): Plan {
     const plan = makePlan();
-    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 };
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+    };
     return plan;
   }
 
@@ -581,8 +598,11 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
 
   function makeShallowPlan(legs: Leg[]): Plan {
     const plan = makePlan();
-    plan.result.genoa = { ...GENOA_RESULT, legs };
-    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 1.9 };
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs } });
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 1.9 },
+    };
     return plan;
   }
 
@@ -622,7 +642,10 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
     // above), but nothing in the table is flagged, so the locator sentence
     // must fail safe rather than render a nonsensical "0 legs" sentence.
     const plan = makePlan();
-    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 };
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+    };
     renderSummary({ plan });
     const banner = screen.getByText(/was not passable/);
     expect(banner.textContent).not.toContain('starts at');
@@ -630,8 +653,7 @@ describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
 
   it('omits the locator sentence when the active tab’s own rig has no result', () => {
     const plan = makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS);
-    plan.result.fock = null;
-    plan.result.fockReason = 'unreachable';
+    setSail(plan, 'fock', { result: null, reason: 'unreachable' });
     renderSummary({ plan, rig: 'fock' });
     const banner = screen.getByText(/was not passable/);
     expect(banner.textContent).not.toContain('starts at');
@@ -698,8 +720,11 @@ describe('#493: cautious depth disclosure', () => {
 
   function makeLegPlan(): Plan {
     const plan = makePlan();
-    plan.result.genoa = { ...GENOA_RESULT, legs: ONE_SHALLOW_LEG };
-    plan.result.shallow = { requestedDepthM: 3.5, usedDepthM: 2.9, minGateDepthM: 2.6 };
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: ONE_SHALLOW_LEG } });
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.5, usedDepthM: 2.9, minGateDepthM: 2.6 },
+    };
     return plan;
   }
 
@@ -750,7 +775,10 @@ describe('#493: cautious depth disclosure', () => {
 
     function makeSeverityPlan(usedDepthM: number): Plan {
       const plan = makePlan();
-      plan.result.shallow = { requestedDepthM: 3.5, usedDepthM, minGateDepthM: 2.6 };
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.5, usedDepthM, minGateDepthM: 2.6 },
+      };
       return plan;
     }
 

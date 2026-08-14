@@ -28,19 +28,24 @@ const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
-  genoa: {
-    rig: 'genoa',
-    legs: [],
-    etaMs: DEPARTURE_MS + 3_600_000,
-    durationMs: 3_600_000,
-    distanceNm: 10,
-    maneuverCount: 0,
-    motorDistanceNm: 0,
-  },
-  fock: null,
-  genoaReason: null,
-  fockReason: 'calm-motor-off',
+  sails: [
+    {
+      sailId: 'genoa',
+      result: {
+        sailId: 'genoa',
+        legs: [],
+        etaMs: DEPARTURE_MS + 3_600_000,
+        durationMs: 3_600_000,
+        distanceNm: 10,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
+      reason: null,
+    },
+    { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+  ],
   recommended: 'genoa',
+  comparisonComplete: true,
   snappedOrigin: ORIGIN,
   snappedDestination: DESTINATION,
 };
@@ -59,6 +64,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
       destinationHarborId: null,
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
     },
     windGrid,
     result: OK_RESULT,

@@ -1,25 +1,20 @@
 import { defaultSafetyDepthM } from './lib/boatDepth';
-import { boatById, DEFAULT_BOAT_ID } from './data/boats';
+import { boatById, DEFAULT_BOAT_ID, type SailId } from './data/boats';
+
+// #54: re-exported so every existing `import type { ... } from '../types'`
+// call site keeps working unchanged — SailId is DEFINED in data/boats.ts
+// (derived from the BOATS catalogue, spec §E.3) and types.ts is the neutral
+// domain-type layer the rest of the app already imports from. Never
+// redeclare a second, hand-written sail-id union here — that would
+// silently drift from the catalogue the moment a boat with a different sail
+// set is added.
+export type { SailId };
 
 export interface LatLon {
   lat: number;
   lon: number;
 }
 
-export type Rig = 'genoa' | 'fock';
-
-// #340 NAMED COUPLING: the router's actual, fixed solve order. This constant
-// is ENFORCED equal to the real runtime order by
-// routing/planRoute.test.ts's "#340: solve order matches RIG_ORDER" guard
-// test, which observes the ACTUAL order rigs report progress in from a real
-// (small) solve — not merely documented by comment. The real order is set by
-// routing/planRoute.ts's `runBoth`, which evaluates `run('genoa', …)` then
-// `run('fock', …)` as plain, synchronous object-literal properties (no
-// interleaving) — see the NAMED COUPLING comment there. If `runBoth`'s
-// property order is ever swapped, the guard test fails red; this array's
-// order must be swapped to match, never the other way around. Consumed by
-// PlannerPanel.tsx for the "sail N of 2" phase readout numbering (#340).
-export const RIG_ORDER: readonly Rig[] = ['genoa', 'fock'];
 export type Board = 'port' | 'starboard';
 export type LegKind = 'sail' | 'motor';
 export type ManeuverKind = 'tack' | 'gybe';
@@ -83,7 +78,12 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export interface PolarTable {
-  rig: Rig;
+  // Field NAME unchanged (retyped only) — this is exactly the shape the
+  // committed pipeline output (app/public/data/polar-genoa.json and
+  // polar-fock.json) ships on disk (a "rig" key naming the sail), so
+  // renaming the field would desync runtime JSON parsing from the type
+  // with no compiler to catch it.
+  rig: SailId;
   boat: string;
   tws: number[]; // knots, ascending
   twa: number[]; // degrees 0..180, ascending
@@ -144,7 +144,8 @@ export type Leg =
   | (LegCommon & { kind: 'motor'; board: null; maneuverAtStart: null });
 
 export interface RigResult {
-  rig: Rig;
+  // #54: renamed from `rig` — nothing else about this interface changes.
+  sailId: SailId;
   legs: Leg[];
   etaMs: number;
   durationMs: number;
@@ -160,7 +161,10 @@ export interface RigResult {
 // neither rig's polar drove a single leg (both routes are entirely motor), so
 // the polar comparison itself is meaningless — a STRONGER statement than
 // 'tie'. `erasableSyntaxOnly` forbids enums, hence the string-literal union.
-export type RigRecommendation = { kind: 'decided'; rig: Rig } | { kind: 'tie' } | { kind: 'moot' };
+// #54: still BINARY (its `rig` field name is unchanged) — spec §J OQ-3 caps
+// comparison at 2 sails for release-1; do not generalise this to N-way.
+export type RigRecommendation =
+  { kind: 'decided'; rig: SailId } | { kind: 'tie' } | { kind: 'moot' };
 
 export type NoRouteReason =
   | 'unreachable' // frontier died against land/depth everywhere
@@ -184,6 +188,12 @@ export interface PlanRequest {
   destinationHarborId: string | null;
   departureMs: number;
   settings: Settings;
+  // #54: the plan's selected sails, IN SOLVE ORDER — this list, not a module
+  // constant, is now the source of truth for the order planRoute.ts solves
+  // sails in (spec §E.3; replaces the deleted RIG_ORDER). Capped at 2 for
+  // release-1 (spec §J OQ-3) — RigRecommendation stays binary and is not
+  // generalised to N-way.
+  readonly sailIds: readonly SailId[];
 }
 
 // #53 graceful degradation below safety depth: when a plan only routes at a
@@ -195,47 +205,60 @@ export interface ShallowInfo {
   minGateDepthM: number; // shallowest charted cell actually traversed below requestedDepthM
 }
 
+// #54: one entry per requested sail (PlanRequest.sailIds order). Replaces
+// the old fixed genoa/fock/genoaReason/fockReason quartet on PlanResultOk —
+// declared exactly this way because Tasks 8 (the sweep's canonicalising
+// comparator), 10b (partial results on budget exhaustion) and 11 (plan
+// migration) all depend on this shape.
+export interface SailResult {
+  readonly sailId: SailId;
+  readonly result: RigResult | null; // null if that sail found no route
+  // why a null sail found no route ("every result is user-visible" needs the
+  // reason, not just the absence); null when the sail has a result.
+  readonly reason: NoRouteReason | null;
+}
+
 export interface PlanResultOk {
-  status: 'ok';
-  // planRoute guarantees at least one of genoa/fock is non-null when status is 'ok'
-  // (both-failed returns status 'error' instead).
-  genoa: RigResult | null; // null if that rig found no route
-  fock: RigResult | null;
+  readonly status: 'ok';
+  // planRoute guarantees at least one entry's `result` is non-null when
+  // status is 'ok' (both-failed returns status 'error' instead).
+  readonly sails: readonly SailResult[];
+  readonly recommended: SailId;
+  // #54/Task 10b: true unless a sail's solve was cut short by the plan's
+  // wall-clock budget before every requested sail could be compared — always
+  // true in this task, since no code path here produces a partial result yet.
+  readonly comparisonComplete: boolean;
   // #53: present only when the route required relaxing the depth gate below
-  // the requested safety depth. One value for the whole plan — both rigs
-  // solve at the same relaxed gate by construction. exactOptionalPropertyTypes:
+  // the requested safety depth. One value for the whole plan — every sail
+  // solves at the same relaxed gate by construction. exactOptionalPropertyTypes:
   // omitted entirely when no relaxation happened, never set to undefined.
-  shallow?: ShallowInfo;
-  // why a null rig found no route ("both results are user-visible" needs the
-  // reason, not just the absence); null when the rig has a result
-  genoaReason: NoRouteReason | null;
-  fockReason: NoRouteReason | null;
-  recommended: Rig;
+  readonly shallow?: ShallowInfo;
   // #259: present whenever planRoute computed the honest comparison (every
   // plan solved after #259 landed). Optional so pre-#259 PlanResultOk
   // literals across the test suite keep typechecking unchanged.
   // exactOptionalPropertyTypes: omitted entirely when absent, never assigned
   // undefined. Absence is resolved via a single fallback,
   // `rigRecommendationOf()` in lib/resultSummary.ts — never re-derive it
-  // ad hoc at a call site.
-  rigRecommendation?: RigRecommendation;
-  snappedOrigin: LatLon;
-  snappedDestination: LatLon;
+  // ad hoc at a call site. #54: still binary (spec §J OQ-3) — unchanged by
+  // the sails-list rename.
+  readonly rigRecommendation?: RigRecommendation;
+  readonly snappedOrigin: LatLon;
+  readonly snappedDestination: LatLon;
 }
 
-// Returns the recommended rig's RigResult. Throws rather than fabricating an
-// ETA if the recommended rig's result is null — status 'ok' guarantees the
-// recommended rig has a non-null result (both-failed is a status 'error'
+// Returns the recommended sail's RigResult. Throws rather than fabricating an
+// ETA if the recommended sail's result is null — status 'ok' guarantees the
+// recommended sail has a non-null result (both-failed is a status 'error'
 // instead), so a null here means that invariant was violated upstream and
 // callers must not paper over it with a fallback like the departure time.
 export function recommendedResult(result: PlanResultOk): RigResult {
-  const rig = result.recommended === 'genoa' ? result.genoa : result.fock;
-  if (!rig) {
+  const entry = result.sails.find((s) => s.sailId === result.recommended);
+  if (!entry?.result) {
     throw new Error(
-      `invariant violated: recommended rig '${result.recommended}' has a null result`,
+      `invariant violated: recommended sail '${result.recommended}' has a null result`,
     );
   }
-  return rig;
+  return entry.result;
 }
 
 export interface PlanResultError {

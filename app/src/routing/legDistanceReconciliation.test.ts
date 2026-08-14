@@ -7,8 +7,13 @@ import { haversineNm } from '../lib/geo';
 import { planRoute } from './planRoute';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS } from '../types';
-import type { Leg, LatLon, MaskMeta, PolarTable } from '../types';
+import type { Leg, LatLon, MaskMeta, PlanResultOk, PolarTable, SailId } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+
+// #54: the pre-#54 shape exposed `res.genoa`/`res.fock` directly.
+function sailResult(res: PlanResultOk, sailId: SailId) {
+  return res.sails.find((s) => s.sailId === sailId)?.result ?? null;
+}
 
 // #379 asks that per-leg distance be "reconciled against the plan total".
 //
@@ -149,13 +154,14 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const genoa = res.genoa;
+    const genoa = sailResult(res, 'genoa');
     expect(genoa).not.toBeNull();
     if (!genoa) return;
 
@@ -245,13 +251,14 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const fock = res.fock;
+    const fock = sailResult(res, 'fock');
     expect(fock).not.toBeNull();
     if (!fock) return;
 
@@ -290,13 +297,14 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
       { polarGenoa, polarFock, mask },
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const genoa = res.genoa;
+    const genoa = sailResult(res, 'genoa');
     expect(genoa).not.toBeNull();
     if (!genoa) return;
     expect(isochroneMergedLegCount(genoa.legs)).toBeGreaterThan(0);

@@ -12,7 +12,7 @@ import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import { useNavMask } from '../state/useNavMask';
 import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import type { MsgKey } from '../i18n/dict.de';
-import type { Board, Leg, NoRouteReason, Plan, Rig, ShallowInfo } from '../types';
+import type { Board, Leg, NoRouteReason, Plan, SailId, ShallowInfo } from '../types';
 import Card from './Card';
 import Chip from './Chip';
 import Button from './Button';
@@ -226,14 +226,12 @@ export function ShallowWarning({
 
 export interface RouteSummaryProps {
   plan: Plan;
-  rig: Rig;
-  onRigChange: (rig: Rig) => void;
+  rig: SailId;
+  onRigChange: (rig: SailId) => void;
   // #64 phase 3: focus target for the Plan-tab "Details ansehen" link — App
   // forwards it onto the Ergebnis card heading (tabIndex -1, focused on jump).
   resultHeadingRef?: Ref<HTMLHeadingElement>;
 }
-
-const RIGS: Rig[] = ['genoa', 'fock'];
 
 // Okabe-Ito colorblind-safe green/red, echoing the port/starboard nav-light
 // convention. Mirrored in RouteLayer.tsx's line-color paint expression.
@@ -247,11 +245,13 @@ function pointOfSailKey(twaDeg: number): MsgKey {
   return 'route.pointOfSail.run';
 }
 
-function reasonForRig(plan: Plan, rig: Rig): NoRouteReason | null {
-  return rig === 'genoa' ? plan.result.genoaReason : plan.result.fockReason;
+// #54: derived from `plan.result.sails` instead of a genoa/fock ternary —
+// naturally centralises without a bare sail-id literal.
+function reasonForRig(plan: Plan, rig: SailId): NoRouteReason | null {
+  return plan.result.sails.find((s) => s.sailId === rig)?.reason ?? null;
 }
 
-function LegKindChip({ leg, rig }: { leg: Leg; rig: Rig }) {
+function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
   const t = useT();
   if (leg.kind === 'motor') {
     return <span className="chip chip-motor">{t('route.kind.motor')}</span>;
@@ -307,7 +307,7 @@ function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
   );
 }
 
-function downloadGpx(plan: Plan, rig: Rig): void {
+function downloadGpx(plan: Plan, rig: SailId): void {
   const xml = toGpx(plan, rig);
   const blob = new Blob([xml], { type: 'application/gpx+xml' });
   const url = URL.createObjectURL(blob);
@@ -344,6 +344,12 @@ export default function RouteSummary({
   // correctly when viewing a tab whose own rig failed to solve (star/chip
   // render unconditionally below, matching the pre-#259 architecture).
   const rigRecommendation = rigRecommendationOf(plan.result);
+  // #54: the tab list is every sail THIS plan actually requested (plan is a
+  // required prop, so this is always available) — replaces the old
+  // module-level RIGS two-element array literal. Byte-identical today
+  // (every plan solves exactly the same two sails req.sailIds always
+  // carries) and correctly generalises if that ever changes.
+  const sailTabs = plan.result.sails.map((s) => s.sailId);
 
   return (
     <Card
@@ -353,7 +359,7 @@ export default function RouteSummary({
       titleTabIndex={-1}
     >
       <div role="tablist" aria-label={t('route.rigTabs')} className="rig-tabs">
-        {RIGS.map((r) => (
+        {sailTabs.map((r) => (
           <button
             key={r}
             type="button"

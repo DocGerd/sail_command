@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_SETTINGS,
   type Plan,
-  type Rig,
   type RigRecommendation,
   type RigResult,
+  type SailId,
 } from '../types';
 import { uniformWindGrid } from '../test/fixtures';
 import { formatDateTime } from './format';
@@ -12,7 +12,7 @@ import { averageSpeedKn, resultSummary, rigRecommendationOf } from './resultSumm
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 
-function makePlan(recommended: Rig, rigRecommendation?: RigRecommendation): Plan {
+function makePlan(recommended: SailId, rigRecommendation?: RigRecommendation): Plan {
   return {
     id: 'plan-1',
     name: 'Test',
@@ -25,14 +25,16 @@ function makePlan(recommended: Rig, rigRecommendation?: RigRecommendation): Plan
       destinationHarborId: null,
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: DEPARTURE_MS },
     result: {
       status: 'ok',
-      genoa: null,
-      fock: null,
-      genoaReason: null,
-      fockReason: null,
+      // rigRecommendationOf (the only consumer of `.result` here) never
+      // reads `.sails` — the tests exercise resultSummary() with an
+      // independently-passed RigResult instead (see rigResult() below).
+      sails: [],
+      comparisonComplete: true,
       recommended,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
@@ -45,7 +47,7 @@ function makePlan(recommended: Rig, rigRecommendation?: RigRecommendation): Plan
 
 function rigResult(over: Partial<RigResult>): RigResult {
   return {
-    rig: 'genoa',
+    sailId: 'genoa',
     legs: [],
     etaMs: DEPARTURE_MS + 5 * 3_600_000,
     durationMs: 5 * 3_600_000,

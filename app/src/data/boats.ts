@@ -99,3 +99,18 @@ export function boatById(id: BoatId): BoatDef {
   if (!b) throw new Error(`unknown boat id: ${id}`);
   return b;
 }
+
+// #54: the default boat's full sail set, in catalogue order — used to seed
+// PlanRequest.sailIds at the one production call site that builds a brand
+// new request with no prior plan to inherit the solve order from
+// (App.tsx's handlePlan). Task 11's PlanRequest.boat snapshot will replace
+// this with a per-boat lookup once boat selection is user-facing; today
+// there is exactly one boat, so this and boatById(DEFAULT_BOAT_ID).sails
+// name the same set.
+// Cast is safe: boatById(DEFAULT_BOAT_ID) always resolves to a real entry of
+// the const `BOATS` array below, whose sail ids ARE the SailId union by
+// construction — `BoatDef.sails[].id` is typed as plain `string` (SailDef is
+// the general per-boat shape, not narrowed to any one boat's literal ids).
+export const DEFAULT_SAIL_IDS: readonly SailId[] = boatById(DEFAULT_BOAT_ID).sails.map(
+  (s) => s.id as SailId,
+);

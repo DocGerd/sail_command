@@ -4,6 +4,15 @@ import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Plan } from '../types';
 
 function makePlan(departureMs: number, fetchedAtMs: number): Plan {
+  const genoaResult = {
+    sailId: 'genoa' as const,
+    legs: [],
+    etaMs: departureMs + 3_600_000,
+    durationMs: 3_600_000,
+    distanceNm: 5,
+    maneuverCount: 0,
+    motorDistanceNm: 0,
+  };
   return {
     id: 'plan-1',
     name: 'Test Plan',
@@ -16,25 +25,19 @@ function makePlan(departureMs: number, fetchedAtMs: number): Plan {
       destinationHarborId: null,
       departureMs,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs },
     result: {
       status: 'ok',
       recommended: 'genoa',
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.8, lon: 9.5 },
       snappedDestination: { lat: 54.9, lon: 9.7 },
-      genoa: {
-        rig: 'genoa',
-        legs: [],
-        etaMs: departureMs + 3_600_000,
-        durationMs: 3_600_000,
-        distanceNm: 5,
-        maneuverCount: 0,
-        motorDistanceNm: 0,
-      },
-      fock: null,
-      genoaReason: null,
-      fockReason: 'unreachable',
+      sails: [
+        { sailId: 'genoa', result: genoaResult, reason: null },
+        { sailId: 'fock', result: null, reason: 'unreachable' },
+      ],
     },
   };
 }
@@ -63,7 +66,7 @@ describe('activeRigResult', () => {
   const plan = makePlan(Date.UTC(2026, 6, 15, 8, 0, 0), Date.UTC(2026, 6, 15, 6, 0, 0));
 
   it('returns the RigResult for a rig that has one', () => {
-    expect(activeRigResult(plan, 'genoa')).toBe(plan.result.genoa);
+    expect(activeRigResult(plan, 'genoa')).toBe(plan.result.sails[0].result);
   });
 
   it('returns null (not a throw) for a rig with no route', () => {
