@@ -1035,7 +1035,7 @@ GREP_EXTRA_REJECTED=(
 # adding two quote characters. The single-quoted spellings were caught, which
 # is exactly why one-layer stripping looked sufficient here.
 grep_readonly_ok() {
-  local cmd="$1" tok p bare
+  local cmd="$1" tok p bare nq
   local IFS=$' \t'
   local -a toks
   read -ra toks <<<"$cmd"
@@ -1047,15 +1047,26 @@ grep_readonly_ok() {
     # expands it to the real option first (`[-]-pager` -> `--pager`,
     # measured). Same class as BLOCKER 1, third appearance at this site.
     #
-    # TESTED ON THE RAW TOKEN, NOT ON `bare`, and the difference is
-    # load-bearing rather than an inconsistency with sed_readonly_ok's
-    # operand check below: a QUOTED leading metachar is not a glob at all, so
-    # `grep '[0-9]' <protected>` cannot expand to anything and must stay
-    # exempt - testing `bare` there would strip the quotes and reject an
-    # ordinary bracket-expression PATTERN, which is a normal way to read a
-    # file. The raw first character is exactly the discriminator: a quote in
-    # front means the shell will not expand it. Both cases have selftest rows.
-    case "$tok" in '*'*|'?'*|'['*) return 1 ;; esac
+    # NOT TESTED ON `bare`, and the difference is load-bearing rather than an
+    # inconsistency with sed_readonly_ok's operand check below: a metachar
+    # that is itself QUOTED is not a glob at all, so `grep '[0-9]'
+    # <protected>` cannot expand to anything and must stay exempt - testing
+    # `bare` there would strip the quotes and reject an ordinary
+    # bracket-expression PATTERN, a normal way to read a file.
+    #
+    # WHAT DISCRIMINATES IS WHETHER THE METACHAR IS QUOTED, not whether the
+    # token starts with a quote (PR #532 round-2 review, MINOR D - the
+    # earlier form of this comment asserted the latter and it is FALSE).
+    # MEASURED, since the two look alike and behave differently:
+    #     [-]i -> -i      ''[-]i -> -i      ""[-]i -> -i      'a'[-]i -> a[-]i
+    # An EMPTY quote pair contributes nothing to the word, so the metachar
+    # after it is still a live pattern; only a NON-empty quoted prefix puts a
+    # literal character in front and makes a leading `-` unreachable. So the
+    # empty pairs are removed first and the leading-metachar test applies to
+    # what is left. Measured on `618d691`, before this: `grep ''[-]-pager foo
+    # <build output>` and `grep ''[-]Q foo <spec>` were both SILENT.
+    nq=${tok//\'\'/}; nq=${nq//\"\"/}
+    case "$nq" in '*'*|'?'*|'['*) return 1 ;; esac
     bare=${tok//\'/}; bare=${bare//\"/}
     for p in "${GREP_SHIM_INTERCEPTED[@]}" "${GREP_EXTRA_REJECTED[@]}"; do
       # shellcheck disable=SC2254  # $p IS a glob pattern here, by construction
@@ -1195,6 +1206,16 @@ sed_readonly_ok() {
     # exactly why `sed -n '1,40p' app/public/data/*.json` stays exempt: it
     # globs, but it cannot glob to a flag - and there is a selftest row
     # holding that, so this cannot later be over-broadened to "any glob".
+    #
+    # THIS TEST USES `bare`, where grep_readonly_ok's twin uses the token with
+    # only EMPTY quote pairs removed, and the asymmetry cuts both ways. Stated
+    # rather than fixed (PR #532 round-2 review): here a fully-quoted bracket
+    # FILENAME is not a glob at all, yet stripping every quote makes it look
+    # like one, so `sed -n 5p <build output> '[0-9].txt'` ADVISES - measured.
+    # That is the safe direction and costs nothing real (a file so named is
+    # vanishingly rare, and the cost is one advisory, never a block), so it is
+    # deliberately left alone; the grep site cannot afford the same over-fire
+    # because a quoted bracket expression there is an ordinary PATTERN.
     bare=${tok//\'/}; bare=${bare//\"/}; case "$bare" in -*|'*'*|'?'*|'['*) return 1 ;; esac
   done
   # Fail-closed default for a sed call that never produced a script token
@@ -1401,7 +1422,13 @@ if [ "${1:-}" = "--selftest" ]; then
   # bracket-expression pattern - so "reject a leading metachar" cannot be
   # over-broadened into "reject any glob" without a row going red. MINOR C
   # repointed an existing row's path and moved the count by 0.
-  EXPECTED_CASES=270
+  # (PR #532 round-2 review) 270 -> 275, +5: TWO for MINOR E (the grep site's
+  # `*` and `?` alternatives each reddened 0 rows - unpinned, where the sed
+  # site pinned all three of its metachars), and THREE for MINOR D (both
+  # `''[-]…` spellings, which an empty quote pair leaves globbing, plus the
+  # bounding row proving a NON-empty quoted prefix still suppresses it, so
+  # the fix cannot be over-broadened back onto ordinary quoted patterns).
+  EXPECTED_CASES=275
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2044,6 +2071,22 @@ if [ "${1:-}" = "--selftest" ]; then
   # past every dash-anchored mirror pattern. `[-]Q` reaches the TUI entry.
   decide advisory "#532A grep glob [-]-pager -> --pager"            "grep [-]-pager app/public/data/mask.bin"
   decide ask      "#532A grep glob [-]Q -> -Q (SPEC ARM)"           "grep [-]Q docs/superpowers/specs/x.md"
+  # (MINOR E) The sed site pins all three of its metachars; this site had rows
+  # for `[` only, so its `*` and `?` alternatives could each be deleted with
+  # the whole suite still green - MEASURED at 0 rows red apiece. That is the
+  # rule this block's own header states, unapplied at one of the two sites.
+  decide advisory "#532E grep glob ?-pager (pins the '?' alternative)" "grep ?-pager app/public/data/mask.bin"
+  decide advisory "#532E grep glob *-pager (pins the '*' alternative)" "grep *-pager app/public/data/mask.bin"
+  # (MINOR D) An EMPTY quote pair does not suppress globbing - `''[-]i`
+  # expands to `-i` exactly as `[-]i` does (measured) - so these must fire
+  # too. They were SILENT on `618d691`.
+  decide advisory "#532D grep ''[-]-pager (empty pair does not quote it)" "grep ''[-]-pager foo app/public/data/mask.bin"
+  decide ask      "#532D grep ''[-]Q (SPEC ARM)"                    "grep ''[-]Q foo docs/superpowers/specs/x.md"
+  # ... while a NON-empty quoted prefix genuinely does make a leading dash
+  # unreachable (`'x'[-]y` -> `x[-]y`), so this stays exempt. Without this row
+  # the MINOR D fix could be over-broadened back to "any token containing a
+  # metachar" with nothing noticing.
+  decide_exempt "#532D quoted PREFIX really does suppress the glob"  "grep 'x'[-]y app/public/data/harbors.json"
   # BOUNDING ROWS, so "reject a leading metachar" cannot later be
   # over-broadened into "reject any glob". A token starting with an ORDINARY
   # character globs only to names starting with that character, so it can
