@@ -902,19 +902,30 @@ WRITE_CAPABLE_TOKENS=(
 # `grep '--filter=x' f` tokenises to `'--filter=x'`, which starts with a quote
 # rather than a dash and would slip past every dash-anchored pattern below.
 #
-# TWO STRENGTHS, DELIBERATELY, and the difference is the whole of PR #532's
-# BLOCKER 1 - do not "tidy" them into one without reading this:
-#   * WHEREVER A TOKEN IS CLASSIFIED as flag-vs-operand, or matched against
-#     the grep mirror, EVERY `'` and `"` is removed inline
-#     (`bare=${tok//\'/}; bare=${bare//\"/}`). Nothing weaker is sound. The
-#     shell removes quotes ENTIRELY before the program sees a word, so
-#     `""-i""` and `'-i'` both reach sed as `-i`; one-layer stripping leaves
-#     a quote in front of the doubled form and classifies it as an operand.
-#     MEASURED both ways.
-#   * THE SED SCRIPT TOKEN keeps unquote_token()'s ONE layer below. That is
-#     the conservative direction and is kept on purpose: the script whitelist
-#     accepts three narrow shapes that contain no quote character at all, so
-#     a residual quote can only make a script FAIL to match, i.e. over-fire.
+# THREE SITES, THREE STRENGTHS, DELIBERATELY - do not "tidy" them into one
+# without reading this. (CORRECTED, PR #532 re-review MINOR B: this bullet
+# used to open "WHEREVER A TOKEN IS CLASSIFIED as flag-vs-operand ... EVERY
+# quote is removed", which was FALSE - it named a rule the third site does not
+# follow, so a reader checking whether a site was handled got the wrong
+# answer from the very comment written to stop a bad "tidy".)
+#   * SED'S POST-SCRIPT OPERAND CHECK, and the grep mirror match, strip EVERY
+#     `'` and `"` inline (`bare=${tok//\'/}; bare=${bare//\"/}`). Nothing
+#     weaker is sound there. The shell removes quotes ENTIRELY before the
+#     program sees a word, so `""-i""` and `'-i'` both reach sed as `-i`;
+#     one-layer stripping leaves a quote in front of the doubled form and
+#     classifies it as an operand. MEASURED both ways. Both sites additionally
+#     reject a token whose RAW first character is a glob metachar (MAJOR A).
+#   * SED'S PRE-SCRIPT FLAG BRANCH is the third site and is deliberately RAW -
+#     it classifies `$tok` itself, with no stripping at all. Safe because it
+#     fails toward FIRING: a quoted flag matches neither `--*` nor `-*`, so it
+#     falls through and is taken as the SCRIPT, where the whitelist rejects it.
+#     `sed '-n' 5p <protected>` therefore advises rather than suppressing -
+#     an over-fire, which is the accepted direction. Adding stripping here
+#     would be a LOOSENING, not a hardening, so it needs its own argument.
+#   * THE SED SCRIPT TOKEN keeps unquote_token()'s ONE layer below. Also the
+#     conservative direction and kept on purpose: the script whitelist accepts
+#     three narrow shapes that contain no quote character at all, so a
+#     residual quote can only make a script FAIL to match, i.e. over-fire.
 #     `sed -n ""5p"" f` fires; it does not slip through.
 #
 # CORRECTED (PR #532 review, MAJOR 2): an earlier revision of this comment
@@ -1029,6 +1040,22 @@ grep_readonly_ok() {
   local -a toks
   read -ra toks <<<"$cmd"
   for tok in "${toks[@]}"; do
+    # MAJOR A's glob route reaches THIS site too, and was measured silent
+    # here as well: `grep [-]-pager <path>`, `grep ?-pager <path>` and
+    # `grep [-]Q <spec>` were all exempt on `19de1f5`, because a leading
+    # metachar matches none of the dash-anchored patterns while the shell
+    # expands it to the real option first (`[-]-pager` -> `--pager`,
+    # measured). Same class as BLOCKER 1, third appearance at this site.
+    #
+    # TESTED ON THE RAW TOKEN, NOT ON `bare`, and the difference is
+    # load-bearing rather than an inconsistency with sed_readonly_ok's
+    # operand check below: a QUOTED leading metachar is not a glob at all, so
+    # `grep '[0-9]' <protected>` cannot expand to anything and must stay
+    # exempt - testing `bare` there would strip the quotes and reject an
+    # ordinary bracket-expression PATTERN, which is a normal way to read a
+    # file. The raw first character is exactly the discriminator: a quote in
+    # front means the shell will not expand it. Both cases have selftest rows.
+    case "$tok" in '*'*|'?'*|'['*) return 1 ;; esac
     bare=${tok//\'/}; bare=${bare//\"/}
     for p in "${GREP_SHIM_INTERCEPTED[@]}" "${GREP_EXTRA_REJECTED[@]}"; do
       # shellcheck disable=SC2254  # $p IS a glob pattern here, by construction
@@ -1150,7 +1177,25 @@ sed_readonly_ok() {
     # layer leaves a quote in front. Removing every `'` and `"` is what makes
     # the classification survive quoting, which is the condition the flag /
     # operand split silently depended on.
-    bare=${tok//\'/}; bare=${bare//\"/}; case "$bare" in -*) return 1 ;; esac
+    #
+    # A GLOB IS THE OTHER ROUTE TO A LEADING DASH (PR #532 re-review, MAJOR
+    # A). `*`, `?`, `[` and `]` are NOT in WRITE_CAPABLE_CHARS, so nothing
+    # above touches them and the SHELL expands the token before sed runs.
+    # MEASURED: with a file named `-i` in cwd, `[-]i`, `?i` and `*i` each
+    # expand to `-i` (`eval "printf '[%s] ' [-]i ?i *i"` -> `[-i] [-i] [-i]`)
+    # and `sed -n 5p target.txt [-]i` truncated a 6-line file to 1 line
+    # (sha 7f79f17927b4 -> bef8bdde4942). All four spellings were SILENT, the
+    # SPEC arm included. It is graded below BLOCKER 1 only because it needs an
+    # attacker-placed filename, where the quoted form needed no preconditions.
+    # WHY THE FIRST CHARACTER IS THE WHOLE TEST: only a token whose FIRST
+    # character is a metachar can expand to something starting with `-`. A
+    # token starting with an ordinary character can only match names starting
+    # with that character, and every other route to a leading dash (`$`, `\`,
+    # backtick, `{`, `}`, `(`, `!`) is already disqualified upstream. That is
+    # exactly why `sed -n '1,40p' app/public/data/*.json` stays exempt: it
+    # globs, but it cannot glob to a flag - and there is a selftest row
+    # holding that, so this cannot later be over-broadened to "any glob".
+    bare=${tok//\'/}; bare=${bare//\"/}; case "$bare" in -*|'*'*|'?'*|'['*) return 1 ;; esac
   done
   # Fail-closed default for a sed call that never produced a script token
   # (`sed -n`). UNPINNABLE BY CONSTRUCTION, and deliberately kept anyway: a
@@ -1350,7 +1395,13 @@ if [ "${1:-}" = "--selftest" ]; then
   # quoted FILENAME; and three for GREP_EXTRA_REJECTED (`-Q`, bundled `-nQ`,
   # `--query`) - one per entry in that array, since an entry no row exercises
   # can be deleted with the suite still green.
-  EXPECTED_CASES=261
+  # (PR #532 re-review, MAJOR A) 261 -> 270, +9: four sed glob rows (`[-]i`
+  # on both arms, `?i`, `*i`), two for the SAME route at the grep site, and
+  # three bounding rows - a legitimate glob read per site, plus a quoted
+  # bracket-expression pattern - so "reject a leading metachar" cannot be
+  # over-broadened into "reject any glob" without a row going red. MINOR C
+  # repointed an existing row's path and moved the count by 0.
+  EXPECTED_CASES=270
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -1967,9 +2018,43 @@ if [ "${1:-}" = "--selftest" ]; then
   decide ask      "#532 grep mixed-quote '--save-config' (SPEC ARM)" "grep \"'--save-config=x'\" docs/superpowers/specs/x.md"
   # BOUNDING ROW: stripping every quote must not start firing on an ordinary
   # QUOTED FILENAME operand, which is the obvious over-fire the fix could
-  # have introduced. Without this row the fix could be over-broadened with
-  # nothing noticing.
-  decide_exempt "#532 quoted filename operand must stay exempt"    "sed -n 5p 'app/public/data/mask.bin'"
+  # have introduced.
+  # PATH REPOINTED (PR #532 re-review, MINOR C): this row used to name
+  # `app/public/data/mask.bin`, which contains NO dash - so the very mutation
+  # its comment claims to bound, over-broadening the operand test `-*` to
+  # `*-*`, reds 0 rows. MEASURED, and re-measured after the repoint: with
+  # `THIRD-PARTY-NOTICES.txt` the same mutation reds exactly this row. The
+  # row was never useless (it reds on a quote-stripping over-broadening, and
+  # on reject-everything) - it was vacuous against the one mutation it named,
+  # which is the #216 shape one level up, in a row's own description.
+  decide_exempt "#532 quoted filename operand must stay exempt"    "sed -n 5p 'app/public/THIRD-PARTY-NOTICES.txt'"
+
+  # ======================================================================
+  # PR #532 re-review, MAJOR A - GLOB operands. `*`, `?`, `[`, `]` are not in
+  # WRITE_CAPABLE_CHARS, so quote stripping never touches them and the SHELL
+  # expands the token before the program runs. With a file named `-i` in cwd
+  # all three spellings below expand to `-i` (measured), and `sed -n 5p
+  # target.txt [-]i` truncated a 6-line file to 1 line. All were SILENT.
+  decide advisory "#532A sed glob [-]i -> -i (build output)"        "sed -n 5p app/public/data/mask.bin [-]i"
+  decide ask      "#532A sed glob [-]i -> -i (SPEC ARM)"            "sed -n 5p docs/superpowers/specs/x.md [-]i"
+  decide ask      "#532A sed glob ?i -> -i (SPEC ARM)"              "sed -n 5p docs/superpowers/specs/x.md ?i"
+  decide ask      "#532A sed glob *i -> -i (SPEC ARM)"              "sed -n 5p docs/superpowers/specs/x.md *i"
+  # The same route at the grep site, measured silent on 19de1f5 too:
+  # `[-]-pager` expands to `--pager` (measured), so a leading metachar walked
+  # past every dash-anchored mirror pattern. `[-]Q` reaches the TUI entry.
+  decide advisory "#532A grep glob [-]-pager -> --pager"            "grep [-]-pager app/public/data/mask.bin"
+  decide ask      "#532A grep glob [-]Q -> -Q (SPEC ARM)"           "grep [-]Q docs/superpowers/specs/x.md"
+  # BOUNDING ROWS, so "reject a leading metachar" cannot later be
+  # over-broadened into "reject any glob". A token starting with an ORDINARY
+  # character globs only to names starting with that character, so it can
+  # never become a flag - these are ordinary reads and must stay silent.
+  decide_exempt "#532A legit glob read stays exempt (sed)"          "sed -n '1,40p' app/public/data/*.json"
+  decide_exempt "#532A legit glob read stays exempt (grep)"         "grep -n foo app/public/data/*.json"
+  # And a QUOTED leading metachar is not a glob at all - the shell will not
+  # expand it - so an ordinary bracket-expression PATTERN must stay exempt.
+  # This is why the grep site tests the RAW token while sed's operand check
+  # tests the stripped one; without this row that distinction is unpinned.
+  decide_exempt "#532A quoted bracket pattern is not a glob (grep)"  "grep '[0-9]' app/public/data/harbors.json"
 
   # --- The exemption must not widen the guard either: an allowlisted verb
   # with NO protected path is allowed for the ordinary reason (no hit), and
