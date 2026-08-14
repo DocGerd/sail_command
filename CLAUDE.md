@@ -122,7 +122,8 @@ deviate from it.
   OPEN, so DEFAULT TO RE-RUNNING and skip only after checking the sweep's
   actual TRANSITIVE input closure, never a remembered path list. The closure
   is wider than the obvious paths: besides `app/src/routing/`,
-  `app/src/lib/mask.ts`, `app/public/data/`, `app/sweep/` and `pipeline/`,
+  `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
+  `app/public/data/`, `app/sweep/` and `pipeline/`,
   `sweepArms.ts` pulls `DEFAULT_SETTINGS` from `app/src/types.ts`,
   `uniformWindGrid` from `app/src/test/fixtures` and `solverTimeoutMs` from
   `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
@@ -1397,6 +1398,27 @@ deviate from it.
   assertions were exactly inverted. Rule: for each assertion, ask whether
   any change the code could actually make would violate it — a mutation the
   codebase cannot produce proves nothing.
+- A FOURTH vacuity class, distinct from the three above: **a row whose stated
+  purpose is served by a DIFFERENT term of the same predicate.** Measured on
+  #518 (MAJOR 4): deleting `exposureDist !== null &&` from `ShallowWarning`'s
+  `showConfined` left RouteSummary + PlannerPanel **119/119 GREEN**. The row
+  that looks like it covers it ('omits the confinement sentence while the mask
+  is still loading') cannot — with `mask` null the other term is already
+  false, so it passes with the gate deleted. Ask per TERM, not per guard:
+  *which row reds if I delete THIS term alone?* Beware short-circuit order,
+  and treat a row's TITLE as a claim to verify rather than read.
+- **Reviewer-supplied verbatim text can be INVALIDATED by a sibling fix in the
+  SAME wave** — the one exception to adopting it byte-for-byte. #518 twice:
+  MINOR 5 renamed a shipped i18n string, so MAJOR 4's supplied assertion
+  searched for a string the app no longer emits (an assertion that can never
+  fail — precisely the vacuity MAJOR 4 existed to close), and MAJOR 5 found
+  the same pairing again in `changelog.d/`, which QUOTES that string and is
+  folded into the About dialog at build time and frozen into `CHANGELOG.md` at
+  the cut. Before pasting supplied text, ask what else in this wave moved what
+  it refers to; settle it by running the mutation, not by reasoning. Enumerate
+  consumers by CLAIM SHAPE (every quotation in any wording, both old noun
+  choices, the i18n key) — a token list reached 5 test literals and both dicts
+  and still missed the fragment.
 - Guards fail open on QUOTE STYLE too. Measured on PR #411:
   `planRoute.reasonDecoupling.test.ts`'s structural guard, which detects a
   gate re-coupling to a solver-derived label, matched only SINGLE-quoted
@@ -1568,6 +1590,14 @@ deviate from it.
   enumerate `gh api
   repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
   ID explicitly — never poll by check name alone.
+  CAVEAT, measured 2026-08-14 on #518: that `head_sha=` filter returned
+  `total_count: 0` for a live run while `commits/<sha>/check-runs` saw 7 and
+  `actions/runs?branch=<branch>` showed that run carrying that exact
+  `head_sha` — most likely indexing lag soon after a push, NOT re-polled to
+  confirm it self-heals. An empty result is indistinguishable from "not
+  started", so a monitor on it burns its budget and reports a false timeout.
+  Find the run by `?branch=` or `check-runs`, THEN monitor
+  `actions/runs/<id>/jobs`. Foreground-test any poll query before arming it.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
@@ -2742,6 +2772,13 @@ deviate from it.
   (untracked `node_modules` blocks `git worktree remove`; `rm -rf` can be
   permission-blocked in the main session) — brief reviewers to remove their
   own worktree or verify without a local install.
+  A reviewer that will MUTATION-CHECK needs its own worktree or a `/tmp` copy,
+  decided AT BRIEFING time: it must write somewhere, and its measuring is why
+  its findings are worth having. Measured 2026-08-14 on #518 — a reviewer's
+  probe wrote into the shared tree while an implementer was staging in it; a
+  write-then-revert leaves NO trace in `git status` (only mtimes), so never
+  assert a tree is exclusively an agent's own unless you created it for them,
+  and tell workers to diff-before-stage regardless of any such assurance.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
   ask-gate hook must prompt the user) — never through subagents. The hook DOES
   match Bash appends: `bash_hits_protected_path` substring-matches the RAW
@@ -2770,6 +2807,11 @@ deviate from it.
   in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
+- UNDRAFTING a PR is GraphQL-only: `gh api repos/…/pulls/N --method PATCH -f
+  draft=false` SILENTLY NO-OPS (returns `draft=true`, exit 0, no error).
+  Use `markPullRequestReadyForReview` with the PR's node id. General rule, of
+  which this and the Pages same-SHA no-op are instances: after any mutating
+  `gh` call, assert the NEW STATE in the same breath — never the exit code.
 - `gh api graphql -F body=@file` posts the FILE as the body of a form field
   named `body` (not the GraphQL `query`), so it fails with "A query attribute
   must be specified" — that half of the old note here was right. But
