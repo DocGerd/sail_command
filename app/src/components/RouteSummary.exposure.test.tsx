@@ -261,7 +261,7 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(detail?.textContent).toContain('was not passable');
   });
 
-  it('omits BOTH sentences when the mask has loaded and the measured exposure is exactly zero', async () => {
+  it('omits the exposure, confinement and remedy sentences when the mask has loaded and the measured exposure is exactly zero', async () => {
     // PR #523 review, Blocker 1. The mask here RESOLVES — the distinguishing
     // condition against the three rows around it is that the walk really ran
     // and returned 0, not that it never ran. "0.0 nm of this route crosses
@@ -281,6 +281,13 @@ describe('#516: ShallowWarning exposure sentence', () => {
     expect(detail?.textContent).not.toContain('lower safety depth setting');
     // Not merely "no sentence": the formatted zero itself must never appear.
     expect(detail?.textContent).not.toContain('0.0 nm');
+    // #516 increment 2: the vacuous-true path, and the ONLY row that reaches
+    // it. shallowConfinedWithinM returns TRUE here because no shallow cell is
+    // ever visited to fail the check, so showConfined's `exposureDist !== null`
+    // term is the only thing suppressing a confinement claim about an exposure
+    // this banner does not state. Measured: dropping that term leaves the rest
+    // of RouteSummary + PlannerPanel (119 tests) entirely green.
+    expect(detail?.textContent).not.toContain('Every stretch below your safety depth');
   });
 
   it('drops the remedy on a narrow layout — everything else renders at both widths', async () => {
