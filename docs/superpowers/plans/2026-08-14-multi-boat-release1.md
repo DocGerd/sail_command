@@ -38,6 +38,10 @@ The order is forced by what can certify each change, not by convenience.
 | **2** | 7–11 | a canonicalising comparator built in Task 8 — the byte comparator is **blind** to the rename |
 | **3** | 12–13 | polar content equality modulo the renamed key; `verify_mask.py` exit 0 |
 
+**Where the safety-critical change lives, and why it is not in Phase 1.** §C.4(a) — the #53 relaxation floor becoming the boat's draft — is **Task 10**, in Phase 2. Task 4 only parameterises `findRelaxedGate`; it passes `BOAT_DRAFT_M` and changes nothing. The floor could not be wired in Phase 1 because it needs `PlanDeps.boat`, and `PlanDeps` has **ten** construction sites — one of them `app/sweep/sweepArms.ts` (~:375), the harness Task 6 uses to certify Phase 1. Wiring it in Task 4 would break the instrument meant to prove Task 4 changed nothing.
+
+The cost is real and is not hidden: the safety change is certified by the canonical comparator rather than the byte comparator, which is weaker. Task 10 Step 5b compensates with mutation checks that do not depend on the sweep at all — necessary anyway, since at a one-boat catalogue both floors are 2.1 and **no arm can discriminate**.
+
 §K records why: `compare.mjs` compares `JSON.stringify` output plus a whole-file sha256 (`~:83-107`) with no field awareness, and `PlanResultError` (`types.ts ~:235-238`) carries no sail fields, so the all-error `becalmed` / `deep-becalmed` arms stay byte-identical through the rename and report IDENTICAL — a false green. **Do not reorder Phase 2 before Phase 1.**
 
 ### Task 0 — the sweep BASE control (do this first, it gates Task 6)
@@ -496,176 +500,99 @@ Refs #54"
 
 ---
 
-### Task 4: Per-boat relaxation floor — SAFETY-CRITICAL
+### Task 4: Make the relaxation floor an explicit parameter
 
 **Files:**
 - Modify: `app/src/routing/relaxedDepth.ts`
-- Modify: `app/src/routing/planRoute.ts` (thread the boat through to the relaxation search)
-- Test: `app/src/routing/relaxedDepth.test.ts`
+- Modify: `app/src/routing/planRoute.ts` (the single call site, ~:526)
+- Modify: `app/src/routing/relaxedDepth.test.ts`
 
 **Interfaces:**
-- Consumes: `relaxationFloorM` (Task 2), `BoatDef` (Task 1).
-- Produces:
-  - `findRelaxedGate` gains a `floorM` parameter. It currently reads the module constant at
-    `relaxedDepth.ts` ~:92 — `const loDm = Math.round(BOAT_DRAFT_M * 10);`.
-  - **`PlanDeps` gains `boat: BoatDef`** (`planRoute.ts` ~:23, threaded at ~:275).
-    Deliberately `PlanDeps` and not `PlanRequest`: `PlanRequest.boat` arrives only in
-    Task 11, and `types.ts` is not in this task's Files list, so routing it through the
-    request here would be a forward dependency on a field that does not yet exist.
-    Task 11 introduces `PlanRequest.boat: BoatSnapshot` for *persistence*; the two coexist
-    (deps carries the live catalogue entry, the request carries the saved snapshot).
+- Consumes: nothing from Tasks 1–3.
+- Produces: `findRelaxedGate` gains a **required** `floorM: number` as its **fifth**
+  parameter, *before* the optional `onProbe?`.
 
-> **⚠️ The function is NOT called `findRelaxedDepthM`.** #452 P3 (merged 2026-08-13, PR
-> #518) **renamed** it to `findRelaxedGate`, changed its return from `number | null` to
-> `RelaxedGate | null`, and added an explicit `approachRadiusM` parameter. Verified against
-> `develop @ 0a76f20` on 2026-08-14: `app/src/routing/relaxedDepth.ts` exports exactly
-> `BOAT_DRAFT_M`, `ProbeInfo`, `ProbeProgress`, `RelaxedGate`, `findRelaxedGate` — there is
-> no `findRelaxedDepthM`. **Do not restore the old shape**; the `{ gate, usedDepthM }`
-> return is what carries per-disc relaxation. (Stale mentions of the old name survive in
-> comments — that is issue #527.)
+> **This task is deliberately MECHANICAL and changes no behaviour.** It parameterises the
+> floor; it does not yet feed it a boat. **Task 10 does the semantic change** and carries
+> the safety-critical label — see the note there and the restructure rationale below.
 
-Current signature, read from source:
+**Why the split.** An earlier revision had Task 4 add `boat` to `PlanDeps` and do the wiring
+here. That breaks every site that constructs a `PlanDeps` — **ten** of them, measured
+2026-08-14: `routing/protocol.ts` (~:49 state, ~:76 call), eight existing routing test files
+(`viaPoints`, `planRoute.budget`, `planRoute`, `planRoute.depthComfort`, `planRoute.shallow`,
+`realmask.repro`, `invariants.property`, `legDistanceReconciliation`), and
+**`app/sweep/sweepArms.ts` ~:375** — which `app/tsconfig.test.json`'s `"sweep/**/*.ts"`
+include (~:89) puts inside `typecheck`. That last one is disqualifying on its own: Task 4
+would break the very harness Task 6 uses to certify that Task 4 changed nothing. The
+interface change therefore belongs in **Task 10**, which already restructures all ten sites
+for the keyed polar map.
 
-```ts
-export function findRelaxedGate(
-  mask: NavMask,
-  waypoints: LatLon[],
-  requestedDepthM: number,
-  approachRadiusM: number,
-  onProbe?: ProbeProgress,
-): RelaxedGate | null
-```
+**Parameter position matters.** `onProbe?` is currently the last parameter
+(`relaxedDepth.ts` ~:85-91). Appending `floorM` after it would be a required parameter
+after an optional — which TypeScript forbids — forcing `floorM` to be optional, whose only
+plausible default is `BOAT_DRAFT_M`. That is a **fail-open** default on the relaxation
+floor. Put `floorM` **before** `onProbe?` and keep it required.
 
-With one boat at `draftM: 2.1`, `relaxationFloorM` returns `2.1` — **numerically identical to today's `BOAT_DRAFT_M`**, so this task changes no plan. That is exactly why it is safe to do while the byte comparator is still the instrument.
-
-- [ ] **Step 1: Write the failing tests — BOTH the derivation and the wiring**
-
-Two rows, because they fail for different reasons and a later mutation check must be able to red them independently.
-
-**The boat reaches the solver through `PlanDeps`** (`planRoute.ts` ~:23, threaded at ~:275), *not* through `PlanRequest`. This is deliberate: `PlanRequest.boat` does not exist until Task 11, seven tasks and one phase later, and `types.ts` is not in this task's Files list. `PlanDeps` is already owned by this task via `planRoute.ts`, so the channel is buildable here with no forward dependency.
+- [ ] **Step 1: Write the failing test**
 
 ```ts
-// (a) DERIVATION: the search window follows floorM.
 it('#54: findRelaxedGate searches from the given floor, not a module constant', () => {
-  const shallow = findRelaxedGate(mask, wps, 3.0, Infinity, undefined, 1.8);
-  const deep = findRelaxedGate(mask, wps, 3.0, Infinity, undefined, 2.3);
+  const shallow = findRelaxedGate(mask, wps, 3.0, Infinity, 1.8);
+  const deep = findRelaxedGate(mask, wps, 3.0, Infinity, 2.3);
   expect(deep?.usedDepthM).not.toBe(shallow?.usedDepthM);
 });
-
-// (b) WIRING: planRoute actually passes the SELECTED boat's floor.
-it('#54: planRoute takes the relaxation floor from the boat in PlanDeps', () => {
-  const deep = { ...boatById('salona-45'), id: 'deep-test', draftM: 2.3 };
-  const res = planRoute(req, windGrid, { ...deps, boat: deep });
-  // …assertion: see the WARNING below. Do NOT write it before measuring.
-});
 ```
-
-> **⚠️ Row (b)'s assertion must be MEASURED into existence, not written from intuition.**
-> A naive `expect(res.shallow!.usedDepthM).toBeGreaterThanOrEqual(2.3)` guarded by
-> `expect(res.status).toBe('ok')` is a **theorem**, and would give you a mutation check that
-> cannot fail — the exact defect this row replaces.
->
-> Why: `findRelaxedGate` **maximises** the connecting gate over `[floorM, requested)` — its
-> binary search keeps `best = mid; lo = mid + 1` (`relaxedDepth.ts` ~:129-143), and phase 2
-> only ever raises gates. So for a fixture whose maximum connecting gate is `B`:
-> - `B ≥ 2.3` → both floors return the identical `B`, and the assertion passes for the
->   correct **and** the mutated build.
-> - `B < 2.3` → the correct build returns `null`, so no relaxation happens, and the
->   `status === 'ok'` precondition fails for the **correct** build.
->
-> Either way the row cannot discriminate.
->
-> **What to do instead.** First find a fixture where the two floors provably diverge:
-> instrument `findRelaxedGate` directly (row (a)'s call shape) across candidate
-> origin/destination pairs at floors 2.1 and 2.3, and keep the first pair whose
-> `usedDepthM` differs. Record that pair and both measured values in the test's header
-> comment. Then assert the divergence you measured, and handle both outcomes explicitly
-> rather than preconditioning on `'ok'`:
->
-> ```ts
-> // Fixture: <origin>→<destination>. MEASURED <date>: floor 2.1 → usedDepthM <X>,
-> // floor 2.3 → <Y or no route>. That divergence is what this row pins.
-> if (res.status === 'ok') {
->   expect(res.shallow?.usedDepthM ?? Infinity).toBeGreaterThanOrEqual(2.3);
-> } else {
->   expect(res.reason).toBe('unreachable');
-> }
-> ```
->
-> And add a companion row asserting the **mutated** behaviour is reachable — that the same
-> fixture at floor 2.1 *does* return `'ok'` with `usedDepthM < 2.3`. Without it you cannot
-> tell a discriminating row from one that passes vacuously.
->
-> If no such fixture exists on the committed mask, say so in the PR and pin the wiring at
-> the `PlanDeps` boundary instead (assert the value `planRoute` hands `findRelaxedGate`,
-> via a spy). Do **not** ship a row that cannot fail.
 
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `npm --prefix app run test -- relaxedDepth`
-Expected: FAIL — `findRelaxedGate` accepts five parameters, not six.
+Expected: FAIL — `findRelaxedGate` takes five parameters and the fifth is `onProbe`.
 
 - [ ] **Step 3: Implement**
 
-Add `floorM` as a sixth parameter and replace the module-constant read at ~:92. Keep everything else about the function — the `RelaxedGate` return, the `approachRadiusM` disc scoping, the `hiDm` cap — exactly as #452 P3 left it.
-
 ```ts
-/**
- * Spec C.4(a). floorM is the SELECTED BOAT's quantised draft, never a module
- * constant. Left global, relaxation would take a 2.30 m boat to a 2.1 m gate
- * while the shallow banner reported it as the Salona's.
- */
 export function findRelaxedGate(
   mask: NavMask,
   waypoints: LatLon[],
   requestedDepthM: number,
   approachRadiusM: number,
-  onProbe: ProbeProgress | undefined,
-  floorM: number,
+  floorM: number,            // NEW — required, and before the optional
+  onProbe?: ProbeProgress,
 ): RelaxedGate | null {
-  const loDm = Math.round(floorM * 10);   // was: Math.round(BOAT_DRAFT_M * 10)
-  // …rest unchanged
+  const loDm = Math.round(floorM * 10);   // was: Math.round(BOAT_DRAFT_M * 10), ~:92
+  // …everything else unchanged: the RelaxedGate return, the approachRadiusM disc
+  // scoping, the hiDm cap. Do not touch what #452 P3 established.
 }
 ```
 
-`BOAT_DRAFT_M` stays exported for now (other readers exist); Task 5 and the guard decide its fate. Do **not** delete it in this task.
+Then update the one production call site, `planRoute.ts` ~:526, to pass `BOAT_DRAFT_M`
+explicitly:
 
-- [ ] **Step 4: Run the full routing suite**
-
-Run: `npm --prefix app run test -- routing && npm --prefix app run typecheck`
-Expected: PASS, including `realmask.repro.test.ts`'s DEFAULT_SETTINGS Flensburg→Marstal case pinning `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`.
-
-- [ ] **Step 5: Mutation-check BOTH halves separately**
-
-R4 alone is **not** sufficient here, and assuming it was would be the defect this step exists to prevent: R4 calls only Task 2's pure `relaxationFloorM`, which lives in `boatDepth.ts` — a file **not in this task's list** — so reverting Task 4's own wiring leaves R4 green. Each half needs its own mutation.
-
-```bash
-# Mutation A — the WIRING (what Task 4 changes). In planRoute.ts, ignore
-# deps.boat and pass relaxationFloorM(boatById(DEFAULT_BOAT_ID)) unconditionally.
-npm --prefix app run test -- relaxedDepth    # Step 1's row (b) MUST red
-
-# Mutation B — the DERIVATION (Task 2's helper, outside this task's file list).
-# In boatDepth.ts, make relaxationFloorM `return BOAT_DRAFT_M`.
-npm --prefix app run test -- maskTolerance   # R4 MUST red
+```ts
+const relaxed = findRelaxedGate(mask, waypoints, s.safetyDepthM, APPROACH_RADIUS_M, BOAT_DRAFT_M, onProbe);
 ```
 
-**Record the MEASURED result of each, not the prediction.** If Mutation A reds nothing, row (b) is not discriminating — go back to Step 1's warning and find a fixture that diverges, or move the pin to the `PlanDeps` boundary. A green Mutation A means the wiring is untested and the SAFETY-CRITICAL label on this task is unearned; it does not mean the code is fine.
+`relaxedDepth.test.ts` ~:30 reads `Parameters<typeof findRelaxedGate>[4]` for its `onProbe`
+helper type; that index becomes 5. It reds at typecheck, which is the correct and intended
+signal — fix the index, do not widen the type to hide it.
 
-Note the two mutations must red **different** rows. If both red the same row, the split is theatre and one of them is not reaching the code it names.
+- [ ] **Step 4: Verify nothing moved**
 
-- [ ] **Step 6: Commit**
+Run: `npm --prefix app run test -- routing && npm --prefix app run typecheck`
+Expected: PASS, including `realmask.repro.test.ts`'s DEFAULT_SETTINGS Flensburg→Marstal case
+pinning `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`. Passing `BOAT_DRAFT_M` at the call site
+makes this a literal no-op — that is the point, and it is what lets Task 6 certify it.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add app/src/routing/relaxedDepth.ts app/src/routing/planRoute.ts app/src/routing/relaxedDepth.test.ts
-git commit -m "feat(routing)!: take the #53 relaxation floor from the boat
+git commit -m "refactor(routing): make the #53 relaxation floor an explicit parameter
 
-findRelaxedGate gains a floorM parameter, replacing its BOAT_DRAFT_M read.
-Numerically a no-op at the Salona 45's 2.1 m draft; the point is that the
-floor is now the selected boat's, so a deeper hull cannot inherit it.
-
-Mutation-checked in BOTH halves separately, because R4 alone exercises only
-the pure helper and stays green if the wiring is reverted: mutating the
-wiring reds the planRoute row, mutating the helper reds R4.
+Mechanical and behaviour-preserving: findRelaxedGate takes floorM as a
+required fifth parameter (before the optional onProbe, so it cannot be
+forced optional and default fail-open), and the single call site passes
+BOAT_DRAFT_M explicitly. Task 10 changes what is passed.
 
 Refs #54"
 ```
@@ -1033,16 +960,40 @@ Expected: every arm CANONICALLY IDENTICAL. Record explicitly that the **byte** c
 
 ---
 
-### Task 10: A keyed polar map across assets, protocol and `PlanDeps`
+### Task 10: A keyed polar map across assets, protocol and `PlanDeps` — **and the per-boat relaxation floor**
 
-**Files:**
-- Modify: `app/src/services/assets.ts`, `app/src/routing/protocol.ts`, `app/src/routing/workerClient.ts`, `app/src/routing/planRoute.ts`, `app/sweep/sweepArms.ts`
+> **⚠️ THIS IS THE SAFETY-CRITICAL TASK.** It carries §C.4(a): the #53 relaxation floor
+> stops being a module constant and becomes the selected boat's draft. Left global,
+> relaxation takes a **2.30 m boat down to a 2.1 m gate** — 0.2 m shallower than its keel
+> before the mask tolerance is even applied, conservative floor 1.2 m, i.e. **1.1 m under
+> the hull** — while the `shallow` banner reports the relaxation as if it were the
+> Salona's. The spec calls this the single most dangerous shortcut available in this
+> feature.
+>
+> It lives here, not in Task 4, because `PlanDeps` has **ten** construction sites and this
+> task already restructures all of them. Task 4 only parameterised `findRelaxedGate`; this
+> task changes what is passed.
+>
+> **Evidence consequence, stated rather than glossed:** Phase 2 means the byte comparator no
+> longer applies, so the canonical comparator (Task 8) is what certifies this. That is
+> genuinely weaker than Phase 1's evidence, and it is the price of not breaking the
+> certification harness. Compensate with the mutation checks in Step 5b, which do not depend
+> on the sweep at all.
+
+**Files** — derived by ENUMERATING every `PlanDeps` construction site, measured 2026-08-14, not guessed:
+- Modify (production): `app/src/services/assets.ts`, `app/src/routing/protocol.ts` (~:49 state, ~:76 call), `app/src/routing/workerClient.ts`, `app/src/routing/planRoute.ts`
+- Modify (harness — **`app/tsconfig.test.json` ~:89 includes `sweep/**/*.ts`, so `typecheck` covers it**): `app/sweep/sweepArms.ts` (~:375)
+- Modify (existing tests that construct `PlanDeps` literals): `app/src/routing/viaPoints.test.ts`, `planRoute.budget.test.ts`, `planRoute.test.ts`, `planRoute.depthComfort.test.ts`, `planRoute.shallow.test.ts`, `realmask.repro.test.ts`, `invariants.property.test.ts`, `legDistanceReconciliation.test.ts`
 - Test: `app/src/routing/workerClient.test.ts`
 
+Re-derive that list before starting — `grep -rn "polarGenoa" app/src app/sweep --include=*.ts --include=*.tsx` finds the construction sites, and the count decays.
+
 **Interfaces:**
-- Consumes: `BOATS`, `SailId` (Task 1); the keyed-map shape below.
+- Consumes: `BOATS`, `SailId`, `boatById` (Task 1); `relaxationFloorM` (Task 2); `findRelaxedGate`'s `floorM` parameter (Task 4); the keyed-map shape below.
 - Produces — **declare these; Step 1's test names them and nothing else defines them:**
   - `polarKey(boatId: BoatId, sailId: SailId): string` — returns `` `${boatId}/${sailId}` ``.
+  - **`PlanDeps.boat: BoatDef`** — the live catalogue entry the solver plans with. Adding it
+    is what makes the ten sites above a single blast radius rather than a surprise.
   - `RoutingAssets.polars: Readonly<Record<string, PolarTable>>`, replacing the named
     `polarGenoa` / `polarFock` fields; same shape on `protocol.ts`'s `init` arm, its
     closure `state`, and `PlanDeps`.
@@ -1079,7 +1030,49 @@ it('#54: a plan names which keys to run', () => {
   const msg = buildPlanMessage({ ...req, sailIds: ['genoa', 'fock'] }, 'salona-45');
   expect(msg.polarKeys).toEqual(['salona-45/genoa', 'salona-45/fock']);
 });
+
+// SAFETY-CRITICAL (spec §C.4a): planRoute must pass the SELECTED boat's floor.
+it('#54: planRoute takes the relaxation floor from deps.boat', () => {
+  const deep = { ...boatById('salona-45'), id: 'deep-test', draftM: 2.3 };
+  const res = planRoute(req, windGrid, { ...deps, boat: deep });
+  // …assertion: see the WARNING below. Do NOT write it before measuring.
+});
 ```
+
+> **⚠️ The safety row's assertion must be MEASURED into existence, not written from
+> intuition.** A naive `expect(res.shallow!.usedDepthM).toBeGreaterThanOrEqual(2.3)` guarded
+> by `expect(res.status).toBe('ok')` is a **theorem** and yields a mutation check that
+> cannot fail.
+>
+> Why: `findRelaxedGate` **maximises** the connecting gate over `[floorM, requested)` — its
+> binary search keeps `best = mid; lo = mid + 1` (`relaxedDepth.ts` ~:129-143) and phase 2
+> only raises gates. So for a fixture whose maximum connecting gate is `B`:
+> - `B ≥ 2.3` → both floors return the identical `B`; the assertion passes for the correct
+>   **and** the mutated build.
+> - `B < 2.3` → the correct build returns `null`, no relaxation happens, and the
+>   `status === 'ok'` precondition fails for the **correct** build.
+>
+> **What to do instead.** Find a fixture where the two floors provably diverge: call
+> `findRelaxedGate` directly across candidate origin/destination pairs at floors 2.1 and 2.3
+> and keep the first whose `usedDepthM` differs. Record the pair and both measured values in
+> the test header. Then assert the measured divergence, handling both outcomes rather than
+> preconditioning on `'ok'`:
+>
+> ```ts
+> // Fixture: <origin>→<destination>. MEASURED <date>: floor 2.1 → usedDepthM <X>,
+> // floor 2.3 → <Y or no route>. That divergence is what this row pins.
+> if (res.status === 'ok') {
+>   expect(res.shallow?.usedDepthM ?? Infinity).toBeGreaterThanOrEqual(2.3);
+> } else {
+>   expect(res.reason).toBe('unreachable');
+> }
+> ```
+>
+> Add a companion row asserting the **mutated** behaviour is reachable — the same fixture at
+> floor 2.1 *does* return `'ok'` with `usedDepthM < 2.3`. Without it you cannot tell a
+> discriminating row from a vacuous one. If no such fixture exists on the committed mask,
+> say so in the PR and pin the wiring at the `PlanDeps` boundary with a spy on
+> `findRelaxedGate`'s fifth argument instead. **Do not ship a row that cannot fail.**
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -1101,7 +1094,25 @@ SC_SWEEP_OUT=/tmp/sweep/head3 npm --prefix app run test -- --config sweep/vitest
 node app/sweep/compare.mjs --canonical /tmp/sweep/base1 /tmp/sweep/head3
 ```
 
-Expected: every arm CANONICALLY IDENTICAL — this task moves inputs, not results.
+Expected: every arm CANONICALLY IDENTICAL — this task moves inputs, not results. At one
+catalogue boat `relaxationFloorM` returns 2.1, numerically identical to the `BOAT_DRAFT_M`
+Task 4 passes, so the floor change is a no-op here too.
+
+- [ ] **Step 5b: Mutation-check the safety wiring — BOTH halves, separately**
+
+The sweep cannot carry this: at one boat both floors are 2.1, so no arm can discriminate. These mutations are the real evidence and they do not depend on the sweep at all.
+
+```bash
+# Mutation A — the WIRING (what this task adds). In planRoute.ts, ignore deps.boat
+# and pass BOAT_DRAFT_M unconditionally, as Task 4 left it.
+npm --prefix app run test -- workerClient    # the safety row MUST red
+
+# Mutation B — the DERIVATION (Task 2's helper, a different file).
+# In boatDepth.ts, make relaxationFloorM `return BOAT_DRAFT_M`.
+npm --prefix app run test -- maskTolerance   # R4 MUST red
+```
+
+Record the **measured** result of each, not the prediction. The two must red **different** rows — if both red the same one, the split is theatre and one is not reaching the code it names. If Mutation A reds nothing, the safety row is not discriminating: return to Step 1's warning, find a diverging fixture, or fall back to the spy.
 
 - [ ] **Step 6: Commit**
 
@@ -1320,10 +1331,10 @@ Expected: exit 0, with the report naming the 3.0 m gate as the Salona 45's deriv
 - [ ] **Reduces to today** *(Tasks 1, 2, 5)*. With only the Salona 45 in the catalogue: `draftM 2.1` → default gate 3.0 → mask floor 2.1; relaxation window `[2.1, 3.0)`; two sails; same budget; same tiers. Solve order is still genoa-then-fock — but after Task 9 it comes from `request.sailIds`, not from the deleted `RIG_ORDER`.
 - [ ] **Phase 1 certified by the byte comparator** *(Tasks 0, 6)*, BASE double-run control recorded first, reported per-arm with `becalmed` / `deep-becalmed` named as vacuous.
 - [ ] **Phase 2 certified by the canonical comparator** *(Tasks 8, 9)*, with the byte difference explicitly recorded as expected.
-- [ ] **The safety invariant is guarded, per boat** *(Tasks 3, 4)*. R0–R8 pass. Every clause below states a MEASURED result, not a prediction — this line has now been wrong twice for the same reason, so verify each against the task it restates rather than reading it as a summary:
+- [ ] **The safety invariant is guarded, per boat** *(Tasks 3, 10)*. R0–R8 pass. Every clause below states a MEASURED result, not a prediction — this line has now been wrong twice for the same reason, so verify each against the task it restates rather than reading it as a summary:
   - R1's discriminating experiment RUN: production-only perturbation reds **1 row** (R1); test-table-only perturbation reds **1 row** (R1). R6 is independent by design and does not red from either.
-  - Task 4 mutation-checked in **both halves separately**, and they red **different** rows: Mutation A (the `planRoute` wiring, ignoring `deps.boat`) reds Step 1's row (b); Mutation B (`relaxationFloorM` in `boatDepth.ts`) reds R4. R4 alone is **not** sufficient evidence for Task 4 — it exercises only the pure helper.
-  - Row (b) is confirmed DISCRIMINATING against a measured fixture, not merely present — see Task 4 Step 1's warning.
+  - **Task 10** (not Task 4) mutation-checked in **both halves separately**, and they red **different** rows: Mutation A (the `planRoute` wiring, ignoring `deps.boat`) reds the safety row; Mutation B (`relaxationFloorM` in `boatDepth.ts`) reds R4. R4 alone is **not** sufficient — it exercises only the pure helper. The safety wiring lives in Task 10 because `PlanDeps` has ten construction sites, one of which is the sweep harness Task 6 certifies with.
+  - The safety row is confirmed DISCRIMINATING against a measured fixture, not merely present — see Task 10 Step 1's warning. The sweep cannot help: at one boat both floors are 2.1.
   - R6's Salona literals still read 2.1 / 3.0 / 2.1 / 1.2.
 - [ ] **`verify_mask.py` exits 0** *(Task 13)* at the catalogue boat's derived gate, with the snap-cell margin report.
 - [ ] **Per-boat polar validation fails closed** *(Task 12)* on a missing tier or missing anchors.
