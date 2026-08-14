@@ -812,13 +812,23 @@ bash_hits_spec_gated_path() {
 # rationale and the soundness argument). Three data sets, each with its own
 # job; the predicate below requires ALL of them to be satisfied.
 
-# Verbs whose EVERY REACHABLE SHAPE here is read-only. For all but two that
-# is the original and stronger rule - "has no option that creates or modifies
-# a file" - and those entries need nothing beyond membership. `grep` and
-# `sed` (#530) are the two exceptions: both DO have a write surface, and each
-# is admitted only together with its own verb-scoped disqualifier below, so
-# membership alone never decides them. `find` and `file` remain DELIBERATELY
-# absent (DESIGN explains both, each with a measurement).
+# Verbs this guard is willing to exempt. For all but two, membership alone is
+# the whole story and rests on the original, stronger property - "has no
+# option that creates or modifies a file" - which holds unconditionally.
+#
+# `grep` and `sed` (#530) are the two exceptions and they are NOT covered by
+# that property: both DO have a write surface, and neither is decided by
+# membership. Each is admitted only jointly with its verb-scoped disqualifier
+# below, and for `sed` the resulting "no exempted shape writes" claim carries
+# ONE stated third-party dependency (GNU sed's rule that commands are
+# separated by `;` or newline, both of which WRITE_CAPABLE_CHARS already
+# forbids) - recorded at sed_readonly_ok, not glossed here.
+# SCOPED DELIBERATELY (PR #532 review, MINOR 5): the first cut of this header
+# said "Verbs whose EVERY REACHABLE SHAPE here is read-only", which was an
+# unconditional claim, and it was FALSE as written while that PR's BLOCKER 1
+# stood - a quoted `'-i'` operand walked straight past the operand check.
+# `find` and `file` remain DELIBERATELY absent (DESIGN explains both, each
+# with a measurement).
 #
 # Compared by EXACT equality against the command's first word.
 #
@@ -889,12 +899,33 @@ WRITE_CAPABLE_TOKENS=(
 #
 # STRIPPING QUOTES IS NOT PARSING, and it is required: this hook sees the RAW
 # command string, so a shell quote is a literal character in a token.
-# `grep '--filter=x' f` tokenises to `'--filter=x'`, which starts with a
-# quote rather than a dash and would slip past every dash-anchored pattern
-# below. unquote_token() removes ONE leading and ONE trailing `'` or `"`.
-# Deliberately one layer only: a doubled form (`""--filter`) stays in the
-# quote-splitting class this file already records as KNOWN SILENT-ALLOW item
-# 4, i.e. it is pre-existing and not newly opened here.
+# `grep '--filter=x' f` tokenises to `'--filter=x'`, which starts with a quote
+# rather than a dash and would slip past every dash-anchored pattern below.
+#
+# TWO STRENGTHS, DELIBERATELY, and the difference is the whole of PR #532's
+# BLOCKER 1 - do not "tidy" them into one without reading this:
+#   * WHEREVER A TOKEN IS CLASSIFIED as flag-vs-operand, or matched against
+#     the grep mirror, EVERY `'` and `"` is removed inline
+#     (`bare=${tok//\'/}; bare=${bare//\"/}`). Nothing weaker is sound. The
+#     shell removes quotes ENTIRELY before the program sees a word, so
+#     `""-i""` and `'-i'` both reach sed as `-i`; one-layer stripping leaves
+#     a quote in front of the doubled form and classifies it as an operand.
+#     MEASURED both ways.
+#   * THE SED SCRIPT TOKEN keeps unquote_token()'s ONE layer below. That is
+#     the conservative direction and is kept on purpose: the script whitelist
+#     accepts three narrow shapes that contain no quote character at all, so
+#     a residual quote can only make a script FAIL to match, i.e. over-fire.
+#     `sed -n ""5p"" f` fires; it does not slip through.
+#
+# CORRECTED (PR #532 review, MAJOR 2): an earlier revision of this comment
+# said the doubled form "stays in the quote-splitting class this file already
+# records as KNOWN SILENT-ALLOW item 4, i.e. it is pre-existing and not newly
+# opened here." Both halves were wrong, and wrong in the direction that
+# licenses the weaker fix. Item 4 is about obscuring the PROTECTED PATH so it
+# is never matched at all; this was a matched hit being EXEMPTED, a different
+# mechanism. And nothing was pre-existing: before #530 `sed` was off the
+# allowlist entirely, so every one of these commands fired. #530 opened it and
+# #532 closed it.
 unquote_token() {
   local t="$1"
   case "$t" in \'*|\"*) t=${t#?} ;; esac
@@ -929,15 +960,25 @@ unquote_token() {
 # would defeat. (That is the one place this file's usual prune-the-subsumed
 # rule is deliberately not applied, and this is why.)
 #
-# WHAT THE MIRROR IS SOUND AGAINST, measured the same day against the ugrep
-# help text the Claude Code binary itself ships (`exec -a ugrep
-# "$CLAUDE_CODE_EXECPATH" --help`, scanned for write/exec wording): the ONLY
-# file-writing option is `--save-config[=FILE]`; the only command-executing
-# ones are `--filter=COMMANDS`, `--pager[=COMMAND]` and `--view[=COMMAND]`;
-# and `--config[=FILE]`/`---[FILE]` is the indirection that could re-introduce
-# any of them from a file. All five are intercepted. A `.ugrep` config does
-# NOT auto-load here either - the help states only the `ug` command does that,
-# and the shim execs as `ugrep`.
+# WHAT THE MIRROR IS SOUND AGAINST — and read the SCOPE of this claim, which
+# was over-stated in its first cut (PR #532 review, MINOR 4). What was
+# actually run, the same day, is a scan of the ugrep help text the Claude Code
+# binary itself ships (`exec -a ugrep "$CLAUDE_CODE_EXECPATH" --help`) for
+# write/exec WORDING in option headers and descriptions. Within that scan:
+# the only file-writing option is `--save-config[=FILE]`; the only
+# command-executing ones are `--filter=COMMANDS`, `--pager[=COMMAND]` and
+# `--view[=COMMAND]`; and `--config[=FILE]`/`---[FILE]` is the indirection
+# that could re-introduce any of them from a file. All five are intercepted.
+# A `.ugrep` config does NOT auto-load here either - the help states only the
+# `ug` command does that, and the shim execs as `ugrep`.
+#
+# THAT SCAN IS NOT AN EXHAUSTIVENESS PROOF, and it missed one: `-Q`/`--query`
+# opens ugrep's interactive TUI, whose F2 binding invokes `$VISUAL`/`$EDITOR`/
+# `$PAGER` — a command-executor reachable with NO `--view` on the line, and
+# matching NONE of the twelve mirror patterns. It is not live here (no tty in
+# this environment, so ugrep exits 2 — measured), but "not live" is not "not
+# there". It is rejected by GREP_EXTRA_REJECTED below rather than by the
+# mirror, so the mirror stays element-identical to `type grep`.
 #
 # THE RESIDUAL, stated rather than hidden, because this IS the dependency
 # #388 refused to take ("an exemption whose soundness depends on someone
@@ -956,19 +997,42 @@ GREP_SHIM_INTERCEPTED=(
   '---*' '-@*' '-*-save-config*' '-[Zz]*' '-[!-]*[Zz]*' '--null' '--null-data'
 )
 
-# grep_readonly_ok CMD - 0 when CMD names none of the intercepted options.
+# Options THIS GUARD rejects that the shim does NOT intercept - deliberately a
+# SECOND array so GREP_SHIM_INTERCEPTED stays element-identical to `type grep`
+# and the re-verification procedure above remains a clean diff. Anything added
+# here is this repo's own judgement, not the shim's, and needs its own reason.
+#   `-Q`/`--query`: ugrep's interactive TUI; its F2 binding invokes
+#   `$VISUAL`/`$EDITOR`/`$PAGER`. Not reachable today (no tty here, ugrep
+#   exits 2 - measured), rejected anyway because a guard that fails closed on
+#   a known executor costs nothing: GNU grep has no `-Q` at all, so no real
+#   command in this repo loses its exemption.
+GREP_EXTRA_REJECTED=(
+  '-Q*' '-[!-]*Q*' '--query'
+)
+
+# grep_readonly_ok CMD - 0 when CMD names none of the rejected options.
 # Scans EVERY token, including the leading `grep` (which matches no pattern),
 # mirroring the shim's own loop over all of "$@".
+#
+# EVERY quote character is stripped first, in the SAME spelling as
+# sed_readonly_ok's operand check (PR #532, BLOCKER 1). This site had the
+# identical defect and it was NOT in the review's report - found by running
+# the blocker's own probe against the grep half. MEASURED on the unfixed
+# build: `grep ""--pager"" <build output>`, `grep ""--filter=x:cat"" <spec>`
+# and `grep "'--save-config=x'" <spec>` were all SILENT, i.e. the ugrep
+# command-executor and its one file-writer were exempted on the SPEC arm by
+# adding two quote characters. The single-quoted spellings were caught, which
+# is exactly why one-layer stripping looked sufficient here.
 grep_readonly_ok() {
-  local cmd="$1" tok p
+  local cmd="$1" tok p bare
   local IFS=$' \t'
   local -a toks
   read -ra toks <<<"$cmd"
   for tok in "${toks[@]}"; do
-    tok=$(unquote_token "$tok")
-    for p in "${GREP_SHIM_INTERCEPTED[@]}"; do
+    bare=${tok//\'/}; bare=${bare//\"/}
+    for p in "${GREP_SHIM_INTERCEPTED[@]}" "${GREP_EXTRA_REJECTED[@]}"; do
       # shellcheck disable=SC2254  # $p IS a glob pattern here, by construction
-      case "$tok" in $p) return 1 ;; esac
+      case "$bare" in $p) return 1 ;; esac
     done
   done
   return 0
@@ -1006,14 +1070,35 @@ grep_readonly_ok() {
 # options after operands, so a flag appearing AFTER the script (`sed 5p f
 # -i`) is rejected by the operand check as well.
 #
-# ACCEPTED OVER-FIRES, all in the safe direction: a script containing a space
-# (`sed -n '1,5 p' f`) tokenises into two fragments and matches nothing; a
-# bare `-` or `--` operand is rejected; and legal read-only commands outside
-# the three shapes (`sed -n '0,/re/p' f`, `sed -n 5l f`) still fire.
+# ACCEPTED OVER-FIRES, in the safe direction: a bare `-` or `--` operand is
+# rejected, and legal read-only commands outside the three shapes
+# (`sed -n '0,/re/p' f`, `sed -n 5l f`) still fire.
+#
+# A SCRIPT CONTAINING A SPACE IS NOT ALWAYS ONE OF THEM, and the first cut of
+# this comment claimed it was — "tokenises into two fragments and matches
+# nothing" (PR #532 review, MAJOR 3). Only sometimes: `sed -n '1,5 p' f`
+# splits into `'1,5` + `p'`, whose first fragment matches no shape, so that
+# one does fire. But `sed -n 'p w /tmp/OUT' f` splits into `'p` + `w` +
+# `/tmp/OUT'`, and the FIRST fragment unquotes to a valid bare `p`, so the
+# script is accepted and the remaining fragments are read as file operands —
+# the command is EXEMPTED, silently.
+#
+# WHY THAT IS STILL SAFE, stated because it is a DEPENDENCY and was unstated:
+# it rests on two things, only one of which is ours. Ours: `;` and newline
+# are in WRITE_CAPABLE_CHARS, so neither can appear at all. NOT ours: GNU sed
+# requires one of exactly those two to separate commands, so whitespace alone
+# cannot start a second command — MEASURED against GNU sed 4.9, `sed -n
+# 'p w /tmp/OUT' t.txt` exits 1 with "extra characters after command" and
+# creates nothing. If a sed implementation ever separated commands on
+# whitespace, this shape becomes a live write and nothing here would notice.
+# A balanced-quote requirement on the script token (reject a token that opens
+# a quote without closing it) would remove the third-party half of that
+# dependency; it is deliberately NOT implemented here, so it stays a stated
+# risk rather than a silent one.
 SED_SAFE_SHORT_FLAG_CHARS='nEr'
 SED_SAFE_LONG_FLAGS=(--quiet --silent --regexp-extended)
 sed_readonly_ok() {
-  local cmd="$1" tok f script="" have_script=0 matched
+  local cmd="$1" tok f script="" have_script=0 matched bare
   local IFS=$' \t'
   local -a toks
   read -ra toks <<<"$cmd"
@@ -1050,7 +1135,22 @@ sed_readonly_ok() {
     # Past the script, every remaining token is an input-file operand. One
     # that looks like a flag is GNU sed's option permutation (`sed 5p f -i`),
     # which this scan cannot safely account for.
-    case "$tok" in -*) return 1 ;; esac
+    #
+    # EVERY quote character is stripped before this test, not one layer (PR
+    # #532 review, BLOCKER 1). This test used the RAW token and was a LIVE
+    # FAIL-OPEN: `'-i'` starts with a quote, not a dash, so it walked past
+    # the check, and the shell removes the quotes before sed ever sees the
+    # word - so sed got a real `-i`. MEASURED end to end on throwaway files:
+    # `sed -n 5p target.txt '-i'` truncated a 6-line file to 1 line, and
+    # `sed -n 5p t2.txt '-f' evil.sed` with a `w` command in evil.sed created
+    # an arbitrary file. Both spellings were SILENT on the SPEC arm.
+    # ONE-LAYER STRIPPING IS NOT ENOUGH HERE and that was measured too:
+    # routing this through unquote_token() closes `'-i'` but leaves `""-i""`
+    # open, because the shell concatenates the empty strings away while one
+    # layer leaves a quote in front. Removing every `'` and `"` is what makes
+    # the classification survive quoting, which is the condition the flag /
+    # operand split silently depended on.
+    bare=${tok//\'/}; bare=${bare//\"/}; case "$bare" in -*) return 1 ;; esac
   done
   # Fail-closed default for a sed call that never produced a script token
   # (`sed -n`). UNPINNABLE BY CONSTRUCTION, and deliberately kept anyway: a
@@ -1242,7 +1342,15 @@ if [ "${1:-}" = "--selftest" ]; then
   # other changed helper, `decide` -> `decide_exempt`, and both helpers
   # increment `total` by exactly 1 - the same "a row changing its
   # expectation does not change the count" point the note above makes.
-  EXPECTED_CASES=249
+  # (PR #532 review, BLOCKER 1) 249 -> 261, +12: five quoted-flag rows for the
+  # sed operand fail-open (BOTH quote spellings deliberately - a single-quoted
+  # row alone goes green on the weaker one-layer fix, so it would have pinned
+  # the wrong thing); three for the SAME defect at the grep site; one bounding
+  # row so the quote stripping cannot be over-broadened onto an ordinary
+  # quoted FILENAME; and three for GREP_EXTRA_REJECTED (`-Q`, bundled `-nQ`,
+  # `--query`) - one per entry in that array, since an entry no row exercises
+  # can be deleted with the suite still green.
+  EXPECTED_CASES=261
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -1826,6 +1934,42 @@ if [ "${1:-}" = "--selftest" ]; then
   decide advisory "#530 grep -nz (BUNDLED, missed by -[Zz]* alone)" "grep -nz foo app/public/data/mask.bin"
   decide advisory "#530 grep --null"                              "grep --null foo app/public/data/mask.bin"
   decide advisory "#530 grep --null-data"                         "grep --null-data foo app/public/data/mask.bin"
+  # NOT part of the shim mirror - this guard's own addition (GREP_EXTRA_
+  # REJECTED). Not reachable today (no tty), pinned so it cannot be dropped
+  # as "unused" by someone who only checks what fires in this environment.
+  decide advisory "#532 grep -Q (TUI, F2 runs \$EDITOR)"           "grep -Q foo app/public/data/mask.bin"
+  decide advisory "#532 grep -nQ (BUNDLED, missed by -Q* alone)"    "grep -nQ foo app/public/data/mask.bin"
+  decide advisory "#532 grep --query (long spelling)"              "grep --query foo app/public/data/mask.bin"
+
+  # ======================================================================
+  # PR #532 BLOCKER 1 - QUOTED FLAGS. A shell removes quotes ENTIRELY before
+  # the program sees a word, so `'-i'` and `""-i""` both reach sed as `-i`.
+  # Classifying the RAW token made every one of these SILENT, on the spec arm
+  # included, while the unquoted twin above was correctly caught - which is
+  # exactly why the battery was green through a live fail-open. BOTH spellings
+  # are pinned deliberately: one-layer stripping closes the single-quoted form
+  # alone, so a row for only that spelling would go green on the WEAKER fix.
+  #
+  # Verified writes, on throwaway files in /tmp, never a protected path:
+  # `sed -n 5p target.txt '-i'` truncated a 6-line file to 1 line, and
+  # `sed -n 5p t2.txt '-f' evil.sed` carrying a `w` command created a new file.
+  decide advisory "#532 sed quoted '-i' operand (build output)"    "sed -n 5p app/public/data/mask.bin '-i'"
+  decide ask      "#532 sed quoted '-i' operand (SPEC ARM)"        "sed -n 5p docs/superpowers/specs/x.md '-i'"
+  decide ask      '#532 sed DOUBLED-quote ""-i"" operand'          'sed -n 5p docs/superpowers/specs/x.md ""-i""'
+  decide ask      "#532 sed quoted '-f' operand"                   "sed -n 5p docs/superpowers/specs/x.md '-f' evil.sed"
+  decide ask      "#532 sed quoted '--in-place' operand"           "sed -n 5p docs/superpowers/specs/x.md '--in-place'"
+  # The SAME defect at the grep site, which the review did not report and the
+  # blocker's own probe found: one-layer stripping caught `'--pager'` and let
+  # the doubled and mixed spellings through, exempting ugrep's command
+  # executor and its one file-writer on the SPEC arm.
+  decide advisory '#532 grep DOUBLED-quote ""--pager""'            'grep ""--pager"" app/public/data/mask.bin'
+  decide ask      '#532 grep DOUBLED-quote ""--filter"" (SPEC ARM)' 'grep ""--filter=x:cat"" docs/superpowers/specs/x.md'
+  decide ask      "#532 grep mixed-quote '--save-config' (SPEC ARM)" "grep \"'--save-config=x'\" docs/superpowers/specs/x.md"
+  # BOUNDING ROW: stripping every quote must not start firing on an ordinary
+  # QUOTED FILENAME operand, which is the obvious over-fire the fix could
+  # have introduced. Without this row the fix could be over-broadened with
+  # nothing noticing.
+  decide_exempt "#532 quoted filename operand must stay exempt"    "sed -n 5p 'app/public/data/mask.bin'"
 
   # --- The exemption must not widen the guard either: an allowlisted verb
   # with NO protected path is allowed for the ordinary reason (no hit), and
