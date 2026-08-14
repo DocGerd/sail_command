@@ -37,9 +37,13 @@ describe('derived gates', () => {
   });
 
   it('satisfies the C.3 invariant for every derived gate', () => {
-    // 2.05 is the ONLY draft in [1.00, 4.00] (0.01 steps) where this invariant
-    // discriminates a Math.round quantiser from Math.ceil — every other draft
-    // listed here passes under Math.round too. MEASURED 2026-08-14.
+    // 2.05 and 2.25 both discriminate here, and they discriminate against DIFFERENT
+    // mutants — measured 2026-08-14 over [1.00, 4.00] at 0.01 steps:
+    //   - Math.round WITHOUT the -1e-9 nudge: only 2.05 reds this row.
+    //   - Math.round WITH the nudge retained (the mutation actually run): every x.x5
+    //     draft reds it, 30 in range, of which this array holds 2.05 and 2.25.
+    // 2.05 is kept because it is the one witness that survives both mutants. The
+    // other seven drafts pass under either and carry no rounding-direction signal.
     for (const d of [1.6, 1.73, 1.9, 2.0, 2.05, 2.1, 2.25, 2.3, 2.8]) {
       const g = defaultSafetyDepthM(boat(d));
       expect(Math.round((g - MASK_TOLERANCE_M) * 10)).toBeGreaterThanOrEqual(Math.round(d * 10));
