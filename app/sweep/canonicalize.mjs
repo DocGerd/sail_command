@@ -88,3 +88,28 @@ export function canonicalizePlan(plan) {
     sails: sails.sort((a, b) => a.sailId.localeCompare(b.sailId)),
   };
 }
+
+/**
+ * Maps one arm file's parsed contents (a harbour-id -> PlanResult record) to
+ * its canonical form, ONE PLAN AT A TIME via `canonicalizePlan`, preserving
+ * the INPUT's own key (harbour) insertion order — never sorted, never any
+ * other side's order.
+ *
+ * That preservation is load-bearing, not incidental (fix round 1, #54
+ * review): `compare.mjs`'s per-plan compare already iterates a SHARED
+ * sorted key list, so it is order-independent by construction and cannot
+ * see a harbour reordering either way. The whole-file digest is the ONLY
+ * check in the harness that can — but only if each side is built from its
+ * OWN on-disk order. An earlier version of `compare.mjs` built both sides
+ * from the same shared sorted list, which made the canonical-mode digest
+ * blind to a harbour-order swap (a real byte-mode-only regression,
+ * reproduced: reversing one arm file's harbour order changed the byte
+ * digest but left the canonical digest IDENTICAL). Call this once per side
+ * with that side's OWN `JSON.parse` result — never pass a pre-sorted key
+ * list or a shared object through it.
+ */
+export function canonicalizeArmFile(plansByHarbour) {
+  const out = {};
+  for (const k of Object.keys(plansByHarbour)) out[k] = canonicalizePlan(plansByHarbour[k]);
+  return out;
+}

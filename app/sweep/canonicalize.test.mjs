@@ -3,7 +3,7 @@
 // collected by `npm --prefix app run test`, see README.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canonicalizePlan } from './canonicalize.mjs';
+import { canonicalizePlan, canonicalizeArmFile } from './canonicalize.mjs';
 
 // Fixture pair is asymmetric in EVERY way Task 9's rename actually is: the
 // OUTER container (named genoa/fock fields vs a sails list), the NESTED key
@@ -103,4 +103,50 @@ test('does not mutate its input — the original plan object is untouched', () =
   const before = JSON.stringify(frozenLegacy);
   canonicalizePlan(frozenLegacy);
   assert.equal(JSON.stringify(frozenLegacy), before);
+});
+
+// #54 fix round 1 (CRITICAL): compare.mjs's --canonical whole-file digest
+// hashes canonicalizeArmFile's OUTPUT, and the per-plan compare it sits
+// alongside iterates a SHARED SORTED key list — so a canonicalizeArmFile
+// that itself builds from a sorted (or otherwise shared) key order would
+// make the digest blind to a harbour reordering, which is exactly the class
+// of change the digest exists to catch (a per-plan compare can never see it
+// either way, by construction). This pins that canonicalizeArmFile
+// preserves EACH INPUT's OWN key order rather than normalising it.
+const planX = {
+  status: 'ok',
+  genoa: { rig: 'genoa', etaMs: 1, legs: [] },
+  fock: null,
+  genoaReason: null,
+  fockReason: 'unreachable',
+  recommended: 'genoa',
+};
+const planY = {
+  status: 'ok',
+  genoa: { rig: 'genoa', etaMs: 2, legs: [] },
+  fock: null,
+  genoaReason: null,
+  fockReason: 'unreachable',
+  recommended: 'genoa',
+};
+
+test('canonicalizeArmFile preserves each input\'s OWN harbour-key order — a reorder must change the serialised output', () => {
+  const forward = { alpha: planX, beta: planY };
+  const reversed = { beta: planY, alpha: planX }; // same per-harbour CONTENT, different KEY ORDER
+  // Per-harbour content is identical, so an order-independent (per-plan)
+  // compare would call these equal — this is specifically testing that the
+  // WHOLE-FILE serialisation (what the digest hashes) is NOT order-independent.
+  assert.notEqual(
+    JSON.stringify(canonicalizeArmFile(forward)),
+    JSON.stringify(canonicalizeArmFile(reversed)),
+  );
+});
+
+test('canonicalizeArmFile: same key order canonicalizes to the same serialisation (sanity twin of the row above)', () => {
+  const forward = { alpha: planX, beta: planY };
+  const forwardAgain = { alpha: planX, beta: planY };
+  assert.equal(
+    JSON.stringify(canonicalizeArmFile(forward)),
+    JSON.stringify(canonicalizeArmFile(forwardAgain)),
+  );
 });

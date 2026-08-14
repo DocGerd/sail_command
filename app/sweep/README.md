@@ -124,18 +124,25 @@ touched).
   normalise leg geometry, ETAs, distances, or `NoRouteReason` values — only
   which field holds a rig's result and what that rig is called — so it
   still fails on an actual routing change. The whole-file digest is computed
-  over the *canonicalised* serialisation in this mode, not raw bytes: raw
-  bytes would print `*** DIFFERS ***` beside a correct canonically-identical
+  over the *canonicalised* serialisation in this mode (via
+  `canonicalize.mjs`'s `canonicalizeArmFile`), not raw bytes: raw bytes
+  would print `*** DIFFERS ***` beside a correct canonically-identical
   verdict (the rename changes field names, hence every byte), while
   dropping the digest check entirely would silently lose its real job —
-  catching a key-order regression a per-plan compare can't see.
-  `canonicalizePlan` does not normalise key order in general, only the
-  container fields the rename itself touches, so that check still has teeth
-  in canonical mode.
+  catching TWO kinds of order regression a per-plan compare can't see: an
+  intra-plan key-order change (`canonicalizePlan` normalises only the
+  container fields the rename itself touches, so every other key keeps the
+  input's own order), and an inter-plan HARBOUR-order change (the per-plan
+  compare iterates a shared sorted key list, so it can never see a harbour
+  reordering — `canonicalizeArmFile` is called once per side, each on that
+  side's own on-disk key order, specifically so the digest can). The digest
+  line is diagnostic only in both modes — it never drives the exit code,
+  which comes solely from the per-plan compare.
 
 **The byte comparator is BLIND to a `PlanResultOk` rename in the reassuring
 direction on `becalmed` and `deep-becalmed`.** Every plan in those two arms
-is `PlanResultError` (`error/calm-without-motor`, per the outcome table
+is `PlanResultError` (`error/calm-motor-off`, `error/unreachable`, or on
+`deep-becalmed` also `error/snap-failed-destination` — see the outcome table
 above) — and `PlanResultError` carries no sail fields at all (`{ status:
 'error', reason }`, untouched by the Task 9 rename). So a byte compare of
 those two arms alone stays byte-identical straight through the rename and
