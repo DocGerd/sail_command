@@ -654,8 +654,14 @@ export default function PlannerPanel({
               3: `legs` is the ACTIVE rig's own legs (`result` above) — null
               whenever that rig has no result of its own, in which case the
               shared component's locator sentence safely stays absent while
-              the banner itself still renders. */}
-          {shallow && <ShallowWarning shallow={shallow} legs={result?.legs ?? null} />}
+              the banner itself still renders. The explicit `plan &&` alongside
+              `shallow &&` is a TYPE-LEVEL requirement only: `shallow` is
+              derived as `plan?.result.shallow ?? null`, so `shallow` truthy
+              already implies `plan` non-null at runtime — TS just can't see
+              that implication across the two separately-computed variables. */}
+          {plan && shallow && (
+            <ShallowWarning shallow={shallow} legs={result?.legs ?? null} plan={plan} />
+          )}
           {summary && (
             <>
               <div className="planner-result-primary">

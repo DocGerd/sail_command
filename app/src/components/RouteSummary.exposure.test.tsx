@@ -79,6 +79,28 @@ function shallowMask() {
   );
 }
 
+// #516 increment 2: a SINGLE shallow cell at col 55 — its centre sits
+// ~1665 m from snappedOrigin (START, col 50.3), inside APPROACH_RADIUS_M
+// (1852 m); see shallowExposure.test.ts's own precondition-derived geometry
+// for the same row/column arithmetic. `shallowMask()` above (cols 55-57)
+// is NOT confined as a whole — cols 56/57 sit past the radius from both
+// snappedOrigin and snappedDestination — which is why it needs this
+// narrower, single-cell sibling to exercise the CONFIRMED case.
+function confinedShallowMask() {
+  return assetsWithMask(
+    (row, col) => (row === ROW && col === 55 ? 20 /* 2.0 m */ : 200) /* 20 m */,
+  );
+}
+
+// A single shallow cell at col 57 — ~2305 m from snappedOrigin and
+// ~4226 m from snappedDestination (END, col 70.7), past APPROACH_RADIUS_M
+// from either.
+function unconfinedShallowMask() {
+  return assetsWithMask(
+    (row, col) => (row === ROW && col === 57 ? 20 /* 2.0 m */ : 200) /* 20 m */,
+  );
+}
+
 // Every cell 20 m — the SAME leg then measures an exposure of exactly 0
 // against a fully loaded mask (PR #523 review, Blocker 1). Reachable in
 // production two ways: `shallow` folds over BOTH rigs' legs while the walk
@@ -320,5 +342,57 @@ describe('#516: ShallowWarning exposure sentence', () => {
     await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
     const detail = container.querySelector('.shallow-warning__detail');
     expect(detail?.textContent).not.toContain('of this route crosses');
+  });
+});
+
+// #516 increment 2 (requires #518). Reuses this file's own mock scaffolding
+// rather than app/src/components/RouteSummary.test.tsx, for the SAME reason
+// increment 1 does (this file's own header comment): that suite's 42 cases
+// depend on useNavMask() staying permanently null with no services/assets
+// mock at all, and a module-level mock there risks every one of them.
+describe('#516 increment 2: ShallowWarning confinement sentence', () => {
+  it('renders the confinement sentence once every shallow cell is within APPROACH_RADIUS_M of a snapped waypoint', async () => {
+    mockedLoad.mockResolvedValue(confinedShallowMask());
+    const container = await renderAndSettle([EXPOSURE_LEG]);
+    await waitFor(() => {
+      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const detail = container.querySelector('.shallow-warning__detail');
+    const text = detail?.textContent ?? '';
+    // APPROACH_RADIUS_M (1852 m) / 1852 = 1 exactly -> formatNm(1) = "1.0 nm".
+    expect(text).toContain(
+      'Every stretch below your setting lies within 1.0 nm of your start, destination or waypoints.',
+    );
+    // Prepended alongside the exposure sentence (design §6): after it, before
+    // the existing mechanism sentence — never re-sequenced past either.
+    expect(text.indexOf('Every stretch below your setting')).toBeGreaterThan(
+      text.indexOf('of this route crosses water charted'),
+    );
+    expect(text.indexOf('Every stretch below your setting')).toBeLessThan(
+      text.indexOf('was not passable'),
+    );
+  });
+
+  it('suppresses the confinement sentence when a shallow cell falls outside APPROACH_RADIUS_M of every waypoint — never a negation', async () => {
+    mockedLoad.mockResolvedValue(unconfinedShallowMask());
+    const container = await renderAndSettle([EXPOSURE_LEG]);
+    await waitFor(() => {
+      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const detail = container.querySelector('.shallow-warning__detail');
+    const text = detail?.textContent ?? '';
+    expect(text).not.toContain('Every stretch below your setting');
+    // false/null suppress SILENTLY — never render a negation of the claim.
+    expect(text).not.toMatch(/not.*confined|not.*within/i);
+    // The exposure sentence itself is unaffected by the suppression.
+    expect(text).toContain('of this route crosses water charted');
+  });
+
+  it('omits the confinement sentence alongside the exposure sentence while the mask is still loading', async () => {
+    // mockedLoad left at the beforeEach default: never resolves.
+    const container = await renderAndSettle([EXPOSURE_LEG]);
+    const detail = container.querySelector('.shallow-warning__detail');
+    expect(detail?.textContent).not.toContain('Every stretch below your setting');
+    expect(detail?.textContent).toContain('was not passable');
   });
 });
