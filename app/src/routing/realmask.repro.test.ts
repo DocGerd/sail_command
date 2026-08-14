@@ -336,8 +336,10 @@ describe('real mask routing (issue #20)', () => {
       for (const rig of [res.genoa, res.fock]) {
         if (!rig) continue;
         for (const leg of rig.legs) {
-          // Sample far finer than the ~46 m cell pitch so no crossed cell is
-          // stepped over.
+          // Sample well below the ~46 m cell pitch, so any cell crossed for
+          // more than a step is seen; a corner-clip shorter than one step can
+          // still be missed, which is why this test is sized to catch gross
+          // violations tens of nm out rather than to certify an exact zero.
           const legM = metresBetween(leg.start, leg.end);
           const steps = Math.max(2, Math.ceil(legM / 10));
           for (let i = 0; i <= steps; i++) {

@@ -247,7 +247,7 @@ describe('#432 planRoute(): one budget for the whole plan', () => {
     expect(neverExpires).toEqual(unbudgeted);
   });
 
-  it('does not run findRelaxedDepthM probes past a spent budget', () => {
+  it('does not run findRelaxedGate probes past a spent budget', () => {
     // The gap `depthRelaxationMayHelp` alone does NOT close: the solve
     // completes with an honest 'mask-blocked' verdict (so the relaxation gate
     // opens) while the budget is already spent. The BFS probes are the only

@@ -220,8 +220,9 @@ export function edgeFactor(
   // #452: the ramp is a SEGMENT-level scalar, so it anchors at the most
   // permissive gate anywhere in the field. For a UniformGate that is the gate
   // itself, which is what keeps every pre-#452 call byte-identical; for an
-  // ApproachGate it is `minGateM`, the same value the pre-#452 relaxed tiers
-  // put in `settings.safetyDepthM`. Anchoring it anywhere else would be the
+  // ApproachGate it is `minGateM` — this plan's own `usedDepthM`, the slot
+  // the pre-#452 relaxed tiers filled by overwriting `settings.safetyDepthM`.
+  // Anchoring it anywhere else would be the
   // ramp RE-ANCHOR that spike §3.2 graft 6 requires to be a separate PR.
   const floorM = gateFloorM(gate);
   if (comfortDepthM === undefined || comfortDepthM <= floorM) {

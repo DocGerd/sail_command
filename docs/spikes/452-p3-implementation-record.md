@@ -229,15 +229,16 @@ arithmetic')`). The `relaxedDepth.test.ts` figure of 8 IS a case count and is
 correct; its call-site count is 10.
 
 **(b) Four larger ripples the spike omits entirely**, measured by `tsc -b`
-after the production migration — 65 test call sites in total, versus the ~19
-the spike's two numbers imply:
+after the production migration — 75 test call sites across the six APIs
+below, 56 of them in the four the spike omits, versus the ~19 its two numbers
+imply:
 
 | API | test call sites |
 |---|---|
 | `segmentNavigable` | 23 |
 | `segmentClearanceM` | 9 |
 | `cellsConnected` | 12 |
-| `mergeCollinearLegs` | 13 |
+| `mergeCollinearLegs` | 12 |
 | `edgeFactor` | 9 |
 | `findRelaxedDepthM` | 10 |
 
@@ -277,11 +278,15 @@ baseline against the very thing that would invalidate it rather than only
 against itself.
 
 A control taken against a `develop` that then moves certifies nothing, so after
-any further re-sync re-check the sweep's transitive input closure
-(`app/src/routing/`, `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts`,
-`app/public/data/`, `app/sweep/`, `pipeline/`) before relying on it. That
-exemption fails OPEN, so default to re-running and skip only after checking the
-closure itself — never a remembered path list.
+any further re-sync re-derive the sweep's transitive input closure from the
+sweep sources themselves before relying on it. It is wider than the obvious
+routing/mask/data paths: `sweepArms.ts` also pulls `DEFAULT_SETTINGS` from
+`app/src/types.ts`, `uniformWindGrid` from `app/src/test/fixtures` and
+`solverTimeoutMs` from `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
+`app/src/test/setup.ts`; and the solver reaches `lib/geo.ts`, `lib/polar.ts`,
+`lib/wind.ts` and, since #452, `lib/depthGate.ts`. That exemption fails OPEN,
+so default to re-running and skip only after re-deriving the closure — never
+against a remembered path list, this one included.
 
 **R3 — P3's named trade is UNEXERCISED by every measurement that exists.**
 Spike §2.3's trade is that a localized `connectedAt` can return a LOWER
@@ -515,7 +520,7 @@ recommended-rig delta silently mixes routing cost with a rig FLIP.
 | median ETA delta | **+41.8 s** |
 | slower / faster / unchanged | **43 / 11 / 6** |
 | sum of all increases | **+49,814 s** |
-| sum of all decreases | **−7,774 s** |
+| sum of all decreases | **−7,775 s** |
 
 The median is small; the distribution is heavily tailed. The tail is the story,
 so it is listed in full rather than described.

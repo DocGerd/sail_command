@@ -49,7 +49,7 @@ import type { SolveFailureCause } from './isochrone';
 // MORE solver time a different way succeed?", and the one thing known here
 // is that there is no more time to spend; every retried solve would abort at
 // its own first ring, and the relaxation gate would additionally run
-// findRelaxedDepthM's BFS probes past a deadline that has already passed.
+// findRelaxedGate's BFS probes past a deadline that has already passed.
 const EXPECTED: Record<SolveFailureCause, { comfortRetry: boolean; depthRelaxation: boolean }> = {
   'mask-blocked': { comfortRetry: true, depthRelaxation: true },
   'horizon-exceeded': { comfortRetry: true, depthRelaxation: false },

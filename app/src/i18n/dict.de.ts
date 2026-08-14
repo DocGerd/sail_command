@@ -234,10 +234,10 @@ export const de = {
   // #516 Zuwachs 2 (setzt #518 voraus): siehe dict.en.ts's Kommentar für
   // Zweck, Messung statt Annahme, Reihenfolge und Anaphern-Disziplin.
   // "eingestellte Sicherheitstiefe" statt des Entwurfsdokuments "eingestellte
-  // Tiefe", zur Angleichung an .exposure/.detail oben, die denselben Begriff
-  // schon zweimal in dieser Datei verwenden.
+  // Tiefe", zur Angleichung an .exposure oben und .detail unten, die
+  // denselben Begriff schon zweimal in dieser Datei verwenden.
   'route.shallow.confined':
-    'Jeder Abschnitt unterhalb der eingestellten Sicherheitstiefe liegt innerhalb von {radius} um Start, Ziel oder Wegpunkte.',
+    'Jeder Abschnitt unterhalb der eingestellten Sicherheitstiefe liegt im Umkreis von {radius} um Start, Ziel oder Wegpunkte.',
   // #516: die explizite Produktentscheidung des Maintainers (im
   // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
   // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen

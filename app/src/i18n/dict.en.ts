@@ -225,7 +225,7 @@ export const en = {
   // .exposure's position (the #493/#504 anaphora lesson). false/null both
   // suppress this sentence silently; it is never rendered as a negation.
   'route.shallow.confined':
-    'Every stretch below your setting lies within {radius} of your start, destination or waypoints.',
+    'Every stretch below your safety depth lies within {radius} of your origin, destination or waypoints.',
   // #516: the maintainer's own explicit product decision (the #516 design
   // doc had deliberately left this UNRECOMMENDED, "a maintainer product
   // call, flagged rather than designed" — since ruled on). Rendered LAST in

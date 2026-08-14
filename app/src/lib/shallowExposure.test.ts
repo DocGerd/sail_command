@@ -239,6 +239,41 @@ function navMaskWalk(mask: NavMask, a: LatLon, b: LatLon): string[] {
   return seq;
 }
 
+// PR #518 review, "Checked and clean" §2 — the keeper above drives the walk
+// through shallowExposureNm ONLY, so a future edit giving legConfinedWithin
+// its own copy of the DDA would not be caught. Same recording facade as
+// shippedWalk, driven through shallowConfinedWithinM instead: legConfinedWithin
+// calls isShallowAt (hence mask.depthInfoM) unconditionally for every cell
+// walkLegCells visits, exactly like shallowFractionOfLeg does, so the recorded
+// sequence is the walk itself, not a confinement verdict. Neither the
+// threshold nor the waypoints/allowance/radius change WHICH cells are
+// visited, so any values serve here — same reasoning as shippedWalk's own
+// comment on its threshold argument.
+function confinedWalk(mask: NavMask, a: LatLon, b: LatLon): string[] {
+  const meta = mask.meta;
+  const latStep = (meta.north - meta.south) / meta.rows;
+  const lonStep = (meta.east - meta.west) / meta.cols;
+  const seq: string[] = [];
+  const recorder = {
+    meta,
+    depthInfoM(p: LatLon) {
+      const row = Math.floor((p.lat - meta.south) / latStep);
+      const col = Math.floor((p.lon - meta.west) / lonStep);
+      seq.push(`${row},${col}`);
+      return mask.depthInfoM(p);
+    },
+  };
+  shallowConfinedWithinM(
+    [makeLeg(a, b, 1)],
+    recorder as unknown as NavMask,
+    3.0,
+    [],
+    [],
+    APPROACH_RADIUS_M,
+  );
+  return seq;
+}
+
 // Exact-tie grid: west/south and both steps are exact binary fractions
 // (step = 2^-7 = 0.0078125), so a point offset by the SAME multiple of the
 // step in both axes yields x0 === y0 bit-for-bit. A 45-degree segment across
@@ -316,10 +351,13 @@ describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
   for (const [name, m, a, b] of cases) {
     it(`visits the same cells in the same order: ${name}`, () => {
       const shipped = shippedWalk(m, a, b);
+      const confined = confinedWalk(m, a, b);
       // Fails CLOSED: a segment that never walked at all would make the
       // sequence comparison below vacuously true (two empty arrays).
       expect(shipped.length).toBeGreaterThan(0);
-      expect(shipped).toEqual(navMaskWalk(m, a, b));
+      const expected = navMaskWalk(m, a, b);
+      expect(shipped).toEqual(expected);
+      expect(confined).toEqual(expected);
     });
   }
 
@@ -341,7 +379,9 @@ describe("shallowExposureNm's walk vs NavMask.walkCells (#516)", () => {
       fc.property(arbPoint, arbPoint, (a, b) => {
         const shipped = shippedWalk(mask, a, b);
         expect(shipped.length).toBeGreaterThan(0);
-        expect(shipped).toEqual(navMaskWalk(mask, a, b));
+        const expected = navMaskWalk(mask, a, b);
+        expect(shipped).toEqual(expected);
+        expect(confinedWalk(mask, a, b)).toEqual(expected);
       }),
       { numRuns: 500, seed: 42 }, // deterministic CI
     );

@@ -42,9 +42,14 @@ export interface UniformGate {
  * membership test is multiply-and-add only — a metres-space circle is an
  * ellipse in grid space, and the conversion is done once here rather than per
  * cell. The squared radii are stored (rather than the radii) for the same
- * reason, and because it makes the degenerate `radiusM === 0` case fall out
- * correctly instead of dividing by zero: the test below reduces to
- * `0 <= 0`, i.e. the centre cell alone.
+ * reason, and because it makes the degenerate `radiusM === 0` case cheap
+ * instead of dividing by zero — though what actually confines that case to a
+ * waypoint's own cell is `gateAtCell`'s union bounding-box reject, not this
+ * ellipse test: at `radiusM === 0` the test below reduces to `0 <= 0`, which
+ * is vacuously true for every cell that reaches it, so with two or more
+ * waypoints it can match cells inside their bbox UNION that are neither
+ * waypoint's own centre. `radiusM === 0` is unreachable in production (only
+ * `APPROACH_RADIUS_M` and `Infinity` are ever passed).
  */
 export interface Disc {
   /** Grid row of the waypoint's own cell. */

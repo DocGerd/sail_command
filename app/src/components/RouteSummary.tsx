@@ -157,7 +157,7 @@ export function ShallowWarning({
   //    re-read is the expected result — a tablet rotation is enough.
   //    Mount-gating is still correct; display:none would leave a wide-only
   //    sentence in the accessibility tree on narrow, which is worse.
-  // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedDepthM
+  // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedGate
   //    searches [BOAT_DRAFT_M, requestedDepthM) while SAFETY_DEPTH_FIELD
   //    clamps the input to >= its own min (2.1 and 2.2 respectively today),
   //    so at a usedDepthM of either there is no lower setting to choose and
@@ -189,7 +189,7 @@ export function ShallowWarning({
             })}{' '}
           </>
         )}
-        {/* #516 increment 2: prepended alongside the exposure sentence above,
+        {/* #516 increment 2: rendered right after the exposure sentence above,
             never re-sequenced relative to it — a self-contained sentence
             (never "all of it", which would bind to the exposure sentence's
             position, the #493/#504 anaphora lesson). Stays ahead of the

@@ -361,14 +361,14 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
     const text = detail?.textContent ?? '';
     // APPROACH_RADIUS_M (1852 m) / 1852 = 1 exactly -> formatNm(1) = "1.0 nm".
     expect(text).toContain(
-      'Every stretch below your setting lies within 1.0 nm of your start, destination or waypoints.',
+      'Every stretch below your safety depth lies within 1.0 nm of your origin, destination or waypoints.',
     );
     // Prepended alongside the exposure sentence (design §6): after it, before
     // the existing mechanism sentence — never re-sequenced past either.
-    expect(text.indexOf('Every stretch below your setting')).toBeGreaterThan(
+    expect(text.indexOf('Every stretch below your safety depth')).toBeGreaterThan(
       text.indexOf('of this route crosses water charted'),
     );
-    expect(text.indexOf('Every stretch below your setting')).toBeLessThan(
+    expect(text.indexOf('Every stretch below your safety depth')).toBeLessThan(
       text.indexOf('was not passable'),
     );
   });
@@ -381,7 +381,7 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
     });
     const detail = container.querySelector('.shallow-warning__detail');
     const text = detail?.textContent ?? '';
-    expect(text).not.toContain('Every stretch below your setting');
+    expect(text).not.toContain('Every stretch below your safety depth');
     // false/null suppress SILENTLY — never render a negation of the claim.
     expect(text).not.toMatch(/not.*confined|not.*within/i);
     // The exposure sentence itself is unaffected by the suppression.
@@ -392,7 +392,7 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
     // mockedLoad left at the beforeEach default: never resolves.
     const container = await renderAndSettle([EXPOSURE_LEG]);
     const detail = container.querySelector('.shallow-warning__detail');
-    expect(detail?.textContent).not.toContain('Every stretch below your setting');
+    expect(detail?.textContent).not.toContain('Every stretch below your safety depth');
     expect(detail?.textContent).toContain('was not passable');
   });
 });
