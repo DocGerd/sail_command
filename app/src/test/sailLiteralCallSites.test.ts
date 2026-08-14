@@ -39,6 +39,16 @@ const rawSourceFiles = import.meta.glob<string>(
 // (and the #54 plan's own ALLOWED literal below) spells them —
 // `src/data/boats.ts` — and so `ALLOWED`'s entries match by a plain
 // `endsWith`, exactly as the plan's own code does.
+//
+// THE TRAP this closes (MEASURED, not theoretical — mutation-checked in
+// this task's report): without this normalisation, a raw key like
+// `'../data/boats.ts'` does NOT `endsWith('src/data/boats.ts')` — there is
+// no `src/` segment in it at all. `boats.ts` would then silently fall OUT
+// of the allowlist match, get scanned like any other file, and — since it
+// legitimately DOES contain the bare literals `'genoa'`/`'fock'` as the
+// catalogue's own ids — get reported as a FALSE offender. The guard would
+// look like it was working while accusing the very catalogue it exists to
+// route everything else through.
 const sourceByPath = new Map(
   Object.entries(rawSourceFiles).map(([key, content]) => [key.replace(/^\.\.\//, 'src/'), content]),
 );
@@ -77,18 +87,20 @@ function buildSailIdPattern(ids: readonly string[]): RegExp {
 // a twin, or stubbing this to [] silently disables the guard while it keeps
 // reporting success (see the twin test below).
 //
-// `src/i18n/dict.de.ts` and `src/i18n/dict.en.ts` are, as of this task,
-// INERT entries: MEASURED (this file's own sanity tests below) that neither
-// dict contains a bare quoted sail-id literal today. Both dicts hold
-// `'route.rig.genoa'` / `'route.rig.fock'` — those are i18n KEYS for the
-// Rig type's labels, not the sail catalogue's own ids, and the pattern
-// above does not match them (no quote immediately before "genoa"). Removing
-// these two entries would not change today's offender list either way.
-// Kept verbatim per the #54 plan's own Step 1 code pending a controller
-// ruling on whether a bare sail-id literal could legitimately land in a
-// dict file later (e.g. if a sail-scoped i18n key were ever keyed on the
-// bare id rather than a dotted path) — see this task's report.
-const ALLOWED = ['src/data/boats.ts', 'src/i18n/dict.de.ts', 'src/i18n/dict.en.ts'];
+// `src/i18n/dict.de.ts` and `src/i18n/dict.en.ts` are DELIBERATELY NOT
+// here, on a controller ruling (#54 fix-wave 1). MEASURED: neither dict
+// contains a bare quoted sail-id literal today — both hold
+// `'route.rig.genoa'` / `'route.rig.fock'`, longer i18n KEYS for the Rig
+// type's labels that the pattern below does not match (no quote
+// immediately before "genoa") — so an entry for either would have exempted
+// a violation that has never occurred, not a known-acceptable one. Worse,
+// pre-exempting them would read as "the dicts are expected to contain sail
+// ids", which is backwards: the plan's Global Constraints state sail/boat
+// labels are catalogue data (proper nouns), never dictionary keys, so a
+// bare sail-id literal landing in a dict is exactly the violation this
+// guard exists to catch, and the file class where the rule is strictest.
+// See the dedicated active check below instead of an allowlist entry.
+const ALLOWED = ['src/data/boats.ts'];
 
 // SNAPSHOT of today's nine known offenders — deliberately NOT an empty
 // array. Task 9 centralises every one of these onto BOATS-derived lookups;
@@ -140,9 +152,37 @@ describe('#54 sail-id pattern sanity (proves the regex construction itself, not 
   });
 });
 
+// ACTIVE guard, not documentation: the plan's Global Constraints state sail
+// and boat labels are catalogue data (proper nouns) and NEVER dictionary
+// keys, so a bare sail-id literal in either dict would be a real violation
+// of that rule — and, unlike everywhere else this guard scans, one that
+// nothing else in the codebase enforces (dict.de.ts/dict.en.ts key parity
+// via `satisfies Record<MsgKey, string>` checks the KEY SET matches between
+// the two dicts; it says nothing about what a key's own text may contain).
+// Deliberately reads the REAL file content through the same `readSource` /
+// `buildSailIdPattern` the rest of this file uses, rather than a synthetic
+// string, so this is checking the actual shipped dicts, not a hypothesis
+// about them. If Task 9 (or anything later) needs a bare sail literal in a
+// dict, this reds and the exemption has to be added to ALLOWED
+// deliberately — the point, not an accident to route around.
+describe('#54 i18n dicts never carry a bare sail-id literal (plan Global Constraints)', () => {
+  it('neither dict.de.ts nor dict.en.ts contains one', () => {
+    const ids = BOATS.flatMap((b) => b.sails.map((s) => s.id));
+    const pattern = buildSailIdPattern(ids);
+    for (const path of ['src/i18n/dict.de.ts', 'src/i18n/dict.en.ts']) {
+      expect(
+        pattern.test(readSource(path)),
+        `#54 guard: ${path} contains a bare sail-id literal. Sail/boat labels are catalogue ` +
+          'data (proper nouns), never i18n dictionary keys (plan Global Constraints) — route ' +
+          'the label through BOATS instead of adding it to a dict.',
+      ).toBe(false);
+    }
+  });
+});
+
 describe('#54 structural guard: allowlist is pinned', () => {
   it('the allowlist is exactly what we expect', () => {
-    expect(ALLOWED).toEqual(['src/data/boats.ts', 'src/i18n/dict.de.ts', 'src/i18n/dict.en.ts']);
+    expect(ALLOWED).toEqual(['src/data/boats.ts']);
   });
 });
 
