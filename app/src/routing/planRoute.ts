@@ -114,6 +114,32 @@ export function combineFailureCause(
   return 'mask-blocked';
 }
 
+/**
+ * #54 fix (review round 1): folds every requested sail's cause into one
+ * plan-level cause. `combineFailureCause` above STAYS binary (cap N at 2
+ * per spec §J OQ-3 governs `RigRecommendation`/`compareRigs`, not this
+ * fold) — this generalises only the FOLD over however many sails were
+ * actually requested, replacing a positional `combineFailureCause(a[0],
+ * a[1])` that threw at `sailIds.length === 1` (`a[1]` undefined).
+ *
+ * `null` is a genuine LEFT IDENTITY for `combineFailureCause`: reading its
+ * body, `a === null` never matches any of the three special-cause checks,
+ * so `combineFailureCause(null, b) === b` for every `b` (and the function
+ * is symmetric in its two arguments, so the same holds seeded on the
+ * right) — seeding the reduce with `null` is therefore EXACT, not an
+ * approximation. MEASURED byte-identical to the old positional form at
+ * N=2 across all 5x5 (four causes + null) argument pairs. The `??
+ * 'mask-blocked'` only matters for the degenerate N=0 case (`sails` empty)
+ * that no real request reaches — `mask-blocked` is this file's own
+ * existing default (see `cause`'s declaration below), not a new value.
+ */
+function combineAllCauses(sails: readonly RunOut[]): SolveFailureCause {
+  return (
+    sails.reduce<SolveFailureCause | null>((acc, r) => combineFailureCause(acc, r.cause), null) ??
+    'mask-blocked'
+  );
+}
+
 // #259: an ETA gap smaller than this is measurement noise, not a genuine
 // speed difference between rigs — 23.8x the worst knife-edge measured to date
 // (2.52 s at the sail-speed floor's 3.8 kn boundary, see the motor-decision-rule
@@ -606,10 +632,11 @@ export function planRoute(
         // horizon and calm classes are actionable) rather than leaving the
         // stale mask-blocked one. See combineFailureCause for the
         // rig-disagreement precedence. Matches tier 3's fallback below
-        // exactly (the pre-#243 rule). #54: combineFailureCause stays binary
-        // (cap N at 2, spec §J OQ-3) — indices [0]/[1] are the two requested
-        // sails in req.sailIds order.
-        cause = combineFailureCause(tier4[0].cause, tier4[1].cause);
+        // exactly (the pre-#243 rule). #54 fix round 1: folds over every
+        // requested sail via combineAllCauses — a positional
+        // combineFailureCause(tier4[0], tier4[1]) crashed at
+        // sailIds.length === 1 (tier4[1] undefined).
+        cause = combineAllCauses(tier4);
       } else if (tier3.some((r) => r.rigResult)) {
         const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
         return assemble(tier3, shallow);
@@ -619,8 +646,9 @@ export function planRoute(
         // propagate the relaxed solve's OWN class (the horizon and calm
         // classes are actionable) rather than leaving the stale mask-blocked
         // one. See combineFailureCause for the rig-disagreement precedence.
-        // #54: combineFailureCause stays binary (cap N at 2, spec §J OQ-3).
-        cause = combineFailureCause(tier3[0].cause, tier3[1].cause);
+        // #54 fix round 1: folds over every requested sail via
+        // combineAllCauses (see the tier-4 call site's comment above).
+        cause = combineAllCauses(tier3);
       }
     }
   }

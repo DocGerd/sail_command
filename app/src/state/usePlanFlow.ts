@@ -237,11 +237,25 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // throttled upstream (workerClient.ts) but no longer consumed
           // here. `index`/`total` are derived from req.sailIds (the solve
           // order itself), not a module constant.
+          //
+          // #54 fix round 1: an unguarded `indexOf(sailId) + 1` degrades to
+          // a fabricated "sail 0 of 2" if the worker ever reports progress
+          // for a sailId not in req.sailIds — unreachable today (the worker
+          // only ever solves the sails req.sailIds itself lists), but
+          // silently WRONG rather than caught, inconsistent with
+          // recommendedResult()'s (types.ts) throw-don't-fabricate stance on
+          // the same class of invariant. Throw instead.
           (sailId) => {
+            const index = req.sailIds.indexOf(sailId);
+            if (index === -1) {
+              throw new Error(
+                `invariant violated: worker reported progress for sail '${sailId}', not present in request.sailIds`,
+              );
+            }
             transition({
               phase: 'routing',
               sailId,
-              index: req.sailIds.indexOf(sailId) + 1,
+              index: index + 1,
               total: req.sailIds.length,
             });
           },

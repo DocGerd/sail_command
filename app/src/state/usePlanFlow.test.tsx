@@ -296,11 +296,12 @@ describe('usePlanFlow', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  // #340: the routing phase carries only `rig` — no simulatedToMs/progress
-  // number — since the router solves genoa then fock SEQUENTIALLY
-  // (planRoute.ts's runBoth) and `rig` alone is an honest, bounded phase
-  // signal. tMs/frontierSize still arrive on every progress message (the
-  // worker protocol is unchanged) but are no longer reflected into state.
+  // #340/#54: the routing phase carries `sailId`+`index`+`total` — no
+  // simulatedToMs/progress number — since the router solves req.sailIds
+  // SEQUENTIALLY (planRoute.ts's runAll, a plain `.map()` over req.sailIds)
+  // and that triple alone is an honest, bounded phase signal. tMs/frontierSize
+  // still arrive on every progress message (the worker protocol is
+  // unchanged) but are no longer reflected into state.
   it('the routing phase tracks which rig is solving, regardless of tMs — including a same-rig regression, which is not a phase change', async () => {
     let now = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
@@ -332,7 +333,12 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 1000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
 
     // A regressing tMs at a via-segment joint (ledgered) is invisible to the
     // UI now — there is no number to clamp or regress, only the rig. `now`
@@ -342,7 +348,12 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 800, frontierSize: 4 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
 
     // The genoa->fock switch: the ONLY visible change is `rig` — this is the
     // exact transition the removed percentage rendered as a reset to 0.
@@ -350,7 +361,12 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, sailId: 'fock', tMs: 200, frontierSize: 1 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'fock', index: 2, total: 2 });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'fock',
+      index: 2,
+      total: 2,
+    });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
@@ -391,7 +407,12 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 5000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
 
     // The worker starts probing relaxed depth gates (mask BFS): the UI shows
     // its own named 'probing-depth' phase, not a routing readout frozen at
@@ -408,7 +429,12 @@ describe('usePlanFlow', () => {
     act(() => {
       w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 200, frontierSize: 2 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });

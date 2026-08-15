@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { recalcRequest } from './recalc';
 import { uniformWindGrid } from '../test/fixtures';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { DEFAULT_SETTINGS, type Plan, type PlanRequest, type Settings } from '../types';
 
 // Literal request values (mutation-check rule: expectations are pinned
@@ -126,5 +127,31 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
     // silently overwritten by the default.
     expect(seeded.settings.safetyDepthM).toBe(2.3);
     expect(seeded.settings.motorEnabled).toBe(false);
+  });
+
+  // #54 fix round 1: same mechanism as the depthComfortMarginM case above, on
+  // a field OUTSIDE Settings this time. A plan saved before sailIds existed
+  // on PlanRequest (pre-multi-boat) has it simply absent from its stored
+  // snapshot; without backfilling from DEFAULT_SAIL_IDS, recalcRequest would
+  // carry `undefined` forward into a field typed as a required array, and
+  // planRoute.ts's `runAll` calls `req.sailIds.map(...)` unconditionally —
+  // throwing on recalculation of a pre-#54 plan rather than degrading.
+  it('backfills sailIds from DEFAULT_SAIL_IDS on a pre-#54-shaped saved plan', () => {
+    // PlanRequest.sailIds is `readonly` (strict mode forbids `delete` on a
+    // readonly property) — strip readonly locally, mirroring the pattern the
+    // depthComfortMarginM test above uses on Settings (whose fields are not
+    // readonly, so it needs no such cast).
+    const oldShapedRequest = { ...ORIGINAL_REQUEST } as Partial<{
+      -readonly [K in keyof PlanRequest]: PlanRequest[K];
+    }>;
+    delete oldShapedRequest.sailIds;
+    const plan = makePlan();
+    plan.request = oldShapedRequest as PlanRequest;
+
+    const seeded = recalcRequest(plan, 1_780_086_400_000);
+
+    expect(seeded.sailIds).toEqual(DEFAULT_SAIL_IDS);
+    // Every field the old plan DID have is still preserved verbatim.
+    expect(seeded.originHarborId).toBe('flensburg');
   });
 });

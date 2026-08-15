@@ -10,6 +10,7 @@ import {
   type ReplanDeps,
 } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
   type LatLon,
@@ -112,8 +113,14 @@ export async function rerouteFromFix(
     settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
     // #54: reroute the SAME sails the plan being rerouted was originally
     // solved with, not a fresh default — mirrors every other field here
-    // being copied from the original plan's own request.
-    sailIds: plan.request.sailIds,
+    // being copied from the original plan's own request. #54 fix round 1:
+    // backfilled with `?? DEFAULT_SAIL_IDS` for the same reason as
+    // lib/recalc.ts's `settings` backfill above — a plan saved before this
+    // field existed has it absent, and planRoute.ts's `runAll` calls
+    // `req.sailIds.map(...)` unconditionally. Copied via spread (`[...]`),
+    // not aliased, matching this comment's own "copied, never aliased"
+    // contract — `reroute.test.ts` asserts it.
+    sailIds: plan.request.sailIds ? [...plan.request.sailIds] : DEFAULT_SAIL_IDS,
   };
 
   let result: PlanResult;

@@ -83,8 +83,9 @@ const deps = { polarGenoa: TEST_POLAR, polarFock: TEST_POLAR as PolarTable, mask
 // sampled — just structurally valid for WindField's constructor.
 const windGrid = uniformWindGrid(12, 0);
 
-// solve() call order within one tier is genoa-then-fock (runBoth's object
-// literal, `{ genoa: run(...), fock: run(...) }`, evaluates in that order).
+// solve() call order within one tier follows req.sailIds (#54: runAll's
+// `req.sailIds.map((sailId) => run(sailId, ...))` evaluates in array order —
+// genoa-then-fock here because that's this file's sailIds literal above).
 const ok = (distanceNm: number, etaMs = T0 + 1000) => ({
   status: 'ok' as const,
   legs: [leg(distanceNm)],

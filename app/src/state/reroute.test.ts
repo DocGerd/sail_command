@@ -8,11 +8,13 @@ import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
 import { uniformWindGrid } from '../test/fixtures';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
   type LatLon,
   type NoRouteReason,
   type Plan,
+  type PlanRequest,
   type PlanResultOk,
 } from '../types';
 
@@ -189,6 +191,36 @@ describe('rerouteFromFix', () => {
 
     const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(request.settings.sailPreferenceKn).toBe(DEFAULT_SETTINGS.sailPreferenceKn);
+  });
+
+  // #54 fix round 1: same mechanism as the two backfill cases above, on a
+  // field OUTSIDE Settings this time. A plan saved before sailIds existed on
+  // PlanRequest (pre-multi-boat) has it simply absent from its stored
+  // snapshot; without backfilling from DEFAULT_SAIL_IDS, rerouteFromFix would
+  // carry `undefined` forward into a field typed as a required array, and
+  // planRoute.ts's `runAll` calls `req.sailIds.map(...)` unconditionally —
+  // throwing on reroute of a pre-#54 plan rather than degrading.
+  it('backfills sailIds from DEFAULT_SAIL_IDS on a pre-#54-shaped saved plan', async () => {
+    // PlanRequest.sailIds is `readonly` (strict mode forbids `delete` on a
+    // readonly property) — strip readonly locally, mirroring the
+    // depthComfortMarginM/sailPreferenceKn tests above on Settings (whose
+    // fields are not readonly, so they need no such cast).
+    const oldShapedRequest = { ...makePlan().request } as Partial<{
+      -readonly [K in keyof PlanRequest]: PlanRequest[K];
+    }>;
+    delete oldShapedRequest.sailIds;
+    const plan = makePlan({ request: oldShapedRequest as PlanRequest });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(DEFAULT_SAIL_IDS);
+    // The old plan's other fields are still preserved verbatim.
+    expect(request.destinationHarborId).toBe('dk-marstal');
   });
 
   it('never fetches: zero network calls and no fetchWindGrid, even with navigator.onLine === false', async () => {

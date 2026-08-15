@@ -1,3 +1,4 @@
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { DEFAULT_SETTINGS, type Plan, type PlanRequest } from '../types';
 
 /**
@@ -23,6 +24,14 @@ import { DEFAULT_SETTINGS, type Plan, type PlanRequest } from '../types';
  * `undefined` forward into a field typed as a required `number`, and for
  * depthComfortMarginM specifically would silently disable the depth comfort
  * preference on every recalculation of a pre-#243 plan.
+ *
+ * #54 fix round 1: `sailIds` gets the SAME backfill treatment for the SAME
+ * reason — a plan saved before this field existed has it simply absent
+ * (`...plan.request` spreads `sailIds: undefined`), and planRoute.ts's
+ * `runAll` calls `req.sailIds.map(...)` unconditionally, so an unbackfilled
+ * pre-#54 plan would throw on recalculation rather than degrading. Task 11's
+ * `migratePlan` will cover the IndexedDB read path; this covers recalc
+ * regardless of how the plan arrived (IndexedDB, or a future import path).
  */
 export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
   return {
@@ -31,6 +40,7 @@ export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
     destination: { ...plan.request.destination },
     viaPoints: plan.request.viaPoints.map((v) => ({ ...v })),
     settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
+    sailIds: plan.request.sailIds ?? DEFAULT_SAIL_IDS,
     departureMs,
   };
 }
