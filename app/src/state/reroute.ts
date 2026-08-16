@@ -120,9 +120,9 @@ export async function rerouteFromFix(
     // #54 review round 2: BOTH branches spread. The fallback used to alias
     // the module-level DEFAULT_SAIL_IDS, which contradicts this block's own
     // "copied, never aliased" contract and would hand the same one array to
-    // every backfilled reroute. Pinned by reroute.test.ts's "copies sailIds in both
-    // branches, never aliasing the saved plan's array or the
-    // DEFAULT_SAIL_IDS module constant".
+    // every backfilled reroute. Pinned by reroute.test.ts's "copies sailIds,
+    // never aliasing the saved plan's array" and "copies the backfill, never
+    // aliasing the DEFAULT_SAIL_IDS module constant", one row per branch.
     sailIds: plan.request.sailIds ? [...plan.request.sailIds] : [...DEFAULT_SAIL_IDS],
   };
 

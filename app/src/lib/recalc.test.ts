@@ -131,16 +131,14 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
 
   // #54 fix round 1: same mechanism as the depthComfortMarginM case above, on
   // a field OUTSIDE Settings this time. A plan saved before sailIds existed
-  // on PlanRequest (pre-multi-boat) has it simply absent from its stored
-  // snapshot; without backfilling from DEFAULT_SAIL_IDS, recalcRequest would
-  // carry `undefined` forward into a field typed as a required array, and
+  // on PlanRequest (pre-multi-boat) does not carry the key at all in its
+  // stored snapshot; without backfilling from DEFAULT_SAIL_IDS,
   // planRoute.ts's `runAll` calls `req.sailIds.map(...)` unconditionally —
   // throwing on recalculation of a pre-#54 plan rather than degrading.
   it('backfills sailIds from DEFAULT_SAIL_IDS on a pre-#54-shaped saved plan', () => {
-    // PlanRequest.sailIds is `readonly` (strict mode forbids `delete` on a
-    // readonly property) — strip readonly locally, mirroring the pattern the
-    // depthComfortMarginM test above uses on Settings (whose fields are not
-    // readonly, so it needs no such cast).
+    // The local cast is what makes `delete` compile on `PlanRequest.sailIds`
+    // — the depthComfortMarginM test above needs no such cast, since
+    // Settings's own fields are not readonly.
     const oldShapedRequest = { ...ORIGINAL_REQUEST } as Partial<{
       -readonly [K in keyof PlanRequest]: PlanRequest[K];
     }>;
@@ -153,5 +151,18 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
     expect(seeded.sailIds).toEqual(DEFAULT_SAIL_IDS);
     // Every field the old plan DID have is still preserved verbatim.
     expect(seeded.originHarborId).toBe('flensburg');
+  });
+
+  // #54 review round 3: the INHERITANCE half of the backfill `??`.
+  // ORIGINAL_REQUEST's sailIds is ['genoa', 'fock'], value-equal to
+  // DEFAULT_SAIL_IDS — so no assertion against it can tell an inherited list
+  // from a hardcoded default. A non-default fixture can.
+  it("seeds the saved plan's OWN sails, not the default", () => {
+    const plan = makePlan();
+    plan.request = { ...ORIGINAL_REQUEST, sailIds: ['fock'] };
+
+    const seeded = recalcRequest(plan, 1_780_086_400_000);
+
+    expect(seeded.sailIds).toEqual(['fock']);
   });
 });

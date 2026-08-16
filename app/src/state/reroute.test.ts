@@ -195,16 +195,14 @@ describe('rerouteFromFix', () => {
 
   // #54 fix round 1: same mechanism as the two backfill cases above, on a
   // field OUTSIDE Settings this time. A plan saved before sailIds existed on
-  // PlanRequest (pre-multi-boat) has it simply absent from its stored
-  // snapshot; without backfilling from DEFAULT_SAIL_IDS, rerouteFromFix would
-  // carry `undefined` forward into a field typed as a required array, and
-  // planRoute.ts's `runAll` calls `req.sailIds.map(...)` unconditionally —
+  // PlanRequest (pre-multi-boat) does not carry the key at all in its stored
+  // snapshot; without backfilling from DEFAULT_SAIL_IDS, planRoute.ts's
+  // `runAll` calls `req.sailIds.map(...)` unconditionally —
   // throwing on reroute of a pre-#54 plan rather than degrading.
   it('backfills sailIds from DEFAULT_SAIL_IDS on a pre-#54-shaped saved plan', async () => {
-    // PlanRequest.sailIds is `readonly` (strict mode forbids `delete` on a
-    // readonly property) — strip readonly locally, mirroring the
-    // depthComfortMarginM/sailPreferenceKn tests above on Settings (whose
-    // fields are not readonly, so they need no such cast).
+    // The local cast is what makes `delete` compile on `PlanRequest.sailIds`
+    // — the depthComfortMarginM/sailPreferenceKn tests above need no such
+    // cast, since Settings's own fields are not readonly.
     const oldShapedRequest = { ...makePlan().request } as Partial<{
       -readonly [K in keyof PlanRequest]: PlanRequest[K];
     }>;
@@ -223,6 +221,21 @@ describe('rerouteFromFix', () => {
     expect(request.destinationHarborId).toBe('dk-marstal');
   });
 
+  // #54 review round 3: the INHERITANCE half of the backfill ternary. Every
+  // other sailIds fixture here is ['genoa', 'fock'], which is value-equal to
+  // DEFAULT_SAIL_IDS — so no assertion against one of those can tell an
+  // inherited list from a hardcoded default. A non-default fixture can.
+  it("reroutes the saved plan's OWN sails, not the default", async () => {
+    const plan = makePlan({ request: { ...makePlan().request, sailIds: ['fock'] } });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(['fock']);
+  });
+
   // #54 review round 2: rerouteFromFix's own "copied, never aliased" contract
   // covers sailIds too, and until now nothing discriminated a copy from an
   // alias on either branch — a refactor could drop the spreads and stay
@@ -231,30 +244,32 @@ describe('rerouteFromFix', () => {
   // the reroute request would rewrite the original plan's request in place),
   // and the absent-field branch must not hand out the DEFAULT_SAIL_IDS
   // module constant (which every later backfill would then inherit).
-  it("copies sailIds in both branches, never aliasing the saved plan's array or the DEFAULT_SAIL_IDS module constant", async () => {
+  it("copies sailIds, never aliasing the saved plan's array", async () => {
     const plan = makePlan();
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
     await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
       client,
       save: vi.fn().mockResolvedValue(undefined),
     });
-    const [present] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(present.sailIds).toEqual(plan.request.sailIds);
-    expect(present.sailIds).not.toBe(plan.request.sailIds);
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(plan.request.sailIds);
+    expect(request.sailIds).not.toBe(plan.request.sailIds);
+  });
 
+  it('copies the backfill, never aliasing the DEFAULT_SAIL_IDS module constant', async () => {
     const oldShapedRequest = { ...makePlan().request } as Partial<{
       -readonly [K in keyof PlanRequest]: PlanRequest[K];
     }>;
     delete oldShapedRequest.sailIds;
-    const preFiftyFour = makePlan({ request: oldShapedRequest as PlanRequest });
-    const client2: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
-    await rerouteFromFix(preFiftyFour, FIX, NOW_MS, 'Rerouted', {
-      client: client2,
+    const plan = makePlan({ request: oldShapedRequest as PlanRequest });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
       save: vi.fn().mockResolvedValue(undefined),
     });
-    const [backfilled] = (client2.plan as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(backfilled.sailIds).toEqual(DEFAULT_SAIL_IDS);
-    expect(backfilled.sailIds).not.toBe(DEFAULT_SAIL_IDS);
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(DEFAULT_SAIL_IDS);
+    expect(request.sailIds).not.toBe(DEFAULT_SAIL_IDS);
   });
 
   it('never fetches: zero network calls and no fetchWindGrid, even with navigator.onLine === false', async () => {

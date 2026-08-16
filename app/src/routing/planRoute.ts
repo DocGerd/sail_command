@@ -127,10 +127,7 @@ export function combineFailureCause(
  * What makes the `null` seed exact anyway is that 'mask-blocked' is
  * simultaneously the BOTTOM of the precedence order above (so any later
  * cause overrides it) and the value of this fold's own `?? 'mask-blocked'`
- * fallback — the seed is therefore ABSORBED, not neutral. The seed is only
- * harmless because it is the order's bottom, so a `combineFailureCause`
- * whose fall-through default stopped being the bottom would silently change
- * what this fold reports.
+ * fallback — the seed is therefore ABSORBED, not neutral.
  *
  * Pinned by planRoute.budget.test.ts's '#54 combineAllCauses' block — the
  * N=2 fold against the same hand-derived precedence table the binary

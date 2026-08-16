@@ -26,8 +26,8 @@ import { DEFAULT_SETTINGS, type Plan, type PlanRequest } from '../types';
  * preference on every recalculation of a pre-#243 plan.
  *
  * #54 fix round 1: `sailIds` gets the SAME backfill treatment for the SAME
- * reason — a plan saved before this field existed has it simply absent
- * (`...plan.request` spreads `sailIds: undefined`), and planRoute.ts's
+ * reason — a plan saved before this field existed does not carry the key at
+ * all, and planRoute.ts's
  * `runAll` calls `req.sailIds.map(...)` unconditionally, so an unbackfilled
  * pre-#54 plan would throw on recalculation rather than degrading. Task 11's
  * `migratePlan` will cover the IndexedDB read path; this covers recalc

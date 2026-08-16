@@ -266,8 +266,8 @@ describe('planRoute graceful shallow degradation (#53)', () => {
   });
 
   // #54 review round 2: the same relaxed-solve propagation with ONE requested
-  // sail. These are the only cases that reach the cause fold at a length the
-  // pre-#54-fix positional read (`combineFailureCause(tier[0].cause,
+  // sail. These are the only cases that reach the fold's CALL SITES at a
+  // length the pre-#54-fix positional read (`combineFailureCause(tier[0].cause,
   // tier[1].cause)`) cannot survive — `tier[1]` is undefined there, so the
   // fold throws before any reason can be returned.
   //
