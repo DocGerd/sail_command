@@ -223,6 +223,40 @@ describe('rerouteFromFix', () => {
     expect(request.destinationHarborId).toBe('dk-marstal');
   });
 
+  // #54 review round 2: rerouteFromFix's own "copied, never aliased" contract
+  // covers sailIds too, and until now nothing discriminated a copy from an
+  // alias on either branch — a refactor could drop the spreads and stay
+  // green. The two branches share no code, so each needs its own row: the
+  // present-field branch must not hand out the saved plan's array (mutating
+  // the reroute request would rewrite the original plan's request in place),
+  // and the absent-field branch must not hand out the DEFAULT_SAIL_IDS
+  // module constant (which every later backfill would then inherit).
+  it("copies sailIds in both branches, never aliasing the saved plan's array or the DEFAULT_SAIL_IDS module constant", async () => {
+    const plan = makePlan();
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+    const [present] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(present.sailIds).toEqual(plan.request.sailIds);
+    expect(present.sailIds).not.toBe(plan.request.sailIds);
+
+    const oldShapedRequest = { ...makePlan().request } as Partial<{
+      -readonly [K in keyof PlanRequest]: PlanRequest[K];
+    }>;
+    delete oldShapedRequest.sailIds;
+    const preFiftyFour = makePlan({ request: oldShapedRequest as PlanRequest });
+    const client2: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(preFiftyFour, FIX, NOW_MS, 'Rerouted', {
+      client: client2,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+    const [backfilled] = (client2.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(backfilled.sailIds).toEqual(DEFAULT_SAIL_IDS);
+    expect(backfilled.sailIds).not.toBe(DEFAULT_SAIL_IDS);
+  });
+
   it('never fetches: zero network calls and no fetchWindGrid, even with navigator.onLine === false', async () => {
     const plan = makePlan();
     const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };

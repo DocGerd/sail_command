@@ -265,6 +265,34 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     expect(probes.map((p) => p.probeDepthM)).toEqual([2.5, 2.7, 2.6, 2.7, 2.8, 2.9, 2.7, 2.6]);
   });
 
+  // #54 review round 2: the same relaxed-solve propagation with ONE requested
+  // sail. These are the only cases that reach the cause fold at a length the
+  // pre-#54-fix positional read (`combineFailureCause(tier[0].cause,
+  // tier[1].cause)`) cannot survive — `tier[1]` is undefined there, so the
+  // fold throws before any reason can be returned.
+  //
+  // There are TWO such folds and they sit on different branches, so one row
+  // cannot cover both: the depth-comfort preference decides which. At the
+  // DEFAULT margin the preference is active and both relaxed tiers run, so
+  // the tier-4 fold reports; with the margin at 0 the preference is off
+  // (planRoute.ts's `comfortDepthM` is then undefined), tier 4 never runs
+  // and the tier-3 fold reports instead.
+  it.each([
+    ['tier 4 (comfort preference on)', DEFAULT_SETTINGS.depthComfortMarginM],
+    ['tier 3 (comfort preference off)', 0],
+  ])(
+    '#54: propagates the relaxed solve reason with a single requested sail — %s',
+    (_name, depthComfortMarginM) => {
+      const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM };
+      const r = planRoute(
+        { ...reqNearApproach, settings, sailIds: ['genoa'] },
+        uniformWindGrid(12, 0, { hours: 3 }),
+        depsWith(corridorGapMask(25)),
+      );
+      expect(r).toEqual({ status: 'error', reason: 'beyond-horizon' });
+    },
+  );
+
   // #452's headline claim, asserted at planRoute level: a pinch far from
   // every waypoint is NOT relaxed, so a plan that used to degrade gracefully
   // through it now honestly reports unreachable.

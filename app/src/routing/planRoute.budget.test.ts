@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
-import { combineFailureCause, planRoute } from './planRoute';
+import { combineAllCauses, combineFailureCause, planRoute } from './planRoute';
 import { NavMask } from '../lib/mask';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
@@ -225,6 +225,38 @@ describe('#432/#453 combineFailureCause precedence', () => {
     expect(PRECEDENCE.length, 'PRECEDENCE must cover all 5x5 ordered pairs').toBe(25);
     const seen = new Set(PRECEDENCE.map(([a, b]) => `${a}|${b}`));
     expect(seen.size, 'PRECEDENCE contains a duplicate pair').toBe(25);
+  });
+});
+
+// #54 review round 2. `combineAllCauses` folds N sails' causes into one
+// plan-level cause with a `null`-seeded reduce. Expectations come from the
+// SAME hand-derived PRECEDENCE table the binary function is pinned against,
+// never from calling `combineFailureCause` here — deriving needle and
+// haystack from one source is the tautology PR #411 records.
+const runOut = (cause: SolveFailureCause | null) => ({
+  sailId: 'genoa' as const,
+  rigResult: null,
+  cause,
+});
+
+describe('#54 combineAllCauses', () => {
+  it.each(PRECEDENCE)('combineAllCauses([%s, %s]) === %s', (a, b, expected) => {
+    expect(combineAllCauses([runOut(a), runOut(b)])).toBe(expected);
+  });
+
+  it.each<SolveFailureCause>([M, C, H, B])(
+    'N=1 returns the single sail’s own cause (%s)',
+    (cause) => {
+      expect(combineAllCauses([runOut(cause)])).toBe(cause);
+    },
+  );
+
+  it('N=1 with a null cause falls back to the order’s bottom', () => {
+    expect(combineAllCauses([runOut(null)])).toBe(M);
+  });
+
+  it('N=0 falls back to the order’s bottom', () => {
+    expect(combineAllCauses([])).toBe(M);
   });
 });
 

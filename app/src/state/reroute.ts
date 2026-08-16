@@ -114,13 +114,16 @@ export async function rerouteFromFix(
     // #54: reroute the SAME sails the plan being rerouted was originally
     // solved with, not a fresh default — mirrors every other field here
     // being copied from the original plan's own request. #54 fix round 1:
-    // backfilled with `?? DEFAULT_SAIL_IDS` for the same reason as
-    // lib/recalc.ts's `settings` backfill above — a plan saved before this
-    // field existed has it absent, and planRoute.ts's `runAll` calls
-    // `req.sailIds.map(...)` unconditionally. Copied via spread (`[...]`),
-    // not aliased, matching this comment's own "copied, never aliased"
-    // contract — `reroute.test.ts` asserts it.
-    sailIds: plan.request.sailIds ? [...plan.request.sailIds] : DEFAULT_SAIL_IDS,
+    // backfilled for the same reason as lib/recalc.ts's `settings` backfill
+    // above — a plan saved before this field existed has it absent, and
+    // planRoute.ts's `runAll` calls `req.sailIds.map(...)` unconditionally.
+    // #54 review round 2: BOTH branches spread. The fallback used to alias
+    // the module-level DEFAULT_SAIL_IDS, which contradicts this block's own
+    // "copied, never aliased" contract and would hand the same one array to
+    // every backfilled reroute. Pinned by reroute.test.ts's "copies sailIds in both
+    // branches, never aliasing the saved plan's array or the
+    // DEFAULT_SAIL_IDS module constant".
+    sailIds: plan.request.sailIds ? [...plan.request.sailIds] : [...DEFAULT_SAIL_IDS],
   };
 
   let result: PlanResult;

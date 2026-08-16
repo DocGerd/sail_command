@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { haversineNm } from '../lib/geo';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
@@ -231,7 +232,17 @@ export async function replanWithVias(
   // so a caller can also use it to decide whether to show the "waypoint
   // skipped" info banner — see state/replan.ts's useViaReplan).
   const { kept } = dedupeViaPoints(plan.request.origin, viaPoints, plan.request.destination);
-  const request: PlanRequest = { ...plan.request, viaPoints: kept };
+  const request: PlanRequest = {
+    ...plan.request,
+    viaPoints: kept,
+    // #54 review round 2: the third site that builds a router-bound request
+    // from a PERSISTED one, and it needs the same backfill lib/recalc.ts and
+    // state/reroute.ts already carry. A plan saved before `sailIds` existed
+    // on PlanRequest has it simply absent, so the spread above carries
+    // `undefined` into a required field and planRoute.ts's `runAll` —
+    // `req.sailIds.map(...)`, unconditional — throws inside the worker.
+    sailIds: plan.request.sailIds ?? DEFAULT_SAIL_IDS,
+  };
 
   let result: PlanResult;
   try {

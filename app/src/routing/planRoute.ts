@@ -122,18 +122,21 @@ export function combineFailureCause(
  * actually requested, replacing a positional `combineFailureCause(a[0],
  * a[1])` that threw at `sailIds.length === 1` (`a[1]` undefined).
  *
- * `null` is a genuine LEFT IDENTITY for `combineFailureCause`: reading its
- * body, `a === null` never matches any of the three special-cause checks,
- * so `combineFailureCause(null, b) === b` for every `b` (and the function
- * is symmetric in its two arguments, so the same holds seeded on the
- * right) — seeding the reduce with `null` is therefore EXACT, not an
- * approximation. MEASURED byte-identical to the old positional form at
- * N=2 across all 5x5 (four causes + null) argument pairs. The `??
- * 'mask-blocked'` only matters for the degenerate N=0 case (`sails` empty)
- * that no real request reaches — `mask-blocked` is this file's own
- * existing default (see `cause`'s declaration below), not a new value.
+ * `null` is NOT an identity for `combineFailureCause`, whose return type
+ * excludes null: `combineFailureCause(null, null)` returns 'mask-blocked'.
+ * What makes the `null` seed exact anyway is that 'mask-blocked' is
+ * simultaneously the BOTTOM of the precedence order above (so any later
+ * cause overrides it) and the value of this fold's own `?? 'mask-blocked'`
+ * fallback — the seed is therefore ABSORBED, not neutral. The seed is only
+ * harmless because it is the order's bottom, so a `combineFailureCause`
+ * whose fall-through default stopped being the bottom would silently change
+ * what this fold reports.
+ *
+ * Pinned by planRoute.budget.test.ts's '#54 combineAllCauses' block — the
+ * N=2 fold against the same hand-derived precedence table the binary
+ * function is pinned against, plus N=0 and N=1.
  */
-function combineAllCauses(sails: readonly RunOut[]): SolveFailureCause {
+export function combineAllCauses(sails: readonly RunOut[]): SolveFailureCause {
   return (
     sails.reduce<SolveFailureCause | null>((acc, r) => combineFailureCause(acc, r.cause), null) ??
     'mask-blocked'

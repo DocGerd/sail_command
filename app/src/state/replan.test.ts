@@ -14,11 +14,13 @@ import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
 import { uniformWindGrid } from '../test/fixtures';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
   type LatLon,
   type NoRouteReason,
   type Plan,
+  type PlanRequest,
   type PlanResultOk,
 } from '../types';
 
@@ -150,6 +152,36 @@ describe('replanWithVias', () => {
     expect(request.viaPoints).toEqual([via]);
     expect(request.settings).toBe(plan.request.settings); // same settings snapshot
     expect(updated.windGrid).toBe(plan.windGrid);
+  });
+
+  // #54 review round 2: the third site that builds a router-bound request
+  // from a persisted one — the same defect lib/recalc.ts and state/reroute.ts
+  // were guarded against in round 1. A plan saved before `sailIds` existed on
+  // PlanRequest has it simply absent from its stored snapshot; without the
+  // backfill, `{ ...plan.request }` carries `undefined` into a field typed as
+  // a required array and planRoute.ts's `runAll` calls `req.sailIds.map(...)`
+  // unconditionally, throwing inside the worker on via-replan of a pre-#54
+  // plan rather than degrading.
+  it('backfills sailIds from DEFAULT_SAIL_IDS on a pre-#54-shaped saved plan', async () => {
+    // PlanRequest.sailIds is `readonly` (strict mode forbids `delete` on a
+    // readonly property) — strip readonly locally, mirroring reroute.test.ts's
+    // and recalc.test.ts's same-named tests.
+    const oldShapedRequest = { ...makePlan().request } as Partial<{
+      -readonly [K in keyof PlanRequest]: PlanRequest[K];
+    }>;
+    delete oldShapedRequest.sailIds;
+    const plan = makePlan({ request: oldShapedRequest as PlanRequest });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(DEFAULT_SAIL_IDS);
+    // The via list the call actually asked for is still carried through.
+    expect(request.viaPoints).toEqual([{ lat: 54.9, lon: 10.2 }]);
   });
 
   it('saves an updated Plan with the same id, request.viaPoints and result replaced', async () => {
