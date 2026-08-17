@@ -115,17 +115,17 @@ it('#54: findRelaxedGate searches from the given floor, not a module constant', 
 
 // #54 fix round 1: `findRelaxedGate` quantises `floorM` up with an INLINE
 // `Math.ceil(f * 10 - 1e-9)` rather than by importing `ceilToDecimetre`,
-// because that helper is metres->metres while the search works in integer
-// decimetres — importing it would mean `Math.round(ceilToDecimetre(f) * 10)`,
-// reintroducing the very `Math.round` the fix removes.
+// which is metres->metres while the search works in integer decimetres. The
+// reasons are unit symmetry with the `hiDm` line directly below it, and
+// avoiding a dm->m->dm round trip.
 //
 // The expression is therefore duplicated across two files and nothing in the
 // compiler spans them. This guard READS BOTH SHIPPED SOURCES rather than
 // retyping either, following useBannerHeight.test.ts literally: a retyped
 // copy compared against `ceilToDecimetre` would hold by construction AND
 // would stay green when relaxedDepth.ts itself drifted — MEASURED, an earlier
-// draft of this guard did exactly that (11/11 green with `:99` reverted to
-// Math.round).
+// draft of this guard did exactly that (whole file green with `loDm` reverted
+// to Math.round).
 //
 // `import.meta.glob(..., '?raw')` rather than node:fs — the browser-safe form
 // used by sailLiteralCallSites.test.ts / timeoutGuard.test.ts, which needs no
@@ -150,7 +150,22 @@ function sourceOf(suffix: string): string {
   return hit![1];
 }
 
-/** The one expression both sites must spell: ceil, with the IEEE nudge, never round. */
+/**
+ * The one expression both sites must spell: ceil, with the IEEE nudge, never
+ * round.
+ *
+ * SHAPE only. A drift that keeps `Math.ceil(... - 1e-9)` while changing the
+ * surrounding arithmetic passes every row here — this is a drift pin between
+ * the two spellings, not a correctness pin on either. The behavioural pin for
+ * the callee is realmask.repro.test.ts's (a2) row; every floor in THIS file is
+ * already decimetre-quantised and so cannot see ceil-vs-round at all.
+ *
+ * SCOPE of the no-Math.round rule, because the over-broad reading would
+ * reject a correct change: the C.8 hazard is rounding a RAW draft, which is
+ * what both expressions below take. Rounding an ALREADY-QUANTISED decimetre
+ * is harmless — `Math.round(ceilToDecimetre(f) * 10)` agrees with the inline
+ * form 4501/4501 and is exactly what this file's own oracle row uses.
+ */
 function expectCeilsUp(expr: string, where: string): void {
   expect(expr, `${where} must ceil`).toMatch(/Math\.ceil\(/);
   expect(expr, `${where} must carry the 1e-9 nudge`).toMatch(/-\s*1e-9/);

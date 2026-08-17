@@ -361,7 +361,8 @@ export function planRoute(
   // reads as `undefined`. This throw pins the DIAGNOSTIC, not the existence
   // of a failure — `new Polar(undefined)` throws on `table.rig` either way
   // (lib/polar.ts) — so what it buys is naming WHICH key is missing, at the
-  // lookup instead of inside the solver. One check for every path:
+  // lookup instead of at the `new Polar` construction below. One check for
+  // every path:
   // protocol.ts hands over only the keys `init` carried, and the sweep
   // harness and tests construct PlanDeps directly.
   const polarFor = (sailId: SailId): PolarTable => {

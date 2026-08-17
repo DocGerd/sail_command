@@ -855,7 +855,7 @@ describe('#54 spec C.4(a): the relaxation floor comes from the selected boat', (
   // maximum connecting gate is 21 dm, and round(2.14*10)=21 connects while
   // ceil=22 does not. round(2.24*10)=22 also fails to connect, so a 2.24 row
   // would pass either way.
-  it('(a2) FIXTURE KEEPER: a RAW non-decimetre floor is quantised UP, not down', () => {
+  it('(a2) CALLEE KEEPER: a RAW non-decimetre floor is quantised UP, not down', () => {
     const origin = mask.snapToNavigable(FLENSBURG, REQUESTED_DEPTH_M);
     const dest = mask.snapToNavigable(POCKET, REQUESTED_DEPTH_M);
     const raw = findRelaxedGate(mask, [origin!, dest!], REQUESTED_DEPTH_M, APPROACH_RADIUS_M, 2.14);

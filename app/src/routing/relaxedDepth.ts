@@ -8,8 +8,9 @@ import { approachGate, type DepthGate } from '../lib/depthGate';
  * `findRelaxedGate`'s `floorM`. Passing this constant there instead is the
  * spec C.4(a) regression — it would take a deeper boat below its own keel.
  *
- * Surviving consumers are presentational (`RouteSummary.tsx`) and test-side;
- * Task 11 retires those once the plan carries the boat.
+ * Surviving consumers are presentational (`RouteSummary.tsx`) and test-side.
+ * No task retires them yet — tracked in #539, which must land before a
+ * second boat becomes selectable.
  */
 export const BOAT_DRAFT_M = 2.1;
 

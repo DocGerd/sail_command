@@ -116,7 +116,9 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
     const toleranceM = readToleranceM();
     // PR #481 review (F2, MEASURED): #53's relaxed-depth search
     // (relaxedDepth.ts's findRelaxedGate) probes an internal gate down to
-    // BOAT_DRAFT_M itself whenever the requested depth is unreachable —
+    // the selected boat's relaxation floor — relaxationFloorM(boat), which is
+    // BOAT_DRAFT_M's 2.1 for the Salona (#54) — whenever the requested depth
+    // is unreachable —
     // independent of SAFETY_DEPTH_FIELD's 2.2 m UI clamp (OptionsPanel.tsx),
     // which bounds only what a user can TYPE — and it fires at DEFAULT
     // settings with no user input at all (realmask.repro.test.ts pins

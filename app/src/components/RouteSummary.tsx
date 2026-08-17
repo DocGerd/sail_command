@@ -68,7 +68,7 @@ export function ShallowWarning({
   // usedDepthM - MASK_TOLERANCE_M — recomputed from THIS plan's usedDepthM
   // every render, never a fixed number, so it can never go stale as
   // usedDepthM varies plan to plan.
-  // #54 spec C.4(a)/C.8 R5 — BOAT-AGNOSTIC, blocked on Task 11. This compares
+  // #54 spec C.4(a) — BOAT-AGNOSTIC, blocked on Task 11. This compares
   // against the Salona's 2.1 m constant, not the SELECTED boat's draft. Not
   // live: BOATS holds one boat at draftM 2.1, identical to BOAT_DRAFT_M.
   // Structurally unfixable here until Task 11 puts the boat on the plan —
@@ -166,7 +166,8 @@ export function ShallowWarning({
   //    Mount-gating is still correct; display:none would leave a wide-only
   //    sentence in the accessibility tree on narrow, which is worse.
   // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedGate
-  //    searches [BOAT_DRAFT_M, requestedDepthM) while SAFETY_DEPTH_FIELD
+  //    searches [the relaxation floor, requestedDepthM) — relaxationFloorM(boat),
+  //    2.1 for the Salona today — while SAFETY_DEPTH_FIELD
   //    clamps the input to >= its own min (2.1 and 2.2 respectively today),
   //    so at a usedDepthM of either there is no lower setting to choose and
   //    "set a lower safety depth" names an unavailable action.
@@ -183,7 +184,7 @@ export function ShallowWarning({
   return (
     <div className={containerClassName} role="alert">
       <p className="shallow-warning__lead">
-        {/* #54 spec C.4(a)/C.8 R5 — BOAT-AGNOSTIC, blocked on Task 11: this
+        {/* #54 spec C.4(a) — BOAT-AGNOSTIC, blocked on Task 11: this
             renders the Salona's 2.1 m, not the SELECTED boat's draft, so with
             a second boat it would UNDERSTATE a deeper hull in the app's most
             severe safety copy. See isSevere above for why it cannot be fixed
