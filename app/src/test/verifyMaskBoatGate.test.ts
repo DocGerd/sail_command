@@ -106,12 +106,14 @@ describe('#54 twin B: verify_mask.py derives the same gate as lib/boatDepth.ts',
     expect(defaultSafetyDepthM(asBoat(draftM))).toBe(gateM);
   });
 
-  // The rows above are only as good as the table they come from, and a table of
-  // drafts that already sit on a decimetre agrees with EVERY wrong quantiser
-  // (#411, "a guard's DATA needs a twin"). These three assert the table still
-  // contains a row that discriminates each hazard, so it cannot be quietly
-  // weakened to a set of values that happen to pass. Each names a different
-  // row: deleting one row reds one of them.
+  // The rows above are only as good as the table they come from (#411, "a
+  // guard's DATA needs a twin"). What discriminates is a property of
+  // (draft + T) * 10, NOT of the draft: a decimetre draft is blind to the
+  // round-down and banker's-tie hazards but reaches the nudge hazard perfectly
+  // well, which is why 3.20 is in the table. These three assert the table still
+  // contains a row for each hazard, so it cannot be quietly weakened to a set
+  // of values that happen to pass. Each names a different row: deleting one row
+  // reds one of them.
   it('the table still contains a row that lands exactly on a rounding tie', () => {
     // (draft + T) * 10 exactly n + 0.5. Python's round() is BANKER'S rounding,
     // which picks the nearest EVEN decimetre — for 30.5 that is 30, a gate

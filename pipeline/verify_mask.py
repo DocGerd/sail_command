@@ -123,16 +123,19 @@ def default_gate_m(draft_m: float) -> float:
 # rows out of this file and asserts app/src/lib/boatDepth.ts's
 # defaultSafetyDepthM() reproduces every one of them.
 #
-# Each row discriminates a DIFFERENT wrong quantiser, which is why a table of
-# drafts that already sit on a decimetre would be blind to all of them:
-#   2.10 -> 3.0  the catalogue's own draft. Reds if TOLERANCE_M moves.
+# What a row discriminates is a property of (draft + T) * 10, NOT of the draft:
+# 3.20 sits on a decimetre and is still the only row that catches the nudge
+# hazard. It is rows 1.73 and 2.15 that a table of decimetre drafts would lack.
+#   2.10 -> 3.0  the shipping boat's anchor. Reds if TOLERANCE_M moves;
+#                discriminates no quantiser - round, int and both ceils agree.
 #   1.73 -> 2.7  (1.73 + 0.9) * 10 is 26.299999999999997; round() and int()
 #                both give 2.6 - a gate under draft + T.
 #   2.15 -> 3.1  the only row landing on an EXACT tie: (2.15 + 0.9) * 10 is
 #                30.5, where Python's banker's round() picks the even
 #                decimetre, 30 -> 3.0, a gate below draft + T.
 #   3.20 -> 4.1  (3.2 + 0.9) * 10 is 41.00000000000001; math.ceil without the
-#                1e-9 nudge gives 4.2.
+#                1e-9 nudge gives 4.2. The residue is in the SUM, not the
+#                draft, which is why a decimetre draft reaches this hazard.
 GATE_DERIVATION_CASES: list[tuple[float, float]] = [
     (2.10, 3.0),
     (1.73, 2.7),
@@ -147,11 +150,12 @@ for _draft_m, _gate_m in GATE_DERIVATION_CASES:
 def dm(x: float) -> int:
     """Decimetre key for a value that is ALREADY a whole decimetre.
 
-    round() here undoes float residue (25.4 * 10 is 254.00000000000003); it is
-    NOT quantising, which is ceil_to_decimetre's job two functions up and must
-    never be a round. The assert keeps the two roles from being confused: hand
-    this a half-decimetre and banker's rounding would key it to the nearest
-    even one silently, so it aborts instead.
+    The round() here is NOT quantising - that is ceil_to_decimetre's job two
+    functions up, and must never be a round. It only turns a float the assert
+    has already bounded to within 1e-6 of an integer into that integer, where
+    int() would truncate 29.9999999 to 29. The assert is what keeps the two
+    roles from being confused: hand this a half-decimetre and banker's rounding
+    would key it to the nearest even one silently, so it aborts instead.
     """
     tenths = x * 10
     key = int(round(tenths))
@@ -277,48 +281,63 @@ SNAP_MARGIN_FLOOR_M = 0.2
 
 FOUR_CONNECTIVITY = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]], dtype=np.uint8)
 _depth_grid = np.where(grid == 255, 25.4, np.where(grid == 0, 0.0, grid / 10.0))
-_label_cache: dict[int, np.ndarray] = {}
-
-
-def labeled_for(min_depth_m: float) -> np.ndarray:
-    key = dm(min_depth_m)
-    if key not in _label_cache:
-        labeled, _ = ndimage.label(_depth_grid >= key / 10.0, structure=FOUR_CONNECTIVITY)
-        _label_cache[key] = labeled
-    return _label_cache[key]
-
 
 seed_row, seed_col = rc_of(SEED_LAT, SEED_LON)
 harbor_rc = {h["id"]: rc_of(h["snap"]["lat"], h["snap"]["lon"]) for h in harbors}
 harbor_snap_depth_m = {h["id"]: depth_m(h["snap"]["lat"], h["snap"]["lon"]) for h in harbors}
-
-
-def connected_at(hid: str, gate_m: float) -> bool:
-    labeled = labeled_for(gate_m)
-    seed_label = int(labeled[seed_row, seed_col])
-    harbor_label = int(labeled[harbor_rc[hid][0], harbor_rc[hid][1]])
-    return harbor_label != 0 and harbor_label == seed_label
-
 
 # Deepest gate at which each harbor still reaches open water, or None if it
 # never does. Spec C.6 asks the verify script's output to carry a per-harbor
 # navigable-gate figure so a boat picker can mark unreachable harbors per boat
 # instead of failing at plan time with snap-failed-destination.
 #
-# The search is bounded above by the harbor's OWN snap-cell depth, which is an
-# exact bound rather than a chosen cap: at any gate above it the snap cell is
-# itself not navigable, so no component can contain it. Monotonicity (the
-# navigable set shrinks as the gate rises, so a path can only be lost) makes
-# the first connecting gate found on the way down the deepest one.
-DEEPEST_CONNECTING_GATE_M: dict[str, float | None] = {}
-for h in harbors:
-    hid = h["id"]
-    deepest = None
-    for _dm in range(dm(harbor_snap_depth_m[hid]), 0, -1):
-        if connected_at(hid, _dm / 10.0):
-            deepest = _dm / 10.0
-            break
-    DEEPEST_CONNECTING_GATE_M[hid] = deepest
+# ONE descending pass over the decimetre scale, labelling each gate exactly
+# once and dropping the array before the next, so peak memory is one label grid
+# rather than one per gate visited. Retaining them cost 2,338,768 KB against
+# BASE's 171,988 KB (measured with /usr/bin/time -v on this checkout), which is
+# past what a 2 GB container can run the mask verifier in at all.
+#
+# Monotonicity does the rest: the navigable set only grows as the gate falls,
+# so the FIRST gate at which a harbor reaches the seed on the way down is the
+# deepest one, and every later "is it connected at G" question is answered by
+# comparing G against that number instead of labelling again.
+#
+# The top of the sweep is the deepest snap cell, an exact bound rather than a
+# chosen cap: above it the snap cell is itself not navigable, so no component
+# can contain it. Raised to cover any catalogue gate deeper than every snap
+# cell, which would otherwise fall outside the sweep and have no answer.
+SWEEP_TOP_DM = max([dm(d) for d in harbor_snap_depth_m.values()] + sorted(CATALOGUE_GATE_DM))
+DEEPEST_CONNECTING_GATE_DM: dict[str, int | None] = {h["id"]: None for h in harbors}
+SEED_COMPONENT_CELLS: dict[int, int] = {}  # only at the gates a catalogue boat derives
+_unresolved = set(DEEPEST_CONNECTING_GATE_DM)
+for _gate_dm in range(SWEEP_TOP_DM, 0, -1):
+    _labeled, _ = ndimage.label(_depth_grid >= _gate_dm / 10.0, structure=FOUR_CONNECTIVITY)
+    _seed_label = int(_labeled[seed_row, seed_col])
+    if _gate_dm in CATALOGUE_GATE_DM:
+        SEED_COMPONENT_CELLS[_gate_dm] = int((_labeled == _seed_label).sum()) if _seed_label else 0
+    if _seed_label:
+        for _hid in sorted(_unresolved):
+            _row, _col = harbor_rc[_hid]
+            if int(_labeled[_row, _col]) == _seed_label:
+                DEEPEST_CONNECTING_GATE_DM[_hid] = _gate_dm
+                _unresolved.discard(_hid)
+    del _labeled
+
+DEEPEST_CONNECTING_GATE_M: dict[str, float | None] = {
+    hid: None if d is None else d / 10.0 for hid, d in DEEPEST_CONNECTING_GATE_DM.items()
+}
+
+
+def connected_at(hid: str, gate_m: float) -> bool:
+    """Answered from the sweep above, not by labelling again.
+
+    Same predicate as before the sweep existed - harbor and seed in one
+    non-zero component - restated through monotonicity. A harbor connected at
+    its deepest gate is connected at every shallower one, so `<=` against that
+    number IS the connectivity test.
+    """
+    deepest_dm = DEEPEST_CONNECTING_GATE_DM[hid]
+    return deepest_dm is not None and dm(gate_m) <= deepest_dm
 
 print(f"mask tolerance: TOLERANCE_M = {TOLERANCE_M} m (read from build_mask.py)")
 print(f"catalogue: {len(CATALOGUE_BOATS)} boat(s)")
@@ -352,10 +371,9 @@ for hid, reason in KNOWN_DISCONNECTED.items():
 for b in CATALOGUE_BOATS:
     gate_m = b["gateM"]
     print(f"\n=== {b['id']}: derived gate {gate_m:.1f} m (draft {b['draftM']:.2f} m + tolerance {TOLERANCE_M} m) ===")
-    boat_labeled = labeled_for(gate_m)
-    boat_seed_label = int(boat_labeled[seed_row, seed_col])
-    assert boat_seed_label != 0, f"connectivity seed ({SEED_LAT},{SEED_LON}) is not itself navigable at {gate_m} m"
-    print(f"open-water seed component: {int((boat_labeled == boat_seed_label).sum())} cells at >= {gate_m} m")
+    seed_cells = SEED_COMPONENT_CELLS[dm(gate_m)]
+    assert seed_cells != 0, f"connectivity seed ({SEED_LAT},{SEED_LON}) is not itself navigable at {gate_m} m"
+    print(f"open-water seed component: {seed_cells} cells at >= {gate_m} m")
 
     connectivity_report = []
     for h in harbors:
