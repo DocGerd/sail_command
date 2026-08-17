@@ -84,6 +84,11 @@
   // once against its UNMUTATED source as the control that licenses the rest,
   // then against mutated copies — to hold spec H's fail-closed rule (a boat
   // never inherits another boat's anchors or plausibility bound).
+  // verifyMaskBoatGate.test.ts (#54 Task 13): reads pipeline/verify_mask.py
+  // AND pipeline/polars-source.json via `node:fs` to hold the two twins that
+  // the per-boat gate scan created — the draft, which the Python script cannot
+  // import from boats.ts, and the ceil-to-decimetre gate derivation, which now
+  // exists in both languages. Same reason as maskTolerance.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -99,6 +104,7 @@
     "src/**/chipShallowFill.test.ts",
     "src/**/polarProvenance.test.ts",
     "src/**/buildPolars.failClosed.test.ts",
+    "src/**/verifyMaskBoatGate.test.ts",
     "sweep/**/*.ts"
   ]
 }

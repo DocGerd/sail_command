@@ -3,6 +3,7 @@
     {
       "id": "salona-45",
       "name": "Salona 45",
+      "draftM": 2.1,
       "validation": {
         "maxSpeedKn": 12,
         "anchors": [
