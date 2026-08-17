@@ -78,8 +78,14 @@ describe('loadRoutingAssets', () => {
     const assets = await loadRoutingAssets();
 
     expect(assets.maskMeta).toEqual(TEST_MASK_META);
-    expect(assets.polarGenoa).toEqual(TEST_POLAR);
-    expect(assets.polarFock).toEqual(FOCK);
+    // #54: one key per catalogue boat x sail, `${boatId}/${sailId}`. The
+    // expected list is HAND-WRITTEN, never derived from BOATS — deriving
+    // needle and haystack from the same source is the #388 tautology, and
+    // this row's whole job is to notice when the catalogue and the fetch
+    // manifest stop agreeing.
+    expect(Object.keys(assets.polars).sort()).toEqual(['salona-45/fock', 'salona-45/genoa']);
+    expect(assets.polars['salona-45/genoa']).toEqual(TEST_POLAR);
+    expect(assets.polars['salona-45/fock']).toEqual(FOCK);
     expect(assets.harbors).toEqual(HARBORS);
     expect(assets.seamarks).toEqual(SEAMARKS);
     expect(new Uint8Array(assets.maskBuffer)).toEqual(new Uint8Array(maskArrayBuffer()));

@@ -4,7 +4,7 @@ import { combineAllCauses, combineFailureCause, planRoute } from './planRoute';
 import { NavMask } from '../lib/mask';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
-import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
+import { TEST_MASK_META, TEST_POLAR, testPlanDeps, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type LatLon, type PlanRequest, type PolarTable } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
@@ -68,7 +68,7 @@ function planWith(
   return planRoute(
     request,
     uniformWindGrid(12, 0),
-    { polarGenoa: TEST_POLAR, polarFock: FOCK, mask },
+    testPlanDeps(mask, { genoa: TEST_POLAR, fock: FOCK }),
     undefined,
     onProbe,
     deadline,

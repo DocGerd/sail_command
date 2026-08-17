@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { planRoute } from './planRoute';
-import { makeMask, makeWindGrid, TEST_POLAR } from '../test/fixtures';
+import { makeMask, makeWindGrid, TEST_POLAR, testPlanDeps } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PolarTable } from '../types';
 import { haversineNm } from '../lib/geo';
 import { uniformGate } from '../lib/depthGate';
@@ -68,7 +68,7 @@ describe('router invariants', () => {
               sailIds: ['genoa', 'fock'],
             },
             makeWindGrid(() => ({ speedKn: sc.windKn, dirFromDeg: sc.windDir }), { hours: 72 }),
-            { polarGenoa: TEST_POLAR, polarFock: FOCK, mask },
+            testPlanDeps(mask, { genoa: TEST_POLAR, fock: FOCK }),
           );
           if (r.status !== 'ok') return true; // unreachable scenarios are legitimate
           okScenarios++;

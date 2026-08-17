@@ -1,6 +1,6 @@
 import type { PlanRequest, PlanResult, SailId, WindGrid } from '../types';
 import type { WorkerRequest, WorkerResponse } from './protocol';
-import { BOATS } from '../data/boats';
+import { BOATS, DEFAULT_BOAT_ID, polarKey, type BoatId } from '../data/boats';
 
 type ProgressCb = (sailId: SailId, tMs: number, frontierSize: number) => void;
 // #53 relaxed-depth probe phase (one call per mask-connectivity probe). Not
@@ -122,6 +122,34 @@ const PLAN_TIMEOUT_GRACE_MS = 15_000;
 // worker.onerror/onmessageerror, which fail fast through failAll() and never
 // touch this timer.
 const DEFAULT_PLAN_TIMEOUT_MS = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
+
+/**
+ * #54 spec F.3: assemble the `plan` message, naming which of `init`'s keyed
+ * polars this plan runs. Exported so the derivation is testable without a
+ * fake worker.
+ *
+ * `boatId` is an explicit argument because `PlanRequest` carries no boat
+ * today — Task 9 added `sailIds`, Task 11 adds `PlanRequest.boat` and will
+ * take this parameter's place. `polarKeys` follows `request.sailIds` order,
+ * so the worker's subset matches the order the solver runs them in.
+ */
+export function buildPlanMessage(
+  request: PlanRequest,
+  boatId: BoatId,
+  wire: { id: string; windGrid: WindGrid; budgetMs?: number },
+): Extract<WorkerRequest, { type: 'plan' }> {
+  return {
+    type: 'plan',
+    id: wire.id,
+    request,
+    boatId,
+    polarKeys: request.sailIds.map((sailId) => polarKey(boatId, sailId)),
+    windGrid: wire.windGrid,
+    // exactOptionalPropertyTypes: omit the key entirely, never send
+    // `budgetMs: undefined`.
+    ...(wire.budgetMs !== undefined ? { budgetMs: wire.budgetMs } : {}),
+  };
+}
 
 interface PendingEntry {
   resolve: (r: PlanResult) => void;
@@ -289,15 +317,16 @@ export class RoutingClient {
       // absent — the same direction as the rest of the design, and the client
       // deadline still bounds the wait.
       const budgetMs = timeoutMs - PLAN_TIMEOUT_GRACE_MS;
-      this.worker.postMessage({
-        type: 'plan',
-        id,
-        request,
-        windGrid,
-        // exactOptionalPropertyTypes: omit the key entirely, never send
-        // `budgetMs: undefined`.
-        ...(budgetMs > 0 ? { budgetMs } : {}),
-      } satisfies WorkerRequest);
+      // #54: DEFAULT_BOAT_ID until Task 11 lands `PlanRequest.boat` — the
+      // catalogue has one boat today, so this names the boat the app already
+      // plans with rather than introducing a choice.
+      this.worker.postMessage(
+        buildPlanMessage(request, DEFAULT_BOAT_ID, {
+          id,
+          windGrid,
+          ...(budgetMs > 0 ? { budgetMs } : {}),
+        }) satisfies WorkerRequest,
+      );
     });
   }
 

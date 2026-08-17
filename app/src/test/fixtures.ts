@@ -1,5 +1,7 @@
-import type { PolarTable, WindGrid, MaskMeta } from '../types';
+import type { PolarTable, SailId, WindGrid, MaskMeta } from '../types';
 import { NavMask } from '../lib/mask';
+import { boatById, DEFAULT_BOAT_ID, polarKey } from '../data/boats';
+import type { PlanDeps } from '../routing/planRoute';
 
 /** Tiny synthetic polar: symmetric, monotone in TWS, humped over TWA. */
 export const TEST_POLAR: PolarTable = {
@@ -21,8 +23,14 @@ export const TEST_POLAR: PolarTable = {
 };
 
 export interface WindGridOpts {
-  south?: number; north?: number; west?: number; east?: number;
-  latStep?: number; lonStep?: number; hours?: number; t0Ms?: number;
+  south?: number;
+  north?: number;
+  west?: number;
+  east?: number;
+  latStep?: number;
+  lonStep?: number;
+  hours?: number;
+  t0Ms?: number;
 }
 
 export function makeWindGrid(
@@ -30,8 +38,13 @@ export function makeWindGrid(
   opts: WindGridOpts = {},
 ): WindGrid {
   const {
-    south = 54.3, north = 55.3, west = 9.4, east = 11.0,
-    latStep = 0.1, lonStep = 0.1, hours = 48,
+    south = 54.3,
+    north = 55.3,
+    west = 9.4,
+    east = 11.0,
+    latStep = 0.1,
+    lonStep = 0.1,
+    hours = 48,
     t0Ms = Date.UTC(2026, 6, 15, 6, 0, 0),
   } = opts;
   const lats: number[] = [];
@@ -60,7 +73,12 @@ export const uniformWindGrid = (speedKn: number, dirFromDeg: number, opts: WindG
   makeWindGrid(() => ({ speedKn, dirFromDeg }), opts);
 
 export const TEST_MASK_META: MaskMeta = {
-  west: 9.4, south: 54.3, east: 11.0, north: 55.3, cols: 320, rows: 200,
+  west: 9.4,
+  south: 54.3,
+  east: 11.0,
+  north: 55.3,
+  cols: 320,
+  rows: 200,
 };
 
 export function makeMask(fn: (row: number, col: number) => number, meta = TEST_MASK_META): NavMask {
@@ -74,5 +92,25 @@ export function makeMask(fn: (row: number, col: number) => number, meta = TEST_M
 export const openWaterMask = () => makeMask(() => 200);
 
 /** Land wall at col 160 (lon ≈ 10.2), except rows 90..99 (a gap). */
-export const wallMask = () =>
-  makeMask((r, c) => (c === 160 && (r < 90 || r > 99) ? 0 : 200));
+export const wallMask = () => makeMask((r, c) => (c === 160 && (r < 90 || r > 99) ? 0 : 200));
+
+/**
+ * #54: `PlanDeps` for the default catalogue boat, built from a per-sail table
+ * map. Centralised here rather than repeated in each solver test: the polar
+ * map is keyed `${boatId}/${sailId}` and a hand-built literal in sixteen
+ * files is sixteen chances to get the key format wrong silently — the lookup
+ * fails CLOSED in planRoute(), but only at run time.
+ *
+ * `Record<SailId, PolarTable>` keeps the pre-#54 compile-time enforcement:
+ * the compiler reds every call site the moment BOATS gains a sail id the
+ * literal does not cover.
+ */
+export function testPlanDeps(
+  mask: NavMask,
+  tables: Readonly<Record<SailId, PolarTable>>,
+): PlanDeps {
+  const boat = boatById(DEFAULT_BOAT_ID);
+  const polars: Record<string, PolarTable> = {};
+  for (const [sailId, table] of Object.entries(tables)) polars[polarKey(boat.id, sailId)] = table;
+  return { polars, boat, mask };
+}

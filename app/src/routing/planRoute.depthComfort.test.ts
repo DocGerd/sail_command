@@ -1,7 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { planRoute } from './planRoute';
 import { solve, type SolveFailureCause } from './isochrone';
-import { makeMask, openWaterMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
+import {
+  makeMask,
+  openWaterMask,
+  TEST_POLAR,
+  testPlanDeps,
+  uniformWindGrid,
+} from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   type Leg,
@@ -78,7 +84,7 @@ const req: PlanRequest = {
   sailIds: ['genoa', 'fock'],
 };
 const mask = openWaterMask(); // trivially connected at any gate: the #53 fast path always attempts tier 1
-const deps = { polarGenoa: TEST_POLAR, polarFock: TEST_POLAR as PolarTable, mask };
+const deps = testPlanDeps(mask, { genoa: TEST_POLAR, fock: TEST_POLAR as PolarTable });
 // solve() is mocked in every test below, so the wind data is never actually
 // sampled — just structurally valid for WindField's constructor.
 const windGrid = uniformWindGrid(12, 0);

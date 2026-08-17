@@ -13,6 +13,7 @@ import {
 import type { WorkerRequest, WorkerResponse } from '../routing/protocol';
 import { OpenMeteoError, type OpenMeteoErrorKind } from '../services/openMeteo';
 import * as assetsModule from '../services/assets';
+import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import { __resetDbForTests, getPlan, listPlans, savePlan } from '../services/db';
 import { destinationPoint } from '../lib/geo';
 import { recalcRequest } from '../lib/recalc';
@@ -35,8 +36,10 @@ function openWaterBuffer(): ArrayBuffer {
 const ASSETS_FIXTURE: assetsModule.RoutingAssets = {
   maskMeta: TEST_MASK_META,
   maskBuffer: openWaterBuffer(),
-  polarGenoa: TEST_POLAR,
-  polarFock: FOCK_POLAR,
+  polars: {
+    [polarKey(DEFAULT_BOAT_ID, 'genoa')]: TEST_POLAR,
+    [polarKey(DEFAULT_BOAT_ID, 'fock')]: FOCK_POLAR,
+  },
   harbors: [],
   seamarks: { type: 'FeatureCollection', features: [] },
 };

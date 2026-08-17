@@ -35,6 +35,7 @@ import { dirname, resolve } from 'node:path';
 import { NavMask } from '../src/lib/mask';
 import { planRoute } from '../src/routing/planRoute';
 import { uniformWindGrid } from '../src/test/fixtures';
+import { boatById, DEFAULT_BOAT_ID, polarKey } from '../src/data/boats';
 import { DEFAULT_SETTINGS } from '../src/types';
 import type { LatLon, MaskMeta, PolarTable, Settings, WindGrid } from '../src/types';
 import { solverTimeoutMs } from '../src/test/timeouts';
@@ -332,12 +333,19 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
 
   const maskMeta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8')) as MaskMeta;
   const mask = new NavMask(maskMeta, new Uint8Array(readFileSync(resolve(dataDir, 'mask.bin'))));
-  const polarGenoa = JSON.parse(
-    readFileSync(resolve(dataDir, 'polar-genoa.json'), 'utf8'),
-  ) as PolarTable;
-  const polarFock = JSON.parse(
-    readFileSync(resolve(dataDir, 'polar-fock.json'), 'utf8'),
-  ) as PolarTable;
+  // #54: read straight off the catalogue rather than by literal filename, so
+  // the harness needs no edit when a boat is added. The keys are what
+  // `PlanDeps.polars` is looked up by.
+  const boat = boatById(DEFAULT_BOAT_ID);
+  const polars: Record<string, PolarTable> = {};
+  for (const sail of boat.sails) {
+    polars[polarKey(boat.id, sail.id)] = JSON.parse(
+      // `polarAsset` is public-root-relative (`data/polar-*.json`) because the
+      // browser fetches it under BASE_URL; `dataDir` is already inside
+      // `public/`, hence the `..`.
+      readFileSync(resolve(dataDir, '..', sail.polarAsset), 'utf8'),
+    ) as PolarTable;
+  }
   const harbors = JSON.parse(readFileSync(resolve(dataDir, 'harbors.json'), 'utf8')) as Harbor[];
   // #452: origin defaults to flensburg — every pre-#452 arm omits `originId`,
   // so this resolves exactly as it always has.
@@ -373,7 +381,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
             sailIds: ['genoa', 'fock'],
           },
           windGrid,
-          { polarGenoa, polarFock, mask },
+          { polars, boat, mask },
         );
         timings[h.id] = Date.now() - t;
       }

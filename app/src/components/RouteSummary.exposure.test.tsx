@@ -17,6 +17,7 @@ vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
 import { loadRoutingAssets } from '../services/assets';
 import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import RouteSummary from './RouteSummary';
+import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 
@@ -37,8 +38,10 @@ function assetsWithMask(fn: (row: number, col: number) => number) {
   return {
     maskMeta: TEST_MASK_META,
     maskBuffer: data.buffer,
-    polarGenoa: TEST_POLAR,
-    polarFock: TEST_POLAR,
+    polars: {
+      [polarKey(DEFAULT_BOAT_ID, 'genoa')]: TEST_POLAR,
+      [polarKey(DEFAULT_BOAT_ID, 'fock')]: TEST_POLAR,
+    },
     harbors: [],
     seamarks: { type: 'FeatureCollection' as const, features: [] },
   };

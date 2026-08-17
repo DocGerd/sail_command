@@ -100,6 +100,25 @@ export function boatById(id: BoatId): BoatDef {
   return b;
 }
 
+/**
+ * #54 spec F.3: the identity of a polar table across the worker boundary.
+ * `init` carries EVERY catalogue polar in one map keyed this way and each
+ * `plan` names the keys to run, preserving "init once, plan many" at zero
+ * per-plan cost.
+ *
+ * The boat id is part of the key because sail ids are NOT unique across boats
+ * — two boats may each carry a `genoa`, and they are different tables.
+ *
+ * Both parameters are `string`, not `BoatId`/`SailId`: `BoatDef.id` and
+ * `SailDef.id` are declared `string` (SailDef is the general per-boat shape,
+ * not narrowed to any one boat's literal ids), and the solver's own call site
+ * holds a `BoatDef` — so a narrowed parameter would make PlanDeps.boat
+ * uncallable here without a cast that lies about non-catalogue boats.
+ */
+export function polarKey(boatId: string, sailId: string): string {
+  return `${boatId}/${sailId}`;
+}
+
 // #54: the default boat's full sail set, in catalogue order — used to seed
 // PlanRequest.sailIds at the one production call site that builds a brand
 // new request with no prior plan to inherit the solve order from

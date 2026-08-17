@@ -55,8 +55,10 @@ const hoisted = vi.hoisted(() => {
     assets: {
       maskMeta: { west: 9.4, south: 54.3, east: 11.0, north: 55.3, cols: 4, rows: 4 },
       maskBuffer: new ArrayBuffer(16),
-      polarGenoa: polar,
-      polarFock: polar,
+      // #54: keys spelled out because this literal lives inside a
+      // vi.hoisted() block, which runs BEFORE the imports — calling
+      // polarKey() here throws "Cannot access before initialization".
+      polars: { 'salona-45/genoa': polar, 'salona-45/fock': polar },
       harbors: [
         {
           id: 'flensburg',

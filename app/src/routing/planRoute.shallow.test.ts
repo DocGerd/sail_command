@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { planRoute } from './planRoute';
-import { makeMask, openWaterMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
+import {
+  makeMask,
+  openWaterMask,
+  TEST_POLAR,
+  testPlanDeps,
+  uniformWindGrid,
+} from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   type PlanRequest,
@@ -68,11 +74,8 @@ const reqNearApproach: PlanRequest = {
   destination: { lat: 54.7525, lon: 10.2275 },
 };
 
-const depsWith = (mask: ReturnType<typeof makeMask>) => ({
-  polarGenoa: TEST_POLAR,
-  polarFock: SLOW_FOCK,
-  mask,
-});
+const depsWith = (mask: ReturnType<typeof makeMask>) =>
+  testPlanDeps(mask, { genoa: TEST_POLAR, fock: SLOW_FOCK });
 
 describe('planRoute graceful shallow degradation (#53)', () => {
   it('relaxes an unreachable 3.0 m plan to the highest connecting gate and flags shallow legs', () => {

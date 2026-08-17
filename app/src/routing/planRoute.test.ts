@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { compareRigs, planRoute, RIG_TIE_BAND_MS } from './planRoute';
-import { openWaterMask, TEST_POLAR, uniformWindGrid, makeMask } from '../test/fixtures';
+import {
+  openWaterMask,
+  TEST_POLAR,
+  testPlanDeps,
+  uniformWindGrid,
+  makeMask,
+} from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   type Leg,
@@ -43,9 +49,22 @@ const req: PlanRequest = {
   settings: DEFAULT_SETTINGS,
   sailIds: ['genoa', 'fock'],
 };
-const deps = { polarGenoa: TEST_POLAR, polarFock: SLOW_FOCK, mask: openWaterMask() };
+const deps = testPlanDeps(openWaterMask(), { genoa: TEST_POLAR, fock: SLOW_FOCK });
 
 describe('planRoute', () => {
+  // #54: `deps.polars` is a plain Record, so a key the caller never supplied
+  // reads as `undefined`. Deleting the guard does NOT make this pass — `new
+  // Polar(undefined)` throws a TypeError on `table.rig` — so what this row
+  // pins is the DIAGNOSTIC, not the existence of a failure: which key was
+  // missing, reported at the lookup instead of inside the solver.
+  it('throws NAMING the missing key when deps.polars has no table for a requested sail', () => {
+    const partial = testPlanDeps(openWaterMask(), { genoa: TEST_POLAR, fock: SLOW_FOCK });
+    delete (partial.polars as Record<string, PolarTable>)['salona-45/fock'];
+    expect(() => planRoute({ ...req, sailIds: ['fock'] }, uniformWindGrid(12, 0), partial)).toThrow(
+      '#54: no polar table for salona-45/fock',
+    );
+  });
+
   it('runs both rigs and recommends the faster one', () => {
     const r = planRoute(req, uniformWindGrid(12, 0), deps);
     expect(r.status).toBe('ok');
@@ -115,7 +134,8 @@ describe('planRoute', () => {
   });
 
   it('recommends genoa on an exact ETA tie between rigs, but reports the comparison as a tie (#259)', () => {
-    const tieDeps = { ...deps, polarFock: TEST_POLAR }; // identical polar table → identical solve
+    // identical polar table → identical solve
+    const tieDeps = testPlanDeps(deps.mask, { genoa: TEST_POLAR, fock: TEST_POLAR });
     const r = planRoute(req, uniformWindGrid(12, 0), tieDeps);
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
@@ -153,7 +173,7 @@ describe('planRoute', () => {
       rig: 'fock',
       speeds: TEST_POLAR.speeds.map((row) => row.map((v) => v * 0.01)),
     };
-    const calmDeps = { ...deps, polarFock: calmFock };
+    const calmDeps = testPlanDeps(deps.mask, { genoa: TEST_POLAR, fock: calmFock });
     const settings = { ...DEFAULT_SETTINGS, motorEnabled: false };
     const r = planRoute({ ...req, settings }, uniformWindGrid(12, 0), calmDeps);
     expect(r.status).toBe('ok');

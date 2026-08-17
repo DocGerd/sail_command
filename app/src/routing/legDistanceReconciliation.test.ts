@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { NavMask } from '../lib/mask';
 import { haversineNm } from '../lib/geo';
 import { planRoute } from './planRoute';
-import { uniformWindGrid } from '../test/fixtures';
+import { testPlanDeps, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS } from '../types';
 import type { Leg, LatLon, MaskMeta, PlanResultOk, PolarTable, SailId } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
@@ -120,6 +120,8 @@ const polarGenoa = JSON.parse(
 const polarFock = JSON.parse(
   readFileSync(resolve(dataDir, 'polar-fock.json'), 'utf8'),
 ) as PolarTable;
+// #54: PlanDeps now carries polars keyed `${boatId}/${sailId}` plus the boat.
+const DEPS = testPlanDeps(mask, { genoa: polarGenoa, fock: polarFock });
 
 // Real harbor snap coordinates, matching realmask.repro.test.ts.
 const FLENSBURG: LatLon = { lat: 54.798, lon: 9.4335 };
@@ -157,7 +159,7 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
@@ -254,7 +256,7 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
@@ -300,7 +302,7 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         sailIds: ['genoa', 'fock'],
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;

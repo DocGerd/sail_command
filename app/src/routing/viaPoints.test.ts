@@ -3,7 +3,13 @@ import { planRoute } from './planRoute';
 import { solve } from './isochrone';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
-import { openWaterMask, TEST_POLAR, uniformWindGrid, makeMask } from '../test/fixtures';
+import {
+  openWaterMask,
+  TEST_POLAR,
+  testPlanDeps,
+  uniformWindGrid,
+  makeMask,
+} from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PlanRequest, type PlanResultOk } from '../types';
 import { haversineNm } from '../lib/geo';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
@@ -28,7 +34,7 @@ const baseReq: PlanRequest = {
   viaPoints: [],
   sailIds: ['genoa', 'fock'],
 };
-const deps = { polarGenoa: TEST_POLAR, polarFock: TEST_POLAR, mask: openWaterMask() };
+const deps = testPlanDeps(openWaterMask(), { genoa: TEST_POLAR, fock: TEST_POLAR });
 
 describe('planRoute via-waypoints', () => {
   it('(a) routes through a via waypoint sequentially, with a continuous joint', () => {

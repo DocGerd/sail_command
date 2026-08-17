@@ -146,8 +146,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // Transferred to the worker on postMessage — always pass a
           // copy and keep assets.ts's module-cached original intact.
           maskBuffer: assets.maskBuffer.slice(0),
-          polarGenoa: assets.polarGenoa,
-          polarFock: assets.polarFock,
+          // #54: cloned, never transferred — the whole catalogue's polars,
+          // sent once so every later plan only names keys.
+          polars: assets.polars,
         });
       }
       await readyRef.current;

@@ -19,15 +19,24 @@ import type { NavMask } from '../lib/mask';
 import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
 import { APPROACH_RADIUS_M, uniformGate, type DepthGate } from '../lib/depthGate';
-import { BOAT_DRAFT_M, findRelaxedGate, type ProbeProgress } from './relaxedDepth';
+import { findRelaxedGate, type ProbeProgress } from './relaxedDepth';
+import { polarKey, type BoatDef } from '../data/boats';
+import { relaxationFloorM } from '../lib/boatDepth';
 
-// #54: Task 10 will replace these two fixed fields with a keyed
-// `Record<SailId, PolarTable>` map (safety-critical — see that task's own
-// brief). Until then this interface is UNCHANGED so this task stays scoped
-// to the rename/reshape.
 export interface PlanDeps {
-  polarGenoa: PolarTable;
-  polarFock: PolarTable;
+  /**
+   * #54 spec F.3: polars keyed `${boatId}/${sailId}` by polarKey(). Only the
+   * keys for `boat` × the request's `sailIds` are read; a caller may pass a
+   * wider map.
+   */
+  polars: Readonly<Record<string, PolarTable>>;
+  /**
+   * #54: the boat this plan is for. SAFETY-CRITICAL — spec C.4(a) derives the
+   * #53 relaxation floor from its draft. Left as the old module constant,
+   * relaxation would take a 2.30 m boat down to a 2.1 m gate while the
+   * shallow banner reported the relaxation as if it were the Salona's.
+   */
+  boat: BoatDef;
   mask: NavMask;
 }
 
@@ -348,17 +357,17 @@ export function planRoute(
   const requestedGate = uniformGate(s.safetyDepthM);
 
   const wind = new WindField(windGrid);
-  // #54: Task 10 will replace this with a keyed `Record<SailId, PolarTable>`
-  // on PlanDeps itself; until then this bridges `req.sailIds` (the ordered
-  // list) onto PlanDeps's two fixed fields. Unquoted keys, so this stays
-  // invisible to `test/sailLiteralCallSites.test.ts`'s bare-sail-id-literal
-  // structural guard — and, being a `Record<SailId, PolarTable>`, the
-  // compiler itself reds this line the moment BOATS gains a third sail id
-  // this record doesn't cover, exactly the enforcement that guard's own
-  // header comment describes.
-  const polarBySailId: Record<SailId, PolarTable> = {
-    genoa: deps.polarGenoa,
-    fock: deps.polarFock,
+  // #54: fail CLOSED. `deps.polars` is a plain Record, so a key the caller
+  // never supplied reads as `undefined` and would reach `new Polar()` as a
+  // silently empty table — a wrong boat speed rather than an error. This is
+  // the ONE check for that: protocol.ts hands over only the keys `init`
+  // actually carried, and the sweep harness and tests construct PlanDeps
+  // directly, so every path arrives here.
+  const polarFor = (sailId: SailId): PolarTable => {
+    const key = polarKey(deps.boat.id, sailId);
+    const table: PolarTable | undefined = deps.polars[key];
+    if (table === undefined) throw new Error(`#54: no polar table for ${key}`);
+    return table;
   };
   const run = (
     sailId: SailId,
@@ -426,7 +435,7 @@ export function planRoute(
   // `req.sailIds` changes the real solve order and the guard test observes
   // exactly that.
   const runAll = (settings: Settings, gate: DepthGate, comfort: number | undefined): RunOut[] =>
-    req.sailIds.map((sailId) => run(sailId, polarBySailId[sailId], settings, gate, comfort));
+    req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort));
 
   const assemble = (sails: readonly RunOut[], shallow: ShallowInfo | null): PlanResult => {
     // #259: `recommended` stays a plain SailId for consumers that only ever
@@ -587,13 +596,18 @@ export function planRoute(
   if (deadline?.expired()) {
     return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE['budget-exhausted'] };
   }
-  if (depthRelaxationMayHelp(cause) && s.safetyDepthM > BOAT_DRAFT_M) {
+  // #54 spec C.4(a), SAFETY-CRITICAL: the floor is THIS boat's draft, not a
+  // module constant. Both uses below take the same value — the entry gate
+  // ("is there anything below the requested depth left to relax into?") and
+  // the search's own lower bound — so they cannot drift apart.
+  const relaxationFloor = relaxationFloorM(deps.boat);
+  if (depthRelaxationMayHelp(cause) && s.safetyDepthM > relaxationFloor) {
     const relaxed = findRelaxedGate(
       mask,
       waypoints,
       s.safetyDepthM,
       APPROACH_RADIUS_M,
-      BOAT_DRAFT_M,
+      relaxationFloor,
       onProbe,
     );
     if (relaxed !== null) {

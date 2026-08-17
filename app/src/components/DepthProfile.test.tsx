@@ -26,6 +26,7 @@ import { loadRoutingAssets } from '../services/assets';
 import { profileSamples, sampleCount } from '../lib/routeProfile';
 import { NavMask } from '../lib/mask';
 import DepthProfile from './DepthProfile';
+import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 const spiedSamples = vi.mocked(profileSamples);
@@ -39,8 +40,10 @@ function assetsWith(byte: number) {
   return {
     maskMeta: TEST_MASK_META,
     maskBuffer: data.buffer,
-    polarGenoa: TEST_POLAR,
-    polarFock: TEST_POLAR,
+    polars: {
+      [polarKey(DEFAULT_BOAT_ID, 'genoa')]: TEST_POLAR,
+      [polarKey(DEFAULT_BOAT_ID, 'fock')]: TEST_POLAR,
+    },
     harbors: [],
     seamarks: { type: 'FeatureCollection' as const, features: [] },
   };
