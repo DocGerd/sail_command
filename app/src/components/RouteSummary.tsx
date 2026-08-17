@@ -68,6 +68,14 @@ export function ShallowWarning({
   // usedDepthM - MASK_TOLERANCE_M — recomputed from THIS plan's usedDepthM
   // every render, never a fixed number, so it can never go stale as
   // usedDepthM varies plan to plan.
+  // #54 spec C.4(a)/C.8 R5 — BOAT-AGNOSTIC, blocked on Task 11. This compares
+  // against the Salona's 2.1 m constant, not the SELECTED boat's draft. Not
+  // live: BOATS holds one boat at draftM 2.1, identical to BOAT_DRAFT_M.
+  // Structurally unfixable here until Task 11 puts the boat on the plan —
+  // `Plan`/`PlanResult` carry none, so this component cannot reach it. Must
+  // be retired before a second boat becomes user-selectable; a 2.30 m boat
+  // relaxed to its correct 2.3 m gate would otherwise be judged against the
+  // wrong hull. Same fix owns the rendered draft below.
   const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M;
   const containerClassName = isSevere
     ? 'shallow-warning shallow-warning--severe'
@@ -175,6 +183,11 @@ export function ShallowWarning({
   return (
     <div className={containerClassName} role="alert">
       <p className="shallow-warning__lead">
+        {/* #54 spec C.4(a)/C.8 R5 — BOAT-AGNOSTIC, blocked on Task 11: this
+            renders the Salona's 2.1 m, not the SELECTED boat's draft, so with
+            a second boat it would UNDERSTATE a deeper hull in the app's most
+            severe safety copy. See isSevere above for why it cannot be fixed
+            here yet. */}
         {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
           cautious: cautiousM,
           draft: BOAT_DRAFT_M.toFixed(1),

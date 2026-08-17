@@ -357,12 +357,13 @@ export function planRoute(
   const requestedGate = uniformGate(s.safetyDepthM);
 
   const wind = new WindField(windGrid);
-  // #54: fail CLOSED. `deps.polars` is a plain Record, so a key the caller
-  // never supplied reads as `undefined` and would reach `new Polar()` as a
-  // silently empty table — a wrong boat speed rather than an error. This is
-  // the ONE check for that: protocol.ts hands over only the keys `init`
-  // actually carried, and the sweep harness and tests construct PlanDeps
-  // directly, so every path arrives here.
+  // #54: `deps.polars` is a plain Record, so a key the caller never supplied
+  // reads as `undefined`. This throw pins the DIAGNOSTIC, not the existence
+  // of a failure — `new Polar(undefined)` throws on `table.rig` either way
+  // (lib/polar.ts) — so what it buys is naming WHICH key is missing, at the
+  // lookup instead of inside the solver. One check for every path:
+  // protocol.ts hands over only the keys `init` carried, and the sweep
+  // harness and tests construct PlanDeps directly.
   const polarFor = (sailId: SailId): PolarTable => {
     const key = polarKey(deps.boat.id, sailId);
     const table: PolarTable | undefined = deps.polars[key];

@@ -841,6 +841,27 @@ describe('#54 spec C.4(a): the relaxation floor comes from the selected boat', (
     expect(shallow?.usedDepthM).toBeCloseTo(2.1, 6);
   });
 
+  // #54 fix round 1: findRelaxedGate must quantise `floorM` UP, so it fails
+  // closed for a caller that hands over a RAW draft. Round would take a
+  // 2.14 m boat to a 2.1 m gate — under its own keel — which is the class
+  // lib/boatDepth.ts's ceilToDecimetre forbids in capitals (spec C.8).
+  //
+  // This row calls findRelaxedGate DIRECTLY, and it has to: MEASURED over
+  // 4501 millimetre-spaced drafts, ceil-vs-round in the callee is invisible
+  // through planRoute (0 disagreements) because the caller already quantises
+  // via relaxationFloorM. Only a raw floor reaches the branch.
+  //
+  // 2.14 is the discriminating value for THIS fixture, not 2.24: the pocket's
+  // maximum connecting gate is 21 dm, and round(2.14*10)=21 connects while
+  // ceil=22 does not. round(2.24*10)=22 also fails to connect, so a 2.24 row
+  // would pass either way.
+  it('(a2) FIXTURE KEEPER: a RAW non-decimetre floor is quantised UP, not down', () => {
+    const origin = mask.snapToNavigable(FLENSBURG, REQUESTED_DEPTH_M);
+    const dest = mask.snapToNavigable(POCKET, REQUESTED_DEPTH_M);
+    const raw = findRelaxedGate(mask, [origin!, dest!], REQUESTED_DEPTH_M, APPROACH_RADIUS_M, 2.14);
+    expect(raw, 'a 2.14 m floor must not be granted the 2.1 m gate below it').toBeNull();
+  });
+
   it(
     '(b) WIRING: planRoute relaxes to the floor of deps.boat, not to a shared constant',
     { timeout: solverTimeoutMs(600_000) },

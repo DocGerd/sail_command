@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BOAT_DRAFT_M, findRelaxedGate, type ProbeInfo } from './relaxedDepth';
 import { makeMask } from '../test/fixtures';
+import { ceilToDecimetre } from '../lib/boatDepth';
 
 // Wall at col 160 (lon ≈ 10.2) except a gap (rows 90..99) charted `gapDm`
 // decimeters; everything else 20 m water.
@@ -110,4 +111,103 @@ it('#54: findRelaxedGate searches from the given floor, not a module constant', 
   expect(shallow?.usedDepthM).toBeCloseTo(2.0, 6);
   expect(deep).toBeNull();
   expect(deep?.usedDepthM).not.toBe(shallow?.usedDepthM);
+});
+
+// #54 fix round 1: `findRelaxedGate` quantises `floorM` up with an INLINE
+// `Math.ceil(f * 10 - 1e-9)` rather than by importing `ceilToDecimetre`,
+// because that helper is metres->metres while the search works in integer
+// decimetres — importing it would mean `Math.round(ceilToDecimetre(f) * 10)`,
+// reintroducing the very `Math.round` the fix removes.
+//
+// The expression is therefore duplicated across two files and nothing in the
+// compiler spans them. This guard READS BOTH SHIPPED SOURCES rather than
+// retyping either, following useBannerHeight.test.ts literally: a retyped
+// copy compared against `ceilToDecimetre` would hold by construction AND
+// would stay green when relaxedDepth.ts itself drifted — MEASURED, an earlier
+// draft of this guard did exactly that (11/11 green with `:99` reverted to
+// Math.round).
+//
+// `import.meta.glob(..., '?raw')` rather than node:fs — the browser-safe form
+// used by sailLiteralCallSites.test.ts / timeoutGuard.test.ts, which needs no
+// tsconfig.app.json exclusion (useBannerHeight.test.ts reads a NON-TypeScript
+// asset, which is the only reason it needs node builtins).
+const QUANTISER_SOURCES = import.meta.glob<string>(['./relaxedDepth.ts', '../lib/boatDepth.ts'], {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+// NOTE the key shape: import.meta.glob keys are relative to THIS file's own
+// directory, so they read './relaxedDepth.ts' and '../lib/boatDepth.ts' — NOT
+// 'src/routing/...'. The first draft matched on 'routing/relaxedDepth.ts' and
+// the fail-closed check below caught it on the very first run, which is the
+// whole reason that check exists (sailLiteralCallSites.test.ts documents the
+// same trap).
+function sourceOf(suffix: string): string {
+  const hit = Object.entries(QUANTISER_SOURCES).find(([k]) => k.endsWith(suffix));
+  // Fail CLOSED: a glob that stops matching must red, not silently pass.
+  expect(hit, `drift guard cannot read ${suffix} — the glob no longer matches it`).toBeDefined();
+  return hit![1];
+}
+
+/** The one expression both sites must spell: ceil, with the IEEE nudge, never round. */
+function expectCeilsUp(expr: string, where: string): void {
+  expect(expr, `${where} must ceil`).toMatch(/Math\.ceil\(/);
+  expect(expr, `${where} must carry the 1e-9 nudge`).toMatch(/-\s*1e-9/);
+  expect(expr, `${where}: Math.round quantises a draft BELOW its own keel (spec C.8)`).not.toMatch(
+    /Math\.round\(/,
+  );
+}
+
+describe('#54: the decimetre quantiser is duplicated across two files — pin both SHIPPED sites', () => {
+  it("relaxedDepth.ts's own loDm line ceils", () => {
+    const src = sourceOf('/relaxedDepth.ts');
+    const m = src.match(/const loDm = ([^;\n]+);/);
+    expect(
+      m,
+      'relaxedDepth.ts no longer declares `const loDm = ...` — guard is blind',
+    ).not.toBeNull();
+    expectCeilsUp(m![1], 'relaxedDepth.ts loDm');
+  });
+
+  it("lib/boatDepth.ts's ceilToDecimetre body ceils", () => {
+    const src = sourceOf('/boatDepth.ts');
+    const m = src.match(/export function ceilToDecimetre[^{]*\{\s*return ([^;\n]+);/);
+    expect(
+      m,
+      'boatDepth.ts no longer declares ceilToDecimetre as one return — guard is blind',
+    ).not.toBeNull();
+    expectCeilsUp(m![1], 'boatDepth.ts ceilToDecimetre');
+  });
+
+  // The two rows above pin the SHAPE of each shipped site. These two pin the
+  // BEHAVIOUR, which is the separate claim that licenses "no #282 sweep owed":
+  // the retyped expression is legitimate here only because the rows above
+  // establish the shipped one spells the same rule.
+  const rule = (f: number) => Math.ceil(f * 10 - 1e-9);
+
+  it('agrees with ceilToDecimetre across [0.5, 5.0] at millimetre spacing', () => {
+    const disagreements: number[] = [];
+    for (let x = 500; x <= 5000; x++) {
+      const f = x / 1000;
+      // ceilToDecimetre returns METRES, loDm DECIMETRES; compare in decimetres.
+      if (rule(f) !== Math.round(ceilToDecimetre(f) * 10)) disagreements.push(f);
+    }
+    expect(disagreements, 'the two quantisers disagree').toEqual([]);
+  });
+
+  it('rounds UP, never down — the spec C.8 property both sites exist to hold', () => {
+    for (const [draft, expectedDm] of [
+      [1.73, 18],
+      [2.14, 22],
+      [2.24, 23],
+    ] as const) {
+      expect(rule(draft), `${draft} m must not quantise below its own keel`).toBe(expectedDm);
+      // Control: these are exactly the drafts where round goes under the keel,
+      // so a guard that accepted round could not pass this row.
+      expect(Math.round(draft * 10), 'control: round is the forbidden form').toBeLessThan(
+        expectedDm,
+      );
+    }
+  });
 });
