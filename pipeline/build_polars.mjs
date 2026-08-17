@@ -15,11 +15,21 @@ const outDir = join(here, '..', 'app', 'public', 'data', 'polars');
 // that falls through to a friendlier tier.
 const TIERS = ['certificate', 'modelled', 'estimated'];
 
-// Everything below FAILS CLOSED (spec H): a boat or sail whose id is missing,
-// unsafe or duplicated, or a boat or sail missing its provenance tier, its
-// source note, its plausibility bound or its sanity anchors, throws and names
-// itself. It never inherits another boat's values — an anchor that silently
-// validates the wrong hull is worse than no anchor.
+// Everything below FAILS CLOSED (spec H). Stated as what is actually checked,
+// no wider: a boat id that is missing, unsafe or duplicated; a sail id that is
+// unsafe; any two sails resolving to the same output file; a boat missing its
+// plausibility bound or its sanity anchors; a sail missing its provenance tier
+// or source note. Each throws and names itself, and never inherits another
+// boat's values — an anchor that silently validates the wrong hull is worse
+// than no anchor.
+//
+// Deliberately NOT checked, so nobody reads a guarantee here that does not
+// exist: a MISSING sail id is unreachable (a sail id is an object key), and
+// there is no duplicate-SAIL-id check — sail ids are not unique across boats
+// by design (see the outDir comment above), and a repeated key within one
+// boat's `sails` map is collapsed by JSON.parse before this script ever sees
+// it. What the output-file check below does cover is two sails, in any boats,
+// landing on one filename.
 function requireField(cond, what) {
   if (!cond) throw new Error(`polars-source.json: ${what}`);
 }
@@ -29,11 +39,14 @@ function requireField(cond, what) {
 // interpolated string — able to escape the output directory entirely: a sail
 // keyed `../../../ESCAPED` wrote app/public/data/ESCAPED.json, beside
 // harbors.json and mask.bin, with exit 0 (measured, fix round 1).
-const ID_RE = /^[a-z0-9-]+$/;
+//
+// The first character may not be `-`: an id like `-rf` stays inside polars/
+// but produces a committed filename that a later `rm`/`tar`/`cp` glob in that
+// directory hands to the tool as an OPTION rather than a path.
+const ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 
-// Numbers must be real numbers. `>` and `<` coerce, so a table of decimal
-// STRINGS satisfies `v > 0 && v < maxSpeedKn` and ships; lib/polar.ts then
-// interpolates over strings, where `+` concatenates instead of adding.
+// tws/twa/beat/gybe grids must be real numbers, not decimal strings — see the
+// coercion note on validate()'s plausibility predicate for the mechanism.
 function requireNumbers(what, xs) {
   requireField(Array.isArray(xs) && xs.length > 0, `${what}: not a non-empty array`);
   for (const v of xs) requireField(typeof v === 'number' && Number.isFinite(v), `${what}: ${JSON.stringify(v)} is not a finite number`);
@@ -53,6 +66,9 @@ function validate(name, speeds, boat) {
   for (const [i, row] of speeds.entries()) {
     if (row.length !== tws.length) throw new Error(`${name}: tws col count @twa ${twa[i]}`);
     for (const [j, v] of row.entries()) {
+      // `typeof`/`isFinite` first: `>` and `<` COERCE, so without them a table
+      // of decimal STRINGS satisfies `v > 0 && v < maxSpeedKn` and ships, after
+      // which lib/polar.ts interpolates over strings where `+` concatenates.
       if (!(typeof v === 'number' && Number.isFinite(v) && v > 0 && v < maxSpeedKn))
         throw new Error(
           `${name}: implausible ${JSON.stringify(v)} kn @ ${twa[i]}/${tws[j]} (max ${maxSpeedKn})`,
@@ -82,12 +98,24 @@ requireField(Array.isArray(src.boats) && src.boats.length > 0, 'no boats');
 // written, so a bad entry leaves no half-built asset set behind. A one-pass
 // loop writes the sails it reaches before the throw.
 const pending = [];
-// A boat id is an IDENTITY, not just a filename component: boats.ts keys the
-// catalogue by it and polarKey() keys PlanDeps.polars by it. Two boats sharing
-// one id built cleanly and logged the same filename twice, shipping the second
-// boat's speed table and provenance note under the first boat's name — §F.1's
-// overwrite hazard on the boat axis (measured, fix round 1).
+// TWO checks, and NEITHER subsumes the other — both measured, fix round 2.
+//
+// `seenBoatIds` guards IDENTITY. A boat id is not just a filename component:
+// boats.ts keys the catalogue by it and polarKey() keys PlanDeps.polars by it.
+// Two boats sharing one id built cleanly and shipped the second boat's speed
+// table and provenance note under the first boat's name.
+//
+// `seenFiles` guards the OUTPUT, and is needed because `-` is BOTH the
+// separator and a legal id character — so the id is not the unique thing, the
+// filename is. Boat `a-b` + sail `c` and boat `a` + sail `b-c` are two
+// distinct, legal, non-duplicate ids that both resolve to `a-b-c.json`: exit
+// 0, the same filename logged twice, one table silently replacing the other.
+//
+// Why not `seenFiles` alone: two boats sharing an id with DISJOINT sail sets
+// collide on no filename at all, so a filename-keyed check passes them (exit 0,
+// measured) while the two records silently merge into one boat's polar set.
 const seenBoatIds = new Set();
+const seenFiles = new Set();
 
 for (const boat of src.boats) {
   const id = boat.id;
@@ -131,7 +159,10 @@ for (const boat of src.boats) {
     const name = `${id}/${sailId}`;
     requireField(ID_RE.test(sailId), `${id}: sail id missing or unsafe: ${JSON.stringify(sailId)}`);
     const sail = boat.sails[sailId];
-    requireField(sail.provenance != null, `${name}: polarProvenance missing`);
+    // `provenance` is the JSON key in this file; `polarProvenance` is only the
+    // TypeScript field name in boats.ts, and naming that here sends a
+    // contributor grepping polars-source.json for a string it never contains.
+    requireField(sail.provenance != null, `${name}: provenance missing`);
     requireField(
       TIERS.includes(sail.provenance.tier),
       `${name}: provenance tier ${JSON.stringify(sail.provenance.tier)} not one of ${TIERS.join('/')}`,
@@ -156,7 +187,10 @@ for (const boat of src.boats) {
       gybe: boat.gybe,
       source: sail.provenance.note,
     };
-    pending.push({ file: `${id}-${sailId}.json`, table, rows: boat.twa.length, cols: boat.tws.length });
+    const file = `${id}-${sailId}.json`;
+    requireField(!seenFiles.has(file), `duplicate output file ${file}: ${name} collides with an earlier sail`);
+    seenFiles.add(file);
+    pending.push({ file, table, rows: boat.twa.length, cols: boat.tws.length });
   }
 }
 

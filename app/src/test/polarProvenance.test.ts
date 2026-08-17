@@ -17,7 +17,7 @@ import type { PolarTable } from '../types';
 // the filesystem. Specifically the DIRECTORY half: assets.test.ts's mock
 // matches on the filename substring, so a wrong filename reds there, while a
 // wrong directory still contains that substring and passes straight through —
-// and a wrong directory is exactly what 404s in production.
+// and a wrong directory 404s in production with nothing else to catch it.
 //
 // Needle and haystack are deliberately different artifacts on every assertion
 // (the #388 tautology): the catalogue is compared against the pipeline input

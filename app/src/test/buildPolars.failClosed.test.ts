@@ -36,10 +36,12 @@ import { describe, it, expect, afterAll } from 'vitest';
 // never touch the committed assets.
 //
 // Fix round 1: the "wrote nothing" assertions used to `readdir` the `polars/`
-// directory alone, which made them structurally blind to the very defect they
-// were meant to catch — a sail id escaping that directory wrote OUTSIDE it and
-// left `polars/` empty, so the assertion passed. They now walk the whole
-// scratch tree.
+// directory alone, so a write that escaped that directory landed outside what
+// the assertion looked at. They now walk the whole scratch tree. That upgrade
+// is load-bearing and measured, not assumed: with the sail-id guard removed
+// and the two-pass restructure reverted, the build fails, `polars/` is empty —
+// the old assertion passes — and ESCAPED.json is on disk. Both halves of that
+// two-part precondition are required; neither alone reaches the state.
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const SCRIPT = join(REPO, 'pipeline', 'build_polars.mjs');
@@ -55,6 +57,8 @@ interface RunResult {
   readonly ok: boolean;
   readonly output: string;
   readonly outDir: string;
+  /** The mkdtemp root, carried explicitly — see allWrittenFiles. */
+  readonly root: string;
 }
 
 /** Run the real generator against `source` in a throwaway tree. */
@@ -70,10 +74,10 @@ function run(source: unknown): RunResult {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    return { ok: true, output: stdout, outDir };
+    return { ok: true, output: stdout, outDir, root };
   } catch (e) {
     const err = e as { stdout?: string; stderr?: string };
-    return { ok: false, output: `${err.stdout ?? ''}${err.stderr ?? ''}`, outDir };
+    return { ok: false, output: `${err.stdout ?? ''}${err.stderr ?? ''}`, outDir, root };
   }
 }
 
@@ -104,14 +108,18 @@ function writtenFiles(outDir: string): string[] {
  * inputs the harness itself planted. A directory-scoped listing cannot see a
  * write that escaped that directory, which is exactly how an unvalidated id
  * gets past a "wrote nothing" assertion.
+ *
+ * The root is the `mkdtemp` directory the run reports, NOT a fixed number of
+ * levels up from `outDir` — deriving it by counting `..` hardcodes the output
+ * path's depth, and if that path ever gets shallower the walk lands in
+ * `tmpdir()` itself and enumerates every other test's scratch tree.
  */
-function allWrittenFiles(outDir: string): string[] {
-  const root = resolve(outDir, '..', '..', '..', '..');
+function allWrittenFiles(r: RunResult): string[] {
   const walk = (dir: string): string[] =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-      e.isDirectory() ? walk(join(dir, e.name)) : [relative(root, join(dir, e.name))],
+      e.isDirectory() ? walk(join(dir, e.name)) : [relative(r.root, join(dir, e.name))],
     );
-  return walk(root)
+  return walk(r.root)
     .filter(
       (f) =>
         f !== join('pipeline', 'build_polars.mjs') && f !== join('pipeline', 'polars-source.json'),
@@ -149,7 +157,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     expect(r.output).toContain('staysail');
     // Fail CLOSED: a partially-built asset set is exactly the state a later
     // regeneration would leave alongside the good files without noticing.
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   it('aborts when a sail declares a provenance tier outside the three-tier model', () => {
@@ -158,7 +166,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('genoa');
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   it('aborts when a sail carries a tier but no source note', () => {
@@ -167,7 +175,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('fock');
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   // Spec H: a boat added without its own anchors must fail the build rather
@@ -182,7 +190,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('other-boat');
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   it('aborts when a second boat carries no plausibility bound of its own', () => {
@@ -194,21 +202,33 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('other-boat');
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   // The boat id is what keeps two boats' assets apart, so a missing or
   // path-unsafe one must never reach a filename.
-  it.each([undefined, '../escape', 'Salona 45'])('aborts on boat id %o', (id) => {
+  it.each(['../escape', 'Salona 45', '-rf'])('aborts on boat id %o', (id) => {
     const src = freshSource();
-    if (id === undefined) delete src.boats[0].id;
-    else src.boats[0].id = id;
+    src.boats[0].id = id;
     const r = run(src);
     expect(r.ok).toBe(false);
     // Name the offender, like every sibling row — otherwise a future refactor
     // that aborts for an unrelated reason keeps this green.
-    expect(r.output).toContain(String(id));
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(r.output).toContain(id);
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // Split out of the it.each above: with the id absent there is no offender
+  // VALUE to name, and `toContain(String(undefined))` is satisfied by the
+  // substring 'undefined' anywhere in a stack trace. Naming the FIELD is the
+  // strongest assertion available here, at the cost of pinning two words.
+  it('aborts, naming the field, when a boat carries no id at all', () => {
+    const src = freshSource();
+    delete src.boats[0].id;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('boat id');
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   // The SAIL id is the other half of the same `${id}-${sailId}.json` string,
@@ -222,7 +242,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain(sailId);
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   // §F.1's overwrite hazard on the BOAT axis. Two boats sharing an id logged
@@ -237,7 +257,48 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('salona-45');
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // `-` is BOTH the filename separator and a legal id character, so the id is
+  // not the unique thing — the FILENAME is. These two boats have distinct,
+  // legal, non-duplicate ids and still both resolve to `a-b-c.json`: exit 0,
+  // the same name logged twice, one table silently replacing the other. The
+  // boat-id check cannot see this; only the output-file check can.
+  it('aborts when two DISTINCT boat ids collide on one output filename', () => {
+    const src = freshSource();
+    const a = JSON.parse(JSON.stringify(src.boats[0]));
+    const b = JSON.parse(JSON.stringify(src.boats[0]));
+    a.id = 'a-b';
+    a.name = 'Boat A-B';
+    a.sails = { c: a.sails.genoa };
+    b.id = 'a';
+    b.name = 'Boat A';
+    b.sails = { 'b-c': b.sails.fock };
+    src.boats = [a, b];
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('a-b-c.json');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // The converse, and the reason the two checks are not one: these boats share
+  // an id but their sail sets are DISJOINT, so no filename collides at all. A
+  // filename-keyed check alone passes this (exit 0, measured) while the two
+  // records silently merge into a single boat's polar set.
+  it('aborts on a duplicate boat id even when no output filename collides', () => {
+    const src = freshSource();
+    const a = JSON.parse(JSON.stringify(src.boats[0]));
+    const b = JSON.parse(JSON.stringify(src.boats[0]));
+    a.name = 'Boat One';
+    a.sails = { genoa: a.sails.genoa };
+    b.name = 'Boat Two';
+    b.sails = { fock: b.sails.fock };
+    src.boats = [a, b];
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('salona-45');
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   // `>` and `<` coerce, so a decimal STRING satisfies the plausibility bound
@@ -252,7 +313,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('salona-45/genoa');
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   it.each(['beat', 'gybe'] as const)('aborts when %s is an empty object', (field) => {
@@ -261,7 +322,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain(field);
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   it('aborts when an anchor names a TWA/TWS the boat’s grid does not contain', () => {
@@ -270,7 +331,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('999');
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   // The anchors must still BITE on the real table, not merely be present —
@@ -282,7 +343,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain(a.label);
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 
   it('aborts when a speed exceeds the boat’s own plausibility bound', () => {
@@ -291,6 +352,6 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('salona-45/genoa');
-    expect(allWrittenFiles(r.outDir)).toEqual([]);
+    expect(allWrittenFiles(r)).toEqual([]);
   });
 });

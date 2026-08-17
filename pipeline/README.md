@@ -61,12 +61,24 @@ Edit `pipeline/polars-source.json` to change the data. It is keyed by boat
 each sail carries a `provenance` tier (`certificate` / `modelled` /
 `estimated`, spec G.3) and note. `build_polars.mjs` derives the sail set from
 that map — there is no second list to fall out of step with it — and **fails
-closed**: a boat or sail whose id is missing, unsafe or duplicated, a boat with
-no anchors or no plausibility bound, or a sail with no provenance tier or note,
-throws and names itself rather than inheriting another boat's values. An anchor
-that silently validates the wrong hull is worse than no anchor. Both halves of
-the output filename are validated — validating only the boat id let a sail
-keyed `../../../ESCAPED` write outside this directory entirely.
+closed**. Exactly what is checked, no wider: a boat id that is missing, unsafe
+or duplicated; a sail id that is unsafe; any two sails resolving to the same
+output file; a boat with no anchors or no plausibility bound; a sail with no
+provenance tier or note. Each throws and names itself rather than inheriting
+another boat's values — an anchor that silently validates the wrong hull is
+worse than no anchor.
+
+Both halves of the output filename are validated: validating only the boat id
+let a sail keyed `../../../ESCAPED` write outside this directory entirely. And
+the duplicate check runs on the boat id *and* on the output filename, because
+`-` is both the separator and a legal id character — boat `a-b` with sail `c`
+and boat `a` with sail `b-c` are two legal, distinct, non-duplicate ids that
+resolve to the same `a-b-c.json`. Neither check subsumes the other: two boats
+sharing an id with disjoint sail sets collide on no filename at all.
+
+There is deliberately **no** duplicate-sail-id check — sail ids are not unique
+across boats by design, and a repeated key inside one boat's `sails` map is
+collapsed by `JSON.parse` before the script sees it.
 
 The Salona 45's two anchors restate the bands the pre-#54 script hardcoded:
 `8.26..9.46` at TWA 90 / TWS 16 and `6.5..8.5` at TWA 52 / TWS 12. The second is
