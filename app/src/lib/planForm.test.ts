@@ -16,6 +16,8 @@ import {
   type PlanRequest,
   type Settings,
 } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const FLENSBURG: Harbor = {
   id: 'flensburg',
@@ -52,6 +54,7 @@ const ORIGINAL_REQUEST: PlanRequest = {
     showOwnship: true,
   },
   sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 function makePlan(request: PlanRequest = ORIGINAL_REQUEST): Plan {
@@ -59,6 +62,7 @@ function makePlan(request: PlanRequest = ORIGINAL_REQUEST): Plan {
     id: 'plan-1',
     name: 'Flensburg → Marstal',
     createdAtMs: 1_779_990_000_000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request,
     windGrid: uniformWindGrid(12, 225),
     result: {

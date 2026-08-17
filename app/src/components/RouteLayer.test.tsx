@@ -14,6 +14,8 @@ import { I18nProvider } from '../i18n';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -86,6 +88,7 @@ function makePlan(): Plan {
     id: 'plan-153',
     name: 'Test plan',
     createdAtMs: DEPARTURE_MS - 3_600_000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: LEG.start,
       destination: LEG.end,
@@ -95,6 +98,7 @@ function makePlan(): Plan {
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: uniformWindGrid(12, 225, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 6 }),
     result: {

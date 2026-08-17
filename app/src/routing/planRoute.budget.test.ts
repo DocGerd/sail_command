@@ -15,6 +15,7 @@ import {
   type SailResult,
 } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // #432: the plan-level wall-clock budget. Solver-heavy file (every case runs
 // a real solve), so it takes the shared coverage-aware budget rather than a
@@ -73,6 +74,7 @@ function planWith(
     departureMs: T0,
     settings: DEFAULT_SETTINGS,
     sailIds,
+    boat: defaultBoatSnapshot(),
   };
   return planRoute(
     request,
@@ -429,6 +431,7 @@ describe('#54 §E.3: budget exhaustion mid-comparison', () => {
       departureMs: T0,
       settings: { ...DEFAULT_SETTINGS, motorEnabled: false },
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     };
     const res = planRoute(
       request,

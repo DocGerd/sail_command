@@ -100,7 +100,16 @@ function buildSailIdPattern(ids: readonly string[]): RegExp {
 // bare sail-id literal landing in a dict is exactly the violation this
 // guard exists to catch, and the file class where the rule is strictest.
 // See the dedicated active check below instead of an allowlist entry.
-const ALLOWED = ['src/data/boats.ts'];
+// `src/services/migratePlan.ts` is the deliberate second entry (#54 Task 11).
+// The pre-#54 PlanResultOk stored one RigResult per rig under a field NAMED
+// after that rig, so reading an already-stored record means naming those two
+// field names. They are FROZEN HISTORY, not catalogue data: deriving them
+// from BOATS would silently change how existing records are read if the
+// Salona's sail ids were ever renamed — the opposite of what this guard is
+// for everywhere else, where the catalogue is the single source of truth for
+// what sails EXIST. That file names them once, in LEGACY_SAIL_FIELDS, and
+// relabels onto the catalogue by id equality.
+const ALLOWED = ['src/data/boats.ts', 'src/services/migratePlan.ts'];
 
 // #54 Task 9: every one of the original nine offenders (RouteLayer.tsx,
 // RouteSummary.tsx, gpx.ts, plan.ts, sessionSnapshot.ts, planRoute.ts,
@@ -171,13 +180,13 @@ describe('#54 i18n dicts never carry a bare sail-id literal (plan Global Constra
 
 describe('#54 structural guard: allowlist is pinned', () => {
   it('the allowlist is exactly what we expect', () => {
-    expect(ALLOWED).toEqual(['src/data/boats.ts']);
+    expect(ALLOWED).toEqual(['src/data/boats.ts', 'src/services/migratePlan.ts']);
   });
 });
 
 describe('#54 structural guard: no bare sail-id literal outside the allowlist beyond the known set', () => {
   it('the source scan itself is not empty (guards against a broken glob silently reporting zero offenders)', () => {
-    // 114 non-test files exist in app/src today; 50 is a conservative floor
+    // 115 non-test files exist in app/src today; 50 is a conservative floor
     // that still fails loudly if the glob pattern or the exclusions above
     // are ever broken in a way that empties the scan.
     expect(walkSourceFiles().length).toBeGreaterThan(50);

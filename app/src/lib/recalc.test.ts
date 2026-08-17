@@ -3,6 +3,8 @@ import { recalcRequest } from './recalc';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { DEFAULT_SETTINGS, type Plan, type PlanRequest, type Settings } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 // Literal request values (mutation-check rule: expectations are pinned
 // literals, never derived from the function under test).
@@ -25,6 +27,7 @@ const ORIGINAL_REQUEST: PlanRequest = {
     showOwnship: true,
   },
   sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 function makePlan(): Plan {
@@ -32,6 +35,7 @@ function makePlan(): Plan {
     id: 'plan-original',
     name: 'Flensburg → Ærøskøbing',
     createdAtMs: 1_779_990_000_000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: ORIGINAL_REQUEST,
     windGrid: uniformWindGrid(12, 225),
     result: {
@@ -85,6 +89,7 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
         showOwnship: true,
       },
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     });
   });
 
@@ -151,6 +156,15 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
     expect(seeded.sailIds).toEqual(DEFAULT_SAIL_IDS);
     // Every field the old plan DID have is still preserved verbatim.
     expect(seeded.originHarborId).toBe('flensburg');
+  });
+
+  // #54 Task 11: pins the PROPERTY the keeper below rests on, not just its
+  // detection logic (#516). That keeper discriminates ONLY because ['fock']
+  // is not value-equal to DEFAULT_SAIL_IDS; if the default boat's sail set
+  // ever became exactly ['fock'], the keeper would degenerate into the
+  // vacuity it was added to close and would still pass.
+  it('#54: the non-default fixture below is genuinely non-default', () => {
+    expect(DEFAULT_SAIL_IDS).not.toEqual(['fock']);
   });
 
   // #54 review round 3: the INHERITANCE half of the backfill `??`.

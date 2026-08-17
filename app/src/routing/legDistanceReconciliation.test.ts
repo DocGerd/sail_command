@@ -9,6 +9,7 @@ import { testPlanDeps, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS } from '../types';
 import type { Leg, LatLon, MaskMeta, PlanResultOk, PolarTable, SailId } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // #54: the pre-#54 shape exposed `res.genoa`/`res.fock` directly.
 function sailResult(res: PlanResultOk, sailId: SailId) {
@@ -157,6 +158,7 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
       DEPS,
@@ -254,6 +256,7 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
       DEPS,
@@ -300,6 +303,7 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
       DEPS,

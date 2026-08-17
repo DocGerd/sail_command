@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { openDB } from 'idb';
 import {
   savePlan,
   getPlan,
@@ -10,6 +11,8 @@ import {
   __resetDbForTests,
 } from './db';
 import type { Plan, Settings, WindGrid } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 describe('IndexedDB persistence', () => {
   beforeEach(async () => {
@@ -32,6 +35,7 @@ describe('IndexedDB persistence', () => {
       id: 'test-plan-1',
       name: 'Flensburg to Marstal',
       createdAtMs: 1626340800000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.3, lon: 9.4 },
         destination: { lat: 55.0, lon: 10.0 },
@@ -51,6 +55,7 @@ describe('IndexedDB persistence', () => {
           showOwnship: false,
         },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid,
       result: {
@@ -129,6 +134,7 @@ describe('IndexedDB persistence', () => {
       id: 'shallow-plan-1',
       name: 'Flensburg → Marstal',
       createdAtMs: 1626340800000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.75, lon: 10.0 },
         destination: { lat: 54.75, lon: 10.4 },
@@ -148,6 +154,7 @@ describe('IndexedDB persistence', () => {
           showOwnship: false,
         },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid,
       result: {
@@ -229,6 +236,7 @@ describe('IndexedDB persistence', () => {
       id: 'plan-1',
       name: 'Plan 1',
       createdAtMs: 1000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.0, lon: 9.0 },
         destination: { lat: 55.0, lon: 10.0 },
@@ -248,6 +256,7 @@ describe('IndexedDB persistence', () => {
           showOwnship: false,
         },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid,
       result: {
@@ -279,6 +288,7 @@ describe('IndexedDB persistence', () => {
       id: 'plan-2',
       name: 'Plan 2',
       createdAtMs: 2000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.0, lon: 9.0 },
         destination: { lat: 55.0, lon: 10.0 },
@@ -298,6 +308,7 @@ describe('IndexedDB persistence', () => {
           showOwnship: false,
         },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid,
       result: {
@@ -337,6 +348,7 @@ describe('IndexedDB persistence', () => {
 
     // Verify summary structure and that windGrid is not included
     expect(summaries[0]).toEqual({
+      kind: 'ok',
       id: 'plan-2',
       name: 'Plan 2',
       createdAtMs: 2000,
@@ -345,6 +357,7 @@ describe('IndexedDB persistence', () => {
       etaMs: 5000,
     });
     expect(summaries[1]).toEqual({
+      kind: 'ok',
       id: 'plan-1',
       name: 'Plan 1',
       createdAtMs: 1000,
@@ -370,6 +383,7 @@ describe('IndexedDB persistence', () => {
       id: 'upsert-me',
       name: 'Original Name',
       createdAtMs: 1000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.0, lon: 9.0 },
         destination: { lat: 55.0, lon: 10.0 },
@@ -389,6 +403,7 @@ describe('IndexedDB persistence', () => {
           showOwnship: false,
         },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid,
       result: {
@@ -427,7 +442,7 @@ describe('IndexedDB persistence', () => {
     expect(summaries[0].name).toBe('Renamed');
   });
 
-  it('listPlans isolates a corrupt plan (recommendedResult throws): skips it with console.error, still returns the valid rows', async () => {
+  it('#54: listPlans LISTS an invariant-violating plan as unreadable — never skipped, never deleted', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const windGrid: WindGrid = {
       lats: [54.0],
@@ -446,6 +461,7 @@ describe('IndexedDB persistence', () => {
       id: 'broken-invariant',
       name: 'Broken',
       createdAtMs: 500,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.0, lon: 9.0 },
         destination: { lat: 55.0, lon: 10.0 },
@@ -465,6 +481,7 @@ describe('IndexedDB persistence', () => {
           showOwnship: false,
         },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid,
       result: {
@@ -496,6 +513,7 @@ describe('IndexedDB persistence', () => {
       id: 'valid-plan',
       name: 'Valid',
       createdAtMs: 1500,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.0, lon: 9.0 },
         destination: { lat: 55.0, lon: 10.0 },
@@ -515,6 +533,7 @@ describe('IndexedDB persistence', () => {
           showOwnship: false,
         },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid,
       result: {
@@ -547,12 +566,23 @@ describe('IndexedDB persistence', () => {
 
     const summaries = await listPlans();
 
-    expect(summaries).toHaveLength(1);
+    // #54 spec §I.3: LISTED as unreadable, never skipped. Newest first, so
+    // the valid plan (createdAtMs 1500) precedes the broken one (500).
+    expect(summaries).toHaveLength(2);
     expect(summaries[0].id).toBe('valid-plan');
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('broken-invariant'),
-      expect.any(Error),
-    );
+    expect(summaries[0].kind).toBe('ok');
+    expect(summaries[1]).toEqual({
+      kind: 'unreadable',
+      id: 'broken-invariant',
+      name: 'Broken',
+      createdAtMs: 500,
+    });
+    // The record is still in the store — listing it is a placeholder, never a
+    // delete, so a second call sees exactly the same two rows.
+    expect(await listPlans()).toEqual(summaries);
+    // Nothing is logged: an unreadable record is a listed state now, not a
+    // caught exception.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   it('deletePlan removes the plan', async () => {
@@ -571,6 +601,7 @@ describe('IndexedDB persistence', () => {
       id: 'delete-me',
       name: 'Delete Me',
       createdAtMs: 1000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.0, lon: 9.0 },
         destination: { lat: 55.0, lon: 10.0 },
@@ -590,6 +621,7 @@ describe('IndexedDB persistence', () => {
           showOwnship: false,
         },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid,
       result: {
@@ -677,5 +709,173 @@ describe('IndexedDB persistence', () => {
   it('loadSettings on fresh DB returns undefined', async () => {
     const retrieved = await loadSettings();
     expect(retrieved).toBeUndefined();
+  });
+});
+
+// #54 spec §I.3: lazy read-time normalisation. A stored record is migrated on
+// the way OUT, never by an IndexedDB version bump — the database is
+// origin-scoped, so production and UAT share it and a bump would strand
+// production's whole database for the session.
+describe('#54 lazy plan migration at the read boundary', () => {
+  beforeEach(async () => {
+    await __resetDbForTests();
+  });
+
+  function legacyRecord(id: string, createdAtMs: number): Plan {
+    const windGrid: WindGrid = {
+      lats: [54.0],
+      lons: [9.0],
+      timesMs: [1000],
+      speedKn: new Float32Array([5.0]),
+      dirFromDeg: new Float32Array([90]),
+      gustKn: new Float32Array([7.0]),
+      fetchedAtMs: 1_626_340_800_000,
+      model: 'open-meteo',
+    };
+    // Pre-#54 on the wire: no schemaVersion, no request.boat/sailIds, the
+    // genoa/fock quartet on the result, and `rig` on the RigResult. Cast
+    // because that shape deliberately does not satisfy today's Plan.
+    return {
+      id,
+      name: 'Legacy',
+      createdAtMs,
+      request: {
+        origin: { lat: 54.0, lon: 9.0 },
+        destination: { lat: 55.0, lon: 10.0 },
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: 1000,
+        settings: {
+          safetyDepthM: 3.0,
+          depthComfortMarginM: 2.0,
+          motorSpeedKn: 6.5,
+          motorThresholdKn: 2.5,
+          sailPreferenceKn: 2.8,
+          maneuverPenaltyS: 45,
+          performanceFactor: 0.9,
+          motorEnabled: true,
+          showOwnship: false,
+        },
+      },
+      windGrid,
+      result: {
+        status: 'ok',
+        genoa: {
+          rig: 'genoa',
+          legs: [],
+          etaMs: 4000,
+          durationMs: 3000,
+          distanceNm: 10,
+          maneuverCount: 0,
+          motorDistanceNm: 0,
+        },
+        fock: null,
+        genoaReason: null,
+        fockReason: 'unreachable',
+        recommended: 'genoa',
+        snappedOrigin: { lat: 54.0, lon: 9.0 },
+        snappedDestination: { lat: 55.0, lon: 10.0 },
+      },
+    } as unknown as Plan;
+  }
+
+  it('getPlan migrates a pre-#54 record on read, wind grid intact', async () => {
+    await savePlan(legacyRecord('legacy-1', 1000));
+    const plan = await getPlan('legacy-1');
+    expect(plan!.schemaVersion).toBe(PLAN_SCHEMA_VERSION);
+    expect(plan!.request.boat.id).toBe('salona-45');
+    expect(plan!.result.sails.map((s) => s.sailId)).toEqual(['genoa', 'fock']);
+    // Realm-independent brand check: structured clone in vitest crosses VM
+    // realms, so `instanceof` fails on a genuine Float32Array (see the
+    // save→get roundtrip test above for the same reason).
+    expect(Object.prototype.toString.call(plan!.windGrid.speedKn)).toBe('[object Float32Array]');
+    expect(plan!.windGrid.speedKn[0]).toBe(5.0);
+  });
+
+  // Reads the record the way IndexedDB actually holds it, bypassing db.ts's
+  // own normaliser — every path through getPlan/listPlans migrates on read,
+  // so nothing routed through them can tell a written-back record from a
+  // freshly-migrated one.
+  async function rawStored(id: string): Promise<Record<string, unknown> | undefined> {
+    const conn = await openDB('sailcommand', 1);
+    try {
+      return (await conn.get('plans', id)) as Record<string, unknown> | undefined;
+    } finally {
+      conn.close();
+    }
+  }
+
+  it('getPlan writes the migrated record back to the store', async () => {
+    await savePlan(legacyRecord('legacy-1', 1000));
+
+    // Control: untouched, the stored record is still in the old shape.
+    const before = await rawStored('legacy-1');
+    expect(before!.schemaVersion).toBeUndefined();
+    expect((before!.request as Record<string, unknown>).boat).toBeUndefined();
+
+    await getPlan('legacy-1');
+
+    const after = await rawStored('legacy-1');
+    expect(after!.schemaVersion).toBe(PLAN_SCHEMA_VERSION);
+    expect((after!.request as Record<string, unknown>).boat).toMatchObject({ id: 'salona-45' });
+    // The write-back stays in the structured-clone domain.
+    expect(
+      Object.prototype.toString.call((after!.windGrid as Record<string, unknown>).speedKn),
+    ).toBe('[object Float32Array]');
+  });
+
+  it('getPlan does not rewrite a record that needed no migration', async () => {
+    await savePlan(legacyRecord('legacy-1', 1000));
+    await getPlan('legacy-1');
+    // Re-comparing the stored record before and after a second read cannot
+    // detect a redundant write: re-putting the same value is byte-identical
+    // by construction, so that assertion would hold whatever the code did.
+    // A key migratePlan DROPS (it rebuilds the record from named fields)
+    // discriminates — it survives iff nothing wrote the record back.
+    const stored = (await rawStored('legacy-1'))!;
+    const conn = await openDB('sailcommand', 1);
+    await conn.put('plans', { ...stored, marker: 'untouched' });
+    conn.close();
+
+    await getPlan('legacy-1');
+
+    expect((await rawStored('legacy-1'))!.marker).toBe('untouched');
+  });
+
+  it('listPlans summarises a pre-#54 record as a readable row', async () => {
+    await savePlan(legacyRecord('legacy-1', 1000));
+    const summaries = await listPlans();
+    expect(summaries).toEqual([
+      {
+        kind: 'ok',
+        id: 'legacy-1',
+        name: 'Legacy',
+        createdAtMs: 1000,
+        departureMs: 1000,
+        recommended: 'genoa',
+        etaMs: 4000,
+      },
+    ]);
+  });
+
+  it('getPlan reports an unreadable record as absent and leaves it in the store', async () => {
+    const future = { ...legacyRecord('future-1', 1000), schemaVersion: 999 } as unknown as Plan;
+    await savePlan(future);
+    expect(await getPlan('future-1')).toBeUndefined();
+    // Still listed — the read refused it, nothing deleted it.
+    expect(await listPlans()).toEqual([
+      { kind: 'unreadable', id: 'future-1', name: 'Legacy', createdAtMs: 1000 },
+    ]);
+  });
+
+  it('lists a readable and an unreadable record side by side, newest first', async () => {
+    await savePlan(legacyRecord('good-1', 2000));
+    await savePlan({ ...legacyRecord('future-1', 1000), schemaVersion: 999 } as unknown as Plan);
+    const summaries = await listPlans();
+    expect(summaries.map((s) => [s.id, s.kind])).toEqual([
+      ['good-1', 'ok'],
+      ['future-1', 'unreadable'],
+    ]);
   });
 });

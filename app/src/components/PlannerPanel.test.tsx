@@ -19,6 +19,8 @@ import {
   type Settings,
 } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const FLENSBURG: Harbor = {
   id: 'flensburg',
@@ -123,6 +125,7 @@ function makePlan(
     id: over.id ?? 'plan-1',
     name: 'Flensburg to Marstal',
     createdAtMs: PLAN_DEPARTURE_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
       destination: { lat: 54.85, lon: 10.52 },
@@ -132,6 +135,7 @@ function makePlan(
       departureMs: PLAN_DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: PLAN_DEPARTURE_MS },
     result: {

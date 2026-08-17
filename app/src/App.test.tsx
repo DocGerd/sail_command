@@ -25,6 +25,8 @@ import {
   type PlanResultOk,
   type PolarTable,
 } from './types';
+import { defaultBoatSnapshot } from './types';
+import { PLAN_SCHEMA_VERSION } from './types';
 
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
 // (mirrors the "not unit-tested" notes in RouteLayer.tsx/BoatMarker.tsx —
@@ -889,6 +891,7 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
       id: 'plan-b-preseeded',
       name: 'Preseeded Plan B',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.95, lon: 10.6 },
         destination: { lat: 55.05, lon: 10.9 },
@@ -898,6 +901,7 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(77),
@@ -962,6 +966,7 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
       id: 'active-before-import',
       name: 'Active Before Import',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.95, lon: 10.6 },
         destination: { lat: 55.05, lon: 10.9 },
@@ -971,6 +976,7 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(88),
@@ -1107,6 +1113,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
       id: 'stale-plan',
       name: 'Stale Plan',
       createdAtMs: Date.now() - 20 * 3_600_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -1116,6 +1123,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
         departureMs: Date.now(),
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: staleWindGrid,
       result: okPlanResult(33),
@@ -1195,6 +1203,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
       id: 'plural-drop-plan',
       name: 'Plural Drop Plan',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -1204,6 +1213,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(66),
@@ -1680,6 +1690,7 @@ describe('session restore (#113)', () => {
       id,
       name: 'Restored Passage',
       createdAtMs: now - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -1689,6 +1700,7 @@ describe('session restore (#113)', () => {
         departureMs: now + 3_600_000,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
       result: {
@@ -1806,6 +1818,7 @@ describe('plan-form sync (#301)', () => {
       id,
       name: 'Prefill Plan',
       createdAtMs: now - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: PREFILL_ORIGIN,
         destination: PREFILL_DEST,
@@ -1815,6 +1828,7 @@ describe('plan-form sync (#301)', () => {
         departureMs: now + 3_600_000,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
         ...overrides,
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),

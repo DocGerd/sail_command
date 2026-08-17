@@ -13,6 +13,7 @@ import {
 import { DEFAULT_SETTINGS, type PlanRequest, type PlanResultOk } from '../types';
 import { haversineNm } from '../lib/geo';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
@@ -33,6 +34,7 @@ const baseReq: PlanRequest = {
   settings: DEFAULT_SETTINGS,
   viaPoints: [],
   sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 const deps = testPlanDeps(openWaterMask(), { genoa: TEST_POLAR, fock: TEST_POLAR });
 

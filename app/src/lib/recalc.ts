@@ -1,5 +1,11 @@
 import { DEFAULT_SAIL_IDS } from '../data/boats';
-import { DEFAULT_SETTINGS, type Plan, type PlanRequest } from '../types';
+import {
+  boatSnapshot,
+  defaultBoatSnapshot,
+  DEFAULT_SETTINGS,
+  type Plan,
+  type PlanRequest,
+} from '../types';
 
 /**
  * #114 recalculate-with-fresh-forecast: seeds a fresh planning request from a
@@ -41,6 +47,10 @@ export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
     viaPoints: plan.request.viaPoints.map((v) => ({ ...v })),
     settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
     sailIds: plan.request.sailIds ?? DEFAULT_SAIL_IDS,
+    // #54 Task 11: copied rather than carried through the spread above, for
+    // the same "never share a mutable reference with the saved plan" reason
+    // as viaPoints/settings, and backfilled for the same reason as sailIds.
+    boat: plan.request.boat ? boatSnapshot(plan.request.boat) : defaultBoatSnapshot(),
     departureMs,
   };
 }

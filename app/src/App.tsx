@@ -54,7 +54,13 @@ import { resolveHarborPickTarget } from './lib/harborGeoJson';
 import { DEFAULT_SAIL_IDS } from './data/boats';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
-import type { Harbor, LatLon, PickedPoint, Plan } from './types';
+import {
+  defaultBoatSnapshot,
+  type Harbor,
+  type LatLon,
+  type PickedPoint,
+  type Plan,
+} from './types';
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
@@ -685,6 +691,11 @@ function AppShell() {
         // replanWithVias, rerouteFromFix) spreads/copies an existing
         // request's own sailIds instead.
         sailIds: DEFAULT_SAIL_IDS,
+        // #54 spec §I.3: denormalised by value, so the saved plan can be
+        // rendered without the catalogue. Same call site, same reason as
+        // sailIds above — the only production constructor with no existing
+        // plan to inherit from.
+        boat: defaultBoatSnapshot(),
       },
       `${origin.label} → ${destination.label}`,
     );

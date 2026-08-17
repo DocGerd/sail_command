@@ -6,6 +6,7 @@ import { DEFAULT_SETTINGS, type PolarTable } from '../types';
 import { haversineNm } from '../lib/geo';
 import { uniformGate } from '../lib/depthGate';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
@@ -66,6 +67,7 @@ describe('router invariants', () => {
               departureMs: Date.UTC(2026, 6, 15, 6, 0, 0),
               settings: DEFAULT_SETTINGS,
               sailIds: ['genoa', 'fock'],
+              boat: defaultBoatSnapshot(),
             },
             makeWindGrid(() => ({ speedKn: sc.windKn, dirFromDeg: sc.windDir }), { hours: 72 }),
             testPlanDeps(mask, { genoa: TEST_POLAR, fock: FOCK }),

@@ -9,6 +9,8 @@ import {
 import { uniformWindGrid } from '../test/fixtures';
 import { formatDateTime } from './format';
 import { averageSpeedKn, resultSummary, rigRecommendationOf } from './resultSummary';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 
@@ -17,6 +19,7 @@ function makePlan(recommended: SailId, rigRecommendation?: RigRecommendation): P
     id: 'plan-1',
     name: 'Test',
     createdAtMs: DEPARTURE_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
       destination: { lat: 54.85, lon: 10.52 },
@@ -26,6 +29,7 @@ function makePlan(recommended: SailId, rigRecommendation?: RigRecommendation): P
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: DEPARTURE_MS },
     result: {

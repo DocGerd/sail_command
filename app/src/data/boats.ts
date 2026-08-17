@@ -119,13 +119,15 @@ export function polarKey(boatId: string, sailId: string): string {
   return `${boatId}/${sailId}`;
 }
 
-// #54: the default boat's full sail set, in catalogue order — used to seed
-// PlanRequest.sailIds at the one production call site that builds a brand
-// new request with no prior plan to inherit the solve order from
-// (App.tsx's handlePlan). Task 11's PlanRequest.boat snapshot will replace
-// this with a per-boat lookup once boat selection is user-facing; today
-// there is exactly one boat, so this and boatById(DEFAULT_BOAT_ID).sails
-// name the same set.
+// #54: the default boat's full sail set, in catalogue order. Two kinds of
+// call site: App.tsx's handlePlan, the one production constructor with no
+// prior plan to inherit the solve order from; and the absent-sailIds
+// backfill in lib/recalc.ts, state/replan.ts and state/reroute.ts.
+//
+// Task 11 landed PlanRequest.boat and deliberately left this in place: the
+// per-boat lookup it was expected to become needs a SELECTED boat, and boat
+// selection is not user-facing in release 1 (spec §B). Today there is exactly
+// one boat, so this and boatById(DEFAULT_BOAT_ID).sails name the same set.
 // Cast is safe: boatById(DEFAULT_BOAT_ID) always resolves to a real entry of
 // the const `BOATS` array below, whose sail ids ARE the SailId union by
 // construction — `BoatDef.sails[].id` is typed as plain `string` (SailDef is

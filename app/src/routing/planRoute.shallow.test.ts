@@ -23,6 +23,7 @@ function sailResult(res: PlanResultOk, sailId: SailId) {
 import type { ProbeInfo } from './relaxedDepth';
 import { uniformGate } from '../lib/depthGate';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines. Fast test files keep vitest's 5s default so hang detection
@@ -61,6 +62,7 @@ const req: PlanRequest = {
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
   sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 // #452 APPROACH-pinch variant: destination moved to col 165 (cell centre lon

@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { toGpx } from './gpx';
 import { uniformWindGrid } from '../test/fixtures';
 import type { Plan } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const plan: Plan = {
   id: '00000000-0000-4000-8000-000000000001',
   name: 'Flensburg → <Marstal> & back',
   createdAtMs: Date.UTC(2026, 6, 15, 7, 0, 0),
+  schemaVersion: PLAN_SCHEMA_VERSION,
   request: {
     origin: { lat: 54.79, lon: 9.43 },
     destination: { lat: 54.85, lon: 10.52 },
@@ -26,6 +29,7 @@ const plan: Plan = {
       showOwnship: false,
     },
     sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
   },
   windGrid: uniformWindGrid(10, 270),
   result: {

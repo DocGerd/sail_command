@@ -9,6 +9,8 @@ import * as openMeteo from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Plan, type SailId, type WindGrid } from '../types';
 import PlansList, { type PlansListProps } from './PlansList';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 function makePlan(overrides: {
   id: string;
@@ -33,6 +35,7 @@ function makePlan(overrides: {
     id: overrides.id,
     name: overrides.name ?? `Plan ${overrides.id}`,
     createdAtMs: overrides.createdAtMs,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.0, lon: 9.0 },
       destination: { lat: 55.0, lon: 10.0 },
@@ -42,6 +45,7 @@ function makePlan(overrides: {
       departureMs: overrides.departureMs ?? overrides.createdAtMs,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: overrides.windGrid ?? uniformWindGrid(10, 270),
     result: {
@@ -356,5 +360,50 @@ describe('PlansList recalculate (#114)', () => {
     expect(onRecalculate).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Recalculate as new plan' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Replace original' })).toBeDisabled();
+  });
+
+  // #54 spec §I.3: a record the read-time normaliser cannot handle is LISTED,
+  // never skipped. Stored with a schemaVersion from a newer build, which is
+  // the case the spec names outright.
+  describe('an unreadable record', () => {
+    async function saveUnreadable(id: string, createdAtMs: number, name: string) {
+      await savePlan({
+        ...makePlan({ id, createdAtMs, name }),
+        schemaVersion: 999,
+      });
+    }
+
+    it('is shown, with its name and creation date, alongside readable rows', async () => {
+      await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, name: 'Readable' }));
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      renderList();
+
+      expect(await screen.findByText('From The Future')).toBeInTheDocument();
+      expect(screen.getByText(/cannot be opened/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Readable/ })).toBeInTheDocument();
+    });
+
+    it('offers no way to open or recalculate it, but can still be deleted by the user', async () => {
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      renderList();
+
+      await screen.findByText('From The Future');
+      expect(screen.queryByRole('button', { name: /From The Future/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Recalculate' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete plan' })).toBeInTheDocument();
+    });
+
+    it('survives a listing — the row is a placeholder, never a delete', async () => {
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      const { unmount } = renderList();
+      await screen.findByText('From The Future');
+      unmount();
+
+      renderList();
+      expect(await screen.findByText('From The Future')).toBeInTheDocument();
+    });
   });
 });

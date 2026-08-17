@@ -27,6 +27,8 @@ import BoatMarker from './BoatMarker';
 vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
 import { loadRoutingAssets } from '../services/assets';
 import * as NavMaskModule from '../lib/mask';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const ORIGIN = { lat: 54.7, lon: 9.5 };
 const T0 = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -70,6 +72,7 @@ const TEST_PLAN: Plan = {
   id: 'live-plan-1',
   name: 'Live Test Plan',
   createdAtMs: T0,
+  schemaVersion: PLAN_SCHEMA_VERSION,
   request: {
     origin: P0,
     destination: P2,
@@ -79,6 +82,7 @@ const TEST_PLAN: Plan = {
     departureMs: T0,
     settings: DEFAULT_SETTINGS,
     sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
   },
   windGrid: {
     lats: [54.7],

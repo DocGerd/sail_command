@@ -17,6 +17,8 @@ import {
   type SailResult,
 } from '../types';
 import RouteSummary from './RouteSummary';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 // #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.fockReason`
 // etc. as directly-mutable fields; the `sails` list's own entries are now
@@ -126,6 +128,7 @@ function makePlan(
     id: 'plan-1',
     name: 'Flensburg to Marstal',
     createdAtMs: FETCHED_AT_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
       destination: { lat: 54.85, lon: 10.52 },
@@ -135,6 +138,7 @@ function makePlan(
       departureMs: overrides.departureMs ?? DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: FETCHED_AT_MS },
     result: {

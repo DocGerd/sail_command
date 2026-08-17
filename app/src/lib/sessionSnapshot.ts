@@ -1,12 +1,4 @@
 import { safeGetItem, safeSetItem } from './storage';
-import type { SailId } from '../types';
-import { BOATS } from '../data/boats';
-
-// #54: derived from the BOATS catalogue rather than a hand-written
-// two-branch equality check against the two sail ids, so this stays
-// correct if a boat with a different sail set is ever added — and stays
-// out of test/sailLiteralCallSites.test.ts's KNOWN_OFFENDERS.
-const VALID_SAIL_IDS: ReadonlySet<string> = new Set(BOATS.flatMap((b) => b.sails.map((s) => s.id)));
 
 // #113 session restore: a SMALL versioned UI-session snapshot — the pointer
 // to the active plan plus the selected tab and rig choice — persisted under
@@ -44,19 +36,26 @@ export interface SessionSnapshot {
   // localStorage schema (real users' browsers), and renaming the key would
   // silently drop every existing snapshot's rig choice rather than parse it,
   // a migration concern outside this task's scope.
-  rig: SailId | null;
+  //
+  // Spec §I.3 widened the TYPE from SailId to string: whether a sail id is
+  // usable is a question about the PLAN the snapshot points at (does its own
+  // per-sail list contain this id?), not about today's catalogue, and a
+  // snapshot naming a since-removed boat's sail must still restore. Checking
+  // it here could only fail the whole snapshot — see parseSessionSnapshot's
+  // collapse-to-null rule below — costing the user their restored plan id and
+  // tab as well. useSessionRestore.ts applies the real check, where the plan
+  // is in hand.
+  rig: string | null;
 }
 
 function isTab(x: unknown): x is Tab {
   return x === 'plan' || x === 'routes' || x === 'live' || x === 'boat';
 }
 
-function isSailId(x: unknown): x is SailId {
-  return typeof x === 'string' && VALID_SAIL_IDS.has(x);
-}
-
 // Tolerant parse (mirrors parseRecentHarbors): malformed JSON, a non-object,
-// a foreign version, or any field outside its exact union collapses to null —
+// a foreign version, or any field outside its accepted shape collapses to
+// null — `rig`'s accepted shape is any string, deliberately, see its own
+// comment on the interface above —
 // the caller treats null as "no snapshot" and boots fresh. A PURE parser,
 // deliberately: it validates SHAPE only and carries no restore POLICY, so
 // `parseSessionSnapshot(JSON.stringify(x))` round-trips to `x` for every
@@ -79,7 +78,7 @@ export function parseSessionSnapshot(raw: string | null): SessionSnapshot | null
     if (v !== 1) return null;
     if (!isTab(tab)) return null;
     if (planId !== null && typeof planId !== 'string') return null;
-    if (rig !== null && !isSailId(rig)) return null;
+    if (rig !== null && typeof rig !== 'string') return null;
     return { v: 1, planId, tab, rig };
   } catch {
     return null;

@@ -23,6 +23,8 @@ import {
   type PlanRequest,
   type PlanResultOk,
 } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const ORIGIN: LatLon = { lat: 54.75, lon: 10.0 };
 const DESTINATION: LatLon = { lat: 54.75, lon: 10.4 };
@@ -58,6 +60,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     id: 'plan-1',
     name: 'Test plan',
     createdAtMs: DEPARTURE_MS - 3_600_000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: ORIGIN,
       destination: DESTINATION,
@@ -67,6 +70,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid,
     result: OK_RESULT,
@@ -180,6 +184,15 @@ describe('replanWithVias', () => {
     expect(request.sailIds).toEqual(DEFAULT_SAIL_IDS);
     // The via list the call actually asked for is still carried through.
     expect(request.viaPoints).toEqual([{ lat: 54.9, lon: 10.2 }]);
+  });
+
+  // #54 Task 11: pins the PROPERTY the keeper below rests on, not just its
+  // detection logic (#516). That keeper discriminates ONLY because ['fock']
+  // is not value-equal to DEFAULT_SAIL_IDS; if the default boat's sail set
+  // ever became exactly ['fock'], the keeper would degenerate into the
+  // vacuity it was added to close and would still pass.
+  it('#54: the non-default fixture below is genuinely non-default', () => {
+    expect(DEFAULT_SAIL_IDS).not.toEqual(['fock']);
   });
 
   // #54 review round 3: the INHERITANCE half of the backfill `??`. Every

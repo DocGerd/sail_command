@@ -27,6 +27,8 @@ import { profileSamples, sampleCount } from '../lib/routeProfile';
 import { NavMask } from '../lib/mask';
 import DepthProfile from './DepthProfile';
 import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 const spiedSamples = vi.mocked(profileSamples);
@@ -127,6 +129,7 @@ function makePlan(
     id: 'plan-1',
     name: 'Flensburg to Marstal',
     createdAtMs: FETCHED_AT_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
       destination: { lat: 54.85, lon: 10.52 },
@@ -136,6 +139,7 @@ function makePlan(
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: windGrid ?? { ...uniformWindGrid(10, 270), fetchedAtMs: FETCHED_AT_MS },
     result: {

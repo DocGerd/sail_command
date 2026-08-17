@@ -18,6 +18,8 @@ import { loadRoutingAssets } from '../services/assets';
 import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import RouteSummary from './RouteSummary';
 import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 
@@ -118,6 +120,7 @@ function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
     id: 'plan-1',
     name: 'Exposure test plan',
     createdAtMs: DEPARTURE_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: START,
       destination: END,
@@ -127,6 +130,7 @@ function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: {
       lats: [54.3, 55.3],

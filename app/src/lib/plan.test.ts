@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { isStaleForecast, activeRigResult } from './plan';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Plan } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 function makePlan(departureMs: number, fetchedAtMs: number): Plan {
   const genoaResult = {
@@ -17,6 +19,7 @@ function makePlan(departureMs: number, fetchedAtMs: number): Plan {
     id: 'plan-1',
     name: 'Test Plan',
     createdAtMs: fetchedAtMs,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.8, lon: 9.5 },
       destination: { lat: 54.9, lon: 9.7 },
@@ -26,6 +29,7 @@ function makePlan(departureMs: number, fetchedAtMs: number): Plan {
       departureMs,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs },
     result: {

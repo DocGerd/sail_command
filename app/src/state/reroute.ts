@@ -12,7 +12,10 @@ import {
 import type { MsgKey } from '../i18n/dict.de';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
+  boatSnapshot,
+  defaultBoatSnapshot,
   DEFAULT_SETTINGS,
+  PLAN_SCHEMA_VERSION,
   type LatLon,
   type Plan,
   type PlanRequest,
@@ -124,6 +127,10 @@ export async function rerouteFromFix(
     // never aliasing the saved plan's array" and "copies the backfill, never
     // aliasing the DEFAULT_SAIL_IDS module constant", one row per branch.
     sailIds: plan.request.sailIds ? [...plan.request.sailIds] : [...DEFAULT_SAIL_IDS],
+    // #54 Task 11: same treatment, same two reasons — copied rather than
+    // aliased per this block's contract, and backfilled for a plan that
+    // reached here without passing through services/migratePlan.ts.
+    boat: plan.request.boat ? boatSnapshot(plan.request.boat) : defaultBoatSnapshot(),
   };
 
   let result: PlanResult;
@@ -163,6 +170,7 @@ export async function rerouteFromFix(
     id: crypto.randomUUID(),
     name,
     createdAtMs: nowMs,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request,
     windGrid: cloneWindGrid(plan.windGrid),
     result,

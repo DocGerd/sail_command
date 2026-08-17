@@ -17,6 +17,7 @@ import {
   type SailId,
   type Settings,
 } from '../types';
+import { defaultBoatSnapshot } from '../types';
 
 // #54: the pre-#54 shape exposed `res.genoa`/`res.fock`/`res.fockReason`/
 // `res.genoaReason` directly.
@@ -82,6 +83,7 @@ const req: PlanRequest = {
   departureMs: T0,
   settings: DEFAULT_SETTINGS,
   sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 const mask = openWaterMask(); // trivially connected at any gate: the #53 fast path always attempts tier 1
 const deps = testPlanDeps(mask, { genoa: TEST_POLAR, fock: TEST_POLAR as PolarTable });

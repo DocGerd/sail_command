@@ -5,6 +5,7 @@ import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import { DEFAULT_SETTINGS, type PolarTable } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
@@ -66,6 +67,7 @@ describe('worker protocol handler', () => {
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -113,6 +115,7 @@ describe('worker protocol handler', () => {
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -166,6 +169,7 @@ describe('worker protocol handler', () => {
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: badWindGrid,
     });
@@ -202,6 +206,7 @@ describe('worker protocol handler: fatal.stack population (#433 review Minor 2)'
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -273,6 +278,7 @@ describe('#432 worker plan budget', () => {
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(12, 0),
       ...(budgetMs !== undefined ? { budgetMs } : {}),

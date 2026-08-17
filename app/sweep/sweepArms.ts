@@ -36,7 +36,7 @@ import { NavMask } from '../src/lib/mask';
 import { planRoute } from '../src/routing/planRoute';
 import { uniformWindGrid } from '../src/test/fixtures';
 import { boatById, DEFAULT_BOAT_ID, polarKey } from '../src/data/boats';
-import { DEFAULT_SETTINGS } from '../src/types';
+import { defaultBoatSnapshot, DEFAULT_SETTINGS } from '../src/types';
 import type { LatLon, MaskMeta, PolarTable, Settings, WindGrid } from '../src/types';
 import { solverTimeoutMs } from '../src/test/timeouts';
 import { ARM_NAMES } from './armNames';
@@ -379,6 +379,10 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
             departureMs: T0,
             settings: arm.settings,
             sailIds: ['genoa', 'fock'],
+            // #54 Task 11: required by PlanRequest. The solver takes its boat
+            // from PlanDeps.boat, never from the request, so this field does
+            // not reach the search and the recorded baseline is unaffected.
+            boat: defaultBoatSnapshot(),
           },
           windGrid,
           { polars, boat, mask },

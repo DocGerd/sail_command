@@ -11,6 +11,8 @@ import {
 import { loadSettings, saveSettings, __resetDbForTests } from '../services/db';
 import * as db from '../services/db';
 import { DEFAULT_SETTINGS, type Plan, type WindGrid } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 function SettingsProbe() {
   const [settings, setSettings] = useSettings();
@@ -73,6 +75,7 @@ const TEST_PLAN: Plan = {
   id: 'plan-active-1',
   name: 'Test Plan',
   createdAtMs: 1000,
+  schemaVersion: PLAN_SCHEMA_VERSION,
   request: {
     origin: { lat: 54.0, lon: 9.0 },
     destination: { lat: 55.0, lon: 10.0 },
@@ -82,6 +85,7 @@ const TEST_PLAN: Plan = {
     departureMs: 1000,
     settings: DEFAULT_SETTINGS,
     sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
   },
   windGrid: TEST_WIND_GRID,
   result: {

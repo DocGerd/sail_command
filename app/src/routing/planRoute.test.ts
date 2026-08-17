@@ -17,6 +17,7 @@ import {
   type SailId,
 } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // #54: the pre-#54 shape exposed `r.genoa`/`r.fock`/`r.genoaReason`/
 // `r.fockReason` directly.
@@ -48,6 +49,7 @@ const req: PlanRequest = {
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
   sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 const deps = testPlanDeps(openWaterMask(), { genoa: TEST_POLAR, fock: SLOW_FOCK });
 

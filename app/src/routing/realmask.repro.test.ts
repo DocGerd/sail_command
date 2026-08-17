@@ -24,6 +24,7 @@ import type {
   Settings,
 } from '../types';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // #54: the pre-#54 shape had a direct `res.genoa`/`res.fock` field per sail;
 // this test file leaned on that shape heavily (11 planRoute() calls). Rather
@@ -154,6 +155,7 @@ describe('real mask routing (issue #20)', () => {
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
       SALONA_DEPS,
@@ -222,6 +224,7 @@ describe('real mask routing (issue #20)', () => {
           departureMs: T0,
           settings,
           sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
         SALONA_DEPS,
@@ -276,6 +279,7 @@ describe('real mask routing (issue #20)', () => {
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
           sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
         SALONA_DEPS,
@@ -336,6 +340,7 @@ describe('real mask routing (issue #20)', () => {
           departureMs: T0,
           settings,
           sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
         SALONA_DEPS,
@@ -425,6 +430,7 @@ describe('#243 depth comfort preference (real mask)', () => {
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
       SALONA_DEPS,
@@ -480,6 +486,7 @@ describe('#243 depth comfort preference (real mask)', () => {
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
           sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
         SALONA_DEPS,
@@ -515,6 +522,7 @@ describe('#243 depth comfort preference (real mask)', () => {
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
           sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
         SALONA_DEPS,
@@ -572,6 +580,7 @@ describe('#243 depth comfort preference (real mask)', () => {
         departureMs: T0,
         settings,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
       SALONA_DEPS,
@@ -680,6 +689,7 @@ describe('#243 depth comfort preference (real mask)', () => {
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
       SALONA_DEPS,
@@ -710,6 +720,7 @@ describe('#243 depth comfort preference (real mask)', () => {
         departureMs: T0,
         settings: { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 },
         sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
       SALONA_DEPS,
@@ -777,6 +788,7 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
           departureMs: T0,
           settings,
           sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(3, 0),
         SALONA_DEPS,
@@ -880,6 +892,7 @@ describe('#54 spec C.4(a): the relaxation floor comes from the selected boat', (
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
         sailIds: ['genoa', 'fock'] as SailId[],
+        boat: defaultBoatSnapshot(),
       };
       const wind = uniformWindGrid(12, 270);
 

@@ -17,6 +17,7 @@ import {
   type SailId,
 } from '../types';
 import { solverTimeoutMs } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // #342 fix-wave (PR #351 review M2): this file has no `vi.setConfig`, so its
 // file-level budget is vitest's default 5000 ms — the eight per-test `2000`
@@ -81,6 +82,7 @@ const PLAN_REQUEST: PlanRequest = {
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
   sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 const flush = () => new Promise((r) => setTimeout(r, 0));

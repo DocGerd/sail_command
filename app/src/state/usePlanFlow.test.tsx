@@ -26,6 +26,8 @@ import {
   type PlanResultOk,
 } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const FOCK_POLAR = { ...TEST_POLAR, rig: 'fock' as const };
 
@@ -83,6 +85,7 @@ const REQ: PlanRequest = {
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
   sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 const OK_RESULT: PlanResultOk = {
@@ -710,6 +713,7 @@ describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
         id: 'loaded-timeout',
         name: 'Loaded from PlansList',
         createdAtMs: REQ.departureMs - 3_600_000,
+        schemaVersion: PLAN_SCHEMA_VERSION,
         request: { ...REQ, viaPoints: [] },
         windGrid: uniformWindGrid(12, 0),
         result: OK_RESULT,
@@ -769,6 +773,7 @@ describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
       id: 'loaded-not-run',
       name: 'Loaded from PlansList',
       createdAtMs: REQ.departureMs - 3_600_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: { ...REQ, viaPoints: [] },
       windGrid,
       result: OK_RESULT,
@@ -814,6 +819,7 @@ describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
       id: 'offline-replan',
       name: 'Loaded from PlansList',
       createdAtMs: REQ.departureMs - 3_600_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: { ...REQ, viaPoints: [] },
       windGrid,
       result: OK_RESULT,
@@ -859,6 +865,7 @@ describe('#114 recalculate with a fresh forecast', () => {
       id: 'orig-1',
       name: 'Original',
       createdAtMs: Date.UTC(2026, 6, 14, 12, 0, 0),
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: { ...REQ, viaPoints: [] },
       windGrid: uniformWindGrid(17, 90),
       result: OK_RESULT,

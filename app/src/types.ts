@@ -1,5 +1,5 @@
 import { defaultSafetyDepthM } from './lib/boatDepth';
-import { boatById, DEFAULT_BOAT_ID, type SailId } from './data/boats';
+import { boatById, DEFAULT_BOAT_ID, type PolarProvenance, type SailId } from './data/boats';
 
 // #54: re-exported so every existing `import type { ... } from '../types'`
 // call site keeps working unchanged — SailId is DEFINED in data/boats.ts
@@ -180,6 +180,52 @@ export type NoRouteReason =
   // presentational and control vocabularies stay greppable apart (#282).
   | 'search-budget-exceeded';
 
+// #54 spec §I.3: the boat a plan was computed for, denormalised BY VALUE
+// into the plan record — never a catalogue id reference. Precedent is
+// PlanRequest.settings, already a snapshot rather than a pointer to live
+// settings. With this in place everything needed to RENDER a saved plan
+// lives inside the record, so a plan whose boat has left the catalogue
+// still opens; the catalogue is needed only to re-plan.
+//
+// Deliberately narrower than BoatDef: motorSpeedKn and maneuverPenaltyS are
+// per-boat DEFAULTS that a plan already captures resolved in its Settings
+// snapshot, so storing them here too would create a second copy that can
+// disagree with the one the solver actually used.
+export interface BoatSnapshot {
+  readonly id: string;
+  readonly name: string;
+  readonly draftM: number;
+  readonly sails: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly polarProvenance: PolarProvenance;
+  }[];
+}
+
+// Copies every field rather than aliasing its argument, so nothing stored in
+// a plan can share a mutable reference with the BOATS constant or with
+// another plan's snapshot (same rule recalcRequest applies to
+// viaPoints/settings). The parameter is the SNAPSHOT shape, not BoatDef, so
+// one function serves both directions: a catalogue BoatDef is structurally
+// assignable to it, and an existing snapshot can be re-copied.
+export function boatSnapshot(boat: BoatSnapshot): BoatSnapshot {
+  return {
+    id: boat.id,
+    name: boat.name,
+    draftM: boat.draftM,
+    sails: boat.sails.map((s) => ({
+      id: s.id,
+      label: s.label,
+      polarProvenance: { tier: s.polarProvenance.tier, note: s.polarProvenance.note },
+    })),
+  };
+}
+
+/** A fresh snapshot of the default catalogue boat — a new object per call. */
+export function defaultBoatSnapshot(): BoatSnapshot {
+  return boatSnapshot(boatById(DEFAULT_BOAT_ID));
+}
+
 export interface PlanRequest {
   origin: LatLon;
   destination: LatLon;
@@ -194,6 +240,8 @@ export interface PlanRequest {
   // release-1 (spec §J OQ-3) — RigRecommendation stays binary and is not
   // generalised to N-way.
   readonly sailIds: readonly SailId[];
+  // #54 spec §I.3: by value, never a catalogue id reference.
+  readonly boat: BoatSnapshot;
 }
 
 // #53 graceful degradation below safety depth: when a plan only routes at a
@@ -273,10 +321,17 @@ export type PlanResult = PlanResultOk | PlanResultError;
 // windGrid carries Float32Array fields.
 // File import/export (e.g. Garmin sync, issue #3) needs a dedicated
 // serializer — never JSON.stringify(plan).
+// #54 spec §I.3: stamped on every written plan. The IndexedDB version is not
+// the only entry path — a plan can also arrive from a future import (#3) —
+// and an untagged record has no self-description, so services/migratePlan.ts
+// dispatches on this rather than sniffing the record's shape.
+export const PLAN_SCHEMA_VERSION = 1;
+
 export interface Plan {
   id: string; // crypto.randomUUID()
   name: string; // e.g. "Flensburg → Marstal"
   createdAtMs: number;
+  schemaVersion: number;
   request: PlanRequest;
   windGrid: WindGrid; // the forecast this plan was computed from
   result: PlanResultOk;

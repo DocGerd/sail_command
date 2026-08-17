@@ -7,7 +7,15 @@ import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { dedupeViaPoints, ROUTING_FAILURE_MESSAGE_KEY, routingFailureKey } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
-import type { Plan, PlanRequest, PlanResult, SailId, Settings, WindGrid } from '../types';
+import {
+  PLAN_SCHEMA_VERSION,
+  type Plan,
+  type PlanRequest,
+  type PlanResult,
+  type SailId,
+  type Settings,
+  type WindGrid,
+} from '../types';
 
 export type PlanningState =
   | { phase: 'idle' }
@@ -308,6 +316,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         id: opts.replacePlanId ?? crypto.randomUUID(),
         name,
         createdAtMs: Date.now(),
+        schemaVersion: PLAN_SCHEMA_VERSION,
         request: req,
         windGrid,
         result,

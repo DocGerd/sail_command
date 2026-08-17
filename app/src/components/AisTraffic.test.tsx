@@ -6,6 +6,8 @@ import type { AisStatus } from '../state/useAisTraffic';
 import type { AisSocketHandlers } from '../services/aisStream';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Leg, type Plan, type RigResult } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 // ---- #158 integration rig ----------------------------------------------------
 // The corridor-resubscription tests run the REAL component wiring (settle gate,
@@ -90,6 +92,7 @@ const PLAN: Plan = {
   id: 'plan-158',
   name: 'Jitter plan',
   createdAtMs: DEPARTURE_MS - 3_600_000,
+  schemaVersion: PLAN_SCHEMA_VERSION,
   request: {
     origin: LEGS[0].start,
     destination: LEGS[3].end,
@@ -99,6 +102,7 @@ const PLAN: Plan = {
     departureMs: DEPARTURE_MS,
     settings: DEFAULT_SETTINGS,
     sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
   },
   windGrid: uniformWindGrid(12, 225, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 6 }),
   result: {

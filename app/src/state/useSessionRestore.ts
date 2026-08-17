@@ -69,7 +69,15 @@ export function useSessionRestore(tab: Tab, setTab: (t: Tab) => void): void {
         // Applied verbatim: a rig whose result is null is a state the
         // RouteSummary rig tabs let a user select anyway (it shows the
         // no-route reason).
-        if (snapshot.rig !== null) setRig(snapshot.rig);
+        //
+        // #54 spec §I.3: the persisted id is validated against THIS PLAN's own
+        // per-sail list — the same list RouteSummary builds its rig tabs from
+        // — rather than against the catalogue, so a plan whose boat has left
+        // the catalogue still restores its rig choice. An id the plan does not
+        // carry leaves the recommended rig in place; it can never make the
+        // restore fail, which is why parseSessionSnapshot no longer rejects it.
+        const chosen = restoredPlan.result.sails.find((s) => s.sailId === snapshot.rig);
+        if (chosen) setRig(chosen.sailId);
         setTab(snapshot.tab);
       }
       // else: plan deleted since (or the user beat the restore to it) —
