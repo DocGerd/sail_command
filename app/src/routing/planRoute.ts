@@ -489,8 +489,7 @@ export function planRoute(
       // wall-clock budget was never compared, so a result carrying one is a
       // PARTIAL comparison and says so. 'budget-exhausted' is the only cause
       // that qualifies: the other three are verdicts from a search that
-      // FINISHED (see combineFailureCause's precedence comment), so a sail
-      // carrying one WAS compared and simply lost.
+      // FINISHED (see combineFailureCause's precedence comment).
       //
       // Reads the internal cause, never `SailResult.reason` — #282: no code
       // in this file may branch on a user-facing label.

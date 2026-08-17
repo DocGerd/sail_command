@@ -9,8 +9,10 @@ import {
   DEFAULT_SETTINGS,
   type LatLon,
   type PlanRequest,
+  type PlanResultOk,
   type PolarTable,
   type SailId,
+  type SailResult,
 } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
@@ -329,21 +331,37 @@ describe('#432 planRoute(): one budget for the whole plan', () => {
 // 'search-budget-exceeded')` with a deadline spent before the first ring).
 describe('#54 §E.3: budget exhaustion mid-comparison', () => {
   /**
+   * Look a sail up by id, failing with a message that NAMES the missing sail
+   * rather than the bare `Cannot read properties of undefined` a `!` would
+   * throw one line later.
+   */
+  function sailOf(res: PlanResultOk, sailId: SailId): SailResult {
+    const found = res.sails.find((s) => s.sailId === sailId);
+    expect(found, `PlanResult.sails carries no entry for '${sailId}'`).toBeDefined();
+    return found as SailResult;
+  }
+
+  /**
    * The abort point is DERIVED from the search, never guessed. `solve()` calls
    * `deadline.expired()` exactly once per ring, as the first statement of the
-   * ring loop (isochrone.ts), so a single-sail plan's call count IS that
-   * sail's ring count. A deadline expiring after that many calls therefore
-   * lets the plan's first sail finish exactly as it would unbudgeted, and
-   * aborts the second at its own first ring.
+   * ring loop (isochrone.ts). For a plan that succeeds in TIER 1 without
+   * reaching the pre-relaxation check — the only shape this helper is used on
+   * — that is the plan's only `expired()` call site, so a single-sail plan's
+   * call count is that sail's ring count. `planRoute.ts`'s own pre-relaxation
+   * check is a second call site, so the count is NOT a sail's ring count for a
+   * plan that reaches a #243 retry or a #53 relaxed tier. A deadline expiring
+   * after that many calls lets the plan's first sail finish exactly as it
+   * would unbudgeted, and aborts the second at its own first ring.
    *
-   * That target is a WINDOW, not a knife-edge, and both its edges are
-   * MEASURED rather than argued: returning `calls - 1` aborts the FIRST sail
-   * too and reds these rows on `status` (expected 'error' to be 'ok'), while
-   * returning `calls * 2` lets the second sail finish as well and reds them
-   * on the aborted sail's `result`. `calls + 1` stays green —
-   * `deadlineAfterCalls` fires on `calls > n`, so a small over-count only
-   * moves the second sail's abort a ring later. Only those three points were
-   * run; the interior is not claimed point by point.
+   * That target is a WINDOW, not a knife-edge. Three points were run, which
+   * BRACKET the window rather than locate both its edges: `calls - 1` aborts
+   * the FIRST sail too and reds these rows on `status` (expected 'error' to be
+   * 'ok'), so the lower edge is located at `calls`; `calls + 1` stays GREEN
+   * (`deadlineAfterCalls` fires on `calls > n`, so a small over-count only
+   * moves the second sail's abort a ring later) while `calls * 2` lets the
+   * second sail finish too and reds on the aborted sail's `result` — which
+   * places the upper boundary somewhere in [calls + 2, calls * 2] without
+   * locating it. Do not read an untested value in that range as known-good.
    */
   function ringsOfFirstSail(mask: NavMask, firstSail: SailId): number {
     const counter = deadlineAfterCalls(Infinity);
@@ -367,8 +385,8 @@ describe('#54 §E.3: budget exhaustion mid-comparison', () => {
 
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
-      const finished = res.sails.find((s) => s.sailId === first)!;
-      const aborted = res.sails.find((s) => s.sailId === second)!;
+      const finished = sailOf(res, first);
+      const aborted = sailOf(res, second);
       expect(finished.result, 'the sail that finished keeps its route').not.toBeNull();
       expect(finished.reason, 'a finished sail carries no no-route reason').toBeNull();
       expect(aborted.result, 'the aborted sail has no route to carry').toBeNull();
@@ -384,6 +402,55 @@ describe('#54 §E.3: budget exhaustion mid-comparison', () => {
       expect(res.comparisonComplete).toBe(false);
     },
   );
+
+  it('a sail that FINISHED and lost still leaves the comparison COMPLETE', () => {
+    // THE row that separates the narrow reading from the broad one. Every
+    // other row in this block has its failing sail carrying a non-null cause
+    // AND a null `rigResult` at the same time, so on those rows
+    // `cause !== 'budget-exhausted'` and `rigResult !== null` agree and
+    // neither can falsify the other. Here a sail fails for a reason that is
+    // NOT the budget: genoa cannot move at all (every polar speed 0) with the
+    // motor off, so its search runs to completion and returns
+    // 'calm-without-motor' (isochrone.ts's terminal classifier picks the calm
+    // arm because an open-water mask produces no blocked deaths), while fock
+    // solves normally. Without this row, "simplifying" the flag to
+    // `rigResult !== null` keeps the whole suite green and every genuinely
+    // unreachable sail starts reporting the comparison as incomplete.
+    const becalmed: PolarTable = {
+      ...TEST_POLAR,
+      speeds: TEST_POLAR.speeds.map((row) => row.map(() => 0)),
+    };
+    const request: PlanRequest = {
+      origin: ORIGIN,
+      destination: DESTINATION,
+      viaPoints: [],
+      originHarborId: null,
+      destinationHarborId: null,
+      departureMs: T0,
+      settings: { ...DEFAULT_SETTINGS, motorEnabled: false },
+      sailIds: ['genoa', 'fock'],
+    };
+    const res = planRoute(
+      request,
+      uniformWindGrid(12, 0),
+      testPlanDeps(openWaterMask(), { genoa: becalmed, fock: FOCK }),
+    );
+
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    // Controls first: without these the keeper below could pass on a plan
+    // where nothing failed at all, which is just the CONTROL row again.
+    const genoa = sailOf(res, 'genoa');
+    const fock = sailOf(res, 'fock');
+    expect(genoa.result, 'control: genoa must FAIL on this fixture').toBeNull();
+    expect(genoa.reason, 'control: genoa must fail for a NON-budget reason').toBe('calm-motor-off');
+    expect(fock.result, 'control: fock must SOLVE on this fixture').not.toBeNull();
+
+    expect(res.comparisonComplete).toBe(true);
+    // Same row pins the completed-set pick against a positional `sails[0]`:
+    // the sail that solved is the SECOND one here.
+    expect(res.recommended).toBe('fock');
+  });
 
   it('CONTROL: every requested sail finishing leaves the comparison complete', () => {
     // Without this row a hardcoded `comparisonComplete: false` would satisfy
