@@ -38,8 +38,8 @@ export interface BoatDef {
 //    invites a fake physical model on top of an estimated polar.
 
 // Layering note: this module imports nothing from types.ts, and types.ts
-// imports PolarProvenance from here in Task 11 — one direction only, no
-// cycle. That is safe only because the chain types.ts -> lib/boatDepth.ts ->
+// imports PolarProvenance from here (added in Task 11) — one direction only,
+// no cycle. That is safe only because the chain types.ts -> lib/boatDepth.ts ->
 // lib/mask.ts (mask.ts, geo.ts and depthGate.ts) imports from types.ts with
 // `import type`, and tsconfig.app.json's verbatimModuleSyntax: true
 // guarantees those type-only imports are erased at build time — DEFAULT_SETTINGS

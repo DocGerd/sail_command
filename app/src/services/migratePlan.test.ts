@@ -71,16 +71,18 @@ describe('#54 migratePlan: pre-#54 records', () => {
     expect(migrated!.schemaVersion).toBe(PLAN_SCHEMA_VERSION);
   });
 
-  it('lists the sails in catalogue order, each carrying its own result', () => {
+  it('lists the sails in the order the legacy record solved them, each carrying its own result', () => {
     const migrated = migratePlan(legacyPlan())!;
     expect(migrated.result.sails.map((s) => s.sailId)).toEqual(['genoa', 'fock']);
     expect(migrated.result.sails[0]!.result!.etaMs).toBe(111_000);
     expect(migrated.result.sails[1]!.result!.etaMs).toBe(222_000);
   });
 
-  // A pure relabelling: the ONE assertion no re-solve could satisfy. A
-  // recomputed route would allocate a new legs array; carrying the stored one
-  // by reference is what proves nothing was re-planned or re-derived.
+  // A pure relabelling. The pinned ETA literals above are already
+  // unsatisfiable by a re-solve; this adds the stronger form — a recomputed
+  // route would allocate a NEW legs array, so carrying the stored one by
+  // reference proves nothing was re-planned even if the numbers happened to
+  // come out the same.
   it('carries every leg across BY REFERENCE — never re-plans, never re-derives', () => {
     const raw = legacyPlan();
     const legacyLegs = ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>)
@@ -171,8 +173,11 @@ describe('#54 migratePlan: records this build already understands', () => {
     expect(migrated.result.sails.map((s) => s.sailId)).toEqual(['genoa', 'fock']);
   });
 
-  // §I.3: "a saved plan referencing a boat no longer in the catalogue still
-  // opens, still renders, and still shows its original boat and sail names".
+  // §I.3: "A saved plan referencing a boat no longer in the catalogue still
+  // opens, still renders, still exports GPX, and still shows its original
+  // boat and sail names and provenance." This row covers the DATA half — the
+  // snapshot survives the read — not the GPX export, which nothing here
+  // exercises.
   it('keeps a stored snapshot of a boat that has left the catalogue, verbatim', () => {
     const gone = {
       id: 'gone-45',
@@ -222,6 +227,53 @@ describe('#54 migratePlan: records it refuses, so they can be listed as unreadab
     expect(migratePlan(raw)).toBeNull();
   });
 
+  // A NaN version is `typeof 'number'`, so only the Number.isFinite half of
+  // the version guard rejects it — without it, NaN > 1 is false and the
+  // record would be accepted as legacy.
+  it('refuses a non-finite schemaVersion', () => {
+    expect(migratePlan({ ...legacyPlan(), schemaVersion: Number.NaN })).toBeNull();
+  });
+
+  // Without this guard the sail silently becomes {result: null, reason: null}
+  // — a FABRICATED "no route, cause unknown" rather than an honest unreadable
+  // row.
+  it('refuses a stored sail result that is neither null nor an object', () => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).fock = 42;
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  // The malformed entry is the NON-recommended one, and a valid recommended
+  // entry is kept beside it. Put the malformed entry first and the row passes
+  // for the wrong reason: whatever the entry-shape guard does, the
+  // recommended sail then has no result and the recommended-invariant guard
+  // refuses the record on its own. Measured — an earlier version of this row
+  // stayed green with the entry-shape guard deleted.
+  it.each([
+    ['a non-record entry', 1],
+    ['an entry with no sailId', { result: null, reason: null }],
+  ])('refuses a sails list containing %s', (_label, badEntry) => {
+    const raw = migratePlan(legacyPlan())! as unknown as Record<string, unknown>;
+    const result = raw.result as Record<string, unknown>;
+    const recommendedEntry = (result.sails as unknown[])[0];
+    result.sails = [recommendedEntry, badEntry];
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  it.each(['snappedOrigin', 'snappedDestination'])('refuses a record missing %s', (field) => {
+    const raw = legacyPlan();
+    delete (raw.result as Record<string, unknown>)[field];
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  // Without this guard summarizePlanRecord emits departureMs: undefined and
+  // the Routes list renders "Invalid Date".
+  it('refuses a request with no departureMs', () => {
+    const raw = legacyPlan();
+    delete (raw.request as Record<string, unknown>).departureMs;
+    expect(migratePlan(raw)).toBeNull();
+  });
+
   it('refuses a record with no sail results at all', () => {
     const raw = legacyPlan();
     raw.result = {
@@ -233,14 +285,19 @@ describe('#54 migratePlan: records it refuses, so they can be listed as unreadab
     expect(migratePlan(raw)).toBeNull();
   });
 
-  // draftM drives the depth gate and the #53 relaxation floor, so a boat
-  // field we cannot parse must never be replaced by the Salona's numbers —
-  // that would report a different hull's safety margins as this plan's.
+  // The snapshot is what the UI SHOWS for this plan — nothing in
+  // app/src/routing/** reads it, the solver taking its boat from
+  // PlanDeps.boat — so replacing an unparseable one with the Salona's numbers
+  // would state a different hull's name and draft as this plan's.
   it.each([
     ['a non-object boat', 'not-a-boat'],
     ['a boat with no draftM', { id: 'x', name: 'X', sails: [] }],
     ['a boat with a non-numeric draftM', { id: 'x', name: 'X', draftM: 'deep', sails: [] }],
     ['a boat with no sails array', { id: 'x', name: 'X', draftM: 2.0 }],
+    [
+      'a boat whose sail entries are not sail-shaped',
+      { id: 'x', name: 'X', draftM: 2, sails: [1] },
+    ],
   ])('refuses %s rather than relabelling it onto the catalogue boat', (_label, boat) => {
     const raw = migratePlan(legacyPlan())! as unknown as Record<string, unknown>;
     (raw.request as Record<string, unknown>).boat = boat;

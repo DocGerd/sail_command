@@ -128,10 +128,16 @@ const DEFAULT_PLAN_TIMEOUT_MS = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
  * polars this plan runs. Exported so the derivation is testable without a
  * fake worker.
  *
- * `boatId` is an explicit argument because `PlanRequest` carries no boat
- * today — Task 9 added `sailIds`, Task 11 adds `PlanRequest.boat` and will
- * take this parameter's place. `polarKeys` follows `request.sailIds` order,
- * so the worker's subset matches the order the solver runs them in.
+ * `boatId` STAYS an explicit argument now that Task 11 has landed
+ * `PlanRequest.boat`, and must not be collapsed onto it: `BoatSnapshot.id` is
+ * `string` because a plan's boat may have left the catalogue, while this
+ * parameter is the narrowed `BoatId` that protocol.ts feeds to `boatById`,
+ * which THROWS on an unknown id. Deriving it from the snapshot would turn a
+ * documented graceful state — a saved plan whose boat is gone still opens and
+ * renders — into a worker throw. Revisit only together with the "cannot
+ * re-plan with this boat" UI (spec §I.3), which release 1 does not build.
+ * `polarKeys` follows `request.sailIds` order, so the worker's subset matches
+ * the order the solver runs them in.
  */
 export function buildPlanMessage(
   request: PlanRequest,
@@ -317,9 +323,11 @@ export class RoutingClient {
       // absent — the same direction as the rest of the design, and the client
       // deadline still bounds the wait.
       const budgetMs = timeoutMs - PLAN_TIMEOUT_GRACE_MS;
-      // #54: DEFAULT_BOAT_ID until Task 11 lands `PlanRequest.boat` — the
-      // catalogue has one boat today, so this names the boat the app already
-      // plans with rather than introducing a choice.
+      // #54: DEFAULT_BOAT_ID — the catalogue has one boat today, so this
+      // names the boat the app already plans with rather than introducing a
+      // choice. Deliberately NOT `request.boat.id`, which Task 11 made
+      // available; see buildPlanMessage's own comment for why that would
+      // convert a graceful state into a worker throw.
       this.worker.postMessage(
         buildPlanMessage(request, DEFAULT_BOAT_ID, {
           id,

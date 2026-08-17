@@ -25,7 +25,10 @@ export type WorkerRequest =
        * #54: which boat the solver plans with. SAFETY-CRITICAL — it is what
        * `planRoute` derives the spec C.4(a) relaxation floor from, so it is
        * carried explicitly rather than parsed back out of `polarKeys`.
-       * Task 11 replaces it with `PlanRequest.boat`.
+       * Task 11 added `PlanRequest.boat` and deliberately did NOT replace
+       * this field with it — `boatById(req.boatId)` below throws on an id
+       * outside the catalogue, which a stored snapshot's `string` id may be.
+       * See workerClient.ts's `buildPlanMessage` for the full reasoning.
        */
       boatId: BoatId;
       /**

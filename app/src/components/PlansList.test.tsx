@@ -373,6 +373,12 @@ describe('PlansList recalculate (#114)', () => {
       });
     }
 
+    async function saveDamaged(id: string, createdAtMs: number, name: string) {
+      const plan = makePlan({ id, createdAtMs, name }) as unknown as Record<string, unknown>;
+      delete (plan.result as Record<string, unknown>).snappedOrigin;
+      await savePlan(plan as unknown as Plan);
+    }
+
     it('is shown, with its name and creation date, alongside readable rows', async () => {
       await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, name: 'Readable' }));
       await saveUnreadable('p2', 2000, 'From The Future');
@@ -380,8 +386,30 @@ describe('PlansList recalculate (#114)', () => {
       renderList();
 
       expect(await screen.findByText('From The Future')).toBeInTheDocument();
-      expect(screen.getByText(/cannot be opened/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Readable/ })).toBeInTheDocument();
+    });
+
+    // A record a newer build wrote is INTACT and openable there; a damaged one
+    // is not. The row's only control is a destructive one, and prod and /uat/
+    // share one origin-scoped database, so telling the user which case they
+    // are looking at is what makes that two-tap delete an informed choice.
+    it('tells the user a newer-build record is undamaged and openable there', async () => {
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      renderList();
+
+      expect(await screen.findByText(/newer version of the app/i)).toBeInTheDocument();
+      expect(screen.getByText(/undamaged/i)).toBeInTheDocument();
+      expect(screen.queryByText(/incomplete or damaged/i)).not.toBeInTheDocument();
+    });
+
+    it('says a genuinely damaged record is damaged, not that it came from a newer build', async () => {
+      await saveDamaged('p3', 2000, 'Broken One');
+
+      renderList();
+
+      expect(await screen.findByText(/incomplete or damaged/i)).toBeInTheDocument();
+      expect(screen.queryByText(/newer version of the app/i)).not.toBeInTheDocument();
     });
 
     it('offers no way to open or recalculate it, but can still be deleted by the user', async () => {

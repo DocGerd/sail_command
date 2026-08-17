@@ -108,7 +108,9 @@ function buildSailIdPattern(ids: readonly string[]): RegExp {
 // Salona's sail ids were ever renamed — the opposite of what this guard is
 // for everywhere else, where the catalogue is the single source of truth for
 // what sails EXIST. That file names them once, in LEGACY_SAIL_FIELDS, and
-// relabels onto the catalogue by id equality.
+// carries the stored id straight across without consulting the catalogue —
+// a lookup there would reintroduce exactly the coupling this exemption
+// exists to avoid.
 const ALLOWED = ['src/data/boats.ts', 'src/services/migratePlan.ts'];
 
 // #54 Task 9: every one of the original nine offenders (RouteLayer.tsx,

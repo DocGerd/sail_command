@@ -35,9 +35,10 @@ import {
  * reason — a plan saved before this field existed does not carry the key at
  * all, and planRoute.ts's
  * `runAll` calls `req.sailIds.map(...)` unconditionally, so an unbackfilled
- * pre-#54 plan would throw on recalculation rather than degrading. Task 11's
- * `migratePlan` will cover the IndexedDB read path; this covers recalc
- * regardless of how the plan arrived (IndexedDB, or a future import path).
+ * pre-#54 plan would throw on recalculation rather than degrading. Task 11
+ * added `services/migratePlan.ts`, which covers the IndexedDB read path; this
+ * covers recalc regardless of how the plan arrived (IndexedDB, or a future
+ * import path).
  */
 export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
   return {

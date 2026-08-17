@@ -33,7 +33,9 @@ import {
 // history rather than catalogue data: deriving them from BOATS would change
 // how already-stored records are READ if the Salona's sail ids were ever
 // renamed. Hence the literals here, and the deliberate entry for this file in
-// test/sailLiteralCallSites.test.ts's ALLOWED list.
+// test/sailLiteralCallSites.test.ts's ALLOWED list. Kept honest by
+// migratePlan.catalogueRename.test.ts, which mocks a renamed catalogue and
+// requires a pre-#54 record to still read.
 const LEGACY_SAIL_FIELDS = ['genoa', 'fock'] as const;
 
 // Public NoRouteReason for the internal 'budget-exhausted' cause. A pre-#54
@@ -75,12 +77,14 @@ function sailResultOf(sailId: SailId, result: unknown, reason: unknown): SailRes
  * Reads the per-sail list out of either shape: a `sails` array (written since
  * Task 9) or the pre-#54 genoa/fock/genoaReason/fockReason quartet.
  *
- * §I.3's relabelling rule is applied by ID EQUALITY, not positionally: a
- * legacy `genoa` field becomes the catalogue boat's sail whose id is `genoa`.
- * If that boat has no such sail the record is unreadable rather than
- * relabelled onto whatever sail happens to sit at the same index.
+ * The legacy field name IS the stored sail id, and it is carried straight
+ * across. It is deliberately NOT looked up in the catalogue first: a lookup
+ * would make every pre-#54 plan unreadable the moment a Salona sail id was
+ * renamed, which is exactly the coupling LEGACY_SAIL_FIELDS' own comment says
+ * this module does not have. That makes the `as SailId` cast the load-bearing
+ * line — it is what carries a frozen historical id into the current union.
  */
-function migrateSails(result: Record<string, unknown>, boat: BoatSnapshot): SailResult[] | null {
+function migrateSails(result: Record<string, unknown>): SailResult[] | null {
   const stored = result.sails;
   if (Array.isArray(stored)) {
     const out: SailResult[] = [];
@@ -95,19 +99,17 @@ function migrateSails(result: Record<string, unknown>, boat: BoatSnapshot): Sail
   const out: SailResult[] = [];
   for (const field of LEGACY_SAIL_FIELDS) {
     if (!(field in result)) continue;
-    const sail = boat.sails.find((s) => s.id === field);
-    if (sail === undefined) return null;
-    const migrated = sailResultOf(sail.id as SailId, result[field], result[`${field}Reason`]);
+    const migrated = sailResultOf(field as SailId, result[field], result[`${field}Reason`]);
     if (migrated === null) return null;
     out.push(migrated);
   }
   return out.length > 0 ? out : null;
 }
 
-function migrateResult(result: Record<string, unknown>, boat: BoatSnapshot): PlanResultOk | null {
+function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
   if (result.status !== 'ok') return null;
   if (!isRecord(result.snappedOrigin) || !isRecord(result.snappedDestination)) return null;
-  const sails = migrateSails(result, boat);
+  const sails = migrateSails(result);
   if (sails === null) return null;
 
   // recommendedResult()'s invariant, enforced at the read boundary: status
@@ -124,20 +126,39 @@ function migrateResult(result: Record<string, unknown>, boat: BoatSnapshot): Pla
       ? result.comparisonComplete
       : !sails.some((s) => s.result === null && s.reason === BUDGET_REASON);
 
+  // ANNOTATED, never `... as PlanResultOk`. This literal enumerates the
+  // fields it carries, so a future required field on PlanResultOk would be
+  // silently stripped from every stored plan on read — and a trailing cast
+  // compiles clean through exactly that, since `{a, b} as R` type-asserts
+  // rather than type-checks. The annotation makes tsc the keeper; the
+  // per-field casts stay, because each one narrows an `unknown` the
+  // normaliser deliberately does not deep-validate.
+  //
   // exactOptionalPropertyTypes: carry an absent optional as an absent KEY,
   // never as `undefined`.
-  return {
+  const out: PlanResultOk = {
     status: 'ok',
     sails,
     recommended: recommended as SailId,
     comparisonComplete,
-    ...(result.shallow !== undefined ? { shallow: result.shallow as PlanResultOk['shallow'] } : {}),
+    // NonNullable, not the bare indexed access: `PlanResultOk['shallow']`
+    // includes `undefined`, which exactOptionalPropertyTypes rejects on an
+    // optional key. The trailing cast this literal used to carry silenced
+    // that; the annotation surfaced it.
+    ...(result.shallow !== undefined
+      ? { shallow: result.shallow as NonNullable<PlanResultOk['shallow']> }
+      : {}),
     ...(result.rigRecommendation !== undefined
-      ? { rigRecommendation: result.rigRecommendation as PlanResultOk['rigRecommendation'] }
+      ? {
+          rigRecommendation: result.rigRecommendation as NonNullable<
+            PlanResultOk['rigRecommendation']
+          >,
+        }
       : {}),
     snappedOrigin: result.snappedOrigin as unknown as PlanResultOk['snappedOrigin'],
     snappedDestination: result.snappedDestination as unknown as PlanResultOk['snappedDestination'],
-  } as PlanResultOk;
+  };
+  return out;
 }
 
 /**
@@ -145,8 +166,15 @@ function migrateResult(result: Record<string, unknown>, boat: BoatSnapshot): Pla
  * boat has left the catalogue still open. Only its ABSENCE (the pre-#54
  * shape) relabels onto the catalogue's Salona 45. A snapshot that is present
  * but unparseable makes the record unreadable rather than silently reporting
- * a different hull: draftM drives the depth gate and the #53 relaxation
- * floor, so guessing it is a safety misstatement.
+ * a different hull: in release 1 the snapshot is what the UI SHOWS for this
+ * plan and nothing else reads it (the solver takes its boat from
+ * PlanDeps.boat), so the harm of guessing is stating someone else's boat name
+ * and draft as this plan's.
+ *
+ * The sail ENTRIES are validated too, not just the array: boatSnapshot()
+ * re-copies this object at the recalc and reroute call sites and reads
+ * `s.polarProvenance.tier`, so an entry-shaped hole would surface there as a
+ * TypeError rather than here as an honest unreadable row.
  */
 function migrateBoat(
   request: Record<string, unknown>,
@@ -158,6 +186,11 @@ function migrateBoat(
   if (typeof stored.id !== 'string' || typeof stored.name !== 'string') return null;
   if (typeof stored.draftM !== 'number' || !Number.isFinite(stored.draftM)) return null;
   if (!Array.isArray(stored.sails)) return null;
+  for (const sail of stored.sails) {
+    if (!isRecord(sail)) return null;
+    if (typeof sail.id !== 'string' || typeof sail.label !== 'string') return null;
+    if (!isRecord(sail.polarProvenance)) return null;
+  }
   return stored as unknown as BoatSnapshot;
 }
 
@@ -194,7 +227,7 @@ export function migratePlan(raw: unknown): Plan | null {
   if (!isRecord(request) || !isRecord(windGrid) || !isRecord(result)) return null;
 
   const fallbackBoat = boatSnapshot(boatById(DEFAULT_BOAT_ID));
-  const migratedResult = migrateResult(result, fallbackBoat);
+  const migratedResult = migrateResult(result);
   if (migratedResult === null) return null;
   const migratedRequest = migrateRequest(request, migratedResult.sails, fallbackBoat);
   if (migratedRequest === null) return null;

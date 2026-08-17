@@ -209,6 +209,13 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
           // the row carries only what is readable from any shape plus the
           // delete action — the app never deletes such a record itself, but
           // the user must still be able to.
+          //
+          // Delete stays available for BOTH reasons, including a record this
+          // build is merely too old to read: suppressing it would leave a row
+          // the user can never clear if they do not return to the newer
+          // build. What makes that safe is the copy — the newer-version
+          // string states the record is undamaged and openable there, so the
+          // two-tap delete is an informed choice rather than a blind one.
           p.kind === 'unreadable' ? (
             <li key={p.id} className="plans-list-row plans-list-row-unreadable">
               <div className="plans-list-load">
@@ -216,7 +223,13 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 <span className="plans-list-created">
                   {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
                 </span>
-                <span className="plans-list-unreadable">{t('plansList.unreadable')}</span>
+                <span className="plans-list-unreadable">
+                  {t(
+                    p.reason === 'newer-version'
+                      ? 'plansList.unreadable.newerVersion'
+                      : 'plansList.unreadable.damaged',
+                  )}
+                </span>
               </div>
               <button
                 type="button"

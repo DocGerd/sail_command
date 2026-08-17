@@ -317,16 +317,16 @@ export interface PlanResultError {
 
 export type PlanResult = PlanResultOk | PlanResultError;
 
-// Structured-clone-safe (IndexedDB, postMessage) but NOT JSON-safe:
-// windGrid carries Float32Array fields.
-// File import/export (e.g. Garmin sync, issue #3) needs a dedicated
-// serializer — never JSON.stringify(plan).
 // #54 spec §I.3: stamped on every written plan. The IndexedDB version is not
 // the only entry path — a plan can also arrive from a future import (#3) —
 // and an untagged record has no self-description, so services/migratePlan.ts
 // dispatches on this rather than sniffing the record's shape.
 export const PLAN_SCHEMA_VERSION = 1;
 
+// Structured-clone-safe (IndexedDB, postMessage) but NOT JSON-safe:
+// windGrid carries Float32Array fields.
+// File import/export (e.g. Garmin sync, issue #3) needs a dedicated
+// serializer — never JSON.stringify(plan).
 export interface Plan {
   id: string; // crypto.randomUUID()
   name: string; // e.g. "Flensburg → Marstal"

@@ -521,12 +521,15 @@ export const de = {
   'plansList.delete': 'Plan löschen',
   'plansList.confirmDelete': 'Löschen bestätigen',
   'plansList.actionError': 'Aktion fehlgeschlagen. Bitte erneut versuchen.',
-  // #54: shown for a stored plan the read-time normaliser cannot handle. The
-  // wording covers BOTH reasons a record lands here — saved by a newer build,
-  // or missing a field — without claiming which; the record itself is never
-  // deleted.
-  'plansList.unreadable':
-    'Dieser Plan kann nicht geöffnet werden – er wurde in einem Format gespeichert, das diese Version der App nicht versteht. Er bleibt gespeichert.',
+  // #54: shown for a stored plan the read-time normaliser cannot handle. Two
+  // strings, because the two cases call for different user action: a
+  // newer-build record is INTACT and openable there, and prod and /uat/ share
+  // one origin-scoped database, so a production user can meet one without
+  // having done anything wrong.
+  'plansList.unreadable.newerVersion':
+    'Dieser Plan wurde mit einer neueren Version der App gespeichert. Er ist unbeschädigt und lässt sich dort öffnen – diese Version kann ihn nicht anzeigen.',
+  'plansList.unreadable.damaged':
+    'Dieser Plan kann nicht geöffnet werden – der gespeicherte Datensatz ist unvollständig oder beschädigt. Er bleibt gespeichert.',
   // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
   // which reuses the stored grid and stays offline-capable).
   'plansList.recalc': 'Neu berechnen',

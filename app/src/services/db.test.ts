@@ -573,6 +573,7 @@ describe('IndexedDB persistence', () => {
     expect(summaries[0].kind).toBe('ok');
     expect(summaries[1]).toEqual({
       kind: 'unreadable',
+      reason: 'damaged',
       id: 'broken-invariant',
       name: 'Broken',
       createdAtMs: 500,
@@ -806,41 +807,42 @@ describe('#54 lazy plan migration at the read boundary', () => {
     }
   }
 
-  it('getPlan writes the migrated record back to the store', async () => {
+  // THE data-loss keeper. Prod and /uat/ share one origin-scoped database and
+  // production still reads result.genoa/result.fock, so a write-back that
+  // rebuilds the record — which migratePlan does, from named fields — would
+  // make a production user's saved plans vanish from their Routes list on a
+  // single unprompted /uat/ boot (useSessionRestore calls getPlan at boot).
+  // See getPlan's own doc comment for the full chain.
+  it('getPlan leaves the stored record byte-identical — a read never writes', async () => {
     await savePlan(legacyRecord('legacy-1', 1000));
-
-    // Control: untouched, the stored record is still in the old shape.
     const before = await rawStored('legacy-1');
-    expect(before!.schemaVersion).toBeUndefined();
-    expect((before!.request as Record<string, unknown>).boat).toBeUndefined();
 
-    await getPlan('legacy-1');
+    const plan = await getPlan('legacy-1');
 
-    const after = await rawStored('legacy-1');
-    expect(after!.schemaVersion).toBe(PLAN_SCHEMA_VERSION);
-    expect((after!.request as Record<string, unknown>).boat).toMatchObject({ id: 'salona-45' });
-    // The write-back stays in the structured-clone domain.
-    expect(
-      Object.prototype.toString.call((after!.windGrid as Record<string, unknown>).speedKn),
-    ).toBe('[object Float32Array]');
+    // Control: the READ really did migrate, so this is not passing because
+    // nothing happened.
+    expect(plan!.schemaVersion).toBe(PLAN_SCHEMA_VERSION);
+    expect(plan!.request.boat.id).toBe('salona-45');
+    expect(await rawStored('legacy-1')).toEqual(before);
   });
 
-  it('getPlan does not rewrite a record that needed no migration', async () => {
+  // The durable invariant, stated separately from the "writes nothing"
+  // contract above so it still holds if a future ADDITIVE write-back is ever
+  // introduced deliberately: whatever getPlan does, it must never REMOVE a
+  // key the stored record had. The legacy quartet is what production reads.
+  it.each([
+    ['top level', (r: Record<string, unknown>) => r],
+    ['result', (r: Record<string, unknown>) => r.result as Record<string, unknown>],
+    ['request', (r: Record<string, unknown>) => r.request as Record<string, unknown>],
+  ])('getPlan removes no stored key (%s)', async (_label, pick) => {
     await savePlan(legacyRecord('legacy-1', 1000));
-    await getPlan('legacy-1');
-    // Re-comparing the stored record before and after a second read cannot
-    // detect a redundant write: re-putting the same value is byte-identical
-    // by construction, so that assertion would hold whatever the code did.
-    // A key migratePlan DROPS (it rebuilds the record from named fields)
-    // discriminates — it survives iff nothing wrote the record back.
-    const stored = (await rawStored('legacy-1'))!;
-    const conn = await openDB('sailcommand', 1);
-    await conn.put('plans', { ...stored, marker: 'untouched' });
-    conn.close();
+    const before = Object.keys(pick((await rawStored('legacy-1'))!)).sort();
 
     await getPlan('legacy-1');
 
-    expect((await rawStored('legacy-1'))!.marker).toBe('untouched');
+    expect(Object.keys(pick((await rawStored('legacy-1'))!)).sort()).toEqual(
+      expect.arrayContaining(before),
+    );
   });
 
   it('listPlans summarises a pre-#54 record as a readable row', async () => {
@@ -865,7 +867,13 @@ describe('#54 lazy plan migration at the read boundary', () => {
     expect(await getPlan('future-1')).toBeUndefined();
     // Still listed — the read refused it, nothing deleted it.
     expect(await listPlans()).toEqual([
-      { kind: 'unreadable', id: 'future-1', name: 'Legacy', createdAtMs: 1000 },
+      {
+        kind: 'unreadable',
+        reason: 'newer-version',
+        id: 'future-1',
+        name: 'Legacy',
+        createdAtMs: 1000,
+      },
     ]);
   });
 
@@ -877,5 +885,43 @@ describe('#54 lazy plan migration at the read boundary', () => {
       ['good-1', 'ok'],
       ['future-1', 'unreadable'],
     ]);
+  });
+
+  // A record written by a newer build is INTACT and openable there; a damaged
+  // one is not. The two get different copy, so the row must carry which.
+  it('distinguishes a newer-version record from a damaged one', async () => {
+    await savePlan({ ...legacyRecord('future-1', 3000), schemaVersion: 999 } as unknown as Plan);
+    const damaged = legacyRecord('damaged-1', 2000) as unknown as Record<string, unknown>;
+    delete (damaged.result as Record<string, unknown>).snappedOrigin;
+    await savePlan(damaged as unknown as Plan);
+
+    const rows = await listPlans();
+    expect(rows.map((r) => [r.id, r.kind === 'unreadable' ? r.reason : 'ok'])).toEqual([
+      ['future-1', 'newer-version'],
+      ['damaged-1', 'damaged'],
+    ]);
+  });
+
+  // The listing reads the OBJECT STORE, not the by-createdAt index.
+  // IndexedDB drops a record from an index when its key path is absent or not
+  // a valid key — and a missing/NaN createdAtMs is exactly what migratePlan
+  // refuses, so an index-backed listing silently skipped precisely the
+  // records the unreadable placeholder exists for.
+  it.each([
+    ['an absent createdAtMs', undefined],
+    ['a null createdAtMs', null],
+    ['a NaN createdAtMs', Number.NaN],
+  ])('lists a record with %s instead of skipping it', async (_label, createdAtMs) => {
+    const raw = legacyRecord('no-date', 0) as unknown as Record<string, unknown>;
+    if (createdAtMs === undefined) delete raw.createdAtMs;
+    else raw.createdAtMs = createdAtMs;
+    // savePlan is a plain put and the store's keyPath is `id`, so a record
+    // with no usable createdAtMs stores fine — it is only the INDEX that
+    // drops it, which is the whole point of this row.
+    await savePlan(raw as unknown as Plan);
+
+    const rows = await listPlans();
+    expect(rows.map((r) => [r.id, r.kind])).toEqual([['no-date', 'unreadable']]);
+    expect(rows[0]!.createdAtMs).toBe(0);
   });
 });
