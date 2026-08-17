@@ -277,7 +277,7 @@ describe('AboutDialog', () => {
     );
 
     await waitFor(() => expect(mock).toHaveBeenCalled());
-    // Never mask.bin, polar-*.json, or harbors.json — those are
+    // Never mask.bin, polars/*.json, or harbors.json — those are
     // loadRoutingAssets()'s much bigger bundle, deliberately not triggered
     // just to open About.
     for (const call of mock.mock.calls) {

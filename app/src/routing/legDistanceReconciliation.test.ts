@@ -116,10 +116,10 @@ const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/d
 const maskMeta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8')) as MaskMeta;
 const mask = new NavMask(maskMeta, new Uint8Array(readFileSync(resolve(dataDir, 'mask.bin'))));
 const polarGenoa = JSON.parse(
-  readFileSync(resolve(dataDir, 'polar-genoa.json'), 'utf8'),
+  readFileSync(resolve(dataDir, 'polars', 'salona-45-genoa.json'), 'utf8'),
 ) as PolarTable;
 const polarFock = JSON.parse(
-  readFileSync(resolve(dataDir, 'polar-fock.json'), 'utf8'),
+  readFileSync(resolve(dataDir, 'polars', 'salona-45-fock.json'), 'utf8'),
 ) as PolarTable;
 // #54: PlanDeps now carries polars keyed `${boatId}/${sailId}` plus the boat.
 const DEPS = testPlanDeps(mask, { genoa: polarGenoa, fock: polarFock });

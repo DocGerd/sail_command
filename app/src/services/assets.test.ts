@@ -42,12 +42,12 @@ function fetchMock(overrides: Partial<Record<string, () => Response>> = {}) {
     if (overrides.maskBin && url.includes('mask.bin')) return Promise.resolve(overrides.maskBin());
     if (url.includes('mask.bin'))
       return Promise.resolve(new Response(maskArrayBuffer(), { status: 200 }));
-    if (overrides.polarGenoa && url.includes('polar-genoa.json'))
+    if (overrides.polarGenoa && url.includes('salona-45-genoa.json'))
       return Promise.resolve(overrides.polarGenoa());
-    if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-    if (overrides.polarFock && url.includes('polar-fock.json'))
+    if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+    if (overrides.polarFock && url.includes('salona-45-fock.json'))
       return Promise.resolve(overrides.polarFock());
-    if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
     if (overrides.harbors && url.includes('harbors.json'))
       return Promise.resolve(overrides.harbors());
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));

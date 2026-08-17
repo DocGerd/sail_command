@@ -337,8 +337,8 @@ function fetchMock() {
       const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
       return Promise.resolve(new Response(buf, { status: 200 }));
     }
-    if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-    if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+    if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
     if (url.includes('seamarks.json'))
       return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
@@ -2042,8 +2042,8 @@ describe('plan-form sync (#301)', () => {
           const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
           return Promise.resolve(new Response(buf, { status: 200 }));
         }
-        if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-        if (url.includes('polar-fock.json'))
+        if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+        if (url.includes('salona-45-fock.json'))
           return Promise.resolve(jsonResponse({ ...TEST_POLAR, rig: 'fock' }));
         if (url.includes('harbors.json')) return harborsPromise;
         if (url.includes('seamarks.json'))

@@ -340,7 +340,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
   const polars: Record<string, PolarTable> = {};
   for (const sail of boat.sails) {
     polars[polarKey(boat.id, sail.id)] = JSON.parse(
-      // `polarAsset` is public-root-relative (`data/polar-*.json`) because the
+      // `polarAsset` is public-root-relative (`data/polars/*.json`) because the
       // browser fetches it under BASE_URL; `dataDir` is already inside
       // `public/`, hence the `..`.
       readFileSync(resolve(dataDir, '..', sail.polarAsset), 'utf8'),

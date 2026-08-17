@@ -4,7 +4,7 @@ Build-time-only scripts that produce the static assets committed under
 `app/public/data/`. Nothing here runs at app runtime — the PWA reads the
 generated files directly and stays offline-capable. Regenerate an asset only
 when its source data or generation logic changes; never hand-edit a generated
-file (`polar-*.json`, `harbors.json`, `mask.bin`, `mask.meta.json`).
+file (`polars/*.json`, `harbors.json`, `mask.bin`, `mask.meta.json`).
 
 ## Setup
 
@@ -33,7 +33,7 @@ required check.
 
 ## Assets
 
-### `polar-genoa.json` / `polar-fock.json` — Salona 45 boat-speed polars
+### `polars/<boat-id>-<sail-id>.json` — boat-speed polars
 
 Boat speed (knots) as a function of true wind angle (TWA) and true wind speed
 (TWS), one table for the main+genoa rig and one for main+fock (working jib).
@@ -55,9 +55,22 @@ Regenerate:
 node pipeline/build_polars.mjs
 ```
 
-Edit `pipeline/polars-source.json` (raw table + sanity-check anchors) to
-change the data; `build_polars.mjs` validates monotonicity and a couple of
-known-magnitude anchor points before writing.
+Edit `pipeline/polars-source.json` to change the data. It is keyed by boat
+(`boats[]`), each carrying its own `tws`/`twa` grid, its `sails` map, and a
+`validation` block holding that boat's plausibility bound and sanity anchors;
+each sail carries a `provenance` tier (`certificate` / `modelled` /
+`estimated`, spec G.3) and note. `build_polars.mjs` derives the sail set from
+that map — there is no second list to fall out of step with it — and **fails
+closed**: a boat with no anchors, no plausibility bound or an unsafe id, or a
+sail with no provenance tier or note, throws and names itself rather than
+inheriting another boat's values. An anchor that silently validates the wrong
+hull is worse than no anchor. The Salona 45's two anchors carry the bounds the
+pre-#54 script hardcoded: `8.26..9.46` is `8.86 ± 0.6` at TWA 90 / TWS 16, and
+`6.5..8.5` at TWA 52 / TWS 12.
+
+Output filenames carry the boat id (spec F.1): the previous `polar-<sail>.json`
+had no boat identifier, so a second boat's tables would have overwritten the
+first's.
 
 ### `harbors.json` — curated harbor list
 

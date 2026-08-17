@@ -79,8 +79,8 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export interface PolarTable {
   // Field NAME unchanged (retyped only) — this is exactly the shape the
-  // committed pipeline output (app/public/data/polar-genoa.json and
-  // polar-fock.json) ships on disk (a "rig" key naming the sail), so
+  // committed pipeline output (app/public/data/polars/salona-45-genoa.json
+  // and salona-45-fock.json) ships on disk (a "rig" key naming the sail), so
   // renaming the field would desync runtime JSON parsing from the type
   // with no compiler to catch it.
   rig: SailId;

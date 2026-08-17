@@ -56,6 +56,10 @@
   // chipShallowFill.test.ts (#506) is the same shape once more — reads
   // app.css via `node:fs`, same pattern as useBannerHeight.test.ts/
   // panelWidth.test.ts above.
+  // polarProvenance.test.ts and buildPolars.failClosed.test.ts (#54 Task 12)
+  // are the same shape again — the first reads pipeline/polars-source.json and
+  // the shipped polar assets via `node:fs`; the second additionally spawns the
+  // real generator through `node:child_process`.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -68,6 +72,8 @@
     "src/**/legDistanceReconciliation.test.ts",
     "src/**/panelWidth.test.ts",
     "src/**/maskTolerance.test.ts",
-    "src/**/chipShallowFill.test.ts"
+    "src/**/chipShallowFill.test.ts",
+    "src/**/polarProvenance.test.ts",
+    "src/**/buildPolars.failClosed.test.ts"
   ]
 }
