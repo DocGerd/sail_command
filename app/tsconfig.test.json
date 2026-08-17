@@ -80,8 +80,9 @@
   // exists — a cross-language invariant (JSON-to-TypeScript) with no compiler
   // spanning both, same reason as maskTolerance.test.ts above.
   // buildPolars.failClosed.test.ts (#54 Task 12): spawns the real
-  // pipeline/build_polars.mjs via `node:child_process` against mutated copies
-  // of its source in a scratch tree, to hold spec H's fail-closed rule (a boat
+  // pipeline/build_polars.mjs via `node:child_process` in a scratch tree —
+  // once against its UNMUTATED source as the control that licenses the rest,
+  // then against mutated copies — to hold spec H's fail-closed rule (a boat
   // never inherits another boat's anchors or plausibility bound).
   "include": [
     "src/**/realmask.repro.test.ts",

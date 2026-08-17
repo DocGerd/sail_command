@@ -11,7 +11,7 @@ file (`polars/*.json`, `harbors.json`, `mask.bin`, `mask.meta.json`).
 ```
 python3 -m venv pipeline/.venv
 pipeline/.venv/bin/pip install -r pipeline/requirements.txt
-npm --prefix pipeline install   # only needed if pipeline/node_modules is absent; the two .mjs scripts use no npm deps beyond Node's stdlib
+npm --prefix pipeline install   # needed for build_icons.mjs (sharp); every other .mjs script here uses Node's stdlib only
 ```
 
 ## Style (#220)
@@ -61,12 +61,22 @@ Edit `pipeline/polars-source.json` to change the data. It is keyed by boat
 each sail carries a `provenance` tier (`certificate` / `modelled` /
 `estimated`, spec G.3) and note. `build_polars.mjs` derives the sail set from
 that map — there is no second list to fall out of step with it — and **fails
-closed**: a boat with no anchors, no plausibility bound or an unsafe id, or a
-sail with no provenance tier or note, throws and names itself rather than
-inheriting another boat's values. An anchor that silently validates the wrong
-hull is worse than no anchor. The Salona 45's two anchors carry the bounds the
-pre-#54 script hardcoded: `8.26..9.46` is `8.86 ± 0.6` at TWA 90 / TWS 16, and
-`6.5..8.5` at TWA 52 / TWS 12.
+closed**: a boat or sail whose id is missing, unsafe or duplicated, a boat with
+no anchors or no plausibility bound, or a sail with no provenance tier or note,
+throws and names itself rather than inheriting another boat's values. An anchor
+that silently validates the wrong hull is worse than no anchor. Both halves of
+the output filename are validated — validating only the boat id let a sail
+keyed `../../../ESCAPED` write outside this directory entirely.
+
+The Salona 45's two anchors restate the bands the pre-#54 script hardcoded:
+`8.26..9.46` at TWA 90 / TWS 16 and `6.5..8.5` at TWA 52 / TWS 12. The second is
+exactly the old `6.5 || 8.5` test. The first is *not* exactly `8.86 ± 0.6`: the
+lower bound is (`8.86 - 0.6 === 8.26`), but `8.86 + 0.6` evaluates to
+`9.459999999999999`, so the declared `9.46` is looser than the old predicate by
+one representable step — it accepts a table reading exactly `9.46`, which the
+old test rejected. Both sails read exactly `8.86` there, so nothing sits near
+either bound; tighten the upper literal rather than widen it if that ever
+changes.
 
 Output filenames carry the boat id (spec F.1): the previous `polar-<sail>.json`
 had no boat identifier, so a second boat's tables would have overwritten the

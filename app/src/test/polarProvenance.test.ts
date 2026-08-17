@@ -8,14 +8,16 @@ import type { PolarTable } from '../types';
 // #54 Task 12. The polar provenance note exists in THREE artifacts that no
 // compiler spans: pipeline/polars-source.json (the input), each shipped
 // app/public/data/polars/*.json asset's `source` field (the pipeline output),
-// and app/src/data/boats.ts's polarProvenance.note (what the app shows). Task
-// 12 removed a FOURTH copy — build_polars.mjs's own SOURCE_NOTES — and this is
-// what keeps the remaining ones from drifting apart silently.
+// and app/src/data/boats.ts's polarProvenance.note (what the catalogue
+// declares and snapshots into each plan). Task 12 RELOCATED the pipeline copy
+// from build_polars.mjs's SOURCE_NOTES into polars-source.json — the count is
+// unchanged at three, and this is what keeps them from drifting apart.
 //
-// It also pins the thing that has no other keeper at all: SailDef.polarAsset
-// is a bare string that nothing type-checks against the filesystem, so a wrong
-// one 404s at app startup and every fetch-mocking test in the suite passes
-// straight through it.
+// It also pins SailDef.polarAsset, a bare string nothing type-checks against
+// the filesystem. Specifically the DIRECTORY half: assets.test.ts's mock
+// matches on the filename substring, so a wrong filename reds there, while a
+// wrong directory still contains that substring and passes straight through —
+// and a wrong directory is exactly what 404s in production.
 //
 // Needle and haystack are deliberately different artifacts on every assertion
 // (the #388 tautology): the catalogue is compared against the pipeline input
@@ -84,7 +86,7 @@ describe('polar provenance is consistent across catalogue, pipeline source and s
     }
   }
 
-  it('ships no polar asset that no catalogue sail claims', () => {
+  it('every sail the pipeline declares is claimed by a catalogue polarAsset', () => {
     const claimed = new Set(BOATS.flatMap((b) => b.sails.map((s) => s.polarAsset)));
     const declared = source.boats.flatMap((b) =>
       Object.keys(b.sails).map((sailId) => `data/polars/${b.id}-${sailId}.json`),

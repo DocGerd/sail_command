@@ -15,12 +15,35 @@ const outDir = join(here, '..', 'app', 'public', 'data', 'polars');
 // that falls through to a friendlier tier.
 const TIERS = ['certificate', 'modelled', 'estimated'];
 
-// Everything below FAILS CLOSED (spec H): a boat or sail missing its id, its
-// provenance tier, its source note, its plausibility bound or its sanity
-// anchors throws and names itself. It never inherits another boat's values —
-// an anchor that silently validates the wrong hull is worse than no anchor.
+// Everything below FAILS CLOSED (spec H): a boat or sail whose id is missing,
+// unsafe or duplicated, or a boat or sail missing its provenance tier, its
+// source note, its plausibility bound or its sanity anchors, throws and names
+// itself. It never inherits another boat's values — an anchor that silently
+// validates the wrong hull is worse than no anchor.
 function requireField(cond, what) {
   if (!cond) throw new Error(`polars-source.json: ${what}`);
+}
+
+// Both halves of the `${id}-${sailId}.json` filename must pass this. Applying
+// it to the boat id alone left the sail id — the other half of the same
+// interpolated string — able to escape the output directory entirely: a sail
+// keyed `../../../ESCAPED` wrote app/public/data/ESCAPED.json, beside
+// harbors.json and mask.bin, with exit 0 (measured, fix round 1).
+const ID_RE = /^[a-z0-9-]+$/;
+
+// Numbers must be real numbers. `>` and `<` coerce, so a table of decimal
+// STRINGS satisfies `v > 0 && v < maxSpeedKn` and ships; lib/polar.ts then
+// interpolates over strings, where `+` concatenates instead of adding.
+function requireNumbers(what, xs) {
+  requireField(Array.isArray(xs) && xs.length > 0, `${what}: not a non-empty array`);
+  for (const v of xs) requireField(typeof v === 'number' && Number.isFinite(v), `${what}: ${JSON.stringify(v)} is not a finite number`);
+}
+
+function requireAngleTable(what, t) {
+  requireField(t != null && typeof t === 'object', `${what} missing`);
+  requireNumbers(`${what}.tws`, t.tws);
+  requireNumbers(`${what}.angle`, t.angle);
+  requireField(t.tws.length === t.angle.length, `${what}: tws/angle length mismatch`);
 }
 
 function validate(name, speeds, boat) {
@@ -30,8 +53,10 @@ function validate(name, speeds, boat) {
   for (const [i, row] of speeds.entries()) {
     if (row.length !== tws.length) throw new Error(`${name}: tws col count @twa ${twa[i]}`);
     for (const [j, v] of row.entries()) {
-      if (!(v > 0 && v < maxSpeedKn))
-        throw new Error(`${name}: implausible ${v} kn @ ${twa[i]}/${tws[j]} (max ${maxSpeedKn})`);
+      if (!(typeof v === 'number' && Number.isFinite(v) && v > 0 && v < maxSpeedKn))
+        throw new Error(
+          `${name}: implausible ${JSON.stringify(v)} kn @ ${twa[i]}/${tws[j]} (max ${maxSpeedKn})`,
+        );
       // monotone in TWS up to 20 kn (25-kn column may be depowered)
       if (j > 0 && j < row.length - 1 && row[j] < row[j - 1] - 1e-9)
         throw new Error(`${name}: non-monotone TWS @ twa ${twa[i]}, tws ${tws[j]}`);
@@ -57,14 +82,23 @@ requireField(Array.isArray(src.boats) && src.boats.length > 0, 'no boats');
 // written, so a bad entry leaves no half-built asset set behind. A one-pass
 // loop writes the sails it reaches before the throw.
 const pending = [];
+// A boat id is an IDENTITY, not just a filename component: boats.ts keys the
+// catalogue by it and polarKey() keys PlanDeps.polars by it. Two boats sharing
+// one id built cleanly and logged the same filename twice, shipping the second
+// boat's speed table and provenance note under the first boat's name — §F.1's
+// overwrite hazard on the boat axis (measured, fix round 1).
+const seenBoatIds = new Set();
 
 for (const boat of src.boats) {
   const id = boat.id;
-  requireField(typeof id === 'string' && /^[a-z0-9-]+$/.test(id), `boat id missing or unsafe: ${id}`);
+  requireField(typeof id === 'string' && ID_RE.test(id), `boat id missing or unsafe: ${JSON.stringify(id)}`);
+  requireField(!seenBoatIds.has(id), `duplicate boat id: ${id}`);
+  seenBoatIds.add(id);
   requireField(typeof boat.name === 'string' && boat.name.length > 0, `${id}: name missing`);
-  requireField(Array.isArray(boat.tws) && boat.tws.length > 0, `${id}: tws missing`);
-  requireField(Array.isArray(boat.twa) && boat.twa.length > 0, `${id}: twa missing`);
-  requireField(boat.beat != null && boat.gybe != null, `${id}: beat/gybe missing`);
+  requireNumbers(`${id}: tws`, boat.tws);
+  requireNumbers(`${id}: twa`, boat.twa);
+  requireAngleTable(`${id}: beat`, boat.beat);
+  requireAngleTable(`${id}: gybe`, boat.gybe);
   requireField(boat.validation != null, `${id}: validation missing`);
   requireField(
     typeof boat.validation.maxSpeedKn === 'number' && boat.validation.maxSpeedKn > 0,
@@ -95,6 +129,7 @@ for (const boat of src.boats) {
 
   for (const sailId of sailIds) {
     const name = `${id}/${sailId}`;
+    requireField(ID_RE.test(sailId), `${id}: sail id missing or unsafe: ${JSON.stringify(sailId)}`);
     const sail = boat.sails[sailId];
     requireField(sail.provenance != null, `${name}: polarProvenance missing`);
     requireField(

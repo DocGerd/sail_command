@@ -50,10 +50,10 @@ export interface BoatDef {
 // These two notes are the app-side copy of pipeline/polars-source.json's
 // per-sail `provenance.note`, which is what build_polars.mjs bakes into each
 // polar asset's `source` field. No compiler spans JSON and TypeScript, so
-// app/src/test/polarProvenance.test.ts is what keeps the two honest: it reads
-// the pipeline source AND the shipped assets and compares them to this
-// catalogue (Task 12; the earlier third copy, build_polars.mjs's own
-// SOURCE_NOTES, is gone).
+// app/src/test/polarProvenance.test.ts is what keeps the three honest: it
+// reads the pipeline source AND the shipped assets and compares them to this
+// catalogue. Task 12 relocated the pipeline copy out of build_polars.mjs's
+// SOURCE_NOTES into polars-source.json; the count is unchanged at three.
 const GENOA_NOTE =
   'Estimate derived from ORC International 2026 certificate Salona 45 "Miles Ahead" (AUT 035/26) — ' +
   'the ~135% genoa table is a modeled overlay on the certificate configuration (+3–5% light-air ' +
