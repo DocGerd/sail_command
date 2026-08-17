@@ -157,7 +157,9 @@ for (const boat of src.boats) {
 
   for (const sailId of sailIds) {
     const name = `${id}/${sailId}`;
-    requireField(ID_RE.test(sailId), `${id}: sail id missing or unsafe: ${JSON.stringify(sailId)}`);
+    // "unsafe", not "missing or unsafe": a sail id is an object key, so a
+    // missing one is unreachable — see the contract comment at the top.
+    requireField(ID_RE.test(sailId), `${id}: sail id unsafe: ${JSON.stringify(sailId)}`);
     const sail = boat.sails[sailId];
     // `provenance` is the JSON key in this file; `polarProvenance` is only the
     // TypeScript field name in boats.ts, and naming that here sends a

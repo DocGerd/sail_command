@@ -37,11 +37,29 @@ import { describe, it, expect, afterAll } from 'vitest';
 //
 // Fix round 1: the "wrote nothing" assertions used to `readdir` the `polars/`
 // directory alone, so a write that escaped that directory landed outside what
-// the assertion looked at. They now walk the whole scratch tree. That upgrade
-// is load-bearing and measured, not assumed: with the sail-id guard removed
-// and the two-pass restructure reverted, the build fails, `polars/` is empty —
-// the old assertion passes — and ESCAPED.json is on disk. Both halves of that
-// two-part precondition are required; neither alone reaches the state.
+// the assertion looked at. They now walk the whole scratch tree.
+//
+// No row below DISCRIMINATES the tree walk from a directory-scoped listing.
+// The two-pass restructure means every abort row throws before anything is
+// written, so `polars/` does not exist and both helpers return []. Within this
+// suite the tree walk is therefore defensive breadth, not something a row
+// measures — keep it anyway: it is the only assertion that would see a write
+// landing outside the output directory.
+//
+// The state it defends against WAS reached, out-of-band in a scratch tree, and
+// needs THREE conditions together: the sail-id guard removed, the two-pass
+// restructure reverted to inline writes, AND the escaping sail written before
+// a LATER boat fails validation.
+//
+//   exit code 1                                  <- build DID fail
+//   readdir(polars/) -> []                       <- directory-scoped PASSES
+//   whole tree -> app/public/data/ESCAPED.json   <- tree walk REDS
+//
+// Drop any one of the three and it is unreachable. With the two-pass
+// restructure in place nothing is written before the throw; with inline writes
+// but no later failure the build exits 0 and `polars/` holds the legitimate
+// files, so the directory-scoped assertion fails rather than passes. Earlier
+// retellings of this named only the first two conditions and do not reproduce.
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const SCRIPT = join(REPO, 'pipeline', 'build_polars.mjs');
