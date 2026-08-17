@@ -49,7 +49,8 @@ import { describe, it, expect, afterAll } from 'vitest';
 // The state it defends against WAS reached, out-of-band in a scratch tree, and
 // needs THREE conditions together: the sail-id guard removed, the two-pass
 // restructure reverted to inline writes, AND the escaping sail written before
-// a LATER boat fails validation.
+// a LATER boat fails validation, with no legitimate sail written first — in
+// practice the escaping sail is its boat's ONLY sail.
 //
 //   exit code 1                                  <- build DID fail
 //   readdir(polars/) -> []                       <- directory-scoped PASSES
@@ -124,8 +125,9 @@ function writtenFiles(outDir: string): string[] {
 /**
  * Every file the run produced ANYWHERE under the scratch root, minus the two
  * inputs the harness itself planted. A directory-scoped listing cannot see a
- * write that escaped that directory, which is exactly how an unvalidated id
- * gets past a "wrote nothing" assertion.
+ * write that escaped that directory. That alone is not enough to slip past a
+ * "wrote nothing" assertion — the full set of conditions is in this file's
+ * header comment, and no row here reaches them.
  *
  * The root is the `mkdtemp` directory the run reports, NOT a fixed number of
  * levels up from `outDir` — deriving it by counting `..` hardcodes the output

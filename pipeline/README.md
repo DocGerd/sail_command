@@ -61,12 +61,15 @@ Edit `pipeline/polars-source.json` to change the data. It is keyed by boat
 each sail carries a `provenance` tier (`certificate` / `modelled` /
 `estimated`, spec G.3) and note. `build_polars.mjs` derives the sail set from
 that map — there is no second list to fall out of step with it — and **fails
-closed**. Exactly what is checked, no wider: a boat id that is missing, unsafe
-or duplicated; a sail id that is unsafe; any two sails resolving to the same
-output file; a boat with no anchors or no plausibility bound; a sail with no
-provenance tier or note. Each throws and names itself rather than inheriting
-another boat's values — an anchor that silently validates the wrong hull is
-worse than no anchor.
+closed**. The identity and provenance contract specifically, stated as what is
+actually checked: a boat id that is missing, unsafe or duplicated; a sail id
+that is unsafe; any two sails resolving to the same output file; a boat with no
+anchors or no plausibility bound; a sail with no provenance tier or note. Each
+throws and names itself rather than inheriting another boat's values — an
+anchor that silently validates the wrong hull is worse than no anchor. That
+list is not an inventory of every guard the script runs; the structural
+validation (grid shapes, numeric types, TWS monotonicity, anchor bands) is
+separate and additional.
 
 Both halves of the output filename are validated: validating only the boat id
 let a sail keyed `../../../ESCAPED` write outside this directory entirely. And

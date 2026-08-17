@@ -15,13 +15,16 @@ const outDir = join(here, '..', 'app', 'public', 'data', 'polars');
 // that falls through to a friendlier tier.
 const TIERS = ['certificate', 'modelled', 'estimated'];
 
-// Everything below FAILS CLOSED (spec H). Stated as what is actually checked,
-// no wider: a boat id that is missing, unsafe or duplicated; a sail id that is
-// unsafe; any two sails resolving to the same output file; a boat missing its
-// plausibility bound or its sanity anchors; a sail missing its provenance tier
-// or source note. Each throws and names itself, and never inherits another
-// boat's values — an anchor that silently validates the wrong hull is worse
-// than no anchor.
+// Everything below FAILS CLOSED (spec H). The IDENTITY and PROVENANCE contract
+// specifically, stated as what is actually checked: a boat id that is missing,
+// unsafe or duplicated; a sail id that is unsafe; any two sails resolving to
+// the same output file; a boat missing its plausibility bound or its sanity
+// anchors; a sail missing its provenance tier or source note. Each throws and
+// names itself, and never inherits another boat's values — an anchor that
+// silently validates the wrong hull is worse than no anchor.
+//
+// Not an inventory of every guard below: the structural ones (grid shapes,
+// numeric types, TWS monotonicity, anchor bands) are separate and additional.
 //
 // Deliberately NOT checked, so nobody reads a guarantee here that does not
 // exist: a MISSING sail id is unreachable (a sail id is an object key), and
