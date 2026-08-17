@@ -165,14 +165,16 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
  * A stored boat snapshot is kept verbatim — that is what lets a plan whose
  * boat has left the catalogue still open. Only its ABSENCE (the pre-#54
  * shape) relabels onto the catalogue's Salona 45. A snapshot that is present
- * but unparseable makes the record unreadable rather than silently reporting
- * a different hull: in release 1 the snapshot is what the UI SHOWS for this
- * plan and nothing else reads it (the solver takes its boat from
- * PlanDeps.boat), so the harm of guessing is stating someone else's boat name
- * and draft as this plan's.
+ * but unparseable makes the record unreadable rather than being replaced by
+ * the catalogue's numbers. Three call sites read this snapshot and propagate
+ * it into the next PlanRequest — lib/recalc.ts, state/replan.ts and
+ * state/reroute.ts — so a substituted one does not stay put; it becomes what
+ * the recalculated or rerouted plan claims its boat was. (The SOLVER is not
+ * among them: it takes its boat from PlanDeps.boat, and nothing under
+ * app/src/routing/** reads PlanRequest.boat.)
  *
- * The sail ENTRIES are validated too, not just the array: boatSnapshot()
- * re-copies this object at the recalc and reroute call sites and reads
+ * The sail ENTRIES are validated too, not just the array: two of those three
+ * call sites re-copy this object through boatSnapshot(), which reads
  * `s.polarProvenance.tier`, so an entry-shaped hole would surface there as a
  * TypeError rather than here as an honest unreadable row.
  */

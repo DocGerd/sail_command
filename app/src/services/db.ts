@@ -56,12 +56,16 @@ export type PlanSummary =
     }
   | {
       kind: 'unreadable';
-      // Distinguishes a record this build simply cannot read yet — written by
-      // a newer build, intact, and openable THERE — from one that is actually
-      // damaged. Prod and `/uat/` share one origin-scoped database, so a
-      // PLAN_SCHEMA_VERSION bump on develop puts real, recoverable UAT plans
-      // in front of a production user; telling them the record is fine is the
-      // difference between an informed two-tap delete and a destroyed plan.
+      // Distinguishes a record this build cannot read YET — one whose stored
+      // schemaVersion is from a newer build — from one that failed for any
+      // other reason. Prod and `/uat/` share one origin-scoped database, so a
+      // PLAN_SCHEMA_VERSION bump on develop puts UAT-written plans in front
+      // of a production user, whose only control on that row is an
+      // irreversible delete; naming which case it is makes that choice
+      // informed. It is NOT an integrity verdict: the discriminator is that
+      // one number, so a record both newer AND corrupt lands in
+      // 'newer-version' too, and the copy is worded to promise only what the
+      // number proves.
       reason: 'newer-version' | 'damaged';
       id: string;
       name: string;
@@ -123,8 +127,14 @@ export async function listPlans(): Promise<PlanSummary[]> {
   // be built on a structure that reproduces it. readNumber is the same
   // tolerant reader the placeholder row uses.
   const all = await (await db()).getAll('plans');
-  // Newest first, matching the reversed index order the store previously
-  // returned: createdAtMs descending, ties broken by id descending.
+  // Newest first: createdAtMs descending, ties broken by id descending. That
+  // reproduces the reversed index order for every record the index actually
+  // returned AND whose ids are this app's own lowercase-hex
+  // crypto.randomUUID()s, where locale collation and IndexedDB's code-unit
+  // key order agree. It is deliberately not claimed as a general equivalence
+  // — a future non-UUID id source could collate differently, and the records
+  // the index omitted entirely (absent/NaN createdAtMs) now sort to the end
+  // via readNumber's 0 fallback, which is the point of this hunk.
   const ordered = [...all].sort((a, b) => {
     const byDate = readNumber(b, 'createdAtMs') - readNumber(a, 'createdAtMs');
     return byDate !== 0 ? byDate : readString(b, 'id').localeCompare(readString(a, 'id'));

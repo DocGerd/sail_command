@@ -9,6 +9,8 @@ import * as openMeteo from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Plan, type SailId, type WindGrid } from '../types';
 import PlansList, { type PlansListProps } from './PlansList';
+import { de } from '../i18n/dict.de';
+import { en } from '../i18n/dict.en';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
@@ -363,8 +365,8 @@ describe('PlansList recalculate (#114)', () => {
   });
 
   // #54 spec §I.3: a record the read-time normaliser cannot handle is LISTED,
-  // never skipped. Stored with a schemaVersion from a newer build, which is
-  // the case the spec names outright.
+  // never skipped. §I.3 names both causes — "missing required field; a
+  // schemaVersion from a newer build" — and this block fixtures both.
   describe('an unreadable record', () => {
     async function saveUnreadable(id: string, createdAtMs: number, name: string) {
       await savePlan({
@@ -389,18 +391,34 @@ describe('PlansList recalculate (#114)', () => {
       expect(screen.getByRole('button', { name: /Readable/ })).toBeInTheDocument();
     });
 
-    // A record a newer build wrote is INTACT and openable there; a damaged one
-    // is not. The row's only control is a destructive one, and prod and /uat/
-    // share one origin-scoped database, so telling the user which case they
-    // are looking at is what makes that two-tap delete an informed choice.
-    it('tells the user a newer-build record is undamaged and openable there', async () => {
+    // The row's only control is a destructive one, and prod and /uat/ share
+    // one origin-scoped database, so telling the user which case they are
+    // looking at is what makes that two-tap delete an informed choice.
+    it('tells the user a newer build wrote it, and claims nothing about its integrity', async () => {
       await saveUnreadable('p2', 2000, 'From The Future');
 
       renderList();
 
       expect(await screen.findByText(/newer version of the app/i)).toBeInTheDocument();
-      expect(screen.getByText(/undamaged/i)).toBeInTheDocument();
+      expect(screen.getByText(/cannot read it/i)).toBeInTheDocument();
       expect(screen.queryByText(/incomplete or damaged/i)).not.toBeInTheDocument();
+    });
+
+    // BOTH dictionaries, asserted on the strings themselves: the rendered
+    // check above runs in English only, so a regex there could never reach the
+    // German copy however many languages it names. The classification comes
+    // from schemaVersion alone (services/db.ts) and cannot rule out a record
+    // that is BOTH newer and corrupt, so neither language may promise the
+    // record is intact — the row's only control deletes it irreversibly.
+    it('#54: neither dictionary promises the newer-version record is undamaged', () => {
+      for (const [lang, dict] of [
+        ['de', de],
+        ['en', en],
+      ] as const) {
+        expect(dict['plansList.unreadable.newerVersion'], lang).not.toMatch(
+          /undamaged|unbeschädigt|intact|unversehrt|heil/i,
+        );
+      }
     });
 
     it('says a genuinely damaged record is damaged, not that it came from a newer build', async () => {

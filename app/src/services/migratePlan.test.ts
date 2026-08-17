@@ -285,10 +285,10 @@ describe('#54 migratePlan: records it refuses, so they can be listed as unreadab
     expect(migratePlan(raw)).toBeNull();
   });
 
-  // The snapshot is what the UI SHOWS for this plan — nothing in
-  // app/src/routing/** reads it, the solver taking its boat from
-  // PlanDeps.boat — so replacing an unparseable one with the Salona's numbers
-  // would state a different hull's name and draft as this plan's.
+  // lib/recalc.ts, state/replan.ts and state/reroute.ts each read this
+  // snapshot and propagate it into the next PlanRequest, so replacing an
+  // unparseable one with the Salona's numbers would not stay put — it would
+  // become what the recalculated or rerouted plan claims its boat was.
   it.each([
     ['a non-object boat', 'not-a-boat'],
     ['a boat with no draftM', { id: 'x', name: 'X', sails: [] }],

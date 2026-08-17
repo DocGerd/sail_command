@@ -830,6 +830,15 @@ describe('#54 lazy plan migration at the read boundary', () => {
   // contract above so it still holds if a future ADDITIVE write-back is ever
   // introduced deliberately: whatever getPlan does, it must never REMOVE a
   // key the stored record had. The legacy quartet is what production reads.
+  //
+  // MEASURED, so nobody trims the wrong row: only the `result` case is
+  // discriminating today. Reinstating the write-back reds the byte-identity
+  // test above and `(result)` — 2 failed, 19 passed. A write-back ADDS at the
+  // top level (schemaVersion) and inside request (boat, sailIds) and only
+  // REMOVES inside result, and the assertion is arrayContaining, so the other
+  // two rows cannot red under it. They are kept as the invariant's full
+  // statement — a future rebuild of request or of the record itself would be
+  // caught by them and by nothing else — not as three independent keepers.
   it.each([
     ['top level', (r: Record<string, unknown>) => r],
     ['result', (r: Record<string, unknown>) => r.result as Record<string, unknown>],

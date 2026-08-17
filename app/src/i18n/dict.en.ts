@@ -430,12 +430,17 @@ export const en = {
   'plansList.confirmDelete': 'Confirm delete',
   'plansList.actionError': 'Action failed. Please try again.',
   // #54: shown for a stored plan the read-time normaliser cannot handle. Two
-  // strings, because the two cases call for different user action: a
-  // newer-build record is INTACT and openable there, and prod and /uat/ share
-  // one origin-scoped database, so a production user can meet one without
-  // having done anything wrong.
+  // strings, because the two cases call for different user action, and prod
+  // and /uat/ share one origin-scoped database, so a production user can meet
+  // the newer-version case without having done anything wrong.
+  //
+  // Says only what the stored schemaVersion PROVES. It deliberately does not
+  // promise the record is undamaged: the classification rests on that one
+  // number, so a record both written by a newer build AND corrupted (partial
+  // write, foreign tool) lands here too — and the row's only control is an
+  // irreversible delete, so the copy must not overstate recoverability.
   'plansList.unreadable.newerVersion':
-    'This plan was saved by a newer version of the app. It is undamaged and can be opened there — this version cannot show it.',
+    'This plan was saved by a newer version of the app. This version cannot read it — a newer one can.',
   'plansList.unreadable.damaged':
     'This plan cannot be opened — the saved record is incomplete or damaged. It is kept, not deleted.',
   // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,

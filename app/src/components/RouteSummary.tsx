@@ -73,8 +73,8 @@ export function ShallowWarning({
   // boat at draftM 2.1, identical to BOAT_DRAFT_M.
   // NO LONGER BLOCKED: Task 11 put the boat on the plan, so
   // `plan.request.boat.draftM` is in scope here (`plan` is a required prop).
-  // The CODE change is tracked separately (#540/#539) and is not part of Task
-  // 11. Must be retired before a second boat becomes user-selectable; a
+  // The CODE change is tracked in #539, which names this site and :186
+  // explicitly, and is not part of Task 11. Must be retired before a second boat becomes user-selectable; a
   // 2.30 m boat relaxed to its correct 2.3 m gate would otherwise be judged
   // against the wrong hull. Same fix owns the rendered draft below.
   const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M;

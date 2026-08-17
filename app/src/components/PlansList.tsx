@@ -213,9 +213,12 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
           // Delete stays available for BOTH reasons, including a record this
           // build is merely too old to read: suppressing it would leave a row
           // the user can never clear if they do not return to the newer
-          // build. What makes that safe is the copy — the newer-version
-          // string states the record is undamaged and openable there, so the
-          // two-tap delete is an informed choice rather than a blind one.
+          // build. What the copy contributes is naming which case this is, so
+          // the two-tap delete is at least an informed choice. It stops short
+          // of promising the record is undamaged, and must keep stopping
+          // short: the classification is derived from the stored
+          // schemaVersion alone (services/db.ts), which cannot rule out a
+          // record that is both newer AND corrupt.
           p.kind === 'unreadable' ? (
             <li key={p.id} className="plans-list-row plans-list-row-unreadable">
               <div className="plans-list-load">
