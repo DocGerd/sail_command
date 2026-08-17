@@ -459,8 +459,8 @@ deviate from it.
   caused) discriminates a hand rotation from a foreign settle — guarded
   against a settle delivered from inside our OWN `easeTo`. **Post-maplibre-gl-6
   (#253): `map.isEasing()` is GONE from `Map`** — v6's `Map extends Evented`,
-  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:589` vs
-  `ui/camera.ts:284`, both re-verified against `maplibre-gl@6.2.0`; they are
+  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:590` vs
+  `ui/camera.ts:284`, both re-derived against `maplibre-gl@6.3.0`; they are
   siblings), and the method survives only on the
   `_camera` field (no TS `private` modifier — convention, not enforced;
   always so, not a 6.2.0 change). `CompassControl.tsx`'s `onMoveEnd` guard is now a
@@ -476,7 +476,7 @@ deviate from it.
   is true for EVERY handler `moveend` whether or not an ease is live; it is
   only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
   gave us on the reachable paths. What makes that conjunction sound: `_stop`
-  (`camera.ts:1197-1210`, 6.2.0 — file byte-identical since 6.1.0) deletes
+  (`camera.ts:1197-1210` — file byte-identical 6.1.0 through 6.3.0) deletes
   `_easeFrameId` and only THEN invokes `_onEaseEnd` at `:1210` — and
   `_afterEase` (`:982`) is what `_onEaseEnd` RESOLVES TO (one closure hop, not
   the same binding; always so, not a 6.2.0 change), bound in `_ease`
@@ -531,7 +531,7 @@ deviate from it.
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
   `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
   re-verified against `maplibre-gl@6.2.0`,
-  re-checked after the #253 v6 upgrade, the 6.1.0 bump and the 6.2.0 bump:
+  re-checked after the #253 v6 upgrade and the 6.1.0, 6.2.0 and 6.3.0 bumps:
   still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
   !sortKey.isConstant();` at the same line; re-check again after any future
   maplibre-gl upgrade),
@@ -676,9 +676,11 @@ deviate from it.
   require three consecutive matches at 400ms, fail CLOSED on budget
   exhaustion with the count history and last three label sets. Three-at-400ms
   is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
-  (`symbol/placement.ts:1268-1277`, 6.2.0) gates re-runs on `commitTime +
-  fadeDuration * durationAdjustment > now` with `fadeDuration: 300` defaulted
-  at `ui/map.ts:539` (same version). Measured effect: spec runtime ~6.5s -> ~2.3s,
+  (`symbol/placement.ts:1268-1277`, unmoved 6.2.0 -> 6.3.0) gates re-runs on
+  `commitTime + fadeDuration * durationAdjustment > now` with
+  `fadeDuration: 300` defaulted at `ui/map.ts:540` (6.3.0; `:539` in 6.2.0 —
+  the two drift independently, never assume one offset). Measured effect:
+  spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
   immediately all along. Whether any OTHER spec shares this defect is
   UNCONFIRMED — a grep of `annotations.spec.ts` (the spec `labels.spec.ts`'s
@@ -945,13 +947,30 @@ deviate from it.
   the newest release, so there is nothing to bump.
   The fix — `continue-on-error` on the first `deploy-pages` step, then a
   `steps.deployment.outcome == 'failure'`-gated warn + wait + retry — landed
-  in PR #418. NOT YET EXERCISED as of 2026-08-07: on the first deploy after
-  that merge, attempt 1 succeeded in 11 s and all three retry steps SKIPPED.
+  in PR #418. FIRST EXERCISED 2026-08-17 (run `32049360413` — the THIRD-shape
+  503 in the next bullet, NOT a #415 timeout): attempt 1
+  failed, the `::warning::` fired, `sleep 60` ran, attempt 2 executed — and
+  attempt 2 ALSO failed, byte-identical text, different Request ID. The retry
+  is now confirmed LIVE AND CORRECTLY WIRED but still UNPROVEN AS A RESCUE;
+  keep those two claims separate. (Through 2026-08-07 it was unexercised:
+  attempt 1 succeeded in 11 s and all three retry steps SKIPPED.)
   A green deploy is therefore NOT evidence the retry works, and never will
   be — only the `::warning::` firing marks a genuine rescue. That run also
   cannot discriminate `.outcome` from `.conclusion` (see the next bullet):
   on a SUCCEEDING step both read `success`, so the correct guard and the
   broken one are indistinguishable there.
+- **Deploy — a THIRD failure shape: an immediate 503 at deployment CREATION**
+  (measured 2026-08-17, run `32049360413`, head `4976df8f`). NOT #415 and NOT
+  #398: the `deploy` job ran only **~67 s** and `createPagesDeployment` itself
+  returned `HTTP 503`, failing BEFORE a deployment object existed — so there
+  was nothing to poll, where #415 is a 10m05s-10m09s poll-ceiling timeout
+  against an ALREADY-CREATED one, and #398 reports success while silently not
+  taking. `build` succeeded;
+  `prod-environment`/`uat-environment`/`smoke-probe` all skipped via
+  `needs: deploy`. Its cause is UNESTABLISHED — do NOT borrow #415's upstream
+  root-cause finding for it. Fully superseded by the next green deploy
+  (`4976df8f` is a direct ancestor of `995b6b23`), so nothing was left stale;
+  #418's retry fired here and did NOT rescue it.
 - **GitHub Actions expression gotchas** (verified 2026-08-06 against the
   documented Contexts grammar AND `actions/runner` source, not from memory):
   a HYPHENATED step id IS valid in dot notation — `steps.deployment-retry
@@ -1041,7 +1060,8 @@ deviate from it.
   `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
 - Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
   loads them via `getArrayBuffer`/`fetch`
-  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, 6.2.0); `font-src`
+  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, unmoved
+  through 6.3.0); `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
   Nothing in the suite yet asserts a label actually renders (#320).
 - `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
@@ -1730,14 +1750,17 @@ deviate from it.
 - MapLibre glyph loading has NO observable failure signal by design:
   `GlyphManager._downloadAndCacheRangePromise`
   (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`; every line
-  number in this bullet re-verified against `maplibre-gl@6.2.0`) catches EVERY
+  number in this bullet re-derived against `maplibre-gl@6.3.0`, all unmoved)
+  catches EVERY
   glyph-range fetch failure and falls back unconditionally to a
   locally-drawn TinySDF glyph — the symbol is still placed, so
   `queryRenderedFeatures` returns identical counts and names whether glyphs
   are real or 100% broken, and `map.on('error')` never fires because nothing
   re-throws. The only signal is a `console.warn` matching `"Unable to load
   glyph range"` at `glyph_manager.ts:144`. Separately,
-  `_getAndCacheGlyphsPromise` (`:104-108`) takes a COMPLETELY silent
+  `_getAndCacheGlyphsPromise` (`:104-108` — the range covers the `return` at
+  :107 that IS the silent path, so do not "tighten" it to :104-106) takes a
+  COMPLETELY silent
   local-font path — no fetch, no warning — whenever the style's `glyphs` URL
   is falsy, and `glyphManager.setURL()` is fed from the style's `glyphs`
   field at two sites in `style.ts` including the style-DIFF path (`:491`)
