@@ -224,9 +224,10 @@ export interface PlanResultOk {
   // status is 'ok' (both-failed returns status 'error' instead).
   readonly sails: readonly SailResult[];
   readonly recommended: SailId;
-  // #54/Task 10b: true unless a sail's solve was cut short by the plan's
-  // wall-clock budget before every requested sail could be compared — always
-  // true in this task, since no code path here produces a partial result yet.
+  // #54 spec §E.3: false when a requested sail's search was cut short by the
+  // plan's wall-clock budget, so that sail was never compared and `recommended`
+  // names a winner picked from the rest. A sail that found no route for any
+  // other reason still counts as compared — its search finished.
   readonly comparisonComplete: boolean;
   // #53: present only when the route required relaxing the depth gate below
   // the requested safety depth. One value for the whole plan — every sail

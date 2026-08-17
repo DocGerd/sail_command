@@ -5,7 +5,13 @@ import { NavMask } from '../lib/mask';
 import { Polar } from '../lib/polar';
 import { WindField } from '../lib/wind';
 import { TEST_MASK_META, TEST_POLAR, testPlanDeps, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type LatLon, type PlanRequest, type PolarTable } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type LatLon,
+  type PlanRequest,
+  type PolarTable,
+  type SailId,
+} from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
 
 // #432: the plan-level wall-clock budget. Solver-heavy file (every case runs
@@ -54,6 +60,7 @@ function planWith(
   deadline: SolveDeadline | undefined,
   mask: NavMask,
   onProbe?: (p: { probeDepthM: number; done: number; total: number }) => void,
+  sailIds: readonly SailId[] = ['genoa', 'fock'],
 ) {
   const request: PlanRequest = {
     origin: ORIGIN,
@@ -63,7 +70,7 @@ function planWith(
     destinationHarborId: null,
     departureMs: T0,
     settings: DEFAULT_SETTINGS,
-    sailIds: ['genoa', 'fock'],
+    sailIds,
   };
   return planRoute(
     request,
@@ -307,5 +314,88 @@ describe('#432 planRoute(): one budget for the whole plan', () => {
     const unbudgeted = planWith(undefined, walledMask(), probed);
     expect(unbudgeted.status).toBe('error');
     expect(probed, 'control: this geometry must reach the relaxation probes').toHaveBeenCalled();
+  });
+});
+
+// #54 spec §E.3: "Budget exhaustion partway through is a PARTIAL result, not a
+// failure." One sail finishing and another aborting must still return
+// `status: 'ok'` carrying the finished sail's route, with the aborted sail's
+// 'search-budget-exceeded' and the comparison marked incomplete — never a
+// one-sail result presented as if both had been compared.
+//
+// The all-sails-exhausted case §E.3 pairs with this is NOT re-asserted here:
+// '#432 planRoute(): one budget for the whole plan' above already pins it
+// (`expect(res.status).toBe('error')` / `expect(res.reason).toBe(
+// 'search-budget-exceeded')` with a deadline spent before the first ring).
+describe('#54 §E.3: budget exhaustion mid-comparison', () => {
+  /**
+   * The abort point is DERIVED from the search, never guessed. `solve()` calls
+   * `deadline.expired()` exactly once per ring, as the first statement of the
+   * ring loop (isochrone.ts), so a single-sail plan's call count IS that
+   * sail's ring count. A deadline expiring after that many calls therefore
+   * lets the plan's first sail finish exactly as it would unbudgeted, and
+   * aborts the second at its own first ring.
+   *
+   * That target is a WINDOW, not a knife-edge, and both its edges are
+   * MEASURED rather than argued: returning `calls - 1` aborts the FIRST sail
+   * too and reds these rows on `status` (expected 'error' to be 'ok'), while
+   * returning `calls * 2` lets the second sail finish as well and reds them
+   * on the aborted sail's `result`. `calls + 1` stays green —
+   * `deadlineAfterCalls` fires on `calls > n`, so a small over-count only
+   * moves the second sail's abort a ring later. Only those three points were
+   * run; the interior is not claimed point by point.
+   */
+  function ringsOfFirstSail(mask: NavMask, firstSail: SailId): number {
+    const counter = deadlineAfterCalls(Infinity);
+    const reference = planWith(counter, mask, undefined, [firstSail]);
+    expect(reference.status, 'the single-sail reference plan must succeed').toBe('ok');
+    expect(counter.calls, 'the reference solve must take more than one ring').toBeGreaterThan(1);
+    return counter.calls;
+  }
+
+  it.each<[SailId, SailId]>([
+    ['genoa', 'fock'],
+    ['fock', 'genoa'],
+  ])(
+    'sailIds [%s, %s]: the first finishes, the second aborts, the plan is a partial ok',
+    (first, second) => {
+      const mask = openWaterMask();
+      const res = planWith(deadlineAfterCalls(ringsOfFirstSail(mask, first)), mask, undefined, [
+        first,
+        second,
+      ]);
+
+      expect(res.status).toBe('ok');
+      if (res.status !== 'ok') return;
+      const finished = res.sails.find((s) => s.sailId === first)!;
+      const aborted = res.sails.find((s) => s.sailId === second)!;
+      expect(finished.result, 'the sail that finished keeps its route').not.toBeNull();
+      expect(finished.reason, 'a finished sail carries no no-route reason').toBeNull();
+      expect(aborted.result, 'the aborted sail has no route to carry').toBeNull();
+      expect(aborted.reason).toBe('search-budget-exceeded');
+      // Both orderings are asserted so this cannot pass on a hardcoded sail
+      // id: the recommendation must name whichever sail actually finished.
+      // It cannot distinguish "the completed set" from "sails[0]", though —
+      // a monotonic deadline always aborts the LATER sails, so on this path
+      // the finished sail is always the first one. Stated rather than
+      // papered over: nothing here pins `assemble`'s `find` against a
+      // positional pick.
+      expect(res.recommended).toBe(first);
+      expect(res.comparisonComplete).toBe(false);
+    },
+  );
+
+  it('CONTROL: every requested sail finishing leaves the comparison complete', () => {
+    // Without this row a hardcoded `comparisonComplete: false` would satisfy
+    // both rows above — the flag would report every plan as partial and no
+    // test would notice.
+    const res = planWith(NEVER, openWaterMask());
+    expect(res.status).toBe('ok');
+    if (res.status !== 'ok') return;
+    expect(
+      res.sails.map((s) => s.result === null),
+      'control: this plan must have every sail finish',
+    ).toEqual([false, false]);
+    expect(res.comparisonComplete).toBe(true);
   });
 });

@@ -485,9 +485,16 @@ export function planRoute(
         reason: out.rigResult ? null : noRouteLabel(out),
       })),
       recommended,
-      // #54/Task 10b: always true here — no code path in THIS task produces
-      // a partial (budget-exhausted-mid-comparison) result yet.
-      comparisonComplete: true,
+      // #54 spec §E.3: a sail whose search was cut short by the plan's
+      // wall-clock budget was never compared, so a result carrying one is a
+      // PARTIAL comparison and says so. 'budget-exhausted' is the only cause
+      // that qualifies: the other three are verdicts from a search that
+      // FINISHED (see combineFailureCause's precedence comment), so a sail
+      // carrying one WAS compared and simply lost.
+      //
+      // Reads the internal cause, never `SailResult.reason` — #282: no code
+      // in this file may branch on a user-facing label.
+      comparisonComplete: sails.every((out) => out.cause !== 'budget-exhausted'),
       rigRecommendation,
       snappedOrigin: origin,
       snappedDestination: destination,
