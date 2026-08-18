@@ -46,8 +46,8 @@ import { boatById, type BoatId } from '../data/boats';
 // most-changed inputs, §3.3). Both surfaces share ONE source of truth —
 // safetyDepthFieldFor(selectedBoat) and commitSetting from OptionsPanel.tsx
 // (#539 item 2 replaced the shared `SAFETY_DEPTH_FIELD` constant with that
-// per-boat derivation at BOTH call sites, so the two still share one
-// source), reading
+// per-boat derivation at BOTH call sites, so the two still share one source
+// and still clamp identically) — reading
 // and writing the SAME `value.safetyDepthM` App.tsx passes to both — so
 // editing in either place is immediately reflected in the other on the next
 // render (there is no local component state to go stale; both surfaces are

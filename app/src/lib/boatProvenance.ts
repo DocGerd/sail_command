@@ -23,13 +23,6 @@ export const POLAR_TIER_LABEL_KEY: Record<PolarTier, MsgKey> = {
  * jib beside a tier-B genoa — so a single boat-level chip has to reduce them.
  * It reduces to the WEAKEST, never the strongest:
  *
- * (Those two sails are named here WITHOUT quote characters on purpose:
- * src/test/sailLiteralCallSites.test.ts scans every non-test file for a bare
- * quoted catalogue sail id in any of the three quote forms, and it caught an
- * earlier revision of this very comment for writing them in backticks.
- * Prose is not exempt from spec F.3's rule, and the guard is right about
- * that — a comment naming an id is one edit away from code naming it.)
- *
  *  - Spec G.2: #54's headline capability is the sail comparison, and a
  *    comparison is driven by the DIFFERENCE between two tables, so it is only
  *    ever as good as the weaker of them.
@@ -46,8 +39,15 @@ export const POLAR_TIER_LABEL_KEY: Record<PolarTier, MsgKey> = {
  * A sail-less boat cannot occur in today's catalogue, but `BoatDef.sails` is
  * typed `readonly SailDef[]` and so permits one. Returning the most cautious
  * label for that case is the fail-closed direction; deriving from an empty
- * list (e.g. `Math.max` of nothing, which is `-Infinity`) would instead round
- * -trip to a bogus lookup.
+ * list instead — `Math.max` of nothing is `-Infinity` — would index the tier
+ * table with a value that is not a tier at all.
+ *
+ * The two sails above are named WITHOUT quote characters on purpose.
+ * `src/test/sailLiteralCallSites.test.ts` scans every non-test file for a
+ * bare quoted catalogue sail id in all three quote forms, and it caught an
+ * earlier revision of this very comment for writing them in backticks. Prose
+ * is not exempt from spec F.3's rule, and the guard was right: a comment
+ * naming an id is one edit away from code naming it.
  */
 export function weakestPolarTier(b: BoatDef): PolarTier {
   let worst: PolarTier = 'estimated';
