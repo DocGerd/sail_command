@@ -121,6 +121,13 @@ export const ROUTING_FAILURE_MESSAGE_KEY: Record<
   'worker-error': 'error.routingCrashed',
   messageerror: 'error.routingMessageError',
   disposed: 'error.routingInterrupted',
+  // #553 / spec §I.3: the ONE typed failure whose remedy is neither "try
+  // again" nor "reload" — the catalogue simply no longer holds this plan's
+  // boat, and both a fresh worker and a fresh page load would resolve it
+  // identically. Deliberately absent from App.tsx's RETRY_MAY_HELP_KEYS
+  // (an allowlist, so absence is the fail-closed direction and suppresses
+  // the retry affordance without a second edit).
+  'boat-not-in-catalogue': 'error.boatNotInCatalogue',
   'worker-init': 'error.workerInit',
   'persist-failed': 'error.planSaveFailed',
   'wind-unclassified': 'error.windUnknown',

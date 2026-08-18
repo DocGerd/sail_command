@@ -139,6 +139,23 @@ touched).
   line is diagnostic only in both modes — it never drives the exit code,
   which comes solely from the per-plan compare.
 
+  **Canonical mode is BLIND TO SAIL ORDER (#549)** — a third order regression
+  it cannot see, unlike the two the digest exists to catch. `canonicalizePlan`
+  SORTS each plan's `sails` array by `sailId`, which is precisely what makes
+  the pre-/post-rename shapes comparable, so two plans holding identical sail
+  entries in a DIFFERENT ORDER canonicalise to the same object and compare
+  IDENTICAL — including the whole-file digest, which is computed over that
+  same sorted serialisation. Sail order is not cosmetic: spec §E.3 makes
+  `PlanRequest.sailIds` the SOLVE order. Two things bound this, and neither
+  is the canonicaliser: **byte mode is not blind to it** (a reordered array
+  changes the serialised bytes), and `recommended`, `comparisonComplete` and
+  `rigRecommendation` pass through UNSORTED, so a reordering that actually
+  changed the verdict still shows. What canonical mode cannot see is a
+  reordering that changed nothing *but* the order. **Certify a deliberate
+  sail-order change in BYTE mode**; do not reach for `--canonical` for it, and
+  do not "fix" this by dropping the sort — that would break the rename
+  comparison the mode exists for.
+
 **The byte comparator is BLIND to a `PlanResultOk` rename in the reassuring
 direction on `becalmed` and `deep-becalmed`.** Every plan in those two arms
 is `PlanResultError` (`error/calm-motor-off`, `error/unreachable`, or on

@@ -92,6 +92,44 @@ export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
   return result.rigRecommendation ?? { kind: 'decided', rig: result.recommended };
 }
 
+/**
+ * #553 / spec §N.4: the MsgKey each `RigRecommendation.kind` renders as.
+ *
+ * Exists because both display surfaces (RouteSummary's rig chip and
+ * PlannerPanel's Ergebnis-strip chip) previously wrote the same inline
+ * `kind === 'moot' ? 'route.rigMoot' : 'route.rigTie'` ternary, which is
+ * EXHAUSTIVE-BY-ACCIDENT: it has no `default`, so adding a fourth variant
+ * silently routed it to `route.rigTie` — i.e. a plan where no comparison
+ * happened at all would have claimed the two sails were "effectively tied".
+ * Neither the compiler nor any existing test can see that, because a ternary
+ * over a widened union still typechecks.
+ *
+ * A `switch` with a `never`-typed exhaustiveness arm reds the BUILD instead,
+ * so the next variant added to `RigRecommendation` cannot ship without copy.
+ * `'decided'` is included for totality but its callers do not use the value:
+ * that arm needs the `{ rig }` payload interpolated, so both call sites branch
+ * on `kind === 'decided'` first and reach this function only for the others.
+ */
+export function rigVerdictKey(kind: RigRecommendation['kind']): MsgKey {
+  switch (kind) {
+    case 'decided':
+      return 'route.fasterRig';
+    case 'tie':
+      return 'route.rigTie';
+    case 'moot':
+      return 'route.rigMoot';
+    case 'not-compared':
+      return 'route.rigNotCompared';
+    default: {
+      // `erasableSyntaxOnly`-safe exhaustiveness check: a new variant makes
+      // this assignment a type error at BUILD time, naming the file that
+      // needs the new string.
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
+}
+
 /** Average speed in knots over the whole passage; 0 for a zero-duration result. */
 export function averageSpeedKn(distanceNm: number, durationMs: number): number {
   const hours = durationMs / 3_600_000;

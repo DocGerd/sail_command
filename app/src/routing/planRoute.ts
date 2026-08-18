@@ -439,6 +439,43 @@ export function planRoute(
   const runAll = (settings: Settings, gate: DepthGate, comfort: number | undefined): RunOut[] =>
     req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort));
 
+  /**
+   * #553 / spec §N.4: a tier-C ('estimated') boat's sail comparison is
+   * WITHHELD, not computed and then hidden. Per §N.3/§N.6-E6, the estimator
+   * derives such a boat's SECOND table as its own base table times the
+   * Salona 45's documented overlay ramp, so the difference between its two
+   * tables is a function of THE RAMP, not of the hull — deterministic,
+   * repeatable, and carrying zero information about that boat. In the spec's
+   * words: "it is not a noisy finding; it is not a finding." (No tier-C boat
+   * is in the catalogue yet — this is the estimator's contract that the first
+   * one must satisfy, not an observed property of shipped data.)
+   *
+   * Computed once per plan HERE and consumed by `assemble` below, so the
+   * suppression is decided in the ROUTING layer and reaches every consumer
+   * through the `PlanResult` type — never in the view. A view-level check
+   * would be a data accident: `PlanResult` is persisted and re-rendered (and
+   * exported), so a verdict suppressed at one render site is a verdict that
+   * still exists in the record and resurfaces at the next one.
+   *
+   * Scoped to `deps.boat.sails` — the boat's WHOLE sail set, not just the
+   * subset `req.sailIds` names. Deliberately the OVER-firing direction, per
+   * this repo's guard-asymmetry rule: the two failure directions cost very
+   * different amounts. Suppressing a comparison that would have been sound
+   * costs a withheld ranking; presenting one that is an estimate-of-an-
+   * estimate ships a speed claim about a hull nobody measured. A MIXED-tier
+   * boat (one certificate sail, one estimated) is caught by the same `some`
+   * and that is correct rather than incidental — comparing a measured table
+   * against an estimated one is not a finding about the hull either.
+   *
+   * Chosen as `some(... === 'estimated')` rather than
+   * `!every(... !== 'estimated')` deliberately: `[].every(...)` is VACUOUSLY
+   * TRUE, so the negated-every form would report a sail-less boat as
+   * suppressed for the wrong reason. `[].some(...)` is FALSE, and the
+   * sail-less case is instead answered by the `sails.length === 2` term of
+   * the gate below, which an empty run list cannot satisfy.
+   */
+  const comparisonSuppressed = deps.boat.sails.some((s) => s.polarProvenance.tier === 'estimated');
+
   const assemble = (sails: readonly RunOut[], shallow: ShallowInfo | null): PlanResult => {
     // #259: `recommended` stays a plain SailId for consumers that only ever
     // need a single pick (tab-seeding in AppState, the saved-plan chip in
@@ -451,11 +488,26 @@ export function planRoute(
     // NOT generalised to N-way. The two-sail comparison path (compareRigs)
     // only fires when exactly both of the first two requested sails solved;
     // otherwise this falls back to naming whichever sail solved.
+    //
+    // #553 / spec §N.4: the ELSE branch now reports `not-compared` instead of
+    // stamping `decided`. Before this change every path that did NOT call
+    // compareRigs still returned `{ kind: 'decided' }`, so three latent cases
+    // presented an unmade comparison as a verdict — N = 1 (one requested
+    // sail), N >= 3 (the `sails.length === 2` gate is false, so the cap
+    // silently degraded into a claim), and the reachable-today case where two
+    // sails were requested and only one solved. All three are answered by
+    // declining to rank, which is why this is NOT the N-way generalisation
+    // §L rejects: the cap stays at 2 and no N-way tie semantics are defined
+    // (spec §N.9 states this explicitly).
+    //
+    // `recommended` is unchanged on every path — it still names a sail with a
+    // non-null result, because the tab seeding and PlansList chip need *a*
+    // sail whether or not a comparison happened.
     let rigRecommendation: RigRecommendation;
     let recommended: SailId;
     const a = sails[0];
     const b = sails[1];
-    if (sails.length === 2 && a.rigResult && b.rigResult) {
+    if (!comparisonSuppressed && sails.length === 2 && a.rigResult && b.rigResult) {
       rigRecommendation = compareRigs(a.rigResult, b.rigResult);
       recommended =
         rigRecommendation.kind === 'decided'
@@ -474,7 +526,7 @@ export function planRoute(
       // call site checks `.some((r) => r.rigResult)` first) — the invariant
       // callers rely on, not re-verified here.
       recommended = found!.sailId;
-      rigRecommendation = { kind: 'decided', rig: recommended };
+      rigRecommendation = { kind: 'not-compared' };
     }
     return {
       status: 'ok',

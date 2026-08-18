@@ -63,6 +63,10 @@
   // verifyMaskBoatGate.test.ts (#54 Task 13) is the same shape once more —
   // reads pipeline/verify_mask.py and pipeline/polars-source.json via
   // `node:fs`.
+  // sweepSailIds.test.ts (#553/#549) is the same shape once more — reads
+  // app/sweep/sweepArms.ts as TEXT via `node:fs` to guard that the #282
+  // harness derives its `sailIds` from the catalogue rather than hardcoding
+  // them; the sweep is never collected by CI, so the guard has to live here.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -78,6 +82,7 @@
     "src/**/chipShallowFill.test.ts",
     "src/**/polarProvenance.test.ts",
     "src/**/buildPolars.failClosed.test.ts",
-    "src/**/verifyMaskBoatGate.test.ts"
+    "src/**/verifyMaskBoatGate.test.ts",
+    "src/**/sweepSailIds.test.ts"
   ]
 }

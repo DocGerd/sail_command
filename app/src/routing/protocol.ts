@@ -25,10 +25,19 @@ export type WorkerRequest =
        * #54: which boat the solver plans with. SAFETY-CRITICAL — it is what
        * `planRoute` derives the spec C.4(a) relaxation floor from, so it is
        * carried explicitly rather than parsed back out of `polarKeys`.
-       * Task 11 added `PlanRequest.boat` and deliberately did NOT replace
-       * this field with it — `boatById(req.boatId)` below throws on an id
-       * outside the catalogue, which a stored snapshot's `string` id may be.
-       * See workerClient.ts's `buildPlanMessage` for the full reasoning.
+       *
+       * #553 / spec §I.3: this field STAYS, and it is still not
+       * `request.boat.id` — but the reason has changed and the previous
+       * comment here now describes the opposite of what happens. It used to
+       * say Task 11 deliberately did not derive this from `PlanRequest.boat`
+       * because `boatById(req.boatId)` below throws on an off-catalogue id.
+       * The client no longer sends a constant: `workerClient.ts`'s `plan()`
+       * resolves `request.boat.id` through `catalogueBoatId()` and REJECTS an
+       * unknown one as a typed `'boat-not-in-catalogue'` failure before this
+       * message is ever posted. So the field is still the NARROWED `BoatId`
+       * (which is what keeps `boatById` below total), and the narrowing
+       * simply happens client-side where it can produce a graceful error
+       * rather than a worker throw.
        */
       boatId: BoatId;
       /**

@@ -23,6 +23,31 @@
  * matched, which is exactly the failure mode this file exists to avoid: a
  * canonicaliser that cannot fail is worse than none.
  *
+ * STATED LIMIT — canonical mode is BLIND TO SAIL ORDER (#549). The `sails`
+ * array is SORTED by `sailId` below, which is exactly what makes the
+ * pre-rename and post-rename shapes comparable at all, and is therefore not a
+ * defect to be fixed here. But it means two plans whose `sails` lists hold
+ * identical entries in a DIFFERENT ORDER canonicalise to the same object and
+ * compare IDENTICAL. That matters because `PlanRequest.sailIds` order is not
+ * cosmetic: spec §E.3 makes it the SOLVE order, so reordering it changes
+ * which sail solves first and which progress messages a plan reports. Two
+ * things bound the exposure, and neither is this file:
+ *
+ *   1. The BYTE comparator (`compare.mjs`'s default mode) is NOT blind to it
+ *      — a reordered `sails` array changes the serialised bytes. Canonical
+ *      mode is the deliberately weaker check, used only to certify a
+ *      known shape change.
+ *   2. `recommended`, `comparisonComplete` and `rigRecommendation` all pass
+ *      through in `rest`, UNSORTED, so an order change that actually altered
+ *      the verdict (e.g. the `a.etaMs <= b.etaMs` tie-break in
+ *      `planRoute.ts`'s `assemble`, which is position-dependent) still shows
+ *      up. What canonical mode cannot see is a reordering that changed
+ *      nothing BUT the order.
+ *
+ * So: certify a deliberate SAIL-ORDER change in byte mode, never in canonical
+ * mode. Do not "fix" this by dropping the sort — that would break the rename
+ * comparison this file exists to make possible.
+ *
  * Every call returns a NEW object — the input plan (and any nested `sails`
  * array or `RigResult`) is never mutated. That matters here specifically
  * because `sweepArms.ts` writes a shared `rows` map that this comparator's
