@@ -96,10 +96,12 @@ function requireAscending(what, xs) {
 //   tws length 1 — `while (j < tws.length - 1 && …)` is `j < 0`, so j stays 1
 //     and `fw = (w - tws[0]) / (tws[1] - tws[0])` is 0/NaN while speeds[row][1]
 //     is undefined: NaN out of EVERY heading, into the isochrone cost.
-//   twa length 1 — NOT a NaN: `a <= twa[0]` and `a >= twa[twa.length - 1]`
-//     are the same test there, so every angle takes a clamp and the unbounded
-//     walk is unreachable. Floored anyway because a one-row table cannot
-//     interpolate over TWA at all, which no polar this validates ever means.
+//   twa length 1 — NOT a NaN: the two clamps compare `a` against the SAME
+//     element there (`twa[0]` IS `twa[twa.length - 1]`), and `a <= x` and
+//     `a >= x` between them cover every angle, so one clamp always returns
+//     and the unbounded walk is unreachable. Floored anyway because a
+//     one-row table cannot interpolate over TWA at all, which no polar this
+//     validates ever means.
 // validate() cannot catch either: its column check is consistent at 1, its
 // TWS-monotonicity check needs `j > 0`, and its anchors read the SOURCE grid,
 // never Polar output.

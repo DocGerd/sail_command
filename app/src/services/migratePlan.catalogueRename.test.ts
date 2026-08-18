@@ -54,8 +54,29 @@ function legacyPlan(): Record<string, unknown> {
     },
     result: {
       status: 'ok',
-      genoa: { rig: 'genoa', legs: [], etaMs: 111_000, durationMs: 1, distanceNm: 1 },
-      fock: { rig: 'fock', legs: [], etaMs: 222_000, durationMs: 1, distanceNm: 1 },
+      // All seven RigResult fields, not a subset: normaliseRigResult refuses a
+      // result missing one the renderer would dereference, and every one of
+      // these has been on RigResult since v0.1.0, so a stub here would be
+      // refused for being unlike anything a released build wrote rather than
+      // for anything this suite is about.
+      genoa: {
+        rig: 'genoa',
+        legs: [],
+        etaMs: 111_000,
+        durationMs: 1,
+        distanceNm: 1,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
+      fock: {
+        rig: 'fock',
+        legs: [],
+        etaMs: 222_000,
+        durationMs: 1,
+        distanceNm: 1,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
       genoaReason: null,
       fockReason: null,
       recommended: 'genoa',

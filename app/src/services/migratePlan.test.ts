@@ -2,42 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { migratePlan } from './migratePlan';
 import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot } from '../types';
 
-// A record in the PRE-#54 shape: no schemaVersion, no request.boat, no
-// request.sailIds, no result.comparisonComplete, one RigResult per rig under
-// a field named after that rig with a `<rig>Reason` sibling, and RigResult
-// carrying `rig` rather than Task 9's `sailId`. Deliberately typed as a bare
-// record — it does not satisfy today's Plan, which is the point.
-function legacyRigResult(rig: string, etaMs: number): Record<string, unknown> {
-  return {
-    rig,
-    // A REALISTIC Leg, not a three-field stub: normaliseRigResult validates
-    // every LegCommon field a renderer reads a property off (isLegShaped), so
-    // a stub here would be refused for being unlike anything a released build
-    // ever wrote rather than for anything this suite is about.
-    legs: [
-      {
-        kind: 'motor',
-        board: null,
-        start: { lat: 54.79, lon: 9.43 },
-        end: { lat: 54.85, lon: 10.51 },
-        startTimeMs: 1_700_003_600_000,
-        endTimeMs: 1_700_007_200_000,
-        headingDeg: 90,
-        twsKn: 8,
-        speedKn: 6.5,
-        distanceNm: 12.5,
-        maneuverAtStart: null,
-      },
-    ],
-    etaMs,
-    durationMs: 3_600_000,
-    distanceNm: 12.5,
-    maneuverCount: 2,
-    motorDistanceNm: 1.5,
-  };
-}
-
-// The fixture's own leg, as a reusable base for the damage rows below.
+// The one leg literal in this file: legacyRigResult spreads it, and the
+// damage rows below perturb copies of it. Declared before its first use, so
+// there is no second copy to drift.
 const HEALTHY_LEG: Record<string, unknown> = {
   kind: 'motor',
   board: null,
@@ -51,6 +18,29 @@ const HEALTHY_LEG: Record<string, unknown> = {
   distanceNm: 12.5,
   maneuverAtStart: null,
 };
+
+// A record in the PRE-#54 shape: no schemaVersion, no request.boat, no
+// request.sailIds, no result.comparisonComplete, one RigResult per rig under
+// a field named after that rig with a `<rig>Reason` sibling, and RigResult
+// carrying `rig` rather than Task 9's `sailId`. Deliberately typed as a bare
+// record — it does not satisfy today's Plan, which is the point.
+function legacyRigResult(rig: string, etaMs: number): Record<string, unknown> {
+  return {
+    rig,
+    // A REALISTIC Leg, not a three-field stub: normaliseRigResult validates
+    // every LegCommon field a renderer reads a property off (isLegShaped), so
+    // a stub here would be refused for being unlike anything a released build
+    // ever wrote rather than for anything this suite is about. Spread from
+    // HEALTHY_LEG rather than repeated, so the damage rows below cannot drift
+    // away from the leg this fixture actually carries.
+    legs: [{ ...HEALTHY_LEG }],
+    etaMs,
+    durationMs: 3_600_000,
+    distanceNm: 12.5,
+    maneuverCount: 2,
+    motorDistanceNm: 1.5,
+  };
+}
 
 function legacyWindGrid(): Record<string, unknown> {
   return {
@@ -344,10 +334,40 @@ describe('#54 migratePlan: records it refuses, so they can be listed as unreadab
     expect(migratePlan(raw)).toBeNull();
   });
 
-  it('refuses a recommended sail whose etaMs is not finite', () => {
+  // `formatNm` is `${nm.toFixed(1)} nm` — a DEREFERENCE, not a format — and
+  // BOTH of these reach it during render (resultSummary.ts:116 for
+  // distanceNm; RouteSummary.tsx:469's unconditional
+  // `formatNm(summary.motorNm)` for motorDistanceNm, carried through raw).
+  // MEASURED per shape: undefined / null / '3' throw, NaN degrades to
+  // "NaN nm". `durationMs` and `maneuverCount` are the CONTROL — the same
+  // measurement shows all four shapes rendering for those two, which is why
+  // this list is exactly these three fields and not the whole interface.
+  it.each(['etaMs', 'distanceNm', 'motorDistanceNm'])(
+    'refuses a recommended sail whose %s is not finite',
+    (field) => {
+      const raw = legacyPlan();
+      ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>)[field] =
+        Number.NaN;
+      expect(migratePlan(raw)).toBeNull();
+    },
+  );
+
+  it.each(['distanceNm', 'motorDistanceNm'])(
+    'refuses a recommended sail whose result has no %s',
+    (field) => {
+      const raw = legacyPlan();
+      delete ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>)[field];
+      expect(migratePlan(raw)).toBeNull();
+    },
+  );
+
+  // The CONTROL for the two rows above: the fields the comment says degrade
+  // really do. Damaging either leaves the record readable, so the refusals
+  // above are field-specific rather than "any damage anywhere".
+  it.each(['durationMs', 'maneuverCount'])('still reads a record whose %s is damaged', (field) => {
     const raw = legacyPlan();
-    ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>).etaMs = Number.NaN;
-    expect(migratePlan(raw)).toBeNull();
+    ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>)[field] = undefined;
+    expect(migratePlan(raw)).not.toBeNull();
   });
 
   // The legs ARRAY passing `Array.isArray` is not enough: each of these was

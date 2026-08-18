@@ -862,8 +862,10 @@ describe('#54 lazy plan migration at the read boundary', () => {
   // both share. Deliberately pins BOTH halves: the quartet really is gone
   // (so nobody reads the doc's residual as hypothetical), AND the record
   // left behind is still current-shape, so it re-reads and still lists —
-  // an older build skips the row until it is upgraded, rather than the
-  // bytes being destroyed.
+  // rather than the RECORD being destroyed. An older build skips the row
+  // (the plan vanishes from its Routes list) until that build is upgraded,
+  // the same user-visible loss a write-back would cause; what separates the
+  // two is consent, not permanence (getPlan's doc, verbatim).
   it('a write under an existing id drops the legacy quartet, and what it leaves still reads and lists', async () => {
     await savePlan(legacyRecord('legacy-1', 1000));
     const before = (await rawStored('legacy-1'))!;

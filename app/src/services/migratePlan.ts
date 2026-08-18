@@ -69,13 +69,31 @@ function normaliseRigResult(x: unknown): RigResult | null {
   //
   // Checked on EVERY sail, not just the recommended one: a damaged
   // non-recommended sail reaches the same dereference the moment the user
-  // switches rig tabs. The remaining RigResult fields (durationMs/distanceNm/
-  // maneuverCount/motorDistanceNm) are deliberately NOT checked here — they
-  // are formatted, never dereferenced, so damage there degrades to NaN text
-  // rather than unmounting anything. The legs ARRAY is not enough on its own
-  // — see isLegShaped above for what each element must carry and what it
-  // deliberately does not.
+  // switches rig tabs.
+  //
+  // `distanceNm` and `motorDistanceNm` are here because `formatNm` is
+  // `${nm.toFixed(1)} nm` — a DEREFERENCE, not a format — and both reach it
+  // during render: resultSummary.ts:116 formats `result.distanceNm`, and
+  // `summary.motorNm` is `result.motorDistanceNm` carried through RAW to
+  // RouteSummary.tsx:469's unconditional `formatNm(summary.motorNm)`.
+  // MEASURED by rendering RouteSummary with each field damaged four ways:
+  // undefined / null / '3' all THROW for these two ("Cannot read properties
+  // of undefined (reading 'toFixed')", "nm.toFixed is not a function"); only
+  // NaN degrades to "NaN nm".
+  //
+  // The remaining two (durationMs, maneuverCount) are deliberately NOT
+  // checked, and that is measured on the same run rather than assumed:
+  // `formatDuration` does arithmetic (`Math.round(ms / 60_000)`) and
+  // `maneuverCount` is rendered as a bare React child, so all four damage
+  // shapes render for both. Do not widen this list to them, and do not
+  // narrow it to `distanceNm` alone — `motorDistanceNm` is the neighbouring
+  // input with the identical signature.
+  //
+  // The legs ARRAY is not enough on its own — see isLegShaped above for what
+  // each element must carry and what it deliberately does not.
   if (!Number.isFinite(rest.etaMs)) return null;
+  if (!Number.isFinite(rest.distanceNm)) return null;
+  if (!Number.isFinite(rest.motorDistanceNm)) return null;
   if (!Array.isArray(rest.legs) || !rest.legs.every(isLegShaped)) return null;
   return { ...rest, sailId: id as SailId } as RigResult;
 }
@@ -89,9 +107,11 @@ function normaliseRigResult(x: unknown): RigResult | null {
  * React root — the white screen the container check exists to prevent,
  * reached one input over.
  *
- * Every field checked here is part of LegCommon (plus the `kind`
- * discriminant) and has existed unchanged since v0.1.0, so this cannot refuse
- * a record any released build wrote.
+ * Every UNCONDITIONALLY checked field is one of LegCommon's eight (plus the
+ * `kind` discriminant), all present in `git show v0.1.0:app/src/types.ts`, so
+ * this cannot refuse a record any released build wrote. `shallow` is the
+ * exception and needs none: #53 added it, it is optional, and it is checked
+ * only when present — a record predating it is unaffected.
  *
  * NOT CHECKED, deliberately and verifiably: `board`, `twaDeg` and
  * `maneuverAtStart`. A repo-wide scan for a property read off any of the

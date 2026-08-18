@@ -175,10 +175,12 @@ export async function listPlans(): Promise<PlanSummary[]> {
  * still reads `result.genoa`/`result.fock`, throws on undefined, and its
  * listPlans catches and SKIPS the row. useSessionRestore calls getPlan at
  * BOOT, so merely opening /uat/ once would make a production user's saved
- * plans vanish from their Routes list, irreversibly — the exact outcome
- * §I.3 exists to remove. §I.3's rollback paragraph does not cover this
- * because it reasons about an older build that also has migratePlan;
- * production does not.
+ * plans vanish from their Routes list — EVERY plan, unprompted, and until
+ * that build is upgraded, which is the SAME duration as the ACCEPTED
+ * RESIDUAL below: what separates the two is consent, not permanence. The
+ * exact outcome §I.3 exists to remove. §I.3's rollback paragraph does not
+ * cover this because it reasons about an older build that also has
+ * migratePlan; production does not.
  *
  * Read-time migration alone satisfies every requirement — the normaliser
  * runs on every read by design, which is the documented cost of lazy
