@@ -12,6 +12,46 @@ export interface SailDef {
   readonly polarProvenance: PolarProvenance;
 }
 
+/**
+ * #54 spec N.2. Which keel the `draftM` above assumes, and how firmly.
+ *
+ * REQUIRED on every boat, including the reference one — an optional field here
+ * would let the next fleet entry ship with the disclosure simply absent, which
+ * is the failure this record exists to prevent.
+ *
+ * `hullVerified: false` means the figure is the model's listed keel from the
+ * builder's or operator's published specification and was NOT checked against
+ * the individual hull's papers. That is an accepted cost of shipping the fleet
+ * (spec N.2), not a satisfied condition, and spec M.1's re-verification rule
+ * still stands over it.
+ *
+ * WHY IT MUST REACH THE UI. A wrong keel is invisible in every artifact the app
+ * renders: the route, the ETA, the depth banner and the shallow chips all look
+ * exactly the same whether the draft is right or 0.45 m too shallow. Only the
+ * disclosure makes it checkable by someone who can actually see the boat — so
+ * spec N.2 requires this on the picker beside the provenance tier, never buried
+ * in a JSON field. The hazard is measured, not hypothetical: EASY GO! and
+ * SPEEDY GO! are the same model and were briefed as one 2.10 m pair, and EASY
+ * GO! turns out to be the 2.55 m deep-keel hull. Shipping it on the model
+ * default would have understated a real vessel's draft by 0.45 m and handed it
+ * a gate 0.5 m too shallow, in the one field everything in spec C hangs on.
+ * That vessel is deferred (spec N.7) rather than routed on an assumed hull.
+ *
+ * NOT PERSISTED, and that is a known gap rather than an oversight (spec N.5):
+ * `BoatSnapshot` carries `draftM` but no draft provenance, so a re-opened saved
+ * plan renders its draft with no sign the keel was assumed. The statement is
+ * plan-time and picker-time only for now; it closes by adding a persisted field
+ * the first time a hull-verified draft ships alongside an assumed one.
+ */
+export interface DraftProvenance {
+  /** The keel variant `draftM` assumes, e.g. 'standard fin-and-bulb'. */
+  readonly keel: string;
+  /** True only when the figure came from THIS hull's own papers. */
+  readonly hullVerified: boolean;
+  /** Where the figure came from, and what it does and does not establish. */
+  readonly note: string;
+}
+
 export interface BoatDef {
   readonly id: string;
   readonly name: string;
@@ -25,6 +65,8 @@ export interface BoatDef {
    * (spec C.5, "The Salona 44 trap").
    */
   readonly draftM: number;
+  /** #54 spec N.2. Which keel `draftM` assumes, and whether it was hull-verified. */
+  readonly draftProvenance: DraftProvenance;
   readonly motorSpeedKn: number;
   readonly maneuverPenaltyS: number;
   readonly sails: readonly SailDef[];
@@ -75,6 +117,20 @@ export const BOATS = [
     // fleet boats.
     name: 'Salona 45',
     draftM: 2.1,
+    draftProvenance: {
+      keel: 'standard',
+      // The app's own long-standing reference figure, not a fleet-research
+      // input: 2.1 m is the draft the whole of #455's below-hull guarantee was
+      // derived against (TOLERANCE_M = 0.9 was CHOSEN so that 3.0 - 0.9 lands
+      // exactly on it). Marked hull-verified: this is a model-level reference
+      // entry with no individual vessel behind it, so there is no hull whose
+      // papers could disagree — unlike the two fleet entries below.
+      hullVerified: true,
+      note:
+        "The app's reference boat, model-level with no individual vessel behind it (spec J " +
+        'OQ-4 carve-out). 2.1 m is the draft the #455 mask-tolerance guarantee is derived ' +
+        'against.',
+    },
     motorSpeedKn: 6.5,
     maneuverPenaltyS: 45,
     sails: [
