@@ -642,7 +642,7 @@ Byte-identical 27-pair sets on both masks, every pair involving Marstal, and
 every one relaxing at 2.3 m on both masks — reproducing all four of the
 comment's figures. **The pair set held.** This reproduces the maintainer
 comment's 351/27/150 split on the PRE mask it must describe, and on the
-POST mask this repo ships today.
+POST mask at `5e98741`.
 
 **Re-snapping is load-bearing, not incidental.** Feeding `harbors.json`'s raw
 `snap` coordinates straight to the connectivity check, without re-snapping at
