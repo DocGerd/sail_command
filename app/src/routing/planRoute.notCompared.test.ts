@@ -26,8 +26,11 @@ vi.setConfig({ testTimeout: SOLVER_TEST_TIMEOUT_MS });
  * Three cases reach that path — N = 1, N >= 3 (the comparison is capped at 2,
  * so there is no verdict to give), and two-sails-one-solved, which is
  * reachable in production TODAY. A fourth is added by §N.4: a tier-C
- * ('estimated') boat, whose two tables differ by a documented overlay ramp
- * rather than by anything about the hull.
+ * ('estimated') sail IN THE COMPARED SET, whose table differs from its
+ * partner's by a documented overlay ramp rather than by anything about the
+ * hull. That scope is the COMPARED set (`req.sailIds`), not the boat's whole
+ * sail set — a third, uncompared estimated sail says nothing about a
+ * certificate-vs-certificate comparison, and the row below pins that.
  *
  * Nothing in the pre-existing suite could see any of this: 354 tests across
  * planRoute / resultSummary / RouteSummary / PlannerPanel / migratePlan /
@@ -207,6 +210,51 @@ describe('#553 assemble: not-compared', () => {
     const deps = depsFor(boat, { genoa: TEST_POLAR, fock: SLOW });
     const r = ok(planRoute(BASE_REQ, uniformWindGrid(12, 0), deps));
     expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
+  });
+
+  // MAJOR 1 (review): THE row that discriminates the two readings of §N.4's
+  // scope. Under the reviewed-and-rejected `deps.boat.sails` scope this boat
+  // suppressed, because it declares an estimated storm jib — even though the
+  // storm jib is not in `req.sailIds` and takes no part in the comparison.
+  // Two certificate tables compared against each other is a sound finding and
+  // must be reported; §E.1 ("the user picks which two to compare") is what
+  // makes this reachable rather than hypothetical.
+  it('three-sail boat: an UNCOMPARED estimated sail does not suppress the comparison', () => {
+    const boat: BoatDef = {
+      ...boatWith('certificate', ['genoa', 'fock', 'storm']),
+      sails: [
+        boatWith('certificate', ['genoa']).sails[0],
+        boatWith('certificate', ['fock']).sails[0],
+        boatWith('estimated', ['storm']).sails[0],
+      ],
+    };
+    const deps = depsFor(boat, { genoa: TEST_POLAR, fock: SLOW, storm: SLOWER });
+    const r = ok(
+      // Explicit even though it matches BASE_REQ: naming only two of the
+      // three sails IS the condition under test.
+      planRoute({ ...BASE_REQ, sailIds: ['genoa', 'fock'] }, uniformWindGrid(12, 0), deps),
+    );
+    expect(r.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
+  });
+
+  // Pins the `sail === undefined` term that scoping to the request introduced:
+  // the lookup can now MISS, and a miss must suppress rather than permit.
+  // An unresolvable provenance is not a certificate.
+  it('a requested sail the boat does not declare suppresses (fail closed)', () => {
+    const boat = boatWith('certificate', ['genoa']);
+    // A polar IS supplied for `ghost`, so the solve succeeds and the plan
+    // reaches `assemble` with two results — otherwise `polarFor` would throw
+    // and this row would be testing the lookup guard instead of the gate.
+    const deps = depsFor(boat, { genoa: TEST_POLAR, ghost: SLOW });
+    const r = ok(
+      planRoute(
+        { ...BASE_REQ, sailIds: ['genoa', 'ghost'] as readonly SailId[] },
+        uniformWindGrid(12, 0),
+        deps,
+      ),
+    );
+    expect(r.sails.filter((s) => s.result !== null)).toHaveLength(2);
+    expect(r.rigRecommendation).toEqual({ kind: 'not-compared' });
   });
 
   // A MIXED-tier boat is suppressed too, and that is the intended reading of

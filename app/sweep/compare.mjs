@@ -76,7 +76,12 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { canonicalizePlan, canonicalizeArmFile } from './canonicalize.mjs';
+import {
+  canonicalizePlan,
+  canonicalizeArmFile,
+  withoutRigRecommendation,
+  classifyRigVerdictChange,
+} from './canonicalize.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { ARM_NAMES } = await import(resolve(here, 'armNames.ts'));
@@ -84,9 +89,18 @@ const EXPECTED = [...ARM_NAMES].sort();
 
 const rawArgs = process.argv.slice(2);
 const canonical = rawArgs.includes('--canonical');
-const [a, b] = rawArgs.filter((x) => x !== '--canonical');
+// #553 MAJOR 4: the third mode. ORDER-SENSITIVE — dirA must be BASE, dirB HEAD.
+const rigVerdictChange = rawArgs.includes('--rig-verdict-change');
+const [a, b] = rawArgs.filter((x) => x !== '--canonical' && x !== '--rig-verdict-change');
 if (!a || !b) {
-  console.error('usage: node compare.mjs [--canonical] <dirA> <dirB>');
+  console.error(
+    'usage: node compare.mjs [--canonical | --rig-verdict-change] <dirA> <dirB>\n' +
+      '  --rig-verdict-change is ORDER-SENSITIVE: <dirA> BASE, <dirB> HEAD',
+  );
+  process.exit(2);
+}
+if (canonical && rigVerdictChange) {
+  console.error('FAIL: --canonical and --rig-verdict-change are different claims; pass one');
   process.exit(2);
 }
 
@@ -122,6 +136,9 @@ let total = 0;
 let same = 0;
 const diffs = [];
 const outcomes = {};
+// #553 MAJOR 4: half 2's bookkeeping (unused unless --rig-verdict-change).
+let verdictChanges = 0;
+const verdictViolations = [];
 
 for (const arm of arms) {
   const fa = readFileSync(`${a}/${arm}.json`, 'utf8');
@@ -142,24 +159,54 @@ for (const arm of arms) {
   const canonB = canonical ? canonicalizeArmFile(jb) : null;
   for (const k of keys) {
     total++;
-    const va = canonical ? canonA[k] : ja[k];
-    const vb = canonical ? canonB[k] : jb[k];
+    // #553 MAJOR 4 half 1: everything EXCEPT the verdict must be identical.
+    const va = rigVerdictChange
+      ? withoutRigRecommendation(ja[k])
+      : canonical
+        ? canonA[k]
+        : ja[k];
+    const vb = rigVerdictChange
+      ? withoutRigRecommendation(jb[k])
+      : canonical
+        ? canonB[k]
+        : jb[k];
     const sa = JSON.stringify(va);
     const sb = JSON.stringify(vb);
     if (sa === sb) same++;
     else diffs.push(`${arm}/${k}  A=${sha(sa)} B=${sha(sb)}`);
+    // #553 MAJOR 4 half 2: and every verdict that DID change must be the one
+    // permitted transition, on a plan that really had no comparison
+    // available. Without this the mode is a blanket "ignore the field" and
+    // cannot fail. Counted separately so the summary reports how many
+    // verdicts moved — a mode that silently observed ZERO changes would
+    // otherwise look identical to a correct run.
+    if (rigVerdictChange) {
+      const verdict = classifyRigVerdictChange(ja[k], jb[k]);
+      if (verdict !== null) {
+        verdictChanges++;
+        if (!verdict.ok) verdictViolations.push(`${arm}/${k}  ${verdict.why}`);
+      }
+    }
     const o = ja[k].status === 'ok' ? (ja[k].shallow ? 'ok+shallow' : 'ok') : `error/${ja[k].reason}`;
     outcomes[o] = (outcomes[o] ?? 0) + 1;
   }
   // Whole-file digest as well: catches an order change a per-plan compare
   // would not see (both classes — see header comment). DIAGNOSTIC ONLY,
   // never gating: this line's verdict does not affect the exit code below.
-  const digestA = canonical ? JSON.stringify(canonA) : fa;
-  const digestB = canonical ? JSON.stringify(canonB) : fb;
+  const digestA = rigVerdictChange
+    ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutRigRecommendation(ja[k])])))
+    : canonical
+      ? JSON.stringify(canonA)
+      : fa;
+  const digestB = rigVerdictChange
+    ? JSON.stringify(Object.fromEntries(keys.map((k) => [k, withoutRigRecommendation(jb[k])])))
+    : canonical
+      ? JSON.stringify(canonB)
+      : fb;
   console.log(
     `arm ${arm.padEnd(16)} ${keys.length} plans  sha A=${sha(digestA)} B=${sha(digestB)} ${
       digestA === digestB ? 'IDENTICAL' : '*** DIFFERS ***'
-    }${canonical ? ' (canonical)' : ''}`,
+    }${canonical ? ' (canonical)' : rigVerdictChange ? ' (rig-verdict-change)' : ''}`,
   );
 }
 
@@ -167,12 +214,22 @@ for (const arm of arms) {
 // RESIDUAL header comment above): makes a SC_SWEEP_LIMIT-truncated run
 // visible in the summary instead of reading identically to a full one.
 const harboursPerArm = arms.length > 0 ? total / arms.length : 0;
+const modeWord = canonical ? 'canonically' : rigVerdictChange ? 'verdict-elided' : 'byte';
 console.log(
-  `\n${same}/${total} plans ${canonical ? 'canonically' : 'byte'}-identical across ${arms.length} arms x ${harboursPerArm} harbours/arm`,
+  `\n${same}/${total} plans ${modeWord}-identical across ${arms.length} arms x ${harboursPerArm} harbours/arm`,
 );
 console.log('A-side outcome distribution:', JSON.stringify(outcomes));
-if (diffs.length) {
-  console.log('\nDIFFERING PLANS:');
-  for (const d of diffs) console.log('  ' + d);
-  process.exit(1);
+if (rigVerdictChange) {
+  console.log(
+    `#553 verdict changes: ${verdictChanges} (all must be decided -> not-compared on a plan with <2 solved sails)`,
+  );
 }
+if (verdictViolations.length) {
+  console.log('\nDISALLOWED VERDICT CHANGES:');
+  for (const v of verdictViolations) console.log('  ' + v);
+}
+if (diffs.length) {
+  console.log('\nDIFFERING PLANS (with rigRecommendation elided):');
+  for (const d of diffs) console.log('  ' + d);
+}
+if (diffs.length || verdictViolations.length) process.exit(1);

@@ -184,6 +184,17 @@ export function routingFailureKey(err: unknown): MsgKey {
  * about a sibling operation sharing it. Accepted deliberately: the uniform
  * teardown is what makes a retry trustworthy, and the alternative (a shared
  * in-flight count across all three consumers) is a larger change than #432.
+ *
+ * #553 CORRECTION — the "either dead, wedged, or holding a worker whose state
+ * we can no longer reason about" premise above is TRUE of all five failure
+ * kinds that existed when it was written and FALSE of
+ * `'boat-not-in-catalogue'`, which `RoutingClient.plan()` raises from a
+ * client-side catalogue lookup BEFORE anything is posted: the worker never
+ * saw the request and its state is perfectly known. Callers therefore gate
+ * this on `failureLeavesWorkerHealthy` below rather than calling it
+ * unconditionally. The shared-singleton consequence recorded above is exactly
+ * why that matters — `dispose()` calls `failAll()`, so disposing on this kind
+ * would let a stale-boat re-plan abort an unrelated in-flight primary plan.
  */
 export function disposeAfterFailure(client: ReplanClient): void {
   try {
@@ -191,6 +202,38 @@ export function disposeAfterFailure(client: ReplanClient): void {
   } catch {
     // Best-effort teardown of an already-broken client.
   }
+}
+
+/**
+ * #553: true when a `plan()` rejection tells us NOTHING is wrong with the
+ * worker, so tearing it down would be pure cost.
+ *
+ * Exactly one kind qualifies today. `'boat-not-in-catalogue'` is raised by a
+ * client-side catalogue lookup before `plan()` posts anything — no pending
+ * entry, no timer, no message — so the worker is untouched and healthy. No
+ * other kind leaves a healthy worker to preserve: 'worker-fatal',
+ * 'worker-error' and 'messageerror' ARE worker faults, 'timeout' leaves one
+ * still grinding on an abandoned solve (the client deadline settles the
+ * promise, it does not terminate the thread), and 'disposed' names a client
+ * already torn down, where the extra call is a no-op anyway.
+ *
+ * Two costs this avoids, one certain and one sharp: a full re-init (a fresh
+ * mask `.slice(0)` plus transfer and the whole polar map) on the next plan,
+ * for a lookup miss; and — because `dispose()` calls `failAll()`, which
+ * rejects EVERY pending entry on a singleton shared by three consumers with
+ * no in-flight guard spanning them — aborting an unrelated in-flight plan,
+ * which would surface to it as 'error.routingInterrupted'.
+ *
+ * Named as a property of the FAILURE rather than as a list of kinds to skip,
+ * so the next kind added has to answer the question this asks. Kept as one
+ * exported predicate rather than three inline `err instanceof RoutingError &&
+ * err.kind === …` checks: two of these three sites already drifted once —
+ * #432 found a bare, unbound `catch {` discarding the error on each of the
+ * replan and reroute plan() paths — and a condition duplicated three ways is
+ * how the next one drifts.
+ */
+export function failureLeavesWorkerHealthy(err: unknown): boolean {
+  return err instanceof RoutingError && err.kind === 'boat-not-in-catalogue';
 }
 
 // Minimal structural slice of RoutingClient (routing/workerClient.ts) —
@@ -272,7 +315,8 @@ export async function replanWithVias(
     // budget, a crashed worker, an undeserializable reply — onto one
     // 'error.internal' banner, which is #433's defect reproduced on the
     // replan path. Classified by RoutingError.kind, never by err.message.
-    disposeAfterFailure(deps.client);
+    // #553: skip the teardown when the worker is provably healthy.
+    if (!failureLeavesWorkerHealthy(err)) disposeAfterFailure(deps.client);
     throw new ReplanError(
       routingFailureKey(err),
       `routing worker rejected the replan request: ${err instanceof Error ? err.message : String(err)}`,

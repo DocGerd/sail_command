@@ -28,7 +28,7 @@ export type WorkerRequest =
        *
        * #553 / spec §I.3: this field STAYS, and it is still not
        * `request.boat.id` — but the reason has changed and the previous
-       * comment here now describes the opposite of what happens. It used to
+       * comment here now gives the wrong reason. It used to
        * say Task 11 deliberately did not derive this from `PlanRequest.boat`
        * because `boatById(req.boatId)` below throws on an off-catalogue id.
        * The client no longer sends a constant: `workerClient.ts`'s `plan()`

@@ -51,7 +51,9 @@ export type RoutingFailureKind =
   // not contain, so there is nothing to plan WITH. Rejected here, before the
   // message is posted, rather than letting protocol.ts's `boatById(req.boatId)`
   // throw inside the worker — that would arrive as an untyped 'worker-fatal'
-  // and be reported with retry-and-reload copy that is false for this cause.
+  // and be reported as a generic internal routing error, whose copy names
+  // no cause and points the user at "a different route or settings" when
+  // the actual remedy is a boat the catalogue still holds.
   // §I.3's guarantee is exactly this narrow: such a plan "still opens, still
   // renders, still exports GPX … Only 'plan again with this boat' is
   // unavailable, and it says so."

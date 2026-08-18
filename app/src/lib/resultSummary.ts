@@ -106,14 +106,19 @@ export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
  *
  * A `switch` with a `never`-typed exhaustiveness arm reds the BUILD instead,
  * so the next variant added to `RigRecommendation` cannot ship without copy.
- * `'decided'` is included for totality but its callers do not use the value:
- * that arm needs the `{ rig }` payload interpolated, so both call sites branch
- * on `kind === 'decided'` first and reach this function only for the others.
+ *
+ * `'decided'` is EXCLUDED from the parameter rather than handled: its key
+ * `route.fasterRig` is `'Faster: {rig}'`, so a caller doing
+ * `t(rigVerdictKey(kind))` with no `{ rig }` argument would render the literal
+ * `Faster: {rig}` to the user. Documenting that callers must not do it is
+ * weaker than making it a type error, and this is an exported helper that
+ * otherwise reads like a total mapping. Both call sites already branch on
+ * `kind === 'decided'` first, so TypeScript narrows to the remaining members
+ * in the else branch and they typecheck unchanged. The exhaustiveness
+ * property is unaffected — a new variant still reds the `never` arm.
  */
-export function rigVerdictKey(kind: RigRecommendation['kind']): MsgKey {
+export function rigVerdictKey(kind: Exclude<RigRecommendation['kind'], 'decided'>): MsgKey {
   switch (kind) {
-    case 'decided':
-      return 'route.fasterRig';
     case 'tie':
       return 'route.rigTie';
     case 'moot':
