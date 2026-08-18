@@ -1892,6 +1892,148 @@ select {
   outline-offset: 2px;
 }
 
+/* ---- #54 boat picker (Boat tab) ---- */
+
+/* Polar-provenance tier chips (spec G.3 / spec N.5's picker label).
+   COMPOUND selectors (`.chip.chip-polar-tier-*`), not bare modifiers: two
+   single-class selectors tie on specificity and source order decides, which
+   is how `.chip-shallow` (#506) and `.chip-shallow-cautious` (#493) each
+   silently lost their fill to `.chip`'s own neutral color-mix. These sit
+   below `.chip` too, so they would win either way — the compound form is
+   belt and braces, and it also keeps them out of chipShallowFill.test.ts's
+   bare-modifier scan rather than relying on the ordering staying put.
+
+   `modelled` deliberately has NO rule: it inherits `.chip`'s neutral fill,
+   which is the honest middle of the three. */
+.chip.chip-polar-tier-certificate {
+  background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
+  color: var(--sc-accent-strong);
+}
+
+/* Estimated polars get the app's established caution pair — the same
+   --sc-depth-warning-* tokens the shallow chips use, whose text token is the
+   WCAG-checked one (see the token block's own note: --sc-depth-warning-fg is
+   far under 4.5:1 against --sc-bg and must not be used for text). */
+.chip.chip-polar-tier-estimated {
+  background: var(--sc-depth-warning-bg);
+  color: var(--sc-depth-warning-text);
+}
+
+.boat-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.boat-option {
+  display: grid;
+  /* The radio keeps its own column so the keel caveat and the provenance
+     disclosure below the label line up under the TEXT, not under the dial. */
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: 0.6rem;
+  row-gap: 0.35rem;
+  padding: 0.6rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 0.5rem;
+}
+
+.boat-option-selected {
+  border-color: var(--sc-accent);
+  background: color-mix(in srgb, var(--sc-accent) 6%, transparent);
+}
+
+.boat-option-radio {
+  /* The global input rule gives every input a 40px min-height; a radio dial
+     must not inherit it or the row grows a blank band. */
+  min-height: 0;
+  margin: 0.2rem 0 0;
+  accent-color: var(--sc-accent);
+}
+
+.boat-option-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.6rem;
+  /* >=44px effective touch target for gloved cockpit use, matching
+     Disclosure's own summary rule. */
+  min-height: 2.75rem;
+  align-content: center;
+  cursor: pointer;
+}
+
+.boat-option-name {
+  font-weight: 600;
+}
+
+.boat-option-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.boat-option-draft {
+  font-size: 0.9rem;
+}
+
+/* Spec N.2's keel disclosure, and the per-sail source notes: small, but
+   never dimmed below the body colour — an unchecked-draft caveat that reads
+   as decoration has failed at the one job it exists for. */
+.boat-option-keel {
+  grid-column: 2;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.boat-option-polars {
+  grid-column: 2;
+}
+
+.boat-option-sails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.boat-option-sail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.boat-option-sail-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.boat-option-sail-note {
+  display: block;
+  font-size: 0.8rem;
+}
+
+/* Spec C.7's clamp announcement. Rendered unconditionally as a live region
+   (BoatPicker.tsx says why), so :empty is what keeps an idle one from
+   costing a row of padding — display:none rather than a zero height, since
+   a padded empty box still shows its background. */
+.boat-picker-notice {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.4rem;
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
+  font-size: 0.9rem;
+}
+
+.boat-picker-notice:empty {
+  display: none;
+}
+
 /* Faster-rig chip (both surfaces) — UI accent, not a map-palette color. */
 .chip-faster-rig {
   align-self: flex-start;

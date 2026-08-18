@@ -25,6 +25,32 @@ export interface BoatDef {
    * (spec C.5, "The Salona 44 trap").
    */
   readonly draftM: number;
+  /**
+   * Spec N.2. Which keel variant `draftM` assumes, for a hull whose draft was
+   * taken from the builder's published specification rather than that
+   * vessel's own papers — e.g. `'standard fin keel (Elan published
+   * specification)'`.
+   *
+   * REQUIRED MITIGATION, not decoration: a wrong keel is invisible in every
+   * artifact this app renders, so `BoatPicker.tsx` surfaces this next to the
+   * provenance tier and the app says plainly that the figure is unchecked.
+   * Spec N.2 records the near-miss that makes the case — EASY GO! was briefed
+   * as its sister ship's 2.10 m standard hull and is in fact a 2.55 m
+   * deep/racing keel, which would have handed a real vessel a gate 0.5 m too
+   * shallow in the one field everything in spec C hangs on.
+   *
+   * Free text rather than an i18n key or an enum, matching
+   * `PolarProvenance.note`: it is sourced provenance about one hull, and both
+   * paraphrasing it per language and forcing it into a closed variant list
+   * are ways to make a citation wrong.
+   *
+   * OPTIONAL because it does not apply to every entry. The Salona 45 is the
+   * app's model-level reference boat (spec J OQ-4's carve-out), not a fleet
+   * hull whose keel was assumed, so it carries none — and absent means "no
+   * such assumption was made", never "the assumption was not recorded".
+   * Spec N.2's mitigation is what obliges every FLEET entry to carry one.
+   */
+  readonly keelAssumption?: string;
   readonly motorSpeedKn: number;
   readonly maneuverPenaltyS: number;
   readonly sails: readonly SailDef[];
