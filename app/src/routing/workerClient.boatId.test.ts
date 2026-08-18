@@ -45,6 +45,15 @@ const { PROBE_BOAT } = vi.hoisted(() => ({
     // Deliberately NOT 2.1: draft is what the relaxation floor is derived
     // from, so a distinct value makes a boat mix-up detectable downstream too.
     draftM: 2.55,
+    // Required on BoatDef since #563. Unused by every row here (which read
+    // only `id`), but a catalogue entry missing it is not a BoatDef, and a
+    // fixture that only looks like one is the kind of thing a later stricter
+    // mock turns into a puzzle.
+    draftProvenance: {
+      keel: 'deep/racing',
+      hullVerified: false,
+      note: 'test stub — not a real hull',
+    },
     motorSpeedKn: 6.0,
     maneuverPenaltyS: 50,
     sails: [

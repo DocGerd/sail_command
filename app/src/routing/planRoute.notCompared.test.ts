@@ -86,6 +86,14 @@ function boatWith(tier: PolarTier, sailIds: readonly string[]): BoatDef {
     id: 'probe-45',
     name: 'Probe 45',
     draftM: 2.1,
+    // Required on BoatDef since #563. Held at the Salona 45's shape so this
+    // fixture differs from the catalogue boat in POLAR provenance only —
+    // draft provenance is not what any row here is about.
+    draftProvenance: {
+      keel: 'standard',
+      hullVerified: true,
+      note: 'test fixture — not a real hull',
+    },
     motorSpeedKn: 6.5,
     maneuverPenaltyS: 45,
     sails: sailIds.map((id) => ({
