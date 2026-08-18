@@ -160,7 +160,7 @@
 #                        entry does)
 #
 #     The strip is a fixed list of whitespace-delimited literals that write
-#     no file (`2>&1` and the /dev/null discards - see INERT_REDIRECTS,
+#     no file (the fd-dups and the /dev/null discards - see INERT_REDIRECTS,
 #     which carries the argument for why removing them cannot create a
 #     permission). It narrows nothing else: `cat f > protected` still keeps
 #     its `>` after the strip and still fires.
@@ -926,15 +926,36 @@ WRITE_CAPABLE_TOKENS=(
 # inside either, so it cannot match, and the strip order is therefore
 # irrelevant rather than merely chosen well.
 #
-# ONLY THESE EXACT SPELLINGS. Do NOT generalise to "any `2>` target" - a
-# `2>docs/superpowers/specs/foo` is a real write to the spec tree and must
-# keep asking (its own selftest row pins this). A NAMED RESIDUAL, left
-# asking deliberately rather than overlooked: `2> /dev/null` with a space,
-# `1>/dev/null`, `>&2`, and any tab-separated spelling. Each is arguably the
-# same inert class, but each is a widening that must be argued and pinned on
-# its own; failing closed costs one prompt.
+# ONLY THESE EXACT SPELLINGS, AS LITERALS. Do NOT generalise to "any `2>`
+# target" - a `2>docs/superpowers/specs/foo` is a real write to the spec tree
+# and must keep asking (its own selftest row pins this). Do NOT replace the
+# list with a PATTERN for "any fd-dup" either: the soundness argument rests
+# on stripping fixed strings that cannot name a file, and a pattern
+# reintroduces exactly the parsing PR #233 was closed over.
+#
+# FD-CLOSE FORMS (`1>&-`, `2>&-`) ARE DELIBERATELY ABSENT. They are not
+# listed as a residual to be swept up later - closing a descriptor is a
+# different operation from duplicating one, it is not needed to silence a
+# command, and nothing has asked for it. Leave them asking.
+#
+# `>&2` NEEDS ITS BOUNDARY MORE THAN ANY OTHER ENTRY, and this is MEASURED,
+# not inferred from the grammar: `echo hi >&2x` CREATES A FILE NAMED `2x`
+# (bash reads `>&word` with a non-numeric word as "redirect both streams to
+# the file word"). So the one-character difference between an inert fd-dup
+# and a real file write is invisible without the boundary rule below. Its
+# own near-miss row pins this.
+#
+# A NAMED RESIDUAL, left asking deliberately rather than overlooked: a
+# spelling with MORE THAN ONE whitespace character between the operator and
+# `/dev/null` (`>  /dev/null`). The boundary is whitespace-general per
+# character (space or tab, see strip_inert_redirects), but runs are not
+# collapsed - that would be a further widening nobody has asked for.
 INERT_REDIRECTS=(
-  '2>&1' '2>/dev/null' '>/dev/null' '> /dev/null' '&>/dev/null' '&> /dev/null'
+  '2>&1' '1>&2' '>&2'
+  '2>/dev/null' '2> /dev/null'
+  '1>/dev/null' '1> /dev/null'
+  '>/dev/null'  '> /dev/null'
+  '&>/dev/null' '&> /dev/null'
 )
 
 # strip_inert_redirects CMD - sets STRIPPED_CMD to CMD with every
@@ -957,9 +978,28 @@ INERT_REDIRECTS=(
 # rescan, so ` cmd 2>&1 2>&1 ` collapses one occurrence per pass (the first
 # match consumes the space the second would need). It terminates because
 # every replacement strictly shortens the string.
+#
+# TABS ARE NORMALISED TO SPACES FIRST, so the boundary is whitespace-general
+# rather than space-only and a tab-separated `2>&1` behaves exactly like a
+# space-separated one. A tab is not a different safety case, and leaving it
+# out would make the guard's behaviour depend on invisible characters. The
+# normalisation is safe in every OTHER direction too, which is why it is
+# applied to the whole string rather than only to the match:
+#   * WRITE_CAPABLE_CHARS holds neither space nor tab, so no character
+#     changes class.
+#   * WRITE_CAPABLE_TOKENS is a substring scan whose only space-bearing
+#     entry is "sh -c"; turning tabs into spaces can therefore only CREATE
+#     matches (a tab-separated `sh<TAB>-c` now fires where it used to slip
+#     past), never destroy one - a tightening, in the fail-closed direction.
+#   * The verb read and both verb-scoped disqualifiers already split on an
+#     IFS of space+tab, so they see identical tokens either way.
+# Runs of whitespace are deliberately NOT collapsed - see the residual note
+# on `>  /dev/null` at INERT_REDIRECTS.
 STRIPPED_CMD=""
 strip_inert_redirects() {
-  local s=" $1 " prev lit pat
+  local s prev lit pat
+  local tab=$'\t'
+  s=" ${1//"$tab"/ } "
   while :; do
     prev=$s
     for lit in "${INERT_REDIRECTS[@]}"; do
@@ -1541,7 +1581,13 @@ if [ "${1:-}" = "--selftest" ]; then
   # and THREE near-miss rows that must still ASK - a surviving bare `>`, a
   # `2>` naming a real spec path, and `/dev/null2`, which is what pins the
   # whitespace-boundary rule against a fail-open substring strip.
-  EXPECTED_CASES=286
+  # (INERT_REDIRECTS wave 2) 286 -> 294, +8: SIX must-suppress rows - one per
+  # entry ADDED to INERT_REDIRECTS (`2> /dev/null`, `1>/dev/null`,
+  # `1> /dev/null`, `1>&2`, `>&2`), plus one for the TAB boundary, which is a
+  # property of strip_inert_redirects rather than of any single entry; and
+  # TWO near-misses - `>&2x`, which bash MEASURABLY turns into a write to a
+  # file named `2x`, and the spaced `2> /dev/nullx`.
+  EXPECTED_CASES=294
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -1604,13 +1650,18 @@ if [ "${1:-}" = "--selftest" ]; then
   # introduces would itself be re-escaped. Only \\, \", \n and \r are
   # handled - the only forms any row in this suite's command strings
   # actually contains (CHAR backslash / CHAR newline / CHAR carriage return
-  # rows).
+  # rows, plus the INERT tab-boundary row). TAB is not cosmetic here: a raw
+  # tab is an ILLEGAL character inside a JSON string, so without escaping it
+  # the tab row would be answered by production's "could not parse tool
+  # input" fallback - reading as `inert`, and testing the JSON parser
+  # instead of the whitespace boundary it exists to pin.
   json_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
     s="${s//\"/\\\"}"
     s="${s//$'\n'/\\n}"
     s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
     printf '%s' "$s"
   }
 
@@ -1764,6 +1815,7 @@ if [ "${1:-}" = "--selftest" ]; then
 
   nl=$'\n'
   cr=$'\r'
+  tab=$'\t'
 
   # --- POSITIVE: a real Bash-mediated write to a protected path must be
   # MATCHED (what the resulting DECISION is - ask for the spec tree, advisory
@@ -2221,23 +2273,37 @@ if [ "${1:-}" = "--selftest" ]; then
   # back.
   #
   # WHICH OF THESE ROWS ARE UNIQUE DETECTORS, measured rather than assumed,
-  # by deleting each row in turn and re-running a seven-mutation battery
-  # (strip reverted; each array entry dropped; loop collapsed to one pass;
-  # whitespace boundary dropped; bare `>` added to the array; generalised to
-  # "any 2> target"; `>`/`&` deleted from WRITE_CAPABLE_CHARS). FIVE rows
-  # are the suite's ONLY detector for some mutation: the four single-entry
-  # rows for `2>/dev/null`, `> /dev/null`, `&>/dev/null` and `&> /dev/null`,
-  # plus the adjacent-repeats row (the only thing that reds when the rescan
-  # loop is collapsed). The OTHER SIX are each caught by a sibling too, and
-  # are kept for a stated reason rather than for coverage they do not add -
-  # do not read them as unique detectors. The verbatim row is REGRESSION
-  # IDENTITY (its name is what tells a future reader the reported defect is
-  # back), the `>/dev/null` and combined rows cover the same array entry
-  # from two directions, and the three near-misses all red together under
-  # the `>`/`&` deletion because that one wrong fix breaks all three at
-  # once - a NARROWER wrong fix separates them (bare-`>`-in-array reds only
-  # the first, "any 2> target" only the second and third, the boundary drop
-  # only the third).
+  # by deleting each INERT row in turn and re-running a NINETEEN-mutation
+  # battery: strip reverted; each of the eleven array entries dropped
+  # singly; rescan loop collapsed to one pass; whitespace boundary dropped;
+  # bare `>` added to the array; generalised to "any 2> target"; `>`/`&`
+  # deleted from WRITE_CAPABLE_CHARS; tab normalisation removed; array order
+  # reversed.
+  #
+  # ELEVEN of the nineteen INERT rows are the suite's ONLY detector for some
+  # mutation - the NINE single-entry rows whose entry no other row exercises
+  # (`2>/dev/null`, `2> /dev/null`, `1>/dev/null`, `1> /dev/null`,
+  # `> /dev/null`, `&>/dev/null`, `&> /dev/null`, `1>&2`, `>&2`), plus the
+  # adjacent-repeats row (the only thing that reds when the rescan loop is
+  # collapsed) and the tab row (the only thing that reds when the tab
+  # normalisation goes).
+  #
+  # The OTHER EIGHT are each caught by a sibling too. They are kept for a
+  # stated reason rather than for coverage they do not add - do not read
+  # them as unique detectors. The verbatim row is REGRESSION IDENTITY (its
+  # name is what tells a future reader the reported defect is back); the
+  # `>/dev/null` and combined rows cover one array entry from two
+  # directions; and the five near-misses overlap because the two BROADEST
+  # wrong fixes break several at once (deleting `>`/`&` from
+  # WRITE_CAPABLE_CHARS reds five of them; "any 2> target" reds three). A
+  # NARROWER wrong fix still separates them: bare-`>`-in-array reds only
+  # `bare > survives`, and dropping the whitespace boundary reds exactly the
+  # three suffix near-misses (`/dev/null2`, `>&2x`, `2> /dev/nullx`).
+  #
+  # ORDER-INDEPENDENCE IS MEASURED, not just argued at INERT_REDIRECTS:
+  # reversing the array reds ZERO rows. That is an EQUIVALENT MUTANT and is
+  # recorded as one - it is evidence the entries cannot interfere, not
+  # evidence of a coverage hole.
   decide_exempt "INERT: the reported command, verbatim"  "ls -la docs/superpowers/plans/ 2>&1"
   decide_exempt "INERT: 2>/dev/null"                     "ls -la docs/superpowers/plans/ 2>/dev/null"
   decide_exempt "INERT: >/dev/null"                      "cat docs/superpowers/specs/x.md >/dev/null"
@@ -2264,6 +2330,31 @@ if [ "${1:-}" = "--selftest" ]; then
   # a redirect into a real file named `/dev/null2`. This row reds the moment
   # the space-delimiting is dropped from strip_inert_redirects().
   decide ask "INERT near-miss: /dev/null2 is a real file"  "ls docs/superpowers 2>/dev/null2"
+
+  # --- INERT REDIRECTS, WAVE 2: the spelling gaps. The first wave's list was
+  # inconsistent - it carried `>/dev/null` in BOTH spacings but `2>/dev/null`
+  # in only one, and omitted the fd-dups to stderr entirely. These are the
+  # identical safety class (a /dev/null discard or an fd-dup, neither of
+  # which can name a file), so they are added rather than left as residuals.
+  # One row per new entry, same per-entry rule as the block above.
+  decide_exempt "INERT: 2> /dev/null (spaced)"           "ls -la docs/superpowers/plans/ 2> /dev/null"
+  decide_exempt "INERT: 1>/dev/null (explicit fd 1)"     "cat docs/superpowers/specs/x.md 1>/dev/null"
+  decide_exempt "INERT: 1> /dev/null (spaced)"           "cat docs/superpowers/specs/x.md 1> /dev/null"
+  decide_exempt "INERT: 1>&2 (explicit fd-dup)"          "ls docs/superpowers 1>&2"
+  decide_exempt "INERT: >&2 (bare fd-dup)"               "ls docs/superpowers >&2"
+  # A TAB, not a space, on either side of the operator - the boundary is a
+  # whitespace class, so this must behave exactly like the space-separated
+  # rows above. Reds if the tab normalisation in strip_inert_redirects goes.
+  decide_exempt "INERT: tab-separated 2>&1"              "ls -la docs/superpowers/plans/${tab}2>&1"
+
+  # --- WAVE 2 NEAR-MISSES. `>&2x` is the sharpest one in this file and it is
+  # MEASURED, not reasoned: `echo hi >&2x` CREATES A FILE NAMED `2x`, because
+  # bash reads `>&word` with a non-numeric word as "both streams to the file
+  # word". So a one-character suffix turns the inert fd-dup just allowlisted
+  # into a real write, and only the whitespace boundary tells them apart.
+  # The /dev/null row is the same shape for the newly spaced form.
+  decide ask "INERT near-miss: >&2x writes a file named 2x"  "ls docs/superpowers >&2x"
+  decide ask "INERT near-miss: 2> /dev/nullx (spaced form)"  "ls docs/superpowers 2> /dev/nullx"
 
   # --- The exemption must not widen the guard either: an allowlisted verb
   # with NO protected path is allowed for the ordinary reason (no hit), and
@@ -2638,7 +2729,7 @@ if [ "$tn" = "Bash" ]; then
       bash_advisory "$p"
       exit 0
     fi
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no pipe, separator, substitution, expansion or escape anywhere in it, and no redirect other than the inert ones (2>&1 and the /dev/null discards, which write no file and are stripped before that check) - which is suppressed silently. Two of those verbs, grep and sed, do have a write surface and so carry an ADDITIONAL per-verb condition (#530): grep must name none of the ugrep options the Claude Code shim intercepts, and sed must use only -n/-E/-r-class read-only flags with a single bare p/d/q/=/n/N script command under at most one address. This command is not that, so it asks: it uses a verb outside that set, fails one of those two per-verb conditions, or contains a write-capable construct. Confirm intent before proceeding."}}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Bash command mentions spec path '"$p"' (docs/superpowers/ is the user-approved source-of-truth spec/plan tree, matched here together with its ancestor; CLAUDE.md makes changing it a MAIN-SESSION act, which is what this prompt enforces). This is the ONLY protected family that still prompts - the committed build outputs (app/public/{data,icons,brand}/, THIRD-PARTY-NOTICES.txt, .pmtiles) now get a non-blocking advisory instead, since a drifted artifact can be regenerated and a rewritten spec cannot. This guard checks whether the path STRING appears anywhere in the Bash command; it does NOT parse shell syntax to work out whether the command is really a write. The one exception is a command PROVEN read-only - a single simple command whose first word is a no-write verb ('"$(readonly_verbs_sentence)"') with no pipe, separator, substitution, expansion or escape anywhere in it, and no redirect other than the inert ones (the fd-dups and the /dev/null discards, which write no file and are stripped before that check) - which is suppressed silently. Two of those verbs, grep and sed, do have a write surface and so carry an ADDITIONAL per-verb condition (#530): grep must name none of the ugrep options the Claude Code shim intercepts, and sed must use only -n/-E/-r-class read-only flags with a single bare p/d/q/=/n/N script command under at most one address. This command is not that, so it asks: it uses a verb outside that set, fails one of those two per-verb conditions, or contains a write-capable construct. Confirm intent before proceeding."}}'
   fi
   exit 0
 fi
