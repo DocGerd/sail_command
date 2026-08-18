@@ -249,6 +249,22 @@ deviate from it.
   `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
   CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
   commit the regenerated file (#248's entire real diff was two version strings).
+- **Python gates live OUTSIDE the `app` toolchain and are NOT required checks.**
+  Workflow `Python lint` (`python-lint.yml`), job **`ruff`**, runs `ruff check .`
+  AND `ruff format --check .` under `working-directory: pipeline`; `Mask
+  integrity` (`verify-mask.yml`, job `verify`) is advisory the same way. The
+  `protect-main` ruleset requires **`app` and `e2e` only** (read off the ruleset
+  API 2026-08-18), so a red `ruff` merges silently — it is not a gate, it is a
+  job someone has to look at. Run both after ANY `pipeline/**` change:
+  typecheck/lint/vitest are all JS-side and structurally cannot see Python
+  (measured — #538's three E501s entered on Task 13's OWN commit and survived
+  that task's review rounds AND the whole-branch review, because every gate any
+  of them ran was the `app` toolchain).
+  Locally: `./pipeline/.venv/bin/ruff check pipeline/` + `… format --check
+  pipeline/`. That venv carries its OWN ruff, unpinned against CI's hash-pinned
+  `python-lint-requirements.txt` (measured 2026-08-18: venv 0.16.2 vs CI
+  0.16.3) — the `node_modules`-vs-lockfile trap in a second language, so a
+  local pass is evidence, not proof.
 - Pipeline: `npm --prefix pipeline run polars|harbors|seamarks|mask|icons` (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
@@ -281,6 +297,16 @@ deviate from it.
   not expect a fixed offset. Reading the diff cannot catch it; only running
   lint does. This repo's convention of long, markdown-rich JSDoc prose is
   what makes it reachable (PR #513 wave 5).
+- **An empty array defeats `??` and truthiness backfills**: `[]` is neither
+  nullish nor falsy, and `Array.isArray([]) && [].every(...)` is VACUOUSLY
+  TRUE. All three `sailIds` backfills (`lib/recalc.ts`, `state/replan.ts`,
+  `state/reroute.ts`) are `??`/truthiness and stay blind to `[]` — what closes
+  the hazard is UPSTREAM (`services/migratePlan.ts` rebuilds an empty stored
+  list from the sails the result actually lists) plus a typed-no-route backstop
+  where it landed (`planRoute.ts`'s `tier1[0]?.cause ?? 'mask-blocked'`,
+  formerly a `!` that died as an unnamed TypeError, forwarded as `worker-fatal`
+  and shown as the generic `error.routingFailed`). Validate `length > 0`
+  explicitly wherever a list means "at least one".
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -1268,9 +1294,12 @@ deviate from it.
   a word merely CONTAINING or ENDING with a keyword still matches (`postfix
   #12`, `unclose #13`), which is the safe direction for a nudge. It also
   deliberately drops the gerunds (`closing`/`fixing`/`resolving` are not
-  GitHub keywords, and the old `[a-z]*` matched them). Whether GitHub itself
-  parses the BRACKETED form is UNVERIFIED — widen the grep rather than reason
-  about it: the check is free and its failure mode is silent.
+  GitHub keywords, and the old `[a-z]*` matched them). The BRACKETED form is
+  now MEASURED and does NOT close: PR #538 merged into `develop` (the default
+  branch) carrying commit `66bdc8b` subject `fix(#54): …`, and #54 stayed open
+  with `updated_at` unmoved. Keep the grep matching it anyway — it is free, its
+  failure mode is silent, and one measurement of one form is not a licence to
+  write conventional-commit scopes around issue refs.
   Mirror check in the OTHER direction: after a merge that deliberately used
   `Refs #N` rather than a closing keyword because N's specified fix was NOT
   implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
@@ -1377,6 +1406,24 @@ deviate from it.
   sits once at the top of the file. `.github/scripts/check-no-home-paths.sh`
   cannot catch this class (grep follows the link, the leak is in the blob) —
   tracked as #479.
+- **A fix verified AT ITS OWN SITE says nothing about siblings.** #538 removed
+  `getPlan`'s destructive write-back and proved BY RUN that `getPlan` no longer
+  writes — while `replanWithVias` and the recalc-replace still reach `savePlan`
+  with a record that has been through `migratePlan`, re-opening the same hazard
+  through a different door (resolved as a DOCUMENTED residual: those two writes
+  are intended — a replan's whole point is a new result). Both `db.test.ts` pins
+  are `getPlan`-scoped by name, so no suite run could have seen it. Ask "is the
+  HAZARD closed?", never "is the fix in place?", and enumerate the hazard's
+  SHAPE (who else writes a migrated record?) rather than the fix's location.
+  Distinct from "a fix INHERITS its bug's blind spot" below: that one is the
+  defect reproduced INSIDE the fix, this one the defect left standing BESIDE it.
+- **When a list is accused of being non-exhaustive, SCOPE it — do not hedge
+  it.** A hedge weakens a claim; naming the narrower domain makes it TRUE.
+  "Exactly what is checked, no wider" (false, omitted ~13 guards) became "the
+  identity and provenance contract specifically … not an inventory of every
+  guard", plus an explicit pointer to the structural ones. Same move fixed a
+  `v0.1.0` claim: "every UNCONDITIONALLY checked field", with the conditional
+  one named as the exception.
 - Mutation-check new tests before trusting them: an "equivalence" test
   deriving expectations from the function under test always passes (#50
   reached reviewer approval with three such false-pass holes, caught pre-merge
