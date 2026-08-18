@@ -661,6 +661,22 @@ others); it cannot move pointing angles, so every estimated boat **inherits the 
 and gybe angles outright** as an inherited claim rather than a derived one; it cannot capture hull
 shape; it cannot fix a wrong keel; and it says nothing about waves, current, fouling or reefing.
 
+**Worked instance of the hull-shape limit, recorded because it was nearly mistaken for an estimator
+error** (PR #565 review, 2026-08-18). The Elan's only independent report reads *"just over 6 knots
+close-hauled in only 8 knots true, and just under 6 in 6-7 knots"*. Comparing that second half
+against a TWS-6 cell gives ~26 %, which looks like a second, larger light-air error mode. **It is
+not one.** A uniform scalar has identical relative error in *every* cell by construction, so there
+cannot be one cell 9 % off and another 26 % off against the same reference; the gap decomposes as
+`9.2 % estimator ⊕ 18.3 % base-table falloff`, and that falloff is inherited verbatim from the
+donor. The article's own pair is also not a usable probe: it has the boat holding speed while true
+wind falls about a fifth, where the certificate-anchored donor drops 18 % over the same span — no
+displacement-cruiser polar is that flat, so the two prose observations are not precise enough to
+differentiate. **§N.3's published band stands; the only like-for-like discrepancy is 9.2 %.**
+
+The general rule this instance illustrates, worth more than the instance: **any second, larger
+percentage measured against a uniform-scalar estimate is measuring something other than the
+estimator.** Decompose before widening a band.
+
 ### N.4 Two sails, and the comparison suppressed by type
 
 **Decided:** a tier-C boat ships **two sails**, and its sail comparison is **withheld**.
