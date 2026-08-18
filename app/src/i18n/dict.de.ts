@@ -36,6 +36,24 @@ export const de = {
   'options.showOwnship.label': 'Meine Position anzeigen',
   'options.showOwnship.help':
     'Zeigt deine GPS-Position und den Genauigkeitskreis überall auf der Karte an — beim Planen, ohne Plan oder in der Live-Ansicht, nicht nur während der Live-Führung. Consumer-GPS-Genauigkeit, keine kartengenaue Positionsbestimmung; dies ist eine Törnplanungshilfe, kein Navigationsgerät. Das Aktivieren fragt nach dem Standortzugriff.',
+  // #54: Bootsauswahl (BoatPicker im Boot-Tab).
+  'boat.section.title': 'Bootsauswahl',
+  'boat.picker.label': 'Boot auswählen',
+  'boat.draft': 'Tiefgang {depth} m',
+  // Spec G.3: Herkunftsstufen der Polardaten. Bewusst keine Buchstaben
+  // (A/B/C) im Text — die Stufenbuchstaben sind Spec-interne Bezeichner und
+  // sagen einer Seglerin nichts; das Wort selbst schon.
+  'boat.polarTier.certificate': 'Zertifikat',
+  'boat.polarTier.modelled': 'Modelliert',
+  'boat.polarTier.estimated': 'Geschätzt',
+  'boat.polarTier.aria': 'Polardaten: {tier}',
+  'boat.polarDetail.summary': 'Polardaten & Herkunft',
+  // Spec N.2. „Geprüft“, nicht „verifiziert“: Spec N.5 verbietet in neuen
+  // Texten die Register-Wörter genau/verifiziert/zuverlässig/sicher.
+  'boat.keel.assumed':
+    'Angenommener Kiel: {keel}. Nicht anhand der Papiere dieses Schiffs geprüft.',
+  // Spec C.7: nach oben geklemmt, gespeichert — und angesagt. Nur nach oben.
+  'boat.clamp.notice': 'Sicherheitstiefe auf {depth} m angehoben – Mindestwert für {boat}.',
   // #299: Abschnittsüberschriften im Boot-Tab (SettingsPanel).
   'settings.section.boatSafety': 'Boot & Sicherheit',
   'settings.section.propulsion': 'Antrieb',

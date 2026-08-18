@@ -37,6 +37,23 @@ export const en = {
   'options.showOwnship.label': 'Show my position',
   'options.showOwnship.help':
     'Shows your GPS position and accuracy circle on the map wherever it is open — planning, no plan, or Live view — not just during Live guidance. Consumer-GPS accuracy, not chart-grade positioning; this is a passage-planning aid, not a navigation device. Turning this on will ask for location permission.',
+  // #54: boat selection (BoatPicker on the Boat tab).
+  'boat.section.title': 'Boat selection',
+  'boat.picker.label': 'Select boat',
+  'boat.draft': 'Draft {depth} m',
+  // Spec G.3 provenance tiers. Deliberately no A/B/C letters in the copy —
+  // the letters are spec-internal identifiers and mean nothing to a skipper;
+  // the word does.
+  'boat.polarTier.certificate': 'Certificate',
+  'boat.polarTier.modelled': 'Modelled',
+  'boat.polarTier.estimated': 'Estimated',
+  'boat.polarTier.aria': 'Polar data: {tier}',
+  'boat.polarDetail.summary': 'Polar data & provenance',
+  // Spec N.2. "Checked", not "verified": spec N.5 rules the register words
+  // accurate/verified/reliable/safe out of any new copy.
+  'boat.keel.assumed': "Assumed keel: {keel}. Not checked against this vessel's papers.",
+  // Spec C.7: clamped up, persisted — and announced. Up only.
+  'boat.clamp.notice': 'Safety depth raised to {depth} m — the minimum for {boat}.',
   // #299: section headings on the Boat tab (SettingsPanel).
   'settings.section.boatSafety': 'Boat & safety',
   'settings.section.propulsion': 'Propulsion',

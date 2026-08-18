@@ -51,7 +51,8 @@ import { usePersistedNumber } from './lib/usePersistedNumber';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
-import { DEFAULT_SAIL_IDS } from './data/boats';
+import { boatById, DEFAULT_SAIL_IDS } from './data/boats';
+import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
 import {
@@ -175,6 +176,13 @@ function AppShell() {
   // re-measure `.map-stack-tl`'s position.
   useBannerHeight();
   const [settings, setSettings] = useSettings();
+  // #54: the selected boat. localStorage (usePersistedBoatId), validated
+  // against the catalogue on read — deliberately NOT a `Settings` field; see
+  // that hook's own docstring. Held here because BOTH tabs need it: the Boat
+  // tab renders the picker, and PlannerPanel's inline safety-depth field
+  // derives its minimum from the same selection (#539 item 2).
+  const [boatId, setBoatId] = usePersistedBoatId();
+  const boat = boatById(boatId);
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
   const { planning, run, ensureClient } = usePlanFlow();
@@ -1165,6 +1173,7 @@ function AppShell() {
               onDepartureChange={setDepartureMs}
               settings={settings}
               onSettingsChange={setSettings}
+              boat={boat}
               canPlan={canPlan}
               planDisabledReason={planDisabledReason}
               online={online}
@@ -1181,6 +1190,8 @@ function AppShell() {
             <SettingsPanel
               value={settings}
               onChange={setSettings}
+              boatId={boatId}
+              onBoatIdChange={setBoatId}
               titleRef={boatSettingsHeadingRef}
             />
           )}

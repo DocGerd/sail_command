@@ -15,7 +15,8 @@ import { routingSettingsDirty } from '../lib/planForm';
 import { resultSummary, rigVerdictKey, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
-import { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
+import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
+import type { BoatDef } from '../data/boats';
 import NumberInput from './NumberInput';
 import Card from './Card';
 import Field from './Field';
@@ -67,6 +68,10 @@ export interface PlannerPanelProps {
   onDepartureChange: (ms: number) => void;
   settings: Settings;
   onSettingsChange: (s: Settings) => void;
+  // #539 item 2: the selected boat, read ONLY for this panel's inline
+  // safety-depth bounds. The picker itself lives on the Boat tab
+  // (SettingsPanel/BoatPicker); this panel never changes the selection.
+  boat: BoatDef;
   canPlan: boolean;
   planDisabledReason: string | null;
   // #64 phase 4 (§3.5): drives the empty/first-run onboarding line, which only
@@ -129,6 +134,7 @@ export default function PlannerPanel({
   onDepartureChange,
   settings,
   onSettingsChange,
+  boat,
   canPlan,
   planDisabledReason,
   online,
@@ -142,6 +148,10 @@ export default function PlannerPanel({
 }: PlannerPanelProps) {
   const t = useT();
   const [lang] = useLang();
+  // #539 item 2: bounds follow the SELECTED boat (spec J OQ-1's
+  // `draftM + 0.1`). Same derivation the Boat tab's own render of this field
+  // uses, so the two surfaces still clamp identically.
+  const safetyDepthField = safetyDepthFieldFor(boat);
   const { recent, remember } = useRecentHarbors();
   // Per-endpoint "editing" flag: a selected endpoint collapses to a compact row,
   // and "Ändern"/"Change" reopens its combobox without clearing the selection.
@@ -523,15 +533,15 @@ export default function PlannerPanel({
         </Field>
         <Field
           className="planner-safety-depth"
-          label={t(SAFETY_DEPTH_FIELD.labelKey)}
+          label={t(safetyDepthField.labelKey)}
           htmlFor="planner-safety-depth"
         >
           <NumberInput
             id="planner-safety-depth"
             value={settings.safetyDepthM}
-            min={SAFETY_DEPTH_FIELD.min}
-            max={SAFETY_DEPTH_FIELD.max}
-            step={SAFETY_DEPTH_FIELD.step}
+            min={safetyDepthField.min}
+            max={safetyDepthField.max}
+            step={safetyDepthField.step}
             onCommit={(n) => commitSetting(settings, 'safetyDepthM', n, onSettingsChange)}
           />
         </Field>

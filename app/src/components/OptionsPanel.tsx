@@ -1,7 +1,7 @@
 import type { Settings } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
 import { minSafetyDepthM } from '../lib/boatDepth';
-import { boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 
 // #299: this file no longer renders anything — its default-exported
 // component (and OptionsPanel.test.tsx, which exercised it directly) were
@@ -39,6 +39,18 @@ export interface FieldSpec {
 // The spec (bounds included) lives here so both surfaces share one source.
 // 2.2 m is a safety decision, not a UI nicety: it must never allow a value
 // below the 2.1 m draft plus a minimum safety margin.
+// #539 item 2: this is the DEFAULT boat's spec, and only the default boat's.
+// `min` is the one boat-dependent field in it — spec J OQ-1 makes the UI
+// minimum `draftM + 0.1` per boat — so ANY SURFACE THAT RENDERS AN INPUT MUST
+// GO THROUGH `safetyDepthFieldFor(selectedBoat)` BELOW, never through this
+// constant. It stays exported because `max`, `step` and `labelKey` are
+// boat-independent, and because RouteSummary and the drift guard in
+// test/maskTolerance.test.ts legitimately reason about the default boat.
+//
+// Why this path needs fixing rather than being left to the shallow banner:
+// it is QUIETER than the #53 relaxation path. A gate the user typed under
+// their own keel produces no `shallow` block at all, so nothing discloses a
+// wrong minimum — where a relaxed gate at least banners itself.
 export const SAFETY_DEPTH_FIELD: FieldSpec = {
   key: 'safetyDepthM',
   labelKey: 'options.safetyDepth.label',
@@ -48,6 +60,19 @@ export const SAFETY_DEPTH_FIELD: FieldSpec = {
   max: 10,
   step: 0.1,
 };
+
+/**
+ * #539 item 2 / spec J OQ-1. The safety-depth input's bounds for the boat the
+ * user has actually selected.
+ *
+ * Spread-then-override rather than a second literal, so `max`, `step` and
+ * `labelKey` cannot drift apart from `SAFETY_DEPTH_FIELD`'s — the two would
+ * otherwise be a pair of hand-written tables with no derivation between them,
+ * the shape this repo has been bitten by before.
+ */
+export function safetyDepthFieldFor(b: BoatDef): FieldSpec {
+  return { ...SAFETY_DEPTH_FIELD, min: minSafetyDepthM(b) };
+}
 
 // #243: depth comfort preference margin, rendered on the Boat tab
 // (SettingsPanel.tsx) with its own help paragraph, unlike the four plain
