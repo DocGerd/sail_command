@@ -666,7 +666,12 @@ finding. So:
   produced a result** — which also
   closes the latent N = 1 and N ≥ 3 cases that stamp `decided` today (#553).
 - Enforced in `assemble`, **by type, never in the view**.
-- No ★ on the tab, no `chip-faster-rig`.
+- No ★ on the tab, and **no faster-rig claim**. Corrected 2026-08-18 (PR #564 review): an earlier
+  wording said "no `chip-faster-rig`", naming a CSS class where it meant the claim. `tie` and
+  `moot` already render their honest strings through that same class, so removing the element for
+  `not-compared` would either regress #259's honest-chip behaviour or add a third rendering path
+  for no benefit. The class is a styling hook; what must not appear is the assertion that one sail
+  is faster.
 
 **Because both ETAs remain visible, absence is not sufficient disclosure.** A reader seeing two
 times will infer the comparison the app declines to make. The copy must therefore disclaim **the
