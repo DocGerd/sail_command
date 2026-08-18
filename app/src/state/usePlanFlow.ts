@@ -7,19 +7,31 @@ import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { dedupeViaPoints, ROUTING_FAILURE_MESSAGE_KEY, routingFailureKey } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
-import type { Plan, PlanRequest, PlanResult, Rig, Settings, WindGrid } from '../types';
+import {
+  PLAN_SCHEMA_VERSION,
+  type Plan,
+  type PlanRequest,
+  type PlanResult,
+  type SailId,
+  type Settings,
+  type WindGrid,
+} from '../types';
 
 export type PlanningState =
   | { phase: 'idle' }
   | { phase: 'fetching-wind' }
-  // #340: `rig` is the only progress signal — the router runs genoa then
-  // fock SEQUENTIALLY (routing/planRoute.ts's `runBoth` evaluates
-  // `run('genoa', …)` then `run('fock', …)` as plain object-literal
-  // properties, both synchronous, no interleaving), so "which rig is
-  // currently solving" is an honest, bounded phase indicator — unlike the
-  // removed simulatedToMs/FORECAST_HORIZON_MS percentage, which capped
-  // around 5% and reset to 0 at this exact rig switch (#340).
-  | { phase: 'routing'; rig: Rig }
+  // #340/#54: `sailId` is the only progress signal — the router runs
+  // req.sailIds SEQUENTIALLY (routing/planRoute.ts's `runAll` maps over
+  // them, one synchronous `run()` call per element, no interleaving), so
+  // "which sail is currently solving" is an honest, bounded phase indicator
+  // — unlike the removed simulatedToMs/FORECAST_HORIZON_MS percentage, which
+  // capped around 5% and reset to 0 at every sail switch (#340). `index`/
+  // `total` are computed HERE (from the same `req.sailIds` the solve order
+  // itself follows), not read from a module constant — §E.3 deleted the old
+  // `RIG_ORDER` for exactly this reason: the request's own ordered list is
+  // the one source of truth. PlannerPanel.tsx's "sail N of 2" phase readout
+  // renders these two fields directly.
+  | { phase: 'routing'; sailId: SailId; index: number; total: number }
   // #53: the worker is probing relaxed depth gates (mask connectivity BFS)
   // after an unreachable solve at the requested safety depth. Reported so the
   // UI shows the probe phase instead of a stalled routing bar; the relaxed
@@ -142,8 +154,9 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // Transferred to the worker on postMessage — always pass a
           // copy and keep assets.ts's module-cached original intact.
           maskBuffer: assets.maskBuffer.slice(0),
-          polarGenoa: assets.polarGenoa,
-          polarFock: assets.polarFock,
+          // #54: cloned, never transferred — the whole catalogue's polars,
+          // sent once so every later plan only names keys.
+          polars: assets.polars,
         });
       }
       await readyRef.current;
@@ -228,11 +241,49 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         result = await client.plan(
           req,
           windGrid,
-          // #340: only `rig` drives the UI now (phase indication, not a
-          // percentage) — the worker's tMs/frontierSize are still throttled
-          // upstream (workerClient.ts) but no longer consumed here.
-          (rig) => {
-            transition({ phase: 'routing', rig });
+          // #340/#54: only `sailId` drives the UI now (phase indication, not
+          // a percentage) — the worker's tMs/frontierSize are still
+          // throttled upstream (workerClient.ts) but no longer consumed
+          // here. `index`/`total` are derived from req.sailIds (the solve
+          // order itself), not a module constant.
+          //
+          // #54 fix round 1: an unguarded `indexOf(sailId) + 1` degrades to
+          // a fabricated "sail 0 of 2" if the worker ever reports progress
+          // for a sailId not in req.sailIds — unreachable today (the worker
+          // only ever solves the sails req.sailIds itself lists), but
+          // silently WRONG, inconsistent with recommendedResult()'s
+          // (types.ts) throw-don't-fabricate stance on the same class of
+          // invariant. Throw instead.
+          //
+          // WHERE THAT THROW GOES — nothing catches it, unlike
+          // recommendedResult()'s, which runs on a stack its caller owns.
+          // This callback is invoked from workerClient's `worker.onmessage`,
+          // so the error escapes as an uncaught error, and nothing in-app
+          // observes it: no error boundary, no window.onerror, and routing/
+          // plus this file carry zero console.* by design.
+          // MEASURED against the fakeWorker harness, BOTH halves, because
+          // either alone misleads: it aborts THAT ONE progress delivery (the
+          // phase readout does not advance and run() is still pending), and
+          // the plan's own `result` message — delivered on the NEXT onmessage
+          // call, as a real worker always sends — still settles the run to
+          // idle and saves the plan exactly once. So this refuses to
+          // fabricate an index WITHOUT failing the passage plan. It is not a
+          // route to a distinct error phase and must not be described as one.
+          // Pinned by usePlanFlow.test.tsx's '#54: an unknown sail in a
+          // progress message' row.
+          (sailId) => {
+            const index = req.sailIds.indexOf(sailId);
+            if (index === -1) {
+              throw new Error(
+                `invariant violated: worker reported progress for sail '${sailId}', not present in request.sailIds`,
+              );
+            }
+            transition({
+              phase: 'routing',
+              sailId,
+              index: index + 1,
+              total: req.sailIds.length,
+            });
           },
           undefined,
           () => {
@@ -282,6 +333,7 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         id: opts.replacePlanId ?? crypto.randomUUID(),
         name,
         createdAtMs: Date.now(),
+        schemaVersion: PLAN_SCHEMA_VERSION,
         request: req,
         windGrid,
         result,

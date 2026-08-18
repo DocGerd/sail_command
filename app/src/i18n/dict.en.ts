@@ -108,10 +108,11 @@ export const en = {
   'planner.import.notice.multipleTracks':
     'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
-  // #340: phase readout, not a percentage — the router solves genoa and fock
-  // SEQUENTIALLY, so "sail {index} of {total}" is honest and bounded, unlike
-  // the removed percentage (capped ~5%, reset to 0 at the genoa->fock switch).
-  'planner.status.routingRig': 'Calculating route… sail {index} of {total} ({rig})',
+  // #340/#54: phase readout, not a percentage — the router solves
+  // request.sailIds SEQUENTIALLY, so "sail {index} of {total}" is honest and
+  // bounded, unlike the removed percentage (capped ~5%, reset to 0 at every
+  // sail switch).
+  'planner.status.routingSail': 'Calculating route… sail {index} of {total} ({sail})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
@@ -168,6 +169,10 @@ export const en = {
     'The current GPS position is outside the covered sea area or not navigable — no route can be computed from here.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
+  // Fallback label for a stored sail id the current catalogue no longer
+  // knows (lib/resultSummary.ts's sailLabelKey). Names the sail as unknown
+  // rather than rendering an empty string or the literal 'undefined'.
+  'route.rig.unknown': 'Unknown sail',
   'route.rigTabs': 'Rig comparison',
   'route.recommended': 'Recommended',
   'route.fasterRig': 'Faster: {rig}',
@@ -428,6 +433,20 @@ export const en = {
   'plansList.delete': 'Delete plan',
   'plansList.confirmDelete': 'Confirm delete',
   'plansList.actionError': 'Action failed. Please try again.',
+  // #54: shown for a stored plan the read-time normaliser cannot handle. Two
+  // strings, because the two cases call for different user action, and prod
+  // and /uat/ share one origin-scoped database, so a production user can meet
+  // the newer-version case without having done anything wrong.
+  //
+  // Says only what the stored schemaVersion PROVES. It deliberately does not
+  // promise the record is undamaged: the classification rests on that one
+  // number, so a record both written by a newer build AND corrupted (partial
+  // write, foreign tool) lands here too — and the row's only control is an
+  // irreversible delete, so the copy must not overstate recoverability.
+  'plansList.unreadable.newerVersion':
+    'This plan was saved by a newer version of the app. This version cannot read it — a newer one can.',
+  'plansList.unreadable.damaged':
+    'This plan cannot be opened — the saved record is incomplete or damaged. It is kept, not deleted.',
   // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
   // which reuses the stored grid and stays offline-capable).
   'plansList.recalc': 'Recalculate',

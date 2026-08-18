@@ -5,14 +5,14 @@ import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
+import { resultSummary, rigRecommendationOf, sailLabelKey } from '../lib/resultSummary';
 import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from '../lib/shallowExposure';
 import { useWideLayout } from '../lib/useWideLayout';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import { useNavMask } from '../state/useNavMask';
 import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import type { MsgKey } from '../i18n/dict.de';
-import type { Board, Leg, NoRouteReason, Plan, Rig, ShallowInfo } from '../types';
+import type { Board, Leg, NoRouteReason, Plan, SailId, ShallowInfo } from '../types';
 import Card from './Card';
 import Chip from './Chip';
 import Button from './Button';
@@ -68,6 +68,15 @@ export function ShallowWarning({
   // usedDepthM - MASK_TOLERANCE_M — recomputed from THIS plan's usedDepthM
   // every render, never a fixed number, so it can never go stale as
   // usedDepthM varies plan to plan.
+  // #54 spec C.4(a) — BOAT-AGNOSTIC. This compares against the Salona's
+  // 2.1 m constant, not the SELECTED boat's draft. Not live: BOATS holds one
+  // boat at draftM 2.1, identical to BOAT_DRAFT_M.
+  // NO LONGER BLOCKED: Task 11 put the boat on the plan, so
+  // `plan.request.boat.draftM` is in scope here (`plan` is a required prop).
+  // The CODE change is tracked in #539, which names this site and :186
+  // explicitly, and is not part of Task 11. Must be retired before a second boat becomes user-selectable; a
+  // 2.30 m boat relaxed to its correct 2.3 m gate would otherwise be judged
+  // against the wrong hull. Same fix owns the rendered draft below.
   const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M;
   const containerClassName = isSevere
     ? 'shallow-warning shallow-warning--severe'
@@ -158,7 +167,8 @@ export function ShallowWarning({
   //    Mount-gating is still correct; display:none would leave a wide-only
   //    sentence in the accessibility tree on narrow, which is worse.
   // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedGate
-  //    searches [BOAT_DRAFT_M, requestedDepthM) while SAFETY_DEPTH_FIELD
+  //    searches [the relaxation floor, requestedDepthM) — relaxationFloorM(boat),
+  //    2.1 for the Salona today — while SAFETY_DEPTH_FIELD
   //    clamps the input to >= its own min (2.1 and 2.2 respectively today),
   //    so at a usedDepthM of either there is no lower setting to choose and
   //    "set a lower safety depth" names an unavailable action.
@@ -175,6 +185,10 @@ export function ShallowWarning({
   return (
     <div className={containerClassName} role="alert">
       <p className="shallow-warning__lead">
+        {/* #54 spec C.4(a) — BOAT-AGNOSTIC: this renders the Salona's 2.1 m,
+            not the SELECTED boat's draft, so with a second boat it would
+            UNDERSTATE a deeper hull in the app's most severe safety copy.
+            Task 11 removed the blocker — see isSevere above. */}
         {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
           cautious: cautiousM,
           draft: BOAT_DRAFT_M.toFixed(1),
@@ -226,14 +240,12 @@ export function ShallowWarning({
 
 export interface RouteSummaryProps {
   plan: Plan;
-  rig: Rig;
-  onRigChange: (rig: Rig) => void;
+  rig: SailId;
+  onRigChange: (rig: SailId) => void;
   // #64 phase 3: focus target for the Plan-tab "Details ansehen" link — App
   // forwards it onto the Ergebnis card heading (tabIndex -1, focused on jump).
   resultHeadingRef?: Ref<HTMLHeadingElement>;
 }
-
-const RIGS: Rig[] = ['genoa', 'fock'];
 
 // Okabe-Ito colorblind-safe green/red, echoing the port/starboard nav-light
 // convention. Mirrored in RouteLayer.tsx's line-color paint expression.
@@ -247,11 +259,13 @@ function pointOfSailKey(twaDeg: number): MsgKey {
   return 'route.pointOfSail.run';
 }
 
-function reasonForRig(plan: Plan, rig: Rig): NoRouteReason | null {
-  return rig === 'genoa' ? plan.result.genoaReason : plan.result.fockReason;
+// #54: derived from `plan.result.sails` instead of a genoa/fock ternary —
+// naturally centralises without a bare sail-id literal.
+function reasonForRig(plan: Plan, rig: SailId): NoRouteReason | null {
+  return plan.result.sails.find((s) => s.sailId === rig)?.reason ?? null;
 }
 
-function LegKindChip({ leg, rig }: { leg: Leg; rig: Rig }) {
+function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
   const t = useT();
   if (leg.kind === 'motor') {
     return <span className="chip chip-motor">{t('route.kind.motor')}</span>;
@@ -266,7 +280,7 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: Rig }) {
         aria-hidden="true"
         style={{ backgroundColor: BOARD_COLOR[leg.board] }}
       />
-      {t(RIG_LABEL_KEY[rig])} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
+      {t(sailLabelKey(rig))} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
     </span>
   );
 }
@@ -307,7 +321,7 @@ function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
   );
 }
 
-function downloadGpx(plan: Plan, rig: Rig): void {
+function downloadGpx(plan: Plan, rig: SailId): void {
   const xml = toGpx(plan, rig);
   const blob = new Blob([xml], { type: 'application/gpx+xml' });
   const url = URL.createObjectURL(blob);
@@ -344,6 +358,12 @@ export default function RouteSummary({
   // correctly when viewing a tab whose own rig failed to solve (star/chip
   // render unconditionally below, matching the pre-#259 architecture).
   const rigRecommendation = rigRecommendationOf(plan.result);
+  // #54: the tab list is every sail THIS plan actually requested (plan is a
+  // required prop, so this is always available) — replaces the old
+  // module-level RIGS two-element array literal. Byte-identical today
+  // (every plan solves exactly the same two sails req.sailIds always
+  // carries) and correctly generalises if that ever changes.
+  const sailTabs = plan.result.sails.map((s) => s.sailId);
 
   return (
     <Card
@@ -353,7 +373,7 @@ export default function RouteSummary({
       titleTabIndex={-1}
     >
       <div role="tablist" aria-label={t('route.rigTabs')} className="rig-tabs">
-        {RIGS.map((r) => (
+        {sailTabs.map((r) => (
           <button
             key={r}
             type="button"
@@ -363,7 +383,7 @@ export default function RouteSummary({
               if (r !== rig) onRigChange(r);
             }}
           >
-            {t(RIG_LABEL_KEY[r])}
+            {t(sailLabelKey(r))}
             {rigRecommendation.kind === 'decided' && rigRecommendation.rig === r && (
               <span aria-label={t('route.recommended')} title={t('route.recommended')}>
                 {' '}
@@ -380,7 +400,7 @@ export default function RouteSummary({
           honestly instead of picking a winner. */}
       <Chip className="chip-faster-rig">
         {rigRecommendation.kind === 'decided'
-          ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[rigRecommendation.rig]) })
+          ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
           : t(rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
       </Chip>
 

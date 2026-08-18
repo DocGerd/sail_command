@@ -109,7 +109,7 @@
 //
 // Constants below were hand-tuned (see docs/screenshots/capture.mjs's own
 // header for the harbor pair and the reasoning) against this app's committed
-// Salona 45 polars (app/public/data/polar-{genoa,fock}.json): at TWS ~7-10 kn
+// Salona 45 polars (app/public/data/polars/salona-45-{genoa,fock}.json): at TWS ~7-10 kn
 // and TWA ~70-95° (a close-to-beam reach), genoa consistently outpaces fock
 // by ~3-5% boat speed — genoa's light-air reaching advantage — which is
 // large enough over a ~19 nm route to clear RIG_TIE_BAND_MS (60 s,

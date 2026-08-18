@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { toGpx } from './gpx';
 import { uniformWindGrid } from '../test/fixtures';
 import type { Plan } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const plan: Plan = {
   id: '00000000-0000-4000-8000-000000000001',
   name: 'Flensburg → <Marstal> & back',
   createdAtMs: Date.UTC(2026, 6, 15, 7, 0, 0),
+  schemaVersion: PLAN_SCHEMA_VERSION,
   request: {
     origin: { lat: 54.79, lon: 9.43 },
     destination: { lat: 54.85, lon: 10.52 },
@@ -25,67 +28,74 @@ const plan: Plan = {
       motorEnabled: true,
       showOwnship: false,
     },
+    sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
   },
   windGrid: uniformWindGrid(10, 270),
   result: {
     status: 'ok',
     recommended: 'genoa',
+    comparisonComplete: true,
     snappedOrigin: { lat: 54.79, lon: 9.43 },
     snappedDestination: { lat: 54.85, lon: 10.52 },
-    fock: null,
-    fockReason: 'unreachable',
-    genoaReason: null,
-    genoa: {
-      rig: 'genoa',
-      etaMs: Date.UTC(2026, 6, 15, 13, 0, 0), // matches the last leg's endTimeMs
-      durationMs: 5 * 3_600_000,
-      distanceNm: 21.5,
-      maneuverCount: 1,
-      motorDistanceNm: 5, // sum of the three legs' distanceNm
-      legs: [
-        {
-          kind: 'sail',
-          board: 'starboard',
-          start: { lat: 54.79, lon: 9.43 },
-          end: { lat: 54.8, lon: 10.0 },
-          startTimeMs: Date.UTC(2026, 6, 15, 8, 0, 0),
-          endTimeMs: Date.UTC(2026, 6, 15, 10, 0, 0),
-          headingDeg: 88,
-          twaDeg: 92,
-          twsKn: 10,
-          speedKn: 7,
-          distanceNm: 15,
-          maneuverAtStart: null,
+    sails: [
+      { sailId: 'fock', result: null, reason: 'unreachable' },
+      {
+        sailId: 'genoa',
+        reason: null,
+        result: {
+          sailId: 'genoa',
+          etaMs: Date.UTC(2026, 6, 15, 13, 0, 0), // matches the last leg's endTimeMs
+          durationMs: 5 * 3_600_000,
+          distanceNm: 21.5,
+          maneuverCount: 1,
+          motorDistanceNm: 5, // sum of the three legs' distanceNm
+          legs: [
+            {
+              kind: 'sail',
+              board: 'starboard',
+              start: { lat: 54.79, lon: 9.43 },
+              end: { lat: 54.8, lon: 10.0 },
+              startTimeMs: Date.UTC(2026, 6, 15, 8, 0, 0),
+              endTimeMs: Date.UTC(2026, 6, 15, 10, 0, 0),
+              headingDeg: 88,
+              twaDeg: 92,
+              twsKn: 10,
+              speedKn: 7,
+              distanceNm: 15,
+              maneuverAtStart: null,
+            },
+            {
+              kind: 'motor',
+              board: null,
+              start: { lat: 54.8, lon: 10.0 },
+              end: { lat: 54.85, lon: 10.52 },
+              startTimeMs: Date.UTC(2026, 6, 15, 10, 0, 0),
+              endTimeMs: Date.UTC(2026, 6, 15, 12, 0, 0),
+              headingDeg: 90,
+              twsKn: 2,
+              speedKn: 6.5,
+              distanceNm: 5,
+              maneuverAtStart: null,
+            },
+            {
+              kind: 'sail',
+              board: 'port',
+              start: { lat: 54.85, lon: 10.52 },
+              end: { lat: 54.86, lon: 10.55 },
+              startTimeMs: Date.UTC(2026, 6, 15, 12, 0, 0),
+              endTimeMs: Date.UTC(2026, 6, 15, 13, 0, 0),
+              headingDeg: 60,
+              twaDeg: -80,
+              twsKn: 10,
+              speedKn: 6,
+              distanceNm: 1.5,
+              maneuverAtStart: 'tack',
+            },
+          ],
         },
-        {
-          kind: 'motor',
-          board: null,
-          start: { lat: 54.8, lon: 10.0 },
-          end: { lat: 54.85, lon: 10.52 },
-          startTimeMs: Date.UTC(2026, 6, 15, 10, 0, 0),
-          endTimeMs: Date.UTC(2026, 6, 15, 12, 0, 0),
-          headingDeg: 90,
-          twsKn: 2,
-          speedKn: 6.5,
-          distanceNm: 5,
-          maneuverAtStart: null,
-        },
-        {
-          kind: 'sail',
-          board: 'port',
-          start: { lat: 54.85, lon: 10.52 },
-          end: { lat: 54.86, lon: 10.55 },
-          startTimeMs: Date.UTC(2026, 6, 15, 12, 0, 0),
-          endTimeMs: Date.UTC(2026, 6, 15, 13, 0, 0),
-          headingDeg: 60,
-          twaDeg: -80,
-          twsKn: 10,
-          speedKn: 6,
-          distanceNm: 1.5,
-          maneuverAtStart: 'tack',
-        },
-      ],
-    },
+      },
+    ],
   },
 };
 
@@ -109,14 +119,22 @@ describe('toGpx', () => {
   it('throws a descriptive error when the rig result is missing or empty', () => {
     expect(() => toGpx(plan, 'fock')).toThrow(/no fock result/);
     const empty: Plan = structuredClone(plan);
-    if (empty.result.status === 'ok' && empty.result.genoa) empty.result.genoa.legs = [];
+    const genoa =
+      empty.result.status === 'ok'
+        ? empty.result.sails.find((s) => s.sailId === 'genoa')
+        : undefined;
+    if (genoa?.result) genoa.result.legs = [];
     expect(() => toGpx(empty, 'genoa')).toThrow(/empty route/);
   });
 
   it('a single-leg plan produces exactly 2 rtept (leg start + destination)', () => {
     const singleLeg: Plan = structuredClone(plan);
-    if (singleLeg.result.status === 'ok' && singleLeg.result.genoa) {
-      singleLeg.result.genoa.legs = [singleLeg.result.genoa.legs[0]];
+    const genoa =
+      singleLeg.result.status === 'ok'
+        ? singleLeg.result.sails.find((s) => s.sailId === 'genoa')
+        : undefined;
+    if (genoa?.result) {
+      genoa.result.legs = [genoa.result.legs[0]];
     }
     const singleXml = toGpx(singleLeg, 'genoa');
     expect((singleXml.match(/<rtept /g) ?? []).length).toBe(2);

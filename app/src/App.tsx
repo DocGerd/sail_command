@@ -51,9 +51,16 @@ import { usePersistedNumber } from './lib/usePersistedNumber';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
+import { DEFAULT_SAIL_IDS } from './data/boats';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
-import type { Harbor, LatLon, PickedPoint, Plan } from './types';
+import {
+  defaultBoatSnapshot,
+  type Harbor,
+  type LatLon,
+  type PickedPoint,
+  type Plan,
+} from './types';
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
@@ -93,7 +100,7 @@ export function toPlannerStatus(
     case 'fetching-wind':
       return { phase: 'fetching' };
     case 'routing':
-      return { phase: 'routing', rig: flow.rig };
+      return { phase: 'routing', sailId: flow.sailId, index: flow.index, total: flow.total };
     case 'probing-depth':
       return { phase: 'probing' };
     case 'error':
@@ -679,6 +686,16 @@ function AppShell() {
         destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
         departureMs,
         settings,
+        // #54: the one production call site with no existing plan to
+        // inherit sailIds from — every other constructor (recalcRequest,
+        // replanWithVias, rerouteFromFix) spreads/copies an existing
+        // request's own sailIds instead.
+        sailIds: DEFAULT_SAIL_IDS,
+        // #54 spec §I.3: denormalised by value, so the saved plan can be
+        // rendered without the catalogue. Same call site, same reason as
+        // sailIds above — the only production constructor with no existing
+        // plan to inherit from.
+        boat: defaultBoatSnapshot(),
       },
       `${origin.label} → ${destination.label}`,
     );

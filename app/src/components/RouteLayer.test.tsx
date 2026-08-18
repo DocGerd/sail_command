@@ -14,6 +14,8 @@ import { I18nProvider } from '../i18n';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 // #153: RouteLayer's style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach; the component's
@@ -86,6 +88,7 @@ function makePlan(): Plan {
     id: 'plan-153',
     name: 'Test plan',
     createdAtMs: DEPARTURE_MS - 3_600_000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: LEG.start,
       destination: LEG.end,
@@ -94,23 +97,30 @@ function makePlan(): Plan {
       destinationHarborId: null,
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: uniformWindGrid(12, 225, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 6 }),
     result: {
       status: 'ok',
-      genoa: {
-        rig: 'genoa',
-        legs: [LEG],
-        etaMs: ETA_MS,
-        durationMs: 3_600_000,
-        distanceNm: 10,
-        maneuverCount: 0,
-        motorDistanceNm: 0,
-      },
-      fock: null,
-      genoaReason: null,
-      fockReason: 'calm-motor-off',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: {
+            sailId: 'genoa',
+            legs: [LEG],
+            etaMs: ETA_MS,
+            durationMs: 3_600_000,
+            distanceNm: 10,
+            maneuverCount: 0,
+            motorDistanceNm: 0,
+          },
+          reason: null,
+        },
+        { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+      ],
       recommended: 'genoa',
+      comparisonComplete: true,
       snappedOrigin: LEG.start,
       snappedDestination: LEG.end,
     },
@@ -143,16 +153,23 @@ function makeBothRigsPlan(): Plan {
     ...base,
     result: {
       ...base.result,
-      fock: {
-        rig: 'fock',
-        legs: [FOCK_LEG],
-        etaMs: ETA_MS + 60_000,
-        durationMs: 3_660_000,
-        distanceNm: 10,
-        maneuverCount: 0,
-        motorDistanceNm: 0,
-      },
-      fockReason: null,
+      sails: base.result.sails.map((s) =>
+        s.sailId === 'fock'
+          ? {
+              sailId: 'fock' as const,
+              result: {
+                sailId: 'fock' as const,
+                legs: [FOCK_LEG],
+                etaMs: ETA_MS + 60_000,
+                durationMs: 3_660_000,
+                distanceNm: 10,
+                maneuverCount: 0,
+                motorDistanceNm: 0,
+              },
+              reason: null,
+            }
+          : s,
+      ),
     },
   };
 }
@@ -168,8 +185,11 @@ function makeOtherRigOnlyPlan(): Plan {
     ...base,
     result: {
       ...base.result,
-      genoa: null,
-      genoaReason: 'calm-motor-off',
+      sails: base.result.sails.map((s) =>
+        s.sailId === 'genoa'
+          ? { sailId: 'genoa' as const, result: null, reason: 'calm-motor-off' as const }
+          : s,
+      ),
       recommended: 'fock',
     },
   };

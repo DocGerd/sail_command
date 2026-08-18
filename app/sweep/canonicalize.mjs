@@ -1,0 +1,115 @@
+/**
+ * #54/Task 8: a canonicalising comparator for the PlanResultOk rename.
+ *
+ * The byte comparator (`compare.mjs`'s default mode) can certify that NOTHING
+ * changed — it cannot certify that a DELIBERATE, presentation-only shape
+ * change (Task 9: `genoa`/`fock`/`genoaReason`/`fockReason` -> a `sails` list,
+ * `RigResult.rig` -> `sailId`) preserved every route. And it fails in the
+ * REASSURING direction: `PlanResultError` carries no sail fields at all, so
+ * the all-error `becalmed`/`deep-becalmed` arms stay byte-identical straight
+ * through the rename and report IDENTICAL — a false green on two of the
+ * sweep's nine arms.
+ *
+ * `canonicalizePlan(plan)` maps BOTH the pre-rename shape (named
+ * genoa/fock/genoaReason/fockReason, `RigResult.rig`) and the post-rename
+ * shape (a per-sail list, `RigResult.sailId`) onto ONE canonical form, so a
+ * BASE plan and a HEAD plan carrying the same routes can be compared after
+ * the rename.
+ *
+ * It deliberately does NOT normalise leg geometry, ETAs, distances or
+ * reasons — only the CONTAINER shape (which field holds a rig's result, and
+ * what that rig is called). Flattening any of the route content itself would
+ * make every comparison pass regardless of whether the routes actually
+ * matched, which is exactly the failure mode this file exists to avoid: a
+ * canonicaliser that cannot fail is worse than none.
+ *
+ * Every call returns a NEW object — the input plan (and any nested `sails`
+ * array or `RigResult`) is never mutated. That matters here specifically
+ * because `sweepArms.ts` writes a shared `rows` map that this comparator's
+ * caller (`compare.mjs`) re-reads from disk (via `JSON.parse`, itself a
+ * fresh copy) but is worth stating as an explicit contract rather than an
+ * accident of how compare.mjs happens to call it.
+ */
+
+/**
+ * Normalises one RigResult: `rig` (pre-rename) or `sailId` (post-rename)
+ * becomes `sailId`, first key, with every OTHER field passed through
+ * untouched (legs, etaMs, durationMs, distanceNm, maneuverCount,
+ * motorDistanceNm — none of those are route content this file may alter).
+ * `null` (the rig found no route) passes through as `null`.
+ */
+function normalizeRigResult(result) {
+  if (result == null) return null;
+  const { rig, sailId, ...rest } = result;
+  return { sailId: sailId ?? rig, ...rest };
+}
+
+/**
+ * Maps one PlanResult (either shape) onto the canonical form:
+ *
+ *   { ...everything else, comparisonComplete: true|false, sails: [...] }
+ *
+ * `sails` is always a per-sail list, sorted by `sailId`, each entry
+ * `{ sailId, result: normalizeRigResult(result), reason }`.
+ *
+ * `PlanResultError` (`status !== 'ok'`) is returned as a shallow copy,
+ * unchanged in shape — the rename touches only `PlanResultOk`, so an error
+ * plan is already shape-stable across BASE and HEAD.
+ */
+export function canonicalizePlan(plan) {
+  if (plan == null) return plan;
+  if (plan.status !== 'ok') return { ...plan };
+
+  const sails = plan.sails
+    ? plan.sails.map((s) => ({
+        sailId: s.sailId,
+        result: normalizeRigResult(s.result),
+        reason: s.reason ?? null,
+      }))
+    : [
+        { sailId: 'genoa', result: normalizeRigResult(plan.genoa), reason: plan.genoaReason ?? null },
+        { sailId: 'fock', result: normalizeRigResult(plan.fock), reason: plan.fockReason ?? null },
+      ];
+
+  // Exclude every field the two shapes disagree on by name from `rest` —
+  // both the pre-rename fields (genoa/fock/genoaReason/fockReason) and the
+  // post-rename ones (sails, comparisonComplete) — so `rest` carries only
+  // fields both shapes already spell identically (status, recommended,
+  // shallow?, rigRecommendation?, snappedOrigin, snappedDestination).
+  const { genoa, fock, genoaReason, fockReason, sails: _sails, comparisonComplete, ...rest } = plan;
+
+  return {
+    ...rest,
+    // `comparisonComplete` is NEW in Task 9 and absent from every pre-rename
+    // plan on disk — default it to `true` (Task 9's shipped meaning: "both
+    // sails were compared") rather than leaving BASE plans permanently
+    // differing from HEAD on a field BASE never had.
+    comparisonComplete: comparisonComplete ?? true,
+    sails: sails.sort((a, b) => a.sailId.localeCompare(b.sailId)),
+  };
+}
+
+/**
+ * Maps one arm file's parsed contents (a harbour-id -> PlanResult record) to
+ * its canonical form, ONE PLAN AT A TIME via `canonicalizePlan`, preserving
+ * the INPUT's own key (harbour) insertion order — never sorted, never any
+ * other side's order.
+ *
+ * That preservation is load-bearing, not incidental (fix round 1, #54
+ * review): `compare.mjs`'s per-plan compare already iterates a SHARED
+ * sorted key list, so it is order-independent by construction and cannot
+ * see a harbour reordering either way. The whole-file digest is the ONLY
+ * check in the harness that can — but only if each side is built from its
+ * OWN on-disk order. An earlier version of `compare.mjs` built both sides
+ * from the same shared sorted list, which made the canonical-mode digest
+ * blind to a harbour-order swap (a real byte-mode-only regression,
+ * reproduced: reversing one arm file's harbour order changed the byte
+ * digest but left the canonical digest IDENTICAL). Call this once per side
+ * with that side's OWN `JSON.parse` result — never pass a pre-sorted key
+ * list or a shared object through it.
+ */
+export function canonicalizeArmFile(plansByHarbour) {
+  const out = {};
+  for (const k of Object.keys(plansByHarbour)) out[k] = canonicalizePlan(plansByHarbour[k]);
+  return out;
+}

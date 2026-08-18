@@ -42,12 +42,12 @@ function fetchMock(overrides: Partial<Record<string, () => Response>> = {}) {
     if (overrides.maskBin && url.includes('mask.bin')) return Promise.resolve(overrides.maskBin());
     if (url.includes('mask.bin'))
       return Promise.resolve(new Response(maskArrayBuffer(), { status: 200 }));
-    if (overrides.polarGenoa && url.includes('polar-genoa.json'))
+    if (overrides.polarGenoa && url.includes('salona-45-genoa.json'))
       return Promise.resolve(overrides.polarGenoa());
-    if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-    if (overrides.polarFock && url.includes('polar-fock.json'))
+    if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+    if (overrides.polarFock && url.includes('salona-45-fock.json'))
       return Promise.resolve(overrides.polarFock());
-    if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
     if (overrides.harbors && url.includes('harbors.json'))
       return Promise.resolve(overrides.harbors());
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
@@ -78,8 +78,14 @@ describe('loadRoutingAssets', () => {
     const assets = await loadRoutingAssets();
 
     expect(assets.maskMeta).toEqual(TEST_MASK_META);
-    expect(assets.polarGenoa).toEqual(TEST_POLAR);
-    expect(assets.polarFock).toEqual(FOCK);
+    // #54: one key per catalogue boat x sail, `${boatId}/${sailId}`. The
+    // expected list is HAND-WRITTEN, never derived from BOATS — deriving
+    // needle and haystack from the same source is the #388 tautology, and
+    // this row's whole job is to notice when the catalogue and the fetch
+    // manifest stop agreeing.
+    expect(Object.keys(assets.polars).sort()).toEqual(['salona-45/fock', 'salona-45/genoa']);
+    expect(assets.polars['salona-45/genoa']).toEqual(TEST_POLAR);
+    expect(assets.polars['salona-45/fock']).toEqual(FOCK);
     expect(assets.harbors).toEqual(HARBORS);
     expect(assets.seamarks).toEqual(SEAMARKS);
     expect(new Uint8Array(assets.maskBuffer)).toEqual(new Uint8Array(maskArrayBuffer()));

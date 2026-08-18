@@ -5,9 +5,10 @@ import { TEST_MASK_META, TEST_POLAR, makeWindGrid, uniformWindGrid } from '../te
 import {
   DEFAULT_SETTINGS,
   type Leg,
+  type NoRouteReason,
   type Plan,
-  type Rig,
   type RigResult,
+  type SailId,
   type WindGrid,
 } from '../types';
 
@@ -25,6 +26,9 @@ import { loadRoutingAssets } from '../services/assets';
 import { profileSamples, sampleCount } from '../lib/routeProfile';
 import { NavMask } from '../lib/mask';
 import DepthProfile from './DepthProfile';
+import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 const spiedSamples = vi.mocked(profileSamples);
@@ -38,8 +42,10 @@ function assetsWith(byte: number) {
   return {
     maskMeta: TEST_MASK_META,
     maskBuffer: data.buffer,
-    polarGenoa: TEST_POLAR,
-    polarFock: TEST_POLAR,
+    polars: {
+      [polarKey(DEFAULT_BOAT_ID, 'genoa')]: TEST_POLAR,
+      [polarKey(DEFAULT_BOAT_ID, 'fock')]: TEST_POLAR,
+    },
     harbors: [],
     seamarks: { type: 'FeatureCollection' as const, features: [] },
   };
@@ -76,7 +82,7 @@ const GENOA_LEGS: Leg[] = [
 ];
 
 const GENOA_RESULT: RigResult = {
-  rig: 'genoa',
+  sailId: 'genoa',
   etaMs: DEPARTURE_MS + 4 * 3_600_000,
   durationMs: 4 * 3_600_000,
   distanceNm: 20,
@@ -86,7 +92,7 @@ const GENOA_RESULT: RigResult = {
 };
 
 const FOCK_RESULT: RigResult = {
-  rig: 'fock',
+  sailId: 'fock',
   etaMs: DEPARTURE_MS + 6 * 3_600_000,
   durationMs: 6 * 3_600_000,
   distanceNm: 22,
@@ -110,11 +116,20 @@ const FOCK_RESULT: RigResult = {
   ],
 };
 
-function makePlan(overrides: Partial<Plan['result']> = {}, windGrid?: WindGrid): Plan {
+// #54: the pre-#54 shape spread a `Partial<Plan['result']>` override directly
+// over the genoa/fock fields. Now that RigResult per sail lives in a `sails`
+// list, overrides target genoa specifically (the only rig any test here
+// overrides) — `'genoa' in overrides` distinguishes "not passed" (keep the
+// default GENOA_RESULT) from an explicit `null` (line 191 below).
+function makePlan(
+  overrides: { genoa?: RigResult | null; genoaReason?: NoRouteReason | null } = {},
+  windGrid?: WindGrid,
+): Plan {
   return {
     id: 'plan-1',
     name: 'Flensburg to Marstal',
     createdAtMs: FETCHED_AT_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
       destination: { lat: 54.85, lon: 10.52 },
@@ -123,18 +138,24 @@ function makePlan(overrides: Partial<Plan['result']> = {}, windGrid?: WindGrid):
       destinationHarborId: 'marstal',
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: windGrid ?? { ...uniformWindGrid(10, 270), fetchedAtMs: FETCHED_AT_MS },
     result: {
       status: 'ok',
-      genoa: GENOA_RESULT,
-      fock: FOCK_RESULT,
-      genoaReason: null,
-      fockReason: null,
+      sails: [
+        {
+          sailId: 'genoa',
+          result: 'genoa' in overrides ? (overrides.genoa ?? null) : GENOA_RESULT,
+          reason: overrides.genoaReason ?? null,
+        },
+        { sailId: 'fock', result: FOCK_RESULT, reason: null },
+      ],
       recommended: 'genoa',
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
-      ...overrides,
     },
   };
 }
@@ -152,7 +173,7 @@ function setMatchMedia(matches: boolean) {
   })) as unknown as typeof window.matchMedia;
 }
 
-function renderProfile(props: { plan?: Plan; rig?: Rig; safetyDepthM?: number } = {}) {
+function renderProfile(props: { plan?: Plan; rig?: SailId; safetyDepthM?: number } = {}) {
   localStorage.setItem('sc-lang', 'en');
   const plan = props.plan ?? makePlan();
   const utils = render(
@@ -268,7 +289,7 @@ describe('DepthProfile', () => {
     // are passed (a hardcoded n or a rebuilt mask/legs would fail here).
     const [legsArg, maskArg, nArg] = spiedSamples.mock.calls[0];
     expect(nArg).toBe(sampleCount(GENOA_RESULT.durationMs));
-    expect(legsArg).toBe(plan.result.genoa!.legs);
+    expect(legsArg).toBe(plan.result.sails.find((s) => s.sailId === 'genoa')!.result!.legs);
     expect(maskArg).toBeInstanceOf(NavMask);
     const seabedBefore = container.querySelector('.dp-seabed')?.getAttribute('d');
     const safetyYBefore = container.querySelector('.dp-safety-line')?.getAttribute('y1');

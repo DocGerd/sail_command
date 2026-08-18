@@ -1,5 +1,5 @@
 import type { MsgKey } from '../i18n/dict.de';
-import type { NoRouteReason, Plan, Rig, RigResult } from '../types';
+import type { NoRouteReason, Plan, RigResult, SailId } from '../types';
 
 // Spec §4: "Stale forecast (fetch → departure gap > 12 h)" — strictly
 // greater, so a plan departing exactly 12 h after its wind was fetched is
@@ -32,9 +32,11 @@ export function isStaleForecast(plan: Plan): boolean {
 }
 
 // Unlike recommendedResult() (types.ts), which throws when the *recommended*
-// rig is missing (an invariant violation), a null result for an arbitrary
-// requested rig is an ordinary display state — the router legitimately
-// solves only one rig sometimes — so this returns null rather than throwing.
-export function activeRigResult(plan: Plan, rig: Rig): RigResult | null {
-  return rig === 'genoa' ? plan.result.genoa : plan.result.fock;
+// sail is missing (an invariant violation), a null result for an arbitrary
+// requested sail is an ordinary display state — the router legitimately
+// solves only one sail sometimes — so this returns null rather than
+// throwing. #54: derived from `plan.result.sails` rather than a genoa/fock
+// ternary — naturally centralises without a bare sail-id literal.
+export function activeRigResult(plan: Plan, sailId: SailId): RigResult | null {
+  return plan.result.sails.find((s) => s.sailId === sailId)?.result ?? null;
 }

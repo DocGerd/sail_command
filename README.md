@@ -120,7 +120,7 @@ flowchart LR
   subgraph pipeline ["Build time — pipeline/ (run on demand, never at app runtime)"]
     EMOD["EMODnet bathymetry (DTM 2024)"] --> MASK["build_mask.py → mask.bin (packed ~46 m cells, quantized depth)"]
     OSMLP["OSM land polygons"] --> MASK
-    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs → polar-genoa/fock.json"]
+    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs → polars/salona-45-{genoa,fock}.json"]
     CUR["curated harbor list"] --> HARB["build_harbors.mjs → harbors.json"]
     PROTO["Protomaps extract"] --> PMT["basemap.pmtiles.png"]
   end

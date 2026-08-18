@@ -15,12 +15,12 @@ import {
   type ProfileSample,
 } from '../lib/routeProfile';
 import { loadRoutingAssets } from '../services/assets';
-import type { Leg, Plan, Rig } from '../types';
+import type { Leg, Plan, SailId } from '../types';
 import Card from './Card';
 
 export interface DepthProfileProps {
   plan: Plan;
-  rig: Rig;
+  rig: SailId;
   safetyDepthM: number;
 }
 

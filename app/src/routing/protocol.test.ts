@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { createHandler, type WorkerResponse } from './protocol';
 import { planRoute } from './planRoute';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
+import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import { DEFAULT_SETTINGS, type PolarTable } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
@@ -24,6 +26,14 @@ vi.mock('./planRoute', async (importOriginal) => {
 
 const FOCK: PolarTable = { ...TEST_POLAR, rig: 'fock' };
 
+// #54: init carries every catalogue polar keyed `${boatId}/${sailId}`; a plan
+// names which of those keys to run.
+const TEST_POLARS: Record<string, PolarTable> = {
+  [polarKey(DEFAULT_BOAT_ID, 'genoa')]: TEST_POLAR,
+  [polarKey(DEFAULT_BOAT_ID, 'fock')]: FOCK,
+};
+const ALL_POLAR_KEYS = Object.keys(TEST_POLARS);
+
 function openWaterBuffer(): ArrayBuffer {
   const data = new Uint8Array(TEST_MASK_META.rows * TEST_MASK_META.cols).fill(200);
   return data.buffer;
@@ -37,13 +47,14 @@ describe('worker protocol handler', () => {
       type: 'init',
       maskMeta: TEST_MASK_META,
       maskBuffer: openWaterBuffer(),
-      polarGenoa: TEST_POLAR,
-      polarFock: FOCK,
+      polars: TEST_POLARS,
     });
     expect(out).toEqual([{ type: 'ready' }]);
 
     handle({
       type: 'plan',
+      boatId: DEFAULT_BOAT_ID,
+      polarKeys: ALL_POLAR_KEYS,
       id: 'p1',
       request: {
         // cell centers (grid step 0.005°): keep the spec-mandated 300 m snap
@@ -55,6 +66,8 @@ describe('worker protocol handler', () => {
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -80,11 +93,12 @@ describe('worker protocol handler', () => {
       type: 'init',
       maskMeta: TEST_MASK_META,
       maskBuffer: data.buffer,
-      polarGenoa: TEST_POLAR,
-      polarFock: FOCK,
+      polars: TEST_POLARS,
     });
     handle({
       type: 'plan',
+      boatId: DEFAULT_BOAT_ID,
+      polarKeys: ALL_POLAR_KEYS,
       id: 'p53',
       request: {
         origin: { lat: 54.7525, lon: 10.0025 },
@@ -100,6 +114,8 @@ describe('worker protocol handler', () => {
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -136,12 +152,13 @@ describe('worker protocol handler', () => {
       type: 'init',
       maskMeta: TEST_MASK_META,
       maskBuffer: openWaterBuffer(),
-      polarGenoa: TEST_POLAR,
-      polarFock: FOCK,
+      polars: TEST_POLARS,
     });
     const badWindGrid = { ...uniformWindGrid(12, 0), speedKn: new Float32Array(1) }; // mismatched length
     handle({
       type: 'plan',
+      boatId: DEFAULT_BOAT_ID,
+      polarKeys: ALL_POLAR_KEYS,
       id: 'p1',
       request: {
         origin: { lat: 54.7525, lon: 10.0025 },
@@ -151,6 +168,8 @@ describe('worker protocol handler', () => {
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: badWindGrid,
     });
@@ -171,11 +190,12 @@ describe('worker protocol handler: fatal.stack population (#433 review Minor 2)'
       type: 'init',
       maskMeta: TEST_MASK_META,
       maskBuffer: openWaterBuffer(),
-      polarGenoa: TEST_POLAR,
-      polarFock: FOCK,
+      polars: TEST_POLARS,
     });
     handle({
       type: 'plan',
+      boatId: DEFAULT_BOAT_ID,
+      polarKeys: ALL_POLAR_KEYS,
       id: 'p1',
       request: {
         origin: { lat: 54.7525, lon: 10.0025 },
@@ -185,6 +205,8 @@ describe('worker protocol handler: fatal.stack population (#433 review Minor 2)'
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(12, 0),
     });
@@ -240,11 +262,12 @@ describe('#432 worker plan budget', () => {
       type: 'init',
       maskMeta: TEST_MASK_META,
       maskBuffer: openWaterBuffer(),
-      polarGenoa: TEST_POLAR,
-      polarFock: FOCK,
+      polars: TEST_POLARS,
     });
     handle({
       type: 'plan',
+      boatId: DEFAULT_BOAT_ID,
+      polarKeys: ALL_POLAR_KEYS,
       id: 'budget-1',
       request: {
         origin: { lat: 54.7525, lon: 10.0025 },
@@ -254,6 +277,8 @@ describe('#432 worker plan budget', () => {
         destinationHarborId: null,
         departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(12, 0),
       ...(budgetMs !== undefined ? { budgetMs } : {}),

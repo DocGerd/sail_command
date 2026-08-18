@@ -1,14 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildPlanMessage,
   PLAN_BUDGET_MS,
   RoutingClient,
   RoutingError,
   type RoutingFailureKind,
 } from './workerClient';
 import type { WorkerRequest, WorkerResponse } from './protocol';
+import { polarKey } from '../data/boats';
 import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type PlanResult, type PolarTable, type Rig } from '../types';
+import {
+  DEFAULT_SETTINGS,
+  type PlanRequest,
+  type PlanResult,
+  type PolarTable,
+  type SailId,
+} from '../types';
 import { solverTimeoutMs } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // #342 fix-wave (PR #351 review M2): this file has no `vi.setConfig`, so its
 // file-level budget is vitest's default 5000 ms — the eight per-test `2000`
@@ -36,8 +45,14 @@ function fakeWorker() {
     onerror: null as ((e: ErrorEvent) => void) | null,
     onmessageerror: null as ((e: MessageEvent) => void) | null,
     posted: [] as WorkerRequest[],
-    postMessage(m: WorkerRequest) {
+    // #54: the transfer list of every postMessage, recorded so a test can
+    // assert WHAT was transferred and not merely what was sent — the
+    // "polars are cloned, never transferred" invariant is invisible in
+    // `posted` alone.
+    transfers: [] as unknown[][],
+    postMessage(m: WorkerRequest, transfer?: unknown[]) {
       this.posted.push(m);
+      this.transfers.push(transfer ?? []);
     },
     terminate: () => {},
     emit(m: WorkerResponse) {
@@ -50,11 +65,13 @@ function fakeWorker() {
 const INIT_ASSETS = {
   maskMeta: TEST_MASK_META,
   maskBuffer: openWaterBuffer(),
-  polarGenoa: TEST_POLAR,
-  polarFock: FOCK,
+  polars: {
+    [polarKey('salona-45', 'genoa')]: TEST_POLAR,
+    [polarKey('salona-45', 'fock')]: FOCK,
+  },
 };
 
-const PLAN_REQUEST = {
+const PLAN_REQUEST: PlanRequest = {
   // cell centers (grid step 0.005°): keep the spec-mandated 300 m snap
   // radius and adapt test geometry rather than loosen it.
   origin: { lat: 54.7525, lon: 10.0025 },
@@ -64,6 +81,8 @@ const PLAN_REQUEST = {
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
+  sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -147,14 +166,14 @@ describe('RoutingClient promise settling', () => {
       const w = fakeWorker();
       const client = new RoutingClient(() => w as unknown as Worker);
       w.emit({ type: 'ready' });
-      const progress: [Rig, number, number][] = [];
-      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), (rig, tMs, frontierSize) =>
-        progress.push([rig, tMs, frontierSize]),
+      const progress: [SailId, number, number][] = [];
+      const p = client.plan(PLAN_REQUEST, uniformWindGrid(12, 0), (sailId, tMs, frontierSize) =>
+        progress.push([sailId, tMs, frontierSize]),
       );
       await flush();
       const sent = w.posted[w.posted.length - 1];
       if (sent.type !== 'plan') throw new Error('expected a plan message');
-      w.emit({ type: 'progress', id: sent.id, rig: 'genoa', tMs: 1000, frontierSize: 5 });
+      w.emit({ type: 'progress', id: sent.id, sailId: 'genoa', tMs: 1000, frontierSize: 5 });
       const result: PlanResult = { status: 'error', reason: 'unreachable' };
       w.emit({ type: 'result', id: sent.id, result });
       await expect(p).resolves.toBe(result);
@@ -454,4 +473,74 @@ describe('RoutingClient.plan() timeout', () => {
     await outcome;
     expect(vi.getTimerCount()).toBe(0);
   });
+});
+
+// #54 spec §F.3: "init once, plan many" survives a multi-boat catalogue by
+// carrying EVERY boat's polars in the single `init` message, keyed
+// `${boatId}/${sailId}`, and naming per plan which of those keys to run.
+// Sail ids are not unique across boats, so the boat id is part of the
+// identity, not decoration.
+//
+// The expected key lists below are HAND-WRITTEN and must never be derived
+// from BOATS: deriving needle and haystack from one source is the tautology
+// this repo already paid for once (#388). The catalogue-derivation half —
+// that loadRoutingAssets() actually builds a key for every catalogue entry —
+// is pinned separately in services/assets.test.ts, which is where that
+// derivation lives.
+describe('#54: keyed polars across the worker boundary', () => {
+  it(
+    'init forwards the keyed polar map intact',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      const p = client.init(INIT_ASSETS);
+      w.emit({ type: 'ready' });
+      await p;
+      const init = w.posted[0];
+      if (init.type !== 'init') throw new Error('expected an init message');
+      expect(Object.keys(init.polars).sort()).toEqual(['salona-45/fock', 'salona-45/genoa']);
+      expect(init.polars['salona-45/genoa']).toBe(TEST_POLAR);
+      expect(init.polars['salona-45/fock']).toBe(FOCK);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'transfers ONLY the mask buffer — polars are cloned',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      const p = client.init(INIT_ASSETS);
+      w.emit({ type: 'ready' });
+      await p;
+      // CLAUDE.md invariant: never transfer the wind grid's or the polars'
+      // buffers to the worker; only the mask buffer is transferred.
+      expect(w.transfers[0]).toEqual([INIT_ASSETS.maskBuffer]);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
+
+  it('a plan names which polar keys to run, in sailIds order', () => {
+    const msg = buildPlanMessage({ ...PLAN_REQUEST, sailIds: ['fock', 'genoa'] }, 'salona-45', {
+      id: 'plan-1',
+      windGrid: uniformWindGrid(12, 0),
+    });
+    expect(msg.polarKeys).toEqual(['salona-45/fock', 'salona-45/genoa']);
+    expect(msg.boatId).toBe('salona-45');
+  });
+
+  it(
+    'plan() derives the keys from THIS request, not from a fixed pair',
+    async () => {
+      const w = fakeWorker();
+      const client = new RoutingClient(() => w as unknown as Worker);
+      w.emit({ type: 'ready' });
+      void client.plan({ ...PLAN_REQUEST, sailIds: ['fock'] }, uniformWindGrid(12, 0));
+      await flush();
+      const sent = w.posted[w.posted.length - 1];
+      if (sent.type !== 'plan') throw new Error('expected a plan message');
+      expect(sent.polarKeys).toEqual(['salona-45/fock']);
+    },
+    WORKER_CLIENT_TEST_TIMEOUT_MS,
+  );
 });

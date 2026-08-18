@@ -3,9 +3,14 @@ import type { NavMask } from '../lib/mask';
 import { approachGate, type DepthGate } from '../lib/depthGate';
 
 /**
- * Salona 45 draft — the hard floor for #53's graceful degradation: the relaxed
- * depth gate never goes below this, and a requested safety depth at or below
- * it never relaxes at all.
+ * Salona 45 draft. NOT the #53 relaxation floor any more (#54): `planRoute`
+ * derives that per-boat from `relaxationFloorM(deps.boat)` and passes it as
+ * `findRelaxedGate`'s `floorM`. Passing this constant there instead is the
+ * spec C.4(a) regression — it would take a deeper boat below its own keel.
+ *
+ * Surviving consumers are presentational (`RouteSummary.tsx`) and test-side.
+ * No task retires them yet — tracked in #539, which must land before a
+ * second boat becomes selectable.
  */
 export const BOAT_DRAFT_M = 2.1;
 
@@ -42,7 +47,7 @@ export interface RelaxedGate {
  *
  * PHASE 1 (unchanged in shape from the pre-#452 `findRelaxedDepthM`):
  * binary-search the HIGHEST decimeter-quantized depth gate in
- * [2.1 m, requestedDepthM) at which every consecutive pair of snapped
+ * [floorM, requestedDepthM) at which every consecutive pair of snapped
  * waypoints is 4-connected. Each probe is a cheap mask BFS
  * (NavMask.cellsConnected) — no isochrone run. The only change is that the
  * probe consults a per-cell FIELD (relaxed inside each waypoint's disc, the
@@ -79,7 +84,16 @@ export interface RelaxedGate {
  * tests inject `Infinity` for the kill switch, and the production constant's
  * single use site stays visible at the `planRoute.ts` call.
  *
- * Returns null when requestedDepthM <= 2.1 m (nothing to relax within the
+ * `floorM` is likewise a PARAMETER, never read from a module constant here
+ * (#54): the search never goes below it, and a requested depth at or below it
+ * yields null without probing. It is the SELECTED BOAT's floor — `planRoute`
+ * passes `relaxationFloorM(deps.boat)` (spec C.4a). Passing `BOAT_DRAFT_M`
+ * instead is the regression that rule exists to prevent.
+ *
+ * `floorM` is quantised UP to a decimetre on entry, so a caller that hands
+ * over a raw draft cannot be granted a gate below it.
+ *
+ * Returns null when requestedDepthM <= floorM (nothing to relax within the
  * floor) or no candidate gate connects.
  */
 export function findRelaxedGate(
@@ -87,9 +101,18 @@ export function findRelaxedGate(
   waypoints: LatLon[],
   requestedDepthM: number,
   approachRadiusM: number,
+  floorM: number,
   onProbe?: ProbeProgress,
 ): RelaxedGate | null {
-  const loDm = Math.round(BOAT_DRAFT_M * 10);
+  // CEIL, never round (spec C.8, and lib/boatDepth.ts's ceilToDecimetre says
+  // the same in capitals): Math.round(1.73 * 10) === 17 would hand a 1.73 m
+  // boat a 1.7 m floor UNDER ITS OWN KEEL. Quantising up here makes the
+  // FUNCTION fail closed for any floor, so the safety property no longer
+  // rests on every caller pre-quantising. Behaviour-preserving for callers
+  // that already do: over the 46 decimetre-quantised floors in [0.5, 5.0] the
+  // two forms disagree zero times (they disagree on 2205 of 4501
+  // millimetre-spaced floors, which is what makes that zero evidence).
+  const loDm = Math.ceil(floorM * 10 - 1e-9);
   // Highest decimeter strictly below the requested depth. The 1e-9 nudge
   // absorbs IEEE 754 artifacts like 2.2 * 10 === 22.000000000000004, which
   // would otherwise admit the requested depth itself as a candidate.

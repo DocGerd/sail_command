@@ -8,11 +8,33 @@ import { WindField } from '../lib/wind';
 import { solve } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
 import { planRoute } from './planRoute';
+import { findRelaxedGate } from './relaxedDepth';
 import { uniformWindGrid } from '../test/fixtures';
-import { uniformGate } from '../lib/depthGate';
+import { APPROACH_RADIUS_M, uniformGate } from '../lib/depthGate';
+import { boatById, DEFAULT_BOAT_ID, polarKey, type BoatDef } from '../data/boats';
 import { DEFAULT_SETTINGS } from '../types';
-import type { LatLon, Leg, MaskMeta, PolarTable, Settings } from '../types';
+import type {
+  LatLon,
+  Leg,
+  MaskMeta,
+  PlanResultOk,
+  PolarTable,
+  RigResult,
+  SailId,
+  Settings,
+} from '../types';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
+
+// #54: the pre-#54 shape had a direct `res.genoa`/`res.fock` field per sail;
+// this test file leaned on that shape heavily (11 planRoute() calls). Rather
+// than rewrite every call site to walk `res.sails` inline, this one helper
+// preserves the exact pre-#54 access pattern (`sailResult(res, 'genoa')`
+// reads identically to the old `res.genoa`) so the diff stays about the
+// shape change, not a rewrite of what each test actually asserts.
+function sailResult(res: PlanResultOk, sailId: SailId): RigResult | null {
+  return res.sails.find((s) => s.sailId === sailId)?.result ?? null;
+}
 
 // Regression tests for issue #20: the solver returned 'unreachable' for real
 // harbor-to-harbor routes because a full isochrone step (0.5-2 km) is longer
@@ -25,11 +47,24 @@ const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/d
 const maskMeta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8')) as MaskMeta;
 const mask = new NavMask(maskMeta, new Uint8Array(readFileSync(resolve(dataDir, 'mask.bin'))));
 const polarGenoa = JSON.parse(
-  readFileSync(resolve(dataDir, 'polar-genoa.json'), 'utf8'),
+  readFileSync(resolve(dataDir, 'polars', 'salona-45-genoa.json'), 'utf8'),
 ) as PolarTable;
 const polarFock = JSON.parse(
-  readFileSync(resolve(dataDir, 'polar-fock.json'), 'utf8'),
+  readFileSync(resolve(dataDir, 'polars', 'salona-45-fock.json'), 'utf8'),
 ) as PolarTable;
+
+// #54: PlanDeps carries polars keyed `${boatId}/${sailId}` instead of two
+// named fields. `deep-test` is the hypothetical 2.30 m boat the spec C.4(a)
+// safety rows plan with — it is deliberately absent from BOATS, so its keys
+// must be supplied here rather than derived from the catalogue.
+const polars: Record<string, PolarTable> = {
+  [polarKey(DEFAULT_BOAT_ID, 'genoa')]: polarGenoa,
+  [polarKey(DEFAULT_BOAT_ID, 'fock')]: polarFock,
+  [polarKey('deep-test', 'genoa')]: polarGenoa,
+  [polarKey('deep-test', 'fock')]: polarFock,
+};
+
+const SALONA_DEPS = { polars, boat: boatById(DEFAULT_BOAT_ID), mask };
 
 // Real harbor snap coordinates from harbors.json
 const FLENSBURG: LatLon = { lat: 54.798, lon: 9.4335 };
@@ -119,13 +154,15 @@ describe('real mask routing (issue #20)', () => {
         destinationHarborId: 'gluecksburg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      SALONA_DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    for (const rig of [res.genoa, res.fock]) {
+    for (const rig of [sailResult(res, 'genoa'), sailResult(res, 'fock')]) {
       expect(rig).not.toBeNull();
       // ~4 nm; anything over 1.5 h means the solver padded its way out
       expect(rig!.durationMs).toBeLessThan(1.5 * 3_600_000);
@@ -186,15 +223,17 @@ describe('real mask routing (issue #20)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings,
+          sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
-        { polarGenoa, polarFock, mask },
+        SALONA_DEPS,
       );
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
       // Explicitly-requested 2.3 m needs no relaxation: no shallow warnings.
       expect('shallow' in res).toBe(false);
-      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      const rig = sailResult(res, res.recommended);
       expect(rig).not.toBeNull();
       // ~38 nm great-circle; sane plans stay inside these envelopes
       expect(rig!.distanceNm).toBeGreaterThan(30);
@@ -239,9 +278,11 @@ describe('real mask routing (issue #20)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
-        { polarGenoa, polarFock, mask },
+        SALONA_DEPS,
       );
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
@@ -252,7 +293,7 @@ describe('real mask routing (issue #20)', () => {
       // because something charted below 3.0 m was actually crossed.
       expect(res.shallow!.minGateDepthM).toBeGreaterThanOrEqual(2.3);
       expect(res.shallow!.minGateDepthM).toBeLessThan(3.0);
-      for (const rig of [res.genoa, res.fock]) {
+      for (const rig of [sailResult(res, 'genoa'), sailResult(res, 'fock')]) {
         expect(rig).not.toBeNull();
         expect(rig!.distanceNm).toBeGreaterThan(30);
         expect(rig!.durationMs).toBeLessThan(12 * 3_600_000);
@@ -298,9 +339,11 @@ describe('real mask routing (issue #20)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings,
+          sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
-        { polarGenoa, polarFock, mask },
+        SALONA_DEPS,
       );
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
@@ -334,7 +377,7 @@ describe('real mask routing (issue #20)', () => {
       const LIMIT_M = 1852 * 1.02;
 
       const offenders: string[] = [];
-      for (const rig of [res.genoa, res.fock]) {
+      for (const rig of [sailResult(res, 'genoa'), sailResult(res, 'fock')]) {
         if (!rig) continue;
         for (const leg of rig.legs) {
           // Sample well below the ~46 m cell pitch, so any cell crossed for
@@ -386,13 +429,15 @@ describe('#243 depth comfort preference (real mask)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      SALONA_DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+    const rig = sailResult(res, res.recommended);
     expect(rig).not.toBeNull();
     expectLegsNavigable(rig!.legs, DEFAULT_SETTINGS.safetyDepthM);
 
@@ -440,15 +485,17 @@ describe('#243 depth comfort preference (real mask)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
-        { polarGenoa, polarFock, mask },
+        SALONA_DEPS,
       );
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
       expect(res.shallow).toBeDefined();
       expect(res.shallow!.usedDepthM).toBeCloseTo(2.3, 6);
-      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      const rig = sailResult(res, res.recommended);
       expect(rig).not.toBeNull();
       expectLegsNavigable(rig!.legs, res.shallow!.usedDepthM);
     },
@@ -474,15 +521,17 @@ describe('#243 depth comfort preference (real mask)', () => {
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings: DEFAULT_SETTINGS,
+          sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(12, 270),
-        { polarGenoa, polarFock, mask },
+        SALONA_DEPS,
       );
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
       expect(res.shallow).toBeDefined();
       expect(res.shallow!.usedDepthM).toBeCloseTo(2.3, 6);
-      const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+      const rig = sailResult(res, res.recommended);
       expect(rig).not.toBeNull();
       expect(exposureNm(rig!.legs, 3.0)).toBeLessThan(0.6);
     },
@@ -530,9 +579,11 @@ describe('#243 depth comfort preference (real mask)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      SALONA_DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
@@ -570,10 +621,11 @@ describe('#243 depth comfort preference (real mask)', () => {
       ['fock', polarFock],
     ] as const) {
       const ref = preFeatureReference(table);
-      expect(res[rig]!.legs, `${rig}: margin-0 legs must equal the comfort-free solve`).toEqual(
+      const sail = sailResult(res, rig);
+      expect(sail!.legs, `${rig}: margin-0 legs must equal the comfort-free solve`).toEqual(
         ref.legs,
       );
-      expect(res[rig]!.etaMs, `${rig}: margin-0 clock must equal the comfort-free solve`).toBe(
+      expect(sail!.etaMs, `${rig}: margin-0 clock must equal the comfort-free solve`).toBe(
         ref.etaMs,
       );
     }
@@ -636,13 +688,15 @@ describe('#243 depth comfort preference (real mask)', () => {
         destinationHarborId: 'drejoe',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      SALONA_DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const rig = res.recommended === 'genoa' ? res.genoa : res.fock;
+    const rig = sailResult(res, res.recommended);
     expect(rig).not.toBeNull();
     expectLegsNavigable(rig!.legs, DEFAULT_SETTINGS.safetyDepthM);
     let min = Infinity;
@@ -665,13 +719,15 @@ describe('#243 depth comfort preference (real mask)', () => {
         destinationHarborId: 'drejoe',
         departureMs: T0,
         settings: { ...DEFAULT_SETTINGS, depthComfortMarginM: 0 },
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      SALONA_DEPS,
     );
     expect(off.status).toBe('ok');
     if (off.status !== 'ok') return;
-    const offRig = off.recommended === 'genoa' ? off.genoa : off.fock;
+    const offRig = sailResult(off, off.recommended);
     expect(offRig).not.toBeNull();
     let minOff = Infinity;
     for (const leg of offRig!.legs) {
@@ -731,9 +787,11 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
           destinationHarborId: 'marstal',
           departureMs: T0,
           settings,
+          sailIds: ['genoa', 'fock'],
+          boat: defaultBoatSnapshot(),
         },
         uniformWindGrid(3, 0),
-        { polarGenoa, polarFock, mask },
+        SALONA_DEPS,
       );
       // Split so a red run names WHICH fact broke: `status` is the
       // solver-capability/mask-connectivity fact (would flip to 'ok' if
@@ -744,6 +802,112 @@ describe('issue #265: the mirror case — genuinely mask-limited must stay unrea
       // failure and couldn't tell them apart.
       expect(res.status).toBe('error');
       if (res.status === 'error') expect(res.reason).toBe('unreachable');
+    },
+  );
+});
+
+// #54 spec §C.4(a): the #53 relaxation floor is the SELECTED boat's draft,
+// not a module constant. Left global, relaxation takes a 2.30 m boat down to
+// a 2.1 m gate — 0.2 m shallower than its keel before the mask tolerance is
+// even applied — while the shallow banner reports the relaxation as if it
+// were the Salona's.
+//
+// Fixture: Flensburg->54.8652,10.5313 (pocket ~0.45 nm N of the Marstal snap).
+// MEASURED 2026-08-16: floor 2.1 -> usedDepthM 2.1, floor 2.3 -> no route.
+//
+// NOT a harbour pair on purpose. `findRelaxedGate` MAXIMISES the connecting
+// gate, so a fixture whose maximum gate is >= 2.3 returns the IDENTICAL value
+// at floor 2.1 and floor 2.3 and the obvious `usedDepthM >= 2.3` assertion is
+// a theorem. All 528 unordered harbour pairs measure 2.9, 2.3 or null — none
+// of them can red a wrongly-wired floor (Flensburg->Marstal is exactly the
+// 2.3 boundary case). This pocket's maximum connecting gate is 2.1, verified
+// against an independent numpy flood fill using a haversine disc.
+describe('#54 spec C.4(a): the relaxation floor comes from the selected boat', () => {
+  const POCKET: LatLon = { lat: 54.8652, lon: 10.5313 };
+  const REQUESTED_DEPTH_M = 3.0;
+
+  // The two rows below are NOT redundant. (a) guards the FIXTURE at the
+  // `findRelaxedGate` level and cannot see this task's wiring at all; (b) is
+  // the wiring test and is the only row a `planRoute.ts` perturbation can
+  // red. Without (a), a future mask rebuild that made this pocket unroutable
+  // at every gate would leave (b) passing for the wrong reason.
+  it('(a) FIXTURE KEEPER: the pocket still diverges between floor 2.1 and floor 2.3', () => {
+    const origin = mask.snapToNavigable(FLENSBURG, REQUESTED_DEPTH_M);
+    const dest = mask.snapToNavigable(POCKET, REQUESTED_DEPTH_M);
+    expect(origin, 'Flensburg must still snap at 3.0 m').not.toBeNull();
+    expect(dest, 'the pocket must still snap at 3.0 m').not.toBeNull();
+
+    const deep = findRelaxedGate(mask, [origin!, dest!], REQUESTED_DEPTH_M, APPROACH_RADIUS_M, 2.3);
+    expect(deep, 'a 2.30 m boat must NOT be granted a gate below its own draft').toBeNull();
+
+    // Licences the assertion above: without this the null could mean the
+    // fixture has gone unroutable at every gate (a mask change), not that
+    // the floor held.
+    const shallow = findRelaxedGate(
+      mask,
+      [origin!, dest!],
+      REQUESTED_DEPTH_M,
+      APPROACH_RADIUS_M,
+      2.1,
+    );
+    expect(shallow?.usedDepthM).toBeCloseTo(2.1, 6);
+  });
+
+  // #54 fix round 1: findRelaxedGate must quantise `floorM` UP, so it fails
+  // closed for a caller that hands over a RAW draft. Round would take a
+  // 2.14 m boat to a 2.1 m gate — under its own keel — which is the class
+  // lib/boatDepth.ts's ceilToDecimetre forbids in capitals (spec C.8).
+  //
+  // This row calls findRelaxedGate DIRECTLY, and it has to: MEASURED over
+  // 4501 millimetre-spaced drafts, ceil-vs-round in the callee is invisible
+  // through planRoute (0 disagreements) because the caller already quantises
+  // via relaxationFloorM. Only a raw floor reaches the branch.
+  //
+  // 2.14 is the discriminating value for THIS fixture, not 2.24: the pocket's
+  // maximum connecting gate is 21 dm, and round(2.14*10)=21 connects while
+  // ceil=22 does not. round(2.24*10)=22 also fails to connect, so a 2.24 row
+  // would pass either way.
+  it('(a2) CALLEE KEEPER: a RAW non-decimetre floor is quantised UP, not down', () => {
+    const origin = mask.snapToNavigable(FLENSBURG, REQUESTED_DEPTH_M);
+    const dest = mask.snapToNavigable(POCKET, REQUESTED_DEPTH_M);
+    const raw = findRelaxedGate(mask, [origin!, dest!], REQUESTED_DEPTH_M, APPROACH_RADIUS_M, 2.14);
+    expect(raw, 'a 2.14 m floor must not be granted the 2.1 m gate below it').toBeNull();
+  });
+
+  it(
+    '(b) WIRING: planRoute relaxes to the floor of deps.boat, not to a shared constant',
+    { timeout: solverTimeoutMs(600_000) },
+    () => {
+      const salona = boatById(DEFAULT_BOAT_ID);
+      // Deliberately NOT a catalogue entry: the catalogue has one boat, whose
+      // draft coincides with the old module constant, so no real boat can
+      // discriminate the wiring.
+      const deepBoat: BoatDef = { ...salona, id: 'deep-test', draftM: 2.3 };
+      const request = {
+        origin: FLENSBURG,
+        destination: POCKET,
+        viaPoints: [],
+        originHarborId: 'flensburg',
+        destinationHarborId: null,
+        departureMs: T0,
+        settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'] as SailId[],
+        boat: defaultBoatSnapshot(),
+      };
+      const wind = uniformWindGrid(12, 270);
+
+      const deepRes = planRoute(request, wind, { polars, boat: deepBoat, mask });
+      expect(deepRes.status, 'a 2.30 m boat must not be routed through a 2.1 m relaxed gate').toBe(
+        'error',
+      );
+      if (deepRes.status === 'error') expect(deepRes.reason).toBe('unreachable');
+
+      // MANDATORY companion, not optional: without it the row above is
+      // indistinguishable from "this fixture is simply unroutable", which is
+      // the vacuity mode the whole fixture measurement exists to avoid.
+      const salonaRes = planRoute(request, wind, { polars, boat: salona, mask });
+      expect(salonaRes.status, 'the 2.10 m Salona 45 must still reach the pocket').toBe('ok');
+      if (salonaRes.status === 'ok') expect(salonaRes.shallow?.usedDepthM).toBeCloseTo(2.1, 6);
     },
   );
 });

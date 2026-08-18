@@ -7,15 +7,19 @@ import { savePlan, __resetDbForTests } from '../services/db';
 import * as db from '../services/db';
 import * as openMeteo from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type Plan, type Rig, type WindGrid } from '../types';
+import { DEFAULT_SETTINGS, type Plan, type SailId, type WindGrid } from '../types';
 import PlansList, { type PlansListProps } from './PlansList';
+import { de } from '../i18n/dict.de';
+import { en } from '../i18n/dict.en';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 function makePlan(overrides: {
   id: string;
   createdAtMs: number;
   name?: string;
   windGrid?: WindGrid;
-  recommended?: Rig;
+  recommended?: SailId;
   etaMs?: number;
   departureMs?: number;
 }): Plan {
@@ -33,6 +37,7 @@ function makePlan(overrides: {
     id: overrides.id,
     name: overrides.name ?? `Plan ${overrides.id}`,
     createdAtMs: overrides.createdAtMs,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.0, lon: 9.0 },
       destination: { lat: 55.0, lon: 10.0 },
@@ -41,15 +46,26 @@ function makePlan(overrides: {
       destinationHarborId: null,
       departureMs: overrides.departureMs ?? overrides.createdAtMs,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: overrides.windGrid ?? uniformWindGrid(10, 270),
     result: {
       status: 'ok',
-      genoa: recommended === 'genoa' ? { rig: 'genoa', ...rigResult } : null,
-      fock: recommended === 'fock' ? { rig: 'fock', ...rigResult } : null,
-      genoaReason: recommended === 'genoa' ? null : 'calm-motor-off',
-      fockReason: recommended === 'fock' ? null : 'calm-motor-off',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: recommended === 'genoa' ? { sailId: 'genoa', ...rigResult } : null,
+          reason: recommended === 'genoa' ? null : 'calm-motor-off',
+        },
+        {
+          sailId: 'fock',
+          result: recommended === 'fock' ? { sailId: 'fock', ...rigResult } : null,
+          reason: recommended === 'fock' ? null : 'calm-motor-off',
+        },
+      ],
       recommended,
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.0, lon: 9.0 },
       snappedDestination: { lat: 55.0, lon: 10.0 },
     },
@@ -346,5 +362,94 @@ describe('PlansList recalculate (#114)', () => {
     expect(onRecalculate).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Recalculate as new plan' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Replace original' })).toBeDisabled();
+  });
+
+  // #54 spec §I.3: a record the read-time normaliser cannot handle is LISTED,
+  // never skipped. §I.3 names both causes — "missing required field; a
+  // schemaVersion from a newer build" — and this block fixtures both.
+  describe('an unreadable record', () => {
+    async function saveUnreadable(id: string, createdAtMs: number, name: string) {
+      await savePlan({
+        ...makePlan({ id, createdAtMs, name }),
+        schemaVersion: 999,
+      });
+    }
+
+    async function saveDamaged(id: string, createdAtMs: number, name: string) {
+      const plan = makePlan({ id, createdAtMs, name }) as unknown as Record<string, unknown>;
+      delete (plan.result as Record<string, unknown>).snappedOrigin;
+      await savePlan(plan as unknown as Plan);
+    }
+
+    it('is shown, with its name and creation date, alongside readable rows', async () => {
+      await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, name: 'Readable' }));
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      renderList();
+
+      expect(await screen.findByText('From The Future')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Readable/ })).toBeInTheDocument();
+    });
+
+    // The row's only control is a destructive one, and prod and /uat/ share
+    // one origin-scoped database, so telling the user which case they are
+    // looking at is what makes that two-tap delete an informed choice.
+    it('tells the user a newer build wrote it, and claims nothing about its integrity', async () => {
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      renderList();
+
+      expect(await screen.findByText(/newer version of the app/i)).toBeInTheDocument();
+      expect(screen.getByText(/cannot read it/i)).toBeInTheDocument();
+      expect(screen.queryByText(/incomplete or damaged/i)).not.toBeInTheDocument();
+    });
+
+    // BOTH dictionaries, asserted on the strings themselves: the rendered
+    // check above runs in English only, so a regex there could never reach the
+    // German copy however many languages it names. The classification comes
+    // from schemaVersion alone (services/db.ts) and cannot rule out a record
+    // that is BOTH newer and corrupt, so neither language may promise the
+    // record is intact — the row's only control deletes it irreversibly.
+    it('#54: neither dictionary promises the newer-version record is undamaged', () => {
+      for (const [lang, dict] of [
+        ['de', de],
+        ['en', en],
+      ] as const) {
+        expect(dict['plansList.unreadable.newerVersion'], lang).not.toMatch(
+          /undamaged|unbeschädigt|intact|unversehrt|heil/i,
+        );
+      }
+    });
+
+    it('says a genuinely damaged record is damaged, not that it came from a newer build', async () => {
+      await saveDamaged('p3', 2000, 'Broken One');
+
+      renderList();
+
+      expect(await screen.findByText(/incomplete or damaged/i)).toBeInTheDocument();
+      expect(screen.queryByText(/newer version of the app/i)).not.toBeInTheDocument();
+    });
+
+    it('offers no way to open or recalculate it, but can still be deleted by the user', async () => {
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      renderList();
+
+      await screen.findByText('From The Future');
+      expect(screen.queryByRole('button', { name: /From The Future/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Recalculate' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Delete plan' })).toBeInTheDocument();
+    });
+
+    it('survives a listing — the row is a placeholder, never a delete', async () => {
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      const { unmount } = renderList();
+      await screen.findByText('From The Future');
+      unmount();
+
+      renderList();
+      expect(await screen.findByText('From The Future')).toBeInTheDocument();
+    });
   });
 });

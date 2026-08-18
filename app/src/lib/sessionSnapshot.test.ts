@@ -51,10 +51,25 @@ describe('sessionSnapshot (#113)', () => {
     ['a missing tab', '{"v":1,"planId":"p1","rig":null}'],
     ['a non-string planId', '{"v":1,"planId":42,"tab":"plan","rig":null}'],
     ['a missing planId', '{"v":1,"tab":"plan","rig":null}'],
-    ['an unknown rig', '{"v":1,"planId":"p1","tab":"plan","rig":"spinnaker"}'],
+    ['a non-string rig', '{"v":1,"planId":"p1","tab":"plan","rig":42}'],
     ['a missing rig', '{"v":1,"planId":"p1","tab":"plan"}'],
   ])('rejects %s as null (fresh boot)', (_name, raw) => {
     expect(parseSessionSnapshot(raw)).toBeNull();
+  });
+
+  // #54 spec §I.3: an id this build's catalogue does not know is NOT a parse
+  // failure. Whether a sail id is usable is a question about the plan the
+  // snapshot points at, and rejecting it here would collapse the WHOLE
+  // snapshot — costing the user their restored plan id and tab as well, for a
+  // field the restore can simply decline to apply. useSessionRestore.ts owns
+  // that check, against the plan's own per-sail list.
+  it('#54: keeps a sail id the catalogue does not know, rather than collapsing the snapshot', () => {
+    expect(parseSessionSnapshot('{"v":1,"planId":"p1","tab":"routes","rig":"spinnaker"}')).toEqual({
+      v: 1,
+      planId: 'p1',
+      tab: 'routes',
+      rig: 'spinnaker',
+    });
   });
 
   // #299: 'boat' is a real, persistable Tab value (App.tsx's write-back

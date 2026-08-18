@@ -20,6 +20,48 @@
  * see `armNames.ts`'s own doc comment for why it must stay import-free for
  * that to keep working.
  *
+ * #54/Task 8: pass `--canonical` (in either argument position) to compare
+ * through `canonicalize.mjs`'s `canonicalizePlan` instead of raw parsed
+ * JSON. Default (no flag) byte mode is UNCHANGED — every code path below
+ * that doesn't mention `canonical` behaves exactly as before, so a prior
+ * byte-mode result stays comparable. See README.md for when each mode is
+ * valid: byte for a no-change claim, canonical for a deliberate shape
+ * change (Task 9's PlanResultOk rename) that a byte compare cannot see past.
+ *
+ * The whole-file digest below is ALSO computed over the canonicalised form
+ * under `--canonical`, not suppressed and not left on raw bytes: raw bytes
+ * would print "*** DIFFERS ***" beside a correct canonically-identical
+ * verdict (the rename changes field names, which changes every byte), while
+ * suppressing it would silently drop the one thing a per-plan compare
+ * cannot see — TWO distinct order changes, not one:
+ *
+ *   1. Intra-plan KEY order. `JSON.stringify` preserves insertion order, and
+ *      `canonicalizePlan` does NOT normalise every key's order (only the
+ *      fields the rename itself touches — the sails list and the
+ *      genoa/fock-vs-sailId key inside each RigResult); every other
+ *      top-level key keeps the input plan's own order. A stray key-order
+ *      regression in a field the rename never touches is caught here.
+ *   2. Inter-plan HARBOUR (map-key) order. The per-plan compare below
+ *      iterates a SHARED sorted key list, so it is order-independent BY
+ *      CONSTRUCTION and cannot see a harbour reordering either way — the
+ *      digest is the ONLY check that can. `canonicalizeArmFile` (from
+ *      `canonicalize.mjs`) is called ONCE PER SIDE, each on that side's own
+ *      `JSON.parse` result, so each canonical map is built from its OWN
+ *      on-disk key order rather than the shared sorted list — fix round 1
+ *      (#54 review) found and fixed an earlier version that built both
+ *      sides from the shared sorted list, which made the canonical digest
+ *      blind to a harbour reorder that byte mode caught (reproduced:
+ *      reversing one arm file's harbour order changed the byte digest but
+ *      left the canonical digest reading IDENTICAL).
+ *
+ * DIAGNOSTIC, NOT GATING, in BOTH modes: the digest line's "IDENTICAL" /
+ * "*** DIFFERS ***" never drives the exit code — that comes only from
+ * `diffs.length` in the per-plan compare below. A `*** DIFFERS ***` digest
+ * line is a signal to go look, not a failing run on its own (measured: byte
+ * mode exits 0 on a harbour-reordered pair despite printing DIFFERS, because
+ * the per-plan compare — order-independent — reports every plan identical).
+ *
+
  * NAMED RESIDUAL (PR #488 review): this only checks that BOTH SIDES agree on
  * which arms exist and which harbours each arm covers — it has no idea that
  * a real run always covers all 33 harbours, so it cannot distinguish a
@@ -34,14 +76,17 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { canonicalizePlan, canonicalizeArmFile } from './canonicalize.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { ARM_NAMES } = await import(resolve(here, 'armNames.ts'));
 const EXPECTED = [...ARM_NAMES].sort();
 
-const [a, b] = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const canonical = rawArgs.includes('--canonical');
+const [a, b] = rawArgs.filter((x) => x !== '--canonical');
 if (!a || !b) {
-  console.error('usage: node compare.mjs <dirA> <dirB>');
+  console.error('usage: node compare.mjs [--canonical] <dirA> <dirB>');
   process.exit(2);
 }
 
@@ -88,21 +133,33 @@ for (const arm of arms) {
     console.error(`ARM ${arm}: harbour set differs`);
     process.exit(1);
   }
+  // Under --canonical, each side built from its OWN Object.keys() order
+  // (never the shared sorted `keys` list below) — see the header comment's
+  // "Inter-plan HARBOUR order" paragraph for why that distinction is the
+  // whole point of this call. Unused, and not computed, when canonical is
+  // false.
+  const canonA = canonical ? canonicalizeArmFile(ja) : null;
+  const canonB = canonical ? canonicalizeArmFile(jb) : null;
   for (const k of keys) {
     total++;
-    const sa = JSON.stringify(ja[k]);
-    const sb = JSON.stringify(jb[k]);
+    const va = canonical ? canonA[k] : ja[k];
+    const vb = canonical ? canonB[k] : jb[k];
+    const sa = JSON.stringify(va);
+    const sb = JSON.stringify(vb);
     if (sa === sb) same++;
     else diffs.push(`${arm}/${k}  A=${sha(sa)} B=${sha(sb)}`);
     const o = ja[k].status === 'ok' ? (ja[k].shallow ? 'ok+shallow' : 'ok') : `error/${ja[k].reason}`;
     outcomes[o] = (outcomes[o] ?? 0) + 1;
   }
-  // Whole-file digest as well: catches a key-ORDER change a per-plan compare
-  // would not see.
+  // Whole-file digest as well: catches an order change a per-plan compare
+  // would not see (both classes — see header comment). DIAGNOSTIC ONLY,
+  // never gating: this line's verdict does not affect the exit code below.
+  const digestA = canonical ? JSON.stringify(canonA) : fa;
+  const digestB = canonical ? JSON.stringify(canonB) : fb;
   console.log(
-    `arm ${arm.padEnd(16)} ${keys.length} plans  sha A=${sha(fa)} B=${sha(fb)} ${
-      fa === fb ? 'IDENTICAL' : '*** DIFFERS ***'
-    }`,
+    `arm ${arm.padEnd(16)} ${keys.length} plans  sha A=${sha(digestA)} B=${sha(digestB)} ${
+      digestA === digestB ? 'IDENTICAL' : '*** DIFFERS ***'
+    }${canonical ? ' (canonical)' : ''}`,
   );
 }
 
@@ -111,7 +168,7 @@ for (const arm of arms) {
 // visible in the summary instead of reading identically to a full one.
 const harboursPerArm = arms.length > 0 ? total / arms.length : 0;
 console.log(
-  `\n${same}/${total} plans byte-identical across ${arms.length} arms x ${harboursPerArm} harbours/arm`,
+  `\n${same}/${total} plans ${canonical ? 'canonically' : 'byte'}-identical across ${arms.length} arms x ${harboursPerArm} harbours/arm`,
 );
 console.log('A-side outcome distribution:', JSON.stringify(outcomes));
 if (diffs.length) {

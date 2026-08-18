@@ -8,15 +8,17 @@ import { savePlan, __resetDbForTests } from '../services/db';
 import * as db from '../services/db';
 import { SESSION_SNAPSHOT_KEY, type Tab } from '../lib/sessionSnapshot';
 import { uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type Plan, type Rig, type RigResult } from '../types';
+import { DEFAULT_SETTINGS, type Plan, type RigResult, type SailId } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 // A plan whose BOTH rigs have results (recommended: genoa), so restoring a
 // persisted rig 'fock' is distinguishable from setPlan's own reset to the
 // recommended rig — the honest proof that the rig is re-applied AFTER setPlan.
 function makePlan(id: string, windKn = 12): Plan {
   const base = Date.now() - 60_000;
-  const rigResult = (rig: Rig): RigResult => ({
-    rig,
+  const rigResult = (sailId: SailId): RigResult => ({
+    sailId,
     legs: [],
     etaMs: base + 4 * 3_600_000,
     durationMs: 4 * 3_600_000,
@@ -28,6 +30,7 @@ function makePlan(id: string, windKn = 12): Plan {
     id,
     name: `Plan ${id}`,
     createdAtMs: base,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.8, lon: 9.5 },
       destination: { lat: 54.9, lon: 10.5 },
@@ -36,15 +39,18 @@ function makePlan(id: string, windKn = 12): Plan {
       destinationHarborId: null,
       departureMs: base + 3_600_000,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: uniformWindGrid(windKn, 270),
     result: {
       status: 'ok',
-      genoa: rigResult('genoa'),
-      fock: rigResult('fock'),
-      genoaReason: null,
-      fockReason: null,
+      sails: [
+        { sailId: 'genoa', result: rigResult('genoa'), reason: null },
+        { sailId: 'fock', result: rigResult('fock'), reason: null },
+      ],
       recommended: 'genoa',
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.8, lon: 9.5 },
       snappedDestination: { lat: 54.9, lon: 10.5 },
     },
@@ -126,6 +132,24 @@ describe('useSessionRestore (#113)', () => {
     // The rendered wind is the STORED grid's value (seeded as 12 kn above).
     expect(screen.getByTestId('wind').textContent).toBe('12');
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // #54 spec §I.3: the persisted sail id is checked against THIS PLAN's own
+  // per-sail list, not the catalogue, and failing that check costs only the
+  // rig — never the plan or the tab, which is what moving the check out of
+  // parseSessionSnapshot bought.
+  it('#54: a sail id the plan does not carry leaves the recommended rig, and still restores plan and tab', async () => {
+    await savePlan(makePlan('p1', 12));
+    localStorage.setItem(
+      SESSION_SNAPSHOT_KEY,
+      '{"v":1,"planId":"p1","tab":"routes","rig":"spinnaker"}',
+    );
+
+    renderHarness();
+
+    await waitFor(() => expect(screen.getByTestId('plan-id').textContent).toBe('p1'));
+    expect(screen.getByTestId('rig').textContent).toBe('genoa');
+    expect(screen.getByTestId('tab').textContent).toBe('routes');
   });
 
   it('restores the tab alone when no plan was open (planId null)', async () => {

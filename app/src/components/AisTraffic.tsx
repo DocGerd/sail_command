@@ -12,7 +12,7 @@ import {
   routeCorridorBoxes,
 } from '../lib/routeCorridor';
 import { activeRigResult } from '../lib/plan';
-import type { Plan, Rig } from '../types';
+import type { Plan, SailId } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
 
 const AIS_BBOX_PAD = 0.2; // subscribe to the viewport padded 20% each side
@@ -74,7 +74,7 @@ export default function AisTraffic({
   apiKey: string | undefined;
   ownMmsi: string | undefined;
   plan: Plan | null;
-  rig: Rig | null;
+  rig: SailId | null;
   activeLegIndex: number | null;
 }) {
   const map = useMapInstance();

@@ -7,6 +7,14 @@ import { DEFAULT_SETTINGS } from '../types';
 import { en } from '../i18n/dict.en';
 import { de } from '../i18n/dict.de';
 import { MASK_TOLERANCE_M } from '../lib/mask';
+import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import {
+  ceilToDecimetre,
+  defaultSafetyDepthM,
+  minSafetyDepthM,
+  relaxationFloorM,
+} from '../lib/boatDepth';
+import { SAFETY_DEPTH_FIELD } from '../components/OptionsPanel';
 
 // #455: pipeline/build_mask.py's TOLERANCE_M is the structural bound behind
 // the About dialog's `about.caveats.depthMask` disclosure — no compiler
@@ -108,7 +116,9 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
     const toleranceM = readToleranceM();
     // PR #481 review (F2, MEASURED): #53's relaxed-depth search
     // (relaxedDepth.ts's findRelaxedGate) probes an internal gate down to
-    // BOAT_DRAFT_M itself whenever the requested depth is unreachable —
+    // the selected boat's relaxation floor — relaxationFloorM(boat), which is
+    // BOAT_DRAFT_M's 2.1 for the Salona (#54) — whenever the requested depth
+    // is unreachable —
     // independent of SAFETY_DEPTH_FIELD's 2.2 m UI clamp (OptionsPanel.tsx),
     // which bounds only what a user can TYPE — and it fires at DEFAULT
     // settings with no user input at all (realmask.repro.test.ts pins
@@ -142,5 +152,114 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
       expect(containsMeasurement(text, BOAT_DRAFT_M, 'de')).toBe(true);
       expect(containsMeasurement(text, BOAT_DRAFT_M - toleranceM, 'de')).toBe(true);
     });
+  });
+});
+
+// Generalises the #455 drift guard so its rows derive their expectations from
+// the boat catalogue rather than hardcoding the Salona 45's numbers. TWO rows
+// deliberately do not: R6 anchors the Salona's four literals against a
+// hardcoded id, and R7b pins the UI field minimum to DEFAULT_BOAT_ID. That
+// independence is the point — R6 is what catches an arithmetic
+// generalisation that is self-consistent but wrong. What it pins is the
+// DERIVATION: that lib/boatDepth.ts computes a gate from a boat's own draft
+// rather than from a module constant. At a one-boat catalogue only R4's
+// proof of that is non-tautological — it uses a synthetic 2.3 m boat built
+// in the test and deliberately not a member of BOATS. R2 and R7b are weaker
+// today, and they strengthen by DIFFERENT means: R2 iterates BOATS, so it
+// gains teeth as soon as a second, differently-drafted boat exists; R7b
+// never iterates BOATS at all, and strengthens only when OptionsPanel.tsx's
+// hardcoded min is replaced by the derived call — as R7b's own comment
+// says. It deliberately CANNOT observe whether
+// planRoute()'s #53 relaxation search actually calls those helpers per boat;
+// that wiring is a different artifact and is pinned separately by Task 10's
+// own mutation check. Keeping the two claims apart is the point: a guard
+// that appears to cover the wiring would be trusted for something it never
+// tested.
+describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', () => {
+  // R1 — the non-vacuity twin. This list is HAND-WRITTEN and must never be derived
+  // from BOATS (#411, "a guard's DATA needs a twin").
+  // MEASURED 2026-08-14, perturbing boats.ts one way at a time (8 rows in this block):
+  //   ADD a second entry, 'salona-45' intact -> only R1 reds.
+  //   RENAME the sole entry's id             -> R1 reds, and R4/R6/R7b THROW via
+  //                                             boatById('salona-45').
+  //   WRONG draftM under an unchanged id     -> R1 stays GREEN; R6 and R7b catch it
+  //                                             via their own hardcoded literals.
+  //   BOATS = []                             -> R1 reds, and R4/R6/R7b throw.
+  // So R1 is the only row that sees an EXTRA entry, and it is blind to a wrong VALUE
+  // under a correct id — which is what R6 and R7b are for. An empty or renamed
+  // catalogue fails loudly rather than silently.
+  //
+  // Discriminating experiment, recorded so it is run rather than assumed:
+  //   perturb production alone (add a boat) -> 1 row reds (this one)
+  //   perturb this table alone              -> 1 row reds (this one)
+  // R6 is independent BY DESIGN: it anchors the Salona literals against a
+  // hardcoded id and shares no identifier with this table, so it cannot red
+  // from a perturbation here. That independence is the point — R6 is what
+  // catches an arithmetic generalisation that is self-consistent but wrong.
+  const EXPECTED_BOAT_IDS = ['salona-45'];
+
+  it('R1: the catalogue matches the hand-written expected list', () => {
+    expect(BOATS.map((b) => b.id)).toEqual(EXPECTED_BOAT_IDS);
+  });
+
+  it('R2: default safety depth is DERIVED, not hand-typed', () => {
+    for (const b of BOATS) {
+      expect(defaultSafetyDepthM(b)).toBe(ceilToDecimetre(b.draftM + MASK_TOLERANCE_M));
+    }
+  });
+
+  it('R3: the C.3 invariant holds for every catalogue boat', () => {
+    for (const b of BOATS) {
+      const floorDm = Math.round((defaultSafetyDepthM(b) - MASK_TOLERANCE_M) * 10);
+      expect(floorDm).toBeGreaterThanOrEqual(Math.round(b.draftM * 10));
+    }
+  });
+
+  it('R4: the relaxation floor is per-boat, not a module constant', () => {
+    // This row guards the pure DERIVATION only (relaxationFloorM itself) — it
+    // cannot observe whether planRoute()'s #53 relaxation search actually
+    // calls this helper per-boat rather than the old module-level
+    // BOAT_DRAFT_M. That WIRING is a separate, later concern: Task 10 (not
+    // this file) owns the mutation check proving the relaxation search reads
+    // relaxationFloorM(boat) rather than a shared constant once PlanDeps
+    // carries the boat through.
+    for (const b of BOATS) {
+      expect(relaxationFloorM(b)).toBe(ceilToDecimetre(b.draftM));
+    }
+    // The assertion that catches a 2.30 m boat relaxing to 2.1 m: a hypothetical
+    // deeper boat must NOT floor at the Salona's draft.
+    const deep = { ...boatById('salona-45'), id: 'x', draftM: 2.3 };
+    expect(relaxationFloorM(deep)).toBe(2.3);
+  });
+
+  it('R6: the Salona 45 still reads its four literals', () => {
+    const b = boatById('salona-45');
+    expect(b.draftM).toBe(2.1);
+    expect(defaultSafetyDepthM(b)).toBe(3.0);
+    expect(round1(defaultSafetyDepthM(b) - MASK_TOLERANCE_M)).toBe(2.1);
+    expect(round1(relaxationFloorM(b) - MASK_TOLERANCE_M)).toBe(1.2);
+  });
+
+  it('R7: every derived default fits inside the field range', () => {
+    for (const b of BOATS) {
+      expect(b.draftM + MASK_TOLERANCE_M).toBeLessThanOrEqual(SAFETY_DEPTH_FIELD.max);
+    }
+  });
+
+  it('R7b: the field minimum is the derived per-boat minimum', () => {
+    // Beyond the brief (Task 3 controller addition): passes today because both
+    // sides read 2.2 m, and becomes the keeper once a later task replaces
+    // OptionsPanel.tsx's hardcoded `min: 2.2` with this derived call — min is
+    // a bare number, so nothing else in this suite would catch a wrong value.
+    expect(SAFETY_DEPTH_FIELD.min).toBe(minSafetyDepthM(boatById(DEFAULT_BOAT_ID)));
+  });
+
+  it('R8: report zero-margin boats rather than relying on a binary pass', () => {
+    const zero = BOATS.filter(
+      (b) => Math.round((defaultSafetyDepthM(b) - MASK_TOLERANCE_M - b.draftM) * 10) === 0,
+    ).map((b) => b.id);
+    // Reported, NOT failed — spec C.8 R8. The Salona 45 sits at exactly 0.0 m.
+    console.info('[R8] zero floor-margin boats:', zero);
+    expect(Array.isArray(zero)).toBe(true);
   });
 });

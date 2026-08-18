@@ -1,19 +1,42 @@
-import type { MaskMeta, PlanRequest, PlanResult, PolarTable, Rig, WindGrid } from '../types';
+import type { MaskMeta, PlanRequest, PlanResult, PolarTable, SailId, WindGrid } from '../types';
 import { NavMask } from '../lib/mask';
-import { planRoute } from './planRoute';
+import { boatById, type BoatId } from '../data/boats';
+import { planRoute, type PlanDeps } from './planRoute';
 
 export type WorkerRequest =
   | {
       type: 'init';
       maskMeta: MaskMeta;
       maskBuffer: ArrayBuffer;
-      polarGenoa: PolarTable;
-      polarFock: PolarTable;
+      /**
+       * #54 spec F.3: EVERY catalogue boat's polars, keyed by
+       * `data/boats.ts`'s polarKey(). Plain objects, so they are CLONED by
+       * structured clone, never transferred — only the mask buffer is
+       * transferred. Single-digit KB, paid once at startup, which is what
+       * keeps "init once, plan many" true for a multi-boat catalogue.
+       */
+      polars: Readonly<Record<string, PolarTable>>;
     }
   | {
       type: 'plan';
       id: string;
       request: PlanRequest;
+      /**
+       * #54: which boat the solver plans with. SAFETY-CRITICAL — it is what
+       * `planRoute` derives the spec C.4(a) relaxation floor from, so it is
+       * carried explicitly rather than parsed back out of `polarKeys`.
+       * Task 11 added `PlanRequest.boat` and deliberately did NOT replace
+       * this field with it — `boatById(req.boatId)` below throws on an id
+       * outside the catalogue, which a stored snapshot's `string` id may be.
+       * See workerClient.ts's `buildPlanMessage` for the full reasoning.
+       */
+      boatId: BoatId;
+      /**
+       * #54 spec F.3: which of `init`'s keys this plan runs, in
+       * `request.sailIds` order. Selects the subset handed to `PlanDeps`, so
+       * a key missing here is a key the solver cannot reach.
+       */
+      polarKeys: readonly string[];
       windGrid: WindGrid;
       /**
        * #432: wall-clock budget for the WHOLE plan (all tiers, both rigs,
@@ -34,7 +57,7 @@ export type WorkerRequest =
 
 export type WorkerResponse =
   | { type: 'ready' }
-  | { type: 'progress'; id: string; rig: Rig; tMs: number; frontierSize: number }
+  | { type: 'progress'; id: string; sailId: SailId; tMs: number; frontierSize: number }
   // #53: one message per relaxed-depth connectivity probe (mask BFS, no solver
   // run) so the UI can show the probe phase instead of a stalled routing bar.
   | { type: 'probe'; id: string; probeDepthM: number; done: number; total: number }
@@ -46,14 +69,13 @@ export type WorkerResponse =
   | { type: 'fatal'; id: string | null; message: string; stack?: string };
 
 export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRequest) => void {
-  let state: { mask: NavMask; polarGenoa: PolarTable; polarFock: PolarTable } | null = null;
+  let state: { mask: NavMask; polars: Readonly<Record<string, PolarTable>> } | null = null;
   return (req) => {
     try {
       if (req.type === 'init') {
         state = {
           mask: new NavMask(req.maskMeta, new Uint8Array(req.maskBuffer)),
-          polarGenoa: req.polarGenoa,
-          polarFock: req.polarFock,
+          polars: req.polars,
         };
         post({ type: 'ready' });
         return;
@@ -73,15 +95,26 @@ export function createHandler(post: (r: WorkerResponse) => void): (req: WorkerRe
         budgetMs === undefined
           ? undefined
           : { expired: () => Date.now() - startedAtMs >= budgetMs };
+      // #54: `polarKeys` selects the subset of init's map this plan may reach.
+      // A key init never carried is simply absent here; planRoute() owns the
+      // fail-closed throw, so the check lives at ONE boundary rather than two
+      // (the sweep harness and every test construct PlanDeps directly and
+      // must hit the same check).
+      const polars: Record<string, PolarTable> = {};
+      for (const key of req.polarKeys) {
+        const table: PolarTable | undefined = state.polars[key];
+        if (table !== undefined) polars[key] = table;
+      }
+      const deps: PlanDeps = { polars, boat: boatById(req.boatId), mask: state.mask };
       const result = planRoute(
         req.request,
         req.windGrid,
-        state,
-        (rig, info) =>
+        deps,
+        (sailId, info) =>
           post({
             type: 'progress',
             id: req.id,
-            rig,
+            sailId,
             tMs: info.tMs,
             frontierSize: info.frontierSize,
           }),

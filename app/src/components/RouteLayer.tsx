@@ -18,11 +18,11 @@ import { NavMask } from '../lib/mask';
 import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
-import type { LatLon, Plan, Rig } from '../types';
+import type { LatLon, Plan, SailId } from '../types';
 
 export interface RouteLayerProps {
   plan: Plan | null;
-  rig: Rig | null;
+  rig: SailId | null;
   // From useActivePlan() (published by LiveView off the GPS fix). Drives a
   // cheap setFilter() on the highlight layer only — never a source re-set —
   // so near-boundary GPS noise flipping between adjacent legs stays cheap.
@@ -513,11 +513,15 @@ export default function RouteLayer({
   }
 
   const result = plan && rig ? activeRigResult(plan, rig) : null;
-  // #324: whichever rig is NOT currently shown as the primary route. `rig`
-  // defaults to plan.result.recommended but is user-switchable (RouteSummary
-  // tabs) — this always tracks the complement of whatever IS primary, not a
-  // fixed "recommended vs. non-recommended" pair.
-  const otherRig: Rig | null = rig === 'genoa' ? 'fock' : rig === 'fock' ? 'genoa' : null;
+  // #324/#54: whichever sail is NOT currently shown as the primary route.
+  // `rig` defaults to plan.result.recommended but is user-switchable
+  // (RouteSummary tabs) — this always tracks the complement of whatever IS
+  // primary, not a fixed "recommended vs. non-recommended" pair. Derived
+  // from the plan's OWN `sails` list (never a bare sail-id literal) — cap N
+  // at 2 (spec §J OQ-3) means "the other one" is well-defined as long as
+  // exactly two sails were requested.
+  const otherRig: SailId | null =
+    plan && rig ? (plan.result.sails.find((s) => s.sailId !== rig)?.sailId ?? null) : null;
   const altResult = plan && otherRig ? activeRigResult(plan, otherRig) : null;
   // #324 (PR #384 review): the toggle needs BOTH a primary result to be
   // de-emphasised against AND an alt result to show — not `altResult` alone.

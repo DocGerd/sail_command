@@ -1,4 +1,4 @@
-import type { PolarTable, Rig } from '../types';
+import type { PolarTable, SailId } from '../types';
 import { normalizeDeg180 } from './geo';
 
 function interp1(xs: number[], ys: number[], x: number): number {
@@ -12,7 +12,10 @@ function interp1(xs: number[], ys: number[], x: number): number {
 }
 
 export class Polar {
-  readonly rig: Rig;
+  // Field NAME unchanged (retyped only) — mirrors table.rig, which is
+  // itself the on-disk shape of the committed polar JSON. See PolarTable's
+  // own `rig` field comment (types.ts) for why that field is never renamed.
+  readonly rig: SailId;
   private table: PolarTable;
   private performanceFactor: number;
 

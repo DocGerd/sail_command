@@ -17,6 +17,9 @@ vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
 import { loadRoutingAssets } from '../services/assets';
 import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import RouteSummary from './RouteSummary';
+import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
 
@@ -37,8 +40,10 @@ function assetsWithMask(fn: (row: number, col: number) => number) {
   return {
     maskMeta: TEST_MASK_META,
     maskBuffer: data.buffer,
-    polarGenoa: TEST_POLAR,
-    polarFock: TEST_POLAR,
+    polars: {
+      [polarKey(DEFAULT_BOAT_ID, 'genoa')]: TEST_POLAR,
+      [polarKey(DEFAULT_BOAT_ID, 'fock')]: TEST_POLAR,
+    },
     harbors: [],
     seamarks: { type: 'FeatureCollection' as const, features: [] },
   };
@@ -115,6 +120,7 @@ function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
     id: 'plan-1',
     name: 'Exposure test plan',
     createdAtMs: DEPARTURE_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: START,
       destination: END,
@@ -123,6 +129,8 @@ function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
       destinationHarborId: null,
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: {
       lats: [54.3, 55.3],
@@ -136,19 +144,24 @@ function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
     },
     result: {
       status: 'ok',
-      genoa: {
-        rig: 'genoa',
-        legs,
-        etaMs: DEPARTURE_MS + 3_600_000,
-        durationMs: 3_600_000,
-        distanceNm: legs[0]?.distanceNm ?? 0,
-        maneuverCount: 0,
-        motorDistanceNm: legs[0]?.distanceNm ?? 0,
-      },
-      fock: null,
-      genoaReason: null,
-      fockReason: 'unreachable',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: {
+            sailId: 'genoa',
+            legs,
+            etaMs: DEPARTURE_MS + 3_600_000,
+            durationMs: 3_600_000,
+            distanceNm: legs[0]?.distanceNm ?? 0,
+            maneuverCount: 0,
+            motorDistanceNm: legs[0]?.distanceNm ?? 0,
+          },
+          reason: null,
+        },
+        { sailId: 'fock', result: null, reason: 'unreachable' },
+      ],
       recommended: 'genoa',
+      comparisonComplete: true,
       shallow: { requestedDepthM: 3.0, usedDepthM, minGateDepthM: 2.0 },
       snappedOrigin: START,
       snappedDestination: END,

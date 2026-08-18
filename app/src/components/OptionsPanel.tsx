@@ -1,5 +1,7 @@
 import type { Settings } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
+import { minSafetyDepthM } from '../lib/boatDepth';
+import { boatById, DEFAULT_BOAT_ID } from '../data/boats';
 
 // #299: this file no longer renders anything — its default-exported
 // component (and OptionsPanel.test.tsx, which exercised it directly) were
@@ -40,7 +42,9 @@ export interface FieldSpec {
 export const SAFETY_DEPTH_FIELD: FieldSpec = {
   key: 'safetyDepthM',
   labelKey: 'options.safetyDepth.label',
-  min: 2.2,
+  // #54: derived per-boat minimum (spec J OQ-1) rather than a hand-written
+  // literal — evaluates to 2.2 for the release-1 default boat.
+  min: minSafetyDepthM(boatById(DEFAULT_BOAT_ID)),
   max: 10,
   step: 0.1,
 };

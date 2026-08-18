@@ -73,6 +73,22 @@
   // structurally scan for any other bare single-class `.chip-*` modifier
   // declared above `.chip`'s base rule — same reason and same pattern as
   // useBannerHeight.test.ts/panelWidth.test.ts above.
+  // polarProvenance.test.ts (#54 Task 12): reads pipeline/polars-source.json
+  // AND the shipped app/public/data/polars/*.json via `node:fs` to hold the
+  // provenance note in the catalogue, the pipeline input and the built asset
+  // to one value, and to pin SailDef.polarAsset against a file that really
+  // exists — a cross-language invariant (JSON-to-TypeScript) with no compiler
+  // spanning both, same reason as maskTolerance.test.ts above.
+  // buildPolars.failClosed.test.ts (#54 Task 12): spawns the real
+  // pipeline/build_polars.mjs via `node:child_process` in a scratch tree —
+  // once against its UNMUTATED source as the control that licenses the rest,
+  // then against mutated copies — to hold spec H's fail-closed rule (a boat
+  // never inherits another boat's anchors or plausibility bound).
+  // verifyMaskBoatGate.test.ts (#54 Task 13): reads pipeline/verify_mask.py
+  // AND pipeline/polars-source.json via `node:fs` to hold the two twins that
+  // the per-boat gate scan created — the draft, which the Python script cannot
+  // import from boats.ts, and the ceil-to-decimetre gate derivation, which now
+  // exists in both languages. Same reason as maskTolerance.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -86,6 +102,9 @@
     "src/**/panelWidth.test.ts",
     "src/**/maskTolerance.test.ts",
     "src/**/chipShallowFill.test.ts",
+    "src/**/polarProvenance.test.ts",
+    "src/**/buildPolars.failClosed.test.ts",
+    "src/**/verifyMaskBoatGate.test.ts",
     "sweep/**/*.ts"
   ]
 }

@@ -25,6 +25,8 @@ import {
   type PlanResultOk,
   type PolarTable,
 } from './types';
+import { defaultBoatSnapshot } from './types';
+import { PLAN_SCHEMA_VERSION } from './types';
 
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
 // (mirrors the "not unit-tested" notes in RouteLayer.tsx/BoatMarker.tsx —
@@ -335,8 +337,8 @@ function fetchMock() {
       const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
       return Promise.resolve(new Response(buf, { status: 200 }));
     }
-    if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-    if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+    if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
     if (url.includes('seamarks.json'))
       return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
@@ -396,19 +398,24 @@ function simulateMapError(error: unknown = new Error('style load failed')) {
 function okPlanResult(distanceNm: number): PlanResultOk {
   return {
     status: 'ok',
-    genoa: {
-      rig: 'genoa',
-      legs: [],
-      etaMs: Date.now() + 3_600_000,
-      durationMs: 3_600_000,
-      distanceNm,
-      maneuverCount: 0,
-      motorDistanceNm: 0,
-    },
-    fock: null,
-    genoaReason: null,
-    fockReason: 'calm-motor-off',
+    sails: [
+      {
+        sailId: 'genoa',
+        result: {
+          sailId: 'genoa',
+          legs: [],
+          etaMs: Date.now() + 3_600_000,
+          durationMs: 3_600_000,
+          distanceNm,
+          maneuverCount: 0,
+          motorDistanceNm: 0,
+        },
+        reason: null,
+      },
+      { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+    ],
     recommended: 'genoa',
+    comparisonComplete: true,
     snappedOrigin: { lat: 54.7, lon: 9.5 },
     snappedDestination: { lat: 54.9, lon: 10.5 },
   };
@@ -884,6 +891,7 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
       id: 'plan-b-preseeded',
       name: 'Preseeded Plan B',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.95, lon: 10.6 },
         destination: { lat: 55.05, lon: 10.9 },
@@ -892,6 +900,8 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
         destinationHarborId: null,
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(77),
@@ -956,6 +966,7 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
       id: 'active-before-import',
       name: 'Active Before Import',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.95, lon: 10.6 },
         destination: { lat: 55.05, lon: 10.9 },
@@ -964,6 +975,8 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
         destinationHarborId: null,
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(88),
@@ -1100,6 +1113,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
       id: 'stale-plan',
       name: 'Stale Plan',
       createdAtMs: Date.now() - 20 * 3_600_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -1108,6 +1122,8 @@ describe('banner surfacing (PR self-review fix wave)', () => {
         destinationHarborId: null,
         departureMs: Date.now(),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: staleWindGrid,
       result: okPlanResult(33),
@@ -1187,6 +1203,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
       id: 'plural-drop-plan',
       name: 'Plural Drop Plan',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -1195,6 +1212,8 @@ describe('banner surfacing (PR self-review fix wave)', () => {
         destinationHarborId: null,
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(66),
@@ -1480,17 +1499,21 @@ describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
     });
   });
 
-  // #340: `rig` must pass through unchanged — this is the only progress
-  // signal left, so a typo here would silently break the "sail N of 2"
-  // phase readout for one or both rigs.
-  it("passes 'routing' through with its rig unchanged (#340: rig is the phase signal, not a percentage)", () => {
-    expect(toPlannerStatus({ phase: 'routing', rig: 'genoa' }, t)).toEqual({
+  // #340/#54: `sailId`/`index`/`total` must pass through unchanged — this is
+  // the only progress signal left, so a typo here would silently break the
+  // "sail N of 2" phase readout for one or both sails.
+  it("passes 'routing' through with its sailId/index/total unchanged (#340: not a percentage)", () => {
+    expect(toPlannerStatus({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 }, t)).toEqual({
       phase: 'routing',
-      rig: 'genoa',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
     });
-    expect(toPlannerStatus({ phase: 'routing', rig: 'fock' }, t)).toEqual({
+    expect(toPlannerStatus({ phase: 'routing', sailId: 'fock', index: 2, total: 2 }, t)).toEqual({
       phase: 'routing',
-      rig: 'fock',
+      sailId: 'fock',
+      index: 2,
+      total: 2,
     });
   });
 });
@@ -1661,11 +1684,13 @@ describe('session restore (#113)', () => {
       distanceNm: 20,
     };
     const result = okPlanResult(55);
-    if (!result.genoa) throw new Error('fixture invariant: okPlanResult carries a genoa result');
+    const genoa = result.sails.find((s) => s.sailId === 'genoa')?.result;
+    if (!genoa) throw new Error('fixture invariant: okPlanResult carries a genoa result');
     return {
       id,
       name: 'Restored Passage',
       createdAtMs: now - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -1674,9 +1699,16 @@ describe('session restore (#113)', () => {
         destinationHarborId: null,
         departureMs: now + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
-      result: { ...result, genoa: { ...result.genoa, legs: [sailLeg] } },
+      result: {
+        ...result,
+        sails: result.sails.map((s) =>
+          s.sailId === 'genoa' ? { ...s, result: { ...genoa, legs: [sailLeg] } } : s,
+        ),
+      },
     };
   }
 
@@ -1786,6 +1818,7 @@ describe('plan-form sync (#301)', () => {
       id,
       name: 'Prefill Plan',
       createdAtMs: now - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: PREFILL_ORIGIN,
         destination: PREFILL_DEST,
@@ -1794,6 +1827,8 @@ describe('plan-form sync (#301)', () => {
         destinationHarborId: null,
         departureMs: now + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
         ...overrides,
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
@@ -2007,8 +2042,8 @@ describe('plan-form sync (#301)', () => {
           const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
           return Promise.resolve(new Response(buf, { status: 200 }));
         }
-        if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-        if (url.includes('polar-fock.json'))
+        if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+        if (url.includes('salona-45-fock.json'))
           return Promise.resolve(jsonResponse({ ...TEST_POLAR, rig: 'fock' }));
         if (url.includes('harbors.json')) return harborsPromise;
         if (url.includes('seamarks.json'))

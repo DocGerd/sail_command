@@ -1,5 +1,4 @@
 import { safeGetItem, safeSetItem } from './storage';
-import type { Rig } from '../types';
 
 // #113 session restore: a SMALL versioned UI-session snapshot — the pointer
 // to the active plan plus the selected tab and rig choice — persisted under
@@ -33,19 +32,30 @@ export interface SessionSnapshot {
   v: 1;
   planId: string | null;
   tab: Tab;
-  rig: Rig | null;
+  // #54: field NAME unchanged (retyped only) — this is a PERSISTED
+  // localStorage schema (real users' browsers), and renaming the key would
+  // silently drop every existing snapshot's rig choice rather than parse it,
+  // a migration concern outside this task's scope.
+  //
+  // Spec §I.3 widened the TYPE from SailId to string: whether a sail id is
+  // usable is a question about the PLAN the snapshot points at (does its own
+  // per-sail list contain this id?), not about today's catalogue, and a
+  // snapshot naming a since-removed boat's sail must still restore. Checking
+  // it here could only fail the whole snapshot — see parseSessionSnapshot's
+  // collapse-to-null rule below — costing the user their restored plan id and
+  // tab as well. useSessionRestore.ts applies the real check, where the plan
+  // is in hand.
+  rig: string | null;
 }
 
 function isTab(x: unknown): x is Tab {
   return x === 'plan' || x === 'routes' || x === 'live' || x === 'boat';
 }
 
-function isRig(x: unknown): x is Rig {
-  return x === 'genoa' || x === 'fock';
-}
-
 // Tolerant parse (mirrors parseRecentHarbors): malformed JSON, a non-object,
-// a foreign version, or any field outside its exact union collapses to null —
+// a foreign version, or any field outside its accepted shape collapses to
+// null — `rig`'s accepted shape is any string, deliberately, see its own
+// comment on the interface above —
 // the caller treats null as "no snapshot" and boots fresh. A PURE parser,
 // deliberately: it validates SHAPE only and carries no restore POLICY, so
 // `parseSessionSnapshot(JSON.stringify(x))` round-trips to `x` for every
@@ -68,7 +78,7 @@ export function parseSessionSnapshot(raw: string | null): SessionSnapshot | null
     if (v !== 1) return null;
     if (!isTab(tab)) return null;
     if (planId !== null && typeof planId !== 'string') return null;
-    if (rig !== null && !isRig(rig)) return null;
+    if (rig !== null && typeof rig !== 'string') return null;
     return { v: 1, planId, tab, rig };
   } catch {
     return null;

@@ -1,10 +1,29 @@
 import { describe, expect, it, vi } from 'vitest';
 import { planRoute } from './planRoute';
-import { makeMask, openWaterMask, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type PlanRequest, type PolarTable, type Settings } from '../types';
+import {
+  makeMask,
+  openWaterMask,
+  TEST_POLAR,
+  testPlanDeps,
+  uniformWindGrid,
+} from '../test/fixtures';
+import {
+  DEFAULT_SETTINGS,
+  type PlanRequest,
+  type PlanResultOk,
+  type PolarTable,
+  type SailId,
+  type Settings,
+} from '../types';
+
+// #54: the pre-#54 shape exposed `r.genoa`/`r.fock` directly.
+function sailResult(res: PlanResultOk, sailId: SailId) {
+  return res.sails.find((s) => s.sailId === sailId)?.result ?? null;
+}
 import type { ProbeInfo } from './relaxedDepth';
 import { uniformGate } from '../lib/depthGate';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines. Fast test files keep vitest's 5s default so hang detection
@@ -42,6 +61,8 @@ const req: PlanRequest = {
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
+  sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 // #452 APPROACH-pinch variant: destination moved to col 165 (cell centre lon
@@ -55,11 +76,8 @@ const reqNearApproach: PlanRequest = {
   destination: { lat: 54.7525, lon: 10.2275 },
 };
 
-const depsWith = (mask: ReturnType<typeof makeMask>) => ({
-  polarGenoa: TEST_POLAR,
-  polarFock: SLOW_FOCK,
-  mask,
-});
+const depsWith = (mask: ReturnType<typeof makeMask>) =>
+  testPlanDeps(mask, { genoa: TEST_POLAR, fock: SLOW_FOCK });
 
 describe('planRoute graceful shallow degradation (#53)', () => {
   it('relaxes an unreachable 3.0 m plan to the highest connecting gate and flags shallow legs', () => {
@@ -106,7 +124,7 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     expect(r.shallow).toEqual({ requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.5 });
 
     // Both rigs relax to the SAME gate (apples-to-apples rig comparison).
-    for (const rig of [r.genoa, r.fock]) {
+    for (const rig of [sailResult(r, 'genoa'), sailResult(r, 'fock')]) {
       expect(rig).not.toBeNull();
       const flagged = rig!.legs.filter((l) => l.shallow);
       expect(flagged.length).toBeGreaterThan(0);
@@ -172,7 +190,7 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     );
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
-    const legs = r.genoa!.legs;
+    const legs = sailResult(r, 'genoa')!.legs;
     // One span for the whole passage: every collinear leg merged, across the
     // gap included. Handed a uniform 3.0 m gate the merge across the gap is
     // rejected and this splits.
@@ -195,7 +213,7 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     expect(r.status).toBe('ok');
     if (r.status !== 'ok') return;
     expect('shallow' in r).toBe(false);
-    for (const leg of r.genoa!.legs) expect('shallow' in leg).toBe(false);
+    for (const leg of sailResult(r, 'genoa')!.legs) expect('shallow' in leg).toBe(false);
   });
 
   it('calm + motor off keeps its own error class — relaxation never fires', () => {
@@ -251,6 +269,34 @@ describe('planRoute graceful shallow degradation (#53)', () => {
     // waypoints, never on the wind, so the short forecast cannot move it).
     expect(probes.map((p) => p.probeDepthM)).toEqual([2.5, 2.7, 2.6, 2.7, 2.8, 2.9, 2.7, 2.6]);
   });
+
+  // #54 review round 2: the same relaxed-solve propagation with ONE requested
+  // sail. These are the only cases that reach the fold's CALL SITES at a
+  // length the pre-#54-fix positional read (`combineFailureCause(tier[0].cause,
+  // tier[1].cause)`) cannot survive — `tier[1]` is undefined there, so the
+  // fold throws before any reason can be returned.
+  //
+  // There are TWO such folds and they sit on different branches, so one row
+  // cannot cover both: the depth-comfort preference decides which. At the
+  // DEFAULT margin the preference is active and both relaxed tiers run, so
+  // the tier-4 fold reports; with the margin at 0 the preference is off
+  // (planRoute.ts's `comfortDepthM` is then undefined), tier 4 never runs
+  // and the tier-3 fold reports instead.
+  it.each([
+    ['tier 4 (comfort preference on)', DEFAULT_SETTINGS.depthComfortMarginM],
+    ['tier 3 (comfort preference off)', 0],
+  ])(
+    '#54: propagates the relaxed solve reason with a single requested sail — %s',
+    (_name, depthComfortMarginM) => {
+      const settings: Settings = { ...DEFAULT_SETTINGS, depthComfortMarginM };
+      const r = planRoute(
+        { ...reqNearApproach, settings, sailIds: ['genoa'] },
+        uniformWindGrid(12, 0, { hours: 3 }),
+        depsWith(corridorGapMask(25)),
+      );
+      expect(r).toEqual({ status: 'error', reason: 'beyond-horizon' });
+    },
+  );
 
   // #452's headline claim, asserted at planRoute level: a pinch far from
   // every waypoint is NOT relaxed, so a plan that used to degrade gracefully

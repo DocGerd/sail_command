@@ -4,14 +4,14 @@ Build-time-only scripts that produce the static assets committed under
 `app/public/data/`. Nothing here runs at app runtime — the PWA reads the
 generated files directly and stays offline-capable. Regenerate an asset only
 when its source data or generation logic changes; never hand-edit a generated
-file (`polar-*.json`, `harbors.json`, `mask.bin`, `mask.meta.json`).
+file (`polars/*.json`, `harbors.json`, `mask.bin`, `mask.meta.json`).
 
 ## Setup
 
 ```
 python3 -m venv pipeline/.venv
 pipeline/.venv/bin/pip install -r pipeline/requirements.txt
-npm --prefix pipeline install   # only needed if pipeline/node_modules is absent; the two .mjs scripts use no npm deps beyond Node's stdlib
+npm --prefix pipeline install   # needed for build_icons.mjs (sharp); every other .mjs script here uses Node's stdlib only
 ```
 
 ## Style (#220)
@@ -33,7 +33,7 @@ required check.
 
 ## Assets
 
-### `polar-genoa.json` / `polar-fock.json` — Salona 45 boat-speed polars
+### `polars/<boat-id>-<sail-id>.json` — boat-speed polars
 
 Boat speed (knots) as a function of true wind angle (TWA) and true wind speed
 (TWS), one table for the main+genoa rig and one for main+fock (working jib).
@@ -55,9 +55,47 @@ Regenerate:
 node pipeline/build_polars.mjs
 ```
 
-Edit `pipeline/polars-source.json` (raw table + sanity-check anchors) to
-change the data; `build_polars.mjs` validates monotonicity and a couple of
-known-magnitude anchor points before writing.
+Edit `pipeline/polars-source.json` to change the data. It is keyed by boat
+(`boats[]`), each carrying its own `tws`/`twa` grid, its `sails` map, and a
+`validation` block holding that boat's plausibility bound and sanity anchors;
+each sail carries a `provenance` tier (`certificate` / `modelled` /
+`estimated`, spec G.3) and note. `build_polars.mjs` derives the sail set from
+that map — there is no second list to fall out of step with it — and **fails
+closed**. The identity and provenance contract specifically, stated as what is
+actually checked: a boat id that is missing, unsafe or duplicated; a sail id
+that is unsafe; any two sails resolving to the same output file; a boat with no
+anchors or no plausibility bound; a sail with no provenance tier or note. Each
+throws and names itself rather than inheriting another boat's values — an
+anchor that silently validates the wrong hull is worse than no anchor. That
+list is not an inventory of every guard the script runs; the structural
+validation (grid shapes, numeric types, TWS monotonicity, anchor bands) is
+separate and additional.
+
+Both halves of the output filename are validated: validating only the boat id
+let a sail keyed `../../../ESCAPED` write outside this directory entirely. And
+the duplicate check runs on the boat id *and* on the output filename, because
+`-` is both the separator and a legal id character — boat `a-b` with sail `c`
+and boat `a` with sail `b-c` are two legal, distinct, non-duplicate ids that
+resolve to the same `a-b-c.json`. Neither check subsumes the other: two boats
+sharing an id with disjoint sail sets collide on no filename at all.
+
+There is deliberately **no** duplicate-sail-id check — sail ids are not unique
+across boats by design, and a repeated key inside one boat's `sails` map is
+collapsed by `JSON.parse` before the script sees it.
+
+The Salona 45's two anchors restate the bands the pre-#54 script hardcoded:
+`8.26..9.46` at TWA 90 / TWS 16 and `6.5..8.5` at TWA 52 / TWS 12. The second is
+exactly the old `6.5 || 8.5` test. The first is *not* exactly `8.86 ± 0.6`: the
+lower bound is (`8.86 - 0.6 === 8.26`), but `8.86 + 0.6` evaluates to
+`9.459999999999999`, so the declared `9.46` is looser than the old predicate by
+one representable step — it accepts a table reading exactly `9.46`, which the
+old test rejected. Both sails read exactly `8.86` there, so nothing sits near
+either bound; tighten the upper literal rather than widen it if that ever
+changes.
+
+Output filenames carry the boat id (spec F.1): the previous `polar-<sail>.json`
+had no boat identifier, so a second boat's tables would have overwritten the
+first's.
 
 ### `harbors.json` — curated harbor list
 

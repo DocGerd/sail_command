@@ -1,10 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { haversineNm } from '../lib/geo';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
-import type { LatLon, Plan, PlanRequest, PlanResult, WindGrid } from '../types';
+import {
+  defaultBoatSnapshot,
+  type LatLon,
+  type Plan,
+  type PlanRequest,
+  type PlanResult,
+  type WindGrid,
+} from '../types';
 
 // ~60 m in nautical miles (haversineNm's unit) — the coincident-waypoint
 // dedupe guard every via-replan (and a plan's initial via list) enforces.
@@ -231,7 +239,22 @@ export async function replanWithVias(
   // so a caller can also use it to decide whether to show the "waypoint
   // skipped" info banner — see state/replan.ts's useViaReplan).
   const { kept } = dedupeViaPoints(plan.request.origin, viaPoints, plan.request.destination);
-  const request: PlanRequest = { ...plan.request, viaPoints: kept };
+  const request: PlanRequest = {
+    ...plan.request,
+    viaPoints: kept,
+    // #54 review round 2: the third site that builds a router-bound request
+    // from a PERSISTED one. A plan saved before `sailIds` existed on
+    // PlanRequest does not carry the key at all, and planRoute.ts's `runAll`
+    // calls `req.sailIds.map(...)` unconditionally.
+    sailIds: plan.request.sailIds ?? DEFAULT_SAIL_IDS,
+    // #54 Task 11: backfilled for the same reason and at the same site — a
+    // plan that reached here without passing through services/migratePlan.ts
+    // does not carry the key, and the replan's own result is saved as a Plan.
+    // Aliased rather than copied, like every other field the spread above
+    // carries through: unlike lib/recalc.ts, this site has no
+    // "copied, never aliased" contract.
+    boat: plan.request.boat ?? defaultBoatSnapshot(),
+  };
 
   let result: PlanResult;
   try {
