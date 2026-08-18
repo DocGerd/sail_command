@@ -548,27 +548,48 @@ should not be inflated in either direction.
 | Ship | Model | Vessel(s) | Draft | Derived gate | Basis |
 |---|---|---|---|---|---|
 | ✅ | Elan Impression 444 | PIRANJA | 1.90 m | **2.8 m** | Flensburg-stated (§C.5). Gate < 3.0, so its reachable-harbour set is a **superset** of today's. |
-| ✅ | Salona 44 | SPEEDY GO!, EASY GO! | 2.10 m | **3.0 m** | Flensburg-stated. Gate identical to today's — **no new gate**. Engages §L's "Reuse `BOAT_DRAFT_M` for the Salona 44" row: 2.10 m must be its own literal. |
+| ✅ | Salona 44 | SPEEDY GO! | 2.10 m | **3.0 m** | Flensburg-stated. Gate identical to today's — **no new gate**. Engages §L's "Reuse `BOAT_DRAFT_M` for the Salona 44" row: 2.10 m must be its own literal. |
+| ⏸ | Salona 44 | **EASY GO!** | **2.55 m** | 3.5 m | **Deferred** — §N.7. Sister ship of SPEEDY GO! by model, **not by hull**: it is the deep/racing keel. |
 | ⏸ | Grand Soleil 46 | MARIN | 2.30 m | 3.2 m | **Deferred** — §N.7. |
 | ⏸ | the other six models | 10 vessels | — | — | Not Flensburg-stated; #54 asks to prioritise those that are. |
+
+**OQ-4's per-vessel rule earns itself here.** SPEEDY GO! and EASY GO! are the same model and were
+briefed as one 2.10 m pair; they are two different hulls, 0.45 m apart. A per-model catalogue entry
+would have carried one draft for both — the "wrong default variant is a silent safety error" §L
+rejected the variant-picker over, arriving through the sister-ship door instead.
 
 **The property that makes this scope safe:** no catalogue boat's gate exceeds today's 3.0 m, so no
 harbour becomes unreachable for any boat and no new connectivity ceiling is crossed.
 
 ### N.2 Drafts — an accepted deviation from §M.1, and it must be disclosed
 
-**Decided:** ship the **standard listed keel** for each model (1.90 m, 2.10 m), sourced to the
-builder's published specification, **not verified per hull**.
+**Decided 2026-08-18:** ship the **standard listed keel** for each model, sourced to the builder's
+published specification, **not verified against the individual hull's papers**.
 
-This is a knowing deviation from §M.1 (*"inputs to be re-verified per hull — and per keel variant —
-before any boat ships"*) and from OQ-4's per-hull rule. It is recorded as an **accepted cost**, not
-as satisfied:
+**This decision was taken on the assumption that both Salona 44s were the standard hull, and that
+assumption was wrong — the check caught it before it shipped.** Recorded in full, because it is the
+strongest available evidence that the disclosure requirement below is not ceremony:
 
-- The Elan 444 also ships a 1.60 m shoal keel. If PIRANJA is that variant the derived gate is
-  **over-cautious** — harmless.
-- The Salona 44 also ships a ~2.44 m deep keel. If either Salona 44 is that variant the derived
-  gate is **optimistic by 0.4 m** — the unsafe direction, and the same class §L rejected the
-  variant-picker over (*"a wrong default variant is a silent safety error"*).
+- **PIRANJA** — Elan Impression 444, standard fin-and-bulb **1.90 m**. The model also ships a
+  1.60 m shoal keel; if PIRANJA were that variant the derived gate would be **over-cautious**,
+  which is harmless.
+- **SPEEDY GO!** — Salona 44, standard **2.10 m** (built 2014).
+- **EASY GO!** — Salona 44, **deep/racing keel, 2.55 m** (built 2011). Sources spread 2.55–2.59 m;
+  the ~4 cm is immaterial next to the 0.45 m that matters. At 2.55 m the derived gate is **3.5 m**,
+  not 3.0 m. Shipping it at 2.10 m would have **understated a real vessel's draft by 0.45 m** and
+  handed it a gate 0.5 m too shallow — the unsafe direction, in the one field everything in §C
+  hangs on. **Deferred** (§N.7).
+
+So the residual cost is narrower than first written, and should not be overstated either way: the
+keels are now identified **per vessel** from the operator's own published tech sheets, which is
+stronger than a model-level default — but weaker than the hull's own papers, and §M.1 asks for the
+latter. It remains an **accepted cost**, not a satisfied condition.
+
+**Required mitigation, unchanged and now better justified:** each fleet catalogue entry records the
+keel variant it assumes and that the figure is not from the hull's papers, and that statement is
+surfaced on the boat picker alongside the provenance tier — not buried in a JSON field. A wrong
+keel is invisible in every artifact the app renders; only the disclosure makes it checkable by
+someone who can see the boat.
 
 **Required mitigation, because the assumption is otherwise invisible to whoever sails the boat:**
 each fleet catalogue entry records that its draft is the model's standard keel and unverified for
@@ -693,12 +714,16 @@ begins, not discovered at build time.
 
 ### N.7 What is deferred, and why — so it is not read as forgotten
 
-- **Grand Soleil 46 (MARIN).** Its 3.2 m gate loses `aabenraa` and `faldsled`, and `aabenraa`'s
-  snap cell reads 3.0 m so at that gate it has no navigable snap cell at all — a harder failure
-  than a blocked channel. It additionally needs §C.6's per-harbour picker marking, which does not
-  exist (`harbors.json` carries `approachNote, country, id, names, snap` and no gate field) and
-  whose greyed-out presentation is **not designed**. §L's *"Treat a harbour dropping out at a
-  deeper boat's gate as a defect"* row stands: the fix is presentation, not routing.
+- **Grand Soleil 46 (MARIN)** and **EASY GO! (Salona 44, 2.55 m)** — deferred together, for one
+  reason. Both derive a gate that drops harbours: 3.2 m loses `aabenraa` and `faldsled` (and
+  `aabenraa`'s snap cell reads 3.0 m, so at that gate it has no navigable snap cell at all — a
+  harder failure than a blocked channel); 3.5 m loses those plus `marstal`, `augustenborg` and
+  `langballigau`. §L's *"Treat a harbour dropping out at a deeper boat's gate as a defect"* row
+  stands and settles both: **the routing is correct — a 2.55 m keel cannot enter a 2.0 m basin —
+  and the defect would be silently offering it.** So the fix is presentation, and the presentation
+  does not exist: `harbors.json` carries `approachNote, country, id, names, snap` and no gate
+  field, `verify_mask.py` computes the per-harbour figure but writes nothing, and the greyed-out
+  picker entry is **not designed**. Both boats unblock together when that lands.
 - **The other six models.** Not Flensburg-stated; two of them (2.25 m, 2.30 m) also cross 3.2 m.
 - **Tier B for any fleet model.** Blocked on three items, none of which is a research question:
   donor-hull identity per keel, a reproducible white-sail downwind correction (the shipped `fock`
