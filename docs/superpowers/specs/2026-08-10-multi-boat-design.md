@@ -601,7 +601,7 @@ latter. It remains an **accepted cost**, not a satisfied condition.
 **Why not §L row 13's deepest-variant fallback in the interim?** OQ-4 reserves it for the case where
 per-hull data *cannot be obtained*, and that case is arguably live now — the operator has not been
 asked (§G.3 rule 4). It is declined on measured cost, not overlooked: the deepest Salona 44
-deep keel this fleet is now known to carry is EASY GO!'s **2.55 m**, which derives a **3.5 m** gate
+keel this fleet is now known to carry is EASY GO!'s **2.55 m**, which derives a **3.5 m** gate
 and by §N.8's run loses marstal, augustenborg, aabenraa, faldsled, langballigau, fynshav and
 rudkoebing — **seven** harbours withdrawn from SPEEDY GO!, whose own tech sheet reads 2.10 m, to
 guard against a variant we already have evidence against for that hull. The identified keel plus the
@@ -612,7 +612,10 @@ vessel, not to route it on an assumed hull.)
 
 **Required mitigation, unchanged and now better justified:** each fleet catalogue entry records the
 keel variant it assumes and that the figure is not from the hull's papers, and that statement is
-surfaced on the boat picker alongside the provenance tier — not buried in a JSON field.
+surfaced on the boat picker alongside the provenance tier — not buried in a JSON field. A wrong
+keel is invisible in every artifact the app renders; only the disclosure makes it checkable by
+someone who can see the boat. §L's rejection of the variant-picker stands: this is not a picker, it
+is a single sourced default with its uncertainty disclosed.
 
 **The field is `BoatDef.draftProvenance: { keel, hullVerified, note }`, REQUIRED on every fleet
 entry** — named here because it diverged once and the divergence was silent. Found in the PR #565
@@ -621,10 +624,7 @@ optional `keelAssumption?: string`. Both typechecked, `boats.ts` would have merg
 both fields, and the paragraph would have rendered **nothing** — for exactly the two boats this
 section requires it for. Neither branch's tests could see it: the fleet branch asserts the field is
 present in the catalogue, the picker branch renders from its own fixture. Make it **required**, not
-optional, so a fleet entry without it is a type error rather than a silent omission. A wrong
-keel is invisible in every artifact the app renders; only the disclosure makes it checkable by
-someone who can see the boat. §L's rejection of the variant-picker stands: this is not a picker, it
-is a single sourced default with its uncertainty disclosed.
+optional, so a fleet entry without it is a type error rather than a silent omission.
 
 **Retiring this deviation** needs one confirmed keel per hull from the hull's own papers
 (§G.3 rule 4 — ask the operator).
@@ -799,13 +799,25 @@ The three branches delivering §N are individually correct and jointly ordered:
 | routing | `not-compared`, **the `DEFAULT_BOAT_ID` fix** | yes |
 | fleet | the two tier-C catalogue entries and their polars | **only after routing** |
 
-**The hazard, concretely.** Merge picker + fleet WITHOUT routing and a user selects the 2.30 m boat:
-`SAFETY_DEPTH_FIELD.min` follows the selection, the clamp fires, and the UI announces *"the minimum
-for ⟨that boat⟩"* — while `workerClient.ts` still passes `DEFAULT_BOAT_ID`, so `protocol.ts` resolves
-the Salona 45 and the solver takes **both** its polars and its §C.4(a) relaxation floor from the
-wrong hull. #53 relaxation then reaches a **2.1 m gate under a 2.30 m keel**. That is §L's *"single
-most dangerous shortcut in this feature"*, now with the interface actively asserting the opposite —
-which is worse than the pre-#54 state, where nothing claimed anything.
+**The hazard, concretely.** Merge picker + fleet WITHOUT routing and every plan is solved on the
+wrong hull: `workerClient.ts` still passes `DEFAULT_BOAT_ID`, `protocol.ts` resolves the Salona 45,
+and `PlanDeps.boat` supplies **both** the polar tables (`planRoute.ts`'s
+`polarKey(deps.boat.id, sailId)`) and the §C.4(a) relaxation floor (`relaxationFloorM(deps.boat)`).
+
+For the two boats §N.1 actually ships, the live consequence is the **polars**, and it is silent:
+both fleet entries use the sail ids `genoa` and `fock`, so `polarKey('salona-45', 'genoa')` hits a
+real committed table and nothing throws. Every ETA and every leg for PIRANJA or SPEEDY GO! would
+come from the Salona 45's speed table while the picker shows that boat's name, its tier-C chip and
+its keel sentence — the §N.5 honesty surface describing a table the solver never used.
+
+The **depth** consequence is inert at this scope and becomes severe just past it, which is why the
+gate is a rule about the catalogue rather than about these two boats: `relaxationFloorM(salona-45)`
+is 2.1 m, which is *deeper* than PIRANJA's 1.90 m keel (over-cautious, harmless) and *identical*
+for SPEEDY GO!'s 2.10 m. At the first boat past 2.10 m — the deferred Grand Soleil 46, 2.30 m,
+illustrative here and **not in the v0.12.0 catalogue** — #53 relaxation reaches a **2.1 m gate
+under a 2.30 m keel** while `SAFETY_DEPTH_FIELD.min` has already moved to that boat's own 2.4 m.
+That is §L's *"single most dangerous shortcut in this feature"*, with the interface asserting the
+opposite — worse than the pre-#54 state, where nothing claimed anything.
 
 Note what makes it invisible: each branch is correct against its own diff, every gate passes on
 each, and the composition appears in none of them. This repo already records that cross-PR
@@ -813,9 +825,10 @@ composition bugs survive per-PR review and need a sweep over the cumulative diff
 class, caught before the merge rather than after.
 
 **Consequence for the release runbook's fold step:** if the fleet entries slip out of a release
-that ships the picker, `changelog.d/54-2.added.md` describes four capabilities — picking a boat,
-the clamp, the keel sentence, the withdrawn-boat fallback — that are **unreachable in a one-boat
-catalogue**. Changelog prose carries the same evidentiary standard as code here and freezes into a
+that ships the picker, `changelog.d/54-2.added.md` describes **every capability it names** — six
+clauses, including picking a boat, the clamp, the keel sentence, the withdrawn-boat fallback, the
+remembered choice and the safety-depth field's own minimum following the selection — all of which
+are **unreachable in a one-boat catalogue**. Changelog prose carries the same evidentiary standard as code here and freezes into a
 versioned section at the cut, so the fragment must be re-scoped or held back with the entries.
 
 ### N.7 What is deferred, and why — so it is not read as forgotten
