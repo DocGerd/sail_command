@@ -172,7 +172,7 @@ disagree with a localized solver:
 
 ### 1.4 Snapping happens at the requested gate and is not relaxable
 
-`planRoute.ts:281/283/288` — `mask.snapToNavigable(p, s.safetyDepthM)` for
+`mask.snapToNavigable` in `planRoute.ts` (~:332/334/339) — called for
 origin, destination, and every via, always at the *requested* depth with a
 300 m search radius. A snap failure returns `status: 'error'` before any tier
 runs, so relaxation — however it is scoped — can only ever open water
@@ -558,12 +558,59 @@ relax, and relaxation succeeds in exactly **27** — every one involving
 Marstal. This is independent evidence that the reachable population is
 narrow (27 of 528 *pairs*, not plans or sweep arms), and it corroborates the
 sweep's own "only two plans" figure without being the same measurement —
-INHERITED from that comment, re-read verbatim in this session but not
-independently re-run against the mask here. Cite each figure to its own
+INHERITED from that comment and re-read verbatim in the session that wrote
+this section; independently re-run 2026-08-18, see below. Cite each figure to its own
 source: the sweep's is a fact about `app/sweep/`'s current fixture, checkable
 by reading `sweepArms.ts`; the 528/27 figure is a fact about the mask itself,
 checkable by re-running the component-labelling analysis the issue comment
 describes — re-run 2026-08-18 (#515), see below.
+
+Both judges: add a relaxation-exercising arm (a Marstal-destination arm, and
+a `depthComfortMarginM: 0` arm to reach §4(a)'s genuinely-unprotected
+population) and re-record BASE — including the required BASE double-run
+control — **before** any BASE-vs-HEAD comparison is quoted for this change.
+
+**PARTIALLY SATISFIED 2026-08-10 — the ARM half only; condition (b) is
+NARROWED, not discharged.** PR #488 added three arms, taking the harness to
+**nine arms × 33 harbours = 297 plans** (`app/sweep/armNames.ts` lists the
+nine; `README.md` states the 297). What shipped is Marstal-**origin**, not
+the Marstal-*destination* shape asked for above; `sweepArms.ts`'s
+`Arm.originId` doc comment carries the substitution argument — all three
+designs scope relaxation on the unordered *snapped-waypoint set*, so
+`{marstal_snap, X_snap}` is the identical set whichever end Marstal sits at
+— read that argument rather than assuming the two are equivalent.
+`margin-zero` supplies the `depthComfortMarginM: 0` arm, deliberately at
+Marstal origin because a Flensburg-origin one would have been byte-identical
+to the existing `no-comfort`. Measured discriminating power, from
+`README.md`'s own 2026-08-10 run: each of the three carries a `shallow`
+block on **27 of 33** rows, against the 2-of-198 the paragraph above
+records for the original six. `sweepArms.ts`'s own arm-role comment states
+that at Flensburg origin only ONE of a per-arm's 33 rows — the Marstal leg —
+can ever carry a successful relaxation (every one of the 27 pairs, of all
+528 harbour pairs, that are mask-connected at a relaxed gate involves
+Marstal), capping a Flensburg-origin arm's discriminating power **at most
+1/33**; Marstal-origin instead pairs Marstal with all 32 other harbours
+directly.
+
+**The BASE half is still outstanding.** Nothing in this document records a
+re-recorded BASE, and the repo's standing rule is that the double-run
+control must be taken against the **merge-base of the branch it will
+certify** — one taken against a `develop` that then moves certifies
+nothing. Until that exists, no BASE-vs-HEAD comparison for this change may
+be quoted, three good arms notwithstanding.
+
+The hand-count caveat this section used to carry — that `compare.mjs` fails
+closed on zero arm files but not on a short arm set — is **superseded**
+(#451): `compare.mjs` now derives its expected set from `armNames.ts` and
+fails closed on an INCOMPLETE one, printing the missing and unexpected arm
+names. The arm-file count no longer has to be asserted by hand.
+
+**Escalation trigger, stated by the safety-lens judge and worth repeating
+verbatim as the stop condition**: on the new arm, any `ok → error`
+transition, any `shallow.usedDepthM` below BASE's, or any
+`shallow.minGateDepthM` below BASE's on HEAD — the last being the signature
+of a "safety fix" that silently lowered the number the safety warning prints
+— should stop the work and go back to design, not forward into a fix.
 
 #### Re-run 2026-08-18 (#515) — the pair set held across the mask rebuild
 
@@ -577,7 +624,7 @@ against what this note calls the PRE-rebuild mask (`25899b2`'s, unchanged
 since 2026-07-15), not against a later re-measurement.
 
 Re-run against `c359a5c^` (PRE) and `c359a5c` (POST — byte-identical to the
-mask this repo ships today at `5e98741`), using the app's own convention:
+mask at `5e98741` (verified 2026-08-18: both blobs `e528919`)), using the app's own convention:
 `snapToNavigable` re-snap at the requested 3.0 m gate, then 4-connected
 component labelling at integer-decimetre gates 3.0 → 2.1:
 
@@ -586,9 +633,16 @@ component labelling at integer-decimetre gates 3.0 → 2.1:
 | PRE (`c359a5c^`) | 351 | 27 | 150 |
 | POST (`c359a5c` / `5e98741`) | 351 | 27 | 150 |
 
-Byte-identical 27-pair sets on both masks, every pair involving Marstal —
-**the pair set held.** This reproduces the maintainer comment's 351/27/150
-split on both masks it could possibly describe.
+The rebuild is not a no-op at this probe's input: the two masks differ in
+91,877 of 5,280,000 bytes (1.74%), and 4,423 cells flip navigability at the
+3.0 m gate (2,473,845 → 2,470,330 navigable) — so the unchanged pair set is
+a real invariance, not an artefact of an unchanged input.
+
+Byte-identical 27-pair sets on both masks, every pair involving Marstal, and
+every one relaxing at 2.3 m on both masks — reproducing all four of the
+comment's figures. **The pair set held.** This reproduces the maintainer
+comment's 351/27/150 split on the PRE mask it must describe, and on the
+POST mask this repo ships today.
 
 **Re-snapping is load-bearing, not incidental.** Feeding `harbors.json`'s raw
 `snap` coordinates straight to the connectivity check, without re-snapping at
@@ -604,18 +658,21 @@ different question. A future reader re-running this
 probe the obvious way — against `harbors.json`'s `snap` field directly — will
 get the wrong answer unless warned.
 
-Driver (numpy + scipy; needs its own venv — this repo's `pipeline/.venv`
-does not carry scipy). Extract the two mask/meta pairs from git first:
+Driver (numpy + scipy — both pinned in `pipeline/requirements.txt`, so
+this repo's `pipeline/.venv` runs it as-is). Extract the two mask/meta
+pairs from git first:
 
 ```bash
-git show c359a5c^:app/public/data/mask.bin > mask_pre.bin
-git show c359a5c^:app/public/data/mask.meta.json > meta_pre.json
-git show c359a5c:app/public/data/mask.bin > mask_post.bin
-git show c359a5c:app/public/data/mask.meta.json > meta_post.json
-cp app/public/data/harbors.json harbors.json
+mkdir -p /tmp/pair-probe && cd /tmp/pair-probe
+R=<path-to-sail_command>
+git -C "$R" show 'c359a5c^:app/public/data/mask.bin'       > mask_pre.bin
+git -C "$R" show 'c359a5c^:app/public/data/mask.meta.json' > meta_pre.json
+git -C "$R" show 'c359a5c:app/public/data/mask.bin'        > mask_post.bin
+git -C "$R" show 'c359a5c:app/public/data/mask.meta.json'  > meta_post.json
+cp "$R/app/public/data/harbors.json" harbors.json
+# save the Python block below as pair_probe.py, then:
+"$R/pipeline/.venv/bin/python3" pair_probe.py mask_pre.bin meta_pre.json mask_post.bin meta_post.json harbors.json
 ```
-
-Then run:
 
 ```python
 import json, sys, itertools, math
@@ -675,7 +732,7 @@ def analyse(maskpath, metapath, harborspath, resnap):
     nonm=[x for x in relax if 'marstal' not in x[0]]
     return dict(at30=len(at30),relax=len(relax),nogate=len(nogate),nonmarstal=nonm,
                 unsnapped=[k for k,v in cells.items() if v is None],
-                marstalpairs=sorted(p for p,_ in relax if 'marstal' in p))
+                marstalpairs=sorted((p,g) for p,g in relax if 'marstal' in p))
 
 for resnap in (False,True):
     print(f"########## convention: {'RE-SNAP at 3.0 m (app)' if resnap else 'FIXED snap point'}")
@@ -687,23 +744,28 @@ for resnap in (False,True):
     a,b=res["PRE (c359a5c^)"],res["POST (5e98741)"]
     same = (a['at30'],a['relax'],a['nogate'],a['marstalpairs'],sorted(x[0] for x in a['nonmarstal'])) == \
            (b['at30'],b['relax'],b['nogate'],b['marstalpairs'],sorted(x[0] for x in b['nonmarstal']))
-    print(f"  PRE == POST (counts AND exact pair sets): {same}")
+    print(f"  PRE == POST (counts AND exact pair sets AND gates): {same}")
     print(f"  marstal-involving relax pairs: {len(a['marstalpairs'])}")
+    print(f"  marstal relax gates (unique): {sorted(set(g for _,g in a['marstalpairs']))}")
     if a['nonmarstal']: print(f"  non-marstal relax (PRE): {sorted(set(h for x in a['nonmarstal'] for h in x[0]))}")
 ```
 
-Run as `python3 pair_probe.py mask_pre.bin meta_pre.json mask_post.bin
-meta_post.json harbors.json`. Output, both conventions, both masks (2026-08-18):
+Output, both conventions, both masks (2026-08-18):
 
 ```
 ########## convention: FIXED snap point
   PRE (c359a5c^): connect@3.0=325  relax=53  nogate=150  non-marstal-relax=26  unsnapped=[]
   POST (5e98741): connect@3.0=325  relax=53  nogate=150  non-marstal-relax=26  unsnapped=[]
-  PRE == POST (counts AND exact pair sets): True
+  PRE == POST (counts AND exact pair sets AND gates): True
+  marstal-involving relax pairs: 27
+  marstal relax gates (unique): [2.3]
+  non-marstal relax (PRE): ['aabenraa', 'aaroesund', 'aeroeskoebing', 'assens', 'augustenborg', 'avernakoe', 'bagenkop', 'damp', 'drejoe', 'faaborg', 'faldsled', 'flensburg', 'fynshav', 'gelting-mole', 'gluecksburg', 'hoeruphav', 'langballigau', 'lyoe', 'mommark', 'olpenitz', 'rudkoebing', 'schleimuende', 'soeby', 'soenderborg', 'svendborg', 'troense', 'wackerballig']
 ########## convention: RE-SNAP at 3.0 m (app)
   PRE (c359a5c^): connect@3.0=351  relax=27  nogate=150  non-marstal-relax=0  unsnapped=[]
   POST (5e98741): connect@3.0=351  relax=27  nogate=150  non-marstal-relax=0  unsnapped=[]
-  PRE == POST (counts AND exact pair sets): True
+  PRE == POST (counts AND exact pair sets AND gates): True
+  marstal-involving relax pairs: 27
+  marstal relax gates (unique): [2.3]
 ```
 
 This driver is embedded here rather than under `app/sweep/` or `pipeline/`
@@ -711,53 +773,6 @@ deliberately: `docs/spikes/` sits OUTSIDE the #282 sweep's transitive input
 closure (`CLAUDE.md`'s `app/sweep/` bullet), so committing it here cannot
 silently move sweep-certified plans the way adding it under either of those
 trees could.
-
-Both judges: add a relaxation-exercising arm (a Marstal-destination arm, and
-a `depthComfortMarginM: 0` arm to reach §4(a)'s genuinely-unprotected
-population) and re-record BASE — including the required BASE double-run
-control — **before** any BASE-vs-HEAD comparison is quoted for this change.
-
-**PARTIALLY SATISFIED 2026-08-10 — the ARM half only; condition (b) is
-NARROWED, not discharged.** PR #488 added three arms, taking the harness to
-**nine arms × 33 harbours = 297 plans** (`app/sweep/armNames.ts` lists the
-nine; `README.md` states the 297). What shipped is Marstal-**origin**, not
-the Marstal-*destination* shape asked for above; `sweepArms.ts`'s
-`Arm.originId` doc comment carries the substitution argument — all three
-designs scope relaxation on the unordered *snapped-waypoint set*, so
-`{marstal_snap, X_snap}` is the identical set whichever end Marstal sits at
-— read that argument rather than assuming the two are equivalent.
-`margin-zero` supplies the `depthComfortMarginM: 0` arm, deliberately at
-Marstal origin because a Flensburg-origin one would have been byte-identical
-to the existing `no-comfort`. Measured discriminating power, from
-`README.md`'s own 2026-08-10 run: each of the three carries a `shallow`
-block on **27 of 33** rows, against the 2-of-198 the paragraph above
-records for the original six. `sweepArms.ts`'s own arm-role comment states
-that at Flensburg origin only ONE of a per-arm's 33 rows — the Marstal leg —
-can ever carry a successful relaxation (every one of the 27 pairs, of all
-528 harbour pairs, that are mask-connected at a relaxed gate involves
-Marstal), capping a Flensburg-origin arm's discriminating power **at most
-1/33**; Marstal-origin instead pairs Marstal with all 32 other harbours
-directly.
-
-**The BASE half is still outstanding.** Nothing in this document records a
-re-recorded BASE, and the repo's standing rule is that the double-run
-control must be taken against the **merge-base of the branch it will
-certify** — one taken against a `develop` that then moves certifies
-nothing. Until that exists, no BASE-vs-HEAD comparison for this change may
-be quoted, three good arms notwithstanding.
-
-The hand-count caveat this section used to carry — that `compare.mjs` fails
-closed on zero arm files but not on a short arm set — is **superseded**
-(#451): `compare.mjs` now derives its expected set from `armNames.ts` and
-fails closed on an INCOMPLETE one, printing the missing and unexpected arm
-names. The arm-file count no longer has to be asserted by hand.
-
-**Escalation trigger, stated by the safety-lens judge and worth repeating
-verbatim as the stop condition**: on the new arm, any `ok → error`
-transition, any `shallow.usedDepthM` below BASE's, or any
-`shallow.minGateDepthM` below BASE's on HEAD — the last being the signature
-of a "safety fix" that silently lowered the number the safety warning prints
-— should stop the work and go back to design, not forward into a fix.
 
 ---
 
@@ -1204,7 +1219,7 @@ geography and mask rebuilds, since Marstal is the only harbour in this
 33-harbour curated set that relaxes at all (§0/§4(b)'s 27-of-528 figure,
 INHERITED from a maintainer issue comment; see §4(b)'s 2026-08-18
 reproduction (#515), which confirms this pair-connectivity fact — not the
-re-solve figures below, which remain untested across mask rebuilds — holds
+re-solve figures above, which remain untested across mask rebuilds — holds
 across the `c359a5c` mask rebuild; it is the one place this section quotes
 §0–§7 rather than measuring). The re-solve
 population above is the 2400 m population only (the 29 plans with a cell
