@@ -1,6 +1,6 @@
 import type { PlanRequest, PlanResult, SailId, WindGrid } from '../types';
 import type { WorkerRequest, WorkerResponse } from './protocol';
-import { BOATS, DEFAULT_BOAT_ID, polarKey, type BoatId } from '../data/boats';
+import { BOATS, polarKey, type BoatId } from '../data/boats';
 
 type ProgressCb = (sailId: SailId, tMs: number, frontierSize: number) => void;
 // #53 relaxed-depth probe phase (one call per mask-connectivity probe). Not
@@ -46,7 +46,18 @@ export type RoutingFailureKind =
   | 'worker-fatal' // protocol.ts forwarded a real throw from inside the worker (+stack)
   | 'worker-error' // the Worker's global onerror fired
   | 'messageerror' // the Worker's onmessageerror fired (undeserializable message)
-  | 'disposed'; // this client is (or became) disposed
+  | 'disposed' // this client is (or became) disposed
+  // #54 spec §I.3: `request.boat.id` names a boat the CURRENT catalogue does
+  // not contain, so there is nothing to plan WITH. Rejected here, before the
+  // message is posted, rather than letting protocol.ts's `boatById(req.boatId)`
+  // throw inside the worker — that would arrive as an untyped 'worker-fatal'
+  // and be reported as a generic internal routing error, whose copy names
+  // no cause and points the user at "a different route or settings" when
+  // the actual remedy is a boat the catalogue still holds.
+  // §I.3's guarantee is exactly this narrow: such a plan "still opens, still
+  // renders, still exports GPX … Only 'plan again with this boat' is
+  // unavailable, and it says so."
+  | 'boat-not-in-catalogue';
 
 // NOT structured-clone-safe: Error subclasses lose their prototype chain
 // across postMessage/IndexedDB (mirrors OpenMeteoError's and ReplanError's
@@ -124,20 +135,51 @@ const PLAN_TIMEOUT_GRACE_MS = 15_000;
 const DEFAULT_PLAN_TIMEOUT_MS = PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS;
 
 /**
+ * #553 / spec §I.3: narrow a stored plan's `BoatSnapshot.id` (a plain
+ * `string`, deliberately — a snapshot is denormalised BY VALUE and outlives
+ * the catalogue) to a `BoatId` the catalogue actually contains, or `null`.
+ *
+ * This is the ONE place the string-to-catalogue crossing happens on the plan
+ * path, and it is a lookup rather than a `boatById` call precisely because
+ * `boatById` THROWS: the whole point is to answer "is this boat still here?"
+ * without turning a documented graceful state into an exception. Exported so
+ * the narrowing is testable without a fake worker, the same reason
+ * `buildPlanMessage` is.
+ *
+ * Matched against `BOATS` directly rather than against a hand-written id
+ * list, so adding a catalogue entry needs no edit here and no second copy can
+ * drift out of step with the catalogue.
+ */
+export function catalogueBoatId(id: string): BoatId | null {
+  return BOATS.find((b) => b.id === id)?.id ?? null;
+}
+
+/**
  * #54 spec F.3: assemble the `plan` message, naming which of `init`'s keyed
  * polars this plan runs. Exported so the derivation is testable without a
  * fake worker.
  *
- * `boatId` STAYS an explicit argument now that Task 11 has landed
- * `PlanRequest.boat`, and must not be collapsed onto it: `BoatSnapshot.id` is
- * `string` because a plan's boat may have left the catalogue, while this
- * parameter is the narrowed `BoatId` that protocol.ts feeds to `boatById`,
- * which THROWS on an unknown id. Deriving it from the snapshot would turn a
- * documented graceful state — a saved plan whose boat is gone still opens and
- * renders — into a worker throw. Revisit only together with the "cannot
- * re-plan with this boat" UI (spec §I.3), which release 1 does not build.
+ * `boatId` STAYS an explicit argument rather than being read off
+ * `request.boat.id` INSIDE this function: `BoatSnapshot.id` is `string`
+ * because a plan's boat may have left the catalogue, while this parameter is
+ * the narrowed `BoatId` that protocol.ts feeds to `boatById`, which THROWS on
+ * an unknown id. Keeping the narrowing OUTSIDE is what lets `plan()` reject
+ * the unknown-boat case as a typed `'boat-not-in-catalogue'` failure instead
+ * of it becoming a worker throw.
+ *
+ * #553 / spec §I.3: what changed is the ARGUMENT `plan()` passes, not this
+ * signature. It used to be `DEFAULT_BOAT_ID` — a constant — so a request for
+ * any boat other than the default would have been SOLVED with the Salona 45's
+ * polars and, via `PlanDeps.boat`, the Salona 45's §C.4(a) relaxation floor,
+ * while the UI reported the user's own boat from `request.boat`. Latent while
+ * the catalogue held one entry; a silent safety error the moment it held two,
+ * because the floor is derived from DRAFT. It is now
+ * `catalogueBoatId(request.boat.id)`, resolved at the boundary.
+ *
  * `polarKeys` follows `request.sailIds` order, so the worker's subset matches
- * the order the solver runs them in.
+ * the order the solver runs them in — and it is keyed by the SAME resolved
+ * `boatId`, so the polar tables and the relaxation floor can never name
+ * different boats.
  */
 export function buildPlanMessage(
   request: PlanRequest,
@@ -283,6 +325,15 @@ export class RoutingClient {
   ): Promise<PlanResult> {
     await this.ready;
     if (this.disposed) throw new RoutingError('disposed', 'RoutingClient disposed');
+    // #553 / spec §I.3: resolve the REQUEST's own boat against the catalogue,
+    // BEFORE any pending entry or timer exists, so a rejection here leaves no
+    // state to clean up. Rejecting rather than falling back to a default is
+    // the whole fix: a fallback is what silently solved a second boat's plan
+    // with the Salona 45's polars and relaxation floor.
+    const boatId = catalogueBoatId(request.boat.id);
+    if (boatId === null) {
+      throw new RoutingError('boat-not-in-catalogue', `boat not in catalogue: ${request.boat.id}`);
+    }
     const id = crypto.randomUUID();
     return new Promise<PlanResult>((resolve, reject) => {
       // A hung worker (message lost, or stuck past its own step budget)
@@ -323,13 +374,14 @@ export class RoutingClient {
       // absent — the same direction as the rest of the design, and the client
       // deadline still bounds the wait.
       const budgetMs = timeoutMs - PLAN_TIMEOUT_GRACE_MS;
-      // #54: DEFAULT_BOAT_ID — the catalogue has one boat today, so this
-      // names the boat the app already plans with rather than introducing a
-      // choice. Deliberately NOT `request.boat.id`, which Task 11 made
-      // available; see buildPlanMessage's own comment for why that would
-      // convert a graceful state into a worker throw.
+      // #553 / spec §I.3: the boat resolved from `request.boat.id` above —
+      // NEVER DEFAULT_BOAT_ID. `boatId` selects BOTH the polar tables
+      // (`polarKeys`) and, through protocol.ts's `boatById(req.boatId)` ->
+      // `PlanDeps.boat`, the §C.4(a) relaxation floor, so a constant here
+      // would solve every boat's plan as a Salona 45 while the UI reported
+      // the user's own boat.
       this.worker.postMessage(
-        buildPlanMessage(request, DEFAULT_BOAT_ID, {
+        buildPlanMessage(request, boatId, {
           id,
           windGrid,
           ...(budgetMs > 0 ? { budgetMs } : {}),

@@ -5,7 +5,12 @@ import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { resultSummary, rigRecommendationOf, sailLabelKey } from '../lib/resultSummary';
+import {
+  resultSummary,
+  rigRecommendationOf,
+  rigVerdictKey,
+  sailLabelKey,
+} from '../lib/resultSummary';
 import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from '../lib/shallowExposure';
 import { useWideLayout } from '../lib/useWideLayout';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
@@ -401,7 +406,7 @@ export default function RouteSummary({
       <Chip className="chip-faster-rig">
         {rigRecommendation.kind === 'decided'
           ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
-          : t(rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
+          : t(rigVerdictKey(rigRecommendation.kind))}
       </Chip>
 
       {stale && <p role="alert">{t('route.staleForecast')}</p>}

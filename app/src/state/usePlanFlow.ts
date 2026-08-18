@@ -5,7 +5,12 @@ import { loadRoutingAssets } from '../services/assets';
 import { RoutingClient } from '../routing/workerClient';
 import { useActivePlan } from './AppState';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { dedupeViaPoints, ROUTING_FAILURE_MESSAGE_KEY, routingFailureKey } from './replan';
+import {
+  dedupeViaPoints,
+  failureLeavesWorkerHealthy,
+  ROUTING_FAILURE_MESSAGE_KEY,
+  routingFailureKey,
+} from './replan';
 import type { MsgKey } from '../i18n/dict.de';
 import {
   PLAN_SCHEMA_VERSION,
@@ -302,13 +307,21 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
         // resolved, but the Worker thread dead underneath it), so the
         // *next* run()/replan would be handed back the same broken client
         // instead of building a fresh one.
-        try {
-          client.dispose();
-        } catch {
-          // Best-effort teardown of an already-broken client.
+        // #553: gated, not unconditional. `'boat-not-in-catalogue'` is
+        // raised client-side before anything is posted, so the worker is
+        // healthy and tearing it down costs a full re-init for nothing. The
+        // ref nulling is inside the same gate deliberately: nulling while the
+        // worker is alive would strand it and have ensureClient build a
+        // second one.
+        if (!failureLeavesWorkerHealthy(err)) {
+          try {
+            client.dispose();
+          } catch {
+            // Best-effort teardown of an already-broken client.
+          }
+          clientRef.current = null;
+          readyRef.current = null;
         }
-        clientRef.current = null;
-        readyRef.current = null;
         // #433: client.plan() always rejects with a RoutingError (see
         // workerClient.ts) — classify by its typed `kind`, NEVER by matching
         // err.message (that would make a user-adjacent label a control

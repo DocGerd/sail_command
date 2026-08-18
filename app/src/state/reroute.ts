@@ -3,6 +3,7 @@ import { savePlan } from '../services/db';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import {
   disposeAfterFailure,
+  failureLeavesWorkerHealthy,
   ReplanError,
   ROUTING_FAILURE_MESSAGE_KEY,
   routingFailureKey,
@@ -146,7 +147,8 @@ export async function rerouteFromFix(
     // RoutingError.kind instead of collapsing onto 'error.internal'. This
     // path matters more than the replan one for a timeout: it is reached
     // from Live view, mid-passage.
-    disposeAfterFailure(deps.client);
+    // #553: skip the teardown when the worker is provably healthy.
+    if (!failureLeavesWorkerHealthy(err)) disposeAfterFailure(deps.client);
     throw new ReplanError(
       routingFailureKey(err),
       `routing worker rejected the reroute request: ${err instanceof Error ? err.message : String(err)}`,

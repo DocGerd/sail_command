@@ -159,6 +159,13 @@ export const de = {
   'error.routingMessageError':
     'Die Routen-Engine hat eine nicht lesbare Antwort gesendet. Erneut versuchen — sie startet dabei neu.',
   'error.routingInterrupted': 'Die Routenberechnung wurde unterbrochen. Erneut versuchen.',
+  // #553 / spec §I.3: der eine typisierte Fehler, bei dem weder „Erneut
+  // versuchen" noch „App neu laden" hilft — beides ändert nichts am Katalog.
+  // Der Satz nennt deshalb stattdessen, wie eng der Verlust ist: die
+  // gespeicherte Route bleibt vollständig lesbar und exportierbar, nur eine
+  // Neuberechnung ist nicht möglich. Siehe dict.en.ts.
+  'error.boatNotInCatalogue':
+    'Diese Route wurde für ein Boot geplant, das nicht mehr verfügbar ist, und kann deshalb nicht neu berechnet werden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
   'error.planSaveFailed':
     'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
   'error.windUnknown':
@@ -204,6 +211,11 @@ export const de = {
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
   'route.rigTie': 'Genua und Fock liegen für diese Passage praktisch gleichauf',
   'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
+  // #553 / spec §N.4: schwächere Aussage als rigTie oben — dort ist ein
+  // Vergleich gelaufen und endete unentschieden, hier hat gar keiner
+  // stattgefunden. Siehe dict.en.ts für die drei auslösenden Fälle.
+  'route.rigNotCompared':
+    'Die Segel wurden für diese Passage nicht verglichen — es wird kein schnelleres Rigg angegeben',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
