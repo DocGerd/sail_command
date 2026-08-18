@@ -389,7 +389,7 @@ describe('PlansList recalculate (#114)', () => {
       await savePlan(plan as unknown as Plan);
     }
 
-    it('is shown, with its name and creation date, alongside readable rows', async () => {
+    it('is shown, with the name and creation date the record still carries, alongside readable rows', async () => {
       await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, name: 'Readable' }));
       await saveUnreadable('p2', 2000, 'From The Future');
 
