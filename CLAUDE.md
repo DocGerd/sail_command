@@ -257,8 +257,9 @@ deviate from it.
   API 2026-08-18), so a red `ruff` merges silently — it is not a gate, it is a
   job someone has to look at. Run both after ANY `pipeline/**` change:
   typecheck/lint/vitest are all JS-side and structurally cannot see Python
-  (measured — #538 carried 3 branch-introduced E501s past fifteen task reviews
-  AND a whole-branch review, every one of whose gates was the `app` toolchain).
+  (measured — #538's three E501s entered on Task 13's OWN commit and survived
+  that task's review rounds AND the whole-branch review, because every gate any
+  of them ran was the `app` toolchain).
   Locally: `./pipeline/.venv/bin/ruff check pipeline/` + `… format --check
   pipeline/`. That venv carries its OWN ruff, unpinned against CI's hash-pinned
   `python-lint-requirements.txt` (measured 2026-08-18: venv 0.16.2 vs CI
@@ -1414,6 +1415,8 @@ deviate from it.
   are `getPlan`-scoped by name, so no suite run could have seen it. Ask "is the
   HAZARD closed?", never "is the fix in place?", and enumerate the hazard's
   SHAPE (who else writes a migrated record?) rather than the fix's location.
+  Distinct from "a fix INHERITS its bug's blind spot" below: that one is the
+  defect reproduced INSIDE the fix, this one the defect left standing BESIDE it.
 - **When a list is accused of being non-exhaustive, SCOPE it — do not hedge
   it.** A hedge weakens a claim; naming the narrower domain makes it TRUE.
   "Exactly what is checked, no wider" (false, omitted ~13 guards) became "the
