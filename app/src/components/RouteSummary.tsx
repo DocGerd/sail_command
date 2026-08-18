@@ -13,9 +13,8 @@ import {
 } from '../lib/resultSummary';
 import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from '../lib/shallowExposure';
 import { useWideLayout } from '../lib/useWideLayout';
-import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import { useNavMask } from '../state/useNavMask';
-import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
+import { safetyDepthFieldFor } from './OptionsPanel';
 import type { MsgKey } from '../i18n/dict.de';
 import type { Board, Leg, NoRouteReason, Plan, SailId, ShallowInfo } from '../types';
 import Card from './Card';
@@ -73,16 +72,20 @@ export function ShallowWarning({
   // usedDepthM - MASK_TOLERANCE_M — recomputed from THIS plan's usedDepthM
   // every render, never a fixed number, so it can never go stale as
   // usedDepthM varies plan to plan.
-  // #54 spec C.4(a) — BOAT-AGNOSTIC. This compares against the Salona's
-  // 2.1 m constant, not the SELECTED boat's draft. Not live: BOATS holds one
-  // boat at draftM 2.1, identical to BOAT_DRAFT_M.
-  // NO LONGER BLOCKED: Task 11 put the boat on the plan, so
-  // `plan.request.boat.draftM` is in scope here (`plan` is a required prop).
-  // The CODE change is tracked in #539, which names this site and :186
-  // explicitly, and is not part of Task 11. Must be retired before a second boat becomes user-selectable; a
-  // 2.30 m boat relaxed to its correct 2.3 m gate would otherwise be judged
-  // against the wrong hull. Same fix owns the rendered draft below.
-  const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M;
+  // #54 spec C.4(a), fixed in #539. THE PLAN'S OWN BOAT, never the module
+  // constant and never the live picker selection: a plan re-opened after the
+  // user switches boats must still describe the hull it was computed for
+  // (`plan.request.boat` is a by-value snapshot, spec I.3, and that boat may
+  // have left the catalogue entirely — so no `boatById` lookup here).
+  //
+  // Before #539 this compared against `BOAT_DRAFT_M` (2.1). Because no
+  // catalogue boat is DEEPER than 2.1 m, the error direction was
+  // conservative — `isSevere` OVER-fired for the 1.90 m Elan rather than
+  // under-warning — but the draft it then RENDERED was simply the wrong
+  // number in the app's most severe depth copy. Both come from this one
+  // value; `draftM` below is the same read.
+  const draftM = plan.request.boat.draftM;
+  const isSevere = shallow.usedDepthM - MASK_TOLERANCE_M < draftM;
   const containerClassName = isSevere
     ? 'shallow-warning shallow-warning--severe'
     : 'shallow-warning';
@@ -171,13 +174,21 @@ export function ShallowWarning({
   //    re-read is the expected result — a tablet rotation is enough.
   //    Mount-gating is still correct; display:none would leave a wide-only
   //    sentence in the accessibility tree on narrow, which is worse.
-  // 3. usedDepthM > SAFETY_DEPTH_FIELD.min — Minor 5. findRelaxedGate
+  // 3. usedDepthM > this boat's own field minimum — Minor 5. findRelaxedGate
   //    searches [the relaxation floor, requestedDepthM) — relaxationFloorM(boat),
-  //    2.1 for the Salona today — while SAFETY_DEPTH_FIELD
-  //    clamps the input to >= its own min (2.1 and 2.2 respectively today),
+  //    2.1 for the Salona today — while the safety-depth input
+  //    clamps to >= its own min (2.1 and 2.2 respectively for the Salona),
   //    so at a usedDepthM of either there is no lower setting to choose and
   //    "set a lower safety depth" names an unavailable action.
-  const showRemedy = exposureDist !== null && isWide && shallow.usedDepthM > SAFETY_DEPTH_FIELD.min;
+  //
+  //    #539: read through `safetyDepthFieldFor(...)`, which is what
+  //    OptionsPanel.tsx's own comment already required of every surface —
+  //    this site is the sibling that did not get the memo. The bare
+  //    `SAFETY_DEPTH_FIELD.min` is the DEFAULT boat's 2.2 m; the Elan's is
+  //    2.0 m, so on that boat the remedy was SUPPRESSED across usedDepthM in
+  //    (2.0, 2.2] — precisely the band where it is actionable.
+  const safetyDepthMinM = safetyDepthFieldFor(plan.request.boat).min;
+  const showRemedy = exposureDist !== null && isWide && shallow.usedDepthM > safetyDepthMinM;
   // #504 wave 4: ONE role="alert" region (a <div>, not a <p>) holding three
   // children — lead/detail/caveat — so a screen reader still announces one
   // region while sighted users get a real visual hierarchy instead of one
@@ -190,13 +201,15 @@ export function ShallowWarning({
   return (
     <div className={containerClassName} role="alert">
       <p className="shallow-warning__lead">
-        {/* #54 spec C.4(a) — BOAT-AGNOSTIC: this renders the Salona's 2.1 m,
-            not the SELECTED boat's draft, so with a second boat it would
-            UNDERSTATE a deeper hull in the app's most severe safety copy.
-            Task 11 removed the blocker — see isSevere above. */}
+        {/* #54 spec C.4(a), fixed in #539: renders THE PLAN'S OWN boat's
+            draft — see the `draftM` read above for why the plan, not the
+            picker, decides. `toFixed(1)` in both languages is unchanged
+            behaviour for this key and deliberately not touched here; the
+            German decimal comma is a separate copy question, live only in
+            about.caveats.depthMask (lib/depthDisclosure.ts). */}
         {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
           cautious: cautiousM,
-          draft: BOAT_DRAFT_M.toFixed(1),
+          draft: draftM.toFixed(1),
         })}
       </p>
       <p className="shallow-warning__detail">

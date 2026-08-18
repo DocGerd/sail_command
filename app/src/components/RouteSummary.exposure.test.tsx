@@ -17,8 +17,8 @@ vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
 import { loadRoutingAssets } from '../services/assets';
 import { SAFETY_DEPTH_FIELD } from './OptionsPanel';
 import RouteSummary from './RouteSummary';
-import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
-import { defaultBoatSnapshot } from '../types';
+import { boatById, DEFAULT_BOAT_ID, polarKey } from '../data/boats';
+import { boatSnapshot, defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
 const mockedLoad = vi.mocked(loadRoutingAssets);
@@ -115,7 +115,13 @@ function deepMask() {
   return assetsWithMask(() => 200 /* 20 m */);
 }
 
-function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
+function makePlan(
+  legs: Leg[],
+  usedDepthM = 2.5,
+  // #539: the remedy gate reads the PLAN's boat, so a row that varies the boat
+  // needs to vary exactly this and nothing else.
+  boat = defaultBoatSnapshot(),
+): Plan {
   return {
     id: 'plan-1',
     name: 'Exposure test plan',
@@ -130,7 +136,7 @@ function makePlan(legs: Leg[], usedDepthM = 2.5): Plan {
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
       sailIds: ['genoa', 'fock'],
-      boat: defaultBoatSnapshot(),
+      boat,
     },
     windGrid: {
       lats: [54.3, 55.3],
@@ -354,6 +360,62 @@ describe('#516: ShallowWarning exposure sentence', () => {
     const detail = container.querySelector('.shallow-warning__detail');
     expect(detail?.textContent).toContain('3.0 nm of this route crosses water charted shallower');
     expect(detail?.textContent).not.toContain('lower safety depth setting');
+  });
+
+  // #539 (spec J OQ-1). The row directly above proves the remedy is
+  // suppressed at `SAFETY_DEPTH_FIELD.min` — but that constant is the DEFAULT
+  // boat's 2.2 m, and until #539 this gate read it for every boat. The Elan
+  // Impression 444's own minimum is 2.0 m (ceil₁₀(1.90 + 0.1)), so on that
+  // boat the remedy was suppressed right across usedDepthM in (2.0, 2.2] —
+  // the band where lowering the setting is exactly the available action.
+  //
+  // Both halves use the SAME mask, the SAME leg and the SAME usedDepthM and
+  // vary ONLY `request.boat`, so the difference cannot come from anything
+  // else. 2.1 m is hand-picked to sit strictly inside that band: above the
+  // Elan's 2.0 m minimum, at or below the Salona's 2.2 m one.
+  it('#539: the remedy gate is the PLAN boat’s own field minimum, not the default boat’s', async () => {
+    const IN_BAND_USED_DEPTH_M = 2.1;
+    mockedLoad.mockResolvedValue(shallowMask());
+
+    localStorage.setItem('sc-lang', 'en');
+    const elanPlan = makePlan(
+      [EXPOSURE_LEG],
+      IN_BAND_USED_DEPTH_M,
+      boatSnapshot(boatById('elan-444-piranja')),
+    );
+    const { container: elan } = render(
+      <I18nProvider>
+        <RouteSummary plan={elanPlan} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => {
+      expect(elan.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    expect(elan.querySelector('.shallow-warning__detail')?.textContent).toContain(
+      'lower safety depth setting',
+    );
+    cleanup();
+
+    // Same everything, default boat: 2.1 is at or below its 2.2 m minimum, so
+    // there IS no lower setting and the advice stays suppressed. This half is
+    // what makes the half above a comparison rather than a bare assertion.
+    //
+    // PER-ASSERTION ATTRIBUTION, MEASURED 2026-08-18: the elan half is the
+    // SOLE discriminator for the stale-minimum defect (reverting the gate to
+    // the literal 2.2 reds this row, and deleting that one assertion makes it
+    // green again). The salona half's own suppression check is what catches
+    // the opposite mutation — the gate forced always-true — where it is again
+    // the only red. The `toContain('of this route crosses…')` line between
+    // them is defence in depth against PR #523's Blocker-1 shape (suppressing
+    // the remedy must not take the measured figure with it) and is NOT
+    // individually load-bearing under any mutation measured here.
+    const salona = await renderAndSettle([EXPOSURE_LEG], IN_BAND_USED_DEPTH_M);
+    await waitFor(() => {
+      expect(salona.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const salonaDetail = salona.querySelector('.shallow-warning__detail');
+    expect(salonaDetail?.textContent).toContain('of this route crosses water charted shallower');
+    expect(salonaDetail?.textContent).not.toContain('lower safety depth setting');
   });
 
   it('omits the exposure sentence when the active rig has no legs at all', async () => {

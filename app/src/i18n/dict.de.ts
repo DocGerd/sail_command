@@ -629,8 +629,12 @@ export const de = {
   'about.caveats.heading': 'Wichtige Hinweise',
   'about.caveats.polars':
     'Die Polardaten sind Schätzungen auf Basis ORC-artiger VPP-Daten, einstellbar über den Leistungsfaktor in den Optionen — nicht renngenau kalibriert.',
+  // #539 / #54 Spec C.8 R5 + J OQ-2: siehe den Kommentar in dict.en.ts —
+  // jede Zahl kommt jetzt aus dem AUSGEWÄHLTEN Boot (lib/depthDisclosure.ts).
+  // formatDepthM liefert das deutsche Dezimalkomma, damit „2,1 m“ hier nicht
+  // still zu „2.1 m“ wird.
   'about.caveats.depthMask':
-    'Die Tiefenwerte mischen zwei Lesarten derselben EMODnet-Bathymetriedaten: Die geglättete Lesart wird nur dort verwendet, wo sie mit der vorsichtigeren auf 0,9 m genau übereinstimmt, sodass der von der App verwendete Tiefenwert nie mehr als 0,9 m tiefer ist als die vorsichtigere Lesart — das beschreibt die Quelldaten, nicht den tatsächlichen Meeresgrund. Eine Zelle, durch die bei Sicherheitstiefe G geplant wird, hat eine vorsichtige Lesart von mindestens G − 0,9 m: 2,1 m, der Tiefgang, bei der Standardtiefe von 3,0 m — aber nur 1,2 m, wenn eine Route auf eine geringere Tiefenschwelle zurückfällt, um verbunden zu bleiben; das wird auf der betroffenen Route markiert.',
+    'Die Tiefenwerte mischen zwei Lesarten derselben EMODnet-Bathymetriedaten: Die geglättete Lesart wird nur dort verwendet, wo sie mit der vorsichtigeren auf {tolerance} m genau übereinstimmt, sodass der von der App verwendete Tiefenwert nie mehr als {tolerance} m tiefer ist als die vorsichtigere Lesart — das beschreibt die Quelldaten, nicht den tatsächlichen Meeresgrund. Eine Zelle, durch die bei Sicherheitstiefe G geplant wird, hat eine vorsichtige Lesart von mindestens G − {tolerance} m. Die Standard-Sicherheitstiefe für die {boat} beträgt {gate} m und ist so gewählt, dass diese Untergrenze nie unter den Tiefgang von {draft} m fällt — sie kann aber nur {floor} m betragen, wenn eine Route auf eine geringere Tiefenschwelle zurückfällt, um verbunden zu bleiben; das wird auf der betroffenen Route markiert.',
   'about.dataSize':
     'Der erste Aufruf lädt ca. 44 MB (Basiskarte und Routendaten) herunter; spätere Aufrufe werden aus dem Cache bedient und funktionieren offline.',
   'about.sources.heading': 'Datenquellen',
