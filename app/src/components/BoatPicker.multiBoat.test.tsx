@@ -194,6 +194,37 @@ describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
     ).toBeInTheDocument();
   });
 
+  it('links the caveat to the radio via aria-describedby, so arrowing onto the boat reaches it', () => {
+    // PR #563 MINOR 4. Arrow keys move between RADIOS and skip everything
+    // else in the group — native behaviour no container role changes — so
+    // without this the spec N.2 mitigation is invisible to a screen-reader
+    // user navigating the list. MEASURED: deleting the `aria-describedby`
+    // spread left the two BoatPicker files 26/26 green before this row.
+    //
+    // It must be the DESCRIPTION, not the name: the accessible name stays
+    // the boat + draft + tier, and the paragraph is what the caveat lives in.
+    renderPicker();
+    const radio = screen.getByRole('radio', { name: /Deep 46/ });
+    const describedBy = radio.getAttribute('aria-describedby');
+    expect(describedBy).toBe('boat-option-deep-46-keel');
+    const caveat = document.getElementById(describedBy!);
+    expect(caveat?.textContent).toContain('Assumed keel');
+    // ...and the caveat must NOT have leaked into the accessible NAME, which
+    // is the failure mode the picker's own comment rejects folding it in for.
+    expect(radio.getAttribute('aria-label')).toBeNull();
+    expect(screen.getByRole('radio', { name: /Deep 46/ })).toBeInTheDocument();
+  });
+
+  it('omits aria-describedby entirely for a boat that declares no assumption', () => {
+    // `exactOptionalPropertyTypes`: the prop is OMITTED rather than set to
+    // `undefined`. A radio pointing at an id that renders nothing is a
+    // dangling reference, and some AT announces nothing at all for one.
+    renderPicker();
+    expect(
+      screen.getByRole('radio', { name: /Salona 45/ }).hasAttribute('aria-describedby'),
+    ).toBe(false);
+  });
+
   it('renders it for that boat ONLY, not for every row', () => {
     // The discriminating half of BoatPicker.test.tsx's absence row: exactly
     // one of three boats declares an assumption, so a component that rendered

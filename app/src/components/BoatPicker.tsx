@@ -32,6 +32,11 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
   const t = useT();
   const tier = weakestPolarTier(boat);
   const inputId = `boat-option-${boat.id}`;
+  const keelId = `${inputId}-keel`;
+  // `exactOptionalPropertyTypes`: the prop must be OMITTED, not passed as
+  // `undefined`, for a boat that declares no keel assumption — same shape as
+  // SettingsPanel.tsx's own `fieldExtra`/`inputExtra` spreads.
+  const keelDescribedBy = boat.keelAssumption !== undefined ? { 'aria-describedby': keelId } : {};
   return (
     <div
       className={['boat-option', selected ? 'boat-option-selected' : null]
@@ -48,6 +53,15 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
         className="boat-option-radio"
         value={boat.id}
         checked={selected}
+        // Points at the keel caveat below, so the sentence reaches a
+        // screen-reader user who ARROWS onto this boat. Without it the caveat
+        // is only reachable by reading past the control: arrow keys move
+        // between radios and skip everything else in the group, which is
+        // native behaviour no container role changes (PR #563 MINOR 4). It is
+        // the DESCRIPTION, not the name — folding it into the label would make
+        // every radio announce a paragraph, which the keel comment below
+        // rejects for good reason.
+        {...keelDescribedBy}
         onChange={onSelect}
       />
       <label className="boat-option-label" htmlFor={inputId}>
@@ -57,13 +71,14 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
             {t('boat.draft', { depth: boat.draftM.toFixed(1) })}
           </span>
           {/* The tier word alone ("Estimated") does not say what is estimated,
-              and the chip is the one part of this row a screen-reader user
-              may hear out of context — so the accessible name spells the
-              subject out while the visible text stays chip-sized. */}
+              so the accessible name spells the subject out while the visible
+              text stays chip-sized. No `title`: with `aria-label` present it
+              would become the accessible DESCRIPTION, giving this chip the
+              same string as both name and description, and the per-sail chips
+              below already set a no-tooltip convention (PR #563 MINOR 5). */}
           <Chip
             className={`chip-polar-tier chip-polar-tier-${tier}`}
             aria-label={t('boat.polarTier.aria', { tier: t(POLAR_TIER_LABEL_KEY[tier]) })}
-            title={t('boat.polarTier.aria', { tier: t(POLAR_TIER_LABEL_KEY[tier]) })}
           >
             {t(POLAR_TIER_LABEL_KEY[tier])}
           </Chip>
@@ -76,14 +91,18 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           boat, which is why it sits on the picker rather than in a JSON
           field. Rendered outside the <label> deliberately: it is a caveat
           about the option, not part of the control's accessible name, and
-          folding it in would make every radio announce a paragraph.
+          folding it in would make every radio announce a paragraph — the
+          radio's `aria-describedby` above is what still carries it to a
+          screen reader, as a description rather than a name.
 
           Absent on a boat that declares no assumption — today that is the
           whole catalogue, because the Salona 45 is the app's model-level
           reference boat (spec J OQ-4's carve-out) and not a fleet hull whose
           keel was assumed. It renders as soon as a fleet entry lands. */}
       {boat.keelAssumption !== undefined && (
-        <p className="boat-option-keel">{t('boat.keel.assumed', { keel: boat.keelAssumption })}</p>
+        <p className="boat-option-keel" id={keelId}>
+          {t('boat.keel.assumed', { keel: boat.keelAssumption })}
+        </p>
       )}
       <Disclosure className="boat-option-polars" summary={t('boat.polarDetail.summary')}>
         <ul className="boat-option-sails">
@@ -156,6 +175,11 @@ export default function BoatPicker({
     }
     onBoatIdChange(nextId);
 
+    // Native radios select on arrow-key focus, so arrowing THROUGH a deeper
+    // boat clamps up and persists on the way past, and nothing lowers it
+    // again. That is spec C.7 working as specified — the clamp is monotone by
+    // design — but it means transit, not just landing, raises the gate.
+
     // Deliberately NOT applying settingsDefaultsForBoat's other two fields
     // (motorSpeedKn, maneuverPenaltyS): spec C.7 governs safetyDepthM alone,
     // and those two are values the user may have tuned for their own crew.
@@ -165,7 +189,14 @@ export default function BoatPicker({
 
   return (
     <Card title={t('boat.section.title')} className="boat-picker-card">
-      <div className="boat-picker" role="radiogroup" aria-label={t('boat.picker.label')}>
+      {/* `group`, NOT `radiogroup` (PR #563 MINOR 4): WAI-ARIA gives
+          `radiogroup` required owned elements `radio`, and each option here
+          also owns a keel caveat and a provenance disclosure. `group` permits
+          arbitrary owned content and still carries the accessible name.
+          Nothing is lost by the change: arrow-key roving and the single tab
+          stop come from the shared `name` attribute, which is native browser
+          behaviour and independent of the container's ARIA role. */}
+      <div className="boat-picker" role="group" aria-label={t('boat.picker.label')}>
         {BOATS.map((b) => (
           <BoatOption
             key={b.id}
@@ -178,8 +209,10 @@ export default function BoatPicker({
       {/* Rendered UNCONDITIONALLY, empty when there is nothing to say: a
           role="status" live region must already be in the accessibility tree
           before its text changes, or assistive tech has nothing to observe
-          the mutation on. app.css hides it with :empty so an empty region
-          costs no layout. */}
+          the mutation on. app.css therefore zeroes an empty one's box rather
+          than setting `display: none`, which would take it back out of that
+          tree and lose the announcement — see that rule's own comment, and
+          test/boatPickerNoticeLiveRegion.test.ts, which pins it. */}
       <p className="boat-picker-notice" role="status">
         {notice
           ? t('boat.clamp.notice', {

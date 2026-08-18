@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // catalogue the only valid stored id IS `DEFAULT_BOAT_ID`, so "reads the
 // stored id" and "ignores storage and returns the default" are the SAME
 // OBSERVATION. A mutation replacing the whole initialiser with
-// `return DEFAULT_BOAT_ID` left the single-catalogue file **8 passed / 0
+// `return DEFAULT_BOAT_ID` left the single-catalogue file **7 passed / 0
 // failed** — the mount-read rows could not reach the behaviour they claimed
 // to pin. Both of them live here now, against a second catalogue entry that
 // makes the two outcomes distinguishable; the same mutation reds this file.

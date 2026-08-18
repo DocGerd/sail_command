@@ -32,10 +32,11 @@ export function settingsDefaultsForBoat(
  * sits — a deeper-drafted user's deliberately generous margin is not ours
  * to shrink.
  *
- * STAGED MACHINERY (release-1 note): the boat picker itself is out of scope
- * for this release, so nothing calls this yet — no store, hook or UI wires
- * it up. Do not cite this function as enforced protection until a real call
- * site exists.
+ * WIRED (#539 item 1): `components/BoatPicker.tsx`'s `handleSelect` is the
+ * call site — every boat switch goes through it, and the clamp notice the
+ * picker renders is derived from the `clamped` flag returned here. Earlier
+ * revisions of this comment said nothing called it; that was true when
+ * written and is no longer.
  */
 export function clampSettingsToBoat(
   s: Settings,

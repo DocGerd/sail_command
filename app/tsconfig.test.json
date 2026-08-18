@@ -89,6 +89,11 @@
   // stylesheet — the estimated tier is spec N.5's caution label, and the
   // `.chip`-declared-later cascade has silently blanked two chip modifiers
   // in this repo already. Same reason and pattern as chipShallowFill.test.ts.
+  // boatPickerNoticeLiveRegion.test.ts (#563 MAJOR 1): reads app.css via
+  // `node:fs` to resolve whether the spec C.7 clamp announcement's
+  // role="status" region is still in the accessibility tree while empty —
+  // a `display: none` there removes it and silently loses the announcement.
+  // Same reason and pattern as chipPolarTierFill.test.ts.
   // verifyMaskBoatGate.test.ts (#54 Task 13): reads pipeline/verify_mask.py
   // AND pipeline/polars-source.json via `node:fs` to hold the two twins that
   // the per-boat gate scan created — the draft, which the Python script cannot
@@ -108,6 +113,7 @@
     "src/**/maskTolerance.test.ts",
     "src/**/chipShallowFill.test.ts",
     "src/**/chipPolarTierFill.test.ts",
+    "src/**/boatPickerNoticeLiveRegion.test.ts",
     "src/**/polarProvenance.test.ts",
     "src/**/buildPolars.failClosed.test.ts",
     "src/**/verifyMaskBoatGate.test.ts",

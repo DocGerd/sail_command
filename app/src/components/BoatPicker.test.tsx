@@ -94,8 +94,19 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     // Present but empty: a role="status" region must already be in the
     // accessibility tree before its text changes, or assistive tech has no
     // node to observe the mutation on.
+    //
+    // HONEST SCOPE (PR #563 MINOR 2): these are DOM assertions, and this test
+    // renders WITHOUT app.css, so neither can see the cascade — a
+    // `display: none` on the empty region would take it out of the
+    // accessibility tree while leaving both of these green, which is exactly
+    // the MAJOR 1 defect. `test/boatPickerNoticeLiveRegion.test.ts` is the
+    // other half and resolves that against the real stylesheet. The class
+    // assertion below is what ties the two together: it is spelled out
+    // independently on each side rather than derived from one source, so a
+    // rename reds one of them instead of silently unhooking the CSS guard.
     expect(status).toBeInTheDocument();
     expect(status).toBeEmptyDOMElement();
+    expect(status).toHaveClass('boat-picker-notice');
   });
 
   it('clicking the already-selected boat writes nothing and announces nothing', () => {

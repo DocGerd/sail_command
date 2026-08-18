@@ -2017,10 +2017,8 @@ select {
   font-size: 0.8rem;
 }
 
-/* Spec C.7's clamp announcement. Rendered unconditionally as a live region
-   (BoatPicker.tsx says why), so :empty is what keeps an idle one from
-   costing a row of padding — display:none rather than a zero height, since
-   a padded empty box still shows its background. */
+/* Spec C.7's clamp announcement, rendered unconditionally as a live region
+   (BoatPicker.tsx says why). */
 .boat-picker-notice {
   margin: 0.5rem 0 0;
   padding: 0.5rem 0.6rem;
@@ -2030,8 +2028,16 @@ select {
   font-size: 0.9rem;
 }
 
+/* Spec C.7's clamp announcement. Rendered unconditionally as a live region
+   (BoatPicker.tsx says why), and it must STAY rendered when empty: display:none
+   removes an element from the accessibility tree, so a region hidden that way is
+   not present to observe the mutation on and the announcement is lost. Zeroing
+   the box instead keeps it in the tree at no layout cost — an empty block with no
+   padding, border or background generates no line box and occupies no height. */
 .boat-picker-notice:empty {
-  display: none;
+  margin: 0;
+  padding: 0;
+  background: none;
 }
 
 /* Faster-rig chip (both surfaces) — UI accent, not a map-palette color. */

@@ -14,7 +14,7 @@ describe('#54 usePersistedBoatId', () => {
     // here: at a one-entry catalogue the only valid id IS DEFAULT_BOAT_ID, so
     // "read the stored value" and "ignored storage and defaulted" are the
     // same observation — MEASURED, a mutation replacing the whole initialiser
-    // with `return DEFAULT_BOAT_ID` left this file 8 passed / 0 failed.
+    // with `return DEFAULT_BOAT_ID` left this file 7 passed / 0 failed.
     // usePersistedBoatId.multiBoat.test.ts owns the read-back and mount-read
     // rows against a second catalogue entry, where they discriminate.
     const { result } = renderHook(() => usePersistedBoatId());
