@@ -612,7 +612,16 @@ vessel, not to route it on an assumed hull.)
 
 **Required mitigation, unchanged and now better justified:** each fleet catalogue entry records the
 keel variant it assumes and that the figure is not from the hull's papers, and that statement is
-surfaced on the boat picker alongside the provenance tier — not buried in a JSON field. A wrong
+surfaced on the boat picker alongside the provenance tier — not buried in a JSON field.
+
+**The field is `BoatDef.draftProvenance: { keel, hullVerified, note }`, REQUIRED on every fleet
+entry** — named here because it diverged once and the divergence was silent. Found in the PR #565
+review, 2026-08-18: the fleet branch wrote `draftProvenance` while the picker branch rendered an
+optional `keelAssumption?: string`. Both typechecked, `boats.ts` would have merged cleanly keeping
+both fields, and the paragraph would have rendered **nothing** — for exactly the two boats this
+section requires it for. Neither branch's tests could see it: the fleet branch asserts the field is
+present in the catalogue, the picker branch renders from its own fixture. Make it **required**, not
+optional, so a fleet entry without it is a type error rather than a silent omission. A wrong
 keel is invisible in every artifact the app renders; only the disclosure makes it checkable by
 someone who can see the boat. §L's rejection of the variant-picker stands: this is not a picker, it
 is a single sourced default with its uncertainty disclosed.
