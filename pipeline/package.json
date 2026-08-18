@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "polars": "node build_polars.mjs",
+    "estimate": "node estimate_polars.mjs --report",
     "harbors": "node build_harbors.mjs",
     "seamarks": "node build_seamarks.mjs",
     "mask": "./.venv/bin/python build_mask.py && ./.venv/bin/python verify_mask.py",

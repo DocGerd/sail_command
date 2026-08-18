@@ -6,9 +6,24 @@
       "draftM": 2.1,
       "validation": {
         "maxSpeedKn": 12,
+        "maxSpeedKnSource": "The app reference boat long-standing plausibility ceiling, unchanged since commit a0ba92e (2026-07-14, \"Salona 45 polar tables from ORC 2026 certificate\"), where it entered as the literal 12 in build_polars.mjs validate(). No narrower citation was recorded at the time and none is invented here. It sits about 12% above this boat own table maximum of 10.74 kn.",
         "anchors": [
-          { "label": "beam reach", "twa": 90, "tws": 16, "minKn": 8.26, "maxKn": 9.46 },
-          { "label": "upwind", "twa": 52, "tws": 12, "minKn": 6.5, "maxKn": 8.5 }
+          {
+            "label": "beam reach",
+            "twa": 90,
+            "tws": 16,
+            "minKn": 8.26,
+            "maxKn": 9.46,
+            "source": "Research-verified magnitude from the ORC International 2026 certificate pass that produced these tables (Salona 45 \"Miles Ahead\", AUT 035/26; commit a0ba92e, 2026-07-14, whose own comment reads \"sanity anchors (research-verified magnitudes)\"). No narrower citation was recorded at the time and none is invented here. Retained unchanged: spec N.6 E3's named-source requirement is what stops a NEW hull inheriting these, and E4 compares against these strings to detect exactly that."
+          },
+          {
+            "label": "upwind",
+            "twa": 52,
+            "tws": 12,
+            "minKn": 6.5,
+            "maxKn": 8.5,
+            "source": "Research-verified magnitude from the ORC International 2026 certificate pass that produced these tables (Salona 45 \"Miles Ahead\", AUT 035/26; commit a0ba92e, 2026-07-14, whose own comment reads \"sanity anchors (research-verified magnitudes)\"). No narrower citation was recorded at the time and none is invented here. Retained unchanged: spec N.6 E3's named-source requirement is what stops a NEW hull inheriting these, and E4 compares against these strings to detect exactly that."
+          }
         ]
       },
       "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25],
@@ -60,6 +75,210 @@
             [2.35, 3.59, 4.7, 5.63, 6.47, 7.22, 7.72, 8.36, 8.98],
             [1.95, 2.96, 3.97, 4.91, 5.74, 6.53, 7.25, 8.14, 8.86],
             [1.87, 2.83, 3.8, 4.71, 5.54, 6.31, 7.02, 8.03, 8.8]
+          ]
+        }
+      }
+    },
+    {
+      "id": "salona-44-speedy-go",
+      "name": "Salona 44 (SPEEDY GO!)",
+      "draftM": 2.1,
+      "validation": {
+        "maxSpeedKn": 12,
+        "maxSpeedKnSource": "Highest independently reported speed for this hull is 11 kn reaching at about 25 kn TWS (cruisingworld.com Salona 44 review); the plausibility ceiling sits one knot above it. A ceiling, not a performance claim.",
+        "anchors": [
+          {
+            "label": "close-hauled, built breeze",
+            "twa": 40,
+            "tws": 20,
+            "minKn": 6.8,
+            "maxKn": 9.2,
+            "source": "bwsailing.com Salona 44 review: \"sailed close-hauled at eight knots\" at 18-20 kn TWS holding 40 degrees TWA. Band is the reported 8.0 kn +/-15%."
+          },
+          {
+            "label": "reaching, strong breeze",
+            "twa": 110,
+            "tws": 25,
+            "minKn": 9.35,
+            "maxKn": 12,
+            "source": "cruisingworld.com Salona 44 review: \"Reaching: 11 knots\" at about 25 kn TWS. The source states no TWA, so TWA 110 is chosen as mid-reach rather than fitted; the band is the reported 11.0 kn +/-15%, clamped above by this boat's 12 kn plausibility ceiling."
+          },
+          {
+            "label": "close-hauled, moderate breeze",
+            "twa": 40,
+            "tws": 12,
+            "minKn": 5.95,
+            "maxKn": 8.05,
+            "source": "sailmagazine.com Salona 44 review: \"easy 7-plus\" close-hauled once the breeze built from 8 to 10-12 kn (\"8-plus in puffs\" is a gust, not a steady state, and a polar cell is steady state). Band is the stated sustained 7.0 kn +/-15%."
+          }
+        ]
+      },
+      "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25],
+      "twa": [35, 40, 45, 52, 60, 70, 80, 90, 100, 110, 120, 135, 150, 165, 180],
+      "beat": { "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25], "angle": [47.8, 45, 42.8, 41.1, 39.6, 38.7, 38.2, 38, 38.7] },
+      "gybe": { "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25], "angle": [142, 144, 146, 161, 173, 174, 176, 177, 178] },
+      "sails": {
+        "genoa": {
+          "provenance": {
+            "tier": "estimated",
+            "note": "Tier C, ESTIMATED - this hull's own jib table (see the salona-44-speedy-go fock note) multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa table divided by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at 25 kn). The difference between this boat's two tables is therefore a function of THAT RAMP, not of this hull, and carries no information about it - which is why the sail comparison is withheld rather than presented as a finding. Same inherited grid and angles, and the same uncertainty, as the jib table. Flat-water racing VPP - tune with the performance factor. NOT race-calibrated, and never measured against this boat."
+          },
+          "estimator": {
+            "method": "salona45-genoa-ramp-v1",
+            "baseBoatId": "salona-44-speedy-go",
+            "baseSailId": "fock",
+            "scalar": 1.02,
+            "corpusFree": true,
+            "uncertaintyPct": 10,
+            "ramp": { "boatId": "salona-45", "fromSailId": "fock", "toSailId": "genoa" }
+          },
+          "speeds": [
+            [2.48, 3.91, 5.07, 5.9, 6.52, 6.86, 7.06, 7.2, 7.06],
+            [3.14, 4.71, 5.89, 6.72, 7.27, 7.53, 7.67, 7.79, 7.64],
+            [3.66, 5.29, 6.41, 7.16, 7.62, 7.86, 8, 8.12, 7.96],
+            [4.16, 5.82, 6.93, 7.63, 8.02, 8.25, 8.38, 8.49, 8.35],
+            [4.52, 6.21, 7.28, 7.9, 8.25, 8.46, 8.62, 8.76, 8.63],
+            [4.79, 6.44, 7.49, 8.05, 8.38, 8.62, 8.83, 9.07, 8.99],
+            [4.81, 6.46, 7.53, 8.17, 8.5, 8.75, 8.96, 9.33, 9.38],
+            [4.7, 6.35, 7.51, 8.23, 8.61, 8.83, 9.04, 9.55, 9.77],
+            [4.38, 6.02, 7.24, 8.04, 8.48, 8.79, 9.1, 9.77, 10.05],
+            [3.91, 5.51, 6.74, 7.7, 8.27, 8.7, 9.14, 9.89, 10.54],
+            [3.54, 5.15, 6.42, 7.43, 8.07, 8.48, 8.88, 9.81, 10.95],
+            [3, 4.48, 5.7, 6.77, 7.61, 8.13, 8.46, 9.15, 9.99],
+            [2.49, 3.77, 4.88, 5.83, 6.67, 7.4, 7.87, 8.53, 9.16],
+            [2.07, 3.11, 4.13, 5.08, 5.91, 6.7, 7.39, 8.3, 9.04],
+            [1.98, 2.98, 3.96, 4.87, 5.71, 6.46, 7.16, 8.19, 8.97]
+          ]
+        },
+        "fock": {
+          "provenance": {
+            "tier": "estimated",
+            "note": "Tier C, ESTIMATED - no ORC/IRC certificate and no published VPP was obtained for this hull. Scaled from the Salona 45's certificate-anchored jib table (ORC International 2026, AUT 035/26) by one uniform hull scalar k = 1.020, the square root of the sail-area/displacement ratios: 92.81 m2 and 9,500 kg for this hull against 92.35 m2 and 10,000 kg for the Salona 45, both figures from sailboatdata.com so the measurement basis is uniform. The TWA/TWS grid and the beat and gybe angles are INHERITED from the Salona 45 unchanged - an inherited claim, not a derived one: a uniform scalar cannot move pointing angles, capture hull shape or fix a wrong keel. Typically within a few percent, up to about ten percent in individual conditions; the residual is polar shape, which no scalar corrects. Flat-water racing VPP - tune with the performance factor. NOT race-calibrated, and never measured against this boat."
+          },
+          "estimator": {
+            "method": "salona45-uniform-scalar-v1",
+            "baseBoatId": "salona-45",
+            "baseSailId": "fock",
+            "scalar": 1.02,
+            "corpusFree": true,
+            "uncertaintyPct": 10,
+            "inputs": {
+              "sailAreaUpwindM2": { "value": 92.81, "source": "sailboatdata.com/sailboat/salona-44/ - sail area, 100% foretriangle" },
+              "displacementKg": { "value": 9500, "source": "sailboatdata.com/sailboat/salona-44/ - displacement" },
+              "baseSailAreaUpwindM2": { "value": 92.35, "source": "sailboatdata.com/sailboat/salona-45/ - sail area, 100% foretriangle" },
+              "baseDisplacementKg": { "value": 10000, "source": "sailboatdata.com/sailboat/salona-45/ - displacement" }
+            }
+          },
+          "speeds": [
+            [2.36, 3.76, 4.92, 5.81, 6.49, 6.86, 7.06, 7.2, 7.2],
+            [3, 4.53, 5.72, 6.62, 7.23, 7.53, 7.67, 7.79, 7.79],
+            [3.49, 5.09, 6.23, 7.05, 7.58, 7.86, 8, 8.12, 8.12],
+            [3.96, 5.6, 6.73, 7.52, 7.98, 8.25, 8.38, 8.49, 8.52],
+            [4.31, 5.97, 7.07, 7.79, 8.21, 8.46, 8.62, 8.76, 8.8],
+            [4.56, 6.19, 7.28, 7.94, 8.34, 8.62, 8.83, 9.07, 9.17],
+            [4.59, 6.21, 7.31, 8.05, 8.46, 8.75, 8.96, 9.33, 9.57],
+            [4.48, 6.11, 7.3, 8.11, 8.57, 8.83, 9.04, 9.55, 9.96],
+            [4.18, 5.79, 7.03, 7.93, 8.44, 8.79, 9.1, 9.77, 10.25],
+            [3.77, 5.35, 6.61, 7.63, 8.23, 8.7, 9.14, 9.89, 10.54],
+            [3.4, 5, 6.3, 7.36, 8.04, 8.48, 8.88, 9.81, 10.95],
+            [2.89, 4.35, 5.59, 6.67, 7.54, 8.09, 8.46, 9.15, 9.99],
+            [2.4, 3.66, 4.79, 5.74, 6.6, 7.36, 7.87, 8.53, 9.16],
+            [1.99, 3.02, 4.05, 5.01, 5.85, 6.66, 7.39, 8.3, 9.04],
+            [1.91, 2.89, 3.88, 4.8, 5.65, 6.43, 7.16, 8.19, 8.97]
+          ]
+        }
+      }
+    },
+    {
+      "id": "elan-444-piranja",
+      "name": "Elan Impression 444 (PIRANJA)",
+      "draftM": 1.9,
+      "validation": {
+        "maxSpeedKn": 11,
+        "maxSpeedKnSource": "No high-wind speed report was found for this hull - the Yachting World test ran in 6-8 kn true. The ceiling is therefore set from the hull's own published waterline: LWL 13.00 m (Yachting World test data panel) gives a displacement hull speed of 8.8 kn, plus a 25% surfing/reaching allowance, rounded to a whole knot. A MAINTAINER JUDGEMENT, not a measurement, and recorded as one.",
+        "anchors": [
+          {
+            "label": "close-hauled, light air",
+            "twa": 45,
+            "tws": 8,
+            "minKn": 5.1,
+            "maxKn": 6.9,
+            "source": "yachtingworld.com \"Elan Impression 444 review: from the archive\": \"making just over 6 knots close-hauled in only 8 knots true, and just under 6 in 6-7 knots\". TWA 45 is the grid point at the boat's own inherited 42.8-degree beat angle for 8 kn. Band is the reported 6.0 kn +/-15% AT TWS 8. The trailing 6-7 kn reading is deliberately NOT a second anchor: the two together have the boat holding speed (just over 6, then just under 6) while true wind falls about a fifth, a flatness no polar of a displacement cruiser shows - the certificate-anchored donor drops 18% over the same span - so the pair cannot probe a light-air cell. Recorded here so the next reader does not re-open it."
+          }
+        ]
+      },
+      "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25],
+      "twa": [35, 40, 45, 52, 60, 70, 80, 90, 100, 110, 120, 135, 150, 165, 180],
+      "beat": { "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25], "angle": [47.8, 45, 42.8, 41.1, 39.6, 38.7, 38.2, 38, 38.7] },
+      "gybe": { "tws": [4, 6, 8, 10, 12, 14, 16, 20, 25], "angle": [142, 144, 146, 161, 173, 174, 176, 177, 178] },
+      "sails": {
+        "genoa": {
+          "provenance": {
+            "tier": "estimated",
+            "note": "Tier C, ESTIMATED - this hull's own jib table (see the elan-444-piranja fock note) multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa table divided by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at 25 kn). The difference between this boat's two tables is therefore a function of THAT RAMP, not of this hull, and carries no information about it - which is why the sail comparison is withheld rather than presented as a finding. Same inherited grid and angles, and the same uncertainty, as the jib table. Flat-water racing VPP - tune with the performance factor. NOT race-calibrated, and never measured against this boat."
+          },
+          "estimator": {
+            "method": "salona45-genoa-ramp-v1",
+            "baseBoatId": "elan-444-piranja",
+            "baseSailId": "fock",
+            "scalar": 0.892,
+            "corpusFree": true,
+            "uncertaintyPct": 10,
+            "ramp": { "boatId": "salona-45", "fromSailId": "fock", "toSailId": "genoa" }
+          },
+          "speeds": [
+            [2.17, 3.42, 4.43, 5.16, 5.7, 6, 6.17, 6.29, 6.17],
+            [2.74, 4.12, 5.15, 5.88, 6.36, 6.58, 6.71, 6.81, 6.68],
+            [3.2, 4.63, 5.61, 6.26, 6.66, 6.87, 6.99, 7.1, 6.96],
+            [3.64, 5.1, 6.06, 6.67, 7.02, 7.21, 7.33, 7.43, 7.3],
+            [3.96, 5.43, 6.37, 6.91, 7.22, 7.4, 7.53, 7.66, 7.54],
+            [4.2, 5.63, 6.56, 7.05, 7.33, 7.53, 7.72, 7.93, 7.86],
+            [4.21, 5.65, 6.59, 7.14, 7.44, 7.65, 7.84, 8.16, 8.19],
+            [4.11, 5.55, 6.57, 7.2, 7.53, 7.72, 7.9, 8.35, 8.54],
+            [3.84, 5.26, 6.33, 7.04, 7.42, 7.69, 7.95, 8.54, 8.78],
+            [3.42, 4.82, 5.9, 6.73, 7.24, 7.61, 7.99, 8.65, 9.22],
+            [3.09, 4.5, 5.62, 6.5, 7.06, 7.42, 7.77, 8.58, 9.58],
+            [2.62, 3.93, 4.99, 5.92, 6.65, 7.11, 7.4, 8, 8.74],
+            [2.18, 3.3, 4.27, 5.1, 5.83, 6.48, 6.88, 7.45, 8.01],
+            [1.81, 2.72, 3.61, 4.44, 5.17, 5.86, 6.46, 7.26, 7.9],
+            [1.73, 2.6, 3.46, 4.26, 4.99, 5.66, 6.26, 7.16, 7.85]
+          ]
+        },
+        "fock": {
+          "provenance": {
+            "tier": "estimated",
+            "note": "Tier C, ESTIMATED - no ORC/IRC certificate and no published VPP was obtained for this hull. Scaled from the Salona 45's certificate-anchored jib table (ORC International 2026, AUT 035/26) by one uniform hull scalar k = 0.892, the square root of the sail-area/displacement ratios: 77.76 m2 and 10,900 kg for this hull against 92.35 m2 and 10,000 kg for the Salona 45, both figures from sailboatdata.com. ONE SOURCE ONLY, and deliberately: Yachting World prints this model's 100% foretriangle area as 85.7 m2 (the main measured larger), and mixing that one figure in gives k = 0.936 - a 5% shift through every cell of the table, from a reputable source, with nothing downstream able to detect it. The TWA/TWS grid and the beat and gybe angles are INHERITED from the Salona 45 unchanged - an inherited claim, not a derived one: a uniform scalar cannot move pointing angles, capture hull shape or fix a wrong keel. Typically within a few percent, up to about ten percent in individual conditions; the residual is polar shape, which no scalar corrects. MEASURED against the only independent light-air report for this hull: at TWA 45 / TWS 8, where Yachting World recorded just over 6 kn close-hauled, this table reads 5.45 kn - about 9% low, at the top of the band above. Because the scalar is uniform, that relative error is the same in every cell; there is no separate, larger light-air error mode. That is the light-air band where the estimator is weakest and where a sail-versus-motor decision can flip, so treat light-air legs for this boat with particular caution. Flat-water racing VPP - tune with the performance factor. NOT race-calibrated, and never measured against this boat."
+          },
+          "estimator": {
+            "method": "salona45-uniform-scalar-v1",
+            "baseBoatId": "salona-45",
+            "baseSailId": "fock",
+            "scalar": 0.892,
+            "corpusFree": true,
+            "uncertaintyPct": 10,
+            "inputs": {
+              "sailAreaUpwindM2": { "value": 77.76, "source": "sailboatdata.com/sailboat/impression-444-elan/ - sail area, 100% foretriangle" },
+              "displacementKg": { "value": 10900, "source": "sailboatdata.com/sailboat/impression-444-elan/ - displacement" },
+              "baseSailAreaUpwindM2": { "value": 92.35, "source": "sailboatdata.com/sailboat/salona-45/ - sail area, 100% foretriangle" },
+              "baseDisplacementKg": { "value": 10000, "source": "sailboatdata.com/sailboat/salona-45/ - displacement" }
+            }
+          },
+          "speeds": [
+            [2.06, 3.29, 4.3, 5.08, 5.67, 6, 6.17, 6.29, 6.29],
+            [2.62, 3.96, 5, 5.79, 6.32, 6.58, 6.71, 6.81, 6.81],
+            [3.05, 4.45, 5.45, 6.16, 6.62, 6.87, 6.99, 7.1, 7.1],
+            [3.46, 4.9, 5.88, 6.57, 6.98, 7.21, 7.33, 7.43, 7.45],
+            [3.77, 5.22, 6.18, 6.81, 7.18, 7.4, 7.53, 7.66, 7.69],
+            [3.99, 5.41, 6.37, 6.95, 7.29, 7.53, 7.72, 7.93, 8.02],
+            [4.01, 5.43, 6.39, 7.03, 7.4, 7.65, 7.84, 8.16, 8.36],
+            [3.91, 5.34, 6.38, 7.09, 7.49, 7.72, 7.9, 8.35, 8.71],
+            [3.66, 5.06, 6.14, 6.94, 7.38, 7.69, 7.95, 8.54, 8.96],
+            [3.3, 4.68, 5.78, 6.67, 7.2, 7.61, 7.99, 8.65, 9.22],
+            [2.97, 4.37, 5.51, 6.44, 7.03, 7.42, 7.77, 8.58, 9.58],
+            [2.52, 3.81, 4.89, 5.83, 6.59, 7.07, 7.4, 8, 8.74],
+            [2.1, 3.2, 4.19, 5.02, 5.77, 6.44, 6.88, 7.45, 8.01],
+            [1.74, 2.64, 3.54, 4.38, 5.12, 5.82, 6.46, 7.26, 7.9],
+            [1.67, 2.52, 3.39, 4.2, 4.94, 5.63, 6.26, 7.16, 7.85]
           ]
         }
       }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../i18n';
 import BoatPicker from './BoatPicker';
@@ -32,6 +32,32 @@ function renderPicker() {
   return { onBoatIdChange, onSettingsChange };
 }
 
+// Every assertion about ONE boat's row must be scoped to that row.
+//
+// These tests used to query the whole picker, which was unambiguous only
+// because the catalogue held one boat. At three (spec N's two tier-C fleet
+// entries joining the Salona 45) a global query matches several option rows —
+// and the Salona 44's draft is ALSO 2.1 m, so even a value-specific query
+// collides. The queries were never meant to be global; the one-boat catalogue
+// merely let them get away with it.
+//
+// Deliberately NOT fixed by switching to getAllBy... and asserting a count:
+// that re-creates the same catalogue-size coupling one level up, so adding a
+// fourth boat would break these rows again for a reason that has nothing to
+// do with what they test.
+//
+// Scoped by the radio's `id` rather than by its accessible name: the id is
+// `boat-option-${boat.id}`, derived from the stable catalogue id, where a
+// name-based lookup would depend on display strings that are proper nouns and
+// may legitimately change.
+function optionFor(boatId: string): HTMLElement {
+  const radio = document.getElementById(`boat-option-${boatId}`);
+  expect(radio, `no radio rendered for boat ${boatId}`).not.toBeNull();
+  const option = radio!.closest('.boat-option');
+  expect(option, `radio for ${boatId} is not inside a .boat-option`).not.toBeNull();
+  return option as HTMLElement;
+}
+
 describe('#54 BoatPicker against the shipped catalogue', () => {
   it('renders one selectable radio per catalogue boat, with the current one checked', () => {
     renderPicker();
@@ -41,13 +67,29 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     expect(screen.getByRole('radio', { name: /Salona 45/ })).toBeChecked();
   });
 
-  it('names the boat and states its draft', () => {
+  it('states each boat’s OWN name and draft, inside that boat’s own row', () => {
     renderPicker();
     // The VALUE, not merely "some draft text": a picker that rendered every
     // boat's draft as the catalogue default would look right and be wrong,
     // and draft is the field everything in spec C hangs on.
-    expect(screen.getByText('Draft 2.1 m')).toBeInTheDocument();
-    expect(screen.getByText('Salona 45')).toBeInTheDocument();
+    //
+    // That claim was UNTESTABLE at a one-boat catalogue — one row rendering
+    // one draft cannot distinguish "each boat's own" from "the default for
+    // all". It is testable now, and this row is what tests it: each boat's
+    // draft is asserted INSIDE that boat's option, so a component that piped
+    // one boat's draft into every row reds here. The Salona 44 shares the
+    // Salona 45's 2.1 m, so the scoping is doing real work even between two
+    // boats whose values coincide.
+    for (const boat of BOATS) {
+      const option = within(optionFor(boat.id));
+      expect(option.getByText(`Draft ${boat.draftM.toFixed(1)} m`)).toBeInTheDocument();
+      expect(option.getByText(boat.name)).toBeInTheDocument();
+    }
+    // One hardcoded anchor beside the derived loop, the maskTolerance R6
+    // idiom: the loop above takes its expected string from the same catalogue
+    // the component reads, so it cannot catch an arithmetic or formatting
+    // change that moves both together. This literal can.
+    expect(within(optionFor('salona-45')).getByText('Draft 2.1 m')).toBeInTheDocument();
   });
 
   it('shows the WEAKEST of the boat’s per-sail provenance tiers, not the strongest', () => {
@@ -64,9 +106,15 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
 
   it('exposes every sail’s own tier and source note behind the provenance disclosure', () => {
     renderPicker();
-    expect(screen.getByText('Polar data & provenance')).toBeInTheDocument();
-    expect(screen.getByText('Genoa 135 %')).toBeInTheDocument();
-    expect(screen.getByText('Jib 110 %')).toBeInTheDocument();
+    // Scoped to the Salona 45's row. Every boat renders a disclosure, so the
+    // summary text alone matches three times; and the AUT 035/26 citation is
+    // no longer unique to this boat either — both tier-C notes quote it, since
+    // their tables are SCALED FROM this certificate. Six matches globally, two
+    // here, and the two are the ones this row is about.
+    const option = within(optionFor('salona-45'));
+    expect(option.getByText('Polar data & provenance')).toBeInTheDocument();
+    expect(option.getByText('Genoa 135 %')).toBeInTheDocument();
+    expect(option.getByText('Jib 110 %')).toBeInTheDocument();
     // The catalogue's verbatim source note reaches the DOM — the picker is
     // one of spec N.5's five required label surfaces, and a disclosure that
     // rendered only the tier word would carry no provenance at all.
@@ -74,19 +122,54 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     // the Salona 45's two differ (a modelled overlay vs the certificate
     // configuration). A disclosure showing only the first would hide the
     // weaker of the two, which is the one that matters.
-    expect(screen.getAllByText(/AUT 035\/26/)).toHaveLength(2);
+    expect(option.getAllByText(/AUT 035\/26/)).toHaveLength(2);
   });
 
-  it('shows NO keel-assumption sentence for a boat that declares none', () => {
+  it('shows the keel sentence on exactly the boats whose draft is assumed, and on no other', () => {
     renderPicker();
-    // The Salona 45 is spec J OQ-4's model-level reference boat, not a fleet
-    // hull whose keel was assumed, so its draftProvenance is
-    // `hullVerified: true`. The
-    // positive case — that the sentence DOES render when one is declared —
-    // is BoatPicker.multiBoat.test.tsx's `deep-46` row; an absence assertion
-    // alone would pass just as happily against a component that can never
-    // render the sentence at all.
-    expect(screen.queryByText(/Assumed keel/)).not.toBeInTheDocument();
+    // The PREMISE of this row moved, so the row moved with it. It used to read
+    // "shows NO keel-assumption sentence for a boat that declares none" and
+    // asserted a global absence — which was unambiguous only while the
+    // catalogue held one hull-verified boat. Against spec N's catalogue a
+    // global /Assumed keel/ query matches the two fleet boats that SHOULD have
+    // it, so the old row failed while the behaviour was correct.
+    //
+    // What it asserts now is the real property, and it is STRONGER than the
+    // old one rather than a rescope of it: the shipped catalogue finally
+    // contains BOTH kinds, so the presence and the absence can be pinned
+    // against each other in one place, on real data.
+    //   salona-45            hullVerified: true  -> no sentence (spec J OQ-4's
+    //                        model-level reference boat; no individual vessel
+    //                        whose papers could disagree)
+    //   the two fleet boats  hullVerified: false -> sentence REQUIRED by spec
+    //                        N.2, because a wrong keel is invisible in every
+    //                        other artifact the app renders
+    //
+    // This also retires the old row's own caveat that an absence assertion
+    // "would pass just as happily against a component that can never render
+    // the sentence at all" — the positive half is now in this file, on the
+    // real catalogue, instead of only on multiBoat's synthetic `deep-46`.
+    let verified = 0;
+    let assumed = 0;
+    for (const boat of BOATS) {
+      const option = within(optionFor(boat.id));
+      if (boat.draftProvenance.hullVerified) {
+        verified++;
+        expect(option.queryByText(/Assumed keel/), boat.id).not.toBeInTheDocument();
+      } else {
+        assumed++;
+        // The keel itself, not merely the phrase: a sentence naming the wrong
+        // variant is the failure spec N.2 exists to make visible.
+        expect(
+          option.getByText(new RegExp(`Assumed keel: ${boat.draftProvenance.keel}`)),
+        ).toBeInTheDocument();
+      }
+    }
+    // Both arms must be REACHED, or one half of the property is vacuous — an
+    // all-verified catalogue would pass the loop having tested nothing about
+    // presence, and vice versa.
+    expect(verified, 'no hull-verified boat in the catalogue').toBeGreaterThan(0);
+    expect(assumed, 'no assumed-keel boat in the catalogue').toBeGreaterThan(0);
   });
 
   it('starts with an empty live region rather than a stale announcement', () => {

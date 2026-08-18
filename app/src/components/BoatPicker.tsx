@@ -104,11 +104,13 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           radio's `aria-describedby` above is what still carries it to a
           screen reader, as a description rather than a name.
 
-          Absent on a hull-verified boat — today that is the whole catalogue,
-          because the Salona 45 is the app's model-level reference boat (spec J
-          OQ-4's carve-out) with no individual vessel whose papers could
-          disagree. It renders for every fleet entry, all of which are
-          `hullVerified: false`. */}
+          Absent on a hull-verified boat — today the Salona 45 alone, the app's
+          model-level reference boat (spec J OQ-4's carve-out) with no individual
+          vessel whose papers could disagree. It renders for every fleet entry,
+          all of which are `hullVerified: false`. (Until this PR that first
+          clause read "today that is the whole catalogue", which was true when
+          written and stopped being true the moment the two fleet boats landed
+          — the same commit that made this paragraph reachable at all.) */}
       {keelUnverified && (
         <p className="boat-option-keel" id={keelId}>
           {t('boat.keel.assumed', { keel: boat.draftProvenance.keel })}
