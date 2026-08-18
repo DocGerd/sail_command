@@ -219,9 +219,11 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
             <li key={p.id} className="plans-list-row plans-list-row-unreadable">
               <div className="plans-list-load">
                 {p.name !== '' && <span className="plans-list-name">{p.name}</span>}
-                <span className="plans-list-created">
-                  {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
-                </span>
+                {p.createdAtMs !== 0 && (
+                  <span className="plans-list-created">
+                    {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
+                  </span>
+                )}
                 <span className="plans-list-unreadable">
                   {t(
                     p.reason === 'newer-version'
