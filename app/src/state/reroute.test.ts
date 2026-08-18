@@ -7,7 +7,7 @@ import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
-import { uniformWindGrid } from '../test/fixtures';
+import { OFF_CATALOGUE_BOAT, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
@@ -233,6 +233,35 @@ describe('rerouteFromFix', () => {
   // vacuity it was added to close and would still pass.
   it('#54: the non-default fixture below is genuinely non-default', () => {
     expect(DEFAULT_SAIL_IDS).not.toEqual(['fock']);
+  });
+
+  // #54 Task 11: the BOAT half of the same inheritance question, and it was
+  // entirely unguarded — replacing this site's
+  // `boatSnapshot(plan.request.boat)` with a bare `defaultBoatSnapshot()`
+  // left this suite and its recalc/replan siblings green, because every
+  // fixture here uses `defaultBoatSnapshot()` and the substitution is
+  // value-identical. `OFF_CATALOGUE_BOAT` is a boat BOATS does not contain,
+  // which is the state spec §I.3 requires a plan to keep: services/
+  // migratePlan.ts refuses to replace an unparseable snapshot precisely
+  // because THIS site would then make the substituted one the boat the
+  // rerouted plan claims it was — a 2.4 m hull silently re-labelled as a
+  // 2.1 m Salona 45 mid-passage.
+  it("reroutes with the saved plan's OWN boat snapshot, not the catalogue default", async () => {
+    const plan = makePlan({
+      request: { ...makePlan().request, boat: OFF_CATALOGUE_BOAT },
+    });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.boat).toEqual(OFF_CATALOGUE_BOAT);
+    // COPIED, never aliased — this block's own contract, and the reason the
+    // value assertion above is not enough on its own.
+    expect(request.boat).not.toBe(plan.request.boat);
+    expect(request.boat.sails[0]).not.toBe(plan.request.boat.sails[0]);
   });
 
   // #54 review round 3: the INHERITANCE half of the backfill ternary. Every

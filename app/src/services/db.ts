@@ -184,6 +184,29 @@ export async function listPlans(): Promise<PlanSummary[]> {
  * runs on every read by design, which is the documented cost of lazy
  * migration. Any future write-back must be ADDITIVE: no key present in the
  * stored record may be removed. Both properties are pinned in db.test.ts.
+ *
+ * ACCEPTED RESIDUAL — read-time migration is not the only write-shaped risk.
+ * Two call sites save a migratePlan output UNDER AN EXISTING RECORD'S ID and
+ * therefore drop the same legacy quartet a write-back would:
+ * state/replan.ts's replanWithVias (`{ ...plan, request, result }`) and
+ * usePlanFlow.ts's replace-recalculation (`opts.replacePlanId`). Neither is
+ * made additive, deliberately. A write-back fires on a record the user only
+ * OPENED; these fire only after a deliberate edit whose entire purpose is to
+ * replace that record's result. Retaining the stored quartet would leave a
+ * PRE-edit result beside a POST-edit `request`, so one record would describe
+ * two different passages; deriving a fresh quartet instead would re-couple
+ * the WRITE path to the frozen sail names this branch removed from it, and
+ * would cover only sails still named genoa/fock.
+ *
+ * What is NOT lost: the record these two write is a complete current-shape
+ * record, so it re-reads through migratePlan unchanged — an older build skips
+ * the row until it is upgraded, rather than the bytes being destroyed. Both
+ * halves are pinned in db.test.ts by 'a write under an existing id drops the
+ * legacy quartet, and what it leaves still reads and lists'; the two call
+ * sites are covered individually by replan.test.ts's '#54: the record it
+ * saves under the existing id stays readable' and by usePlanFlow.test.tsx's
+ * pre-existing 'recalc-replace' row, which reads the replaced record back
+ * through getPlan.
  */
 export async function getPlan(id: string): Promise<Plan | undefined> {
   const raw: unknown = await (await db()).get('plans', id);

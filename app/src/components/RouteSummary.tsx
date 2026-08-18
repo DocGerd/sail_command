@@ -5,7 +5,7 @@ import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
-import { RIG_LABEL_KEY, resultSummary, rigRecommendationOf } from '../lib/resultSummary';
+import { resultSummary, rigRecommendationOf, sailLabelKey } from '../lib/resultSummary';
 import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from '../lib/shallowExposure';
 import { useWideLayout } from '../lib/useWideLayout';
 import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
@@ -280,7 +280,7 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
         aria-hidden="true"
         style={{ backgroundColor: BOARD_COLOR[leg.board] }}
       />
-      {t(RIG_LABEL_KEY[rig])} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
+      {t(sailLabelKey(rig))} · {t(boardKey)} {t(pointOfSailKey(leg.twaDeg))}
     </span>
   );
 }
@@ -383,7 +383,7 @@ export default function RouteSummary({
               if (r !== rig) onRigChange(r);
             }}
           >
-            {t(RIG_LABEL_KEY[r])}
+            {t(sailLabelKey(r))}
             {rigRecommendation.kind === 'decided' && rigRecommendation.rig === r && (
               <span aria-label={t('route.recommended')} title={t('route.recommended')}>
                 {' '}
@@ -400,7 +400,7 @@ export default function RouteSummary({
           honestly instead of picking a winner. */}
       <Chip className="chip-faster-rig">
         {rigRecommendation.kind === 'decided'
-          ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[rigRecommendation.rig]) })
+          ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
           : t(rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
       </Chip>
 

@@ -59,6 +59,22 @@ function normaliseRigResult(x: unknown): RigResult | null {
   const { rig, sailId, ...rest } = x;
   const id = typeof sailId === 'string' ? sailId : typeof rig === 'string' ? rig : null;
   if (id === null) return null;
+  // The two fields the renderer DEREFERENCES rather than merely formats.
+  // Checking only the container (an object with a usable id) admitted a
+  // body-damaged result as a readable plan, and RouteSummary then reaches
+  // `result.legs.length` on `undefined`. app/src carries no error boundary
+  // and no window.onerror handler (grepped), so that TypeError unmounts the
+  // React root — a white screen instead of the labelled unreadable
+  // placeholder this normaliser exists to produce.
+  //
+  // Checked on EVERY sail, not just the recommended one: a damaged
+  // non-recommended sail reaches the same dereference the moment the user
+  // switches rig tabs. The remaining fields (durationMs/distanceNm/
+  // maneuverCount/motorDistanceNm) are deliberately NOT checked here — they
+  // are formatted, never dereferenced, so damage there degrades to NaN text
+  // rather than unmounting anything.
+  if (!Number.isFinite(rest.etaMs)) return null;
+  if (!Array.isArray(rest.legs)) return null;
   return { ...rest, sailId: id as SailId } as RigResult;
 }
 
@@ -206,8 +222,16 @@ function migrateRequest(
   if (typeof request.departureMs !== 'number') return null;
   // A pre-#54 request has no sailIds; the sails the plan actually compared,
   // in the order the result lists them, is the honest reconstruction of it.
+  //
+  // `length > 0` is load-bearing, not defensive noise: `[].every(...)` is
+  // VACUOUSLY TRUE, so an empty stored list used to be taken as authoritative
+  // and skip this reconstruction even though `result.sails` is non-empty
+  // (migrateSails already refuses `out.length === 0`). planRoute's `runAll`
+  // maps over this list, so an empty one made every tier `[]` and threw.
   const sailIds =
-    Array.isArray(request.sailIds) && request.sailIds.every((s) => typeof s === 'string')
+    Array.isArray(request.sailIds) &&
+    request.sailIds.length > 0 &&
+    request.sailIds.every((s) => typeof s === 'string')
       ? (request.sailIds as SailId[])
       : sails.map((s) => s.sailId);
   return { ...request, sailIds, boat } as unknown as PlanRequest;

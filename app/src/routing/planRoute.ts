@@ -561,7 +561,14 @@ export function planRoute(
       // mask/wind/waypoints and differs only in polar table, so their
       // failure causes rarely differ in practice. Matches tier 1's fallback
       // below exactly (the pre-#243 rule).
-      cause = tier2[0].cause!;
+      //
+      // `?.`/`??` for the same reason as tier 1's fallback below, applied
+      // DEFENSIVELY here and MEASURED as unreachable by that input: reaching
+      // this branch needs `needsUnpreferencedRetry(tier1)`, a `.some()` that
+      // is false for an empty array, so an empty sail list always takes the
+      // `else` below instead. Nothing can red this line, and no test claims
+      // to.
+      cause = tier2[0]?.cause ?? 'mask-blocked';
     } else if (tier1.some((r) => r.rigResult)) {
       return assemble(tier1, null);
     } else {
@@ -569,7 +576,18 @@ export function planRoute(
       // first); every sail solves identical mask/wind/waypoints and differs
       // only in polar table, so their failure causes rarely differ in
       // practice.
-      cause = tier1[0].cause!;
+      //
+      // `?.`/`??` rather than `!`: `runAll` maps over `req.sailIds`, so an
+      // EMPTY sail list makes every tier `[]` and this assertion died as an
+      // unnamed TypeError, forwarded as `worker-fatal` and shown as the
+      // generic 'error.routingFailed'. `[]` is neither nullish nor falsy, so
+      // none of the `?? DEFAULT_SAIL_IDS` backfills on the way in catches it.
+      // services/migratePlan.ts now rebuilds an empty stored list from the
+      // sails the result actually lists; this degrades to a typed no-route if
+      // one is ever built another way. `cause` is non-null on every element
+      // here (this branch is only taken when no sail produced a rigResult),
+      // so the fallback changes nothing for a non-empty list.
+      cause = tier1[0]?.cause ?? 'mask-blocked';
     }
   }
 

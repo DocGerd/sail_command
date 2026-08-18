@@ -186,6 +186,34 @@ describe('RouteSummary', () => {
     expect(heading.getAttribute('tabindex')).toBe('-1');
   });
 
+  // #54 review: `SailId` is a catalogue-derived union at COMPILE time and an
+  // open-world value at REST — services/migratePlan.ts mints it from
+  // unvalidated stored strings by design, and
+  // migratePlan.catalogueRename.test.ts pins that a renamed catalogue must
+  // still READ an existing plan. Indexing the label map directly with such an
+  // id yielded `undefined`, and `useT` is a bare `dicts[lang][key]` lookup
+  // with no fallback and no throw: the rig tab and the per-leg sail chip
+  // rendered an EMPTY accessible name, and the recommendation chip rendered
+  // the literal string 'Faster: undefined'.
+  it('#54: names a stored sail the catalogue no longer knows, never rendering "undefined"', () => {
+    const gone = 'code0' as SailId;
+    const plan = makePlan();
+    plan.result = {
+      ...plan.result,
+      sails: [{ sailId: gone, result: { ...GENOA_RESULT, sailId: gone }, reason: null }],
+      recommended: gone,
+    };
+    const { container } = renderSummary({ plan, rig: gone });
+
+    // The interpolated site: `String(undefined)` is what got substituted.
+    expect(container.textContent).toContain(`Faster: ${en['route.rig.unknown']}`);
+    // The bare-lookup sites: an empty accessible name is invisible to
+    // `toContain`, so assert the tab's own name directly.
+    expect(screen.getByRole('tab').textContent).toContain(en['route.rig.unknown']);
+    // Belt and braces across every surface this card renders.
+    expect(container.textContent).not.toContain('undefined');
+  });
+
   it('shows a ★ badge on the recommended tab and not on the other', () => {
     renderSummary({ rig: 'genoa' });
     const genoaTab = screen.getByRole('tab', { name: /Genoa/ });

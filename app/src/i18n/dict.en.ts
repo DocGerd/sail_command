@@ -169,6 +169,10 @@ export const en = {
     'The current GPS position is outside the covered sea area or not navigable — no route can be computed from here.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
+  // Fallback label for a stored sail id the current catalogue no longer
+  // knows (lib/resultSummary.ts's sailLabelKey). Names the sail as unknown
+  // rather than rendering an empty string or the literal 'undefined'.
+  'route.rig.unknown': 'Unknown sail',
   'route.rigTabs': 'Rig comparison',
   'route.recommended': 'Recommended',
   'route.fasterRig': 'Faster: {rig}',

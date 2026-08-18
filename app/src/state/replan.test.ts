@@ -13,7 +13,8 @@ import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
-import { uniformWindGrid } from '../test/fixtures';
+import { OFF_CATALOGUE_BOAT, uniformWindGrid } from '../test/fixtures';
+import { migratePlan } from '../services/migratePlan';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
@@ -195,6 +196,33 @@ describe('replanWithVias', () => {
     expect(DEFAULT_SAIL_IDS).not.toEqual(['fock']);
   });
 
+  // #54 Task 11: the BOAT half of the same inheritance question. Replacing
+  // this site's `plan.request.boat ?? defaultBoatSnapshot()` with a bare
+  // `defaultBoatSnapshot()` left this suite and its recalc/reroute siblings
+  // green — every fixture uses `defaultBoatSnapshot()`, so the substitution
+  // is value-identical and nothing asserted identity. Spec §I.3 requires a
+  // plan whose boat left the catalogue to keep its own; without this row a
+  // regression re-labels a 2.4 m hull as a 2.1 m Salona 45 on every replan.
+  it("replans with the saved plan's OWN boat snapshot, not the catalogue default", async () => {
+    const plan = makePlan({
+      request: { ...makePlan().request, boat: OFF_CATALOGUE_BOAT },
+    });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.boat).toEqual(OFF_CATALOGUE_BOAT);
+    // ALIASED here, deliberately — unlike lib/recalc.ts and state/reroute.ts
+    // this site has no "copied, never aliased" contract (see its own
+    // comment), so identity with the saved plan's snapshot is the pinned
+    // behaviour, not an oversight.
+    expect(request.boat).toBe(plan.request.boat);
+  });
+
   // #54 review round 3: the INHERITANCE half of the backfill `??`. Every
   // other sailIds fixture here is ['genoa', 'fock'], which is value-equal to
   // DEFAULT_SAIL_IDS — so no assertion against one of those can tell an
@@ -239,6 +267,30 @@ describe('replanWithVias', () => {
     expect(persisted).toBeDefined();
     expect(persisted?.id).toBe(plan.id);
     expect(persisted?.result).toEqual(OK_RESULT);
+  });
+
+  // #54: this site writes under the ORIGINAL record id (see getPlan's doc
+  // comment in services/db.ts — the ACCEPTED RESIDUAL paragraph). What that
+  // paragraph claims, and what this pins: the record left behind is a
+  // COMPLETE current-shape record, so it re-reads through the normaliser
+  // unchanged. It deliberately does NOT claim the pre-#54 legacy fields
+  // survive — they do not, which is the residual itself, pinned in
+  // services/db.test.ts.
+  it('#54: the record it saves under the existing id stays readable', async () => {
+    const plan = makePlan();
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const save = vi.fn().mockResolvedValue(undefined);
+
+    await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], { client, save });
+
+    const saved = save.mock.calls[0][0] as Plan;
+    const reread = migratePlan(saved);
+    expect(reread).not.toBeNull();
+    expect(reread!.id).toBe(plan.id);
+    expect(reread!.createdAtMs).toBe(plan.createdAtMs);
+    // Carried by reference, never re-serialised: the wind grid's
+    // Float32Array fields survive only because nothing copies them.
+    expect(reread!.windGrid).toBe(plan.windGrid);
   });
 
   it('throws ReplanError(error.replanStaleWind) when departureMs is beyond the stored grid horizon, without calling the client or saving', async () => {

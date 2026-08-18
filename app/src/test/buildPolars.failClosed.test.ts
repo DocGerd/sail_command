@@ -374,4 +374,59 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     expect(r.output).toContain('salona-45/genoa');
     expect(allWrittenFiles(r)).toEqual([]);
   });
+
+  // AXIS ORDERING. `requireNumbers` proves an axis is finite, never that it
+  // ASCENDS — and app/src/lib/polar.ts walks every axis assuming it does,
+  // dividing by the gap between consecutive entries. Each row below mutates a
+  // DIFFERENT axis, and each mutation is chosen so no OTHER guard can serve
+  // it: the two sanity anchors name twa 90/52 and tws 16/12, so all four
+  // mutations leave every anchor's `indexOf` unchanged, and none touches the
+  // speed grid the plausibility and TWS-monotonicity checks read.
+  // Mutation-checked one call site at a time (see this task's report):
+  // deleting the `requireAscending` for one axis reds that axis's row alone.
+  it('aborts when the TWS axis does not ascend', () => {
+    const src = freshSource();
+    const tws = src.boats[0].tws;
+    [tws[0], tws[1]] = [tws[1], tws[0]]; // 4,6,… -> 6,4,…
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('salona-45: tws');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // A REPEATED value is the worse half: polar.ts divides by `tws[j] -
+  // tws[j-1]`, so a duplicated axis entry is a 0/0 that yields NaN boat speed
+  // for every heading, and NaN flows into the isochrone cost unchecked.
+  it('aborts when the TWS axis repeats a value', () => {
+    const src = freshSource();
+    const tws = src.boats[0].tws;
+    tws[tws.length - 1] = tws[tws.length - 2]; // …,20,25 -> …,20,20
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('salona-45: tws');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('aborts when the TWA axis does not ascend', () => {
+    const src = freshSource();
+    const twa = src.boats[0].twa;
+    [twa[0], twa[1]] = [twa[1], twa[0]]; // 35,40,… -> 40,35,…
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('salona-45: twa');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // beat/gybe carry their OWN tws axis, walked by interp1 the same way, and
+  // no other guard in this file reads them at all — this is the axis a
+  // boat-axis-only check would leave open.
+  it.each(['beat', 'gybe'] as const)('aborts when the %s TWS axis does not ascend', (field) => {
+    const src = freshSource();
+    const axis = (src.boats[0][field] as { tws: number[] }).tws;
+    [axis[0], axis[1]] = [axis[1], axis[0]];
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain(`salona-45: ${field}.tws`);
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
 });

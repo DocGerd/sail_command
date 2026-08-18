@@ -106,6 +106,19 @@ describe('#54 migratePlan: pre-#54 records', () => {
     expect('rig' in first).toBe(false);
   });
 
+  // `[].every(...)` is VACUOUSLY TRUE, so an empty stored list used to be
+  // taken as authoritative and skip the reconstruction below entirely. It is
+  // neither nullish nor falsy, so none of the `?? DEFAULT_SAIL_IDS` backfills
+  // downstream catches it either, and planRoute's `runAll` maps over it —
+  // every tier came back `[]` and the plan-level cause assertion threw a bare
+  // TypeError inside the worker, surfacing as the generic routing-failed
+  // banner with nothing pointing at the stored record.
+  it('rebuilds an EMPTY stored sailIds from the sails the plan actually compared', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).sailIds = [];
+    expect(migratePlan(raw)!.request.sailIds).toEqual(['genoa', 'fock']);
+  });
+
   it('reconstructs sailIds from the sails the plan actually compared', () => {
     const migrated = migratePlan(legacyPlan())!;
     expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
@@ -282,6 +295,35 @@ describe('#54 migratePlan: records it refuses, so they can be listed as unreadab
       snappedOrigin: { lat: 54, lon: 9 },
       snappedDestination: { lat: 55, lon: 10 },
     };
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  // BODY damage, one level in from the entry-shape rows above. The
+  // recommended-sail invariant only asks whether the winner HAS a result
+  // object; a result missing the two fields the renderer DEREFERENCES was
+  // admitted as `kind: 'ok'`, rendered `Invalid Date`, stayed clickable, and
+  // reached `result.legs.length` on `undefined` when opened — and with no
+  // error boundary anywhere in app/src that TypeError unmounts the React
+  // root. A white screen instead of the labelled unreadable placeholder.
+  it.each(['legs', 'etaMs'])('refuses a recommended sail whose result has no %s', (field) => {
+    const raw = legacyPlan();
+    delete ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>)[field];
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  it('refuses a recommended sail whose etaMs is not finite', () => {
+    const raw = legacyPlan();
+    ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>).etaMs = Number.NaN;
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  // The NEIGHBOURING input: damage the sail that did NOT win, leaving a
+  // healthy recommended sail beside it. Scoping the check to the recommended
+  // sail alone would leave this record admitted — and it reaches the same
+  // dereference the moment the user switches rig tabs.
+  it('refuses a NON-recommended sail whose result is body-damaged', () => {
+    const raw = legacyPlan();
+    delete ((raw.result as Record<string, unknown>).fock as Record<string, unknown>).legs;
     expect(migratePlan(raw)).toBeNull();
   });
 

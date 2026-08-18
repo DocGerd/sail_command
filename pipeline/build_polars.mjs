@@ -24,7 +24,8 @@ const TIERS = ['certificate', 'modelled', 'estimated'];
 // silently validates the wrong hull is worse than no anchor.
 //
 // Not an inventory of every guard below: the structural ones (grid shapes,
-// numeric types, TWS monotonicity, anchor bands) are separate and additional.
+// numeric types, axis ordering, TWS monotonicity, anchor bands) are separate
+// and additional.
 //
 // Deliberately NOT checked, so nobody reads a guarantee here that does not
 // exist: a MISSING sail id is unreachable (a sail id is an object key), and
@@ -55,9 +56,34 @@ function requireNumbers(what, xs) {
   for (const v of xs) requireField(typeof v === 'number' && Number.isFinite(v), `${what}: ${JSON.stringify(v)} is not a finite number`);
 }
 
+// An INTERPOLATION AXIS, unlike the data it indexes, must strictly ascend.
+// app/src/lib/polar.ts walks each axis with `while (j < xs.length - 1 && xs[j]
+// < w) j++` and then divides by `xs[j] - xs[j - 1]`. MEASURED against those
+// two lines: an out-of-order axis brackets (or clamps to) the wrong column and
+// interpolates a silently wrong speed ([6,4,8] at 5 answers as if it were
+// 0.5 between 4 and 8), and a repeated value can make the denominator zero
+// ([4,4,8] at 4 is 0/0 -> NaN, as is an all-equal axis at every sample). NaN
+// then flows into the isochrone cost unchecked. Neither throws, and without
+// the check below the build exits 0. Applied to the four axes
+// polar.ts actually walks (`tws`, `twa`, `beat.tws`, `gybe.tws`) and NOT to
+// `beat.angle`/`gybe.angle`, which are the interpolated VALUES and are free
+// to fall as well as rise.
+//
+// This became reachable with #54: the axes moved from one hand-maintained
+// shared table to per-boat data a new-boat contributor supplies, so their
+// ordering is now untrusted input like everything else this block validates.
+function requireAscending(what, xs) {
+  for (let i = 1; i < xs.length; i++)
+    requireField(
+      xs[i] > xs[i - 1],
+      `${what}: not strictly ascending at index ${i} (${JSON.stringify(xs[i - 1])} then ${JSON.stringify(xs[i])}) — an interpolation axis must rise`,
+    );
+}
+
 function requireAngleTable(what, t) {
   requireField(t != null && typeof t === 'object', `${what} missing`);
   requireNumbers(`${what}.tws`, t.tws);
+  requireAscending(`${what}.tws`, t.tws);
   requireNumbers(`${what}.angle`, t.angle);
   requireField(t.tws.length === t.angle.length, `${what}: tws/angle length mismatch`);
 }
@@ -127,7 +153,9 @@ for (const boat of src.boats) {
   seenBoatIds.add(id);
   requireField(typeof boat.name === 'string' && boat.name.length > 0, `${id}: name missing`);
   requireNumbers(`${id}: tws`, boat.tws);
+  requireAscending(`${id}: tws`, boat.tws);
   requireNumbers(`${id}: twa`, boat.twa);
+  requireAscending(`${id}: twa`, boat.twa);
   requireAngleTable(`${id}: beat`, boat.beat);
   requireAngleTable(`${id}: gybe`, boat.gybe);
   requireField(boat.validation != null, `${id}: validation missing`);

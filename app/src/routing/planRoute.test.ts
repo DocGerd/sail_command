@@ -67,6 +67,22 @@ describe('planRoute', () => {
     );
   });
 
+  // #54 review: an EMPTY sailIds makes `runAll` return [], and the plan-level
+  // cause used to be read off `tier1[0].cause!` — a bare TypeError inside the
+  // worker, forwarded as `worker-fatal` and shown as the generic
+  // 'error.routingFailed' banner with nothing naming the stored record.
+  // `[]` is neither nullish nor falsy, so none of the `?? DEFAULT_SAIL_IDS`
+  // backfills on the way in catches it; services/migratePlan.ts now rebuilds
+  // an empty stored list, and this pins the solver's own degradation.
+  //
+  // The mask is OPEN WATER, so this cannot be passing because the route is
+  // genuinely blocked — with a non-empty sailIds the same request plans
+  // successfully (the row below).
+  it('#54: an empty sailIds degrades to a typed no-route instead of throwing', () => {
+    const r = planRoute({ ...req, sailIds: [] }, uniformWindGrid(12, 0), deps);
+    expect(r.status).toBe('error');
+  });
+
   it('runs both rigs and recommends the faster one', () => {
     const r = planRoute(req, uniformWindGrid(12, 0), deps);
     expect(r.status).toBe('ok');

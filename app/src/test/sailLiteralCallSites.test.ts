@@ -125,11 +125,14 @@ const ALLOWED = ['src/data/boats.ts', 'src/services/migratePlan.ts'];
 // comment) rather than deleted now that it reached `[]`.
 const KNOWN_OFFENDERS: string[] = [];
 
-function findOffenders(): string[] {
+// `allowed` is a PARAMETER, not the module constant read directly, purely so
+// the positive control below can run the real scan with an EMPTY allowlist.
+// Production callers pass nothing and get ALLOWED.
+function findOffenders(allowed: readonly string[] = ALLOWED): string[] {
   const ids = BOATS.flatMap((b) => b.sails.map((s) => s.id));
   const pattern = buildSailIdPattern(ids);
   return walkSourceFiles()
-    .filter((f) => !ALLOWED.some((a) => f.endsWith(a)))
+    .filter((f) => !allowed.some((a) => f.endsWith(a)))
     .filter((f) => pattern.test(readSource(f)))
     .sort();
 }
@@ -192,6 +195,22 @@ describe('#54 structural guard: no bare sail-id literal outside the allowlist be
     // that still fails loudly if the glob pattern or the exclusions above
     // are ever broken in a way that empties the scan.
     expect(walkSourceFiles().length).toBeGreaterThan(50);
+  });
+
+  // POSITIVE CONTROL, and the only row here that proves DETECTION runs at all.
+  // With KNOWN_OFFENDERS at [] the row below is `expect([]).toEqual([])`,
+  // which a scan that can no longer detect anything satisfies just as well as
+  // a clean tree — MEASURED: changing findOffenders' content filter from
+  // `pattern.test(readSource(f))` to `pattern.test(f)` (matching PATHS, which
+  // can never match) left this file 6 passed / 6. Neither existing control
+  // closes that: the >50 row proves the file LIST is non-empty, and the
+  // pattern-sanity rows test the regex against synthetic strings, never
+  // through findOffenders. This costs nothing extra because ALLOWED's own
+  // `src/data/boats.ts` legitimately carries the bare ids — dropping the
+  // allowlist turns the catalogue into a real, known offender the live scan
+  // must find in the real tree.
+  it('the scan actually detects: with an empty allowlist it finds the catalogue itself', () => {
+    expect(findOffenders([])).toContain('src/data/boats.ts');
   });
 
   it('matches exactly the known offenders — no fewer (Task 9 drift), no more (a new regression)', () => {

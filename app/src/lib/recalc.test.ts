@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { recalcRequest } from './recalc';
-import { uniformWindGrid } from '../test/fixtures';
+import { OFF_CATALOGUE_BOAT, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { DEFAULT_SETTINGS, type Plan, type PlanRequest, type Settings } from '../types';
 import { defaultBoatSnapshot } from '../types';
@@ -178,5 +178,28 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
     const seeded = recalcRequest(plan, 1_780_086_400_000);
 
     expect(seeded.sailIds).toEqual(['fock']);
+  });
+
+  // #54 Task 11: the BOAT half of the same inheritance question, previously
+  // unguarded — replacing this site's `boatSnapshot(plan.request.boat)` with
+  // a bare `defaultBoatSnapshot()` left this suite and its replan/reroute
+  // siblings green, because ORIGINAL_REQUEST's boat IS the catalogue default
+  // and the substitution is value-identical. `OFF_CATALOGUE_BOAT` is a boat
+  // BOATS does not contain — the state spec §I.3 requires a plan to keep, and
+  // the reason services/migratePlan.ts refuses to REPLACE an unparseable
+  // snapshot rather than substituting one: a substituted snapshot does not
+  // stay put, it becomes what the recalculated plan claims its boat was.
+  it("seeds the saved plan's OWN boat snapshot, not the catalogue default", () => {
+    const plan = makePlan();
+    plan.request = { ...ORIGINAL_REQUEST, boat: OFF_CATALOGUE_BOAT };
+
+    const seeded = recalcRequest(plan, 1_780_086_400_000);
+
+    expect(seeded.boat).toEqual(OFF_CATALOGUE_BOAT);
+    // COPIED, never aliased — the same rule this function applies to
+    // viaPoints/settings, and the reason the value assertion alone is not
+    // enough.
+    expect(seeded.boat).not.toBe(plan.request.boat);
+    expect(seeded.boat.sails[0]).not.toBe(plan.request.boat.sails[0]);
   });
 });

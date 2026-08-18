@@ -854,6 +854,32 @@ describe('#54 lazy plan migration at the read boundary', () => {
     );
   });
 
+  // THE ACCEPTED RESIDUAL named in getPlan's own doc, pinned beside the
+  // write-back invariant it is the exception to. state/replan.ts's
+  // replanWithVias and usePlanFlow.ts's replace-recalculation both save a
+  // migratePlan output under the ORIGINAL record id, which is the same
+  // rebuild getPlan refuses to perform — reproduced here as the mechanism
+  // both share. Deliberately pins BOTH halves: the quartet really is gone
+  // (so nobody reads the doc's residual as hypothetical), AND the record
+  // left behind is still current-shape, so it re-reads and still lists —
+  // an older build skips the row until it is upgraded, rather than the
+  // bytes being destroyed.
+  it('a write under an existing id drops the legacy quartet, and what it leaves still reads and lists', async () => {
+    await savePlan(legacyRecord('legacy-1', 1000));
+    const before = (await rawStored('legacy-1'))!;
+    expect(Object.keys(before.result as Record<string, unknown>)).toContain('genoa');
+
+    const migrated = (await getPlan('legacy-1'))!;
+    await savePlan({ ...migrated, name: 'Replanned' });
+
+    const after = (await rawStored('legacy-1'))!;
+    expect(Object.keys(after.result as Record<string, unknown>)).not.toContain('genoa');
+    expect(await getPlan('legacy-1')).toBeDefined();
+    const summaries = await listPlans();
+    expect(summaries.length).toBe(1);
+    expect(summaries[0].kind).toBe('ok');
+  });
+
   it('listPlans summarises a pre-#54 record as a readable row', async () => {
     await savePlan(legacyRecord('legacy-1', 1000));
     const summaries = await listPlans();

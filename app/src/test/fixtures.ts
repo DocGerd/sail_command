@@ -1,4 +1,4 @@
-import type { PolarTable, SailId, WindGrid, MaskMeta } from '../types';
+import type { BoatSnapshot, PolarTable, SailId, WindGrid, MaskMeta } from '../types';
 import { NavMask } from '../lib/mask';
 import { boatById, DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import type { PlanDeps } from '../routing/planRoute';
@@ -114,3 +114,24 @@ export function testPlanDeps(
   for (const [sailId, table] of Object.entries(tables)) polars[polarKey(boat.id, sailId)] = table;
   return { polars, boat, mask };
 }
+
+/**
+ * #54 spec §I.3: a boat snapshot the catalogue does NOT contain — the state a
+ * plan must keep after its boat left BOATS. Every field differs from the
+ * Salona 45's, so a propagation site that substitutes `defaultBoatSnapshot()`
+ * instead of carrying the plan's own snapshot forward is detectable by value
+ * alone. Shared by the recalc/replan/reroute suites so all three exercise the
+ * SAME off-catalogue shape.
+ */
+export const OFF_CATALOGUE_BOAT: BoatSnapshot = {
+  id: 'gone-45',
+  name: 'Gone 45',
+  draftM: 2.4,
+  sails: [
+    {
+      id: 'blade',
+      label: 'Blade',
+      polarProvenance: { tier: 'estimated', note: 'boat no longer in the catalogue' },
+    },
+  ],
+};

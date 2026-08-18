@@ -12,7 +12,7 @@ import {
 import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
-import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
+import { resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
 import { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
@@ -297,7 +297,7 @@ export default function PlannerPanel({
     statusText = t('planner.status.routingSail', {
       index: planning.index,
       total: planning.total,
-      sail: t(RIG_LABEL_KEY[planning.sailId]),
+      sail: t(sailLabelKey(planning.sailId)),
     });
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
   else if (planning.phase === 'idle') {
@@ -617,7 +617,7 @@ export default function PlannerPanel({
                   user sees a result on). */}
               <Chip className="chip-faster-rig">
                 {summary.rigRecommendation.kind === 'decided'
-                  ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[summary.rigRecommendation.rig]) })
+                  ? t('route.fasterRig', { rig: t(sailLabelKey(summary.rigRecommendation.rig)) })
                   : t(summary.rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
               </Chip>
               {/* #301: the form has drifted from this displayed route — a

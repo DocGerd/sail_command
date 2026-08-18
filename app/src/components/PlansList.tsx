@@ -8,12 +8,8 @@ import { FORECAST_DAYS } from '../services/openMeteo';
 import { nextFullHourMs } from './PlannerPanel';
 import Button from './Button';
 import Field from './Field';
-import type { Plan, SailId } from '../types';
-
-const RIG_LABEL_KEY: Record<SailId, MsgKey> = {
-  genoa: 'route.rig.genoa',
-  fock: 'route.rig.fock',
-};
+import type { Plan } from '../types';
+import { sailLabelKey } from '../lib/resultSummary';
 
 // #114: the two ways a completed recalculation can be persisted — as a NEW
 // plan (default, non-destructive) or REPLACING the original (explicit
@@ -258,7 +254,7 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                 <span className="plans-list-eta">
                   {t('route.totals.eta')} {formatDateTime(p.etaMs, lang)}
                 </span>
-                <span className="chip chip-rig">{t(RIG_LABEL_KEY[p.recommended])}</span>
+                <span className="chip chip-rig">{t(sailLabelKey(p.recommended))}</span>
               </button>
               <button
                 type="button"

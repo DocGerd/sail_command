@@ -24,6 +24,7 @@ import {
   type Plan,
   type PlanRequest,
   type PlanResultOk,
+  type SailId,
 } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
 import { defaultBoatSnapshot } from '../types';
@@ -300,6 +301,74 @@ describe('usePlanFlow', () => {
 
     expect(result.current.planning).toEqual({ phase: 'error', messageKey });
     expect(save).not.toHaveBeenCalled();
+  });
+
+  // #54 review: the "throw instead of fabricate" invariant on the progress
+  // callback throws inside workerClient's `worker.onmessage`, where nothing
+  // catches it — no error boundary, no window.onerror, and routing/ +
+  // usePlanFlow.ts carry no console.* by design. This row pins BOTH measured
+  // halves, because either alone is misleading: the throw aborts that ONE
+  // progress delivery (the phase readout does not advance and run() is still
+  // pending), and the plan's own `result` message — delivered on the NEXT
+  // onmessage call, as a real worker always sends — still settles the run to
+  // idle and saves the plan exactly once. The invariant therefore refuses to
+  // fabricate an index WITHOUT failing the passage plan; it is not a route to
+  // a distinct error banner.
+  it('#54: an unknown sail in a progress message throws uncaught, and the plan still completes', async () => {
+    const w = fakeWorker();
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'Test plan');
+      await flush();
+    });
+    await flush();
+    const planMsg = findPosted(w.posted, 'plan');
+
+    // The fake dispatches onmessage synchronously, so the throw surfaces to
+    // this caller; a real Worker turns the same throw into an uncaught error
+    // and delivers the next message regardless. Catching it here models that
+    // boundary — and asserting it is what makes the second half meaningful.
+    let thrown: unknown = null;
+    act(() => {
+      try {
+        w.emit({
+          type: 'progress',
+          id: planMsg.id,
+          sailId: 'spinnaker' as SailId,
+          tMs: 100,
+          frontierSize: 2,
+        });
+      } catch (e) {
+        thrown = e;
+      }
+    });
+    expect((thrown as Error | null)?.message).toContain("progress for sail 'spinnaker'");
+    // Half one: the readout did not advance to 'routing' and nothing settled.
+    expect(result.current.planning).toEqual({ phase: 'fetching-wind' });
+    expect(save).not.toHaveBeenCalled();
+
+    // Half two: the very next message still completes the plan.
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+    expect(save).toHaveBeenCalledTimes(1);
   });
 
   // #340/#54: the routing phase carries `sailId`+`index`+`total` — no

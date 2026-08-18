@@ -10,10 +10,32 @@ import { formatDateTime, formatDuration, formatKn, formatNm, type Lang } from '.
 // SailId -> its display label key. Shared so RouteSummary and the planner
 // strip name the sail identically (the recommended sail is the faster one
 // the router picked — see the source spec's twice-per-plan rule).
-export const RIG_LABEL_KEY: Record<SailId, MsgKey> = {
+//
+// DELIBERATELY NOT EXPORTED: every consumer goes through sailLabelKey below.
+// A `Record<SailId, MsgKey>` is TOTAL at compile time and PARTIAL at rest —
+// services/migratePlan.ts mints SailId from unvalidated stored strings by
+// design (its own comment calls that cast load-bearing, and
+// migratePlan.catalogueRename.test.ts pins that a renamed catalogue must
+// still READ an existing plan), so a stored id the current catalogue lacks is
+// a designed-for state. Indexing this map directly with one yielded
+// `undefined`, which `useT` (a bare `dicts[lang][key]` lookup, no fallback,
+// no throw) passes straight through. MEASURED by reverting this helper to a
+// direct index: the rig tab and the per-leg sail chip render NO sail name at
+// all, and the recommendation chip renders the literal `Faster: undefined`.
+// Keeping the map private makes tsc reject a new direct index from another
+// module.
+const RIG_LABEL_KEY: Record<SailId, MsgKey> = {
   genoa: 'route.rig.genoa',
   fock: 'route.rig.fock',
 };
+
+/**
+ * The one way to name a sail in the UI. Takes a plain `string`, not a
+ * `SailId`: the whole point is the ids the union does not cover.
+ */
+export function sailLabelKey(id: string): MsgKey {
+  return (RIG_LABEL_KEY as Record<string, MsgKey | undefined>)[id] ?? 'route.rig.unknown';
+}
 
 // #340/#54: the router's actual, fixed solve order used to drive the
 // planner panel's "sail N of 2" phase readout is now `request.sailIds`

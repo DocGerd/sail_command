@@ -251,9 +251,26 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
           // a fabricated "sail 0 of 2" if the worker ever reports progress
           // for a sailId not in req.sailIds — unreachable today (the worker
           // only ever solves the sails req.sailIds itself lists), but
-          // silently WRONG rather than caught, inconsistent with
-          // recommendedResult()'s (types.ts) throw-don't-fabricate stance on
-          // the same class of invariant. Throw instead.
+          // silently WRONG, inconsistent with recommendedResult()'s
+          // (types.ts) throw-don't-fabricate stance on the same class of
+          // invariant. Throw instead.
+          //
+          // WHERE THAT THROW GOES — nothing catches it, unlike
+          // recommendedResult()'s, which runs on a stack its caller owns.
+          // This callback is invoked from workerClient's `worker.onmessage`,
+          // so the error escapes as an uncaught error, and nothing in-app
+          // observes it: no error boundary, no window.onerror, and routing/
+          // plus this file carry zero console.* by design.
+          // MEASURED against the fakeWorker harness, BOTH halves, because
+          // either alone misleads: it aborts THAT ONE progress delivery (the
+          // phase readout does not advance and run() is still pending), and
+          // the plan's own `result` message — delivered on the NEXT onmessage
+          // call, as a real worker always sends — still settles the run to
+          // idle and saves the plan exactly once. So this refuses to
+          // fabricate an index WITHOUT failing the passage plan. It is not a
+          // route to a distinct error phase and must not be described as one.
+          // Pinned by usePlanFlow.test.tsx's '#54: an unknown sail in a
+          // progress message' row.
           (sailId) => {
             const index = req.sailIds.indexOf(sailId);
             if (index === -1) {

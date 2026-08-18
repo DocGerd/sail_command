@@ -7,8 +7,11 @@ import {
   type SailId,
 } from '../types';
 import { uniformWindGrid } from '../test/fixtures';
+import { BOATS } from '../data/boats';
+import { de } from '../i18n/dict.de';
+import { en } from '../i18n/dict.en';
 import { formatDateTime } from './format';
-import { averageSpeedKn, resultSummary, rigRecommendationOf } from './resultSummary';
+import { averageSpeedKn, resultSummary, rigRecommendationOf, sailLabelKey } from './resultSummary';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
@@ -186,5 +189,27 @@ describe('rigRecommendationOf (#259)', () => {
   it('falls back to a decided pick of `recommended` when absent', () => {
     const plan = makePlan('fock');
     expect(rigRecommendationOf(plan.result)).toEqual({ kind: 'decided', rig: 'fock' });
+  });
+});
+
+describe('sailLabelKey (#54)', () => {
+  it('names every sail the catalogue currently carries', () => {
+    for (const id of BOATS.flatMap((b) => b.sails.map((s) => s.id))) {
+      expect(sailLabelKey(id)).not.toBe('route.rig.unknown');
+    }
+  });
+
+  // The whole reason the helper exists: `Record<SailId, MsgKey>` is total at
+  // compile time and partial at rest, so a direct index with a stored id the
+  // catalogue lacks returns `undefined` — which useT passes straight through.
+  it('falls back to a real key for an id the catalogue does not carry', () => {
+    expect(sailLabelKey('code0')).toBe('route.rig.unknown');
+  });
+
+  // Both dicts must define it or the fallback is `undefined` one level later.
+  // (dict parity itself is compiler-enforced; this pins that the key EXISTS.)
+  it('both dictionaries define the fallback key', () => {
+    expect(de[sailLabelKey('code0')]).toBeTruthy();
+    expect(en[sailLabelKey('code0')]).toBeTruthy();
   });
 });
