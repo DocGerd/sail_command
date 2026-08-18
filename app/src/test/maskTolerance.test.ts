@@ -178,25 +178,71 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
 describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', () => {
   // R1 — the non-vacuity twin. This list is HAND-WRITTEN and must never be derived
   // from BOATS (#411, "a guard's DATA needs a twin").
-  // MEASURED 2026-08-14, perturbing boats.ts one way at a time (8 rows in this block):
-  //   ADD a second entry, 'salona-45' intact -> only R1 reds.
-  //   RENAME the sole entry's id             -> R1 reds, and R4/R6/R7b THROW via
-  //                                             boatById('salona-45').
-  //   WRONG draftM under an unchanged id     -> R1 stays GREEN; R6 and R7b catch it
-  //                                             via their own hardcoded literals.
-  //   BOATS = []                             -> R1 reds, and R4/R6/R7b throw.
+  // MEASURED 2026-08-14 against the ONE-BOAT catalogue of the day, perturbing
+  // boats.ts one way at a time (8 rows in this block then). Scoped to that
+  // catalogue because two of the four rows name it directly; the CONCLUSION
+  // under them is unchanged and was re-measured on 2026-08-18 (below):
+  //   ADD an extra entry, the expected ones intact -> only R1 reds.
+  //   RENAME the Salona 45's id                    -> R1 reds, and R4/R6/R7b THROW
+  //                                                   via boatById('salona-45').
+  //   WRONG draftM under an unchanged id           -> R1 stays GREEN; R6 and R7b
+  //                                                   catch it via their own literals.
+  //   BOATS = []                                   -> R1 reds, and R4/R6/R7b throw.
   // So R1 is the only row that sees an EXTRA entry, and it is blind to a wrong VALUE
   // under a correct id — which is what R6 and R7b are for. An empty or renamed
   // catalogue fails loudly rather than silently.
   //
-  // Discriminating experiment, recorded so it is run rather than assumed:
-  //   perturb production alone (add a boat) -> 1 row reds (this one)
-  //   perturb this table alone              -> 1 row reds (this one)
+  // Discriminating experiment, recorded so it is run rather than assumed.
+  // RE-MEASURED 2026-08-18 on the three-boat catalogue:
+  //   perturb production alone (add a 4th boat)  -> 1 row reds IN THIS FILE
+  //                                                 (this one); 9 across the
+  //                                                 catalogue guards as a whole,
+  //                                                 the other 8 in boats.test.ts,
+  //                                                 polarProvenance.test.ts and
+  //                                                 verifyMaskBoatGate.test.ts,
+  //                                                 which now also pin membership.
+  //   perturb this table alone (drop 'elan-444') -> 1 row reds, this one, and
+  //                                                 nothing else anywhere.
+  // The ASYMMETRY is the point and it survives: only a production-side change
+  // reaches the other files, so this row cannot be the reason they are green.
   // R6 is independent BY DESIGN: it anchors the Salona literals against a
   // hardcoded id and shares no identifier with this table, so it cannot red
   // from a perturbation here. That independence is the point — R6 is what
   // catches an arithmetic generalisation that is self-consistent but wrong.
-  const EXPECTED_BOAT_IDS = ['salona-45'];
+  // RETIRED ASSERTION 3 of 3 (#54 spec N.8) — this list was `['salona-45']`.
+  //
+  // RATIONALE. It was not a guard that failed; it was the correct expected
+  // value for OQ-7's one-boat release, and spec N adds two tier-C fleet models
+  // to the catalogue. The list is UPDATED rather than removed, because R1's
+  // whole purpose is to be a HAND-WRITTEN twin of production data (#411, "a
+  // guard's DATA needs a twin") — deriving it from BOATS would make every row
+  // in this block vacuous at once.
+  //
+  // The retirement makes this block STRONGER, and it is worth naming exactly
+  // how — the obvious answer is wrong. The header above records that at a
+  // one-boat catalogue R2, R3 and R8 "iterate a single row and cannot fail
+  // differently from R6". Three boats carry two DISTINCT drafts (2.1 and 1.9),
+  // and what that buys is measured, not assumed:
+  //
+  //   MEASURED 2026-08-18, hardcoding defaultSafetyDepthM to `return 3.0`
+  //   (the hand-typed default R2 exists to catch):
+  //     three-boat catalogue -> 7 rows red ACROSS this file and boatDepth's,
+  //                             R2 AMONG THEM.
+  //     one-boat catalogue   -> 14/14 maskTolerance rows PASS, R2 included,
+  //                             because 3.0 IS ceilToDecimetre(2.1 + 0.9) and
+  //                             R2's assertion is satisfied by the coincidence.
+  //   The Elan's 1.9 m draft is the whole difference: 3.0 !== 2.8 reds it.
+  //
+  // What the second draft does NOT buy, stated because the plausible-sounding
+  // claim is false and was written here before it was run: it does NOT make
+  // this block sensitive to the QUANTISER. Replacing ceilToDecimetre with
+  // Math.round reds 5 rows and NOT ONE of them is in this describe block —
+  // every catalogue draft puts (draft + T) * 10 exactly on a whole decimetre
+  // (30.0, 30.0, 28.0), where ceil and round agree. Detecting a wrong
+  // quantiser still belongs entirely to the SYNTHETIC probes in
+  // boatDepth.test.ts (1.73, 2.25) and to verify_mask.py's
+  // GATE_DERIVATION_CASES. Do not add a catalogue boat expecting to cover it.
+  const EXPECTED_BOAT_IDS = ['salona-45', 'salona-44', 'elan-444'];
 
   it('R1: the catalogue matches the hand-written expected list', () => {
     expect(BOATS.map((b) => b.id)).toEqual(EXPECTED_BOAT_IDS);

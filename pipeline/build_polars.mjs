@@ -1,6 +1,18 @@
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  ESTIMATOR_METHODS,
+  RAMP_METHOD,
+  SCALAR_METHOD,
+  SCALAR_MAX,
+  SCALAR_MIN,
+  estimatedSails,
+  estimatedSailsOfBoat,
+  estimatedSpeedsFor,
+  reproductionFailures,
+  round3,
+} from './estimate_polars.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = JSON.parse(readFileSync(join(here, 'polars-source.json'), 'utf8'));
@@ -153,6 +165,186 @@ function validate(name, speeds, boat) {
   }
 }
 
+// ---- #54 spec N.6: tier-C (estimated) fail-closed rules E1-E8 ----
+//
+// The whole point of these is that tier C must be DECLARED and never FALLEN
+// INTO. An estimated polar is a stronger claim than this app makes anywhere
+// else — it is a speed table for the boat the user is actually sailing, and
+// nobody measured it against that hull — so every step from the brochure
+// figures to the committed numbers has to be re-runnable by a reviewer, and
+// anything missing has to stop the build rather than ship quietly.
+//
+// E8 is not a check in this file: it is the rule that everything ABOVE this
+// block stays exactly as it was, so a tier-C boat gets no bypass around the
+// axis, plausibility, monotonicity, anchor-band, id and filename guards that
+// already existed. app/src/test/buildPolars.failClosed.test.ts pins that by
+// firing several of those guards at a tier-C boat specifically.
+
+/** E1 + E2. Runs for EVERY sail, because both directions of E1 matter. */
+function requireEstimatorBlock(name, sail) {
+  const est = sail.estimator;
+  const isEstimated = sail.provenance.tier === 'estimated';
+
+  // E1, converse direction. A non-estimated sail carrying an estimator block
+  // is a tier that was quietly downgraded in the provenance field while the
+  // derivation stayed — the exact "fell into tier C without saying so" shape
+  // read backwards, and it would present scaled numbers as certificate-grade.
+  if (!isEstimated) {
+    requireField(
+      est == null,
+      `${name}: provenance tier is ${JSON.stringify(sail.provenance.tier)} but the sail carries an ` +
+        "estimator block. A derived table must declare tier 'estimated'.",
+    );
+    return;
+  }
+
+  // E1, forward direction.
+  requireField(
+    est != null && typeof est === 'object',
+    `${name}: tier 'estimated' requires a complete estimator block (spec N.6 E1) — tier C is ` +
+      'declared, never fallen into',
+  );
+  requireField(
+    ESTIMATOR_METHODS.includes(est.method),
+    `${name}: estimator.method ${JSON.stringify(est.method)} not one of ${ESTIMATOR_METHODS.join('/')}`,
+  );
+  for (const key of ['baseBoatId', 'baseSailId']) {
+    requireField(
+      typeof est[key] === 'string' && est[key].length > 0,
+      `${name}: estimator.${key} missing — the derivation must name what it derives FROM`,
+    );
+  }
+  requireField(
+    typeof est.scalar === 'number' && Number.isFinite(est.scalar),
+    `${name}: estimator.scalar missing or not a finite number`,
+  );
+  // Not merely "present": the value asserts this estimator ingested no
+  // third-party corpus, which is what keeps licence exposure and donor
+  // keel-variant ambiguity out of scope. A `false` here would describe a
+  // different method than the one this file implements.
+  requireField(
+    est.corpusFree === true,
+    `${name}: estimator.corpusFree must be exactly true — this estimator ingests no third-party ` +
+      'table, and a block claiming otherwise describes a method this pipeline does not implement',
+  );
+  requireField(
+    typeof est.uncertaintyPct === 'number' && Number.isFinite(est.uncertaintyPct) && est.uncertaintyPct > 0,
+    `${name}: estimator.uncertaintyPct missing or not a positive number — an estimated table ` +
+      'ships with a published band or it does not ship',
+  );
+
+  // E6, the "which ramp" half. The second table's derivation must be explicit.
+  //
+  // The estimator ALSO refuses a ramp method with no ramp block, so this check
+  // is not what makes the build abort — MEASURED: deleting it reds zero
+  // selftest rows, because estimate_polars.mjs throws instead. What it adds is
+  // an earlier, sharper failure: it names the missing FIELD and the rule, in
+  // the structural pass, before any estimator arithmetic runs. Its messages
+  // therefore carry the `spec N.6 E6` marker that the estimator's do not, and
+  // the selftest rows assert THAT marker — otherwise the rows would be
+  // satisfied by the estimator's abort and this block could be deleted with
+  // every test still green.
+  if (est.method === RAMP_METHOD) {
+    requireField(
+      est.ramp != null && typeof est.ramp === 'object',
+      `${name}: ${RAMP_METHOD} needs a ramp block — spec N.6 E6 requires the second sail to ` +
+        'declare WHICH base sail and WHICH ramp it came from',
+    );
+    for (const key of ['boatId', 'fromSailId', 'toSailId']) {
+      requireField(
+        typeof est.ramp[key] === 'string' && est.ramp[key].length > 0,
+        `${name}: estimator.ramp.${key} missing — spec N.6 E6 requires the second sail to declare ` +
+          'WHICH base sail and WHICH ramp it came from',
+      );
+    }
+  }
+
+  // E2. `inputs` must be non-empty first: "every input carries a source" is
+  // VACUOUSLY TRUE of an empty object, so the emptiness check is what stops
+  // this rule passing on a block that declares no inputs at all.
+  requireField(
+    est.inputs != null && typeof est.inputs === 'object' && Object.keys(est.inputs).length > 0,
+    `${name}: estimator.inputs is empty — an input list nobody can check is not provenance`,
+  );
+  for (const [key, entry] of Object.entries(est.inputs)) {
+    requireField(
+      entry != null && typeof entry === 'object',
+      `${name}: estimator.inputs.${key} is not a { value, source } object`,
+    );
+    requireField(
+      typeof entry.value === 'number' && Number.isFinite(entry.value),
+      `${name}: estimator.inputs.${key}.value missing or not a finite number`,
+    );
+    requireField(
+      typeof entry.source === 'string' && entry.source.length > 0,
+      `${name}: estimator.inputs.${key} has no source (spec N.6 E2). A ratio built from a MIXED ` +
+        'measurement basis is wrong by a few percent through every cell and undetectable ' +
+        'afterwards, so each figure names where it came from.',
+    );
+  }
+}
+
+/**
+ * E4. Refuse an anchor COPIED from the base boat: same cell, same band, same
+ * source. Conjunctive on all three, so the false-positive rate is near zero —
+ * two hulls legitimately reaching the same speed in the same conditions differ
+ * in at least the source string, and two hulls sharing a source string for
+ * genuinely different bands differ in the band.
+ *
+ * This is spec L's "reuse the Salona 45's polar sanity anchors for other hulls"
+ * row made mechanical: such an anchor converts "unvalidated" into "validated
+ * against the wrong thing", which is worse than no anchor at all.
+ */
+function requireOwnAnchors(boat, boatsById) {
+  const baseIds = new Set(
+    estimatedSailsOfBoat(boat)
+      .map((sailId) => boat.sails[sailId].estimator.baseBoatId)
+      .filter((baseId) => baseId !== boat.id),
+  );
+  for (const baseId of baseIds) {
+    const base = boatsById.get(baseId);
+    if (base == null) continue; // E1/the estimator itself reports an unknown base boat.
+    for (const a of boat.validation.anchors) {
+      const twin = (base.validation?.anchors ?? []).find((b) => b.twa === a.twa && b.tws === a.tws);
+      if (twin == null) continue;
+      requireField(
+        !(a.minKn === twin.minKn && a.maxKn === twin.maxKn && a.source === twin.source),
+        `${boat.id}: anchor ${JSON.stringify(a.label)} @twa ${a.twa}/tws ${a.tws} has the same band ` +
+          `[${a.minKn}, ${a.maxKn}] AND the same source as ${baseId}'s anchor at that cell — spec ` +
+          'N.6 E4. An anchor inherited from the donor hull validates the wrong boat.',
+      );
+    }
+  }
+}
+
+/**
+ * E6, the "which base sail" half. Exactly one estimated sail per boat may be
+ * the SCALAR base; every other estimated sail must be a ramp off THAT sail, on
+ * THIS boat. Two independent scalar tables on one boat would mean two different
+ * derivations presented as one boat's inventory, and a ramp pointing at another
+ * boat's sail would silently reintroduce the donor's hull into the second table.
+ */
+function requireSailDerivations(boat) {
+  const estimated = estimatedSailsOfBoat(boat);
+  if (estimated.length === 0) return;
+  const bases = estimated.filter((s) => boat.sails[s].estimator.method === SCALAR_METHOD);
+  requireField(
+    bases.length === 1,
+    `${boat.id}: ${bases.length} sails declare ${SCALAR_METHOD} (expected exactly 1) — a tier-C ` +
+      'boat has one scaled base table and derives the rest from it (spec N.6 E6)',
+  );
+  const baseSailId = bases[0];
+  for (const sailId of estimated) {
+    if (sailId === baseSailId) continue;
+    const est = boat.sails[sailId].estimator;
+    requireField(
+      est.baseBoatId === boat.id && est.baseSailId === baseSailId,
+      `${boat.id}/${sailId}: derives from ${est.baseBoatId}/${est.baseSailId} but a tier-C boat's ` +
+        `second sail must derive from its OWN base table, ${boat.id}/${baseSailId} (spec N.6 E6)`,
+    );
+  }
+}
+
 requireField(Array.isArray(src.boats) && src.boats.length > 0, 'no boats');
 
 // Two passes on purpose: EVERY boat and sail is validated before ANYTHING is
@@ -177,6 +369,9 @@ const pending = [];
 // measured) while the two records silently merge into one boat's polar set.
 const seenBoatIds = new Set();
 const seenFiles = new Set();
+// E4 needs to reach the DONOR boat's anchors while validating the derived one,
+// and the donor may appear later in the file than the boat deriving from it.
+const boatsById = new Map(src.boats.map((b) => [b?.id, b]));
 
 for (const boat of src.boats) {
   const id = boat.id;
@@ -210,6 +405,20 @@ for (const boat of src.boats) {
         typeof a.maxKn === 'number',
       `${id}: malformed anchor ${JSON.stringify(a)}`,
     );
+    // E3 (#54 spec N.6). An anchor without a named source is an unfalsifiable
+    // band: nobody can tell later whether it came from a measurement of THIS
+    // hull or from whatever number happened to make the build pass. Applied to
+    // EVERY boat, not only tier-C ones, for two reasons — the reference boat is
+    // held to the same standard, and E4 below compares a new hull's anchor
+    // source against the base boat's, which is impossible if the base boat has
+    // none. Adding these strings changed ZERO shipped bytes: `validation` is
+    // not part of the emitted PolarTable.
+    requireField(
+      typeof a.source === 'string' && a.source.length > 0,
+      `${id}: anchor ${JSON.stringify(a.label)} has no source — spec N.6 E3 requires a named, ` +
+        'independent, citable magnitude for THIS hull. An anchor that silently validates the ' +
+        'wrong hull is worse than no anchor.',
+    );
   }
 
   // The sail set is derived from the data — there is no second enumeration to
@@ -238,6 +447,7 @@ for (const boat of src.boats) {
       typeof sail.provenance.note === 'string' && sail.provenance.note.length > 0,
       `${name}: provenance note missing`,
     );
+    requireEstimatorBlock(name, sail);
     requireField(Array.isArray(sail.speeds), `${name}: speeds missing`);
     validate(name, sail.speeds, boat);
 
@@ -259,7 +469,45 @@ for (const boat of src.boats) {
     seenFiles.add(file);
     pending.push({ file, table, rows: boat.twa.length, cols: boat.tws.length });
   }
+
+  // Boat-level, so they run after every sail of this boat has been seen.
+  requireSailDerivations(boat);
+  requireOwnAnchors(boat, boatsById);
 }
+
+// ---- E5 and E7, once the whole catalogue is parsed ----
+//
+// ORDER IS LOAD-BEARING. E5 (the band) runs before E7 (reproducibility) so a
+// donor that is simply not comparable reports as that, rather than as a
+// mismatched table. A scalar can be out of band while the inputs, the declared
+// scalar and every committed cell agree perfectly — that state is E5's alone
+// to catch, and it is exactly the state a mutation must construct to prove E5
+// is load-bearing rather than shadowed by E7.
+for (const { boatId, sailId } of estimatedSails(src)) {
+  const k = estimatedSpeedsFor(src, boatId, sailId).scalar;
+  requireField(
+    k >= SCALAR_MIN && k <= SCALAR_MAX,
+    `${boatId}/${sailId}: hull scalar ${round3(k)} is outside [${SCALAR_MIN}, ${SCALAR_MAX}] ` +
+      '(spec N.6 E5) — at that ratio the donor is not a comparable hull, and scaling its polar ' +
+      'is extrapolation rather than estimation. Refuse rather than extrapolate.',
+  );
+}
+
+// E7. The committed `speeds` must be exactly what re-running the estimator on
+// the committed inputs produces — INCLUDING the second sail's base x ramp step,
+// so both tables are reproducible from the same inputs. This is what makes a
+// perturbed input (the 85.7-vs-77.76 m2 sail-area trap in estimate_polars.mjs's
+// header) a red build rather than a 5% error nobody can see. It is also the
+// rule that lets the anchors below be honestly wide: the anchors bound the
+// table against reality, E7 bounds the arithmetic against its own inputs, and
+// neither has to do the other's job.
+const drifted = reproductionFailures(src);
+requireField(
+  drifted.length === 0,
+  'estimated tables do not reproduce from their committed inputs (spec N.6 E7):\n  ' +
+    drifted.map((f) => `${f.boatId}/${f.sailId}: ${f.detail}`).join('\n  ') +
+    '\nRegenerate with `node estimate_polars.mjs --emit <boatId> <sailId>` or restore the input.',
+);
 
 mkdirSync(outDir, { recursive: true });
 for (const { file, table, rows, cols } of pending) {

@@ -36,7 +36,10 @@ required check.
 ### `polars/<boat-id>-<sail-id>.json` — boat-speed polars
 
 Boat speed (knots) as a function of true wind angle (TWA) and true wind speed
-(TWS), one table for the main+genoa rig and one for main+fock (working jib).
+(TWS), two tables per catalogue boat — main+genoa and main+fock (working jib).
+The Salona 45's provenance is described first; the two tier-C fleet boats added
+by #54 spec N are covered under "Estimated (tier C) tables" below and are
+derived FROM the Salona 45's, so read this first.
 Source: estimate derived from the ORC International 2026 certificate for
 Salona 45 "Miles Ahead" (AUT 035/26), with downwind angles corrected to
 white-sails-only performance via a 23-boat ORC non-spinnaker ratio study. The
@@ -78,6 +81,56 @@ the duplicate check runs on the boat id *and* on the output filename, because
 and boat `a` with sail `b-c` are two legal, distinct, non-duplicate ids that
 resolve to the same `a-b-c.json`. Neither check subsumes the other: two boats
 sharing an id with disjoint sail sets collide on no filename at all.
+
+#### Estimated (tier C) tables — `estimate_polars.mjs`
+
+No ORC/IRC certificate and no published VPP was obtainable for any Skipperteam
+fleet model, so the Salona 44 (SPEEDY GO!) and Elan Impression 444 (PIRANJA)
+ship at provenance tier `estimated`: the Salona 45's certificate-anchored
+**fock** table scaled by one uniform hull scalar
+`k = sqrt((SA/D)_target / (SA/D)_salona45)`, and a second sail derived from
+that scaled table times the Salona 45's documented genoa overlay ramp. Inputs
+are public brochure dimensions and the already-shipped Salona 45 tables and
+nothing else, so the estimator downloads nothing and ingests no third-party
+table. The method, its measured accuracy ceiling, the near-miss that motivates
+the one-source rule, and the four things it structurally cannot do are all
+documented in `estimate_polars.mjs`'s header — read that before changing any
+input.
+
+```
+node pipeline/estimate_polars.mjs                     # --check (also `npm run estimate`)
+node pipeline/estimate_polars.mjs --report            # + scalars and anchor margins
+node pipeline/estimate_polars.mjs --emit <boat> <sail>  # formatted rows to paste
+```
+
+The committed `speeds` literals are the artifact; this script is the generator
+(`--emit`) and the keeper (`--check`). There is deliberately no mode that
+rewrites `polars-source.json`: it is hand-formatted, and a whole-file
+re-serialiser would churn the Salona 45's block on every run.
+
+`build_polars.mjs` enforces spec N.6's rules **E1–E8** on top of everything
+above, and imports this module so E5 and E7 run the same code the tables were
+generated with rather than a second implementation of it:
+
+- **E1** tier `estimated` requires a complete `estimator` block — and, in the
+  converse direction, a non-estimated sail may not carry one.
+- **E2** every `estimator.inputs.*` names a source, and the input list may not
+  be empty (an empty one satisfies "every input has a source" vacuously).
+- **E3** every anchor names a source, on **every** boat including the
+  reference one — E4 compares against those strings, so it needs them.
+- **E4** an anchor whose band **and** source both equal the donor's at the same
+  cell is refused. Conjunctive: same band with an independent source, or the
+  same source with a different band, is legitimate.
+- **E5** `0.80 <= k <= 1.25`; outside it the donor is not a comparable hull.
+- **E6** the second sail declares which base sail and which ramp it came from,
+  and exactly one sail per boat may be the scaled base.
+- **E7** re-running the estimator on the committed inputs reproduces the
+  committed `speeds` byte-for-byte — both tables — and the declared `scalar`.
+- **E8** every pre-existing structural guard still applies to a tier-C boat.
+
+`app/src/test/buildPolars.failClosed.test.ts` runs the real script against
+mutated copies of the real source, one row per rule; every rule was
+mutation-checked to red at least one row that no other rule covers.
 
 There is deliberately **no** duplicate-sail-id check — sail ids are not unique
 across boats by design, and a repeated key inside one boat's `sails` map is

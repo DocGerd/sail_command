@@ -64,8 +64,30 @@ import { describe, it, expect, afterAll } from 'vitest';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const SCRIPT = join(REPO, 'pipeline', 'build_polars.mjs');
+// #54 spec N.6: build_polars.mjs imports the estimator so E5 and E7 run the
+// SAME code the tables were generated with rather than a second implementation
+// of it. The scratch tree therefore needs both files or every run dies on an
+// unresolved import — which would make every "it aborts" row below pass for
+// entirely the wrong reason.
+const ESTIMATOR = join(REPO, 'pipeline', 'estimate_polars.mjs');
 const SOURCE = join(REPO, 'pipeline', 'polars-source.json');
 const SHIPPED = join(REPO, 'app', 'public', 'data', 'polars');
+
+/** A boat id that is estimated (tier C) in the committed source. */
+const TIER_C = 'salona-44';
+
+/**
+ * What the harness itself writes into the scratch tree, so `allWrittenFiles`
+ * can subtract it. A SET rather than an inline predicate because it grew from
+ * two entries to three when the estimator had to be copied alongside the
+ * script, and a missed entry here reads as "the build wrote a stray file" on
+ * every abort row at once.
+ */
+const PLANTED = new Set([
+  join('pipeline', 'build_polars.mjs'),
+  join('pipeline', 'estimate_polars.mjs'),
+  join('pipeline', 'polars-source.json'),
+]);
 
 const scratchRoots: string[] = [];
 afterAll(() => {
@@ -86,6 +108,7 @@ function run(source: unknown): RunResult {
   scratchRoots.push(root);
   mkdirSync(join(root, 'pipeline'), { recursive: true });
   cpSync(SCRIPT, join(root, 'pipeline', 'build_polars.mjs'));
+  cpSync(ESTIMATOR, join(root, 'pipeline', 'estimate_polars.mjs'));
   writeFileSync(join(root, 'pipeline', 'polars-source.json'), JSON.stringify(source));
   const outDir = join(root, 'app', 'public', 'data', 'polars');
   try {
@@ -106,13 +129,42 @@ function freshSource(): {
     name?: string;
     validation?: {
       maxSpeedKn?: number;
-      anchors?: { label: string; twa: number; tws: number; minKn: number; maxKn: number }[];
+      anchors?: {
+        label: string;
+        twa: number;
+        tws: number;
+        minKn: number;
+        maxKn: number;
+        /** #54 spec N.6 E3 — optional HERE only so a row can delete it. */
+        source?: string;
+      }[];
     };
     tws: number[];
     twa: number[];
     beat: unknown;
     gybe: unknown;
-    sails: Record<string, { provenance?: { tier?: string; note?: string }; speeds: number[][] }>;
+    sails: Record<
+      string,
+      {
+        provenance?: { tier?: string; note?: string };
+        /**
+         * #54 spec N.6. Present on every tier-C sail in the committed source;
+         * declared optional and loosely here so a row can delete the block, or
+         * any one field of it, without a cast at every site.
+         */
+        estimator?: {
+          method?: string;
+          baseBoatId?: string;
+          baseSailId?: string;
+          scalar?: number;
+          corpusFree?: boolean;
+          uncertaintyPct?: number;
+          ramp?: { boatId?: string; fromSailId?: string; toSailId?: string };
+          inputs?: Record<string, { value?: number; source?: string } | undefined>;
+        };
+        speeds: number[][];
+      }
+    >;
   }[];
 } {
   return JSON.parse(readFileSync(SOURCE, 'utf8'));
@@ -123,8 +175,8 @@ function writtenFiles(outDir: string): string[] {
 }
 
 /**
- * Every file the run produced ANYWHERE under the scratch root, minus the two
- * inputs the harness itself planted. A directory-scoped listing cannot see a
+ * Every file the run produced ANYWHERE under the scratch root, minus the
+ * inputs the harness itself planted (see PLANTED). A directory-scoped listing cannot see a
  * write that escaped that directory. That alone is not enough to slip past a
  * "wrote nothing" assertion — the full set of conditions is in this file's
  * header comment, and no row here reaches them.
@@ -140,10 +192,7 @@ function allWrittenFiles(r: RunResult): string[] {
       e.isDirectory() ? walk(join(dir, e.name)) : [relative(r.root, join(dir, e.name))],
     );
   return walk(r.root)
-    .filter(
-      (f) =>
-        f !== join('pipeline', 'build_polars.mjs') && f !== join('pipeline', 'polars-source.json'),
-    )
+    .filter((f) => !PLANTED.has(f))
     .sort();
 }
 
@@ -462,6 +511,382 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain(`salona-45: ${field}.tws`);
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #54 spec N.6: the tier-C (estimated polar) fail-closed rules E1-E8.
+//
+// Tier C is the app making a speed claim about a boat nobody measured. Every
+// rule below exists so that claim is DECLARED, complete, sourced and
+// re-derivable — and so the build stops rather than shipping quietly when any
+// of that is missing.
+//
+// EACH ROW MUST BE INDIVIDUALLY LOAD-BEARING, and two hazards specific to this
+// block made that non-obvious, so both are handled explicitly:
+//
+//   1. RULES CAN SHADOW EACH OTHER. E7 (reproducibility) reds on almost any
+//      perturbation of an estimated boat, because almost anything changes the
+//      recomputed table. A mutation aimed at E5 that also moves the table
+//      therefore proves nothing about E5. The E5 row below constructs a state
+//      where the inputs, the declared scalar and every committed cell agree
+//      PERFECTLY and only the ratio is out of band — so E5 is the only rule
+//      that can fire. That construction is the row's whole point.
+//
+//   2. A MUTATION MUST REACH THE PATH. Every rule here is gated on a sail
+//      being tier C, so mutating a tier-A boat exercises nothing (#455's
+//      "a mutation that cannot REACH the code path under test is ZERO
+//      evidence"). Rows therefore mutate `TIER_C`, a boat that is genuinely
+//      estimated in the committed source, and the E1-converse row deliberately
+//      goes the other way to cover the tier-A direction.
+// ---------------------------------------------------------------------------
+describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
+  /** The committed source is genuinely tier C — otherwise every row is vacuous. */
+  it('the committed source really does contain an estimated sail (reachability control)', () => {
+    const src = freshSource();
+    const boat = src.boats.find((b) => b.id === TIER_C);
+    expect(boat, `${TIER_C} missing from polars-source.json`).toBeDefined();
+    const tiers = Object.values(boat!.sails).map((s) => s.provenance!.tier);
+    expect(tiers).toContain('estimated');
+    // And every estimated sail carries the block E1 demands, so the rows below
+    // are removing something that is actually there.
+    for (const [sailId, sail] of Object.entries(boat!.sails))
+      if (sail.provenance!.tier === 'estimated')
+        expect(sail.estimator, `${TIER_C}/${sailId} has no estimator block`).toBeDefined();
+  });
+
+  // E1, forward. Tier C is declared, never fallen into.
+  it('E1: aborts when a tier-C sail carries no estimator block at all', () => {
+    const src = freshSource();
+    delete src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain(`${TIER_C}/fock`);
+    expect(r.output).toContain('estimated');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it.each(['method', 'baseBoatId', 'baseSailId', 'scalar', 'corpusFree', 'uncertaintyPct'])(
+    'E1: aborts when a tier-C estimator block is missing %s',
+    (field) => {
+      const src = freshSource();
+      const est = src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!;
+      delete (est as Record<string, unknown>)[field];
+      const r = run(src);
+      expect(r.ok).toBe(false);
+      expect(r.output).toContain(`${TIER_C}/fock`);
+      expect(allWrittenFiles(r)).toEqual([]);
+    },
+  );
+
+  // E1, CONVERSE. Not a symmetry exercise: this is the "tier quietly
+  // downgraded while the derivation stayed" shape, which would present scaled
+  // numbers to the user as certificate-grade. It is also the only row in this
+  // block that mutates the tier FIELD rather than the block.
+  it('E1: aborts when a NON-estimated sail carries an estimator block', () => {
+    const src = freshSource();
+    const boat = src.boats.find((b) => b.id === TIER_C)!;
+    boat.sails['fock']!.provenance!.tier = 'certificate';
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain(`${TIER_C}/fock`);
+    expect(r.output).toContain('estimator block');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E2. A ratio built from a MIXED measurement basis is wrong by a few percent
+  // through every cell and undetectable afterwards, so each figure must say
+  // where it came from.
+  it('E2: aborts when an estimator input carries no source', () => {
+    const src = freshSource();
+    const est = src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!;
+    delete est.inputs!['sailAreaUpwindM2']!.source;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('sailAreaUpwindM2');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E2's VACUITY twin. "Every input has a source" is vacuously true of an
+  // empty object, so without the emptiness check the rule above passes on a
+  // block declaring no inputs whatsoever — provenance nobody can check.
+  it('E2: aborts when the estimator declares an EMPTY inputs object', () => {
+    const src = freshSource();
+    const est = src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!;
+    est.inputs = {};
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('inputs is empty');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E3, applied to EVERY boat. An anchor with no named source is an
+  // unfalsifiable band: nobody can tell later whether it measured this hull or
+  // was chosen to make the build pass.
+  it.each(['salona-45', TIER_C])('E3: aborts when %s has an anchor with no source', (boatId) => {
+    const src = freshSource();
+    const anchors = src.boats.find((b) => b.id === boatId)!.validation!.anchors! as {
+      source?: string;
+    }[];
+    delete anchors[0].source;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('has no source');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E4. Spec L's "reuse the Salona 45's polar sanity anchors for other hulls"
+  // made mechanical. Reaching it needs the tier-C boat to carry an anchor at a
+  // cell the DONOR also anchors, which the committed data deliberately avoids
+  // — so the mutation has to build that collision, and building it is what
+  // proves the rule is reachable rather than dead.
+  it('E4: aborts when a tier-C boat copies the donor hull’s anchor wholesale', () => {
+    const src = freshSource();
+    const donorAnchor = src.boats.find((b) => b.id === 'salona-45')!.validation!.anchors![0];
+    src.boats
+      .find((b) => b.id === TIER_C)!
+      .validation!.anchors!.push({
+        ...donorAnchor,
+      } as typeof donorAnchor);
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('same band');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E4 is CONJUNCTIVE, and this row is what proves it. Same cell and same
+  // source but a genuinely different band is a legitimate anchor — two hulls
+  // may well be cited by the same publication at the same conditions — and
+  // must NOT abort. Without this row an over-eager E4 (matching on cell alone,
+  // or on cell+source) would look correct.
+  it('E4: does NOT abort when the band differs, even at the donor’s own cell', () => {
+    const src = freshSource();
+    const donorAnchor = src.boats.find((b) => b.id === 'salona-45')!.validation!.anchors![0];
+    src.boats
+      .find((b) => b.id === TIER_C)!
+      .validation!.anchors!.push({
+        ...donorAnchor,
+        minKn: 0.5,
+        maxKn: 11.5,
+      } as typeof donorAnchor);
+    const r = run(src);
+    expect(r.ok, r.output).toBe(true);
+  });
+
+  // The OTHER half of the conjunction, and it needs its own row: with only the
+  // row above, deleting `a.source === twin.source` from E4 reds NOTHING
+  // (MEASURED) — that row's band already differs, so the band terms alone
+  // still decline to fire and it stays green. Two hulls can legitimately be
+  // cited at the same conditions with the same band by DIFFERENT sources; that
+  // is independent corroboration, not a copied anchor, and must not abort.
+  // Deleting the source term makes E4 fire here, which is what gives that term
+  // a keeper. Per-TERM, not per-guard (#518).
+  it('E4: does NOT abort when the band matches but the source is genuinely independent', () => {
+    const src = freshSource();
+    const donorAnchor = src.boats.find((b) => b.id === 'salona-45')!.validation!.anchors![0];
+    src.boats
+      .find((b) => b.id === TIER_C)!
+      .validation!.anchors!.push({
+        ...donorAnchor,
+        source: 'A separate published test of THIS hull that happens to agree on the band.',
+      } as typeof donorAnchor);
+    const r = run(src);
+    expect(r.ok, r.output).toBe(true);
+  });
+
+  // E5. THE SHADOWING PROBLEM, handled by construction. Simply editing the
+  // declared `scalar` out of band reds E7 instead (the declaration would no
+  // longer match the inputs), which would prove nothing about E5. So this
+  // mutation moves the INPUT far enough to push the ratio past 1.25, then
+  // regenerates the declared scalar AND both committed tables to match — a
+  // state in which the block is perfectly self-consistent and E7 has nothing
+  // to say. E5 is then the only rule that can fire.
+  it('E5: aborts on a hull scalar outside [0.80, 1.25], with everything else consistent', () => {
+    const src = freshSource();
+    const donor = src.boats.find((b) => b.id === 'salona-45')!;
+    const boat = src.boats.find((b) => b.id === TIER_C)!;
+
+    // Doubling the target's sail area doubles SA/D and multiplies k by sqrt(2)
+    // ~ 1.414 — comfortably outside [0.80, 1.25] and nowhere near the
+    // boundary, so this row cannot pass or fail on a rounding hair.
+    const DOUBLED_SA = 185.62;
+    for (const sailId of Object.keys(boat.sails))
+      boat.sails[sailId]!.estimator!.inputs!['sailAreaUpwindM2']!.value = DOUBLED_SA;
+
+    // Now re-derive EVERYTHING downstream of that input, so the block stays
+    // perfectly self-consistent and E7 has nothing to say. The two arithmetic
+    // steps are re-implemented here rather than imported from
+    // pipeline/estimate_polars.mjs on purpose — that module is untyped JS
+    // outside the TS program, and needle and haystack coming from different
+    // artifacts is the property #388 asks for anyway. It is self-checking: if
+    // this ever drifts from production's arithmetic the row still reds, but
+    // with 'do not reproduce' (E7) instead of the E5 message asserted below,
+    // which is an unmistakable signal rather than a silent pass.
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    const sad = (saM2: number, dispKg: number) => saM2 / Math.pow(dispKg / 1025, 2 / 3);
+    const est = boat.sails['fock']!.estimator!;
+    const k = Math.sqrt(
+      sad(DOUBLED_SA, est.inputs!['displacementKg']!.value!) /
+        sad(est.inputs!['baseSailAreaUpwindM2']!.value!, est.inputs!['baseDisplacementKg']!.value!),
+    );
+    const base = donor.sails['fock']!.speeds.map((row) => row.map((v) => r2(v * k)));
+    boat.sails['fock']!.speeds = base;
+    boat.sails['genoa']!.speeds = base.map((row, i) =>
+      row.map((v, j) =>
+        r2(v * (donor.sails['genoa']!.speeds[i][j] / donor.sails['fock']!.speeds[i][j])),
+      ),
+    );
+    for (const sailId of Object.keys(boat.sails))
+      boat.sails[sailId]!.estimator!.scalar = Math.round(k * 1000) / 1000;
+    // The doubled table now exceeds the boat's own plausibility bound, which
+    // would abort FIRST and shadow E5 — so raise it. This is the row admitting
+    // what it had to neutralise to isolate one rule.
+    boat.validation!.maxSpeedKn = 99;
+    boat.validation!.anchors = [
+      {
+        label: 'e5-probe',
+        twa: boat.twa[0],
+        tws: boat.tws[0],
+        minKn: 0.01,
+        maxKn: 98,
+        source: 'e5 probe',
+      },
+    ];
+
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('outside [0.8, 1.25]');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E6, the "which base sail / which ramp" half. The second table's derivation
+  // must be explicit, or a reader cannot tell an overlay from a measurement.
+  // Asserts the `spec N.6 E6` MARKER, not merely the word "ramp". MEASURED:
+  // with a bare toContain('ramp') this row reds ZERO times when the build-side
+  // check is deleted, because estimate_polars.mjs independently refuses a ramp
+  // method with no ramp block and its message also contains "ramp". The row
+  // looked like it covered E6 and covered only "the build aborts somehow" —
+  // the #518 "a row served by a different term" class. Only the marker
+  // discriminates which layer refused.
+  it('E6: aborts, naming the rule, when the second sail’s ramp block is missing', () => {
+    const src = freshSource();
+    delete src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.ramp;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('spec N.6 E6');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // A ramp block PRESENT but incomplete is a distinct shape: the estimator
+  // would fail later and less clearly (an undefined boat id reaches boatOf as
+  // a lookup miss), so the per-field check is what names the actual omission.
+  it.each(['boatId', 'fromSailId', 'toSailId'])(
+    'E6: aborts, naming the field, when estimator.ramp.%s is missing',
+    (field) => {
+      const src = freshSource();
+      const ramp = src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.ramp!;
+      delete (ramp as Record<string, unknown>)[field];
+      const r = run(src);
+      expect(r.ok).toBe(false);
+      expect(r.output).toContain(`estimator.ramp.${field}`);
+      expect(allWrittenFiles(r)).toEqual([]);
+    },
+  );
+
+  // E6. A ramp pointing at ANOTHER boat's sail would silently reintroduce the
+  // donor's hull into the second table while the block still looked complete.
+  it('E6: aborts when the second sail derives from another boat’s base table', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.baseBoatId = 'elan-444';
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('its OWN base table');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E6. Two independent scaled base tables on one boat would be two different
+  // derivations presented as one boat's inventory.
+  it('E6: aborts when a boat declares two scaled base tables', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.method =
+      'salona45-uniform-scalar-v1';
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('expected exactly 1');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E7. The rule that makes the 85.7-vs-77.76 m2 sail-area trap a red build
+  // rather than a 5% error through every cell that nothing downstream can see.
+  it('E7: aborts when an estimator INPUT moves without the table being regenerated', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!.inputs![
+      'sailAreaUpwindM2'
+    ]!.value = 85.7;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('do not reproduce');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E7 must cover the SECOND table too, or the ramp step is unguarded: the
+  // base table would be checked and the overlay could be anything at all.
+  it('E7: aborts when the second sail’s committed table is hand-edited', () => {
+    const src = freshSource();
+    const speeds = src.boats.find((b) => b.id === TIER_C)!.sails['genoa'].speeds;
+    speeds[0][0] = speeds[0][0] + 0.01;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('do not reproduce');
+    expect(r.output).toContain('genoa');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E7 also pins the DECLARED scalar against the inputs. Without this a block
+  // could advertise a scalar it was not built with — the number a reviewer
+  // reads first and is least likely to recompute.
+  it('E7: aborts when the declared scalar disagrees with the committed inputs', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!.scalar = 1.111;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('declared scalar 1.111');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // E8: "every existing structural check is retained unchanged". That is a
+  // rule about ABSENCE of a bypass, so the honest test is to fire the OLD
+  // guards at a NEW tier-C boat and confirm they still bite there. Without
+  // this, E1-E7 could all pass while a tier-C boat skipped the axis,
+  // plausibility and anchor-band guards entirely.
+  it('E8: the pre-existing plausibility bound still bites on a tier-C boat', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.validation!.maxSpeedKn = 5;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain(`${TIER_C}/`);
+    expect(r.output).toContain('implausible');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('E8: the pre-existing anchor band still bites on a tier-C boat', () => {
+    const src = freshSource();
+    const a = src.boats.find((b) => b.id === TIER_C)!.validation!.anchors![0];
+    a.maxKn = a.minKn; // collapse the band onto its floor
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain(a.label);
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('E8: the pre-existing TWS axis guard still bites on a tier-C boat', () => {
+    const src = freshSource();
+    const tws = src.boats.find((b) => b.id === TIER_C)!.tws;
+    [tws[0], tws[1]] = [tws[1], tws[0]];
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain(`${TIER_C}: tws`);
     expect(allWrittenFiles(r)).toEqual([]);
   });
 });
