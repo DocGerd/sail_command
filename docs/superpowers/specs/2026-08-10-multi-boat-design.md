@@ -769,6 +769,41 @@ it establishes the connectivity ceiling but does **not** discharge §C.6's *"no 
 `verify_mask.py` run at its own derived gate"*. That run is owed per boat at its catalogue PR — and
 `verify-mask.yml` is **not a required check** (#550), so it reds silently and someone has to look.
 
+### N.6a MERGE ORDER — a composition hazard that no single branch contains
+
+**Rule: no catalogue entry beyond `salona-45` may reach a release in which
+`workerClient.ts` still hardcodes `DEFAULT_BOAT_ID`.**
+
+This is a release gate, not a code change, and it is written here because it cannot be enforced by
+reviewing any one branch. Found in the PR #563 review, 2026-08-18.
+
+The three branches delivering §N are individually correct and jointly ordered:
+
+| Branch | Delivers | Safe alone? |
+|---|---|---|
+| picker | selection, persistence, §C.7 clamp, the honesty chips | yes, at a one-boat catalogue |
+| routing | `not-compared`, **the `DEFAULT_BOAT_ID` fix** | yes |
+| fleet | the two tier-C catalogue entries and their polars | **only after routing** |
+
+**The hazard, concretely.** Merge picker + fleet WITHOUT routing and a user selects the 2.30 m boat:
+`SAFETY_DEPTH_FIELD.min` follows the selection, the clamp fires, and the UI announces *"the minimum
+for ⟨that boat⟩"* — while `workerClient.ts` still passes `DEFAULT_BOAT_ID`, so `protocol.ts` resolves
+the Salona 45 and the solver takes **both** its polars and its §C.4(a) relaxation floor from the
+wrong hull. #53 relaxation then reaches a **2.1 m gate under a 2.30 m keel**. That is §L's *"single
+most dangerous shortcut in this feature"*, now with the interface actively asserting the opposite —
+which is worse than the pre-#54 state, where nothing claimed anything.
+
+Note what makes it invisible: each branch is correct against its own diff, every gate passes on
+each, and the composition appears in none of them. This repo already records that cross-PR
+composition bugs survive per-PR review and need a sweep over the cumulative diff; this is that
+class, caught before the merge rather than after.
+
+**Consequence for the release runbook's fold step:** if the fleet entries slip out of a release
+that ships the picker, `changelog.d/54-2.added.md` describes four capabilities — picking a boat,
+the clamp, the keel sentence, the withdrawn-boat fallback — that are **unreachable in a one-boat
+catalogue**. Changelog prose carries the same evidentiary standard as code here and freezes into a
+versioned section at the cut, so the fragment must be re-scoped or held back with the entries.
+
 ### N.7 What is deferred, and why — so it is not read as forgotten
 
 - **Grand Soleil 46 (MARIN)** and **EASY GO! (Salona 44, 2.55 m)** — deferred together, for one
