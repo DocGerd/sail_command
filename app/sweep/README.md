@@ -139,6 +139,56 @@ touched).
   line is diagnostic only in both modes — it never drives the exit code,
   which comes solely from the per-plan compare.
 
+  **Canonical mode is BLIND TO SAIL ORDER (#549)** — a third order regression
+  it cannot see, unlike the two the digest exists to catch. `canonicalizePlan`
+  SORTS each plan's `sails` array by `sailId`, which is precisely what makes
+  the pre-/post-rename shapes comparable, so two plans holding identical sail
+  entries in a DIFFERENT ORDER canonicalise to the same object and compare
+  IDENTICAL — including the whole-file digest, which is computed over that
+  same sorted serialisation. Sail order is not cosmetic: spec §E.3 makes
+  `PlanRequest.sailIds` the SOLVE order. Two things bound this, and neither
+  is the canonicaliser: **byte mode is not blind to it** (a reordered array
+  changes the serialised bytes), and `recommended`, `comparisonComplete` and
+  `rigRecommendation` pass through UNSORTED, so a reordering that actually
+  changed the verdict still shows. What canonical mode cannot see is a
+  reordering that changed nothing *but* the order. **Certify a deliberate
+  sail-order change in BYTE mode**; do not reach for `--canonical` for it, and
+  do not "fix" this by dropping the sort — that would break the rename
+  comparison the mode exists for.
+
+- **Rig-verdict-change mode (`--rig-verdict-change`)** —
+  `node app/sweep/compare.mjs --rig-verdict-change <BASE> <HEAD>`. The one
+  mode valid for a change that deliberately moves `rigRecommendation` and
+  nothing else (#553 / spec §N.4's `not-compared` verdict). It exists because
+  **neither other mode can certify that class**: `canonicalizePlan`'s `rest`
+  destructure excludes only `genoa`/`fock`/`genoaReason`/`fockReason`/`sails`/
+  `comparisonComplete`, so `rigRecommendation` passes straight through and is
+  compared verbatim in byte AND canonical mode alike. Measured on
+  `light-motorless` while #553 was in review: **12/33 differ in byte mode,
+  12/33 in canonical, 0/33 with the field elided** — and the only arms that
+  read IDENTICAL are `becalmed`/`deep-becalmed`, which the section below
+  already names as vacuous. Partial green from exactly the arms that prove
+  nothing.
+
+  It is deliberately **two assertions**, because eliding a field is otherwise
+  a comparator that cannot fail:
+
+  1. every plan compares equal with `rigRecommendation` deleted from both
+     sides — so any real routing change still fails, and
+  2. every plan whose verdict *did* change went `{kind:'decided',rig:R}` ->
+     `{kind:'not-compared'}` **and** the HEAD plan really has fewer than two
+     non-null `sails[].result`. Without (2) a HEAD that withheld a comparison
+     it actually made would pass.
+
+  **ORDER-SENSITIVE**, unlike the other two modes: `<dirA>` must be BASE and
+  `<dirB>` HEAD, because (2) asks a directional question. Passing
+  `--canonical` alongside it is refused — they are different claims. The
+  summary prints the number of verdicts that moved, so a run that observed
+  ZERO changes is visibly different from a correct one rather than reading
+  the same. Pinned end-to-end (as real child processes) in
+  `canonicalize.test.mjs`, including a row asserting that **byte mode fails
+  on the very pair this mode passes**.
+
 **The byte comparator is BLIND to a `PlanResultOk` rename in the reassuring
 direction on `becalmed` and `deep-becalmed`.** Every plan in those two arms
 is `PlanResultError` (`error/calm-motor-off`, `error/unreachable`, or on

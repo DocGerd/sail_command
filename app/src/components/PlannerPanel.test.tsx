@@ -19,6 +19,7 @@ import {
   type Settings,
 } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
+import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
@@ -181,6 +182,9 @@ interface Overrides {
   onDepartureChange?: (ms: number) => void;
   settings?: Settings;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
+  // #539 item 2: overridable so a row can exercise a draft where the
+  // per-boat floor and the catalogue default DISAGREE.
+  boat?: BoatDef;
   canPlan?: boolean;
   planDisabledReason?: string | null;
   online?: boolean;
@@ -210,6 +214,10 @@ function baseProps(overrides: Overrides = {}) {
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
     onSettingsChange: vi.fn(),
+    // #539 item 2: the panel derives its inline safety-depth bounds from
+    // the SELECTED boat. This default keeps every pre-existing row on the
+    // catalogue default boat, i.e. the 2.2 m floor they already assert.
+    boat: boatById(DEFAULT_BOAT_ID),
     canPlan: true,
     planDisabledReason: null,
     online: true,
@@ -599,6 +607,27 @@ describe('PlannerPanel', () => {
       expect(props.onSettingsChange).toHaveBeenCalledWith({
         ...DEFAULT_SETTINGS,
         safetyDepthM: 2.2,
+      });
+    });
+
+    it('#539 item 2: the inline floor follows the SELECTED boat, not the catalogue default', () => {
+      // The clamp row above pins 2.2 m for the default boat; this pins that
+      // the floor is DERIVED rather than fixed. 2.30 m draft -> spec J OQ-1's
+      // `draftM + 0.1` -> 2.4, so a panel still reading the module-level
+      // SAFETY_DEPTH_FIELD would clamp a 2.30 m keel to 2.2 m — under its own
+      // hull, on the quiet path that produces no `shallow` block and so
+      // discloses nothing.
+      const props = renderPanel({
+        boat: { ...boatById(DEFAULT_BOAT_ID), id: 'deep-46', draftM: 2.3 },
+      });
+      const input = screen.getByLabelText('Safety depth (m)');
+      expect(input).toHaveAttribute('min', '2.4');
+      fireEvent.change(input, { target: { value: '1' } });
+      fireEvent.blur(input);
+      expect(input).toHaveValue(2.4);
+      expect(props.onSettingsChange).toHaveBeenCalledWith({
+        ...DEFAULT_SETTINGS,
+        safetyDepthM: 2.4,
       });
     });
 
@@ -1124,6 +1153,21 @@ describe('PlannerPanel', () => {
       const chip = container.querySelector('.chip-faster-rig');
       expect(chip?.textContent).toBe(
         'Rig does not matter here — this passage runs entirely under engine',
+      );
+    });
+
+    // #553: the MIRROR of RouteSummary.test.tsx's not-compared row. These are
+    // two independent call sites and #259's own banner is about exactly this
+    // pair drifting apart, so one row cannot stand in for the other.
+    it('#553: a not-compared verdict renders the honest no-comparison chip', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan: makePlan({ rigRecommendation: { kind: 'not-compared' } }),
+        rig: 'genoa',
+      });
+      const chip = container.querySelector('.chip-faster-rig');
+      expect(chip?.textContent).toBe(
+        'The sails were not compared for this passage, so no faster rig is claimed',
       );
     });
   });

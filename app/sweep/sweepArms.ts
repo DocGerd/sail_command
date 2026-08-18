@@ -37,7 +37,7 @@ import { planRoute } from '../src/routing/planRoute';
 import { uniformWindGrid } from '../src/test/fixtures';
 import { boatById, DEFAULT_BOAT_ID, polarKey } from '../src/data/boats';
 import { defaultBoatSnapshot, DEFAULT_SETTINGS } from '../src/types';
-import type { LatLon, MaskMeta, PolarTable, Settings, WindGrid } from '../src/types';
+import type { LatLon, MaskMeta, PolarTable, SailId, Settings, WindGrid } from '../src/types';
 import { solverTimeoutMs } from '../src/test/timeouts';
 import { ARM_NAMES } from './armNames';
 
@@ -346,6 +346,25 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
       readFileSync(resolve(dataDir, '..', sail.polarAsset), 'utf8'),
     ) as PolarTable;
   }
+  // #553/#549: derived from the SAME `boat` resolved above, never a bare
+  // `['genoa', 'fock']` literal. `PlanRequest.sailIds` IS the solve order
+  // (spec §E.3), so a hardcoded pair silently pins the sweep to two sail ids
+  // that the catalogue may rename, reorder or extend — and because the sweep
+  // lives outside `app/src/`, the #54 structural guard
+  // (`src/test/sailLiteralCallSites.test.ts`) does not scan this file and
+  // could never have reported the literal.
+  //
+  // Byte-identical to the previous literal at today's catalogue (the Salona
+  // 45's sails are `genoa` then `fock`, in that order), so no recorded
+  // baseline is invalidated by this change alone. It is the derivation, not
+  // the current value, that is the point.
+  //
+  // The `as SailId` cast mirrors `data/boats.ts`'s own DEFAULT_SAIL_IDS:
+  // `SailDef.id` is declared plain `string` (SailDef is the general per-boat
+  // shape, not narrowed to any one boat's literal ids) while `SailId` is the
+  // catalogue-derived union, and `boat` here always IS a catalogue entry.
+  const sailIds: readonly SailId[] = boat.sails.map((s) => s.id as SailId);
+
   const harbors = JSON.parse(readFileSync(resolve(dataDir, 'harbors.json'), 'utf8')) as Harbor[];
   // #452: origin defaults to flensburg — every pre-#452 arm omits `originId`,
   // so this resolves exactly as it always has.
@@ -378,7 +397,7 @@ export function runArm(label: (typeof ARM_NAMES)[number]): void {
             destinationHarborId: h.id,
             departureMs: T0,
             settings: arm.settings,
-            sailIds: ['genoa', 'fock'],
+            sailIds,
             // #54 Task 11: required by PlanRequest. The solver takes its boat
             // from PlanDeps.boat, never from the request, so this field does
             // not reach the search and the recorded baseline is unaffected.

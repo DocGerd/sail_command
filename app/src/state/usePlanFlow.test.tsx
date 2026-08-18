@@ -17,7 +17,12 @@ import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import { __resetDbForTests, getPlan, listPlans, savePlan } from '../services/db';
 import { destinationPoint } from '../lib/geo';
 import { recalcRequest } from '../lib/recalc';
-import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
+import {
+  OFF_CATALOGUE_BOAT,
+  TEST_MASK_META,
+  TEST_POLAR,
+  uniformWindGrid,
+} from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   type NoRouteReason,
@@ -628,6 +633,53 @@ describe('usePlanFlow', () => {
 
     expect(result.current.planning).toEqual({ phase: 'idle' });
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  // #553 MAJOR 5: the THIRD disposal site, and the one that does not go
+  // through `disposeAfterFailure` — it disposes inline and nulls the singleton
+  // refs. Paired with the worker-fatal row directly above, which must keep
+  // disposing: together they isolate the failure KIND as the deciding
+  // variable. This row observes BOTH halves of the carve-out, because the
+  // teardown has two parts and skipping only one would be worse than skipping
+  // neither: the Worker is not terminated, AND the client is reused rather
+  // than rebuilt (nulling the refs while the worker is alive would strand it
+  // and have ensureClient build a second one).
+  it('#553: a boat-not-in-catalogue rejection leaves the healthy worker alive and reuses the client', async () => {
+    const w = fakeWorker();
+    const makeClient = vi
+      .fn()
+      .mockImplementation(() => new RoutingClient(() => w as unknown as Worker));
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), {
+      wrapper: AppStateProvider,
+    });
+
+    // A boat snapshot the catalogue does not hold — the state a saved plan
+    // keeps after its boat leaves BOATS (spec §I.3).
+    const staleReq: PlanRequest = { ...REQ, boat: OFF_CATALOGUE_BOAT };
+    await act(async () => {
+      await result.current.run(staleReq, 'Stale boat');
+    });
+
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.boatNotInCatalogue',
+    });
+    // plan() rejects before posting, so the worker never saw a plan message.
+    expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(0);
+    // Half 1: the worker is NOT torn down.
+    expect(w.terminate, 'the worker never saw the request and is healthy').not.toHaveBeenCalled();
+
+    // Half 2: the next run reuses the same client instead of rebuilding.
+    await act(async () => {
+      void result.current.run(REQ, 'Retry with the default boat');
+      await flush();
+    });
+    expect(makeClient, 'the healthy client must be reused, not rebuilt').toHaveBeenCalledTimes(1);
   });
 
   // #433: a savePlan() failure AFTER routing already succeeded used to

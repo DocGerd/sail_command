@@ -23,6 +23,31 @@
  * matched, which is exactly the failure mode this file exists to avoid: a
  * canonicaliser that cannot fail is worse than none.
  *
+ * STATED LIMIT — canonical mode is BLIND TO SAIL ORDER (#549). The `sails`
+ * array is SORTED by `sailId` below, which is exactly what makes the
+ * pre-rename and post-rename shapes comparable at all, and is therefore not a
+ * defect to be fixed here. But it means two plans whose `sails` lists hold
+ * identical entries in a DIFFERENT ORDER canonicalise to the same object and
+ * compare IDENTICAL. That matters because `PlanRequest.sailIds` order is not
+ * cosmetic: spec §E.3 makes it the SOLVE order, so reordering it changes
+ * which sail solves first and which progress messages a plan reports. Two
+ * things bound the exposure, and neither is this file:
+ *
+ *   1. The BYTE comparator (`compare.mjs`'s default mode) is NOT blind to it
+ *      — a reordered `sails` array changes the serialised bytes. Canonical
+ *      mode is the deliberately weaker check, used only to certify a
+ *      known shape change.
+ *   2. `recommended`, `comparisonComplete` and `rigRecommendation` all pass
+ *      through in `rest`, UNSORTED, so an order change that actually altered
+ *      the verdict (e.g. the `a.etaMs <= b.etaMs` tie-break in
+ *      `planRoute.ts`'s `assemble`, which is position-dependent) still shows
+ *      up. What canonical mode cannot see is a reordering that changed
+ *      nothing BUT the order.
+ *
+ * So: certify a deliberate SAIL-ORDER change in byte mode, never in canonical
+ * mode. Do not "fix" this by dropping the sort — that would break the rename
+ * comparison this file exists to make possible.
+ *
  * Every call returns a NEW object — the input plan (and any nested `sails`
  * array or `RigResult`) is never mutated. That matters here specifically
  * because `sweepArms.ts` writes a shared `rows` map that this comparator's
@@ -108,6 +133,74 @@ export function canonicalizePlan(plan) {
  * with that side's OWN `JSON.parse` result — never pass a pre-sorted key
  * list or a shared object through it.
  */
+/**
+ * #553 / MAJOR 4 — the third comparison mode's two halves.
+ *
+ * WHY A THIRD MODE EXISTS. `rigRecommendation` is NOT in `canonicalizePlan`'s
+ * `rest` exclusion list, so it passes through and is compared verbatim in
+ * BOTH existing modes. A PR that deliberately changes that field therefore
+ * has no mode that can certify it: byte and canonical both report a
+ * difference per affected plan (MEASURED in review on `light-motorless`:
+ * 12/33 differ in each mode, 0/33 with the field elided), and the only arms
+ * reading IDENTICAL are `becalmed`/`deep-becalmed`, which §K already names as
+ * vacuous — 33/33 errors, `assemble` never reached. Partial green from
+ * exactly the arms that prove nothing is the failure §K warns about.
+ *
+ * "Ignore the field" ALONE would be a comparator that cannot fail: a HEAD
+ * emitting `not-compared` on a fully-compared plan would sail through it. So
+ * this is deliberately two assertions, and `compare.mjs` runs both.
+ *
+ * ORDER-SENSITIVE, unlike byte and canonical mode. `<dirA>` must be BASE and
+ * `<dirB>` HEAD: half 2 asks a directional question ("did A's verdict become
+ * B's in the one permitted way"), so swapping the arguments is a different
+ * claim, not the same one.
+ */
+
+/** Half 1's subject: the plan with `rigRecommendation` removed. */
+export function withoutRigRecommendation(plan) {
+  if (plan == null || plan.status !== 'ok') return canonicalizePlan(plan);
+  const { rigRecommendation: _rr, ...rest } = canonicalizePlan(plan);
+  return rest;
+}
+
+/**
+ * Half 2: is this plan's BASE -> HEAD verdict change one #553 permits?
+ *
+ * Returns `null` when the verdict did not change at all, otherwise a
+ * `{ ok, why }` verdict. Permitted means ALL THREE of:
+ *   - BASE was `{ kind: 'decided', rig: <any> }`,
+ *   - HEAD is  `{ kind: 'not-compared' }`,
+ *   - the HEAD plan really has FEWER THAN TWO non-null `sails[].result`, i.e.
+ *     no comparison was available — which is the property that makes
+ *     `not-compared` true rather than merely asserted.
+ *
+ * The third clause is the one that stops this from being a blanket ignore.
+ * Read off HEAD's own `sails` via `canonicalizePlan`, so it works on either
+ * container shape rather than assuming the post-rename one.
+ */
+export function classifyRigVerdictChange(planA, planB) {
+  const ca = canonicalizePlan(planA);
+  const cb = canonicalizePlan(planB);
+  const ra = ca == null ? undefined : ca.rigRecommendation;
+  const rb = cb == null ? undefined : cb.rigRecommendation;
+  if (JSON.stringify(ra ?? null) === JSON.stringify(rb ?? null)) return null;
+
+  if (!ra || ra.kind !== 'decided') {
+    return { ok: false, why: `BASE verdict was ${JSON.stringify(ra ?? null)}, expected 'decided'` };
+  }
+  if (!rb || rb.kind !== 'not-compared') {
+    return { ok: false, why: `HEAD verdict is ${JSON.stringify(rb ?? null)}, expected 'not-compared'` };
+  }
+  const solved = (cb.sails ?? []).filter((x) => x.result != null).length;
+  if (solved >= 2) {
+    return {
+      ok: false,
+      why: `HEAD says 'not-compared' but ${solved} sails produced a result — a comparison WAS available`,
+    };
+  }
+  return { ok: true, why: `decided/${ra.rig} -> not-compared (${solved} solved)` };
+}
+
 export function canonicalizeArmFile(plansByHarbour) {
   const out = {};
   for (const k of Object.keys(plansByHarbour)) out[k] = canonicalizePlan(plansByHarbour[k]);
