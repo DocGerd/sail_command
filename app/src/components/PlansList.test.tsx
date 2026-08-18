@@ -381,6 +381,14 @@ describe('PlansList recalculate (#114)', () => {
       await savePlan(plan as unknown as Plan);
     }
 
+    // #547 part D: a damaged record can lack createdAtMs entirely, distinct
+    // from the missing-field damage saveDamaged() above exercises.
+    async function saveDamagedMissingCreatedAt(id: string, name: string) {
+      const plan = makePlan({ id, createdAtMs: 2000, name }) as unknown as Record<string, unknown>;
+      delete plan.createdAtMs;
+      await savePlan(plan as unknown as Plan);
+    }
+
     it('is shown, with its name and creation date, alongside readable rows', async () => {
       await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, name: 'Readable' }));
       await saveUnreadable('p2', 2000, 'From The Future');
@@ -428,6 +436,20 @@ describe('PlansList recalculate (#114)', () => {
 
       expect(await screen.findByText(/incomplete or damaged/i)).toBeInTheDocument();
       expect(screen.queryByText(/newer version of the app/i)).not.toBeInTheDocument();
+    });
+
+    // #547 part D: readNumber falls back to 0 for a missing createdAtMs,
+    // and formatDateTime(0, lang) would otherwise render an epoch date
+    // ("1 Jan 1970") on a row whose only action is an irreversible delete —
+    // gate the Created line the same way the name is already gated, rather
+    // than show a fabricated date.
+    it('omits the Created line rather than show an epoch date when createdAtMs is missing', async () => {
+      await saveDamagedMissingCreatedAt('p4', 'No Date');
+
+      const { container } = renderList();
+
+      await screen.findByText('No Date');
+      expect(container.querySelector('.plans-list-created')).not.toBeInTheDocument();
     });
 
     it('offers no way to open or recalculate it, but can still be deleted by the user', async () => {

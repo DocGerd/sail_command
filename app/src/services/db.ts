@@ -40,10 +40,12 @@ export async function __resetDbForTests(): Promise<void> {
 }
 
 // #54 spec §I.3: a row the app cannot open is LISTED, never skipped and
-// never deleted. `name` and `createdAtMs` are readable from any shape, so an
-// unreadable row still identifies itself to the user; everything else needs a
-// plan the normaliser could actually produce, hence the discriminated union
-// rather than nullable fields on one shape.
+// never deleted. `name` and `createdAtMs` are read from the raw record where
+// present, so an unreadable row identifies itself when the stored bytes
+// still carry them — not for every shape, since a damaged record can lack
+// either; everything else needs a plan the normaliser could actually
+// produce, hence the discriminated union rather than nullable fields on one
+// shape.
 export type PlanSummary =
   | {
       kind: 'ok';

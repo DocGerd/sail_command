@@ -536,7 +536,7 @@ export const de = {
   // write, foreign tool) lands here too — and the row's only control is an
   // irreversible delete, so the copy must not overstate recoverability.
   'plansList.unreadable.newerVersion':
-    'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese Version kann ihn nicht lesen – eine neuere kann es.',
+    'Dieser Plan wurde mit einer neueren Version der App gespeichert — diese Version kann ihn nicht lesen.',
   'plansList.unreadable.damaged':
     'Dieser Plan kann nicht geöffnet werden – der gespeicherte Datensatz ist unvollständig oder beschädigt. Er bleibt gespeichert.',
   // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
