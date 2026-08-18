@@ -80,7 +80,8 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
   it('shows NO keel-assumption sentence for a boat that declares none', () => {
     renderPicker();
     // The Salona 45 is spec J OQ-4's model-level reference boat, not a fleet
-    // hull whose keel was assumed, so it carries no `keelAssumption`. The
+    // hull whose keel was assumed, so its draftProvenance is
+    // `hullVerified: true`. The
     // positive case — that the sentence DOES render when one is declared —
     // is BoatPicker.multiBoat.test.tsx's `deep-46` row; an absence assertion
     // alone would pass just as happily against a component that can never

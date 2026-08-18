@@ -19,7 +19,17 @@ vi.mock('../data/boats', async (importOriginal) => {
     id: 'deep-46',
     name: 'Deep 46',
     draftM: 2.3,
-    keelAssumption: 'standard deep keel (builder specification)',
+    // The REAL catalogue field, with the shape data/boats.ts declares. An
+    // earlier revision of this fixture invented `keelAssumption`, which the
+    // catalogue never wrote — so the component rendered from a field only the
+    // fixture supplied and the paragraph was dead for every real fleet boat
+    // (the #563/#565 cross-branch Blocker). A fixture that does not match the
+    // catalogue's shape proves nothing about the catalogue.
+    draftProvenance: {
+      keel: 'standard deep keel',
+      hullVerified: false,
+      note: 'Fixture: builder specification, not checked against the hull.',
+    },
     sails: salona.sails.map((s) => ({
       ...s,
       polarProvenance: { tier: 'estimated' as const, note: `estimated note for ${s.id}` },
@@ -30,6 +40,9 @@ vi.mock('../data/boats', async (importOriginal) => {
     id: 'shoal-40',
     name: 'Shoal 40',
     draftM: 1.6,
+    // Inherits the Salona 45's `hullVerified: true` through the spread, which
+    // is deliberately the NO-caveat case: it is what makes 'renders it for
+    // that boat ONLY' discriminating rather than vacuous.
     sails: salona.sails.map((s) => ({
       ...s,
       polarProvenance: { tier: 'certificate' as const, note: `certificate note for ${s.id}` },
@@ -189,7 +202,7 @@ describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
     renderPicker();
     expect(
       screen.getByText(
-        "Assumed keel: standard deep keel (builder specification). Not checked against this vessel's papers.",
+        "Assumed keel: standard deep keel. Not checked against this vessel's papers.",
       ),
     ).toBeInTheDocument();
   });

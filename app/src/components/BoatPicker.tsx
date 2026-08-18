@@ -33,10 +33,19 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
   const tier = weakestPolarTier(boat);
   const inputId = `boat-option-${boat.id}`;
   const keelId = `${inputId}-keel`;
+  // Spec N.2's disclosure fires on `hullVerified === false`, i.e. "this draft
+  // was NOT checked against this hull's own papers" — not on the presence of
+  // a field. `draftProvenance` is REQUIRED on every BoatDef, so a fleet entry
+  // cannot ship without answering the question; an OPTIONAL field was the
+  // #563/#565 cross-branch defect, where the two fleet boats carried
+  // `draftProvenance` while this component still read a `keelAssumption` that
+  // nothing wrote, and the paragraph was silently never emitted for exactly
+  // the two hulls the spec requires it for.
+  const keelUnverified = !boat.draftProvenance.hullVerified;
   // `exactOptionalPropertyTypes`: the prop must be OMITTED, not passed as
-  // `undefined`, for a boat that declares no keel assumption — same shape as
+  // `undefined`, when there is no caveat paragraph to point at — same shape as
   // SettingsPanel.tsx's own `fieldExtra`/`inputExtra` spreads.
-  const keelDescribedBy = boat.keelAssumption !== undefined ? { 'aria-describedby': keelId } : {};
+  const keelDescribedBy = keelUnverified ? { 'aria-describedby': keelId } : {};
   return (
     <div
       className={['boat-option', selected ? 'boat-option-selected' : null]
@@ -95,13 +104,14 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           radio's `aria-describedby` above is what still carries it to a
           screen reader, as a description rather than a name.
 
-          Absent on a boat that declares no assumption — today that is the
-          whole catalogue, because the Salona 45 is the app's model-level
-          reference boat (spec J OQ-4's carve-out) and not a fleet hull whose
-          keel was assumed. It renders as soon as a fleet entry lands. */}
-      {boat.keelAssumption !== undefined && (
+          Absent on a hull-verified boat — today that is the whole catalogue,
+          because the Salona 45 is the app's model-level reference boat (spec J
+          OQ-4's carve-out) with no individual vessel whose papers could
+          disagree. It renders for every fleet entry, all of which are
+          `hullVerified: false`. */}
+      {keelUnverified && (
         <p className="boat-option-keel" id={keelId}>
-          {t('boat.keel.assumed', { keel: boat.keelAssumption })}
+          {t('boat.keel.assumed', { keel: boat.draftProvenance.keel })}
         </p>
       )}
       <Disclosure className="boat-option-polars" summary={t('boat.polarDetail.summary')}>
