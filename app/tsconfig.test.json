@@ -89,6 +89,12 @@
   // the per-boat gate scan created — the draft, which the Python script cannot
   // import from boats.ts, and the ceil-to-decimetre gate derivation, which now
   // exists in both languages. Same reason as maskTolerance.test.ts above.
+  // verifyMaskConnectivity.test.ts (#550): reads pipeline/verify_mask.py (its
+  // SEED_LAT/SEED_LON, CONNECTIVITY_EXCEPTIONS_M and KNOWN_DISCONNECTED
+  // literals) AND the real shipped mask.bin/mask.meta.json/harbors.json via
+  // `node:fs`, to promote the pipeline's per-harbor connectivity flood fill
+  // from the advisory-only `verify-mask.yml` workflow into the REQUIRED
+  // `app` Vitest suite — same reason as verifyMaskBoatGate.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -105,6 +111,7 @@
     "src/**/polarProvenance.test.ts",
     "src/**/buildPolars.failClosed.test.ts",
     "src/**/verifyMaskBoatGate.test.ts",
+    "src/**/verifyMaskConnectivity.test.ts",
     "sweep/**/*.ts"
   ]
 }

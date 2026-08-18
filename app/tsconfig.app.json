@@ -63,6 +63,9 @@
   // verifyMaskBoatGate.test.ts (#54 Task 13) is the same shape once more —
   // reads pipeline/verify_mask.py and pipeline/polars-source.json via
   // `node:fs`.
+  // verifyMaskConnectivity.test.ts (#550) is the same shape again — reads
+  // pipeline/verify_mask.py, and the real shipped mask.bin/mask.meta.json/
+  // harbors.json, via `node:fs`.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -78,6 +81,7 @@
     "src/**/chipShallowFill.test.ts",
     "src/**/polarProvenance.test.ts",
     "src/**/buildPolars.failClosed.test.ts",
-    "src/**/verifyMaskBoatGate.test.ts"
+    "src/**/verifyMaskBoatGate.test.ts",
+    "src/**/verifyMaskConnectivity.test.ts"
   ]
 }
