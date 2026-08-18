@@ -960,9 +960,11 @@ WRITE_CAPABLE_TOKENS=(
 # `/dev/null` (`>  /dev/null`). The boundary is whitespace-general per
 # character (space or tab, see strip_inert_redirects), but runs are not
 # collapsed - that would be a further widening nobody has asked for.
-# Longest Bash command still eligible for the read-only exemption. See the
-# bound's own measurement table in bash_is_provably_readonly. Anything longer
-# is not exempt and therefore fires.
+# Longest Bash command, IN BYTES, still eligible for the read-only exemption.
+# The unit is load-bearing and is enforced by a scoped `LC_ALL=C` byte count
+# at the check site - see the bound's own measurement table in
+# bash_is_provably_readonly. Anything longer is not exempt and therefore
+# fires.
 MAX_EXEMPTIBLE_CMD_LEN=32768
 
 INERT_REDIRECTS=(
@@ -1022,7 +1024,8 @@ strip_inert_redirects() {
   # in <0.1 s, the bash-substitution form killed at the cap. `tr` does the
   # same job in 0.01 s. This is the identical fail-open that got `;`/`&&`/
   # newline segmentation rejected in #404/#405 (a 343 KB heredoc timing the
-  # hook out), so it is fixed the same way it would have been caught.
+  # hook out), so the tab path is fixed the same way it would have been
+  # caught; the length bound below is what closes the class.
   #
   # THE SENTINEL IS LOAD-BEARING, not decoration. `$( )` strips TRAILING
   # NEWLINES, and the newline/CR check runs a few lines below this function's
@@ -1415,10 +1418,13 @@ bash_is_provably_readonly() {
   local cmd="$1" c t v verb rest
   local nl=$'\n' cr=$'\r'
 
-  # LENGTH BOUND, checked before any work at all. This is a SECOND,
-  # INDEPENDENT defence against the timeout-is-a-silent-allow failure above,
-  # and it is deliberately not merged with the `tr` fix: a performance fix is
-  # a moving target (the next contributor adds another pass over the string),
+  # LENGTH BOUND, checked before any work at all. This is what actually
+  # closes the timeout-is-a-silent-allow failure above, and the `tr` fix is
+  # the optimisation beside it, not the other way round: `tr` removes the tab
+  # path's cost but never touches the rescan loop, so with this bound disabled
+  # a 500 KB adjacent-`2>&1` payload with no tabs at all is still killed at
+  # the cap (MEASURED). Keeping both is deliberate: a performance fix is a
+  # moving target (the next contributor adds another pass over the string),
   # while a length bound is a STRUCTURAL guarantee that the exemption cannot
   # be walked past by sheer volume. Over the bound, no command is exempt and
   # the caller fires - the fail-closed direction.
@@ -1427,12 +1433,31 @@ bash_is_provably_readonly() {
   # tab-dense payloads against the PRE-FIX quadratic substitution (the worst
   # case a future regression could reintroduce): 2 KB 0.01 s, 4 KB 0.01 s,
   # 8 KB 0.02 s, 16 KB 0.05 s, 32 KB 0.14 s, 64 KB 0.49 s, and 389 KB killed
-  # at the 5 s cap. 32 KB therefore leaves a ~36x margin under that cap even
+  # at the 5 s cap. 32 KB therefore leaves a wide margin under that cap even
   # if the `tr` fix is undone, while being roughly 10x the largest plausible
   # hand-typed read-only command (a `cat` naming 60 full spec paths measures
   # 3.4 KB). Guard asymmetry decides the direction of the rounding: too small
   # costs a stray prompt, too large costs a silent allow.
-  [ "${#cmd}" -le "$MAX_EXEMPTIBLE_CMD_LEN" ] || return 1
+  #
+  # THE COUNT IS IN BYTES, AND THAT IS THE WHOLE POINT OF THE SUBSHELL.
+  # `${#cmd}` counts CHARACTERS under this environment's C.UTF-8 locale, so a
+  # 32 768-CHARACTER limit admits up to ~131 KB of UTF-8 - and the table above
+  # was measured on single-byte input, so the margin it quotes simply does not
+  # apply to multibyte content. MEASURED at exactly 32 768 characters with
+  # `tr` undone, i.e. the regression this bound exists to survive: all-ASCII
+  # 0.19 s, German umlauts 4.74 s, tab+emoji 4.24 s - against a 5 s cap. The
+  # bound was not holding the line it claims to hold. Counting bytes restores
+  # it, because the densest thing 32 768 BYTES can encode is the all-ASCII
+  # case that measures 0.19 s; any multibyte payload reaching that many bytes
+  # has FEWER characters and so costs less.
+  #
+  # `LC_ALL=C` must be scoped to a SUBSHELL, not set with `local`: a `local
+  # LC_ALL=C` would stay in force for the rest of this function and change
+  # `case` collation underneath every check below it. The subshell costs one
+  # fork (0.001 s on a 400 000-character string) and does not leak - verified
+  # both ways.
+  local nbytes; nbytes=$( LC_ALL=C; printf '%s' "${#cmd}" )
+  [ "$nbytes" -le "$MAX_EXEMPTIBLE_CMD_LEN" ] || return 1
 
   # Strip the inert redirects FIRST, then run every check below on the
   # remainder unchanged (see INERT_REDIRECTS for the soundness argument and
@@ -1655,7 +1680,10 @@ if [ "${1:-}" = "--selftest" ]; then
   # (wave 3, cont.) 299 -> 300, +1: the TIME-BOUNDED row. The Blocker this
   # wave fixed was a timeout-is-a-silent-allow, and nothing in this file
   # could observe a timeout; this row can.
-  EXPECTED_CASES=300
+  # (wave 4) 300 -> 301, +1: the bound's UNIT row. `${#cmd}` counts
+  # characters under C.UTF-8, so a 32 768-CHARACTER limit admitted ~131 KB of
+  # UTF-8; this row fires only if the bound is measured in bytes.
+  EXPECTED_CASES=301
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2341,29 +2369,38 @@ if [ "${1:-}" = "--selftest" ]; then
   # back.
   #
   # WHICH OF THESE ROWS ARE UNIQUE DETECTORS, measured rather than assumed,
-  # against a TWENTY-FOUR-mutation battery: strip reverted; each of the
+  # against a TWENTY-EIGHT-mutation battery: strip reverted; each of the
   # eleven array entries dropped singly; rescan loop collapsed to one pass;
-  # whitespace boundary dropped; bare `>` added; generalised to "any 2>
-  # target"; `>`/`&` deleted from WRITE_CAPABLE_CHARS; tab normalisation
-  # removed; array order reversed; `tr` reverted to the bash substitution;
-  # length bound removed; leading pad removed; fd-close forms ADDED;
-  # sentinel dropped.
+  # whitespace boundary dropped, and each of its two halves dropped alone;
+  # bare `>` added; generalised to "any 2> target"; `>`/`&` deleted from
+  # WRITE_CAPABLE_CHARS; tab normalisation removed; array order reversed;
+  # `tr` reverted to the bash substitution; length bound disabled, deleted,
+  # and reverted from a BYTE count to a CHARACTER count; leading pad
+  # removed; fd-close forms ADDED; sentinel dropped.
   #
-  # FOURTEEN of the twenty-five INERT rows are the suite's ONLY detector for
+  # FOURTEEN of the twenty-six INERT rows are the suite's ONLY detector for
   # some mutation - the NINE single-entry rows whose entry no other row
   # exercises (`2>/dev/null`, `2> /dev/null`, `1>/dev/null`, `1> /dev/null`,
   # `> /dev/null`, `&>/dev/null`, `&> /dev/null`, `1>&2`, `>&2`), plus the
   # adjacent-repeats row (rescan loop), the tab row (tab normalisation), the
-  # leading-position row (leading pad), the time-bounded row (length bound)
-  # and the sentinel assertion (sentinel).
+  # leading-position row (leading pad), the sentinel assertion (sentinel)
+  # and the unit row (byte-vs-character count).
   #
-  # The OTHER ELEVEN are each caught by a sibling too. They are kept for a
+  # THE TIME-BOUNDED ROW IS NO LONGER SOLE, and that is a change from the
+  # wave-3 measurement rather than an error in it: the unit row added in
+  # wave 4 also reds under both bound mutations, so neither row is now the
+  # only detector for either. Both are kept - they fail for different
+  # reasons (one on wall clock, one on a decision) and their diagnostics say
+  # different things.
+  #
+  # The OTHER TWELVE are each caught by a sibling too. They are kept for a
   # stated reason rather than for coverage they do not add - do not read
   # them as unique detectors. The verbatim row is REGRESSION IDENTITY (its
   # name is what tells a future reader the reported defect is back); the
   # `>/dev/null` and combined rows cover one array entry from two
   # directions; the three fd-close rows red together, so no one of them is
-  # sole; and the five near-misses overlap because the two BROADEST wrong
+  # sole; the time-bounded row shares both bound mutations with the unit
+  # row; and the five near-misses overlap because the two BROADEST wrong
   # fixes break several at once (deleting `>`/`&` from WRITE_CAPABLE_CHARS
   # reds five; "any 2> target" reds three). A NARROWER wrong fix still
   # separates them: bare-`>`-in-array reds only `bare > survives`, and
@@ -2485,6 +2522,27 @@ if [ "${1:-}" = "--selftest" ]; then
     fail=1
   elif [ "$(hook_decision "$big_out")" != "ask" ]; then
     echo "SELFTEST FAIL [timeout bound]: over-bound payload got [$(hook_decision "$big_out")] want [ask] - anything past MAX_EXEMPTIBLE_CMD_LEN must fall through to the normal path."
+    fail=1
+  fi
+
+  # --- WAVE 4: THE UNIT. A payload whose CHARACTER count is comfortably
+  # under MAX_EXEMPTIBLE_CMD_LEN but whose BYTE count is over it must still
+  # fire. `ls <spec> ` + 20 000 emoji is 20 0xx characters but ~80 KB, so a
+  # character-counting bound admits it and a byte-counting bound does not.
+  # This is the row that pins the UNIT rather than the threshold: revert the
+  # scoped `LC_ALL=C` byte count to a bare `${#cmd}` and it reds.
+  #
+  # It is a `decide ask` in spirit but is written out here because the
+  # payload has to be built rather than typed.
+  total=$((total + 1))
+  mb_payload=$(printf '\U0001F600%.0s' $(seq 1 20000))
+  mb_json="{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$(json_escape "ls docs/superpowers/specs/x.md $mb_payload")\"}}"
+  mb_out=$(printf '%s' "$mb_json" | timeout -k 2 5 "$SELF" 2>&1); mb_rc=$?
+  if [ "$mb_rc" -eq 124 ] || [ "$mb_rc" -eq 137 ]; then
+    echo "SELFTEST FAIL [bound unit]: multibyte payload KILLED the hook at the 5 s cap."
+    fail=1
+  elif [ "$(hook_decision "$mb_out")" != "ask" ]; then
+    echo "SELFTEST FAIL [bound unit]: a payload of $(LC_ALL=C; printf '%s' "${#mb_payload}") BYTES / ${#mb_payload} characters got [$(hook_decision "$mb_out")] want [ask] - the length bound is counting CHARACTERS, so multibyte content walks past a limit that is documented in bytes."
     fail=1
   fi
 
