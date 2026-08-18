@@ -373,7 +373,7 @@ Related, and deliberately an **open item rather than a finding**: `RIG_TIE_BAND_
 
 ### G.3 The three-tier provenance model
 
-Keep the model even though release 1 **shipped** no tier-C boat: it is the gate that lets a future boat in. (Release 2 does — §N.)
+Keep the model even though release 1 **shipped** no tier-C boat: it is the gate that lets a future boat in. (v0.12.0 does — §N.)
 
 | Tier | Meaning | Consequence |
 |---|---|---|
@@ -528,9 +528,9 @@ Stated explicitly so a future reader does not mistake silence for a decision.
 5. **The `VersionError` behaviour in §I.2 is derived** from IndexedDB's origin-scoping and `db()`'s promise caching, not observed in a browser here. It is standard platform behaviour and the code path reads plainly, but the decision against a version bump rests on it.
 6. **Whether ORC certificates exist for the fleet.** A targeted database search returned nothing for all nine models — **weak** evidence, a negative search result rather than an absence proof. §G.3 rule 4 recommends asking the operator directly before treating tier C as the only option; this is the substance of the open OQ-6. **Re-tested 2026-08-18 and the negative is now better characterised, though still not an absence proof:** ORC's machine-readable endpoint serves CertType 2+3 only, which excludes every Non-Spinnaker certificate — i.e. exactly the white-sail configuration this app needs. So the corpus that was searched could not have contained a usable certificate even if one exists. `data.orc.org`'s own certificate lookup is form/JS-driven and was not reachable programmatically; a human searching that UI remains the cheapest test.
 
-7. **§N.3's estimator accuracy figures come from outside this repository, and the two sources disagree.** The amendment publishes *"a median RMS around 3 % and a median worst cell around 8–10 %"*, and that band is what licenses the shipped copy *"typically within a few percent, up to about ten percent in individual conditions"*. **Method**, so a successor can re-derive rather than trust: an oracle study — for each target hull, choose the single scalar that best fits its known polar to the reference, then measure the residual. It is therefore a **ceiling on what any uniform scalar can achieve**, not a measurement of this estimator, and not a measurement against a real boat. Two independent passes reported median RMS **2.91 %** (n = 390) and **3.44 %** (n = 644 over the same stated band), with median worst-cell **8.12 %** and **10.03 %**; a k-nearest-neighbour alternative's headline **2.55 %** did **not** reproduce and is treated as unverified. The published band is deliberately wide enough to be true under every figure any pass reported — do not narrow it to a decimal without redoing the corpus work and owning it. Both passes agree the residual is polar *shape*, which no scalar corrects.
+7. **§N.3's estimator accuracy figures come from outside this repository, and the two sources disagree.** The amendment publishes *"a median RMS around 3 % and a median worst cell around 8–10 %"*, and that band is what licenses the shipped copy *"typically within a few percent, up to about ten percent in individual conditions"*. **Method**, so a successor can re-derive rather than trust: an oracle study — for each target hull, choose the single scalar that best fits its known polar to the reference, then measure the residual. It is therefore a **ceiling on what any uniform scalar can achieve**, not a measurement of this estimator, and not a measurement against a real boat. Two independent passes reported median RMS **2.91 %** (n = 390) and **3.44 %** (n = 644), with median worst-cell **8.12 %** and **10.03 %**; a k-nearest-neighbour alternative's headline **2.55 %** did **not** reproduce and is treated as unverified. **The population behind those `n` values was not recorded** — whether they count hulls, hull-pairs or polar cells is unknown, and neither is the corpus they were drawn from. That is a real hole in this entry's re-derivability and it is stated rather than papered over: the figures license only the wide worded band, and anyone wanting a decimal must redo the corpus work and record its population. The published band is deliberately wide enough to be true under every figure any pass reported — do not narrow it to a decimal without redoing the corpus work and owning it. Both passes agree the residual is polar *shape*, which no scalar corrects.
 
-8. **The Salona 44's ~2.44 m deep-keel variant** (§N.2, §L row 13's worked case) comes from outside this repository. §C.5's keel-variant paragraph lists variants for the First 47.7, Oceanis 473 and Elan 444 only. The related per-vessel keel identifications in §N.2 — PIRANJA standard 1.90 m, SPEEDY GO! standard 2.10 m, EASY GO! deep 2.55 m — come from the operator's published tech sheets, which is stronger than a model-level default and weaker than the hull's own papers. §M.1's re-verification rule applies to all of them.
+8. **The Salona 44's deep-keel depth comes from outside this repository, and the sources do not agree.** Brochure-level listings give ~2.44 m; the operator's tech sheet for EASY GO! gives **2.55 m** (sources spread 2.55–2.59 m). §N.2 and §L row 13's worked case use **2.55 m**, the fleet's own figure — the ~2.44 m listing is recorded here only so a future reader meeting it knows it was seen and not chosen. §C.5's keel-variant paragraph lists variants for the First 47.7, Oceanis 473 and Elan 444 only. The related per-vessel keel identifications in §N.2 — PIRANJA standard 1.90 m, SPEEDY GO! standard 2.10 m, EASY GO! deep 2.55 m — come from the operator's published tech sheets, which is stronger than a model-level default and weaker than the hull's own papers. §M.1's re-verification rule applies to all of them.
 
 ---
 
@@ -547,7 +547,7 @@ cruiser-racers if no ORC certificate data is obtainable"*), so what follows acti
 the source design wrote, at a scale it did not envisage. That distinction is the honest framing and
 should not be inflated in either direction.
 
-### N.1 Scope — two models, three vessels, and no harbour lost
+### N.1 Scope — two fleet vessels, three catalogue entries, and no harbour lost
 
 | Ship | Model | Vessel(s) | Draft | Derived gate | Basis |
 |---|---|---|---|---|---|
@@ -574,8 +574,10 @@ harbour becomes unreachable for any boat and no new connectivity ceiling is cros
 
 ### N.2 Drafts — an accepted deviation from §M.1, and it must be disclosed
 
-**Decided 2026-08-18:** ship the **standard listed keel** for each model, sourced to the builder's
-published specification, **not verified against the individual hull's papers**.
+**Decided 2026-08-18:** ship the keel identified **per vessel** from the operator's published tech
+sheets (§M.8), **not verified against the individual hull's own papers**. For PIRANJA and
+SPEEDY GO! that identification is the model's standard keel; for EASY GO! it is not, which is why
+it is deferred.
 
 **This decision was taken on the assumption that both Salona 44s were the standard hull, and that
 assumption was wrong — the check caught it before it shipped.** Recorded in full, because it is the
@@ -598,10 +600,11 @@ latter. It remains an **accepted cost**, not a satisfied condition.
 
 **Why not §L row 13's deepest-variant fallback in the interim?** OQ-4 reserves it for the case where
 per-hull data *cannot be obtained*, and that case is arguably live now — the operator has not been
-asked (§G.3 rule 4). It is declined on measured cost, not overlooked: a Salona 44 at its ~2.44 m
-deep keel derives a **3.4 m** gate, which by §N.8's run loses marstal, augustenborg, aabenraa,
-faldsled and langballigau — five harbours withdrawn from every Salona 44 to guard against a variant
-we would then have evidence against for SPEEDY GO! anyway. The identified standard keel plus the
+asked (§G.3 rule 4). It is declined on measured cost, not overlooked: the deepest Salona 44
+deep keel this fleet is now known to carry is EASY GO!'s **2.55 m**, which derives a **3.5 m** gate
+and by §N.8's run loses marstal, augustenborg, aabenraa, faldsled, langballigau, fynshav and
+rudkoebing — **seven** harbours withdrawn from SPEEDY GO!, whose own tech sheet reads 2.10 m, to
+guard against a variant we already have evidence against for that hull. The identified keel plus the
 disclosure below is the chosen trade; row 13 remains the fallback the moment a keel is
 **contradicted** rather than merely unconfirmed, and remains available if the operator declines to
 answer. (EASY GO! is the case where it *was* contradicted — and there the answer was to defer the
@@ -611,17 +614,11 @@ vessel, not to route it on an assumed hull.)
 keel variant it assumes and that the figure is not from the hull's papers, and that statement is
 surfaced on the boat picker alongside the provenance tier — not buried in a JSON field. A wrong
 keel is invisible in every artifact the app renders; only the disclosure makes it checkable by
-someone who can see the boat.
+someone who can see the boat. §L's rejection of the variant-picker stands: this is not a picker, it
+is a single sourced default with its uncertainty disclosed.
 
-**Required mitigation, because the assumption is otherwise invisible to whoever sails the boat:**
-each fleet catalogue entry records that its draft is the model's standard keel and unverified for
-the individual hull, and that statement is surfaced on the boat picker alongside the provenance
-tier — not buried in a JSON field. §L's rejection of the variant-picker stands: this is not a
-picker, it is a single sourced default with its uncertainty disclosed.
-
-**Retiring this deviation** needs one confirmed keel per hull (§G.3 rule 4 — ask the operator). The
-fallback if a keel is ever contradicted rather than merely unconfirmed is §L row 13, deepest listed
-variant.
+**Retiring this deviation** needs one confirmed keel per hull from the hull's own papers
+(§G.3 rule 4 — ask the operator).
 
 ### N.3 The estimator — `salona45-uniform-scalar-v1`
 
@@ -698,10 +695,13 @@ from the catalogue because §I.3's whole point is that a boat may have left it. 
 plan would render its draft with no indication that the keel was assumed — the same hazard §N.2
 measures at 0.4 m, on the very disclosure written to make it visible. **Decided:** the draft
 statement is **plan-time and picker-time only** in this amendment; a saved plan does not carry it.
-That is acceptable only because the draft assumption is a property of the *catalogue entry* rather
-than of the plan, and the picker is where a user can act on it. It is a real gap, not an oversight,
-and it closes by adding a persisted draft-provenance field the first time a hull-verified draft
-ships alongside an assumed one. File it rather than forget it.
+That is acceptable only because **every fleet draft in the v0.12.0 catalogue is an assumed keel** —
+there is no hull-verified draft alongside it for a reader to mistake it for — and because the
+picker, not the saved plan, is where a user can act on it. §I.3's denormalise-by-value rule cuts the
+other way and is why this is a gap rather than a design: a plan carries `draftM` by value *because*
+the catalogue may change, and the same argument applies to the assumption behind the number. It
+closes by adding a persisted draft-provenance field the first time a hull-verified draft ships
+alongside an assumed one. File it rather than forget it.
 
 Copy requirements, per OQ-2 parameterised by the **selected** boat and never a catalogue-wide worst
 case:
@@ -713,7 +713,8 @@ case:
   consequence below.
 - **A sentence disclaiming the difference between the two sails** for a tier-C boat — new in this
   amendment, required by §N.4.
-- A sentence recording that the draft is the model's standard keel, unverified per hull (§N.2).
+- A sentence recording which keel variant the entry assumes and that the figure is not from the
+  hull's own papers (§N.2).
 - `route.eta.indicative` on the ETA; `route.comparisonIncomplete` for #540's unconsumed
   `comparisonComplete`.
 - No chart-authority language: nothing may say *accurate*, *verified*, *reliable* or *safe*.
@@ -722,7 +723,8 @@ case:
 **Label hard: sail-vs-motor classification below 8 kn.** Measured on the shipped genoa table at the
 default sail-speed floor (3.7 kn) **and the default performance factor (0.9)**, every motoring
 heading occurs at TWS ≤ 8 (10/15 headings at TWS 4, 4/15 at 6, 2/15 at 8, zero at 10 and above).
-`PolarTable.speedKn` applies the factor and `isochrone.ts` compares that value to the floor, so 0.9
+`Polar.speedKn` (`app/src/lib/polar.ts`) applies the factor and `isochrone.ts` compares that value
+to the floor, so 0.9
 is the right basis; the load-bearing half — that every motoring heading sits at TWS ≤ 8 — holds at
 factor 1.0 too (8/15, 2/15, 0). The estimator's error is worst in exactly that band. So
 a tier-C boat's sail/motor split below 8 kn can flip, and both directions are bad: a leg promised
@@ -745,7 +747,7 @@ begins, not discovered at build time.
 | E3 | Every `validation.anchors[].source` is non-empty and names an independent citable magnitude for **that hull**. |
 | E4 | Throw if an anchor's `(minKn, maxKn)` **and** its `source` both equal the base boat's at the same `(twa, tws)` — conjunctive, so near-zero false positives. |
 | E5 | `0.80 ≤ scalar ≤ 1.25`; outside that band the donor is not comparable — refuse rather than extrapolate. |
-| E6 | **A tier-C boat must declare its second sail's derivation explicitly** (which base sail, which ramp), and a sail set in which **any sail** is tier C must resolve to `not-compared` — the mixed tier-A-plus-tier-C set is the one shape where a `decided` verdict could otherwise slip through. *(Replaces the one-sail form of this rule, which §N.4's decision retired.)* |
+| E6 | **A tier-C boat must declare its second sail's derivation explicitly** (which base sail, which ramp), and a sail set in which **any sail** is tier C must resolve to `not-compared` — the mixed tier-A-plus-tier-C set is the one shape where a `decided` verdict could otherwise slip through. That second clause is **enforced in `assemble` per §N.4, not here**; no build-time check can see a return value. The build's half is the declaration above. *(Replaces the one-sail form of this rule, which §N.4's decision retired.)* |
 | E7 | Estimated speeds must be **reproducible**: re-running the estimator from the committed inputs reproduces the committed `speeds` byte-for-byte — **including the second sail's `base × ramp` step**, so both committed tables are reproducible from the committed inputs. Perturb one input and the build reds. |
 | E8 | Every existing structural check is retained unchanged. |
 
@@ -772,8 +774,8 @@ it establishes the connectivity ceiling but does **not** discharge §C.6's *"no 
 - **Grand Soleil 46 (MARIN)** and **EASY GO! (Salona 44, 2.55 m)** — deferred together, for one
   reason. Both derive a gate that drops harbours: 3.2 m loses `aabenraa` and `faldsled` (and
   `aabenraa`'s snap cell reads 3.0 m, so at that gate it has no navigable snap cell at all — a
-  harder failure than a blocked channel); 3.5 m loses those plus `marstal`, `augustenborg` and
-  `langballigau`. §L's *"Treat a harbour dropping out at a deeper boat's gate as a defect"* row
+  harder failure than a blocked channel); 3.5 m loses those plus `marstal`, `augustenborg`,
+  `langballigau`, `fynshav` and `rudkoebing` — **seven**. §L's *"Treat a harbour dropping out at a deeper boat's gate as a defect"* row
   stands and settles both: **the routing is correct — a 2.55 m keel cannot enter a 2.0 m basin —
   and the defect would be silently offering it.** So the fix is presentation, and the presentation
   does not exist: `harbors.json` carries `approachNote, country, id, names, snap` and no gate
@@ -797,7 +799,8 @@ it establishes the connectivity ceiling but does **not** discharge §C.6's *"no 
 - **§M.2 is no longer unmeasured.** `verify_mask.py` already reports the deepest gate at which each
   harbour reaches open water; it was run 2026-08-18 (exit 0, ~2 s, no writes). Harbours failing to
   reach open water, per gate: **2.8 m** — marstal; **3.0 m** — marstal, augustenborg; **3.2 m** —
-  plus aabenraa, faldsled; **3.4 m** — plus langballigau. Navigability is monotone in the gate, so
+  plus aabenraa, faldsled; **3.4 m** — plus langballigau; **3.5 m** — plus fynshav and rudkoebing,
+  which both reach open water at exactly 3.4 m. Navigability is monotone in the gate, so
   the set of harbours that DO reach open water only grows as the gate falls — each failing set
   above is a subset of the one below it. This is what made §N.1's scope selectable rather than
   guessable, and it retires §M.2's "unmeasured" status while leaving §L's mask-refinement row
@@ -826,8 +829,8 @@ the Salona 44* (directly engaged — the Salona 44 is in scope); *ship the fleet
 default* (load-bearing: both new gates derive to ≤ 3.0).
 
 Not engaged by this scope: *refine the mask for deeper boats* and *treat a harbour dropping out as
-a defect* — no boat in scope is deeper than 2.10 m. Both become engaged by §N.7's Grand Soleil
-follow-up.
+a defect* — no boat in scope is deeper than 2.10 m. Both become engaged by §N.7's Grand Soleil and
+EASY GO! follow-up, which unblock together.
 
 Explicitly **not** breached: *`[OQ-3]` generalise `RigRecommendation` to N-way*. Adding a
 `not-compared` variant is not N-way generalisation; the cap stays at 2 and no N-way tie semantics
