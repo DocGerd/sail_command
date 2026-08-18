@@ -22,11 +22,13 @@ import {
   MOTOR_SPEED_FIELD,
   MOTOR_THRESHOLD_FIELD,
   PERFORMANCE_FACTOR_FIELD,
-  SAFETY_DEPTH_FIELD,
   SAIL_PREFERENCE_FIELD,
   commitSetting,
+  safetyDepthFieldFor,
   type FieldSpec,
 } from './OptionsPanel';
+import BoatPicker from './BoatPicker';
+import { boatById, type BoatId } from '../data/boats';
 
 // #299: the Boat tab's content — a SELF-CONTAINED settings surface with its
 // own explicit props (value/onChange only, no App.tsx/PlannerPanel wiring
@@ -42,7 +44,10 @@ import {
 // renders BOTH here (canonical home, per the issue's own recommendation) AND
 // inline in PlannerPanel's compact row (quick access — one of the two
 // most-changed inputs, §3.3). Both surfaces share ONE source of truth —
-// SAFETY_DEPTH_FIELD's spec and commitSetting from OptionsPanel.tsx, reading
+// safetyDepthFieldFor(selectedBoat) and commitSetting from OptionsPanel.tsx
+// (#539 item 2 replaced the shared `SAFETY_DEPTH_FIELD` constant with that
+// per-boat derivation at BOTH call sites, so the two still share one source
+// and still clamp identically) — reading
 // and writing the SAME `value.safetyDepthM` App.tsx passes to both — so
 // editing in either place is immediately reflected in the other on the next
 // render (there is no local component state to go stale; both surfaces are
@@ -52,6 +57,13 @@ import {
 export interface SettingsPanelProps {
   value: Settings;
   onChange: (settings: Settings) => void;
+  // #54: the selected boat, and the setter the picker commits a switch
+  // through. Held by App.tsx (localStorage via usePersistedBoatId) rather
+  // than here, because PlannerPanel needs the same selection for its own
+  // inline safety-depth bounds and this panel unmounts whenever the Boat tab
+  // is not the active one.
+  boatId: BoatId;
+  onBoatIdChange: (next: BoatId) => void;
   // #299 fix (PR #486 review): focus target for the safety-depth field's
   // "boat settings" link (App.tsx forwards it onto this panel's first Card
   // heading, tabIndex -1, focused on jump) — mirrors RouteSummary's own
@@ -100,8 +112,15 @@ function NumericField({ spec, value, onChange, help }: NumericFieldProps) {
   );
 }
 
-export default function SettingsPanel({ value, onChange, titleRef }: SettingsPanelProps) {
+export default function SettingsPanel({
+  value,
+  onChange,
+  boatId,
+  onBoatIdChange,
+  titleRef,
+}: SettingsPanelProps) {
   const t = useT();
+  const boat = boatById(boatId);
   const mmsi = value.ownMmsi ?? '';
   const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
 
@@ -137,6 +156,18 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
 
   return (
     <div className="settings-panel">
+      {/* #54: the boat picker leads the tab. It sits ABOVE "Boat & safety"
+          deliberately — every field in that card is scoped to the selected
+          boat (its safety-depth minimum literally derives from this
+          selection, #539 item 2), so choosing the boat is the parent act and
+          reading it second would invert the dependency. */}
+      <BoatPicker
+        boatId={boatId}
+        onBoatIdChange={onBoatIdChange}
+        settings={value}
+        onSettingsChange={onChange}
+      />
+
       {/* #299 grouping: static boat characteristics + the depth safety
           preference — the two boat-handling numbers (maneuver penalty,
           performance factor) belong here rather than under Propulsion
@@ -145,7 +176,10 @@ export default function SettingsPanel({ value, onChange, titleRef }: SettingsPan
           review) — see this file's own top-of-file comment for why it also
           stays inline in PlannerPanel and how the two stay single-sourced. */}
       <Card title={t('settings.section.boatSafety')} titleRef={titleRef} titleTabIndex={-1}>
-        <NumericField spec={SAFETY_DEPTH_FIELD} value={value} onChange={onChange} />
+        {/* #539 item 2: bounds follow the SELECTED boat (spec J OQ-1's
+            `draftM + 0.1`), not the catalogue default — a 2.30 m hull must
+            not be offered the Salona 45's 2.2 m floor. */}
+        <NumericField spec={safetyDepthFieldFor(boat)} value={value} onChange={onChange} />
         <NumericField
           spec={DEPTH_COMFORT_MARGIN_FIELD}
           value={value}

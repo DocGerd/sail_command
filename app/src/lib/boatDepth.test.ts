@@ -12,6 +12,12 @@ const boat = (draftM: number) => ({
   id: 'x',
   name: 'X',
   draftM,
+  // #54 spec N.2 made draftProvenance a REQUIRED BoatDef field. These probes
+  // exercise the depth ARITHMETIC only and no assertion below reads it, so the
+  // value is filler — but the field is deliberately not optional on the type,
+  // because an optional one would let a real fleet entry ship with its keel
+  // assumption undisclosed.
+  draftProvenance: { keel: 'test', hullVerified: false, note: 'synthetic probe boat' },
   motorSpeedKn: 6.5,
   maneuverPenaltyS: 45,
   sails: [],

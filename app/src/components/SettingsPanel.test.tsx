@@ -2,6 +2,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import SettingsPanel from './SettingsPanel';
+import { DEFAULT_BOAT_ID } from '../data/boats';
 import { DEFAULT_SETTINGS } from '../types';
 
 afterEach(() => {
@@ -14,7 +15,12 @@ const renderPanel = (onChange = vi.fn()) => {
   localStorage.setItem('sc-lang', 'en');
   render(
     <I18nProvider>
-      <SettingsPanel value={DEFAULT_SETTINGS} onChange={onChange} />
+      <SettingsPanel
+        value={DEFAULT_SETTINGS}
+        onChange={onChange}
+        boatId={DEFAULT_BOAT_ID}
+        onBoatIdChange={vi.fn()}
+      />
     </I18nProvider>,
   );
   return onChange;
@@ -236,7 +242,12 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       localStorage.setItem('sc-lang', 'en');
       render(
         <I18nProvider>
-          <SettingsPanel value={{ ...DEFAULT_SETTINGS, ownMmsi: '123' }} onChange={vi.fn()} />
+          <SettingsPanel
+            value={{ ...DEFAULT_SETTINGS, ownMmsi: '123' }}
+            onChange={vi.fn()}
+            boatId={DEFAULT_BOAT_ID}
+            onBoatIdChange={vi.fn()}
+          />
         </I18nProvider>,
       );
       expect(screen.getByText('MMSI must be exactly 9 digits.')).toBeInTheDocument();
@@ -247,7 +258,12 @@ describe('SettingsPanel (#299 Boat tab)', () => {
       localStorage.setItem('sc-lang', 'en');
       render(
         <I18nProvider>
-          <SettingsPanel value={{ ...DEFAULT_SETTINGS, ownMmsi: '211234560' }} onChange={vi.fn()} />
+          <SettingsPanel
+            value={{ ...DEFAULT_SETTINGS, ownMmsi: '211234560' }}
+            onChange={vi.fn()}
+            boatId={DEFAULT_BOAT_ID}
+            onBoatIdChange={vi.fn()}
+          />
         </I18nProvider>,
       );
       expect(screen.queryByText('MMSI must be exactly 9 digits.')).not.toBeInTheDocument();
