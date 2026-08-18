@@ -249,6 +249,18 @@ describe('#550: mask connectivity is a REQUIRED check (promoted from advisory ve
       id: 'fixture-absurd-draft-550',
       name: 'fixture (test-only, never added to BOATS)',
       draftM: 50,
+      // #563 made `draftProvenance` REQUIRED on BoatDef, so this fixture must
+      // carry one. That requiredness is deliberate and load-bearing — it is
+      // what makes a fleet entry shipping without its keel disclosure a
+      // compile error rather than a silently absent paragraph (§N.2). This
+      // very fixture demonstrated it working: the field landed on `develop`
+      // while this PR was open and the merged result failed `typecheck` here,
+      // in a PR that touches no catalogue code.
+      draftProvenance: {
+        keel: 'n/a — synthetic fixture, not a real hull',
+        hullVerified: false,
+        note: 'Test-only fixture for the guard-fires proof below. Never added to BOATS.',
+      },
       motorSpeedKn: 6,
       maneuverPenaltyS: 30,
       sails: [],
