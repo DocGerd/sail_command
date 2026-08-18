@@ -172,7 +172,7 @@ disagree with a localized solver:
 
 ### 1.4 Snapping happens at the requested gate and is not relaxable
 
-`planRoute.ts:281/283/288` — `mask.snapToNavigable(p, s.safetyDepthM)` for
+`mask.snapToNavigable` in `planRoute.ts` (~:332/334/339) — called for
 origin, destination, and every via, always at the *requested* depth with a
 300 m search radius. A snap failure returns `status: 'error'` before any tier
 runs, so relaxation — however it is scoped — can only ever open water
@@ -558,12 +558,12 @@ relax, and relaxation succeeds in exactly **27** — every one involving
 Marstal. This is independent evidence that the reachable population is
 narrow (27 of 528 *pairs*, not plans or sweep arms), and it corroborates the
 sweep's own "only two plans" figure without being the same measurement —
-INHERITED from that comment, re-read verbatim in this session but not
-independently re-run against the mask here. Cite each figure to its own
+INHERITED from that comment and re-read verbatim in the session that wrote
+this section; independently re-run 2026-08-18, see below. Cite each figure to its own
 source: the sweep's is a fact about `app/sweep/`'s current fixture, checkable
 by reading `sweepArms.ts`; the 528/27 figure is a fact about the mask itself,
-checkable only by re-running the component-labelling analysis the issue
-comment describes.
+checkable by re-running the component-labelling analysis the issue comment
+describes — re-run 2026-08-18 (#515), see below.
 
 Both judges: add a relaxation-exercising arm (a Marstal-destination arm, and
 a `depthComfortMarginM: 0` arm to reach §4(a)'s genuinely-unprotected
@@ -611,6 +611,168 @@ transition, any `shallow.usedDepthM` below BASE's, or any
 `shallow.minGateDepthM` below BASE's on HEAD — the last being the signature
 of a "safety fix" that silently lowered the number the safety warning prints
 — should stop the work and go back to design, not forward into a fix.
+
+#### Re-run 2026-08-18 (#515) — the pair set held across the mask rebuild
+
+Issue #515 asked whether this 27-of-528 pair set survives `c359a5c`'s
+2026-08-09 mask-tolerance rebuild (#455/PR #476). **Premise check first**:
+`git log --oneline -- app/public/data/mask.bin` shows only four commits have
+ever touched the mask (`f100ce3`, `2d10639`, `25899b2` on 2026-07-15, then
+`c359a5c` on 2026-08-09) — so the maintainer comment above, dated
+2026-08-07T21:04:54Z, two days *before* `c359a5c`, was itself measured
+against what this note calls the PRE-rebuild mask (`25899b2`'s, unchanged
+since 2026-07-15), not against a later re-measurement.
+
+Re-run against `c359a5c^` (PRE) and `c359a5c` (POST — byte-identical to the
+mask at `5e98741` (verified 2026-08-18: both blobs `e528919`)), using the app's own convention:
+`snapToNavigable` re-snap at the requested 3.0 m gate, then 4-connected
+component labelling at integer-decimetre gates 3.0 → 2.1:
+
+| mask | connect@3.0 | relax | no-gate |
+|---|---|---|---|
+| PRE (`c359a5c^`) | 351 | 27 | 150 |
+| POST (`c359a5c` / `5e98741`) | 351 | 27 | 150 |
+
+The rebuild is not a no-op at this probe's input: the two masks differ in
+91,877 of 5,280,000 bytes (1.74%), and 4,423 cells flip navigability at the
+3.0 m gate (2,473,845 → 2,470,330 navigable) — so the unchanged pair set is
+a real invariance, not an artefact of an unchanged input.
+
+Byte-identical 27-pair sets on both masks, every pair involving Marstal, and
+every one relaxing at 2.3 m on both masks — reproducing all four of the
+comment's figures. **The pair set held.** This reproduces the maintainer
+comment's 351/27/150 split on the PRE mask it must describe, and on the
+POST mask at `5e98741`.
+
+**Re-snapping is load-bearing, not incidental.** Feeding `harbors.json`'s raw
+`snap` coordinates straight to the connectivity check, without re-snapping at
+the query-time gate, returns **325 / 53 / 150** instead, with 26 non-Marstal
+relaxing pairs, all involving `augustenborg` (whose snap cell reads 2.8 m) —
+a result that would read as a mismatch against the maintainer's figure.
+`planRoute.ts` always re-snaps (§1.4), so this fixed-snap reading is not what
+the app does; it is the same fixed-snap-vs-re-snap trap this repo's
+`CLAUDE.md` records for the Aabenraa claim under #455's `TOLERANCE_M` rule
+("Aabenraa was NEVER the blocker: that claim reproduces only under a
+fixed-snap convention the app does not use"), reproduced here for a
+different question. A future reader re-running this
+probe the obvious way — against `harbors.json`'s `snap` field directly — will
+get the wrong answer unless warned.
+
+Driver (numpy + scipy — both pinned in `pipeline/requirements.txt`, so
+this repo's `pipeline/.venv` runs it as-is). Extract the two mask/meta
+pairs from git first:
+
+```bash
+mkdir -p /tmp/pair-probe && cd /tmp/pair-probe
+R=<path-to-sail_command>
+git -C "$R" show 'c359a5c^:app/public/data/mask.bin'       > mask_pre.bin
+git -C "$R" show 'c359a5c^:app/public/data/mask.meta.json' > meta_pre.json
+git -C "$R" show 'c359a5c:app/public/data/mask.bin'        > mask_post.bin
+git -C "$R" show 'c359a5c:app/public/data/mask.meta.json'  > meta_post.json
+cp "$R/app/public/data/harbors.json" harbors.json
+# save the Python block below as pair_probe.py, then:
+"$R/pipeline/.venv/bin/python3" pair_probe.py mask_pre.bin meta_pre.json mask_post.bin meta_post.json harbors.json
+```
+
+```python
+import json, sys, itertools, math
+import numpy as np
+from scipy.ndimage import label
+STRUCT = np.array([[0,1,0],[1,1,1],[0,1,0]], dtype=bool)
+
+def hav_m(a, b):
+    R=6371000.0
+    p1,p2=math.radians(a[0]),math.radians(b[0])
+    dp=p2-p1; dl=math.radians(b[1]-a[1])
+    h=math.sin(dp/2)**2+math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+    return 2*R*math.asin(math.sqrt(h))
+
+def analyse(maskpath, metapath, harborspath, resnap):
+    meta=json.load(open(metapath)); rows,cols=meta['rows'],meta['cols']
+    data=np.fromfile(maskpath,dtype=np.uint8).reshape(rows,cols)
+    latStep=(meta['north']-meta['south'])/rows; lonStep=(meta['east']-meta['west'])/cols
+    harbors=json.load(open(harborspath))
+    labels={gd: label(data>=gd, structure=STRUCT)[0] for gd in range(21,31)}
+    def cell(lat,lon): return int(math.floor((lat-meta['south'])/latStep)), int(math.floor((lon-meta['west'])/lonStep))
+    def snap(lat,lon,gd,maxR=300.0):
+        r0,c0=cell(lat,lon)
+        cellLatM=111320*latStep; cellLonM=111320*lonStep*math.cos(math.radians(lat))
+        step=min(cellLatM,cellLonM); maxRing=int(math.ceil(maxR/step))+1
+        best=None
+        for ring in range(maxRing+1):
+            if best and ring*step>best[1]: break
+            for dr in range(-ring,ring+1):
+                for dc in range(-ring,ring+1):
+                    if max(abs(dr),abs(dc))!=ring: continue
+                    r,c=r0+dr,c0+dc
+                    if not (0<=r<rows and 0<=c<cols): continue
+                    if data[r,c]<gd: continue
+                    clat=meta['south']+(r+0.5)*latStep; clon=meta['west']+(c+0.5)*lonStep
+                    d=hav_m((lat,lon),(clat,clon))
+                    if d<=maxR and (best is None or d<best[1]): best=((r,c),d)
+        return best[0] if best else None
+    cells={}
+    for h in harbors:
+        s=h['snap']
+        cells[h['id']] = snap(s['lat'],s['lon'],30) if resnap else cell(s['lat'],s['lon'])
+    ids=[h['id'] for h in harbors]
+    pairs=list(itertools.combinations(ids,2))
+    def conn(gd,a,b):
+        ca,cb=cells[a],cells[b]
+        if ca is None or cb is None: return False
+        la=labels[gd][ca]; lb=labels[gd][cb]
+        return la!=0 and la==lb
+    at30=[p for p in pairs if conn(30,*p)]; s30=set(at30); relax=[]; nogate=[]
+    for p in pairs:
+        if p in s30: continue
+        f=None
+        for gd in range(29,20,-1):
+            if conn(gd,*p): f=gd; break
+        (relax.append((p,f/10)) if f else nogate.append(p))
+    nonm=[x for x in relax if 'marstal' not in x[0]]
+    return dict(at30=len(at30),relax=len(relax),nogate=len(nogate),nonmarstal=nonm,
+                unsnapped=[k for k,v in cells.items() if v is None],
+                marstalpairs=sorted((p,g) for p,g in relax if 'marstal' in p))
+
+for resnap in (False,True):
+    print(f"########## convention: {'RE-SNAP at 3.0 m (app)' if resnap else 'FIXED snap point'}")
+    res={}
+    for tag,m,mm in [("PRE (c359a5c^)",sys.argv[1],sys.argv[2]),("POST (5e98741)",sys.argv[3],sys.argv[4])]:
+        r=analyse(m,mm,sys.argv[5],resnap); res[tag]=r
+        print(f"  {tag}: connect@3.0={r['at30']}  relax={r['relax']}  nogate={r['nogate']}  "
+              f"non-marstal-relax={len(r['nonmarstal'])}  unsnapped={r['unsnapped']}")
+    a,b=res["PRE (c359a5c^)"],res["POST (5e98741)"]
+    same = (a['at30'],a['relax'],a['nogate'],a['marstalpairs'],sorted(x[0] for x in a['nonmarstal'])) == \
+           (b['at30'],b['relax'],b['nogate'],b['marstalpairs'],sorted(x[0] for x in b['nonmarstal']))
+    print(f"  PRE == POST (counts AND exact pair sets AND gates): {same}")
+    print(f"  marstal-involving relax pairs: {len(a['marstalpairs'])}")
+    print(f"  marstal relax gates (unique): {sorted(set(g for _,g in a['marstalpairs']))}")
+    if a['nonmarstal']: print(f"  non-marstal relax (PRE): {sorted(set(h for x in a['nonmarstal'] for h in x[0]))}")
+```
+
+Output, both conventions, both masks (2026-08-18):
+
+```
+########## convention: FIXED snap point
+  PRE (c359a5c^): connect@3.0=325  relax=53  nogate=150  non-marstal-relax=26  unsnapped=[]
+  POST (5e98741): connect@3.0=325  relax=53  nogate=150  non-marstal-relax=26  unsnapped=[]
+  PRE == POST (counts AND exact pair sets AND gates): True
+  marstal-involving relax pairs: 27
+  marstal relax gates (unique): [2.3]
+  non-marstal relax (PRE): ['aabenraa', 'aaroesund', 'aeroeskoebing', 'assens', 'augustenborg', 'avernakoe', 'bagenkop', 'damp', 'drejoe', 'faaborg', 'faldsled', 'flensburg', 'fynshav', 'gelting-mole', 'gluecksburg', 'hoeruphav', 'langballigau', 'lyoe', 'mommark', 'olpenitz', 'rudkoebing', 'schleimuende', 'soeby', 'soenderborg', 'svendborg', 'troense', 'wackerballig']
+########## convention: RE-SNAP at 3.0 m (app)
+  PRE (c359a5c^): connect@3.0=351  relax=27  nogate=150  non-marstal-relax=0  unsnapped=[]
+  POST (5e98741): connect@3.0=351  relax=27  nogate=150  non-marstal-relax=0  unsnapped=[]
+  PRE == POST (counts AND exact pair sets AND gates): True
+  marstal-involving relax pairs: 27
+  marstal relax gates (unique): [2.3]
+```
+
+This driver is embedded here rather than under `app/sweep/` or `pipeline/`
+deliberately: `docs/spikes/` sits OUTSIDE the #282 sweep's transitive input
+closure (`CLAUDE.md`'s `app/sweep/` bullet), so committing it here cannot
+silently move sweep-certified plans the way adding it under either of those
+trees could.
 
 ---
 
@@ -753,8 +915,10 @@ itself, not as a confirmed provenance; re-derive it before building on it.
 
 Figures below are measured for this section **except where they explicitly
 cite §0–§7**: the 27-of-528 harbour-pair figure quoted under "Scope limits"
-is INHERITED from a maintainer issue comment (§0, §4(b)) and was not re-run
-here.
+is INHERITED from a maintainer issue comment (§0, §4(b)); §4(b) now also
+carries a 2026-08-18 reproduction (#515) confirming that pair set holds
+across the `c359a5c` mask rebuild — still not re-run by this section's own
+tooling.
 
 ### Positive control
 
@@ -1053,8 +1217,11 @@ Stable across the settings arms exercised (`no-comfort`, `margin-zero`,
 `relaxation-dense` — three of the harness's nine) — UNTESTED across
 geography and mask rebuilds, since Marstal is the only harbour in this
 33-harbour curated set that relaxes at all (§0/§4(b)'s 27-of-528 figure,
-INHERITED from a maintainer issue comment and not re-run here; it is the one
-place this section quotes §0–§7 rather than measuring). The re-solve
+INHERITED from a maintainer issue comment; see §4(b)'s 2026-08-18
+reproduction (#515), which confirms this pair-connectivity fact — not the
+re-solve figures above, which remain untested across mask rebuilds — holds
+across the `c359a5c` mask rebuild; it is the one place this section quotes
+§0–§7 rather than measuring). The re-solve
 population above is the 2400 m population only (the 29 plans with a cell
 beyond that radius): it does not cover the full 55, and it was run at
 **R = 2400 m only — never at the recommended 1852 m**, which forbids 29 more
