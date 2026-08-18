@@ -159,7 +159,9 @@ def dm(x: float) -> int:
     """
     tenths = x * 10
     key = int(round(tenths))
-    assert abs(tenths - key) < 1e-6, f"{x} m is not a whole decimetre - the mask encodes decimetres and every gate must be one"
+    assert abs(tenths - key) < 1e-6, (
+        f"{x} m is not a whole decimetre - the mask encodes decimetres and every gate must be one"
+    )
     return key
 
 
@@ -339,6 +341,7 @@ def connected_at(hid: str, gate_m: float) -> bool:
     deepest_dm = DEEPEST_CONNECTING_GATE_DM[hid]
     return deepest_dm is not None and dm(gate_m) <= deepest_dm
 
+
 print(f"mask tolerance: TOLERANCE_M = {TOLERANCE_M} m (read from build_mask.py)")
 print(f"catalogue: {len(CATALOGUE_BOATS)} boat(s)")
 for b in CATALOGUE_BOATS:
@@ -361,7 +364,9 @@ for (hid, exc_gate_m), exc_m in CONNECTIVITY_EXCEPTIONS_M.items():
 
 for hid, reason in KNOWN_DISCONNECTED.items():
     if hid not in DEEPEST_CONNECTING_GATE_M:
-        failures.append(f"KNOWN_DISCONNECTED lists {hid}, which is not a harbor in harbors.json - remove the stale entry")
+        failures.append(
+            f"KNOWN_DISCONNECTED lists {hid}, which is not a harbor in harbors.json - remove the stale entry"
+        )
     elif DEEPEST_CONNECTING_GATE_M[hid] is not None:
         failures.append(
             f"KNOWN_DISCONNECTED {hid} ({reason}) reaches open water at gate {DEEPEST_CONNECTING_GATE_M[hid]} m - "
@@ -380,7 +385,9 @@ for b in CATALOGUE_BOATS:
         hid = h["id"]
         exception_m = CONNECTIVITY_EXCEPTIONS_M.get((hid, gate_m))
         if exception_m is not None:
-            assert "approachNote" in h, f"CONNECTIVITY_EXCEPTIONS_M[({hid}, {gate_m})] has no approachNote to justify it"
+            assert "approachNote" in h, (
+                f"CONNECTIVITY_EXCEPTIONS_M[({hid}, {gate_m})] has no approachNote to justify it"
+            )
             if connected_at(hid, gate_m):
                 failures.append(
                     f"EXCEPTION {hid} is not needed at gate {gate_m} m - it reaches open water unaided; "
