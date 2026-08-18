@@ -181,7 +181,7 @@ function validate(name, speeds, boat) {
 // firing several of those guards at a tier-C boat specifically.
 
 /** E1 + E2. Runs for EVERY sail, because both directions of E1 matter. */
-function requireEstimatorBlock(name, sail) {
+function requireEstimatorBlock(name, sail, boatsById) {
   const est = sail.estimator;
   const isEstimated = sail.provenance.tier === 'estimated';
 
@@ -214,9 +214,34 @@ function requireEstimatorBlock(name, sail) {
       `${name}: estimator.${key} missing — the derivation must name what it derives FROM`,
     );
   }
+  // MAJOR 4 / spec N.3 step 3: naming a base is not enough, the base must BE
+  // the certificate-anchored table. Without this, two states build clean and
+  // both are forbidden: scaling from the MODELLED genoa overlay (E7 reproduces
+  // happily from either, while the hand-written note still claims
+  // "certificate-anchored"), and scaling from another ESTIMATED table, which
+  // puts G.2's "estimate of an estimate" into the ETA itself rather than into
+  // the comparison N.4 suppresses. Which table it came from and whether that
+  // table is a certificate are the two most load-bearing facts about the
+  // derivation, and until now they were prose only.
+  if (est.method === SCALAR_METHOD) {
+    const baseSail = boatsById.get(est.baseBoatId)?.sails?.[est.baseSailId];
+    requireField(
+      baseSail != null,
+      `${name}: estimator base ${est.baseBoatId}/${est.baseSailId} is not a boat/sail in this ` +
+        'file (spec N.6 E1)',
+    );
+    requireField(
+      baseSail.provenance?.tier === 'certificate',
+      `${name}: estimator base ${est.baseBoatId}/${est.baseSailId} has tier ` +
+        `${JSON.stringify(baseSail.provenance?.tier)}, not 'certificate' — spec N.3 step 3 ` +
+        'requires the certificate-anchored table as the base, never a modelled overlay or ' +
+        'another estimate',
+    );
+  }
+
   requireField(
     typeof est.scalar === 'number' && Number.isFinite(est.scalar),
-    `${name}: estimator.scalar missing or not a finite number`,
+    `${name}: estimator.scalar missing or not a finite number (spec N.6 E1)`,
   );
   // Not merely "present": the value asserts this estimator ingested no
   // third-party corpus, which is what keeps licence exposure and donor
@@ -257,6 +282,38 @@ function requireEstimatorBlock(name, sail) {
           'WHICH base sail and WHICH ramp it came from',
       );
     }
+    // MAJOR 4: a ramp of one sail onto ITSELF is a ratio of exactly 1.0 — two
+    // byte-identical tables shipped as two different sails.
+    requireField(
+      est.ramp.fromSailId !== est.ramp.toSailId,
+      `${name}: estimator.ramp.fromSailId and toSailId are both ` +
+        `${JSON.stringify(est.ramp.fromSailId)} — that ramp is the identity, so the two sails ` +
+        'would ship byte-identical tables (spec N.3 step 3)',
+    );
+  }
+
+  // MAJOR 2: `inputs` belongs to the SCALAR sail alone, and a RAMP sail must
+  // NOT carry one. MEASURED before this rule existed: editing
+  // `inputs.sailAreaUpwindM2` on a ramp sail from 77.76 to 85.7 built cleanly
+  // with all six assets byte-identical, because estimatedSpeedsFor's RAMP
+  // branch recurses into the BASE sail and never reads its own inputs. Those
+  // four sourced figures were dead data — E2 checked they existed and named a
+  // source, and nothing checked they matched the figures the table was
+  // actually built from. Worse, the ramp block held the FIRST occurrence of
+  // 77.76 in the file, so it is the one a contributor correcting the Elan's
+  // sail area would edit, shipping a table whose declared provenance
+  // contradicts its own derivation with no signal at all — the header's
+  // "a mixed basis is undetectable afterwards" hazard, one level in.
+  //
+  // Deleting the data beats guarding it: there is now nothing to diverge.
+  if (est.method === RAMP_METHOD) {
+    requireField(
+      est.inputs === undefined,
+      `${name}: a ${RAMP_METHOD} sail must not declare estimator.inputs — it derives from ` +
+        `${est.baseBoatId}/${est.baseSailId}, whose block owns the figures. A second copy here ` +
+        'is dead data that nothing reads and nothing can keep honest (spec N.6 E2).',
+    );
+    return;
   }
 
   // E2. `inputs` must be non-empty first: "every input carries a source" is
@@ -269,11 +326,11 @@ function requireEstimatorBlock(name, sail) {
   for (const [key, entry] of Object.entries(est.inputs)) {
     requireField(
       entry != null && typeof entry === 'object',
-      `${name}: estimator.inputs.${key} is not a { value, source } object`,
+      `${name}: estimator.inputs.${key} is not a { value, source } object (spec N.6 E2)`,
     );
     requireField(
       typeof entry.value === 'number' && Number.isFinite(entry.value),
-      `${name}: estimator.inputs.${key}.value missing or not a finite number`,
+      `${name}: estimator.inputs.${key}.value missing or not a finite number (spec N.6 E2)`,
     );
     requireField(
       typeof entry.source === 'string' && entry.source.length > 0,
@@ -342,6 +399,18 @@ function requireSailDerivations(boat) {
       `${boat.id}/${sailId}: derives from ${est.baseBoatId}/${est.baseSailId} but a tier-C boat's ` +
         `second sail must derive from its OWN base table, ${boat.id}/${baseSailId} (spec N.6 E6)`,
     );
+    // MAJOR 4: the ramp must come from the DONOR hull — the same boat the base
+    // table was scaled from. A ramp taken from anywhere else is not "the
+    // Salona 45's documented overlay ramp" that N.4 authorises, and N.4's whole
+    // argument for suppressing the comparison (the difference between the two
+    // tables is a function of THE RAMP, not the hull) depends on knowing which
+    // ramp it is.
+    const donorId = boat.sails[baseSailId].estimator.baseBoatId;
+    requireField(
+      est.ramp.boatId === donorId,
+      `${boat.id}/${sailId}: ramp comes from ${est.ramp.boatId} but the base table was scaled ` +
+        `from ${donorId} — spec N.4 authorises the DONOR hull's own documented overlay ramp`,
+    );
   }
 }
 
@@ -396,6 +465,19 @@ for (const boat of src.boats) {
     Array.isArray(boat.validation.anchors) && boat.validation.anchors.length > 0,
     `${id}: validation.anchors missing — a boat never inherits another boat's sanity anchors`,
   );
+  // MINOR 10 / spec N.3 step 5, which treats the plausibility ceiling and the
+  // anchors ALIKE: "validation.maxSpeedKn AND every sanity anchor are hand-set
+  // from that hull's own published figures". E3 made the anchor half fail
+  // closed; this is its sibling. Without it a boat can ship a ceiling with no
+  // provenance at all — the same unfalsifiable-band argument E3's own comment
+  // makes, applied to the number most likely to be set by judgement rather
+  // than by measurement.
+  requireField(
+    typeof boat.validation.maxSpeedKnSource === 'string' &&
+      boat.validation.maxSpeedKnSource.length > 0,
+    `${id}: validation.maxSpeedKnSource missing — spec N.3 step 5 holds the plausibility ceiling ` +
+      'to the same standard as the anchors: a named figure for THIS hull, or a stated judgement.',
+  );
   for (const a of boat.validation.anchors) {
     requireField(
       typeof a.label === 'string' &&
@@ -447,7 +529,7 @@ for (const boat of src.boats) {
       typeof sail.provenance.note === 'string' && sail.provenance.note.length > 0,
       `${name}: provenance note missing`,
     );
-    requireEstimatorBlock(name, sail);
+    requireEstimatorBlock(name, sail, boatsById);
     requireField(Array.isArray(sail.speeds), `${name}: speeds missing`);
     validate(name, sail.speeds, boat);
 

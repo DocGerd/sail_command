@@ -101,10 +101,10 @@ describe('loadRoutingAssets', () => {
     // this row's whole job is to notice when the catalogue and the fetch
     // manifest stop agreeing.
     expect(Object.keys(assets.polars).sort()).toEqual([
-      'elan-444/fock',
-      'elan-444/genoa',
-      'salona-44/fock',
-      'salona-44/genoa',
+      'elan-444-piranja/fock',
+      'elan-444-piranja/genoa',
+      'salona-44-speedy-go/fock',
+      'salona-44-speedy-go/genoa',
       'salona-45/fock',
       'salona-45/genoa',
     ]);

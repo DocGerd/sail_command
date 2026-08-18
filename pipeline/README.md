@@ -115,13 +115,20 @@ generated with rather than a second implementation of it:
 - **E1** tier `estimated` requires a complete `estimator` block — and, in the
   converse direction, a non-estimated sail may not carry one.
 - **E2** every `estimator.inputs.*` names a source, and the input list may not
-  be empty (an empty one satisfies "every input has a source" vacuously).
+  be empty (an empty one satisfies "every input has a source" vacuously). A
+  RAMP sail must carry **no** `inputs` at all — it derives from its base sail,
+  whose block owns the figures, and a second copy is data nothing reads.
 - **E3** every anchor names a source, on **every** boat including the
-  reference one — E4 compares against those strings, so it needs them.
+  reference one — E4 compares against those strings, so it needs them. Its
+  sibling: `validation.maxSpeedKnSource` is required too, because N.3 step 5
+  holds the plausibility ceiling to the same standard as the anchors.
 - **E4** an anchor whose band **and** source both equal the donor's at the same
   cell is refused. Conjunctive: same band with an independent source, or the
   same source with a different band, is legitimate.
 - **E5** `0.80 <= k <= 1.25`; outside it the donor is not a comparable hull.
+- **E1/N.3 step 3** the base must *be* the certificate-anchored table — not the
+  modelled genoa overlay and not another estimate — and a ramp may not map a
+  sail onto itself or come from a boat other than the donor.
 - **E6** the second sail declares which base sail and which ramp it came from,
   and exactly one sail per boat may be the scaled base.
 - **E7** re-running the estimator on the committed inputs reproduces the
@@ -129,8 +136,12 @@ generated with rather than a second implementation of it:
 - **E8** every pre-existing structural guard still applies to a tier-C boat.
 
 `app/src/test/buildPolars.failClosed.test.ts` runs the real script against
-mutated copies of the real source, one row per rule; every rule was
-mutation-checked to red at least one row that no other rule covers.
+mutated copies of the real source. The battery is per **condition**, not per
+rule: each individual `requireField` above was deleted on its own and must red
+at least one row. Three conditions once red zero — two of them because
+`estimate_polars.mjs` independently refuses the same input with a
+byte-identical message, so the row could not tell which layer had refused.
+Those messages now carry a `spec N.6 E1`/`E2` marker and the rows assert it.
 
 There is deliberately **no** duplicate-sail-id check — sail ids are not unique
 across boats by design, and a repeated key inside one boat's `sails` map is

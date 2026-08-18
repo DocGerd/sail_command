@@ -201,7 +201,7 @@ describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', 
   //                                                 polarProvenance.test.ts and
   //                                                 verifyMaskBoatGate.test.ts,
   //                                                 which now also pin membership.
-  //   perturb this table alone (drop 'elan-444') -> 1 row reds, this one, and
+  //   perturb this table alone (drop an id)      -> 1 row reds, this one, and
   //                                                 nothing else anywhere.
   // The ASYMMETRY is the point and it survives: only a production-side change
   // reaches the other files, so this row cannot be the reason they are green.
@@ -226,8 +226,9 @@ describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', 
   //
   //   MEASURED 2026-08-18, hardcoding defaultSafetyDepthM to `return 3.0`
   //   (the hand-typed default R2 exists to catch):
-  //     three-boat catalogue -> 7 rows red ACROSS this file and boatDepth's,
-  //                             R2 AMONG THEM.
+  //     three-boat catalogue -> 7 rows red across the catalogue guards
+  //                             (1 here - R2 - plus 3 in boatDepth.test.ts and
+  //                             3 in verifyMaskBoatGate.test.ts).
   //     one-boat catalogue   -> 14/14 maskTolerance rows PASS, R2 included,
   //                             because 3.0 IS ceilToDecimetre(2.1 + 0.9) and
   //                             R2's assertion is satisfied by the coincidence.
@@ -242,7 +243,7 @@ describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', 
   // quantiser still belongs entirely to the SYNTHETIC probes in
   // boatDepth.test.ts (1.73, 2.25) and to verify_mask.py's
   // GATE_DERIVATION_CASES. Do not add a catalogue boat expecting to cover it.
-  const EXPECTED_BOAT_IDS = ['salona-45', 'salona-44', 'elan-444'];
+  const EXPECTED_BOAT_IDS = ['salona-45', 'salona-44-speedy-go', 'elan-444-piranja'];
 
   it('R1: the catalogue matches the hand-written expected list', () => {
     expect(BOATS.map((b) => b.id)).toEqual(EXPECTED_BOAT_IDS);

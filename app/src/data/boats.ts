@@ -139,12 +139,12 @@ const FOCK_NOTE =
 // deliberately NOT used: that test boat carried the upgraded 75 hp saildrive
 // against a 55 hp standard, so the figure is not attributable to PIRANJA.
 const S44_GENOA_NOTE =
-  "Tier C, ESTIMATED - this hull's own jib table (see the salona-44 fock note) multiplied " +
-  "cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa table divided " +
-  'by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at 25 kn). The ' +
-  "difference between this boat's two tables is therefore a function of THAT RAMP, not of this " +
-  'hull, and carries no information about it - which is why the sail comparison is withheld ' +
-  'rather than presented as a finding. Same inherited grid and angles, and the same ' +
+  "Tier C, ESTIMATED - this hull's own jib table (see the salona-44-speedy-go fock note) " +
+  "multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa " +
+  'table divided by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at ' +
+  "25 kn). The difference between this boat's two tables is therefore a function of THAT RAMP, " +
+  'not of this hull, and carries no information about it - which is why the sail comparison is ' +
+  'withheld rather than presented as a finding. Same inherited grid and angles, and the same ' +
   'uncertainty, as the jib table. Flat-water racing VPP - tune with the performance factor. NOT ' +
   'race-calibrated, and never measured against this boat.';
 
@@ -161,12 +161,12 @@ const S44_FOCK_NOTE =
   'tune with the performance factor. NOT race-calibrated, and never measured against this boat.';
 
 const ELAN_GENOA_NOTE =
-  "Tier C, ESTIMATED - this hull's own jib table (see the elan-444 fock note) multiplied " +
-  "cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa table divided " +
-  'by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at 25 kn). The ' +
-  "difference between this boat's two tables is therefore a function of THAT RAMP, not of this " +
-  'hull, and carries no information about it - which is why the sail comparison is withheld ' +
-  'rather than presented as a finding. Same inherited grid and angles, and the same ' +
+  "Tier C, ESTIMATED - this hull's own jib table (see the elan-444-piranja fock note) " +
+  "multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa " +
+  'table divided by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at ' +
+  "25 kn). The difference between this boat's two tables is therefore a function of THAT RAMP, " +
+  'not of this hull, and carries no information about it - which is why the sail comparison is ' +
+  'withheld rather than presented as a finding. Same inherited grid and angles, and the same ' +
   'uncertainty, as the jib table. Flat-water racing VPP - tune with the performance factor. NOT ' +
   'race-calibrated, and never measured against this boat.';
 
@@ -177,17 +177,19 @@ const ELAN_FOCK_NOTE =
   'ratios: 77.76 m2 and 10,900 kg for this hull against 92.35 m2 and 10,000 kg for the Salona ' +
   '45, both figures from sailboatdata.com. ONE SOURCE ONLY, and deliberately: Yachting World ' +
   "prints this model's 100% foretriangle area as 85.7 m2 (the main measured larger), and mixing " +
-  'that one figure in gives k = 0.937 - a 5% shift through every cell of the table, from a ' +
+  'that one figure in gives k = 0.936 - a 5% shift through every cell of the table, from a ' +
   'reputable source, with nothing downstream able to detect it. The TWA/TWS grid and the beat ' +
   'and gybe angles are INHERITED from the Salona 45 unchanged - an inherited claim, not a ' +
   'derived one: a uniform scalar cannot move pointing angles, capture hull shape or fix a wrong ' +
   'keel. Typically within a few percent, up to about ten percent in individual conditions; the ' +
   'residual is polar shape, which no scalar corrects. MEASURED against the only independent ' +
-  'light-air report for this hull (Yachting World, 6-8 kn true): this table reads about 9% low ' +
-  'at TWA 45 / TWS 8 and about 26% low at TWA 45 / TWS 6. That is the light-air band where the ' +
-  'estimator is weakest and where a sail-versus-motor decision can flip, so treat light-air ' +
-  'legs for this boat with particular caution. Flat-water racing VPP - tune with the ' +
-  'performance factor. NOT race-calibrated, and never measured against this boat.';
+  'light-air report for this hull: at TWA 45 / TWS 8, where Yachting World recorded just over 6 ' +
+  'kn close-hauled, this table reads 5.45 kn - about 9% low, at the top of the band above. ' +
+  'Because the scalar is uniform, that relative error is the same in every cell; there is no ' +
+  'separate, larger light-air error mode. That is the light-air band where the estimator is ' +
+  'weakest and where a sail-versus-motor decision can flip, so treat light-air legs for this ' +
+  'boat with particular caution. Flat-water racing VPP - tune with the performance factor. NOT ' +
+  'race-calibrated, and never measured against this boat.';
 
 export const BOATS = [
   {
@@ -230,15 +232,29 @@ export const BOATS = [
     ],
   },
   {
-    // Spec N.1. One entry per named VESSEL (OQ-4), so the id names the hull
-    // this entry is about even though it is spelled after the model: EASY GO!
-    // is the SAME MODEL and a DIFFERENT HULL (2.55 m deep keel, spec N.2), and
-    // when it lands it takes its own entry and its own id rather than sharing
-    // this one. A shared per-model entry would have carried one draft for two
-    // hulls 0.45 m apart — the "wrong default variant is a silent safety
-    // error" that spec L rejected the keel-variant picker over, arriving
-    // through the sister-ship door instead.
-    id: 'salona-44',
+    // Spec N.1. One entry per named VESSEL (OQ-4), and the id says so: EASY
+    // GO! is the SAME MODEL and a DIFFERENT HULL (2.55 m deep keel, spec N.2)
+    // and will land as `salona-44-easy-go`. A model-shaped `salona-44` would
+    // have read as the class while permanently denoting one hull — and the id
+    // is persisted inside every plan's boat snapshot and drives the polar
+    // asset filenames, so it is cheap to get right now and effectively
+    // impossible to change later.
+    //
+    // A shared per-model entry would have been worse still: one draft for two
+    // hulls 0.45 m apart, which is the "wrong default variant is a silent
+    // safety error" that spec L rejected the keel-variant picker over,
+    // arriving through the sister-ship door instead.
+    //
+    // KNOWN CONFLICT, tracked as #567 rather than left in a PR body: OQ-4 says
+    // sister ships SHARE a polar asset, and that is not expressible today —
+    // verifyMaskBoatGate.test.ts requires the catalogue and pipeline boat-id
+    // sets to be identical in both directions (for the stronger spec C.6
+    // reason that no boat may ship without a verify_mask.py run at its own
+    // derived gate), so a per-vessel entry implies a per-vessel polar file.
+    // Harmless while no sister pair is in scope; a real conflict the moment
+    // EASY GO! lands, because the two hulls would then carry duplicate tables
+    // that can drift apart silently.
+    id: 'salona-44-speedy-go',
     name: 'Salona 44 (SPEEDY GO!)',
     // Its own literal, deliberately. Spec L has a row on exactly this: 2.10 m
     // coincides NUMERICALLY with the Salona 45's BOAT_DRAFT_M and is a
@@ -266,19 +282,19 @@ export const BOATS = [
         // configurations. Claiming those percentages here would dress an
         // inherited configuration up as a measured one.
         label: 'Genoa',
-        polarAsset: 'data/polars/salona-44-genoa.json',
+        polarAsset: 'data/polars/salona-44-speedy-go-genoa.json',
         polarProvenance: { tier: 'estimated', note: S44_GENOA_NOTE },
       },
       {
         id: 'fock',
         label: 'Jib',
-        polarAsset: 'data/polars/salona-44-fock.json',
+        polarAsset: 'data/polars/salona-44-speedy-go-fock.json',
         polarProvenance: { tier: 'estimated', note: S44_FOCK_NOTE },
       },
     ],
   },
   {
-    id: 'elan-444',
+    id: 'elan-444-piranja',
     name: 'Elan Impression 444 (PIRANJA)',
     // Derived gate 2.8 m — SHALLOWER than today's 3.0 m default, so this
     // boat's reachable-harbour set is a SUPERSET of the Salona 45's. It still
@@ -301,13 +317,13 @@ export const BOATS = [
       {
         id: 'genoa',
         label: 'Genoa',
-        polarAsset: 'data/polars/elan-444-genoa.json',
+        polarAsset: 'data/polars/elan-444-piranja-genoa.json',
         polarProvenance: { tier: 'estimated', note: ELAN_GENOA_NOTE },
       },
       {
         id: 'fock',
         label: 'Jib',
-        polarAsset: 'data/polars/elan-444-fock.json',
+        polarAsset: 'data/polars/elan-444-piranja-fock.json',
         polarProvenance: { tier: 'estimated', note: ELAN_FOCK_NOTE },
       },
     ],

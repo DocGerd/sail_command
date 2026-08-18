@@ -74,7 +74,9 @@ const SOURCE = join(REPO, 'pipeline', 'polars-source.json');
 const SHIPPED = join(REPO, 'app', 'public', 'data', 'polars');
 
 /** A boat id that is estimated (tier C) in the committed source. */
-const TIER_C = 'salona-44';
+const TIER_C = 'salona-44-speedy-go';
+/** The OTHER tier-C boat, for rows that need a second one. */
+const TIER_C2 = 'elan-444-piranja';
 
 /**
  * What the harness itself writes into the scratch tree, so `allWrittenFiles`
@@ -129,6 +131,8 @@ function freshSource(): {
     name?: string;
     validation?: {
       maxSpeedKn?: number;
+      /** #54 spec N.3 step 5 — optional HERE only so a row can delete it. */
+      maxSpeedKnSource?: string;
       anchors?: {
         label: string;
         twa: number;
@@ -576,6 +580,13 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
       const r = run(src);
       expect(r.ok).toBe(false);
       expect(r.output).toContain(`${TIER_C}/fock`);
+      // Naming the FIELD is what makes each per-field check individually
+      // load-bearing. Asserting only the sail name left `baseBoatId` and
+      // `baseSailId` DEAD (measured): with their check deleted, a missing id
+      // falls through to MAJOR 4's `baseSail != null`, which aborts and names
+      // the same sail. MAJOR 4's message reads "estimator base <a>/<b>" with a
+      // space, so it cannot satisfy "estimator.baseBoatId".
+      expect(r.output).toContain(`estimator.${field}`);
       expect(allWrittenFiles(r)).toEqual([]);
     },
   );
@@ -711,8 +722,9 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
     // ~ 1.414 — comfortably outside [0.80, 1.25] and nowhere near the
     // boundary, so this row cannot pass or fail on a rounding hair.
     const DOUBLED_SA = 185.62;
-    for (const sailId of Object.keys(boat.sails))
-      boat.sails[sailId]!.estimator!.inputs!['sailAreaUpwindM2']!.value = DOUBLED_SA;
+    // Only the SCALAR sail carries inputs — MAJOR 2 removed them from the ramp
+    // sail, which derives from this one.
+    boat.sails['fock']!.estimator!.inputs!['sailAreaUpwindM2']!.value = DOUBLED_SA;
 
     // Now re-derive EVERYTHING downstream of that input, so the block stays
     // perfectly self-consistent and E7 has nothing to say. The two arithmetic
@@ -798,7 +810,7 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
   // donor's hull into the second table while the block still looked complete.
   it('E6: aborts when the second sail derives from another boat’s base table', () => {
     const src = freshSource();
-    src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.baseBoatId = 'elan-444';
+    src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.baseBoatId = TIER_C2;
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('its OWN base table');
@@ -809,8 +821,19 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
   // derivations presented as one boat's inventory.
   it('E6: aborts when a boat declares two scaled base tables', () => {
     const src = freshSource();
-    src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.method =
-      'salona45-uniform-scalar-v1';
+    const boat = src.boats.find((b) => b.id === TIER_C)!;
+    const genoa = boat.sails['genoa']!.estimator!;
+    // Make the second block a WELL-FORMED scalar derivation, not merely a
+    // relabelled ramp: point it at the donor's certificate table (or MAJOR 4
+    // fires on the tier), give it the inputs a scalar sail must carry (or
+    // MAJOR 2's ramp rule and E2 fire), and drop the now-meaningless ramp.
+    // Only then is "two sails declare SCALAR_METHOD" the sole violation left,
+    // which is what makes this row a test of E6 rather than of its neighbours.
+    genoa.method = 'salona45-uniform-scalar-v1';
+    genoa.baseBoatId = 'salona-45';
+    genoa.baseSailId = 'fock';
+    genoa.inputs = JSON.parse(JSON.stringify(boat.sails['fock']!.estimator!.inputs));
+    delete genoa.ramp;
     const r = run(src);
     expect(r.ok).toBe(false);
     expect(r.output).toContain('expected exactly 1');
@@ -880,6 +903,22 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
     expect(allWrittenFiles(r)).toEqual([]);
   });
 
+  // PRE-EXISTING dead condition, closed here rather than left named: nothing
+  // in this file exercised the TWS-monotonicity guard at all, so it reddened
+  // zero rows. Mutated on the SALONA 45 deliberately — it is not estimated, so
+  // E7 has no opinion on its table and cannot shadow this. TWA 35 carries no
+  // anchor (they sit at 90 and 52) and 3.0 kn clears the plausibility bound,
+  // so the monotonicity check is the only thing that can fire.
+  it('E8: the pre-existing TWS monotonicity guard still bites', () => {
+    const src = freshSource();
+    const row = src.boats.find((b) => b.id === 'salona-45')!.sails['genoa']!.speeds[0];
+    row[2] = row[1] - 0.84; // 4.97 -> 3.0, below the 3.84 beside it
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('non-monotone TWS');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
   it('E8: the pre-existing TWS axis guard still bites on a tier-C boat', () => {
     const src = freshSource();
     const tws = src.boats.find((b) => b.id === TIER_C)!.tws;
@@ -889,4 +928,144 @@ describe('#54 spec N.6: tier-C estimated polars fail closed (E1-E8)', () => {
     expect(r.output).toContain(`${TIER_C}: tws`);
     expect(allWrittenFiles(r)).toEqual([]);
   });
+
+  // ---- MINOR 6: three conditions that once reddened ZERO rows ----
+  //
+  // Two are the message-shadowing class E6 was already repaired for:
+  // build_polars.mjs and estimate_polars.mjs emitted byte-identical bodies for
+  // a malformed input entry, differing only in the `polars-source.json:` vs
+  // `estimate_polars:` prefix their throw sites prepend — so a row asserting
+  // the body would pass with the build-side check deleted. The build-side
+  // messages now carry a `spec N.6 E1`/`E2` marker; these rows assert THAT.
+  // The `scalar` one shadowed differently: with the check gone a missing
+  // scalar reached E7's Object.is comparison, which reds with E7's message.
+
+  it('E1: aborts, naming the rule, when estimator.scalar is missing', () => {
+    const src = freshSource();
+    delete src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!.scalar;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('spec N.6 E1');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('E2: aborts, naming the SHAPE, when an inputs entry is not an object', () => {
+    const src = freshSource();
+    const est = src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!;
+    est.inputs!['sailAreaUpwindM2'] = 92.81 as unknown as { value: number; source: string };
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    // The E2 marker alone left this DEAD (measured): a bare number has no
+    // `.value` either, so deleting the shape check merely handed the abort to
+    // the value check one line below, which carries the same marker. Only the
+    // shape wording discriminates which of the two siblings refused.
+    expect(r.output).toContain('is not a { value, source } object');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('E2: aborts, naming the rule, when an inputs entry value is not a number', () => {
+    const src = freshSource();
+    const est = src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!;
+    est.inputs!['sailAreaUpwindM2']!.value = '92.81' as unknown as number;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('spec N.6 E2');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // ---- MAJOR 2: a RAMP sail must carry no inputs at all ----
+  //
+  // Before this rule, the four sourced figures on a ramp sail were dead data:
+  // estimatedSpeedsFor's RAMP branch recurses into the BASE sail and never
+  // reads them. MEASURED then: editing the ramp sail's sailAreaUpwindM2 from
+  // 77.76 to 85.7 built cleanly with all six assets byte-identical, while the
+  // same edit on the scalar sail reddened correctly. The ramp block also held
+  // the FIRST occurrence of 77.76 in the file, so it was the copy a
+  // contributor would most likely edit.
+  it('MAJOR 2: aborts when a ramp sail declares estimator.inputs', () => {
+    const src = freshSource();
+    const boat = src.boats.find((b) => b.id === TIER_C)!;
+    boat.sails['genoa']!.estimator!.inputs = {
+      sailAreaUpwindM2: { value: 92.81, source: 'a copy nothing reads' },
+    };
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('must not declare estimator.inputs');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // ---- MAJOR 4: what the base IS, not merely that it is named ----
+
+  // Spec N.3 step 3: the certificate-anchored table is the base, NEVER the
+  // modelled genoa overlay. E7 reproduces happily from either, and the shipped
+  // note would still read "certificate-anchored" because that note is prose.
+  it('MAJOR 4: aborts when the scaled base is the donor’s MODELLED genoa', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!.baseSailId = 'genoa';
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain("not 'certificate'");
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // Scaling one estimate from another puts §G.2's "estimate of an estimate"
+  // into the ETA itself, rather than into the comparison §N.4 suppresses.
+  it('MAJOR 4: aborts when the scaled base is another ESTIMATED table', () => {
+    const src = freshSource();
+    const est = src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!;
+    est.baseBoatId = TIER_C2;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain("not 'certificate'");
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('MAJOR 4: aborts when the scaled base names a boat/sail that does not exist', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.sails['fock']!.estimator!.baseBoatId = 'no-such-boat';
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('is not a boat/sail in this file');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // A ramp from a sail onto ITSELF is a ratio of exactly 1.0 — two
+  // byte-identical tables shipped as two different sails.
+  it('MAJOR 4: aborts when the ramp maps a sail onto itself', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.ramp!.toSailId = 'fock';
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('that ramp is the identity');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // The ramp must come from the DONOR hull. Any other boat's ramp is not the
+  // documented overlay §N.4 authorises, and §N.4's argument for suppressing
+  // the comparison depends on knowing which ramp it is.
+  it('MAJOR 4: aborts when the ramp comes from a boat other than the donor', () => {
+    const src = freshSource();
+    src.boats.find((b) => b.id === TIER_C)!.sails['genoa']!.estimator!.ramp!.boatId = TIER_C2;
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('ramp comes from');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  // ---- MINOR 10: the plausibility ceiling is held to E3's standard ----
+  //
+  // Spec N.3 step 5 treats maxSpeedKn and the anchors ALIKE. Applied to every
+  // boat, so the reference boat is held to it too — the same reasoning that
+  // made E3 universal.
+  it.each(['salona-45', TIER_C])(
+    'MINOR 10: aborts when %s declares a plausibility ceiling with no source',
+    (boatId) => {
+      const src = freshSource();
+      delete src.boats.find((b) => b.id === boatId)!.validation!.maxSpeedKnSource;
+      const r = run(src);
+      expect(r.ok).toBe(false);
+      expect(r.output).toContain('maxSpeedKnSource missing');
+      expect(allWrittenFiles(r)).toEqual([]);
+    },
+  );
 });

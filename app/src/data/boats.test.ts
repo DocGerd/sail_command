@@ -19,7 +19,7 @@ describe('boat catalogue', () => {
   // is a safety-critical record — it carries the draft that derives the mask
   // gate and the #53 relaxation floor — so membership stays pinned, only the
   // expected list moves.
-  const EXPECTED_BOAT_IDS = ['salona-45', 'salona-44', 'elan-444'];
+  const EXPECTED_BOAT_IDS = ['salona-45', 'salona-44-speedy-go', 'elan-444-piranja'];
 
   it('ships exactly the catalogue spec N.1 authorises, in order', () => {
     expect(BOATS.map((b) => b.id)).toEqual(EXPECTED_BOAT_IDS);
@@ -89,10 +89,10 @@ describe('boat catalogue', () => {
       // Spec N.1's two tier-C fleet models. BOTH sails of each are estimated —
       // the second is the first times the Salona 45's overlay ramp (spec N.4),
       // so it is no more measured than the first.
-      'salona-44/genoa': 'estimated',
-      'salona-44/fock': 'estimated',
-      'elan-444/genoa': 'estimated',
-      'elan-444/fock': 'estimated',
+      'salona-44-speedy-go/genoa': 'estimated',
+      'salona-44-speedy-go/fock': 'estimated',
+      'elan-444-piranja/genoa': 'estimated',
+      'elan-444-piranja/fock': 'estimated',
     });
   });
 
@@ -127,9 +127,20 @@ describe('boat catalogue', () => {
     // silently flipping to `true` without evidence reds here.
     expect(Object.fromEntries(BOATS.map((b) => [b.id, b.draftProvenance.hullVerified]))).toEqual({
       'salona-45': true,
-      'salona-44': false,
-      'elan-444': false,
+      'salona-44-speedy-go': false,
+      'elan-444-piranja': false,
     });
+    // BLOCKER 1's keeper on THIS side of the boundary. `draftProvenance` is a
+    // REQUIRED BoatDef field, so a fleet entry that omits it is a type error —
+    // that is what makes the disclosure impossible to lose silently, and it is
+    // why this record won over #563's optional `keelAssumption?`, where an
+    // absent field simply rendered nothing for exactly the two boats spec N.2
+    // requires it for. A row asserting the picker actually EMITS the sentence
+    // belongs with the picker; this one guarantees the data it reads exists.
+    for (const b of BOATS) {
+      if (b.draftProvenance.hullVerified) continue;
+      expect(b.draftProvenance.keel.trim().length, `${b.id} keel`).toBeGreaterThan(0);
+    }
   });
 
   // Spec L's "Reuse BOAT_DRAFT_M for the Salona 44" row, made checkable. The
@@ -139,12 +150,12 @@ describe('boat catalogue', () => {
   // being derived from the other, which this cannot see — hence the source
   // comment on the entry. This row's job is to notice if either MOVES alone.
   it('the Salona 44 states its own 2.10 m draft, coinciding with the Salona 45', () => {
-    expect(boatById('salona-44').draftM).toBe(2.1);
+    expect(boatById('salona-44-speedy-go').draftM).toBe(2.1);
     expect(boatById('salona-45').draftM).toBe(2.1);
   });
 
   it('the Elan Impression 444 states its 1.90 m standard-keel draft', () => {
-    expect(boatById('elan-444').draftM).toBe(1.9);
+    expect(boatById('elan-444-piranja').draftM).toBe(1.9);
   });
 
   it('defaults to the Salona 45', () => {
