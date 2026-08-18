@@ -69,13 +69,62 @@ function normaliseRigResult(x: unknown): RigResult | null {
   //
   // Checked on EVERY sail, not just the recommended one: a damaged
   // non-recommended sail reaches the same dereference the moment the user
-  // switches rig tabs. The remaining fields (durationMs/distanceNm/
+  // switches rig tabs. The remaining RigResult fields (durationMs/distanceNm/
   // maneuverCount/motorDistanceNm) are deliberately NOT checked here — they
   // are formatted, never dereferenced, so damage there degrades to NaN text
-  // rather than unmounting anything.
+  // rather than unmounting anything. The legs ARRAY is not enough on its own
+  // — see isLegShaped above for what each element must carry and what it
+  // deliberately does not.
   if (!Number.isFinite(rest.etaMs)) return null;
-  if (!Array.isArray(rest.legs)) return null;
+  if (!Array.isArray(rest.legs) || !rest.legs.every(isLegShaped)) return null;
   return { ...rest, sailId: id as SailId } as RigResult;
+}
+
+/**
+ * The LEG fields a renderer reads a property OFF, i.e. the ones whose damage
+ * is a TypeError rather than a wrong-looking number. `Array.isArray(legs)`
+ * alone admitted `[null]` (RouteSummary's `(legs ?? []).filter((leg) =>
+ * leg.shallow)` throws on it) and `[{}]` (the legs table calls `.toFixed` on
+ * an absent number), and with no error boundary in app/src that unmounts the
+ * React root — the white screen the container check exists to prevent,
+ * reached one input over.
+ *
+ * Every field checked here is part of LegCommon (plus the `kind`
+ * discriminant) and has existed unchanged since v0.1.0, so this cannot refuse
+ * a record any released build wrote.
+ *
+ * NOT CHECKED, deliberately and verifiably: `board`, `twaDeg` and
+ * `maneuverAtStart`. A repo-wide scan for a property read off any of the
+ * three (`\b(leg|l)\.(board|twaDeg|maneuverAtStart)\.[a-zA-Z]+`, run with
+ * `shallow` added as a positive control, which found RouteSummary's
+ * `leg.shallow.minDepthM`) returns nothing: they are interpolated into a
+ * class name, used as a lookup key, passed to `Math.abs`, or compared. Damage
+ * there renders a wrong label or a missing dot, never a throw.
+ */
+function isLegShaped(x: unknown): boolean {
+  if (!isRecord(x)) return false;
+  if (x.kind !== 'sail' && x.kind !== 'motor') return false;
+  for (const k of [
+    'startTimeMs',
+    'endTimeMs',
+    'headingDeg',
+    'twsKn',
+    'speedKn',
+    'distanceNm',
+  ] as const) {
+    if (!Number.isFinite(x[k])) return false;
+  }
+  for (const point of [x.start, x.end]) {
+    if (!isRecord(point) || !Number.isFinite(point.lat) || !Number.isFinite(point.lon))
+      return false;
+  }
+  // Optional, so absence is fine — but a TRUTHY non-object passes
+  // RouteSummary's `leg.shallow &&` guard and then reads `.minDepthM` off it,
+  // which `.toFixed` throws on.
+  if (x.shallow !== undefined) {
+    if (!isRecord(x.shallow) || !Number.isFinite(x.shallow.minDepthM)) return false;
+  }
+  return true;
 }
 
 function sailResultOf(sailId: SailId, result: unknown, reason: unknown): SailResult | null {

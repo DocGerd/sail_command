@@ -10,7 +10,25 @@ import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot } from '../t
 function legacyRigResult(rig: string, etaMs: number): Record<string, unknown> {
   return {
     rig,
-    legs: [{ kind: 'motor', board: null, maneuverAtStart: null }],
+    // A REALISTIC Leg, not a three-field stub: normaliseRigResult validates
+    // every LegCommon field a renderer reads a property off (isLegShaped), so
+    // a stub here would be refused for being unlike anything a released build
+    // ever wrote rather than for anything this suite is about.
+    legs: [
+      {
+        kind: 'motor',
+        board: null,
+        start: { lat: 54.79, lon: 9.43 },
+        end: { lat: 54.85, lon: 10.51 },
+        startTimeMs: 1_700_003_600_000,
+        endTimeMs: 1_700_007_200_000,
+        headingDeg: 90,
+        twsKn: 8,
+        speedKn: 6.5,
+        distanceNm: 12.5,
+        maneuverAtStart: null,
+      },
+    ],
     etaMs,
     durationMs: 3_600_000,
     distanceNm: 12.5,
@@ -18,6 +36,21 @@ function legacyRigResult(rig: string, etaMs: number): Record<string, unknown> {
     motorDistanceNm: 1.5,
   };
 }
+
+// The fixture's own leg, as a reusable base for the damage rows below.
+const HEALTHY_LEG: Record<string, unknown> = {
+  kind: 'motor',
+  board: null,
+  start: { lat: 54.79, lon: 9.43 },
+  end: { lat: 54.85, lon: 10.51 },
+  startTimeMs: 1_700_003_600_000,
+  endTimeMs: 1_700_007_200_000,
+  headingDeg: 90,
+  twsKn: 8,
+  speedKn: 6.5,
+  distanceNm: 12.5,
+  maneuverAtStart: null,
+};
 
 function legacyWindGrid(): Record<string, unknown> {
   return {
@@ -315,6 +348,41 @@ describe('#54 migratePlan: records it refuses, so they can be listed as unreadab
     const raw = legacyPlan();
     ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>).etaMs = Number.NaN;
     expect(migratePlan(raw)).toBeNull();
+  });
+
+  // The legs ARRAY passing `Array.isArray` is not enough: each of these was
+  // MEASURED to render and throw before isLegShaped existed — `[null]` at
+  // RouteSummary's `(legs ?? []).filter((leg) => leg.shallow)`, `[{}]` at the
+  // legs table's `.toFixed` on an absent number — and with no error boundary
+  // in app/src that unmounts the React root. useSessionRestore calls getPlan
+  // at BOOT, so it does not self-heal.
+  //
+  // The `shallow` row is the one this suite found rather than inherited: a
+  // TRUTHY NON-OBJECT passes RouteSummary's `leg.shallow &&` guard and then
+  // reads `.minDepthM` off it, which `.toFixed` throws on.
+  it.each([
+    ['a null element', null],
+    ['a non-object element', 42],
+    ['an element with no LegCommon fields', {}],
+    ['an element whose start is not a point', { ...HEALTHY_LEG, start: {} }],
+    ['an element whose distanceNm is not finite', { ...HEALTHY_LEG, distanceNm: Number.NaN }],
+    ['an element with an unknown kind', { ...HEALTHY_LEG, kind: 'kite' }],
+    ['an element whose shallow flag is a truthy non-object', { ...HEALTHY_LEG, shallow: 5 }],
+  ])('refuses a legs array containing %s', (_label, leg) => {
+    const raw = legacyPlan();
+    ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>).legs = [leg];
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  // The positive control the rows above need: the SAME construction with an
+  // undamaged element migrates, so they are not passing because any
+  // single-element legs array is refused.
+  it('accepts a legs array whose element is intact', () => {
+    const raw = legacyPlan();
+    ((raw.result as Record<string, unknown>).genoa as Record<string, unknown>).legs = [
+      { ...HEALTHY_LEG },
+    ];
+    expect(migratePlan(raw)).not.toBeNull();
   });
 
   // The NEIGHBOURING input: damage the sail that did NOT win, leaving a

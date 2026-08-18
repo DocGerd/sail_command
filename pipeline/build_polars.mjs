@@ -57,17 +57,21 @@ function requireNumbers(what, xs) {
 }
 
 // An INTERPOLATION AXIS, unlike the data it indexes, must strictly ascend.
-// app/src/lib/polar.ts walks each axis with `while (j < xs.length - 1 && xs[j]
-// < w) j++` and then divides by `xs[j] - xs[j - 1]`. MEASURED against those
-// two lines: an out-of-order axis brackets (or clamps to) the wrong column and
-// interpolates a silently wrong speed ([6,4,8] at 5 answers as if it were
-// 0.5 between 4 and 8), and a repeated value can make the denominator zero
-// ([4,4,8] at 4 is 0/0 -> NaN, as is an all-equal axis at every sample). NaN
-// then flows into the isochrone cost unchecked. Neither throws, and without
-// the check below the build exits 0. Applied to the four axes
-// polar.ts actually walks (`tws`, `twa`, `beat.tws`, `gybe.tws`) and NOT to
-// `beat.angle`/`gybe.angle`, which are the interpolated VALUES and are free
-// to fall as well as rise.
+// app/src/lib/polar.ts brackets each axis by walking it and then divides by
+// the gap between the two bracketing entries. (The walk's exact form differs
+// per axis — the TWS one is bounded by `j < tws.length - 1`, the TWA one and
+// interp1 are unbounded and guarded by early clamp returns instead — so do
+// not expect one quoted line to appear on all four paths; it is the DIVISION
+// that is common.) MEASURED against that arithmetic: an out-of-order axis
+// brackets (or clamps to) the wrong column and interpolates a silently wrong
+// speed ([6,4,8] at 5 answers as if it were 0.5 between 4 and 8), and a
+// repeated value can make the denominator zero ([4,4,8] at 4 is 0/0 -> NaN).
+// NaN then flows into the isochrone cost unchecked. Neither throws, and
+// without the check below the build exits 0. A LENGTH-1 axis is a separate
+// hole this loop cannot see — see requireInterpolable below. Applied to the
+// four axes polar.ts actually interpolates over (`tws`, `twa`, `beat.tws`,
+// `gybe.tws`) and NOT to `beat.angle`/`gybe.angle`, which are the
+// interpolated VALUES and are free to fall as well as rise.
 //
 // This became reachable with #54: the axes moved from one hand-maintained
 // shared table to per-boat data a new-boat contributor supplies, so their
@@ -78,6 +82,32 @@ function requireAscending(what, xs) {
       xs[i] > xs[i - 1],
       `${what}: not strictly ascending at index ${i} (${JSON.stringify(xs[i - 1])} then ${JSON.stringify(xs[i])}) — an interpolation axis must rise`,
     );
+}
+
+// SEPARATE from requireAscending, because the loop above is a NO-OP at length
+// 1 and `requireNumbers` demands only length > 0 — a single-entry axis passed
+// every guard here and shipped at exit 0. Applied to `tws` and `twa` only, the
+// two axes speedKn walks; beat.tws/gybe.tws go through interp1, whose two
+// clamp returns (`x <= xs[0]`, `x >= xs[n-1]`) cover every x when n is 1, so
+// they are safe at length 1 and are deliberately not floored.
+//
+// The two axes are floored for DIFFERENT reasons, measured against polar.ts's
+// own arithmetic rather than assumed alike:
+//   tws length 1 — `while (j < tws.length - 1 && …)` is `j < 0`, so j stays 1
+//     and `fw = (w - tws[0]) / (tws[1] - tws[0])` is 0/NaN while speeds[row][1]
+//     is undefined: NaN out of EVERY heading, into the isochrone cost.
+//   twa length 1 — NOT a NaN: `a <= twa[0]` and `a >= twa[twa.length - 1]`
+//     are the same test there, so every angle takes a clamp and the unbounded
+//     walk is unreachable. Floored anyway because a one-row table cannot
+//     interpolate over TWA at all, which no polar this validates ever means.
+// validate() cannot catch either: its column check is consistent at 1, its
+// TWS-monotonicity check needs `j > 0`, and its anchors read the SOURCE grid,
+// never Polar output.
+function requireInterpolable(what, xs) {
+  requireField(
+    xs.length >= 2,
+    `${what}: an interpolation axis needs at least two points, got ${xs.length}`,
+  );
 }
 
 function requireAngleTable(what, t) {
@@ -153,8 +183,10 @@ for (const boat of src.boats) {
   seenBoatIds.add(id);
   requireField(typeof boat.name === 'string' && boat.name.length > 0, `${id}: name missing`);
   requireNumbers(`${id}: tws`, boat.tws);
+  requireInterpolable(`${id}: tws`, boat.tws);
   requireAscending(`${id}: tws`, boat.tws);
   requireNumbers(`${id}: twa`, boat.twa);
+  requireInterpolable(`${id}: twa`, boat.twa);
   requireAscending(`${id}: twa`, boat.twa);
   requireAngleTable(`${id}: beat`, boat.beat);
   requireAngleTable(`${id}: gybe`, boat.gybe);

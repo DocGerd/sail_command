@@ -109,7 +109,7 @@ export const de = {
   'planner.status.fetching': 'Windvorhersage wird geladen…',
   // #340/#54: phase readout, not a percentage — the router solves
   // request.sailIds SEQUENTIALLY, so "Segel {index} von {total}" ({sail}
-  // already localized via RIG_LABEL_KEY) is honest and bounded, unlike the
+  // already localized via sailLabelKey) is honest and bounded, unlike the
   // removed percentage.
   'planner.status.routingSail': 'Route wird berechnet… Segel {index} von {total} ({sail})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve

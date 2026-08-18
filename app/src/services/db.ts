@@ -199,14 +199,16 @@ export async function listPlans(): Promise<PlanSummary[]> {
  * would cover only sails still named genoa/fock.
  *
  * What is NOT lost: the record these two write is a complete current-shape
- * record, so it re-reads through migratePlan unchanged — an older build skips
- * the row until it is upgraded, rather than the bytes being destroyed. Both
- * halves are pinned in db.test.ts by 'a write under an existing id drops the
- * legacy quartet, and what it leaves still reads and lists'; the two call
- * sites are covered individually by replan.test.ts's '#54: the record it
- * saves under the existing id stays readable' and by usePlanFlow.test.tsx's
- * pre-existing 'recalc-replace' row, which reads the replaced record back
- * through getPlan.
+ * record, so it re-reads through migratePlan unchanged — rather than the
+ * RECORD being destroyed — an older build skips the row (the plan vanishes
+ * from its Routes list) until that build is upgraded, the same user-visible
+ * loss a write-back would cause, which is why the deliberate-edit distinction
+ * above is the whole justification. Both halves are pinned in db.test.ts by
+ * 'a write under an existing id drops the legacy quartet, and what it leaves
+ * still reads and lists'; the two call sites are covered individually by
+ * replan.test.ts's '#54: the record it saves under the existing id stays
+ * readable' and by usePlanFlow.test.tsx's pre-existing 'recalc-replace' row,
+ * which reads the replaced record back through getPlan.
  */
 export async function getPlan(id: string): Promise<Plan | undefined> {
   const raw: unknown = await (await db()).get('plans', id);

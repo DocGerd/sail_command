@@ -420,6 +420,41 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
   // beat/gybe carry their OWN tws axis, walked by interp1 the same way, and
   // no other guard in this file reads them at all — this is the axis a
   // boat-axis-only check would leave open.
+  // LENGTH 1 — the hole requireAscending's own loop cannot see (it starts at
+  // i = 1) and requireNumbers does not close (it demands only length > 0).
+  // Each row supplies a SELF-CONSISTENT single-point table — the speeds grid
+  // is truncated to match and the anchors are re-pointed at a cell that
+  // exists, with a band wide enough to pass — so nothing but the length floor
+  // can abort the build. MEASURED: with `requireInterpolable` removed, both
+  // rows red because the build exits 0 (see this task's report).
+  it('aborts when the TWS axis has a single point', () => {
+    const src = freshSource();
+    const boat = src.boats[0];
+    boat.tws = [10];
+    for (const sail of Object.values(boat.sails)) sail.speeds = sail.speeds.map((row) => [row[0]]);
+    boat.validation!.anchors = [
+      { label: 'single-column', twa: boat.twa[0], tws: 10, minKn: 0.01, maxKn: 99 },
+    ];
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('salona-45: tws');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
+  it('aborts when the TWA axis has a single point', () => {
+    const src = freshSource();
+    const boat = src.boats[0];
+    boat.twa = [90];
+    for (const sail of Object.values(boat.sails)) sail.speeds = [sail.speeds[0]];
+    boat.validation!.anchors = [
+      { label: 'single-row', twa: 90, tws: boat.tws[0], minKn: 0.01, maxKn: 99 },
+    ];
+    const r = run(src);
+    expect(r.ok).toBe(false);
+    expect(r.output).toContain('salona-45: twa');
+    expect(allWrittenFiles(r)).toEqual([]);
+  });
+
   it.each(['beat', 'gybe'] as const)('aborts when the %s TWS axis does not ascend', (field) => {
     const src = freshSource();
     const axis = (src.boats[0][field] as { tws: number[] }).tws;
