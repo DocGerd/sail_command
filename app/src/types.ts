@@ -163,8 +163,23 @@ export interface RigResult {
 // 'tie'. `erasableSyntaxOnly` forbids enums, hence the string-literal union.
 // #54: still BINARY (its `rig` field name is unchanged) — spec §J OQ-3 caps
 // comparison at 2 sails for release-1; do not generalise this to N-way.
+//
+// #553 / spec §N.4: 'not-compared' means NO comparison was performed at all —
+// a strictly weaker statement than 'tie' or 'moot', both of which report the
+// OUTCOME of a comparison that did run. `assemble` (routing/planRoute.ts)
+// returns it whenever `compareRigs` was not called: fewer than two sails
+// produced a result, more than two were requested (the cap is 2, so no N-way
+// verdict is defined), or the boat's polars are tier C, where the second
+// table is the first times a documented overlay ramp so their difference is a
+// function of the ramp rather than of the hull.
+//
+// NOT the N-way generalisation §L rejects (`[OQ-3] Generalise
+// RigRecommendation to N-way now`) — spec §N.9 says so explicitly. The cap
+// stays at 2, `decided` still carries exactly one `rig`, and no N-way tie
+// semantics are defined here or anywhere else: the N >= 3 case is answered by
+// declining to rank, not by ranking N things.
 export type RigRecommendation =
-  { kind: 'decided'; rig: SailId } | { kind: 'tie' } | { kind: 'moot' };
+  { kind: 'decided'; rig: SailId } | { kind: 'tie' } | { kind: 'moot' } | { kind: 'not-compared' };
 
 export type NoRouteReason =
   | 'unreachable' // frontier died against land/depth everywhere

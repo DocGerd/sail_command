@@ -105,6 +105,12 @@
   // `node:fs`, to promote the pipeline's per-harbor connectivity flood fill
   // from the advisory-only `verify-mask.yml` workflow into the REQUIRED
   // `app` Vitest suite — same reason as verifyMaskBoatGate.test.ts above.
+  // sweepSailIds.test.ts (#553/#549): reads app/sweep/sweepArms.ts as TEXT via
+  // `node:fs` to hold the #282 harness's `sailIds` to a catalogue-derived
+  // value. It lives under `src/` rather than in `app/sweep/` deliberately —
+  // the sweep is excluded from `npm run test` and CI by design, which is
+  // exactly why the hardcoded literal went unnoticed there; a guard placed
+  // beside it would be equally invisible.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -124,6 +130,7 @@
     "src/**/buildPolars.failClosed.test.ts",
     "src/**/verifyMaskBoatGate.test.ts",
     "src/**/verifyMaskConnectivity.test.ts",
+    "src/**/sweepSailIds.test.ts",
     "sweep/**/*.ts"
   ]
 }

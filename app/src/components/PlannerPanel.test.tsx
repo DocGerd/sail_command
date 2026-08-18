@@ -1155,6 +1155,21 @@ describe('PlannerPanel', () => {
         'Rig does not matter here — this passage runs entirely under engine',
       );
     });
+
+    // #553: the MIRROR of RouteSummary.test.tsx's not-compared row. These are
+    // two independent call sites and #259's own banner is about exactly this
+    // pair drifting apart, so one row cannot stand in for the other.
+    it('#553: a not-compared verdict renders the honest no-comparison chip', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan: makePlan({ rigRecommendation: { kind: 'not-compared' } }),
+        rig: 'genoa',
+      });
+      const chip = container.querySelector('.chip-faster-rig');
+      expect(chip?.textContent).toBe(
+        'The sails were not compared for this passage, so no faster rig is claimed',
+      );
+    });
   });
 });
 

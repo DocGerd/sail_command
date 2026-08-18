@@ -8,7 +8,12 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonicalizePlan, canonicalizeArmFile } from './canonicalize.mjs';
+import {
+  canonicalizePlan,
+  canonicalizeArmFile,
+  withoutRigRecommendation,
+  classifyRigVerdictChange,
+} from './canonicalize.mjs';
 import { ARM_NAMES } from './armNames.ts';
 
 // Fixture pair is asymmetric in EVERY way Task 9's rename actually is: the
@@ -242,5 +247,184 @@ test('#54 fix round 2: companion — SAME harbour order on both sides reports ID
   } finally {
     rmSync(dirA, { recursive: true, force: true });
     rmSync(dirB, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// #553 MAJOR 4 — the third comparison mode.
+//
+// The mode exists because `rigRecommendation` is not in `canonicalizePlan`'s
+// `rest` exclusion list, so byte AND canonical mode both compare it verbatim
+// and neither can certify a deliberate change to it. It is deliberately TWO
+// assertions: eliding the field alone would be a comparator that cannot fail.
+// The rows below pin BOTH halves, and the `>= 2 solved` row is the one that
+// proves half 2 has teeth.
+// ---------------------------------------------------------------------------
+
+/** A plan with N solved sails and a given verdict. */
+function planWithVerdict(verdict, solvedCount) {
+  return {
+    status: 'ok',
+    comparisonComplete: true,
+    recommended: 'genoa',
+    sails: [
+      { sailId: 'genoa', result: { sailId: 'genoa', etaMs: 111, legs: [] }, reason: null },
+      {
+        sailId: 'fock',
+        result: solvedCount >= 2 ? { sailId: 'fock', etaMs: 222, legs: [] } : null,
+        reason: solvedCount >= 2 ? null : 'unreachable',
+      },
+    ],
+    ...(verdict ? { rigRecommendation: verdict } : {}),
+  };
+}
+
+test('#553: withoutRigRecommendation strips the verdict and keeps everything else', () => {
+  const withV = withoutRigRecommendation(planWithVerdict({ kind: 'decided', rig: 'genoa' }, 1));
+  const withoutV = withoutRigRecommendation(planWithVerdict(null, 1));
+  assert.equal('rigRecommendation' in withV, false);
+  // The two differ ONLY in the stripped field, so eliding it makes them equal.
+  assert.equal(JSON.stringify(withV), JSON.stringify(withoutV));
+  // ...and the rest really is still there, so this is not stripping the plan.
+  assert.equal(withV.recommended, 'genoa');
+  assert.equal(withV.sails.length, 2);
+});
+
+test('#553: classifyRigVerdictChange returns null when the verdict did not change', () => {
+  const a = planWithVerdict({ kind: 'decided', rig: 'genoa' }, 1);
+  const b = planWithVerdict({ kind: 'decided', rig: 'genoa' }, 1);
+  assert.equal(classifyRigVerdictChange(a, b), null);
+});
+
+test('#553: decided -> not-compared on a ONE-solved-sail plan is PERMITTED', () => {
+  const a = planWithVerdict({ kind: 'decided', rig: 'genoa' }, 1);
+  const b = planWithVerdict({ kind: 'not-compared' }, 1);
+  const v = classifyRigVerdictChange(a, b);
+  assert.equal(v.ok, true);
+  assert.match(v.why, /decided\/genoa -> not-compared \(1 solved\)/);
+});
+
+// THE TEETH. Without this clause the mode degrades into a blanket "ignore
+// rigRecommendation", and a HEAD that withheld a comparison it actually made
+// would pass. Same inputs as the permitted row above except the second sail
+// solved, so it isolates exactly the solved-count clause.
+test('#553: decided -> not-compared on a TWO-solved-sail plan is REFUSED', () => {
+  const a = planWithVerdict({ kind: 'decided', rig: 'genoa' }, 2);
+  const b = planWithVerdict({ kind: 'not-compared' }, 2);
+  const v = classifyRigVerdictChange(a, b);
+  assert.equal(v.ok, false);
+  assert.match(v.why, /2 sails produced a result/);
+});
+
+test('#553: any OTHER verdict transition is REFUSED in both directions', () => {
+  // not-compared -> decided (the reverse of the permitted change)
+  const back = classifyRigVerdictChange(
+    planWithVerdict({ kind: 'not-compared' }, 1),
+    planWithVerdict({ kind: 'decided', rig: 'genoa' }, 1),
+  );
+  assert.equal(back.ok, false);
+  // tie -> not-compared (BASE was not 'decided')
+  const fromTie = classifyRigVerdictChange(
+    planWithVerdict({ kind: 'tie' }, 2),
+    planWithVerdict({ kind: 'not-compared' }, 2),
+  );
+  assert.equal(fromTie.ok, false);
+  // decided/genoa -> decided/fock (a real ranking change, must never pass)
+  const reranked = classifyRigVerdictChange(
+    planWithVerdict({ kind: 'decided', rig: 'genoa' }, 2),
+    planWithVerdict({ kind: 'decided', rig: 'fock' }, 2),
+  );
+  assert.equal(reranked.ok, false);
+});
+
+/** Fixture dir where every arm carries one plan with the given verdict/solve count. */
+function writeVerdictDir(verdict, solvedCount, extra) {
+  const dir = mkdtempSync(join(tmpdir(), 'sweep-553-'));
+  const rows = { alpha: { ...planWithVerdict(verdict, solvedCount), ...(extra ?? {}) } };
+  const body = JSON.stringify(rows, null, 1);
+  for (const arm of ARM_NAMES) writeFileSync(join(dir, `${arm}.json`), body);
+  return dir;
+}
+
+test('#553 END TO END: --rig-verdict-change exits 0 on the permitted change, where BYTE mode fails', () => {
+  const base = writeVerdictDir({ kind: 'decided', rig: 'genoa' }, 1);
+  const head = writeVerdictDir({ kind: 'not-compared' }, 1);
+  try {
+    // Byte mode MUST fail on this pair — that is the gap the mode fills, and
+    // asserting it here is what stops this test from proving nothing.
+    assert.throws(() => execFileSync('node', [compareMjs, base, head], { encoding: 'utf8' }));
+    const out = execFileSync('node', [compareMjs, '--rig-verdict-change', base, head], {
+      encoding: 'utf8',
+    });
+    assert.match(out, /verdict-elided-identical/);
+    assert.match(out, new RegExp(`#553 verdict changes: ${ARM_NAMES.length}\\b`));
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#553 END TO END: --rig-verdict-change exits NON-ZERO when a fully-compared plan claims not-compared', () => {
+  const base = writeVerdictDir({ kind: 'decided', rig: 'genoa' }, 2);
+  const head = writeVerdictDir({ kind: 'not-compared' }, 2);
+  try {
+    assert.throws(
+      () =>
+        execFileSync('node', [compareMjs, '--rig-verdict-change', base, head], {
+          encoding: 'utf8',
+          stdio: 'pipe',
+        }),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(err.stdout, /DISALLOWED VERDICT CHANGES/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#553 END TO END: --rig-verdict-change still fails on a NON-verdict difference (it is not a blanket ignore)', () => {
+  // Identical verdict transition, but HEAD also moved a route value. Half 1
+  // must catch it.
+  const base = writeVerdictDir({ kind: 'decided', rig: 'genoa' }, 1);
+  const head = writeVerdictDir({ kind: 'not-compared' }, 1, { snappedOrigin: { lat: 1, lon: 2 } });
+  try {
+    assert.throws(
+      () =>
+        execFileSync('node', [compareMjs, '--rig-verdict-change', base, head], {
+          encoding: 'utf8',
+          stdio: 'pipe',
+        }),
+      (err) => {
+        assert.equal(err.status, 1);
+        assert.match(err.stdout, /DIFFERING PLANS \(with rigRecommendation elided\)/);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(head, { recursive: true, force: true });
+  }
+});
+
+test('#553: --canonical and --rig-verdict-change together are refused as different claims', () => {
+  const dir = writeVerdictDir({ kind: 'not-compared' }, 1);
+  try {
+    assert.throws(
+      () =>
+        execFileSync('node', [compareMjs, '--canonical', '--rig-verdict-change', dir, dir], {
+          encoding: 'utf8',
+          stdio: 'pipe',
+        }),
+      (err) => {
+        assert.equal(err.status, 2);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

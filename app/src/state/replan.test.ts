@@ -347,6 +347,11 @@ describe('replanWithVias', () => {
     ['worker-error', 'error.routingCrashed'],
     ['messageerror', 'error.routingMessageError'],
     ['disposed', 'error.routingInterrupted'],
+    // #553: added with the kind itself. A five-element array typed by a
+    // tuple type is NOT exhaustiveness-checked, so a sixth kind slips past
+    // this table silently — measured in review: repointing the mapping to
+    // 'error.routingTimeout' left 140 tests green.
+    ['boat-not-in-catalogue', 'error.boatNotInCatalogue'],
   ])('preserves RoutingError kind %s as ReplanError(%s)', async (kind, messageKey) => {
     const plan = makePlan();
     const client: ReplanClient = {
@@ -379,6 +384,34 @@ describe('replanWithVias', () => {
 
     await expect(replanWithVias(plan, [], { client })).rejects.toBeInstanceOf(ReplanError);
     expect(dispose, 'a timed-out replan must dispose its client').toHaveBeenCalledTimes(1);
+  });
+
+
+  // #553 MAJOR 5: the ONE rejection kind that must NOT tear the worker down.
+  // `'boat-not-in-catalogue'` is raised by a client-side catalogue lookup
+  // BEFORE plan() posts anything, so the worker never saw the request and is
+  // healthy — disposing costs a full re-init (mask .slice(0) + transfer + the
+  // polar map) for a lookup miss, and because dispose() calls failAll() it can
+  // abort an UNRELATED in-flight plan on the shared singleton. Paired with the
+  // timeout row above, which must keep disposing: the two together isolate the
+  // kind as the deciding variable rather than asserting a blanket no-dispose.
+  it('does NOT dispose the client when the boat is not in the catalogue', async () => {
+    const plan = makePlan();
+    const dispose = vi.fn();
+    const client: ReplanClient = {
+      plan: vi
+        .fn()
+        .mockRejectedValue(new RoutingError('boat-not-in-catalogue', 'boat not in catalogue: x')),
+      dispose,
+    };
+
+    await expect(replanWithVias(plan, [], { client })).rejects.toMatchObject({
+      messageKey: 'error.boatNotInCatalogue',
+    });
+    expect(
+      dispose,
+      'a catalogue-miss rejection must leave the healthy worker alone',
+    ).not.toHaveBeenCalled();
   });
 
   it('does NOT dispose the client on a successful replan', async () => {

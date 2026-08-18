@@ -153,6 +153,15 @@ export const en = {
   'error.routingMessageError':
     'The routing engine sent back a reply that could not be read. Try again — it restarts fresh.',
   'error.routingInterrupted': 'Route planning was interrupted. Try again.',
+  // #553 / spec §I.3. Remedy copy true of THIS path specifically: neither a
+  // retry (a fresh worker changes nothing — the catalogue is the same) nor a
+  // reload (likewise) can help, so neither is offered. What the sentence
+  // conveys instead is the narrowness of the loss — §I.3 guarantees the saved
+  // plan "still opens, still renders, still exports GPX", and only re-planning
+  // is gone — because a bare failure message would read as "this route is
+  // broken" and invite the user to delete a record that is entirely intact.
+  'error.boatNotInCatalogue':
+    'This route was planned for a boat that is no longer available, so it cannot be planned again. The saved route still opens, and you can still view and export it.',
   'error.planSaveFailed':
     'The route was calculated but could not be saved. Try again, or check available storage on this device.',
   'error.windUnknown':
@@ -198,6 +207,16 @@ export const en = {
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
   'route.rigTie': 'Genoa and Fock are effectively tied for this passage',
   'route.rigMoot': 'Rig does not matter here — this passage runs entirely under engine',
+  // #553 / spec §N.4: strictly WEAKER than rigTie above, and the distinction
+  // is the whole point — 'tie' reports the outcome of a comparison that ran,
+  // this reports that no comparison ran at all. Reached when only one sail
+  // found a route, when the plan requested a number of sails the capped-at-2
+  // comparison has no verdict for, or when the boat's polars are estimated
+  // (tier C), where the two tables differ by a documented overlay ramp rather
+  // than by anything about the hull. Says no faster rig is CLAIMED rather
+  // than that the sails are equal, because that is the honest difference.
+  'route.rigNotCompared':
+    'The sails were not compared for this passage, so no faster rig is claimed',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts

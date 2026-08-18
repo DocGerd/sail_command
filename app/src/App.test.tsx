@@ -339,6 +339,11 @@ function fetchMock() {
     }
     if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
     if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    // #54 spec N: the two tier-C fleet boats' four tables. AFTER the
+    // salona-45 branches, which keep their distinct TEST_POLAR/FOCK fixtures.
+    // loadRoutingAssets fetches every catalogue boat's polars eagerly, so a
+    // new boat 404s the whole asset load without this.
+    if (url.includes('/data/polars/')) return Promise.resolve(jsonResponse(TEST_POLAR));
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
     if (url.includes('seamarks.json'))
       return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
@@ -2045,6 +2050,9 @@ describe('plan-form sync (#301)', () => {
         if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
         if (url.includes('salona-45-fock.json'))
           return Promise.resolve(jsonResponse({ ...TEST_POLAR, rig: 'fock' }));
+        // #54 spec N: the tier-C fleet boats' tables — see the note on the
+        // module-level mock above.
+        if (url.includes('/data/polars/')) return Promise.resolve(jsonResponse(TEST_POLAR));
         if (url.includes('harbors.json')) return harborsPromise;
         if (url.includes('seamarks.json'))
           return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));

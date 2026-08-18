@@ -255,6 +255,17 @@ describe('RouteSummary', () => {
     expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
   });
 
+  it('#553: a not-compared verdict shows neither ★ and says no comparison happened', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+    renderSummary({ plan, rig: 'genoa' });
+    const tablist = screen.getByRole('tablist', { name: 'Rig comparison' });
+    expect(within(tablist).queryAllByLabelText('Recommended')).toHaveLength(0);
+    expect(
+      screen.getByText('The sails were not compared for this passage, so no faster rig is claimed'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
+  });
+
   it('#259: a decided comparison for fock badges the fock tab, not genoa', () => {
     const plan = makePlan({
       recommended: 'fock',
