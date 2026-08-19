@@ -173,13 +173,15 @@ labels on **pull requests** are applied automatically from changed paths by
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
 `v0.4.0` through `v0.12.0` are closed (plus the `v0.5.1` patch milestone).
-`v0.13.0` is open and scoped as the next release milestone, and `v0.14.0`
-was opened fresh at the `v0.12.0` cut per the roll-forward convention
-below. `v0.12.1` holds pending patch scope.
-Milestone state closes only once the
-release PR merges and the tag is pushed, so
+**`v0.12.1` has not shipped yet — its milestone still shows `state: open`
+on GitHub.** Nothing in it is still open and this cut's `CHANGELOG.md`
+section is already folded, but the milestone object itself only closes
+once the release PR merges and the tag is pushed, per the roll-forward
+convention below; until then,
 `gh api repos/DocGerd/sail_command/milestones` is the fact, not this
-sentence. The `v0.8.1` patch release (documentation-only) shipped
+sentence. `v0.13.0` is open and scoped as the next release milestone, and
+`v0.14.0` was opened fresh at the `v0.12.0` cut per the roll-forward
+convention below. The `v0.8.1` patch release (documentation-only) shipped
 on 2026-08-04 and, per the PATCH exception below, carries no milestone of
 its own.
 The [milestones page](https://github.com/DocGerd/sail_command/milestones) is
