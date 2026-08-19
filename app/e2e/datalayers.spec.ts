@@ -276,10 +276,12 @@ test('navigability hatch (#492) reacts to safetyDepthM only while the depth over
 
 // #492 review M8: at overview zoom (z9, the app's own initial ZOOM —
 // MapView.tsx:62) the hatch's on-screen period is sub-pixel (~2.1px, see
-// depthColor.ts's HATCH_PERIOD_CELLS comment for the full table) and
-// downsamples to a flat tint; at close zoom the SAME mask-cell-sized period
-// is hundreds of screen pixels, so "sparse hatch" degrades into a wide,
-// near-opaque BAND. This measures that degradation directly — at z16 a high
+// depthColor.ts's HATCH_PERIOD_CELLS comment for the full table) and reads
+// as a sparse, high-contrast SPECKLE rather than a visible hatch — MEASURED
+// (PR #591 re-review) as a mean 62/max 160 luminance drop on touched
+// pixels, not a flat/uniform tint; at close zoom the SAME mask-cell-sized
+// period is hundreds of screen pixels, so "sparse hatch" degrades into a
+// wide, near-opaque BAND. This measures that degradation directly — at z16 a high
 // gate should hatch a LARGE, easily-measurable fraction of the canvas, not
 // a sparse pattern — rather than asserting it only in prose. Tracked as
 // #599 (screen-space rendering, e.g. a fill-pattern layer, would make the

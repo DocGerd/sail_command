@@ -292,7 +292,14 @@ function setupLayers(
             // an ADDITIONAL artifact on top of the documented zoom-scaling
             // degradation (depthColor.ts's HATCH_PERIOD_CELLS comment),
             // not a fix for it. 'nearest' at least keeps whatever renders
-            // crisp rather than blurred.
+            // crisp rather than blurred. SCOPE, measured against
+            // maplibre-gl@6.3.0: this governs MAGNIFICATION only —
+            // webgl/draw/draw_raster.ts:119 binds the MINIFICATION filter
+            // as a hardcoded gl.LINEAR_MIPMAP_NEAREST third argument
+            // (webgl/texture.ts:161-162), independent of this property, so
+            // at overview zoom (where the raster is minified) it has no
+            // effect at all. The style spec says the same: "texture
+            // magnification filter".
             'raster-resampling': 'nearest',
           },
         },
@@ -531,7 +538,9 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     // SAME depthVisible state as the absolute ramp above (this file's
     // FORBIDDEN-file allowlist for this change excludes the i18n dict a new
     // checkbox label would need, and conceptually the hatch is an
-    // annotation over the depth overlay, not a separate opt-in). Guarded
+    // annotation over the depth overlay, not a separate opt-in). A legend
+    // explaining the symbol itself is a separate gap, tracked as #598.
+    // Guarded
     // separately from DEPTH_LAYER's own `!map.getLayer` check above since
     // the hatch layer can legitimately not exist yet (jsdom has no 2D
     // canvas backend at all — see buildHatchCanvas — or a slow style reload

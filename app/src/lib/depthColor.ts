@@ -157,12 +157,29 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //   18   | 135                    | ~1080 px           | ~270 px
 //
 // (`MAP_MAX_ZOOM` is 22 — further still.) So at the app's OWN initial
-// zoom the pattern downsamples to a flat, uniform-looking wash rather than
-// a visible hatch, and at close/harbour-approach zoom the SAME "sparse"
-// pattern becomes individually huge stripes and gaps. Both are DEGRADED
-// appearances of the same underlying, correctly-computed data — never a
-// false positive/negative on WHICH cells are flagged, only on how legibly
-// that flag renders at a given zoom.
+// zoom the pattern is a SPARSE, HIGH-CONTRAST SPECKLE rather than a
+// visible hatch — MEASURED (PR #591 re-review), not a flat/uniform wash:
+// toggling the layer at z9 shifts touched-pixel luminance by a mean of 62
+// (max 160), with 28% of touched pixels dropping >100 — genuinely dark
+// individual pixels, just too small and too sparse to read as a pattern.
+// At close/harbour-approach zoom the SAME "sparse" pattern instead becomes
+// individually huge stripes and gaps. Both are DEGRADED appearances of the
+// same underlying, correctly-computed data — never a false
+// positive/negative on WHICH cells are flagged, only on how legibly that
+// flag renders at a given zoom.
+//
+// WHY THE DEGRADED CASE IS STILL SAFE (structural, not just measured, PR
+// #591 re-review): HATCH_RGBA is pure black ([0, 0, 0, 190]), so
+// compositing it over anything can only ever DECREASE luminance, never
+// increase it — and on STOPS above, deeper renders LIGHTER (alpha is
+// monotonically non-increasing with depth, fading fully transparent over
+// the light basemap; pinned by depthColor.test.ts's "fades monotonically"
+// case). So every possible effect of the hatch moves a cell toward the
+// ramp's own shallower/more-cautious end, never toward deep, and
+// black-over-colour preserves hue. The residual failure mode at overview
+// zoom is under-signalling (a real marginal cell reads too faint to
+// notice), never FALSE COMFORT (a marginal cell reading as more clear than
+// it is) — the one failure #492 exists to prevent.
 //
 // One nuance MEASURED, not assumed (app/e2e/datalayers.spec.ts's own M8
 // test): the STRIPE/GAP DENSITY (HATCH_STRIPE_WIDTH_CELLS /
@@ -229,7 +246,7 @@ export function buildNavigabilityHatchImageData(
     // drying (< 0.1 m) — build_mask.py writes all three (`code[~known] = 0`,
     // `code[known & (dm < 1)] = 0`, `code[land] = 0`) and the mask cannot
     // distinguish them, so absence of hatch over byte 0 must never be read
-    // as "clear". #492 review.
+    // as "clear". #492 review; tracked as #597.
     marginal[b] = cautiousDepthLowerBoundM(byteToDepthM(b)) < safetyDepthM ? 1 : 0;
   }
   const out = new Uint8ClampedArray(rows * cols * 4); // zero-init: fully transparent by default
