@@ -136,22 +136,21 @@ prefixes are the mechanism.
 - `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
   `status: blocked` (waiting on an external decision or dependency).
 
-**Known drift — re-tagged; the duplicate label objects are still there.**
-The live label set contains no-space duplicates of eight of these
-(`type:bug`, `type:chore`, `type:docs`, `priority:low`, `priority:medium`,
-`area:map`, `area:pipeline`, `area:tooling`). Every issue that carried one
-of the eight has been re-tagged onto the spaced form — as of 2026-08-19,
-zero open or closed issues reference any of the eight no-space spellings
-(verified via `gh api 'repos/DocGerd/sail_command/issues?state=all&labels=<name>'`
-for each). The eight no-space label OBJECTS themselves have deliberately
-**not** been deleted yet: deleting a GitHub label object is one-way and
-silently strips it from every issue carrying it, so that step needs
-explicit maintainer approval and is tracked in
-[#401](https://github.com/DocGerd/sail_command/issues/401) (`v0.12.1`).
-Until the objects are gone, `gh issue create`/`gh issue edit` can still
-silently recreate the ambiguity if a command names the no-space spelling —
-check with
-`gh label list --repo DocGerd/sail_command --limit 60 --json name --jq '.[].name'`.
+**Label spelling is the spaced form — always a colon and a space, e.g.
+`type: bug`, never `type:bug`.** The taxonomy previously drifted: eight
+labels (`type:bug`, `type:chore`, `type:docs`, `priority:low`,
+`priority:medium`, `area:map`, `area:pipeline`, `area:tooling`) existed
+alongside their spaced equivalents, attached to real issues, so a filter by
+one spelling silently missed issues tagged with the other and
+`gh issue create`/`gh label create` could fail or recreate the ambiguity on
+the wrong one. That drift was resolved on 2026-08-19
+([#401](https://github.com/DocGerd/sail_command/issues/401)): every issue
+carrying a no-space label was re-tagged onto the spaced form, then all
+eight no-space label objects were deleted. `gh label list --repo
+DocGerd/sail_command --limit 100 --json name --jq '.[].name'` is the fact
+about the CURRENT label set, not this paragraph — check it before assuming
+a spelling exists, since nothing prevents the drift from being
+reintroduced by a future `gh label create`.
 Dependabot additionally applies `dependencies`, `github_actions`,
 `javascript` and `python`; those are bot-managed and outside this taxonomy.
 
