@@ -2123,11 +2123,12 @@ describe('plan-form sync (#301)', () => {
     // The import resolves from the post-reset registry, so it IS the fresh
     // instance rather than a third one.
     //
-    // `cleanup()` FIRST, and it is load-bearing rather than tidiness: with
-    // FreshApp still mounted its effects re-open the database as soon as the
-    // helper closes it, so `deleteDB` blocks again and the failure merely
-    // moves from the next test's hook into this test's own 5 s budget
-    // (measured). Unmounting first is what makes the close stick. The
+    // `cleanup()` FIRST as hygiene, not as the fix: unmounting FreshApp before
+    // closing its database removes any chance of an effect re-opening the
+    // connection between the close and the delete. MEASURED as NOT load-bearing
+    // on its own — removing this line alone leaves the file green (8 runs,
+    // durations unchanged). What IS load-bearing is the `Promise.all` over BOTH
+    // module instances below; dropping either one reproduces the hang. The
     // file-level afterEach calls `cleanup()` again, which is a no-op.
     cleanup();
     const freshDb = await import('./services/db');
