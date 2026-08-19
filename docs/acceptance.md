@@ -40,7 +40,10 @@ results table at the bottom, and note it in the box below the check.
       1.9 m: the first two genuinely share a draft, it is not a duplicated
       entry) and a "Polar data & provenance" disclosure whose tier chip reads
       Certificate or Modelled for the Salona 45 and Estimated for both fleet
-      boats. Pick the boat for this run and record it in §5.
+      boats. Every boat — the Salona 45 included — also shows a note saying
+      where its stated draft comes from; only the two fleet boats carry the
+      assumed-keel caveat above it. Pick the boat for this run and record it
+      in §5.
 - [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!
       or PIRANJA, so the suppressed rig comparison in §2.5 is actually
       reached; a pass made entirely on the Salona 45 never exercises it.
@@ -89,6 +92,12 @@ selected in §1.
 - [ ] **2.8 Stale-forecast banner.** Re-plan (or edit) the same route with a
       departure time more than 12 hours after the forecast was fetched;
       confirm the stale-forecast banner/alert appears on the route summary.
+- [ ] **2.9 Depth hazard hatching is expected, not a rendering fault.** With
+      the water-depths overlay on (it is on by default), water whose
+      cautious, worst-case reading falls below your safety depth is drawn
+      with sparse hatching over the depth colors — including water the
+      absolute depth colors alone show as clear. This is correct behaviour
+      (#492); do not file it as an artifact.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 

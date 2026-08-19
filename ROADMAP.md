@@ -13,7 +13,7 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.12.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.12.1**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
 ## Now — v0.12.1

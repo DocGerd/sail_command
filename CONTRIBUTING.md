@@ -168,7 +168,7 @@ labels on **pull requests** are applied automatically from changed paths by
 **Milestones**
 
 - `v0.13.0` — the next release.
-- `v0.12.1` — pending patch scope; per the PATCH exception below it shifts nothing.
+- `v0.14.0` — the release after next.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
@@ -196,8 +196,9 @@ cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
 and themes), [`CHANGELOG.md`](CHANGELOG.md) (fold the pending
 [`changelog.d/`](changelog.d/README.md) fragments into the new version and
 delete them), [`README.md`](README.md) (known limitations),
-[`GOVERNANCE.md`](GOVERNANCE.md), and
-[`docs/security-assurance-case.md`](docs/security-assurance-case.md).
+[`GOVERNANCE.md`](GOVERNANCE.md), [`SECURITY.md`](SECURITY.md),
+[`docs/security-assurance-case.md`](docs/security-assurance-case.md),
+[`docs/acceptance.md`](docs/acceptance.md), and this file.
 
 ## Release tag signing (live, starting `v0.8.0`, #322)
 
