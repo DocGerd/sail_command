@@ -684,10 +684,10 @@ function AppShell() {
       {
         origin: origin.point,
         destination: destination.point,
-        // Whatever via chips are currently shown feed into the next plan
-        // request, whether that's the pre-plan draft or (re-planning from
-        // scratch with new origin/destination while a plan is still active)
-        // the previous plan's committed via list.
+        // The draft via list (App.tsx's draftViaPoints — the unconditional
+        // source since the #571 redesign) is what the next plan request gets;
+        // there is no committed-list branch left. run() dedupes it again
+        // internally; the pre-check above only computes what that will drop.
         viaPoints,
         originHarborId: origin.source === 'harbor' ? origin.harborId : null,
         destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
