@@ -95,8 +95,9 @@ Responsibilities:
 - **Dependency hygiene** — review Dependabot PRs, keep the third-party notices
   file current, keep GitHub Actions SHA-pinned.
 - **Documentation currency** — refresh `README.md`, `CHANGELOG.md`,
-  `ROADMAP.md`, [`docs/security-assurance-case.md`](docs/security-assurance-case.md),
-  and this file at each release cut.
+  `ROADMAP.md`, [`SECURITY.md`](SECURITY.md),
+  [`docs/security-assurance-case.md`](docs/security-assurance-case.md),
+  [`docs/acceptance.md`](docs/acceptance.md), and this file at each release cut.
 
 ### Contributor
 

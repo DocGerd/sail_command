@@ -81,7 +81,7 @@ workflow" below.
 
 ## Next — v0.12.1, then v0.13.0
 
-Two milestones are open. The
+The
 [`v0.12.1` milestone](https://github.com/DocGerd/sail_command/milestones)
 holds 16 issues and is mostly the follow-up tail of the multi-boat and
 depth-disclosure work, led by one high-priority bug: removing a waypoint
@@ -121,9 +121,11 @@ holds a single issue, and it is the largest safety item left: the depth
 mask still lets a route cross water charted below the requested safety
 depth ([#455](https://github.com/DocGerd/sail_command/issues/455)).
 `v0.12.0` closed the worst of it — the mask blend now carries a proven
-0.9 m bound, so no cell the router plans through at the default setting
-reads below the boat's draft, and what a route does cross is disclosed on
-the route itself — but roughly ten thousand gate-crossing cells remain
+0.9 m bound, so no cell *navigable at* the default 3.0 m gate reads below
+the boat's draft. A relaxed route can still reach a 1.2 m cautious reading,
+and both that floor and the shallow water a route actually crosses are now
+disclosed on the route itself. But roughly ten thousand gate-crossing
+cells remain
 (10,746 at the shipped tolerance, measured in
 `docs/spikes/455-depth-mask-optimism.md`), so the issue stays open rather
 than being declared done.

@@ -34,7 +34,7 @@ results table at the bottom, and note it in the box below the check.
       "fetched at" implied by the absence of the stale-forecast banner (see
       §2.5) — if the banner appears immediately for a near-term departure,
       stop and re-check network/API status before continuing.
-- [ ] **Boat selection.** Open Settings → "Boat selection" and confirm the
+- [ ] **Boat selection.** Open the **Boat** tab → "Boat selection" and confirm the
       catalogue offers all three boats — Salona 45, Salona 44 (SPEEDY GO!),
       Elan Impression 444 (PIRANJA) — each showing its draft (2.1 / 2.1 /
       1.9 m: the first two genuinely share a draft, it is not a duplicated

@@ -37,11 +37,12 @@ planning.
 |---|---|
 | ![Start view: map with curated harbors](docs/screenshots/start-view.png) | ![Planned route with per-leg detail and rig recommendation](docs/screenshots/plan-route.png) |
 
-Picking the boat, with each hull's draft, the provenance tier of its polar
-table, and — where the draft is the model's standard keel rather than that
-hull's own papers — a disclosure saying so:
+Picking the boat, with each hull's draft, a provenance chip summarising the
+weakest tier across its polar tables (the per-sail tiers are inside the
+disclosure), and — where the draft is the model's standard keel rather than
+that hull's own papers — a disclosure saying so:
 
-![Boat tab: the three fleet boats with draft, polar-provenance tier and assumed-keel disclosure](docs/screenshots/boat-selection.png)
+![Boat tab: the three boats with draft and polar-provenance tier, and the assumed-keel disclosure on the two fleet boats](docs/screenshots/boat-selection.png)
 
 ## Install on Android
 
@@ -122,7 +123,7 @@ npm --prefix app/ run build                      # production build to app/dist
 
 `npm run test` runs the full unit/property battery (polar interpolation,
 isochrone routing, mask queries, persistence, UI) — 2032 tests across 143
-files as of `cbc6055` (2026-08-19).
+files as of `04384c2` (2026-08-19).
 `npm run e2e` builds the app and drives it with Playwright, including a
 true offline reload against a killed preview server.
 
@@ -201,8 +202,8 @@ for setup and regeneration instructions.
   (figures from [sailboatdata.com](https://sailboatdata.com/)), with the
   Salona 45's TWA/TWS grid and pointing angles inherited unchanged. Speeds
   are typically within a few percent, up to about ten percent in individual
-  conditions, and the error matters most in light air, where it can flip a
-  leg between sail and motor.
+  conditions; on the Elan's fock that error is called out as large enough
+  in light air to flip a leg between sail and motor.
 
   All of the above are flat-water racing VPP estimates, tunable via the app's
   performance factor, and explicitly **not** race-calibrated; each table
