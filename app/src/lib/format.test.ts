@@ -74,6 +74,20 @@ describe('formatNm', () => {
   it('formats zero in German, comma separator', () => {
     expect(formatNm(0, 'de')).toBe('0,0 nm');
   });
+
+  // `Intl.NumberFormat` groups by THOUSANDS by default (`useGrouping` is not
+  // set here, so it defaults to `'auto'`) — a German value >= 1000 renders a
+  // THOUSANDS-separator point alongside the decimal COMMA (e.g.
+  // "1.234,5 nm"), the exact inverse of English's thousands-comma /
+  // decimal-point pairing. Unreachable in-region today (SailCommand's whole
+  // Flensburg Fjord / Danish South Sea planning area is well under 1000 nm
+  // end to end), so no plan distance can trigger it — but a future region
+  // change could, silently, without this pin. Verified via
+  // `Intl.NumberFormat('de-DE', {...}).format(1234.5)`.
+  it('groups by thousands for a value >= 1000 (unreachable in-region today, pinned for a future region change)', () => {
+    expect(formatNm(1234.5, 'en')).toBe('1,234.5 nm');
+    expect(formatNm(1234.5, 'de')).toBe('1.234,5 nm');
+  });
 });
 
 describe('formatKn', () => {
@@ -109,7 +123,13 @@ describe('formatLegNm', () => {
   });
 
   it('rounds to two decimals, English locale', () => {
-    expect(formatLegNm(12.345, 'en')).toBe('12.35 nm'); // hand-derived: round-half-away-from-zero
+    // NOT a round-half tie-break: 12.345 is not exactly representable as an
+    // IEEE754 double, and the nearest representable value is
+    // 12.345000000000000639... — strictly ABOVE 12.345 — so this rounds up
+    // to 12.35 as an ordinary (non-tied) round, without exercising any
+    // half-way rounding rule at all. Verified via
+    // `(12.345).toPrecision(20)`.
+    expect(formatLegNm(12.345, 'en')).toBe('12.35 nm');
   });
 
   it('formats with a comma decimal separator in German', () => {

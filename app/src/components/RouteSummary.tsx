@@ -545,7 +545,7 @@ export default function RouteSummary({
                     <td>{formatHeading(leg.headingDeg)}</td>
                     <td>{leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}</td>
                     <td>{formatKn(leg.twsKn, lang)}</td>
-                    {/* #439: NOT formatLegNm — speed keeps formatNm's one-
+                    {/* #439: NOT formatLegNm — speed keeps formatKn's one-
                         decimal precision unchanged. Raising distance alone
                         (below) to two decimals reopens the algebraic-
                         mismatch readability concern this file's own comment
