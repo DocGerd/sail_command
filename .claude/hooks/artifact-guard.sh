@@ -1099,11 +1099,32 @@ strip_inert_redirects() {
 #     `sed '-n' 5p <protected>` therefore advises rather than suppressing -
 #     an over-fire, which is the accepted direction. Adding stripping here
 #     would be a LOOSENING, not a hardening, so it needs its own argument.
-#   * THE SED SCRIPT TOKEN keeps unquote_token()'s ONE layer below. Also the
-#     conservative direction and kept on purpose: the script whitelist accepts
-#     three narrow shapes that contain no quote character at all, so a
-#     residual quote can only make a script FAIL to match, i.e. over-fire.
-#     `sed -n ""5p"" f` fires; it does not slip through.
+#   * THE SED SCRIPT TOKEN is the third site and, UNLIKE the other two, is NOT
+#     safe to classify one `read -ra` fragment at a time - not even with full
+#     stripping. `read -ra` splits on whitespace WITHOUT regard to quotes (it
+#     is not a shell re-tokenisation), so a single real argv word that quotes
+#     an embedded space - `'p w /tmp/OUT'`, or the asymmetric `p' w /tmp/OUT'`
+#     - arrives here as MULTIPLE fragments, and the operand site's "strip
+#     every quote in THIS fragment" reasoning does not transfer: that site
+#     only needs a fragment's own first character (proven sound by the
+#     first-non-quote-char argument two bullets up), while the script check
+#     needs a WHOLE WORD'S content, and a fragment can be an incomplete
+#     PREFIX of one (#535, PR #588 review - the BLOCKER that replaced this
+#     site's original one-layer `unquote_token()`, and then a second review
+#     round that found the first #535 fix - reject a fragment whose first
+#     character opens an unclosed quote - still insufficient, because the
+#     hazardous content can arrive AFTER an unquoted prefix, where nothing
+#     about the fragment's OWN first character is wrong). The fix
+#     RECONSTRUCTS the real word: merge fragments (re-inserting the
+#     whitespace `read -ra` consumed) until `scan_quote_state` reports the
+#     accumulated text is no longer inside an open quote, THEN strip every
+#     quote character from the complete result. Full stripping is sound here
+#     for exactly the reason it is sound at the operand site: by the time it
+#     runs, the string is a genuine complete argv word, so every quote in it
+#     is a real delimiter. `sed -n ""5p"" f` and `sed -n 'p w /tmp/OUT' f`
+#     both still fire (they are not one of the three narrow whitelist
+#     shapes); the fix is not "stop firing," it is "stop letting a
+#     multi-fragment word look like it matched one."
 #
 # CORRECTED (PR #532 review, MAJOR 2): an earlier revision of this comment
 # said the doubled form "stays in the quote-splitting class this file already
@@ -1114,11 +1135,40 @@ strip_inert_redirects() {
 # mechanism. And nothing was pre-existing: before #530 `sed` was off the
 # allowlist entirely, so every one of these commands fired. #530 opened it and
 # #532 closed it.
-unquote_token() {
-  local t="$1"
-  case "$t" in \'*|\"*) t=${t#?} ;; esac
-  case "$t" in *\'|*\") t=${t%?} ;; esac
-  printf '%s' "$t"
+# scan_quote_state STR - scans STR left to right tracking single/double-quote
+# state and prints the ending state: `none`, `sq` (inside an unclosed single
+# quote) or `dq` (inside an unclosed double quote). Used only by
+# sed_readonly_ok()'s script-token reconstruction (see its own comment) to
+# decide whether a `read -ra` fragment is a COMPLETE real shell word or an
+# incomplete prefix that needs merging with the fragment(s) that follow.
+#
+# No escaping is modelled, and none is needed: by the time this runs, the
+# whole command has already passed bash_is_provably_readonly()'s
+# WRITE_CAPABLE_CHARS check, which forbids `\` outright - so a `"` inside an
+# open `"..."` can never be an escaped `\"`, and single/double quotes cannot
+# nest (a `'` inside `"..."` is always literal, never a state change, and
+# vice versa) - exactly real bash's own quoting rules for a string with no
+# backslash in it.
+scan_quote_state() {
+  local s="$1" i c state=none
+  for ((i = 0; i < ${#s}; i++)); do
+    c=${s:i:1}
+    case "$state" in
+      none)
+        case "$c" in
+          "'") state=sq ;;
+          '"') state=dq ;;
+        esac
+        ;;
+      sq)
+        [ "$c" = "'" ] && state=none
+        ;;
+      dq)
+        [ "$c" = '"' ] && state=none
+        ;;
+    esac
+  done
+  printf '%s' "$state"
 }
 
 # The option patterns the Claude Code `grep` shim itself intercepts, mirrored
@@ -1293,37 +1343,64 @@ grep_readonly_ok() {
 # this comment claimed it was — "tokenises into two fragments and matches
 # nothing" (PR #532 review, MAJOR 3). Only sometimes: `sed -n '1,5 p' f`
 # splits into `'1,5` + `p'`, whose first fragment matches no shape, so that
-# one does fire. But `sed -n 'p w /tmp/OUT' f` splits into `'p` + `w` +
-# `/tmp/OUT'`, and the FIRST fragment unquotes to a valid bare `p`, so the
-# script is accepted and the remaining fragments are read as file operands —
-# the command is EXEMPTED, silently.
+# one does fire. But `sed -n 'p w /tmp/OUT' f` used to split into `'p` + `w`
+# + `/tmp/OUT'`, and the FIRST fragment unquoted to a valid bare `p`, so the
+# script was accepted and the remaining fragments were read as file
+# operands — the command was EXEMPTED, silently (#535).
 #
-# WHY THAT IS STILL SAFE, stated because it is a DEPENDENCY and was unstated:
-# it rests on two things, only one of which is ours. Ours: `;` and newline
+# #535 FIX, ROUND 2 (PR #588 review, BLOCKER 1 - ROUND 1's fix, "reject a
+# token whose first character opens a quote it does not close as its own
+# last character", was STILL WRONG: it only guarded the LEADING-strip half
+# of unquote_token()'s two independent, unconditional strips. A token whose
+# quote is at the END instead - `p'` from `sed -n p' w /tmp/OUT' f` - has a
+# first character of `p`, so round 1's check never fired on it at all; the
+# TRAILING strip then turned `p'` into a whitelisted bare `p` exactly as the
+# original #535 report described, just with the quote moved one character
+# right. MEASURED as a silent allow on the SPEC arm, identically to the
+# original report.) The real fix RECONSTRUCTS the actual shell word this
+# `read -ra` fragment belongs to, rather than classifying the fragment
+# alone: merge it with however many following fragments are needed (via
+# scan_quote_state(), re-inserting the whitespace `read -ra` consumed)
+# until the accumulated text is no longer inside an open quote - i.e. is a
+# COMPLETE real word, whichever side of it the quote sits on. Running out of
+# fragments while still inside a quote means the command is unparseable
+# (a genuinely unterminated quote) and fails CLOSED. unquote_token()'s
+# one-layer strip is retired entirely: once `full` is a proven-complete real
+# word, stripping EVERY quote character from it (not one layer) is sound for
+# the same reason it is already sound at the operand check below - see that
+# check's own comment.
+#
+# WHY THIS WAS PREVIOUSLY STILL SAFE (both rounds), kept for history: it
+# rested on two things, only one of which was ours. Ours: `;` and newline
 # are in WRITE_CAPABLE_CHARS, so neither can appear at all. NOT ours: GNU sed
 # requires one of exactly those two to separate commands, so whitespace alone
-# cannot start a second command — MEASURED against GNU sed 4.9, `sed -n
-# 'p w /tmp/OUT' t.txt` exits 1 with "extra characters after command" and
-# creates nothing. If a sed implementation ever separated commands on
-# whitespace, this shape becomes a live write and nothing here would notice.
-# A balanced-quote requirement on the script token (reject a token that opens
-# a quote without closing it) would remove the third-party half of that
-# dependency; it is deliberately NOT implemented here, so it stays a stated
-# risk rather than a silent one.
+# could not start a second command — MEASURED against GNU sed 4.9, both
+# `sed -n 'p w /tmp/OUT' t.txt` and `sed -n p' w /tmp/OUT' t.txt` exit 1 with
+# "extra characters after command" and create nothing. Had a sed
+# implementation ever separated commands on whitespace, this shape would
+# have become a live write with nothing here to notice. The reconstruction
+# above removes that third-party dependency entirely, for BOTH quote
+# positions - so this paragraph is no longer load-bearing, and stays only
+# as the record of what the risk was before the fix.
 SED_SAFE_SHORT_FLAG_CHARS='nEr'
 SED_SAFE_LONG_FLAGS=(--quiet --silent --regexp-extended)
 sed_readonly_ok() {
-  local cmd="$1" tok f script="" have_script=0 matched bare
+  local cmd="$1" tok f have_script=0 matched bare full
   local IFS=$' \t'
   local -a toks
   read -ra toks <<<"$cmd"
-  for tok in "${toks[@]:1}"; do
+  local i=1 n=${#toks[@]}
+  while [ "$i" -lt "$n" ]; do
+    tok=${toks[$i]}
     if [ "$have_script" -eq 0 ]; then
       matched=0
       for f in "${SED_SAFE_LONG_FLAGS[@]}"; do
         [ "$tok" = "$f" ] && { matched=1; break; }
       done
-      [ "$matched" -eq 1 ] && continue
+      if [ "$matched" -eq 1 ]; then
+        i=$((i + 1))
+        continue
+      fi
       case "$tok" in
         # Any OTHER long flag - `--in-place`, `--file=x`, `--expression=x`,
         # `--separate`, and every one not yet invented - is not provably safe.
@@ -1335,16 +1412,41 @@ sed_readonly_ok() {
           case "${tok#-}" in
             ""|*[!$SED_SAFE_SHORT_FLAG_CHARS]*) return 1 ;;
           esac
+          i=$((i + 1))
           continue
           ;;
       esac
-      script=$(unquote_token "$tok")
+      # #535 ROUND 2 (PR #588 review, BLOCKER 1): RECONSTRUCT the real shell
+      # word this fragment belongs to, rather than classifying the fragment
+      # alone - see this function's own header comment and scan_quote_state()
+      # for the full rationale. Merge forward, re-inserting the whitespace
+      # `read -ra` consumed, until the accumulated text is a COMPLETE word
+      # (scan_quote_state reports `none`). Exhausting the token array while
+      # still inside a quote means the command is unparseable - fail CLOSED.
+      full=$tok
+      while [ "$(scan_quote_state "$full")" != none ]; do
+        i=$((i + 1))
+        if [ "$i" -ge "$n" ]; then
+          return 1
+        fi
+        full="$full ${toks[$i]}"
+      done
+      # `full` is now a proven-complete real shell word, so stripping EVERY
+      # quote character from it (not unquote_token()'s one layer) is sound -
+      # every quote left in a complete word is a genuine delimiter, the same
+      # property the operand check below already relies on for its own
+      # per-fragment `bare` (sound there because it only needs one
+      # character, not a word's full content; see its comment).
+      bare=${full//\'/}; bare=${bare//\"/}
       have_script=1
       # numeric address form (`5p`, `1,40p`), regex address form
       # (`/pattern/p`), or a bare command (`p`). Nothing else.
-      [[ $script =~ ^[0-9]+(,[0-9]+)?[pdq=nN]$ ]] && continue
-      [[ $script =~ ^/[^/]*/[pdq=nN]$ ]] && continue
-      [[ $script =~ ^[pdq=nN]$ ]] && continue
+      if [[ $bare =~ ^[0-9]+(,[0-9]+)?[pdq=nN]$ ]] \
+        || [[ $bare =~ ^/[^/]*/[pdq=nN]$ ]] \
+        || [[ $bare =~ ^[pdq=nN]$ ]]; then
+        i=$((i + 1))
+        continue
+      fi
       return 1
     fi
     # Past the script, every remaining token is an input-file operand. One
@@ -1394,6 +1496,7 @@ sed_readonly_ok() {
     # deliberately left alone; the grep site cannot afford the same over-fire
     # because a quoted bracket expression there is an ordinary PATTERN.
     bare=${tok//\'/}; bare=${bare//\"/}; case "$bare" in -*|'*'*|'?'*|'['*) return 1 ;; esac
+    i=$((i + 1))
   done
   # Fail-closed default for a sed call that never produced a script token
   # (`sed -n`). UNPINNABLE BY CONSTRUCTION, and deliberately kept anyway: a
@@ -1683,7 +1786,26 @@ if [ "${1:-}" = "--selftest" ]; then
   # (wave 4) 300 -> 301, +1: the bound's UNIT row. `${#cmd}` counts
   # characters under C.UTF-8, so a 32 768-CHARACTER limit admitted ~131 KB of
   # UTF-8; this row fires only if the bound is measured in bytes.
-  EXPECTED_CASES=301
+  # (#535) 301 -> 308, +7: the balanced-quote check on the sed script token.
+  # THREE must-fire rows (single-quote SPEC, single-quote build-output,
+  # double-quote SPEC) for the `sed -n 'p w /tmp/OUT' <path>` shape that was
+  # silently exempt before this fix; FOUR must-stay-silent bounding rows
+  # (the acceptance criteria's named shapes: quoted numeric range, bare
+  # numeric address, quoted regex address, bare command script) proving the
+  # check does not regress the #530 read-only ergonomics.
+  # (#535 ROUND 2, PR #588 review, BLOCKER 1) 308 -> 316, +8: the quote can
+  # sit at the END of a fragment that opens with an ordinary character
+  # (`p'`), which ROUND 1's leading-character-only check never looked at.
+  # SIX must-fire rows, one per whitelist branch at the trailing-quote
+  # position (bare single-quote SPEC + build-output, bare double-quote SPEC,
+  # numeric/range/regex address SPEC); TWO new bounding rows (a genuine
+  # multi-fragment merge that still lands on EXEMPT via a safe regex address
+  # with an embedded space, and an unquoted `w` staying exempt because real
+  # sed reads it as a file operand, not a write flag). The two PRE-EXISTING
+  # bare-unquoted bounding rows were REPLACED in place (double-quoted
+  # equivalents that actually exercise the quote-strip) - a content change,
+  # not a count change, so they are not part of this +8.
+  EXPECTED_CASES=316
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2316,6 +2438,76 @@ if [ "${1:-}" = "--selftest" ]; then
   # on reject-everything) - it was vacuous against the one mutation it named,
   # which is the #216 shape one level up, in a row's own description.
   decide_exempt "#532 quoted filename operand must stay exempt"    "sed -n 5p 'app/public/THIRD-PARTY-NOTICES.txt'"
+
+  # ======================================================================
+  # #535 - UNBALANCED-QUOTE sed SCRIPT token. `sed -n 'p w /tmp/OUT' <path>`
+  # used to split (this function's own whitespace `read -ra`, not a real
+  # shell re-tokenisation) into `'p` + `w` + `/tmp/OUT'`, and
+  # unquote_token()'s unconditional one-layer strip turned the FIRST
+  # fragment into a bare `p`, matching the script whitelist and silently
+  # accepting the whole thing while `w` and `/tmp/OUT'` passed through
+  # unchallenged as file operands - a live write shape reachable on the
+  # SPEC arm. Both quote spellings are pinned, matching the sed/grep
+  # DOUBLED/mixed-quote rows above this block. SPEC and build-output arms
+  # both pinned, matching the ask/advisory split used throughout this file.
+  decide ask      "#535 sed unbalanced-quote script 'p w /tmp/OUT' (SPEC ARM)"     "sed -n 'p w /tmp/OUT' docs/superpowers/specs/x.md"
+  decide advisory "#535 sed unbalanced-quote script 'p w /tmp/OUT' (build output)" "sed -n 'p w /tmp/OUT' app/public/data/mask.bin"
+  decide ask      '#535 sed unbalanced DOUBLE-quote script (SPEC ARM)'            'sed -n "p w /tmp/OUT" docs/superpowers/specs/x.md'
+  # #535 ROUND 2 (PR #588 review, BLOCKER 1): the quote can also sit at the
+  # END of a fragment that OPENS with an ordinary character, not just at the
+  # START - `p'` from `sed -n p' w /tmp/OUT' f`. ROUND 1's check classified
+  # only a fragment's OWN first character, so it never even looked at `p'`
+  # (first char `p` matches neither `\'*` nor `\"*`), and
+  # unquote_token()'s unconditional TRAILING strip then turned it into a
+  # whitelisted bare `p` exactly as the original report - MEASURED silent on
+  # the SPEC arm, identically to the leading-quote form above. One row per
+  # whitelist branch (bare command, numeric address, range address, regex
+  # address) so no single branch can regress to silent while the others
+  # still fire - the same "one row per whitelist entry" discipline the
+  # #530 block above already uses.
+  decide ask      "#535 ROUND 2: trailing single-quote, bare command p' w /tmp/OUT' (SPEC ARM)"     "sed -n p' w /tmp/OUT' docs/superpowers/specs/x.md"
+  decide advisory "#535 ROUND 2: trailing single-quote, bare command p' w /tmp/OUT' (build output)" "sed -n p' w /tmp/OUT' app/public/data/mask.bin"
+  decide ask      '#535 ROUND 2: trailing double-quote, bare command p" w /tmp/OUT" (SPEC ARM)'     'sed -n p" w /tmp/OUT" docs/superpowers/specs/x.md'
+  decide ask      "#535 ROUND 2: trailing quote, numeric address 5p' w /tmp/OUT' (SPEC ARM)"        "sed -n 5p' w /tmp/OUT' docs/superpowers/specs/x.md"
+  decide ask      "#535 ROUND 2: trailing quote, range address 1,5p' w /tmp/OUT' (SPEC ARM)"        "sed -n 1,5p' w /tmp/OUT' docs/superpowers/specs/x.md"
+  decide ask      "#535 ROUND 2: trailing quote, regex address /x/p' w /tmp/OUT' (SPEC ARM)"        "sed -n /x/p' w /tmp/OUT' docs/superpowers/specs/x.md"
+  # BOUNDING ROWS - no regression in the read-only ergonomics #530 restored
+  # and this fix is not obligated to touch: the balanced-quote check must
+  # fire ONLY on a token that opens a quote it does not close, never on a
+  # properly closed quoted script or a bare unquoted one. These four are the
+  # acceptance criteria's named still-silent shapes. The two bare rows are
+  # DOUBLE-QUOTED here, not left unquoted (PR #588 review, MINOR): a token
+  # with no quote character at all leaves scan_quote_state at `none` on its
+  # first character and the merge loop's condition is false immediately, so
+  # an unquoted row exercises NEITHER round of this check - the balanced-
+  # quote reconstruction never runs on it at all - and can only prove the
+  # WHITELIST REGEX itself still matches, a different property #530's own
+  # AC rows above already cover. Quoting them (still a single, already-
+  # balanced fragment, so no merge iteration is needed either) is the
+  # minimum change that makes each row actually run the quote-strip these
+  # four rows are filed under.
+  decide_exempt "#535 no regression: quoted numeric range stays exempt"  "sed -n '1,40p' app/public/data/harbors.json"
+  decide_exempt "#535 no regression: double-quoted numeric address stays exempt (exercises quote-strip)" "sed -n \"5p\" app/public/data/harbors.json"
+  decide_exempt "#535 no regression: quoted regex address stays exempt"  "sed -n '/pattern/p' docs/superpowers/specs/x.md"
+  decide_exempt "#535 no regression: double-quoted command script stays exempt (exercises quote-strip)" "sed -n \"p\" app/public/data/harbors.json"
+  # ROUND 2 additional bounding: the merge logic must complete a WHITESPACE-
+  # CONTAINING quoted script correctly and still land on EXEMPT when the
+  # reconstructed word is a genuinely whitelisted regex-address form - not
+  # only when no merging was needed at all. `[^/]` in the regex-address
+  # pattern legitimately admits a space inside the pattern itself, so this
+  # is a real 4-fragment merge (`read -ra` splits `'/pattern` + `with` +
+  # `space` + `here/p'` on this file's own whitespace splitting) that must
+  # land back on `none` and pass the whitelist - proving the reconstruction
+  # is "rebuild the real word, then classify it", not simply "any embedded
+  # quote makes it fail".
+  decide_exempt "#535 ROUND 2 no regression: regex address with an embedded space merges across 4 fragments and stays exempt" "sed -n '/pattern with space here/p' app/public/data/harbors.json"
+  # ROUND 2 boundary: an UNQUOTED `w` after a valid script is a real sed FILE
+  # OPERAND (sed reads every remaining un-flagged argument as an input file),
+  # not a write flag - MEASURED against GNU sed 4.9: `sed -n p w f` reads `w`
+  # and its neighbour as two more files, never writes. This must stay exempt
+  # so the fix's scope reads as "quote position", not "the letter w
+  # anywhere in the command".
+  decide_exempt "#535 ROUND 2 no regression: unquoted 'w' after a valid script is a file operand, not a write flag" "sed -n p w /tmp/OUT docs/superpowers/specs/x.md"
 
   # ======================================================================
   # PR #532 re-review, MAJOR A - GLOB operands. `*`, `?`, `[`, `]` are not in
