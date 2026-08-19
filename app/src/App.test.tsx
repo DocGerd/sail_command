@@ -1010,6 +1010,18 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     expect(chip).not.toBeNull();
     expect(chip).toHaveTextContent(de['planner.result.stale']);
 
+    // Review fix (Minor): the chip must NOT duplicate PlannerPanel's own
+    // sr-only live-region announcement of the same sentence — measured in a
+    // real browser BEFORE this fix, both `role="status"` elements fired at
+    // once. Assert by ROLE, not just by class: a second `role="status"`
+    // element carrying the same text is exactly what caused the duplicate
+    // announcement.
+    expect(chip).not.toHaveAttribute('role', 'status');
+    const staleStatusRegions = screen
+      .getAllByRole('status')
+      .filter((el) => el.textContent?.includes(de['planner.result.stale']));
+    expect(staleStatusRegions).toHaveLength(1);
+
     // Remove it again — the draft matches the committed list once more, so
     // the chip goes away.
     fireEvent.click(

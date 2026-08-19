@@ -143,8 +143,16 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
     // stale` copy ("Showing the previously calculated route — the inputs
     // have changed since.") — it already covers "the via list changed"
     // without inventing new wording.
-    <div className="via-markers-spinner-chip" role="status">
-      {t('planner.result.stale')}
-    </div>
+    //
+    // Review fix: deliberately NO `role="status"` here (removed — this used
+    // to duplicate PlannerPanel.tsx's own `.planner-status sr-only`
+    // announcement, since `formDirty` gaining the `viaPoints` term in this
+    // same PR means its `staleSuffix` now ALSO fires on a via edit; the two
+    // fired together, announcing the same sentence twice). The chip stays
+    // visually visible; PlannerPanel's single persistent live region is the
+    // only ARIA announcement — see that component's own "ONE persistent
+    // live region … never a second aria-live region" comment, whose intent
+    // this restores.
+    <div className="via-markers-spinner-chip">{t('planner.result.stale')}</div>
   ) : null;
 }
