@@ -77,7 +77,6 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import {
-  canonicalizePlan,
   canonicalizeArmFile,
   withoutRigRecommendation,
   classifyRigVerdictChange,
