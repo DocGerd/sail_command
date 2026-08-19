@@ -6,7 +6,6 @@ import {
   ReplanError,
   replanWithVias,
   useViaReplan,
-  viaReplanDisabledReasonKey,
   type ReplanClient,
 } from './replan';
 import { destinationPoint } from '../lib/geo';
@@ -469,6 +468,18 @@ describe('replanWithVias', () => {
   });
 });
 
+// #571 redesign: App.tsx no longer calls useViaReplan/replanWithVias at all —
+// a via edit now only ever touches App.tsx's own `draftViaPoints` (plain,
+// synchronous form state), never a replan, per the maintainer's ruling that
+// removing a waypoint "should only calculate once clicked on calculate".
+// Kept here, fully tested, as still-valid reuse-the-stored-wind-grid replan
+// infrastructure (see replanWithVias's own docstring) should a future
+// feature want it back; `ReplanClient`/`ReplanDeps` also remain load-bearing
+// as the type reroute.ts's rerouteFromFix reuses. Not deleted outright: the
+// only reachable UI wiring for it lived in App.tsx (now removed), and
+// removing the exports themselves would leave dangling comment references
+// in state/usePlanFlow.ts and state/reroute.ts that sit outside this
+// redesign's file allowlist.
 describe('useViaReplan', () => {
   beforeEach(async () => {
     await __resetDbForTests();
@@ -634,35 +645,5 @@ describe('useViaReplan', () => {
     const first = result.current;
     rerender();
     expect(result.current).toBe(first);
-  });
-});
-
-// #571: viaReplanDisabledReasonKey is the mapping App.tsx's planDisabledReason
-// consumes to disclose WHY the planner is locked during a via-replan. Pinned
-// directly against ViaReplanState values here — no App render needed — so a
-// regression in the mapping itself (not just its wiring) fails a fast,
-// focused test.
-describe('viaReplanDisabledReasonKey (#571)', () => {
-  it('returns the disclosure key while a via-replan is in flight', () => {
-    expect(viaReplanDisabledReasonKey({ replanning: true, error: null, droppedCount: 0 })).toBe(
-      'planner.disabled.viaReplanning',
-    );
-  });
-
-  it('returns null when idle, regardless of error/droppedCount', () => {
-    expect(
-      viaReplanDisabledReasonKey({ replanning: false, error: null, droppedCount: 0 }),
-    ).toBeNull();
-    // Not vacuous to the `replanning` field alone: error/droppedCount being
-    // non-default does not itself flip the disclosure — only `replanning`
-    // does, matching App.tsx's own null-means-enabled contract for
-    // planDisabledReason.
-    expect(
-      viaReplanDisabledReasonKey({
-        replanning: false,
-        error: 'error.replanInit',
-        droppedCount: 2,
-      }),
-    ).toBeNull();
   });
 });

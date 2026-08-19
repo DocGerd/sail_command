@@ -8,7 +8,6 @@ import {
   useSettings,
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
-import { useViaReplan, viaReplanDisabledReasonKey } from './state/replan';
 import { useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
@@ -44,6 +43,7 @@ import {
   pickedPointsOfPlan,
   planFormDirty,
   routingSettingsDirty,
+  viaPointsDiffer,
 } from './lib/planForm';
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
@@ -180,12 +180,6 @@ function AppShell() {
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
   const { planning, run, ensureClient } = usePlanFlow();
-  // E8: via-waypoint re-route. Reuses usePlanFlow's singleton RoutingClient
-  // (via the ensureClient function — see usePlanFlow.ts's docstring: it
-  // lazily creates/inits the client on demand, so a via edit on a plan
-  // that was only ever *loaded* from PlansList, never run() in this
-  // session, still works) rather than spawning a second worker.
-  const viaReplan = useViaReplan(ensureClient);
   // #115: manual "reroute from here" (Live view). Shares the same singleton
   // RoutingClient via ensureClient and, like a via-replan, reuses the plan's
   // STORED wind grid — never refetches, so it stays available offline.
@@ -310,15 +304,30 @@ function AppShell() {
   const [origin, setOrigin] = useState<PickedPoint | null>(null);
   const [destination, setDestination] = useState<PickedPoint | null>(null);
   const [departureMs, setDepartureMs] = useState(() => nextFullHourMs());
-  // Pre-first-plan via draft, mirroring origin/destination — only read once
-  // `plan` is null. Once a plan exists, the committed plan.request.viaPoints
-  // *is* the via list (see `viaPoints` below): every edit past that point
-  // goes through a replan, so there is no separate optimistic draft to keep
-  // in sync — a rejected replan leaves plan.request.viaPoints (and thus the
-  // displayed list) exactly where it was, which is the "snap back" behavior
-  // ViaMarkers/the panel both rely on.
+  // #571 redesign (maintainer ruling: a via edit "is kind of a new route and
+  // hence should only calculate once clicked on calculate" — no auto-replan
+  // on add/remove/reorder/drag). `draftViaPoints` is now the UNCONDITIONAL
+  // source of truth for the via list shown in the panel and fed to the next
+  // Plan-route press, whether or not a plan is active — mirroring
+  // origin/destination/departureMs, which were already plain form state that
+  // only takes effect on the next `run()`. It is EPHEMERAL: never persisted,
+  // so a reload always shows the saved plan's own committed via list with any
+  // unapplied edits gone (no separate "restore a draft" path exists, same as
+  // an unsaved departure/origin edit today). Reset to the active plan's own
+  // `request.viaPoints` whenever a NEW plan.id becomes active — see the
+  // plan-form sync effect below, which now does this alongside
+  // origin/destination/departureMs.
+  //
+  // The COMMITTED list, `plan.request.viaPoints`, still exists and is what
+  // ViaMarkers/RouteLayer render on the map (RouteLayer.tsx is unrelated to
+  // and unchanged by this task) — so between an edit and the next Plan press
+  // the map's via MARKERS and the panel's via LIST can disagree (an add/
+  // remove/reorder never touches the map; only a drag's own imperative
+  // marker position tracks the edit, since nothing forces a marker rebuild
+  // when `plan.request.viaPoints` itself hasn't changed). `viaDraftStale`
+  // below is the disclosure for exactly this gap — see its own comment.
   const [draftViaPoints, setDraftViaPoints] = useState<LatLon[]>([]);
-  const viaPoints = plan ? plan.request.viaPoints : draftViaPoints;
+  const viaPoints = draftViaPoints;
   // null = tap-to-pick disarmed; 'origin'/'destination'/'via' = MapView.tapActive
   // is armed for that target. Disarmed by: a tap resolving (handleMapTap),
   // a harbor-search pick filling the armed field (handlePickOrigin/
@@ -329,43 +338,32 @@ function AppShell() {
   // above disarm paths apply to it unchanged.
   const [tapTarget, setTapTarget] = useState<TapTarget | null>(null);
 
-  // Phase-gate fix (E8 clobber guard): tracks which plan is *currently*
-  // active, for the two async via-replan resolution sites below to check
-  // against once their replan settles. A ref, not a read of `plan` in the
-  // closure — handleViaPointsChange/handleViaDragEnd close over the `plan`
-  // that was active when the replan *started*; by the time it resolves the
-  // user may have loaded a different plan (PlansList), and `updated.id`
-  // (replanWithVias always preserves the original plan's id) would still
-  // equal that stale closed-over id, so the closure alone can't detect the
-  // race — only a value that's re-read at resolve time, synced from
-  // whatever `plan` actually is *then*, can.
-  //
-  // usePlanFlow.run()'s own setPlan(plan) (usePlanFlow.ts) is deliberately
-  // NOT guarded the same way: run() mints a brand-new plan.id (or, for a
-  // #114 replace-recalculation, reuses the id the user explicitly confirmed
-  // overwriting), so a completed run is never "the same plan, possibly
-  // superseded" — it's a fresh planning request the user just asked for,
-  // which should become active even if another plan was loaded while it was
-  // in flight. Guarding it by planIdRef would incorrectly block every
-  // legitimate run() result (a new id can never match the ref's pre-existing
-  // value). The clobber this guards against is specific to replans: an edit
-  // to a *specific*, possibly-since-abandoned plan resolving late.
-  const planIdRef = useRef<string | null>(plan?.id ?? null);
-  useEffect(() => {
-    planIdRef.current = plan?.id ?? null;
-  }, [plan?.id]);
+  // #571 redesign REMOVED the Phase-E clobber-guard `planIdRef` that used to
+  // live here: it existed ONLY to protect the two via-replan resolution
+  // sites (handleViaPointsChange/handleViaDragEnd) against a late-resolving
+  // async replan landing after the user had switched to a different plan.
+  // Neither handler is async-and-plan-mutating any more (both just update
+  // `draftViaPoints`, synchronously, in the same tick they're called), so
+  // there is no resolve-time race left to guard against. See those two
+  // handlers' own comments below.
 
-  // #301: prefills the planner FORM (origin/destination/departure) from the
-  // active plan's own stored request — one derivation keyed on plan
+  // #301: prefills the planner FORM (origin/destination/departure/vias) from
+  // the active plan's own stored request — one derivation keyed on plan
   // identity, covering every setPlan caller (PlansList's Load, session
-  // restore, a completed run/via-replan/live-reroute) rather than patching
+  // restore, a completed run/live-reroute) rather than patching
   // each call site individually. Keyed on plan?.id + harborsLoaded
-  // DELIBERATELY, not on `plan`/`harbors`/`lang` object identity: a via-
-  // replan (state/replan.ts) produces a new `plan` object with the SAME id
-  // and must not clobber a departure the user has just edited (mirrors
-  // planIdRef's own clobber-guard rationale above) — same pattern as
-  // RouteLayer.tsx's fitBounds effect, which keys on plan identity rather
-  // than the (recreated) result object.
+  // DELIBERATELY, not on `plan`/`harbors`/`lang` object identity: a same-id
+  // update to the active plan (e.g. a PlansList "recalculate & replace" on
+  // the plan currently on screen) must not clobber a departure the user has
+  // just edited — same pattern as RouteLayer.tsx's fitBounds effect, which
+  // keys on plan identity rather than the (recreated) result object.
+  //
+  // #571 redesign: this effect now ALSO resets `draftViaPoints` to
+  // `plan.request.viaPoints` (below), for the same reason it resets
+  // origin/destination/departureMs — a NEW plan.id means the via list shown
+  // should be that plan's own, discarding any unapplied draft edit left over
+  // from whatever was active before (draft vias are deliberately EPHEMERAL,
+  // never persisted — see `draftViaPoints`'s own comment above).
   //
   // syncedPlanIdRef makes the write happen at most ONCE per plan id
   // (deterministic even under StrictMode's dev-only double-invoke): gated
@@ -397,6 +395,7 @@ function AppShell() {
     setOrigin(syncedOrigin);
     setDestination(syncedDestination);
     setDepartureMs(departureSeedMs(plan));
+    setDraftViaPoints(plan.request.viaPoints);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id + harborsLoaded deliberately, see the comment above
   }, [plan?.id, harborsLoaded]);
 
@@ -429,38 +428,20 @@ function AppShell() {
     setTapTarget(target);
   }, []);
 
-  // Shared by ViaMarkers' drag-replan, the panel's add/remove/reorder
-  // chips, and handleMapTap's 'via' branch below — one place that decides
-  // "pre-plan draft edit" vs. "post-plan replan". A rejected replan is a
-  // no-op here (viaReplan.replace already resolved null and recorded the
-  // error in viaReplan.state; nothing to revert since plan.request.viaPoints,
-  // which `viaPoints` derives from, was never touched).
-  const handleViaPointsChange = useCallback(
-    (next: LatLon[]) => {
-      if (!plan) {
-        setDraftViaPoints(next);
-        return;
-      }
-      void viaReplan.replace(plan, next).then((updated) => {
-        // Clobber guard (see planIdRef above): commit only if `plan` is
-        // still the active plan. replanWithVias preserves the original
-        // plan's id, so `updated.id` is always the id this replan targeted
-        // — comparing it against planIdRef.current (not the closed-over
-        // `plan.id`, which is the same value and would never catch this)
-        // is what actually detects that the user moved on. A guarded-out
-        // update is a no-op either way: plan.request.viaPoints (which
-        // `viaPoints` derives from) was never touched, so there's nothing
-        // to revert. Accepted residual: replanWithVias's own save() (see
-        // state/replan.ts) already persisted `updated` to IndexedDB before
-        // this guard runs — if the user also deleted this plan (PlansList)
-        // in the same window, that save silently resurrects it there. Not
-        // worth guarding against for a save that's already in flight by the
-        // time we could know the delete happened.
-        if (updated && updated.id === planIdRef.current) setPlan(updated);
-      });
-    },
-    [plan, viaReplan, setPlan],
-  );
+  // #571 redesign: shared by the panel's add/remove/reorder chips and
+  // handleMapTap's 'via' branch below. Used to branch on `plan` (pre-plan
+  // draft edit vs. post-plan replan) — now it's a PLAIN, synchronous
+  // `draftViaPoints` write regardless of whether a plan is active. The
+  // maintainer's #571 ruling: removing a waypoint "is kind of a new route
+  // and hence should only calculate once clicked on calculate" — so no
+  // network call, no worker call, nothing async happens here at all. Draft
+  // edits take effect only on the next explicit Plan-route press
+  // (handlePlan below, which already reads `viaPoints` — i.e. this same
+  // draft), exactly like an origin/destination/departure/settings edit
+  // already did.
+  const handleViaPointsChange = useCallback((next: LatLon[]) => {
+    setDraftViaPoints(next);
+  }, []);
 
   const handleMapTap = useCallback(
     (p: LatLon) => {
@@ -469,10 +450,9 @@ function AppShell() {
         if (current === 'via') {
           // Side effect inside a setState updater, same as the
           // origin/destination branches below — StrictMode double-invokes
-          // updater functions in dev, but handleViaPointsChange's replan
-          // path is protected by useViaReplan's synchronous in-flight guard
-          // (set before any await), and its pre-plan draft path is a plain,
-          // idempotent setState computed identically both times.
+          // updater functions in dev, but handleViaPointsChange is now a
+          // plain, idempotent setState computed identically both times (no
+          // async replan path any more — see its own comment above).
           handleViaPointsChange([...viaPoints, p]);
           return null;
         }
@@ -503,25 +483,32 @@ function AppShell() {
     [viaPoints, handleViaPointsChange],
   );
 
-  // ViaMarkers' dragend handler: resolves true (accepted) once the plan's
-  // committed viaPoints reflect the drag, or false (rejected) to tell the
-  // marker to snap back to its last committed position.
+  // ViaMarkers' dragend handler. Markers themselves are still positioned
+  // from the COMMITTED `plan.request.viaPoints` (RouteLayer.tsx, unrelated
+  // to and unchanged by this task), so `index` here is the dragged marker's
+  // position in THAT list, not necessarily in `draftViaPoints` (the two can
+  // have diverged already via an add/remove/reorder done since the last
+  // Plan press). Locate the SAME point by reference in the current draft
+  // and update it there — #571 redesign: a drag must not replan either, only
+  // update the draft. Resolves true ("accepted": don't snap the marker back
+  // — its DOM position, set imperatively by MapLibre during the drag,
+  // simply stays where the user dropped it, since nothing here forces a
+  // marker rebuild) once applied to the draft, or false when the dragged
+  // point can no longer be found in the draft (e.g. it was already removed
+  // via the panel while its now-stale marker was still showing on the map —
+  // an accepted residual of markers tracking the committed list rather than
+  // the draft, see `draftViaPoints`'s own comment above) — there is nothing
+  // coherent to update, so the marker snaps back.
   const handleViaDragEnd = useCallback(
     async (index: number, next: LatLon): Promise<boolean> => {
       if (!plan) return false; // ViaMarkers only ever renders once a plan exists; guarded defensively
-      const nextVias = plan.request.viaPoints.map((v, i) => (i === index ? next : v));
-      const updated = await viaReplan.replace(plan, nextVias);
-      // Same clobber guard as handleViaPointsChange above. A mismatch here
-      // reads as a rejection to the caller (marker snaps back) — a dragged
-      // via belonging to a plan that's no longer active shouldn't leave its
-      // marker looking "accepted" even if the drag technically succeeded.
-      if (updated && updated.id === planIdRef.current) {
-        setPlan(updated);
-        return true;
-      }
-      return false;
+      const original = plan.request.viaPoints[index];
+      const draftIndex = draftViaPoints.indexOf(original);
+      if (draftIndex === -1) return false;
+      setDraftViaPoints(draftViaPoints.map((v, i) => (i === draftIndex ? next : v)));
+      return true;
     },
-    [plan, viaReplan, setPlan],
+    [plan, draftViaPoints],
   );
 
   const handleCancelTapPick = useCallback(() => setTapTarget(null), []);
@@ -751,59 +738,66 @@ function AppShell() {
   );
 
   // The Plan button independently guards offline (spec §4) on top of the
-  // banner; canPlan also requires both endpoints, an idle/error (not
-  // already in-flight) planning phase, and no via-replan in flight — a
-  // fresh run() while a replan of the current plan is pending would race
-  // the same "which result wins" question planIdRef's guard exists for
-  // above, so it's simplest to just not let one start.
+  // banner; canPlan also requires both endpoints and an idle/error (not
+  // already in-flight) planning phase.
   // #114: `runBusy` is that same in-flight condition on its own — shared by
   // canPlan and the PlansList recalc actions, so no two runs can overlap
   // regardless of which surface starts them.
   // #115: liveReroute joins the same mutual exclusion — a live reroute is a
   // solver run on the shared client like any other.
+  // #571 redesign: a via edit is NEVER part of this condition any more — it
+  // only ever touches `draftViaPoints` synchronously, so there is nothing
+  // for it to be "in flight" with.
   const runBusy =
-    !(planning.phase === 'idle' || planning.phase === 'error') ||
-    viaReplan.state.replanning ||
-    liveReroute.state.rerouting;
+    !(planning.phase === 'idle' || planning.phase === 'error') || liveReroute.state.rerouting;
   const canPlan = origin !== null && destination !== null && online && !runBusy;
   // §3.5: the primary button always states WHY it's disabled. Offline is the
   // most blocking (nothing can be planned), then a missing endpoint. When both
   // endpoints are set and online, the button is enabled — reason is null.
-  // #571: a via-replan in flight is checked FIRST, ahead of both — it's the
-  // most immediately relevant explanation of why every planner control (the
-  // Plan button here via `runBusy`, and the via ×/↑/↓/"add" controls
-  // directly, gated on `viaReplan.state.replanning` in PlannerPanel) is
-  // currently locked, and it can be true independent of `online` (a
-  // via-replan reuses the plan's stored windGrid and works offline — see
-  // useViaReplan's own docstring). Before this, removing a waypoint left
-  // this guidance line empty for the whole replan (up to ~135s worst case).
-  const viaReplanReasonKey = viaReplanDisabledReasonKey(viaReplan.state);
-  const planDisabledReason = viaReplanReasonKey
-    ? t(viaReplanReasonKey)
-    : !online
-      ? t('error.offline')
-      : origin === null || destination === null
-        ? t('planner.disabled.pickEndpoints')
-        : null;
+  // #571 redesign REVERTED a via-replanning-in-flight branch that used to sit
+  // here: a via edit no longer disables anything (see `runBusy` above), so
+  // this reason is back to exactly the two pre-#571 cases.
+  const planDisabledReason = !online
+    ? t('error.offline')
+    : origin === null || destination === null
+      ? t('planner.disabled.pickEndpoints')
+      : null;
 
   const plannerStatus = toPlannerStatus(planning, t);
   const stale = plan !== null && isStaleForecast(plan);
-  // #301: true when the form (origin/destination/departure/live settings)
-  // has drifted from the plan actually on screen — a re-run right now would
-  // produce a DIFFERENT route than the displayed one. Guarded on
+  // #301: true when the form (origin/destination/departure/vias/live
+  // settings) has drifted from the plan actually on screen — a re-run right
+  // now would produce a DIFFERENT route than the displayed one. Guarded on
   // origin/destination being non-null: right after loading a plan there's a
   // one-effect-tick window where `plan` is already set but the #301 sync
-  // effect above hasn't yet written origin/destination — reading false there
-  // (nothing to compare yet) avoids a one-frame false-dirty flicker rather
-  // than feeding planFormDirty a stale/null form.
+  // effect above hasn't yet written origin/destination (nor `draftViaPoints`,
+  // now synced in the SAME effect) — reading false there (nothing to compare
+  // yet) avoids a one-frame false-dirty flicker rather than feeding
+  // planFormDirty a stale/null form.
   // `harbors.length > 0` (PR #443 review, Minor) tells planFormDirty whether
   // a harborId mismatch is trustworthy — see planForm.ts's own comment on
   // the `harborsAvailable` parameter for why an empty list must suppress
   // just that one comparison.
+  // #571 redesign: `viaPoints` (== `draftViaPoints`) is now part of the
+  // snapshot planFormDirty compares — see PlanFormSnapshot's own comment.
   const formDirty =
     plan && origin && destination
-      ? planFormDirty(plan, { origin, destination, departureMs, settings }, harbors.length > 0)
+      ? planFormDirty(
+          plan,
+          { origin, destination, departureMs, viaPoints, settings },
+          harbors.length > 0,
+        )
       : false;
+  // #571 redesign: the MAP-side counterpart of the same signal, fed to
+  // ViaMarkers via RouteLayer's `viaReplanning` prop (kept exactly that PROP
+  // NAME — RouteLayer.tsx is unrelated to and unchanged by this task, and
+  // still forwards it under that key). Narrower than `formDirty` on purpose
+  // — the map disclosure is specifically about the via list (the one thing
+  // this task's map-side markers can visibly disagree with — see
+  // `draftViaPoints`'s own comment above), not every dirty form field.
+  // `plan !== null` mirrors `viaDraftStale`'s only meaningful precondition:
+  // ViaMarkers itself renders nothing without an active plan.
+  const viaDraftStale = plan !== null && viaPointsDiffer(draftViaPoints, plan.request.viaPoints);
   // #299 fix (PR #486 review): the cross-tab staleness BANNER (.banner-area,
   // below) intentionally uses this NARROWER signal instead of `formDirty` —
   // see routingSettingsDirty's own comment in lib/planForm.ts for why (in
@@ -866,7 +860,7 @@ function AppShell() {
             plan={plan}
             rig={rig}
             activeLegIndex={activeLegIndex}
-            viaReplanning={viaReplan.state.replanning}
+            viaReplanning={viaDraftStale}
             onViaDragEnd={handleViaDragEnd}
           />
           {/* #25 addendum: the standalone ownship marker — always mounted
@@ -1083,14 +1077,14 @@ function AppShell() {
             {t('banner.tapPick', { target: t(TAP_TARGET_LABEL_KEY[tapTarget]) })}
           </Banner>
         )}
-        {viaReplan.state.error && (
-          <Banner kind="error" onDismiss={viaReplan.clearError} dismissLabel={t('banner.dismiss')}>
-            {t(viaReplan.state.error)}
-          </Banner>
-        )}
         {/* #115: live-reroute failures (stale stored forecast, fix outside
             the region, no route) — honest error, never a truncated route.
-            Mirrors the via-replan banner above. */}
+            #571 redesign: this used to sit alongside a via-replan error
+            banner (viaReplan.state.error) — REMOVED, since a via edit no
+            longer replans at all, so `useViaReplan` (state/replan.ts) has no
+            remaining UI caller and can never produce one. Live reroute is a
+            deliberately separate, manual feature (state/reroute.ts) and is
+            unaffected by that removal. */}
         {liveReroute.state.error && (
           <Banner
             kind="error"
@@ -1098,22 +1092,6 @@ function AppShell() {
             dismissLabel={t('banner.dismiss')}
           >
             {t(liveReroute.state.error)}
-          </Banner>
-        )}
-        {viaReplan.state.droppedCount > 0 && (
-          <Banner
-            kind="info"
-            onDismiss={viaReplan.clearDroppedNotice}
-            dismissLabel={t('banner.dismiss')}
-          >
-            {t(
-              viaReplan.state.droppedCount === 1
-                ? 'banner.viaTooClose'
-                : 'banner.viaTooClose.plural',
-              {
-                count: viaReplan.state.droppedCount,
-              },
-            )}
           </Banner>
         )}
       </div>
@@ -1185,7 +1163,6 @@ function AppShell() {
               viaPoints={viaPoints}
               onRemoveVia={handleRemoveVia}
               onReorderVia={handleReorderVia}
-              viaReplanning={viaReplan.state.replanning}
               departureMs={departureMs}
               onDepartureChange={setDepartureMs}
               settings={settings}

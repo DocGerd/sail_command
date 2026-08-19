@@ -82,7 +82,6 @@ export const de = {
   'planner.via.moveUp': 'Wegpunkt {index} nach oben verschieben',
   'planner.via.moveDown': 'Wegpunkt {index} nach unten verschieben',
   'planner.via.marker': 'Wegpunkt {index}',
-  'planner.via.replanning': 'Route wird mit geänderten Wegpunkten neu berechnet…',
   'planner.departure.label': 'Abfahrt',
   'planner.plan': 'Route planen',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
@@ -91,15 +90,6 @@ export const de = {
   // §3.5: terse disabled-button reason when both endpoints aren't set (the
   // gap-fill for the previously reasonless online-but-incomplete state).
   'planner.disabled.pickEndpoints': 'Start und Ziel wählen.',
-  // #571: the same guidance-line slot, shown while a via-edit replan is in
-  // flight — before this, planDisabledReason never checked
-  // viaReplan.state.replanning, so removing a waypoint on a slow route left
-  // every planner control disabled with no stated reason for up to ~135s.
-  // "bis zu einer Minute" states the typical case honestly (measured
-  // ~52-54s on the slow route this bug was filed against) without claiming
-  // the worst-case bound — a phase disclosure, not a fabricated percentage
-  // (see #340's rejected percentage readout).
-  'planner.disabled.viaReplanning': 'Route wird neu berechnet — kann bis zu einer Minute dauern.',
   'planner.result.details': 'Details ansehen',
   // Swapped into the planner's live status region on plan completion — a
   // stable, atomic summary announced once per new plan (never on slider/

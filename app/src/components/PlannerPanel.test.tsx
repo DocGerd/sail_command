@@ -178,7 +178,6 @@ interface Overrides {
   viaPoints?: LatLon[];
   onRemoveVia?: (index: number) => void;
   onReorderVia?: (index: number, direction: 'up' | 'down') => void;
-  viaReplanning?: boolean;
   onDepartureChange?: (ms: number) => void;
   settings?: Settings;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
@@ -209,7 +208,6 @@ function baseProps(overrides: Overrides = {}) {
     viaPoints: [],
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),
-    viaReplanning: false,
     departureMs: DEPARTURE_MS,
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
@@ -567,11 +565,15 @@ describe('PlannerPanel', () => {
       expect(screen.getByRole('button', { name: 'Move waypoint 2 up' })).toBeEnabled();
     });
 
-    it('disables all via controls while a replan is in flight', () => {
-      renderPanel({ viaPoints: [VIA_A], viaReplanning: true });
-      expect(screen.getByRole('button', { name: 'Add waypoint' })).toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Remove waypoint 1' })).toBeDisabled();
-      expect(screen.getByRole('button', { name: 'Move waypoint 1 down' })).toBeDisabled();
+    // #571 redesign: a via edit never replans in place any more (only the
+    // Plan-route button does — see App.tsx's handleViaPointsChange), so
+    // there is no in-flight-replan state left to disable these controls
+    // for. Add/Remove are never boundary-gated either way, which is what
+    // makes them a clean, unconditional assertion.
+    it("#571 redesign: Add/Remove waypoint stay enabled — via editing is now plain, synchronous form state with nothing to be 'in flight'", () => {
+      renderPanel({ viaPoints: [VIA_A] });
+      expect(screen.getByRole('button', { name: 'Add waypoint' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Remove waypoint 1' })).toBeEnabled();
     });
   });
 

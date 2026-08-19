@@ -6,24 +6,38 @@ import { useT } from '../i18n';
 import type { LatLon } from '../types';
 
 export interface ViaMarkersProps {
-  // Source of truth for marker positions is always the *committed* plan
-  // (plan.request.viaPoints, from RouteLayer) — never a local optimistic
-  // draft. A rejected replan therefore snaps back "for free" wherever this
-  // prop itself is what didn't change; the one place that still needs an
-  // explicit reset is a marker's own live drag position (see dragend below),
-  // since MapLibre updates that imperatively during the drag gesture,
-  // independent of props.
+  // Source of truth for marker POSITIONS is always the *committed* plan
+  // (plan.request.viaPoints, from RouteLayer.tsx — unrelated to and
+  // unchanged by the #571 redesign below). #571 redesign: a via edit no
+  // longer replans in place, so this is no longer merely "until a rejected
+  // replan snaps it back" — it is now STRUCTURAL: RouteLayer.tsx has no
+  // draft to feed this component even if it wanted to, so an add/remove/
+  // reorder done in the panel is invisible HERE until the next Plan-route
+  // press changes `plan.request.viaPoints` itself. A drag is the one
+  // exception in practice — see dragend below — because MapLibre updates a
+  // marker's DOM position imperatively during the gesture, independent of
+  // this prop, and nothing here forces a rebuild when the prop hasn't
+  // changed. `replanning` below is the disclosure for this whole gap.
   viaPoints: LatLon[];
-  // True while a replan triggered by this component (or a sibling — the
-  // panel's via chips) is in flight. Disables dragging and shows a spinner
-  // chip; mirrors ViaMarkers/PlannerPanel both being disabled together so
-  // the two edit paths never race each other (state/replan.ts's useViaReplan
-  // in-flight guard is the actual enforcement; this is the visual match).
+  // #571 redesign: PROP NAME kept as `replanning` — RouteLayer.tsx passes it
+  // straight through under that exact key and is unrelated to/unchanged by
+  // this task. Its MEANING has moved: no auto-replan exists any more (the
+  // maintainer's #571 ruling), so this no longer means "a replan is in
+  // flight" — it means "the panel's draft via list no longer matches what's
+  // committed/shown on the map" (App.tsx's `viaDraftStale`, computed with
+  // `lib/planForm.ts`'s `viaPointsDiffer`). Shows the chip below as a
+  // MAP-side staleness disclosure; no longer gates dragging (a draft edit is
+  // never "in flight" — there is nothing async left for a second edit to
+  // race).
   replanning: boolean;
-  // Resolves true if the dragged position was accepted (the plan/markers
-  // already reflect it via the updated viaPoints prop by the time this
-  // resolves) or false if rejected — false triggers an explicit snap-back
-  // to the last committed position.
+  // Resolves true once the drag was applied to the DRAFT via list (App.tsx's
+  // handleViaDragEnd) — the marker's own DOM position, already at the
+  // dropped point (MapLibre set it imperatively during the drag), is simply
+  // left alone — or false when it could not be applied (e.g. the dragged
+  // point was already removed from the draft via the panel while its
+  // now-stale marker was still showing — see `viaPoints`'s own comment
+  // above), which triggers an explicit snap-back to the last committed
+  // position.
   onDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
 
@@ -82,10 +96,10 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
             if (!accepted) snapBack();
           })
           // Defense-in-depth: onDragEnd (App.tsx's handleViaDragEnd) always
-          // resolves (viaReplan.replace catches everything internally and
-          // returns null), so this is currently unreachable — but a future
-          // caller that lets a rejection through must not leave the marker
-          // silently stuck at the dragged-to position.
+          // resolves — it's a plain synchronous draftViaPoints write with
+          // nothing in it that can throw — so this is currently unreachable,
+          // but a future caller that lets a rejection through must not leave
+          // the marker silently stuck at the dragged-to position.
           .catch(snapBack);
       });
       marker.addTo(map);
@@ -97,17 +111,24 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
     };
   }, [map, viaPoints, onDragEnd, t]);
 
-  // Disable dragging (not marker identity) while a replan — from this drag
-  // or the panel's chip edits — is in flight, so a user can't queue a second
-  // conflicting edit (state/replan.ts's useViaReplan already no-ops a
-  // second replace(), this just keeps the map from inviting one).
-  useEffect(() => {
-    markersRef.current.forEach((m) => m.setDraggable(!replanning));
-  }, [replanning]);
+  // #571 redesign REMOVED the effect that used to live here, disabling
+  // dragging while `replanning` (then: a replan in flight) was true.
+  // `replanning` no longer means that (see its own comment above), and a
+  // draft edit is never "in flight" — every marker stays draggable from
+  // construction (`draggable: true` above) for as long as it exists.
 
   return replanning ? (
+    // #571 redesign: className kept as `via-markers-spinner-chip` (app.css
+    // styling, out of scope for this task) even though the chip is no
+    // longer a spinner — it's the MAP-side staleness disclosure, the
+    // counterpart of the panel's own Chip/live-region fold (both driven by
+    // App.tsx's `formDirty`, which now includes the via list too — see
+    // lib/planForm.ts's PlanFormSnapshot). Reuses the SAME `planner.result.
+    // stale` copy ("Showing the previously calculated route — the inputs
+    // have changed since.") — it already covers "the via list changed"
+    // without inventing new wording.
     <div className="via-markers-spinner-chip" role="status">
-      {t('planner.via.replanning')}
+      {t('planner.result.stale')}
     </div>
   ) : null;
 }
