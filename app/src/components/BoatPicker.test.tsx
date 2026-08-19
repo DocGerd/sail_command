@@ -174,24 +174,34 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
 
   it('#566: renders every boat’s draftProvenance.note, INCLUDING the hull-verified Salona 45', () => {
     renderPicker();
-    // The loop covers every catalogue boat; its expected text comes from the
-    // SAME catalogue the component reads, so on its own it can't catch an
-    // implementation that renders the WRONG note — the standalone
-    // salona-45 assertion below (a hand-derived substring) is what catches
-    // that, the same "one hardcoded anchor beside the derived loop" idiom
-    // this file already uses for draft, above.
+    // The loop below and the standalone assertion after it both read from
+    // the SAME `boat.draftProvenance.note` field (the standalone regex is a
+    // hand-COPIED substring of it, not an independently authored value —
+    // unlike the draft literal's idiom above, there is no shared FORMULA
+    // (`.toFixed(1)` et al.) for a plain string field to protect against, so
+    // that "one hardcoded anchor beside the derived loop" framing does not
+    // apply here; this correction replaces an earlier version of this
+    // comment that claimed it did). What the standalone assertion actually
+    // gives is DEFENSE IN DEPTH for #566's specific hazard, not independent
+    // coverage the loop lacks: MEASURED by temporarily deleting the loop
+    // below, the standalone assertion alone still reds the `keelUnverified
+    // &&`-gated mutation on its own. In the file AS WRITTEN, though, the
+    // loop catches that same mutation FIRST — `for...of` iterates BOATS in
+    // catalogue order (salona-45 is index 0) and a failed `expect()` throws
+    // immediately, so the standalone assertion below never even executes in
+    // that failure path; it is redundant with the loop's own salona-45
+    // iteration for THIS mutation, not an independent backstop for it.
     for (const boat of BOATS) {
       const option = within(optionFor(boat.id));
       expect(option.getByText(boat.draftProvenance.note), boat.id).toBeInTheDocument();
     }
-    // #566's whole point, pinned directly: gating this note on
-    // `keelUnverified` (as the sibling keel-caveat sentence correctly IS
-    // gated) would silently drop the hull-verified reference boat's OWN
-    // citation — the exact failure this decision exists to prevent. This
-    // assertion is independent of the loop above: it targets ONLY the
-    // hull-verified boat, on a substring unique to ITS note, so a
-    // `keelUnverified &&`-gated render regresses this row specifically even
-    // if some other regression left the loop green.
+    // Kept anyway as a NAMED, explicit pin for #566's exact hazard (gating
+    // the note on `keelUnverified`, as the sibling keel-caveat sentence
+    // correctly IS gated, would silently drop the hull-verified reference
+    // boat's OWN citation) — a reader can find this specific requirement
+    // without tracing through the generic per-boat loop above, and it stays
+    // load-bearing on its own if a future refactor ever drops or reorders
+    // that loop.
     expect(
       within(optionFor('salona-45')).getByText(
         /reference boat, model-level with no individual vessel/,

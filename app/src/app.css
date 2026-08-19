@@ -929,20 +929,14 @@ select {
    The remaining lever is the OTHER half of that floor: `.app-bottom-sheet`'s
    own reserved height. The sheet is already AT its 55vh cap on this
    viewport (its Plan-tab content needs more room than that and is already
-   scrolling internally), so trimming the cap further costs more scroll, not
-   lost functionality — the same trade the checkbox-padding/min-height cuts
-   below already make. MEASURED live against a dev server (not derived on
-   paper): shrinking the cap to 45vh clears ScaleBar's suppression with a
-   single banner line at all three short-landscape viewports — sheet height
-   198px -> 162px at 740x360 (20px margin), 214.5px -> 175.5px at 844x390
-   (~36.5px margin), 236.5px -> 193.5px at 932x430 (already clear before this
-   change, more so after). `.map-stack-tl`/`.route-layer-controls`'s own
-   max-height (base narrow rule, above) reserves the SAME 55vh above the
-   sheet by a NAMED COUPLING to it — narrowed to 45vh here too so the two
-   numbers can't silently diverge; at today's content sizes (~41-44px)
-   neither cluster is anywhere near either ceiling, so this second change has
-   no visible effect today, but keeps the coupling honest for whoever reads
-   it next.
+   scrolling internally), so trimming that reservation costs more scroll,
+   not lost functionality — the same trade the checkbox-padding/min-height
+   cuts below already make. The `.app-bottom-sheet` rule inside the media
+   query below is where this is actually spent, and its own comment there
+   has the full derivation, the exact formula, and REAL-BUILD-measured
+   margins at all three short-landscape viewports (`npm run e2e`, never
+   `vite dev` — the two disagree at 844x390, see `layout.spec.ts`'s own
+   `#441` comment for why that distinction mattered here).
    Only ONE banner line is the guaranteed case, per #441's own scope: two
    stacked banners (~64px) or a two-line wrap are NOT re-measured against
    this margin and may still suppress — an accepted residual, the same shape
@@ -992,27 +986,95 @@ select {
     min-height: 24px;
   }
 
-  /* #441: see this block's own opening comment for the full derivation —
-     `.map-stack-tl` itself is out of margin to give (compass touch-target
-     floor + the #368 banner-clearance push, neither negotiable), so this
-     spends the OTHER lever ScaleBar's suppression ceiling depends on: how
-     much height `.app-bottom-sheet` reserves. 45vh (from the base 55vh) is
-     the MEASURED amount that clears ScaleBar's suppression with a single
-     banner line at every short-landscape viewport this repo tests. */
+  /* #441 (review round 2, m8): see this block's own opening comment for the
+     full derivation of WHY a reduction is needed at all — `.map-stack-tl`
+     itself is out of margin to give (compass touch-target floor + the #368
+     banner-clearance push, neither negotiable), so this spends the OTHER
+     lever ScaleBar's suppression ceiling depends on: how much height
+     `.app-bottom-sheet` reserves.
+     A flat `45vh` (the round-1 shape of this rule) SUBTRACTED A FIXED 10
+     PERCENTAGE POINTS UNCONDITIONALLY — paid even with no banner on screen,
+     which review m8 correctly named as scoping the bound wider than the
+     condition that motivates it (CLAUDE.md's own "scope every height/
+     overflow bound to the condition that motivated it" rule, right above
+     `.app-header` in this file). `calc(55vh - var(--sc-banner-height,
+     176px))` fixes that AND is a better mechanism: it subtracts EXACTLY the
+     banner's own measured height, so with no banner
+     (`--sc-banner-height: 0px`, written by `lib/useBannerHeight.ts`) this
+     resolves to a plain `55vh` — byte-identical to the pre-#441 value, zero
+     cost paid — and with a banner present it shrinks the sheet by exactly
+     the amount the banner ADDS to `.map-stack-tl`'s pushed `top`, which
+     preserves the ORIGINAL #231 margin (not just clears zero) regardless of
+     banner height: the two subtractions cancel in ScaleBar.tsx's own
+     ceiling-vs-floor inequality (`ceiling` loses `bannerHeight` from
+     `mapStackBottom`; `floor` gains it back from `sheetLift` shrinking by
+     the same amount). MEASURED against a REAL BUILD (`npm run e2e`, never
+     `vite dev` — see below for why that distinction is load-bearing here),
+     not just derived: at 740x360 with a 32px banner this gives a 16px
+     margin (matching #231's OWN un-bannered margin, not a fixed round
+     number); 29.5px at 844x390; 47.5px at 932x430 (`layout.spec.ts`'s own
+     `#441` comment has the full margin table and which viewport that
+     test's MUTATION check — reverting this rule, not the shipped state
+     above — actually leans on: only shortLandscape740 is a reliable
+     regression pin for the reverted CSS; 844x390 and 932x430 turn out to
+     have never been suppressed by a single banner in a real build even
+     BEFORE this fix existed, so they cannot discriminate it either way).
+     An EARLIER revision of this comment cited a "~2.9px knife-edge" this
+     fix supposedly closed at 844x390 — that number was measured against
+     `vite dev`, which renders ScaleBar's own text/bracket at a very
+     slightly different size than a real build; it does not reproduce
+     against `npm run e2e` and there was never a real deficit to close at
+     that viewport. Read a dev-server margin as a hypothesis to re-verify
+     against a real build, never as the shipped number.
+     `176px` matches `BANNER_HEIGHT_UNMEASURABLE_FALLBACK_PX` — the SAME
+     pre-paint-window fallback `--sc-banner-clear-top` already uses two rules
+     up, so a cold-load render before the ResizeObserver's first write
+     assumes the SAME worst-case banner height everywhere this custom
+     property is read, rather than one term assuming "worst case" and
+     another assuming "none" for the same few-ms window. */
   .app-bottom-sheet {
-    max-height: 45vh;
+    max-height: calc(55vh - var(--sc-banner-height, 176px));
   }
 
   /* NAMED COUPLING with the rule immediately above: both reserve the SAME
-     vh above the sheet, so they must change together (see this block's own
-     opening comment) — `var(--sc-banner-clear-top)` is inherited from the
-     base narrow rule above (`@media (max-width: 1023.98px)`), which already
-     declares it on these same two selectors; this rule only narrows
-     `max-height`'s own 55vh term to match the sheet's new 45vh cap. */
+     dynamic term above the sheet, so they must change together (see this
+     block's own opening comment) — `var(--sc-banner-clear-top)` is
+     inherited from the base narrow rule above (`@media (max-width:
+     1023.98px)`), which already declares it on these same two selectors;
+     this rule only narrows `max-height`'s own flat `55vh` term to the SAME
+     `55vh - bannerHeight` expression the sheet rule above now uses. */
   .map-stack-tl,
   .route-layer-controls {
-    max-height: calc(100dvh - var(--sc-banner-clear-top) - 45vh - 0.5rem);
+    max-height: calc(
+      100dvh - var(--sc-banner-clear-top) - (55vh - var(--sc-banner-height, 176px)) - 0.5rem
+    );
   }
+
+  /* #441 (review round 2, m5): `.live-view` (its own rule, above) docks the
+     Live tab's readout in the SAME corner `.app-bottom-sheet` occupies on
+     Plan/Routes, and ScaleBar.tsx's `liveLift` reads ITS `offsetTop` the
+     same way `sheetLift` reads the sheet's `offsetHeight` — so it LOOKS
+     like a third member of the coupling above and a first draft of this
+     comment treated it as one, narrowing its cap the same dynamic way.
+     MEASURED, and the narrowing was WRONG: a `.live-view` at its 55vh-based
+     cap (146px at 740x360) suppresses ScaleBar with ZERO banners present —
+     `liveLift` is already past the ceiling before any banner term enters
+     the computation at all, because the card is BOTTOM-anchored
+     (`bottom: var(--sc-tabbar-h)`), so a taller capped box pushes its OWN
+     top edge further up the screen regardless of what pushed
+     `.map-stack-tl`. Narrowing the cap by the SAME banner-sized amount this
+     block uses for the sheet does NOT clear it either (still suppressed at
+     the 114px the banner-scaled formula would give) — the deficit here is
+     structural, not proportional to the banner. This is a PRE-EXISTING,
+     #231-CLASS occluder problem (that issue's own comment already names
+     "an unrelated, pre-existing reason" for two portrait viewports), not a
+     #441 regression, and #441 neither causes nor fixes it — `.live-view`
+     is therefore DELIBERATELY left at its base-rule cap here, unnarrowed.
+     Only `.app-bottom-sheet` and `.map-stack-tl`/`.route-layer-controls`
+     above are the pair this fix's own coupling claim governs; `.live-view`
+     is out of scope for a Live tab with a real, tall-enough readout loaded
+     — tracked as a residual for a future issue, not silently absorbed into
+     this one. */
 }
 
 /* ---- #155 north arrow / track-up toggle ---- */
