@@ -140,7 +140,15 @@ test.describe('#355 resizable panel', () => {
       // to the behaviour under test. Poll until settled instead.
       const panelGrowth = draggedWidth - defaultWidth;
       let lastCanvasWidth = defaultCanvasWidth;
-      let lastDeltaAbs = Math.abs(defaultCanvasWidth - defaultCanvasWidth - panelGrowth);
+      // Seed value: same formula the poll body below computes
+      // (`|canvasShrink - panelGrowth|` with `canvasShrink = defaultCanvasWidth
+      // - lastCanvasWidth`), evaluated at `lastCanvasWidth === defaultCanvasWidth`
+      // (the line above) — i.e. |0 - panelGrowth|, only overwritten by the
+      // first poll iteration. js/redundant-operation (alert #20) flagged the
+      // prior `defaultCanvasWidth - defaultCanvasWidth` spelling as
+      // obfuscated; this spells out the same seed via the poll body's own
+      // variables instead.
+      let lastDeltaAbs = Math.abs(defaultCanvasWidth - lastCanvasWidth - panelGrowth);
       try {
         await expect
           .poll(async () => {
