@@ -1584,7 +1584,8 @@ select {
 .planner-panel,
 .route-summary,
 .plans-list,
-.options-panel {
+.options-panel,
+.settings-panel {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1597,17 +1598,157 @@ select {
   gap: 0.2rem;
 }
 
-/* #53: prominent shallow-water warning on the route summary (both rig tabs).
-   Safety-depth warning color family (#E69F00) — matches the map casing and
-   the depth profile emphasis. #251 moved the family into --sc-depth-warning-*
-   so the Live view's heading caution uses the same one. */
+/* #353 PR2: seamark size slider + its live numeric readout, same
+   flex/min-width shrink pattern as .route-layer-time-slider's range input
+   (above) so the track can shrink inside the settings panel's own width
+   rather than overflowing it. */
+.settings-seamark-size-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-seamark-size-row .sc-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-seamark-size-value {
+  flex: none;
+  min-width: 3.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* #353 PR2: the display-category radiogroup — wraps rather than overflows
+   at the panel's narrow-viewport minimum width. */
+.settings-seamark-category {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+}
+
+.settings-seamark-category label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* #53/#504: prominent shallow-water warning on the route summary (both rig
+   tabs). Safety-depth warning color family (#E69F00) — matches the map
+   casing and the depth profile emphasis. #251 moved the family into
+   --sc-depth-warning-* so the Live view's heading caution uses the same one.
+   Wave 4: restructured from a single dense, uniformly-bold paragraph into a
+   role="alert" CONTAINER (this rule, now a <div>) holding three <p> parts —
+   .shallow-warning__lead/__detail/__caveat below — so the most severe,
+   actionable fact (the lead) stands out and the rest reads at normal
+   weight; emphasising everything emphasised nothing. */
 .shallow-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   margin: 0;
   padding: 0.6rem 0.75rem;
   border-left: 4px solid var(--sc-depth-warning-fg);
   border-radius: 4px;
   background: var(--sc-depth-warning-bg);
-  font-weight: 500;
+}
+
+.shallow-warning p {
+  margin: 0;
+}
+
+/* The ONLY emphasised part — the #493 cautious-floor fact, the most severe
+   and most actionable thing this warning says. */
+.shallow-warning__lead {
+  font-weight: 700;
+}
+
+/* What happened (requested/used/minGate + the locator sentence) — normal
+   weight, no longer competing with the lead for attention. */
+.shallow-warning__detail {
+  font-weight: 400;
+}
+
+/* The chart-accuracy caveat: visually secondary (smaller text) but NEVER
+   hidden behind a Disclosure or any click — it is a safety statement about
+   the limits of the warning above it, in an app with no chart authority of
+   its own, so it stays fully legible, only de-emphasised by size. */
+.shallow-warning__caveat {
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+/* #504: MODIFIER on .shallow-warning above — applied together with the base
+   class, never alone, when the mask's own TOLERANCE_M means this plan's
+   used depth could have a cautious reading below the boat's draft. A
+   DISTINCT, more severe tier: reuses --sc-banner-error-* (the app's existing
+   red/error severity family — see .banner-error above), not a deepened
+   shade of .shallow-warning's amber --sc-depth-warning-* family, so the
+   escalation reads as a different tier rather than the same one turned up.
+   No new dark-mode block is needed: --sc-banner-error-fg/-bg already carry
+   their own dark variants (verified by reading the @media block above
+   .banner-error's definition, not assumed). `color` here is inherited by
+   every child <p>, so severity tints the whole warning uniformly — only
+   font-weight and size vary between parts (bold/1rem lead, normal/1rem
+   detail, normal/0.85rem caveat), not colour. Severity is NOT colour alone
+   (WCAG 1.4.1): a full border plus a thicker border-left carry the same
+   signal non-visually too. */
+.shallow-warning--severe {
+  border: 1px solid var(--sc-banner-error-fg);
+  border-left-width: 6px;
+  background: var(--sc-banner-error-bg);
+  color: var(--sc-banner-error-fg);
+}
+
+/* #452 gap 3: per-leg shallow marker in the legs table — same
+   --sc-depth-warning-* family as .shallow-warning above (#251), so the
+   hazard reads consistently between the plan-level banner and the row that
+   locates it. Text carries the meaning (see ShallowLegMarker's own comment
+   in RouteSummary.tsx); colour is reinforcement, never the sole signal.
+   SELECTOR IS `.chip.chip-shallow`, not the bare modifier class — `.chip` is
+   declared LATER in this file, and two single-class selectors tie on
+   specificity, so source order alone hands `background` to `.chip`'s own
+   `color-mix(...)` fill (#506, same cascade as `.chip-shallow-cautious`
+   below). The compound selector raises specificity so this rule wins
+   regardless of declaration order. */
+.chip.chip-shallow {
+  background: var(--sc-depth-warning-bg);
+  color: var(--sc-depth-warning-text);
+  font-weight: 600;
+}
+
+/* #493/#504: cautious lower bound for the SAME cell — rendered ALONGSIDE
+   .chip-shallow above (never replacing it), so it must read as secondary to
+   the shipped figure rather than compete with it. Same --sc-depth-warning-*
+   family as the chip it sits next to (one hazard family, not a second one),
+   but OUTLINED rather than filled, plus a smaller size — shape and size
+   carry the primary/secondary distinction, not colour intensity alone. No
+   separate dark-mode block needed for the same reason as .chip-shallow
+   above: the tokens already vary by mode. Uses the `Chip` primitive
+   (RouteSummary.tsx) for the pill shape/layout — only what genuinely
+   DIFFERS from `.chip`'s own `display: inline-flex; align-items: center;
+   border-radius: 999px;` (identical values, previously re-declared here on
+   a raw span) is set below: spacing from the sibling chip, the outline
+   itself, tighter padding, smaller text.
+   SELECTOR IS `.chip.chip-shallow-cautious`, not the bare modifier class —
+   `.chip` is declared LATER in this file, and two single-class selectors
+   tie on specificity, so source order alone would hand every overlapping
+   property to `.chip` (#504 review round 3, MEASURED: on `class="chip
+   chip-shallow-cautious"` with the bare-modifier selector, `background`
+   resolved to `.chip`'s own `color-mix(...)` fill, `font-size` to `.chip`'s
+   0.8rem, `padding` to `.chip`'s 0.1rem 0.5rem — none of this rule's own
+   values took effect). The compound selector raises specificity so THIS
+   rule wins regardless of declaration order, which is what actually makes
+   `background: transparent` below cancel `.chip`'s own filled background —
+   an outline reads as filled otherwise. */
+.chip.chip-shallow-cautious {
+  margin-inline-start: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--sc-depth-warning-fg);
+  background: transparent;
+  font-size: 0.75rem;
+  color: var(--sc-depth-warning-text);
 }
 
 .route-totals {
@@ -1671,8 +1812,8 @@ select {
   border: 0;
 }
 
-/* §3.3 compact row: departure + safety depth side by side above the advanced
-   disclosure. Collapses to one column when the panel is very narrow. */
+/* §3.3 compact row: departure + safety depth side by side. Collapses to one
+   column when the panel is very narrow. */
 .planner-compact-row {
   display: grid;
   grid-template-columns: 1fr minmax(7rem, 10rem);
@@ -1686,25 +1827,15 @@ select {
   }
 }
 
-/* §3.3 advanced disclosure summary: bold label + a muted, ellipsized one-line
-   value glance that is hidden once the disclosure is open (the fields show). */
-.planner-advanced-label {
-  font-weight: 600;
-}
-
-.planner-advanced-values {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.8rem;
-  font-weight: 400;
-  color: color-mix(in srgb, var(--sc-fg) 60%, transparent);
-}
-
-.sc-disclosure.planner-advanced[open] .planner-advanced-values {
-  display: none;
+/* #299: discoverable link from the (still inline) safety-depth field to the
+   Boat tab's depth comfort margin + the rest of the boat settings — a quiet
+   ghost link, not a second primary action, so it reads as secondary
+   navigation rather than competing with "Route planen" below it. Mirrors
+   .planner-result-details's own align-self (a Button primitive stretches to
+   the panel's full width by default, like every flex child of the
+   `display:flex; flex-direction:column` panel containers above). */
+.planner-boat-settings-link {
+  align-self: flex-start;
 }
 
 /* §3.3 sticky primary action — reachable without scrolling past a long panel. */
@@ -1759,6 +1890,154 @@ select {
 .rig-tabs button:focus-visible {
   outline: 2px solid var(--sc-accent);
   outline-offset: 2px;
+}
+
+/* ---- #54 boat picker (Boat tab) ---- */
+
+/* Polar-provenance tier chips (spec G.3 / spec N.5's picker label).
+   COMPOUND selectors (`.chip.chip-polar-tier-*`), not bare modifiers: two
+   single-class selectors tie on specificity and source order decides, which
+   is how `.chip-shallow` (#506) and `.chip-shallow-cautious` (#493) each
+   silently lost their fill to `.chip`'s own neutral color-mix. These sit
+   below `.chip` too, so they would win either way — the compound form is
+   belt and braces, and it also keeps them out of chipShallowFill.test.ts's
+   bare-modifier scan rather than relying on the ordering staying put.
+
+   `modelled` deliberately has NO rule: it inherits `.chip`'s neutral fill,
+   which is the honest middle of the three. */
+.chip.chip-polar-tier-certificate {
+  background: color-mix(in srgb, var(--sc-accent) 15%, transparent);
+  color: var(--sc-accent-strong);
+}
+
+/* Estimated polars get the app's established caution pair — the same
+   --sc-depth-warning-* tokens the shallow chips use, whose text token is the
+   WCAG-checked one (see the token block's own note: --sc-depth-warning-fg is
+   far under 4.5:1 against --sc-bg and must not be used for text). */
+.chip.chip-polar-tier-estimated {
+  background: var(--sc-depth-warning-bg);
+  color: var(--sc-depth-warning-text);
+}
+
+.boat-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.boat-option {
+  display: grid;
+  /* The radio keeps its own column so the keel caveat and the provenance
+     disclosure below the label line up under the TEXT, not under the dial. */
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: 0.6rem;
+  row-gap: 0.35rem;
+  padding: 0.6rem;
+  border: 1px solid var(--sc-border);
+  border-radius: 0.5rem;
+}
+
+.boat-option-selected {
+  border-color: var(--sc-accent);
+  background: color-mix(in srgb, var(--sc-accent) 6%, transparent);
+}
+
+.boat-option-radio {
+  /* The global input rule gives every input a 40px min-height; a radio dial
+     must not inherit it or the row grows a blank band. */
+  min-height: 0;
+  margin: 0.2rem 0 0;
+  accent-color: var(--sc-accent);
+}
+
+.boat-option-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.6rem;
+  /* >=44px effective touch target for gloved cockpit use, matching
+     Disclosure's own summary rule. */
+  min-height: 2.75rem;
+  align-content: center;
+  cursor: pointer;
+}
+
+.boat-option-name {
+  font-weight: 600;
+}
+
+.boat-option-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.boat-option-draft {
+  font-size: 0.9rem;
+}
+
+/* Spec N.2's keel disclosure, and the per-sail source notes: small, but
+   never dimmed below the body colour — an unchecked-draft caveat that reads
+   as decoration has failed at the one job it exists for. */
+.boat-option-keel {
+  grid-column: 2;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.boat-option-polars {
+  grid-column: 2;
+}
+
+.boat-option-sails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.boat-option-sail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.boat-option-sail-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.boat-option-sail-note {
+  display: block;
+  font-size: 0.8rem;
+}
+
+/* Spec C.7's clamp announcement, rendered unconditionally as a live region
+   (BoatPicker.tsx says why). */
+.boat-picker-notice {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.4rem;
+  background: var(--sc-banner-warning-bg);
+  color: var(--sc-banner-warning-fg);
+  font-size: 0.9rem;
+}
+
+/* Spec C.7's clamp announcement. Rendered unconditionally as a live region
+   (BoatPicker.tsx says why), and it must STAY rendered when empty: display:none
+   removes an element from the accessibility tree, so a region hidden that way is
+   not present to observe the mutation on and the announcement is lost. Zeroing
+   the box instead keeps it in the tree at no layout cost — an empty block with no
+   padding, border or background generates no line box and occupies no height. */
+.boat-picker-notice:empty {
+  margin: 0;
+  padding: 0;
+  background: none;
 }
 
 /* Faster-rig chip (both surfaces) — UI accent, not a map-palette color. */
@@ -1879,6 +2158,17 @@ select {
    (heading is tabIndex -1, so :focus only ever fires from that programmatic
    jump). */
 .route-ergebnis > .sc-card-title:focus {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* #299 fix (PR #486 review): same treatment for the safety-depth field's
+   boat-settings link, which moves focus to the Boat tab's first Card
+   heading (SettingsPanel.tsx's own `titleTabIndex={-1}`) — only that one
+   heading in this subtree is ever focusable, so the descendant selector
+   never needs a :first-of-type qualifier. */
+.settings-panel .sc-card-title:focus {
   outline: 2px solid var(--sc-accent);
   outline-offset: 3px;
   border-radius: 4px;

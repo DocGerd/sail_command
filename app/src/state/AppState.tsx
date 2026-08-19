@@ -10,15 +10,15 @@ import {
   type ReactNode,
 } from 'react';
 import { loadSettings, saveSettings } from '../services/db';
-import { DEFAULT_SETTINGS, type Plan, type Rig, type Settings } from '../types';
+import { DEFAULT_SETTINGS, type Plan, type SailId, type Settings } from '../types';
 
 interface AppStateValue {
   settings: Settings;
   setSettings: (patch: Partial<Settings>) => void;
   plan: Plan | null;
-  rig: Rig | null;
+  rig: SailId | null;
   setPlan: (p: Plan | null) => void;
-  setRig: (r: Rig) => void;
+  setRig: (r: SailId) => void;
   // Index into the active rig's legs nearest the live GPS fix, set by
   // LiveView (whose fix state itself stays local — 1 Hz updates must not
   // re-render the whole app) so RouteLayer can render the active-leg
@@ -51,7 +51,7 @@ const AppStateCtx = createContext<AppStateValue | null>(null);
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [settings, setSettingsState] = useState<Settings>(DEFAULT_SETTINGS);
   const [plan, setPlanState] = useState<Plan | null>(null);
-  const [rig, setRig] = useState<Rig | null>(null);
+  const [rig, setRig] = useState<SailId | null>(null);
   const [activeLegIndex, setActiveLegIndex] = useState<number | null>(null);
   const [settingsPersistenceError, setSettingsPersistenceError] = useState(false);
   const clearSettingsPersistenceError = useCallback(() => setSettingsPersistenceError(false), []);
@@ -147,7 +147,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       settingsPersistenceError,
       clearSettingsPersistenceError,
     }),
-    [settings, setSettings, plan, rig, setPlan, activeLegIndex, settingsPersistenceError, clearSettingsPersistenceError],
+    [
+      settings,
+      setSettings,
+      plan,
+      rig,
+      setPlan,
+      activeLegIndex,
+      settingsPersistenceError,
+      clearSettingsPersistenceError,
+    ],
   );
 
   return <AppStateCtx.Provider value={value}>{children}</AppStateCtx.Provider>;
@@ -155,7 +164,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
 function useAppState(): AppStateValue {
   const ctx = useContext(AppStateCtx);
-  if (!ctx) throw new Error('useSettings/useActivePlan/useSettingsPersistenceError must be used within AppStateProvider');
+  if (!ctx)
+    throw new Error(
+      'useSettings/useActivePlan/useSettingsPersistenceError must be used within AppStateProvider',
+    );
   return ctx;
 }
 
@@ -168,9 +180,9 @@ export function useSettings(): [Settings, (patch: Partial<Settings>) => void] {
 // eslint-disable-next-line react-refresh/only-export-components
 export function useActivePlan(): {
   plan: Plan | null;
-  rig: Rig | null;
+  rig: SailId | null;
   setPlan: (p: Plan | null) => void;
-  setRig: (r: Rig) => void;
+  setRig: (r: SailId) => void;
   activeLegIndex: number | null;
   setActiveLegIndex: (i: number | null) => void;
 } {

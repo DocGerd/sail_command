@@ -25,6 +25,7 @@ import PlannerPanel, {
   type PlannerStatus,
   type TapTarget,
 } from './components/PlannerPanel';
+import SettingsPanel from './components/SettingsPanel';
 import PlansList, { type RecalcMode } from './components/PlansList';
 import RouteSummary from './components/RouteSummary';
 import DepthProfile from './components/DepthProfile';
@@ -38,16 +39,23 @@ import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
-import { departureSeedMs, pickedPointsOfPlan, planFormDirty } from './lib/planForm';
+import {
+  departureSeedMs,
+  pickedPointsOfPlan,
+  planFormDirty,
+  routingSettingsDirty,
+} from './lib/planForm';
 import { useWideLayout } from './lib/useWideLayout';
 import { useBannerHeight } from './lib/useBannerHeight';
 import { usePersistedNumber } from './lib/usePersistedNumber';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
+import { boatById, sailIdsOf } from './data/boats';
+import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
-import type { Harbor, LatLon, PickedPoint, Plan } from './types';
+import { boatSnapshot, type Harbor, type LatLon, type PickedPoint, type Plan } from './types';
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
@@ -87,7 +95,7 @@ export function toPlannerStatus(
     case 'fetching-wind':
       return { phase: 'fetching' };
     case 'routing':
-      return { phase: 'routing', rig: flow.rig };
+      return { phase: 'routing', sailId: flow.sailId, index: flow.index, total: flow.total };
     case 'probing-depth':
       return { phase: 'probing' };
     case 'error':
@@ -162,6 +170,13 @@ function AppShell() {
   // re-measure `.map-stack-tl`'s position.
   useBannerHeight();
   const [settings, setSettings] = useSettings();
+  // #54: the selected boat. localStorage (usePersistedBoatId), validated
+  // against the catalogue on read — deliberately NOT a `Settings` field; see
+  // that hook's own docstring. Held here because BOTH tabs need it: the Boat
+  // tab renders the picker, and PlannerPanel's inline safety-depth field
+  // derives its minimum from the same selection (#539 item 2).
+  const [boatId, setBoatId] = usePersistedBoatId();
+  const boat = boatById(boatId);
   const { plan, rig, setRig, activeLegIndex, setPlan } = useActivePlan();
   const [settingsPersistenceError, clearSettingsPersistenceError] = useSettingsPersistenceError();
   const { planning, run, ensureClient } = usePlanFlow();
@@ -619,6 +634,30 @@ function AppShell() {
     }
   }, [tab]);
 
+  // #299: the safety-depth field's discoverable link to the Boat tab (see
+  // PlannerPanel.tsx's own comment). MIRRORS handleViewDetails/
+  // routeResultHeadingRef above exactly, corrected from an earlier version
+  // of this comment that WRONGLY claimed switching tabs alone moves focus
+  // (PR #486 review, Major 1 — measured: activating the link left
+  // `document.activeElement` on `document.body`, since the button lives
+  // inside PlannerPanel, which UNMOUNTS the instant `tab` becomes 'boat',
+  // taking the focused element with it). SettingsPanel's first Card heading
+  // is only a "landing spot" once this effect actually focuses it —
+  // `titleTabIndex={-1}` alone (SettingsPanel.tsx) makes it a focus TARGET,
+  // it does not by itself receive focus.
+  const boatSettingsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const pendingBoatFocusRef = useRef(false);
+  const handleOpenBoatSettings = useCallback(() => {
+    handleTabChange('boat');
+    pendingBoatFocusRef.current = true;
+  }, [handleTabChange]);
+  useEffect(() => {
+    if (tab === 'boat' && pendingBoatFocusRef.current) {
+      pendingBoatFocusRef.current = false;
+      boatSettingsHeadingRef.current?.focus();
+    }
+  }, [tab]);
+
   // Escape is the keyboard equivalent of the banner's cancel button below.
   // Gated on !aboutOpen (and not attached at all while About is open, rather
   // than checking aboutOpen inside the handler) so a single Escape with both
@@ -649,10 +688,32 @@ function AppShell() {
         destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
         departureMs,
         settings,
+        // #54 / #572: the one production call site with no existing plan to
+        // inherit from — every other constructor (recalcRequest,
+        // replanWithVias, rerouteFromFix) spreads/copies an existing
+        // request's own values instead, and MUST keep doing so: spec §I.3
+        // makes the boat a property of the plan, so a saved plan is re-solved
+        // against the boat it was planned for, never against today's picker.
+        // This is the only site that reads the LIVE selection.
+        //
+        // Both fields come from the same `boat`, so the sails a plan compares
+        // and the hull it is solved against can never name different boats.
+        sailIds: sailIdsOf(boat),
+        // #54 spec §I.3: denormalised by value, so the saved plan can be
+        // rendered without the catalogue.
+        //
+        // #572: this was `defaultBoatSnapshot()`, which pinned it to the
+        // Salona 45 whatever the picker showed. `request.boat.id` is what
+        // workerClient.ts resolves the polar tables AND the §C.4(a)
+        // relaxation floor from, so the constant here silently solved every
+        // boat's plan on the wrong hull while the picker, the tier chip, the
+        // keel sentence and the safety-depth field all described the boat the
+        // user actually picked.
+        boat: boatSnapshot(boat),
       },
       `${origin.label} → ${destination.label}`,
     );
-  }, [origin, destination, departureMs, settings, run, viaPoints]);
+  }, [origin, destination, departureMs, settings, run, viaPoints, boat]);
 
   // #114: recalculate a saved plan with a FRESH forecast — seeds run() from
   // the plan's own stored request (origin/destination/vias/settings) with the
@@ -732,6 +793,22 @@ function AppShell() {
     plan && origin && destination
       ? planFormDirty(plan, { origin, destination, departureMs, settings }, harbors.length > 0)
       : false;
+  // #299 fix (PR #486 review): the cross-tab staleness BANNER (.banner-area,
+  // below) intentionally uses this NARROWER signal instead of `formDirty` —
+  // see routingSettingsDirty's own comment in lib/planForm.ts for why (in
+  // short: origin/departure can legitimately drift after a Live reroute with
+  // no user edit at all, which would otherwise make the banner cry wolf the
+  // instant a reroute succeeds; Routes/Live/Boat have no UI to touch
+  // origin/destination/departure regardless, only Settings). PlannerPanel's
+  // own Chip keeps reading the broader `formDirty` unchanged; its live
+  // region does NOT (Refs #299, cross-PR composition fix over PR #486 —
+  // see PlannerPanel.tsx's own `statusText` comment): folding the full
+  // `formDirty` there would double-announce exactly the cases this Banner
+  // already covers, so PlannerPanel computes this SAME `settingsDirty`
+  // predicate itself (it already receives `plan`/`settings` as props) and
+  // folds the stale sentence only for `formDirty && !settingsDirty` — the
+  // complement this Banner cannot see.
+  const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
 
   return (
     <div className="app-shell" ref={shellRef}>
@@ -918,6 +995,27 @@ function AppShell() {
           </Banner>
         )}
         {stale && <Banner kind="warning">{t('route.staleForecast')}</Banner>}
+        {/* #299: a ROUTING-RELEVANT setting has changed since the displayed
+            plan was computed — previously ONLY surfaced as a Chip inside
+            PlannerPanel's Ergebnis strip (still there, unchanged, and driven
+            by the broader `formDirty`), which mounts ONLY on the Plan tab.
+            Now that settings can be changed from a THIRD surface (the Boat
+            tab) as well as the Plan tab itself, a user on Routes/Live/Boat
+            had no on-screen indication that the route on screen no longer
+            matches their inputs — a safety-shaped silence for a depth-margin
+            parameter, not a polish gap. Tab-independent like every other
+            banner-area entry (deliberately NOT gated on `tab !== 'plan'`):
+            this repo already has the identical "duplicated with an inline
+            surface" shape for `route.staleForecast` above (RouteSummary's
+            own inline alert on the Routes tab) and treats that duplication
+            as legitimate, not a bug — see App.test.tsx's "the stale-forecast
+            banner renders through the real App tree" test comment.
+            DELIBERATELY `settingsDirty`, NOT the broader `formDirty` —
+            see that constant's own comment above for why (a Live reroute
+            legitimately drifts origin/departure with no user edit at all,
+            and gating on settings alone both avoids that false positive AND
+            covers exactly what's editable from a non-Plan tab). */}
+        {settingsDirty && <Banner kind="warning">{t('planner.result.stale')}</Banner>}
         {/* #25 addendum: reuses the SAME one-time hint LiveView shows on its
             own GPS denial (lib/gpsHint.ts's shared claim, live.gpsHint copy)
             — whichever of the two consumers hits the denial first is the one
@@ -1050,6 +1148,17 @@ function AppShell() {
           >
             {t('nav.live')}
           </button>
+          {/* #299: static boat/skipper settings — a peer content tab, not a
+              modal, and named for its referent rather than "Settings" (see
+              the design decision recorded on the issue). */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'boat'}
+            onClick={() => handleTabChange('boat')}
+          >
+            {t('nav.boat')}
+          </button>
         </nav>
 
         <div className="app-panel">
@@ -1070,6 +1179,7 @@ function AppShell() {
               onDepartureChange={setDepartureMs}
               settings={settings}
               onSettingsChange={setSettings}
+              boat={boat}
               canPlan={canPlan}
               planDisabledReason={planDisabledReason}
               online={online}
@@ -1079,6 +1189,16 @@ function AppShell() {
               rig={rig}
               formDirty={formDirty}
               onViewDetails={handleViewDetails}
+              onOpenBoatSettings={handleOpenBoatSettings}
+            />
+          )}
+          {tab === 'boat' && (
+            <SettingsPanel
+              value={settings}
+              onChange={setSettings}
+              boatId={boatId}
+              onBoatIdChange={setBoatId}
+              titleRef={boatSettingsHeadingRef}
             />
           )}
           {tab === 'routes' && (
@@ -1106,7 +1226,7 @@ function AppShell() {
         </div>
       </div>
 
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} boat={boat} />
     </div>
   );
 }

@@ -13,14 +13,19 @@ import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
-import { uniformWindGrid } from '../test/fixtures';
+import { OFF_CATALOGUE_BOAT, uniformWindGrid } from '../test/fixtures';
+import { migratePlan } from '../services/migratePlan';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
   type LatLon,
   type NoRouteReason,
   type Plan,
+  type PlanRequest,
   type PlanResultOk,
 } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const ORIGIN: LatLon = { lat: 54.75, lon: 10.0 };
 const DESTINATION: LatLon = { lat: 54.75, lon: 10.4 };
@@ -28,19 +33,24 @@ const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
-  genoa: {
-    rig: 'genoa',
-    legs: [],
-    etaMs: DEPARTURE_MS + 3_600_000,
-    durationMs: 3_600_000,
-    distanceNm: 10,
-    maneuverCount: 0,
-    motorDistanceNm: 0,
-  },
-  fock: null,
-  genoaReason: null,
-  fockReason: 'calm-motor-off',
+  sails: [
+    {
+      sailId: 'genoa',
+      result: {
+        sailId: 'genoa',
+        legs: [],
+        etaMs: DEPARTURE_MS + 3_600_000,
+        durationMs: 3_600_000,
+        distanceNm: 10,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
+      reason: null,
+    },
+    { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+  ],
   recommended: 'genoa',
+  comparisonComplete: true,
   snappedOrigin: ORIGIN,
   snappedDestination: DESTINATION,
 };
@@ -51,6 +61,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     id: 'plan-1',
     name: 'Test plan',
     createdAtMs: DEPARTURE_MS - 3_600_000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: ORIGIN,
       destination: DESTINATION,
@@ -59,6 +70,8 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
       destinationHarborId: null,
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid,
     result: OK_RESULT,
@@ -146,6 +159,87 @@ describe('replanWithVias', () => {
     expect(updated.windGrid).toBe(plan.windGrid);
   });
 
+  // #54 review round 2: the third site that builds a router-bound request
+  // from a persisted one — the same defect lib/recalc.ts and state/reroute.ts
+  // were guarded against in round 1. A plan saved before `sailIds` existed on
+  // PlanRequest does not carry the key at all in its stored snapshot; without
+  // the backfill, planRoute.ts's `runAll` calls `req.sailIds.map(...)`
+  // unconditionally, throwing inside the worker on via-replan of a pre-#54
+  // plan rather than degrading.
+  it('backfills sailIds from DEFAULT_SAIL_IDS on a pre-#54-shaped saved plan', async () => {
+    // The local cast is what makes `delete` compile on `PlanRequest.sailIds`
+    // — mirroring reroute.test.ts's and recalc.test.ts's same-named tests.
+    const oldShapedRequest = { ...makePlan().request } as Partial<{
+      -readonly [K in keyof PlanRequest]: PlanRequest[K];
+    }>;
+    delete oldShapedRequest.sailIds;
+    const plan = makePlan({ request: oldShapedRequest as PlanRequest });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(DEFAULT_SAIL_IDS);
+    // The via list the call actually asked for is still carried through.
+    expect(request.viaPoints).toEqual([{ lat: 54.9, lon: 10.2 }]);
+  });
+
+  // #54 Task 11: pins the PROPERTY the keeper below rests on, not just its
+  // detection logic (#516). That keeper discriminates ONLY because ['fock']
+  // is not value-equal to DEFAULT_SAIL_IDS; if the default boat's sail set
+  // ever became exactly ['fock'], the keeper would degenerate into the
+  // vacuity it was added to close and would still pass.
+  it('#54: the non-default fixture below is genuinely non-default', () => {
+    expect(DEFAULT_SAIL_IDS).not.toEqual(['fock']);
+  });
+
+  // #54 Task 11: the BOAT half of the same inheritance question. Replacing
+  // this site's `plan.request.boat ?? defaultBoatSnapshot()` with a bare
+  // `defaultBoatSnapshot()` left this suite and its recalc/reroute siblings
+  // green — every fixture uses `defaultBoatSnapshot()`, so the substitution
+  // is value-identical and nothing asserted identity. Spec §I.3 requires a
+  // plan whose boat left the catalogue to keep its own; without this row a
+  // regression re-labels a 2.4 m hull as a 2.1 m Salona 45 on every replan.
+  it("replans with the saved plan's OWN boat snapshot, not the catalogue default", async () => {
+    const plan = makePlan({
+      request: { ...makePlan().request, boat: OFF_CATALOGUE_BOAT },
+    });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.boat).toEqual(OFF_CATALOGUE_BOAT);
+    // ALIASED here, deliberately — unlike lib/recalc.ts and state/reroute.ts
+    // this site has no "copied, never aliased" contract (see its own
+    // comment), so identity with the saved plan's snapshot is the pinned
+    // behaviour, not an oversight.
+    expect(request.boat).toBe(plan.request.boat);
+  });
+
+  // #54 review round 3: the INHERITANCE half of the backfill `??`. Every
+  // other sailIds fixture here is ['genoa', 'fock'], which is value-equal to
+  // DEFAULT_SAIL_IDS — so no assertion against one of those can tell an
+  // inherited list from a hardcoded default. A non-default fixture can.
+  it("replans the saved plan's OWN sails, not the default", async () => {
+    const plan = makePlan({ request: { ...makePlan().request, sailIds: ['fock'] } });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(['fock']);
+  });
+
   it('saves an updated Plan with the same id, request.viaPoints and result replaced', async () => {
     const plan = makePlan();
     const via = { lat: 54.9, lon: 10.2 };
@@ -173,6 +267,30 @@ describe('replanWithVias', () => {
     expect(persisted).toBeDefined();
     expect(persisted?.id).toBe(plan.id);
     expect(persisted?.result).toEqual(OK_RESULT);
+  });
+
+  // #54: this site writes under the ORIGINAL record id (see getPlan's doc
+  // comment in services/db.ts — the ACCEPTED RESIDUAL paragraph). What that
+  // paragraph claims, and what this pins: the record left behind is a
+  // COMPLETE current-shape record, so it re-reads through the normaliser
+  // unchanged. It deliberately does NOT claim the pre-#54 legacy fields
+  // survive — they do not, which is the residual itself, pinned in
+  // services/db.test.ts.
+  it('#54: the record it saves under the existing id stays readable', async () => {
+    const plan = makePlan();
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    const save = vi.fn().mockResolvedValue(undefined);
+
+    await replanWithVias(plan, [{ lat: 54.9, lon: 10.2 }], { client, save });
+
+    const saved = save.mock.calls[0][0] as Plan;
+    const reread = migratePlan(saved);
+    expect(reread).not.toBeNull();
+    expect(reread!.id).toBe(plan.id);
+    expect(reread!.createdAtMs).toBe(plan.createdAtMs);
+    // Carried by reference, never re-serialised: the wind grid's
+    // Float32Array fields survive only because nothing copies them.
+    expect(reread!.windGrid).toBe(plan.windGrid);
   });
 
   it('throws ReplanError(error.replanStaleWind) when departureMs is beyond the stored grid horizon, without calling the client or saving', async () => {
@@ -229,6 +347,11 @@ describe('replanWithVias', () => {
     ['worker-error', 'error.routingCrashed'],
     ['messageerror', 'error.routingMessageError'],
     ['disposed', 'error.routingInterrupted'],
+    // #553: added with the kind itself. A five-element array typed by a
+    // tuple type is NOT exhaustiveness-checked, so a sixth kind slips past
+    // this table silently — measured in review: repointing the mapping to
+    // 'error.routingTimeout' left 140 tests green.
+    ['boat-not-in-catalogue', 'error.boatNotInCatalogue'],
   ])('preserves RoutingError kind %s as ReplanError(%s)', async (kind, messageKey) => {
     const plan = makePlan();
     const client: ReplanClient = {
@@ -261,6 +384,34 @@ describe('replanWithVias', () => {
 
     await expect(replanWithVias(plan, [], { client })).rejects.toBeInstanceOf(ReplanError);
     expect(dispose, 'a timed-out replan must dispose its client').toHaveBeenCalledTimes(1);
+  });
+
+
+  // #553 MAJOR 5: the ONE rejection kind that must NOT tear the worker down.
+  // `'boat-not-in-catalogue'` is raised by a client-side catalogue lookup
+  // BEFORE plan() posts anything, so the worker never saw the request and is
+  // healthy — disposing costs a full re-init (mask .slice(0) + transfer + the
+  // polar map) for a lookup miss, and because dispose() calls failAll() it can
+  // abort an UNRELATED in-flight plan on the shared singleton. Paired with the
+  // timeout row above, which must keep disposing: the two together isolate the
+  // kind as the deciding variable rather than asserting a blanket no-dispose.
+  it('does NOT dispose the client when the boat is not in the catalogue', async () => {
+    const plan = makePlan();
+    const dispose = vi.fn();
+    const client: ReplanClient = {
+      plan: vi
+        .fn()
+        .mockRejectedValue(new RoutingError('boat-not-in-catalogue', 'boat not in catalogue: x')),
+      dispose,
+    };
+
+    await expect(replanWithVias(plan, [], { client })).rejects.toMatchObject({
+      messageKey: 'error.boatNotInCatalogue',
+    });
+    expect(
+      dispose,
+      'a catalogue-miss rejection must leave the healthy worker alone',
+    ).not.toHaveBeenCalled();
   });
 
   it('does NOT dispose the client on a successful replan', async () => {

@@ -8,12 +8,8 @@ import { FORECAST_DAYS } from '../services/openMeteo';
 import { nextFullHourMs } from './PlannerPanel';
 import Button from './Button';
 import Field from './Field';
-import type { Plan, Rig } from '../types';
-
-const RIG_LABEL_KEY: Record<Rig, MsgKey> = {
-  genoa: 'route.rig.genoa',
-  fock: 'route.rig.fock',
-};
+import type { Plan } from '../types';
+import { sailLabelKey } from '../lib/resultSummary';
 
 // #114: the two ways a completed recalculation can be persisted — as a NEW
 // plan (default, non-destructive) or REPLACING the original (explicit
@@ -138,7 +134,7 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
   // recalculating for a past departure would only yield 'beyond-horizon'
   // against the fresh grid.
   const handleRecalcTap = useCallback(
-    (p: PlanSummary) => {
+    (p: Extract<PlanSummary, { kind: 'ok' }>) => {
       setPendingDeleteId(null);
       setError(null);
       if (recalc?.planId === p.id) {
@@ -200,89 +196,137 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
     <>
       {error && <p role="alert">{t(error)}</p>}
       <ul className="plans-list">
-        {plans.map((p) => (
-          <li key={p.id} className="plans-list-row">
-            <button type="button" className="plans-list-load" onClick={() => handleLoad(p.id)}>
-              <span className="plans-list-name">{p.name}</span>
-              <span className="plans-list-created">
-                {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
-              </span>
-              <span className="plans-list-departure">
-                {t('planner.departure.label')} {formatDateTime(p.departureMs, lang)}
-              </span>
-              <span className="plans-list-eta">
-                {t('route.totals.eta')} {formatDateTime(p.etaMs, lang)}
-              </span>
-              <span className="chip chip-rig">{t(RIG_LABEL_KEY[p.recommended])}</span>
-            </button>
-            <button
-              type="button"
-              className="plans-list-recalc-toggle"
-              onClick={() => handleRecalcTap(p)}
-              aria-label={t('plansList.recalc')}
-              aria-expanded={recalc?.planId === p.id}
-            >
-              ⟳
-            </button>
-            <button
-              type="button"
-              className="plans-list-delete"
-              onClick={() => handleDeleteTap(p.id)}
-              aria-label={
-                pendingDeleteId === p.id ? t('plansList.confirmDelete') : t('plansList.delete')
-              }
-            >
-              {pendingDeleteId === p.id ? '✓' : '🗑'}
-            </button>
-            {recalc?.planId === p.id && (
-              <div className="plans-list-recalc" role="group" aria-label={t('plansList.recalc')}>
-                <Field
-                  label={t('planner.departure.label')}
-                  htmlFor={`plans-recalc-departure-${p.id}`}
-                >
-                  <input
-                    id={`plans-recalc-departure-${p.id}`}
-                    type="datetime-local"
-                    value={toLocalInputValue(recalc.departureMs)}
-                    min={toLocalInputValue(recalc.minMs)}
-                    max={toLocalInputValue(recalc.maxMs)}
-                    onChange={(e) => {
-                      if (!e.target.value) return;
-                      const ms = new Date(e.target.value).getTime();
-                      setRecalc((r) => (r ? { ...r, departureMs: ms } : r));
-                    }}
-                  />
-                </Field>
-                {!online && (
-                  <p className="planner-guidance" role="alert">
-                    {t('plansList.recalc.offline')}
-                  </p>
+        {plans.map((p) =>
+          // #54 spec §I.3: a record the read-time normaliser cannot handle is
+          // LISTED, never skipped — skipping made a plan vanish from the list
+          // while its bytes survived, which from where the user sits is
+          // indistinguishable from deletion. It has no departure, ETA or
+          // recommended sail to show and cannot be opened or recalculated, so
+          // the row carries only what is readable from any shape plus the
+          // delete action — the app never deletes such a record itself, but
+          // the user must still be able to.
+          //
+          // Delete stays available for BOTH reasons, including a record this
+          // build is merely too old to read: suppressing it would leave a row
+          // the user can never clear if they do not return to the newer
+          // build. What the copy contributes is naming which case this is, so
+          // the two-tap delete is at least an informed choice. It stops short
+          // of promising the record is undamaged, and must keep stopping
+          // short: the classification is derived from the stored
+          // schemaVersion alone (services/db.ts), which cannot rule out a
+          // record that is both newer AND corrupt.
+          p.kind === 'unreadable' ? (
+            <li key={p.id} className="plans-list-row plans-list-row-unreadable">
+              <div className="plans-list-load">
+                {p.name !== '' && <span className="plans-list-name">{p.name}</span>}
+                {p.createdAtMs !== 0 && (
+                  <span className="plans-list-created">
+                    {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
+                  </span>
                 )}
-                <div className="plans-list-recalc-actions">
-                  <Button
-                    variant="primary"
-                    disabled={!online || busy}
-                    onClick={() => handleRecalcRun('new')}
-                  >
-                    {t('plansList.recalc.saveNew')}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={!online || busy}
-                    onClick={() => handleRecalcRun('replace')}
-                  >
-                    {pendingReplace
-                      ? t('plansList.recalc.confirmReplace')
-                      : t('plansList.recalc.replace')}
-                  </Button>
-                  <Button variant="ghost" onClick={closeRecalc}>
-                    {t('plansList.recalc.cancel')}
-                  </Button>
-                </div>
+                <span className="plans-list-unreadable">
+                  {t(
+                    p.reason === 'newer-version'
+                      ? 'plansList.unreadable.newerVersion'
+                      : 'plansList.unreadable.damaged',
+                  )}
+                </span>
               </div>
-            )}
-          </li>
-        ))}
+              <button
+                type="button"
+                className="plans-list-delete"
+                onClick={() => handleDeleteTap(p.id)}
+                aria-label={
+                  pendingDeleteId === p.id ? t('plansList.confirmDelete') : t('plansList.delete')
+                }
+              >
+                {pendingDeleteId === p.id ? '✓' : '🗑'}
+              </button>
+            </li>
+          ) : (
+            <li key={p.id} className="plans-list-row">
+              <button type="button" className="plans-list-load" onClick={() => handleLoad(p.id)}>
+                <span className="plans-list-name">{p.name}</span>
+                <span className="plans-list-created">
+                  {t('plansList.created')} {formatDateTime(p.createdAtMs, lang)}
+                </span>
+                <span className="plans-list-departure">
+                  {t('planner.departure.label')} {formatDateTime(p.departureMs, lang)}
+                </span>
+                <span className="plans-list-eta">
+                  {t('route.totals.eta')} {formatDateTime(p.etaMs, lang)}
+                </span>
+                <span className="chip chip-rig">{t(sailLabelKey(p.recommended))}</span>
+              </button>
+              <button
+                type="button"
+                className="plans-list-recalc-toggle"
+                onClick={() => handleRecalcTap(p)}
+                aria-label={t('plansList.recalc')}
+                aria-expanded={recalc?.planId === p.id}
+              >
+                ⟳
+              </button>
+              <button
+                type="button"
+                className="plans-list-delete"
+                onClick={() => handleDeleteTap(p.id)}
+                aria-label={
+                  pendingDeleteId === p.id ? t('plansList.confirmDelete') : t('plansList.delete')
+                }
+              >
+                {pendingDeleteId === p.id ? '✓' : '🗑'}
+              </button>
+              {recalc?.planId === p.id && (
+                <div className="plans-list-recalc" role="group" aria-label={t('plansList.recalc')}>
+                  <Field
+                    label={t('planner.departure.label')}
+                    htmlFor={`plans-recalc-departure-${p.id}`}
+                  >
+                    <input
+                      id={`plans-recalc-departure-${p.id}`}
+                      type="datetime-local"
+                      value={toLocalInputValue(recalc.departureMs)}
+                      min={toLocalInputValue(recalc.minMs)}
+                      max={toLocalInputValue(recalc.maxMs)}
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const ms = new Date(e.target.value).getTime();
+                        setRecalc((r) => (r ? { ...r, departureMs: ms } : r));
+                      }}
+                    />
+                  </Field>
+                  {!online && (
+                    <p className="planner-guidance" role="alert">
+                      {t('plansList.recalc.offline')}
+                    </p>
+                  )}
+                  <div className="plans-list-recalc-actions">
+                    <Button
+                      variant="primary"
+                      disabled={!online || busy}
+                      onClick={() => handleRecalcRun('new')}
+                    >
+                      {t('plansList.recalc.saveNew')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={!online || busy}
+                      onClick={() => handleRecalcRun('replace')}
+                    >
+                      {pendingReplace
+                        ? t('plansList.recalc.confirmReplace')
+                        : t('plansList.recalc.replace')}
+                    </Button>
+                    <Button variant="ghost" onClick={closeRecalc}>
+                      {t('plansList.recalc.cancel')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ),
+        )}
       </ul>
     </>
   );

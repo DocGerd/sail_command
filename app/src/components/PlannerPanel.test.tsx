@@ -2,6 +2,7 @@ import { render, screen, fireEvent, within, cleanup } from '@testing-library/rea
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
+import { formatTime } from '../lib/format';
 import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
@@ -12,11 +13,15 @@ import {
   type Leg,
   type PickedPoint,
   type Plan,
-  type Rig,
   type RigRecommendation,
   type RigResult,
+  type SailId,
+  type Settings,
 } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
+import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const FLENSBURG: Harbor = {
   id: 'flensburg',
@@ -55,7 +60,7 @@ const GENOA_LEGS: Leg[] = [
 ];
 
 const GENOA_RESULT: RigResult = {
-  rig: 'genoa',
+  sailId: 'genoa',
   etaMs: PLAN_DEPARTURE_MS + 5 * 3_600_000,
   durationMs: 5 * 3_600_000,
   distanceNm: 21.5,
@@ -63,6 +68,55 @@ const GENOA_RESULT: RigResult = {
   motorDistanceNm: 5,
   legs: GENOA_LEGS,
 };
+
+// #452 gap 3: two flagged legs (index 0 and 2) with an UNFLAGGED leg between
+// them (index 1) — non-contiguous on purpose, so a "first" that's really
+// "last", or a count that's really "total legs", would both be caught.
+const NON_CONTIGUOUS_SHALLOW_LEGS: Leg[] = [
+  {
+    kind: 'sail',
+    board: 'starboard',
+    start: { lat: 54.79, lon: 9.43 },
+    end: { lat: 54.8, lon: 10.0 },
+    startTimeMs: PLAN_DEPARTURE_MS,
+    endTimeMs: PLAN_DEPARTURE_MS + 2 * 3_600_000,
+    headingDeg: 88,
+    twaDeg: 92,
+    twsKn: 10,
+    speedKn: 7,
+    distanceNm: 15,
+    maneuverAtStart: null,
+    shallow: { minDepthM: 2.3 },
+  },
+  {
+    kind: 'motor',
+    board: null,
+    start: { lat: 54.8, lon: 10.0 },
+    end: { lat: 54.85, lon: 10.3 },
+    startTimeMs: PLAN_DEPARTURE_MS + 2 * 3_600_000,
+    endTimeMs: PLAN_DEPARTURE_MS + 4 * 3_600_000,
+    headingDeg: 90,
+    twsKn: 2,
+    speedKn: 6.5,
+    distanceNm: 5,
+    maneuverAtStart: null,
+  },
+  {
+    kind: 'sail',
+    board: 'port',
+    start: { lat: 54.85, lon: 10.3 },
+    end: { lat: 54.85, lon: 10.52 },
+    startTimeMs: PLAN_DEPARTURE_MS + 4 * 3_600_000,
+    endTimeMs: PLAN_DEPARTURE_MS + 5 * 3_600_000,
+    headingDeg: 60,
+    twaDeg: -80,
+    twsKn: 10,
+    speedKn: 6,
+    distanceNm: 1.5,
+    maneuverAtStart: 'tack',
+    shallow: { minDepthM: 1.9 },
+  },
+];
 
 function makePlan(
   over: { id?: string; distanceNm?: number; rigRecommendation?: RigRecommendation } = {},
@@ -72,6 +126,7 @@ function makePlan(
     id: over.id ?? 'plan-1',
     name: 'Flensburg to Marstal',
     createdAtMs: PLAN_DEPARTURE_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
       destination: { lat: 54.85, lon: 10.52 },
@@ -80,21 +135,36 @@ function makePlan(
       destinationHarborId: 'marstal',
       departureMs: PLAN_DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: PLAN_DEPARTURE_MS },
     result: {
       status: 'ok',
-      genoa: { ...GENOA_RESULT, distanceNm },
-      fock: null,
-      genoaReason: null,
-      fockReason: 'calm-motor-off',
+      sails: [
+        { sailId: 'genoa', result: { ...GENOA_RESULT, distanceNm }, reason: null },
+        { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+      ],
       recommended: 'genoa',
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
       // #259: only set when a test explicitly asks for it — most tests
       // exercise rigRecommendationOf's fallback (absent field).
       ...(over.rigRecommendation ? { rigRecommendation: over.rigRecommendation } : {}),
     },
+  };
+}
+
+// #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.shallow`
+// directly-mutable; the `sails` list's own entries and PlanResultOk's own
+// fields are now `readonly`, so a test that used to write
+// `plan.result.genoa = X` instead REPLACES the whole `result` object
+// (Plan.result itself is not readonly — only PlanResultOk's own fields are).
+function setSail(plan: Plan, sailId: SailId, patch: { result?: RigResult | null }): void {
+  plan.result = {
+    ...plan.result,
+    sails: plan.result.sails.map((s) => (s.sailId === sailId ? { ...s, ...patch } : s)),
   };
 }
 
@@ -110,16 +180,21 @@ interface Overrides {
   onReorderVia?: (index: number, direction: 'up' | 'down') => void;
   viaReplanning?: boolean;
   onDepartureChange?: (ms: number) => void;
+  settings?: Settings;
   onSettingsChange?: (s: typeof DEFAULT_SETTINGS) => void;
+  // #539 item 2: overridable so a row can exercise a draft where the
+  // per-boat floor and the catalogue default DISAGREE.
+  boat?: BoatDef;
   canPlan?: boolean;
   planDisabledReason?: string | null;
   online?: boolean;
   onPlan?: () => void;
   planning?: PlannerStatus;
   plan?: Plan | null;
-  rig?: Rig | null;
+  rig?: SailId | null;
   formDirty?: boolean;
   onViewDetails?: () => void;
+  onOpenBoatSettings?: () => void;
 }
 
 function baseProps(overrides: Overrides = {}) {
@@ -139,15 +214,20 @@ function baseProps(overrides: Overrides = {}) {
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
     onSettingsChange: vi.fn(),
+    // #539 item 2: the panel derives its inline safety-depth bounds from
+    // the SELECTED boat. This default keeps every pre-existing row on the
+    // catalogue default boat, i.e. the 2.2 m floor they already assert.
+    boat: boatById(DEFAULT_BOAT_ID),
     canPlan: true,
     planDisabledReason: null,
     online: true,
     onPlan: vi.fn(),
     planning: { phase: 'idle' } as PlannerStatus,
     plan: null as Plan | null,
-    rig: null as Rig | null,
+    rig: null as SailId | null,
     formDirty: false,
     onViewDetails: vi.fn(),
+    onOpenBoatSettings: vi.fn(),
     ...overrides,
   };
 }
@@ -423,12 +503,12 @@ describe('PlannerPanel', () => {
   // not a percentage — pinning literal text for both rigs so a mixed-up
   // index/rig-name substitution would fail visibly.
   it('renders the genoa routing phase as "sail 1 of 2 (Genoa)"', () => {
-    renderPanel({ planning: { phase: 'routing', rig: 'genoa' } });
+    renderPanel({ planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 } });
     expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 1 of 2 (Genoa)');
   });
 
   it('renders the fock routing phase as "sail 2 of 2 (Fock)" — the genoa->fock switch is not a regression', () => {
-    renderPanel({ planning: { phase: 'routing', rig: 'fock' } });
+    renderPanel({ planning: { phase: 'routing', sailId: 'fock', index: 2, total: 2 } });
     expect(screen.getByRole('status')).toHaveTextContent('Calculating route… sail 2 of 2 (Fock)');
   });
 
@@ -495,9 +575,12 @@ describe('PlannerPanel', () => {
     });
   });
 
-  // §3.3: advanced-options progressive disclosure.
-  describe('advanced disclosure (§3.3)', () => {
-    it('keeps departure AND safety depth visible in the compact row (not behind the disclosure)', () => {
+  // §3.3 / #299: safety depth stays inline in the compact row; the rest of
+  // what used to sit behind "Erweitert" moved to the dedicated Boat tab
+  // (SettingsPanel.tsx, covered by SettingsPanel.test.tsx) — this panel no
+  // longer renders it at all, only a discoverable link back to it.
+  describe('safety depth compact row + boat-settings link (§3.3, #299)', () => {
+    it('keeps departure AND safety depth visible in the compact row', () => {
       renderPanel();
       expect(screen.getByLabelText('Departure')).toBeInTheDocument();
       expect(screen.getByLabelText('Safety depth (m)')).toBeInTheDocument();
@@ -527,37 +610,47 @@ describe('PlannerPanel', () => {
       });
     });
 
-    it('hides the five advanced fields behind a collapsed "Advanced" disclosure', () => {
-      localStorage.setItem('sc-lang', 'en');
-      const { container } = render(
-        <I18nProvider>
-          <PlannerPanel {...baseProps()} />
-        </I18nProvider>,
-      );
-      const details = container.querySelector('details.planner-advanced') as HTMLDetailsElement;
-      expect(details).not.toBeNull();
-      expect(details.open).toBe(false);
-      // The advanced fields live inside the disclosure (native details keeps
-      // them in the DOM even when collapsed).
-      expect(within(details).getByLabelText('Motoring speed (kn)')).toBeInTheDocument();
-      expect(within(details).getByLabelText('Performance factor (×)')).toBeInTheDocument();
+    it('#539 item 2: the inline floor follows the SELECTED boat, not the catalogue default', () => {
+      // The clamp row above pins 2.2 m for the default boat; this pins that
+      // the floor is DERIVED rather than fixed. 2.30 m draft -> spec J OQ-1's
+      // `draftM + 0.1` -> 2.4, so a panel still reading the module-level
+      // SAFETY_DEPTH_FIELD would clamp a 2.30 m keel to 2.2 m — under its own
+      // hull, on the quiet path that produces no `shallow` block and so
+      // discloses nothing.
+      const props = renderPanel({
+        boat: { ...boatById(DEFAULT_BOAT_ID), id: 'deep-46', draftM: 2.3 },
+      });
+      const input = screen.getByLabelText('Safety depth (m)');
+      expect(input).toHaveAttribute('min', '2.4');
+      fireEvent.change(input, { target: { value: '1' } });
+      fireEvent.blur(input);
+      expect(input).toHaveValue(2.4);
+      expect(props.onSettingsChange).toHaveBeenCalledWith({
+        ...DEFAULT_SETTINGS,
+        safetyDepthM: 2.4,
+      });
     });
 
-    it('shows a one-line value summary of the advanced settings when collapsed', () => {
+    it('no longer renders the advanced fields/disclosure inline — they moved to the Boat tab', () => {
       localStorage.setItem('sc-lang', 'en');
       const { container } = render(
         <I18nProvider>
           <PlannerPanel {...baseProps()} />
         </I18nProvider>,
       );
-      const values = container.querySelector('.planner-advanced-values');
-      expect(values).not.toBeNull();
-      // DEFAULT_SETTINGS: motor on, 6.5 kn, 45 s penalty, ×0.9.
-      const text = values!.textContent ?? '';
-      expect(text).toContain('Motor on');
-      expect(text).toContain('6.5 kn');
-      expect(text).toContain('Maneuver 45 s');
-      expect(text).toContain('×0.9');
+      expect(container.querySelector('details.planner-advanced')).toBeNull();
+      expect(screen.queryByLabelText('Motoring speed (kn)')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Depth comfort margin (m)')).not.toBeInTheDocument();
+    });
+
+    it('renders a discoverable link to the Boat tab next to safety depth, naming the depth comfort margin', () => {
+      const props = renderPanel();
+      const link = screen.getByRole('button', {
+        name: /More boat settings.*depth comfort margin/,
+      });
+      expect(link).toBeInTheDocument();
+      fireEvent.click(link);
+      expect(props.onOpenBoatSettings).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -588,7 +681,11 @@ describe('PlannerPanel', () => {
       const { rerender } = render(
         <I18nProvider>
           <PlannerPanel
-            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
           />
         </I18nProvider>,
       );
@@ -614,7 +711,11 @@ describe('PlannerPanel', () => {
       const { rerender } = render(
         <I18nProvider>
           <PlannerPanel
-            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
           />
         </I18nProvider>,
       );
@@ -654,14 +755,173 @@ describe('PlannerPanel', () => {
     });
   });
 
-  // #301: the dirty-form indicator — a second Chip in the Ergebnis card plus
-  // the same sentence folded into the panel's ONE existing live region.
-  describe('dirty-form indicator (#301)', () => {
+  // #452: the shallow-water warning + the effective (relaxed) depth must be
+  // visible on THIS strip — the first surface a user sees a result on —
+  // without switching to the Routes tab. Distinct requested/used/minGate
+  // values (3.0 / 2.5 / 2.3) so a test asserting on `usedDepthM` cannot pass
+  // by accident against `minGateDepthM` or `requestedDepthM` instead.
+  describe('shallow-water warning (#452)', () => {
+    function makeShallowPlan(): Plan {
+      const plan = makePlan();
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+      };
+      return plan;
+    }
+
+    it('renders the plan-level shallow warning, naming the effective (used) depth', () => {
+      renderPanel({ plan: makeShallowPlan(), rig: 'genoa' });
+      // #504 wave 5: pin the PROPERTY (the shallow warning is announced as an
+      // alert region), not which tag happens to carry role="alert" — the
+      // wave 4 restructure moved it onto a wrapping <div>, an implementation
+      // detail this assertion no longer depends on.
+      const banner = screen.getByRole('alert');
+      expect(banner).toHaveTextContent(/was not passable/);
+      // Requested depth.
+      expect(banner.textContent).toContain('3.0 m');
+      // #452: the effective depth the route was actually computed at — the
+      // defect this test guards was that usedDepthM rendered nowhere.
+      expect(banner.textContent).toContain('2.5 m');
+      // Shallowest charted depth crossed by the plan (Minor 5, PR #461: not
+      // "actually crossed" — minGateDepthM folds over BOTH rigs' legs, so on
+      // one rig's tab it can name the OTHER rig's leg).
+      expect(banner.textContent).toContain('2.3 m');
+      // Honest passage-planning-aid copy (#455): never claims an unflagged
+      // section IS safe. review (PR #461 Major 3): the ORIGINAL
+      // `/\bis (verified|guaranteed)\b/i` matched only those two exact word
+      // pairs, so appending "All unmarked water on this route is safe." to
+      // the EN string reproduced 91/91 GREEN — measured directly against
+      // this branch before this fix. Widened to also catch "is/are safe" and
+      // "is/are clear", the reviewer's specific counter-example. NARROWED,
+      // NOT CLOSED (re-run against MY OWN replacement, per the fix-wave
+      // brief): appending "This route poses no risk beyond the marked
+      // sections." to the EN string still passes the WIDENED regex too —
+      // no finite word list closes this class for free-form prose. The
+      // POSITIVE `toContain` below is what actually earns its
+      // keep (it reds the moment the required hedge clause is removed,
+      // added-to, or reworded away); this negative check is a regression pin
+      // against the two SPECIFIC phrasings already seen going wrong, not a
+      // content classifier.
+      expect(banner.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+      expect(banner.textContent).toContain('not guaranteed to be clear');
+    });
+
+    it('is absent on a plan with no relaxation', () => {
+      renderPanel({ plan: makePlan(), rig: 'genoa' });
+      expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
+    });
+
+    it('is absent before any plan exists', () => {
+      renderPanel({ plan: null, rig: null });
+      expect(screen.queryByText(/was not passable/)).not.toBeInTheDocument();
+    });
+
+    // Review finding (PR #461 Major 1): the warning is plan-level, but its
+    // OLD render site lived inside a `summary &&` gate, and `summary` is
+    // null whenever the ACTIVE rig's own result is null — so a user on the
+    // rig tab whose solve failed saw no warning for a plan that carries one.
+    // `makeShallowPlan()` -> `makePlan()` sets `fock: null` by default
+    // (`fockReason: 'calm-motor-off'`), which is exactly this shape; viewing
+    // it on the fock tab reproduces the reviewer's measured probe.
+    it('#452 Major 1: still renders when the ACTIVE rig itself has no result', () => {
+      renderPanel({ plan: makeShallowPlan(), rig: 'fock' });
+      const banner = screen.getByText(/was not passable/);
+      expect(banner).toBeInTheDocument();
+      // No summary-dependent content exists for fock — the warning is the
+      // only thing this rig's strip has to show; "View details" needs
+      // `summary` too and must stay absent.
+      expect(screen.queryByRole('button', { name: /View details/ })).not.toBeInTheDocument();
+      // #452 gap 3: fock has no result here (no legs at all to inspect), so
+      // the locator sentence must fail safe rather than crash or invent one.
+      expect(banner.textContent).not.toContain('starts at');
+    });
+  });
+
+  // #452 gap 3: the locator sentence appended to the shared ShallowWarning
+  // banner — same shared component as RouteSummary's, so this only needs to
+  // pin PlannerPanel's OWN call site (result.legs -> the `legs` prop) rather
+  // than re-prove the sentence-selection logic itself (covered exhaustively
+  // in RouteSummary.test.tsx).
+  describe('shallow-water locator sentence (#452 gap 3)', () => {
+    function makeNonContiguousShallowPlan(): Plan {
+      const plan = makePlan();
+      setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: NON_CONTIGUOUS_SHALLOW_LEGS } });
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 1.9 },
+      };
+      return plan;
+    }
+
+    it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
+      renderPanel({ plan: makeNonContiguousShallowPlan(), rig: 'genoa' });
+      const banner = screen.getByText(/was not passable/);
+      const expected = en['route.shallow.locator.plural']
+        .replace('{count}', '2')
+        .replace('{time}', formatTime(PLAN_DEPARTURE_MS, 'en'));
+      expect(banner.textContent).toContain(expected);
+    });
+
+    it('uses the singular sentence (no count) when exactly one leg is flagged', () => {
+      const plan = makeNonContiguousShallowPlan();
+      // Drop the second flagged leg (index 2) — exactly one remains.
+      setSail(plan, 'genoa', {
+        result: {
+          ...GENOA_RESULT,
+          legs: [NON_CONTIGUOUS_SHALLOW_LEGS[0], NON_CONTIGUOUS_SHALLOW_LEGS[1]],
+        },
+      });
+      renderPanel({ plan, rig: 'genoa' });
+      const banner = screen.getByText(/was not passable/);
+      const expected = en['route.shallow.locator'].replace(
+        '{time}',
+        formatTime(PLAN_DEPARTURE_MS, 'en'),
+      );
+      expect(banner.textContent).toContain(expected);
+      expect(banner.textContent).not.toContain('legs are affected');
+    });
+
+    it('omits the locator sentence when relaxation fired but no individual leg is flagged', () => {
+      // The default GENOA_LEGS fixture never sets leg.shallow — the
+      // plan-level banner still renders, but the locator sentence must fail
+      // safe rather than render a nonsensical "0 legs" sentence.
+      const plan = makePlan();
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+      };
+      renderPanel({ plan, rig: 'genoa' });
+      const banner = screen.getByText(/was not passable/);
+      expect(banner.textContent).not.toContain('starts at');
+    });
+  });
+
+  // #301: the dirty-form indicator — a second Chip in the Ergebnis card,
+  // always on the broad `formDirty` regardless of `settingsDirty`.
+  //
+  // The live region is more subtle. #486 review (Minor 5) originally removed
+  // an EARLIER fold of the stale sentence into this region entirely,
+  // reasoning that App.tsx's tab-independent `settingsDirty` Banner "already
+  // announces this exact sentence whenever it's true" — TRUE only for the
+  // settings-only subset of dirtiness the Banner can see, and FALSE for
+  // `formDirty && !settingsDirty` (e.g. only the destination changed): that
+  // case left the panel's ONE live region silently announcing nothing,
+  // re-opening the exact accessibility gap #301 existed to close. Found by
+  // an adversarial cross-PR composition sweep over the cumulative diff
+  // (Refs #299) — no single hunk of #486 contained both the Banner add and
+  // this removal, which is why per-hunk review passed it. Fixed by folding
+  // on the COMPLEMENT of what the Banner covers: `settingsDirty` true → stay
+  // silent (the Banner alone announces, preserving #486's real fix — no
+  // double announcement); `formDirty && !settingsDirty` → fold the sentence
+  // in (the Banner cannot see this case, so nothing else will announce it).
+  describe('dirty-form indicator (#301) and the #299 live-region complement', () => {
     it('renders a second Chip when formDirty && summary', () => {
       renderPanel({ plan: makePlan(), rig: 'genoa', formDirty: true });
-      // Scoped to the Chip's <span> — the identical sentence is ALSO folded
-      // into the sr-only status <p> below (see the live-region tests further
-      // down), so an unscoped query would match two elements.
+      // `{ selector: 'span' }` targets the Chip specifically — with the
+      // default (unchanged) settings, `settingsDirty` is false, so the live
+      // region ALSO folds this same sentence in (a `<p>`, asserted in its
+      // own tests below); scoping here keeps this test about the Chip only.
       expect(
         screen.getByText(en['planner.result.stale'], { selector: 'span' }),
       ).toBeInTheDocument();
@@ -679,21 +939,62 @@ describe('PlannerPanel', () => {
       expect(screen.queryByText(en['planner.result.stale'])).not.toBeInTheDocument();
     });
 
-    it('folds the same sentence into the panel status region, and there is still exactly ONE role="status" region', () => {
+    // Case 1 (Refs #299): formDirty for a reason the Banner cannot see —
+    // renderPanel()'s default `settings` prop is byte-identical to
+    // makePlan()'s own `request.settings` (both DEFAULT_SETTINGS), so
+    // `settingsDirty` is false here and `formDirty: true` can only be
+    // standing in for an endpoint/departure edit. The status region must
+    // announce it — mutation check: reverting the `!settingsDirty` fold back
+    // to the #486 shape (statusText = announcement only) fails this with
+    // `Received: ""`.
+    it('DOES fold the stale sentence into the panel status region when formDirty && !settingsDirty', () => {
       renderPanel({ planning: { phase: 'idle' }, plan: makePlan(), rig: 'genoa', formDirty: true });
       expect(screen.getAllByRole('status')).toHaveLength(1);
-      // No fresh announcement fired on this mount (seeded from the mount plan
-      // id, per the test above) — so the status text is the stale sentence
-      // ALONE, with no leading space from an empty announcement half.
+      // No fresh completion announcement fires on this mount (seeded from
+      // the mount plan id, per the transition tests above), so the region's
+      // entire text is the folded stale sentence.
       expect(screen.getByRole('status').textContent).toBe(en['planner.result.stale']);
+      // The Chip (asserted above) stays visible too — both surfaces show it,
+      // this is not a replacement. `{ selector: 'span' }` targets the Chip
+      // specifically, since the live region just asserted above ALSO
+      // contains this exact text now.
+      expect(
+        screen.getByText(en['planner.result.stale'], { selector: 'span' }),
+      ).toBeInTheDocument();
     });
 
-    it('joins a genuine completion announcement AND the stale sentence into the one region, space-separated', () => {
+    // Case 2 (Refs #299): settingsDirty true — the Banner (App.tsx) already
+    // announces this. The panel's live region MUST stay silent, or a
+    // Plan-tab user hears the identical sentence twice — exactly the
+    // double-announcement #486 was right to remove. Mutation check: folding
+    // unconditionally on `formDirty` (dropping the `!settingsDirty` term)
+    // fails this with `Received: "<en['planner.result.stale']>"` — the
+    // sentence appearing where it must not.
+    it('does NOT fold the stale sentence into the panel status region when settingsDirty is true', () => {
+      const driftedSettings: Settings = { ...DEFAULT_SETTINGS, maneuverPenaltyS: 999 };
+      renderPanel({
+        planning: { phase: 'idle' },
+        plan: makePlan(),
+        rig: 'genoa',
+        formDirty: true,
+        settings: driftedSettings,
+      });
+      expect(screen.getByRole('status').textContent).toBe('');
+      // The Chip still shows — it stays on the broader `formDirty`
+      // regardless of `settingsDirty` (see its own comment in the source).
+      expect(screen.getByText(en['planner.result.stale'])).toBeInTheDocument();
+    });
+
+    it('a genuine completion announcement folds the stale suffix on when formDirty && !settingsDirty', () => {
       localStorage.setItem('sc-lang', 'en');
       const { rerender } = render(
         <I18nProvider>
           <PlannerPanel
-            {...baseProps({ planning: { phase: 'routing', rig: 'genoa' }, plan: null, rig: null })}
+            {...baseProps({
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
+            })}
           />
         </I18nProvider>,
       );
@@ -712,28 +1013,23 @@ describe('PlannerPanel', () => {
       const status = screen.getByRole('status');
       const text = status.textContent ?? '';
       expect(text).toContain('Route calculated');
-      expect(text.endsWith(en['planner.result.stale'])).toBe(true);
-      // Exactly ONE space joins the two halves — not glued together (zero
-      // spaces) and not a double space (would read as two run-on sentences).
-      const beforeSuffix = text.slice(0, text.length - en['planner.result.stale'].length);
-      expect(beforeSuffix.endsWith(' ')).toBe(true);
-      expect(beforeSuffix.endsWith('  ')).toBe(false);
+      expect(text).toContain(en['planner.result.stale']);
     });
 
-    it('does NOT change the status text when formDirty flips false→false (only the boolean flip drives a change)', () => {
+    it('a genuine completion announcement does NOT fold the stale suffix on when settingsDirty is true', () => {
+      localStorage.setItem('sc-lang', 'en');
+      const driftedSettings: Settings = { ...DEFAULT_SETTINGS, maneuverPenaltyS: 999 };
       const { rerender } = render(
         <I18nProvider>
           <PlannerPanel
             {...baseProps({
-              planning: { phase: 'idle' },
-              plan: makePlan(),
-              rig: 'genoa',
-              formDirty: false,
+              planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
+              plan: null,
+              rig: null,
             })}
           />
         </I18nProvider>,
       );
-      const before = screen.getByRole('status').textContent;
       rerender(
         <I18nProvider>
           <PlannerPanel
@@ -741,12 +1037,16 @@ describe('PlannerPanel', () => {
               planning: { phase: 'idle' },
               plan: makePlan(),
               rig: 'genoa',
-              formDirty: false,
+              formDirty: true,
+              settings: driftedSettings,
             })}
           />
         </I18nProvider>,
       );
-      expect(screen.getByRole('status').textContent).toBe(before);
+      const status = screen.getByRole('status');
+      const text = status.textContent ?? '';
+      expect(text).toContain('Route calculated');
+      expect(text).not.toContain(en['planner.result.stale']);
     });
   });
 
@@ -793,7 +1093,7 @@ describe('PlannerPanel', () => {
 
     it('renders a decorative skeleton in the result slot while a first plan is in flight', () => {
       const { container } = renderPanelReturningContainer({
-        planning: { phase: 'routing', rig: 'genoa' },
+        planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
         plan: null,
         rig: null,
       });
@@ -825,7 +1125,7 @@ describe('PlannerPanel', () => {
       // gate must keep the real compact Ergebnis card and NOT overlay a skeleton
       // on top of it. Mutating the gate to drop `!summary` makes this fail.
       const { container } = renderPanelReturningContainer({
-        planning: { phase: 'routing', rig: 'genoa' },
+        planning: { phase: 'routing', sailId: 'genoa', index: 1, total: 2 },
         plan: makePlan(),
         rig: 'genoa',
       });
@@ -853,6 +1153,21 @@ describe('PlannerPanel', () => {
       const chip = container.querySelector('.chip-faster-rig');
       expect(chip?.textContent).toBe(
         'Rig does not matter here — this passage runs entirely under engine',
+      );
+    });
+
+    // #553: the MIRROR of RouteSummary.test.tsx's not-compared row. These are
+    // two independent call sites and #259's own banner is about exactly this
+    // pair drifting apart, so one row cannot stand in for the other.
+    it('#553: a not-compared verdict renders the honest no-comparison chip', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan: makePlan({ rigRecommendation: { kind: 'not-compared' } }),
+        rig: 'genoa',
+      });
+      const chip = container.querySelector('.chip-faster-rig');
+      expect(chip?.textContent).toBe(
+        'The sails were not compared for this passage, so no faster rig is claimed',
       );
     });
   });

@@ -1,11 +1,14 @@
 import type { Harbor, MaskMeta, PolarTable } from '../types';
 import type { SeamarkFeatureCollection } from '../lib/seamarkGeoJson';
+import { BOATS, polarKey } from '../data/boats';
 
 export interface RoutingAssets {
   maskMeta: MaskMeta;
   maskBuffer: ArrayBuffer;
-  polarGenoa: PolarTable;
-  polarFock: PolarTable;
+  // #54 spec F.3: every catalogue boat's polars, keyed `${boatId}/${sailId}`
+  // by polarKey(). Replaces the two named fields — the catalogue is the only
+  // enumeration of what exists, so a new boat needs no change here.
+  polars: Readonly<Record<string, PolarTable>>;
   harbors: Harbor[];
   // #7: fetched alongside harbors.json (same offline-precached asset tier —
   // small, plan-independent, useful before any route exists). Presentation
@@ -32,20 +35,25 @@ function fetchBuffer(path: string): Promise<ArrayBuffer> {
   return fetchOk(path).then((res) => res.arrayBuffer());
 }
 
+// #54: the catalogue IS the manifest — one entry per boat × sail, replacing
+// the two hardcoded fetch paths. Module scope so it is built once rather than
+// on every (usually cache-hitting) call below.
+const POLAR_SPECS = BOATS.flatMap((b) =>
+  b.sails.map((s) => ({ key: polarKey(b.id, s.id), asset: s.polarAsset })),
+);
+
 /** Fetched once, module-cached; BASE_URL-relative. */
 export function loadRoutingAssets(): Promise<RoutingAssets> {
   cached ??= Promise.all([
     fetchJson<MaskMeta>('data/mask.meta.json'),
     fetchBuffer('data/mask.bin'),
-    fetchJson<PolarTable>('data/polar-genoa.json'),
-    fetchJson<PolarTable>('data/polar-fock.json'),
+    Promise.all(POLAR_SPECS.map((p) => fetchJson<PolarTable>(p.asset))),
     fetchJson<Harbor[]>('data/harbors.json'),
     fetchJson<SeamarkFeatureCollection>('data/seamarks.json'),
-  ]).then(([maskMeta, maskBuffer, polarGenoa, polarFock, harbors, seamarks]) => ({
+  ]).then(([maskMeta, maskBuffer, polarTables, harbors, seamarks]) => ({
     maskMeta,
     maskBuffer,
-    polarGenoa,
-    polarFock,
+    polars: Object.fromEntries(POLAR_SPECS.map((p, i) => [p.key, polarTables[i]])),
     harbors,
     seamarks,
   }));

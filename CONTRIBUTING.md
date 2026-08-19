@@ -52,12 +52,16 @@ See [README → Development](README.md#development). Quick reference:
   unused imports or type errors.
 - The full unit/property suite takes ~4 min (a ~200 s seeded fast-check
   property file and a ~40 s real-mask solver acceptance file are expected).
-  CI is slower than dev machines, but not by one flat multiplier: measured
-  2026-08-03 (#341) for the vitest unit suite, `npm run test` ran 249.8 s
-  local vs ~515–535 s on CI (~2.1×), and `npm run test:coverage` ran
-  ~983–1029 s local vs 2558 s on CI (~2.5×) — coverage instrumentation is a
-  separate multiplier from runner speed, not part of a single ratio, and
-  neither figure is a Playwright/e2e measurement. Regardless of the exact
+  CI is slower than dev machines, but not by one flat multiplier, and the
+  ratio is not stable as the suite grows — re-measure rather than
+  extrapolate. Measured 2026-08-19 on `develop` (CI run 32217579848), the
+  `app` job's `npm run test` step took 1085 s and the whole job 19 m 09 s;
+  the earlier 2026-08-03 measurement (#341) was 249.8 s local vs
+  ~515–535 s on CI (~2.1×) for the same command, so the CI side has roughly
+  doubled. `npm run test:coverage` was measured 2026-08-03 at ~983–1029 s
+  local vs 2558 s on CI (~2.5×) — coverage instrumentation is a separate
+  multiplier from runner speed, not part of a single ratio, and neither
+  figure is a Playwright/e2e measurement. Regardless of the exact
   ratio: never add a per-test timeout tighter than the file-level
   `vi.setConfig` values, and never size a CI timeout from a local
   measurement's margin (see CLAUDE.md's Commands section for the full
@@ -132,6 +136,20 @@ prefixes are the mechanism.
 - `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
   `status: blocked` (waiting on an external decision or dependency).
 
+**Known drift — verify the spelling before using a name.** The live label
+set currently also contains no-space duplicates of eight of these
+(`type:bug`, `type:chore`, `type:docs`, `priority:low`, `priority:medium`,
+`area:map`, `area:pipeline`, `area:tooling`), all of them attached to real
+issues. The spaced form above is the intended taxonomy; the duplicates are
+a cleanup tracked in
+[#401](https://github.com/DocGerd/sail_command/issues/401) (`v0.12.1`).
+Until that lands, a filter by one spelling silently misses issues tagged
+with the other and `gh issue create` fails with `not found` on the wrong
+one — check with
+`gh label list --repo DocGerd/sail_command --limit 60 --json name --jq '.[].name'`.
+Dependabot additionally applies `dependencies`, `github_actions`,
+`javascript` and `python`; those are bot-managed and outside this taxonomy.
+
 Every open issue should carry a `type:` and, once triaged, an `area:` and a
 `priority:`. The issue forms in `.github/ISSUE_TEMPLATE/` apply the `type:`
 label (and `status: needs-triage` for bug reports) automatically. `area:`
@@ -141,18 +159,18 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.12.0` — the next release.
+- `v0.13.0` — the next release.
+- `v0.12.1` — pending patch scope; per the PATCH exception below it shifts nothing.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.10.0` are closed. **`v0.11.0` has not shipped yet —
-its milestone still shows `state: open` on GitHub.** All 9 of its issues
-are resolved and this cut's `CHANGELOG.md` section is already folded, but
-the milestone object itself only closes once the release PR actually
-merges and the tag is pushed, per the roll-forward convention below; until
-then, `gh api repos/DocGerd/sail_command/milestones` is the fact, not this
-sentence. `v0.12.0` is already open and scoped as the next release
-milestone above. The `v0.8.1` patch release (documentation-only) shipped
+`v0.4.0` through `v0.12.0` are closed (plus the `v0.5.1` patch milestone).
+`v0.13.0` is open and scoped as the next release milestone, `v0.14.0` is
+opened fresh at this cut per the roll-forward convention below, and
+`v0.12.1` holds pending patch scope. Milestone state closes only once the
+release PR merges and the tag is pushed, so
+`gh api repos/DocGerd/sail_command/milestones` is the fact, not this
+sentence. The `v0.8.1` patch release (documentation-only) shipped
 on 2026-08-04 and, per the PATCH exception below, carries no milestone of
 its own.
 The [milestones page](https://github.com/DocGerd/sail_command/milestones) is

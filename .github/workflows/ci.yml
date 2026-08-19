@@ -15,6 +15,26 @@ jobs:
     defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Privacy guard (#474): fails the build if any tracked file leaks a
+      # contributor's absolute home-directory path. Placed FIRST, before
+      # `setup-node`/`npm ci`, since it needs neither (git + bash only) and
+      # a leak is cheaper to catch before spending the rest of the job's
+      # runtime. Wired into `app` rather than a new job because `app` is
+      # one of the two REQUIRED status checks on `develop`/`main`
+      # (`e2e` is the other) - a standalone job would report but not gate,
+      # per this file's own `hook-selftests` job comment on that distinction.
+      # Deliberately NOT wired into `e2e`: that job gates its expensive
+      # steps behind a docs-only classify step, and docs are exactly where
+      # this leaked (commit e5358d4) - skipping this check on a docs-only
+      # PR would exempt the one path class it exists to cover. Overrides the
+      # job's `app`-relative `defaults.run.working-directory` (same pattern
+      # as the `e2e` job's classify step) because the leaks this guard
+      # exists to catch were mostly OUTSIDE `app/` (`.claude/`, `CLAUDE.md`,
+      # `docs/`) - scoping the scan to `app/` would miss most of what it's
+      # for.
+      - name: No leaked home paths (#474)
+        working-directory: ${{ github.workspace }}
+        run: bash .github/scripts/check-no-home-paths.sh
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: 22, cache: npm, cache-dependency-path: app/package-lock.json }
       - run: npm ci

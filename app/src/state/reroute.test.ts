@@ -7,14 +7,18 @@ import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
 import * as openMeteoModule from '../services/openMeteo';
 import { __resetDbForTests } from '../services/db';
-import { uniformWindGrid } from '../test/fixtures';
+import { OFF_CATALOGUE_BOAT, uniformWindGrid } from '../test/fixtures';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
   DEFAULT_SETTINGS,
   type LatLon,
   type NoRouteReason,
   type Plan,
+  type PlanRequest,
   type PlanResultOk,
 } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const ORIGIN: LatLon = { lat: 54.75, lon: 10.0 };
 const DESTINATION: LatLon = { lat: 54.75, lon: 10.4 };
@@ -32,19 +36,24 @@ const NOW_MS = DEPARTURE_MS + 2 * HOUR;
 
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
-  genoa: {
-    rig: 'genoa',
-    legs: [],
-    etaMs: NOW_MS + HOUR,
-    durationMs: HOUR,
-    distanceNm: 10,
-    maneuverCount: 0,
-    motorDistanceNm: 0,
-  },
-  fock: null,
-  genoaReason: null,
-  fockReason: 'calm-motor-off',
+  sails: [
+    {
+      sailId: 'genoa',
+      result: {
+        sailId: 'genoa',
+        legs: [],
+        etaMs: NOW_MS + HOUR,
+        durationMs: HOUR,
+        distanceNm: 10,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
+      reason: null,
+    },
+    { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+  ],
   recommended: 'genoa',
+  comparisonComplete: true,
   snappedOrigin: FIX,
   snappedDestination: DESTINATION,
 };
@@ -55,6 +64,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     id: 'plan-1',
     name: 'Flensburg → Marstal',
     createdAtMs: GRID_T0_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: ORIGIN,
       destination: DESTINATION,
@@ -63,6 +73,8 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
       destinationHarborId: 'dk-marstal',
       departureMs: DEPARTURE_MS,
       settings: { ...DEFAULT_SETTINGS },
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid,
     result: OK_RESULT,
@@ -117,6 +129,10 @@ describe('rerouteFromFix', () => {
       destinationHarborId: 'dk-marstal',
       departureMs: Date.UTC(2026, 6, 15, 10, 0, 0),
       settings: DEFAULT_SETTINGS,
+      // #54: rerouteFromFix reroutes the SAME sails the plan being rerouted
+      // was originally solved with — makePlan()'s fixture requests both.
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     });
     // Copied, never aliased: mutating the request later must not reach the
     // caller's fix object or the original plan's request.
@@ -180,6 +196,123 @@ describe('rerouteFromFix', () => {
 
     const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(request.settings.sailPreferenceKn).toBe(DEFAULT_SETTINGS.sailPreferenceKn);
+  });
+
+  // #54 fix round 1: same mechanism as the two backfill cases above, on a
+  // field OUTSIDE Settings this time. A plan saved before sailIds existed on
+  // PlanRequest (pre-multi-boat) does not carry the key at all in its stored
+  // snapshot; without backfilling from DEFAULT_SAIL_IDS, planRoute.ts's
+  // `runAll` calls `req.sailIds.map(...)` unconditionally —
+  // throwing on reroute of a pre-#54 plan rather than degrading.
+  it('backfills sailIds from DEFAULT_SAIL_IDS on a pre-#54-shaped saved plan', async () => {
+    // The local cast is what makes `delete` compile on `PlanRequest.sailIds`
+    // — the depthComfortMarginM/sailPreferenceKn tests above need no such
+    // cast, since Settings's own fields are not readonly.
+    const oldShapedRequest = { ...makePlan().request } as Partial<{
+      -readonly [K in keyof PlanRequest]: PlanRequest[K];
+    }>;
+    delete oldShapedRequest.sailIds;
+    const plan = makePlan({ request: oldShapedRequest as PlanRequest });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(DEFAULT_SAIL_IDS);
+    // The old plan's other fields are still preserved verbatim.
+    expect(request.destinationHarborId).toBe('dk-marstal');
+  });
+
+  // #54 Task 11: pins the PROPERTY the keeper below rests on, not just its
+  // detection logic (#516). That keeper discriminates ONLY because ['fock']
+  // is not value-equal to DEFAULT_SAIL_IDS; if the default boat's sail set
+  // ever became exactly ['fock'], the keeper would degenerate into the
+  // vacuity it was added to close and would still pass.
+  it('#54: the non-default fixture below is genuinely non-default', () => {
+    expect(DEFAULT_SAIL_IDS).not.toEqual(['fock']);
+  });
+
+  // #54 Task 11: the BOAT half of the same inheritance question, and it was
+  // entirely unguarded — replacing this site's
+  // `boatSnapshot(plan.request.boat)` with a bare `defaultBoatSnapshot()`
+  // left this suite and its recalc/replan siblings green, because every
+  // fixture here uses `defaultBoatSnapshot()` and the substitution is
+  // value-identical. `OFF_CATALOGUE_BOAT` is a boat BOATS does not contain,
+  // which is the state spec §I.3 requires a plan to keep: services/
+  // migratePlan.ts refuses to replace an unparseable snapshot precisely
+  // because THIS site would then make the substituted one the boat the
+  // rerouted plan claims it was — a 2.4 m hull silently re-labelled as a
+  // 2.1 m Salona 45 mid-passage.
+  it("reroutes with the saved plan's OWN boat snapshot, not the catalogue default", async () => {
+    const plan = makePlan({
+      request: { ...makePlan().request, boat: OFF_CATALOGUE_BOAT },
+    });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.boat).toEqual(OFF_CATALOGUE_BOAT);
+    // COPIED, never aliased — this block's own contract, and the reason the
+    // value assertion above is not enough on its own.
+    expect(request.boat).not.toBe(plan.request.boat);
+    expect(request.boat.sails[0]).not.toBe(plan.request.boat.sails[0]);
+  });
+
+  // #54 review round 3: the INHERITANCE half of the backfill ternary. Every
+  // other sailIds fixture here is ['genoa', 'fock'], which is value-equal to
+  // DEFAULT_SAIL_IDS — so no assertion against one of those can tell an
+  // inherited list from a hardcoded default. A non-default fixture can.
+  it("reroutes the saved plan's OWN sails, not the default", async () => {
+    const plan = makePlan({ request: { ...makePlan().request, sailIds: ['fock'] } });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(['fock']);
+  });
+
+  // #54 review round 2: rerouteFromFix's own "copied, never aliased" contract
+  // covers sailIds too, and until now nothing discriminated a copy from an
+  // alias on either branch — a refactor could drop the spreads and stay
+  // green. The two branches share no code, so each needs its own row: the
+  // present-field branch must not hand out the saved plan's array (mutating
+  // the reroute request would rewrite the original plan's request in place),
+  // and the absent-field branch must not hand out the DEFAULT_SAIL_IDS
+  // module constant (which every later backfill would then inherit).
+  it("copies sailIds, never aliasing the saved plan's array", async () => {
+    const plan = makePlan();
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(plan.request.sailIds);
+    expect(request.sailIds).not.toBe(plan.request.sailIds);
+  });
+
+  it('copies the backfill, never aliasing the DEFAULT_SAIL_IDS module constant', async () => {
+    const oldShapedRequest = { ...makePlan().request } as Partial<{
+      -readonly [K in keyof PlanRequest]: PlanRequest[K];
+    }>;
+    delete oldShapedRequest.sailIds;
+    const plan = makePlan({ request: oldShapedRequest as PlanRequest });
+    const client: ReplanClient = { plan: vi.fn().mockResolvedValue(OK_RESULT) };
+    await rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', {
+      client,
+      save: vi.fn().mockResolvedValue(undefined),
+    });
+    const [request] = (client.plan as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(request.sailIds).toEqual(DEFAULT_SAIL_IDS);
+    expect(request.sailIds).not.toBe(DEFAULT_SAIL_IDS);
   });
 
   it('never fetches: zero network calls and no fetchWindGrid, even with navigator.onLine === false', async () => {
@@ -333,6 +466,11 @@ describe('rerouteFromFix', () => {
     ['worker-error', 'error.routingCrashed'],
     ['messageerror', 'error.routingMessageError'],
     ['disposed', 'error.routingInterrupted'],
+    // #553: added with the kind itself. A five-element array typed by a
+    // tuple type is NOT exhaustiveness-checked, so a sixth kind slips past
+    // this table silently — measured in review: repointing the mapping to
+    // 'error.routingTimeout' left 140 tests green.
+    ['boat-not-in-catalogue', 'error.boatNotInCatalogue'],
   ])('preserves RoutingError kind %s as ReplanError(%s)', async (kind, messageKey) => {
     const plan = makePlan();
     const client: ReplanClient = {
@@ -363,6 +501,34 @@ describe('rerouteFromFix', () => {
 
     await expect(rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', { client })).rejects.toBeDefined();
     expect(dispose, 'a timed-out reroute must dispose its client').toHaveBeenCalledTimes(1);
+  });
+
+
+  // #553 MAJOR 5: the ONE rejection kind that must NOT tear the worker down.
+  // `'boat-not-in-catalogue'` is raised by a client-side catalogue lookup
+  // BEFORE plan() posts anything, so the worker never saw the request and is
+  // healthy — disposing costs a full re-init (mask .slice(0) + transfer + the
+  // polar map) for a lookup miss, and because dispose() calls failAll() it can
+  // abort an UNRELATED in-flight plan on the shared singleton. Paired with the
+  // timeout row above, which must keep disposing: the two together isolate the
+  // kind as the deciding variable rather than asserting a blanket no-dispose.
+  it('does NOT dispose the client when the boat is not in the catalogue', async () => {
+    const plan = makePlan();
+    const dispose = vi.fn();
+    const client: ReplanClient = {
+      plan: vi
+        .fn()
+        .mockRejectedValue(new RoutingError('boat-not-in-catalogue', 'boat not in catalogue: x')),
+      dispose,
+    };
+
+    await expect(
+      rerouteFromFix(plan, FIX, NOW_MS, 'Rerouted', { client }),
+    ).rejects.toMatchObject({ messageKey: 'error.boatNotInCatalogue' });
+    expect(
+      dispose,
+      'a catalogue-miss rejection must leave the healthy worker alone',
+    ).not.toHaveBeenCalled();
   });
 
   it('does NOT dispose the client on a successful reroute', async () => {

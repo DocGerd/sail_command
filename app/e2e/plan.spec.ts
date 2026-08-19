@@ -116,20 +116,61 @@ test('plans a route: harbor search -> rig comparison -> saved under Routen', asy
     const fockTab = rigTabs.getByRole('tab', { name: /Fock/ });
     await expect(genoaTab).toBeVisible();
     await expect(fockTab).toBeVisible();
-    // #259/#275: this exact demo route (Langballigau -> Sønderborg, uniform
-    // 12 kn / 225° fixture wind) measures a genoa/fock ETA gap of ~13.6 s on
-    // an ~81 min passage — comfortably inside the 60 s tie band
-    // (RIG_TIE_BAND_MS, planRoute.ts) — so the router honestly reports a tie
-    // rather than badging either rig as recommended. Assert that POSITIVELY
-    // (no ★ on EITHER tab, and the tie chip's own text) rather than a bare
-    // `toHaveCount(0)`, so a future regression to a silent single-rig badge
-    // fails loudly instead of this assertion just flipping back to passing.
-    // This route no longer exercises the 'decided' ★ path end-to-end (it's
-    // still covered at the unit/component level) — follow-up filed as #278.
-    await expect(rigTabs.getByLabel('Empfohlen')).toHaveCount(0);
-    await expect(page.locator('.route-summary .chip-faster-rig')).toHaveText(
-      'Genua und Fock liegen für diese Passage praktisch gleichauf',
-    );
+    // The rig comparison must be SELF-CONSISTENT: the ★ badge and the chip
+    // are two renderings of one `rigRecommendation` (RouteSummary.tsx), so
+    // whatever the router decides, they have to agree. That is the invariant
+    // this end-to-end path exists to check.
+    //
+    // #455 REPLACED A SNAPSHOT WITH THAT INVARIANT. This assertion used to
+    // pin the TIE specifically: #259/#275 measured this demo route
+    // (Langballigau -> Sønderborg, uniform 12 kn / 225° fixture wind) at a
+    // genoa/fock gap of ~13.6 s against the 60 s `RIG_TIE_BAND_MS`
+    // (planRoute.ts) and asserted no ★ on either tab. But a 13.6 s margin
+    // inside a 60 s band was always one perturbation away from flipping —
+    // and #455's mask correction flipped it. MEASURED on this exact route
+    // and wind, DEFAULT_SETTINGS:
+    //     pre-#455 mask:  gap  13.57 s -> tie      (0.28% of an 81.1 min passage)
+    //     corrected mask: gap 108.84 s -> decided  (2.17% of an 83.6 min passage)
+    // Fock genuinely wins now, and not marginally: 108.8 s is 1.81x the band,
+    // both rigs are all-sail, and both got slower under the corrected mask —
+    // genoa by 149 s and fock by only 27 s, which is what opened the gap.
+    // Those figures are MASK-DERIVED and will legitimately move again on any
+    // regeneration; check the DIRECTION before concluding anything from a
+    // change here.
+    //
+    // So the verdict is no longer pinned — the AGREEMENT is. A tie must show
+    // no ★ and the tie sentence; a decision must show exactly one ★, on the
+    // tab of the rig the chip names. The regression the old comment feared —
+    // "a silent single-rig badge" — still fails loudly, because a ★ appearing
+    // beside the tie sentence satisfies neither branch.
+    const fasterRigChip = page.locator('.route-summary .chip-faster-rig');
+    await expect(fasterRigChip).toBeVisible();
+    const chipText = ((await fasterRigChip.textContent()) ?? '').trim();
+    const stars = rigTabs.getByLabel('Empfohlen');
+    const decided = /^Schneller: (Genua|Fock)$/.exec(chipText);
+    if (decided) {
+      const winner = decided[1];
+      await expect(
+        stars,
+        `chip reads "${chipText}", so exactly one rig tab must carry the Empfohlen badge`,
+      ).toHaveCount(1);
+      await expect(
+        (winner === 'Genua' ? genoaTab : fockTab).getByLabel('Empfohlen'),
+        `chip names ${winner}, so the Empfohlen badge must sit on the ${winner} tab`,
+      ).toHaveCount(1);
+    } else {
+      expect(
+        [
+          'Genua und Fock liegen für diese Passage praktisch gleichauf',
+          'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
+        ],
+        `chip must read the tie or moot sentence when no rig is recommended, got "${chipText}"`,
+      ).toContain(chipText);
+      await expect(
+        stars,
+        `chip reads "${chipText}", so neither rig tab may carry the Empfohlen badge`,
+      ).toHaveCount(0);
+    }
 
     // Both rigs must have actually found a route (an ETA, not a no-route
     // alert) — a broad reach in 12 kn should always be sailable for either

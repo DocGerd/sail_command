@@ -5,9 +5,10 @@ import type {
   PlanRequest,
   PlanResult,
   PolarTable,
-  Rig,
   RigRecommendation,
   RigResult,
+  SailId,
+  SailResult,
   Settings,
   ShallowInfo,
   WindGrid,
@@ -17,15 +18,29 @@ import { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
 import { solve, type SolveDeadline, type SolveFailureCause } from './isochrone';
 import { mergeCollinearLegs } from './postprocess';
-import { BOAT_DRAFT_M, findRelaxedDepthM, type ProbeProgress } from './relaxedDepth';
+import { APPROACH_RADIUS_M, uniformGate, type DepthGate } from '../lib/depthGate';
+import { findRelaxedGate, type ProbeProgress } from './relaxedDepth';
+import { polarKey, type BoatDef } from '../data/boats';
+import { relaxationFloorM } from '../lib/boatDepth';
 
 export interface PlanDeps {
-  polarGenoa: PolarTable;
-  polarFock: PolarTable;
+  /**
+   * #54 spec F.3: polars keyed `${boatId}/${sailId}` by polarKey(). Only the
+   * keys for `boat` × the request's `sailIds` are read; a caller may pass a
+   * wider map.
+   */
+  polars: Readonly<Record<string, PolarTable>>;
+  /**
+   * #54: the boat this plan is for. SAFETY-CRITICAL — spec C.4(a) derives the
+   * #53 relaxation floor from its draft. Left as the old module constant,
+   * relaxation would take a 2.30 m boat down to a 2.1 m gate while the
+   * shallow banner reported the relaxation as if it were the Salona's.
+   */
+  boat: BoatDef;
   mask: NavMask;
 }
 
-export type RigProgress = (rig: Rig, info: { tMs: number; frontierSize: number }) => void;
+export type RigProgress = (sailId: SailId, info: { tMs: number; frontierSize: number }) => void;
 
 /**
  * #282: the ONE translation from the solver's internal control vocabulary
@@ -53,6 +68,7 @@ export const NO_ROUTE_LABEL_OF_CAUSE = {
 } as const satisfies Record<SolveFailureCause, NoRouteReason>;
 
 interface RunOut {
+  sailId: SailId;
   rigResult: RigResult | null;
   /** Null exactly when `rigResult` is non-null. Never the user-facing label. */
   cause: SolveFailureCause | null;
@@ -107,6 +123,32 @@ export function combineFailureCause(
   return 'mask-blocked';
 }
 
+/**
+ * #54 fix (review round 1): folds every requested sail's cause into one
+ * plan-level cause. `combineFailureCause` above STAYS binary (cap N at 2
+ * per spec §J OQ-3 governs `RigRecommendation`/`compareRigs`, not this
+ * fold) — this generalises only the FOLD over however many sails were
+ * actually requested, replacing a positional `combineFailureCause(a[0],
+ * a[1])` that threw at `sailIds.length === 1` (`a[1]` undefined).
+ *
+ * `null` is NOT an identity for `combineFailureCause`, whose return type
+ * excludes null: `combineFailureCause(null, null)` returns 'mask-blocked'.
+ * What makes the `null` seed exact anyway is that 'mask-blocked' is
+ * simultaneously the BOTTOM of the precedence order above (so any later
+ * cause overrides it) and the value of this fold's own `?? 'mask-blocked'`
+ * fallback — the seed is therefore ABSORBED, not neutral.
+ *
+ * Pinned by planRoute.budget.test.ts's '#54 combineAllCauses' block — the
+ * N=2 fold against the same hand-derived precedence table the binary
+ * function is pinned against, plus N=0 and N=1.
+ */
+export function combineAllCauses(sails: readonly RunOut[]): SolveFailureCause {
+  return (
+    sails.reduce<SolveFailureCause | null>((acc, r) => combineFailureCause(acc, r.cause), null) ??
+    'mask-blocked'
+  );
+}
+
 // #259: an ETA gap smaller than this is measurement noise, not a genuine
 // speed difference between rigs — 23.8x the worst knife-edge measured to date
 // (2.52 s at the sail-speed floor's 3.8 kn boundary, see the motor-decision-rule
@@ -139,16 +181,25 @@ function isAllMotor(result: RigResult): boolean {
 /**
  * #259: the honest rig comparison, distinct from the plain `recommended` pick
  * in `assemble` below. Checked in this order because 'moot' is the STRONGER
- * statement: an all-motor result on both rigs means neither polar drove a
+ * statement: an all-motor result on both sails means neither polar drove a
  * single leg, so the comparison is meaningless regardless of the ETA gap —
- * motor legs run at the same settings.motorSpeedKn on both rigs, so this case
- * commonly coincides with an exact tie, but the check does not depend on
+ * motor legs run at the same settings.motorSpeedKn on both sails, so this
+ * case commonly coincides with an exact tie, but the check does not depend on
  * that. Exported for direct unit testing of the tie-band boundary.
+ *
+ * #54: still BINARY (spec §J OQ-3 — RigRecommendation is not generalised to
+ * N-way) and now identity-DERIVED rather than position-hardcoded: the
+ * pre-#54 version returned a sail-id literal matching argument POSITION
+ * regardless of what each RigResult's own identity was. Now that
+ * `RigResult` carries a real `sailId`, deriving the winner's label from
+ * `a.sailId`/`b.sailId` is both more honest and removes the last bare
+ * sail-id literal from this function — byte-identical for every real caller
+ * (planRoute's own `a`/`b` are always the sail actually solved).
  */
-export function compareRigs(genoa: RigResult, fock: RigResult): RigRecommendation {
-  if (isAllMotor(genoa) && isAllMotor(fock)) return { kind: 'moot' };
-  if (Math.abs(genoa.etaMs - fock.etaMs) < RIG_TIE_BAND_MS) return { kind: 'tie' };
-  return { kind: 'decided', rig: genoa.etaMs < fock.etaMs ? 'genoa' : 'fock' };
+export function compareRigs(a: RigResult, b: RigResult): RigRecommendation {
+  if (isAllMotor(a) && isAllMotor(b)) return { kind: 'moot' };
+  if (Math.abs(a.etaMs - b.etaMs) < RIG_TIE_BAND_MS) return { kind: 'tie' };
+  return { kind: 'decided', rig: a.etaMs < b.etaMs ? a.sailId : b.sailId };
 }
 
 /**
@@ -196,7 +247,7 @@ export function comfortRetryMayHelp(cause: SolveFailureCause): boolean {
  * Note this exclusion alone does NOT cover the case where tiers 1-2 spend
  * the whole budget and still finish with a genuine 'mask-blocked' verdict —
  * the cause is then honestly mask-blocked, this gate opens, and
- * `findRelaxedDepthM`'s BFS probes would run past the deadline. That gap is
+ * `findRelaxedGate`'s BFS probes would run past the deadline. That gap is
  * closed by an explicit deadline check immediately before the relaxation
  * block, not here.
  */
@@ -215,23 +266,23 @@ export function depthRelaxationMayHelp(cause: SolveFailureCause): boolean {
  * skew the recommended-rig comparison, which is why this is a tier rather
  * than a per-rig fallback.
  */
-function needsUnpreferencedRetry(out: { genoa: RunOut; fock: RunOut }): boolean {
+function needsUnpreferencedRetry(sails: readonly RunOut[]): boolean {
   const failedRetriably = (r: RunOut): boolean =>
     r.rigResult === null && r.cause !== null && comfortRetryMayHelp(r.cause);
-  return failedRetriably(out.genoa) || failedRetriably(out.fock);
+  return sails.some(failedRetriably);
 }
 
 /**
  * #53: flag every leg whose geometry crosses cells charted below the REQUESTED
- * safety depth with that leg's minimum charted depth, across both rig results,
- * and derive the plan-level ShallowInfo (minGateDepthM = shallowest such cell
- * actually traversed). Returns null when no leg of either rig crosses
+ * safety depth with that leg's minimum charted depth, across every sail's
+ * result, and derive the plan-level ShallowInfo (minGateDepthM = shallowest
+ * such cell actually traversed). Returns null when no leg of any sail crosses
  * sub-requested cells — the relaxed gate merely widened the search without the
  * route using it, so the route is requested-depth-valid and carries no warning.
  */
 function flagShallowLegs(
   mask: NavMask,
-  rigs: { genoa: RunOut; fock: RunOut },
+  sails: readonly RunOut[],
   requestedDepthM: number,
   usedDepthM: number,
 ): ShallowInfo | null {
@@ -245,7 +296,7 @@ function flagShallowLegs(
       ? { ...leg, shallow: { minDepthM } }
       : { ...leg, shallow: { minDepthM } };
   };
-  for (const out of [rigs.genoa, rigs.fock]) {
+  for (const out of sails) {
     if (out.rigResult) out.rigResult.legs = out.rigResult.legs.map(flagLeg);
   }
   return minGateDepthM === Infinity ? null : { requestedDepthM, usedDepthM, minGateDepthM };
@@ -301,11 +352,30 @@ export function planRoute(
   const comfortDepthM =
     s.depthComfortMarginM > 0 ? s.safetyDepthM + s.depthComfortMarginM : undefined;
 
+  // #452: the gate every tier that solves at the REQUESTED depth uses. Built
+  // once — `solve()` and `mergeCollinearLegs` take it by reference.
+  const requestedGate = uniformGate(s.safetyDepthM);
+
   const wind = new WindField(windGrid);
+  // #54: `deps.polars` is a plain Record, so a key the caller never supplied
+  // reads as `undefined`. This throw pins the DIAGNOSTIC, not the existence
+  // of a failure — `new Polar(undefined)` throws on `table.rig` either way
+  // (lib/polar.ts) — so what it buys is naming WHICH key is missing, at the
+  // lookup instead of at the `new Polar` construction below. One check for
+  // every path:
+  // protocol.ts hands over only the keys `init` carried, and the sweep
+  // harness and tests construct PlanDeps directly.
+  const polarFor = (sailId: SailId): PolarTable => {
+    const key = polarKey(deps.boat.id, sailId);
+    const table: PolarTable | undefined = deps.polars[key];
+    if (table === undefined) throw new Error(`#54: no polar table for ${key}`);
+    return table;
+  };
   const run = (
-    rig: Rig,
+    sailId: SailId,
     table: PolarTable,
     settings: Settings,
+    gate: DepthGate,
     comfort: number | undefined,
   ): RunOut => {
     const polar = new Polar(table, settings.performanceFactor);
@@ -324,7 +394,8 @@ export function planRoute(
         wind,
         mask,
         settings,
-        onProgress: (info) => onProgress?.(rig, info),
+        gate,
+        onProgress: (info) => onProgress?.(sailId, info),
         ...(comfort !== undefined ? { comfortDepthM: comfort } : {}),
         // exactOptionalPropertyTypes: omit the key entirely when unbudgeted,
         // never pass `{ deadline: undefined }`. The SAME object goes to every
@@ -336,13 +407,15 @@ export function planRoute(
       // folding it into SolveFailureCause (rather than giving it a separate
       // SolveResult arm, as this change's pre-#450 draft did) means it arrives
       // through exactly this line like any other cause.
-      if (res.status !== 'ok') return { rigResult: null, cause: res.cause };
-      legs.push(...mergeCollinearLegs(res.legs, mask, wind, settings, comfort));
+      if (res.status !== 'ok') return { sailId, rigResult: null, cause: res.cause };
+      // #452 graft 5: the merge pass re-validates against the SAME gate this
+      // segment solved at — never a route-wide scalar.
+      legs.push(...mergeCollinearLegs(res.legs, mask, wind, gate, comfort));
       departureMs = res.etaMs;
     }
     const etaMs = departureMs;
     const rigResult: RigResult = {
-      rig,
+      sailId,
       legs,
       etaMs,
       durationMs: etaMs - req.departureMs,
@@ -350,60 +423,134 @@ export function planRoute(
       maneuverCount: legs.filter((l) => l.maneuverAtStart !== null).length,
       motorDistanceNm: legs.filter((l) => l.kind === 'motor').reduce((d, l) => d + l.distanceNm, 0),
     };
-    return { rigResult, cause: null };
+    return { sailId, rigResult, cause: null };
   };
-  // #340 NAMED COUPLING: this evaluates `run('genoa', …)` then
-  // `run('fock', …)` as plain, synchronous object-literal properties — no
-  // interleaving, genoa's solve (and every progress message it reports)
-  // fully completes before fock's starts. That real order is asserted equal
-  // to `RIG_ORDER` (../types.ts, next to the `Rig` type) by
-  // planRoute.test.ts's "#340: solve order matches RIG_ORDER" guard test,
-  // which PlannerPanel.tsx's "sail N of 2" phase-readout numbering relies
-  // on. Reordering these two properties changes the real solve order and
-  // must fail that guard test — if it doesn't, the guard is broken, not this
-  // code.
-  const runBoth = (settings: Settings, comfort: number | undefined) => ({
-    genoa: run('genoa', deps.polarGenoa, settings, comfort),
-    fock: run('fock', deps.polarFock, settings, comfort),
+  // #340/#54 NAMED COUPLING: `.map()` over `req.sailIds` calls `run()` once
+  // per element, SYNCHRONOUSLY and in array order — no interleaving, sail
+  // i's solve (and every progress message it reports) fully completes before
+  // sail i+1's starts. That real order is asserted equal to
+  // `request.sailIds` by planRoute.test.ts's "#340/#54: solve order matches
+  // request.sailIds" guard test, observed from a real (small) solve. §E.3
+  // deleted the old `RIG_ORDER` module constant for exactly this reason: the
+  // REQUEST's own ordered list is now the one source of truth, not a
+  // separately-maintained constant that could drift from it. Reordering
+  // `req.sailIds` changes the real solve order and the guard test observes
+  // exactly that.
+  const runAll = (settings: Settings, gate: DepthGate, comfort: number | undefined): RunOut[] =>
+    req.sailIds.map((sailId) => run(sailId, polarFor(sailId), settings, gate, comfort));
+
+  /**
+   * #553 / spec §N.4: a comparison involving a tier-C ('estimated') sail is
+   * WITHHELD, not computed and then hidden. Per §N.3/§N.6-E6, the estimator
+   * derives a tier-C boat's SECOND table as its own base table times the
+   * Salona 45's documented overlay ramp, so the difference between its two
+   * tables is a function of THE RAMP, not of the hull — deterministic,
+   * repeatable, and carrying zero information about that boat. In the spec's
+   * words: "it is not a noisy finding; it is not a finding." (No tier-C boat
+   * is in the catalogue yet — this is the estimator's contract that the first
+   * one must satisfy, not an observed property of shipped data.)
+   *
+   * Computed once per plan HERE and consumed by `assemble` below, so the
+   * suppression is decided in the ROUTING layer and reaches every consumer
+   * through the `PlanResult` type — never in the view. A view-level check
+   * would be a data accident: `PlanResult` is persisted and re-rendered (and
+   * exported), so a verdict suppressed at one render site is a verdict that
+   * still exists in the record and resurfaces at the next one.
+   *
+   * Scoped to `req.sailIds` — the COMPARED set, not the boat's whole sail
+   * set. §N.4's justification is that the difference between the two COMPARED
+   * tables is a function of the overlay ramp rather than of the hull, and
+   * that argument says nothing about a third, uncompared sail: a boat with
+   * two certificate sails and an estimated storm jib has a perfectly sound
+   * certificate-vs-certificate comparison, and withholding it would lose the
+   * feature's headline capability for no epistemic reason. §E.1 anticipates
+   * the divergence explicitly ("The boat may carry any number of foresails;
+   * the user picks which two to compare"), so it goes live with the first
+   * three-sail boat rather than being permanently dead. A MIXED-tier
+   * comparison — one certificate sail against one estimated one — still
+   * suppresses, because both sails are in the compared set.
+   *
+   * `some` rather than `!every`: `[].every(...)` is VACUOUSLY TRUE, so the
+   * negated form would report an EMPTY request as suppressed. `[].some(...)`
+   * is false.
+   */
+  const comparisonSuppressed = req.sailIds.some((id) => {
+    const sail = deps.boat.sails.find((s) => s.id === id);
+    // Fail CLOSED on a sail the boat does not declare: an unresolvable
+    // provenance is not a certificate.
+    return sail === undefined || sail.polarProvenance.tier === 'estimated';
   });
 
-  const assemble = (genoa: RunOut, fock: RunOut, shallow: ShallowInfo | null): PlanResult => {
-    // #259: `recommended` stays a plain Rig for consumers that only ever need
-    // a single pick (tab-seeding in AppState, the saved-plan chip in
-    // PlansList, recommendedResult()'s invariant) — it always names a rig
-    // with a non-null result. It names the same rig as a 'decided'
+  const assemble = (sails: readonly RunOut[], shallow: ShallowInfo | null): PlanResult => {
+    // #259: `recommended` stays a plain SailId for consumers that only ever
+    // need a single pick (tab-seeding in AppState, the saved-plan chip in
+    // PlansList, recommendedResult()'s invariant) — it always names a sail
+    // with a non-null result. It names the same sail as a 'decided'
     // rigRecommendation; for 'tie'/'moot' it falls back to the pre-#259 `<=`
-    // tie-break, since those consumers need *a* rig, not a qualified answer.
+    // tie-break, since those consumers need *a* sail, not a qualified answer.
     //
-    // Branched on `genoa.rigResult && fock.rigResult` directly (rather than
-    // switching on rigRecommendation.kind with a same-shaped single-rig tail
-    // repeated below it) so the single-rig fallback is written exactly once:
-    // when rigRecommendation.kind is 'tie'/'moot', compareRigs was called,
-    // which only happens in this branch, so both rigResults are already
-    // narrowed non-null here — an equivalent tail in the other branch would
-    // be unreachable dead code (#275 review).
+    // #54: cap N at 2 (spec §J OQ-3) — RigRecommendation stays binary and is
+    // NOT generalised to N-way. The two-sail comparison path (compareRigs)
+    // only fires when exactly both of the first two requested sails solved;
+    // otherwise this falls back to naming whichever sail solved.
+    //
+    // #553 / spec §N.4: the ELSE branch now reports `not-compared` instead of
+    // stamping `decided`. Before this change every path that did NOT call
+    // compareRigs still returned `{ kind: 'decided' }`, so three latent cases
+    // presented an unmade comparison as a verdict — N = 1 (one requested
+    // sail), N >= 3 (the `sails.length === 2` gate is false, so the cap
+    // silently degraded into a claim), and the reachable-today case where two
+    // sails were requested and only one solved. All three are answered by
+    // declining to rank, which is why this is NOT the N-way generalisation
+    // §L rejects: the cap stays at 2 and no N-way tie semantics are defined
+    // (spec §N.9 states this explicitly).
+    //
+    // `recommended` is unchanged on every path — it still names a sail with a
+    // non-null result, because the tab seeding and PlansList chip need *a*
+    // sail whether or not a comparison happened.
     let rigRecommendation: RigRecommendation;
-    let recommended: Rig;
-    if (genoa.rigResult && fock.rigResult) {
-      rigRecommendation = compareRigs(genoa.rigResult, fock.rigResult);
+    let recommended: SailId;
+    const a = sails[0];
+    const b = sails[1];
+    if (!comparisonSuppressed && sails.length === 2 && a.rigResult && b.rigResult) {
+      rigRecommendation = compareRigs(a.rigResult, b.rigResult);
       recommended =
         rigRecommendation.kind === 'decided'
           ? rigRecommendation.rig
-          : genoa.rigResult.etaMs <= fock.rigResult.etaMs
-            ? 'genoa'
-            : 'fock';
+          : a.rigResult.etaMs <= b.rigResult.etaMs
+            ? a.sailId
+            : b.sailId;
     } else {
-      recommended = genoa.rigResult ? 'genoa' : 'fock';
-      rigRecommendation = { kind: 'decided', rig: recommended };
+      // Branched from the two-sail path above (rather than folding both into
+      // one general N-way reduction) so the single-sail fallback is written
+      // exactly once and stays reachable only when compareRigs was NOT
+      // called — mirrors the pre-#54 rationale for keeping this a distinct
+      // branch (#275 review).
+      const found = sails.find((r) => r.rigResult);
+      // `assemble` is only ever called once at least one sail solved (every
+      // call site checks `.some((r) => r.rigResult)` first) — the invariant
+      // callers rely on, not re-verified here.
+      recommended = found!.sailId;
+      rigRecommendation = { kind: 'not-compared' };
     }
     return {
       status: 'ok',
-      genoa: genoa.rigResult,
-      fock: fock.rigResult,
-      // #282: the ONE place a per-rig failure becomes a user-facing label.
-      genoaReason: genoa.rigResult ? null : noRouteLabel(genoa),
-      fockReason: fock.rigResult ? null : noRouteLabel(fock),
+      sails: sails.map((out): SailResult => ({
+        sailId: out.sailId,
+        result: out.rigResult,
+        // #282: the ONE place a per-sail failure becomes a user-facing label.
+        reason: out.rigResult ? null : noRouteLabel(out),
+      })),
       recommended,
+      // #54 spec §E.3: a sail whose search was cut short by the plan's
+      // wall-clock budget was never compared, so a result carrying one is a
+      // PARTIAL comparison and says so. 'budget-exhausted' is the only cause
+      // that qualifies: the other three are verdicts from a search that
+      // FINISHED (see combineFailureCause's precedence comment).
+      //
+      // Reads the internal cause, never `SailResult.reason` — #282: no code
+      // in this file may branch on a user-facing label.
+      comparisonComplete: sails.every((out) => out.cause !== 'budget-exhausted'),
       rigRecommendation,
       snappedOrigin: origin,
       snappedDestination: destination,
@@ -413,9 +560,16 @@ export function planRoute(
     };
   };
 
-  const connectedAt = (depthM: number): boolean => {
+  // #452 DELIBERATE DIVERGENCE — do not re-unify this with `findRelaxedGate`'s
+  // own connectivity probe. Before #452 the two were textually identical and
+  // had to be changed together. They are now different by design: this one is
+  // the fast-path classifier and asks a question about the REQUESTED gate
+  // route-wide, while the search's probe asks about a per-cell FIELD. Merging
+  // them back into one helper would hand this classifier a relaxed field and
+  // silently re-globalise the relaxation — the exact defect #452 closes.
+  const connectedAt = (gate: DepthGate): boolean => {
     for (let i = 0; i < waypoints.length - 1; i++) {
-      if (!mask.cellsConnected(waypoints[i], waypoints[i + 1], depthM)) return false;
+      if (!mask.cellsConnected(waypoints[i], waypoints[i + 1], gate)) return false;
     }
     return true;
   };
@@ -433,45 +587,64 @@ export function planRoute(
   // gate below — never the label. The label is derived from it exactly once,
   // at the `return` at the end of this function.
   let cause: SolveFailureCause = 'mask-blocked';
-  if (connectedAt(s.safetyDepthM)) {
+  if (connectedAt(requestedGate)) {
     // #243 tier 1: requested gate, preference on — the happy path, nothing
     // extra paid.
-    const tier1 = runBoth(s, comfortDepthM);
+    const tier1 = runAll(s, requestedGate, comfortDepthM);
     if (comfortDepthM !== undefined && needsUnpreferencedRetry(tier1)) {
       // #243 tier 2: requested gate, preference off — bit-identical to the
-      // pre-#243 single `runBoth(s)` call this replaces (comfortDepthM
+      // pre-#243 single `runAll(s, …)` call this replaces (comfortDepthM
       // undefined ⇒ every solve/merge call takes the untouched path). Only
-      // reached when the preference was actually active AND at least one rig
-      // failed with a reason it could plausibly have caused (see
+      // reached when the preference was actually active AND at least one
+      // sail failed with a reason it could plausibly have caused (see
       // needsUnpreferencedRetry) — this is what makes "no plan can get worse
       // than pre-#243" true by construction rather than by argument.
-      const tier2 = runBoth(s, undefined);
-      if (tier2.genoa.rigResult || tier2.fock.rigResult)
-        return assemble(tier2.genoa, tier2.fock, null);
-      // #243 fix-wave item 5: tier 2 failed on BOTH rigs, but tier 1 may
-      // still hold a genuinely successful rig (the retry was triggered by
-      // the OTHER rig failing, per needsUnpreferencedRetry's per-rig check —
-      // the search is heuristic, so a rig that succeeded WITH the
+      const tier2 = runAll(s, requestedGate, undefined);
+      if (tier2.some((r) => r.rigResult)) return assemble(tier2, null);
+      // #243 fix-wave item 5: tier 2 failed on EVERY sail, but tier 1 may
+      // still hold a genuinely successful one (the retry was triggered by
+      // ANOTHER sail failing, per needsUnpreferencedRetry's per-sail check —
+      // the search is heuristic, so a sail that succeeded WITH the
       // preference is not guaranteed to also succeed once retried without
-      // it). Don't discard a working, internally-consistent (both legs from
+      // it). Don't discard a working, internally-consistent (every leg from
       // the SAME preference-on tier, so still apples-to-apples) route just
       // because the retry didn't pan out — that would be strictly worse
       // than what tier 1 already had.
-      if (tier1.genoa.rigResult || tier1.fock.rigResult) {
-        return assemble(tier1.genoa, tier1.fock, null);
+      if (tier1.some((r) => r.rigResult)) {
+        return assemble(tier1, null);
       }
-      // Arbitrary tie-break: take genoa's cause (checked first); both rigs
-      // solve identical mask/wind/waypoints and differ only in polar table,
-      // so their failure causes rarely differ in practice. Matches tier 1's
-      // fallback below exactly (the pre-#243 rule).
-      cause = tier2.genoa.cause!;
-    } else if (tier1.genoa.rigResult || tier1.fock.rigResult) {
-      return assemble(tier1.genoa, tier1.fock, null);
+      // Arbitrary tie-break: take the first requested sail's cause (checked
+      // first, per req.sailIds order); every sail solves identical
+      // mask/wind/waypoints and differs only in polar table, so their
+      // failure causes rarely differ in practice. Matches tier 1's fallback
+      // below exactly (the pre-#243 rule).
+      //
+      // `?.`/`??` for the same reason as tier 1's fallback below, applied
+      // DEFENSIVELY here and MEASURED as unreachable by that input: reaching
+      // this branch needs `needsUnpreferencedRetry(tier1)`, a `.some()` that
+      // is false for an empty array, so an empty sail list always takes the
+      // `else` below instead. Nothing can red this line, and no test claims
+      // to.
+      cause = tier2[0]?.cause ?? 'mask-blocked';
+    } else if (tier1.some((r) => r.rigResult)) {
+      return assemble(tier1, null);
     } else {
-      // Arbitrary tie-break: take genoa's cause (checked first); both rigs
-      // solve identical mask/wind/waypoints and differ only in polar table,
-      // so their failure causes rarely differ in practice.
-      cause = tier1.genoa.cause!;
+      // Arbitrary tie-break: take the first requested sail's cause (checked
+      // first); every sail solves identical mask/wind/waypoints and differs
+      // only in polar table, so their failure causes rarely differ in
+      // practice.
+      //
+      // `?.`/`??` rather than `!`: `runAll` maps over `req.sailIds`, so an
+      // EMPTY sail list makes every tier `[]` and this assertion died as an
+      // unnamed TypeError, forwarded as `worker-fatal` and shown as the
+      // generic 'error.routingFailed'. `[]` is neither nullish nor falsy, so
+      // none of the `?? DEFAULT_SAIL_IDS` backfills on the way in catches it.
+      // services/migratePlan.ts now rebuilds an empty stored list from the
+      // sails the result actually lists; this degrades to a typed no-route if
+      // one is ever built another way. `cause` is non-null on every element
+      // here (this branch is only taken when no sail produced a rigResult),
+      // so the fallback changes nothing for a non-empty list.
+      cause = tier1[0]?.cause ?? 'mask-blocked';
     }
   }
 
@@ -479,9 +652,12 @@ export function planRoute(
   // class relaxes — a calm forecast and an exhausted horizon keep their errors
   // — and never at or below the boat-draft floor. The relaxed gate is
   // discovered once (cheap mask BFS probes, no solver runs), then BOTH rigs
-  // solve at that single gate, so the rig comparison stays apples-to-apples by
-  // construction. The user's safetyDepthM setting is NEVER mutated: the relaxed
-  // gate lives only in a solver-local Settings copy, per-plan, never sticky.
+  // solve against that single gate FIELD, so the rig comparison stays
+  // apples-to-apples by construction. The user's safetyDepthM setting is
+  // NEVER mutated — and since #452 it is never even COPIED-AND-OVERWRITTEN:
+  // the relaxed depth lives in a per-plan DepthGate passed alongside the
+  // unchanged Settings, so no object anywhere carries a relaxed
+  // `safetyDepthM` that a later reader could mistake for the user's own.
   // Unaffected by #243: this decision is a pure mask/cause fact, made before
   // either relaxed tier runs.
   //
@@ -495,7 +671,7 @@ export function planRoute(
   // does not cover the case this check exists for: tiers 1-2 can spend the
   // ENTIRE budget and still finish with a genuine 'mask-blocked' verdict, so
   // the cause is honestly mask-blocked, the gate opens, and
-  // `findRelaxedDepthM`'s BFS probes — the only work in this function that
+  // `findRelaxedGate`'s BFS probes — the only work in this function that
   // does not run inside solve()'s ring loop, and therefore the only work the
   // per-ring check cannot stop — would run past a deadline that has already
   // passed. Checked before the probes rather than after, so a spent budget
@@ -503,52 +679,73 @@ export function planRoute(
   if (deadline?.expired()) {
     return { status: 'error', reason: NO_ROUTE_LABEL_OF_CAUSE['budget-exhausted'] };
   }
-  if (depthRelaxationMayHelp(cause) && s.safetyDepthM > BOAT_DRAFT_M) {
-    const usedDepthM = findRelaxedDepthM(mask, waypoints, s.safetyDepthM, onProbe);
-    if (usedDepthM !== null) {
-      const relaxedSettings: Settings = { ...s, safetyDepthM: usedDepthM };
+  // #54 spec C.4(a), SAFETY-CRITICAL: the floor is THIS boat's draft, not a
+  // module constant. Both uses below take the same value — the entry gate
+  // ("is there anything below the requested depth left to relax into?") and
+  // the search's own lower bound — so they cannot drift apart.
+  const relaxationFloor = relaxationFloorM(deps.boat);
+  if (depthRelaxationMayHelp(cause) && s.safetyDepthM > relaxationFloor) {
+    const relaxed = findRelaxedGate(
+      mask,
+      waypoints,
+      s.safetyDepthM,
+      APPROACH_RADIUS_M,
+      relaxationFloor,
+      onProbe,
+    );
+    if (relaxed !== null) {
+      const { gate: relaxedGate, usedDepthM } = relaxed;
       // #243 tier 3: relaxed gate, preference on — the mechanism-2 fix.
       // comfortDepthM stays anchored to the REQUESTED `s` (computed once,
       // above), never to usedDepthM: the relaxed gate only widens what is
       // *possible*, it must not also widen what is *comfortable*.
-      const tier3 = runBoth(relaxedSettings, comfortDepthM);
+      //
+      // #452: `s` is passed UNCHANGED — the relaxed depth now travels in the
+      // gate field, so `Settings.safetyDepthM` is never overwritten with a
+      // relaxed value anywhere. The pre-#452 `{ ...s, safetyDepthM:
+      // usedDepthM }` copy is deleted, which spike §7 records as a
+      // correctness improvement independent of locality.
+      const tier3 = runAll(s, relaxedGate, comfortDepthM);
       if (comfortDepthM !== undefined && needsUnpreferencedRetry(tier3)) {
-        // #243 tier 4: relaxed gate, preference off — bit-identical to the
-        // pre-#243 relaxed `runBoth({ ...s, safetyDepthM: usedDepthM })` call
-        // this replaces.
-        const tier4 = runBoth(relaxedSettings, undefined);
-        if (tier4.genoa.rigResult || tier4.fock.rigResult) {
+        // #243 tier 4: relaxed gate, preference off.
+        const tier4 = runAll(s, relaxedGate, undefined);
+        if (tier4.some((r) => r.rigResult)) {
           const shallow = flagShallowLegs(mask, tier4, s.safetyDepthM, usedDepthM);
-          return assemble(tier4.genoa, tier4.fock, shallow);
+          return assemble(tier4, shallow);
         }
         // #243 fix-wave item 5 (mirrors the tier 1/2 fallback above): tier 4
-        // failed on BOTH rigs, but tier 3 may still hold a genuinely
-        // successful rig — fall back to it rather than discarding a working
-        // route. Both legs of the fallback still come from the SAME
+        // failed on EVERY sail, but tier 3 may still hold a genuinely
+        // successful one — fall back to it rather than discarding a working
+        // route. Every leg of the fallback still comes from the SAME
         // preference-on, SAME relaxed-gate tier, so the rig comparison
         // stays apples-to-apples.
-        if (tier3.genoa.rigResult || tier3.fock.rigResult) {
+        if (tier3.some((r) => r.rigResult)) {
           const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
-          return assemble(tier3.genoa, tier3.fock, shallow);
+          return assemble(tier3, shallow);
         }
-        // #68: relaxation FOUND a connected gate but both rigs still failed to
-        // solve there even without the preference, so this is no longer a
+        // #68: relaxation FOUND a connected gate but every sail still failed
+        // to solve there even without the preference, so this is no longer a
         // mask-level failure — propagate the relaxed solve's OWN class (the
         // horizon and calm classes are actionable) rather than leaving the
         // stale mask-blocked one. See combineFailureCause for the
         // rig-disagreement precedence. Matches tier 3's fallback below
-        // exactly (the pre-#243 rule).
-        cause = combineFailureCause(tier4.genoa.cause, tier4.fock.cause);
-      } else if (tier3.genoa.rigResult || tier3.fock.rigResult) {
+        // exactly (the pre-#243 rule). #54 fix round 1: folds over every
+        // requested sail via combineAllCauses — a positional
+        // combineFailureCause(tier4[0], tier4[1]) crashed at
+        // sailIds.length === 1 (tier4[1] undefined).
+        cause = combineAllCauses(tier4);
+      } else if (tier3.some((r) => r.rigResult)) {
         const shallow = flagShallowLegs(mask, tier3, s.safetyDepthM, usedDepthM);
-        return assemble(tier3.genoa, tier3.fock, shallow);
+        return assemble(tier3, shallow);
       } else {
-        // #68: relaxation FOUND a connected gate but both rigs still failed to
-        // solve there, so this is no longer a mask-level failure — propagate
-        // the relaxed solve's OWN class (the horizon and calm classes are
-        // actionable) rather than leaving the stale mask-blocked one. See
-        // combineFailureCause for the rig-disagreement precedence.
-        cause = combineFailureCause(tier3.genoa.cause, tier3.fock.cause);
+        // #68: relaxation FOUND a connected gate but every sail still failed
+        // to solve there, so this is no longer a mask-level failure —
+        // propagate the relaxed solve's OWN class (the horizon and calm
+        // classes are actionable) rather than leaving the stale mask-blocked
+        // one. See combineFailureCause for the rig-disagreement precedence.
+        // #54 fix round 1: folds over every requested sail via
+        // combineAllCauses (see the tier-4 call site's comment above).
+        cause = combineAllCauses(tier3);
       }
     }
   }

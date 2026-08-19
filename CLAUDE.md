@@ -5,13 +5,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project
 
 SailCommand — an offline-capable PWA that plans time-optimal sailing routes
-for a Salona 45 in the Flensburg Fjord / Danish South Sea area
-(54.3–55.3°N, 9.4–11.0°E), using hourly Open-Meteo wind forecasts and an
-isochrone router that prices tacks/gybes as time penalties.
+for a three-boat Flensburg fleet (Salona 45; Salona 44 "SPEEDY GO!"; Elan
+Impression 444 "PIRANJA" — drafts 2.1/2.1/1.9 m, so TWO distinct depth gates)
+in the Flensburg Fjord / Danish South Sea area (54.3–55.3°N, 9.4–11.0°E),
+using hourly Open-Meteo wind forecasts and an isochrone router that prices
+tacks/gybes as time penalties. Only the Salona 45 is `hullVerified` with
+certificate-anchored polars; the other two are tier-C estimates, which
+SUPPRESSES their two-rig ★ comparison — a behavioural difference that has
+already put stale claims into user-facing docs (#54, shipped v0.12.0).
 
 **Source of truth:** `docs/superpowers/specs/2026-07-14-sail-command-design.md`
-(user-approved). Read it before making design-level decisions; do not silently
-deviate from it.
+(user-approved), plus `2026-08-10-multi-boat-design.md` for anything touching
+the boat catalogue, per-boat depth gates or polar provenance. Read them before
+making design-level decisions; do not silently deviate.
 
 ## Layout
 
@@ -52,17 +58,12 @@ deviate from it.
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
-  **`lint` is literally `eslint src`, so `app/e2e/**` is NEVER linted by CI**
-  (#420, open) — including the specs that are the ONLY functional assurance
-  for `src/sw.ts` and `src/routing/worker.ts` (both ~0% coverage by design).
-  Run `npm --prefix app run lint -- e2e` by hand after touching a spec (this
-  lints `src` AND `e2e` in one pass, so it cannot silently diverge from what
-  CI runs); a real error sat there unseen until PR #419's review found it.
-  Note the `run`, not `exec` — per the next bullet, `exec` does NOT chdir, so
-  `npm --prefix app exec eslint e2e` resolves `e2e` against the REPO ROOT and
-  exits 2 with "No files matching the pattern" (measured), silently linting
-  nothing. The e2e-only spelling that does work is
-  `npm --prefix app exec eslint app/e2e`.
+  **CI's `lint` covers `app/e2e/**` — the script is `eslint src e2e`** (PR
+  #508 closed #420 on 2026-08-11; before that it was `eslint src`, and the
+  gap let a real error sit unseen until PR #419's review found it). Those
+  specs are the ONLY functional assurance for `src/sw.ts` and
+  `src/routing/worker.ts` (both ~0% coverage by design), so a lint gap there
+  was never cosmetic. No hand-run is needed any more.
 - `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
   exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
   executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
@@ -85,7 +86,21 @@ deviate from it.
   them) and cases to several existing ones — the count is stale again by
   more than a fixed delta this time, so it was re-measured rather than
   hand-added: a real `npm --prefix app run test` run gives **1294 tests, 109
-  files** (2026-08-04). The coverage PERCENTAGES above are UNTOUCHED — they
+  files** (2026-08-04); BOTH halves re-measured 2026-08-10 on develop
+  @ `9940b32` with maplibre-gl 6.2.0 installed — **1515 tests, 117 files**,
+  all passing, 234 s; re-measured again 2026-08-10 on develop @ `74fcd35`
+  after #504 — **1526 tests, 117 files**, all passing, 233.8 s (the file
+  count did NOT move because #504 added cases to four EXISTING test files
+  and no new one, the ordinary shape); re-measured 2026-08-13 on develop
+  @ `2195661` after the #508–#512 train — **1539 tests, 118 files**, all
+  passing. That run's 393 s wall time is NOT comparable to the 234 s figures
+  above — it was measured while a CPU-heavy `app/sweep/` run occupied the
+  machine; counts are load-independent, durations are not. Re-measure both
+  halves rather than inferring either from the other. Re-measured 2026-08-19
+  on `cbc6055` (the v0.12.0 cut) — **2032 tests, 143 files**, all passing;
+  that run's duration is DISCARDED rather than quoted, because six agents ran
+  concurrently — the same contention that invalidated the 393 s figure above.
+  The coverage PERCENTAGES above are UNTOUCHED — they
   were not re-measured this session (that needs `test:coverage`, a
   substantially longer run) and a scanning-only or assertion-adding test
   file is coverage-neutral to first order the same way PR #351's was; don't
@@ -106,28 +121,83 @@ deviate from it.
   jsdom-mocked service-worker test — that would be the #50 equivalence-test
   tautology (statements execute without modeling real CacheStorage/Range/CDN
   semantics, the bug class that actually bit in #96 and #118).
-- `app/sweep/` (#450) is the committed 198-plan #282 acceptance harness — six
-  arms x 33 harbours, a README carrying the full rebuild spec, and a REQUIRED
-  BASE double-run control (two BASE runs must be byte-identical to each other
-  before any BASE-vs-HEAD comparison means anything). It sits OUTSIDE
+- `app/sweep/` (#450) is the committed #282 acceptance harness — **NINE arms x
+  33 harbours** since #488 (six original Flensburg-origin, plus three
+  Marstal-origin ones added because the original six could not discriminate a
+  depth-relaxation change at all), a README carrying the full rebuild spec,
+  and a REQUIRED BASE double-run control (two BASE runs must be byte-identical
+  to each other before any BASE-vs-HEAD comparison means anything). Record
+  that control against the merge-base of the branch it will certify. A moved
+  `develop` does not AUTOMATICALLY invalidate it — but that exemption fails
+  OPEN, so DEFAULT TO RE-RUNNING and skip only after checking the sweep's
+  actual TRANSITIVE input closure, never a remembered path list. The closure
+  is wider than the obvious paths: besides `app/src/routing/`,
+  `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
+  `app/public/data/`, `app/sweep/` and `pipeline/`,
+  `app/src/data/boats.ts` and `app/src/lib/boatDepth.ts` (both since #538 —
+  `sweepArms.ts:38` imports `boatById`/`DEFAULT_BOAT_ID`/`polarKey`;
+  `types.ts:1` and `planRoute.ts:24` import `boatDepth`),
+  `sweepArms.ts` pulls `DEFAULT_SETTINGS` from `app/src/types.ts`,
+  `uniformWindGrid` from `app/src/test/fixtures` and `solverTimeoutMs` from
+  `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
+  `app/src/test/setup.ts`; and the solver reaches `lib/geo.ts`,
+  `lib/polar.ts` and `lib/wind.ts`. One `DEFAULT_SETTINGS` field edit moves
+  plans across every arm that does not spread-override that field, while
+  touching none of the obvious paths — which is why the list form of this
+  rule was wrong (measured 2026-08-13: #518's evidence did survive #513,
+  #522 and #523, verified by running the closure check this rule prescribes
+  — none of the 22 files they changed is in the closure).
+  **Never run a full sweep as a harness background task** — a harness
+  background task was killed at ~58 min (observed 2026-08-18 against Claude
+  Code 2.1.235; re-check after any harness upgrade, this is a harness-version
+  property). `base1` alone took ~1850 s UNLOADED — ~31 min, i.e. INSIDE that
+  ceiling: what exceeds it is the REQUIRED BASE double-run (2×) and a
+  BASE-vs-HEAD comparison (3×), so the ceiling bites on the control, never on
+  a single arm-set. Detach from the start
+  (`setsid` + `nohup`), and report the `SC_SWEEP_OUT` path AT DETACH, not on
+  completion: an agent died mid-sweep on 2026-08-18 and its output path died
+  with it. A killed run and a finished one are both silent.
+  A STRONGER control than the required double-run
+  exists once a prior run is on record: BASE *and* HEAD arm sha256 prefixes
+  matching that run on a different machine, day and merge-base proves the
+  baseline stable against the very thing that would invalidate it, where a
+  self double-run only proves a run deterministic against itself. It sits OUTSIDE
   `app/src/` so `vite.config.ts`'s `include` never collects it into
   `npm run test` or CI; run it deliberately with `--config
   sweep/vitest.config.ts`. vitest 4 has NO `--include` (`CACError: Unknown
   option`, measured) and `--dir` only narrows, which is why it needs its own
-  config rather than a flag. Timing: `sweep/README.md` budgets ~20 min per
-  run; ~16 min per run was measured 2026-08-07 on this dev machine WHILE the
-  config was still over-collecting, so that figure times mostly-unrelated work
-  and stops being meaningful the moment #451 lands. Two known
-  defects (#451): the config's `include` glob resolves against `app/` not
-  `app/sweep/`, so it over-collects the whole `.ts` suite and a run exits 1 on
-  an unrelated `changelog.test.ts` (`server.fs.allow` denies `CHANGELOG.md?raw`
-  under that config); and `compare.mjs` fails closed on ZERO arms but not on
-  FEWER THAN SIX, so assert six arm files per output directory yourself before
-  quoting any verdict.
-- Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
-  a ~40 s real-mask solver acceptance file). Use focused filters while
-  iterating (`npm --prefix app run test -- <filter>`); give the full run a
-  generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
+  config rather than a flag. Both #451 defects are FIXED: `root: here` stops
+  the `include` glob over-collecting (deleting that line takes the sweep
+  config from 9 collected files to 89 — the fix is causal, and the main suite
+  still collects zero files from `app/sweep/`), and `compare.mjs`
+  now fails closed on FEWER arms than expected, with the expectation derived
+  from the arm definitions rather than a hardcoded count.
+  **`becalmed` and `deep-becalmed` remain VACUOUS as safety evidence** —
+  ZERO routes (33/33 errors each), so their byte-identity would survive any
+  mask change including a catastrophic one; never count them as evidence.
+  For a DEPTH-RELAXATION change the discriminating arms are the three new
+  ones (`margin-zero`, `relaxation-dense`, `margin-extreme`), each carrying
+  **27 of 33** plans with a `shallow` block against **2 of 198** across the
+  original six — measured, and the reason the old sweep was green through
+  its own blast radius. `margin-extreme` is NOT the tier-4 arm despite its
+  history: inflating the comfort margin SUPPRESSES tier-4 entry (11 rows at
+  `DEFAULT_SETTINGS` vs 3 at margin 8.0, a strict subset, measured twice),
+  so `relaxation-dense` is the broader tier-4 exerciser.
+- Full test suite: **499.9 s** (~8.3 min) on a quiet machine — measured
+  2026-08-19 at `04384c2`, 2032 tests / 143 files. Wall time is set almost
+  entirely by ONE file: `routing/realmask.repro.test.ts` alone takes
+  **477.4 s** (17 cases against the real committed mask/polars), with the
+  seeded fast-check property suite second at **239.6 s**; everything else
+  runs concurrently underneath them, which is why the total barely exceeds
+  the slowest file. The former "~4 min (a ~200 s property suite + a ~40 s
+  real-mask file)" was stale by ~2x on the total and by more than 10x on
+  real-mask — and it DISAGREED with `vite.config.ts`'s own "~680 s
+  combined" comment on `SLOW_TEST_FILES_FIRST`, which was the closer of the
+  two; when two artifacts state one fact, re-measure rather than pick.
+  Note that list's order is now inverted against its own "slowest first"
+  intent (property suite is listed before real-mask, which is ~2x slower).
+  Use focused filters while iterating (`npm --prefix app run test --
+  <filter>`); give the full run a generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
   (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
   per-test override, keyed OR positional, e.g. the property test's 900 s)
   from `app/src/test/timeouts.ts` (#342) rather than hardcoding a literal —
@@ -148,7 +218,12 @@ deviate from it.
   derivation in `timeouts.ts`'s `COVERAGE_MULTIPLIER` comment).
   **CI is slower than dev machines, but not by a flat multiplier** — measured
   2026-08-03 (#341, PR #335 work): `npm run test` local 249.8 s vs CI
-  ~515–535 s (~2.1×); `npm run test:coverage` local ~983–1029 s vs CI 2558 s
+  ~515–535 s (~2.1×) — **both halves of that pair measured against a 1206-test
+  suite.** The CI half re-measured 2026-08-18 at 1161 s against **1872 tests**
+  (#556), so that 2.25× is mostly suite GROWTH, not a slower runner: never
+  difference two durations measured at different suite sizes. Quote a ratio
+  only from two halves measured at the SAME count, and carry the count with
+  each figure; `npm run test:coverage` local ~983–1029 s vs CI 2558 s
   (~2.5×). Coverage instrumentation is a SEPARATE multiplier from runner
   speed — solver-heavy tests pay a bigger coverage penalty than component
   tests, so no single ratio predicts both. A job's `timeout-minutes` and a
@@ -203,6 +278,13 @@ deviate from it.
   `package.json`'s `version` ONLY when git throws (tarball / git-less build,
   #125). Don't bump it expecting the About dialog to move; don't delete it
   either — that fallback is the only thing it is for.
+- **To bump a transitive dev dependency, use `npm update <pkg> --package-lock-only`,
+  never `npm install <pkg>@^x --package-lock-only`** — the latter also adds it to
+  `package.json`'s `dependencies` and strips `"dev": true`, promoting a build-time
+  dep to a declared runtime one. Verify by parsing the lockfile (the diff shows
+  what changed, not what silently didn't) and by comparing built `dist` hashes.
+  Reproduced 2026-08-18 in PR #568 (which closed #533): the `install` form
+  added `dependencies.nanoid` AND stripped that entry's `"dev": true`.
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
   This makes EVERY Dependabot bump of one of the 11 runtime packages listed in
@@ -213,6 +295,22 @@ deviate from it.
   `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
   CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
   commit the regenerated file (#248's entire real diff was two version strings).
+- **Python gates live OUTSIDE the `app` toolchain and are NOT required checks.**
+  Workflow `Python lint` (`python-lint.yml`), job **`ruff`**, runs `ruff check .`
+  AND `ruff format --check .` under `working-directory: pipeline`; `Mask
+  integrity` (`verify-mask.yml`, job `verify`) is advisory the same way. The
+  `protect-main` ruleset requires **`app` and `e2e` only** (read off the ruleset
+  API 2026-08-18), so a red `ruff` merges silently — it is not a gate, it is a
+  job someone has to look at. Run both after ANY `pipeline/**` change:
+  typecheck/lint/vitest are all JS-side and structurally cannot see Python
+  (measured — #538's three E501s entered on Task 13's OWN commit and survived
+  that task's review rounds AND the whole-branch review, because every gate any
+  of them ran was the `app` toolchain).
+  Locally: `./pipeline/.venv/bin/ruff check pipeline/` + `… format --check
+  pipeline/`. That venv carries its OWN ruff, unpinned against CI's hash-pinned
+  `python-lint-requirements.txt` (measured 2026-08-18: venv 0.16.2 vs CI
+  0.16.3) — the `node_modules`-vs-lockfile trap in a second language, so a
+  local pass is evidence, not proof.
 - Pipeline: `npm --prefix pipeline run polars|harbors|seamarks|mask|icons` (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
@@ -232,10 +330,29 @@ deviate from it.
   warning. Measured (#223): reformatting `<meta charset="UTF-8" />` to
   `<meta charset="utf-8">` made `vite build` exit 0 with ZERO CSP metas in
   `dist`. `cspMeta()` (`app/vite.config.ts`) now throws if its marker is
-  missing; `subPathMeta()` in the same file still has the bare-`replace`
-  shape (#318, open — a silent failure there degrades to an indexable UAT).
+  missing; `subPathMeta()` gained the same fail-closed guard (#318, CLOSED
+  2026-08-04 — neither is unguarded now; re-read before citing either).
   Per the guard-asymmetry rule below: an absent security control is the
   expensive failure direction, so the check must fail closed.
+- **Markdown bold immediately before a slash TERMINATES a block comment.**
+  `**584**/119` inside JSDoc contains `*/`, so the comment ends there and
+  eslint reports a bare `Parsing error: ';' expected` at or after the `*/`,
+  never naming the markdown that caused it. The exact line varies with what
+  follows on it — measured 2026-08-13 against this repo's own eslint, one
+  layout reported the cause's own line and another the line after, so do
+  not expect a fixed offset. Reading the diff cannot catch it; only running
+  lint does. This repo's convention of long, markdown-rich JSDoc prose is
+  what makes it reachable (PR #513 wave 5).
+- **An empty array defeats `??` and truthiness backfills**: `[]` is neither
+  nullish nor falsy, and `Array.isArray([]) && [].every(...)` is VACUOUSLY
+  TRUE. All three `sailIds` backfills (`lib/recalc.ts`, `state/replan.ts`,
+  `state/reroute.ts`) are `??`/truthiness and stay blind to `[]` — what closes
+  the hazard is UPSTREAM (`services/migratePlan.ts` rebuilds an empty stored
+  list from the sails the result actually lists) plus a typed-no-route backstop
+  where it landed (`planRoute.ts`'s `tier1[0]?.cause ?? 'mask-blocked'`,
+  formerly a `!` that died as an unnamed TypeError, forwarded as `worker-fatal`
+  and shown as the generic `error.routingFailed`). Validate `length > 0`
+  explicitly wherever a list means "at least one".
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -306,9 +423,9 @@ deviate from it.
   so by the time ScaleBar's own `[isWide, bannerHeight]` effect reads
   `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
   correct regardless of which call site's commit lands first. NAMED
-  COUPLING now points at `App.tsx:687` (renders `.banner-area`
-  unconditionally) and `App.tsx:132` (the App-level `useBannerHeight()`
-  call, kept purely for that write side-effect). Any rule that moves
+  COUPLING now points at `App.tsx`'s `<div className="banner-area">`
+  (rendered unconditionally, ~:958) and its App-level `useBannerHeight()`
+  call (~:169, kept purely for that write side-effect). Any rule that moves
   `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
   connected only through that runtime-measured layout value, invisible in
   the CSS, in the diff, and to any test that checks the two components
@@ -332,6 +449,40 @@ deviate from it.
   independently justified regardless — app.css's own updated comment: a
   Level 3 parser drops the WHOLE BLOCK silently either way, "reason enough
   on its own" — not merely a residual of the now-gone `:has()` pairing.
+- **A single-class MODIFIER loses to its base rule when the base is declared
+  LATER** — specificity ties, source order decides. `app/src/app.css`'s
+  `.chip` base sits BELOW its modifiers, so switching a hand-rolled span to
+  the `Chip` primitive silently reverted the modifier: `.chip-shallow-cautious`
+  rendered FILLED at full size until raised to the compound
+  `.chip.chip-shallow-cautious` (#493/PR #504 — MEASURED in a real browser,
+  background `color-mix(…)` → `rgba(0,0,0,0)`, 12.8px → 12px, padding
+  1.6px/8px → 0.8px/6.4px). The markup, the tokens and the rule each look
+  correct in isolation and only the RESOLVED style shows it, so verify with
+  `getComputedStyle` (real browser or jsdom against the real `app.css`),
+  never by reading the CSS. **jsdom caveat: its `backgroundColor` reads
+  `rgba(0,0,0,0)` in BOTH the broken and fixed states** (it parses neither
+  `color-mix()` nor `var()`) — only the `background` SHORTHAND discriminates.
+  The same cascade kept `.chip-shallow`'s amber hazard fill from ever
+  rendering until PR #509 raised it to the compound `.chip.chip-shallow`
+  (#506, closed 2026-08-11) — the same narrow route #504 took, again in
+  preference to REORDERING `.chip` above its modifiers, which would have
+  repaired every BROKEN modifier at once (only those declared above the
+  base rule) but changed an existing surface. #509 also added
+  `app/src/test/chipShallowFill.test.ts`, a structural scan for any other
+  bare single-class `.chip-*` modifier sitting above `.chip`'s base rule, so
+  a new `.chip-*` instance now fails loudly instead of silently not
+  rendering. That guard is `.chip-*`-ONLY — the general rule above still has
+  no keeper for other primitives. None is broken today, but for DIFFERENT
+  reasons, so do not generalise from one: `.sc-card` and `.sc-field` declare
+  their base ABOVE their modifiers, whereas `.sc-btn` is ALSO named in a
+  later GROUPED rule inside `@media (prefers-reduced-motion: reduce)`
+  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`, ~:2167) that
+  sits below `.sc-btn-primary`/`-secondary`/`-ghost` and wins on source
+  order — media queries add no specificity. It is harmless only because it
+  sets `transition` alone, which no `.sc-btn-*` modifier touches. So a
+  `.chip-*`-style guard generalised to `.sc-btn` would report all three
+  modifiers broken today. Note the grouped form is why an anchored
+  `^\.sc-btn\s*\{` grep misses it: that line ends in a comma, not a brace.
 - **#355 resizable desktop left panel** (`PanelResizer.tsx`, `lib/panelWidth.ts`,
   `lib/usePersistedNumber.ts`): `role="separator"` WAI-ARIA "Window Splitter"
   primitive, wide-layout only (`isWide` mount-gates it — narrow must not gain
@@ -354,9 +505,19 @@ deviate from it.
   the CSS/JS drift guard (this repo's `useBannerHeight.test.ts` pattern): it
   `readFileSync`s `app.css`, regexes out the `320px` literal, and asserts it
   equals `PANEL_MIN_WIDTH_PX`.
-- `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx` — not via a later
-  `setMaxPitch`/`setPitch`, which a style reload could undo — and pinned by
+- `maxPitch: 0` is set at Map CONSTRUCTION in `MapView.tsx`, not via a later
+  `setMaxPitch`/`setPitch` — and pinned by
   `MapView.mount.test.tsx`'s `'#207: constructs with pitch locked flat'`.
+  The old "a style reload could undo it" reason is HALF right, and the half
+  that is wrong is the one that names `setMaxPitch` (read against 6.2.0):
+  `setMaxPitch` DOES survive — `_maxPitch` is written only by it, the
+  constructor and `transform.apply()`, and `map.ts`'s constructor-registered
+  `style.load` handler re-applies only `center/zoom/bearing/pitch/roll`.
+  `setPitch` does NOT survive: that handler fires whenever
+  `transform.unmodified`, and `setPitch(0)` on an already-flat map
+  early-returns BEFORE clearing that flag, so a later `setStyle` whose root
+  sets `pitch` jumps the camera. Construction is still the right place — but
+  do not "correct" this to an absolute negative in either direction.
   Pitch is deliberately unreachable; don't re-enable it without re-auditing
   for terrain/sky/3D layers and pitch readers (there are none today, #207).
 - GPS-derived per-fix signals (`activeLegIndex` et al.) may only drive CHEAP
@@ -370,10 +531,11 @@ deviate from it.
   caused) discriminates a hand rotation from a foreign settle — guarded
   against a settle delivered from inside our OWN `easeTo`. **Post-maplibre-gl-6
   (#253): `map.isEasing()` is GONE from `Map`** — v6's `Map extends Evented`,
-  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:589` vs
-  `ui/camera.ts:284`, both read against `maplibre-gl@6.1.0`; they are
+  not `Camera` (`node_modules/maplibre-gl/src/ui/map.ts:590` vs
+  `ui/camera.ts:284`, both re-derived against `maplibre-gl@6.3.0`; they are
   siblings), and the method survives only on the
-  private `_camera` field. `CompassControl.tsx`'s `onMoveEnd` guard is now a
+  `_camera` field (no TS `private` modifier — convention, not enforced;
+  always so, not a 6.2.0 change). `CompassControl.tsx`'s `onMoveEnd` guard is now a
   TWO-TERM derivation: `e.originalEvent !== undefined &&
   commandedBearingRef.current !== null &&
   !bearingReached(map.getBearing(), commandedBearingRef.current)`. Both terms
@@ -386,9 +548,12 @@ deviate from it.
   is true for EVERY handler `moveend` whether or not an ease is live; it is
   only IN CONJUNCTION WITH term 1 that the pair reproduces what `isEasing()`
   gave us on the reachable paths. What makes that conjunction sound: `_stop`
-  (`camera.ts:1197-1210`, 6.1.0) deletes `_easeFrameId` and only THEN invokes
-  `_onEaseEnd` at `:1210` — and `_afterEase` (`:982`) IS that `_onEaseEnd`,
-  bound in `_ease` (`:1232`) — so `isEasing()` was already false at every
+  (`camera.ts:1197-1210` — file byte-identical 6.1.0 through 6.3.0) deletes
+  `_easeFrameId` and only THEN invokes `_onEaseEnd` at `:1210` — and
+  `_afterEase` (`:982`) is what `_onEaseEnd` RESOLVES TO (one closure hop, not
+  the same binding; always so, not a 6.2.0 change), bound in `_ease`
+  (`:1232`) — so `isEasing()` was already
+  false at every
   ease-emitted `moveend` even in v5, which is why the absence of
   `originalEvent` discriminates a camera-internal ease termination from a
   handler-gesture settle. ACCEPTED NARROWING: the new
@@ -437,9 +602,9 @@ deviate from it.
   `queryRenderedFeatures` returns top-to-bottom so the topmost also wins the
   tap. `symbol-z-order: 'viewport-y'` is NOT an escape — it sets
   `sortFeaturesByKey = false` (`symbol_bucket.ts:391` — line verified
-  against `maplibre-gl@6.1.0`, the version `app/package-lock.json` pins,
-  re-checked after the #253 v6 upgrade and again after the 6.1.0 bump: still
-  `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
+  re-verified against `maplibre-gl@6.2.0`,
+  re-checked after the #253 v6 upgrade and the 6.1.0, 6.2.0 and 6.3.0 bumps:
+  still `this.sortFeaturesByKey = zOrder !== 'viewport-y' &&
   !sortKey.isConstant();` at the same line; re-check again after any future
   maplibre-gl upgrade),
   disabling the placement priority entirely. Within one symbol layer,
@@ -583,9 +748,11 @@ deviate from it.
   require three consecutive matches at 400ms, fail CLOSED on budget
   exhaustion with the count history and last three label sets. Three-at-400ms
   is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
-  (`symbol/placement.ts:1268-1277`, 6.1.0) gates re-runs on `commitTime +
-  fadeDuration * durationAdjustment > now` with `fadeDuration: 300` defaulted
-  at `ui/map.ts:539` (same version). Measured effect: spec runtime ~6.5s -> ~2.3s,
+  (`symbol/placement.ts:1268-1277`, unmoved 6.2.0 -> 6.3.0) gates re-runs on
+  `commitTime + fadeDuration * durationAdjustment > now` with
+  `fadeDuration: 300` defaulted at `ui/map.ts:540` (6.3.0; `:539` in 6.2.0 —
+  the two drift independently, never assume one offset). Measured effect:
+  spec runtime ~6.5s -> ~2.3s,
   stabilising after three reads (~820ms) — placement had been settled almost
   immediately all along. Whether any OTHER spec shares this defect is
   UNCONFIRMED — a grep of `annotations.spec.ts` (the spec `labels.spec.ts`'s
@@ -596,7 +763,9 @@ deviate from it.
   dark)` in `app.css`, so a both-themes verification pass needs Playwright
   `page.emulateMedia({ colorScheme })`, never a UI click.
 - Playwright MCP `page.screenshot({ path: './x.png' })` writes relative to the
-  REPO ROOT — write captures to /tmp (or move them out immediately) so a later
+  REPO ROOT **and hard-refuses an absolute path outside its allowlisted roots**
+  ("File access denied"), so writing straight to /tmp is not possible: pass a
+  relative name, then MOVE the file out and re-check `git status` — so a later
   `git add` cannot sweep them into a commit.
 - GPS dynamics ARE e2e-testable: `app/e2e/live.spec.ts` (#142) drives
   deterministic fix sequences via Playwright `context.setGeolocation` +
@@ -793,6 +962,19 @@ deviate from it.
   release SHA has ever existed (main-mode runs do not save caches), so the SHA
   component alone missed. The version-in-key rationale is real and documented
   above; this run is not evidence for it.
+
+  **SECOND EXERCISE — v0.11.0 cut (2026-08-08): it did NOT fire, and the MARGIN
+  is not what decided that.** Merge-push Deploy created 12:21:46Z, tag Deploy
+  12:22:40Z — a **54-second** margin — and `cancel-in-progress` killed the merge
+  run MID-`build`, so its `deploy` job never created a Pages deployment and the
+  tag run's was the FIRST for that SHA. Compare v0.10.0's **43 seconds**, which
+  was NOT enough. A LONGER gap therefore came out safe where a shorter one did
+  not: never predict this from the gap, and do not read "fast tag push" as a
+  protection. The decisive fact is the earlier run's own `deploy` job conclusion —
+  `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq '.jobs[]|"\(.name): \(.conclusion)"'`;
+  `cancelled`/`null` means no deployment of that SHA exists (the tag run will
+  take), `success` means it does (the tag run will no-op). `smoke-probe` passing
+  on the tag run is then the positive proof it took.
 - **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
   on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
   describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
@@ -839,13 +1021,30 @@ deviate from it.
   the newest release, so there is nothing to bump.
   The fix — `continue-on-error` on the first `deploy-pages` step, then a
   `steps.deployment.outcome == 'failure'`-gated warn + wait + retry — landed
-  in PR #418. NOT YET EXERCISED as of 2026-08-07: on the first deploy after
-  that merge, attempt 1 succeeded in 11 s and all three retry steps SKIPPED.
+  in PR #418. FIRST EXERCISED 2026-08-17 (run `32049360413` — the THIRD-shape
+  503 in the next bullet, NOT a #415 timeout): attempt 1
+  failed, the `::warning::` fired, `sleep 60` ran, attempt 2 executed — and
+  attempt 2 ALSO failed, byte-identical text, different Request ID. The retry
+  is now confirmed LIVE AND CORRECTLY WIRED but still UNPROVEN AS A RESCUE;
+  keep those two claims separate. (Through 2026-08-07 it was unexercised:
+  attempt 1 succeeded in 11 s and all three retry steps SKIPPED.)
   A green deploy is therefore NOT evidence the retry works, and never will
   be — only the `::warning::` firing marks a genuine rescue. That run also
   cannot discriminate `.outcome` from `.conclusion` (see the next bullet):
   on a SUCCEEDING step both read `success`, so the correct guard and the
   broken one are indistinguishable there.
+- **Deploy — a THIRD failure shape: an immediate 503 at deployment CREATION**
+  (measured 2026-08-17, run `32049360413`, head `4976df8f`). NOT #415 and NOT
+  #398: the `deploy` job ran only **~67 s** and `createPagesDeployment` itself
+  returned `HTTP 503`, failing BEFORE a deployment object existed — so there
+  was nothing to poll, where #415 is a 10m05s-10m09s poll-ceiling timeout
+  against an ALREADY-CREATED one, and #398 reports success while silently not
+  taking. `build` succeeded;
+  `prod-environment`/`uat-environment`/`smoke-probe` all skipped via
+  `needs: deploy`. Its cause is UNESTABLISHED — do NOT borrow #415's upstream
+  root-cause finding for it. Fully superseded by the next green deploy
+  (`4976df8f` is a direct ancestor of `995b6b23`), so nothing was left stale;
+  #418's retry fired here and did NOT rescue it.
 - **GitHub Actions expression gotchas** (verified 2026-08-06 against the
   documented Contexts grammar AND `actions/runner` source, not from memory):
   a HYPHENATED step id IS valid in dot notation — `steps.deployment-retry
@@ -935,7 +1134,8 @@ deviate from it.
   `arrayBufferToImage` and the PMTiles raster path use `createObjectURL`).
 - Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
   loads them via `getArrayBuffer`/`fetch`
-  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, 6.1.0); `font-src`
+  (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, unmoved
+  through 6.3.0); `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
   Nothing in the suite yet asserts a label actually renders (#320).
 - `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
@@ -1142,9 +1342,12 @@ deviate from it.
   a word merely CONTAINING or ENDING with a keyword still matches (`postfix
   #12`, `unclose #13`), which is the safe direction for a nudge. It also
   deliberately drops the gerunds (`closing`/`fixing`/`resolving` are not
-  GitHub keywords, and the old `[a-z]*` matched them). Whether GitHub itself
-  parses the BRACKETED form is UNVERIFIED — widen the grep rather than reason
-  about it: the check is free and its failure mode is silent.
+  GitHub keywords, and the old `[a-z]*` matched them). The BRACKETED form is
+  now MEASURED and does NOT close: PR #538 merged into `develop` (the default
+  branch) carrying commit `66bdc8b` subject `fix(#54): …`, and #54 stayed open
+  with `updated_at` unmoved. Keep the grep matching it anyway — it is free, its
+  failure mode is silent, and one measurement of one form is not a licence to
+  write conventional-commit scopes around issue refs.
   Mirror check in the OTHER direction: after a merge that deliberately used
   `Refs #N` rather than a closing keyword because N's specified fix was NOT
   implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
@@ -1202,11 +1405,12 @@ deviate from it.
   settings — `planRoute()` returns `status: 'ok'` with shallow warnings at
   `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as `realmask.repro.test.ts`'s own
   DEFAULT_SETTINGS case asserts. The mechanism is #53's relaxation tier, which
-  fires on `depthRelaxationMayHelp(cause)` (`planRoute.ts:452`) whenever the
-  failure cause is mask-unreachability — **independent of
-  `depthComfortMarginM`**, which is #243's soft comfort PREFERENCE
-  (`planRoute.ts:271`, its only production call site) and does not gate
-  relaxation at all; `planRoute.ts:445` says so itself ("Unaffected by #243").
+  fires on `depthRelaxationMayHelp(cause)` (defined and called in
+  `planRoute.ts`, ~:203 / ~:506) whenever the failure cause is
+  mask-unreachability — **independent of `depthComfortMarginM`**, which is
+  #243's soft comfort PREFERENCE (`planRoute.ts`'s only production use of
+  it, ~:302) and does not gate relaxation at all; `planRoute.ts`'s own
+  "Unaffected by #243" comment (~:485) says so.
   Set `depthComfortMarginM: 0` and it still routes. The older "routes only at
   ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
   experiences; it misdirected a live production triage for two rounds
@@ -1230,6 +1434,55 @@ deviate from it.
   the unclipped barb ribbon was implemented and unit-test-pinned exactly as
   designed, yet yielded 0 barbs at harbor-approach zoom on long routes (#36) —
   the design doc itself encoded the bug.
+- **A mutation that cannot REACH the code path under test is ZERO evidence,
+  not weak evidence** (#455 session, 2026-08-09). Forcing `comfortDepthM =
+  undefined` looked like a discriminating control for a test running at
+  `depthComfortMarginM: 0` — where the code already computes `undefined`, so
+  the subject plan was bit-identical (fingerprint `6dfe0f53…` both ways). Its
+  green carried no information, yet reads as coverage to the next reader. Two
+  such probes occurred in one PR; both were replaced by perturbations that
+  provably MOVE the subject (a mask swap changing 18 legs to 16). For any
+  green mutation row, ask first whether the mutation could have changed the
+  subject at all — and beware `-t` filters, where `0 passed | 13 skipped` and
+  `1 passed | 12 skipped` look alike in a summary.
+- **`.gitignore` entries with a TRAILING SLASH match directories only**, so a
+  SYMLINK at that path is not ignored — and a committed symlink stores its
+  TARGET STRING as blob content, which is how an absolute home path reaches a
+  public repo without appearing in any source file. Found via
+  `pipeline/data-src` symlinked into a worktree; an enumeration then found
+  **12** entries with the same defect, not the 1 that was flagged. The rule now
+  sits once at the top of the file. `.github/scripts/check-no-home-paths.sh`
+  cannot catch this class (grep follows the link, the leak is in the blob) —
+  tracked as #479.
+- **A field written by one branch and read by another under a DIFFERENT name
+  typechecks and renders nothing.** #565 wrote `draftProvenance` while #563
+  read an optional `keelAssumption?: string`; `boats.ts` merged cleanly keeping
+  BOTH, so the §N.2 keel disclosure would have rendered for NO boat — where 2
+  of the 3 shipped boats need it (`hullVerified` false). CAUGHT IN REVIEW
+  2026-08-18 and never shipped: `draftProvenance` is REQUIRED on `BoatDef`
+  (`app/src/data/boats.ts`), pinned by `boats.test.ts`'s `@ts-expect-error`
+  row, and `keelAssumption` now survives only in explanatory comments. Neither
+  branch's tests could see it — one asserts the catalogue has the field, the
+  other renders its own fixture. **The hazard needs OPTIONALITY: make such a
+  field required, so a missing one is a compile error.**
+- **A fix verified AT ITS OWN SITE says nothing about siblings.** #538 removed
+  `getPlan`'s destructive write-back and proved BY RUN that `getPlan` no longer
+  writes — while `replanWithVias` and the recalc-replace still reach `savePlan`
+  with a record that has been through `migratePlan`, re-opening the same hazard
+  through a different door (resolved as a DOCUMENTED residual: those two writes
+  are intended — a replan's whole point is a new result). Both `db.test.ts` pins
+  are `getPlan`-scoped by name, so no suite run could have seen it. Ask "is the
+  HAZARD closed?", never "is the fix in place?", and enumerate the hazard's
+  SHAPE (who else writes a migrated record?) rather than the fix's location.
+  Distinct from "a fix INHERITS its bug's blind spot" below: that one is the
+  defect reproduced INSIDE the fix, this one the defect left standing BESIDE it.
+- **When a list is accused of being non-exhaustive, SCOPE it — do not hedge
+  it.** A hedge weakens a claim; naming the narrower domain makes it TRUE.
+  "Exactly what is checked, no wider" (false, omitted ~13 guards) became "the
+  identity and provenance contract specifically … not an inventory of every
+  guard", plus an explicit pointer to the structural ones. Same move fixed a
+  `v0.1.0` claim: "every UNCONDITIONALLY checked field", with the conditional
+  one named as the exception.
 - Mutation-check new tests before trusting them: an "equivalence" test
   deriving expectations from the function under test always passes (#50
   reached reviewer approval with three such false-pass holes, caught pre-merge
@@ -1271,6 +1524,27 @@ deviate from it.
   assertions were exactly inverted. Rule: for each assertion, ask whether
   any change the code could actually make would violate it — a mutation the
   codebase cannot produce proves nothing.
+- A FOURTH vacuity class, distinct from the three above: **a row whose stated
+  purpose is served by a DIFFERENT term of the same predicate.** Measured on
+  #518 (MAJOR 4): deleting `exposureDist !== null &&` from `ShallowWarning`'s
+  `showConfined` left RouteSummary + PlannerPanel **119/119 GREEN**. The row
+  that looks like it covers it ('omits the confinement sentence while the mask
+  is still loading') cannot — with `mask` null the other term is already
+  false, so it passes with the gate deleted. Ask per TERM, not per guard:
+  *which row reds if I delete THIS term alone?* Beware short-circuit order,
+  and treat a row's TITLE as a claim to verify rather than read.
+- **Reviewer-supplied verbatim text can be INVALIDATED by a sibling fix in the
+  SAME wave** — the one exception to adopting it byte-for-byte. #518 twice:
+  MINOR 5 renamed a shipped i18n string, so MAJOR 4's supplied assertion
+  searched for a string the app no longer emits (an assertion that can never
+  fail — precisely the vacuity MAJOR 4 existed to close), and MAJOR 5 found
+  the same pairing again in `changelog.d/`, which QUOTES that string and is
+  folded into the About dialog at build time and frozen into `CHANGELOG.md` at
+  the cut. Before pasting supplied text, ask what else in this wave moved what
+  it refers to; settle it by running the mutation, not by reasoning. Enumerate
+  consumers by CLAIM SHAPE (every quotation in any wording, both old noun
+  choices, the i18n key) — a token list reached 5 test literals and both dicts
+  and still missed the fragment.
 - Guards fail open on QUOTE STYLE too. Measured on PR #411:
   `planRoute.reasonDecoupling.test.ts`'s structural guard, which detects a
   gate re-coupling to a solver-derived label, matched only SINGLE-quoted
@@ -1292,6 +1566,20 @@ deviate from it.
   structural row; changing the test's own table reds two rows. Had the
   needle come from production, that second probe would have been
   unobservable.
+  SHARPER INSTANCE (#516/PR #523): the critical datum can be a numeric
+  property of a FIXTURE. The differential DDA keeper only works because
+  `TIE_META` uses a power-of-two grid step — that is what makes an exact
+  `tMaxX === tMaxY` tie constructible at all; change the step and the tie is
+  unreachable, the coverage vanishes and every test stays GREEN. Two rules
+  follow. (1) Pin the PROPERTY, not just the detection logic. (2) In a
+  multi-assertion pin, check each assertion is INDIVIDUALLY load-bearing by
+  deleting them one at a time — here `x0 === y0` alone was insufficient: it
+  survives a 256→255 perturbation, where the `Number.isInteger` and
+  `dx === dy` assertions both red.
+  Same move for an ABSENCE assertion: copy the test, change ONE input that
+  should make the thing APPEAR (`deepMask()` → `shallowMask()`), keep the
+  settle sequence identical, and confirm it renders — otherwise the green
+  may be proving the loading path rather than the zero path.
 - A mutation battery can pass for the WRONG reason when a test row carries
   MORE THAN ONE trigger for the same expected outcome. A near-miss row meant
   to pin allowlist MEMBERSHIP was written as `xargs npm install < pkgs.txt` —
@@ -1315,6 +1603,25 @@ deviate from it.
   test written to catch its absence can still be the wrong fix.** The
   discriminating experiment was to break the SPLICE while leaving the
   DERIVATION intact: correct form reds 1, suggested form reds 0.
+- **A duplicated ALGORITHM must be proven equivalent by DIFFERENTIAL
+  TESTING, never by reading.** `shallowExposureNm` re-implements `NavMask`'s
+  private `walkCells` DDA, deliberately, to keep `PlanResult` byte-identical
+  so no #282 sweep is owed. A duplicated TRAVERSAL fails as a subtly wrong
+  safety NUMBER with no signal at all.
+  Method that worked (#516/PR #523): the consumer reads cells only through
+  `mask.depthInfoM(centre)`, so a facade carrying the real `meta` plus a
+  recording `depthInfoM` captures the shipped walk's visited-cell sequence,
+  while `(mask as unknown as { walkCells }).walkCells` reaches the
+  TS-only-private original — then compare SEQUENCES over named shapes plus
+  seeded random segments. Reading the two side by side finds them "similar"
+  and misses a tie-break divergence.
+- **Two measurements of DIFFERENT subjects cannot be differenced — isolate
+  by construction.** A before/after banner-height comparison used two
+  different route plans (10 vs 5 flagged legs), so 489 px and 432 px were
+  not comparable at all. Fix: clone the live element off-screen, append the
+  removed sentence, and measure BOTH states of the SAME element (432.4 /
+  489.4) — which reproduced the earlier figure and isolated the sentence's
+  own 57.0 px cost. Applies to any A/B where the subject moved between runs.
 - CodeQL `js/xss-through-dom` fires as a FALSE POSITIVE on
   `DOMParser.parseFromString(x, 'application/xml')` — its DOM-XSS sink model is
   mime-insensitive, but an `application/xml` parse is inert (no script exec, no
@@ -1331,7 +1638,14 @@ deviate from it.
   the CUMULATIVE diff found 3 real bugs (#158/#159/#160) that every
   individual reviewer had correctly approved past. Run such a sweep after
   any multi-PR burst touching shared subsystems; expect refuters to kill
-  ~2/3 of candidates — the survivors are load-bearing.
+  ~2/3 of candidates — the survivors are load-bearing. Re-confirmed
+  2026-08-10 (8-PR train, 10 candidates → 1 survivor): TWO individually
+  correct fixes in ONE PR — narrowing a banner's gate, and deleting a
+  live-region fold justified BY that banner — silenced a screen-reader
+  announcement on the complement of the two conditions. No single hunk held
+  both; the tests were rewritten in the same PR to pin the gap as intended,
+  and two comments asserted the opposite. Fix shape: make two surfaces
+  COMPLEMENTARY, never assume one subsumes the other.
 - Enlarging map icons CULLS them below the z12 `icon-overlap` threshold —
   measure BASE vs. HEAD with `idle`-gated `queryRenderedFeatures`, never by
   eye; identical feature counts at z≥12 (`overlap:'always'`) is the signature
@@ -1339,6 +1653,24 @@ deviate from it.
   fixed by ranking `symbol-sort-key` per R1001 danger content, #200/#225;
   four residuals — z≥12 paint-order inversion, cross-tile ordering, unpinned
   tap wiring, popup anchoring — tracked in #232).
+- **A measurement can move two variables at once and read BACKWARDS** — the
+  sharper sibling of "what class of failure can this method not detect": this
+  one reports the INVERSE, confidently. A whole-viewport
+  `queryRenderedFeatures` comparison across zooms changes the sampled
+  GEOGRAPHY and the collision REGIME together — measured 64 at z10 vs 56 at
+  z13, the opposite of the true signature. Use a FIXED geographic box via
+  `map.project()`. The aperture must also not be COUPLED to the axis under
+  test: `queryRenderedFeatures` matches the COLLISION box, so the capture
+  fringe scales with icon size — pick zooms whose apertures match (#353).
+- **`boundingBox()` returns the BORDER box and never sees overflow.** A
+  tab-strip fit guard passed while `.app-tabs` overflowed 93px at 280px
+  (scrollWidth 373 vs clientWidth 280): `flex: 1` with flex's default
+  `min-width: auto` forces every button's border box to an equal viewport/4
+  width whatever its label needs, and with no `overflow: hidden` in that
+  chain a too-long label spills silently past its own box edge instead of
+  growing, wrapping or clipping — so a border-box read cannot see it. Assert
+  `scrollWidth <= clientWidth` on the container (#299;
+  `app/e2e/layout.spec.ts`'s own comment carries the full mechanism).
 - A green workflow run proves the RUN was healthy, not that the intended
   VERSION of the workflow executed: `workflow_dispatch --ref X` resolves the
   workflow FILE from X's tip. Verify by inspecting the artifact it produced,
@@ -1384,6 +1716,14 @@ deviate from it.
   enumerate `gh api
   repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
   ID explicitly — never poll by check name alone.
+  CAVEAT, measured 2026-08-14 on #518: that `head_sha=` filter returned
+  `total_count: 0` for a live run while `commits/<sha>/check-runs` saw 7 and
+  `actions/runs?branch=<branch>` showed that run carrying that exact
+  `head_sha` — most likely indexing lag soon after a push, NOT re-polled to
+  confirm it self-heals. An empty result is indistinguishable from "not
+  started", so a monitor on it burns its budget and reports a false timeout.
+  Find the run by `?branch=` or `check-runs`, THEN monitor
+  `actions/runs/<id>/jobs`. Foreground-test any poll query before arming it.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
@@ -1425,12 +1765,47 @@ deviate from it.
   a build with zero CSP metas, #223). Mutation-checked both ways: reverting
   the CSS literal to `0px` fails with `Expected: 176, Received: 0`; deleting
   the fallback entirely trips the `not.toBeNull()` guard first.
+- **When a reviewer supplies EXACT replacement text, adopt it VERBATIM.**
+  On 2026-08-13 successor defects repeatedly came from prose an implementer
+  wrote itself while trying to be thorough — comment-only waves included.
+  Reviewer-supplied text is already measured and
+  pre-approved, so copying it byte-for-byte leaves no new claim to be wrong.
+  Standing exception, and it must stay open: a supplied sentence believed
+  WRONG is reported, never silently improved.
 - A fix INHERITS its bug's blind spot. #233's hook fix drew six Blockers over
   two rounds, and all three of round 2's were the same mention-vs-invocation
   class the fix existed to close, now living inside the fix itself; #228
   produced four cascading z-index regressions, each caused by the previous
   fix. Re-run the ORIGINAL defect class against the new code, and treat a
   passing selftest table as proof only of the shapes it lists.
+  MEASURED 2026-08-10 across three fix waves on #499 and again inside #500's
+  OWN self-review: the vector is prose the agent adds UNREQUESTED while
+  trying to be thorough — an honest "unresolved" followed by a confident
+  wrong reason; an unrequested comparability caveat whose listed invariants
+  did not span the mask rebuild it crossed; one inherited word carried from
+  a DESCRIPTIVE claim into a PRESCRIPTIVE one, making a rule self-cancelling;
+  and a "correction" replacing a HALF-TRUE statement with an absolute
+  negative that was false for the other half. Four cheap remedies that
+  worked: brief an explicit ESCAPE HATCH — if a claim cannot be supported
+  from evidence read in a file during the task, DELETE it rather than hedge
+  it; require the do-not-touch list confirmed BY DIFF, not by trust;
+  announce a stopping rule and honour it (file the remaining Minors rather
+  than run another unreviewed wave); and prefer RETRIEVING the primary
+  artifact over constructing an argument — a disputed claim was settled by
+  reading the run's own JSON instead of arguing comparability.
+  Session 31 (2026-08-10, #493/PR #504) reproduced the class in wave after
+  wave of a multi-wave branch, comment-only waves included, each instance
+  sitting inside the fix for the previous one: a wrong "tightest tolerance"
+  claim;
+  then a correction that invented a DERIVATION the source explicitly denies
+  (every number in it verbatim correct — the defect was the *because*, which
+  is the form that survives a numeric check); then a `Chip`-primitive tidy-up
+  that regressed the rendered chip; then a restructure that broke an anaphor.
+  What ended it: briefing the REVIEWER at the replacement text specifically
+  and telling it to EXPECT a successor rather than assume the last fix
+  stopped it, plus an explicit minimal-diff stopping rule on the final wave —
+  whereupon the implementer caught its own unrequested explanatory clause and
+  cut it before running anything.
   Session 28 (2026-08-06/07) produced fresh instances in EVERY ONE of the
   three PRs merged that night — including one inside a **comment-only**
   wording correction, where the entire content of the change was a single
@@ -1481,14 +1856,17 @@ deviate from it.
 - MapLibre glyph loading has NO observable failure signal by design:
   `GlyphManager._downloadAndCacheRangePromise`
   (`app/node_modules/maplibre-gl/src/render/glyph_manager.ts`; every line
-  number in this bullet read against `maplibre-gl@6.1.0`) catches EVERY
+  number in this bullet re-derived against `maplibre-gl@6.3.0`, all unmoved)
+  catches EVERY
   glyph-range fetch failure and falls back unconditionally to a
   locally-drawn TinySDF glyph — the symbol is still placed, so
   `queryRenderedFeatures` returns identical counts and names whether glyphs
   are real or 100% broken, and `map.on('error')` never fires because nothing
   re-throws. The only signal is a `console.warn` matching `"Unable to load
   glyph range"` at `glyph_manager.ts:144`. Separately,
-  `_getAndCacheGlyphsPromise` (`:104-108`) takes a COMPLETELY silent
+  `_getAndCacheGlyphsPromise` (`:104-108` — the range covers the `return` at
+  :107 that IS the silent path, so do not "tighten" it to :104-106) takes a
+  COMPLETELY silent
   local-font path — no fetch, no warning — whenever the style's `glyphs` URL
   is falsy, and `glyphManager.setURL()` is fed from the style's `glyphs`
   field at two sites in `style.ts` including the style-DIFF path (`:491`)
@@ -1545,6 +1923,16 @@ deviate from it.
   within one file (6.0.0 → 6.1.0 left `ui/map.ts:539` untouched while
   `:576` became `:589` — a bulk shift would be a fresh fabrication
   replacing a stale one).
+  **Anchor a citation to the SYMBOL or literal string, never to a bare line
+  number alone** — five citations here rotted at once (#467) because a line
+  number decays on the next commit that inserts a line above it, and a
+  currency check verifies at the instant of writing, so it structurally
+  cannot catch that class. Write `App.tsx`'s `<div className="banner-area">`
+  (~:958): the name is the identity, the number is a hint. A citation to a
+  never-merged diff gets no line number at all. Validated same-day: hints
+  written at 09:00 drifted 46 lines by 13:00 when a sibling PR inserted above
+  them — the symbol anchor still found the site where a bare number would
+  have been flatly wrong.
 - A Playwright `expect.poll` predicate that returns a BOOLEAN discards the
   diagnostic. `return deg >= 330 || deg <= 30` + `.toBe(true)` can only report
   `Expected: true / Received: false` plus a timeout — and a Playwright timeout
@@ -1636,6 +2024,29 @@ deviate from it.
   derived from an unverified claim about the code is the enumerate-don't-patch
   failure relocated one level up, into the brief. Same reason issue texts
   are not ground truth for states they do not describe.
+- **A verification grep scoped to TOKENS checks only what its token list
+  names — enumerate by CLAIM SHAPE.** PR #513's wave-5 twin check grepped
+  `CBLSUB|PIPSOL|item 3.2|item 2.3|§3.4`, a list written into the BRIEF,
+  and passed clean while an identical false attribution sat on `item 2.6`.
+  It was NOT blind to the text: measured in the wave-5 tree
+  (`git show d880693^:app/src/lib/seamarkGlyphs.ts`), the missed `item 2.6`
+  shares a LINE with the grepped `item 2.3`, so the grep printed the defect
+  in its own output. It was blind to the CLAIM, because only the listed
+  tokens were interrogated. The next review found it (2026-08-13). Wave 6
+  enumerated every `item[ -]?[0-9]+\.[0-9]+` whatever the number, and every
+  object-class claim whatever the class, and came back clean. A token list
+  is a hypothesis about where the defect lives; a claim-shape pattern tests
+  the property itself. Same failure as the delegation corollary above, one
+  level further in: scoping a search from what you already know — and note
+  that the output being on screen is no defence.
+- **State a verified fact as a past-tense EVENT, never as a current-state
+  claim.** "re-verified against `maplibre-gl@6.2.0`" survives the next bump;
+  "…, the version `app/package-lock.json` pins" goes FALSE at it — and a
+  currency check structurally cannot catch that, because it verified true at
+  the instant it was written. Bit TWICE in one lineage (2026-08-10): the
+  original text, and again inside the PR that existed to fix it, where five
+  of six moved markers got the immune phrasing and the one line the PR was
+  ABOUT kept the decaying one.
 - **IMAGES rot the same way prose does, and the #132 sweep must check them.**
   At the v0.10.0 cut `docs/screenshots/plan-route.png` still showed the
   pre-#408/#410 legs table, contradicting two of the three user-visible changes
@@ -1648,6 +2059,40 @@ deviate from it.
   hardcoded to the PRODUCTION url can never capture a release candidate, since
   at cut time production IS by definition the previous release
   (`SC_SCREENSHOT_URL` now overrides it).
+  **SECOND, INDEPENDENT requirement (maintainer feedback at the v0.11.0 cut):
+  a docs image must REPRESENT THE PRODUCT, not merely be current.** That cut's
+  recapture was technically accurate and shipped a route that was **81% MOTOR** —
+  and this app is a time-optimal SAILING router, so it showcased the one part
+  that is not the differentiator. Freshness is necessary, not sufficient. A `★`
+  recommendation does NOT imply sail-dominance — MEASURED the same day, a 13:00
+  departure TIED at 72% motor while an 18:00 one decided `Faster: Genoa ★` at
+  *81%* motor — so check the sail/motor split explicitly rather than inferring it
+  from the `★`. Live wind can make a sail-dominant capture impossible on a given
+  day (2026-08-08: Flensburg→Sønderborg 13% sail; Maasholm→Bagenkop returns
+  no-route at the default 3.0 m), which is why the deterministic `?windFixture=`
+  path is the reproducible alternative — at the cost of a UNIFORM field, i.e.
+  identical wind barbs, a visible tell of synthetic data in a hero image. Open
+  as #459.
+- **Repeated identical readings can be ONE stale reading — agreement is not
+  convergence until each run is confirmed DISTINCT.** Probing six
+  route/departure combinations for a screenshot (v0.11.0 cut) returned
+  "100% sail, rigs tied" every time, which read as a robust finding; it was the
+  SAME cached plan six times. TWO silent failures stacked: a DOM helper matched
+  `[role="region"][aria-label="Origin"]`, which never matches — but NOT for the
+  mechanism first recorded here, which was fabricated: those sections carry
+  `aria-label` DIRECTLY (`PlannerPanel.tsx`'s Origin/Destination
+  `<section aria-label={…}>`, ~:376 / ~:417; `aria-labelledby` has never
+  appeared in that file's history). `[role="region"]` is a CSS ATTRIBUTE
+  selector needing a literal `role` attribute, which a bare `<section>` never
+  has, so only `getByRole('region', { name })` resolves them and the CSS form
+  silently does not — so the route never actually changed;
+  and Open-Meteo began answering **429** under the probe loop, so the re-plans
+  failed while the app kept DISPLAYING the previous result. Neither failure
+  surfaced as an error in the reading. The tell was arithmetic — an 8.2 nm
+  "Maasholm→Bagenkop", a Kiel-Bight crossing — and the ground truth is the saved-
+  plan LIST ENTRY, which names the route (`Flensburg → Sønderborg …`); the summary
+  card does not name it at all. Verify an artifact's IDENTITY, not only its
+  numbers, before treating repeated agreement as evidence.
 - **A FIFTH way, adjacent to SAME-PR INVALIDATION: SIBLING-MERGE
   invalidation.** #423's CLAUDE.md prose was accurate when authored
   (2026-08-06T22:06:46Z) and was made FALSE by #419 merging 9 h 19 min later
@@ -1666,6 +2111,42 @@ deviate from it.
   repo's own timestamps and would have taught future sessions to distrust the
   control that worked. A claim about the RECORD, stated from memory instead
   of re-read from the record, is the same class as a claim about the code.
+- **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
+  PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
+  lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
+  DERSELBEN Tiefendaten" while its referent moved into a paragraph rendered
+  BELOW it — so the headline sentence of a safety warning pointed at
+  something the reader had not seen yet. Every string was individually
+  unchanged and individually correct; only the ORDER was wrong, which no
+  compiler, no test and no hunk-by-hunk review can see, and the wave's own
+  comment ("verbatim … only re-sequenced — no new wording") read as a safety
+  guarantee and was not one. "That same", "this", "the above", "derselben"
+  are bindings to POSITION. After any re-sequencing, check every referring
+  expression, and distinguish DEICTIC references ("this route", "diese
+  Warnung" — to the whole region, valid from any position) from ANAPHORIC
+  ones pointing INTO another part; a definite description whose referent
+  appears only in a LATER part is the same defect wearing different clothes.
+  RELOCATING a claim RE-ENDORSES it: a reviewer reading the diff checks that
+  nothing was LOST and never re-asks whether the moved claim was ever TRUE.
+  A "~45% of cells" figure survived a move with the wrong denominator — the
+  #455 spike says ~45% of WATER cells on the ENCODED basis (1,192,923 of
+  2,646,047), and water is only about HALF of the mask's 5,280,000 cells
+  (2,646,047, i.e. 50.1%), so the two denominators differ by roughly 2x; that
+  same spike had already rejected draft copy for mixing bases ("the right
+  response is a stated basis, not the largest number"). Verify a moved claim
+  as if you were writing it fresh.
+- **A capture's EXISTENCE is not evidence of its CONTENT** (PR #504). A
+  browser pass reported "all 6 present" for screenshots whose subject was
+  scrolled out of frame: two showed no banner at all, and the chip the PR
+  existed to add appeared in ZERO of them — the results panel is its own
+  `overflow:auto` container (not part of outer page scroll) and the legs
+  table scrolls horizontally, so a viewport capture misses both. The file
+  list was verified; the frame was not. Scroll the target into view before
+  shooting, prefer full-page captures, and RE-OPEN every file to confirm the
+  subject is actually in it. Sibling of "what class of failure can this
+  method not detect?" — here the answer was "anything outside the viewport".
+  Same pass also measured the honest narrow-viewport frame: raising the
+  height to make a banner fit is not the 390x844 experience a user gets.
 - A FABRICATED citation is worse than a wrong number — it launders the claim
   as verified and stops the next reader from checking, compounding the
   CITATION HALO risk above. Two shipped in one PR this session: a comment
@@ -1760,6 +2241,48 @@ deviate from it.
   stays connected for any user who lowers the gate). Licensed by a fidelity
   control the reviewer reproduced INDEPENDENTLY with their own
   reimplementation: 0 of 5,280,000 bytes differ.
+- **`TOLERANCE_M` = 0.9 is a STRUCTURAL bound, not a tuning knob** (#455, PR
+  #476, `docs/spikes/455-depth-mask-optimism.md`). `build_mask.py` takes
+  bilinear over the conservative `Resampling.max` only where they agree within
+  T, so `depth_blend <= depth_max + T` and a cell navigable at gate G has
+  conservative depth `>= G - T` — at the 3.0 m default that is exactly
+  `BOAT_DRAFT_M`. **That is the MASK at the REQUESTED gate, not what the app
+  serves**: #53 relaxation lowers the EFFECTIVE gate and fires at DEFAULT
+  settings — `realmask.repro.test.ts` pins Flensburg→Marstal at
+  `requestedDepthM 3.0` / `usedDepthM ~2.3` (reproduced in a live browser
+  2026-08-10), so the real floor there is **1.4 m under a 2.1 m hull**. Same
+  shape as the "routes only at <= 2.3 m" defect: true of the GATE, misleading
+  about the user. Navigable cells reading below the hull: **924 -> 0**;
+  gate-crossers 14,715 -> 10,746. **The wall is T <= 0.87** (Marstal
+  disconnects, reconnects from 0.88) — NOT the 0.8 a 0.1-sampled table
+  suggests, so 0.85 looks safe and strands Marstal permanently (it needs 1.8 m
+  against the 2.1 m draft floor). Aabenraa was NEVER the blocker: that claim
+  reproduces only under a fixed-snap convention the app does not use —
+  `planRoute.ts` re-snaps 46.3 m onto a conservative-3.0 m cell, losing zero
+  pairs. Gate-conditional: the floor degrades to 1.3 m at the UI's 2.2 m
+  minimum. ~10,746 crossers remain, so #455 stays OPEN.
+- **The cautious floor is now DISCLOSED at the leg, not fixed** (#493, PR #504,
+  shipped 2026-08-10). Because the mask is built so `depth_blend <= depth_max
+  + T`, the inequality runs BACKWARDS too — `conservative >= shipped - T` per
+  cell, and a min over the same swept cells preserves it, so
+  `leg.shallow.minDepthM - MASK_TOLERANCE_M` is a SOUND lower bound derivable
+  from data already on disk. `app/src/lib/mask.ts` :: `cautiousDepthLowerBoundM`
+  floors it to 0.1 m (never rounds — a depth figure must not read deeper than
+  provable) and clamps at 0; `MASK_TOLERANCE_M` is the TS twin of
+  `build_mask.py`'s `TOLERANCE_M`, pinned against it by
+  `app/src/test/maskTolerance.test.ts` (no compiler spans Python and
+  TypeScript). Surfaced in the legs-table cautious chip and in the
+  `ShallowWarning` banner, which is ONE `role="alert"` container with
+  lead/detail/caveat children — the lead carries the floor and, when
+  `usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M`, that it falls below the
+  draft. That gate is UNCONDITIONALLY TRUE at the 3.0 m default (relaxation
+  searches `[BOAT_DRAFT_M, requestedDepthM)`, so `usedDepthM <= 2.9`); it only
+  discriminates above a 3.0 m gate — which is why the two-tier banner was
+  folded into one. DELIBERATELY presentation-only: no field was added to
+  `ShallowInfo`/`Leg.shallow`, so `PlanResult` stays byte-identical, the
+  `app/sweep/` baseline stays comparable and NO #282 sweep is owed. The
+  measured conservative reading (1.80 m on Flensburg->Marstal) still needs
+  shipped data; the bound renders 1.40 m there — pessimistic, never optimistic.
 - **Buoyed fairways are DECLINED as a routing input** (#244,
   `docs/spikes/244-buoyed-fairways.md`). `seamark:type=fairway` does not
   exist in-region at all; the 258 `waterway=fairway` ways that do exist
@@ -1876,9 +2399,9 @@ deviate from it.
   NAVIGABLE alternative: the 32.9% "detour" that opened #264 was real distance
   measured against a chord that crossed LAND.
 - **No-route `reason` is a CONTROL INPUT, not just a status label** (#282,
-  REOPENED — PR #411's merge auto-closed it via an earlier commit's stray
-  keyword even though the PR body itself used `Refs`; do not let it be
-  closed again on this evidence). PR #411 NARROWED the coupling, it did not
+  CLOSED — it was auto-closed by an earlier commit's stray keyword despite the
+  PR body using `Refs`; whether to reopen is a maintainer call tracked in
+  #473, and the rule below holds either way). PR #411 NARROWED the coupling, it did not
   remove it: the two retry gates — named predicates `comfortRetryMayHelp` /
   `depthRelaxationMayHelp` — now branch on an INTERNAL `SolveFailureCause`
   (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded'`), deliberately
@@ -1888,8 +2411,9 @@ deviate from it.
   is now safe — free to reword or re-granularise with zero routing effect. A
   CLASSIFICATION change is NOT: the cause is still DERIVED from
   `SolveResult.reason`, the only failure signal `solve()` exposes. Proven,
-  not theoretical: PR #279's pre-revert change (`isochrone.ts:530-531`)
-  flipped `'unreachable'` → `'calm-motor-off'`, which now maps to cause
+  not theoretical: PR #279's pre-revert change in `isochrone.ts` (a
+  never-merged diff — no live line to cite) flipped `'unreachable'` →
+  `'calm-motor-off'`, which now maps to cause
   `'calm-without-motor'`, which `comfortRetryMayHelp` still rejects — tier 2
   is still suppressed, and the same slower route (the motivating incident
   behind the reverted, never-merged reclassification patch — Bagenkop,
@@ -2106,6 +2630,19 @@ deviate from it.
   `--selftest`. It fails CLOSED where the old inline form emitted nothing:
   empty/malformed/absent stdin, a missing or failing `jq`, and an unavailable
   or non-repo `git` (verified across 15 constructed failure inputs).
+- **The Bash arm ADVISES now; only `docs/superpowers*` still ASKS** (#478,
+  2026-08-09). `app/public/{data,icons,brand}`, `THIRD-PARTY-NOTICES.txt` and
+  `.pmtiles` emit a non-blocking `additionalContext` advisory naming the
+  matched path and the generator that rebuilds it. It deliberately OMITS
+  `permissionDecision`: `"allow"` would BYPASS the user's own permission rules
+  rather than merely drop the hook's prompt. Rationale, measured: 1,115 asks
+  over 28,923 commands, only 53.3% genuinely write-capable — the maintainer
+  clicked through everything, so the guard cost attention and bought nothing.
+  The spec check is a SEPARATE pass, not a classification of the first matched
+  path — `PROTECTED_PATHS` is data-first, so a command naming BOTH would
+  otherwise downgrade a spec write. Guarantee holds for the LITERAL spelling
+  only; obscured spellings (glob, `//`, quote-splitting, brace expansion) fall
+  to the pre-existing silent-allow class, unchanged by that PR.
 - **A read-only EXEMPTION must be CONJUNCTIVE, and its allowlist rests on a
   named precondition** (#388, PR #387). `.claude/hooks/artifact-guard.sh`
   used to `ask` on any Bash command merely NAMING a protected path,
@@ -2153,20 +2690,24 @@ deviate from it.
   SUBSUMPTION-INVERTED — `docs/superpowers/specs`
   is a strict superstring of `docs/superpowers`, so the parent subsumes the
   child and removing the parent deletes the entry doing all the work. Adding
-  `cd` to `READONLY_VERBS` and segmenting the command on `;`/`&&`/newline
-  each removed EXACTLY ZERO prompts from a 165-command corpus of real
-  observed commands, and `cd` is actively harmful: the `ask` on `cd
-  app/public/data` is the ONLY visible moment of the two-call bypass the
-  hook's own design names as its one LIVE hole (Bash cwd persists across
-  calls). The general trap, worth more than the specific verdicts: **a
+  `cd` to `READONLY_VERBS` and segmenting on `;`/`&&`/newline were
+  RE-MEASURED 2026-08-09 over **28,923** distinct real commands (superseding
+  the earlier 165-command figure): the verdicts stand, the magnitudes were
+  wrong. `cd` removes ZERO of 1,115 asks; `;`-only and newline-only ZERO;
+  `&&`-only **2**. 89.5% of asks begin with a verb no allowlist widening can
+  reach (`cd` 286, `grep` 162, `git` 128, `python3` 65, `sed` 59), so this
+  whole class of fix has a small ceiling by construction. Segmentation is
+  additionally UNSAFE: it runs before the char check, so a 343 KB heredoc
+  timed the hook out against `settings.json`'s 5 s cap into a SILENT ALLOW —
+  a killed guard and a satisfied one emit the same nothing. The general trap, worth more than the specific verdicts: **a
   control that looks broader than its stated justification usually has a
   SECOND justification you have not found** — here the parent-path entry is
   not justified by the spec-edit rule at all, but by containment against
   commands that destroy `specs/` WITHOUT NAMING IT (#309's M4 fix). Look for
-  the second reason before narrowing anything. The real remaining gap runs
-  the other way: the Edit/Write arm hardcodes `*docs/superpowers/specs/*`,
-  so `plans/` has no ask-gate at all (#405) — WIDEN that arm, never narrow
-  the Bash one.
+  the second reason before narrowing anything. The `plans/` gap that bullet
+  used to name is CLOSED — #405/#421/#309 all shipped and the Edit/Write arm
+  now has four cases (`specs/` ask, `plans/` ask, a `docs/superpowers/*`
+  catch-all ask, and the `icon.svg` allow).
 - A NEW concrete guard-asymmetry instance (#368, PR #382 review): a value the
   FIRST PAINT depends on must be written in `useLayoutEffect`, not
   `useEffect` — `useEffect` fires AFTER paint, leaving a real window on a
@@ -2264,7 +2805,14 @@ deviate from it.
   fallback.
 - **PIN THE BASE BRANCH in every agent brief**, and require the agent to
   report its merge-base as part of its deliverable — `isolation: worktree`
-  does NOT reliably inherit the session's checked-out branch. MEASURED
+  reliably comes up on the WRONG branch, not merely sometimes: **10 of 10**
+  worktree agents on 2026-08-18 landed on the then-current `main` — the
+  `v0.11.0` tag commit — **256 to 313** commits behind `develop` across that
+  day. (An earlier revision here said "98 to 316", which spliced two `develop`
+  tips NINE DAYS apart: 98 was its 2026-08-10 state and 316 its 2026-08-19
+  one. Name the ref, not the SHA — a bare SHA reads as durable and is not.)
+  Every one caught it only because the brief demanded the merge-base.
+  Fix with `git fetch` then `git switch -c <branch> origin/develop`. MEASURED
   (2026-08-06, PR #418): an implementer branched off `main`/v0.9.0
   (`c4e139d`) instead of `develop` and edited a `.github/workflows/deploy.yml`
   177 lines stale that lacked PR #403's entire #398 probe. **Every per-diff
@@ -2360,14 +2908,23 @@ deviate from it.
   (untracked `node_modules` blocks `git worktree remove`; `rm -rf` can be
   permission-blocked in the main session) — brief reviewers to remove their
   own worktree or verify without a local install.
+  A reviewer that will MUTATION-CHECK needs its own worktree or a `/tmp` copy,
+  decided AT BRIEFING time: it must write somewhere, and its measuring is why
+  its findings are worth having. Measured 2026-08-14 on #518 — a reviewer's
+  probe wrote into the shared tree while an implementer was staging in it; a
+  write-then-revert leaves NO trace in `git status` (only mtimes), so never
+  assert a tree is exclusively an agent's own unless you created it for them,
+  and tell workers to diff-before-stage regardless of any such assurance.
 - Spec edits (`docs/superpowers/specs/`) go through the main session only (the
   ask-gate hook must prompt the user) — never through subagents. The hook DOES
   match Bash appends: `bash_hits_protected_path` substring-matches the RAW
-  command, so `cat >>` and heredoc forms ASK (MEASURED 2026-08-06 against
-  `origin/develop`). `>`/`<` are in `WRITE_CAPABLE_CHARS`, so a redirect
-  DISQUALIFIES the narrow read-only exemption rather than bypassing the
-  path-presence check — pinned by the hook's own `check ask "> redirect"` and
-  `"heredoc redirect"` selftest rows. An earlier claim here that appends
+  command, so `cat >>` and heredoc forms naming a SPEC path ASK (the same
+  shapes on a build-output path only ADVISE since #478). `>`/`<` are in
+  `WRITE_CAPABLE_CHARS`, so a redirect DISQUALIFIES the narrow read-only
+  exemption rather than bypassing the path-presence check — pinned by the
+  hook's own `check hit "> redirect"` / `"heredoc redirect"` rows (renamed
+  from `ask` in #478; they name a build-output path, so their DECISION is now
+  advisory — the disqualification they pin is unchanged). An earlier claim here that appends
   "silently skip the user prompt" was FALSE, and false in the DANGEROUS
   direction (it advertised a bypass that does not exist, in the one bullet
   about protecting user-approved specs). The real residuals are indirection a
@@ -2386,6 +2943,11 @@ deviate from it.
   in CONTRIBUTING.md (#185).
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
+- UNDRAFTING a PR is GraphQL-only: `gh api repos/…/pulls/N --method PATCH -f
+  draft=false` SILENTLY NO-OPS (returns `draft=true`, exit 0, no error).
+  Use `markPullRequestReadyForReview` with the PR's node id. General rule, of
+  which this and the Pages same-SHA no-op are instances: after any mutating
+  `gh` call, assert the NEW STATE in the same breath — never the exit code.
 - `gh api graphql -F body=@file` posts the FILE as the body of a form field
   named `body` (not the GraphQL `query`), so it fails with "A query attribute
   must be specified" — that half of the old note here was right. But
@@ -2413,7 +2975,7 @@ deviate from it.
   cwd: spawning an `isolation: worktree` agent fails with "Cannot create agent
   worktree: not in a git repository" (worktree creation resolves from cwd), and
   `git worktree remove <abs-path>` fails "not a git repository" even though the
-  path is absolute. `cd /home/pkuhn/sail_command` before any worktree or merge
+  path is absolute. `cd <repo>` before any worktree or merge
   operation; a heredoc-heavy `python3 - <<PY` block earlier in the session is
   enough to leave you somewhere else.
   Quieter variant: with `--repo` the MERGE succeeds but the

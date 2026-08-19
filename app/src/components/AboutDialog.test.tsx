@@ -5,6 +5,15 @@ import { I18nProvider } from '../i18n';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import AboutDialog from './AboutDialog';
+import { boatById } from '../data/boats';
+import { depthMaskCaveatVars } from '../lib/depthDisclosure';
+
+// #539: the dialog's mask-tolerance caveat is now parameterised by the
+// SELECTED boat (spec J OQ-2), so every render site must supply one. The
+// Salona 45 keeps these tests describing the same boat they always did; the
+// per-boat arithmetic itself is pinned against HAND-WRITTEN literals for
+// every catalogue boat in test/maskTolerance.test.ts, not here.
+const TEST_BOAT = boatById('salona-45');
 
 // Standalone in every other test (open/onClose are just props), but focus
 // return specifically needs a real "trigger" element to hand focus back to
@@ -17,7 +26,7 @@ function DialogWithTrigger() {
       <button type="button" onClick={() => setOpen(true)}>
         Open
       </button>
-      <AboutDialog open={open} onClose={() => setOpen(false)} />
+      <AboutDialog boat={TEST_BOAT} open={open} onClose={() => setOpen(false)} />
     </>
   );
 }
@@ -59,7 +68,7 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', fetchMock());
     render(
       <I18nProvider>
-        <AboutDialog open={false} onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open={false} onClose={() => {}} />
       </I18nProvider>,
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -69,7 +78,7 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', fetchMock());
     render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
@@ -84,7 +93,7 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', fetchMock());
     render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
@@ -96,7 +105,7 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', fetchMock());
     render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
@@ -114,7 +123,7 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', fetchMock());
     render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
@@ -130,12 +139,40 @@ describe('AboutDialog', () => {
     expect(screen.getByText(de['about.changelog.langNote'])).toBeInTheDocument();
   });
 
+  it('shows the depth-mask tolerance caveat alongside the polars caveat (#455)', async () => {
+    vi.stubGlobal('fetch', fetchMock());
+    render(
+      <I18nProvider>
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
+      </I18nProvider>,
+    );
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(de['about.caveats.polars'])).toBeInTheDocument();
+    // #539: the dict entry is a TEMPLATE now, so a bare getByText(de[...])
+    // would search for a string containing literal "{gate}" and never match.
+    // Interpolating with the same helper the component uses keeps this row
+    // doing what it always did — proving the caveat reached the DOM — while
+    // the numbers themselves are pinned elsewhere.
+    const vars = depthMaskCaveatVars(TEST_BOAT, 'de');
+    let expected: string = de['about.caveats.depthMask'];
+    for (const [k, v] of Object.entries(vars)) expected = expected.replaceAll(`{${k}}`, v);
+    expect(screen.getByText(expected)).toBeInTheDocument();
+    // Dict-independence pin, this repo's standing requirement for a
+    // getByText(dict[...]) assertion (#504 review round 2): these literals
+    // are typed HERE, so the row cannot shrink along with the dict, and they
+    // are the SALONA's — an Elan would read 2,8 / 1,9 / 1,0.
+    expect(expected).toContain('Standard-Sicherheitstiefe für die Salona 45 beträgt 3,0 m');
+    expect(expected).toContain('Tiefgang von 2,1 m');
+    expect(expected).toContain('nur 1,2 m');
+  });
+
   it('calls onClose when the close button is clicked', async () => {
     vi.stubGlobal('fetch', fetchMock());
     const onClose = vi.fn();
     render(
       <I18nProvider>
-        <AboutDialog open onClose={onClose} />
+        <AboutDialog boat={TEST_BOAT} open onClose={onClose} />
       </I18nProvider>,
     );
 
@@ -148,7 +185,7 @@ describe('AboutDialog', () => {
     const onClose = vi.fn();
     const { rerender } = render(
       <I18nProvider>
-        <AboutDialog open onClose={onClose} />
+        <AboutDialog boat={TEST_BOAT} open onClose={onClose} />
       </I18nProvider>,
     );
     await screen.findByRole('dialog');
@@ -158,7 +195,7 @@ describe('AboutDialog', () => {
 
     rerender(
       <I18nProvider>
-        <AboutDialog open={false} onClose={onClose} />
+        <AboutDialog boat={TEST_BOAT} open={false} onClose={onClose} />
       </I18nProvider>,
     );
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -169,7 +206,7 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', fetchMock());
     const { container } = render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
@@ -188,7 +225,7 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', mock);
     render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
@@ -209,7 +246,7 @@ describe('AboutDialog', () => {
     );
     render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
@@ -222,7 +259,7 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', fetchMock('not-an-array'));
     render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
@@ -259,12 +296,12 @@ describe('AboutDialog', () => {
     vi.stubGlobal('fetch', mock);
     render(
       <I18nProvider>
-        <AboutDialog open onClose={() => {}} />
+        <AboutDialog boat={TEST_BOAT} open onClose={() => {}} />
       </I18nProvider>,
     );
 
     await waitFor(() => expect(mock).toHaveBeenCalled());
-    // Never mask.bin, polar-*.json, or harbors.json — those are
+    // Never mask.bin, polars/*.json, or harbors.json — those are
     // loadRoutingAssets()'s much bigger bundle, deliberately not triggered
     // just to open About.
     for (const call of mock.mock.calls) {

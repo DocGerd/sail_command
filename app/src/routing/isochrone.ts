@@ -2,6 +2,7 @@ import type { Board, Leg, LegKind, LatLon, ManeuverKind, Settings } from '../typ
 import type { Polar } from '../lib/polar';
 import type { WindField } from '../lib/wind';
 import type { NavMask } from '../lib/mask';
+import { gateFloorM, uniformGate, type DepthGate } from '../lib/depthGate';
 import { destinationPoint, haversineNm, initialBearingDeg, normalizeDeg180 } from '../lib/geo';
 import { boardForCandidate, classifyManeuver } from './maneuver';
 
@@ -32,6 +33,16 @@ export interface SolveParams {
    * preference" otherwise rather than dividing by a non-positive span).
    */
   comfortDepthM?: number;
+  /**
+   * #452 P3 per-cell depth gate. ABSENT ⇒ `uniformGate(settings.safetyDepthM)`
+   * ⇒ byte-identical to a pre-#452 solve, the same optional-means-unchanged
+   * idiom `comfortDepthM`, `maxFrontier` and `deadline` already use here.
+   *
+   * When present it REPLACES `settings.safetyDepthM` as the navigability gate
+   * for every edge this solve considers — which is what lets `planRoute.ts`
+   * stop overwriting `Settings.safetyDepthM` with a relaxed value.
+   */
+  gate?: DepthGate;
   /**
    * #432 plan-level wall-clock budget. ABSENT ⇒ unbudgeted ⇒ byte-identical
    * to a pre-#432 solve (the check below is the only new statement in the
@@ -203,19 +214,29 @@ export function edgeFactor(
   mask: NavMask,
   a: LatLon,
   b: LatLon,
-  gateM: number,
+  gate: DepthGate,
   comfortDepthM: number | undefined,
 ): number | null {
-  if (comfortDepthM === undefined || comfortDepthM <= gateM) {
-    return mask.segmentNavigable(a, b, gateM) ? 1 : null;
+  // #452: the ramp is a SEGMENT-level scalar, so it anchors at the most
+  // permissive gate anywhere in the field. For a UniformGate that is the gate
+  // itself, which is what keeps every pre-#452 call byte-identical; for an
+  // ApproachGate it is `minGateM` — this plan's own `usedDepthM`, the slot
+  // the pre-#452 relaxed tiers filled by overwriting `settings.safetyDepthM`.
+  // Anchoring it anywhere else would be the
+  // ramp RE-ANCHOR that spike §3.2 graft 6 requires to be a separate PR.
+  const floorM = gateFloorM(gate);
+  if (comfortDepthM === undefined || comfortDepthM <= floorM) {
+    return mask.segmentNavigable(a, b, gate) ? 1 : null;
   }
-  const clearanceM = mask.segmentClearanceM(a, b, gateM);
+  const clearanceM = mask.segmentClearanceM(a, b, gate);
   if (clearanceM === null) return null; // === segmentNavigable === false
   if (clearanceM >= comfortDepthM) return 1;
-  // clearanceM is in [gateM, comfortDepthM) here (segmentClearanceM only
-  // returns depths >= gateM), so shortfall lands in (0, 1] and the ramp needs
-  // no clamp.
-  const shortfall = (comfortDepthM - clearanceM) / (comfortDepthM - gateM);
+  // clearanceM is >= every touched cell's own gate, and every cell's gate is
+  // >= floorM, so clearanceM >= floorM and shortfall lands in (0, 1]. The
+  // clamp is therefore INERT — it is defence against a future field whose
+  // floor stops bounding the clearance, not a live correction, and no
+  // reachable change to today's code makes it fire (so nothing tests it).
+  const shortfall = Math.min(1, (comfortDepthM - clearanceM) / (comfortDepthM - floorM));
   return 1 - DEPTH_DERATE_MAX * shortfall;
 }
 
@@ -288,6 +309,10 @@ export function solve(p: SolveParams): SolveResult {
   const maxFrontier = p.maxFrontier ?? MAX_FRONTIER;
   const horizonMs = wind.horizonMs();
   const comfortDepthM = p.comfortDepthM;
+  // #452: resolved ONCE per solve and passed down by reference. `edgeFactor`
+  // runs per candidate edge — millions of times per plan — so a gate object
+  // must never be constructed inside it or any loop body.
+  const gate = p.gate ?? uniformGate(settings.safetyDepthM);
   // #254: the sail-speed floor. A heading motors when sailing it would be more
   // than settings.sailPreferenceKn slower than motoring. motorThresholdKn is the
   // seaworthiness floor underneath, so a small engine can never be handed legs
@@ -436,7 +461,7 @@ export function solve(p: SolveParams): SolveResult {
             mask,
             from,
             destination,
-            settings.safetyDepthM,
+            gate,
             comfortDepthM,
           );
           if (directFactor !== null) {
@@ -484,7 +509,7 @@ export function solve(p: SolveParams): SolveResult {
 
         let stepMs = dtS * 1000;
         let end = destinationPoint(from, headingDeg, distNm);
-        const fullFactor = edgeFactor(mask, from, end, settings.safetyDepthM, comfortDepthM);
+        const fullFactor = edgeFactor(mask, from, end, gate, comfortDepthM);
         let factor: number;
         if (fullFactor !== null) {
           factor = fullFactor;
@@ -505,7 +530,7 @@ export function solve(p: SolveParams): SolveResult {
             const d = (speed * subEffS) / 3600;
             if (d <= 0) break; // maneuver penalty swallows this and every shorter substep
             const e = destinationPoint(from, headingDeg, d);
-            const subFactor = edgeFactor(mask, from, e, settings.safetyDepthM, comfortDepthM);
+            const subFactor = edgeFactor(mask, from, e, gate, comfortDepthM);
             if (subFactor !== null) {
               end = e;
               stepMs = subDtS * 1000;
@@ -557,7 +582,7 @@ export function solve(p: SolveParams): SolveResult {
               mask,
               end,
               destination,
-              settings.safetyDepthM,
+              gate,
               comfortDepthM,
             );
             if (captureFactor !== null) {

@@ -42,12 +42,20 @@ function fetchMock(overrides: Partial<Record<string, () => Response>> = {}) {
     if (overrides.maskBin && url.includes('mask.bin')) return Promise.resolve(overrides.maskBin());
     if (url.includes('mask.bin'))
       return Promise.resolve(new Response(maskArrayBuffer(), { status: 200 }));
-    if (overrides.polarGenoa && url.includes('polar-genoa.json'))
+    if (overrides.polarGenoa && url.includes('salona-45-genoa.json'))
       return Promise.resolve(overrides.polarGenoa());
-    if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-    if (overrides.polarFock && url.includes('polar-fock.json'))
+    if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+    if (overrides.polarFock && url.includes('salona-45-fock.json'))
       return Promise.resolve(overrides.polarFock());
-    if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    // #54 spec N: the two tier-C fleet boats' four tables. Served generically
+    // and AFTER the salona-45 branches above, so the reference boat's two
+    // overridable fixtures keep their identity (the assertions below still
+    // distinguish TEST_POLAR from FOCK by value) while a new catalogue boat
+    // does not have to be enumerated here to keep the suite running. What a
+    // new boat DOES have to do is appear in the hand-written key list below —
+    // that list is the guard, this branch is only plumbing.
+    if (url.includes('/data/polars/')) return Promise.resolve(jsonResponse(TEST_POLAR));
     if (overrides.harbors && url.includes('harbors.json'))
       return Promise.resolve(overrides.harbors());
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
@@ -57,6 +65,15 @@ function fetchMock(overrides: Partial<Record<string, () => Response>> = {}) {
     throw new Error(`unexpected fetch: ${url}`);
   });
 }
+
+// One fetch per shipped asset: mask.meta.json + mask.bin + harbors.json +
+// seamarks.json, plus one per catalogue boat x sail. #54 spec N took the
+// catalogue from one boat to three, so the polar half went 2 -> 6 and this
+// went 6 -> 10. HAND-WRITTEN, deliberately not derived from BOATS: these three
+// assertions exist to catch a DUPLICATE or extra fetch (the module-cache rows
+// below are the point), and a count computed from the same array the fetch
+// manifest is built from could never fail (#388).
+const EXPECTED_FETCHES = 10;
 
 describe('loadRoutingAssets', () => {
   beforeEach(() => {
@@ -78,12 +95,25 @@ describe('loadRoutingAssets', () => {
     const assets = await loadRoutingAssets();
 
     expect(assets.maskMeta).toEqual(TEST_MASK_META);
-    expect(assets.polarGenoa).toEqual(TEST_POLAR);
-    expect(assets.polarFock).toEqual(FOCK);
+    // #54: one key per catalogue boat x sail, `${boatId}/${sailId}`. The
+    // expected list is HAND-WRITTEN, never derived from BOATS — deriving
+    // needle and haystack from the same source is the #388 tautology, and
+    // this row's whole job is to notice when the catalogue and the fetch
+    // manifest stop agreeing.
+    expect(Object.keys(assets.polars).sort()).toEqual([
+      'elan-444-piranja/fock',
+      'elan-444-piranja/genoa',
+      'salona-44-speedy-go/fock',
+      'salona-44-speedy-go/genoa',
+      'salona-45/fock',
+      'salona-45/genoa',
+    ]);
+    expect(assets.polars['salona-45/genoa']).toEqual(TEST_POLAR);
+    expect(assets.polars['salona-45/fock']).toEqual(FOCK);
     expect(assets.harbors).toEqual(HARBORS);
     expect(assets.seamarks).toEqual(SEAMARKS);
     expect(new Uint8Array(assets.maskBuffer)).toEqual(new Uint8Array(maskArrayBuffer()));
-    expect(mock).toHaveBeenCalledTimes(6);
+    expect(mock).toHaveBeenCalledTimes(EXPECTED_FETCHES);
     for (const call of mock.mock.calls) {
       expect(String(call[0])).toContain(import.meta.env.BASE_URL);
     }
@@ -98,7 +128,7 @@ describe('loadRoutingAssets', () => {
     const second = await loadRoutingAssets();
 
     expect(second).toBe(first);
-    expect(mock).toHaveBeenCalledTimes(6);
+    expect(mock).toHaveBeenCalledTimes(EXPECTED_FETCHES);
   });
 
   it('throws when a fetch response is not ok', async () => {
@@ -124,6 +154,6 @@ describe('loadRoutingAssets', () => {
 
     const assets = await loadRoutingAssets();
     expect(assets.maskMeta).toEqual(TEST_MASK_META);
-    expect(healthy).toHaveBeenCalledTimes(6);
+    expect(healthy).toHaveBeenCalledTimes(EXPECTED_FETCHES);
   });
 });

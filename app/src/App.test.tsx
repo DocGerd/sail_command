@@ -25,6 +25,9 @@ import {
   type PlanResultOk,
   type PolarTable,
 } from './types';
+import { boatSnapshot, defaultBoatSnapshot } from './types';
+import { boatById, sailIdsOf } from './data/boats';
+import { PLAN_SCHEMA_VERSION } from './types';
 
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
 // (mirrors the "not unit-tested" notes in RouteLayer.tsx/BoatMarker.tsx —
@@ -335,8 +338,13 @@ function fetchMock() {
       const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
       return Promise.resolve(new Response(buf, { status: 200 }));
     }
-    if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-    if (url.includes('polar-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+    if (url.includes('salona-45-fock.json')) return Promise.resolve(jsonResponse(FOCK));
+    // #54 spec N: the two tier-C fleet boats' four tables. AFTER the
+    // salona-45 branches, which keep their distinct TEST_POLAR/FOCK fixtures.
+    // loadRoutingAssets fetches every catalogue boat's polars eagerly, so a
+    // new boat 404s the whole asset load without this.
+    if (url.includes('/data/polars/')) return Promise.resolve(jsonResponse(TEST_POLAR));
     if (url.includes('harbors.json')) return Promise.resolve(jsonResponse(HARBORS));
     if (url.includes('seamarks.json'))
       return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
@@ -396,19 +404,24 @@ function simulateMapError(error: unknown = new Error('style load failed')) {
 function okPlanResult(distanceNm: number): PlanResultOk {
   return {
     status: 'ok',
-    genoa: {
-      rig: 'genoa',
-      legs: [],
-      etaMs: Date.now() + 3_600_000,
-      durationMs: 3_600_000,
-      distanceNm,
-      maneuverCount: 0,
-      motorDistanceNm: 0,
-    },
-    fock: null,
-    genoaReason: null,
-    fockReason: 'calm-motor-off',
+    sails: [
+      {
+        sailId: 'genoa',
+        result: {
+          sailId: 'genoa',
+          legs: [],
+          etaMs: Date.now() + 3_600_000,
+          durationMs: 3_600_000,
+          distanceNm,
+          maneuverCount: 0,
+          motorDistanceNm: 0,
+        },
+        reason: null,
+      },
+      { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+    ],
     recommended: 'genoa',
+    comparisonComplete: true,
     snappedOrigin: { lat: 54.7, lon: 9.5 },
     snappedDestination: { lat: 54.9, lon: 10.5 },
   };
@@ -518,6 +531,119 @@ describe('App', () => {
       'true',
     );
     expect(await screen.findByText(de['live.noPlan'])).toBeInTheDocument();
+  });
+
+  // #299: the fourth "Boot"/"Boat" tab renders SettingsPanel's grouped
+  // content — a peer content tab like the other three, not a modal.
+  it('adds a fourth Boot tab that renders the grouped Boat-settings content (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('heading', { name: de['settings.section.boatSafety'] }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: de['settings.section.propulsion'] }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: de['settings.section.liveAis'] }),
+    ).toBeInTheDocument();
+    // #299 correction (coordinator, after PR #486 review): safety depth
+    // DOES also appear here now — its canonical home, per issue #299's own
+    // design question 2 — alongside the inline PlannerPanel quick-access
+    // copy (single-sourced; see the dedicated single-source-of-truth test
+    // below).
+    expect(screen.getByLabelText(de['options.safetyDepth.label'])).toBeInTheDocument();
+  });
+
+  // #299: the safety-depth field's discoverable route to the Boat tab.
+  it('the safety-depth boat-settings link switches to the Boat tab (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plain string, not `new RegExp(dictString)`: the DE copy now contains
+    // literal `(`/`)`/`.` (regex metacharacters), and wrapping an unescaped
+    // dict string in `new RegExp()` is fragile in general, not just for this
+    // string — measured while writing this fix, `new RegExp('X(a. b)').test`
+    // against its OWN source can return `false` (a `.` wildcard inside a
+    // capture group after a non-empty prefix). A plain string arg to
+    // `getByRole`'s `name` does an exact accessible-name match with no
+    // regex parsing at all, sidestepping the whole class.
+    fireEvent.click(screen.getByRole('button', { name: de['planner.safetyDepth.boatLink'] }));
+    expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(
+      screen.getByRole('heading', { name: de['settings.section.boatSafety'] }),
+    ).toBeInTheDocument();
+  });
+
+  // #299 (coordinator correction after PR #486 review): safety depth now
+  // renders on BOTH surfaces — PlannerPanel's inline compact-row field and
+  // SettingsPanel's Boat-tab "Boat & safety" Card — sharing ONE
+  // `settings.safetyDepthM` value (App.tsx's own `useSettings()`), never two
+  // copies. Pins the single-source-of-truth property directly: an edit made
+  // on ONE surface must be visible on the OTHER the next time it mounts, in
+  // BOTH directions.
+  it('safety depth is single-sourced between the Plan-tab inline field and the Boat-tab SettingsPanel field, in both directions (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plan tab is the default — edit the inline field there.
+    const inlineInput = screen.getByLabelText(de['options.safetyDepth.label']);
+    fireEvent.change(inlineInput, { target: { value: '5.5' } });
+    fireEvent.blur(inlineInput);
+    expect(inlineInput).toHaveValue(5.5);
+
+    // Switch to the Boat tab — its OWN safety-depth field must already show
+    // the value just committed on the Plan tab.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    const boatInput = screen.getByLabelText(de['options.safetyDepth.label']);
+    expect(boatInput).toHaveValue(5.5);
+
+    // Edit it from the Boat tab this time.
+    fireEvent.change(boatInput, { target: { value: '4.0' } });
+    fireEvent.blur(boatInput);
+    expect(boatInput).toHaveValue(4);
+
+    // Back to the Plan tab — the inline field must reflect the Boat-tab edit.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    expect(screen.getByLabelText(de['options.safetyDepth.label'])).toHaveValue(4);
+  });
+
+  // #299 fix (PR #486 review, Major 1): the boat-settings link lives inside
+  // PlannerPanel, which UNMOUNTS the instant the tab switches away from
+  // 'plan' — without an explicit focus move, activating it drops keyboard
+  // focus to document.body (measured in review). Pins that focus lands on
+  // the Boat tab's first Card heading instead, mirroring "Details ansehen"'s
+  // routeResultHeadingRef precedent exactly.
+  it('the safety-depth boat-settings link moves focus to the Boat tab heading, not document.body (#299 fix, PR #486 Major 1)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plain string — see the sibling test above for why `new RegExp` on this
+    // dict string is unsafe.
+    const link = screen.getByRole('button', {
+      name: de['planner.safetyDepth.boatLink'],
+    });
+    link.focus();
+    expect(document.activeElement).toBe(link);
+
+    fireEvent.click(link);
+
+    const heading = screen.getByRole('heading', { name: de['settings.section.boatSafety'] });
+    expect(document.activeElement).toBe(heading);
+    expect(document.activeElement?.tagName).not.toBe('BODY');
   });
 
   it('shows the offline banner when the browser goes offline, and it clears when back online', async () => {
@@ -771,6 +897,7 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
       id: 'plan-b-preseeded',
       name: 'Preseeded Plan B',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.95, lon: 10.6 },
         destination: { lat: 55.05, lon: 10.9 },
@@ -779,6 +906,8 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
         destinationHarborId: null,
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(77),
@@ -843,6 +972,7 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
       id: 'active-before-import',
       name: 'Active Before Import',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: { lat: 54.95, lon: 10.6 },
         destination: { lat: 55.05, lon: 10.9 },
@@ -851,6 +981,8 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
         destinationHarborId: null,
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(88),
@@ -944,6 +1076,40 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     );
   });
 
+  // #299: a solver-affecting settings change (routing-relevant per
+  // lib/planForm.ts's ROUTING_RELEVANT_SETTINGS_KEYS) marks the displayed
+  // plan stale on this App-level, tab-independent banner surface too — not
+  // only via PlannerPanel's own Chip, which mounts ONLY on the Plan tab. The
+  // risk this pins: before #299, a settings change made from a tab other
+  // than Plan (now including the new Boat tab) left NO on-screen indication
+  // that the displayed route no longer matched the form.
+  it('a solver-affecting Boat-tab settings change surfaces a tab-independent stale-route banner, visible on the Routes tab (#299)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    pickOriginAndDestination();
+
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // No banner yet — the form still matches the displayed plan.
+    expect(screen.queryByText(de['planner.result.stale'])).not.toBeInTheDocument();
+
+    // Edit a ROUTING-RELEVANT setting (motorEnabled) from the new Boat tab.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    fireEvent.click(screen.getByLabelText(de['options.motorEnabled.label']));
+
+    // Visible immediately while still on the Boat tab...
+    expect(await screen.findByText(de['planner.result.stale'])).toBeInTheDocument();
+    // ...and still visible after switching to Routes — the exact surface the
+    // #299 risk named as silently uninformed before this fix.
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    expect(screen.getByText(de['planner.result.stale'])).toBeInTheDocument();
+  });
+
   it('the stale-forecast banner renders through the real App tree for a loaded plan whose windGrid predates departure by >12h', async () => {
     const staleWindGrid = uniformWindGrid(10, 250, {
       t0Ms: Date.now() - 20 * 3_600_000,
@@ -953,6 +1119,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
       id: 'stale-plan',
       name: 'Stale Plan',
       createdAtMs: Date.now() - 20 * 3_600_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -961,6 +1128,8 @@ describe('banner surfacing (PR self-review fix wave)', () => {
         destinationHarborId: null,
         departureMs: Date.now(),
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: staleWindGrid,
       result: okPlanResult(33),
@@ -1040,6 +1209,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
       id: 'plural-drop-plan',
       name: 'Plural Drop Plan',
       createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -1048,6 +1218,8 @@ describe('banner surfacing (PR self-review fix wave)', () => {
         destinationHarborId: null,
         departureMs: Date.now() + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
       result: okPlanResult(66),
@@ -1333,17 +1505,21 @@ describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
     });
   });
 
-  // #340: `rig` must pass through unchanged — this is the only progress
-  // signal left, so a typo here would silently break the "sail N of 2"
-  // phase readout for one or both rigs.
-  it("passes 'routing' through with its rig unchanged (#340: rig is the phase signal, not a percentage)", () => {
-    expect(toPlannerStatus({ phase: 'routing', rig: 'genoa' }, t)).toEqual({
+  // #340/#54: `sailId`/`index`/`total` must pass through unchanged — this is
+  // the only progress signal left, so a typo here would silently break the
+  // "sail N of 2" phase readout for one or both sails.
+  it("passes 'routing' through with its sailId/index/total unchanged (#340: not a percentage)", () => {
+    expect(toPlannerStatus({ phase: 'routing', sailId: 'genoa', index: 1, total: 2 }, t)).toEqual({
       phase: 'routing',
-      rig: 'genoa',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
     });
-    expect(toPlannerStatus({ phase: 'routing', rig: 'fock' }, t)).toEqual({
+    expect(toPlannerStatus({ phase: 'routing', sailId: 'fock', index: 2, total: 2 }, t)).toEqual({
       phase: 'routing',
-      rig: 'fock',
+      sailId: 'fock',
+      index: 2,
+      total: 2,
     });
   });
 });
@@ -1514,11 +1690,13 @@ describe('session restore (#113)', () => {
       distanceNm: 20,
     };
     const result = okPlanResult(55);
-    if (!result.genoa) throw new Error('fixture invariant: okPlanResult carries a genoa result');
+    const genoa = result.sails.find((s) => s.sailId === 'genoa')?.result;
+    if (!genoa) throw new Error('fixture invariant: okPlanResult carries a genoa result');
     return {
       id,
       name: 'Restored Passage',
       createdAtMs: now - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: ORIGIN_A,
         destination: DEST_A,
@@ -1527,9 +1705,16 @@ describe('session restore (#113)', () => {
         destinationHarborId: null,
         departureMs: now + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
-      result: { ...result, genoa: { ...result.genoa, legs: [sailLeg] } },
+      result: {
+        ...result,
+        sails: result.sails.map((s) =>
+          s.sailId === 'genoa' ? { ...s, result: { ...genoa, legs: [sailLeg] } } : s,
+        ),
+      },
     };
   }
 
@@ -1558,6 +1743,34 @@ describe('session restore (#113)', () => {
     // (beforeEach) additionally rejects any non-asset URL loudly, so a
     // sneaked-in direct fetch could not pass either.
     expect(fetchWindGrid).not.toHaveBeenCalled();
+  });
+
+  // #299: 'boat' is a real, persistable Tab value (the write-back effect
+  // saves it like any other), but a fresh boot must never restore INTO it —
+  // a sailor reopening the PWA on deck should land on a content tab, not the
+  // settings form. Unit-pinned at the parse boundary in
+  // lib/sessionSnapshot.test.ts; this is the integration-level twin,
+  // exercising the real restore path end to end.
+  it("#299: a persisted 'boat' tab never restores into the Boat tab — lands on Plan instead", async () => {
+    await db.savePlan(savedPlan('restore-boat'));
+    localStorage.setItem(
+      'sc-session',
+      '{"v":1,"planId":"restore-boat","tab":"boat","rig":"genoa"}',
+    );
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: de['nav.plan'] })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    );
+    expect(screen.getByRole('tab', { name: de['nav.boat'] })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
   });
 
   it('restoring into the Live tab never starts a GPS watch — tracking stays opt-in', async () => {
@@ -1611,6 +1824,7 @@ describe('plan-form sync (#301)', () => {
       id,
       name: 'Prefill Plan',
       createdAtMs: now - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: {
         origin: PREFILL_ORIGIN,
         destination: PREFILL_DEST,
@@ -1619,6 +1833,8 @@ describe('plan-form sync (#301)', () => {
         destinationHarborId: null,
         departureMs: now + 3_600_000,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
         ...overrides,
       },
       windGrid: uniformWindGrid(10, 250, { t0Ms: now - 3_600_000, hours: 48 }),
@@ -1832,9 +2048,12 @@ describe('plan-form sync (#301)', () => {
           const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
           return Promise.resolve(new Response(buf, { status: 200 }));
         }
-        if (url.includes('polar-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
-        if (url.includes('polar-fock.json'))
+        if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+        if (url.includes('salona-45-fock.json'))
           return Promise.resolve(jsonResponse({ ...TEST_POLAR, rig: 'fock' }));
+        // #54 spec N: the tier-C fleet boats' tables — see the note on the
+        // module-level mock above.
+        if (url.includes('/data/polars/')) return Promise.resolve(jsonResponse(TEST_POLAR));
         if (url.includes('harbors.json')) return harborsPromise;
         if (url.includes('seamarks.json'))
           return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
@@ -1886,5 +2105,151 @@ describe('plan-form sync (#301)', () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+
+    // #572: close the FRESH module graph's own IndexedDB connection.
+    // `vi.resetModules()` above gave this test's dynamically-imported App its
+    // own `services/db.ts` instance, with its own `dbPromise` cache. The
+    // file-level beforeEach calls the STATICALLY imported
+    // `__resetDbForTests()`, which can only close the ORIGINAL instance's
+    // connection — so the fresh one is left open and the `deleteDB(...)`
+    // inside that helper blocks on it indefinitely, timing out the next
+    // test's hook after 10 s.
+    //
+    // Pre-existing and latent, not introduced by #572: this was the last
+    // test in the file, so nothing had ever run after it. MEASURED — a
+    // trivial `expect(1).toBe(1)` appended after it fails with the identical
+    // `Hook timed out in 10000ms`, and passes with this cleanup in place.
+    //
+    // The import resolves from the post-reset registry, so it IS the fresh
+    // instance rather than a third one.
+    //
+    // `cleanup()` FIRST as hygiene, not as the fix: unmounting FreshApp before
+    // closing its database removes any chance of an effect re-opening the
+    // connection between the close and the delete. MEASURED as NOT load-bearing
+    // on its own — removing this line alone leaves the file green (8 runs,
+    // durations unchanged). What IS load-bearing is the `Promise.all` over BOTH
+    // module instances below; dropping either one reproduces the hang. The
+    // file-level afterEach calls `cleanup()` again, which is a no-op.
+    cleanup();
+    const freshDb = await import('./services/db');
+    // BOTH instances, concurrently. This test opened the ORIGINAL instance's
+    // connection itself with the `db.savePlan(plan)` above, so resetting only
+    // the fresh one leaves that second connection to block the same
+    // `deleteDB` (measured — the hang simply moves). Each helper closes its
+    // own connection before awaiting the delete, so running them together
+    // gets both closed before either delete has to make progress.
+    await Promise.all([db.__resetDbForTests(), freshDb.__resetDbForTests()]);
+  });
+});
+// #572: the selection → request span. Nothing asserted this before: the
+// multi-boat suites cover the catalogue, the picker's own rendering, the
+// clamp, and the routing layer's handling of a boat it is HANDED — but no
+// test connected the picker to what `handlePlan` actually puts on the wire,
+// which is exactly the gap the defect lived in. `App.tsx` built its request
+// with `boat: defaultBoatSnapshot()`, so every new plan was solved as a
+// Salona 45 whatever the picker showed.
+//
+// MUTATION REACHABILITY — the point of picking the Elan rather than the
+// default. With `salona-45` selected the fixed and the broken code emit a
+// BYTE-IDENTICAL request (`boatSnapshot(boatById('salona-45'))` IS
+// `defaultBoatSnapshot()`), so a test written against the default boat is
+// green either way and carries zero information. Selecting a NON-default
+// boat is what makes the mutation reach the assertion: reverting
+// `handlePlan` to `defaultBoatSnapshot()` reds the `boat.id` and
+// `boat.draftM` rows below with `salona-45` / `2.1`.
+describe('#572: a new plan is solved with the SELECTED boat', () => {
+  // Selects a catalogue boat through the real picker UI — the whole point is
+  // to span selection → request, so this drives the radio a user clicks
+  // rather than seeding BOAT_ID_STORAGE_KEY behind the app's back.
+  function selectBoat(nameMatch: RegExp) {
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    fireEvent.click(screen.getByRole('radio', { name: nameMatch }));
+    expect(screen.getByRole('radio', { name: nameMatch })).toBeChecked();
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+  }
+
+  it('puts the selected boat, by value, on the request handed to the router', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    selectBoat(/PIRANJA/);
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+
+    const { request } = routingMock.calls[0];
+    const elan = boatById('elan-444-piranja');
+
+    // The discriminating rows. `request.boat.id` is what workerClient.ts
+    // resolves BOTH the polar tables and the spec C.4(a) relaxation floor
+    // from, so these two are the whole safety content of the fix.
+    expect(request.boat.id).toBe('elan-444-piranja');
+    expect(request.boat.draftM).toBe(1.9);
+    expect(request.boat.name).toBe(elan.name);
+
+    // By VALUE, not by reference (spec I.3) — the saved plan must not share
+    // mutable state with the catalogue constant.
+    expect(request.boat).toEqual(boatSnapshot(elan));
+    expect(request.boat).not.toBe(elan);
+    expect(request.boat.sails[0]).not.toBe(elan.sails[0]);
+
+    // NOT DISCRIMINATING FOR #572 TODAY, and recorded as such rather than
+    // presented as coverage: all three catalogue boats currently carry the
+    // sail ids `genoa` then `fock`, so `sailIdsOf(boat)` and the old
+    // `DEFAULT_SAIL_IDS` are equal in VALUE and this row is green against
+    // the broken code too. It is worth pinning anyway — it is the row that
+    // reds on the first boat whose inventory differs, which is precisely
+    // when a `DEFAULT_SAIL_IDS` here would start choosing the wrong sails.
+    expect(request.sailIds).toEqual(sailIdsOf(elan));
+  });
+
+  it('spec I.3: switching boats does NOT re-boat an existing plan — a replan keeps the boat it was planned for', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plan under the Elan.
+    selectBoat(/PIRANJA/);
+    pickOriginAndDestination();
+    const planButton = screen.getByRole('button', { name: de['planner.plan'] });
+    fireEvent.click(planButton);
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    expect(routingMock.calls[0].request.boat.id).toBe('elan-444-piranja');
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() => expect(planButton).toBeEnabled());
+
+    // The user now picks a DIFFERENT boat, then re-plans the existing plan by
+    // adding a waypoint. Spec I.3: the boat is a property of the plan, so the
+    // replan must still be solved against the Elan. This is the row that reds
+    // if a future change "helpfully" makes replanWithVias follow the picker —
+    // the over-fix direction of #572, which the unit-level pins in
+    // recalc.test.ts / replan.test.ts / reroute.test.ts cannot see because
+    // none of them involves the picker at all.
+    selectBoat(/Salona 45/);
+    const viaSection = screen.getByRole('region', {
+      name: de['planner.via.label'],
+    });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+
+    expect(routingMock.calls[1].request.boat.id).toBe('elan-444-piranja');
+    expect(routingMock.calls[1].request.boat.draftM).toBe(1.9);
+
+    // ...while a genuinely NEW plan started after the switch does follow the
+    // picker. Both halves in one test on purpose: "the replan kept the old
+    // boat" is only meaningful beside evidence that the selection was really
+    // live, otherwise a picker that had silently stopped working would pass
+    // the assertion above.
+    routingMock.calls[1].resolve(okPlanResult(12));
+    // Re-query rather than reusing `planButton`: the two selectBoat() tab
+    // switches above unmount and remount PlannerPanel, so the node captured
+    // before them is detached and fireEvent.click on it silently does
+    // nothing (measured — the run stalled at 2 calls, not 3).
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(3));
+    expect(routingMock.calls[2].request.boat.id).toBe('salona-45');
   });
 });

@@ -59,7 +59,7 @@ if the creator is gone.
    trap that breaks `gh pr merge` and spawning worktree-isolated agents.
 
    ```bash
-   cd /home/pkuhn/sail_command
+   cd <repo>
    ```
 
 5. **Remove the worktree — no `--force`:**

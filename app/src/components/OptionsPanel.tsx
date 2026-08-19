@@ -1,14 +1,21 @@
 import type { Settings } from '../types';
-import { useT } from '../i18n';
 import type { MsgKey } from '../i18n/dict.de';
-import NumberInput from './NumberInput';
-import Field from './Field';
-import { isValidMmsi } from '../lib/mmsi';
+import { minSafetyDepthM, type DraftedBoat } from '../lib/boatDepth';
+import { boatById, DEFAULT_BOAT_ID } from '../data/boats';
 
-export interface OptionsPanelProps {
-  value: Settings;
-  onChange: (settings: Settings) => void;
-}
+// #299: this file no longer renders anything — its default-exported
+// component (and OptionsPanel.test.tsx, which exercised it directly) were
+// DELETED in the #299 fix wave (PR #486 review, Minor 4) once the Boat tab's
+// SettingsPanel.tsx took over as the only place these fields are actually
+// rendered in the live app. What remains here is the shared SOURCE OF TRUTH
+// both SettingsPanel.tsx and PlannerPanel.tsx (for the still-inline safety
+// depth field) import from: the field specs (bounds + i18n label keys) and
+// the commit helper. Every one of SettingsPanel.test.tsx's behavioural
+// assertions that only this file's now-deleted component used to cover
+// (the no-op blur skip, the ownship aria-describedby, the AIS privacy help
+// text, the empty-MMSI case) was ported into SettingsPanel.test.tsx BEFORE
+// the deletion — see that file's own "Ported from OptionsPanel.test.tsx"
+// comments.
 
 export type NumericKey =
   | 'safetyDepthM'
@@ -32,21 +39,52 @@ export interface FieldSpec {
 // The spec (bounds included) lives here so both surfaces share one source.
 // 2.2 m is a safety decision, not a UI nicety: it must never allow a value
 // below the 2.1 m draft plus a minimum safety margin.
-// eslint-disable-next-line react-refresh/only-export-components
+// #539 item 2: this is the DEFAULT boat's spec, and only the default boat's.
+// `min` is the one boat-dependent field in it — spec J OQ-1 makes the UI
+// minimum `draftM + 0.1` per boat — so ANY SURFACE THAT RENDERS AN INPUT MUST
+// GO THROUGH `safetyDepthFieldFor(selectedBoat)` BELOW, never through this
+// constant. It stays exported because `max`, `step` and `labelKey` are
+// boat-independent, and because RouteSummary and the drift guard in
+// test/maskTolerance.test.ts legitimately reason about the default boat.
+//
+// Why this path needs fixing rather than being left to the shallow banner:
+// it is QUIETER than the #53 relaxation path. A gate the user typed under
+// their own keel produces no `shallow` block at all, so nothing discloses a
+// wrong minimum — where a relaxed gate at least banners itself.
 export const SAFETY_DEPTH_FIELD: FieldSpec = {
   key: 'safetyDepthM',
   labelKey: 'options.safetyDepth.label',
-  min: 2.2,
+  // #54: derived per-boat minimum (spec J OQ-1) rather than a hand-written
+  // literal — evaluates to 2.2 for the release-1 default boat.
+  min: minSafetyDepthM(boatById(DEFAULT_BOAT_ID)),
   max: 10,
   step: 0.1,
 };
 
-// #243: depth comfort preference margin, rendered first inside the advanced
-// group (with its own help paragraph, unlike the four plain ADVANCED_FIELDS
-// below) — kept separate from SAFETY_DEPTH_FIELD's compact-row treatment
-// because the spec lists it alongside the other advanced settings, not as a
-// second most-changed input. 0 = feature off (byte-identical solve).
-// eslint-disable-next-line react-refresh/only-export-components
+/**
+ * #539 item 2 / spec J OQ-1. The safety-depth input's bounds for the boat the
+ * user has actually selected.
+ *
+ * Spread-then-override rather than a second literal, so `max`, `step` and
+ * `labelKey` cannot drift apart from `SAFETY_DEPTH_FIELD`'s — the two would
+ * otherwise be a pair of hand-written tables with no derivation between them,
+ * the shape this repo has been bitten by before.
+ *
+ * Takes {@link DraftedBoat} rather than `BoatDef` (#539) so the shallow
+ * warning can ask this question of a SAVED PLAN's `BoatSnapshot`, which is not
+ * structurally a catalogue entry. Type-only; see `boatDepth.ts` for why the
+ * widening stops at the two depth helpers.
+ */
+export function safetyDepthFieldFor(b: DraftedBoat): FieldSpec {
+  return { ...SAFETY_DEPTH_FIELD, min: minSafetyDepthM(b) };
+}
+
+// #243: depth comfort preference margin, rendered on the Boat tab
+// (SettingsPanel.tsx) with its own help paragraph, unlike the four plain
+// specs below — kept separate from SAFETY_DEPTH_FIELD's compact-row
+// treatment because the spec lists it alongside the other advanced
+// settings, not as a second most-changed input. 0 = feature off
+// (byte-identical solve).
 export const DEPTH_COMFORT_MARGIN_FIELD: FieldSpec = {
   key: 'depthComfortMarginM',
   labelKey: 'options.depthComfortMargin.label',
@@ -59,7 +97,6 @@ export const DEPTH_COMFORT_MARGIN_FIELD: FieldSpec = {
 // DEPTH_COMFORT_MARGIN_FIELD above, because the behaviour it controls is not
 // guessable from the label. max 10 so the disabling value stays reachable at
 // any motorSpeedKn (which itself maxes at 10).
-// eslint-disable-next-line react-refresh/only-export-components
 export const SAIL_PREFERENCE_FIELD: FieldSpec = {
   key: 'sailPreferenceKn',
   labelKey: 'options.sailPreference.label',
@@ -68,24 +105,41 @@ export const SAIL_PREFERENCE_FIELD: FieldSpec = {
   step: 0.1,
 };
 
-// The four plain advanced numeric inputs that live behind the "Erweitert"
-// disclosure (DEPTH_COMFORT_MARGIN_FIELD and SAIL_PREFERENCE_FIELD above
-// render separately, each with its own help paragraph, ahead of these).
-const ADVANCED_FIELDS: FieldSpec[] = [
-  { key: 'motorSpeedKn', labelKey: 'options.motorSpeed.label', min: 1, max: 10, step: 0.1 },
-  { key: 'motorThresholdKn', labelKey: 'options.motorThreshold.label', min: 0, max: 5, step: 0.1 },
-  { key: 'maneuverPenaltyS', labelKey: 'options.maneuverPenalty.label', min: 0, max: 300, step: 1 },
-  {
-    key: 'performanceFactor',
-    labelKey: 'options.performanceFactor.label',
-    min: 0.5,
-    max: 1.1,
-    step: 0.05,
-  },
-];
+// The four plain numeric specs SettingsPanel.tsx splits across its
+// "Boat & safety" (MANEUVER_PENALTY_FIELD, PERFORMANCE_FACTOR_FIELD) and
+// "Propulsion" (MOTOR_SPEED_FIELD, MOTOR_THRESHOLD_FIELD) groups — exported
+// individually, rather than as one bundled array, precisely because that
+// split means no single place ever `.map()`s over all four together.
+export const MOTOR_SPEED_FIELD: FieldSpec = {
+  key: 'motorSpeedKn',
+  labelKey: 'options.motorSpeed.label',
+  min: 1,
+  max: 10,
+  step: 0.1,
+};
+export const MOTOR_THRESHOLD_FIELD: FieldSpec = {
+  key: 'motorThresholdKn',
+  labelKey: 'options.motorThreshold.label',
+  min: 0,
+  max: 5,
+  step: 0.1,
+};
+export const MANEUVER_PENALTY_FIELD: FieldSpec = {
+  key: 'maneuverPenaltyS',
+  labelKey: 'options.maneuverPenalty.label',
+  min: 0,
+  max: 300,
+  step: 1,
+};
+export const PERFORMANCE_FACTOR_FIELD: FieldSpec = {
+  key: 'performanceFactor',
+  labelKey: 'options.performanceFactor.label',
+  min: 0.5,
+  max: 1.1,
+  step: 0.05,
+};
 
 /** Commit a single numeric setting, skipping a redundant update on an unchanged blur. */
-// eslint-disable-next-line react-refresh/only-export-components
 export function commitSetting(
   value: Settings,
   key: NumericKey,
@@ -94,139 +148,4 @@ export function commitSetting(
 ): void {
   if (n === value[key]) return;
   onChange({ ...value, [key]: n });
-}
-
-export default function OptionsPanel({ value, onChange }: OptionsPanelProps) {
-  const t = useT();
-
-  const mmsi = value.ownMmsi ?? '';
-  const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
-
-  return (
-    <div className="options-panel">
-      {/* #243: rendered separately from ADVANCED_FIELDS so it can carry a
-          help paragraph (aria-describedby, visible text, never a title
-          tooltip — gloved touch) explaining what the margin does. */}
-      <div className="options-field">
-        <label htmlFor={`options-${DEPTH_COMFORT_MARGIN_FIELD.key}`}>
-          {t(DEPTH_COMFORT_MARGIN_FIELD.labelKey)}
-        </label>
-        <NumberInput
-          id={`options-${DEPTH_COMFORT_MARGIN_FIELD.key}`}
-          value={value[DEPTH_COMFORT_MARGIN_FIELD.key]}
-          min={DEPTH_COMFORT_MARGIN_FIELD.min}
-          max={DEPTH_COMFORT_MARGIN_FIELD.max}
-          step={DEPTH_COMFORT_MARGIN_FIELD.step}
-          aria-describedby="options-depthComfortMarginM-help"
-          onCommit={(n) => commitSetting(value, DEPTH_COMFORT_MARGIN_FIELD.key, n, onChange)}
-        />
-      </div>
-      <p className="options-help" id="options-depthComfortMarginM-help">
-        {t('options.depthComfortMargin.help')}
-      </p>
-      <div className="options-field">
-        <label htmlFor={`options-${SAIL_PREFERENCE_FIELD.key}`}>
-          {t(SAIL_PREFERENCE_FIELD.labelKey)}
-        </label>
-        <NumberInput
-          id={`options-${SAIL_PREFERENCE_FIELD.key}`}
-          value={value[SAIL_PREFERENCE_FIELD.key]}
-          min={SAIL_PREFERENCE_FIELD.min}
-          max={SAIL_PREFERENCE_FIELD.max}
-          step={SAIL_PREFERENCE_FIELD.step}
-          aria-describedby="options-sailPreferenceKn-help"
-          onCommit={(n) => commitSetting(value, SAIL_PREFERENCE_FIELD.key, n, onChange)}
-        />
-      </div>
-      <p className="options-help" id="options-sailPreferenceKn-help">
-        {t('options.sailPreference.help')}
-      </p>
-      {ADVANCED_FIELDS.map((f) => (
-        <div key={f.key} className="options-field">
-          <label htmlFor={`options-${f.key}`}>{t(f.labelKey)}</label>
-          <NumberInput
-            id={`options-${f.key}`}
-            value={value[f.key]}
-            min={f.min}
-            max={f.max}
-            step={f.step}
-            onCommit={(n) => commitSetting(value, f.key, n, onChange)}
-          />
-        </div>
-      ))}
-      <div className="options-field">
-        <label htmlFor="options-motorEnabled">{t('options.motorEnabled.label')}</label>
-        <input
-          id="options-motorEnabled"
-          type="checkbox"
-          checked={value.motorEnabled}
-          aria-describedby="options-motorEnabled-help"
-          onChange={(e) => onChange({ ...value, motorEnabled: e.target.checked })}
-        />
-      </div>
-      {/* Sibling of the checkbox field, not a child of it: the wide-layout rule
-          turns the checkbox `.options-field` into a flex row, which would strand
-          a third child inline. aria-describedby links by id regardless of nesting.
-          A visible paragraph, never a `title` tooltip — tooltips don't exist for
-          gloved touch. */}
-      <p className="options-help" id="options-motorEnabled-help">
-        {t('options.motorEnabled.help')}
-      </p>
-      {/* #25 addendum: standalone "show my position" ownship marker — default
-          OFF/opt-in (types.ts DEFAULT_SETTINGS). Unrelated to routing (not
-          part of PlanRequest), so it lives here as a plain settings toggle
-          rather than in PlannerPanel's advanced-summary recap, which only
-          recaps solver-relevant fields. */}
-      <div className="options-field">
-        <label htmlFor="options-showOwnship">{t('options.showOwnship.label')}</label>
-        <input
-          id="options-showOwnship"
-          type="checkbox"
-          checked={value.showOwnship}
-          aria-describedby="options-showOwnship-help"
-          onChange={(e) => onChange({ ...value, showOwnship: e.target.checked })}
-        />
-      </div>
-      <p className="options-help" id="options-showOwnship-help">
-        {t('options.showOwnship.help')}
-      </p>
-      {/* #25 AIS live traffic overlay (Live tab only): BYOK aisstream.io key +
-          own-vessel MMSI. Text fields (not NumberInput — the key is
-          alphanumeric and the MMSI is a string that preserves leading zeros).
-          Both commit on change like the checkboxes above. */}
-      <Field
-        label={t('options.ais.apiKey.label')}
-        htmlFor="options-aisApiKey"
-        help={t('options.ais.help')}
-        helpId="options-ais-help"
-      >
-        <input
-          id="options-aisApiKey"
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          aria-describedby="options-ais-help"
-          value={value.aisApiKey ?? ''}
-          onChange={(e) => onChange({ ...value, aisApiKey: e.target.value })}
-        />
-      </Field>
-      <Field label={t('options.ais.mmsi.label')} htmlFor="options-ownMmsi">
-        <input
-          id="options-ownMmsi"
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          aria-invalid={mmsiInvalid}
-          aria-describedby={mmsiInvalid ? 'options-ownMmsi-error' : undefined}
-          value={mmsi}
-          onChange={(e) => onChange({ ...value, ownMmsi: e.target.value })}
-        />
-      </Field>
-      {mmsiInvalid && (
-        <p className="options-help" id="options-ownMmsi-error" role="alert">
-          {t('options.ais.mmsi.invalid')}
-        </p>
-      )}
-    </div>
-  );
 }

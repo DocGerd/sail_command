@@ -1,10 +1,18 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { savePlan } from '../services/db';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { haversineNm } from '../lib/geo';
 import { RoutingError, type RoutingFailureKind } from '../routing/workerClient';
 import type { MsgKey } from '../i18n/dict.de';
-import type { LatLon, Plan, PlanRequest, PlanResult, WindGrid } from '../types';
+import {
+  defaultBoatSnapshot,
+  type LatLon,
+  type Plan,
+  type PlanRequest,
+  type PlanResult,
+  type WindGrid,
+} from '../types';
 
 // ~60 m in nautical miles (haversineNm's unit) — the coincident-waypoint
 // dedupe guard every via-replan (and a plan's initial via list) enforces.
@@ -113,6 +121,13 @@ export const ROUTING_FAILURE_MESSAGE_KEY: Record<
   'worker-error': 'error.routingCrashed',
   messageerror: 'error.routingMessageError',
   disposed: 'error.routingInterrupted',
+  // #553 / spec §I.3: the ONE typed failure whose remedy is neither "try
+  // again" nor "reload" — the catalogue simply no longer holds this plan's
+  // boat, and both a fresh worker and a fresh page load would resolve it
+  // identically. Deliberately absent from App.tsx's RETRY_MAY_HELP_KEYS
+  // (an allowlist, so absence is the fail-closed direction and suppresses
+  // the retry affordance without a second edit).
+  'boat-not-in-catalogue': 'error.boatNotInCatalogue',
   'worker-init': 'error.workerInit',
   'persist-failed': 'error.planSaveFailed',
   'wind-unclassified': 'error.windUnknown',
@@ -169,6 +184,17 @@ export function routingFailureKey(err: unknown): MsgKey {
  * about a sibling operation sharing it. Accepted deliberately: the uniform
  * teardown is what makes a retry trustworthy, and the alternative (a shared
  * in-flight count across all three consumers) is a larger change than #432.
+ *
+ * #553 CORRECTION — the "either dead, wedged, or holding a worker whose state
+ * we can no longer reason about" premise above is TRUE of all five failure
+ * kinds that existed when it was written and FALSE of
+ * `'boat-not-in-catalogue'`, which `RoutingClient.plan()` raises from a
+ * client-side catalogue lookup BEFORE anything is posted: the worker never
+ * saw the request and its state is perfectly known. Callers therefore gate
+ * this on `failureLeavesWorkerHealthy` below rather than calling it
+ * unconditionally. The shared-singleton consequence recorded above is exactly
+ * why that matters — `dispose()` calls `failAll()`, so disposing on this kind
+ * would let a stale-boat re-plan abort an unrelated in-flight primary plan.
  */
 export function disposeAfterFailure(client: ReplanClient): void {
   try {
@@ -176,6 +202,38 @@ export function disposeAfterFailure(client: ReplanClient): void {
   } catch {
     // Best-effort teardown of an already-broken client.
   }
+}
+
+/**
+ * #553: true when a `plan()` rejection tells us NOTHING is wrong with the
+ * worker, so tearing it down would be pure cost.
+ *
+ * Exactly one kind qualifies today. `'boat-not-in-catalogue'` is raised by a
+ * client-side catalogue lookup before `plan()` posts anything — no pending
+ * entry, no timer, no message — so the worker is untouched and healthy. No
+ * other kind leaves a healthy worker to preserve: 'worker-fatal',
+ * 'worker-error' and 'messageerror' ARE worker faults, 'timeout' leaves one
+ * still grinding on an abandoned solve (the client deadline settles the
+ * promise, it does not terminate the thread), and 'disposed' names a client
+ * already torn down, where the extra call is a no-op anyway.
+ *
+ * Two costs this avoids, one certain and one sharp: a full re-init (a fresh
+ * mask `.slice(0)` plus transfer and the whole polar map) on the next plan,
+ * for a lookup miss; and — because `dispose()` calls `failAll()`, which
+ * rejects EVERY pending entry on a singleton shared by three consumers with
+ * no in-flight guard spanning them — aborting an unrelated in-flight plan,
+ * which would surface to it as 'error.routingInterrupted'.
+ *
+ * Named as a property of the FAILURE rather than as a list of kinds to skip,
+ * so the next kind added has to answer the question this asks. Kept as one
+ * exported predicate rather than three inline `err instanceof RoutingError &&
+ * err.kind === …` checks: two of these three sites already drifted once —
+ * #432 found a bare, unbound `catch {` discarding the error on each of the
+ * replan and reroute plan() paths — and a condition duplicated three ways is
+ * how the next one drifts.
+ */
+export function failureLeavesWorkerHealthy(err: unknown): boolean {
+  return err instanceof RoutingError && err.kind === 'boat-not-in-catalogue';
 }
 
 // Minimal structural slice of RoutingClient (routing/workerClient.ts) —
@@ -231,7 +289,22 @@ export async function replanWithVias(
   // so a caller can also use it to decide whether to show the "waypoint
   // skipped" info banner — see state/replan.ts's useViaReplan).
   const { kept } = dedupeViaPoints(plan.request.origin, viaPoints, plan.request.destination);
-  const request: PlanRequest = { ...plan.request, viaPoints: kept };
+  const request: PlanRequest = {
+    ...plan.request,
+    viaPoints: kept,
+    // #54 review round 2: the third site that builds a router-bound request
+    // from a PERSISTED one. A plan saved before `sailIds` existed on
+    // PlanRequest does not carry the key at all, and planRoute.ts's `runAll`
+    // calls `req.sailIds.map(...)` unconditionally.
+    sailIds: plan.request.sailIds ?? DEFAULT_SAIL_IDS,
+    // #54 Task 11: backfilled for the same reason and at the same site — a
+    // plan that reached here without passing through services/migratePlan.ts
+    // does not carry the key, and the replan's own result is saved as a Plan.
+    // Aliased rather than copied, like every other field the spread above
+    // carries through: unlike lib/recalc.ts, this site has no
+    // "copied, never aliased" contract.
+    boat: plan.request.boat ?? defaultBoatSnapshot(),
+  };
 
   let result: PlanResult;
   try {
@@ -242,7 +315,8 @@ export async function replanWithVias(
     // budget, a crashed worker, an undeserializable reply — onto one
     // 'error.internal' banner, which is #433's defect reproduced on the
     // replan path. Classified by RoutingError.kind, never by err.message.
-    disposeAfterFailure(deps.client);
+    // #553: skip the teardown when the worker is provably healthy.
+    if (!failureLeavesWorkerHealthy(err)) disposeAfterFailure(deps.client);
     throw new ReplanError(
       routingFailureKey(err),
       `routing worker rejected the replan request: ${err instanceof Error ? err.message : String(err)}`,

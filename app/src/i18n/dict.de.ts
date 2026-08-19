@@ -10,6 +10,16 @@ export const de = {
   'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
+  // #299: die Sicherheitstiefe erscheint jetzt an ZWEI Stellen — hier als
+  // Schnellzugriff und im Boot-Tab (SettingsPanel) als kanonisches Zuhause,
+  // eine gemeinsame Quelle (PR #486 review). Die Tiefenkomfort-Spanne und
+  // die übrigen Boot-Einstellungen wohnen weiterhin AUSSCHLIESSLICH dort —
+  // dieser Link verhindert, dass jemand sie für gelöscht hält, weil sie
+  // nicht mehr direkt neben der Sicherheitstiefe steht. Nicht mehr "&", weil
+  // die Sicherheitstiefe (rechts daneben sichtbar) nicht mehr exklusiv dort
+  // wohnt — "weitere" statt einer Aufzählung, mit der Komfort-Spanne als
+  // konkretem Anker.
+  'planner.safetyDepth.boatLink': 'Weitere Boot-Einstellungen (u. a. Tiefenkomfort-Spanne)',
   'options.depthComfortMargin.label': 'Tiefenkomfort-Spanne (m)',
   'options.depthComfortMargin.help':
     'Über die Sicherheitstiefe hinaus bevorzugt die Planung zusätzlich Wasser, das mindestens um diesen Wert tiefer ist, sofern das kaum zusätzliche Zeit kostet — 0 deaktiviert die Präferenz. Sie erlaubt niemals flacheres Wasser, als die Sicherheitstiefe zulässt, und die empfohlene Besegelung kann sich dadurch ändern.',
@@ -26,13 +36,41 @@ export const de = {
   'options.showOwnship.label': 'Meine Position anzeigen',
   'options.showOwnship.help':
     'Zeigt deine GPS-Position und den Genauigkeitskreis überall auf der Karte an — beim Planen, ohne Plan oder in der Live-Ansicht, nicht nur während der Live-Führung. Consumer-GPS-Genauigkeit, keine kartengenaue Positionsbestimmung; dies ist eine Törnplanungshilfe, kein Navigationsgerät. Das Aktivieren fragt nach dem Standortzugriff.',
-  // One-line glance of the collapsed "Erweitert" disclosure, joined with " · ".
-  'options.summary.motorOn': 'Motor an',
-  'options.summary.motorOff': 'Motor aus',
-  'options.summary.maneuver': 'Wende {seconds} s',
-  'options.summary.performance': '×{factor}',
+  // #54: Bootsauswahl (BoatPicker im Boot-Tab).
+  'boat.section.title': 'Bootsauswahl',
+  'boat.picker.label': 'Boot auswählen',
+  'boat.draft': 'Tiefgang {depth} m',
+  // Spec G.3: Herkunftsstufen der Polardaten. Bewusst keine Buchstaben
+  // (A/B/C) im Text — die Stufenbuchstaben sind Spec-interne Bezeichner und
+  // sagen einer Seglerin nichts; das Wort selbst schon.
+  'boat.polarTier.certificate': 'Zertifikat',
+  'boat.polarTier.modelled': 'Modelliert',
+  'boat.polarTier.estimated': 'Geschätzt',
+  'boat.polarTier.aria': 'Polardaten: {tier}',
+  'boat.polarDetail.summary': 'Polardaten & Herkunft',
+  // Spec N.2. „Geprüft“, nicht „verifiziert“: Spec N.5 verbietet in neuen
+  // Texten die Register-Wörter genau/verifiziert/zuverlässig/sicher.
+  'boat.keel.assumed':
+    'Angenommener Kiel: {keel}. Nicht anhand der Papiere dieses Schiffs geprüft.',
+  // Spec C.7: nach oben geklemmt, gespeichert — und angesagt. Nur nach oben.
+  'boat.clamp.notice': 'Sicherheitstiefe auf {depth} m angehoben – Mindestwert für {boat}.',
+  // #299: Abschnittsüberschriften im Boot-Tab (SettingsPanel).
+  'settings.section.boatSafety': 'Boot & Sicherheit',
+  'settings.section.propulsion': 'Antrieb',
+  'settings.section.liveAis': 'Live & AIS',
+  // #353 PR2: Kartenanzeige-Regler für Seezeichen (Größe + Anzeigekategorie).
+  'settings.section.mapDisplay': 'Kartenanzeige',
+  'settings.seamarkSize.label': 'Symbolgröße (Seezeichen)',
+  'settings.seamarkSize.value': '{percent} %',
+  'settings.seamarkSize.help':
+    'Ändert die Anzeigegröße der Seezeichen-Symbole auf der Karte. Unterhalb von Zoomstufe 12 skaliert der Kollisionsabstand mit den Symbolen; bei höheren Zoomstufen überlappen sich größere Symbole stärker.',
+  'settings.seamarkCategory.label': 'Angezeigte Seezeichen',
+  'settings.seamarkCategory.base': 'Basis',
+  'settings.seamarkCategory.standard': 'Standard',
+  'settings.seamarkCategory.all': 'Alle',
+  'settings.seamarkCategory.help':
+    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles außer Unterwasserkabeln und Pipelines — wähle „Alle“, um auch diese anzuzeigen.',
   'planner.card.trip': 'Reise',
-  'planner.card.advanced': 'Erweitert',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
   'planner.destination.label': 'Ziel',
@@ -87,10 +125,11 @@ export const de = {
   'planner.import.notice.multipleTracks':
     'Mehrere Tracks in der Datei — nur der erste wurde importiert.',
   'planner.status.fetching': 'Windvorhersage wird geladen…',
-  // #340: phase readout, not a percentage — the router solves genoa and fock
-  // SEQUENTIALLY, so "Segel {index} von {total}" ({rig} already localized via
-  // RIG_LABEL_KEY) is honest and bounded, unlike the removed percentage.
-  'planner.status.routingRig': 'Route wird berechnet… Segel {index} von {total} ({rig})',
+  // #340/#54: phase readout, not a percentage — the router solves
+  // request.sailIds SEQUENTIALLY, so "Segel {index} von {total}" ({sail}
+  // already localized via sailLabelKey) is honest and bounded, unlike the
+  // removed percentage.
+  'planner.status.routingSail': 'Route wird berechnet… Segel {index} von {total} ({sail})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing':
     'Keine Route bei eingestellter Sicherheitstiefe — geringere Sicherheitstiefen werden geprüft…',
@@ -120,6 +159,13 @@ export const de = {
   'error.routingMessageError':
     'Die Routen-Engine hat eine nicht lesbare Antwort gesendet. Erneut versuchen — sie startet dabei neu.',
   'error.routingInterrupted': 'Die Routenberechnung wurde unterbrochen. Erneut versuchen.',
+  // #553 / spec §I.3: der eine typisierte Fehler, bei dem weder „Erneut
+  // versuchen" noch „App neu laden" hilft — beides ändert nichts am Katalog.
+  // Der Satz nennt deshalb stattdessen, wie eng der Verlust ist: die
+  // gespeicherte Route bleibt vollständig lesbar und exportierbar, nur eine
+  // Neuberechnung ist nicht möglich. Siehe dict.en.ts.
+  'error.boatNotInCatalogue':
+    'Diese Route wurde für ein Boot geplant, das nicht mehr verfügbar ist, und kann deshalb nicht neu berechnet werden. Die gespeicherte Route lässt sich weiterhin öffnen, ansehen und exportieren.',
   'error.planSaveFailed':
     'Die Route wurde berechnet, konnte aber nicht gespeichert werden. Erneut versuchen oder freien Speicherplatz auf diesem Gerät prüfen.',
   'error.windUnknown':
@@ -153,6 +199,10 @@ export const de = {
     'Die aktuelle GPS-Position liegt außerhalb des abgedeckten Seegebiets oder ist nicht befahrbar — von hier kann keine Route berechnet werden.',
   'route.rig.genoa': 'Genua',
   'route.rig.fock': 'Fock',
+  // Fallback label for a stored sail id the current catalogue no longer
+  // knows (lib/resultSummary.ts's sailLabelKey). Names the sail as unknown
+  // rather than rendering an empty string or the literal 'undefined'.
+  'route.rig.unknown': 'Unbekanntes Segel',
   'route.rigTabs': 'Riggvergleich',
   'route.recommended': 'Empfohlen',
   'route.fasterRig': 'Schneller: {rig}',
@@ -161,13 +211,98 @@ export const de = {
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
   'route.rigTie': 'Genua und Fock liegen für diese Passage praktisch gleichauf',
   'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
+  // #553 / spec §N.4: schwächere Aussage als rigTie oben — dort ist ein
+  // Vergleich gelaufen und endete unentschieden, hier hat gar keiner
+  // stattgefunden. Siehe dict.en.ts für die drei auslösenden Fälle.
+  'route.rigNotCompared':
+    'Die Segel wurden für diese Passage nicht verglichen — es wird kein schnelleres Rigg angegeben',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
-  // #53: honest passage-planning-aid copy — charted data may under- OR
-  // overstate real depths (dredged channels are exactly where chart data is
-  // pessimistic); never claim the route is verified safe.
-  'route.shallow.banner':
-    'Achtung: Diese Route quert Wasser, das flacher kartiert ist als die eingestellte Sicherheitstiefe von {requested} m — geringste kartierte Tiefe entlang der Route: {minGate} m. Kartendaten können reale Tiefen unter- wie überschätzen; insbesondere ausgebaggerte Fahrrinnen sind oft tiefer als kartiert. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+  // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
+  // for why {used} < {requested} always holds here, why the closing
+  // sentence deliberately does not imply unflagged water is safe, and why
+  // {minGate} is framed at plan level ("crossed by this plan", not "on this
+  // route"). review (PR #461 Minor 4): the previous opening
+  // ("...Sicherheitstiefe ... war nicht passierbar") was a direct calque of
+  // the English — a *Sicherheitstiefe* is a threshold, and a threshold is
+  // not itself *passierbar* (that adjective applies to a passage/channel/
+  // route, not a depth). Reworded to name what actually happened: the
+  // requested-depth solve found no continuous route, so the planner used a
+  // reduced one instead.
+  // #504 Korrekturwelle 4: von EINEM dichten Absatz zu drei Teilen innerhalb
+  // EINER role="alert"-Region restrukturiert (ShallowWarning,
+  // RouteSummary.tsx: ein <div> mit .lead/.detail/.caveat-Kindern) — führt
+  // mit der schwerwiegendsten, handlungsrelevanten Tatsache (der
+  // Untergrenze), statt alles gleich stark zu betonen. Sätze umzuordnen ist
+  // NICHT automatisch sicher: Korrekturwelle 6 fand, dass leads ursprüngliches
+  // "derselben Tiefendaten" eine ANAPHER war, die auf {minGate} zurückwies —
+  // und {minGate} lebt jetzt in .detail, UNTER dem lead. Die Schlagzeile
+  // einer Sicherheitswarnung verwies auf etwas, das die Leserin noch nicht
+  // gesehen hatte. Behoben, indem "der Kartentiefen" direkt benannt wird,
+  // statt darauf zu verweisen. Jede satzübergreifende Referenz zu prüfen ist
+  // jetzt ein PFLICHTSCHRITT bei jeder künftigen Umordnung hier, keine
+  // Annahme — .detail und .caveat wurden ebenfalls geprüft (Welle 6) und
+  // tragen keine solche Referenz (beide sind in sich geschlossen: "diese
+  // Route"/"diese Warnung" sind deiktisch auf die gesamte Warnung bezogen,
+  // nicht positionsabhängig). lead/leadSevere tragen IMMER die
+  // #493-Untergrenzen-Klausel; leadSevere fügt zusätzlich die
+  // Bootstiefgang-Klausel an (nicht "Tiefgang des Boots von {draft} m" — das
+  // "von" hing dort mehrdeutig). "Achtung:" ist von detail hierher
+  // gewandert, da lead jetzt der prominenteste Teil ist.
+  'route.shallow.lead':
+    'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken.',
+  'route.shallow.leadSevere':
+    'Achtung: Eine vorsichtigere Lesart der Kartentiefen kann bis auf {cautious} m sinken — unter den Bootstiefgang von {draft} m.',
+  // #516 Zuwachs 1: siehe dict.en.ts's Kommentar für Zweck, Herkunft und
+  // Anaphern-Disziplin (rein präsentativ, in RouteSummary.tsx zur Laufzeit
+  // gegen die geladene Maske berechnet, nie in PlanResult gespeichert) —
+  // einschließlich der Begründung, warum "Bis zu" / "Up to" entfällt.
+  // Die beiden deutschen Fragen sind in der Durchsicht von PR #523 (Minor 4)
+  // entschieden, nicht mehr offen: PLURAL "verlaufen" bleibt, weil formatNm
+  // immer eine Dezimalzahl liefert ("0.3 nm"), die Seemeilen im Plural
+  // verlangt — der Singular wäre nur für "eine Seemeile" richtig, was dieser
+  // Code nie erzeugen kann. "durch Wasser" statt "in Wasser", weil
+  // "verlaufen in" + Flüssigkeit die Alltagsbedeutung von zerlaufender Farbe
+  // trägt.
+  'route.shallow.exposure':
+    '{dist} dieser Route verlaufen durch Wasser, das flacher als die eingestellte Sicherheitstiefe von {requested} m kartiert ist.',
+  // #516 Zuwachs 2 (setzt #518 voraus): siehe dict.en.ts's Kommentar für
+  // Zweck, Messung statt Annahme, Reihenfolge und Anaphern-Disziplin.
+  // "eingestellte Sicherheitstiefe" statt des Entwurfsdokuments "eingestellte
+  // Tiefe", zur Angleichung an .exposure oben und .detail unten, die
+  // denselben Begriff schon zweimal in dieser Datei verwenden.
+  'route.shallow.confined':
+    'Jeder Abschnitt unterhalb der eingestellten Sicherheitstiefe liegt im Umkreis von {radius} um Start, Ziel oder Wegpunkte.',
+  // #516: die explizite Produktentscheidung des Maintainers (im
+  // #516-Entwurfsdokument bewusst UNEMPFOHLEN gelassen, "eine
+  // Maintainer-Entscheidung, markiert statt entworfen" — inzwischen
+  // entschieden). Zuletzt in .detail gerendert, nach dem Mechanismus-Satz,
+  // auf den er antwortet (PR #523, Minor 3). In RouteSummary.tsx an drei
+  // Bedingungen gekoppelt — `showRemedy`: dieselbe gemessene Exposition
+  // größer als null wie die Zahl davor, das breite Layout, und usedDepthM
+  // über SAFETY_DEPTH_FIELD.min. Die Begründung zu jeder einzelnen steht an
+  // dieser Deklaration; sie ist die einzige Stelle zum Nachlesen und Ändern.
+  'route.shallow.remedy':
+    'Eine geringere Sicherheitstiefe könnte dem Planer helfen, eine direktere Route zu finden.',
+  // Was passiert ist: die eingestellte Sicherheitstiefe war nicht
+  // passierbar, die tatsächlich verwendete Tiefe, die geringste gequerte
+  // Kartentiefe. Normale Textstärke (nicht mehr hervorgehoben) — siehe
+  // dict.en.ts's Kommentar für den vollen Hintergrund ({used} < {requested},
+  // {minGate} als Plan-weite Angabe).
+  'route.shallow.detail':
+    'Mit der eingestellten Sicherheitstiefe von {requested} m wurde keine durchgehende Route gefunden — diese Route wurde daher mit einer reduzierten Tiefe von {used} m geplant. Geringste von diesem Plan gequerte Kartentiefe: {minGate} m.',
+  // #452 gap 3: siehe dict.en.ts's Kommentar für Zweck und Konvention
+  // (Singular/`.plural`, wie banner.viaTooClose(.plural)). An .detail
+  // angehängt (die "was passiert ist"-Aussage, zu der diese Ortsangabe
+  // gehört), nicht an .lead oder .caveat.
+  'route.shallow.locator': 'Die betroffene Etappe beginnt um {time}.',
+  'route.shallow.locator.plural': '{count} Etappen sind betroffen — die erste beginnt um {time}.',
+  // Die Kartengenauigkeits-Einschränkung — visuell sekundär (kleinere
+  // Schrift), aber NIE hinter einem Klick verborgen: eine
+  // Sicherheitsaussage über die Grenzen der obigen Warnung, in einer App
+  // ohne eigene Kartenautorität.
+  'route.shallow.caveat':
+    'Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -187,6 +322,18 @@ export const de = {
   'route.legs.speed': 'Geschwindigkeit',
   'route.legs.distance': 'Distanz',
   'route.legs.maneuver': 'Manöver',
+  // #452 gap 3: siehe dict.en.ts's Kommentar (per-Etappe Untiefen-Markierung,
+  // Text statt reiner Farbe).
+  'route.legs.shallow': 'Untiefe',
+  'route.legs.shallowMarker': 'Untiefe {depth} m',
+  // #493/#504: vorsichtige Untergrenze derselben Zelle, NEBEN der obigen
+  // Marke gerendert (nie ersetzend) — siehe cautiousDepthLowerBoundM in
+  // app/src/lib/mask.ts für die Herleitung. Als GEFAHR formuliert, nicht als
+  // Komfort-Untergrenze — "≥ {depth} m vorsichtig" hing "vorsichtig" als
+  // Adverb hinter die Zahl (unidiomatisch) und las sich neben dem "kann bis
+  // auf … sinken" des Banners für denselben Sachverhalt beruhigend;
+  // "bis auf ... m" benennt dieselbe Gefahr konsistent in beiden Texten.
+  'route.legs.shallowCautious': 'vorsichtig: bis auf {depth} m',
   'route.legs.motorNote': 'Motor = reine Motorfahrt, keine Segelleistung modelliert.',
   'route.legs.disclosure': 'Etappen ({count})',
   'route.kind.motor': 'Motor',
@@ -228,6 +375,11 @@ export const de = {
   // 'min.' with the period: disambiguates from the panel's minutes ('x h yy
   // min', '+12 min') on this time-axis chart (German abbreviations take a dot).
   'profile.minDepth': 'min.',
+  // #512 review F8: the exhaustive minimum is unavailable (defensively, when
+  // a leg endpoint falls outside mask coverage) — an em dash plus a word so
+  // it can never be mistaken for a measurement or for "0". Rendered INSTEAD
+  // OF the number, never alongside it.
+  'profile.minDepthUnknown': 'min. — unbekannt',
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',
@@ -403,6 +555,20 @@ export const de = {
   'plansList.delete': 'Plan löschen',
   'plansList.confirmDelete': 'Löschen bestätigen',
   'plansList.actionError': 'Aktion fehlgeschlagen. Bitte erneut versuchen.',
+  // #54: shown for a stored plan the read-time normaliser cannot handle. Two
+  // strings, because the two cases call for different user action, and prod
+  // and /uat/ share one origin-scoped database, so a production user can meet
+  // the newer-version case without having done anything wrong.
+  //
+  // Says only what the stored schemaVersion PROVES. It deliberately does not
+  // promise the record is undamaged: the classification rests on that one
+  // number, so a record both written by a newer build AND corrupted (partial
+  // write, foreign tool) lands here too — and the row's only control is an
+  // irreversible delete, so the copy must not overstate recoverability.
+  'plansList.unreadable.newerVersion':
+    'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese ältere Version kann ihn nicht lesen.',
+  'plansList.unreadable.damaged':
+    'Dieser Plan kann nicht geöffnet werden – der gespeicherte Datensatz ist unvollständig oder beschädigt. Er bleibt gespeichert.',
   // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
   // which reuses the stored grid and stays offline-capable).
   'plansList.recalc': 'Neu berechnen',
@@ -448,6 +614,9 @@ export const de = {
   'nav.plan': 'Planen',
   'nav.routes': 'Routen',
   'nav.live': 'Live',
+  // #299: kurz gehalten, kürzer sogar als "Routen" — vermeidet die 280px-
+  // Enge, die für eine Tab-Option gegen ein Wort wie "Einstellungen" spräche.
+  'nav.boat': 'Boot',
   'nav.langToggle': 'English anzeigen',
   'nav.langToggle.de': 'DE',
   'nav.langToggle.en': 'EN',
@@ -460,13 +629,17 @@ export const de = {
   'about.caveats.heading': 'Wichtige Hinweise',
   'about.caveats.polars':
     'Die Polardaten sind Schätzungen auf Basis ORC-artiger VPP-Daten, einstellbar über den Leistungsfaktor in den Optionen — nicht renngenau kalibriert.',
+  // #539 / #54 Spec C.8 R5 + J OQ-2: siehe den Kommentar in dict.en.ts —
+  // jede Zahl kommt jetzt aus dem AUSGEWÄHLTEN Boot (lib/depthDisclosure.ts).
+  // formatDepthM liefert das deutsche Dezimalkomma, damit „2,1 m“ hier nicht
+  // still zu „2.1 m“ wird.
+  'about.caveats.depthMask':
+    'Die Tiefenwerte mischen zwei Lesarten derselben EMODnet-Bathymetriedaten: Die geglättete Lesart wird nur dort verwendet, wo sie mit der vorsichtigeren auf {tolerance} m genau übereinstimmt, sodass der von der App verwendete Tiefenwert nie mehr als {tolerance} m tiefer ist als die vorsichtigere Lesart — das beschreibt die Quelldaten, nicht den tatsächlichen Meeresgrund. Eine Zelle, durch die bei Sicherheitstiefe G geplant wird, hat eine vorsichtige Lesart von mindestens G − {tolerance} m. Die Standard-Sicherheitstiefe für die {boat} beträgt {gate} m und ist so gewählt, dass diese Untergrenze nie unter den Tiefgang von {draft} m fällt — sie kann aber nur {floor} m betragen, wenn eine Route auf eine geringere Tiefenschwelle zurückfällt, um verbunden zu bleiben; das wird auf der betroffenen Route markiert.',
   'about.dataSize':
     'Der erste Aufruf lädt ca. 44 MB (Basiskarte und Routendaten) herunter; spätere Aufrufe werden aus dem Cache bedient und funktionieren offline.',
   'about.sources.heading': 'Datenquellen',
   'about.sources.protomaps': 'Kartendarstellung: Protomaps',
   'about.sources.osm': '© OpenStreetMap-Mitwirkende (ODbL)',
-  'about.sources.osmMask':
-    'Land-/Tiefenmaske: abgeleitet von © OpenStreetMap-Mitwirkenden, bereitgestellt unter ODbL',
   'about.sources.openMeteo': 'Windvorhersage: Wetterdaten von Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polare: ORC International Zertifikat 2026, Salona 45 „Miles Ahead" (AUT 035/26); Vorwind-Werte auf Weißsegel (ohne Spinnaker) korrigiert — Schätzung, nicht renngenau kalibriert.',

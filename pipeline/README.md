@@ -4,14 +4,14 @@ Build-time-only scripts that produce the static assets committed under
 `app/public/data/`. Nothing here runs at app runtime — the PWA reads the
 generated files directly and stays offline-capable. Regenerate an asset only
 when its source data or generation logic changes; never hand-edit a generated
-file (`polar-*.json`, `harbors.json`, `mask.bin`, `mask.meta.json`).
+file (`polars/*.json`, `harbors.json`, `mask.bin`, `mask.meta.json`).
 
 ## Setup
 
 ```
 python3 -m venv pipeline/.venv
 pipeline/.venv/bin/pip install -r pipeline/requirements.txt
-npm --prefix pipeline install   # only needed if pipeline/node_modules is absent; the two .mjs scripts use no npm deps beyond Node's stdlib
+npm --prefix pipeline install   # needed for build_icons.mjs (sharp); every other .mjs script here uses Node's stdlib only
 ```
 
 ## Style (#220)
@@ -33,10 +33,13 @@ required check.
 
 ## Assets
 
-### `polar-genoa.json` / `polar-fock.json` — Salona 45 boat-speed polars
+### `polars/<boat-id>-<sail-id>.json` — boat-speed polars
 
 Boat speed (knots) as a function of true wind angle (TWA) and true wind speed
-(TWS), one table for the main+genoa rig and one for main+fock (working jib).
+(TWS), two tables per catalogue boat — main+genoa and main+fock (working jib).
+The Salona 45's provenance is described first; the two tier-C fleet boats added
+by #54 spec N are covered under "Estimated (tier C) tables" below and are
+derived FROM the Salona 45's, so read this first.
 Source: estimate derived from the ORC International 2026 certificate for
 Salona 45 "Miles Ahead" (AUT 035/26), with downwind angles corrected to
 white-sails-only performance via a 23-boat ORC non-spinnaker ratio study. The
@@ -55,9 +58,108 @@ Regenerate:
 node pipeline/build_polars.mjs
 ```
 
-Edit `pipeline/polars-source.json` (raw table + sanity-check anchors) to
-change the data; `build_polars.mjs` validates monotonicity and a couple of
-known-magnitude anchor points before writing.
+Edit `pipeline/polars-source.json` to change the data. It is keyed by boat
+(`boats[]`), each carrying its own `tws`/`twa` grid, its `sails` map, and a
+`validation` block holding that boat's plausibility bound and sanity anchors;
+each sail carries a `provenance` tier (`certificate` / `modelled` /
+`estimated`, spec G.3) and note. `build_polars.mjs` derives the sail set from
+that map — there is no second list to fall out of step with it — and **fails
+closed**. The identity and provenance contract specifically, stated as what is
+actually checked: a boat id that is missing, unsafe or duplicated; a sail id
+that is unsafe; any two sails resolving to the same output file; a boat with no
+anchors or no plausibility bound; a sail with no provenance tier or note. Each
+throws and names itself rather than inheriting another boat's values — an
+anchor that silently validates the wrong hull is worse than no anchor. That
+list is not an inventory of every guard the script runs; the structural
+validation (grid shapes, numeric types, TWS monotonicity, anchor bands) is
+separate and additional.
+
+Both halves of the output filename are validated: validating only the boat id
+let a sail keyed `../../../ESCAPED` write outside this directory entirely. And
+the duplicate check runs on the boat id *and* on the output filename, because
+`-` is both the separator and a legal id character — boat `a-b` with sail `c`
+and boat `a` with sail `b-c` are two legal, distinct, non-duplicate ids that
+resolve to the same `a-b-c.json`. Neither check subsumes the other: two boats
+sharing an id with disjoint sail sets collide on no filename at all.
+
+#### Estimated (tier C) tables — `estimate_polars.mjs`
+
+No ORC/IRC certificate and no published VPP was obtainable for any Skipperteam
+fleet model, so the Salona 44 (SPEEDY GO!) and Elan Impression 444 (PIRANJA)
+ship at provenance tier `estimated`: the Salona 45's certificate-anchored
+**fock** table scaled by one uniform hull scalar
+`k = sqrt((SA/D)_target / (SA/D)_salona45)`, and a second sail derived from
+that scaled table times the Salona 45's documented genoa overlay ramp. Inputs
+are public brochure dimensions and the already-shipped Salona 45 tables and
+nothing else, so the estimator downloads nothing and ingests no third-party
+table. The method, its measured accuracy ceiling, the near-miss that motivates
+the one-source rule, and the four things it structurally cannot do are all
+documented in `estimate_polars.mjs`'s header — read that before changing any
+input.
+
+```
+node pipeline/estimate_polars.mjs                     # --check (also `npm run estimate`)
+node pipeline/estimate_polars.mjs --report            # + scalars and anchor margins
+node pipeline/estimate_polars.mjs --emit <boat> <sail>  # formatted rows to paste
+```
+
+The committed `speeds` literals are the artifact; this script is the generator
+(`--emit`) and the keeper (`--check`). There is deliberately no mode that
+rewrites `polars-source.json`: it is hand-formatted, and a whole-file
+re-serialiser would churn the Salona 45's block on every run.
+
+`build_polars.mjs` enforces spec N.6's rules **E1–E8** on top of everything
+above, and imports this module so E5 and E7 run the same code the tables were
+generated with rather than a second implementation of it:
+
+- **E1** tier `estimated` requires a complete `estimator` block — and, in the
+  converse direction, a non-estimated sail may not carry one.
+- **E2** every `estimator.inputs.*` names a source, and the input list may not
+  be empty (an empty one satisfies "every input has a source" vacuously). A
+  RAMP sail must carry **no** `inputs` at all — it derives from its base sail,
+  whose block owns the figures, and a second copy is data nothing reads.
+- **E3** every anchor names a source, on **every** boat including the
+  reference one — E4 compares against those strings, so it needs them. Its
+  sibling: `validation.maxSpeedKnSource` is required too, because N.3 step 5
+  holds the plausibility ceiling to the same standard as the anchors.
+- **E4** an anchor whose band **and** source both equal the donor's at the same
+  cell is refused. Conjunctive: same band with an independent source, or the
+  same source with a different band, is legitimate.
+- **E5** `0.80 <= k <= 1.25`; outside it the donor is not a comparable hull.
+- **E1/N.3 step 3** the base must *be* the certificate-anchored table — not the
+  modelled genoa overlay and not another estimate — and a ramp may not map a
+  sail onto itself or come from a boat other than the donor.
+- **E6** the second sail declares which base sail and which ramp it came from,
+  and exactly one sail per boat may be the scaled base.
+- **E7** re-running the estimator on the committed inputs reproduces the
+  committed `speeds` byte-for-byte — both tables — and the declared `scalar`.
+- **E8** every pre-existing structural guard still applies to a tier-C boat.
+
+`app/src/test/buildPolars.failClosed.test.ts` runs the real script against
+mutated copies of the real source. The battery is per **condition**, not per
+rule: each individual `requireField` above was deleted on its own and must red
+at least one row. Three conditions once red zero — two of them because
+`estimate_polars.mjs` independently refuses the same input with a
+byte-identical message, so the row could not tell which layer had refused.
+Those messages now carry a `spec N.6 E1`/`E2` marker and the rows assert it.
+
+There is deliberately **no** duplicate-sail-id check — sail ids are not unique
+across boats by design, and a repeated key inside one boat's `sails` map is
+collapsed by `JSON.parse` before the script sees it.
+
+The Salona 45's two anchors restate the bands the pre-#54 script hardcoded:
+`8.26..9.46` at TWA 90 / TWS 16 and `6.5..8.5` at TWA 52 / TWS 12. The second is
+exactly the old `6.5 || 8.5` test. The first is *not* exactly `8.86 ± 0.6`: the
+lower bound is (`8.86 - 0.6 === 8.26`), but `8.86 + 0.6` evaluates to
+`9.459999999999999`, so the declared `9.46` is looser than the old predicate by
+one representable step — it accepts a table reading exactly `9.46`, which the
+old test rejected. Both sails read exactly `8.86` there, so nothing sits near
+either bound; tighten the upper literal rather than widen it if that ever
+changes.
+
+Output filenames carry the boat id (spec F.1): the previous `polar-<sail>.json`
+had no boat identifier, so a second boat's tables would have overwritten the
+first's.
 
 ### `harbors.json` — curated harbor list
 

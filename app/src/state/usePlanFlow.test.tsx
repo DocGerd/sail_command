@@ -13,12 +13,27 @@ import {
 import type { WorkerRequest, WorkerResponse } from '../routing/protocol';
 import { OpenMeteoError, type OpenMeteoErrorKind } from '../services/openMeteo';
 import * as assetsModule from '../services/assets';
+import { DEFAULT_BOAT_ID, polarKey } from '../data/boats';
 import { __resetDbForTests, getPlan, listPlans, savePlan } from '../services/db';
 import { destinationPoint } from '../lib/geo';
 import { recalcRequest } from '../lib/recalc';
-import { TEST_MASK_META, TEST_POLAR, uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type NoRouteReason, type Plan, type PlanResultOk } from '../types';
+import {
+  OFF_CATALOGUE_BOAT,
+  TEST_MASK_META,
+  TEST_POLAR,
+  uniformWindGrid,
+} from '../test/fixtures';
+import {
+  DEFAULT_SETTINGS,
+  type NoRouteReason,
+  type Plan,
+  type PlanRequest,
+  type PlanResultOk,
+  type SailId,
+} from '../types';
 import type { MsgKey } from '../i18n/dict.de';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const FOCK_POLAR = { ...TEST_POLAR, rig: 'fock' as const };
 
@@ -29,8 +44,10 @@ function openWaterBuffer(): ArrayBuffer {
 const ASSETS_FIXTURE: assetsModule.RoutingAssets = {
   maskMeta: TEST_MASK_META,
   maskBuffer: openWaterBuffer(),
-  polarGenoa: TEST_POLAR,
-  polarFock: FOCK_POLAR,
+  polars: {
+    [polarKey(DEFAULT_BOAT_ID, 'genoa')]: TEST_POLAR,
+    [polarKey(DEFAULT_BOAT_ID, 'fock')]: FOCK_POLAR,
+  },
   harbors: [],
   seamarks: { type: 'FeatureCollection', features: [] },
 };
@@ -64,7 +81,7 @@ function fakeWorker(opts: { failInit?: boolean } = {}) {
   return w;
 }
 
-const REQ = {
+const REQ: PlanRequest = {
   // cell centers, open water throughout TEST_MASK_META (see fixtures.ts).
   origin: { lat: 54.7525, lon: 10.0025 },
   destination: { lat: 54.7525, lon: 10.3025 },
@@ -73,23 +90,30 @@ const REQ = {
   destinationHarborId: null,
   departureMs: Date.UTC(2026, 6, 15, 8, 0, 0),
   settings: DEFAULT_SETTINGS,
+  sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 const OK_RESULT: PlanResultOk = {
   status: 'ok',
-  genoa: {
-    rig: 'genoa',
-    legs: [],
-    etaMs: REQ.departureMs + 3_600_000,
-    durationMs: 3_600_000,
-    distanceNm: 10,
-    maneuverCount: 0,
-    motorDistanceNm: 0,
-  },
-  fock: null,
-  genoaReason: null,
-  fockReason: 'calm-motor-off',
+  sails: [
+    {
+      sailId: 'genoa',
+      result: {
+        sailId: 'genoa',
+        legs: [],
+        etaMs: REQ.departureMs + 3_600_000,
+        durationMs: 3_600_000,
+        distanceNm: 10,
+        maneuverCount: 0,
+        motorDistanceNm: 0,
+      },
+      reason: null,
+    },
+    { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+  ],
   recommended: 'genoa',
+  comparisonComplete: true,
   snappedOrigin: REQ.origin,
   snappedDestination: REQ.destination,
 };
@@ -284,11 +308,80 @@ describe('usePlanFlow', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  // #340: the routing phase carries only `rig` — no simulatedToMs/progress
-  // number — since the router solves genoa then fock SEQUENTIALLY
-  // (planRoute.ts's runBoth) and `rig` alone is an honest, bounded phase
-  // signal. tMs/frontierSize still arrive on every progress message (the
-  // worker protocol is unchanged) but are no longer reflected into state.
+  // #54 review: the "throw instead of fabricate" invariant on the progress
+  // callback throws inside workerClient's `worker.onmessage`, where nothing
+  // catches it — no error boundary, no window.onerror, and routing/ +
+  // usePlanFlow.ts carry no console.* by design. This row pins BOTH measured
+  // halves, because either alone is misleading: the throw aborts that ONE
+  // progress delivery (the phase readout does not advance and run() is still
+  // pending), and the plan's own `result` message — delivered on the NEXT
+  // onmessage call, as a real worker always sends — still settles the run to
+  // idle and saves the plan exactly once. The invariant therefore refuses to
+  // fabricate an index WITHOUT failing the passage plan; it is not a route to
+  // a distinct error banner.
+  it('#54: an unknown sail in a progress message throws uncaught, and the plan still completes', async () => {
+    const w = fakeWorker();
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(
+      () =>
+        usePlanFlow({
+          fetchWind,
+          save,
+          makeClient: () => new RoutingClient(() => w as unknown as Worker),
+        }),
+      { wrapper: AppStateProvider },
+    );
+
+    let runPromise!: Promise<void>;
+    await act(async () => {
+      runPromise = result.current.run(REQ, 'Test plan');
+      await flush();
+    });
+    await flush();
+    const planMsg = findPosted(w.posted, 'plan');
+
+    // The fake dispatches onmessage synchronously, so the throw surfaces to
+    // this caller; a real Worker turns the same throw into an uncaught error
+    // and delivers the next message regardless. Catching it here models that
+    // boundary — and asserting it is what makes the second half meaningful.
+    let thrown: unknown = null;
+    act(() => {
+      try {
+        w.emit({
+          type: 'progress',
+          id: planMsg.id,
+          sailId: 'spinnaker' as SailId,
+          tMs: 100,
+          frontierSize: 2,
+        });
+      } catch (e) {
+        thrown = e;
+      }
+    });
+    expect((thrown as Error | null)?.message).toContain("progress for sail 'spinnaker'");
+    // Half one: the readout did not advance to 'routing' and nothing settled.
+    expect(result.current.planning).toEqual({ phase: 'fetching-wind' });
+    expect(save).not.toHaveBeenCalled();
+
+    // Half two: the very next message still completes the plan.
+    await act(async () => {
+      w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
+      await runPromise;
+    });
+    expect(result.current.planning).toEqual({ phase: 'idle' });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  // #340/#54: the routing phase carries `sailId`+`index`+`total` — no
+  // simulatedToMs/progress number — since the router solves req.sailIds
+  // SEQUENTIALLY (planRoute.ts's runAll, a plain `.map()` over req.sailIds)
+  // and that triple alone is an honest, bounded phase signal. tMs/frontierSize
+  // still arrive on every progress message (the worker protocol is
+  // unchanged) but are no longer reflected into state.
   it('the routing phase tracks which rig is solving, regardless of tMs — including a same-rig regression, which is not a phase change', async () => {
     let now = 1_700_000_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
@@ -318,9 +411,14 @@ describe('usePlanFlow', () => {
     const planMsg = findPosted(w.posted, 'plan');
 
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 1000, frontierSize: 3 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 1000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
 
     // A regressing tMs at a via-segment joint (ledgered) is invisible to the
     // UI now — there is no number to clamp or regress, only the rig. `now`
@@ -328,17 +426,27 @@ describe('usePlanFlow', () => {
     // message genuinely reaches onProgress rather than being swallowed.
     now += 150;
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 800, frontierSize: 4 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 800, frontierSize: 4 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
 
     // The genoa->fock switch: the ONLY visible change is `rig` — this is the
     // exact transition the removed percentage rendered as a reset to 0.
     now += 150;
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'fock', tMs: 200, frontierSize: 1 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'fock', tMs: 200, frontierSize: 1 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'fock' });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'fock',
+      index: 2,
+      total: 2,
+    });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
@@ -377,9 +485,14 @@ describe('usePlanFlow', () => {
 
     // The doomed requested-depth solve reaches genoa.
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 5000, frontierSize: 3 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 5000, frontierSize: 3 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
 
     // The worker starts probing relaxed depth gates (mask BFS): the UI shows
     // its own named 'probing-depth' phase, not a routing readout frozen at
@@ -394,9 +507,14 @@ describe('usePlanFlow', () => {
     // above, which is correct: restarting the same rig is not a new phase.
     now += 150; // clear the 100 ms per-rig progress throttle
     act(() => {
-      w.emit({ type: 'progress', id: planMsg.id, rig: 'genoa', tMs: 200, frontierSize: 2 });
+      w.emit({ type: 'progress', id: planMsg.id, sailId: 'genoa', tMs: 200, frontierSize: 2 });
     });
-    expect(result.current.planning).toEqual({ phase: 'routing', rig: 'genoa' });
+    expect(result.current.planning).toEqual({
+      phase: 'routing',
+      sailId: 'genoa',
+      index: 1,
+      total: 2,
+    });
 
     await act(async () => {
       w.emit({ type: 'result', id: planMsg.id, result: OK_RESULT });
@@ -515,6 +633,53 @@ describe('usePlanFlow', () => {
 
     expect(result.current.planning).toEqual({ phase: 'idle' });
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  // #553 MAJOR 5: the THIRD disposal site, and the one that does not go
+  // through `disposeAfterFailure` — it disposes inline and nulls the singleton
+  // refs. Paired with the worker-fatal row directly above, which must keep
+  // disposing: together they isolate the failure KIND as the deciding
+  // variable. This row observes BOTH halves of the carve-out, because the
+  // teardown has two parts and skipping only one would be worse than skipping
+  // neither: the Worker is not terminated, AND the client is reused rather
+  // than rebuilt (nulling the refs while the worker is alive would strand it
+  // and have ensureClient build a second one).
+  it('#553: a boat-not-in-catalogue rejection leaves the healthy worker alive and reuses the client', async () => {
+    const w = fakeWorker();
+    const makeClient = vi
+      .fn()
+      .mockImplementation(() => new RoutingClient(() => w as unknown as Worker));
+    const windGrid = uniformWindGrid(12, 0);
+    const fetchWind = vi.fn().mockResolvedValue(windGrid);
+    const save = vi.fn<(plan: Plan) => Promise<void>>().mockResolvedValue(undefined);
+    vi.spyOn(assetsModule, 'loadRoutingAssets').mockResolvedValue(ASSETS_FIXTURE);
+
+    const { result } = renderHook(() => usePlanFlow({ fetchWind, save, makeClient }), {
+      wrapper: AppStateProvider,
+    });
+
+    // A boat snapshot the catalogue does not hold — the state a saved plan
+    // keeps after its boat leaves BOATS (spec §I.3).
+    const staleReq: PlanRequest = { ...REQ, boat: OFF_CATALOGUE_BOAT };
+    await act(async () => {
+      await result.current.run(staleReq, 'Stale boat');
+    });
+
+    expect(result.current.planning).toEqual({
+      phase: 'error',
+      messageKey: 'error.boatNotInCatalogue',
+    });
+    // plan() rejects before posting, so the worker never saw a plan message.
+    expect(w.posted.filter((m) => m.type === 'plan')).toHaveLength(0);
+    // Half 1: the worker is NOT torn down.
+    expect(w.terminate, 'the worker never saw the request and is healthy').not.toHaveBeenCalled();
+
+    // Half 2: the next run reuses the same client instead of rebuilding.
+    await act(async () => {
+      void result.current.run(REQ, 'Retry with the default boat');
+      await flush();
+    });
+    expect(makeClient, 'the healthy client must be reused, not rebuilt').toHaveBeenCalledTimes(1);
   });
 
   // #433: a savePlan() failure AFTER routing already succeeded used to
@@ -669,6 +834,7 @@ describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
         id: 'loaded-timeout',
         name: 'Loaded from PlansList',
         createdAtMs: REQ.departureMs - 3_600_000,
+        schemaVersion: PLAN_SCHEMA_VERSION,
         request: { ...REQ, viaPoints: [] },
         windGrid: uniformWindGrid(12, 0),
         result: OK_RESULT,
@@ -728,6 +894,7 @@ describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
       id: 'loaded-not-run',
       name: 'Loaded from PlansList',
       createdAtMs: REQ.departureMs - 3_600_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: { ...REQ, viaPoints: [] },
       windGrid,
       result: OK_RESULT,
@@ -773,6 +940,7 @@ describe('usePlanFlow.ensureClient shared with useViaReplan', () => {
       id: 'offline-replan',
       name: 'Loaded from PlansList',
       createdAtMs: REQ.departureMs - 3_600_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: { ...REQ, viaPoints: [] },
       windGrid,
       result: OK_RESULT,
@@ -818,6 +986,7 @@ describe('#114 recalculate with a fresh forecast', () => {
       id: 'orig-1',
       name: 'Original',
       createdAtMs: Date.UTC(2026, 6, 14, 12, 0, 0),
+      schemaVersion: PLAN_SCHEMA_VERSION,
       request: { ...REQ, viaPoints: [] },
       windGrid: uniformWindGrid(17, 90),
       result: OK_RESULT,

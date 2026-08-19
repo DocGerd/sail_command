@@ -12,6 +12,15 @@ export const en = {
   'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
   'options.safetyDepth.label': 'Safety depth (m)',
+  // #299: safety depth now appears in TWO places — here for quick access
+  // and on the Boat tab (SettingsPanel) as its canonical home, one shared
+  // source (PR #486 review). The depth comfort margin and the rest of the
+  // boat settings still live EXCLUSIVELY there — this link stops anyone
+  // concluding the margin was deleted just because it's no longer right
+  // beside safety depth. No longer "&": safety depth (visible right next to
+  // this link) is no longer exclusive to that tab, so "more" reads better
+  // than a list, with the comfort margin kept as the concrete anchor.
+  'planner.safetyDepth.boatLink': 'More boat settings (incl. depth comfort margin)',
   'options.depthComfortMargin.label': 'Depth comfort margin (m)',
   'options.depthComfortMargin.help':
     'Beyond the safety depth, the planner also prefers water at least this much deeper when it costs little extra time — 0 disables the preference. It never allows shallower water than the safety depth allows, and the recommended rig can change as a result.',
@@ -28,13 +37,40 @@ export const en = {
   'options.showOwnship.label': 'Show my position',
   'options.showOwnship.help':
     'Shows your GPS position and accuracy circle on the map wherever it is open — planning, no plan, or Live view — not just during Live guidance. Consumer-GPS accuracy, not chart-grade positioning; this is a passage-planning aid, not a navigation device. Turning this on will ask for location permission.',
-  // One-line glance of the collapsed "Advanced" disclosure, joined with " · ".
-  'options.summary.motorOn': 'Motor on',
-  'options.summary.motorOff': 'Motor off',
-  'options.summary.maneuver': 'Maneuver {seconds} s',
-  'options.summary.performance': '×{factor}',
+  // #54: boat selection (BoatPicker on the Boat tab).
+  'boat.section.title': 'Boat selection',
+  'boat.picker.label': 'Select boat',
+  'boat.draft': 'Draft {depth} m',
+  // Spec G.3 provenance tiers. Deliberately no A/B/C letters in the copy —
+  // the letters are spec-internal identifiers and mean nothing to a skipper;
+  // the word does.
+  'boat.polarTier.certificate': 'Certificate',
+  'boat.polarTier.modelled': 'Modelled',
+  'boat.polarTier.estimated': 'Estimated',
+  'boat.polarTier.aria': 'Polar data: {tier}',
+  'boat.polarDetail.summary': 'Polar data & provenance',
+  // Spec N.2. "Checked", not "verified": spec N.5 rules the register words
+  // accurate/verified/reliable/safe out of any new copy.
+  'boat.keel.assumed': "Assumed keel: {keel}. Not checked against this vessel's papers.",
+  // Spec C.7: clamped up, persisted — and announced. Up only.
+  'boat.clamp.notice': 'Safety depth raised to {depth} m — the minimum for {boat}.',
+  // #299: section headings on the Boat tab (SettingsPanel).
+  'settings.section.boatSafety': 'Boat & safety',
+  'settings.section.propulsion': 'Propulsion',
+  'settings.section.liveAis': 'Live & AIS',
+  // #353 PR2: map-display controls for seamarks (symbol size + display category).
+  'settings.section.mapDisplay': 'Map display',
+  'settings.seamarkSize.label': 'Symbol size (seamarks)',
+  'settings.seamarkSize.value': '{percent}%',
+  'settings.seamarkSize.help':
+    'Changes the on-screen size of seamark symbols on the map. Below zoom 12 the collision spacing scales with the symbols; at higher zoom levels larger symbols overlap each other more.',
+  'settings.seamarkCategory.label': 'Displayed seamarks',
+  'settings.seamarkCategory.base': 'Base',
+  'settings.seamarkCategory.standard': 'Standard',
+  'settings.seamarkCategory.all': 'All',
+  'settings.seamarkCategory.help':
+    'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything except submarine cable and pipeline markers — choose "All" to show those too.',
   'planner.card.trip': 'Trip',
-  'planner.card.advanced': 'Advanced',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',
   'planner.destination.label': 'Destination',
@@ -89,10 +125,11 @@ export const en = {
   'planner.import.notice.multipleTracks':
     'Multiple tracks in the file — only the first was imported.',
   'planner.status.fetching': 'Fetching wind forecast…',
-  // #340: phase readout, not a percentage — the router solves genoa and fock
-  // SEQUENTIALLY, so "sail {index} of {total}" is honest and bounded, unlike
-  // the removed percentage (capped ~5%, reset to 0 at the genoa->fock switch).
-  'planner.status.routingRig': 'Calculating route… sail {index} of {total} ({rig})',
+  // #340/#54: phase readout, not a percentage — the router solves
+  // request.sailIds SEQUENTIALLY, so "sail {index} of {total}" is honest and
+  // bounded, unlike the removed percentage (capped ~5%, reset to 0 at every
+  // sail switch).
+  'planner.status.routingSail': 'Calculating route… sail {index} of {total} ({sail})',
   // #53: relaxed-depth probe phase after an unreachable requested-depth solve
   'planner.status.probing': 'No route at the set safety depth — probing reduced depth gates…',
   'error.offline': 'Wind forecast service is unreachable. Check your connection and try again.',
@@ -116,6 +153,15 @@ export const en = {
   'error.routingMessageError':
     'The routing engine sent back a reply that could not be read. Try again — it restarts fresh.',
   'error.routingInterrupted': 'Route planning was interrupted. Try again.',
+  // #553 / spec §I.3. Remedy copy true of THIS path specifically: neither a
+  // retry (a fresh worker changes nothing — the catalogue is the same) nor a
+  // reload (likewise) can help, so neither is offered. What the sentence
+  // conveys instead is the narrowness of the loss — §I.3 guarantees the saved
+  // plan "still opens, still renders, still exports GPX", and only re-planning
+  // is gone — because a bare failure message would read as "this route is
+  // broken" and invite the user to delete a record that is entirely intact.
+  'error.boatNotInCatalogue':
+    'This route was planned for a boat that is no longer available, so it cannot be planned again. The saved route still opens, and you can still view and export it.',
   'error.planSaveFailed':
     'The route was calculated but could not be saved. Try again, or check available storage on this device.',
   'error.windUnknown':
@@ -149,6 +195,10 @@ export const en = {
     'The current GPS position is outside the covered sea area or not navigable — no route can be computed from here.',
   'route.rig.genoa': 'Genoa',
   'route.rig.fock': 'Fock',
+  // Fallback label for a stored sail id the current catalogue no longer
+  // knows (lib/resultSummary.ts's sailLabelKey). Names the sail as unknown
+  // rather than rendering an empty string or the literal 'undefined'.
+  'route.rig.unknown': 'Unknown sail',
   'route.rigTabs': 'Rig comparison',
   'route.recommended': 'Recommended',
   'route.fasterRig': 'Faster: {rig}',
@@ -157,13 +207,115 @@ export const en = {
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
   'route.rigTie': 'Genoa and Fock are effectively tied for this passage',
   'route.rigMoot': 'Rig does not matter here — this passage runs entirely under engine',
+  // #553 / spec §N.4: strictly WEAKER than rigTie above, and the distinction
+  // is the whole point — 'tie' reports the outcome of a comparison that ran,
+  // this reports that no comparison ran at all. Reached when only one sail
+  // found a route, when the plan requested a number of sails the capped-at-2
+  // comparison has no verdict for, or when the boat's polars are estimated
+  // (tier C), where the two tables differ by a documented overlay ramp rather
+  // than by anything about the hull. Says no faster rig is CLAIMED rather
+  // than that the sails are equal, because that is the honest difference.
+  'route.rigNotCompared':
+    'The sails were not compared for this passage, so no faster rig is claimed',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
-  // #53: honest passage-planning-aid copy — charted data may under- OR
-  // overstate real depths (dredged channels are exactly where chart data is
-  // pessimistic); never claim the route is verified safe.
-  'route.shallow.banner':
-    'Caution: this route crosses water charted shallower than your safety depth of {requested} m — shallowest charted depth along the route: {minGate} m. Chart data may understate or overstate real depths; dredged channels in particular are often deeper than charted. Verify the highlighted sections against official charts and your depth sounder.',
+  // #504 fix wave 4: restructured from ONE dense paragraph into three parts
+  // inside ONE role="alert" region (ShallowWarning, RouteSummary.tsx: a
+  // <div> with .lead/.detail/.caveat children) — leads with the most
+  // severe, actionable fact (the cautious floor) instead of emphasising
+  // everything equally. Re-sequencing a sentence is NOT automatically safe:
+  // wave 6 found the lead's original "that same depth data" was an
+  // ANAPHORA pointing back at {minGate}, which now lives in .detail BELOW
+  // the lead — the headline of a safety warning referred to something the
+  // reader had not yet seen. Fixed by naming "the charted depth data"
+  // directly instead of pointing at it. Checking every cross-sentence
+  // reference is a REQUIRED step of any future re-sequencing here, not an
+  // assumption — .detail and .caveat were both checked too (wave 6) and
+  // carry no reference into another PART: "this route"/"this warning" are
+  // deictic to the whole alert, not position-dependent.
+  // lead/leadSevere ALWAYS carry the #493 cautious-floor clause; leadSevere
+  // additionally states the boat's-draft clause. "Caution:" moved here from
+  // detail, since lead is now the most prominent part.
+  'route.shallow.lead':
+    'Caution: a more cautious reading of the charted depth data could run as low as {cautious} m.',
+  'route.shallow.leadSevere':
+    "Caution: a more cautious reading of the charted depth data could run as low as {cautious} m, below this boat's {draft} m draft.",
+  // #516 increment 1: presentation-only shallow-EXPOSURE figure (a distance,
+  // not a per-leg minimum) — computed at render time in
+  // lib/shallowExposure.ts against the CURRENTLY LOADED mask, never stored
+  // in PlanResult (see #516's design doc, "Option (a), presentation-only":
+  // app/sweep/'s byte-diff acceptance harness stays valid only because
+  // PlanResult never grows a field for this). Rendered FIRST in .detail,
+  // ahead of the existing "what happened" mechanism sentence below —
+  // self-contained (refers to nothing rendered elsewhere), per the #493/
+  // #504 anaphora lesson recorded in this file's own comment above.
+  // NO "Up to" (PR #523 review, Minor 5): that phrasing asserts a ceiling,
+  // and the figure only bounds the CHART — the mask overstates depth on a
+  // large fraction of water cells (#455), which is what .lead's cautious
+  // floor and .caveat exist to say. The scoping word that must stay is
+  // `charted`; the ceil rounding is display precision, not a bound claim.
+  'route.shallow.exposure':
+    '{dist} of this route crosses water charted shallower than your safety depth of {requested} m.',
+  // #516 increment 2 (requires #518): whether the exposure above is entirely
+  // inside #452's relaxation discs — MEASURED at render time
+  // (lib/shallowExposure.ts's shallowConfinedWithinM), never assumed from the
+  // router, since a plan saved before #518 shipped is byte-indistinguishable
+  // from one computed after. Rendered right after .exposure (RouteSummary.tsx's
+  // `showConfined`), never re-sequenced relative to it, and deliberately
+  // SELF-CONTAINED — not "All of it lies within…", which would bind to
+  // .exposure's position (the #493/#504 anaphora lesson). false/null both
+  // suppress this sentence silently; it is never rendered as a negation.
+  'route.shallow.confined':
+    'Every stretch below your safety depth lies within {radius} of your origin, destination or waypoints.',
+  // #516: the maintainer's own explicit product decision (the #516 design
+  // doc had deliberately left this UNRECOMMENDED, "a maintainer product
+  // call, flagged rather than designed" — since ruled on). Rendered LAST in
+  // .detail, after the mechanism sentence it responds to (PR #523 review,
+  // Minor 3 — advice must not precede the fact that the router has already
+  // reduced the gate). RouteSummary.tsx's `showRemedy` gates it on three
+  // conditions — a positive exposure figure, the wide layout, and usedDepthM
+  // exceeding SAFETY_DEPTH_FIELD.min — and that declaration carries the
+  // reason for each; it is the single place to read or change them.
+  'route.shallow.remedy':
+    'A lower safety depth setting might let the planner find a more direct route.',
+  // What happened: the requested safety depth was not passable, the depth
+  // actually used, the shallowest charted depth crossed. Normal weight (no
+  // longer emphasised) — review (PR #461 Minor 5): "shallowest charted
+  // depth actually crossed" overclaimed — `flagShallowLegs` (planRoute.ts)
+  // folds `minGateDepthM` over BOTH rigs' legs, so on a given rig's tab the
+  // number may describe the OTHER rig's leg, not one this route actually
+  // sails. "crossed by this plan" is the honest, plan-level framing. `used`
+  // < `requested` always holds here (#53's relaxation only runs after the
+  // requested gate failed to connect).
+  'route.shallow.detail':
+    'Your requested safety depth of {requested} m was not passable, so this route was planned at a reduced {used} m instead — shallowest charted depth crossed by this plan: {minGate} m.',
+  // #452 gap 3: one-sentence locator appended to .detail above (the "what
+  // happened" statement this locates a row against) — names how many legs
+  // are individually flagged shallow and when the first one starts.
+  // Singular/`.plural` follows the same convention as banner.viaTooClose
+  // (.plural): the singular form omits the count entirely ("leg" alone
+  // already says "one").
+  'route.shallow.locator': 'The affected leg starts at {time}.',
+  'route.shallow.locator.plural': '{count} legs are affected — the first starts at {time}.',
+  // The chart-accuracy caveat — visually secondary (smaller text) but NEVER
+  // hidden behind a click: a safety statement about the limits of the
+  // warning above it, in an app with no chart authority of its own. Honest
+  // passage-planning-aid copy (#455): never claims an unflagged section IS
+  // safe — the mask itself is known to OVERSTATE depth on ~45% of WATER
+  // cells, encoded basis (#455), so an unflagged section is merely
+  // unflagged, not verified.
+  // review (PR #461 Minor 6): the pre-#452 string named the OPTIMISTIC case
+  // explicitly ("dredged channels ... often deeper than charted"); this
+  // copy deliberately DROPS that reassurance rather than assert something
+  // with no supporting measurement — under #455 the direction that matters
+  // here is the dangerous one, not the reassuring one, which is why "can
+  // both understate and overstate" below states both but reassures on
+  // neither. review (PR #461 Major 3): widened from `/\bis
+  // (verified|guaranteed)\b/i`, which let "...is safe." through 91/91
+  // GREEN, to also catch "is/are safe" and "is/are clear". NARROWED, NOT
+  // CLOSED — "poses no risk" still evades it.
+  'route.shallow.caveat':
+    'Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -183,6 +335,19 @@ export const en = {
   'route.legs.speed': 'Speed',
   'route.legs.distance': 'Distance',
   'route.legs.maneuver': 'Maneuver',
+  // #452 gap 3: per-leg shallow marker column — text, not colour-only (see
+  // ShallowLegMarker's own comment in RouteSummary.tsx). The marker's own
+  // label repeats "Shallow" so it stays self-explanatory even read out of
+  // table context (e.g. by a screen reader in linear mode).
+  'route.legs.shallow': 'Shallow',
+  'route.legs.shallowMarker': 'Shallow {depth} m',
+  // #493/#504: cautious lower bound for the SAME cell, rendered ALONGSIDE
+  // the marker above (never replacing it) — see cautiousDepthLowerBoundM in
+  // app/src/lib/mask.ts for the derivation. Worded as a HAZARD, not a
+  // comfort floor — "≥ {depth} m cautious" (the original wording) read as
+  // reassurance sitting next to the banner's "could run as low as {depth} m"
+  // for the same fact; "as low as" names the same hazard consistently.
+  'route.legs.shallowCautious': 'cautious: as low as {depth} m',
   'route.legs.motorNote': 'Motor = engine only; no sail contribution modelled.',
   'route.legs.disclosure': 'Legs ({count})',
   'route.kind.motor': 'Motor',
@@ -224,6 +389,11 @@ export const en = {
   // 'min.' with the period: disambiguates from the panel's minutes ('x h yy
   // min', '+12 min') on this time-axis chart.
   'profile.minDepth': 'min.',
+  // #512 review F8: the exhaustive minimum is unavailable (defensively, when
+  // a leg endpoint falls outside mask coverage) — an em dash plus a word so
+  // it can never be mistaken for a measurement or for "0". Rendered INSTEAD
+  // OF the number, never alongside it.
+  'profile.minDepthUnknown': 'min. — unknown',
   'map.depth.toggle': 'Water depths',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
   'map.seamarks.toggle': 'Seamarks',
@@ -299,6 +469,20 @@ export const en = {
   'plansList.delete': 'Delete plan',
   'plansList.confirmDelete': 'Confirm delete',
   'plansList.actionError': 'Action failed. Please try again.',
+  // #54: shown for a stored plan the read-time normaliser cannot handle. Two
+  // strings, because the two cases call for different user action, and prod
+  // and /uat/ share one origin-scoped database, so a production user can meet
+  // the newer-version case without having done anything wrong.
+  //
+  // Says only what the stored schemaVersion PROVES. It deliberately does not
+  // promise the record is undamaged: the classification rests on that one
+  // number, so a record both written by a newer build AND corrupted (partial
+  // write, foreign tool) lands here too — and the row's only control is an
+  // irreversible delete, so the copy must not overstate recoverability.
+  'plansList.unreadable.newerVersion':
+    'This plan was saved by a newer version of the app. This older version cannot read it.',
+  'plansList.unreadable.damaged':
+    'This plan cannot be opened — the saved record is incomplete or damaged. It is kept, not deleted.',
   // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,
   // which reuses the stored grid and stays offline-capable).
   'plansList.recalc': 'Recalculate',
@@ -345,6 +529,9 @@ export const en = {
   'nav.plan': 'Plan',
   'nav.routes': 'Routes',
   'nav.live': 'Live',
+  // #299: kept short, shorter even than "Routes" — avoids the 280px squeeze
+  // that would have been the tab option's cost with a word like "Settings".
+  'nav.boat': 'Boat',
   'nav.langToggle': 'Auf Deutsch anzeigen',
   'nav.langToggle.de': 'DE',
   'nav.langToggle.en': 'EN',
@@ -357,13 +544,23 @@ export const en = {
   'about.caveats.heading': 'Important notes',
   'about.caveats.polars':
     'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
+  // #539 / #54 spec C.8 R5 + J OQ-2: every number here is now a placeholder
+  // filled from the SELECTED boat (lib/depthDisclosure.ts), because the old
+  // literals — 2.1 m draft, 3.0 m default, 1.2 m relaxation floor — were the
+  // Salona 45's stated as universal facts, and the catalogue now also holds a
+  // 1.90 m boat. {gate} is that boat's DERIVED default safety depth, {draft}
+  // its own draft, {floor} its #53 relaxation floor's cautious reading
+  // (draft − tolerance), never the UI-minimum floor. The gate clause claims
+  // only that the floor never falls BELOW the draft — an inequality true for
+  // every boat by construction (spec C.3); the two coincide for all three
+  // catalogue boats today but a ceiling-rounded draft would separate them.
+  'about.caveats.depthMask':
+    'Depth values blend two readings of the same EMODnet bathymetry data: the smoothed reading is used only where it agrees with the more cautious one to within {tolerance} m, so the depth value the app uses is never more than {tolerance} m deeper than the cautious reading — that bounds the source data, not the real seabed. A cell the router plans through at safety depth G has a cautious reading of at least G − {tolerance} m. The default safety depth for the {boat} is {gate} m, set so that floor never falls below its {draft} m draft — but it can be as little as {floor} m where a route falls back to a shallower depth to stay connected, flagged on the resulting route.',
   'about.dataSize':
     'First load downloads ~44 MB (basemap and route data); later loads are served from cache and work offline.',
   'about.sources.heading': 'Data sources',
   'about.sources.protomaps': 'Map rendering: Protomaps',
   'about.sources.osm': '© OpenStreetMap contributors (ODbL)',
-  'about.sources.osmMask':
-    'Land/depth mask: derived from © OpenStreetMap contributors, made available under ODbL',
   'about.sources.openMeteo': 'Wind forecast: Weather data by Open-Meteo.com (CC-BY 4.0)',
   'about.sources.polars':
     'Polars: ORC International 2026 certificate, Salona 45 "Miles Ahead" (AUT 035/26); downwind values corrected to white sails (non-spinnaker) — an estimate, not race-calibrated.',

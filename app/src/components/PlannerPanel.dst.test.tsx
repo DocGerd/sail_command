@@ -7,6 +7,7 @@ import { I18nProvider } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { DEFAULT_SETTINGS, type Harbor, type PickedPoint } from '../types';
 import PlannerPanel, { nextFullHourMs, type PlannerStatus, type TapTarget } from './PlannerPanel';
+import { boatById, DEFAULT_BOAT_ID } from '../data/boats';
 
 // Verify TZ pinning works: DST fold instant 2026-10-25 02:00 CEST becomes 03:00 CET
 const dstTest = new Date(2026, 9, 25, 2, 23);
@@ -66,6 +67,10 @@ function renderPanel(overrides: Overrides = {}) {
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,
     onSettingsChange: vi.fn(),
+    // #539 item 2: the panel derives its inline safety-depth bounds from
+    // the SELECTED boat. This default keeps every pre-existing row on the
+    // catalogue default boat, i.e. the 2.2 m floor they already assert.
+    boat: boatById(DEFAULT_BOAT_ID),
     canPlan: true,
     planDisabledReason: null,
     online: true,
@@ -75,6 +80,7 @@ function renderPanel(overrides: Overrides = {}) {
     rig: null,
     formDirty: false,
     onViewDetails: vi.fn(),
+    onOpenBoatSettings: vi.fn(),
     ...overrides,
   };
   render(

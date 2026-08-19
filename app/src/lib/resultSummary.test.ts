@@ -2,21 +2,27 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_SETTINGS,
   type Plan,
-  type Rig,
   type RigRecommendation,
   type RigResult,
+  type SailId,
 } from '../types';
 import { uniformWindGrid } from '../test/fixtures';
+import { BOATS } from '../data/boats';
+import { de } from '../i18n/dict.de';
+import { en } from '../i18n/dict.en';
 import { formatDateTime } from './format';
-import { averageSpeedKn, resultSummary, rigRecommendationOf } from './resultSummary';
+import { averageSpeedKn, resultSummary, rigRecommendationOf, sailLabelKey } from './resultSummary';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 
-function makePlan(recommended: Rig, rigRecommendation?: RigRecommendation): Plan {
+function makePlan(recommended: SailId, rigRecommendation?: RigRecommendation): Plan {
   return {
     id: 'plan-1',
     name: 'Test',
     createdAtMs: DEPARTURE_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
       destination: { lat: 54.85, lon: 10.52 },
@@ -25,14 +31,17 @@ function makePlan(recommended: Rig, rigRecommendation?: RigRecommendation): Plan
       destinationHarborId: null,
       departureMs: DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: DEPARTURE_MS },
     result: {
       status: 'ok',
-      genoa: null,
-      fock: null,
-      genoaReason: null,
-      fockReason: null,
+      // rigRecommendationOf (the only consumer of `.result` here) never
+      // reads `.sails` — the tests exercise resultSummary() with an
+      // independently-passed RigResult instead (see rigResult() below).
+      sails: [],
+      comparisonComplete: true,
       recommended,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
@@ -45,7 +54,7 @@ function makePlan(recommended: Rig, rigRecommendation?: RigRecommendation): Plan
 
 function rigResult(over: Partial<RigResult>): RigResult {
   return {
-    rig: 'genoa',
+    sailId: 'genoa',
     legs: [],
     etaMs: DEPARTURE_MS + 5 * 3_600_000,
     durationMs: 5 * 3_600_000,
@@ -180,5 +189,27 @@ describe('rigRecommendationOf (#259)', () => {
   it('falls back to a decided pick of `recommended` when absent', () => {
     const plan = makePlan('fock');
     expect(rigRecommendationOf(plan.result)).toEqual({ kind: 'decided', rig: 'fock' });
+  });
+});
+
+describe('sailLabelKey (#54)', () => {
+  it('names every sail the catalogue currently carries', () => {
+    for (const id of BOATS.flatMap((b) => b.sails.map((s) => s.id))) {
+      expect(sailLabelKey(id)).not.toBe('route.rig.unknown');
+    }
+  });
+
+  // The whole reason the helper exists: `Record<SailId, MsgKey>` is total at
+  // compile time and partial at rest, so a direct index with a stored id the
+  // catalogue lacks returns `undefined` — which useT passes straight through.
+  it('falls back to a real key for an id the catalogue does not carry', () => {
+    expect(sailLabelKey('code0')).toBe('route.rig.unknown');
+  });
+
+  // Both dicts must define it or the fallback is `undefined` one level later.
+  // (dict parity itself is compiler-enforced; this pins that the key EXISTS.)
+  it('both dictionaries define the fallback key', () => {
+    expect(de[sailLabelKey('code0')]).toBeTruthy();
+    expect(en[sailLabelKey('code0')]).toBeTruthy();
   });
 });

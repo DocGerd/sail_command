@@ -27,6 +27,8 @@ import BoatMarker from './BoatMarker';
 vi.mock('../services/assets', () => ({ loadRoutingAssets: vi.fn() }));
 import { loadRoutingAssets } from '../services/assets';
 import * as NavMaskModule from '../lib/mask';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const ORIGIN = { lat: 54.7, lon: 9.5 };
 const T0 = Date.UTC(2026, 6, 15, 8, 0, 0);
@@ -70,6 +72,7 @@ const TEST_PLAN: Plan = {
   id: 'live-plan-1',
   name: 'Live Test Plan',
   createdAtMs: T0,
+  schemaVersion: PLAN_SCHEMA_VERSION,
   request: {
     origin: P0,
     destination: P2,
@@ -78,6 +81,8 @@ const TEST_PLAN: Plan = {
     destinationHarborId: null,
     departureMs: T0,
     settings: DEFAULT_SETTINGS,
+    sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
   },
   windGrid: {
     lats: [54.7],
@@ -91,19 +96,24 @@ const TEST_PLAN: Plan = {
   },
   result: {
     status: 'ok',
-    genoa: {
-      rig: 'genoa',
-      legs: LEGS,
-      etaMs: T0 + 2 * HOUR,
-      durationMs: 2 * HOUR,
-      distanceNm: 10,
-      maneuverCount: 1,
-      motorDistanceNm: 0,
-    },
-    fock: null,
-    genoaReason: null,
-    fockReason: 'calm-motor-off',
+    sails: [
+      {
+        sailId: 'genoa',
+        result: {
+          sailId: 'genoa',
+          legs: LEGS,
+          etaMs: T0 + 2 * HOUR,
+          durationMs: 2 * HOUR,
+          distanceNm: 10,
+          maneuverCount: 1,
+          motorDistanceNm: 0,
+        },
+        reason: null,
+      },
+      { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+    ],
     recommended: 'genoa',
+    comparisonComplete: true,
     snappedOrigin: P0,
     snappedDestination: P2,
   },

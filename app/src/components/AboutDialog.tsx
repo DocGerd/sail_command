@@ -11,9 +11,11 @@ import changelogRaw from '../../../CHANGELOG.md?raw';
 // changelogFragmentsPlugin (never via a `?raw` glob — see that plugin's own
 // comment for why), exposed as this virtual module's default export.
 import fragmentsRaw from 'virtual:changelog-fragments';
-import { useT } from '../i18n';
+import { useT, useLang } from '../i18n';
+import { depthMaskCaveatVars } from '../lib/depthDisclosure';
 import { parseChangelog } from '../lib/changelog';
 import { assembleFragments, withPendingFragments } from '../lib/changelogFragments';
+import type { BoatDef } from '../data/boats';
 import type { MaskMeta } from '../types';
 import ChangelogView from './ChangelogView';
 import Disclosure from './Disclosure';
@@ -30,6 +32,17 @@ const changelogReleases = withPendingFragments(
 export interface AboutDialogProps {
   open: boolean;
   onClose: () => void;
+  /**
+   * #539 / #54 spec J OQ-2. The SELECTED boat, whose own draft and derived
+   * gate the mask-tolerance caveat states.
+   *
+   * REQUIRED rather than defaulted to the catalogue's default boat: a missing
+   * prop would then silently render the Salona 45's numbers for an Elan
+   * skipper — the exact defect #539 exists to close, reintroduced as a
+   * fallback. Per this repo's guard-asymmetry rule, a wrong figure in depth
+   * copy is the expensive direction, so this fails at the type level instead.
+   */
+  boat: BoatDef;
 }
 
 // Mask-data provenance (EMODnet DTM citation + DOI, OSM/ODbL land polygons)
@@ -58,8 +71,9 @@ function fetchMaskSources(): Promise<string[] | undefined> {
   );
 }
 
-export default function AboutDialog({ open, onClose }: AboutDialogProps) {
+export default function AboutDialog({ open, onClose, boat }: AboutDialogProps) {
   const t = useT();
+  const [lang] = useLang();
   const [maskSources, setMaskSources] = useState<string[] | undefined>(undefined);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   // The element focused right before the dialog opened — restored on close
@@ -128,6 +142,18 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           <h3>{t('about.caveats.heading')}</h3>
           <ul>
             <li>{t('about.caveats.polars')}</li>
+            {/* #455, made per-boat by #539 (spec C.8 R5 / J OQ-2). The four
+                numbers this string states — the TOLERANCE_M bound, the
+                SELECTED boat's derived default safety depth, its own draft,
+                and its #53 relaxed-depth floor — are no longer literals in
+                the dict: lib/depthDisclosure.ts derives them from
+                pipeline/build_mask.py's TOLERANCE_M (via lib/mask.ts) and
+                lib/boatDepth.ts, and app/src/test/maskTolerance.test.ts
+                renders THIS dict template for EVERY catalogue boat and
+                asserts the rendered text contains that boat's HAND-WRITTEN
+                literals. Needle hand-written, haystack production-rendered —
+                so perturbing either side alone reds the guard. */}
+            <li>{t('about.caveats.depthMask', depthMaskCaveatVars(boat, lang))}</li>
             <li>{t('about.dataSize')}</li>
           </ul>
         </section>
@@ -141,7 +167,28 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           <ul>
             <li>{t('about.sources.protomaps')}</li>
             <li>{t('about.sources.osm')}</li>
-            <li>{t('about.sources.osmMask')}</li>
+            {/* #455: the mask's ODbL statement used to be a static item here
+                because the committed mask.meta.json predated that entry. The
+                regenerated mask carries it in `sources`, so it now arrives
+                through `maskSources` below — a static copy would show it
+                twice. Untranslated, like the other three mask sources: it is
+                the licence's own formal wording, not UI copy.
+
+                KNOWN CONSEQUENCE, accepted (PR #476 review): that statement is
+                now FETCH-DEPENDENT, and `fetchMaskSources()` ends
+                `.catch(() => undefined)`, so a failed mask.meta.json load
+                renders none of the four mask sources. Accepted rather than
+                re-adding a static copy, because ODbL attribution does not
+                depend on this path: `about.sources.osm` immediately above is
+                static, and MapView.tsx's ATTRIBUTION carries a persistent
+                on-map OSM/ODbL credit that is visible regardless of this
+                dialog. Only this specific derivative-database WORDING becomes
+                conditional, and the same fetch already gated the other three
+                mask sources before #455 — so this is a pre-existing pattern
+                inherited, not a new failure mode introduced here. If that
+                silent catch is ever judged unacceptable for a licence string,
+                fix it at `fetchMaskSources` for all four rather than by
+                reinstating one static duplicate. */}
             <li>{t('about.sources.openMeteo')}</li>
             <li>{t('about.sources.polars')}</li>
             <li>{t('about.sources.seamarks')}</li>

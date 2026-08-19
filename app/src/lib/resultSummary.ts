@@ -4,24 +4,46 @@
 // two never drift. Pure: reads the in-memory plan + the active rig's result
 // only (no re-fetch, no wind-grid sampling, offline-safe).
 import type { MsgKey } from '../i18n/dict.de';
-import type { Plan, PlanResultOk, Rig, RigResult, RigRecommendation } from '../types';
+import type { Plan, PlanResultOk, RigResult, RigRecommendation, SailId } from '../types';
 import { formatDateTime, formatDuration, formatKn, formatNm, type Lang } from './format';
 
-// Rig -> its display label key. Shared so RouteSummary and the planner strip
-// name the rig identically (the recommended rig is the faster one the router
-// picked — see the source spec's twice-per-plan rule).
-export const RIG_LABEL_KEY: Record<Rig, MsgKey> = {
+// SailId -> its display label key. Shared so RouteSummary and the planner
+// strip name the sail identically (the recommended sail is the faster one
+// the router picked — see the source spec's twice-per-plan rule).
+//
+// DELIBERATELY NOT EXPORTED: every consumer goes through sailLabelKey below.
+// A `Record<SailId, MsgKey>` is TOTAL at compile time and PARTIAL at rest —
+// services/migratePlan.ts mints SailId from unvalidated stored strings by
+// design (its own comment calls that cast load-bearing, and
+// migratePlan.catalogueRename.test.ts pins that a renamed catalogue must
+// still READ an existing plan), so a stored id the current catalogue lacks is
+// a designed-for state. Indexing this map directly with one yielded
+// `undefined`, which `useT` (a bare `dicts[lang][key]` lookup, no fallback,
+// no throw) passes straight through. MEASURED by reverting this helper to a
+// direct index: the rig tab and the per-leg sail chip render NO sail name at
+// all, and the recommendation chip renders the literal `Faster: undefined`.
+// Keeping the map private makes tsc reject a new direct index from another
+// module.
+const RIG_LABEL_KEY: Record<SailId, MsgKey> = {
   genoa: 'route.rig.genoa',
   fock: 'route.rig.fock',
 };
 
-// #340: RIG_ORDER (the router's actual, fixed solve order — used for the
-// planner panel's "rig N of 2" phase readout) lives in ../types.ts, next to
-// the `Rig` type, not here — its coupling to routing/planRoute.ts's real
-// solve order is ENFORCED by routing/planRoute.test.ts's guard test, and
-// types.ts is the neutral layer both that test and this presentation module
-// already depend on (importing it from here into a routing test would be
-// the layering inversion the other direction).
+/**
+ * The one way to name a sail in the UI. Takes a plain `string`, not a
+ * `SailId`: the whole point is the ids the union does not cover.
+ */
+export function sailLabelKey(id: string): MsgKey {
+  return (RIG_LABEL_KEY as Record<string, MsgKey | undefined>)[id] ?? 'route.rig.unknown';
+}
+
+// #340/#54: the router's actual, fixed solve order used to drive the
+// planner panel's "sail N of 2" phase readout is now `request.sailIds`
+// itself (types.ts's PlanRequest field) — no longer a module constant here
+// or in types.ts (the deleted RIG_ORDER). usePlanFlow.ts computes index/total
+// from it directly; that coupling is enforced by
+// routing/planRoute.test.ts's "#340/#54: solve order matches
+// request.sailIds" guard test.
 
 export interface ResultSummary {
   arrivalText: string;
@@ -60,7 +82,7 @@ export interface ResultSummary {
  * 'decided' pick of the recorded `recommended` rig when `rigRecommendation`
  * is absent — pre-#259 PlanResultOk literals across the test suite (and any
  * plan solved before this field existed) never set it, and a bare
- * `recommended: Rig` is exactly what those literals always meant. Exported so
+ * `recommended: SailId` is exactly what those literals always meant. Exported so
  * both display surfaces (this file's resultSummary() below, and RouteSummary
  * directly for the plan-level tab star that renders even when the active
  * rig's own result is null) resolve it identically — see the file banner on
@@ -68,6 +90,49 @@ export interface ResultSummary {
  */
 export function rigRecommendationOf(result: PlanResultOk): RigRecommendation {
   return result.rigRecommendation ?? { kind: 'decided', rig: result.recommended };
+}
+
+/**
+ * #553 / spec §N.4: the MsgKey each `RigRecommendation.kind` renders as.
+ *
+ * Exists because both display surfaces (RouteSummary's rig chip and
+ * PlannerPanel's Ergebnis-strip chip) previously wrote the same inline
+ * `kind === 'moot' ? 'route.rigMoot' : 'route.rigTie'` ternary, which is
+ * EXHAUSTIVE-BY-ACCIDENT: it has no `default`, so adding a fourth variant
+ * silently routed it to `route.rigTie` — i.e. a plan where no comparison
+ * happened at all would have claimed the two sails were "effectively tied".
+ * Neither the compiler nor any existing test can see that, because a ternary
+ * over a widened union still typechecks.
+ *
+ * A `switch` with a `never`-typed exhaustiveness arm reds the BUILD instead,
+ * so the next variant added to `RigRecommendation` cannot ship without copy.
+ *
+ * `'decided'` is EXCLUDED from the parameter rather than handled: its key
+ * `route.fasterRig` is `'Faster: {rig}'`, so a caller doing
+ * `t(rigVerdictKey(kind))` with no `{ rig }` argument would render the literal
+ * `Faster: {rig}` to the user. Documenting that callers must not do it is
+ * weaker than making it a type error, and this is an exported helper that
+ * otherwise reads like a total mapping. Both call sites already branch on
+ * `kind === 'decided'` first, so TypeScript narrows to the remaining members
+ * in the else branch and they typecheck unchanged. The exhaustiveness
+ * property is unaffected — a new variant still reds the `never` arm.
+ */
+export function rigVerdictKey(kind: Exclude<RigRecommendation['kind'], 'decided'>): MsgKey {
+  switch (kind) {
+    case 'tie':
+      return 'route.rigTie';
+    case 'moot':
+      return 'route.rigMoot';
+    case 'not-compared':
+      return 'route.rigNotCompared';
+    default: {
+      // `erasableSyntaxOnly`-safe exhaustiveness check: a new variant makes
+      // this assignment a type error at BUILD time, naming the file that
+      // needs the new string.
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
 }
 
 /** Average speed in knots over the whole passage; 0 for a zero-duration result. */

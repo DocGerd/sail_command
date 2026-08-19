@@ -313,7 +313,7 @@ test.describe('#355 resizable panel', () => {
     }
   });
 
-  test('the nine-column legs table fits at a wide setting, and does not at the default width', async ({
+  test('the ten-column legs table fits at a wide setting, and does not at the default width', async ({
     page,
   }) => {
     const server = await startPreview();
@@ -345,8 +345,12 @@ test.describe('#355 resizable panel', () => {
       await expect(legRows.first()).toBeVisible({ timeout: 60_000 });
       expect(await legRows.count()).toBeGreaterThan(0);
 
-      // Nine headers, in order — the #379 final column count this table
-      // reached before #355 could be built against it (PR #410).
+      // Ten headers, in order — the #379 nine-column count this table
+      // reached before #355 could be built against it (PR #410) grew to ten
+      // when #452 gap 3 added the trailing "Untiefe" (shallow-marker) column
+      // (PR #483). Position matters here: the new column is LAST in the
+      // rendered DOM (RouteSummary.tsx appends it after Manöver), not just
+      // appended to this list by assertion convenience.
       const headers = page.locator('.route-legs thead th');
       await expect(headers).toHaveText([
         'Zeit',
@@ -358,6 +362,7 @@ test.describe('#355 resizable panel', () => {
         'Geschwindigkeit',
         'Distanz',
         'Manöver',
+        'Untiefe',
       ]);
 
       const table = page.locator('.route-legs');
@@ -375,6 +380,16 @@ test.describe('#355 resizable panel', () => {
       await expect.poll(overflowPx).toBeGreaterThan(0);
 
       // Drag to max width: now it must fit with no horizontal overflow.
+      // #452 gap 3 (PR #483 fix-wave): re-measured after the tenth column
+      // landed — natural table width is 819px (measured via scrollWidth at
+      // an overflowing, unstretched width) against 1260px available at this
+      // viewport's clamped max panel width (desktopHd, 1920px — panel caps
+      // at 1344px per panelMaxWidthPx(), table's own box nets ~1260px after
+      // Card/Disclosure chrome), a 441px margin — not a knife-edge. The
+      // 0-overflow reading alone can't show this: `.route-legs` is
+      // `width: 100%`, so table-layout:auto STRETCHES columns to fill any
+      // slack, making scrollWidth==clientWidth at every panel width above
+      // the true crossover, not just the exact threshold.
       const separator = page.getByRole('separator', { name: 'Panelbreite anpassen' });
       await dragSeparatorBy(page, separator, 8000);
       await expect.poll(overflowPx).toBeLessThanOrEqual(0);

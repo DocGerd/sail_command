@@ -3011,8 +3011,8 @@ print(f"all probes OK ({len(WATER_PROBES)} water, {len(LAND_PROBES)} land, {len(
 - [ ] **Step 4: Run the pipeline**
 
 ```
-pipeline/.venv/bin/python /home/pkuhn/sail_command/pipeline/build_mask.py
-pipeline/.venv/bin/python /home/pkuhn/sail_command/pipeline/verify_mask.py
+pipeline/.venv/bin/python <repo>/pipeline/build_mask.py
+pipeline/.venv/bin/python <repo>/pipeline/verify_mask.py
 ```
 
 Expected: `water fraction: 0.6…`, `wrote mask.bin (1320000 bytes)`, then `all probes OK (…, 33 harbor snaps)`.

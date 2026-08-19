@@ -7,6 +7,167 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-19
+
+### Added
+
+- Settings now has a Map display group for seamark symbols: a size slider
+  (50-150%) and a Base/Standard/All display-category selector, whose
+  three-tier ladder is modelled on the ECDIS Display Base / Standard Display
+  / All Other Information split (IMO MSC.232(82)). Cardinal, lateral,
+  safe-water and isolated-danger marks, and major lights, are never hidden by
+  the category selector. Standard (the default) hides only submarine cable
+  and pipeline markers — this app's own decluttering choice rather than part
+  of that convention (#521); select All to show those too (#353).
+- Route legs flagged as shallow now also show a cautious lower bound
+  alongside the charted depth, and the plan-level shallow-water warning leads
+  with that cautious floor, escalating to a stronger wording and styling when
+  it could fall below the boat's draft (#493).
+- The plan-level shallow-water warning now also states, when true, that every
+  stretch of water charted below your safety depth lies close to your origin,
+  destination or waypoints (e.g. "Every stretch below your safety depth lies
+  within 1.0 nm of your origin, destination or waypoints") — reassurance that
+  only ever renders when it can be measured, and is silently omitted
+  otherwise (#516).
+- The plan-level shallow-water warning now states how much of the route
+  actually crosses charted-shallow water (e.g. "0.3 nm of this route crosses
+  water charted shallower than your safety depth of 3.0 m"), computed against
+  the currently loaded depth mask, plus a one-line suggestion that lowering
+  the safety depth setting may find a more direct route. Both sentences are
+  omitted when the measured exposure is zero (#516).
+- Boat selection on the Boat tab: pick the boat you are planning for, with
+  its draft and the provenance of its polar data shown per boat and per sail.
+  The choice is remembered on this device, and a boat whose entry has been
+  withdrawn falls back to the default rather than failing to load. Switching
+  to a deeper-drafted boat now raises the safety depth to that boat's minimum
+  and says so; it never lowers a depth you chose yourself. The safety-depth
+  field's own minimum follows the selected boat on both the Plan and Boat
+  tabs. Where a boat's draft is the model's standard keel rather than that
+  hull's own papers, the picker says so.
+- Two Flensburg fleet boats gain polar tables in the shipped data: the Salona
+  44 (SPEEDY GO!) and the Elan Impression 444 (PIRANJA). Both are
+  **estimated**, not measured — no ORC/IRC certificate or published VPP was
+  obtainable for either hull, so each table is the Salona 45’s
+  certificate-anchored jib table scaled by one uniform hull scalar — the
+  square root of the two hulls’ sail-area/displacement ratios — and each
+  inherits the Salona 45’s pointing angles rather than deriving its own.
+  Speeds are typically within a few percent, up to about ten percent in
+  individual conditions; on the Elan’s fock that error is called out as
+  large enough in light air to flip a leg between sail and motor. Every
+  table carries its own source note.
+
+### Changed
+
+- Boat/skipper settings (depth comfort margin, motor/sail preference, AIS)
+  moved off the Plan tab's collapsed "Advanced" disclosure into a dedicated
+  **Boat** tab, so they stay visible alongside the map and the current route
+  instead of hiding behind a modal or an accordion. Safety depth itself stays
+  inline on the Plan tab (still the two most-changed inputs' quick-access
+  row), with a discoverable link over to the Boat tab for the rest. A
+  settings change that invalidates the displayed route now shows a
+  stale-route banner on every tab, not only the Plan tab (#299).
+- Shallow-water relaxation is now confined to harbour approaches. When a
+  route cannot be planned at your safety depth, SailCommand may still relax
+  the depth gate to reach the destination (#53) — but that relaxation now
+  applies only within 1 nm of a waypoint you actually chose, instead of along
+  the whole passage. A shallow pinch far from every waypoint is reported
+  honestly as unreachable rather than routed through. Each waypoint's
+  approach also gets its own gate, so an approach that needs no relaxation is
+  tightened back to within 0.1 m of your safety depth instead of inheriting
+  the shallowest gate the passage needed anywhere.
+
+### Fixed
+
+- The Plan tab's screen-reader status region stopped announcing a stale route
+  in one case: editing only the origin, destination, or departure time (no
+  setting touched) left the region silent, because a previous fix scoped its
+  fold to the settings-only staleness banner shown on every tab. The status
+  region now announces staleness whenever it isn't already covered by that
+  banner, so every case is announced exactly once, with no gap and no double
+  announcement (#299).
+- The shallow-water warning now says where the shallow section actually is:
+  flagged legs carry a "Shallow" marker with their charted depth in the legs
+  table, and the warning itself gains a sentence naming how many legs are
+  affected and when the first one starts (#452).
+- The shallow-water warning now also appears on the compact result strip
+  right after planning, not only on the Routes tab — and it now names the
+  reduced depth the route was actually computed at, alongside the depth you
+  requested, whenever the planner had to relax below it to find a route
+  (#452).
+- The About dialog now discloses a bound on the depth mask's remaining
+  uncertainty: the depth value the app uses is never more than 0.9 m deeper
+  than a more cautious reading of the same EMODnet bathymetry data. At the
+  default 3.0 m safety depth, a cell the router plans through has a cautious
+  reading of at least 2.1 m, the boat's draft — but as little as 1.2 m where
+  a route falls back to a shallower depth gate to stay connected, flagged on
+  the resulting route (#455).
+- The depth mask no longer lets a smoothed depth reading run far ahead of the
+  most conservative reading of the source bathymetry. At the default 3.0 m
+  safety depth, every cell navigable at that requested depth has a
+  conservative depth of at least the boat's 2.1 m draft; previously 924 cells
+  were navigable at that setting despite reading below draft. Lowering the
+  safety depth below the default lowers that floor by the same amount, as
+  does a route falling back to a shallower depth to stay connected — which
+  can take it as low as 1.2 m even at the default setting, flagged on the
+  resulting route. Some planned routes change as a result — a few become
+  shorter, where the mask had been reading water shallower than the source
+  supports (#455).
+- The About dialog's data-source list no longer shows the land/depth mask's
+  OpenStreetMap ODbL statement twice: the regenerated mask carries it in
+  its own metadata, which that list already renders, so the separate static
+  entry has been removed (#455).
+- The bundled third-party license notices were missing an entry for
+  `workbox-strategies`, one of the service worker's runtime dependencies —
+  the notices file now lists all shipped packages (#466).
+- The depth profile's "min." figure could understate how shallow a route
+  actually gets: it was sampled uniformly in time (up to 240 points across
+  the whole trip), so a leg shorter than the sample interval could fall
+  between two ticks and be skipped entirely — on one observed route the
+  profile read 2.9 m while the shallow-water banner correctly reported 2.3 m
+  for the same route. The headline figure is now computed by walking every
+  leg's actual charted cells, the same exhaustive method the banner uses, so
+  a short leg can no longer be missed. In the rare case that walk cannot be
+  completed, the figure now shows "min. — unknown" instead of silently
+  falling back to the old, potentially-optimistic reading (#505).
+- The per-leg shallow-water chip's amber hazard fill now actually renders — a
+  CSS source-order cascade bug meant it always resolved to the same neutral
+  grey fill as every other chip (#506).
+- Depth safety copy now describes the boat it is actually about. The
+  shallow-water warning states the draft of the boat the plan was computed
+  for (not the Salona 45's 2.1 m for every boat), decides its severe wording
+  against that same draft, and offers the "choose a lower safety depth"
+  advice whenever that boat's own minimum leaves room for it — on the Elan
+  Impression 444 that advice had been suppressed exactly where it was
+  actionable. The About dialog's depth-mask note is likewise written for the
+  selected boat, naming it and stating its own default safety depth, draft
+  and worst-case cautious reading.
+- A saved plan the app could not read no longer disappears from the Routes
+  list. Such a plan was previously skipped, so from where a sailor sits it
+  was indistinguishable from having been deleted, while its data was still on
+  the device. It is now listed with its name and creation date where the
+  stored record still carries them, saying either that a newer version of the
+  app wrote it or that the saved record is incomplete, and it is never
+  deleted automatically (#54).
+- A route is now always calculated for the boat the plan itself names,
+  instead of always for the Salona 45. Because the boat determines both the
+  speed tables and how far the depth limit may be relaxed, a second boat's
+  route would have been calculated against the wrong hull while the app
+  displayed the correct boat name. If a saved route names a boat that is no
+  longer available, the app now says so plainly and states that only
+  recalculating is unavailable — the route still opens, and can still be
+  viewed and exported (#553).
+- The app no longer names a faster sail when it did not actually compare
+  two. Previously a passage on which only one sail found a route was still
+  reported as `Faster: <that sail>`, which read as the outcome of a
+  comparison that never happened; it now says the sails were not compared
+  (#553).
+- Planning a route now uses the boat you selected. Every new plan was
+  previously solved with the Salona 45's polars and its depth-relaxation
+  floor whatever the boat picker showed, while the picker, the polar-tier
+  chip, the keel note and the safety-depth field all correctly described the
+  boat you had chosen. Saved plans are unaffected and still re-plan against
+  the boat they were planned for.
+
 ## [0.11.0] - 2026-08-08
 
 ### Changed
@@ -531,7 +692,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/DocGerd/sail_command/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/DocGerd/sail_command/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/DocGerd/sail_command/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/DocGerd/sail_command/compare/v0.8.1...v0.9.0

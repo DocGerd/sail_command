@@ -16,6 +16,8 @@ import {
   type PlanRequest,
   type Settings,
 } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 const FLENSBURG: Harbor = {
   id: 'flensburg',
@@ -51,6 +53,8 @@ const ORIGINAL_REQUEST: PlanRequest = {
     motorEnabled: false,
     showOwnship: true,
   },
+  sailIds: ['genoa', 'fock'],
+  boat: defaultBoatSnapshot(),
 };
 
 function makePlan(request: PlanRequest = ORIGINAL_REQUEST): Plan {
@@ -58,23 +62,29 @@ function makePlan(request: PlanRequest = ORIGINAL_REQUEST): Plan {
     id: 'plan-1',
     name: 'Flensburg → Marstal',
     createdAtMs: 1_779_990_000_000,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request,
     windGrid: uniformWindGrid(12, 225),
     result: {
       status: 'ok',
-      genoa: {
-        rig: 'genoa',
-        legs: [],
-        etaMs: 1_780_010_000_000,
-        durationMs: 10_000_000,
-        distanceNm: 30,
-        maneuverCount: 2,
-        motorDistanceNm: 0,
-      },
-      fock: null,
-      genoaReason: null,
-      fockReason: 'calm-motor-off',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: {
+            sailId: 'genoa',
+            legs: [],
+            etaMs: 1_780_010_000_000,
+            durationMs: 10_000_000,
+            distanceNm: 30,
+            maneuverCount: 2,
+            motorDistanceNm: 0,
+          },
+          reason: null,
+        },
+        { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+      ],
       recommended: 'genoa',
+      comparisonComplete: true,
       snappedOrigin: request.origin,
       snappedDestination: request.destination,
     },
@@ -296,7 +306,10 @@ describe('planFormDirty (#301)', () => {
 
     it('harborsAvailable=false does not mask an actually-dirty form (departureMs is still compared)', () => {
       const plan = makePlan();
-      const form = { ...formFromEmptyHarborSync(plan), departureMs: ORIGINAL_REQUEST.departureMs + 3_600_000 };
+      const form = {
+        ...formFromEmptyHarborSync(plan),
+        departureMs: ORIGINAL_REQUEST.departureMs + 3_600_000,
+      };
       expect(planFormDirty(plan, form, false)).toBe(true);
     });
   });

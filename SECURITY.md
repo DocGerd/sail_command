@@ -212,10 +212,19 @@ requiring no GPG toolchain):
 - GitHub's own "Verified" badge on the tag's commit and on the Release page
   is a second, independent verification channel that needs no local
   configuration at all — the fastest check for most people, and it **shows
-  correctly from v0.8.1 onward**: confirmed on the real `v0.8.1` and `v0.9.0`
-  release tags (`verified: true, reason: "valid"` on each via `gh api
-  repos/DocGerd/sail_command/git/tags/<tag-object-sha> --jq .verification`),
-  not just the throwaway probe tag the fix was originally proven against.
+  correctly from `v0.8.1` onward**. That is a rule covering every signed tag
+  from `v0.8.1` on, not a list of the ones checked so far — check any tag
+  yourself rather than trusting an enumeration in this file:
+
+  ```bash
+  gh api repos/DocGerd/sail_command/git/tags/$(git rev-parse refs/tags/vX.Y.Z) \
+    --jq .verification
+  ```
+
+  A tag that shows the badge reports `"verified": true, "reason": "valid"`.
+  Run on 2026-08-19 across every signed tag then published (`v0.8.1` through
+  `v0.11.0`), each returned `verified: true` — on real release tags, not just
+  the throwaway probe tag the fix was originally proven against.
   The v0.8.0 tag is a documented exception: it was signed under an email
   address not
   registered on the maintainer's GitHub account, so GitHub shows it

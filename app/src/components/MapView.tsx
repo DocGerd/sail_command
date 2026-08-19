@@ -255,12 +255,20 @@ export default function MapView({
           // tilted chart survived until reload. A tilt also distorts apparent
           // distance on a chart that's supposed to be read against
           // ScaleBar's honest ground-distance bar. Locking pitch at
-          // construction (not a later `setMaxPitch`/`setPitch` call, which a
-          // style reload could undo) removes the gesture outright rather than
-          // adding a reset control. Audited before this change: no code in
+          // construction removes the gesture outright rather than adding a
+          // reset control. The older "a later `setMaxPitch`/`setPitch` call
+          // a style reload could undo" reason was HALF wrong (re-read against
+          // 6.2.0): `setMaxPitch` genuinely survives — `_maxPitch` is written
+          // only by it, the constructor and `transform.apply()`, and map.ts's
+          // `style.load` handler re-applies only center/zoom/bearing/pitch/
+          // roll. `setPitch` does NOT: that handler fires whenever
+          // `transform.unmodified`, and `setPitch(0)` on an already-flat map
+          // early-returns before clearing that flag. Construction is still
+          // right; the reason just isn't the one written here before.
+          // Audited before this change: no code in
           // the app reads/sets pitch, and there is no terrain/sky/3D layer —
           // don't re-enable this without re-auditing for that. Verified
-          // sufficient (review, installed maplibre-gl 5.24.0): every pitch
+          // sufficient (review, re-read against maplibre-gl 6.2.0): every pitch
           // path — two-finger touch, right-drag, keyboard — ends at the
           // transform's `setPitch`, which clamps to `[minPitch, maxPitch]`
           // unconditionally, so `pitchWithRotate`/`touchPitch` are NOT needed

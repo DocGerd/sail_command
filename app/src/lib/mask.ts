@@ -1,8 +1,60 @@
 import type { LatLon, MaskMeta } from '../types';
 import { haversineNm, toRad } from './geo';
+import { gateAtCell, uniformGate, type DepthGate } from './depthGate';
 
 const LAND = 0;
 const NM_PER_M = 1 / 1852;
+
+/**
+ * Mirrors pipeline/build_mask.py's TOLERANCE_M (mask-build tolerance) on the
+ * TypeScript side — nothing compiles across that Python/TS boundary, so
+ * app/src/test/maskTolerance.test.ts reads the Python source and fails
+ * closed if this value ever drifts from it. build_mask.py blends bilinear
+ * over the conservative Resampling.max reading only where the two agree
+ * within this bound, so for every cell: depth_blend <= depth_max +
+ * MASK_TOLERANCE_M (see that file's own derivation comment, at the
+ * `TOLERANCE_M` assignment, for the full argument).
+ *
+ * Why 0.9 is the value: that comment derives it directly from the blend rule
+ * and the boat's draft — at the default gate G = 3.0 m, G - TOLERANCE_M =
+ * 2.1 m, exactly BOAT_DRAFT_M (app/src/routing/relaxedDepth.ts). In the
+ * source's own words, "this value is derived from the blend rule and the
+ * draft; it is not fitted to an outcome."
+ *
+ * Separately, under that same comment's "LOWER IS NOT SAFER" heading: 0.9
+ * cannot simply be tightened (lowered) either — that heading records a
+ * measured limit on how far down it can go, not the reason 0.9 was chosen.
+ * On the DTM the pipeline builds from, Marstal's approach (at its 2.0 m
+ * exception gate) is DISCONNECTED for TOLERANCE_M <= 0.87 m and connects
+ * from 0.88 m up, so 0.9 clears that wall by only ~0.03 m.
+ */
+export const MASK_TOLERANCE_M = 0.9;
+
+/**
+ * #493: a SOUND LOWER BOUND on the mask's more cautious (conservative,
+ * Resampling.max) reading for a cell whose SHIPPED (blended) depth is
+ * `shippedDepthM` — never the true cautious value itself, only a floor it
+ * cannot be below. Directly from build_mask.py's blend rule: depth_blend <=
+ * depth_max + MASK_TOLERANCE_M, so depth_max >= depth_blend -
+ * MASK_TOLERANCE_M. Gate-independent — a property of the mask build, not of
+ * any safety gate a user picks.
+ *
+ * Floors to 0.1 m (never rounds), so the displayed figure can never read
+ * deeper than this bound provably allows, and clamps at 0 (depth cannot be
+ * negative). The floor is nudged by a sub-decimetre epsilon before
+ * quantizing: `shippedDepthM - MASK_TOLERANCE_M` is exact in real-number
+ * arithmetic for many inputs (e.g. 2.3 - 0.9 = 1.4) but IEEE754 double
+ * precision can land a hair below the true value for others (1.4 - 0.9 =
+ * 0.4999999999999999) — a bare `Math.floor` on that residue would silently
+ * cost an extra, unearned decimetre of pessimism. The epsilon is far smaller
+ * than any real 0.1 m quantization step, so it can never round a genuine
+ * fractional depth UP.
+ */
+export function cautiousDepthLowerBoundM(shippedDepthM: number): number {
+  const bound = shippedDepthM - MASK_TOLERANCE_M;
+  const flooredTenthsM = Math.floor(bound * 10 + 1e-9);
+  return Math.max(0, flooredTenthsM / 10);
+}
 
 export class NavMask {
   readonly meta: MaskMeta;
@@ -64,10 +116,10 @@ export class NavMask {
     return b !== LAND && this.byteToDepthM(b) >= safetyDepthM;
   }
 
-  private cellNavigable(row: number, col: number, safetyDepthM: number): boolean {
+  private cellNavigable(row: number, col: number, gate: DepthGate): boolean {
     if (row < 0 || row >= this.meta.rows || col < 0 || col >= this.meta.cols) return false;
     const b = this.depthByte(row, col);
-    return b !== LAND && this.byteToDepthM(b) >= safetyDepthM;
+    return b !== LAND && this.byteToDepthM(b) >= gateAtCell(gate, row, col);
   }
 
   /**
@@ -112,14 +164,14 @@ export class NavMask {
   }
 
   /** Every cell the a→b segment touches must be navigable at the given gate. */
-  segmentNavigable(a: LatLon, b: LatLon, safetyDepthM: number): boolean {
-    return this.walkCells(a, b, (row, col) => this.cellNavigable(row, col, safetyDepthM));
+  segmentNavigable(a: LatLon, b: LatLon, gate: DepthGate): boolean {
+    return this.walkCells(a, b, (row, col) => this.cellNavigable(row, col, gate));
   }
 
   /**
    * Minimum charted depth over every cell the a→b segment touches, or null
    * exactly when {@link segmentNavigable} would report false (any touched
-   * cell below `gateM`, land, or out of bounds) — one `walkCells` pass with
+   * cell below its own cell's gate, land, or out of bounds) — one `walkCells` pass with
    * the SAME gate check as `segmentNavigable`'s, inlined here (rather than
    * calling `cellNavigable`, which would decode the same byte a second
    * time per cell — this is a hot path, walked for every candidate edge the
@@ -138,7 +190,7 @@ export class NavMask {
    * 15 m — a 25.4 m cell can never end up the binding minimum. Revisit this
    * if either bound widens past 25.4 m.
    */
-  segmentClearanceM(a: LatLon, b: LatLon, gateM: number): number | null {
+  segmentClearanceM(a: LatLon, b: LatLon, gate: DepthGate): number | null {
     let min = Infinity;
     const { rows, cols } = this.meta;
     const completed = this.walkCells(a, b, (row, col) => {
@@ -146,7 +198,7 @@ export class NavMask {
       const byte = this.depthByte(row, col);
       if (byte === LAND) return false;
       const depthM = this.byteToDepthM(byte);
-      if (depthM < gateM) return false;
+      if (depthM < gateAtCell(gate, row, col)) return false;
       if (depthM < min) min = depthM;
       return true;
     });
@@ -177,22 +229,93 @@ export class NavMask {
   }
 
   /**
+   * #505: exhaustive per-cell minimum depth reading over the a→b segment —
+   * the same {depthM, capped} shape {@link depthInfoM} returns for one point,
+   * but walked over EVERY cell the segment touches (the same Amanatides–Woo
+   * walk as segmentShallowestBelow/segmentClearanceM) instead of read at a
+   * single point. Built for the depth-profile chart's headline "min." figure,
+   * which previously came from a uniform-in-TIME sample series (up to 240
+   * points, sized for chart rendering, not route coverage) that could step
+   * over a leg shorter than the sample interval and understate how shallow
+   * the route actually gets.
+   *
+   * Unlike segmentShallowestBelow (only reports cells below a threshold) and
+   * segmentClearanceM (aborts the whole segment below a gate), this has no
+   * threshold or gate: it always reports the unconditional minimum, so a
+   * caller building a route-wide headline figure never misses a cell either
+   * of those gated methods would exclude. Land (byte 0) is included as a
+   * 0 m reading rather than aborting the walk, matching
+   * segmentShallowestBelow's treatment (not segmentClearanceM's) — the safe
+   * direction, since 0 m is the shallowest possible reading. This diverges
+   * from headingDepth.ts's checkHeadingDepth, whose own comment argues at
+   * length that a land crossing must render as a DISTINCT `hazard: 'land'`
+   * state rather than a depth number ("dressing land up as a depth reading
+   * understates it, and 0.0 m is not a depth anyone can compare against a
+   * safety depth"). That argument is about a live, per-fix caution banner
+   * that needs to NAME which hazard is ahead; this method instead feeds one
+   * scalar "how shallow does the route get" figure with no hazard-type
+   * vocabulary of its own, so a 0 m reading is both the most honest and the
+   * only representable answer here. Unreachable in practice either way — the
+   * legs handed to this method are a solver already validated as land-free.
+   *
+   * `capped` reflects the byte at whichever cell first achieves the running
+   * minimum (the `if (depthM < minDepthM)` comparison below is strict, so a
+   * tie keeps the FIRST-visited winner): true when that cell is byte 255
+   * (the deep-cap sentinel, 25.4 m), false otherwise. That is weaker than
+   * "every touched cell is deep-capped" — byte 254 (the reserved "measured
+   * 25.4 m" byte) decodes to the SAME 25.4 m (`byteToDepthM`:
+   * `b === 255 ? 25.4 : b / 10`, and `254 / 10 === 25.4` exactly) but is
+   * never flagged capped, so a segment touching both a 255 cell and a 254
+   * cell reports `capped` true or false purely by visit ORDER, for the same
+   * physical water. Don't derive "every cell is deep-capped" from a true
+   * `capped` — that would be a claim about the PIPELINE (the committed mask
+   * emits zero 254 bytes today), and depthInfoM's own comment above already
+   * warns that leaning on that fact would be fragile. Harmless either way
+   * (25.4 m is deep water regardless of which byte won), but the guarantee
+   * is about the cell that won the minimum, not about the whole segment.
+   *
+   * Returns null exactly when the walk leaves the grid or trips its
+   * iteration guard. There is no "no cell" case to confuse that with (every
+   * completed walk visits at least one cell), so unlike
+   * segmentShallowestBelow this method's null is unambiguous on its own —
+   * but per the #251/#255 rule, a caller building a SAFETY figure should
+   * still bound-check both endpoints against `meta` first, since silently
+   * skipping a leg whose walk aborted (rather than treating the whole
+   * result as unavailable) risks excluding the leg that was actually the
+   * route's true minimum, which is the unsafe direction for a depth figure.
+   */
+  segmentMinDepthInfoM(a: LatLon, b: LatLon): { depthM: number; capped: boolean } | null {
+    let minDepthM = Infinity;
+    let minCapped = false;
+    const completed = this.walkCells(a, b, (row, col) => {
+      if (row < 0 || row >= this.meta.rows || col < 0 || col >= this.meta.cols) return false;
+      const byte = this.depthByte(row, col);
+      const depthM = this.byteToDepthM(byte);
+      if (depthM < minDepthM) {
+        minDepthM = depthM;
+        minCapped = byte === 255;
+      }
+      return true;
+    });
+    return completed && minDepthM !== Infinity ? { depthM: minDepthM, capped: minCapped } : null;
+  }
+
+  /**
    * True when a's cell and b's cell are 4-connected through cells navigable at
-   * `safetyDepthM` (query-time gate, like every navigability decision). A
+   * `gate` (query-time, like every navigability decision — and per-cell since
+   * #452, so a relaxed gate can connect a pinch near a waypoint without
+   * licensing the same depth along the whole passage). A
    * cheap BFS over the raw byte grid — #53's relaxed-depth discovery probes
    * this per candidate gate instead of running the isochrone solver. Any
    * solver-emitted route implies such a chain (segmentNavigable's traversal
    * steps one cell at a time in x or y, so its swept cells are themselves
    * 4-connected), which is what makes "disconnected ⇒ unreachable" sound.
    */
-  cellsConnected(a: LatLon, b: LatLon, safetyDepthM: number): boolean {
+  cellsConnected(a: LatLon, b: LatLon, gate: DepthGate): boolean {
     const ca = this.cellOf(a);
     const cb = this.cellOf(b);
     if (!ca || !cb) return false;
-    if (
-      !this.cellNavigable(ca.row, ca.col, safetyDepthM) ||
-      !this.cellNavigable(cb.row, cb.col, safetyDepthM)
-    )
+    if (!this.cellNavigable(ca.row, ca.col, gate) || !this.cellNavigable(cb.row, cb.col, gate))
       return false;
     const { rows, cols } = this.meta;
     const target = cb.row * cols + cb.col;
@@ -219,7 +342,7 @@ export class NavMask {
         if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
         const nIdx = nr * cols + nc;
         if (visited[nIdx]) continue;
-        if (!this.cellNavigable(nr, nc, safetyDepthM)) continue;
+        if (!this.cellNavigable(nr, nc, gate)) continue;
         if (nIdx === target) return true;
         visited[nIdx] = 1;
         queue[tail++] = nIdx;
@@ -228,8 +351,17 @@ export class NavMask {
     return false;
   }
 
-  /** Expanding ring search; returns center of nearest navigable cell within maxRadiusM. */
+  /**
+   * Expanding ring search; returns center of nearest navigable cell within
+   * maxRadiusM.
+   *
+   * #452: stays SCALAR at the REQUESTED gate and takes no {@link DepthGate} —
+   * snapping is not relaxable (spike §1.4), and the relaxation discs are
+   * defined AROUND the points this returns, so a gate field cannot exist
+   * before it has run. It builds one uniform gate here rather than taking one.
+   */
   snapToNavigable(p: LatLon, safetyDepthM: number, maxRadiusM = 300): LatLon | null {
+    const gate = uniformGate(safetyDepthM);
     const start = {
       row: Math.floor((p.lat - this.meta.south) / this.latStep),
       col: Math.floor((p.lon - this.meta.west) / this.lonStep),
@@ -250,7 +382,7 @@ export class NavMask {
           if (Math.max(Math.abs(dr), Math.abs(dc)) !== ring) continue;
           const row = start.row + dr;
           const col = start.col + dc;
-          if (!this.cellNavigable(row, col, safetyDepthM)) continue;
+          if (!this.cellNavigable(row, col, gate)) continue;
           const center = {
             lat: this.meta.south + (row + 0.5) * this.latStep,
             lon: this.meta.west + (col + 0.5) * this.lonStep,

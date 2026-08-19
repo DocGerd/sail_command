@@ -22,7 +22,7 @@ review, and running anyway is wasted work.
 
 - A review package: the diff (or branch), the recorded BASE commit, and the task
   brief(s) it implements. If BASE is missing, request it — do not guess.
-- Read `/home/pkuhn/sail_command/CLAUDE.md` (the "PWA / E2E / deploy (Phase F)",
+- Read `<repo>/CLAUDE.md` (the "PWA / E2E / deploy (Phase F)",
   "Domain rules", and "Working style" sections are the authority here).
 
 ## What to check (PWA invariants)
@@ -61,7 +61,7 @@ review, and running anyway is wasted work.
   the implementer's word for the route order, cache names, or handler scope.
 - Cite `file:line` for every finding; run `npm --prefix app run typecheck` /
   `lint` / focused tests when a finding depends on them.
-- Use `git -C /home/pkuhn/sail_command <cmd>` only if your cwd differs from the
+- Use `git -C <repo> <cmd>` only if your cwd differs from the
   repo root; otherwise bare `git`.
 
 ## Report format

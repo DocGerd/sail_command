@@ -5,7 +5,9 @@ import AisTraffic, { AisStatusChip } from './AisTraffic';
 import type { AisStatus } from '../state/useAisTraffic';
 import type { AisSocketHandlers } from '../services/aisStream';
 import { uniformWindGrid } from '../test/fixtures';
-import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
+import { DEFAULT_SETTINGS, type Leg, type Plan, type RigResult } from '../types';
+import { defaultBoatSnapshot } from '../types';
+import { PLAN_SCHEMA_VERSION } from '../types';
 
 // ---- #158 integration rig ----------------------------------------------------
 // The corridor-resubscription tests run the REAL component wiring (settle gate,
@@ -74,17 +76,15 @@ function sailLeg(lat: number, hour: number): Leg {
 // boundary geometry from routeCorridor.test.ts).
 const LEGS: Leg[] = [sailLeg(54.4, 0), sailLeg(54.6, 1), sailLeg(54.8, 2), sailLeg(55.0, 3)];
 
-// Typed non-null so plan variants below can spread it (Plan.result.genoa is
-// RigResult | null — spreading through PLAN would make every field optional).
 const GENOA_RESULT = {
-  rig: 'genoa',
+  sailId: 'genoa',
   legs: LEGS,
   etaMs: DEPARTURE_MS + 4 * 3_600_000,
   durationMs: 4 * 3_600_000,
   distanceNm: 14,
   maneuverCount: 0,
   motorDistanceNm: 0,
-} satisfies Plan['result']['genoa'];
+} satisfies RigResult;
 
 // One stable Plan instance: the corridor memo keys on plan identity, and the
 // churn under test must come from activeLegIndex alone.
@@ -92,6 +92,7 @@ const PLAN: Plan = {
   id: 'plan-158',
   name: 'Jitter plan',
   createdAtMs: DEPARTURE_MS - 3_600_000,
+  schemaVersion: PLAN_SCHEMA_VERSION,
   request: {
     origin: LEGS[0].start,
     destination: LEGS[3].end,
@@ -100,15 +101,18 @@ const PLAN: Plan = {
     destinationHarborId: null,
     departureMs: DEPARTURE_MS,
     settings: DEFAULT_SETTINGS,
+    sailIds: ['genoa', 'fock'],
+    boat: defaultBoatSnapshot(),
   },
   windGrid: uniformWindGrid(12, 225, { t0Ms: DEPARTURE_MS - 3_600_000, hours: 6 }),
   result: {
     status: 'ok',
-    genoa: GENOA_RESULT,
-    fock: null,
-    genoaReason: null,
-    fockReason: 'calm-motor-off',
+    sails: [
+      { sailId: 'genoa', result: GENOA_RESULT, reason: null },
+      { sailId: 'fock', result: null, reason: 'calm-motor-off' },
+    ],
     recommended: 'genoa',
+    comparisonComplete: true,
     snappedOrigin: LEGS[0].start,
     snappedDestination: LEGS[3].end,
   },
@@ -125,11 +129,15 @@ const PLAN_B: Plan = {
   name: 'Replacement plan',
   result: {
     ...PLAN.result,
-    genoa: {
-      ...GENOA_RESULT,
-      legs: B_LEGS,
-      distanceNm: 7,
-    },
+    sails: PLAN.result.sails.map((s) =>
+      s.sailId === 'genoa'
+        ? {
+            sailId: 'genoa' as const,
+            result: { ...GENOA_RESULT, legs: B_LEGS, distanceNm: 7 },
+            reason: null,
+          }
+        : s,
+    ),
     snappedOrigin: { lat: 54.45, lon: 10.0 },
     snappedDestination: { lat: 54.65, lon: 10.1 },
   },
@@ -144,16 +152,23 @@ const PLAN_C: Plan = {
   name: 'Two-rig plan',
   result: {
     ...PLAN.result,
-    fock: {
-      rig: 'fock',
-      legs: B_LEGS,
-      etaMs: DEPARTURE_MS + 2 * 3_600_000,
-      durationMs: 2 * 3_600_000,
-      distanceNm: 7,
-      maneuverCount: 0,
-      motorDistanceNm: 0,
-    },
-    fockReason: null,
+    sails: PLAN.result.sails.map((s) =>
+      s.sailId === 'fock'
+        ? {
+            sailId: 'fock' as const,
+            result: {
+              sailId: 'fock' as const,
+              legs: B_LEGS,
+              etaMs: DEPARTURE_MS + 2 * 3_600_000,
+              durationMs: 2 * 3_600_000,
+              distanceNm: 7,
+              maneuverCount: 0,
+              motorDistanceNm: 0,
+            },
+            reason: null,
+          }
+        : s,
+    ),
   },
 };
 

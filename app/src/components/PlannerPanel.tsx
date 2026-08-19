@@ -1,31 +1,32 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import type { Harbor, LatLon, PickedPoint, Plan, Rig, RigResult, Settings } from '../types';
-// #340 NAMED COUPLING: RIG_ORDER's coupling to the router's real solve order
-// is enforced by routing/planRoute.test.ts — see its definition in types.ts.
-import { RIG_ORDER } from '../types';
+import type { Harbor, LatLon, PickedPoint, Plan, RigResult, SailId, Settings } from '../types';
 import { useLang, useT } from '../i18n';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import {
   formatDateTime,
   formatDuration,
-  formatKn,
   formatLatLon,
   formatNm,
   toLocalInputValue,
 } from '../lib/format';
 import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
-import { RIG_LABEL_KEY, resultSummary } from '../lib/resultSummary';
+import { routingSettingsDirty } from '../lib/planForm';
+import { resultSummary, rigVerdictKey, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
-import OptionsPanel, { SAFETY_DEPTH_FIELD, commitSetting } from './OptionsPanel';
+import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
+import type { BoatDef } from '../data/boats';
 import NumberInput from './NumberInput';
 import Card from './Card';
 import Field from './Field';
 import Button from './Button';
 import Chip from './Chip';
-import Disclosure from './Disclosure';
 import Skeleton from './Skeleton';
+// #452: the shallow-water warning is plan-level (RouteSummary's own note
+// explains why) — shared here so the FIRST surface a user sees a result on
+// carries the same warning as the Routes tab, not just a second copy of it.
+import { ShallowWarning } from './RouteSummary';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -36,7 +37,7 @@ export type TapTarget = 'origin' | 'destination' | 'via';
 export type PlannerStatus =
   | { phase: 'idle' }
   | { phase: 'fetching' }
-  | { phase: 'routing'; rig: Rig }
+  | { phase: 'routing'; sailId: SailId; index: number; total: number }
   // #53: probing relaxed depth gates after an unreachable requested-depth solve
   | { phase: 'probing' }
   | { phase: 'error'; message: string };
@@ -67,6 +68,10 @@ export interface PlannerPanelProps {
   onDepartureChange: (ms: number) => void;
   settings: Settings;
   onSettingsChange: (s: Settings) => void;
+  // #539 item 2: the selected boat, read ONLY for this panel's inline
+  // safety-depth bounds. The picker itself lives on the Boat tab
+  // (SettingsPanel/BoatPicker); this panel never changes the selection.
+  boat: BoatDef;
   canPlan: boolean;
   planDisabledReason: string | null;
   // #64 phase 4 (§3.5): drives the empty/first-run onboarding line, which only
@@ -78,7 +83,7 @@ export interface PlannerPanelProps {
   // #64 phase 3: the active plan + rig drive the compact Ergebnis strip and the
   // plan-completion announcement. Null before the first plan.
   plan: Plan | null;
-  rig: Rig | null;
+  rig: SailId | null;
   // #301: true when the form (origin/destination/departure/live settings)
   // has drifted from `plan` — a re-run right now would produce a DIFFERENT
   // route than the one shown in the Ergebnis card below. Drives a second
@@ -88,6 +93,10 @@ export interface PlannerPanelProps {
   formDirty: boolean;
   // "Details ansehen": switch to the Routes tab and focus its Ergebnis heading.
   onViewDetails: () => void;
+  // #299: discoverable route from the (still inline) safety-depth field to
+  // the dedicated Boat tab, which now hosts the depth comfort margin and the
+  // rest of the boat/propulsion/AIS settings — switches App.tsx's active tab.
+  onOpenBoatSettings: () => void;
 }
 
 /**
@@ -125,6 +134,7 @@ export default function PlannerPanel({
   onDepartureChange,
   settings,
   onSettingsChange,
+  boat,
   canPlan,
   planDisabledReason,
   online,
@@ -134,9 +144,14 @@ export default function PlannerPanel({
   rig,
   formDirty,
   onViewDetails,
+  onOpenBoatSettings,
 }: PlannerPanelProps) {
   const t = useT();
   const [lang] = useLang();
+  // #539 item 2: bounds follow the SELECTED boat (spec J OQ-1's
+  // `draftM + 0.1`). Same derivation the Boat tab's own render of this field
+  // uses, so the two surfaces still clamp identically.
+  const safetyDepthField = safetyDepthFieldFor(boat);
   const { recent, remember } = useRecentHarbors();
   // Per-endpoint "editing" flag: a selected endpoint collapses to a compact row,
   // and "Ändern"/"Change" reopens its combobox without clearing the selection.
@@ -230,6 +245,27 @@ export default function PlannerPanel({
   // compact Ergebnis strip below and the completion announcement.
   const result = plan && rig ? activeRigResult(plan, rig) : null;
   const summary = plan && result ? resultSummary(plan, result, lang) : null;
+  // #452: plan-level, like RouteSummary's own — both rigs solve at the same
+  // relaxed gate, so this must show regardless of which rig tab is active
+  // and is deliberately NOT derived from `result`/`summary` (a null-rig tab
+  // must still surface it if the plan as a whole carries it). The RENDER
+  // site below must honour this too — it used to be nested inside a
+  // `summary &&` gate, which silently hid the warning on exactly a null-rig
+  // tab (review finding, PR #461 Major 1, measured: 0 nodes rendered for a
+  // shallow plan on a rig whose own result is null). The Card below is now
+  // gated on `summary || shallow`, not `summary` alone.
+  const shallow = plan?.result.shallow ?? null;
+
+  // Cross-PR composition fix (Refs #299, found by an adversarial cumulative-
+  // diff sweep over PR #486): computed independently of App.tsx's own
+  // `settingsDirty` — same predicate (`routingSettingsDirty`), same two
+  // inputs (`plan`, `settings`), both already props here — so this panel can
+  // tell which PART of a dirty form the App-level Banner already covers.
+  // `formDirty` folds origin/destination/departure/settings together;
+  // `settingsDirty` is the settings-only subset the Banner announces. See the
+  // `staleSuffix` comment below for why the difference between the two is
+  // exactly what this live region needs.
+  const settingsDirty = plan ? routingSettingsDirty(plan, settings) : false;
 
   // #64 §3.4 (Option B) a11y: announce the terminal result in the persistent
   // live region, ONCE per completed plan. We freeze the RESULT that completed
@@ -264,23 +300,40 @@ export default function PlannerPanel({
   let statusText = '';
   if (planning.phase === 'fetching') statusText = t('planner.status.fetching');
   else if (planning.phase === 'routing')
-    // #340: phase readout ("sail N of 2") — RIG_ORDER is the router's actual,
-    // fixed solve order (genoa then fock), so the index always matches which
-    // solve is really running.
-    statusText = t('planner.status.routingRig', {
-      index: RIG_ORDER.indexOf(planning.rig) + 1,
-      total: RIG_ORDER.length,
-      rig: t(RIG_LABEL_KEY[planning.rig]),
+    // #340/#54: phase readout ("sail N of 2") — index/total now come straight
+    // off the PlannerStatus itself (usePlanFlow.ts derives them from
+    // request.sailIds, the router's actual solve order), not a module
+    // constant, so the index always matches which solve is really running.
+    statusText = t('planner.status.routingSail', {
+      index: planning.index,
+      total: planning.total,
+      sail: t(sailLabelKey(planning.sailId)),
     });
   else if (planning.phase === 'probing') statusText = t('planner.status.probing');
   else if (planning.phase === 'idle') {
-    // #301: the same dirty-form sentence the Ergebnis card's Chip shows,
-    // folded into this ONE existing live region rather than a second one —
-    // joined (not concatenated) so a plan-less mount (empty announcement)
-    // still reads as a clean single sentence, not a leading space. Changes
-    // only when formDirty flips (announcement itself is frozen per plan —
-    // see announcedResult above), so it announces once, not per keystroke.
-    const staleSuffix = formDirty && summary ? t('planner.result.stale') : '';
+    // #301 originally folded the dirty-form sentence in here unconditionally
+    // on `formDirty`. PR #486 review (Minor 5) removed the fold entirely,
+    // reasoning that App.tsx's new tab-independent `settingsDirty` Banner
+    // (role="alert", #299) "already announces this exact sentence whenever
+    // it's true" — TRUE only for the settings-only subset of dirtiness the
+    // Banner can see. It is FALSE for `formDirty && !settingsDirty`: a user
+    // who changes only the destination, origin, or departure (all reachable
+    // from THIS tab, none reachable from Routes/Live/Boat, and none part of
+    // `settingsDirty`) leaves the panel's live region silent with no
+    // announcement anywhere — the #486 fix over-removed and re-opened the
+    // exact gap #301 existed to close (found by a cross-PR composition
+    // sweep over the cumulative diff, Refs #299).
+    //
+    // Fixed by folding on the COMPLEMENT of what the Banner covers, so every
+    // true case is announced exactly once: `settingsDirty` true → the Banner
+    // is the sole announcer (this region stays silent, avoiding the
+    // original double-announcement #486 was right to kill); `formDirty &&
+    // !settingsDirty` → the Banner cannot see it, so this region announces
+    // it. The Ergebnis card's Chip below stays on the broader `formDirty`
+    // unconditionally — it's a static DOM insertion outside a live region,
+    // never itself announced, so showing it regardless of `settingsDirty`
+    // does not reintroduce any duplicate announcement.
+    const staleSuffix = formDirty && !settingsDirty && summary ? t('planner.result.stale') : '';
     statusText = [announcement, staleSuffix].filter(Boolean).join(' ');
   }
   // §3.4 (fix wave): the idle completion announcement is screen-reader-only —
@@ -299,14 +352,6 @@ export default function PlannerPanel({
   // plan exists and an endpoint is unpicked. Suppressed offline — the
   // `error.offline` disabled reason is the more actionable message there.
   const showOnboarding = online && !plan && (!origin || !destination);
-
-  // One-line glance of the collapsed advanced disclosure, from current settings.
-  const advancedSummary = [
-    settings.motorEnabled ? t('options.summary.motorOn') : t('options.summary.motorOff'),
-    formatKn(settings.motorSpeedKn),
-    t('options.summary.maneuver', { seconds: settings.maneuverPenaltyS }),
-    t('options.summary.performance', { factor: settings.performanceFactor }),
-  ].join(' · ');
 
   return (
     <div className="planner-panel">
@@ -461,7 +506,13 @@ export default function PlannerPanel({
       </Card>
 
       {/* §3.3: the two most-changed inputs — departure + safety depth — stay
-          visible in a compact row above the advanced disclosure. */}
+          visible in this compact row. #299: the rest of what used to sit
+          behind the "Erweitert" disclosure (depth comfort margin, motor/sail
+          preference, AIS, …) moved to the dedicated Boat tab (SettingsPanel);
+          only safety depth stays inline here, sharing SAFETY_DEPTH_FIELD as
+          its single source of truth with that tab's own render of it — there
+          is no second copy of the value, only a second RENDER of the same
+          settings.safetyDepthM via the same commitSetting helper. */}
       <div className="planner-compact-row">
         <Field
           className="planner-departure"
@@ -482,33 +533,28 @@ export default function PlannerPanel({
         </Field>
         <Field
           className="planner-safety-depth"
-          label={t(SAFETY_DEPTH_FIELD.labelKey)}
+          label={t(safetyDepthField.labelKey)}
           htmlFor="planner-safety-depth"
         >
           <NumberInput
             id="planner-safety-depth"
             value={settings.safetyDepthM}
-            min={SAFETY_DEPTH_FIELD.min}
-            max={SAFETY_DEPTH_FIELD.max}
-            step={SAFETY_DEPTH_FIELD.step}
+            min={safetyDepthField.min}
+            max={safetyDepthField.max}
+            step={safetyDepthField.step}
             onCommit={(n) => commitSetting(settings, 'safetyDepthM', n, onSettingsChange)}
           />
         </Field>
       </div>
 
-      {/* §3.3: the remaining five advanced inputs move behind an "Erweitert"
-          disclosure with a collapsed one-line value summary. */}
-      <Disclosure
-        className="planner-advanced"
-        summary={
-          <>
-            <span className="planner-advanced-label">{t('planner.card.advanced')}</span>
-            <span className="planner-advanced-values">{advancedSummary}</span>
-          </>
-        }
-      >
-        <OptionsPanel value={settings} onChange={onSettingsChange} />
-      </Disclosure>
+      {/* #299: a discoverable route from safety depth to the depth comfort
+          margin (and the rest of the boat settings) now that the two "depth"
+          controls live on two different surfaces — without this, a user
+          hunting for the comfort margin right next to safety depth (where it
+          used to be) could reasonably conclude it was removed. */}
+      <Button variant="ghost" className="planner-boat-settings-link" onClick={onOpenBoatSettings}>
+        {t('planner.safetyDepth.boatLink')} <span aria-hidden="true">→</span>
+      </Button>
 
       {/* §3.3: the primary action stays reachable at the panel bottom (sticky),
           never below a long scroll. §3.5: a single guidance/reason line under
@@ -564,51 +610,97 @@ export default function PlannerPanel({
 
       {/* §3.4 (Option B): compact Ergebnis strip, immediately after the status
           live region. A strict subset of the full Routes card; "Details
-          ansehen" jumps to the full card. */}
-      {summary && (
+          ansehen" jumps to the full card. #452: gated on `summary || shallow`,
+          NOT `summary` alone — `shallow` is plan-level and must still surface
+          here when the ACTIVE rig's own result is null (e.g. the active tab's
+          rig failed to route while the other rig succeeded at the relaxed
+          gate). Each summary-dependent section below carries its own
+          `summary &&` guard so the Card can render with just the warning and
+          no stats when that's all there is. */}
+      {(summary || shallow) && (
         <Card title={t('planner.card.result')} className="planner-result">
-          <div className="planner-result-chips">
-            {/* #259: mirrors RouteSummary's rig-comparison chip — an ETA tie
-                or an all-motor comparison must not silently badge one rig as
-                recommended here either (this strip is the FIRST surface a
-                user sees a result on). */}
-            <Chip className="chip-faster-rig">
-              {summary.rigRecommendation.kind === 'decided'
-                ? t('route.fasterRig', { rig: t(RIG_LABEL_KEY[summary.rigRecommendation.rig]) })
-                : t(summary.rigRecommendation.kind === 'moot' ? 'route.rigMoot' : 'route.rigTie')}
-            </Chip>
-            {/* #301: the form has drifted from this displayed route — a
-                re-run right now would produce something different. Sits ON
-                the stale thing (this card / the map route below it), not a
-                tab-independent Banner (#368's contested space) and not map
-                dimming/dashing (#324's dash+opacity already means "the other
-                rig"). The same sentence is folded into the live region above
-                (statusText) — this Chip is the sighted-user surface only. */}
-            {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
-          </div>
-          <div className="planner-result-primary">
-            <div className="ergebnis-stat ergebnis-stat-lg">
-              <span className="ergebnis-stat-label">{t('route.totals.eta')}</span>
-              <span className="ergebnis-stat-value tabular-nums">{summary.arrivalText}</span>
+          {summary && (
+            <div className="planner-result-chips">
+              {/* #259: mirrors RouteSummary's rig-comparison chip — an ETA tie
+                  or an all-motor comparison must not silently badge one rig as
+                  recommended here either (this strip is the FIRST surface a
+                  user sees a result on). */}
+              <Chip className="chip-faster-rig">
+                {summary.rigRecommendation.kind === 'decided'
+                  ? t('route.fasterRig', { rig: t(sailLabelKey(summary.rigRecommendation.rig)) })
+                  : t(rigVerdictKey(summary.rigRecommendation.kind))}
+              </Chip>
+              {/* #301: the form has drifted from this displayed route — a
+                  re-run right now would produce something different. Sits ON
+                  the stale thing (this card / the map route below it), not
+                  map dimming/dashing (#324's dash+opacity already means "the
+                  other rig"). #299 ALSO added a tab-independent Banner for
+                  this same underlying signal (App.tsx, gated on the
+                  narrower `settingsDirty`). This Chip stays unconditionally
+                  on the broader `formDirty` regardless of whether the Banner
+                  is also on screen — a Chip is a plain DOM insertion, not
+                  itself a live region, so screen readers don't announce it
+                  on their own and it never duplicates anything the Banner or
+                  the live region below announce. The live region ABOVE
+                  (statusText) DOES now fold this same sentence in — but only
+                  for `formDirty && !settingsDirty`, the complement of what
+                  the Banner covers (Refs #299; see statusText's own comment
+                  for the full reasoning and why an earlier revision of this
+                  comment claiming the opposite was wrong). Deliberately
+                  still `formDirty`, not `settingsDirty`, here — this tab CAN
+                  edit origin/destination/departure, unlike the Banner's
+                  narrower scope (see settingsDirty's own comment in
+                  App.tsx). */}
+              {formDirty && <Chip>{t('planner.result.stale')}</Chip>}
             </div>
-            <div className="ergebnis-stat ergebnis-stat-lg">
-              <span className="ergebnis-stat-label">{t('route.totals.duration')}</span>
-              <span className="ergebnis-stat-value tabular-nums">{summary.durationText}</span>
-            </div>
-          </div>
-          <div className="planner-result-secondary">
-            <div className="ergebnis-stat">
-              <span className="ergebnis-stat-label">{t('route.totals.distance')}</span>
-              <span className="ergebnis-stat-value tabular-nums">{summary.distanceText}</span>
-            </div>
-            <div className="ergebnis-stat">
-              <span className="ergebnis-stat-label">{t('route.totals.avgSpeed')}</span>
-              <span className="ergebnis-stat-value tabular-nums">{summary.avgSpeedText}</span>
-            </div>
-          </div>
-          <Button variant="secondary" className="planner-result-details" onClick={onViewDetails}>
-            {t('planner.result.details')} <span aria-hidden="true">→</span>
-          </Button>
+          )}
+          {/* #452: shallow-water warning, promoted here from the Routes-tab-only
+              RouteSummary card so it's visible on the FIRST surface a user sees
+              a result on, without switching tabs. Plan-level (see `shallow`
+              above), same shared component and copy as RouteSummary's own —
+              and, unlike the sections below, NOT gated on `summary`. #452 gap
+              3: `legs` is the ACTIVE rig's own legs (`result` above) — null
+              whenever that rig has no result of its own, in which case the
+              shared component's locator sentence safely stays absent while
+              the banner itself still renders. The explicit `plan &&` alongside
+              `shallow &&` is a TYPE-LEVEL requirement only: `shallow` is
+              derived as `plan?.result.shallow ?? null`, so `shallow` truthy
+              already implies `plan` non-null at runtime — TS just can't see
+              that implication across the two separately-computed variables. */}
+          {plan && shallow && (
+            <ShallowWarning shallow={shallow} legs={result?.legs ?? null} plan={plan} />
+          )}
+          {summary && (
+            <>
+              <div className="planner-result-primary">
+                <div className="ergebnis-stat ergebnis-stat-lg">
+                  <span className="ergebnis-stat-label">{t('route.totals.eta')}</span>
+                  <span className="ergebnis-stat-value tabular-nums">{summary.arrivalText}</span>
+                </div>
+                <div className="ergebnis-stat ergebnis-stat-lg">
+                  <span className="ergebnis-stat-label">{t('route.totals.duration')}</span>
+                  <span className="ergebnis-stat-value tabular-nums">{summary.durationText}</span>
+                </div>
+              </div>
+              <div className="planner-result-secondary">
+                <div className="ergebnis-stat">
+                  <span className="ergebnis-stat-label">{t('route.totals.distance')}</span>
+                  <span className="ergebnis-stat-value tabular-nums">{summary.distanceText}</span>
+                </div>
+                <div className="ergebnis-stat">
+                  <span className="ergebnis-stat-label">{t('route.totals.avgSpeed')}</span>
+                  <span className="ergebnis-stat-value tabular-nums">{summary.avgSpeedText}</span>
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                className="planner-result-details"
+                onClick={onViewDetails}
+              >
+                {t('planner.result.details')} <span aria-hidden="true">→</span>
+              </Button>
+            </>
+          )}
         </Card>
       )}
     </div>

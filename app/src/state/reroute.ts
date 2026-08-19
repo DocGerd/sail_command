@@ -3,6 +3,7 @@ import { savePlan } from '../services/db';
 import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import {
   disposeAfterFailure,
+  failureLeavesWorkerHealthy,
   ReplanError,
   ROUTING_FAILURE_MESSAGE_KEY,
   routingFailureKey,
@@ -10,8 +11,12 @@ import {
   type ReplanDeps,
 } from './replan';
 import type { MsgKey } from '../i18n/dict.de';
+import { DEFAULT_SAIL_IDS } from '../data/boats';
 import {
+  boatSnapshot,
+  defaultBoatSnapshot,
   DEFAULT_SETTINGS,
+  PLAN_SCHEMA_VERSION,
   type LatLon,
   type Plan,
   type PlanRequest,
@@ -110,6 +115,23 @@ export async function rerouteFromFix(
     destinationHarborId: plan.request.destinationHarborId,
     departureMs: nowMs,
     settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
+    // #54: reroute the SAME sails the plan being rerouted was originally
+    // solved with, not a fresh default — mirrors every other field here
+    // being copied from the original plan's own request. #54 fix round 1:
+    // backfilled for the same reason as lib/recalc.ts's `settings` backfill
+    // above — a plan saved before this field existed has it absent, and
+    // planRoute.ts's `runAll` calls `req.sailIds.map(...)` unconditionally.
+    // #54 review round 2: BOTH branches spread. The fallback used to alias
+    // the module-level DEFAULT_SAIL_IDS, which contradicts this block's own
+    // "copied, never aliased" contract and would hand the same one array to
+    // every backfilled reroute. Pinned by reroute.test.ts's "copies sailIds,
+    // never aliasing the saved plan's array" and "copies the backfill, never
+    // aliasing the DEFAULT_SAIL_IDS module constant", one row per branch.
+    sailIds: plan.request.sailIds ? [...plan.request.sailIds] : [...DEFAULT_SAIL_IDS],
+    // #54 Task 11: same treatment, same two reasons — copied rather than
+    // aliased per this block's contract, and backfilled for a plan that
+    // reached here without passing through services/migratePlan.ts.
+    boat: plan.request.boat ? boatSnapshot(plan.request.boat) : defaultBoatSnapshot(),
   };
 
   let result: PlanResult;
@@ -125,7 +147,8 @@ export async function rerouteFromFix(
     // RoutingError.kind instead of collapsing onto 'error.internal'. This
     // path matters more than the replan one for a timeout: it is reached
     // from Live view, mid-passage.
-    disposeAfterFailure(deps.client);
+    // #553: skip the teardown when the worker is provably healthy.
+    if (!failureLeavesWorkerHealthy(err)) disposeAfterFailure(deps.client);
     throw new ReplanError(
       routingFailureKey(err),
       `routing worker rejected the reroute request: ${err instanceof Error ? err.message : String(err)}`,
@@ -149,6 +172,7 @@ export async function rerouteFromFix(
     id: crypto.randomUUID(),
     name,
     createdAtMs: nowMs,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request,
     windGrid: cloneWindGrid(plan.windGrid),
     result,

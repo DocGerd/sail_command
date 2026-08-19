@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { planRoute } from './planRoute';
-import { makeMask, makeWindGrid, TEST_POLAR } from '../test/fixtures';
+import { makeMask, makeWindGrid, TEST_POLAR, testPlanDeps } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type PolarTable } from '../types';
 import { haversineNm } from '../lib/geo';
+import { uniformGate } from '../lib/depthGate';
 import { solverTimeoutMs, SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
 
 // Solver-heavy file: CI runners execute the isochrone solver ~6-10x slower than
 // dev machines (2026-07-15 CI run: tests at ~1s locally took 30-44s). Fast test
@@ -64,20 +66,28 @@ describe('router invariants', () => {
               destinationHarborId: null,
               departureMs: Date.UTC(2026, 6, 15, 6, 0, 0),
               settings: DEFAULT_SETTINGS,
+              sailIds: ['genoa', 'fock'],
+              boat: defaultBoatSnapshot(),
             },
             makeWindGrid(() => ({ speedKn: sc.windKn, dirFromDeg: sc.windDir }), { hours: 72 }),
-            { polarGenoa: TEST_POLAR, polarFock: FOCK, mask },
+            testPlanDeps(mask, { genoa: TEST_POLAR, fock: FOCK }),
           );
           if (r.status !== 'ok') return true; // unreachable scenarios are legitimate
           okScenarios++;
-          for (const rig of [r.genoa, r.fock]) {
+          const genoa = r.sails.find((s) => s.sailId === 'genoa')?.result ?? null;
+          const fock = r.sails.find((s) => s.sailId === 'fock')?.result ?? null;
+          for (const rig of [genoa, fock]) {
             if (!rig) continue;
             for (let i = 0; i < rig.legs.length; i++) {
               const leg = rig.legs[i];
               // 1. no leg crosses land/shallow
-              expect(mask.segmentNavigable(leg.start, leg.end, DEFAULT_SETTINGS.safetyDepthM)).toBe(
-                true,
-              );
+              expect(
+                mask.segmentNavigable(
+                  leg.start,
+                  leg.end,
+                  uniformGate(DEFAULT_SETTINGS.safetyDepthM),
+                ),
+              ).toBe(true);
               // 2. times strictly increasing
               expect(leg.endTimeMs).toBeGreaterThan(leg.startTimeMs);
               if (i > 0) {
@@ -98,8 +108,8 @@ describe('router invariants', () => {
             );
           }
           // 6. recommendation is the faster rig
-          if (r.genoa && r.fock)
-            expect(r.recommended).toBe(r.genoa.etaMs <= r.fock.etaMs ? 'genoa' : 'fock');
+          if (genoa && fock)
+            expect(r.recommended).toBe(genoa.etaMs <= fock.etaMs ? 'genoa' : 'fock');
           return true;
         }),
         { numRuns: 25, seed: 42 }, // deterministic CI; bump numRuns locally when touching the router

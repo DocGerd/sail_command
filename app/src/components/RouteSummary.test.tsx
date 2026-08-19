@@ -1,17 +1,37 @@
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
+import { en } from '../i18n/dict.en';
+import { de } from '../i18n/dict.de';
 import { uniformWindGrid } from '../test/fixtures';
-import { formatDateTime } from '../lib/format';
+import { formatDateTime, formatTime } from '../lib/format';
+import { MASK_TOLERANCE_M } from '../lib/mask';
+import { BOAT_DRAFT_M } from '../routing/relaxedDepth';
 import {
   DEFAULT_SETTINGS,
   type Leg,
   type Plan,
-  type Rig,
   type RigRecommendation,
   type RigResult,
+  type SailId,
+  type SailResult,
 } from '../types';
 import RouteSummary from './RouteSummary';
+import { boatSnapshot, defaultBoatSnapshot } from '../types';
+import { boatById } from '../data/boats';
+import { PLAN_SCHEMA_VERSION } from '../types';
+
+// #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.fockReason`
+// etc. as directly-mutable fields; the `sails` list's own entries are now
+// `readonly`, so a test that used to write `plan.result.genoa = X` instead
+// REPLACES the whole `result` object (Plan.result itself is not readonly —
+// only PlanResultOk's own fields are) with a new `sails` array.
+function setSail(plan: Plan, sailId: SailId, patch: Partial<SailResult>): void {
+  plan.result = {
+    ...plan.result,
+    sails: plan.result.sails.map((s) => (s.sailId === sailId ? { ...s, ...patch } : s)),
+  };
+}
 
 const FETCHED_AT_MS = Date.UTC(2026, 6, 15, 6, 0, 0);
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0); // 2h after fetch: not stale
@@ -61,7 +81,7 @@ const GENOA_LEGS: Leg[] = [
 ];
 
 const GENOA_RESULT: RigResult = {
-  rig: 'genoa',
+  sailId: 'genoa',
   etaMs: DEPARTURE_MS + 5 * 3_600_000,
   durationMs: 5 * 3_600_000,
   distanceNm: 21.5,
@@ -71,7 +91,7 @@ const GENOA_RESULT: RigResult = {
 };
 
 const FOCK_RESULT: RigResult = {
-  rig: 'fock',
+  sailId: 'fock',
   etaMs: DEPARTURE_MS + 6 * 3_600_000,
   durationMs: 6 * 3_600_000,
   distanceNm: 22.0,
@@ -98,7 +118,7 @@ const FOCK_RESULT: RigResult = {
 function makePlan(
   overrides: {
     departureMs?: number;
-    recommended?: Rig;
+    recommended?: SailId;
     // #259: omitted by default so most tests exercise rigRecommendationOf's
     // fallback (absent field -> `{ kind: 'decided', rig: recommended }`),
     // matching every pre-#259 PlanResultOk literal elsewhere in the suite.
@@ -109,6 +129,7 @@ function makePlan(
     id: 'plan-1',
     name: 'Flensburg to Marstal',
     createdAtMs: FETCHED_AT_MS,
+    schemaVersion: PLAN_SCHEMA_VERSION,
     request: {
       origin: { lat: 54.79, lon: 9.43 },
       destination: { lat: 54.85, lon: 10.52 },
@@ -117,15 +138,18 @@ function makePlan(
       destinationHarborId: 'marstal',
       departureMs: overrides.departureMs ?? DEPARTURE_MS,
       settings: DEFAULT_SETTINGS,
+      sailIds: ['genoa', 'fock'],
+      boat: defaultBoatSnapshot(),
     },
     windGrid: { ...uniformWindGrid(10, 270), fetchedAtMs: FETCHED_AT_MS },
     result: {
       status: 'ok',
-      genoa: GENOA_RESULT,
-      fock: FOCK_RESULT,
-      genoaReason: null,
-      fockReason: null,
+      sails: [
+        { sailId: 'genoa', result: GENOA_RESULT, reason: null },
+        { sailId: 'fock', result: FOCK_RESULT, reason: null },
+      ],
       recommended: overrides.recommended ?? 'genoa',
+      comparisonComplete: true,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
       ...(overrides.rigRecommendation ? { rigRecommendation: overrides.rigRecommendation } : {}),
@@ -134,8 +158,8 @@ function makePlan(
 }
 
 function renderSummary(
-  overrides: { plan?: Plan; rig?: Rig; onRigChange?: (r: Rig) => void } = {},
-): { plan: Plan; rig: Rig; onRigChange: (r: Rig) => void; container: HTMLElement } {
+  overrides: { plan?: Plan; rig?: SailId; onRigChange?: (r: SailId) => void } = {},
+): { plan: Plan; rig: SailId; onRigChange: (r: SailId) => void; container: HTMLElement } {
   localStorage.setItem('sc-lang', 'en');
   const plan = overrides.plan ?? makePlan();
   const rig = overrides.rig ?? 'genoa';
@@ -161,6 +185,34 @@ describe('RouteSummary', () => {
     expect(heading).not.toBeNull();
     expect(heading.textContent).toBe('Result');
     expect(heading.getAttribute('tabindex')).toBe('-1');
+  });
+
+  // #54 review: `SailId` is a catalogue-derived union at COMPILE time and an
+  // open-world value at REST — services/migratePlan.ts mints it from
+  // unvalidated stored strings by design, and
+  // migratePlan.catalogueRename.test.ts pins that a renamed catalogue must
+  // still READ an existing plan. Indexing the label map directly with such an
+  // id yielded `undefined`, and `useT` is a bare `dicts[lang][key]` lookup
+  // with no fallback and no throw: the rig tab and the per-leg sail chip
+  // rendered an EMPTY accessible name, and the recommendation chip rendered
+  // the literal string 'Faster: undefined'.
+  it('#54: names a stored sail the catalogue no longer knows, never rendering "undefined"', () => {
+    const gone = 'code0' as SailId;
+    const plan = makePlan();
+    plan.result = {
+      ...plan.result,
+      sails: [{ sailId: gone, result: { ...GENOA_RESULT, sailId: gone }, reason: null }],
+      recommended: gone,
+    };
+    const { container } = renderSummary({ plan, rig: gone });
+
+    // The interpolated site: `String(undefined)` is what got substituted.
+    expect(container.textContent).toContain(`Faster: ${en['route.rig.unknown']}`);
+    // The bare-lookup sites: an empty accessible name is invisible to
+    // `toContain`, so assert the tab's own name directly.
+    expect(screen.getByRole('tab').textContent).toContain(en['route.rig.unknown']);
+    // Belt and braces across every surface this card renders.
+    expect(container.textContent).not.toContain('undefined');
   });
 
   it('shows a ★ badge on the recommended tab and not on the other', () => {
@@ -200,6 +252,17 @@ describe('RouteSummary', () => {
     expect(within(tablist).queryAllByLabelText('Recommended')).toHaveLength(0);
     expect(
       screen.getByText('Rig does not matter here — this passage runs entirely under engine'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
+  });
+
+  it('#553: a not-compared verdict shows neither ★ and says no comparison happened', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+    renderSummary({ plan, rig: 'genoa' });
+    const tablist = screen.getByRole('tablist', { name: 'Rig comparison' });
+    expect(within(tablist).queryAllByLabelText('Recommended')).toHaveLength(0);
+    expect(
+      screen.getByText('The sails were not compared for this passage, so no faster rig is claimed'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
   });
@@ -291,7 +354,7 @@ describe('RouteSummary', () => {
     expect(screen.getByText('088°')).toBeInTheDocument();
   });
 
-  it('renders the nine legs-table headers in order, including Duration (#379)', () => {
+  it('renders the ten legs-table headers in order, including Duration (#379) and Shallow (#452)', () => {
     const { container } = renderSummary({ rig: 'genoa' });
     const headers = Array.from(container.querySelectorAll('table.route-legs thead th')).map(
       (th) => th.textContent,
@@ -306,6 +369,7 @@ describe('RouteSummary', () => {
       'Speed',
       'Distance',
       'Maneuver',
+      'Shallow',
     ]);
   });
 
@@ -344,7 +408,7 @@ describe('RouteSummary', () => {
 
   it('omits the motor-note footnote when the selected rig result has no legs', () => {
     const plan = makePlan();
-    plan.result.genoa = { ...GENOA_RESULT, legs: [] };
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: [] } });
     renderSummary({ plan, rig: 'genoa' });
     expect(screen.queryByText(/Motor = engine only/)).not.toBeInTheDocument();
   });
@@ -362,8 +426,7 @@ describe('RouteSummary', () => {
 
   it('renders a no-route message instead of stats/legs when the selected rig has no result', () => {
     const plan = makePlan();
-    plan.result.fock = null;
-    plan.result.fockReason = 'unreachable';
+    setSail(plan, 'fock', { result: null, reason: 'unreachable' });
     renderSummary({ plan, rig: 'fock' });
     expect(screen.getByRole('alert')).toHaveTextContent(/cannot be reached/i);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -408,7 +471,7 @@ describe('RouteSummary', () => {
 
     try {
       const plan = makePlan();
-      plan.result.genoa = { ...GENOA_RESULT, legs: [] };
+      setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: [] } });
       renderSummary({ plan, rig: 'genoa' });
 
       const button = screen.getByRole('button', { name: 'Export GPX' });
@@ -422,31 +485,544 @@ describe('RouteSummary', () => {
   });
 });
 
-describe('shallow-water warning banner (#53)', () => {
+describe('shallow-water warning banner (#53/#452)', () => {
+  // Distinct requested/used/minGate values so an assertion on one field
+  // cannot pass by accident against another (#452: usedDepthM used to render
+  // nowhere at all, so a test built on requestedDepthM === usedDepthM could
+  // not have caught its absence).
   function makeShallowPlan(): Plan {
     const plan = makePlan();
-    plan.result.shallow = { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 2.3 };
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+    };
     return plan;
   }
 
-  it('renders the plan-level warning with the requested and minimum charted gate depths', () => {
-    renderSummary({ plan: makeShallowPlan() });
-    const banner = screen.getByText(/charted shallower than your safety depth/);
+  it('renders the plan-level warning with the requested, effective (used) and minimum gate depths', () => {
+    // #504 wave 4: the warning is now a role="alert" CONTAINER (a <div>)
+    // holding three <p> parts, not one <p>. `screen.getByText(/was not
+    // passable/)` would now resolve to the .shallow-warning__detail leaf
+    // alone (Testing Library's getNodeText only considers a node's OWN
+    // direct text-node children, so the wrapping <div> — which has no
+    // direct text of its own, only element children — never matches) —
+    // querying the container by class is what actually asserts on the
+    // element role/class live on.
+    const { container } = renderSummary({ plan: makeShallowPlan() });
+    const banner = container.querySelector('.shallow-warning');
+    expect(banner).not.toBeNull();
     expect(banner).toHaveAttribute('role', 'alert');
-    expect(banner).toHaveClass('shallow-warning');
-    expect(banner.textContent).toContain('3.0 m');
-    expect(banner.textContent).toContain('2.3 m');
-    // Honest passage-planning-aid copy: never claims verified safety.
-    expect(banner.textContent).not.toMatch(/verified|guaranteed/i);
+    expect(banner?.textContent).toContain('3.0 m');
+    // #452: the effective (relaxed) depth the route was actually computed at.
+    expect(banner?.textContent).toContain('2.5 m');
+    expect(banner?.textContent).toContain('2.3 m');
+    // Honest passage-planning-aid copy (#455): never claims an unflagged
+    // section IS safe. review (PR #461 Major 3, twin of the identical
+    // PlannerPanel.test.tsx assertion — see its comment for the full
+    // measured mutation record): widened from `/\bis
+    // (verified|guaranteed)\b/i`, which let "...is safe." through 91/91
+    // GREEN, to also catch "is/are safe" and "is/are clear". NARROWED, NOT
+    // CLOSED — "poses no risk" still evades it; the POSITIVE `toContain`
+    // below is the assertion actually doing the work.
+    expect(banner?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+    expect(banner?.textContent).toContain('not guaranteed to be clear');
   });
 
   it('renders on BOTH rig tabs — the warning is plan-level, not per rig', () => {
     renderSummary({ plan: makeShallowPlan(), rig: 'fock' });
-    expect(screen.getByText(/charted shallower than your safety depth/)).toBeInTheDocument();
+    expect(screen.getByText(/was not passable/)).toBeInTheDocument();
+  });
+
+  // Review finding (PR #461 Major 2): German is the app's DEFAULT language
+  // (`I18nProvider` falls back to 'de' when nothing is stored), but every
+  // other test in this describe block forces 'en' via `renderSummary`'s
+  // hardcoded `localStorage.setItem('sc-lang', 'en')` — so the string most
+  // users actually see had zero coverage. Rendered directly (not through
+  // `renderSummary`) so this one case can set 'de' without touching the
+  // shared helper's default for every other test in the file.
+  it('#452 Major 2: renders the German copy with all three depths and the honesty hedge', () => {
+    localStorage.setItem('sc-lang', 'de');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeShallowPlan()} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    const banner = container.querySelector('.shallow-warning');
+    expect(banner).not.toBeNull();
+    expect(banner).toHaveAttribute('role', 'alert');
+    // Requested / used / minGate — same three distinct values as the English
+    // case above, so a dropped placeholder in the DE string reds here too.
+    expect(banner?.textContent).toContain('3.0 m');
+    expect(banner?.textContent).toContain('2.5 m');
+    expect(banner?.textContent).toContain('2.3 m');
+    // The honesty hedge, in German: never claims an unflagged section IS
+    // safe — this is the same #455 constraint as the English copy, and it
+    // has to hold independently since the two strings are maintained by hand.
+    expect(banner?.textContent).toContain('nicht garantiert frei von Untiefen');
   });
 
   it('is absent on plans without relaxation', () => {
     renderSummary();
-    expect(screen.queryByText(/charted shallower than your safety depth/)).toBeNull();
+    expect(screen.queryByText(/was not passable/)).toBeNull();
+  });
+});
+
+describe('#452 gap 3: per-leg shallow marker + locator sentence', () => {
+  // Two flagged legs (index 0 and 2) with an UNFLAGGED leg between them
+  // (index 1) — non-contiguous on purpose: a "first" that's really "last",
+  // or a count that's really "total legs", would both be caught by this
+  // shape but not by an all-flagged or a first-two-flagged fixture.
+  const NON_CONTIGUOUS_SHALLOW_LEGS: Leg[] = [
+    {
+      kind: 'sail',
+      board: 'starboard',
+      start: { lat: 54.79, lon: 9.43 },
+      end: { lat: 54.8, lon: 10.0 },
+      startTimeMs: DEPARTURE_MS,
+      endTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+      headingDeg: 88,
+      twaDeg: 92,
+      twsKn: 10,
+      speedKn: 7,
+      distanceNm: 15,
+      maneuverAtStart: null,
+      shallow: { minDepthM: 2.3 },
+    },
+    {
+      kind: 'motor',
+      board: null,
+      start: { lat: 54.8, lon: 10.0 },
+      end: { lat: 54.85, lon: 10.3 },
+      startTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+      endTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+      headingDeg: 90,
+      twsKn: 2,
+      speedKn: 6.5,
+      distanceNm: 5,
+      maneuverAtStart: null,
+    },
+    {
+      kind: 'sail',
+      board: 'port',
+      start: { lat: 54.85, lon: 10.3 },
+      end: { lat: 54.86, lon: 10.55 },
+      startTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+      endTimeMs: DEPARTURE_MS + 5 * 3_600_000,
+      headingDeg: 60,
+      twaDeg: -80,
+      twsKn: 10,
+      speedKn: 6,
+      distanceNm: 1.5,
+      maneuverAtStart: 'tack',
+      shallow: { minDepthM: 1.9 },
+    },
+  ];
+
+  // Same three legs, but only the FIRST is flagged — for the singular-vs-
+  // plural sentence test.
+  const SINGLE_SHALLOW_LEGS: Leg[] = [
+    NON_CONTIGUOUS_SHALLOW_LEGS[0],
+    NON_CONTIGUOUS_SHALLOW_LEGS[1],
+    {
+      kind: 'sail',
+      board: 'port',
+      start: { lat: 54.85, lon: 10.3 },
+      end: { lat: 54.86, lon: 10.55 },
+      startTimeMs: DEPARTURE_MS + 4 * 3_600_000,
+      endTimeMs: DEPARTURE_MS + 5 * 3_600_000,
+      headingDeg: 60,
+      twaDeg: -80,
+      twsKn: 10,
+      speedKn: 6,
+      distanceNm: 1.5,
+      maneuverAtStart: 'tack',
+      // No `shallow` key (exactOptionalPropertyTypes: omitted, not undefined).
+    },
+  ];
+
+  function makeShallowPlan(legs: Leg[]): Plan {
+    const plan = makePlan();
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs } });
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.0, usedDepthM: 2.3, minGateDepthM: 1.9 },
+    };
+    return plan;
+  }
+
+  it('marks only the flagged legs in the table, each with its own charted depth', () => {
+    const { container } = renderSummary({
+      plan: makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS),
+      rig: 'genoa',
+    });
+    const rows = container.querySelectorAll('table.route-legs tbody tr');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.3 m');
+    expect(rows[1]?.querySelector('.chip-shallow')).toBeNull();
+    expect(rows[2]?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 1.9 m');
+  });
+
+  it('reports the right count and first occurrence for non-contiguous flagged legs', () => {
+    renderSummary({ plan: makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS), rig: 'genoa' });
+    const banner = screen.getByText(/was not passable/);
+    const expected = en['route.shallow.locator.plural']
+      .replace('{count}', '2')
+      .replace('{time}', formatTime(DEPARTURE_MS, 'en'));
+    expect(banner.textContent).toContain(expected);
+  });
+
+  it('uses the singular sentence (no count) when exactly one leg is flagged', () => {
+    renderSummary({ plan: makeShallowPlan(SINGLE_SHALLOW_LEGS), rig: 'genoa' });
+    const banner = screen.getByText(/was not passable/);
+    const expected = en['route.shallow.locator'].replace('{time}', formatTime(DEPARTURE_MS, 'en'));
+    expect(banner.textContent).toContain(expected);
+    // The plural form must not ALSO appear (a mis-picked key would add it).
+    expect(banner.textContent).not.toContain('legs are affected');
+  });
+
+  it('omits the locator sentence when relaxation fired but no individual leg is flagged', () => {
+    // GENOA_LEGS (the default fixture) never sets leg.shallow — the
+    // plan-level banner still renders (see the sibling describe block
+    // above), but nothing in the table is flagged, so the locator sentence
+    // must fail safe rather than render a nonsensical "0 legs" sentence.
+    const plan = makePlan();
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.0, usedDepthM: 2.5, minGateDepthM: 2.3 },
+    };
+    renderSummary({ plan });
+    const banner = screen.getByText(/was not passable/);
+    expect(banner.textContent).not.toContain('starts at');
+  });
+
+  it('omits the locator sentence when the active tab’s own rig has no result', () => {
+    const plan = makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS);
+    setSail(plan, 'fock', { result: null, reason: 'unreachable' });
+    renderSummary({ plan, rig: 'fock' });
+    const banner = screen.getByText(/was not passable/);
+    expect(banner.textContent).not.toContain('starts at');
+  });
+
+  it('renders the German locator sentence with the same count/time contract', () => {
+    localStorage.setItem('sc-lang', 'de');
+    render(
+      <I18nProvider>
+        <RouteSummary
+          plan={makeShallowPlan(NON_CONTIGUOUS_SHALLOW_LEGS)}
+          rig="genoa"
+          onRigChange={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    const banner = screen.getByText(/keine durchgehende Route gefunden/);
+    const expected = de['route.shallow.locator.plural']
+      .replace('{count}', '2')
+      .replace('{time}', formatTime(DEPARTURE_MS, 'de'));
+    expect(banner.textContent).toContain(expected);
+  });
+});
+
+// Builds the exact rendered text from a dict TEMPLATE (a real, hand-read
+// artifact) plus HAND-CHOSEN literal values — the same "needle from a real
+// artifact, haystack from the shipped dict string" shape maskTolerance.test.ts
+// uses, generalized to several placeholders via one replaceAll loop each
+// (matching useT()'s own per-key replaceAll semantics in i18n/index.tsx, so
+// a double-occurrence placeholder — none exist in these two templates today —
+// would still resolve identically to production). This is NOT deriving the
+// expectation from the code under test: ShallowWarning's own decision logic
+// (which key, which class, which values) is exercised for real by rendering
+// the component; this helper only stitches together values chosen here.
+function interpolate(template: string, vars: Record<string, string>): string {
+  let msg = template;
+  for (const [k, v] of Object.entries(vars)) msg = msg.replaceAll(`{${k}}`, v);
+  return msg;
+}
+
+describe('#493: cautious depth disclosure', () => {
+  // #504 review (finding #4): pairwise-DISTINCT requestedDepthM/usedDepthM/
+  // minGateDepthM/leg-minDepthM — the previous fixture collapsed all three
+  // shallow-info fields plus the leg's own minDepthM onto 2.3, so re-keying
+  // ShallowWarning's `used` interpolation (or isSevere) onto minGateDepthM
+  // would have kept every assertion here green.
+  const ONE_SHALLOW_LEG: Leg[] = [
+    {
+      kind: 'sail',
+      board: 'starboard',
+      start: { lat: 54.79, lon: 9.43 },
+      end: { lat: 54.8, lon: 10.0 },
+      startTimeMs: DEPARTURE_MS,
+      endTimeMs: DEPARTURE_MS + 2 * 3_600_000,
+      headingDeg: 88,
+      twaDeg: 92,
+      twsKn: 10,
+      speedKn: 7,
+      distanceNm: 15,
+      maneuverAtStart: null,
+      shallow: { minDepthM: 2.3 },
+    },
+  ];
+
+  function makeLegPlan(): Plan {
+    const plan = makePlan();
+    setSail(plan, 'genoa', { result: { ...GENOA_RESULT, legs: ONE_SHALLOW_LEG } });
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.5, usedDepthM: 2.9, minGateDepthM: 2.6 },
+    };
+    return plan;
+  }
+
+  it('renders the cautious lower bound ALONGSIDE the shipped per-leg figure, never in place of it', () => {
+    const { container } = renderSummary({ plan: makeLegPlan(), rig: 'genoa' });
+    const row = container.querySelector('table.route-legs tbody tr');
+    // Unchanged shipped-figure chip — proves the new surface is additive.
+    // Reads the LEG's own minDepthM (2.3), distinct from usedDepthM(2.9)/
+    // minGateDepthM(2.6) above — a field mix-up here would render 2.9 or 2.6
+    // instead of 2.3 and both assertions below would red.
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.3 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'cautious: as low as 1.4 m',
+    );
+  });
+
+  it('renders the German cautious lower bound with the same two-number contract', () => {
+    localStorage.setItem('sc-lang', 'de');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeLegPlan()} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Untiefe 2.3 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'vorsichtig: bis auf 1.4 m',
+    );
+  });
+
+  // #504 wave 4: the banner restructured from ONE dense <p> into a
+  // role="alert" CONTAINER (a <div>) holding three parts —
+  // .shallow-warning__lead/__detail/__caveat — chosen between
+  // route.shallow.lead/leadSevere by `usedDepthM - MASK_TOLERANCE_M <
+  // BOAT_DRAFT_M`, never both rendered at once. requestedDepthM(3.5) and
+  // minGateDepthM(2.6) are FIXED across every case here and distinct from
+  // both tested usedDepthM values (3.0, 2.9) and from each other (finding
+  // #4) — so a field mix-up moves a DIFFERENT number than the one under
+  // test.
+  describe('the restructured banner (#504 wave 4: lead/detail/caveat inside one alert)', () => {
+    const REQUESTED_M = '3.5';
+    const MIN_GATE_M = '2.6';
+    // Finding #5: derive the boundary from the SAME constants isSevere
+    // compares, rounded to one decimal, rather than hardcoding today's 3.0 —
+    // this tracks MASK_TOLERANCE_M/BOAT_DRAFT_M if either ever moves.
+    const BOUNDARY_USED_DEPTH_M = Math.round((BOAT_DRAFT_M + MASK_TOLERANCE_M) * 10) / 10;
+    const BELOW_BOUNDARY_USED_DEPTH_M = Math.round((BOUNDARY_USED_DEPTH_M - 0.1) * 10) / 10;
+
+    function makeSeverityPlan(usedDepthM: number): Plan {
+      const plan = makePlan();
+      plan.result = {
+        ...plan.result,
+        shallow: { requestedDepthM: 3.5, usedDepthM, minGateDepthM: 2.6 },
+      };
+      return plan;
+    }
+
+    // Hand-computed, not read from cautiousDepthLowerBoundM — see mask.test.ts
+    // for that function's own independently-pinned literals; this table only
+    // asserts the two values this suite needs, verified by hand:
+    // BOUNDARY(3.0) - 0.9 = 2.1 exactly; BELOW_BOUNDARY(2.9) - 0.9 = 2.0 exactly.
+    const CAUTIOUS_AT_BOUNDARY_M = '2.1';
+    const CAUTIOUS_BELOW_BOUNDARY_M = '2.0';
+
+    it('renders exactly ONE alert region for the shallow warning, not one per part', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M) });
+      // No stale-forecast or no-route alert exists in this fixture (result
+      // is present, forecast is fresh) — every role="alert" here comes from
+      // ShallowWarning, so this directly catches a regression to a separate
+      // role="alert" per lead/detail/caveat part, under ANY class name.
+      const alerts = container.querySelectorAll('[role="alert"]');
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]?.tagName).toBe('DIV');
+    });
+
+    it('does NOT escalate right at the boundary — lead/detail/caveat each pinned to their exact slots', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BOUNDARY_USED_DEPTH_M) });
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveAttribute('role', 'alert');
+      expect(banner).not.toHaveClass('shallow-warning--severe');
+      const lead = banner?.querySelector('.shallow-warning__lead');
+      const detail = banner?.querySelector('.shallow-warning__detail');
+      const caveat = banner?.querySelector('.shallow-warning__caveat');
+      expect(lead?.textContent).toBe(
+        interpolate(en['route.shallow.lead'], { cautious: CAUTIOUS_AT_BOUNDARY_M }),
+      );
+      expect(detail?.textContent).toBe(
+        interpolate(en['route.shallow.detail'], {
+          requested: REQUESTED_M,
+          used: BOUNDARY_USED_DEPTH_M.toFixed(1),
+          minGate: MIN_GATE_M,
+        }),
+      );
+      expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
+      // #504 review round 2's dict-independence requirement, extended to the
+      // new lead/detail/caveat structure: this literal is typed here, never
+      // read from `en[...]` at runtime, so it cannot shrink along with the
+      // dict (MEASURED at wave 2 by the reviewer: deleting the cautious
+      // clause from the dict left the old .toBe() pin 107/107 GREEN).
+      expect(lead?.textContent).toContain('could run as low as 2.1 m');
+    });
+
+    it('escalates one decimetre below the boundary — lead carries the draft clause, pinned to its slot', () => {
+      const { container } = renderSummary({ plan: makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M) });
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveAttribute('role', 'alert');
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const lead = banner?.querySelector('.shallow-warning__lead');
+      const detail = banner?.querySelector('.shallow-warning__detail');
+      const caveat = banner?.querySelector('.shallow-warning__caveat');
+      expect(lead?.textContent).toBe(
+        interpolate(en['route.shallow.leadSevere'], {
+          cautious: CAUTIOUS_BELOW_BOUNDARY_M,
+          draft: BOAT_DRAFT_M.toFixed(1),
+        }),
+      );
+      expect(detail?.textContent).toBe(
+        interpolate(en['route.shallow.detail'], {
+          requested: REQUESTED_M,
+          used: BELOW_BOUNDARY_USED_DEPTH_M.toFixed(1),
+          minGate: MIN_GATE_M,
+        }),
+      );
+      expect(caveat?.textContent).toBe(en['route.shallow.caveat']);
+      // Same dict-independence requirement as the non-severe test above,
+      // for THIS key's own {cautious} and {draft} slots (the reviewer's
+      // "same hole for the severe key's {draft} clause" finding) — both
+      // literals are typed here, not read from `en[...]`.
+      expect(lead?.textContent).toContain('as low as 2.0 m');
+      expect(lead?.textContent).toContain("below this boat's 2.1 m draft");
+      // Regression pin, unchanged from before the fold (#455's honesty hedge
+      // must hold for the caveat too).
+      expect(caveat?.textContent).not.toMatch(/\b(is|are) (safe|clear|verified|guaranteed)\b/i);
+    });
+
+    it('German copy: severe case pins the same slots', () => {
+      localStorage.setItem('sc-lang', 'de');
+      const { container } = render(
+        <I18nProvider>
+          <RouteSummary
+            plan={makeSeverityPlan(BELOW_BOUNDARY_USED_DEPTH_M)}
+            rig="genoa"
+            onRigChange={vi.fn()}
+          />
+        </I18nProvider>,
+      );
+      const banner = container.querySelector('.shallow-warning');
+      expect(banner).not.toBeNull();
+      expect(banner).toHaveClass('shallow-warning--severe');
+      const lead = banner?.querySelector('.shallow-warning__lead');
+      expect(lead?.textContent).toBe(
+        interpolate(de['route.shallow.leadSevere'], {
+          cautious: CAUTIOUS_BELOW_BOUNDARY_M,
+          draft: BOAT_DRAFT_M.toFixed(1),
+        }),
+      );
+      // Dict-independence requirement, typed here rather than read from
+      // `de[...]`.
+      expect(lead?.textContent).toContain('kann bis auf 2.0 m sinken');
+      expect(lead?.textContent).toContain('unter den Bootstiefgang von 2.1 m');
+    });
+  });
+});
+
+// #539 (spec C.4(a)). The banner's severity gate and its rendered draft both
+// used to read `BOAT_DRAFT_M`, the Salona 45's 2.1 m module constant. Every
+// case ABOVE plans on `defaultBoatSnapshot()`, whose draft is that same 2.1 —
+// so none of them can tell the fixed code from the broken code, and none of
+// them changed when #539 landed. These two rows are the discriminators, and
+// they exist because that whole suite above was green through the defect.
+//
+// The Elan Impression 444 is the catalogue's only DIFFERENT draft (1.90 m),
+// which is what makes a comparison possible at all. Both rows below build the
+// two plans from the SAME `makePlan()` and vary ONLY `request.boat` — the two
+// measurements are of one subject, not of two different fixtures.
+//
+// ERROR DIRECTION, stated honestly: no catalogue boat is DEEPER than 2.1 m, so
+// the stale gate made `isSevere` OVER-fire on the Elan rather than under-warn.
+// The live defect was the DRAFT FIGURE — "2.1 m" printed for a 1.9 m hull in
+// the app's most severe depth copy — not a missing warning.
+//
+// PER-ASSERTION ATTRIBUTION, MEASURED 2026-08-18 by deleting each assertion
+// alone under a mutation aimed at it (a multi-assertion pin can have a single
+// discriminating member — #516/PR #523):
+//   'salona IS severe'        catches `isSevere` forced FALSE (4 rows red in
+//                             this file; 3 with it deleted) — it is the only
+//                             assertion here covering the 2.1 m half.
+//   'elan NOT severe'         catches the stale-constant gate.
+//   'non-severe lead wording' catches a wrong cautious figure on that branch.
+//   'lead has no draft clause' is NOT redundant with the class check, and this
+//                             was measured rather than argued: forcing the lead
+//                             to the SEVERE key while leaving the CLASS correct
+//                             reds 2 rows, and only 1 with this assertion
+//                             deleted. The class and the wording are two
+//                             surfaces, so both are pinned.
+describe('#539: the shallow banner follows the PLAN’s boat, not a module constant', () => {
+  const ELAN = boatById('elan-444-piranja');
+
+  // Hand-derived from the two catalogue drafts and TOLERANCE_M = 0.9, typed
+  // out rather than computed from MASK_TOLERANCE_M so this block cannot move
+  // in step with the code it is testing:
+  //   usedDepthM 2.9 -> cautious 2.0 -> severe for a 2.1 m hull, NOT for 1.9 m
+  //   usedDepthM 2.7 -> cautious 1.8 -> severe for both
+  const SPLIT_USED_DEPTH_M = 2.9;
+  const BOTH_SEVERE_USED_DEPTH_M = 2.7;
+
+  function planFor(boat: Plan['request']['boat'], usedDepthM: number): Plan {
+    const plan = makePlan();
+    plan.request = { ...plan.request, boat };
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.5, usedDepthM, minGateDepthM: 2.6 },
+    };
+    return plan;
+  }
+
+  it('splits on severity at one usedDepthM: severe for the 2.1 m hull, not for the 1.9 m one', () => {
+    const salona = renderSummary({
+      plan: planFor(defaultBoatSnapshot(), SPLIT_USED_DEPTH_M),
+    }).container;
+    expect(salona.querySelector('.shallow-warning')).toHaveClass('shallow-warning--severe');
+    cleanup();
+
+    const elan = renderSummary({
+      plan: planFor(boatSnapshot(ELAN), SPLIT_USED_DEPTH_M),
+    }).container;
+    const banner = elan.querySelector('.shallow-warning');
+    expect(banner).not.toBeNull();
+    expect(banner).not.toHaveClass('shallow-warning--severe');
+    // The non-severe lead has no draft clause at all — assert its ABSENCE by
+    // the wording, so a severe lead that merely lost its class would still red.
+    expect(banner?.querySelector('.shallow-warning__lead')?.textContent).toContain(
+      'could run as low as 2.0 m',
+    );
+    expect(banner?.querySelector('.shallow-warning__lead')?.textContent).not.toContain('draft');
+  });
+
+  it('renders the plan boat’s own draft in the severe lead, never the Salona’s 2.1 m', () => {
+    const { container } = renderSummary({
+      plan: planFor(boatSnapshot(ELAN), BOTH_SEVERE_USED_DEPTH_M),
+    });
+    const lead = container.querySelector('.shallow-warning--severe .shallow-warning__lead');
+    expect(lead).not.toBeNull();
+    // Literals typed here, never read from `en[...]` — this repo's standing
+    // dict-independence requirement for a copy pin (#504 review round 2).
+    expect(lead?.textContent).toContain('as low as 1.8 m');
+    expect(lead?.textContent).toContain("below this boat's 1.9 m draft");
+    // Defence in depth, and honestly labelled: MEASURED, no mutation makes
+    // this the SOLE red — every one that trips it also trips one of the two
+    // above. It stays because it encodes #539's own signature directly ("the
+    // Salona's number must not appear on an Elan plan") where the positive
+    // pins only encode what the right answer looks like.
+    expect(lead?.textContent).not.toContain('2.1 m');
   });
 });

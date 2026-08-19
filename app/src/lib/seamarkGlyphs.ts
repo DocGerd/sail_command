@@ -17,14 +17,109 @@ const IMAGE_SIZE = 24; // smaller than windBarbs' 32: seamarks are a much
 // every offset/line-width in the logical box scales up together instead of
 // only a subset of hardcoded pixels being bumped (#191).
 const CENTER = IMAGE_SIZE / 2;
+
+// #353 PR1: a single scale-factor parameter for the whole seamark size axis —
+// raster resolution here (CANVAS_SIZE/PIXEL_RATIO below), on-screen icon-size
+// and the collision-padding compensation that keeps it in seamarkGeoJson.ts's
+// SEAMARKS_LAYOUT. This is the DEFAULT/no-override value — reproduces every
+// value below byte-for-byte (seamarkGeoJson.test.ts pins the EVALUATED
+// layout, not just this constant). #353 PR2 wires the RUNTIME control:
+// SettingsPanel.tsx's size slider persists an override via
+// `usePersistedNumber('sc-seamark-size-scale', ...)`, and DataLayers.tsx
+// falls back to this constant when none is stored.
+export const SEAMARK_SIZE_SCALE = 1;
+
+// #353 PR2: the size-control's bounds. MAX is tied to the ONE piece of
+// evidence the #353 issue itself found for a size ceiling — general
+// touch-target guidance (~44-48px), not anything marine-specific — rather
+// than a round number: SEAMARK_NATURAL_ICON_PX (32 logical px at scale 1,
+// below) times 1.5 is exactly 48. MIN is the same distance below 1 (halves
+// the natural footprint to 16px) for a symmetric range; there is no
+// evidence-based floor to anchor it to instead.
+export const SEAMARK_SIZE_MIN = 0.5;
+export const SEAMARK_SIZE_MAX = 1.5;
+
 // #191: on-screen seamarks were only ~13-20px (IMAGE_SIZE=24 registered at
 // the implicit default pixelRatio 1) — too small to read at planning zooms.
 // Raising the raster resolution with a MATCHING pixelRatio (rather than only
 // widening seamarkGeoJson.ts's icon-size stops, which would upscale/blur the
 // old 24px bitmap) grows the natural footprint from 24 to
-// CANVAS_SIZE/PIXEL_RATIO = 32 logical px while keeping the glyph crisp.
-const CANVAS_SIZE = 64;
-const PIXEL_RATIO = 2;
+// BASE_CANVAS_SIZE/BASE_PIXEL_RATIO = 32 logical px while keeping the glyph
+// crisp.
+const BASE_CANVAS_SIZE = 64;
+const BASE_PIXEL_RATIO = 2;
+// CANVAS_SIZE and PIXEL_RATIO are intended to scale TOGETHER with
+// SEAMARK_SIZE_SCALE, so their ratio — the glyph's "natural" on-screen
+// footprint at icon-size 1, exported below as SEAMARK_NATURAL_ICON_PX —
+// stays put. CANVAS_SIZE alone is meant to govern RASTER resolution (enough
+// raw pixels for a larger on-screen render, via SEAMARKS_LAYOUT's icon-size,
+// to stay crisp); the layer's icon-size is meant to be the ONLY thing that
+// actually grows the on-screen size — if the natural footprint moved too,
+// the visible growth would come from TWO independent multipliers instead of
+// one, and the icon-padding compensation formula in seamarkGeoJson.ts —
+// which assumes a single, well-defined growth-per-zoom-stop — would be
+// wrong.
+//
+// #484 F4: that intent is NOT met by a bare `BASE_CANVAS_SIZE *
+// SEAMARK_SIZE_SCALE`, because `canvas.width`/`canvas.height` and
+// `ctx.getImageData`'s `sw`/`sh` are WebIDL `unsigned long`/`long`, so a
+// fractional value TRUNCATES silently — no throw, no warning. Measured in
+// real Chromium at scale 1.6 (this PR's own mutation-check scale):
+// `Math.round(64 * 1.6)` = 102.4, `canvas.width` reads back **102**, and the
+// real natural footprint becomes `102 / (2*1.6)` = 31.875 px — 0.125 px
+// short of the idealized 32 a bare `BASE_CANVAS_SIZE / BASE_PIXEL_RATIO`
+// would still claim. At scale 1 (this PR's shipped default) `64 * 1` is
+// already an integer, so the truncation is a no-op and every value below is
+// byte-identical to before this comment. `Math.round()` here makes
+// CANVAS_SIZE the ACTUAL integer the browser will use, so
+// SEAMARK_NATURAL_ICON_PX (derived from it below, not from the idealized
+// BASE_CANVAS_SIZE/BASE_PIXEL_RATIO ratio) always reflects the raster that
+// is really registered — the invariant holds by DEFINITION now, not "by
+// construction" of an untruncated ratio that the canvas never actually
+// stores. This also fixes the smaller sibling defect the truncation caused:
+// `drawSeamark()`'s `ctx.scale(CANVAS_SIZE / IMAGE_SIZE, ...)` now scales by
+// the SAME rounded value the canvas was actually sized to, instead of an
+// untruncated `102.4 / 24` against a 102px-wide canvas (~0.4 px clipped off
+// the right/bottom edge at scale 1.6, invisible there but growing with the
+// fractional part at other scales).
+export interface SeamarkRasterConfig {
+  canvasSize: number;
+  pixelRatio: number;
+  /** The natural CSS-px footprint at icon-size 1 — always canvasSize /
+   * pixelRatio using the ACTUAL rounded canvasSize, never the idealized
+   * BASE_CANVAS_SIZE/BASE_PIXEL_RATIO ratio (#484 F4). */
+  naturalIconPx: number;
+}
+
+/**
+ * Pure, scale-parameterized raster config (#484 F4, mirroring
+ * seamarkGeoJson.ts's `seamarksLayout(scale)` factory) — exported so a test
+ * can drive a non-1 scale without a module constant standing in the way.
+ * `canvasSize` is ALWAYS an integer (`Math.round`): `canvas.width`/
+ * `canvas.height` and `ctx.getImageData`'s `sw`/`sh` are WebIDL
+ * `unsigned long`/`long`, which TRUNCATE a fractional assignment silently —
+ * no throw, no warning. Rounding here, once, makes canvasSize the value the
+ * browser will actually store, so naturalIconPx (derived from THIS
+ * canvasSize, not from an untruncated `BASE_CANVAS_SIZE * scale`) always
+ * matches the raster that is really registered.
+ */
+export function seamarkRasterConfig(scale: number): SeamarkRasterConfig {
+  const canvasSize = Math.round(BASE_CANVAS_SIZE * scale);
+  const pixelRatio = BASE_PIXEL_RATIO * scale;
+  return { canvasSize, pixelRatio, naturalIconPx: canvasSize / pixelRatio };
+}
+
+// #353 PR2: only `naturalIconPx` is still needed as a module-level constant
+// (the scale-invariant export below) — `canvasSize`/`pixelRatio` are now
+// read fresh per call in `registerSeamarkImages`, at whatever scale is
+// passed in, rather than fixed at the default.
+const { naturalIconPx: DEFAULT_NATURAL_ICON_PX } = seamarkRasterConfig(SEAMARK_SIZE_SCALE);
+// Exported so seamarkGeoJson.ts's icon-padding compensation is derived from
+// the SAME number rather than a duplicated literal (CLAUDE.md's "twin
+// search" prose-rot rule — a duplicated 32 could silently drift from this
+// one). At scale 1 this is still exactly 64/2 = 32, byte-identical to
+// before #484.
+export const SEAMARK_NATURAL_ICON_PX = DEFAULT_NATURAL_ICON_PX;
 const INK = '#1a1a1a'; // standard black used for topmarks/outlines, not data-driven
 // Cardinal-mark yellow: raw CSS `yellow` (#ffff00) is too garish / low-contrast
 // against the yellow-vs-black R1001 banding, so a defined IALA-style amber-yellow
@@ -182,6 +277,195 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
   specialPurpose: 12,
   unknown: 14,
 };
+
+/**
+ * #353 PR2 (mapping corrected in review — #513 F1/F2): the display-CATEGORY
+ * floor/ladder — a coarser, user-facing grouping than FAMILY_RANK above.
+ * Named after, and INFORMED BY, IMO Resolution MSC.232(82) (adopted
+ * 2006-12-05) Appendix 2, "SENC INFORMATION AVAILABLE FOR DISPLAY DURING
+ * ROUTE PLANNING AND ROUTE MONITORING" — the ECDIS Display Base / Standard
+ * Display / All Other Information split, verified against the resolution's
+ * own text (not a paraphrase) — but NOT a literal rendering of it: Appendix
+ * 2 item 1 (Display Base) lists only coastline, the safety contour, and
+ * isolated (underwater and fixed) dangers, and explicitly does NOT include
+ * any aid-to-navigation class — "buoys, beacons, other aids to navigation
+ * and fixed structures" is item 2.3, i.e. STANDARD, undivided (no
+ * distinction between cardinal/lateral/safe-water/light buoys). This app's
+ * BASE tier is a DELIBERATE, product-specific safety floor broader than
+ * IMO's own Display Base, keeping `cardinal`/`lateral` (channel-edge and
+ * danger-passing marks) plus `safeWater`/`lightMajor` (scarce
+ * landfall/passage anchors) non-optional even at the most restrictive
+ * declutter setting — never a literal "this is what Display Base contains"
+ * claim. An EARLIER revision of this comment made exactly that false claim,
+ * citing superseded IMO A.817(19) §1.4 (whose "including buoys and beacons"
+ * clause was REMOVED when MSC.232(82) superseded it) — that citation was
+ * wrong and is not used here. Three tiers, cumulative (each includes every
+ * family in the tiers below it):
+ *
+ * - BASE (product floor, broader than IMO's Display Base — see above):
+ *   `isolatedDanger`, `cardinal`, `lateral`, `safeWater`, `lightMajor`.
+ * - STANDARD (default) adds: `lightMinor`, `unknown`, and every
+ *   `specialPurpose` mark EXCEPT the two categories named below — Appendix
+ *   2 item 2.3's undivided AtoN group covers the whole `specialPurpose`
+ *   family, all 703 (26 distinct raw category strings; measured, not
+ *   assumed), every one of which is a point mark whatever it annotates; the
+ *   584/119 split is this app's, not the standard's. The **584** shown at
+ *   STANDARD are e.g. `leading` (64),
+ *   `clearing` (3 — the *Gefahrenpeilung* this repo's own German-
+ *   terminology notes name, #300), `no_entry`, `firing_danger_area`,
+ *   `warning`, `yachting`, `recording`, `odas`, `recreation_zone`,
+ *   `recreational`, `mooring`, `marine_farm`, `target`, `degaussing_range`,
+ *   `foul_ground`, `lanby`, `unknown_purpose`, `wave_recorder`, `notice`,
+ *   and an untagged/`(none)` category (281 of 703, the plurality) — which
+ *   cannot be shown to be anything OTHER than Standard-tier AtoN content,
+ *   so it defaults to the more visible tier, not the more hidden one, per
+ *   the guard-asymmetry principle #513 F2 applies to `unknown`. `unknown`
+ *   moved here from ALL for the same reason F2 raised: an unclassifiable
+ *   mark must fail toward being SHOWN. An earlier revision also cited item
+ *   2.6's "prohibited and restricted areas" here; dropped, because every
+ *   shipped feature is a Point — the same category error as the item-3.2
+ *   claim corrected in the next bullet.
+ * - ALL adds two `specialPurpose` categories: `cable` (117 marks) and
+ *   `pipeline` (2). This is a DELIBERATE DECLUTTERING CHOICE — a departure
+ *   from the ECDIS convention, not an application of it. An earlier
+ *   revision justified it with Appendix 2 item 3.2's "submarine cables and
+ *   pipelines"; that is a CATEGORY ERROR and is not used here. Item 3.2 is
+ *   plain English and names no object class; in S-57 that content is
+ *   `CBLSUB` (Line) / `PIPSOL`, whereas all 1794 features in the shipped
+ *   data are POINTS (measured 2026-08-13: zero lines, zero areas) —
+ *   `category=cable` is S-57 CATSPM 6, "cable mark", a
+ *   point aid to navigation under item 2.3 exactly like the STANDARD-tier
+ *   marks above. Whether these two categories should be tiered ALL at all
+ *   is therefore OPEN, tracked in **#521**. Residual, stated rather than
+ *   implied: these 119 marks are hidden at the STANDARD default and they
+ *   are part of the 259 the #513 review counted as
+ *   hazard/prohibition-categorised, so 140 of those 259 are shown at the
+ *   default and 119 are not (measured 2026-08-13 against
+ *   `app/public/data/seamarks.json`). That 259 is the distinct features of
+ *   `seamarkType` `buoy_special_purpose`, `beacon_special_purpose` or
+ *   `light_minor` whose `category`, split on `;`, contains any of `cable`,
+ *   `no_entry`, `firing_danger_area`, `warning`, `marine_farm`, `target`,
+ *   `clearing`, `pipeline`, `foul_ground` — re-run it to check the figure.
+ *
+ * At the shipped data (measured against `app/public/data/seamarks.json`,
+ * 1794 features: lateral 828, specialPurpose 703 [cable 117, pipeline 2,
+ * everything else 584], cardinal 121, lightMinor 107, safeWater 23,
+ * lightMajor 6, isolatedDanger 6, unknown 0), the default (STANDARD) hides
+ * exactly the 119 cable/pipeline marks — not the 810 the family-level
+ * mapping in the FIRST #353 PR2 revision hid, which is what #513's Blocker
+ * (F1) was about. That 119-hidden figure does NOT depend on whether
+ * `safeWater`/`lightMajor` sit in BASE or STANDARD (both are shown at the
+ * STANDARD default either way) — only on the `specialPurpose` split.
+ */
+export type SeamarkDisplayTier = 0 | 1 | 2;
+export const SEAMARK_DISPLAY_TIER_BASE = 0;
+export const SEAMARK_DISPLAY_TIER_STANDARD = 1;
+export const SEAMARK_DISPLAY_TIER_ALL = 2;
+/** Standard, per the #353 issue's own design sketch ("Standard (default)")
+ * — and MSC.232(82) §3.4 makes Standard Display the mode "intended to be
+ * used as a minimum during route planning and route monitoring"; route
+ * planning is what this app is for.
+ * NOT because ECDIS loads into it: an earlier revision of this comment
+ * cited §3.4 for a load default, which the resolution does not say — §5.4
+ * has power-up return to "the most recent manually selected settings".
+ * Post #513 F1/F2: everything except the two ALL-tier `specialPurpose`
+ * categories (`cable`/`pipeline`) is shown out of the box. */
+export const DEFAULT_SEAMARK_DISPLAY_TIER: SeamarkDisplayTier = SEAMARK_DISPLAY_TIER_STANDARD;
+
+/** The `specialPurpose` categories this app declutters to the ALL tier — the
+ * ONLY `specialPurpose` marks tiered ALL rather than STANDARD (#513 F1/F2).
+ * A product choice, NOT an Appendix 2 item 3.2 application; see
+ * `seamarkDisplayTier`'s doc comment above and #521. Measured against the
+ * shipped data: neither value ever co-occurs with another category in the
+ * same `;`-joined tag (`cable` is always the WHOLE category string, 117
+ * times; so is `pipeline`, twice)
+ * — but `specialPurposeDisplayTier` below still splits and checks every
+ * token, not just an exact match, so a future compound tag (e.g.
+ * `cable;warning`) still lands ALL rather than silently falling to
+ * STANDARD. */
+const SPECIAL_PURPOSE_ALL_CATEGORIES = new Set(['cable', 'pipeline']);
+
+/** The `specialPurpose` family alone is NOT a uniform display tier (#513
+ * F1/F2) — most of it (no_entry/firing_danger_area/warning/... and the
+ * untagged plurality) stays STANDARD as point AtoN content (MSC.232(82)
+ * Appendix 2 item 2.3), while `cable`/`pipeline` are decluttered to ALL by
+ * product choice rather than by any Appendix 2 item (#521). */
+function specialPurposeDisplayTier(category: string | undefined): SeamarkDisplayTier {
+  const tokens = (category ?? '').split(';').map((s) => s.trim());
+  return tokens.some((t) => SPECIAL_PURPOSE_ALL_CATEGORIES.has(t))
+    ? SEAMARK_DISPLAY_TIER_ALL
+    : SEAMARK_DISPLAY_TIER_STANDARD;
+}
+
+const DISPLAY_TIER_OF_FAMILY: Record<
+  Exclude<SeamarkFamily, 'specialPurpose'>,
+  SeamarkDisplayTier
+> = {
+  isolatedDanger: SEAMARK_DISPLAY_TIER_BASE,
+  cardinal: SEAMARK_DISPLAY_TIER_BASE,
+  lateral: SEAMARK_DISPLAY_TIER_BASE,
+  safeWater: SEAMARK_DISPLAY_TIER_BASE,
+  lightMajor: SEAMARK_DISPLAY_TIER_BASE,
+  lightMinor: SEAMARK_DISPLAY_TIER_STANDARD,
+  unknown: SEAMARK_DISPLAY_TIER_STANDARD,
+};
+
+/** The display-category tier a seamark belongs to (#353 PR2) — the LOWEST
+ * tier a user must select to still see this mark; `seamarkGeoJson.ts` stamps
+ * this onto every feature as `displayTier` and the `sc-seamarks` layer's
+ * `filter` keeps a feature only while the selected tier is >= its own.
+ * `specialPurpose` is the one family whose tier is NOT a pure function of
+ * the family alone — see `specialPurposeDisplayTier` above. */
+export function seamarkDisplayTier(props: SeamarkProperties): SeamarkDisplayTier {
+  const family = classifySeamark(props.seamarkType);
+  if (family === 'specialPurpose') return specialPurposeDisplayTier(props.category);
+  return DISPLAY_TIER_OF_FAMILY[family];
+}
+
+/**
+ * Narrows a `usePersistedNumber` read (`number | null`) to a real
+ * `SeamarkDisplayTier`, replacing an unchecked `as SeamarkDisplayTier` cast
+ * at both call sites (#513 F8). localStorage is user-writable and survives
+ * across app versions, so `n` can be a hand-edited or legacy value that is
+ * not one of the three real tiers — e.g. `1.5`, or an ordinal a FUTURE
+ * version defines that this one does not recognize. A bare cast asserts
+ * membership without checking it: that `1.5` would silently build
+ * `['<=', ['get','displayTier'], 1.5]`, which happens to behave like
+ * STANDARD — a wrong answer with no visible failure.
+ *
+ * Two DIFFERENT fallbacks for two DIFFERENT situations, not one:
+ * - `n === null` means "no override stored" — the legitimate empty state
+ *   `usePersistedNumber`'s own contract documents — and falls back to the
+ *   product default (`DEFAULT_SEAMARK_DISPLAY_TIER`).
+ * - Any OTHER non-tier value is corrupt/unrecognized DATA, not an absence,
+ *   and falls back to the MOST-VISIBLE tier (ALL) — the same guard-asymmetry
+ *   principle as `unknown`'s family fallback above (#513 F2): an
+ *   unrecognized value must fail toward SHOWING more, never toward
+ *   whatever number happened to be stored.
+ *
+ * That second guarantee depends on BOTH call sites (`DataLayers.tsx`,
+ * `SettingsPanel.tsx`) reading `usePersistedNumber('sc-seamark-display-tier',
+ * -Infinity, Infinity)` — UNCLAMPED (#513 R4). `usePersistedNumber`'s own
+ * `clamp(n, min, max)` runs BEFORE this function ever sees the value, so a
+ * [BASE, ALL]-bounded read would launder a stored `-1` into `0` = BASE — the
+ * MOST-HIDDEN tier — before this guard could see anything but a
+ * legitimate-looking in-range number. Only a value OUTSIDE [0, 2], or a
+ * non-integer inside it, reaches the `SEAMARK_DISPLAY_TIER_ALL` branch below;
+ * an integer that happens to equal a real tier is indistinguishable from a
+ * deliberate choice and is honoured as one — this function narrows valid
+ * values, it does not second-guess them.
+ */
+export function toSeamarkDisplayTier(n: number | null): SeamarkDisplayTier {
+  if (n === null) return DEFAULT_SEAMARK_DISPLAY_TIER;
+  if (
+    n === SEAMARK_DISPLAY_TIER_BASE ||
+    n === SEAMARK_DISPLAY_TIER_STANDARD ||
+    n === SEAMARK_DISPLAY_TIER_ALL
+  ) {
+    return n;
+  }
+  return SEAMARK_DISPLAY_TIER_ALL;
+}
 
 /**
  * Collision-culling priority for the `sc-seamarks` layer's
@@ -798,13 +1082,23 @@ export function seamarkImageId(props: SeamarkProperties): string {
   }
 }
 
-function drawSeamark(ctx: CanvasRenderingContext2D, props: SeamarkProperties): void {
-  ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+// #353 PR2: `canvasSize` is now a PARAMETER, not the module-level default —
+// `registerSeamarkImages` below re-registers glyphs at the user's chosen
+// size scale (issue #353's own recommended "better route": raise the raster
+// resolution and redraw, rather than only upscaling a fixed-resolution
+// bitmap via icon-size, which would blur past ~1.0). Every caller that wants
+// today's default still gets it via `seamarkRasterConfig(SEAMARK_SIZE_SCALE)`.
+function drawSeamark(
+  ctx: CanvasRenderingContext2D,
+  props: SeamarkProperties,
+  canvasSize: number,
+): void {
+  ctx.clearRect(0, 0, canvasSize, canvasSize);
   // Map the logical 24-unit coordinate space onto the higher-resolution
   // raster canvas: every segment coordinate/line-width below is expressed in
   // IMAGE_SIZE (24) units and scales up together (#191), so the R1001 cone
   // geometry and colour bands (#165) survive the resize unmodified.
-  ctx.scale(CANVAS_SIZE / IMAGE_SIZE, CANVAS_SIZE / IMAGE_SIZE);
+  ctx.scale(canvasSize / IMAGE_SIZE, canvasSize / IMAGE_SIZE);
   for (const seg of seamarkSegments(props)) {
     ctx.beginPath();
     switch (seg.kind) {
@@ -843,26 +1137,53 @@ function drawSeamark(ctx: CanvasRenderingContext2D, props: SeamarkProperties): v
 /**
  * Registers one canvas-drawn image per distinct `seamarkImageId()` actually
  * present in `allProperties`, so the `sc-seamarks` symbol layer can
- * reference `icon-image: ['get', 'icon']`. Safe to call more than once —
- * already-registered images are skipped, same convention as
- * registerBarbImages().
+ * reference `icon-image: ['get', 'icon']`. Safe to call more than once at
+ * the SAME scale — already-registered images are skipped, same convention
+ * as registerBarbImages().
+ *
+ * #353 PR2: `scale` drives `seamarkRasterConfig` fresh on every call rather
+ * than reading the fixed module default, so a live size-slider change can
+ * re-register glyphs at a NEW raster resolution — the issue's own
+ * recommended route over merely upscaling `icon-size`, which would blur a
+ * fixed-resolution bitmap past ~1.0. The `hasImage` skip is scale-BLIND: it
+ * only knows an id is registered, not at what size — so re-registering at a
+ * different scale is the CALLER's responsibility (`DataLayers.tsx` removes
+ * every previously-registered id before calling this again with a changed
+ * scale; see its own comment). At an UNCHANGED scale this is exactly the
+ * pre-#353 idempotent-on-repeat behaviour.
  */
 export function registerSeamarkImages(
   map: MaplibreMap,
   allProperties: readonly SeamarkProperties[],
+  scale: number = SEAMARK_SIZE_SCALE,
 ): void {
-  const seen = new Set<string>();
+  const { canvasSize, pixelRatio } = seamarkRasterConfig(scale);
+  // De-dupe by id, keeping the FIRST properties seen for each — a Map
+  // preserves insertion order, so registration order is unchanged from the
+  // pre-#353 Set-based version (pinned by seamarkGlyphs.test.ts's ordered
+  // addImage.mock.calls assertions).
+  const byId = new Map<string, SeamarkProperties>();
   for (const props of allProperties) {
     const id = seamarkImageId(props);
-    if (seen.has(id)) continue;
-    seen.add(id);
+    if (!byId.has(id)) byId.set(id, props);
+  }
+  for (const [id, props] of byId) {
     if (map.hasImage(id)) continue;
     const canvas = document.createElement('canvas');
-    canvas.width = CANVAS_SIZE;
-    canvas.height = CANVAS_SIZE;
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
     const ctx = canvas.getContext('2d');
     if (!ctx) continue; // no 2d context available (e.g. headless test env) — nothing to register
-    drawSeamark(ctx, props);
-    map.addImage(id, ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE), { pixelRatio: PIXEL_RATIO });
+    drawSeamark(ctx, props, canvasSize);
+    map.addImage(id, ctx.getImageData(0, 0, canvasSize, canvasSize), { pixelRatio });
   }
+}
+
+/** Deduped `seamarkImageId()` outputs actually present in `allProperties`
+ * (#353 PR2) — shared by `registerSeamarkImages` above and by
+ * `DataLayers.tsx`, which needs the same id set to `removeImage` a stale
+ * raster before re-registering at a NEW size scale (registerSeamarkImages'
+ * `hasImage` skip is scale-blind, so the caller owns that invalidation). */
+export function seamarkImageIds(allProperties: readonly SeamarkProperties[]): string[] {
+  return [...new Set(allProperties.map((props) => seamarkImageId(props)))];
 }

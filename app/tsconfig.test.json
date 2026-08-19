@@ -62,6 +62,55 @@
   // its ~20 min of solver time into `npm run test` or CI; it is listed here
   // only so `tsc -b` still typechecks it, because an unchecked harness rots
   // and #282 makes re-running this one a standing requirement.
+  // maskTolerance.test.ts (#455): reads pipeline/build_mask.py via `node:fs`
+  // to structurally guard TOLERANCE_M stays in sync with the About dialog's
+  // `about.caveats.depthMask` disclosure copy and with BOAT_DRAFT_M — same
+  // reason as useBannerHeight.test.ts/panelWidth.test.ts (a cross-language
+  // invariant, here Python-to-TypeScript rather than CSS-to-TypeScript, with
+  // no compiler spanning both).
+  // chipShallowFill.test.ts (#506): reads app.css via `node:fs` to resolve
+  // `.chip-shallow`'s real cascade against a jsdom stylesheet and to
+  // structurally scan for any other bare single-class `.chip-*` modifier
+  // declared above `.chip`'s base rule — same reason and same pattern as
+  // useBannerHeight.test.ts/panelWidth.test.ts above.
+  // polarProvenance.test.ts (#54 Task 12): reads pipeline/polars-source.json
+  // AND the shipped app/public/data/polars/*.json via `node:fs` to hold the
+  // provenance note in the catalogue, the pipeline input and the built asset
+  // to one value, and to pin SailDef.polarAsset against a file that really
+  // exists — a cross-language invariant (JSON-to-TypeScript) with no compiler
+  // spanning both, same reason as maskTolerance.test.ts above.
+  // buildPolars.failClosed.test.ts (#54 Task 12): spawns the real
+  // pipeline/build_polars.mjs via `node:child_process` in a scratch tree —
+  // once against its UNMUTATED source as the control that licenses the rest,
+  // then against mutated copies — to hold spec H's fail-closed rule (a boat
+  // never inherits another boat's anchors or plausibility bound).
+  // chipPolarTierFill.test.ts (#54 boat picker): reads app.css via `node:fs`
+  // to resolve the polar-provenance tier chips' real cascade against a jsdom
+  // stylesheet — the estimated tier is spec N.5's caution label, and the
+  // `.chip`-declared-later cascade has silently blanked two chip modifiers
+  // in this repo already. Same reason and pattern as chipShallowFill.test.ts.
+  // boatPickerNoticeLiveRegion.test.ts (#563 MAJOR 1): reads app.css via
+  // `node:fs` to resolve whether the spec C.7 clamp announcement's
+  // role="status" region is still in the accessibility tree while empty —
+  // a `display: none` there removes it and silently loses the announcement.
+  // Same reason and pattern as chipPolarTierFill.test.ts.
+  // verifyMaskBoatGate.test.ts (#54 Task 13): reads pipeline/verify_mask.py
+  // AND pipeline/polars-source.json via `node:fs` to hold the two twins that
+  // the per-boat gate scan created — the draft, which the Python script cannot
+  // import from boats.ts, and the ceil-to-decimetre gate derivation, which now
+  // exists in both languages. Same reason as maskTolerance.test.ts above.
+  // verifyMaskConnectivity.test.ts (#550): reads pipeline/verify_mask.py (its
+  // SEED_LAT/SEED_LON, CONNECTIVITY_EXCEPTIONS_M and KNOWN_DISCONNECTED
+  // literals) AND the real shipped mask.bin/mask.meta.json/harbors.json via
+  // `node:fs`, to promote the pipeline's per-harbor connectivity flood fill
+  // from the advisory-only `verify-mask.yml` workflow into the REQUIRED
+  // `app` Vitest suite — same reason as verifyMaskBoatGate.test.ts above.
+  // sweepSailIds.test.ts (#553/#549): reads app/sweep/sweepArms.ts as TEXT via
+  // `node:fs` to hold the #282 harness's `sailIds` to a catalogue-derived
+  // value. It lives under `src/` rather than in `app/sweep/` deliberately —
+  // the sweep is excluded from `npm run test` and CI by design, which is
+  // exactly why the hardcoded literal went unnoticed there; a guard placed
+  // beside it would be equally invisible.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -73,6 +122,15 @@
     "src/**/useBannerHeight.test.ts",
     "src/**/legDistanceReconciliation.test.ts",
     "src/**/panelWidth.test.ts",
+    "src/**/maskTolerance.test.ts",
+    "src/**/chipShallowFill.test.ts",
+    "src/**/chipPolarTierFill.test.ts",
+    "src/**/boatPickerNoticeLiveRegion.test.ts",
+    "src/**/polarProvenance.test.ts",
+    "src/**/buildPolars.failClosed.test.ts",
+    "src/**/verifyMaskBoatGate.test.ts",
+    "src/**/verifyMaskConnectivity.test.ts",
+    "src/**/sweepSailIds.test.ts",
     "sweep/**/*.ts"
   ]
 }

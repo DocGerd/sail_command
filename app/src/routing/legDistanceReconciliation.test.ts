@@ -5,10 +5,16 @@ import { dirname, resolve } from 'node:path';
 import { NavMask } from '../lib/mask';
 import { haversineNm } from '../lib/geo';
 import { planRoute } from './planRoute';
-import { uniformWindGrid } from '../test/fixtures';
+import { testPlanDeps, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS } from '../types';
-import type { Leg, LatLon, MaskMeta, PolarTable } from '../types';
+import type { Leg, LatLon, MaskMeta, PlanResultOk, PolarTable, SailId } from '../types';
 import { SOLVER_TEST_TIMEOUT_MS } from '../test/timeouts';
+import { defaultBoatSnapshot } from '../types';
+
+// #54: the pre-#54 shape exposed `res.genoa`/`res.fock` directly.
+function sailResult(res: PlanResultOk, sailId: SailId) {
+  return res.sails.find((s) => s.sailId === sailId)?.result ?? null;
+}
 
 // #379 asks that per-leg distance be "reconciled against the plan total".
 //
@@ -110,11 +116,13 @@ const dataDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/d
 const maskMeta = JSON.parse(readFileSync(resolve(dataDir, 'mask.meta.json'), 'utf8')) as MaskMeta;
 const mask = new NavMask(maskMeta, new Uint8Array(readFileSync(resolve(dataDir, 'mask.bin'))));
 const polarGenoa = JSON.parse(
-  readFileSync(resolve(dataDir, 'polar-genoa.json'), 'utf8'),
+  readFileSync(resolve(dataDir, 'polars', 'salona-45-genoa.json'), 'utf8'),
 ) as PolarTable;
 const polarFock = JSON.parse(
-  readFileSync(resolve(dataDir, 'polar-fock.json'), 'utf8'),
+  readFileSync(resolve(dataDir, 'polars', 'salona-45-fock.json'), 'utf8'),
 ) as PolarTable;
+// #54: PlanDeps now carries polars keyed `${boatId}/${sailId}` plus the boat.
+const DEPS = testPlanDeps(mask, { genoa: polarGenoa, fock: polarFock });
 
 // Real harbor snap coordinates, matching realmask.repro.test.ts.
 const FLENSBURG: LatLon = { lat: 54.798, lon: 9.4335 };
@@ -149,13 +157,15 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const genoa = res.genoa;
+    const genoa = sailResult(res, 'genoa');
     expect(genoa).not.toBeNull();
     if (!genoa) return;
 
@@ -245,13 +255,15 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const fock = res.fock;
+    const fock = sailResult(res, 'fock');
     expect(fock).not.toBeNull();
     if (!fock) return;
 
@@ -290,13 +302,15 @@ describe('#379 leg-distance reconciliation (real mask/polars)', () => {
         destinationHarborId: 'soenderborg',
         departureMs: T0,
         settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
       },
       uniformWindGrid(12, 270),
-      { polarGenoa, polarFock, mask },
+      DEPS,
     );
     expect(res.status).toBe('ok');
     if (res.status !== 'ok') return;
-    const genoa = res.genoa;
+    const genoa = sailResult(res, 'genoa');
     expect(genoa).not.toBeNull();
     if (!genoa) return;
     expect(isochroneMergedLegCount(genoa.legs)).toBeGreaterThan(0);
