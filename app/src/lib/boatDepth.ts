@@ -2,6 +2,25 @@ import type { BoatDef } from '../data/boats';
 import { MASK_TOLERANCE_M } from './mask';
 
 /**
+ * #539. The one field a depth derivation actually reads, named so a PERSISTED
+ * `BoatSnapshot` (`types.ts` — no `draftProvenance`, no polar assets, so NOT
+ * structurally a `BoatDef`) can be measured as well as a catalogue entry.
+ *
+ * Needed because a SAVED PLAN must be described against the boat it was
+ * computed for, and spec I.3 is explicit that that boat may have left the
+ * catalogue — so `boatById(plan.request.boat.id)` is not an option (it throws).
+ *
+ * Widening is TYPE-ONLY and confined to `minSafetyDepthM`. `relaxationFloorM`
+ * and `defaultSafetyDepthM` deliberately keep their `BoatDef` parameter: both
+ * are consumed by the solver, where the caller always holds a real catalogue
+ * entry, and the narrower type is the cheapest guard against a half-populated
+ * object reaching spec C.4(a)'s floor.
+ */
+export interface DraftedBoat {
+  readonly draftM: number;
+}
+
+/**
  * Quantise UP to a decimetre. The mask encodes decimetres, so a gate of 3.15 m
  * behaves IDENTICALLY to 3.2 m — make that explicit rather than accidental.
  *
@@ -31,8 +50,14 @@ export function defaultSafetyDepthM(b: BoatDef): number {
   return ceilToDecimetre(b.draftM + MASK_TOLERANCE_M);
 }
 
-/** Spec J OQ-1. Reproduces today's 2.2 m literal for the Salona 45's 2.1 m draft. */
-export function minSafetyDepthM(b: BoatDef): number {
+/**
+ * Spec J OQ-1. Reproduces today's 2.2 m literal for the Salona 45's 2.1 m draft.
+ *
+ * Takes {@link DraftedBoat}, not `BoatDef`: #539's shallow-warning remedy gate
+ * reads the boat a SAVED PLAN was computed for (a `BoatSnapshot`). See that
+ * interface for why widening stops here.
+ */
+export function minSafetyDepthM(b: DraftedBoat): number {
   return ceilToDecimetre(b.draftM + 0.1);
 }
 

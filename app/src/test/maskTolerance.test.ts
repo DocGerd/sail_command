@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS } from '../types';
 import { en } from '../i18n/dict.en';
 import { de } from '../i18n/dict.de';
 import { MASK_TOLERANCE_M } from '../lib/mask';
-import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import { BOATS, boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
 import {
   ceilToDecimetre,
   defaultSafetyDepthM,
@@ -15,6 +15,8 @@ import {
   relaxationFloorM,
 } from '../lib/boatDepth';
 import { SAFETY_DEPTH_FIELD } from '../components/OptionsPanel';
+import { depthMaskCaveatVars } from '../lib/depthDisclosure';
+import type { Lang } from '../i18n';
 
 // #455: pipeline/build_mask.py's TOLERANCE_M is the structural bound behind
 // the About dialog's `about.caveats.depthMask` disclosure — no compiler
@@ -129,28 +131,127 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
     expect(round1(BOAT_DRAFT_M - toleranceM)).toBe(1.2);
   });
 
-  describe('the disclosure copy states the numbers this file derives, in BOTH languages', () => {
-    // F3: needle from the pipeline/TS constants, haystack from the shipped
-    // dict string. Mutation-checked in both directions (see PR #481 body):
-    // changing TOLERANCE_M alone reds every row below; changing only the
-    // dict text's numbers (leaving TOLERANCE_M untouched) ALSO reds every
-    // row below, which the pre-fix version of this file could not do.
-    it('EN carries the tolerance bound, the default gate, the default floor, and the relaxation floor', () => {
+  // R5 (#54 spec C.8 R5 / J OQ-2, made per-boat by #539). The disclosure copy
+  // is no longer four literals sitting in the dict: `about.caveats.depthMask`
+  // is a TEMPLATE and lib/depthDisclosure.ts fills it from the SELECTED boat,
+  // so these rows render it once per catalogue boat, in both languages.
+  //
+  // WHY THE EXPECTED VALUES ARE HAND-WRITTEN. If the copy derives from the
+  // boat and the expectation derives from the boat too, the pin asserts
+  // nothing — a change moves both sides together and the row stays green
+  // (#50's equivalence tautology; #411's "a guard's DATA needs a twin"). So
+  // EXPECTED_DISCLOSURE_M below is typed out by hand and NEVER read off BOATS
+  // or recomputed through boatDepth.ts. Needle hand-written, haystack
+  // production-rendered — same idiom as EXPECTED_BOAT_IDS and R6 below.
+  //
+  // Hand-derivation, so a reader can check it rather than trust it:
+  //   gate  = ceil-to-a-decimetre of (draft + 0.9)  — spec C.3
+  //   floor = draft − 0.9                           — spec C.4(b): the #53
+  //           relaxation floor's own cautious reading, NOT the UI-minimum
+  //           floor (spec C.8 records that as "the earlier, WRONG version").
+  //     salona-45            2.1 →  3.0 / 2.1 / 1.2
+  //     salona-44-speedy-go  2.1 →  3.0 / 2.1 / 1.2
+  //     elan-444-piranja     1.9 →  2.8 / 1.9 / 1.0
+  //
+  // DISCRIMINATING EXPERIMENT, recorded so it is re-run rather than re-argued.
+  // MEASURED 2026-08-18, each perturbation applied ALONE:
+  //   PRODUCTION — make depthMaskCaveatVars derive from boatById(DEFAULT_BOAT_ID)
+  //     instead of its argument -> 4 rows red HERE (both salona-44 rows and
+  //     both elan rows; the salona-45 rows cannot move, since it IS the
+  //     default), and 0 rows red anywhere else in the suite.
+  //   THIS TABLE — change the elan's expected gate 2.8 -> 3.0 -> 2 rows red
+  //     (the elan's EN and DE rows) and 0 in production's own guards.
+  //   THIS TABLE — delete the elan entry entirely -> the same 2 rows red, on
+  //     the fail-closed toBeDefined() below rather than on a number.
+  //   PRODUCTION CATALOGUE — add a fourth boat -> its 2 rows red on that same
+  //     toBeDefined(), so a new entry cannot ship unasserted.
+  // The asymmetry is the point: neither side can be the reason the other is
+  // green, and the 4-vs-2 split shows the two are genuinely different
+  // artifacts rather than one source feeding both.
+  //
+  // PER-ASSERTION ATTRIBUTION, measured the same day by deleting each row's
+  // assertions ONE AT A TIME under a mutation aimed at that one assertion —
+  // this repo has shipped multi-assertion pins with a single discriminating
+  // member (#516/PR #523), so the table is stated rather than assumed:
+  //   toBeDefined()       sole discriminator for a missing/added catalogue boat.
+  //   toContain(boat.name) SOLE for `boat: b.name` -> a fixed string.
+  //   tolerance bound      SOLE for TOLERANCE_M -> 0.8.
+  //   derived gate         catches `gate` <- relaxationFloorM (7 rows red; 1
+  //                        still red with it deleted, i.e. it is one of two).
+  //   own draft            catches `draft` + 0.1, same shape.
+  //   relaxation floor     catches `floor` <- the UI-minimum floor (spec C.8's
+  //                        documented WRONG version), same shape.
+  //   no-unfilled-placeholder — REDUNDANT TODAY, and kept deliberately: every
+  //     slot the template has is also covered by a containment assertion, so
+  //     deleting a var reds the row either way (measured: 7 rows red with the
+  //     guard present, 7 with it deleted). It earns its place as the only
+  //     check that fails CLOSED on a FUTURE slot nothing else names, and it
+  //     names the fault instead of reporting a missing measurement.
+  describe("R5: the disclosure copy states the SELECTED boat's own numbers, in BOTH languages", () => {
+    const EXPECTED_DISCLOSURE_M: Record<string, { gate: number; draft: number; floor: number }> = {
+      'salona-45': { gate: 3.0, draft: 2.1, floor: 1.2 },
+      'salona-44-speedy-go': { gate: 3.0, draft: 2.1, floor: 1.2 },
+      'elan-444-piranja': { gate: 2.8, draft: 1.9, floor: 1.0 },
+    };
+
+    // Mirrors i18n/index.tsx's `t()` substitution. Deliberately a second
+    // implementation rather than an import: `t()` is a React hook, and this
+    // file asserts against the shipped STRING rather than a rendered tree.
+    // AboutDialog.test.tsx covers the component wiring.
+    function renderCaveat(boat: BoatDef, lang: Lang): string {
+      const dict = lang === 'de' ? de : en;
+      let text: string = dict['about.caveats.depthMask'];
+      for (const [k, v] of Object.entries(depthMaskCaveatVars(boat, lang))) {
+        text = text.replaceAll(`{${k}}`, v);
+      }
+      return text;
+    }
+
+    for (const boat of BOATS) {
+      for (const lang of ['en', 'de'] as const) {
+        it(`${boat.id} / ${lang}: tolerance, derived gate, own draft, relaxation floor`, () => {
+          const toleranceM = readToleranceM();
+          const expected = EXPECTED_DISCLOSURE_M[boat.id];
+          // Fail CLOSED on a catalogue boat this hand-written table does not
+          // cover. Without it a new entry would be silently unasserted —
+          // exactly the state #539 found this copy in.
+          expect(
+            expected,
+            `no hand-written disclosure expectation for boat id "${boat.id}" — add one to ` +
+              'EXPECTED_DISCLOSURE_M, derived BY HAND from spec C.3/C.4(b), never from BOATS',
+          ).toBeDefined();
+          const text = renderCaveat(boat, lang);
+          // Every placeholder must have been filled. A dict slot the vars
+          // object does not supply would otherwise ship a literal "{gate}" to
+          // users while the four containment checks below still passed on the
+          // slots that DID resolve.
+          expect(text, 'unfilled placeholder in the rendered disclosure copy').not.toMatch(
+            /\{[a-zA-Z]+\}/,
+          );
+          expect(text, 'the copy must name the boat whose numbers it states').toContain(boat.name);
+          expect(containsMeasurement(text, toleranceM, lang), 'tolerance bound').toBe(true);
+          expect(containsMeasurement(text, expected.gate, lang), 'derived default gate').toBe(true);
+          expect(containsMeasurement(text, expected.draft, lang), "this boat's draft").toBe(true);
+          expect(containsMeasurement(text, expected.floor, lang), 'relaxation floor').toBe(true);
+        });
+      }
+    }
+
+    // R5b — the reduces-to-today anchor for the copy, the sibling of R6's for
+    // the arithmetic. Before #539 the shipped English string read "2.1 m, the
+    // boat's draft, at the 3.0 m default … as little as 1.2 m", and
+    // DEFAULT_SETTINGS.safetyDepthM / BOAT_DRAFT_M are where those numbers
+    // came from. Re-asserting them against the DEFAULT boat's rendered copy is
+    // what proves parameterisation did not quietly move a number users already
+    // read — and it is the one row here whose needles are NOT hand-written,
+    // deliberately: its job is to tie the new derivation back to the two
+    // pre-existing constants, which no hand-typed literal can do.
+    it('R5b: the default boat still renders the pre-#539 numbers, from the pre-#539 constants', () => {
       const toleranceM = readToleranceM();
-      const text = en['about.caveats.depthMask'];
-      expect(containsMeasurement(text, toleranceM, 'en')).toBe(true);
+      const text = renderCaveat(boatById(DEFAULT_BOAT_ID), 'en');
       expect(containsMeasurement(text, DEFAULT_SETTINGS.safetyDepthM, 'en')).toBe(true);
       expect(containsMeasurement(text, BOAT_DRAFT_M, 'en')).toBe(true);
       expect(containsMeasurement(text, BOAT_DRAFT_M - toleranceM, 'en')).toBe(true);
-    });
-
-    it('DE carries the same four numbers, comma-formatted', () => {
-      const toleranceM = readToleranceM();
-      const text = de['about.caveats.depthMask'];
-      expect(containsMeasurement(text, toleranceM, 'de')).toBe(true);
-      expect(containsMeasurement(text, DEFAULT_SETTINGS.safetyDepthM, 'de')).toBe(true);
-      expect(containsMeasurement(text, BOAT_DRAFT_M, 'de')).toBe(true);
-      expect(containsMeasurement(text, BOAT_DRAFT_M - toleranceM, 'de')).toBe(true);
     });
   });
 });

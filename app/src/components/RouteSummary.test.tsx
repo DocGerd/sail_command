@@ -17,7 +17,8 @@ import {
   type SailResult,
 } from '../types';
 import RouteSummary from './RouteSummary';
-import { defaultBoatSnapshot } from '../types';
+import { boatSnapshot, defaultBoatSnapshot } from '../types';
+import { boatById } from '../data/boats';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
 // #54: the pre-#54 shape exposed `plan.result.genoa`/`.fock`/`.fockReason`
@@ -931,5 +932,97 @@ describe('#493: cautious depth disclosure', () => {
       expect(lead?.textContent).toContain('kann bis auf 2.0 m sinken');
       expect(lead?.textContent).toContain('unter den Bootstiefgang von 2.1 m');
     });
+  });
+});
+
+// #539 (spec C.4(a)). The banner's severity gate and its rendered draft both
+// used to read `BOAT_DRAFT_M`, the Salona 45's 2.1 m module constant. Every
+// case ABOVE plans on `defaultBoatSnapshot()`, whose draft is that same 2.1 —
+// so none of them can tell the fixed code from the broken code, and none of
+// them changed when #539 landed. These two rows are the discriminators, and
+// they exist because that whole suite above was green through the defect.
+//
+// The Elan Impression 444 is the catalogue's only DIFFERENT draft (1.90 m),
+// which is what makes a comparison possible at all. Both rows below build the
+// two plans from the SAME `makePlan()` and vary ONLY `request.boat` — the two
+// measurements are of one subject, not of two different fixtures.
+//
+// ERROR DIRECTION, stated honestly: no catalogue boat is DEEPER than 2.1 m, so
+// the stale gate made `isSevere` OVER-fire on the Elan rather than under-warn.
+// The live defect was the DRAFT FIGURE — "2.1 m" printed for a 1.9 m hull in
+// the app's most severe depth copy — not a missing warning.
+//
+// PER-ASSERTION ATTRIBUTION, MEASURED 2026-08-18 by deleting each assertion
+// alone under a mutation aimed at it (a multi-assertion pin can have a single
+// discriminating member — #516/PR #523):
+//   'salona IS severe'        catches `isSevere` forced FALSE (4 rows red in
+//                             this file; 3 with it deleted) — it is the only
+//                             assertion here covering the 2.1 m half.
+//   'elan NOT severe'         catches the stale-constant gate.
+//   'non-severe lead wording' catches a wrong cautious figure on that branch.
+//   'lead has no draft clause' is NOT redundant with the class check, and this
+//                             was measured rather than argued: forcing the lead
+//                             to the SEVERE key while leaving the CLASS correct
+//                             reds 2 rows, and only 1 with this assertion
+//                             deleted. The class and the wording are two
+//                             surfaces, so both are pinned.
+describe('#539: the shallow banner follows the PLAN’s boat, not a module constant', () => {
+  const ELAN = boatById('elan-444-piranja');
+
+  // Hand-derived from the two catalogue drafts and TOLERANCE_M = 0.9, typed
+  // out rather than computed from MASK_TOLERANCE_M so this block cannot move
+  // in step with the code it is testing:
+  //   usedDepthM 2.9 -> cautious 2.0 -> severe for a 2.1 m hull, NOT for 1.9 m
+  //   usedDepthM 2.7 -> cautious 1.8 -> severe for both
+  const SPLIT_USED_DEPTH_M = 2.9;
+  const BOTH_SEVERE_USED_DEPTH_M = 2.7;
+
+  function planFor(boat: Plan['request']['boat'], usedDepthM: number): Plan {
+    const plan = makePlan();
+    plan.request = { ...plan.request, boat };
+    plan.result = {
+      ...plan.result,
+      shallow: { requestedDepthM: 3.5, usedDepthM, minGateDepthM: 2.6 },
+    };
+    return plan;
+  }
+
+  it('splits on severity at one usedDepthM: severe for the 2.1 m hull, not for the 1.9 m one', () => {
+    const salona = renderSummary({
+      plan: planFor(defaultBoatSnapshot(), SPLIT_USED_DEPTH_M),
+    }).container;
+    expect(salona.querySelector('.shallow-warning')).toHaveClass('shallow-warning--severe');
+    cleanup();
+
+    const elan = renderSummary({
+      plan: planFor(boatSnapshot(ELAN), SPLIT_USED_DEPTH_M),
+    }).container;
+    const banner = elan.querySelector('.shallow-warning');
+    expect(banner).not.toBeNull();
+    expect(banner).not.toHaveClass('shallow-warning--severe');
+    // The non-severe lead has no draft clause at all — assert its ABSENCE by
+    // the wording, so a severe lead that merely lost its class would still red.
+    expect(banner?.querySelector('.shallow-warning__lead')?.textContent).toContain(
+      'could run as low as 2.0 m',
+    );
+    expect(banner?.querySelector('.shallow-warning__lead')?.textContent).not.toContain('draft');
+  });
+
+  it('renders the plan boat’s own draft in the severe lead, never the Salona’s 2.1 m', () => {
+    const { container } = renderSummary({
+      plan: planFor(boatSnapshot(ELAN), BOTH_SEVERE_USED_DEPTH_M),
+    });
+    const lead = container.querySelector('.shallow-warning--severe .shallow-warning__lead');
+    expect(lead).not.toBeNull();
+    // Literals typed here, never read from `en[...]` — this repo's standing
+    // dict-independence requirement for a copy pin (#504 review round 2).
+    expect(lead?.textContent).toContain('as low as 1.8 m');
+    expect(lead?.textContent).toContain("below this boat's 1.9 m draft");
+    // Defence in depth, and honestly labelled: MEASURED, no mutation makes
+    // this the SOLE red — every one that trips it also trips one of the two
+    // above. It stays because it encodes #539's own signature directly ("the
+    // Salona's number must not appear on an Elan plan") where the positive
+    // pins only encode what the right answer looks like.
+    expect(lead?.textContent).not.toContain('2.1 m');
   });
 });

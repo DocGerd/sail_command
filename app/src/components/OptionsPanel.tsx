@@ -1,7 +1,7 @@
 import type { Settings } from '../types';
 import type { MsgKey } from '../i18n/dict.de';
-import { minSafetyDepthM } from '../lib/boatDepth';
-import { boatById, DEFAULT_BOAT_ID, type BoatDef } from '../data/boats';
+import { minSafetyDepthM, type DraftedBoat } from '../lib/boatDepth';
+import { boatById, DEFAULT_BOAT_ID } from '../data/boats';
 
 // #299: this file no longer renders anything — its default-exported
 // component (and OptionsPanel.test.tsx, which exercised it directly) were
@@ -69,8 +69,13 @@ export const SAFETY_DEPTH_FIELD: FieldSpec = {
  * `labelKey` cannot drift apart from `SAFETY_DEPTH_FIELD`'s — the two would
  * otherwise be a pair of hand-written tables with no derivation between them,
  * the shape this repo has been bitten by before.
+ *
+ * Takes {@link DraftedBoat} rather than `BoatDef` (#539) so the shallow
+ * warning can ask this question of a SAVED PLAN's `BoatSnapshot`, which is not
+ * structurally a catalogue entry. Type-only; see `boatDepth.ts` for why the
+ * widening stops at the two depth helpers.
  */
-export function safetyDepthFieldFor(b: BoatDef): FieldSpec {
+export function safetyDepthFieldFor(b: DraftedBoat): FieldSpec {
   return { ...SAFETY_DEPTH_FIELD, min: minSafetyDepthM(b) };
 }
 

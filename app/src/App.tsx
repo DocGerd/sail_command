@@ -1220,7 +1220,7 @@ function AppShell() {
         </div>
       </div>
 
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} boat={boat} />
     </div>
   );
 }

@@ -544,8 +544,18 @@ export const en = {
   'about.caveats.heading': 'Important notes',
   'about.caveats.polars':
     'Polars are estimates derived from ORC-style VPP data, tunable via the performance factor in options — not race-calibrated.',
+  // #539 / #54 spec C.8 R5 + J OQ-2: every number here is now a placeholder
+  // filled from the SELECTED boat (lib/depthDisclosure.ts), because the old
+  // literals — 2.1 m draft, 3.0 m default, 1.2 m relaxation floor — were the
+  // Salona 45's stated as universal facts, and the catalogue now also holds a
+  // 1.90 m boat. {gate} is that boat's DERIVED default safety depth, {draft}
+  // its own draft, {floor} its #53 relaxation floor's cautious reading
+  // (draft − tolerance), never the UI-minimum floor. The gate clause claims
+  // only that the floor never falls BELOW the draft — an inequality true for
+  // every boat by construction (spec C.3); the two coincide for all three
+  // catalogue boats today but a ceiling-rounded draft would separate them.
   'about.caveats.depthMask':
-    "Depth values blend two readings of the same EMODnet bathymetry data: the smoothed reading is used only where it agrees with the more cautious one to within 0.9 m, so the depth value the app uses is never more than 0.9 m deeper than the cautious reading — that bounds the source data, not the real seabed. A cell the router plans through at safety depth G has a cautious reading of at least G − 0.9 m: 2.1 m, the boat's draft, at the 3.0 m default — but as little as 1.2 m where a route falls back to a shallower depth to stay connected, flagged on the resulting route.",
+    'Depth values blend two readings of the same EMODnet bathymetry data: the smoothed reading is used only where it agrees with the more cautious one to within {tolerance} m, so the depth value the app uses is never more than {tolerance} m deeper than the cautious reading — that bounds the source data, not the real seabed. A cell the router plans through at safety depth G has a cautious reading of at least G − {tolerance} m. The default safety depth for the {boat} is {gate} m, set so that floor never falls below its {draft} m draft — but it can be as little as {floor} m where a route falls back to a shallower depth to stay connected, flagged on the resulting route.',
   'about.dataSize':
     'First load downloads ~44 MB (basemap and route data); later loads are served from cache and work offline.',
   'about.sources.heading': 'Data sources',

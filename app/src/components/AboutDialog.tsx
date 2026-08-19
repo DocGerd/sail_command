@@ -11,9 +11,11 @@ import changelogRaw from '../../../CHANGELOG.md?raw';
 // changelogFragmentsPlugin (never via a `?raw` glob — see that plugin's own
 // comment for why), exposed as this virtual module's default export.
 import fragmentsRaw from 'virtual:changelog-fragments';
-import { useT } from '../i18n';
+import { useT, useLang } from '../i18n';
+import { depthMaskCaveatVars } from '../lib/depthDisclosure';
 import { parseChangelog } from '../lib/changelog';
 import { assembleFragments, withPendingFragments } from '../lib/changelogFragments';
+import type { BoatDef } from '../data/boats';
 import type { MaskMeta } from '../types';
 import ChangelogView from './ChangelogView';
 import Disclosure from './Disclosure';
@@ -30,6 +32,17 @@ const changelogReleases = withPendingFragments(
 export interface AboutDialogProps {
   open: boolean;
   onClose: () => void;
+  /**
+   * #539 / #54 spec J OQ-2. The SELECTED boat, whose own draft and derived
+   * gate the mask-tolerance caveat states.
+   *
+   * REQUIRED rather than defaulted to the catalogue's default boat: a missing
+   * prop would then silently render the Salona 45's numbers for an Elan
+   * skipper — the exact defect #539 exists to close, reintroduced as a
+   * fallback. Per this repo's guard-asymmetry rule, a wrong figure in depth
+   * copy is the expensive direction, so this fails at the type level instead.
+   */
+  boat: BoatDef;
 }
 
 // Mask-data provenance (EMODnet DTM citation + DOI, OSM/ODbL land polygons)
@@ -58,8 +71,9 @@ function fetchMaskSources(): Promise<string[] | undefined> {
   );
 }
 
-export default function AboutDialog({ open, onClose }: AboutDialogProps) {
+export default function AboutDialog({ open, onClose, boat }: AboutDialogProps) {
   const t = useT();
+  const [lang] = useLang();
   const [maskSources, setMaskSources] = useState<string[] | undefined>(undefined);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   // The element focused right before the dialog opened — restored on close
@@ -128,18 +142,18 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           <h3>{t('about.caveats.heading')}</h3>
           <ul>
             <li>{t('about.caveats.polars')}</li>
-            {/* #455: depth-mask tolerance disclosure. The four numbers named
-                in this string — the 0.9 m TOLERANCE_M bound, the 3.0 m
-                default safety depth, the 2.1 m BOAT_DRAFT_M floor it implies,
-                and the 1.2 m #53 relaxed-depth floor — are each read out of
-                pipeline/build_mask.py / app/src/types.ts /
-                app/src/routing/relaxedDepth.ts and asserted to appear
-                (locale-formatted) IN THIS DICT STRING by
-                app/src/test/maskTolerance.test.ts. That test asserts
-                containment in the shipped copy, not just a relationship
-                among the constants — update the copy's numbers and the
-                pipeline/TS constants together, or the guard reds. */}
-            <li>{t('about.caveats.depthMask')}</li>
+            {/* #455, made per-boat by #539 (spec C.8 R5 / J OQ-2). The four
+                numbers this string states — the TOLERANCE_M bound, the
+                SELECTED boat's derived default safety depth, its own draft,
+                and its #53 relaxed-depth floor — are no longer literals in
+                the dict: lib/depthDisclosure.ts derives them from
+                pipeline/build_mask.py's TOLERANCE_M (via lib/mask.ts) and
+                lib/boatDepth.ts, and app/src/test/maskTolerance.test.ts
+                renders THIS dict template for EVERY catalogue boat and
+                asserts the rendered text contains that boat's HAND-WRITTEN
+                literals. Needle hand-written, haystack production-rendered —
+                so perturbing either side alone reds the guard. */}
+            <li>{t('about.caveats.depthMask', depthMaskCaveatVars(boat, lang))}</li>
             <li>{t('about.dataSize')}</li>
           </ul>
         </section>
