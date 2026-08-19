@@ -188,6 +188,14 @@ describe('NavMask.segmentMinDepthInfoM (#505)', () => {
   it('returns null when the walk leaves the grid, like segmentShallowestBelow/segmentClearanceM', () => {
     expect(m.segmentMinDepthInfoM({ lat: 60, lon: 20 }, b)).toBeNull();
   });
+
+  it('#519: returns null when the walk STARTS in-grid but leaves before completing — completed alone must gate the result, not just minDepthM !== Infinity', () => {
+    // Complement of the case above: here the walk visits at least one
+    // in-grid cell (so minDepthM is finite) before it exits the grid and
+    // aborts. If the `completed &&` conjunct were ever dropped, this would
+    // wrongly report the last finite reading instead of null.
+    expect(m.segmentMinDepthInfoM(a, { lat: 60, lon: 20 })).toBeNull();
+  });
 });
 
 describe('NavMask.segmentClearanceM (#243)', () => {
