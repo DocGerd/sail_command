@@ -30,8 +30,9 @@ by a pull request. Where opinions differ, the maintainer decides and records the
 reasoning in the issue or in the pull request that implements it.
 
 This is a deliberate choice, not an accident of neglect: the project is small,
-domain-specific (one boat class, one sailing area), and has had no external code
-contributors to date. A heavier model would be ceremony without a constituency.
+domain-specific (a handful of boats from one club fleet, one sailing area), and
+has had no external code contributors to date. A heavier model would be
+ceremony without a constituency.
 If that changes — see [Growing the project](#growing-the-project) below — this
 document changes with it.
 
@@ -94,7 +95,8 @@ Responsibilities:
 - **Dependency hygiene** — review Dependabot PRs, keep the third-party notices
   file current, keep GitHub Actions SHA-pinned.
 - **Documentation currency** — refresh `README.md`, `CHANGELOG.md`,
-  `ROADMAP.md`, and this file at each release cut.
+  `ROADMAP.md`, [`docs/security-assurance-case.md`](docs/security-assurance-case.md),
+  and this file at each release cut.
 
 ### Contributor
 
@@ -122,8 +124,10 @@ pull request should be read.
 
 ### Dependabot
 
-Opens grouped weekly dependency pull requests across five ecosystems
-([`.github/dependabot.yml`](.github/dependabot.yml)) plus security updates. Its
+Opens grouped weekly dependency pull requests from five update
+configurations across three package ecosystems — npm (`/app`, `/pipeline`),
+pip (`/pipeline`, `/.github/workflows`) and github-actions (`/`)
+([`.github/dependabot.yml`](.github/dependabot.yml)) — plus security updates. Its
 pull requests go through the same required checks as any other; nothing merges
 automatically.
 

@@ -34,11 +34,22 @@ results table at the bottom, and note it in the box below the check.
       "fetched at" implied by the absence of the stale-forecast banner (see
       §2.5) — if the banner appears immediately for a near-term departure,
       stop and re-check network/API status before continuing.
+- [ ] **Boat selection.** Open Settings → "Boat selection" and confirm the
+      catalogue offers all three boats — Salona 45, Salona 44 (SPEEDY GO!),
+      Elan Impression 444 (PIRANJA) — each showing its draft (2.1 / 2.1 /
+      1.9 m: the first two genuinely share a draft, it is not a duplicated
+      entry) and a "Polar data & provenance" disclosure whose tier chip reads
+      Certificate or Modelled for the Salona 45 and Estimated for both fleet
+      boats. Pick the boat for this run and record it in §5.
+- [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!
+      or PIRANJA, so the suppressed rig comparison in §2.5 is actually
+      reached; a pass made entirely on the Salona 45 never exercises it.
 
 ## 2. Route A — Flensburg → Marstal
 
 Plan a route from a Flensburg-area harbor to Marstal with a departure time
-within the next 6-day forecast horizon (e.g. next full hour).
+within the next 6-day forecast horizon (e.g. next full hour), using the boat
+selected in §1.
 
 - [ ] **2.1 Route stays in water.** The plotted route never crosses land and
       never visibly cuts a corner that would ground the boat.
@@ -50,9 +61,23 @@ within the next 6-day forecast horizon (e.g. next full hour).
 - [ ] **2.4 Tack pattern is plausible.** Where the leg is upwind, the number
       of tacks is bounded and sensible for the distance/angle (not a
       zig-zag spam of many short tacks).
-- [ ] **2.5 Both rigs shown, distinct ETAs, faster one starred.** The result
-      shows main+genoa and main+fock each with their own ETA, and the ★
-      "Recommended" marker is on the one with the earlier ETA.
+- [ ] **2.5 Both sails shown with their own ETAs, and the rig verdict matches
+      the boat's polar tier.** Both of the boat's sails appear as tabs
+      ("Genoa" / "Fock"), each with its own ETA. Which verdict sits below them
+      depends on the selected boat, and every outcome listed here is correct
+      behaviour — record it as a PASS:
+
+  - **Salona 45** — its sails are tier Certificate and Modelled, so the
+    comparison runs: the ★ "Recommended" marker is on the tab with the earlier
+    ETA and the chip reads "Faster: …". No ★ is shown when the two ETAs fall
+    within 60 s ("… effectively tied …") or the passage runs entirely under
+    engine ("Rig does not matter here …").
+  - **SPEEDY GO! or PIRANJA** — both their sails are tier Estimated, so the
+    comparison is withheld: **no ★ on either tab**, and the chip reads "The
+    sails were not compared for this passage, so no faster rig is claimed". A
+    missing ★ on these two boats is the designed outcome, not a defect — their
+    two tables differ by the Salona 45's overlay ramp, which carries no
+    information about the hull.
 - [ ] **2.6 Motor legs (if any) are gray-dashed and listed.** If sailing
       speed would be too low anywhere on the route, that leg is rendered
       dashed/gray on the map and appears explicitly as a motor leg in the
@@ -74,7 +99,8 @@ Repeat the same route/rig/motor/ETA checks as §2 for Flensburg → Sønderborg.
 - [ ] **3.1** Route stays in water.
 - [ ] **3.2** Rounds Broager Land / Kegnæs sanely.
 - [ ] **3.3** Tack pattern plausible (bounded, no zig-zag spam).
-- [ ] **3.4** Both rigs shown with distinct ETAs, faster one starred.
+- [ ] **3.4** Both sails shown with their own ETAs, and the rig verdict
+      matches the boat's polar tier (expected outcomes per boat in §2.5).
 - [ ] **3.5** Motor legs (if any) gray-dashed and listed.
 - [ ] **3.6** ETA plausible (~5–7 kn average).
 
@@ -105,12 +131,12 @@ Do this part on an actual Android phone with Chrome.
 
 ## 5. Results summary
 
-| # | Check | Result | Issue filed (if any) |
-|---|---|---|---|
-| 1 | Setup / forecast currency | | |
-| 2 | Route A (Flensburg → Marstal) | | |
-| 3 | Route B (Flensburg → Sønderborg) | | |
-| 4 | PWA install/offline/live view | | |
+| # | Check | Boat | Result | Issue filed (if any) |
+|---|---|---|---|---|
+| 1 | Setup / forecast currency / boat selection | — | | |
+| 2 | Route A (Flensburg → Marstal) | | | |
+| 3 | Route B (Flensburg → Sønderborg) | | | |
+| 4 | PWA install/offline/live view | | | |
 
 **Run date:** ___________  **Run by:** ___________  **Build/commit:** ___________
 

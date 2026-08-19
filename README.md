@@ -9,11 +9,13 @@
 
 **Zeitoptimale Törnplanung — offline an Bord.** — *Time-optimal passage planning — offline, on board.*
 
-SailCommand plans time-optimal sailing routes for a Salona 45 in the
-Flensburg Fjord / Danish South Sea area, using real hourly wind forecasts and
-an isochrone router that accounts for tacks and gybes. It runs entirely in
-the browser, installs as an offline-capable app on Android, and needs no
-account or backend.
+SailCommand plans time-optimal sailing routes in the Flensburg Fjord /
+Danish South Sea area, using real hourly wind forecasts and an isochrone
+router that accounts for tacks and gybes. It ships polar tables for three
+boats — a Salona 45, a Salona 44 (SPEEDY GO!) and an Elan Impression 444
+(PIRANJA) — and routes for whichever one you pick. It runs entirely in the
+browser, installs as an offline-capable app on Android, and needs no account
+or backend.
 
 > **SailCommand is a passage-planning aid, not a navigation device.** Chart
 > data is simplified; official charts and your plotter remain authoritative.
@@ -44,18 +46,32 @@ installs as a standalone icon and works fully offline after the first visit
 
 ## What it does
 
+- Pick the boat you are planning for on the **Boat** tab. Three ship today:
+  the Salona 45 (2.1 m draft), the Salona 44 *SPEEDY GO!* (2.1 m) and the
+  Elan Impression 444 *PIRANJA* (1.9 m). Each carries its own draft, polar
+  tables and foresail inventory; the picker states how good each sail's polar
+  data is — *certificate*, *modelled* or *estimated* — and, where the draft is
+  the model's standard keel rather than that hull's own papers, says so. The
+  choice is remembered on this device.
 - Enter a departure and destination — via the curated harbor search, by
   tapping a harbor marker on the map, or by tapping anywhere on the map — and
   pick a departure time within the forecast horizon. A water-depths overlay
   can be toggled on to shade the bathymetry (shallows warm, deep water fading
   out) while you plan.
 - The router fetches hourly wind, then computes the fastest sailable route
-  twice — once per rig (main+genoa, main+fock) — and recommends the faster
-  (marked ★). Tacks and gybes are priced as a time penalty inside the
-  routing cost, not bolted on afterwards.
-- Land and depth are respected against a configurable safety depth (default
-  3.0 m, boat draft 2.1 m). Legs where sailing speed would be too low switch
-  to a clearly marked motor leg (gray-dashed on the map).
+  twice — once per foresail of the selected boat — and recommends the faster
+  (marked ★). Where the two tables cannot honestly be ranked it says so
+  instead of naming a winner: on the two fleet boats both tables are
+  *estimated* and differ only by a documented overlay ramp rather than by
+  anything about the hull, so no faster sail is claimed. Tacks and gybes are
+  priced as a time penalty inside the routing cost, not bolted on afterwards.
+- Land and depth are respected against a configurable safety depth, whose
+  default is the selected boat's draft plus the depth mask's 0.9 m tolerance
+  — 3.0 m for the 2.1 m-draft Salona 45 and Salona 44, 2.8 m for the 1.9 m
+  Elan Impression 444. Switching to a deeper-drafted boat raises the safety
+  depth to that boat's minimum and says so; it never lowers a depth you chose
+  yourself. Legs where sailing speed would be too low switch to a clearly
+  marked motor leg (gray-dashed on the map).
 - Saved plans, including the wind grid they were computed from, persist
   offline in the browser — a saved route always re-renders against the
   forecast it was planned with, never a re-fetched one.
@@ -92,14 +108,15 @@ mid-passage.
 ```
 npm --prefix app/ install
 npm --prefix app/ run dev                        # local dev server
-npm --prefix app/ run test                       # unit + property tests, ~4 min
+npm --prefix app/ run test                       # unit + property tests
 npm --prefix app/ exec playwright install chromium  # one-time E2E browser install
 npm --prefix app/ run e2e                        # Playwright E2E (plan flow, offline reload)
 npm --prefix app/ run build                      # production build to app/dist
 ```
 
 `npm run test` runs the full unit/property battery (polar interpolation,
-isochrone routing, mask queries, persistence, UI) and takes about 4 minutes.
+isochrone routing, mask queries, persistence, UI) — 2032 tests across 143
+files as of `cbc6055` (2026-08-19).
 `npm run e2e` builds the app and drives it with Playwright, including a
 true offline reload against a killed preview server.
 
@@ -120,7 +137,8 @@ flowchart LR
   subgraph pipeline ["Build time — pipeline/ (run on demand, never at app runtime)"]
     EMOD["EMODnet bathymetry (DTM 2024)"] --> MASK["build_mask.py → mask.bin (packed ~46 m cells, quantized depth)"]
     OSMLP["OSM land polygons"] --> MASK
-    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs → polars/salona-45-{genoa,fock}.json"]
+    ORC["ORC cert Salona 45"] --> POLARS["build_polars.mjs + estimate_polars.mjs → polars/*-{genoa,fock}.json (3 boats)"]
+    SBD["sail area / displacement (sailboatdata) — fleet boats"] --> POLARS
     CUR["curated harbor list"] --> HARB["build_harbors.mjs → harbors.json"]
     PROTO["Protomaps extract"] --> PMT["basemap.pmtiles.png"]
   end
@@ -166,11 +184,23 @@ for setup and regeneration instructions.
   [protomaps/basemaps-assets](https://github.com/protomaps/basemaps-assets).
 - **Wind forecast**: [Open-Meteo](https://open-meteo.com/) (CC-BY 4.0),
   fetched directly from the browser.
-- **Boat polars**: estimate derived from the ORC International 2026
-  certificate for Salona 45 "Miles Ahead" (AUT 035/26), with downwind angles
-  corrected to white-sails-only (non-spinnaker) performance. This is a
-  flat-water racing VPP estimate, tunable via the app's performance factor,
-  and explicitly **not** race-calibrated.
+- **Boat polars (Salona 45)**: estimate derived from the ORC International
+  2026 certificate for Salona 45 "Miles Ahead" (AUT 035/26), with downwind
+  angles corrected to white-sails-only (non-spinnaker) performance.
+- **Boat polars (Salona 44 SPEEDY GO!, Elan Impression 444 PIRANJA)**:
+  **estimated, not measured**. No ORC/IRC certificate and no published VPP
+  was obtained for either hull, so each table is the Salona 45's
+  certificate-anchored jib table scaled by one uniform hull scalar — the
+  square root of the two hulls' sail-area/displacement ratios
+  (figures from [sailboatdata.com](https://sailboatdata.com/)), with the
+  Salona 45's TWA/TWS grid and pointing angles inherited unchanged. Speeds
+  are typically within a few percent, up to about ten percent in individual
+  conditions, and the error matters most in light air, where it can flip a
+  leg between sail and motor.
+
+  All of the above are flat-water racing VPP estimates, tunable via the app's
+  performance factor, and explicitly **not** race-calibrated; each table
+  states its own provenance in the app.
 
 Full attribution, including the dynamically-sourced mask citation, is also
 shown in the app's About dialog. Data licenses above apply to the underlying
@@ -181,6 +211,15 @@ data; the code license is covered in the [License](#license) section below.
 - Only 33 curated harbors are included; a handful of shallow/narrow
   approaches (Schlei fairway, Dyvig channel, Gråsten bridge) remain
   disconnected from the routable mask at sub-cell resolution.
+- Two of the three boats — the Salona 44 *SPEEDY GO!* and the Elan Impression
+  444 *PIRANJA* — carry **estimated** polar tables scaled from the Salona 45's
+  certificate rather than measured data, and their drafts are the model's
+  published keel rather than that hull's own papers; the app states both, per
+  boat, on the Boat tab. Because their two foresail tables differ only by a
+  documented overlay ramp, no faster-sail recommendation is made for them.
+  Deeper-drafted fleet boats are not in the catalogue yet: they can no longer
+  reach every harbor, and the picker does not yet grey unreachable harbors out
+  per boat.
 - Map labels (place names) are set once at load time in the UI's active
   language; they don't switch live when you toggle German/English mid-session.
 - The router does not yet account for currents, tides, or sea state (waves)

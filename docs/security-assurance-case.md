@@ -1,7 +1,7 @@
 # SailCommand security assurance case
 
-**Status:** current as of 2026-08-08, describing `develop` at the time of
-writing (`v0.11.0` cut). Reviewed at each release cut.
+**Status:** current as of 2026-08-19, describing `develop` at the time of
+writing (`v0.12.0` cut). Reviewed at each release cut.
 **Audience:** users deciding whether to trust the app, and reviewers assessing
 the project (this document is the artifact for the OpenSSF Best Practices
 `assurance_case` criterion).
@@ -43,8 +43,15 @@ easiest way to misread its security posture.
 turn public source data (EMODnet bathymetry, OpenStreetMap land polygons, a
 Protomaps extract, an ORC certificate) into static assets that are **committed
 to the repository**: the land/depth mask, polar tables, the curated harbor list,
-and the basemap archive. Users never execute this code and never contact these
-sources. `verify_mask.py` must exit 0 before a rebuilt mask is committed.
+and the basemap archive. Since `v0.12.0` the polar tables have two producers:
+`build_polars.mjs` for the one certificate-anchored boat, and
+`estimate_polars.mjs` for fleet boats with no certificate, which scales that
+certificate table by a hull scalar derived from published brochure dimensions.
+The estimator adds **no new inbound source** — it downloads nothing and ingests
+no third-party table, so the trust boundary in [TB6](#3-trust-boundaries) is
+unchanged; its output ships with an explicit provenance tier surfaced in the
+app. Users never execute this code and never contact these sources.
+`verify_mask.py` must exit 0 before a rebuilt mask is committed.
 
 **Runtime — `app/` (a static PWA).** React + MapLibre GL in the browser, with
 the isochrone router in a Web Worker, persistence in IndexedDB, and a Workbox
@@ -69,7 +76,9 @@ it was computed from.
 Local state: IndexedDB database `sailcommand` (object store `plans` including
 each plan's wind grid; object store `settings` holding the single user settings
 record, which is where a pasted AIS key lives) and a small amount of
-`localStorage` (session snapshot, UI toggles) behind wrappers that tolerate
+`localStorage` (session snapshot, UI toggles, and the selected boat id — which
+determines the draft and hence the derived safety depth gate, so it is
+validated against the catalogue on every read) behind wrappers that tolerate
 private-mode failures. There are no cookies and no analytics, telemetry, or
 tracking of any kind.
 
@@ -82,10 +91,10 @@ tracking of any kind.
 | **TB3** | App ↔ Open-Meteo (N2) | Outbound: fixed grid. Inbound: untrusted JSON | HTTPS; shape/length validation before any value is used |
 | **TB4** | App ↔ aisstream.io (N3) | Outbound: user's key + bounding boxes. Inbound: untrusted JSON frames | WSS; per-field type validation; feature entirely inert without a key |
 | **TB5** | App ↔ browser storage | Read/write of plans and settings | Same-origin storage; no cross-origin access; corrupt records isolated per row |
-| **TB6** | Build-time pipeline ↔ committed assets | Pipeline output becomes data the app trusts | Assets are committed and reviewed in pull requests; `verify_mask.py` gate; pipeline never runs at app runtime |
+| **TB6** | Build-time pipeline ↔ committed assets | Pipeline output becomes data the app trusts | Assets are committed and reviewed in pull requests; harbour connectivity is asserted **for every catalogue boat at that boat's derived gate** inside the required `app` suite (`app/src/test/verifyMaskConnectivity.test.ts`, [#550](https://github.com/DocGerd/sail_command/issues/550)), backed by the fuller advisory `verify_mask.py` gate in `verify-mask.yml`; pipeline never runs at app runtime |
 | **TB7** | Source repository ↔ shipped bytes | CI builds and deploys what is on the branch | Protected branches, required checks, reproducible-build proof, SHA-pinned actions ([§5.4](#54-build-and-delivery-integrity-tb7-tb8)) |
 | **TB8** | GitHub Pages CDN ↔ client | The CDN serves the deployed artifact over TLS | Browser TLS verification; post-deploy smoke probe; **the CDN is trusted** — see [§7](#7-known-gaps-and-accepted-risk) |
-| **TB9** | Third-party dependencies ↔ product | npm/pip packages become part of the shipped bundle | Lockfiles, Dependabot across five ecosystems, CodeQL, license inventory with a CI drift guard |
+| **TB9** | Third-party dependencies ↔ product | npm/pip packages become part of the shipped bundle | Lockfiles, Dependabot across five update configurations spanning three package ecosystems (npm, pip, github-actions), CodeQL, license inventory with a CI drift guard |
 
 The single most important structural fact: **there is no trust boundary between
 a user and a server we operate, because there is no such server.** The whole
@@ -104,7 +113,8 @@ bundle and runs with full app privileges: it could read IndexedDB (plans, AIS
 key) and exfiltrate to any origin.
 
 **Countered by:** exact lockfiles, weekly grouped Dependabot updates across five
-ecosystems plus Dependabot security updates, CodeQL on every push and pull
+update configurations spanning three package ecosystems (npm, pip,
+github-actions) plus Dependabot security updates, CodeQL on every push and pull
 request, GitHub secret scanning with push protection, a committed third-party
 notices inventory whose drift fails CI, and human review of every dependency
 bump (nothing merges automatically).
@@ -185,11 +195,16 @@ gate; and a post-deploy smoke probe that verifies the served basemap archive.
 **Residual risk: real and acknowledged, though narrower from `v0.8.0`.**
 Release tags from `v0.8.0` onward are cryptographically signed
 ([#322](https://github.com/DocGerd/sail_command/issues/322)) — the mechanism
-and a registered public key are live, and `v0.8.0`, `v0.8.1` and `v0.9.0`
-have all shipped as signed tags, so a user CAN independently verify that any
-of them corresponds to a commit the maintainer actually authored — `v0.9.0`
-confirmed the same way as `v0.8.1` (`verified: true, reason: "valid"`, not
-just the mechanism). That does not close the gap fully: signing covers the
+and a registered public key are live. **Every** release tag from `v0.8.0`
+onward has shipped signed, and every one from `v0.8.1` onward additionally
+shows GitHub's `verified: true, reason: "valid"` — `v0.8.0` itself is the
+single documented attribution exception (signed under an email not
+registered on the maintainer's GitHub account; see the `v0.8.1` CHANGELOG
+entry), and `git tag -v` reports a good signature for it regardless. Any
+reader can re-derive this rather than trust the list:
+`gh api repos/DocGerd/sail_command/git/tags/$(git rev-parse refs/tags/vX.Y.Z) --jq .verification`.
+So a user CAN independently verify that a tag corresponds to a commit the
+maintainer actually authored. That does not close the gap fully: signing covers the
 tagged *commit*, not the
 *deployed artifact bytes* GitHub Pages serves —
 GitHub Pages is still trusted to serve exactly what CI built from that
@@ -274,6 +289,16 @@ would have been dropped still errors honestly.
   explicitly.
 - A depth or wind failure produces "cannot plan", never a route computed from
   substituted data.
+- The selected boat is validated on read: a stored id no longer in the
+  catalogue (a withdrawn fleet vessel, a corrected id) degrades to the
+  default boat rather than throwing, and the stale entry is left in storage
+  untouched (`app/src/lib/usePersistedBoatId.ts` :: `isCatalogueBoatId`).
+- A saved plan carries its own boat snapshot. A snapshot that is present but
+  unparseable makes the record **unreadable** rather than being replaced by
+  the catalogue's current numbers, so a plan can never be silently
+  re-attributed to a different draft (`app/src/services/migratePlan.ts` ::
+  `migrateBoat`); only its complete ABSENCE (the pre-multi-boat shape)
+  relabels onto the default boat.
 
 ### 5.3 Economy of mechanism and least privilege
 
@@ -299,6 +324,10 @@ pushes, no deletions. CI runs lint → typecheck → tests → build, plus a
 third-party notices drift guard. `pipeline/`'s Python is separately linted and
 formatted with ruff in `.github/workflows/python-lint.yml` (job `ruff`) — an
 optional check, not part of `protect-main`'s required `app` + `e2e` set.
+`verify-mask.yml` (`Mask integrity`) is likewise advisory rather than required;
+the connectivity assertion it exists to protect was moved into the required
+`app` suite for that reason
+([#550](https://github.com/DocGerd/sail_command/issues/550)).
 Production is built from `main` only and double-built as a determinism proof;
 a byte difference fails the run. Every GitHub Action is pinned to a full
 commit SHA.
@@ -324,9 +353,9 @@ place to occur, not that it was judged unlikely.
 | **A03 Injection** (CWE-79 XSS, CWE-89 SQLi, CWE-611 XXE) | Countered | No SQL and no server-side interpreter. XSS: no `innerHTML` / `dangerouslySetInnerHTML` / `eval` / `new Function` anywhere; React escapes by default. XXE: `DOMParser` with `application/xml` does not resolve external entities. CodeQL's `js/xss-through-dom` alert on that parse is a **documented false positive** — its DOM-XSS sink model is mime-insensitive, while an `application/xml` parse is inert and the parser extracts only numeric coordinates and enumerated notices |
 | **A04 Insecure design** | Countered | This document is the design argument; see [§5](#5-secure-design-argument). Threats were considered against the architecture, and the largest control is architectural: no backend, no accounts, no central data |
 | **A05 Security misconfiguration** | Countered | Minimal workflow permissions, SHA-pinned actions, protected branches, secret scanning with push protection, no debug endpoints, static hosting. GitHub Pages cannot set response headers, so the app injects a `<meta http-equiv="Content-Security-Policy">` at build time (`cspMeta()` in `app/vite.config.ts`) with `default-src 'self'`, a `connect-src` allowlist of `'self'` plus Open-Meteo and aisstream.io, `worker-src 'self'` (no `blob:` — it would defeat `script-src 'self'`), `img-src` widened to `data:`/`blob:` where maplibre-gl 6 demonstrably needs it, and no `'unsafe-inline'`/`'unsafe-eval'`, plus the static `<meta name="referrer" content="strict-origin-when-cross-origin">` already present in `app/index.html` ([#223](https://github.com/DocGerd/sail_command/issues/223)). The meta form cannot express `frame-ancestors` or `report-uri` — accepted, static host with no framing threat model and no collector |
-| **A06 Vulnerable and outdated components** (CWE-1104) | Countered | Lockfiles for every ecosystem; Dependabot across five ecosystems weekly plus security updates; zero open Dependabot alerts at the time of writing; a committed third-party notices inventory whose drift fails CI; no vendored or forked convenience copies |
+| **A06 Vulnerable and outdated components** (CWE-1104) | Countered | Lockfiles for every ecosystem; Dependabot across five update configurations spanning three package ecosystems (npm ×2, pip ×2, github-actions) weekly plus security updates; zero open Dependabot alerts as of 2026-08-19; a committed third-party notices inventory whose drift fails CI; no vendored or forked convenience copies |
 | **A07 Identification and authentication failures** | N/A by architecture | There is no authentication. No accounts, no passwords, no sessions, no password reset, nothing to brute-force |
-| **A08 Software and data integrity failures** (CWE-502) | **Partially countered** | Reproducible double-build with byte-drift gating, SHA-pinned actions, protected branches, post-deploy smoke probe, and — from `v0.8.0` — SSH-signed release tags verifiable via `git tag -v` ([#322](https://github.com/DocGerd/sail_command/issues/322)); the signing key is registered and the `git tag -v` verification path is proven end to end for every signed tag including `v0.8.0`, so a user willing to run that command can confirm a tag traces to the maintainer. GitHub's Verified badge — the no-local-config channel — is a documented exception for the `v0.8.0` tag itself (signed under an email not registered on the maintainer's GitHub account; see `v0.8.1`'s CHANGELOG entry) and does show correctly from `v0.8.1` onward — confirmed on both the `v0.8.1` and `v0.9.0` tags (`verified: true, reason: "valid"` on each), not just the throwaway probe tag the fix was originally proven against. No untrusted deserialization: IndexedDB uses structured clone of the app's own records, and a corrupt record is isolated to its own row rather than blanking the list. **Still partial**: signing covers the tagged commit's authorship, not the deployed artifact bytes GitHub Pages serves, and `v0.1.0`–`v0.7.0` remain permanently unsigned |
+| **A08 Software and data integrity failures** (CWE-502) | **Partially countered** | Reproducible double-build with byte-drift gating, SHA-pinned actions, protected branches, post-deploy smoke probe, and — from `v0.8.0` — SSH-signed release tags verifiable via `git tag -v` ([#322](https://github.com/DocGerd/sail_command/issues/322)); the signing key is registered and the `git tag -v` verification path is proven end to end for every signed tag including `v0.8.0`, so a user willing to run that command can confirm a tag traces to the maintainer. GitHub's Verified badge — the no-local-config channel — is a documented exception for the `v0.8.0` tag itself (signed under an email not registered on the maintainer's GitHub account; see `v0.8.1`'s CHANGELOG entry) and does show correctly for **every** tag from `v0.8.1` onward, each reporting `verified: true, reason: "valid"` — re-derivable with `gh api repos/DocGerd/sail_command/git/tags/$(git rev-parse refs/tags/vX.Y.Z) --jq .verification` rather than trusted from a list here. No untrusted deserialization: IndexedDB uses structured clone of the app's own records, and a corrupt record is isolated to its own row rather than blanking the list. **Still partial**: signing covers the tagged commit's authorship, not the deployed artifact bytes GitHub Pages serves, and `v0.1.0`–`v0.7.0` remain permanently unsigned |
 | **A09 Logging and monitoring failures** | Accepted, documented | There is deliberately no telemetry — a privacy choice that means client-side attacks cannot be observed centrally. Repository-side monitoring exists (CodeQL, Dependabot, Scorecard, deploy smoke probe). For a client-only app with no user data on any server, the privacy benefit is judged to outweigh the lost visibility |
 | **A10 Server-side request forgery** | N/A by architecture | No server. The two outbound endpoints are compile-time constants; no user input ever forms a request URL |
 | CWE-20 Improper input validation | Countered | See [§5.1](#51-input-validation-tb2-tb3-tb4) |
@@ -343,8 +372,8 @@ Listing these is part of the argument's honesty, not an aside.
 |---|---|---|
 | CSP meta form cannot express `frame-ancestors`/`report-uri` | No framing protection and no automated violation reporting | Accepted — [#223](https://github.com/DocGerd/sail_command/issues/223); static host, no framing threat model in play, no collector to report to |
 | `connect-src` restricts background requests only — top-level navigation, `window.open`, DNS-prefetch/preconnect, and WebRTC are unrestricted | A compromised bundle can still exfiltrate via a `location.href` redirect, a popup, prefetch/preconnect hints, or a WebRTC data channel (raises the impact of [T1](#t1--supply-chain-compromise-of-a-bundled-dependency)) | Accepted — [#223](https://github.com/DocGerd/sail_command/issues/223); CSP3's `navigate-to` directive was never shipped in browsers, and WebRTC has no `default-src` fallback to restrict it with |
-| Tags through `v0.7.0` are permanently unsigned; even a signed tag only covers commit authorship, not deployed artifact bytes | Downstream cannot fully verify authenticity for pre-`v0.8.0` releases, and even post-signing verification doesn't independently prove the bytes GitHub Pages serves match ([T5](#t5--tampering-between-the-repository-and-the-users-browser)) | Accepted, narrowed — [#222](https://github.com/DocGerd/sail_command/issues/222) shipped the verification docs and process (`SECURITY.md`, `CONTRIBUTING.md`); [#322](https://github.com/DocGerd/sail_command/issues/322) landed the signing mechanism and a registered public key, live from `v0.8.0`. `v0.8.0` and `v0.8.1` have already shipped as signed tags — `v0.8.0` itself signed under an unregistered email (GitHub attribution gap, not a signature problem; see the `v0.8.1` CHANGELOG entry), `v0.8.1` and `v0.9.0` both showing GitHub's Verified badge correctly. Still not fully "closed": signing covers the tagged commit, never the deployed artifact bytes, and re-tagging `v0.1.0`–`v0.7.0` is explicitly out of scope (would break the `(main SHA, git-describe version)` deploy-identity scheme) — that part of the gap is permanent, not a bootstrap step |
-| Statement coverage threshold is a floor, not a ratchet, and is checked only nightly | A regression can erode up to ~14 points below the measured baseline before it is reported, and — since the check runs on a nightly schedule, not per-PR — a regression can also sit unreported for up to 24h after merging | Accepted, planned — [#221](https://github.com/DocGerd/sail_command/issues/221) delivered the measurement (93.92% statements, 4100/4365, `npm --prefix app run test:coverage`, 2026-08-03), satisfying the OpenSSF `test_statement_coverage80` criterion; [#319](https://github.com/DocGerd/sail_command/issues/319)/[#342](https://github.com/DocGerd/sail_command/issues/342) added `thresholds.statements: 80` in `app/vite.config.ts` plus a non-required `.github/workflows/coverage.yml` job that runs nightly (`schedule`) and on manual `workflow_dispatch` — not per-PR or per-push, so the full v8-instrumented suite (~17 min measured locally) never adds latency to a PR. Getting there needed a centralized coverage-aware test-timeout module (`app/src/test/timeouts.ts`, imported by every solver-heavy test file) plus a structural guard (`app/src/test/timeoutGuard.test.ts`) after three earlier dispatch attempts each failed on a different timeout surface (a job-level `timeout-minutes` cap, then the solver-heavy tests' own per-test `vi.setConfig`/`timeout` budgets under v8 instrumentation — raising the job cap could never have fixed the second). `src/sw.ts` and `src/routing/worker.ts` remain IN coverage scope at ~0% BY DESIGN — jsdom has no real ServiceWorker or dedicated-Worker execution model — with their functional assurance instead coming from `app/e2e/offline.spec.ts`, `csp.spec.ts`, `basemap-fallback.spec.ts`, `plan.spec.ts`, `live.spec.ts`, and `deploy.yml`'s post-deploy CDN smoke probe; excluding them was considered and rejected (see the #319 decision comment) since together they are only ~0.57% of statements and excluding would *raise*, not preserve, the published figure. The 80% floor is deliberate, not a ceiling, and both the ~14-point corridor and the nightly (not per-PR) cadence are knowingly accepted gaps — revisit at the next release cut |
+| Tags through `v0.7.0` are permanently unsigned; even a signed tag only covers commit authorship, not deployed artifact bytes | Downstream cannot fully verify authenticity for pre-`v0.8.0` releases, and even post-signing verification doesn't independently prove the bytes GitHub Pages serves match ([T5](#t5--tampering-between-the-repository-and-the-users-browser)) | Accepted, narrowed — [#222](https://github.com/DocGerd/sail_command/issues/222) shipped the verification docs and process (`SECURITY.md`, `CONTRIBUTING.md`); [#322](https://github.com/DocGerd/sail_command/issues/322) landed the signing mechanism and a registered public key, live from `v0.8.0`. Every release tag from `v0.8.0` onward has shipped signed, and every one from `v0.8.1` onward additionally shows GitHub's Verified badge — `v0.8.0` itself signed under an unregistered email (GitHub attribution gap, not a signature problem; see the `v0.8.1` CHANGELOG entry), which is the single documented exception. Re-derive with `gh api repos/DocGerd/sail_command/git/tags/$(git rev-parse refs/tags/vX.Y.Z) --jq .verification`. Still not fully "closed": signing covers the tagged commit, never the deployed artifact bytes, and re-tagging `v0.1.0`–`v0.7.0` is explicitly out of scope (would break the `(main SHA, git-describe version)` deploy-identity scheme) — that part of the gap is permanent, not a bootstrap step |
+| Statement coverage threshold is a floor, not a ratchet, and is checked only nightly | A regression can erode up to ~14 points below the measured baseline before it is reported, and — since the check runs on a nightly schedule, not per-PR — a regression can also sit unreported for up to 24h after merging | Accepted, planned — [#221](https://github.com/DocGerd/sail_command/issues/221) delivered the measurement, re-taken at each cut from the nightly job: 93.92% statements on 2026-08-03 (#221's original run), and 94.09% statements / 89.8% branches / 92.88% functions / 95.74% lines on 2026-08-19 (`coverage.yml` run 32211126866 on `develop`, 2022 tests across 143 files) — comfortably satisfying the OpenSSF `test_statement_coverage80` criterion, and leaving the erosion corridor below the 80% floor at ~14 points as described above; [#319](https://github.com/DocGerd/sail_command/issues/319)/[#342](https://github.com/DocGerd/sail_command/issues/342) added `thresholds.statements: 80` in `app/vite.config.ts` plus a non-required `.github/workflows/coverage.yml` job that runs nightly (`schedule`) and on manual `workflow_dispatch` — not per-PR or per-push, so the full v8-instrumented suite (~17 min measured locally) never adds latency to a PR. Getting there needed a centralized coverage-aware test-timeout module (`app/src/test/timeouts.ts`, imported by every solver-heavy test file) plus a structural guard (`app/src/test/timeoutGuard.test.ts`) after three earlier dispatch attempts each failed on a different timeout surface (a job-level `timeout-minutes` cap, then the solver-heavy tests' own per-test `vi.setConfig`/`timeout` budgets under v8 instrumentation — raising the job cap could never have fixed the second). `src/sw.ts` and `src/routing/worker.ts` remain IN coverage scope at ~0% BY DESIGN — jsdom has no real ServiceWorker or dedicated-Worker execution model — with their functional assurance instead coming from `app/e2e/offline.spec.ts`, `csp.spec.ts`, `basemap-fallback.spec.ts`, `plan.spec.ts`, `live.spec.ts`, and `deploy.yml`'s post-deploy CDN smoke probe; excluding them was considered and rejected (see the #319 decision comment) since together they are only ~0.57% of statements and excluding would *raise*, not preserve, the published figure. The 80% floor is deliberate, not a ceiling, and both the ~14-point corridor and the nightly (not per-PR) cadence are knowingly accepted gaps — revisit at the next release cut |
 | Open code-scanning alert: OpenSSF Scorecard v5.5.0 `Maintained` check, severity High | None derivable from the alert itself — it names no package, file, or line (`location.path` reads "no file associated with this alert"); its message is `score is 0: project was created within the last 90 days`, and the check's own help text states it "will only succeed if a GitHub project is >90 days old" | Accepted, self-resolving, no code change possible — [#72](https://github.com/DocGerd/sail_command/issues/72); repository `created_at` is 2026-07-14T20:41:35Z, so the check self-resolves ~2026-10-12 (90 days later) purely from the repository's age |
 | Bus factor is 1 | No second person can review, merge, release, or respond to a report | Structural — [`GOVERNANCE.md`](../GOVERNANCE.md#continuity-and-succession) |
 | GitHub Pages CDN is trusted | A CDN compromise would serve modified bytes; no subresource integrity is possible for the entry document | Accepted — inherent to static hosting |
