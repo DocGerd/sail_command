@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-19
+
+### Added
+
+- The depth overlay now shows sparse hazard hatching over water whose
+  cautious, worst-case reading falls below your safety depth, so a spot the
+  absolute depth colors alone might show as comfortably clear can still be
+  flagged as marginal at the safety depth you've set (#492).
+
+### Changed
+
+- The Boat tab now shows the source note behind each boat's stated draft
+  (where the figure came from, and what it does and does not establish),
+  alongside the existing keel-assumption caveat — for every boat, including
+  the hull-verified reference boat (#566).
+
+### Fixed
+
+- The legs table's per-leg distance now renders to two decimal places
+  instead of one, so two distinct short legs (e.g. 0.50 nm and 0.55 nm) no
+  longer round together to the same displayed value. The plan-level total
+  distance and per-leg speed keep their existing one-decimal precision
+  (#439).
+- The map's scale bar no longer disappears on short landscape phones (e.g.
+  740x360) when a single-line banner (offline, plan-error, or app update
+  available) is shown — it previously reclaimed less headroom than one
+  banner line costs. Two or more banners stacked at once, or a banner that
+  wraps to two lines, can still hide it. The "update available" banner also
+  now has a dismiss (x) button of its own, cleared for the rest of the
+  current session; it reappears the next time a newer update becomes
+  available (#441).
+- Distances and speeds now render with the correct decimal separator for
+  the active language instead of always using a point: German shows a comma
+  ("21,5 nm"), English keeps the point ("21.5 nm"). Covers the results
+  panel's totals and legs table, the sail/motor split, the planner's
+  compact result strip and its live-region "plan ready" announcement, Live
+  View, AIS popups and route map labels (#525).
+- Adding, removing, reordering, or dragging a waypoint no longer
+  recalculates the route in the background: previously, every planner
+  control locked up for the whole recalculation with no stated reason. A
+  waypoint edit is now a plain, instant change to the plan — press "Plan
+  route" to apply it, exactly like any other trip change — and the app
+  shows a clear "not yet applied" indicator, both in the planner panel and
+  on the map, until you do (#571).
+
 ## [0.12.0] - 2026-08-19
 
 ### Added
@@ -692,7 +737,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/DocGerd/sail_command/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/DocGerd/sail_command/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/DocGerd/sail_command/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/DocGerd/sail_command/compare/v0.9.0...v0.10.0

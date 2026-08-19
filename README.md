@@ -39,10 +39,11 @@ planning.
 
 Picking the boat, with each hull's draft, a provenance chip summarising the
 weakest tier across its polar tables (the per-sail tiers are inside the
-disclosure), and — where the draft is the model's standard keel rather than
-that hull's own papers — a disclosure saying so:
+disclosure); every boat also carries a note on where its stated draft comes
+from, and — where the draft is the model's standard keel rather than that
+hull's own papers — an additional disclosure saying so:
 
-![Boat tab: the three boats with draft and polar-provenance tier, and the assumed-keel disclosure on the two fleet boats](docs/screenshots/boat-selection.png)
+![Boat tab: the three boats with draft, polar-provenance tier and draft source note, and the assumed-keel disclosure on the two fleet boats](docs/screenshots/boat-selection.png)
 
 ## Install on Android
 
