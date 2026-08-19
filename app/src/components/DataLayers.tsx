@@ -383,14 +383,16 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
-  // #492: this component is rendered inside AppStateProvider (App.tsx wraps
-  // AppShell, and DataLayers is one of AppShell's children), so this reads
-  // the SAME Settings.safetyDepthM every other surface reads/writes — no
-  // second, independently-maintained copy of the value. DataLayers takes it
-  // from context rather than as a prop (unlike most Settings consumers,
-  // which App.tsx drills as props) because this component has no other
-  // dependency on App.tsx at all; see this file's own #492 rebuild-effect
-  // comment below for how the value reaches the map.
+  // #492 review m10: DataLayers reads safetyDepthM via useSettings()
+  // directly rather than as a prop from App.tsx — a reviewed, confirmed
+  // decision, not a stopgap. App.tsx already re-renders DataLayers on
+  // every Settings/plan/rig/activeLegIndex change (rendered inline, no
+  // memo()), so this context read adds ZERO additional re-renders; a prop
+  // would give DataLayers a second, redundant source for a value it can
+  // already read directly — this component has no OTHER dependency on
+  // App.tsx at all, and already takes map/lang/t from context the same
+  // way. See this file's own #492 rebuild-effect comment below for how
+  // the value reaches the map.
   const [settings] = useSettings();
   const { safetyDepthM } = settings;
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
