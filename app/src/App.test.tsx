@@ -1032,6 +1032,51 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     expect(document.querySelector('.via-markers-spinner-chip')).toBeNull();
   });
 
+  // Review follow-up (Minor 2, four-combination check): the single-
+  // announcement guarantee above must ALSO hold when a via edit combines
+  // with a SEPARATE dirty input (departure) — formDirty goes true for two
+  // independent reasons at once, but the panel still owns exactly one
+  // role="status" announcement of the stale copy; the map chip stays a
+  // silent visual disclosure regardless of what else is dirty. The other
+  // two combinations (via CLEAN, other dirty/clean) never reach the chip at
+  // all — it renders only when viaDraftStale is true — so they carry no
+  // duplication risk by construction and are covered by the plan-run/
+  // settings-dirty banner tests elsewhere in this file.
+  it('a via edit combined with a separately-dirty input still surfaces exactly one stale announcement', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // Dirty the departure first — a non-via reason formDirty goes true.
+    const departureInput = screen.getByLabelText(
+      de['planner.departure.label'],
+    ) as HTMLInputElement;
+    const editedMs = Date.now() + 5 * 3_600_000;
+    fireEvent.change(departureInput, { target: { value: toLocalInputValue(editedMs) } });
+    expect(departureInput.value).toBe(toLocalInputValue(editedMs));
+
+    // Now ALSO add a via — draftViaPoints diverges too, so both terms of
+    // formDirty are true simultaneously.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+
+    const chip = document.querySelector('.via-markers-spinner-chip');
+    expect(chip).not.toBeNull();
+    expect(chip).not.toHaveAttribute('role', 'status');
+    const staleStatusRegions = screen
+      .getAllByRole('status')
+      .filter((el) => el.textContent?.includes(de['planner.result.stale']));
+    expect(staleStatusRegions).toHaveLength(1);
+  });
+
   // BLOCKER 1 / MAJOR 3 (review): map markers must track the DRAFT via list,
   // not the committed one — an add/remove must show/hide a marker
   // immediately, and dragging the SAME marker a SECOND time must still
