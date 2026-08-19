@@ -67,12 +67,22 @@ const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // whatever control edits the setting. 300ms: today's only editor
 // (SettingsPanel/PlannerPanel's NumberInput, via SAFETY_DEPTH_FIELD) commits
 // exclusively on blur (NumberInput.tsx: onCommit fires in handleBlur only),
-// so a burst of rebuilds is not reachable through today's UI at all — this
-// debounce is cheap insurance against (a) a future continuous-drag control,
-// and (b) several settings committing back-to-back in one user action (e.g.
-// BoatPicker.tsx patches safetyDepthM alongside other fields when the user
-// switches boats). 300ms coalesces such a burst while staying imperceptible
-// for a single deliberate blur-commit.
+// so a burst of rebuilds is not reachable through the number field at all —
+// this debounce is cheap insurance against (a) a future continuous-drag
+// control, and (b) the one burst path that IS live today: BoatPicker's boat
+// radios select on arrow-key FOCUS, so arrowing through the list clamps
+// safetyDepthM up once per boat traversed, at key-repeat rate (see
+// BoatPicker.tsx's handleSelect comment). 300ms coalesces that while
+// staying imperceptible for a single deliberate blur-commit. MEASURED
+// (#492 review m6, in-browser Chromium against the real 2200x2400 mask,
+// createImageData+putImageData included — same method as the e2e suite):
+// three samples gave 28.3/28.7/28.5 ms for the hatch build vs 143.8/142.2/
+// 144.5 ms for buildDepthCanvas's own absolute-ramp build — same order of
+// magnitude, hatch ~5x cheaper (its LUT is a single boolean per byte, not
+// an RGBA interpolation). Either way the debounce, not the compute, is the
+// actual lag budget: today's only reachable path (a blur commit) always
+// pays this 300 ms before the safety cue updates, not the ~30 ms build
+// cost itself.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
 const HARBOR_SOURCE = 'sc-harbors';
 // Exported so App can hand MapView the same id its raw-tap gate queries: the
@@ -238,6 +248,24 @@ function setupLayers(
   // casing, or AIS traffic, always wins if they ever visually coincide,
   // which is the safe direction: a general navigability cue should never
   // outrank a specific, already-computed safety warning.
+  //
+  // #492 review m9: this DOUBLES the depth overlay's retained memory —
+  // arithmetic, not measured (this environment has no device/GPU profiler
+  // to read GL texture memory back from): the mask is 2200x2400 cells
+  // (mask.meta.json), so ONE full-resolution RGBA canvas backing store is
+  // 2200*2400*4 = 21.12 MB, and CanvasSource.prepare() uploads it to an
+  // equally-sized GL texture — ~42.2 MB total for this canvas, on top of
+  // buildDepthCanvas's identical ~42.2 MB for the absolute ramp, so ~84.5 MB
+  // retained for the depth overlay alone once both layers exist. Not
+  // verified against a real mid-range device (none available here); the
+  // e2e suite elsewhere exercises depth+AIS+route together without a crash,
+  // which is weak evidence, not a memory profile. If this turns out to
+  // matter, M8's screen-space fill-pattern alternative (#599, see
+  // depthColor.ts's HATCH_PERIOD_CELLS comment) would also remove this
+  // second full-resolution raster entirely — not attempted here, since the
+  // maintainer's decision for THIS change was explicitly a second
+  // COMPOSITED layer, and merging the two canvases is the one thing the
+  // HARD DOMAIN RULE separation exists to prevent.
   if (!map.getSource(DEPTH_HATCH_SOURCE)) {
     const hatchCanvas = buildHatchCanvas(meta, maskBuffer, safetyDepthM);
     if (hatchCanvas) {
@@ -257,7 +285,16 @@ function setupLayers(
           // paint. No independent toggle: the hatch is a navigability
           // annotation over the depth overlay, not an opt-in of its own.
           layout: { visibility: 'none' },
-          paint: { 'raster-fade-duration': 0 },
+          paint: {
+            'raster-fade-duration': 0,
+            // #492 review M8: MapLibre's default 'linear' resampling
+            // smears the hatch's hard-edged stripes into soft gradients —
+            // an ADDITIONAL artifact on top of the documented zoom-scaling
+            // degradation (depthColor.ts's HATCH_PERIOD_CELLS comment),
+            // not a fix for it. 'nearest' at least keeps whatever renders
+            // crisp rather than blurred.
+            'raster-resampling': 'nearest',
+          },
         },
         beforeId,
       );

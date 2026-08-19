@@ -141,11 +141,13 @@ describe('buildNavigabilityHatchImageData (#492)', () => {
   });
 
   it('is structurally unreachable from the absolute ramp: neither ramp function accepts a safetyDepthM parameter', () => {
-    // Guards the HARD DOMAIN RULE at the type level, not just by current
-    // behavior: a call site could not pass safetyDepthM to either even by
-    // mistake, because the arity itself has no slot for it.
-    expect(depthByteToRgba.length).toBe(1);
-    expect(buildDepthImageData.length).toBe(3);
+    const m = new Uint8Array(1);
+    // @ts-expect-error HARD DOMAIN RULE: the absolute ramp must have no slot for
+    // safetyDepthM. Reds at COMPILE time if one is ever added — including a
+    // DEFAULTED one, which Function.length cannot see (PR #591 review, MEASURED).
+    expect(() => buildDepthImageData(m, 1, 1, 3)).not.toThrow();
+    // @ts-expect-error same rule for the per-byte ramp
+    expect(depthByteToRgba(1, 3)).toBeDefined();
   });
 });
 

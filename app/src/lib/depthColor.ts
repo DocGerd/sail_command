@@ -137,11 +137,53 @@ export function buildDepthImageData(
 export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // Sparse diagonal stripes, not a solid fill: the absolute ramp underneath
 // must stay legible through the gaps, since the two layers are read
-// TOGETHER — colour says how deep, hatch says whether that's enough. 8px
-// period / 2px stripe width is 25% coverage: enough to read as a hazard
-// pattern at a glance, sparse enough that the ramp colour dominates.
-const HATCH_PERIOD_PX = 8;
-const HATCH_STRIPE_WIDTH_PX = 2;
+// TOGETHER — colour says how deep, hatch says whether that's enough. 25%
+// coverage (2 of every 8 MASK CELLS — see the _CELLS naming below) at the
+// RASTER resolution.
+//
+// #492 review M8, MEASURED: this period is expressed in MASK CELLS
+// (~46.7 m each — mask.meta.json: 2200 cols over a 1.6 deg bbox at
+// ~54.8N), not screen pixels, and a canvas source has no way to keep a
+// cell-space pattern a fixed size on screen. The on-screen period/stripe
+// width therefore SCALES WITH ZOOM (screen m/px = 156543.03 * cos(lat) /
+// 2^zoom; on-screen px per raster px = 46.7 / that):
+//
+//   zoom | screen px / raster px | on-screen period | on-screen stripe
+//   -----|------------------------|-------------------|-------------------
+//   9    | 0.26 (app's own initial ZOOM, MapView.tsx:62) | ~2.1 px  | ~0.5 px (sub-pixel)
+//   11   | 1.05                   | ~8.4 px            | ~2.1 px
+//   13   | 4.2                    | ~34 px             | ~8.4 px
+//   16   | 33.7                   | ~270 px            | ~67 px
+//   18   | 135                    | ~1080 px           | ~270 px
+//
+// (`MAP_MAX_ZOOM` is 22 — further still.) So at the app's OWN initial
+// zoom the pattern downsamples to a flat, uniform-looking wash rather than
+// a visible hatch, and at close/harbour-approach zoom the SAME "sparse"
+// pattern becomes individually huge stripes and gaps. Both are DEGRADED
+// appearances of the same underlying, correctly-computed data — never a
+// false positive/negative on WHICH cells are flagged, only on how legibly
+// that flag renders at a given zoom.
+//
+// One nuance MEASURED, not assumed (app/e2e/datalayers.spec.ts's own M8
+// test): the STRIPE/GAP DENSITY (HATCH_STRIPE_WIDTH_CELLS /
+// HATCH_PERIOD_CELLS = 25%) scales UNIFORMLY with zoom along with the
+// period itself, so the FRACTION of a marginal area that ends up hatched
+// stays close to that same ~25% at any zoom — real measurement at z16
+// over a documented marginal harbour approach (wackerballig,
+// public/data/harbors.json) gave 25.4% of the canvas hatched, matching the
+// design density almost exactly. What changes with zoom is the per-stripe
+// SIZE (sub-pixel and visually blended at z9; hundreds of screen px and
+// individually distinct at z16), not the overall coverage proportion — so
+// "near-opaque band" describes a SINGLE stripe at close zoom, not the
+// whole marginal area turning solid black.
+//
+// `app/e2e/datalayers.spec.ts` measures both ends of this table directly
+// rather than asserting either in prose. Making the on-screen period
+// zoom-invariant needs rendering in screen space (e.g. a `fill`/
+// `fill-pattern` layer instead of a raster canvas) — out of scope for this
+// change; tracked as #599.
+const HATCH_PERIOD_CELLS = 8;
+const HATCH_STRIPE_WIDTH_CELLS = 2;
 
 /**
  * Sparse hazard hatching for cells whose CONSERVATIVE depth reading falls
@@ -182,8 +224,12 @@ export function buildNavigabilityHatchImageData(
     throw new Error(`mask length ${mask.length} != rows*cols ${rows * cols}`);
   const marginal = new Uint8Array(256); // 1 = this byte's conservative floor < safetyDepthM
   for (let b = 1; b < 256; b++) {
-    // b === LAND (0) is left 0/false: land never hatches, matching
-    // buildDepthImageData's own fully-transparent land treatment.
+    // b === LAND (0) is left 0/false, matching buildDepthImageData's own
+    // fully-transparent treatment. NOTE byte 0 is land OR unsurveyed OR
+    // drying (< 0.1 m) — build_mask.py writes all three (`code[~known] = 0`,
+    // `code[known & (dm < 1)] = 0`, `code[land] = 0`) and the mask cannot
+    // distinguish them, so absence of hatch over byte 0 must never be read
+    // as "clear". #492 review.
     marginal[b] = cautiousDepthLowerBoundM(byteToDepthM(b)) < safetyDepthM ? 1 : 0;
   }
   const out = new Uint8ClampedArray(rows * cols * 4); // zero-init: fully transparent by default
@@ -191,7 +237,7 @@ export function buildNavigabilityHatchImageData(
     const maskRow = rows - 1 - outRow; // same south->north flip as buildDepthImageData
     for (let col = 0; col < cols; col++) {
       const byte = mask[maskRow * cols + col];
-      if (marginal[byte] && (outRow + col) % HATCH_PERIOD_PX < HATCH_STRIPE_WIDTH_PX) {
+      if (marginal[byte] && (outRow + col) % HATCH_PERIOD_CELLS < HATCH_STRIPE_WIDTH_CELLS) {
         out.set(HATCH_RGBA, (outRow * cols + col) * 4);
       }
     }

@@ -19,13 +19,47 @@ import { __resetDbForTests } from '../services/db';
 //
 // The expected stacks below are hand-derived literals (bottom → top), NOT
 // read back from the implementation:
-// - DataLayers.setupLayers adds depth (absent under jsdom — the test setup
-//   stubs canvas getContext to null, so buildDepthCanvas bails), then the
-//   harbor circle layer, the harbor label layer, then seamarks — same
-//   relative order for any shared anchor.
+// - DataLayers.setupLayers adds the absolute depth ramp, then the #492
+//   hazard-hatch overlay, then the harbor circle layer, the harbor label
+//   layer, then seamarks — same relative order for any shared anchor.
 // - AisLayer.setupLayers adds vectors, then vessels, then labels.
 // - The documented invariant slots every overlay below every AIS layer, and
 //   both stacks below the route stack when it exists.
+//
+// #492 review M4: the depth/hatch pair used to be ABSENT from every
+// assertion below, not merely untested — the shared jsdom setup
+// (test/setup.ts) stubs `HTMLCanvasElement.prototype.getContext` to return
+// null globally (RouteLayer/App.test.tsx need that to suppress a noisy
+// "Not implemented" warning), so buildDepthCanvas/buildHatchCanvas always
+// bailed and neither layer's #160 stack POSITION was pinned by anything —
+// the exact "verification method structurally cannot see a regression
+// class" shape CLAUDE.md documents elsewhere. The fake below restores just
+// enough of the 2D context (createImageData/putImageData — everything
+// either build function actually calls) for THIS FILE to exercise both
+// layers; no pixel content is checked here, only presence and ORDER — real
+// rendering stays app/e2e/datalayers.spec.ts's job.
+//
+// CORRECTION to the reviewer-supplied form: the review's suggested stub
+// returns the same fake for EVERY canvas unconditionally. This file's
+// DataLayers render ALSO drives seamarkGlyphs.ts's registerSeamarkImages,
+// which creates its OWN canvas (a square glyph raster, BASE_CANVAS_SIZE=64
+// at the default scale) and calls `ctx.clearRect(...)` — a method the
+// minimal fake doesn't have, so an unconditional stub crashes with
+// `ctx.clearRect is not a function` (MEASURED: all 6 tests in this file
+// failed that way on the first attempt). registerSeamarkImages already
+// handles a NULL context gracefully (`if (!ctx) continue;`,
+// seamarkGlyphs.ts), so the fix is to answer null for anything that ISN'T
+// the depth/hatch canvas — discriminated by SIZE, since only
+// buildDepthCanvas/buildHatchCanvas produce a canvas matching this file's
+// own maskMeta fixture (`cols: 4, rows: 4`, hoisted.assets above), which a
+// 64x64 glyph raster can never collide with.
+HTMLCanvasElement.prototype.getContext = vi.fn(function (this: HTMLCanvasElement): unknown {
+  if (this.width !== 4 || this.height !== 4) return null; // e.g. a seamark glyph raster
+  return {
+    createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    putImageData: () => {},
+  };
+}) as unknown as HTMLCanvasElement['getContext'];
 
 vi.mock('maplibre-gl', () => ({
   Popup: class {
@@ -89,7 +123,13 @@ vi.mock('../services/assets', () => ({
 }));
 
 // Bottom → top: overlays, then the AIS stack (documented invariant).
+// 'sc-depth' and 'sc-depth-hatch' (#492) lead the stack — DataLayers.tsx's
+// setupLayers adds the absolute ramp, then the hazard-hatch overlay, BEFORE
+// the harbor/seamark layers that follow, all sharing the same beforeId
+// anchor (insertion order = bottom-to-top for same-anchor additions).
 const OVERLAYS_BELOW_AIS = [
+  'sc-depth',
+  'sc-depth-hatch',
   'sc-harbor-points',
   'sc-harbor-labels',
   'sc-seamarks',
