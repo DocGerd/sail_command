@@ -10,8 +10,19 @@
 // Byte encoding (mask.meta.json / NavMask): 0 = land or unknown (rendered
 // fully transparent — the basemap already draws land), 1..254 = depth in
 // decimetres floored (0.1..25.4 m), 255 = deep (>= 25.4 m).
+//
+// #492: buildNavigabilityHatchImageData (bottom of this file) is a SECOND,
+// independently-composited image builder that intentionally BREAKS the
+// rule above for its own narrow purpose — sparse hazard hatching keyed on
+// the user's safetyDepthM. It is a deliberate, structurally separate
+// exception: STOPS, depthByteToRgba and buildDepthImageData above stay
+// byte-for-byte gate-blind, this function is never called from them, and
+// its output is never merged into buildDepthImageData's buffer — it is
+// composited as its own MapLibre layer (components/DataLayers.tsx). See
+// that function's own doc comment for the full rationale.
 
 import type { MaskMeta } from '../types';
+import { cautiousDepthLowerBoundM } from './mask';
 
 const LAND = 0;
 const DEEP = 255;
@@ -55,10 +66,21 @@ const STOPS: ReadonlyArray<{ depthM: number; rgba: Rgba }> = [
 
 const TRANSPARENT: Rgba = [0, 0, 0, 0];
 
+/**
+ * Shared byte->metres decode (mask.meta.json's encoding, restated in this
+ * file's own header comment). Used by depthByteToRgba below AND by
+ * buildNavigabilityHatchImageData at the bottom of this file — extracted so
+ * the two never carry two independently-maintained copies of the same
+ * quantization arithmetic.
+ */
+function byteToDepthM(byte: number): number {
+  return byte === DEEP ? DEEP_M : byte / 10;
+}
+
 /** Pure ramp: one mask byte -> RGBA (0..255 channels, unpremultiplied). */
 export function depthByteToRgba(byte: number): Rgba {
   if (byte === LAND) return [...TRANSPARENT];
-  const depthM = byte === DEEP ? DEEP_M : byte / 10;
+  const depthM = byteToDepthM(byte);
   if (depthM <= STOPS[0].depthM) return [...STOPS[0].rgba];
   for (let i = 1; i < STOPS.length; i++) {
     if (depthM > STOPS[i].depthM) continue;
@@ -93,6 +115,148 @@ export function buildDepthImageData(
     for (let col = 0; col < cols; col++) {
       const byte = mask[maskRow * cols + col];
       out.set(lut.subarray(byte * 4, byte * 4 + 4), (outRow * cols + col) * 4);
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// #492: navigability hatch — a SECOND, independently-composited raster.
+// Everything above this line stays byte-for-byte gate-blind (HARD DOMAIN
+// RULE, top of file). Nothing below is called from above, and nothing above
+// calls anything below.
+// ---------------------------------------------------------------------------
+
+// Achromatic and near-opaque, deliberately NOT drawn from the STOPS palette
+// above: the same reasoning components/DataLayers.tsx's HARBOR_CIRCLE_LAYER
+// comment already gives for its own black+white marker treatment (#38/#39
+// review) — black can't collide with any depth-ramp hue under
+// colour-blindness, where a hatch colour borrowed from STOPS (e.g. the
+// ~2 m orange band's [230,159,0]) would risk blending into the very band it
+// exists to override.
+export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
+// Sparse diagonal stripes, not a solid fill: the absolute ramp underneath
+// must stay legible through the gaps, since the two layers are read
+// TOGETHER — colour says how deep, hatch says whether that's enough. 25%
+// coverage (2 of every 8 MASK CELLS — see the _CELLS naming below) at the
+// RASTER resolution.
+//
+// #492 review M8, MEASURED: this period is expressed in MASK CELLS
+// (~46.7 m each — mask.meta.json: 2200 cols over a 1.6 deg bbox at
+// ~54.8N), not screen pixels, and a canvas source has no way to keep a
+// cell-space pattern a fixed size on screen. The on-screen period/stripe
+// width therefore SCALES WITH ZOOM (screen m/px = 156543.03 * cos(lat) /
+// 2^zoom; on-screen px per raster px = 46.7 / that):
+//
+//   zoom | screen px / raster px | on-screen period | on-screen stripe
+//   -----|------------------------|-------------------|-------------------
+//   9    | 0.26 (app's own initial ZOOM, MapView.tsx:62) | ~2.1 px  | ~0.5 px (sub-pixel)
+//   11   | 1.05                   | ~8.4 px            | ~2.1 px
+//   13   | 4.2                    | ~34 px             | ~8.4 px
+//   16   | 33.7                   | ~270 px            | ~67 px
+//   18   | 135                    | ~1080 px           | ~270 px
+//
+// (`MAP_MAX_ZOOM` is 22 — further still.) So at the app's OWN initial
+// zoom the pattern is a SPARSE, HIGH-CONTRAST SPECKLE rather than a
+// visible hatch — MEASURED (PR #591 re-review), not a flat/uniform wash:
+// toggling the layer at z9 shifts touched-pixel luminance by a mean of 62
+// (max 160), with 28% of touched pixels dropping >100 — genuinely dark
+// individual pixels, just too small and too sparse to read as a pattern.
+// At close/harbour-approach zoom the SAME "sparse" pattern instead becomes
+// individually huge stripes and gaps. Both are DEGRADED appearances of the
+// same underlying, correctly-computed data — never a false
+// positive/negative on WHICH cells are flagged, only on how legibly that
+// flag renders at a given zoom.
+//
+// WHY THE DEGRADED CASE IS STILL SAFE (structural, not just measured, PR
+// #591 re-review): HATCH_RGBA is pure black ([0, 0, 0, 190]), so
+// compositing it over anything can only ever DECREASE luminance, never
+// increase it — and on STOPS above, deeper renders LIGHTER (alpha is
+// monotonically non-increasing with depth, fading fully transparent over
+// the light basemap; pinned by depthColor.test.ts's "fades monotonically"
+// case). So every possible effect of the hatch moves a cell toward the
+// ramp's own shallower/more-cautious end, never toward deep, and
+// black-over-colour preserves hue. The residual failure mode at overview
+// zoom is under-signalling (a real marginal cell reads too faint to
+// notice), never FALSE COMFORT (a marginal cell reading as more clear than
+// it is) — the one failure #492 exists to prevent.
+//
+// One nuance MEASURED, not assumed (app/e2e/datalayers.spec.ts's own M8
+// test): the STRIPE/GAP DENSITY (HATCH_STRIPE_WIDTH_CELLS /
+// HATCH_PERIOD_CELLS = 25%) scales UNIFORMLY with zoom along with the
+// period itself, so the FRACTION of a marginal area that ends up hatched
+// stays close to that same ~25% at any zoom — real measurement at z16
+// over a documented marginal harbour approach (wackerballig,
+// public/data/harbors.json) gave 25.4% of the canvas hatched, matching the
+// design density almost exactly. What changes with zoom is the per-stripe
+// SIZE (sub-pixel and visually blended at z9; hundreds of screen px and
+// individually distinct at z16), not the overall coverage proportion — so
+// "near-opaque band" describes a SINGLE stripe at close zoom, not the
+// whole marginal area turning solid black.
+//
+// `app/e2e/datalayers.spec.ts` measures both ends of this table directly
+// rather than asserting either in prose. Making the on-screen period
+// zoom-invariant needs rendering in screen space (e.g. a `fill`/
+// `fill-pattern` layer instead of a raster canvas) — out of scope for this
+// change; tracked as #599.
+const HATCH_PERIOD_CELLS = 8;
+const HATCH_STRIPE_WIDTH_CELLS = 2;
+
+/**
+ * Sparse hazard hatching for cells whose CONSERVATIVE depth reading falls
+ * below the user's REQUESTED safetyDepthM — the navigability cue #492
+ * reports missing. Composited as its own MapLibre canvas source/layer
+ * directly above buildDepthImageData's absolute ramp (see
+ * components/DataLayers.tsx's setupLayers), never merged into that buffer.
+ *
+ * BASIS, and why it is the CONSERVATIVE reading rather than the shipped
+ * one: pipeline/build_mask.py blends bilinear over the conservative
+ * Resampling.max reading only where the two agree within
+ * mask.ts's MASK_TOLERANCE_M, so for every cell depth_blend <= depth_max +
+ * MASK_TOLERANCE_M — run backwards, depth_max >= depth_blend -
+ * MASK_TOLERANCE_M, a SOUND lower bound (mask.ts's own derivation for
+ * cautiousDepthLowerBoundM; restated here because this is a second
+ * consumer of the same inequality, not a new claim). Keying the hatch on
+ * the SHIPPED byte instead — or anything more optimistic — can only ever
+ * UNDER-hatch: exactly the false-all-clear #492 reports, where the ramp's
+ * own colour can make a cell look more comfortably clear than the data can
+ * prove. The conservative basis can only ever OVER-hatch (flag a cell that
+ * later turns out fine), never the reverse — the one direction that is
+ * safe to be wrong in.
+ *
+ * Same vertical flip and LAND (byte 0, never hatched) treatment as
+ * buildDepthImageData above, and the same 256-entry-LUT shape (pay
+ * cautiousDepthLowerBoundM's cost once per distinct BYTE, never once per
+ * CELL — up to ~5.28M of them). The caller additionally DEBOUNCES calling
+ * this at all, since safetyDepthM can change repeatedly in quick
+ * succession (components/DataLayers.tsx has the measured detail).
+ */
+export function buildNavigabilityHatchImageData(
+  mask: Uint8Array,
+  rows: number,
+  cols: number,
+  safetyDepthM: number,
+): Uint8ClampedArray {
+  if (mask.length !== rows * cols)
+    throw new Error(`mask length ${mask.length} != rows*cols ${rows * cols}`);
+  const marginal = new Uint8Array(256); // 1 = this byte's conservative floor < safetyDepthM
+  for (let b = 1; b < 256; b++) {
+    // b === LAND (0) is left 0/false, matching buildDepthImageData's own
+    // fully-transparent treatment. NOTE byte 0 is land OR unsurveyed OR
+    // drying (< 0.1 m) — build_mask.py writes all three (`code[~known] = 0`,
+    // `code[known & (dm < 1)] = 0`, `code[land] = 0`) and the mask cannot
+    // distinguish them, so absence of hatch over byte 0 must never be read
+    // as "clear". #492 review; tracked as #597.
+    marginal[b] = cautiousDepthLowerBoundM(byteToDepthM(b)) < safetyDepthM ? 1 : 0;
+  }
+  const out = new Uint8ClampedArray(rows * cols * 4); // zero-init: fully transparent by default
+  for (let outRow = 0; outRow < rows; outRow++) {
+    const maskRow = rows - 1 - outRow; // same south->north flip as buildDepthImageData
+    for (let col = 0; col < cols; col++) {
+      const byte = mask[maskRow * cols + col];
+      if (marginal[byte] && (outRow + col) % HATCH_PERIOD_CELLS < HATCH_STRIPE_WIDTH_CELLS) {
+        out.set(HATCH_RGBA, (outRow * cols + col) * 4);
+      }
     }
   }
   return out;

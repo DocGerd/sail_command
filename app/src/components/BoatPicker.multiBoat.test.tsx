@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Its own file because `vi.mock` is hoisted per module graph, and
@@ -13,7 +13,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // for reasons unrelated to anything here.
 vi.mock('../data/boats', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../data/boats')>();
-  const salona = actual.BOATS[0]!;
+  // #569: an ID lookup, not `BOATS[0]!` — an index is a dependency on
+  // catalogue ORDER, so a future reorder (not just growth) would silently
+  // swap which boat backs this fixture while every row below stayed green,
+  // asserting against the wrong boat. Throws loudly rather than silently
+  // falling back to `undefined` if the id is ever renamed.
+  const salona = actual.BOATS.find((b) => b.id === 'salona-45');
+  if (!salona) throw new Error("fixture donor 'salona-45' missing from the real catalogue");
   const deep = {
     ...salona,
     id: 'deep-46',
@@ -233,9 +239,9 @@ describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
     // `undefined`. A radio pointing at an id that renders nothing is a
     // dangling reference, and some AT announces nothing at all for one.
     renderPicker();
-    expect(
-      screen.getByRole('radio', { name: /Salona 45/ }).hasAttribute('aria-describedby'),
-    ).toBe(false);
+    expect(screen.getByRole('radio', { name: /Salona 45/ }).hasAttribute('aria-describedby')).toBe(
+      false,
+    );
   });
 
   it('renders it for that boat ONLY, not for every row', () => {
@@ -244,6 +250,35 @@ describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
     // the sentence unconditionally would pass the row above and fail here.
     renderPicker();
     expect(screen.getAllByText(/Assumed keel:/)).toHaveLength(1);
+  });
+});
+
+describe('#566: draftProvenance.note renders per boat, INCLUDING the hull-verified boat', () => {
+  it('renders the fixture-authored note for a boat with an assumed keel', () => {
+    renderPicker();
+    const option = screen
+      .getByRole('radio', { name: /Deep 46/ })
+      .closest('.boat-option')! as HTMLElement;
+    expect(
+      within(option).getByText('Fixture: builder specification, not checked against the hull.'),
+    ).toBeInTheDocument();
+  });
+
+  it('ALSO renders the note for the hull-verified boat, which has NO keel caveat at all', () => {
+    // Shoal 40 inherits Salona 45's `draftProvenance` UNCHANGED via the
+    // fixture's spread (`hullVerified: true`, no keel-caveat sentence) — the
+    // exact discriminating case #566 exists for. A `keelUnverified &&`-gated
+    // render would show NOTHING here: no keel caveat (correctly, that fact
+    // really is false for this boat) AND no note either (incorrectly — the
+    // note is a citation that exists for every boat, verified or not).
+    renderPicker();
+    const option = screen
+      .getByRole('radio', { name: /Shoal 40/ })
+      .closest('.boat-option')! as HTMLElement;
+    expect(within(option).queryByText(/Assumed keel/)).not.toBeInTheDocument();
+    expect(
+      within(option).getByText(/reference boat, model-level with no individual vessel/),
+    ).toBeInTheDocument();
   });
 });
 

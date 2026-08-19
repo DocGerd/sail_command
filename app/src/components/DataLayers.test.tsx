@@ -1,7 +1,10 @@
-import { act, render, waitFor } from '@testing-library/react';
+import 'fake-indexeddb/auto';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './DataLayers';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
+import { AppStateProvider, useSettings } from '../state/AppState';
+import { __resetDbForTests } from '../services/db';
 
 // #153: DataLayers' style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach). The depth
@@ -9,6 +12,14 @@ import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 // (test setup stubs getContext to null), so the depth source never exists
 // under jsdom — its re-add rides the same setupLayers call as the harbor/
 // seamark sources asserted below, and its rendering stays browser-verified.
+// #492's hazard-hatch overlay shares this exact limitation (buildHatchCanvas
+// has the identical `if (!ctx) return null` guard) for the same reason, so
+// its RENDERED appearance is verified in app/e2e/datalayers.spec.ts instead;
+// what's covered here is the SAFETY_DEPTH_M ORCHESTRATION (debounce timing,
+// no crash/leak on unmount) in the '#492 navigability hatch wiring' describe
+// block below — DataLayers now calls useSettings() directly (see that
+// hook's own #492 comment in this file for why), so every render below is
+// wrapped in AppStateProvider, which the pre-#492 tests never needed.
 
 vi.mock('maplibre-gl', () => ({
   Popup: class {
@@ -88,9 +99,20 @@ function sourceData(map: ReturnType<typeof makeFakeMap>, id: string): GeoJSON.Fe
     : (src.def.data as GeoJSON.FeatureCollection);
 }
 
+// #492: every render below needs AppStateProvider now that DataLayers calls
+// useSettings() directly — wrapping it here (rather than at each call site)
+// keeps the pre-#492 tests' own bodies unchanged.
+function renderDataLayers() {
+  return render(
+    <AppStateProvider>
+      <DataLayers onHarborPick={() => {}} />
+    </AppStateProvider>,
+  );
+}
+
 async function renderAndSettle(map: ReturnType<typeof makeFakeMap>) {
   hoisted.map = map;
-  const utils = render(<DataLayers onHarborPick={() => {}} />);
+  const utils = renderDataLayers();
   // Settle on the PAINTED harbor data, not bare source existence: the source
   // is created one commit before the epoch-driven data effects repaint it,
   // and a loaded CI runner can catch that window.
@@ -100,7 +122,11 @@ async function renderAndSettle(map: ReturnType<typeof makeFakeMap>) {
   return utils;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // #492: AppStateProvider persists Settings via IndexedDB (fake-indexeddb) —
+  // reset it alongside localStorage so no test observes a prior test's
+  // safetyDepthM.
+  await __resetDbForTests();
   localStorage.clear();
 });
 
@@ -125,7 +151,7 @@ describe('DataLayers setup', () => {
   it('holds off until a late style becomes ready, even with assets already loaded', async () => {
     const map = makeFakeMap({ styleLoaded: false });
     hoisted.map = map;
-    render(<DataLayers onHarborPick={() => {}} />);
+    renderDataLayers();
     // Let the assets fetch settle: still nothing — the style isn't ready.
     await act(async () => {});
     expect(map.sources.size).toBe(0);
@@ -188,5 +214,91 @@ describe('DataLayers style reload (#153)', () => {
     simulateStyleReload(map);
     expect(map.sources.size).toBe(0);
     expect(map.layers.size).toBe(0);
+  });
+});
+
+// #492: the hazard-hatch raster ITSELF is untestable here (same jsdom 2D
+// canvas limitation as the depth ramp — see this file's header comment); a
+// pixel-readback proof lives in app/e2e/datalayers.spec.ts. What's testable
+// at this level is the ORCHESTRATION: debounced re-rendering keyed on
+// safetyDepthM, and its cleanup on unmount. This local literal must be kept
+// in sync BY HAND with DataLayers.tsx's own DEPTH_HATCH_DEBOUNCE_MS/
+// DEPTH_HATCH_LAYER — same convention this file already uses for
+// HARBOR_SOURCE/SEAMARKS_SOURCE/HARBOR_LABEL_LAYER above (re-declared
+// locally rather than imported).
+const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
+const DEPTH_HATCH_DEBOUNCE_MS = 300;
+
+function SafetyDepthProbe() {
+  const [, setSettings] = useSettings();
+  return (
+    <button onClick={() => setSettings({ safetyDepthM: 4.5 })}>setSafetyDepthProbeButton</button>
+  );
+}
+
+describe('#492 navigability hatch wiring', () => {
+  it('debounces the hazard-hatch rebuild attempt: not immediate, but fires once the debounce elapses', async () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { getByText } = render(
+      <AppStateProvider>
+        <SafetyDepthProbe />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    await waitFor(() => {
+      expect(map.sources.get(HARBOR_SOURCE)?.setData.mock.calls.length).toBeGreaterThan(0);
+    });
+    const getLayerSpy = vi.spyOn(map, 'getLayer');
+    getLayerSpy.mockClear();
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(getByText('setSafetyDepthProbeButton'));
+      // Immediately after the click: the debounce effect just re-armed a
+      // FRESH timer synchronously (React's act-wrapped synchronous commit
+      // cancels the earlier pending one, per the effect's own cleanup, and
+      // schedules a new one) — no setTimeout-scheduled work can have run
+      // yet, deterministically: nothing in a synchronous DOM-event flush
+      // ever processes a macrotask, regardless of how much real wall-clock
+      // time passed before this click.
+      expect(getLayerSpy.mock.calls.some(([id]) => id === DEPTH_HATCH_LAYER)).toBe(false);
+      act(() => {
+        vi.advanceTimersByTime(DEPTH_HATCH_DEBOUNCE_MS - 1);
+      });
+      expect(getLayerSpy.mock.calls.some(([id]) => id === DEPTH_HATCH_LAYER)).toBe(false);
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(getLayerSpy.mock.calls.some(([id]) => id === DEPTH_HATCH_LAYER)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the pending rebuild timer on unmount — no late attempt after the debounce window', async () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { getByText, unmount } = render(
+      <AppStateProvider>
+        <SafetyDepthProbe />
+        <DataLayers onHarborPick={() => {}} />
+      </AppStateProvider>,
+    );
+    await waitFor(() => {
+      expect(map.sources.get(HARBOR_SOURCE)?.setData.mock.calls.length).toBeGreaterThan(0);
+    });
+    const getLayerSpy = vi.spyOn(map, 'getLayer');
+    getLayerSpy.mockClear();
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(getByText('setSafetyDepthProbeButton'));
+      unmount();
+      act(() => {
+        vi.advanceTimersByTime(DEPTH_HATCH_DEBOUNCE_MS * 10); // far past the window
+      });
+      expect(getLayerSpy.mock.calls.some(([id]) => id === DEPTH_HATCH_LAYER)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
