@@ -51,17 +51,11 @@ import { usePersistedNumber } from './lib/usePersistedNumber';
 import { PANEL_MIN_WIDTH_PX, panelMaxWidthPx } from './lib/panelWidth';
 import { formatLatLon } from './lib/format';
 import { resolveHarborPickTarget } from './lib/harborGeoJson';
-import { boatById, DEFAULT_SAIL_IDS } from './data/boats';
+import { boatById, sailIdsOf } from './data/boats';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
-import {
-  defaultBoatSnapshot,
-  type Harbor,
-  type LatLon,
-  type PickedPoint,
-  type Plan,
-} from './types';
+import { boatSnapshot, type Harbor, type LatLon, type PickedPoint, type Plan } from './types';
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
@@ -694,20 +688,32 @@ function AppShell() {
         destinationHarborId: destination.source === 'harbor' ? destination.harborId : null,
         departureMs,
         settings,
-        // #54: the one production call site with no existing plan to
-        // inherit sailIds from — every other constructor (recalcRequest,
+        // #54 / #572: the one production call site with no existing plan to
+        // inherit from — every other constructor (recalcRequest,
         // replanWithVias, rerouteFromFix) spreads/copies an existing
-        // request's own sailIds instead.
-        sailIds: DEFAULT_SAIL_IDS,
+        // request's own values instead, and MUST keep doing so: spec §I.3
+        // makes the boat a property of the plan, so a saved plan is re-solved
+        // against the boat it was planned for, never against today's picker.
+        // This is the only site that reads the LIVE selection.
+        //
+        // Both fields come from the same `boat`, so the sails a plan compares
+        // and the hull it is solved against can never name different boats.
+        sailIds: sailIdsOf(boat),
         // #54 spec §I.3: denormalised by value, so the saved plan can be
-        // rendered without the catalogue. Same call site, same reason as
-        // sailIds above — the only production constructor with no existing
-        // plan to inherit from.
-        boat: defaultBoatSnapshot(),
+        // rendered without the catalogue.
+        //
+        // #572: this was `defaultBoatSnapshot()`, which pinned it to the
+        // Salona 45 whatever the picker showed. `request.boat.id` is what
+        // workerClient.ts resolves the polar tables AND the §C.4(a)
+        // relaxation floor from, so the constant here silently solved every
+        // boat's plan on the wrong hull while the picker, the tier chip, the
+        // keel sentence and the safety-depth field all described the boat the
+        // user actually picked.
+        boat: boatSnapshot(boat),
       },
       `${origin.label} → ${destination.label}`,
     );
-  }, [origin, destination, departureMs, settings, run, viaPoints]);
+  }, [origin, destination, departureMs, settings, run, viaPoints, boat]);
 
   // #114: recalculate a saved plan with a FRESH forecast — seeds run() from
   // the plan's own stored request (origin/destination/vias/settings) with the
