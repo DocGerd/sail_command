@@ -132,6 +132,19 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
 - **`docs/security-assurance-case.md`** — the OpenSSF Silver assurance
   document; re-check it still describes the shipped security posture (#168).
 - **`CONTRIBUTING.md`** — the milestone list names the *next* release; roll it.
+- **`SECURITY.md`** — added to this list at the v0.12.0 cut (2026-08-19), where
+  it was found to be a FOURTH site of the decaying release-tag enumeration that
+  §7/T5/A08 of the assurance case also carry. Prefer a RULE plus a
+  reader-runnable `gh api …/git/tags/$(git rev-parse refs/tags/vX.Y.Z) --jq
+  .verification` over any list of tags checked so far. Note its pre-`v0.8.0`
+  unsigned enumeration is a CLOSED set and correctly does NOT decay — do not
+  "fix" it.
+- **`docs/acceptance.md`** — added at the same cut, and the sharper case: a
+  stale check here does not merely misinform, it makes a tester file a bug
+  against correct behaviour. §2.5/§3.4 asserted the faster rig is starred,
+  which is false whenever `compareRigs` returns `tie`/`moot` AND for both
+  tier-C fleet boats, where `comparisonSuppressed` withholds the ★ entirely.
+  Re-check every check whose expected outcome depends on the selected boat.
 - **Milestone roll-forward** — per the convention already documented in
   CONTRIBUTING.md ("Labels & milestones"): close the shipped milestone BY
   HAND and move anything still open in it to the next one; the pending

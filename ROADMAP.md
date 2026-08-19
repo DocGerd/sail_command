@@ -13,66 +13,122 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.11.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.12.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.11.0
+## Now — v0.12.0
 
-The `v0.11.0` cut (2026-08-08) closed out all 9 issues held in the
-[`v0.11.0` milestone](https://github.com/DocGerd/sail_command/milestones):
-re-planning from the Plan view now prefills the form from the currently
-displayed route and flags it as outdated once an input changes, rather
-than re-entering harbours/waypoints from scratch
-([#301](https://github.com/DocGerd/sail_command/issues/301)); the
-top-left map-chrome column now compacts into a row on short landscape
-phones, so the nautical scale bar is no longer suppressed on every tab
-there ([#231](https://github.com/DocGerd/sail_command/issues/231)); the
-About button's icon no longer bets on font coverage — a bare U+24D8
-glyph that measured as tofu on some Linux font sets is now an inline SVG
-([#427](https://github.com/DocGerd/sail_command/issues/427)); the solver
-now carries a wall-clock budget and reports a timeout honestly instead
-of the same generic "unexpected failure" message
-([#432](https://github.com/DocGerd/sail_command/issues/432)); and a
-route-planning failure shows a distinct message per cause instead of one
-identical banner for seven unrelated failure modes
-([#433](https://github.com/DocGerd/sail_command/issues/433)). Three
-further issues closed with no user-visible surface — the no-route
-`reason` control-input coupling, now fully decoupled behind a committed
-acceptance harness rather than merely narrowed; a logging/diagnostics
-spike; and an `artifact-guard` hook fix
-([#282](https://github.com/DocGerd/sail_command/issues/282),
-[#435](https://github.com/DocGerd/sail_command/issues/435),
-[#437](https://github.com/DocGerd/sail_command/issues/437)) — covered
-under "Development workflow" below.
-[#379](https://github.com/DocGerd/sail_command/issues/379) also closed
-this cut, but its full scope (duration, distance, course/heading per
-leg) had already shipped in `v0.10.0`; it stayed open only
-administratively and carries no new changes here.
-
-## Next — v0.12.0
-
-Tracked by the
+The `v0.12.0` cut (2026-08-19) closed out all 26 items held in the
 [`v0.12.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-with seven issues: two SAFETY-labeled depth-mask defects — the mask
-overstating depth by up to 2.0 m on 48% of water cells with no warning
-at all ([#455](https://github.com/DocGerd/sail_command/issues/455)), and
-depth relaxation lowering the safety gate for the whole route rather
-than just the constrained segment, with the warning not on the first
-surface a user sees
-([#452](https://github.com/DocGerd/sail_command/issues/452)); two
-process spikes — whether the architecture still fits (layering,
-`App.tsx` concentration, prose-only invariants, the MapLibre call-site
-surface) ([#446](https://github.com/DocGerd/sail_command/issues/446))
-and a CLAUDE.md improvement run alongside an assessment of what Claude
-Code automation this project should adopt
-([#444](https://github.com/DocGerd/sail_command/issues/444)); a seamark
-symbol-size control plus a display-category policy for which marks to
-omit ([#353](https://github.com/DocGerd/sail_command/issues/353)); a
-settings menu separating static boat/skipper preferences from per-route
-plan inputs ([#299](https://github.com/DocGerd/sail_command/issues/299));
-and multiple boat types with per-boat foresail inventories, moved up
-from the "Routing depth" theme below
-([#54](https://github.com/DocGerd/sail_command/issues/54)).
+— 24 issues and two pull requests. The headline is that the app is no
+longer hard-wired to a single Salona 45 polar pair
+([#54](https://github.com/DocGerd/sail_command/issues/54)). Three boats
+ship: the Salona 45, the Salona 44 (SPEEDY GO!) and the Elan Impression
+444 (PIRANJA) — the latter two with **estimated** polar tables, each
+scaled from the Salona 45's certificate-anchored jib table rather than
+measured, and each saying so in its own source note. A Boat tab picks the
+boat a plan is computed for and shows its draft and the provenance of
+every polar table; the choice is remembered on this device. Because the
+Elan draws 1.9 m against the Salonas' 2.1 m, two default safety depths
+now exist (2.8 m and 3.0 m), derived per boat rather than hardcoded, and
+switching to a deeper-drafted boat raises the safety depth and says so
+without ever lowering one the skipper chose. A release blocker found late
+in the cut — the picker reached the results card but never the planner,
+so every route was still solved against the Salona 45 — was fixed before
+the tag ([#572](https://github.com/DocGerd/sail_command/issues/572)).
+
+Depth disclosure was the cut's other half. The mask build's blend
+tolerance dropped from 2.0 m to 0.9 m, so every cell navigable at the
+default 3.0 m safety depth now has a conservative reading of at least the
+boat's 2.1 m draft — previously 924 cells were navigable there while
+reading below it. The `#53` depth relaxation is confined to within 1 nm of
+a waypoint the skipper actually chose, with a per-approach gate instead of
+one global one, so a shallow pinch far from every waypoint is now reported
+honestly as unreachable rather than routed through
+([#452](https://github.com/DocGerd/sail_command/issues/452)). What a route
+does cross is stated as an outcome rather than a mechanism: flagged legs
+carry a Shallow marker with their charted depth and a cautious lower
+bound, and the plan-level warning names how much of the route crosses
+charted-shallow water, when the first flagged leg starts, and whether
+every such stretch lies near a waypoint
+([#493](https://github.com/DocGerd/sail_command/issues/493),
+[#516](https://github.com/DocGerd/sail_command/issues/516)); the depth
+profile's headline minimum no longer misses a leg shorter than its sample
+interval ([#505](https://github.com/DocGerd/sail_command/issues/505)), and
+the per-leg shallow chip's amber hazard fill actually renders
+([#506](https://github.com/DocGerd/sail_command/issues/506)). The
+originating defect ([#455](https://github.com/DocGerd/sail_command/issues/455))
+is **not** closed by this — the tolerance bound shipped, the residual
+gate-crossing cells did not — and now carries the `v0.13.0` milestone; see
+"Next" below.
+
+Two long-standing settings items landed alongside: boat and skipper
+preferences moved off the Plan tab's collapsed "Advanced" disclosure into
+a dedicated Boat tab, with a stale-route banner that now shows on every
+tab rather than only the Plan tab
+([#299](https://github.com/DocGerd/sail_command/issues/299)); and seamark
+symbols gained a size slider plus a Base/Standard/All display-category
+selector modelled on the ECDIS Display Base / Standard Display / All Other
+Information split, which never hides cardinal, lateral, safe-water or
+isolated-danger marks or major lights
+([#353](https://github.com/DocGerd/sail_command/issues/353)). Two process
+spikes also closed here — whether the architecture still fits
+([#446](https://github.com/DocGerd/sail_command/issues/446)) and a
+CLAUDE.md improvement run alongside an assessment of this project's Claude
+Code automation ([#444](https://github.com/DocGerd/sail_command/issues/444))
+— and are covered, with the tooling work they produced, under "Development
+workflow" below.
+
+## Next — v0.12.1, then v0.13.0
+
+The
+[`v0.12.1` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds 16 issues and is mostly the follow-up tail of the multi-boat and
+depth-disclosure work, led by one high-priority bug: removing a waypoint
+disables the whole planner for up to a minute with nothing on screen
+saying why ([#571](https://github.com/DocGerd/sail_command/issues/571)).
+Alongside it: the depth ramp cannot distinguish legal water from marginal
+water ([#492](https://github.com/DocGerd/sail_command/issues/492)); German
+copy formats numbers with a decimal point where the language uses a comma
+([#525](https://github.com/DocGerd/sail_command/issues/525)) and the i18n
+dictionaries enforce key parity but not placeholder parity
+([#524](https://github.com/DocGerd/sail_command/issues/524)); per-leg
+distances reuse the plan-total formatter, so several distinct short legs
+can all read the same
+([#439](https://github.com/DocGerd/sail_command/issues/439)); and #231's
+short-landscape scale-bar fix is still banner-conditional
+([#441](https://github.com/DocGerd/sail_command/issues/441)). The rest is
+test-integrity and tooling — an unexercised conjunct
+([#519](https://github.com/DocGerd/sail_command/issues/519)), a nudge whose
+stated justification is false and whose pinning test cannot fail
+([#531](https://github.com/DocGerd/sail_command/issues/531)), a sweep guard
+that runs in no automated suite
+([#537](https://github.com/DocGerd/sail_command/issues/537)), an
+artifact-guard exemption hole
+([#535](https://github.com/DocGerd/sail_command/issues/535)), the CodeQL
+query-suite decision
+([#534](https://github.com/DocGerd/sail_command/issues/534)), the drifted
+label taxonomy
+([#401](https://github.com/DocGerd/sail_command/issues/401)) — plus
+documentation residue from the multi-boat branch
+([#552](https://github.com/DocGerd/sail_command/issues/552),
+[#556](https://github.com/DocGerd/sail_command/issues/556),
+[#566](https://github.com/DocGerd/sail_command/issues/566),
+[#569](https://github.com/DocGerd/sail_command/issues/569)).
+
+The [`v0.13.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds a single issue, and it is the largest safety item left: the depth
+mask still lets a route cross water charted below the requested safety
+depth ([#455](https://github.com/DocGerd/sail_command/issues/455)).
+`v0.12.0` closed the worst of it — the mask blend now carries a proven
+0.9 m bound, so no cell *navigable at* the default 3.0 m gate reads below
+the boat's draft. A relaxed route can still reach a 1.2 m cautious reading,
+and both that floor and the shallow water a route actually crosses are now
+disclosed on the route itself. But roughly ten thousand gate-crossing
+cells remain
+(10,746 at the shipped tolerance, measured in
+`docs/spikes/455-depth-mask-optimism.md`), so the issue stays open rather
+than being declared done.
 
 ## Themes for the next year
 
@@ -124,7 +180,8 @@ this repository. It requires a second person with standing release rights. See
 
 ### Routing depth
 
-The largest open product questions, all accepted into the backlog:
+The largest open product questions. Both are parked in `Icebox` rather
+than `Backlog` — accepted in principle, not scheduled:
 
 - Currents, tides, and sea state (waves) in the isochrone cost
   ([#18](https://github.com/DocGerd/sail_command/issues/18)) — a design spec
@@ -135,12 +192,8 @@ The largest open product questions, all accepted into the backlog:
 - Multi-day trip planning with overnight stops and arrival-window checks
   ([#19](https://github.com/DocGerd/sail_command/issues/19)), which is bounded
   by the ~6-day forecast horizon.
-- Multiple boat types with per-boat foresail inventories
-  ([#54](https://github.com/DocGerd/sail_command/issues/54)) — today the app is
-  hard-wired to one Salona 45 polar pair. Now scheduled for `v0.12.0` (see
-  "Next" above).
 
-Investigated and **declined** as a routing input this cut: honouring
+Investigated and **declined** as a routing input in `v0.9.0`: honouring
 buoyed fairways ([#244](https://github.com/DocGerd/sail_command/issues/244))
 — the in-region OSM fairway data turned out to carry no width/depth/draft
 tags and is over half canoe-scheme geometry, so a naive nearest-fairway
@@ -167,11 +220,42 @@ revisited, not that it has been lifted.
 ### Development workflow
 
 Not user-visible, but it is where a meaningful share of the effort goes and it
-sets the pace of everything above. The `v0.11.0` cut fixed three items in
+sets the pace of everything above.
+
+The `v0.12.0` cut fixed six items in this area, most of them guards that
+could be merged past. `eslint` never covered `app/e2e/**` — the script was
+`eslint src`, so the Playwright specs that are the only functional
+assurance for the service worker and the routing worker went unlinted
+([#420](https://github.com/DocGerd/sail_command/issues/420)); the mask
+connectivity flood fill, which is the acceptance criterion for a new
+boat's derived depth gate, ran only in the advisory `Mask integrity`
+workflow, and is now additionally a vitest test inside the required `app`
+job ([#550](https://github.com/DocGerd/sail_command/issues/550)); a
+dev-dependency advisory in `nanoid` via `vite`→`postcss` was cleared
+([#533](https://github.com/DocGerd/sail_command/issues/533)); the
+`artifact-guard` hook stopped asking on provably read-only commands
+carrying an inert redirect
+([#560](https://github.com/DocGerd/sail_command/issues/560));
+`THIRD-PARTY-NOTICES.txt` was missing `workbox-strategies`
+([#466](https://github.com/DocGerd/sail_command/issues/466)); and six
+measured `CLAUDE.md` accuracy defects found by the #444 spike were
+corrected ([#467](https://github.com/DocGerd/sail_command/issues/467)).
+Four documentation issues against the #452 spike write-up closed alongside
+them ([#501](https://github.com/DocGerd/sail_command/issues/501),
+[#502](https://github.com/DocGerd/sail_command/issues/502),
+[#503](https://github.com/DocGerd/sail_command/issues/503),
+[#515](https://github.com/DocGerd/sail_command/issues/515)), as did a
+correction to user-facing copy that promised integrity and fields the app
+cannot verify ([#547](https://github.com/DocGerd/sail_command/issues/547))
+and the README hero screenshot showing a mostly-motor route
+([#459](https://github.com/DocGerd/sail_command/issues/459)).
+
+The `v0.11.0` cut fixed three items in
 this area: the no-route `reason` control-input coupling, previously only
 narrowed by PR #411, now fully decoupled behind a committed `app/sweep/`
-acceptance harness — 198 plans across six arms and 33 harbours, with a
-required BASE double-run control — so a future classification change has
+acceptance harness — 198 plans across six arms and 33 harbours at that
+cut, since grown to 297 plans across nine arms, with a required BASE
+double-run control — so a future classification change has
 something real to compare against
 ([#282](https://github.com/DocGerd/sail_command/issues/282)); a spike into
 how logging and diagnostics should work across this backend-less, offline
@@ -283,7 +367,7 @@ never done:
   **blocked on physics, not effort**: at the mask's ~46 m cell size the
   channels involved are sub-cell, and reconnecting them would mean fabricating
   depth data. It stays open only in case hi-res bathymetry becomes available.
-  A spike this cut ([#245](https://github.com/DocGerd/sail_command/issues/245),
+  A `v0.9.0` spike ([#245](https://github.com/DocGerd/sail_command/issues/245),
   `docs/spikes/245-depth-mask-resolution.md`) confirmed this by rebuilding
   the mask end-to-end at 23 m and 12 m: none of the five reconnect at either
   resolution, while `aabenraa` disconnects at both (it passes today only on
