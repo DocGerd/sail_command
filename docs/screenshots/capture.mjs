@@ -65,36 +65,36 @@
 // light-air reaching advantage that narrows, but does not vanish, toward
 // the route's higher-wind final third), enough over a ~19 nm leg to clear
 // RIG_TIE_BAND_MS (60 s) decisively, while staying comfortably above the
-// ~3.7 kn sail-speed floor that would otherwise plan motor legs. MEASURED
-// against a local dev server (2026-08-09, fix wave, after retuning the
-// gradient's SCOPE to be visible in frame at all — Major 1 below — and then
-// again after WIDENING its span to actually cross a second barb bucket):
-// Flensburg->Sønderborg on this fixture resolves to 85% sail / 15% motor on
-// the (recommended, ★) Genoa tab and 86%/14% on Fock, with
-// `.chip-faster-rig` reading "Faster: Genoa" (2h59min vs 3h02min, a 180s
+// ~3.7 kn sail-speed floor that would otherwise plan motor legs.
+//
+// #577 RETUNE (2026-08-19): the #54 multi-boat routing work landed after the
+// 2026-08-09 figures below were first measured and collapsed this pair's
+// margin from ~180s to 51.2s — UNDER RIG_TIE_BAND_MS, so the recommendation
+// had drifted to a 'tie' (see gen-docs-wind-fixture.mjs's header for the
+// reproduction and the retuned SPEED_LON_RANGE_KN constant). MEASURED AGAIN
+// against a local dev server (2026-08-19, this fix): Flensburg->Sønderborg
+// on the retuned fixture resolves to 83% sail / 17% motor on the
+// (recommended, ★) Genoa tab (read directly off the rendered
+// `.ergebnis-split-sail`/`.ergebnis-split-motor` legend — "Sailing · 16.0 nm
+// · 83%" / "Motor · 3.4 nm · 17%" — and cross-checked against the solver's
+// own duration split via the same `planRoute()` call the app makes) and 86%/14%
+// on Fock (solver-only; the Fock tab was not itself screenshotted), with
+// `.chip-faster-rig` reading "Faster: Genoa" (3h00min vs 3h02min, a 146.6s
 // margin) — both #459 requirements (sail share > 50%, a decided ★)
 // satisfied simultaneously, on the SAME route/fixture pair, with no
 // live-wind dependency and no per-run variance.
 //
-// BARB VARIATION, judged from the rendered PNG itself, not the fixture's
-// numbers (per #462 review Major 2's own standard): the actual solved
-// route's 20 legs span TWS 6.8-13.4 kn (read off the rendered leg table,
-// not simulated), crossing `barbImageId()`'s 5 kn rounding buckets TWICE —
-// "5" near Flensburg, "10" through the middle majority, "15" over the final
-// ~5 nm/26% near Sønderborg. The 5->10 crossing is directly confirmed
-// VISIBLE AND UNOCCLUDED in the committed plan-route.png: an isolated
-// bucket-5 barb near Flensburg and an isolated bucket-10 barb near Schelde,
-// cropped at 8x zoom, show a visibly longer single tick on the latter (not
-// merely a different rotation — see barbSegments() in
-// app/src/lib/windBarbs.ts: bucket 10 draws a full-length feather, bucket 5
-// a half-length one). HONEST CAVEAT: the bucket-15 stretch, though real in
-// both the wind field and the solved route, sits near the route's
-// Sønderborg end, which in THIS capture's framing falls mostly behind the
-// on-map "Route layer controls" panel (top-right) — so it is not itself
-// confirmed visible in the committed image, only present in the underlying
-// data. This is a genuine, structural fix (no longer one identical glyph
-// varying only by <=17.5° of rotation, which is what #462 review Major 2
-// found), not a claim that all three bucket shapes are visible at once.
+// BARB VARIATION: gen-docs-wind-fixture.mjs's own header now carries the
+// re-measured per-leg TWS span and `barbImageId()` bucket histogram for this
+// retuned constant (still crosses all three 5 kn buckets, though the highest
+// bucket now covers only one leg near Sønderborg, down from a longer stretch
+// pre-retune) — see that file, not this one, for the current numbers, since
+// duplicating them here is exactly the twin-drift #577 itself was about.
+// UNVERIFIED after this retune, and not claimed either way: whether that one
+// highest-bucket leg happens to be visible and unoccluded in the committed
+// plan-route.png framing (the pre-retune version of this file recorded that
+// check for the OLD constant, where it fell mostly behind the on-map "Route
+// layer controls" panel; that specific pixel check was not repeated here).
 //
 // Reproduction: `node app/scripts/gen-docs-wind-fixture.mjs` (this is the
 // ONLY source of the fixture now that it's gitignored — regenerates it with
