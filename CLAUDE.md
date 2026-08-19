@@ -183,6 +183,11 @@ making design-level decisions; do not silently deviate.
   history: inflating the comfort margin SUPPRESSES tier-4 entry (11 rows at
   `DEFAULT_SETTINGS` vs 3 at margin 8.0, a strict subset, measured twice),
   so `relaxation-dense` is the broader tier-4 exerciser.
+  A BASE control's QUALITY is readable from `compare.mjs`'s own A-side outcome
+  distribution — at `0c494f9`: `ok+shallow` 83, `ok` 74, plus 140 typed
+  failures across four causes. CHECK THE DISTRIBUTION before treating 297/297
+  byte-identical as evidence; a baseline dominated by error rows is
+  byte-stable through almost anything.
 - Full test suite: **499.9 s** (~8.3 min) on a quiet machine — measured
   2026-08-19 at `04384c2`, 2032 tests / 143 files. Wall time is set almost
   entirely by ONE file: `routing/realmask.repro.test.ts` alone takes
@@ -337,6 +342,21 @@ making design-level decisions; do not silently deviate.
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
   when removing worktrees. `verify_mask.py` must exit 0: it flood-fill-checks
   every harbor snap and has a documented KNOWN_DISCONNECTED allowlist (#9).
+- **CodeQL runs `security-and-quality` (#534) — and a PR CANNOT validate a suite
+  change.** GitHub's `pull_request` analysis is DIFF-SCOPED (measured from the run
+  logs: `Computing PR diff ranges…`, and `--extension-packs=codeql-action/pr-diff-range`
+  on both matrix legs), so the adopting PR's zero-new-alerts result is guaranteed
+  and carries no information. The full inventory comes only from a `push` to
+  `develop` or the Monday 04:23 UTC schedule. The widening is large: **+114
+  javascript-typescript and +129 python** queries, re-derived by counting
+  `runs[0].tool.extensions[].rules` in the SARIF of the two unscoped `push`
+  analyses straddling the change (`23cb995` default vs `a39b3cf` widened, CodeQL
+  CLI 2.26.3 both sides). Quote the DELTAS, not absolutes — the absolute counts
+  drift on any `codeql-action`/query-pack bump with nothing here to catch it, and
+  `codeql.yml`'s own comment says to re-derive rather than trust them. CodeQL is
+  NOT a required check (`protect-main` = `app`+`e2e`), so alerts accumulate
+  silently — triage the post-merge push run. Dismissal comments are capped at
+  **280 chars**, so a dismissal must point at a linked evidence record (#600).
 - `ci.yml`'s THIRD job `hook-selftests` (advisory, not required) DISCOVERS every
   TOP-LEVEL `*.sh` in `.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`,
   deliberately non-recursive, so a nested script is a conscious addition and
@@ -700,6 +720,16 @@ making design-level decisions; do not silently deviate.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards).
+- **`ci.yml`'s `e2e` job has no `timeout-minutes`**, so it inherits GitHub's
+  6-hour default against a measured 3–4 min runtime. FOUR PRs' `e2e` wedged on
+  `npx playwright install --with-deps chromium` in one session — step-6 durations
+  **32, 54, 65 and 90 min** (jobs 96190476371 / 96137363922 / 96137652820 /
+  96149791212), with Actions reporting "operational" and no runner backlog;
+  successful `e2e` jobs that day ran ~8–9 min. Same rule as #415: a wedge clears by RETRYING, never
+  by waiting — the retry passed in ~8 min. Diagnose by STEP progress, not job
+  status; "in_progress" and "in_progress at step 6 of 8 for 40 min" are different
+  facts. `gh run cancel <id>` then `gh run rerun <id> --failed` re-runs only the
+  hung job, preserving green siblings.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1283,10 +1313,20 @@ making design-level decisions; do not silently deviate.
   on it before the warning path is even reached, so don't go hunting the
   build log for a line that never appears there; it's the one filename that
   is expected to be present and ignored, not an error case. Either way a
-  typo'd filename is invisible in the About dialog's preview, not loudly
+  MISNAMED FILE is invisible in the About dialog's preview, not loudly
   rejected; check the build log or `ls changelog.d/` against the
   filename pattern by eye if a fragment seems to be missing (release runbook
-  §2b makes the same check explicit at the fold step). `app/vite.config.ts`'s
+  §2b makes the same check explicit at the fold step).
+  **That fail-open covers the FILENAME, never the CONTENT** — and content fails
+  the OTHER way, loudly and wrongly rather than invisibly. A fragment whose body
+  opens with `### Fixed` is ACCEPTED, and `normalizeFragmentText` joins every
+  non-empty line with a space, so it ships to the About dialog as
+  `### Fixed - The map's scale bar…` and is what the cut folds in unless a human
+  catches it (§2b's fold is by hand). A leading `- ` IS tolerated and stripped.
+  Measured over the 6 fragments of one train: 2 carried a heading (the real
+  defect, both from ONE PR), 3 a leading `- `, 1 clean — 3 of the 4 PRs that
+  added a fragment deviated from the convention, so it is not discoverable at
+  the point of writing. `app/vite.config.ts`'s
   `changelogFragmentsPlugin` reads `changelog.d/*.md` Node-side via `fs` at
   build time (dev server, every `vite build` including the UAT deploy) and
   exposes them through the `virtual:changelog-fragments` module;
@@ -1938,6 +1978,30 @@ making design-level decisions; do not silently deviate.
   healthy run reads as confirmation otherwise. The #415 deploy-retry bullet
   under PWA/E2E/deploy is the worked instance, including why a SUCCEEDING run
   cannot discriminate the correct guard from the broken one.
+- **A mutation check proves an assertion CAN fail, never that it covers the
+  hazard.** #535's fix reddened exactly its 3 new selftest rows and none of the
+  other 305 — an honest, well-constructed check. It was still a Blocker: it
+  tested whether a `sed` token STARTS with a quote, while the hazard is a write
+  anywhere in a shell-concatenated `argv`, so `sed -n p' w /tmp/OUT' <spec>`
+  stayed a SILENT ALLOW (five more shapes too). Ask BOTH "can this assertion
+  fail?" and "what else in this defect's class does it not see?" — only a
+  SIBLING-SHAPE ENUMERATION answers the second.
+- **A guard with an APERTURE needs something testing the aperture itself.**
+  #524's placeholder-parity guard extracted `/\{([a-zA-Z]+)\}/g` while `t()`'s
+  `vars` accepts a broader `Record`, so tokens outside that aperture were
+  invisible to the guard AND to its self-test — which only fed the extractor
+  shapes it already handled. A self-test written from the same mental model as
+  the guard can never find the gap. The structural fix (shipped) is a THIRD
+  guard cross-checking a deliberately PERMISSIVE scan against the aperture.
+- **A structural argument beats a measurement when one is available.** "Could
+  the depth hatch read as DEEPER and become a false signal?" is answerable only
+  probabilistically by sampling views — but `HATCH_RGBA` is pure black, so
+  compositing can only DECREASE luminance, and the `STOPS` ramp's alpha is
+  monotonically non-increasing with depth (fading transparent over a light
+  basemap), so deeper renders LIGHTER. The cue can therefore only ever move a
+  cell toward the more-cautious end, at every zoom, by construction; the
+  residual failure mode is UNDER-signalling, never false comfort. A measurement
+  bounds a failure RATE; a structural argument eliminates the failure MODE.
 - **Prose rots in FOUR distinct ways, and a sweep aimed at one misses the
   others** (#298/#300, where 8 findings were prose-accuracy defects):
   OVER-CLAIMING (a header saying "EVERY way this can fail" with three paths
@@ -2096,6 +2160,16 @@ making design-level decisions; do not silently deviate.
   repo's own timestamps and would have taught future sessions to distrust the
   control that worked. A claim about the RECORD, stated from memory instead
   of re-read from the record, is the same class as a claim about the code.
+- **A SIXTH way: the ORCHESTRATOR's own out-of-band action.** Unlike SAME-PR and
+  SIBLING-MERGE invalidation, the invalidator here is not a diff at all. An agent
+  wrote a `CONTRIBUTING.md` paragraph that was TRUE when written ("the 8
+  duplicate label objects have deliberately not been deleted yet"); the
+  orchestrator then executed the maintainer-approved deletions ~30 min later. No
+  hunk of the PR's own diff contains the invalidating change, and no sibling PR
+  does either. Caught only because the reviewer re-derived the claim against the
+  CURRENT WORLD STATE rather than against the diff. When the orchestrator mutates
+  real state (labels, milestones, deploys, issue state), re-check any in-flight
+  PR prose that DESCRIBES that state.
 - **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
   PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
   lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
@@ -2798,6 +2872,22 @@ making design-level decisions; do not silently deviate.
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
   fallback.
+- **A file allowlist is an ORCHESTRATION constraint and can silently shape an
+  API.** An inverted ownership assignment forbade a PR the very file the triage
+  plan had allocated to it; to compile under that constraint the implementer
+  gave `formatNm`/`formatKn` a `lang = 'de'` DEFAULT — which shipped a live
+  mixed-language ARIA announcement (English sentence, German number), caught
+  only because one test asserted on the whole announcement string. The premise
+  was false throughout: the branch believed to own the file never touched it.
+  Brief implementers to STOP and report when an allowlist blocks them, never to
+  compromise a signature to route around it; and brief reviewers to ask "is this
+  API shaped by architecture, or by the allowlist?"
+- **A required-parameter migration can become a rubber stamp.** Making `lang`
+  required turned 16 sites into compile errors — but the compiler proves a site
+  EXISTS, never that the value stamped there is CORRECT. 13 were test fixtures
+  given `'de'` to satisfy `tsc`. What made it safe was an explicit falsification:
+  flipping all 13 to `'en'` REDS with `Unable to find element: 77.0 nm`, proving
+  the DOM really contains German. Demand that probe on any such migration.
 - **PIN THE BASE BRANCH in every agent brief**, and require the agent to
   report its merge-base as part of its deliverable — `isolation: worktree`
   reliably comes up on the WRONG branch, not merely sometimes: **10 of 10**
@@ -2855,7 +2945,8 @@ making design-level decisions; do not silently deviate.
   (branch, commit, `git status`, process table), and if that is still
   ambiguous ASK — a question costs one round-trip and cannot be wrong, while
   every external signal is blind to an uncommitted worktree.
-- Monitors, three failure modes all measured 2026-08-07: `pgrep -f <pat>`
+- Monitors, four failure modes (the first three measured 2026-08-07, the fourth
+  2026-08-19): `pgrep -f <pat>`
   SELF-MATCHES a watcher whose own command line contains `<pat>` (so the count
   never reaches zero and the watch times out claiming "still running") — watch
   `/proc/<pid>` instead. Watch the DRIVER, not its first child: a script
@@ -2863,7 +2954,10 @@ making design-level decisions; do not silently deviate.
   announces completion at 1/N — and that fails LOUD and WRONG, worse than the
   silent case. And always emit on FAILURE and on never-started, not only on
   success: #443's `e2e` went red and a success-only filter would have been
-  indistinguishable from still-building.
+  indistinguishable from still-building. FOURTH mode: **`$!` after `setsid` is
+  the WRAPPER pid, not the driver** — it exits immediately, so a
+  `[ -d /proc/$PID ]` liveness check reports DEAD while the driver runs fine.
+  Have the driver print its own `$$` into its log and read the pid back.
 - BRIEFS ARE WRONG SOMETIMES — say so in the brief, and reward the pushback.
   In one session an implementer refused to build the shell parser its brief
   asked for (#235 is the false-POSITIVE direction, unreachable by globs, and
@@ -2943,6 +3037,18 @@ making design-level decisions; do not silently deviate.
   `npm --prefix app run typecheck` and BLOCKS on exit 2 — including on
   PRE-EXISTING errors elsewhere in the tree, which is a confusing way to
   discover someone else's broken branch.
+- **`gh api --jq` does NOT accept `--arg`** (fails `accepts 1 arg(s), received
+  4`). Pipe instead: `gh api URL | jq -r --arg p "$p" '…'`. Caught only by
+  foreground-testing a poll body before arming a Monitor — armed as written it
+  emits nothing forever, which reads as "still running".
+- **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
+  PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
+  while every check names an explicit ref (`origin/develop`,
+  `git show <sha>:<path>`); it bites the instant a bare `grep` reads a
+  working-tree path — and fails in the worst direction, since a missing
+  parameter reads as "the change was lost" when the file is merely old. A stale
+  tree does not error; it answers confidently with the previous truth. Run
+  `git merge --ff-only origin/develop` after merging, or keep naming refs.
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
 - UNDRAFTING a PR is GraphQL-only: `gh api repos/…/pulls/N --method PATCH -f
