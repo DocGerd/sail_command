@@ -364,12 +364,19 @@ export function polarKey(boatId: string, sailId: string): string {
  * #54: one boat's full sail set, in catalogue order — the solve order a
  * `PlanRequest.sailIds` carries (spec E.3).
  *
- * The cast is safe and lives here rather than at each call site so its
- * justification is stated once: every `BoatDef` reaching this function is an
- * entry of the const `BOATS` array above, whose sail ids ARE the `SailId`
- * union by construction. The declared element type is plain `string` because
- * `SailDef` is the general per-boat shape, not narrowed to any one boat's
- * literal ids.
+ * The cast lives here rather than at each call site so its justification is
+ * stated once. `SailDef.id` is declared plain `string` (SailDef is the
+ * general per-boat shape, not narrowed to any one boat's literal ids) while
+ * `SailId` is the catalogue-derived union — so the cast is sound exactly
+ * when the argument is an entry of the const `BOATS` array above, whose sail
+ * ids ARE that union by construction.
+ *
+ * That is a property of the CALL SITES, not of the signature: `BoatDef` is
+ * the general shape, so nothing stops a caller passing a boat from outside
+ * the catalogue (a plan's stored `BoatSnapshot` is the realistic one — spec
+ * I.3 keeps those renderable after a boat is withdrawn). Both call sites
+ * today pass a `boatById(...)` result, which always resolves inside the
+ * catalogue or throws. Feed it anything else and the cast is a lie.
  *
  * A caller holding a SELECTED boat must use this, never `DEFAULT_SAIL_IDS` —
  * see that constant's own comment for the split.
