@@ -63,18 +63,17 @@ export function formatKn(kn: number, lang: Lang): string {
  * flags for distance/duration/speed, and why this PR states rather than
  * resolves it.
  *
- * KNOWN, ACCEPTED RESIDUAL: two decimals MOVES this issue's collision, it
- * does not remove it — a 0.001 nm leg and a 0.004 nm leg both still render
- * "0.00 nm" (the same shape as the original one-decimal collision this
- * function exists to fix, just at 100x finer resolution). Rendering an
- * honest "<0.01 nm" instead was considered and explicitly NOT done: #439's
- * own "What to decide" section already deferred exactly this "0.0 nm vs an
- * honest '<0.1 nm'" call to a future product/UX decision rather than an
- * engineering one, and two decimals doesn't resolve that deferral — it only
- * moves the threshold it applies at. A leg this short is also below what
- * this app's ~46 m mask grid can meaningfully resolve in the first place
- * (see CLAUDE.md's mask-resolution rule), so the practical exposure is
- * narrow. Left for that same future product call.
+ * Residual, accepted: this moves the collision threshold from 0.05 nm to
+ * 0.005 nm rather than removing it — two legs under 0.005 nm still render
+ * identically, as "0.00 nm", which reads as zero distance. No observed leg
+ * is that short; revisit only with a measured case.
+ *
+ * Rendering an honest "<0.01 nm" instead of "0.00 nm" was considered and
+ * explicitly NOT done: #439's own "What to decide" section already
+ * deferred exactly this "0.0 nm vs an honest '<0.1 nm'" call to a future
+ * product/UX decision rather than an engineering one, and two decimals
+ * doesn't resolve that deferral — it only moves the threshold it applies
+ * at. Left for that same future product call.
  */
 export function formatLegNm(nm: number, lang: Lang): string {
   return `${new Intl.NumberFormat(LOCALES[lang], {

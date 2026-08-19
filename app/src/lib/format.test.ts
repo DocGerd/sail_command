@@ -132,6 +132,16 @@ describe('formatLegNm', () => {
     expect(formatLegNm(12.345, 'en')).toBe('12.35 nm');
   });
 
+  // PR #590 review round 2: the case above deliberately does NOT exercise a
+  // real half-way tie-break — 0.125 is the case that does. Unlike 12.345,
+  // 0.125 (1/8) IS exactly representable as an IEEE754 double
+  // (`(0.125).toPrecision(20)` === '0.12500000000000000000'), so this is a
+  // genuine tie between 0.12 and 0.13, and `Intl.NumberFormat`'s default
+  // rounding mode (`halfExpand`) rounds it away from zero, up to 0.13.
+  it('rounds a genuine IEEE754-exact half-way tie up (halfExpand), English locale', () => {
+    expect(formatLegNm(0.125, 'en')).toBe('0.13 nm');
+  });
+
   it('formats with a comma decimal separator in German', () => {
     expect(formatLegNm(0.549, 'de')).toBe('0,55 nm');
   });

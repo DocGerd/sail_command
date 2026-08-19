@@ -211,9 +211,26 @@ export function ShallowWarning({
         {/* #54 spec C.4(a), fixed in #539: renders THE PLAN'S OWN boat's
             draft — see the `draftM` read above for why the plan, not the
             picker, decides. `toFixed(1)` in both languages is unchanged
-            behaviour for this key and deliberately not touched here; the
-            German decimal comma is a separate copy question, live only in
-            about.caveats.depthMask (lib/depthDisclosure.ts). */}
+            behaviour for this key and deliberately not touched here.
+            PR #590 review (MAJOR, round 2): this comment used to claim the
+            German decimal comma was "a separate copy question, live only in
+            about.caveats.depthMask" — #525 made that FALSE. `exposureDist`
+            (used in the sibling __detail paragraph below, via `formatNm`)
+            and the confinement sentence's `{radius}` are now comma-formatted
+            in German, so this SAME role="alert" banner mixes a comma-
+            formatted distance beside these still-point-formatted depth
+            values (draft/requested/used/minGate, all bare `toFixed(1)`) —
+            in one sentence, in German. That inconsistency is a KNOWN,
+            ACCEPTED-FOR-NOW consequence of #525, not fixed here: #525's own
+            scope was formatNm/formatKn call sites, and depthDisclosure.ts's
+            formatDepthM call predates it with an explicit "separate, wider
+            copy decision" scoping note of its own — this PR does not
+            silently resolve that scoping, it just makes the resulting
+            inconsistency visible inside one sentence instead of latent
+            across two components. A follow-up should decide the depth
+            `toFixed(1)` sites deliberately (there are 8 more like them
+            across RouteSummary.tsx/LiveView.tsx/BoatPicker.tsx/
+            DepthProfile.tsx) rather than one-off. */}
         {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
           cautious: cautiousM,
           draft: draftM.toFixed(1),
