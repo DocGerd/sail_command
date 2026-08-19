@@ -347,12 +347,16 @@ making design-level decisions; do not silently deviate.
   logs: `Computing PR diff ranges…`, and `--extension-packs=codeql-action/pr-diff-range`
   on both matrix legs), so the adopting PR's zero-new-alerts result is guaranteed
   and carries no information. The full inventory comes only from a `push` to
-  `develop` or the Monday 04:23 UTC schedule. Measured widening vs the default
-  suite: javascript-typescript 89→203, python 45→174. CodeQL is NOT a required
-  check (`protect-main` = `app`+`e2e`), so alerts accumulate silently — triage the
-  post-merge push run. Dismissal comments are capped at **280 chars**, so a
-  dismissal must point at a linked evidence record (#600), and the link only
-  registers when the alert URL is a TASK-LIST item (`- [ ] <alert-url>`).
+  `develop` or the Monday 04:23 UTC schedule. The widening is large: **+114
+  javascript-typescript and +129 python** queries, re-derived by counting
+  `runs[0].tool.extensions[].rules` in the SARIF of the two unscoped `push`
+  analyses straddling the change (`23cb995` default vs `a39b3cf` widened, CodeQL
+  CLI 2.26.3 both sides). Quote the DELTAS, not absolutes — the absolute counts
+  drift on any `codeql-action`/query-pack bump with nothing here to catch it, and
+  `codeql.yml`'s own comment says to re-derive rather than trust them. CodeQL is
+  NOT a required check (`protect-main` = `app`+`e2e`), so alerts accumulate
+  silently — triage the post-merge push run. Dismissal comments are capped at
+  **280 chars**, so a dismissal must point at a linked evidence record (#600).
 - `ci.yml`'s THIRD job `hook-selftests` (advisory, not required) DISCOVERS every
   TOP-LEVEL `*.sh` in `.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`,
   deliberately non-recursive, so a nested script is a conscious addition and
@@ -717,9 +721,11 @@ making design-level decisions; do not silently deviate.
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards).
 - **`ci.yml`'s `e2e` job has no `timeout-minutes`**, so it inherits GitHub's
-  6-hour default against a measured 3–4 min runtime. Two PRs' `e2e` wedged on
-  `npx playwright install --with-deps chromium` (40 and 25 min, with Actions
-  reporting "operational"). Same rule as #415: a wedge clears by RETRYING, never
+  6-hour default against a measured 3–4 min runtime. FOUR PRs' `e2e` wedged on
+  `npx playwright install --with-deps chromium` in one session — step-6 durations
+  **32, 54, 65 and 90 min** (jobs 96190476371 / 96137363922 / 96137652820 /
+  96149791212), with Actions reporting "operational" and no runner backlog;
+  successful `e2e` jobs that day ran ~8–9 min. Same rule as #415: a wedge clears by RETRYING, never
   by waiting — the retry passed in ~8 min. Diagnose by STEP progress, not job
   status; "in_progress" and "in_progress at step 6 of 8 for 40 min" are different
   facts. `gh run cancel <id>` then `gh run rerun <id> --failed` re-runs only the
@@ -1306,19 +1312,21 @@ making design-level decisions; do not silently deviate.
   SILENTLY — `buildFragments` (`app/src/lib/changelogFragments.ts`) `continue`s
   on it before the warning path is even reached, so don't go hunting the
   build log for a line that never appears there; it's the one filename that
-  is expected to be present and ignored, not an error case.
-  **That fail-open covers the FILENAME, never the CONTENT.** A fragment whose
-  body opens with `### Fixed` is ACCEPTED, and `normalizeFragmentText` joins
-  every non-empty line with a space — so it ships to the About dialog as
-  `### Fixed - The map's scale bar…` and freezes into `CHANGELOG.md` at the cut.
-  A leading `- ` IS tolerated and stripped. Measured across 6 branches in one
-  train: 2 carried a heading (real defect), 3 a leading `- ` (harmless), 1 clean
-  — four of six PRs got it wrong, so the convention is not discoverable at the
-  point of writing. Either way a
-  typo'd filename is invisible in the About dialog's preview, not loudly
+  is expected to be present and ignored, not an error case. Either way a
+  MISNAMED FILE is invisible in the About dialog's preview, not loudly
   rejected; check the build log or `ls changelog.d/` against the
   filename pattern by eye if a fragment seems to be missing (release runbook
-  §2b makes the same check explicit at the fold step). `app/vite.config.ts`'s
+  §2b makes the same check explicit at the fold step).
+  **That fail-open covers the FILENAME, never the CONTENT** — and content fails
+  the OTHER way, loudly and wrongly rather than invisibly. A fragment whose body
+  opens with `### Fixed` is ACCEPTED, and `normalizeFragmentText` joins every
+  non-empty line with a space, so it ships to the About dialog as
+  `### Fixed - The map's scale bar…` and is what the cut folds in unless a human
+  catches it (§2b's fold is by hand). A leading `- ` IS tolerated and stripped.
+  Measured over the 6 fragments of one train: 2 carried a heading (the real
+  defect, both from ONE PR), 3 a leading `- `, 1 clean — 3 of the 4 PRs that
+  added a fragment deviated from the convention, so it is not discoverable at
+  the point of writing. `app/vite.config.ts`'s
   `changelogFragmentsPlugin` reads `changelog.d/*.md` Node-side via `fs` at
   build time (dev server, every `vite build` including the UAT deploy) and
   exposes them through the `virtual:changelog-fragments` module;
@@ -1970,16 +1978,6 @@ making design-level decisions; do not silently deviate.
   healthy run reads as confirmation otherwise. The #415 deploy-retry bullet
   under PWA/E2E/deploy is the worked instance, including why a SUCCEEDING run
   cannot discriminate the correct guard from the broken one.
-- **A THIRD prose-invalidation vector: the ORCHESTRATOR's own action.** Beyond
-  SAME-PR and SIBLING-MERGE invalidation — an agent wrote a `CONTRIBUTING.md`
-  paragraph that was TRUE when written ("the 8 duplicate label objects have
-  deliberately not been deleted yet"); the orchestrator then executed the
-  maintainer-approved deletions ~30 min later. No hunk of the PR's own diff
-  contains the invalidating change, and the invalidator was not another PR at
-  all. Caught only because the reviewer re-derived the claim against the
-  CURRENT WORLD STATE rather than against the diff. When the orchestrator
-  mutates real state (labels, milestones, deploys, issue state), re-check any
-  in-flight PR prose that DESCRIBES that state.
 - **A mutation check proves an assertion CAN fail, never that it covers the
   hazard.** #535's fix reddened exactly its 3 new selftest rows and none of the
   other 305 — an honest, well-constructed check. It was still a Blocker: it
@@ -2162,6 +2160,16 @@ making design-level decisions; do not silently deviate.
   repo's own timestamps and would have taught future sessions to distrust the
   control that worked. A claim about the RECORD, stated from memory instead
   of re-read from the record, is the same class as a claim about the code.
+- **A SIXTH way: the ORCHESTRATOR's own out-of-band action.** Unlike SAME-PR and
+  SIBLING-MERGE invalidation, the invalidator here is not a diff at all. An agent
+  wrote a `CONTRIBUTING.md` paragraph that was TRUE when written ("the 8
+  duplicate label objects have deliberately not been deleted yet"); the
+  orchestrator then executed the maintainer-approved deletions ~30 min later. No
+  hunk of the PR's own diff contains the invalidating change, and no sibling PR
+  does either. Caught only because the reviewer re-derived the claim against the
+  CURRENT WORLD STATE rather than against the diff. When the orchestrator mutates
+  real state (labels, milestones, deploys, issue state), re-check any in-flight
+  PR prose that DESCRIBES that state.
 - **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
   PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
   lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
@@ -2937,7 +2945,8 @@ making design-level decisions; do not silently deviate.
   (branch, commit, `git status`, process table), and if that is still
   ambiguous ASK — a question costs one round-trip and cannot be wrong, while
   every external signal is blind to an uncommitted worktree.
-- Monitors, three failure modes all measured 2026-08-07: `pgrep -f <pat>`
+- Monitors, four failure modes (the first three measured 2026-08-07, the fourth
+  2026-08-19): `pgrep -f <pat>`
   SELF-MATCHES a watcher whose own command line contains `<pat>` (so the count
   never reaches zero and the watch times out claiming "still running") — watch
   `/proc/<pid>` instead. Watch the DRIVER, not its first child: a script
