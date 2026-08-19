@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { de } from '../i18n/dict.de';
@@ -15,6 +15,7 @@ const registerSWMock = vi.hoisted(() => ({
   needRefresh: false,
   updateServiceWorker: vi.fn(),
   setOfflineReady: vi.fn(),
+  setNeedRefresh: vi.fn(),
   // Captures the options object ReloadPrompt passes to useRegisterSW each
   // render, so tests can invoke callbacks (e.g. onRegisterError) directly —
   // there's no real SW registration to trigger them in jsdom.
@@ -26,7 +27,7 @@ vi.mock('virtual:pwa-register/react', () => ({
     registerSWMock.lastOptions = options;
     return {
       offlineReady: [registerSWMock.offlineReady, registerSWMock.setOfflineReady],
-      needRefresh: [registerSWMock.needRefresh, vi.fn()],
+      needRefresh: [registerSWMock.needRefresh, registerSWMock.setNeedRefresh],
       updateServiceWorker: registerSWMock.updateServiceWorker,
     };
   },
@@ -38,6 +39,7 @@ afterEach(() => {
   registerSWMock.needRefresh = false;
   registerSWMock.updateServiceWorker.mockClear();
   registerSWMock.setOfflineReady.mockClear();
+  registerSWMock.setNeedRefresh.mockClear();
   registerSWMock.lastOptions = undefined;
 });
 
@@ -62,6 +64,28 @@ describe('ReloadPrompt', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(de['pwa.updateAvailable']);
     fireEvent.click(screen.getByRole('button', { name: de['pwa.reload'] }));
     expect(registerSWMock.updateServiceWorker).toHaveBeenCalledWith(true);
+  });
+
+  it('#441: the update banner has an independent dismiss control that clears local state without applying the update', () => {
+    registerSWMock.needRefresh = true;
+    render(
+      <I18nProvider>
+        <ReloadPrompt />
+      </I18nProvider>,
+    );
+    const alert = screen.getByRole('alert');
+    // Two distinct controls now share this banner (#441) — the reload
+    // action from the test above, and this dismiss ×. Scoped to the alert
+    // so a name collision with the (currently absent) offline-ready toast's
+    // own dismiss button can never make this pass for the wrong reason.
+    fireEvent.click(within(alert).getByRole('button', { name: de['banner.dismiss'] }));
+    expect(registerSWMock.setNeedRefresh).toHaveBeenCalledWith(false);
+    // SESSION-scoped, not "apply and reload": dismissing must never itself
+    // trigger the update — that's the reload button's job alone. Reusing
+    // the SAME `setNeedRefresh` mock also means this assertion could not
+    // pass by accident if the dismiss button were wired to the reload
+    // button's handler instead of its own.
+    expect(registerSWMock.updateServiceWorker).not.toHaveBeenCalled();
   });
 
   it('shows a dismissible offline-ready toast once precaching completes', () => {
