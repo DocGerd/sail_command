@@ -183,10 +183,21 @@ making design-level decisions; do not silently deviate.
   history: inflating the comfort margin SUPPRESSES tier-4 entry (11 rows at
   `DEFAULT_SETTINGS` vs 3 at margin 8.0, a strict subset, measured twice),
   so `relaxation-dense` is the broader tier-4 exerciser.
-- Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
-  a ~40 s real-mask solver acceptance file). Use focused filters while
-  iterating (`npm --prefix app run test -- <filter>`); give the full run a
-  generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
+- Full test suite: **499.9 s** (~8.3 min) on a quiet machine — measured
+  2026-08-19 at `04384c2`, 2032 tests / 143 files. Wall time is set almost
+  entirely by ONE file: `routing/realmask.repro.test.ts` alone takes
+  **477.4 s** (17 cases against the real committed mask/polars), with the
+  seeded fast-check property suite second at **239.6 s**; everything else
+  runs concurrently underneath them, which is why the total barely exceeds
+  the slowest file. The former "~4 min (a ~200 s property suite + a ~40 s
+  real-mask file)" was stale by ~2x on the total and by more than 10x on
+  real-mask — and it DISAGREED with `vite.config.ts`'s own "~680 s
+  combined" comment on `SLOW_TEST_FILES_FIRST`, which was the closer of the
+  two; when two artifacts state one fact, re-measure rather than pick.
+  Note that list's order is now inverted against its own "slowest first"
+  intent (property suite is listed before real-mask, which is ~2x slower).
+  Use focused filters while iterating (`npm --prefix app run test --
+  <filter>`); give the full run a generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
   (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
   per-test override, keyed OR positional, e.g. the property test's 900 s)
   from `app/src/test/timeouts.ts` (#342) rather than hardcoding a literal —
