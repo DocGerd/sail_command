@@ -213,15 +213,20 @@ describe('#54 structural guard: no bare sail-id literal outside the allowlist be
     expect(findOffenders([])).toContain('src/data/boats.ts');
   });
 
-  it('matches exactly the known offenders — no fewer (Task 9 drift), no more (a new regression)', () => {
+  it('matches exactly the known offenders — Task 9 is done, so this is now a pure regression guard', () => {
     const offenders = findOffenders();
+    // #552: KNOWN_OFFENDERS is already [] (Task 9 fully centralised all nine
+    // original call sites, per the header comment above) — the OLD message's
+    // parenthetical describing "once it reaches [] and Task 9 replaces it
+    // with a real Record<SailId, …> pattern" as a FUTURE trigger was
+    // describing a state already reached. There is no "fewer than []" left
+    // to drift toward; this row's only live job now is catching a NEW bare
+    // sail-id literal (a regression back above zero).
     expect(
       offenders,
       `#54 guard: offender list was [${offenders.join(', ')}], expected the pinned snapshot ` +
-        `[${KNOWN_OFFENDERS.join(', ')}]. If a NEW file appeared, route its sail-id literal ` +
-        'through the BOATS catalogue instead of adding it here. If this shrank because Task 9 ' +
-        'centralised a call site, update KNOWN_OFFENDERS deliberately to match (and delete this ' +
-        'guard once it reaches [] and Task 9 replaces it with a real Record<SailId, …> pattern).',
+        `[${KNOWN_OFFENDERS.join(', ')}]. Route the new sail-id literal through the BOATS ` +
+        'catalogue instead of adding it here.',
     ).toEqual(KNOWN_OFFENDERS);
   });
 });

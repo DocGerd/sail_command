@@ -3,15 +3,16 @@ import { useT } from '../i18n';
 
 // Reuses Banner's .banner-* CSS classes for visual consistency with the
 // rest of banner-area, but isn't <Banner> itself: the needRefresh state
-// needs a real, labeled "Reload" action (not Banner's dismiss-only ×
-// slot), and offlineReady is a one-shot toast that self-dismisses once
-// and never reappears (workbox only flips offlineReady true once, on the
-// precache install that follows this page's own SW registration).
+// needs a real, labeled "Reload" action ALONGSIDE Banner's dismiss ×
+// slot (not instead of it, #441 — see the dismiss button below), and
+// offlineReady is a one-shot toast that self-dismisses once and never
+// reappears (workbox only flips offlineReady true once, on the precache
+// install that follows this page's own SW registration).
 export default function ReloadPrompt() {
   const t = useT();
   const {
     offlineReady: [offlineReady, setOfflineReady],
-    needRefresh: [needRefresh],
+    needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_swScriptUrl, registration) {
@@ -38,8 +39,33 @@ export default function ReloadPrompt() {
     return (
       <div role="alert" className="banner banner-info reload-prompt">
         <span className="banner-message">{t('pwa.updateAvailable')}</span>
-        <button type="button" className="reload-prompt-action" onClick={() => void updateServiceWorker(true)}>
+        <button
+          type="button"
+          className="reload-prompt-action"
+          onClick={() => void updateServiceWorker(true)}
+        >
           {t('pwa.reload')}
+        </button>
+        {/* #441: SESSION-scoped dismiss only — `setNeedRefresh(false)` clears
+            the local React state, not the underlying SW "waiting" registration,
+            so the update is still there and `updateServiceWorker` (above)
+            still applies it. The banner reappears on the NEXT SW update event:
+            vite-plugin-pwa's `useRegisterSW` re-fires `onNeedRefresh` (which
+            sets this same state back to true) from workbox-window's own
+            `waiting` listener, which re-triggers whenever a NEW service
+            worker enters the waiting state — i.e. a genuinely newer deploy,
+            not a re-check of the one just dismissed (source:
+            vite-plugin-pwa's react client, `wb.addEventListener('waiting',
+            showSkipWaitingPrompt)`). A user who dismisses today's update is
+            therefore never silently stuck on a stale build forever — only
+            ever silent about ONE deploy, for the rest of THIS session. */}
+        <button
+          type="button"
+          className="banner-dismiss"
+          aria-label={t('banner.dismiss')}
+          onClick={() => setNeedRefresh(false)}
+        >
+          ×
         </button>
       </div>
     );

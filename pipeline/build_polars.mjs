@@ -424,8 +424,11 @@ const pending = [];
 //
 // `seenBoatIds` guards IDENTITY. A boat id is not just a filename component:
 // boats.ts keys the catalogue by it and polarKey() keys PlanDeps.polars by it.
-// Two boats sharing one id built cleanly and shipped the second boat's speed
-// table and provenance note under the first boat's name.
+// Two boats sharing one id built cleanly and shipped: `table.boat` (below)
+// reads whichever boat's own loop iteration wrote LAST to the shared
+// `${id}-${sailId}.json` path — the SECOND (later-declared) boat's own name
+// and provenance note, NOT the first's — because a later write simply
+// overwrites an earlier one at the same output path. #552.
 //
 // `seenFiles` guards the OUTPUT, and is needed because `-` is BOTH the
 // separator and a legal id character — so the id is not the unique thing, the

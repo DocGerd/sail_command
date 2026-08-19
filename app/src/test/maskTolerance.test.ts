@@ -263,14 +263,26 @@ describe('#455: pipeline/build_mask.py TOLERANCE_M / disclosure cross-artifact g
 // independence is the point — R6 is what catches an arithmetic
 // generalisation that is self-consistent but wrong. What it pins is the
 // DERIVATION: that lib/boatDepth.ts computes a gate from a boat's own draft
-// rather than from a module constant. At a one-boat catalogue only R4's
-// proof of that is non-tautological — it uses a synthetic 2.3 m boat built
-// in the test and deliberately not a member of BOATS. R2 and R7b are weaker
-// today, and they strengthen by DIFFERENT means: R2 iterates BOATS, so it
-// gains teeth as soon as a second, differently-drafted boat exists; R7b
-// never iterates BOATS at all, and strengthens only when OptionsPanel.tsx's
-// hardcoded min is replaced by the derived call — as R7b's own comment
-// says. It deliberately CANNOT observe whether
+// rather than from a module constant. At the ORIGINAL one-boat catalogue
+// only R4's synthetic-boat assertion (a 2.3 m boat built in the test and
+// deliberately not a member of BOATS) was non-tautological — a hardcoded
+// module constant would have coincided with the one catalogue boat's draft
+// and passed a BOATS-only loop undetected. #552: R2 iterates BOATS, so it
+// ALREADY has teeth against a draft-dependent derivation error, now that the
+// catalogue holds a 1.9 m boat (elan-444-piranja) beside the 2.1 m pair
+// (measured: a derivation correct at 2.1 m and wrong at 1.9 m reds R2). It
+// stays blind to a wrong `draftM` VALUE under a correct id — that is what R6
+// is for. R7b is a DIFFERENT case, not merely "weaker" — #552:
+// OptionsPanel.tsx's `min` field was ALREADY replaced by the derived
+// `minSafetyDepthM(boatById(DEFAULT_BOAT_ID))` call (commit fad6670,
+// 2026-08-14), so R7b's assertion now compares that exact expression
+// against itself and is VACUOUS: it cannot fail on a wrong draftM (measured
+// — mutating salona-45's draftM to 2.4 m leaves R7b green). It reds only
+// once a re-hardcoded literal has gone STALE against the derived value —
+// e.g. after DEFAULT_BOAT_ID changes or the default boat's draftM moves.
+// Re-hardcoding `min` at today's correct 2.2 is NOT caught (measured:
+// `min: 2.2` leaves this file 19/19 green; `min: 2.3` reds R7b). It
+// deliberately CANNOT observe whether
 // planRoute()'s #53 relaxation search actually calls those helpers per boat;
 // that wiring is a different artifact and is pinned separately by Task 10's
 // own mutation check. Keeping the two claims apart is the point: a guard
@@ -286,12 +298,14 @@ describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', 
   //   ADD an extra entry, the expected ones intact -> only R1 reds.
   //   RENAME the Salona 45's id                    -> R1 reds, and R4/R6/R7b THROW
   //                                                   via boatById('salona-45').
-  //   WRONG draftM under an unchanged id           -> R1 stays GREEN; R6 and R7b
-  //                                                   catch it via their own literals.
+  //   WRONG draftM under an unchanged id           -> R1 stays GREEN; R6 catches it
+  //                                                   via its own literals. R7b does
+  //                                                   NOT (#552: now vacuous — see the
+  //                                                   header above and R7b's own comment).
   //   BOATS = []                                   -> R1 reds, and R4/R6/R7b throw.
   // So R1 is the only row that sees an EXTRA entry, and it is blind to a wrong VALUE
-  // under a correct id — which is what R6 and R7b are for. An empty or renamed
-  // catalogue fails loudly rather than silently.
+  // under a correct id — which is what R6 is for (R7b no longer is). An empty or
+  // renamed catalogue fails loudly rather than silently.
   //
   // Discriminating experiment, recorded so it is run rather than assumed.
   // RE-MEASURED 2026-08-18 on the three-boat catalogue:
@@ -395,10 +409,17 @@ describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', 
   });
 
   it('R7b: the field minimum is the derived per-boat minimum', () => {
-    // Beyond the brief (Task 3 controller addition): passes today because both
-    // sides read 2.2 m, and becomes the keeper once a later task replaces
-    // OptionsPanel.tsx's hardcoded `min: 2.2` with this derived call — min is
-    // a bare number, so nothing else in this suite would catch a wrong value.
+    // #552: OptionsPanel.tsx's `min` field is now DEFINED as
+    // `minSafetyDepthM(boatById(DEFAULT_BOAT_ID))` (commit fad6670,
+    // 2026-08-14) — this assertion recomputes the identical expression on
+    // both sides, so it is VACUOUS today: it cannot fail on a wrong draftM
+    // (measured — mutating salona-45's draftM to 2.4 m leaves this row
+    // green). It reds only once a re-hardcoded literal has gone STALE
+    // against the derived value — e.g. after DEFAULT_BOAT_ID changes or the
+    // default boat's draftM moves. Re-hardcoding `min` at today's correct
+    // 2.2 is NOT caught (measured: `min: 2.2` leaves this file 19/19 green;
+    // `min: 2.3` reds this row) — min is a bare number, so nothing else in
+    // this suite would catch that particular staleness either.
     expect(SAFETY_DEPTH_FIELD.min).toBe(minSafetyDepthM(boatById(DEFAULT_BOAT_ID)));
   });
 
