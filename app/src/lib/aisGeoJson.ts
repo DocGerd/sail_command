@@ -1,5 +1,5 @@
 import { PROJECTION_VECTOR_MINUTES, projectionLine } from './projectionVector';
-import { formatHeading, formatKn } from './format';
+import { formatHeading, formatKn, type Lang } from './format';
 import type { AisTargetSnapshot } from './aisTargets';
 import type { MsgKey } from '../i18n/dict.de';
 
@@ -71,6 +71,7 @@ export interface AisPopupProps {
 export function aisPopupRows(
   props: AisPopupProps,
   nowMs: number,
+  lang: Lang,
 ): { labelKey: MsgKey; value: string }[] {
   const rows: { labelKey: MsgKey; value: string }[] = [
     { labelKey: 'ais.popup.name', value: props.name.length > 0 ? props.name : props.mmsi },
@@ -78,7 +79,8 @@ export function aisPopupRows(
   ];
   if (props.shipType !== null)
     rows.push({ labelKey: 'ais.popup.shipType', value: String(props.shipType) });
-  if (props.sog !== null) rows.push({ labelKey: 'ais.popup.sog', value: formatKn(props.sog) });
+  if (props.sog !== null)
+    rows.push({ labelKey: 'ais.popup.sog', value: formatKn(props.sog, lang) });
   if (props.cog !== null) rows.push({ labelKey: 'ais.popup.cog', value: formatHeading(props.cog) });
   // floor, not round: a 30 s-old signal is "0 min" ago (matches the pinned
   // test literals '2 min' @120 s and '0 min' @30 s).

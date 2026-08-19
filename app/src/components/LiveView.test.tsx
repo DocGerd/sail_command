@@ -242,7 +242,7 @@ describe('LiveView', () => {
     expect(screen.getByText(formatHeading(91.4))).toBeInTheDocument(); // COG
     expect(screen.getByText('6.3 kn')).toBeInTheDocument(); // SOG
     expect(
-      screen.getByText(new RegExp(formatNm(nextEvent.distNm).replace('.', '\\.'))),
+      screen.getByText(new RegExp(formatNm(nextEvent.distNm, 'en').replace('.', '\\.'))),
     ).toBeInTheDocument();
     expect(screen.getByText(/tack/i)).toBeInTheDocument();
     expect(screen.getByText(/projected eta/i)).toBeInTheDocument();

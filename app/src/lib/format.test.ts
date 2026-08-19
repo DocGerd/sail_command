@@ -38,6 +38,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatNm,
   formatKn,
+  formatLegNm,
   formatHeading,
   formatTime,
   formatDateTime,
@@ -49,26 +50,104 @@ import {
 } from './format';
 
 describe('formatNm', () => {
-  it('formats with one decimal and unit suffix', () => {
-    expect(formatNm(12.34)).toBe('12.3 nm');
+  it('formats with one decimal and unit suffix, English locale', () => {
+    expect(formatNm(12.34, 'en')).toBe('12.3 nm');
   });
 
-  it('rounds to one decimal', () => {
-    expect(formatNm(0.05)).toBe('0.1 nm');
+  it('rounds to one decimal, English locale', () => {
+    expect(formatNm(0.05, 'en')).toBe('0.1 nm');
   });
 
-  it('formats zero', () => {
-    expect(formatNm(0)).toBe('0.0 nm');
+  it('formats zero, English locale', () => {
+    expect(formatNm(0, 'en')).toBe('0.0 nm');
+  });
+
+  // #525: German uses a decimal COMMA, not the point English/toFixed(1) emit.
+  it('formats with a comma decimal separator in German', () => {
+    expect(formatNm(12.34, 'de')).toBe('12,3 nm');
+  });
+
+  it('rounds to one decimal in German, comma separator', () => {
+    expect(formatNm(0.05, 'de')).toBe('0,1 nm');
+  });
+
+  it('formats zero in German, comma separator', () => {
+    expect(formatNm(0, 'de')).toBe('0,0 nm');
+  });
+
+  // `Intl.NumberFormat` groups by THOUSANDS by default (`useGrouping` is not
+  // set here, so it defaults to `'auto'`) — a German value >= 1000 renders a
+  // THOUSANDS-separator point alongside the decimal COMMA (e.g.
+  // "1.234,5 nm"), the exact inverse of English's thousands-comma /
+  // decimal-point pairing. Unreachable in-region today (SailCommand's whole
+  // Flensburg Fjord / Danish South Sea planning area is well under 1000 nm
+  // end to end), so no plan distance can trigger it — but a future region
+  // change could, silently, without this pin. Verified via
+  // `Intl.NumberFormat('de-DE', {...}).format(1234.5)`.
+  it('groups by thousands for a value >= 1000 (unreachable in-region today, pinned for a future region change)', () => {
+    expect(formatNm(1234.5, 'en')).toBe('1,234.5 nm');
+    expect(formatNm(1234.5, 'de')).toBe('1.234,5 nm');
   });
 });
 
 describe('formatKn', () => {
-  it('formats with one decimal and unit suffix', () => {
-    expect(formatKn(6.5)).toBe('6.5 kn');
+  it('formats with one decimal and unit suffix, English locale', () => {
+    expect(formatKn(6.5, 'en')).toBe('6.5 kn');
   });
 
-  it('rounds to one decimal', () => {
-    expect(formatKn(6.449)).toBe('6.4 kn');
+  it('rounds to one decimal, English locale', () => {
+    expect(formatKn(6.449, 'en')).toBe('6.4 kn');
+  });
+
+  it('formats with a comma decimal separator in German', () => {
+    expect(formatKn(6.5, 'de')).toBe('6,5 kn');
+  });
+
+  it('rounds to one decimal in German, comma separator', () => {
+    expect(formatKn(6.449, 'de')).toBe('6,4 kn');
+  });
+});
+
+describe('formatLegNm', () => {
+  // #439: the motivating case — two DISTINCT legs that round to the SAME
+  // one-decimal formatNm output must render DIFFERENTLY at two decimals.
+  it('distinguishes two legs that formatNm collapses to the same string', () => {
+    expect(formatNm(0.5, 'en')).toBe('0.5 nm');
+    expect(formatNm(0.549, 'en')).toBe('0.5 nm'); // same as above under formatNm
+    expect(formatLegNm(0.5, 'en')).toBe('0.50 nm');
+    expect(formatLegNm(0.549, 'en')).toBe('0.55 nm'); // now distinct
+  });
+
+  it('formats zero at two decimals, English locale', () => {
+    expect(formatLegNm(0, 'en')).toBe('0.00 nm');
+  });
+
+  it('rounds to two decimals, English locale', () => {
+    // NOT a round-half tie-break: 12.345 is not exactly representable as an
+    // IEEE754 double, and the nearest representable value is
+    // 12.345000000000000639... — strictly ABOVE 12.345 — so this rounds up
+    // to 12.35 as an ordinary (non-tied) round, without exercising any
+    // half-way rounding rule at all. Verified via
+    // `(12.345).toPrecision(20)`.
+    expect(formatLegNm(12.345, 'en')).toBe('12.35 nm');
+  });
+
+  // PR #590 review round 2: the case above deliberately does NOT exercise a
+  // real half-way tie-break — 0.125 is the case that does. Unlike 12.345,
+  // 0.125 (1/8) IS exactly representable as an IEEE754 double
+  // (`(0.125).toPrecision(20)` === '0.12500000000000000000'), so this is a
+  // genuine tie between 0.12 and 0.13, and `Intl.NumberFormat`'s default
+  // rounding mode (`halfExpand`) rounds it away from zero, up to 0.13.
+  it('rounds a genuine IEEE754-exact half-way tie up (halfExpand), English locale', () => {
+    expect(formatLegNm(0.125, 'en')).toBe('0.13 nm');
+  });
+
+  it('formats with a comma decimal separator in German', () => {
+    expect(formatLegNm(0.549, 'de')).toBe('0,55 nm');
+  });
+
+  it('formats zero at two decimals in German, comma separator', () => {
+    expect(formatLegNm(0, 'de')).toBe('0,00 nm');
   });
 });
 

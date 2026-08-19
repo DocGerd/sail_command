@@ -942,7 +942,7 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
     // than a synchronous getByRole.
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(planB.name) }));
-    await waitFor(() => expect(screen.getByText(formatNm(77))).toBeInTheDocument()); // Plan B now active
+    await waitFor(() => expect(screen.getByText(formatNm(77, 'de'))).toBeInTheDocument()); // Plan B now active
 
     // Now let Plan A's replan resolve, with a result distinguishable from
     // both Plan A's original (10 nm) and Plan B's (77 nm) totals.
@@ -954,8 +954,8 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
-    expect(screen.getByText(formatNm(77))).toBeInTheDocument();
-    expect(screen.queryByText(formatNm(55))).not.toBeInTheDocument();
+    expect(screen.getByText(formatNm(77, 'de'))).toBeInTheDocument();
+    expect(screen.queryByText(formatNm(55, 'de'))).not.toBeInTheDocument();
   });
 });
 
@@ -995,7 +995,7 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
     // Load the saved plan so a plan is active (its 88.0 nm total is on screen).
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(activePlan.name) }));
-    await waitFor(() => expect(screen.getByText(formatNm(88))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(88, 'de'))).toBeInTheDocument());
 
     // Import a GPX (rte with one via) whose endpoints are inside the data-area
     // but DISTINCT from the active plan's — so the assertions prove the IMPORTED
@@ -1037,7 +1037,7 @@ describe('GPX import while a plan is active (#3 self-review: prefill-only)', () 
     ).toBeInTheDocument();
 
     // The active plan was CLEARED (prefill-only) — its 88.0 nm summary is gone.
-    expect(screen.queryByText(formatNm(88))).not.toBeInTheDocument();
+    expect(screen.queryByText(formatNm(88, 'de'))).not.toBeInTheDocument();
 
     // Deterministic teeth: no replan was dispatched. Under the pre-fix code,
     // handleImportRoute -> handleViaPointsChange(vias) with an active plan would
@@ -1230,7 +1230,7 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     await screen.findByRole('heading', { name: 'SailCommand' });
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(preseeded.name) }));
-    await waitFor(() => expect(screen.getByText(formatNm(66))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(66, 'de'))).toBeInTheDocument());
 
     // Reordering re-submits the same two-via list unchanged (content-wise)
     // to a fresh replan, which is enough to re-trigger the dedupe drop —
@@ -1851,7 +1851,7 @@ describe('plan-form sync (#301)', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
-    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
     const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
@@ -1875,7 +1875,7 @@ describe('plan-form sync (#301)', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
-    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
     const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
@@ -1895,7 +1895,7 @@ describe('plan-form sync (#301)', () => {
     simulateMapClick(VIA_A.lat, VIA_A.lon);
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(70));
-    await waitFor(() => expect(screen.getByText(formatNm(70))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(70, 'de'))).toBeInTheDocument());
 
     // #301: the sync effect is keyed on plan.id, never on the plan OBJECT —
     // a via-replan must not re-fire it, or it would silently discard the
@@ -1913,7 +1913,7 @@ describe('plan-form sync (#301)', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
-    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
     const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
@@ -1963,7 +1963,7 @@ describe('plan-form sync (#301)', () => {
     // Step 1: load plan A — the sync fires, advancing syncedPlanIdRef to A's id.
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
-    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
     await waitFor(() =>
@@ -2009,7 +2009,7 @@ describe('plan-form sync (#301)', () => {
     // origin instead of plan A's real request.
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
-    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
     const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
@@ -2094,7 +2094,7 @@ describe('plan-form sync (#301)', () => {
     // The plan restores (its 99.0 nm Ergebnis total appears) while
     // harbors.json is still pending — the sync effect must NOT yet have
     // written a harbor-labeled origin (harborsLoaded is still false).
-    await waitFor(() => expect(screen.getByText(formatNm(99))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
     const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
     expect(within(originSection).queryByText('Flensburg')).not.toBeInTheDocument();
 

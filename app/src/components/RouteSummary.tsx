@@ -1,6 +1,13 @@
 import { useMemo, type Ref } from 'react';
 import { useT, useLang } from '../i18n';
-import { formatHeading, formatKn, formatLegDuration, formatNm, formatTime } from '../lib/format';
+import {
+  formatHeading,
+  formatKn,
+  formatLegDuration,
+  formatLegNm,
+  formatNm,
+  formatTime,
+} from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
@@ -113,8 +120,8 @@ export function ShallowWarning({
     if (!mask || !legs || legs.length === 0) return null;
     const nm = shallowExposureNm(legs, mask, shallow.requestedDepthM);
     if (nm === null || nm <= 0) return null;
-    return formatNm(roundExposureNm(nm));
-  }, [legs, mask, shallow.requestedDepthM]);
+    return formatNm(roundExposureNm(nm), lang);
+  }, [legs, mask, shallow.requestedDepthM, lang]);
   // #516 increment 2 (requires #518): whether the exposure just measured
   // above is entirely inside #452's relaxation discs. Waypoints/allowances
   // per shallowConfinedWithinM's own contract: the SNAPPED origin/destination
@@ -204,9 +211,26 @@ export function ShallowWarning({
         {/* #54 spec C.4(a), fixed in #539: renders THE PLAN'S OWN boat's
             draft — see the `draftM` read above for why the plan, not the
             picker, decides. `toFixed(1)` in both languages is unchanged
-            behaviour for this key and deliberately not touched here; the
-            German decimal comma is a separate copy question, live only in
-            about.caveats.depthMask (lib/depthDisclosure.ts). */}
+            behaviour for this key and deliberately not touched here.
+            PR #590 review (MAJOR, round 2): this comment used to claim the
+            German decimal comma was "a separate copy question, live only in
+            about.caveats.depthMask" — #525 made that FALSE. `exposureDist`
+            (used in the sibling __detail paragraph below, via `formatNm`)
+            and the confinement sentence's `{radius}` are now comma-formatted
+            in German, so this SAME role="alert" banner mixes a comma-
+            formatted distance beside these still-point-formatted depth
+            values (draft/requested/used/minGate, all bare `toFixed(1)`) —
+            in one sentence, in German. That inconsistency is a KNOWN,
+            ACCEPTED-FOR-NOW consequence of #525, not fixed here: #525's own
+            scope was formatNm/formatKn call sites, and depthDisclosure.ts's
+            formatDepthM call predates it with an explicit "separate, wider
+            copy decision" scoping note of its own — this PR does not
+            silently resolve that scoping, it just makes the resulting
+            inconsistency visible inside one sentence instead of latent
+            across two components. A follow-up should decide the depth
+            `toFixed(1)` sites deliberately (there are 8 more like them
+            across RouteSummary.tsx/LiveView.tsx/BoatPicker.tsx/
+            DepthProfile.tsx) rather than one-off. */}
         {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
           cautious: cautiousM,
           draft: draftM.toFixed(1),
@@ -228,7 +252,7 @@ export function ShallowWarning({
             existing mechanism/locator sentences below, whose own referents
             are untouched. */}
         {showConfined && (
-          <>{t('route.shallow.confined', { radius: formatNm(APPROACH_RADIUS_M / 1852) })} </>
+          <>{t('route.shallow.confined', { radius: formatNm(APPROACH_RADIUS_M / 1852, lang) })} </>
         )}
         {t('route.shallow.detail', {
           requested: shallow.requestedDepthM.toFixed(1),
@@ -475,7 +499,7 @@ export default function RouteSummary({
                   aria-hidden="true"
                 />
                 <span className="tabular-nums">
-                  {t('route.split.sail')} · {formatNm(summary.sailNm)} · {summary.sailPct}%
+                  {t('route.split.sail')} · {formatNm(summary.sailNm, lang)} · {summary.sailPct}%
                 </span>
               </span>
               <span className="ergebnis-split-item">
@@ -484,7 +508,7 @@ export default function RouteSummary({
                   aria-hidden="true"
                 />
                 <span className="tabular-nums">
-                  {t('route.split.motor')} · {formatNm(summary.motorNm)} · {summary.motorPct}%
+                  {t('route.split.motor')} · {formatNm(summary.motorNm, lang)} · {summary.motorPct}%
                 </span>
               </span>
             </div>
@@ -537,9 +561,17 @@ export default function RouteSummary({
                     </td>
                     <td>{formatHeading(leg.headingDeg)}</td>
                     <td>{leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}</td>
-                    <td>{formatKn(leg.twsKn)}</td>
-                    <td>{formatKn(leg.speedKn)}</td>
-                    <td>{formatNm(leg.distanceNm)}</td>
+                    <td>{formatKn(leg.twsKn, lang)}</td>
+                    {/* #439: NOT formatLegNm — speed keeps formatKn's one-
+                        decimal precision unchanged. Raising distance alone
+                        (below) to two decimals reopens the algebraic-
+                        mismatch readability concern this file's own comment
+                        on the table header warns about (distance/duration/
+                        speed are dependent by construction); flagged in the
+                        PR body rather than silently resolved by also
+                        touching speed's precision here. */}
+                    <td>{formatKn(leg.speedKn, lang)}</td>
+                    <td>{formatLegNm(leg.distanceNm, lang)}</td>
                     <td>
                       {leg.maneuverAtStart && (
                         <span className="chip chip-maneuver">
