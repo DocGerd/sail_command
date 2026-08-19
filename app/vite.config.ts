@@ -338,10 +338,15 @@ function appVersion(command: 'build' | 'serve'): string {
 // even though other workers are free the entire time (measured:
 // https://github.com/DocGerd/sail_command/issues/214).
 // realmask.repro.test.ts is a DIFFERENT case, not a second instance of the
-// same problem: at 42,532 B it is the 7th LARGEST of the 144 files (the
-// largest is App.test.tsx at 103,333 B), so BaseSequencer's own
+// same problem: at 42,532 B it is the 7th LARGEST of the 144 files
+// (App.test.tsx is the largest), so BaseSequencer's own
 // size-descending default would already start it near the front — not the
-// back — with no help from this array. It is pinned here anyway because
+// back — with no help from this array. Deliberately no byte count for
+// App.test.tsx here: an exact size for a file this array does NOT name is a
+// self-staling fact, and it duly went stale within one merge train — measured
+// at 103,333 B while writing this comment, 117,326 B once a sibling PR in the
+// same train grew it. The RANK is what the argument needs; the size is not.
+// It is pinned here anyway because
 // "near the front" still means SIX files sort ahead of it by size alone,
 // each occupying a worker slot before realmask's own 477.4s (the suite's
 // single longest run) gets to start; pinning it to array position 1
