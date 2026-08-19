@@ -71,6 +71,22 @@ const mapTestHooks = vi.hoisted(() => ({
   // added sources). Lets tests observe the language-relabel rebuild wiring,
   // which previously no-opped because getSource returned undefined.
   sourceSetData: {} as Record<string, unknown>,
+  // #571 redesign review (BLOCKER 1 / MAJOR 3): every ViaMarkers marker ever
+  // constructed by FakeMarker below, in construction order, never spliced
+  // out on remove() (only flagged `removed`) — so a rebuild is visible as a
+  // NEW entry, not a mutation of an old one, exactly mirroring how a real
+  // MapLibre rebuild replaces marker instances. `dragTo(lat, lon)` simulates
+  // a drag gesture: sets the position imperatively (as MapLibre would during
+  // the gesture) and fires the registered 'dragend' handler, same as a real
+  // marker.
+  viaMarkers: [] as {
+    lat: number;
+    lon: number;
+    draggable: boolean;
+    removed: boolean;
+    dragendHandler: (() => void) | null;
+    dragTo: (lat: number, lon: number) => void;
+  }[],
 }));
 
 // Fake plan()-call queue for the RoutingClient mock below, shared the same
@@ -250,20 +266,47 @@ vi.mock('maplibre-gl', () => {
     }
     addImage() {}
   }
+  // #571 redesign review (BLOCKER 1 / MAJOR 3): instrumented so ViaMarkers'
+  // real construct/drag/remove sequence is observable via
+  // mapTestHooks.viaMarkers — every Marker() instance (BoatMarker's own
+  // included, though it never sets `draggable`) is recorded, never spliced
+  // out on remove(), so a rebuild reads as a new array entry rather than a
+  // mutated old one.
   class FakeMarker {
-    setLngLat() {
+    private record: (typeof mapTestHooks.viaMarkers)[number];
+    constructor(opts: { draggable?: boolean } = {}) {
+      const record: (typeof mapTestHooks.viaMarkers)[number] = {
+        lat: 0,
+        lon: 0,
+        draggable: Boolean(opts.draggable),
+        removed: false,
+        dragendHandler: null,
+        dragTo: (lat: number, lon: number) => {
+          record.lat = lat;
+          record.lon = lon;
+          record.dragendHandler?.();
+        },
+      };
+      this.record = record;
+      mapTestHooks.viaMarkers.push(record);
+    }
+    setLngLat(ll: [number, number]) {
+      this.record.lon = ll[0];
+      this.record.lat = ll[1];
       return this;
     }
     setRotation() {
       return this;
     }
     getLngLat() {
-      return { lat: 0, lng: 0 };
+      return { lat: this.record.lat, lng: this.record.lon };
     }
-    setDraggable() {
+    setDraggable(v: boolean) {
+      this.record.draggable = v;
       return this;
     }
-    on() {
+    on(event: string, handler: () => void) {
+      if (event === 'dragend') this.record.dragendHandler = handler;
       return this;
     }
     off() {
@@ -272,7 +315,9 @@ vi.mock('maplibre-gl', () => {
     addTo() {
       return this;
     }
-    remove() {}
+    remove() {
+      this.record.removed = true;
+    }
   }
   class FakeAttributionControl {}
   class FakeLngLatBounds {
@@ -882,17 +927,231 @@ describe('App', () => {
   });
 });
 
-// Phase E gate fix wave: fixes 1 (stale via-replan clobber guard) and 6
-// (canPlan false while a replan is in flight) both hinge on the same
-// scenario — a via-replan left pending while the user does something else —
-// so they're covered together here rather than in two separate, mostly-
-// duplicate setups. Drives a real plan through usePlanFlow.run()/
-// state/replan.ts's useViaReplan with the routing worker and Open-Meteo
-// fetch faked (see the vi.mock calls and helpers up top) so the actual
-// resolution-order race can be reproduced, not just asserted about in the
-// abstract.
-describe('via-replan clobber guard (Phase E gate fix)', () => {
-  it('a via-replan that resolves after the user loaded a different plan does not clobber it, and the Plan button is disabled while the replan is in flight', async () => {
+// #571 redesign (maintainer ruling: a via edit "is kind of a new route and
+// hence should only calculate once clicked on calculate" — no auto-replan on
+// add/remove/reorder). Replaces the pre-redesign "via-replan clobber guard
+// (Phase E gate fix)" describe block, which drove the OLD auto-replan-on-
+// edit behavior end to end — that behavior no longer exists (a via edit
+// never dispatches a routing call at all), so its exact scenario (a pending
+// replan racing a plan switch) is moot. The first test below is this
+// redesign's own core regression test (brief requirement: assert the
+// routing client was NOT called); the second preserves the ORIGINAL test's
+// spirit — editing vias on one plan must not corrupt a later-loaded
+// different plan — under the new trigger (draftViaPoints resetting on
+// plan.id change), which is what now provides that guarantee.
+describe('via edits are draft-only and never auto-replan (#571 redesign)', () => {
+  it('adding then removing a via point dispatches NO routing call — only the Plan-route button does', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    pickOriginAndDestination();
+    const planButton = screen.getByRole('button', { name: de['planner.plan'] });
+    fireEvent.click(planButton);
+
+    // The initial run() — the only routing call this test expects, ever.
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() => expect(planButton).toBeEnabled()); // back to idle — the plan is now active
+    const callsAfterInitialPlan = routingMock.calls.length;
+
+    // Add a via — it appears in the panel list immediately (plain draft
+    // state), with no worker call.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+    expect(routingMock.calls.length).toBe(callsAfterInitialPlan);
+
+    // Remove it again — likewise no worker call.
+    fireEvent.click(
+      within(viaSection).getByRole('button', {
+        name: de['planner.via.remove'].replace('{index}', '1'),
+      }),
+    );
+    expect(within(viaSection).queryAllByRole('listitem')).toHaveLength(0);
+
+    // Give any (buggy) dispatch every chance to land before asserting it
+    // didn't — the actual behaviour change #571 exists for.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(routingMock.calls.length).toBe(callsAfterInitialPlan);
+  });
+
+  // App.tsx's `viaDraftStale` — the MAP-side counterpart of the panel's own
+  // Chip/live-region fold (both driven by `formDirty`, which now includes
+  // the via list too). ViaMarkers.tsx's own header notes it is otherwise
+  // jsdom-untestable (no real MapLibre/WebGL runtime) — but the CHIP itself
+  // is a plain React return value, not an imperative Marker, so it renders
+  // through the shared fake map exactly like any other component here and
+  // is directly assertable. Queried by class rather than role="status",
+  // since the panel's own persistent live region also carries that role.
+  it('the map-side staleness chip (ViaMarkers) appears once a via edit diverges from the committed plan, and disappears once it matches again', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // No pending edit yet — the map-side chip is absent.
+    expect(document.querySelector('.via-markers-spinner-chip')).toBeNull();
+
+    // Add a via — draftViaPoints now diverges from plan.request.viaPoints.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+
+    const chip = document.querySelector('.via-markers-spinner-chip');
+    expect(chip).not.toBeNull();
+    expect(chip).toHaveTextContent(de['planner.result.stale']);
+
+    // Review fix (Minor): the chip must NOT duplicate PlannerPanel's own
+    // sr-only live-region announcement of the same sentence — measured in a
+    // real browser BEFORE this fix, both `role="status"` elements fired at
+    // once. Assert by ROLE, not just by class: a second `role="status"`
+    // element carrying the same text is exactly what caused the duplicate
+    // announcement.
+    expect(chip).not.toHaveAttribute('role', 'status');
+    const staleStatusRegions = screen
+      .getAllByRole('status')
+      .filter((el) => el.textContent?.includes(de['planner.result.stale']));
+    expect(staleStatusRegions).toHaveLength(1);
+
+    // Remove it again — the draft matches the committed list once more, so
+    // the chip goes away.
+    fireEvent.click(
+      within(viaSection).getByRole('button', {
+        name: de['planner.via.remove'].replace('{index}', '1'),
+      }),
+    );
+    expect(document.querySelector('.via-markers-spinner-chip')).toBeNull();
+  });
+
+  // Review follow-up (Minor 2, four-combination check): the single-
+  // announcement guarantee above must ALSO hold when a via edit combines
+  // with a SEPARATE dirty input (departure) — formDirty goes true for two
+  // independent reasons at once, but the panel still owns exactly one
+  // role="status" announcement of the stale copy; the map chip stays a
+  // silent visual disclosure regardless of what else is dirty. The other
+  // two combinations (via CLEAN, other dirty/clean) never reach the chip at
+  // all — it renders only when viaDraftStale is true — so they carry no
+  // duplication risk by construction and are covered by the plan-run/
+  // settings-dirty banner tests elsewhere in this file.
+  it('a via edit combined with a separately-dirty input still surfaces exactly one stale announcement', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // Dirty the departure first — a non-via reason formDirty goes true.
+    const departureInput = screen.getByLabelText(
+      de['planner.departure.label'],
+    ) as HTMLInputElement;
+    const editedMs = Date.now() + 5 * 3_600_000;
+    fireEvent.change(departureInput, { target: { value: toLocalInputValue(editedMs) } });
+    expect(departureInput.value).toBe(toLocalInputValue(editedMs));
+
+    // Now ALSO add a via — draftViaPoints diverges too, so both terms of
+    // formDirty are true simultaneously.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+
+    const chip = document.querySelector('.via-markers-spinner-chip');
+    expect(chip).not.toBeNull();
+    expect(chip).not.toHaveAttribute('role', 'status');
+    const staleStatusRegions = screen
+      .getAllByRole('status')
+      .filter((el) => el.textContent?.includes(de['planner.result.stale']));
+    expect(staleStatusRegions).toHaveLength(1);
+  });
+
+  // BLOCKER 1 / MAJOR 3 (review): map markers must track the DRAFT via list,
+  // not the committed one — an add/remove must show/hide a marker
+  // immediately, and dragging the SAME marker a SECOND time must still
+  // apply (the reference-equality `indexOf` lookup the old wiring used
+  // silently discarded every drag after the first, since the dragged
+  // element had already been replaced by a new object). Uses
+  // mapTestHooks.viaMarkers (FakeMarker, above) to observe the real
+  // construct/drag/remove sequence RouteLayer -> ViaMarkers drives.
+  it('map markers track the draft: an add/remove shows/hides a marker, and a SECOND drag of the same marker still applies', async () => {
+    const plan: Plan = {
+      id: 'plan-with-via',
+      name: 'Flensburg -> Marstal',
+      createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [VIA_A],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now() + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
+      result: okPlanResult(50),
+    };
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(50, 'de'))).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+
+    const alive = () => mapTestHooks.viaMarkers.filter((m) => m.draggable && !m.removed);
+
+    // The plan's own committed via already shows one marker.
+    await waitFor(() => expect(alive()).toHaveLength(1));
+
+    // Add a second via — a draft-only edit — and the marker count follows
+    // immediately, with NO Plan-route press.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(54.83, 9.95);
+    await waitFor(() => expect(alive()).toHaveLength(2));
+
+    // Remove the ORIGINAL via — the marker count follows back down.
+    fireEvent.click(
+      within(viaSection).getByRole('button', {
+        name: de['planner.via.remove'].replace('{index}', '1'),
+      }),
+    );
+    await waitFor(() => expect(alive()).toHaveLength(1));
+
+    // Drag the ONE remaining marker twice in a row.
+    await act(async () => {
+      alive()[0].dragTo(54.9, 10.0);
+    });
+    let viaSectionRow = within(viaSection).getAllByRole('listitem')[0];
+    expect(viaSectionRow).toHaveTextContent(formatLatLon({ lat: 54.9, lon: 10.0 }));
+
+    await act(async () => {
+      alive()[0].dragTo(54.95, 10.05);
+    });
+    viaSectionRow = within(viaSection).getAllByRole('listitem')[0];
+    // The row this test exists to pin: under the pre-fix reference-equality
+    // lookup, this second drag was silently discarded and the panel stayed
+    // at the FIRST dragged position.
+    expect(viaSectionRow).toHaveTextContent(formatLatLon({ lat: 54.95, lon: 10.05 }));
+  });
+
+  it('switching to a different plan while a via edit is pending discards the pending edit — the newly active plan shows its OWN committed via list', async () => {
     const planB: Plan = {
       id: 'plan-b-preseeded',
       name: 'Preseeded Plan B',
@@ -919,43 +1178,66 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
 
     pickOriginAndDestination();
     const planButton = screen.getByRole('button', { name: de['planner.plan'] });
-    expect(planButton).toBeEnabled();
     fireEvent.click(planButton);
-
-    // Plan A's initial run().
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
-    await waitFor(() => expect(planButton).toBeEnabled()); // back to 'idle' — Plan A is now active
+    await waitFor(() => expect(planButton).toBeEnabled());
 
-    // Start a via-replan on Plan A and leave it unresolved.
+    // Add a via to the now-active plan — a pending, UNAPPLIED draft edit
+    // (never persisted, never routed — see draftViaPoints's own comment).
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
     fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
     simulateMapClick(VIA_A.lat, VIA_A.lon);
-    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+    expect(routingMock.calls.length).toBe(1); // still just the initial run()
 
-    // Fix 6: canPlan is false while that replan is in flight.
-    expect(planButton).toBeDisabled();
-
-    // The user switches to a *different*, already-saved plan while the
-    // replan above is still pending. PlansList populates asynchronously
-    // (its own mount effect awaits listPlans()), hence findByRole rather
-    // than a synchronous getByRole.
+    // Switch to Plan B (its own committed via list is empty). PlansList
+    // populates asynchronously (its own mount effect awaits listPlans()),
+    // hence findByRole rather than a synchronous getByRole.
     fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(planB.name) }));
     await waitFor(() => expect(screen.getByText(formatNm(77, 'de'))).toBeInTheDocument()); // Plan B now active
 
-    // Now let Plan A's replan resolve, with a result distinguishable from
-    // both Plan A's original (10 nm) and Plan B's (77 nm) totals.
-    routingMock.calls[1].resolve(okPlanResult(55));
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    const viaSectionB = screen.getByRole('region', { name: de['planner.via.label'] });
+    // The pending via added to the FIRST plan is gone — Plan B shows its
+    // own (empty) committed via list, never the abandoned draft.
+    await waitFor(() => expect(within(viaSectionB).queryAllByRole('listitem')).toHaveLength(0));
+  });
 
-    // Give the (guarded-out) update every chance to land before asserting
-    // it didn't: without the fix, this resolution would call setPlan and
-    // RouteSummary would flip to showing 55.0 nm.
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-    expect(screen.getByText(formatNm(77, 'de'))).toBeInTheDocument();
-    expect(screen.queryByText(formatNm(55, 'de'))).not.toBeInTheDocument();
+  // MAJOR 4 (review): every via edit on an EXISTING plan now reaches run()
+  // (there is no more replan-side disclosure to lean on — see
+  // droppedViaCount's own comment above handlePlan), so a too-close waypoint
+  // dropped there must still surface a banner, exactly like it did on the
+  // pre-#571 replan path. Without the App.tsx pre-check this reds: run()'s
+  // own internal dedupe silently drops the via with zero banner.
+  it('a too-close waypoint dropped by the Plan-route press surfaces a banner (MAJOR 4)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // Add a via ~15 m from ORIGIN_A — inside the 60 m dedupe threshold.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(ORIGIN_A.lat + 0.0001, ORIGIN_A.lon + 0.0001);
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+
+    // Press Plan route — run() will dedupe this via away internally.
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    expect(await screen.findByText(de['banner.viaTooClose'])).toBeInTheDocument();
+
+    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+    routingMock.calls[1].resolve(okPlanResult(10));
+
+    fireEvent.click(screen.getByRole('button', { name: de['banner.dismiss'] }));
+    expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
   });
 });
 
@@ -1154,51 +1436,23 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     ).toBeInTheDocument();
   });
 
-  it('a viaReplan error banner renders through the real App tree', async () => {
-    renderApp();
-    await screen.findByRole('heading', { name: 'SailCommand' });
-    pickOriginAndDestination();
-    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
-    await waitFor(() => expect(routingMock.calls.length).toBe(1));
-    routingMock.calls[0].resolve(okPlanResult(10));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
-    );
-
-    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
-    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
-    simulateMapClick(VIA_A.lat, VIA_A.lon);
-    await waitFor(() => expect(routingMock.calls.length).toBe(2));
-    routingMock.calls[1].resolve({ status: 'error', reason: 'unreachable' });
-
-    expect(await screen.findByText(de['error.noRoute.unreachable'])).toBeInTheDocument();
-  });
-
-  it('a droppedCount === 1 banner (singular copy) renders through the real App tree, and is dismissible', async () => {
-    renderApp();
-    await screen.findByRole('heading', { name: 'SailCommand' });
-    pickOriginAndDestination();
-    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
-    await waitFor(() => expect(routingMock.calls.length).toBe(1));
-    routingMock.calls[0].resolve(okPlanResult(10));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
-    );
-
-    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
-    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
-    // ~15 m from ORIGIN_A — within the 60 m dedupe threshold, so
-    // replanWithVias's own dedupe drops it (droppedCount === 1).
-    simulateMapClick(ORIGIN_A.lat + 0.0001, ORIGIN_A.lon + 0.0001);
-    await waitFor(() => expect(routingMock.calls.length).toBe(2));
-    routingMock.calls[1].resolve(okPlanResult(10));
-
-    expect(await screen.findByText(de['banner.viaTooClose'])).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: de['banner.dismiss'] }));
-    expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
-  });
-
-  it('droppedCount > 1 shows the pluralized "waypoints…skipped" copy, not the singular one', async () => {
+  // #571 redesign REMOVED two tests that used to live here ('a viaReplan
+  // error banner renders...', 'a droppedCount === 1 banner...'): both drove
+  // the OLD auto-replan-on-via-edit path (`viaReplan.state.error`/
+  // `droppedCount`), which no longer exists — a via edit never dispatches a
+  // routing call, so neither banner can fire from an edit any more. The
+  // no-route-banner case is redundant with the plain plan-run-error tests
+  // elsewhere in this file (states & motion, below); the singular
+  // droppedCount===1 case is superseded by the MAJOR 4 test above (via
+  // edits are draft-only...), which covers it through the new mechanism.
+  // The THIRD old test ('droppedCount > 1 shows the pluralized...') is kept
+  // — PORTED to the new mechanism just below, not dropped, since nothing
+  // else in this file exercises the plural banner copy. See 'via edits are
+  // draft-only and never auto-replan (#571 redesign)' above for this
+  // redesign's own regression coverage, and state/replan.test.ts for
+  // replanWithVias'/useViaReplan's own still-valid unit coverage (kept,
+  // UI-orphaned — see that file's and state/replan.ts's own comments).
+  it('TWO too-close waypoints dropped by the Plan-route press surface the pluralized banner copy (MAJOR 4)', async () => {
     // Both within ~15-30 m of ORIGIN_A — dedupeViaPoints measures each
     // against the last *kept* waypoint starting at origin; since the first
     // is dropped, `previous` stays origin for the second too, so both drop
@@ -1232,21 +1486,22 @@ describe('banner surfacing (PR self-review fix wave)', () => {
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(preseeded.name) }));
     await waitFor(() => expect(screen.getByText(formatNm(66, 'de'))).toBeInTheDocument());
 
-    // Reordering re-submits the same two-via list unchanged (content-wise)
-    // to a fresh replan, which is enough to re-trigger the dedupe drop —
-    // no need to add a third via through tap-to-pick.
+    // #571 redesign: loading the plan seeds the DRAFT with its own two
+    // too-close committed vias (no reorder needed to "re-trigger" a replan
+    // the way the pre-redesign test did — every Plan-route press reaches
+    // run()'s dedupe now, not just an edit-triggered one).
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
-    fireEvent.click(
-      screen.getByRole('button', { name: de['planner.via.moveDown'].replace('{index}', '1') }),
-    );
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    await waitFor(() => expect(within(viaSection).getAllByRole('listitem')).toHaveLength(2));
 
-    await waitFor(() => expect(routingMock.calls.length).toBe(1));
-    routingMock.calls[0].resolve(okPlanResult(66));
-
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
     expect(
       await screen.findByText(de['banner.viaTooClose.plural'].replace('{count}', '2')),
     ).toBeInTheDocument();
     expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
+
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(66));
   });
 
   it('offline and settings-persistence-error banners stack simultaneously, without one hiding the other', async () => {
@@ -1866,7 +2121,16 @@ describe('plan-form sync (#301)', () => {
     expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs));
   });
 
-  it('a via-replan (same plan id, new object) does not clobber a departure the user edited after loading', async () => {
+  // #571 redesign: this used to trigger a via-replan (same plan id, new
+  // plan object) to prove the plan-id-keyed sync effect doesn't re-fire and
+  // clobber a manually-edited departure. That trigger no longer exists — a
+  // via edit never calls setPlan any more, so there is no same-id-new-object
+  // event to race in the first place (this test's own new assertion,
+  // `routingMock.calls.length` staying at 0, is the direct proof of that).
+  // Kept as a regression pin under the new mechanism: a future change that
+  // wires via edits back through setPlan must not silently reintroduce the
+  // clobber.
+  it('adding a via point (a draft-only edit) does not clobber a departure the user edited after loading', async () => {
     const plan = prefillPlan('prefill-via-clobber', { originHarborId: null });
     await db.savePlan(plan);
 
@@ -1888,20 +2152,13 @@ describe('plan-form sync (#301)', () => {
     fireEvent.change(departureInput, { target: { value: toLocalInputValue(editedMs) } });
     expect(departureInput.value).toBe(toLocalInputValue(editedMs));
 
-    // Trigger a via-replan on THIS plan — replanWithVias (state/replan.ts)
-    // preserves the id but produces a NEW plan object.
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
     fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
     simulateMapClick(VIA_A.lat, VIA_A.lon);
-    await waitFor(() => expect(routingMock.calls.length).toBe(1));
-    routingMock.calls[0].resolve(okPlanResult(70));
-    await waitFor(() => expect(screen.getByText(formatNm(70, 'de'))).toBeInTheDocument());
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
 
-    // #301: the sync effect is keyed on plan.id, never on the plan OBJECT —
-    // a via-replan must not re-fire it, or it would silently discard the
-    // user's edit (the exact clobber planIdRef's own guard, just above the
-    // sync effect in App.tsx, documents for a different field).
     expect(departureInput.value).toBe(toLocalInputValue(editedMs));
+    expect(routingMock.calls.length).toBe(0);
   });
 
   it('GPX import (setPlan(null) + a fresh draft) is not clobbered by the plan-form sync effect', async () => {
@@ -2203,7 +2460,28 @@ describe('#572: a new plan is solved with the SELECTED boat', () => {
     expect(request.sailIds).toEqual(sailIdsOf(elan));
   });
 
-  it('spec I.3: switching boats does NOT re-boat an existing plan — a replan keeps the boat it was planned for', async () => {
+  // #571 redesign RETIRED the "does NOT re-boat an existing plan" half of
+  // this test that used to live here: it drove a via-add to trigger
+  // replanWithVias (state/replan.ts), the ONE in-place-replan path that
+  // deliberately preserves the ORIGINAL plan's boat rather than following
+  // the picker — spec I.3's over-fix guard. App.tsx no longer calls
+  // replanWithVias at all (a via edit only ever writes to `draftViaPoints`),
+  // so that specific wiring assurance is now unreachable from the UI.
+  // replanWithVias's own boat-preservation guarantee remains directly,
+  // mutation-checked in state/replan.test.ts ("replans with the saved
+  // plan's OWN boat snapshot, not the catalogue default") — still fully
+  // valid, just UI-orphaned (see that file's and state/replan.ts's own
+  // comments on why it was kept rather than deleted). state/reroute.ts's
+  // rerouteFromFix (Live reroute) is a SEPARATE, still-live in-place-replan
+  // path with the identical boat-preservation contract, unaffected by and
+  // out of scope for this redesign.
+  //
+  // What replaces it below is the property that's actually NEW and load-
+  // bearing under the redesign: a pending via edit does NOT pin the plan to
+  // whatever boat was selected when the edit was made — pressing Plan route
+  // always solves against the picker's CURRENT selection, exactly like any
+  // other draft form field (origin/destination/departure/settings).
+  it('a pending via edit does not pin a genuinely new plan to a stale boat — the Plan-route press always uses the CURRENT picker selection', async () => {
     renderApp();
     await screen.findByRole('heading', { name: 'SailCommand' });
 
@@ -2217,39 +2495,26 @@ describe('#572: a new plan is solved with the SELECTED boat', () => {
     routingMock.calls[0].resolve(okPlanResult(10));
     await waitFor(() => expect(planButton).toBeEnabled());
 
-    // The user now picks a DIFFERENT boat, then re-plans the existing plan by
-    // adding a waypoint. Spec I.3: the boat is a property of the plan, so the
-    // replan must still be solved against the Elan. This is the row that reds
-    // if a future change "helpfully" makes replanWithVias follow the picker —
-    // the over-fix direction of #572, which the unit-level pins in
-    // recalc.test.ts / replan.test.ts / reroute.test.ts cannot see because
-    // none of them involves the picker at all.
-    selectBoat(/Salona 45/);
-    const viaSection = screen.getByRole('region', {
-      name: de['planner.via.label'],
-    });
+    // Add a via WHILE the Elan is still selected — a pending draft edit,
+    // never dispatched to the router (see 'via edits are draft-only and
+    // never auto-replan (#571 redesign)' above).
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
     fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
     simulateMapClick(VIA_A.lat, VIA_A.lon);
-    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+    expect(routingMock.calls.length).toBe(1);
 
-    expect(routingMock.calls[1].request.boat.id).toBe('elan-444-piranja');
-    expect(routingMock.calls[1].request.boat.draftM).toBe(1.9);
+    // NOW switch boats, with that via edit still pending/unapplied.
+    selectBoat(/Salona 45/);
 
-    // ...while a genuinely NEW plan started after the switch does follow the
-    // picker. Both halves in one test on purpose: "the replan kept the old
-    // boat" is only meaningful beside evidence that the selection was really
-    // live, otherwise a picker that had silently stopped working would pass
-    // the assertion above.
-    routingMock.calls[1].resolve(okPlanResult(12));
-    // Re-query rather than reusing `planButton`: the two selectBoat() tab
-    // switches above unmount and remount PlannerPanel, so the node captured
-    // before them is detached and fireEvent.click on it silently does
-    // nothing (measured — the run stalled at 2 calls, not 3).
+    // Pressing Plan route builds a genuinely new plan (the via edit's own
+    // effect applies here too) against the boat selected NOW, not the Elan
+    // that was active when the via was added.
     await waitFor(() =>
       expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
     );
     fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
-    await waitFor(() => expect(routingMock.calls.length).toBe(3));
-    expect(routingMock.calls[2].request.boat.id).toBe('salona-45');
+    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+    expect(routingMock.calls[1].request.boat.id).toBe('salona-45');
+    expect(routingMock.calls[1].request.viaPoints).toEqual([VIA_A]);
   });
 });

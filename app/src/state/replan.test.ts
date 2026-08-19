@@ -386,7 +386,6 @@ describe('replanWithVias', () => {
     expect(dispose, 'a timed-out replan must dispose its client').toHaveBeenCalledTimes(1);
   });
 
-
   // #553 MAJOR 5: the ONE rejection kind that must NOT tear the worker down.
   // `'boat-not-in-catalogue'` is raised by a client-side catalogue lookup
   // BEFORE plan() posts anything, so the worker never saw the request and is
@@ -469,6 +468,18 @@ describe('replanWithVias', () => {
   });
 });
 
+// #571 redesign: App.tsx no longer calls useViaReplan/replanWithVias at all —
+// a via edit now only ever touches App.tsx's own `draftViaPoints` (plain,
+// synchronous form state), never a replan, per the maintainer's ruling that
+// removing a waypoint "should only calculate once clicked on calculate".
+// Kept here, fully tested, as still-valid reuse-the-stored-wind-grid replan
+// infrastructure (see replanWithVias's own docstring) should a future
+// feature want it back; `ReplanClient`/`ReplanDeps` also remain load-bearing
+// as the type reroute.ts's rerouteFromFix reuses. Not deleted outright: the
+// only reachable UI wiring for it lived in App.tsx (now removed), and
+// removing the exports themselves would leave dangling comment references
+// in state/usePlanFlow.ts and state/reroute.ts that sit outside this
+// redesign's file allowlist.
 describe('useViaReplan', () => {
   beforeEach(async () => {
     await __resetDbForTests();

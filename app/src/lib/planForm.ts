@@ -84,6 +84,28 @@ export interface PlanFormSnapshot {
   destination: PickedPoint;
   departureMs: number;
   settings: Settings;
+  // #571 redesign: the DRAFT via list (App.tsx's `draftViaPoints`) — a via
+  // edit no longer replans in place (the maintainer's #571 ruling: removing
+  // a waypoint "should only calculate once clicked on calculate"), so the
+  // via list can now genuinely diverge from `plan.request.viaPoints` between
+  // edits and the next Plan-route press, same as origin/destination/
+  // departure/settings already could.
+  viaPoints: LatLon[];
+}
+
+/**
+ * True when two via-point lists differ in length or in any point's lat/lon —
+ * ORDER-SENSITIVE (reordering IS a real edit), never an epsilon comparison
+ * (same rationale as planFormDirty's coordinate checks below: the values
+ * being compared are either byte-identical carries or genuinely new points,
+ * never "close enough"). Shared by planFormDirty's own viaPoints term below
+ * and by App.tsx's on-map staleness disclosure (ViaMarkers' repurposed
+ * `replanning` prop, fed a boolean computed with this same function) — one
+ * comparison, two presentation sites.
+ */
+export function viaPointsDiffer(a: LatLon[], b: LatLon[]): boolean {
+  if (a.length !== b.length) return true;
+  return a.some((p, i) => p.lat !== b[i].lat || p.lon !== b[i].lon);
 }
 
 // #301: the eight ROUTING-RELEVANT Settings fields — each has a real call
@@ -147,12 +169,17 @@ export function routingSettingsDirty(plan: Plan, formSettings: Settings): boolea
 }
 
 /**
- * True when the form (current origin/destination/departure/settings) has
- * drifted from the plan actually displayed — i.e. a re-run right now would
- * produce a DIFFERENT route than the one on screen. Vias are deliberately
- * NOT compared: once a plan exists, the via list IS plan.request.viaPoints
- * (App.tsx), and every via edit immediately replans in place — they cannot
- * structurally diverge.
+ * True when the form (current origin/destination/departure/via list/
+ * settings) has drifted from the plan actually displayed — i.e. a re-run
+ * right now would produce a DIFFERENT route than the one on screen.
+ *
+ * #571 redesign: vias ARE now compared (`viaPointsDiffer`, above) — they no
+ * longer immediately replan in place, so they can diverge exactly like
+ * origin/destination/departure/settings already could. This is what makes
+ * the existing stale-route disclosure (the Chip + live-region fold in
+ * PlannerPanel.tsx, and the map-corner chip ViaMarkers.tsx renders) cover a
+ * via edit for free, with no new UI surface: `formDirty` already drives all
+ * of them.
  *
  * Coordinates compare with exact `===` on lat/lon, not an epsilon: the sync
  * effect writes the plan's own numbers back verbatim, and re-picking the
@@ -199,6 +226,8 @@ export function planFormDirty(
   const formDestinationHarborId =
     form.destination.source === 'harbor' ? form.destination.harborId : null;
   if (harborsAvailable && formDestinationHarborId !== req.destinationHarborId) return true;
+
+  if (viaPointsDiffer(form.viaPoints, req.viaPoints)) return true;
 
   return routingSettingsDirty(plan, form.settings);
 }
