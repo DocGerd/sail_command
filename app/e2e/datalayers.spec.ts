@@ -105,3 +105,79 @@ test('depth toggle is available pre-plan, defaults ON (#63), flips the rendered 
     server.kill();
   }
 });
+
+// #492: the sparse hazard-hatch overlay (depthColor.ts's
+// buildNavigabilityHatchImageData, DataLayers.tsx's DEPTH_HATCH_LAYER) has
+// no real DOM handle either — same rationale as the depth-toggle test above,
+// a pixel-readback via whole-canvas byte comparison against the technique
+// #492's own issue report used. Two real coordinates (a "near-gate" cell and
+// a "comfortably-clear" one) aren't picked here — that would need decoding
+// the real committed mask independently in this spec (a duplicated-algorithm
+// hazard CLAUDE.md warns against). Instead the GATE itself is varied at ONE
+// fixed viewport: 2.2 m (the Salona 45's own minSafetyDepthM — most of the
+// visible fjord reads comfortably clear at the CONSERVATIVE basis too) vs
+// 10 m (SAFETY_DEPTH_FIELD.max — deep enough that most of this shallow
+// coastal fjord reads marginal at that same basis). Because
+// depthByteToRgba/buildDepthImageData never depend on safetyDepthM
+// (depthColor.ts's HARD DOMAIN RULE, structurally pinned in
+// depthColor.test.ts), any frame difference between the two gates is
+// attributable to the hatch layer alone, never the absolute ramp
+// repainting under it.
+test('navigability hatch (#492) reacts to safetyDepthM only while the depth overlay is visible', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(server.url);
+
+    const depthToggle = page.getByRole('checkbox', { name: 'Wassertiefen' });
+    await expect(depthToggle).toBeVisible();
+    await expect(depthToggle).toBeChecked(); // default ON (#63)
+
+    const canvas = page.locator('canvas.maplibregl-canvas');
+    await expect(canvas).toBeVisible();
+    await mapReady(page);
+
+    const safetyDepth = page.getByLabel('Sicherheitstiefe (m)');
+    await expect(safetyDepth).toBeVisible();
+
+    // Settle at the boat's own minimum gate first.
+    await safetyDepth.fill('2.2');
+    await safetyDepth.blur();
+    const lowGate = await settledCanvas(page, canvas);
+
+    // POSITIVE (appears): raise the gate to the UI's own maximum. expect.poll
+    // against a KNOWN baseline (not settledCanvas's own "two-frames-agree"
+    // check) — a debounced rebuild (DataLayers.tsx's
+    // DEPTH_HATCH_DEBOUNCE_MS) can plateau at a PRE-rebuild frame for one
+    // settledCanvas poll cycle, which a stability check alone could mistake
+    // for "settled"; polling against the pre-edit baseline instead cannot
+    // false-positive early, since it requires an ACTUAL difference to appear.
+    await safetyDepth.fill('10');
+    await safetyDepth.blur();
+    await expect
+      .poll(async () => (await canvas.screenshot()).equals(lowGate), {
+        message: 'raising safetyDepthM to the UI max must change the hatch overlay',
+        timeout: 30_000,
+      })
+      .toBe(false);
+
+    // ABSENT (discriminating control): with the depth overlay HIDDEN, the
+    // identical gate swing must draw NOTHING — proving the positive result
+    // above is specifically the hatch reacting, not some unrelated redraw
+    // (tile loading, label placement) merely correlated with editing the
+    // field. No expect.poll early-stabilization risk here: with nothing
+    // expected to change at all, settledCanvas's "two consecutive frames
+    // agree" reading is exactly the right signal in the negative case, since
+    // there is no real in-flight change to race against.
+    await depthToggle.uncheck();
+    await expect(depthToggle).not.toBeChecked();
+    const hiddenBaseline = await settledCanvas(page, canvas);
+    await safetyDepth.fill('2.2');
+    await safetyDepth.blur();
+    const hiddenAfterChange = await settledCanvas(page, canvas);
+    expect(hiddenAfterChange.equals(hiddenBaseline)).toBe(true);
+  } finally {
+    server.kill();
+  }
+});

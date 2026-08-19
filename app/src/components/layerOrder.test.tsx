@@ -1,8 +1,11 @@
+import 'fake-indexeddb/auto';
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AisLayer from './AisLayer';
 import DataLayers from './DataLayers';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
+import { AppStateProvider } from '../state/AppState';
+import { __resetDbForTests } from '../services/db';
 
 // #160: cross-component layer ORDER against the shared fake map's insertion-
 // order model. AisLayer's documented invariant — route stack above the AIS
@@ -105,7 +108,22 @@ async function settleDataLayers(map: ReturnType<typeof makeFakeMap>) {
   });
 }
 
-beforeEach(() => {
+// #492: DataLayers now calls useSettings() directly (see that hook's own
+// #492 comment in DataLayers.tsx for why), so every render of it below is
+// wrapped in AppStateProvider — same fix as DataLayers.test.tsx's own
+// renderDataLayers() helper, applied here because this file ALSO renders
+// DataLayers directly (a cross-file consequence of that architecture
+// choice: it broke this file too, not only DataLayers.test.tsx).
+function renderDataLayers() {
+  return render(
+    <AppStateProvider>
+      <DataLayers onHarborPick={() => {}} />
+    </AppStateProvider>,
+  );
+}
+
+beforeEach(async () => {
+  await __resetDbForTests();
   localStorage.clear();
 });
 
@@ -113,7 +131,7 @@ describe('AIS/overlay layer order across setup timings (#160)', () => {
   it('assets resolve BEFORE AisLayer mounts: overlays sit below the AIS stack', async () => {
     const map = makeFakeMap();
     hoisted.map = map;
-    render(<DataLayers onHarborPick={() => {}} />);
+    renderDataLayers();
     await settleDataLayers(map);
     render(<AisLayer targets={[]} />);
     expect(map.layerOrder).toEqual(OVERLAYS_BELOW_AIS);
@@ -123,7 +141,7 @@ describe('AIS/overlay layer order across setup timings (#160)', () => {
     const map = makeFakeMap();
     hoisted.map = map;
     render(<AisLayer targets={[]} />);
-    render(<DataLayers onHarborPick={() => {}} />);
+    renderDataLayers();
     await settleDataLayers(map);
     expect(map.layerOrder).toEqual(OVERLAYS_BELOW_AIS);
   });
@@ -132,7 +150,7 @@ describe('AIS/overlay layer order across setup timings (#160)', () => {
     const map = makeFakeMap();
     map.addLayer({ id: ROUTE_BOTTOM, type: 'line' });
     hoisted.map = map;
-    render(<DataLayers onHarborPick={() => {}} />);
+    renderDataLayers();
     await settleDataLayers(map);
     render(<AisLayer targets={[]} />);
     expect(map.layerOrder).toEqual([...OVERLAYS_BELOW_AIS, ROUTE_BOTTOM]);
@@ -143,7 +161,7 @@ describe('AIS/overlay layer order across setup timings (#160)', () => {
     map.addLayer({ id: ROUTE_BOTTOM, type: 'line' });
     hoisted.map = map;
     render(<AisLayer targets={[]} />);
-    render(<DataLayers onHarborPick={() => {}} />);
+    renderDataLayers();
     await settleDataLayers(map);
     expect(map.layerOrder).toEqual([...OVERLAYS_BELOW_AIS, ROUTE_BOTTOM]);
   });
@@ -167,7 +185,7 @@ describe('AIS/overlay layer order after a style reload (#160 x #153)', () => {
   it('DataLayers hook registered first: the re-add restores the order', async () => {
     const map = makeFakeMap();
     hoisted.map = map;
-    render(<DataLayers onHarborPick={() => {}} />);
+    renderDataLayers();
     await settleDataLayers(map);
     render(<AisLayer targets={[]} />);
     act(() => {
@@ -180,7 +198,7 @@ describe('AIS/overlay layer order after a style reload (#160 x #153)', () => {
     const map = makeFakeMap();
     hoisted.map = map;
     render(<AisLayer targets={[]} />);
-    render(<DataLayers onHarborPick={() => {}} />);
+    renderDataLayers();
     await settleDataLayers(map);
     act(() => {
       simulateStyleReload(map);

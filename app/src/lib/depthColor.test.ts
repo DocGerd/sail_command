@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildDepthImageData, depthByteToRgba, depthSourceCorners } from './depthColor';
+import {
+  buildDepthImageData,
+  buildNavigabilityHatchImageData,
+  depthByteToRgba,
+  depthSourceCorners,
+  HATCH_RGBA,
+} from './depthColor';
 import { TEST_MASK_META } from '../test/fixtures';
 
 describe('depthByteToRgba', () => {
@@ -69,6 +75,77 @@ describe('buildDepthImageData', () => {
     for (let i = 0; i < bytes.length; i++) {
       expect(Array.from(img.subarray(i * 4, i * 4 + 4))).toEqual(depthByteToRgba(bytes[i]));
     }
+  });
+});
+
+describe('buildNavigabilityHatchImageData (#492)', () => {
+  it('throws on a rows*cols mismatch', () => {
+    expect(() => buildNavigabilityHatchImageData(new Uint8Array(5), 2, 3, 3)).toThrow(/rows\*cols/);
+  });
+
+  it('land (byte 0) never hatches, even at an absurdly high safetyDepthM', () => {
+    const mask = new Uint8Array([0, 0, 0, 0]);
+    const img = buildNavigabilityHatchImageData(mask, 1, 4, 1000);
+    expect(Array.from(img).every((v) => v === 0)).toBe(true);
+  });
+
+  // #492 discriminating control: the SAME cell, only safetyDepthM differs.
+  // byte 30 = 3.0 m shipped -> cautiousDepthLowerBoundM = 2.1 m, hand-derived
+  // from mask.ts's own formula (never re-called here, to avoid re-deriving
+  // the expectation from the function under test): floor((3.0 -
+  // MASK_TOLERANCE_M) * 10) / 10 = floor((3.0 - 0.9) * 10) / 10 = 2.1.
+  it('ABSENT below the gate, APPEARS above it, for the identical mask', () => {
+    const mask = new Uint8Array(64).fill(30); // 8x8, uniform 3.0 m shipped depth
+    const clear = buildNavigabilityHatchImageData(mask, 8, 8, 2.0); // 2.1 < 2.0 is false
+    expect(Array.from(clear).every((v) => v === 0)).toBe(true); // control: absent
+    const marginal = buildNavigabilityHatchImageData(mask, 8, 8, 3.0); // 2.1 < 3.0 is true
+    expect(Array.from(marginal).some((v) => v !== 0)).toBe(true); // appears
+  });
+
+  it("deep water (byte 255) never hatches, even at the UI's own maximum safetyDepthM (10)", () => {
+    const mask = new Uint8Array(4).fill(255);
+    const img = buildNavigabilityHatchImageData(mask, 1, 4, 10);
+    expect(Array.from(img).every((v) => v === 0)).toBe(true);
+  });
+
+  it('hatches SPARSELY, not a solid fill: exactly 2 of every 8 columns per row (25% coverage)', () => {
+    const mask = new Uint8Array(64).fill(1); // 8x8, uniformly very shallow (0.1 m) — always marginal
+    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10);
+    let hatched = 0;
+    for (let i = 0; i < 64; i++) if (img[i * 4 + 3] !== 0) hatched++;
+    // Exact, not approximate: an 8x8 grid is exactly one HATCH_PERIOD_PX (8)
+    // in both dimensions, so the diagonal stripe visits exactly 2 of every 8
+    // columns per row (64 * 2/8 = 16) with no boundary remainder.
+    expect(hatched).toBe(16);
+  });
+
+  it('paints the fixed HATCH_RGBA colour, never a depth-dependent one', () => {
+    const mask = new Uint8Array(64).fill(1);
+    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10);
+    // row 0, col 0: (0 + 0) % 8 = 0 < 2 -> hatched.
+    expect(Array.from(img.subarray(0, 4))).toEqual(HATCH_RGBA);
+  });
+
+  it('flips vertically the same way buildDepthImageData does', () => {
+    // 2 rows x 8 cols; south row (mask index 0..7) shallow+marginal, north
+    // row (mask index 8..15) land — same south/north convention as
+    // buildDepthImageData's own flip test above.
+    const south = new Array(8).fill(1); // shallow, marginal at a high gate
+    const north = new Array(8).fill(0); // land
+    const mask = new Uint8Array([...south, ...north]);
+    const img = buildNavigabilityHatchImageData(mask, 2, 8, 10);
+    // Image row 0 (top = north = land) must be fully transparent throughout.
+    expect(Array.from(img.subarray(0, 32)).every((v) => v === 0)).toBe(true);
+    // Image row 1 (bottom = south = shallow) must have at least one hatched pixel.
+    expect(Array.from(img.subarray(32, 64)).some((v) => v !== 0)).toBe(true);
+  });
+
+  it('is structurally unreachable from the absolute ramp: neither ramp function accepts a safetyDepthM parameter', () => {
+    // Guards the HARD DOMAIN RULE at the type level, not just by current
+    // behavior: a call site could not pass safetyDepthM to either even by
+    // mistake, because the arity itself has no slot for it.
+    expect(depthByteToRgba.length).toBe(1);
+    expect(buildDepthImageData.length).toBe(3);
   });
 });
 
