@@ -25,7 +25,8 @@ import {
   type PlanResultOk,
   type PolarTable,
 } from './types';
-import { defaultBoatSnapshot } from './types';
+import { boatSnapshot, defaultBoatSnapshot } from './types';
+import { boatById, sailIdsOf } from './data/boats';
 import { PLAN_SCHEMA_VERSION } from './types';
 
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
@@ -2104,5 +2105,117 @@ describe('plan-form sync (#301)', () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+  });
+});
+// #572: the selection → request span. Nothing asserted this before: the
+// multi-boat suites cover the catalogue, the picker's own rendering, the
+// clamp, and the routing layer's handling of a boat it is HANDED — but no
+// test connected the picker to what `handlePlan` actually puts on the wire,
+// which is exactly the gap the defect lived in. `App.tsx` built its request
+// with `boat: defaultBoatSnapshot()`, so every new plan was solved as a
+// Salona 45 whatever the picker showed.
+//
+// MUTATION REACHABILITY — the point of picking the Elan rather than the
+// default. With `salona-45` selected the fixed and the broken code emit a
+// BYTE-IDENTICAL request (`boatSnapshot(boatById('salona-45'))` IS
+// `defaultBoatSnapshot()`), so a test written against the default boat is
+// green either way and carries zero information. Selecting a NON-default
+// boat is what makes the mutation reach the assertion: reverting
+// `handlePlan` to `defaultBoatSnapshot()` reds the `boat.id` and
+// `boat.draftM` rows below with `salona-45` / `2.1`.
+describe('#572: a new plan is solved with the SELECTED boat', () => {
+  // Selects a catalogue boat through the real picker UI — the whole point is
+  // to span selection → request, so this drives the radio a user clicks
+  // rather than seeding BOAT_ID_STORAGE_KEY behind the app's back.
+  function selectBoat(nameMatch: RegExp) {
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.boat'] }));
+    fireEvent.click(screen.getByRole('radio', { name: nameMatch }));
+    expect(screen.getByRole('radio', { name: nameMatch })).toBeChecked();
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+  }
+
+  it('puts the selected boat, by value, on the request handed to the router', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    selectBoat(/PIRANJA/);
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+
+    const { request } = routingMock.calls[0];
+    const elan = boatById('elan-444-piranja');
+
+    // The discriminating rows. `request.boat.id` is what workerClient.ts
+    // resolves BOTH the polar tables and the spec C.4(a) relaxation floor
+    // from, so these two are the whole safety content of the fix.
+    expect(request.boat.id).toBe('elan-444-piranja');
+    expect(request.boat.draftM).toBe(1.9);
+    expect(request.boat.name).toBe(elan.name);
+
+    // By VALUE, not by reference (spec I.3) — the saved plan must not share
+    // mutable state with the catalogue constant.
+    expect(request.boat).toEqual(boatSnapshot(elan));
+    expect(request.boat).not.toBe(elan);
+    expect(request.boat.sails[0]).not.toBe(elan.sails[0]);
+
+    // NOT DISCRIMINATING FOR #572 TODAY, and recorded as such rather than
+    // presented as coverage: all three catalogue boats currently carry the
+    // sail ids `genoa` then `fock`, so `sailIdsOf(boat)` and the old
+    // `DEFAULT_SAIL_IDS` are equal in VALUE and this row is green against
+    // the broken code too. It is worth pinning anyway — it is the row that
+    // reds on the first boat whose inventory differs, which is precisely
+    // when a `DEFAULT_SAIL_IDS` here would start choosing the wrong sails.
+    expect(request.sailIds).toEqual(sailIdsOf(elan));
+  });
+
+  it('spec I.3: switching boats does NOT re-boat an existing plan — a replan keeps the boat it was planned for', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    // Plan under the Elan.
+    selectBoat(/PIRANJA/);
+    pickOriginAndDestination();
+    const planButton = screen.getByRole('button', { name: de['planner.plan'] });
+    fireEvent.click(planButton);
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    expect(routingMock.calls[0].request.boat.id).toBe('elan-444-piranja');
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() => expect(planButton).toBeEnabled());
+
+    // The user now picks a DIFFERENT boat, then re-plans the existing plan by
+    // adding a waypoint. Spec I.3: the boat is a property of the plan, so the
+    // replan must still be solved against the Elan. This is the row that reds
+    // if a future change "helpfully" makes replanWithVias follow the picker —
+    // the over-fix direction of #572, which the unit-level pins in
+    // recalc.test.ts / replan.test.ts / reroute.test.ts cannot see because
+    // none of them involves the picker at all.
+    selectBoat(/Salona 45/);
+    const viaSection = screen.getByRole('region', {
+      name: de['planner.via.label'],
+    });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+
+    expect(routingMock.calls[1].request.boat.id).toBe('elan-444-piranja');
+    expect(routingMock.calls[1].request.boat.draftM).toBe(1.9);
+
+    // ...while a genuinely NEW plan started after the switch does follow the
+    // picker. Both halves in one test on purpose: "the replan kept the old
+    // boat" is only meaningful beside evidence that the selection was really
+    // live, otherwise a picker that had silently stopped working would pass
+    // the assertion above.
+    routingMock.calls[1].resolve(okPlanResult(12));
+    // Re-query rather than reusing `planButton`: the two selectBoat() tab
+    // switches above unmount and remount PlannerPanel, so the node captured
+    // before them is detached and fireEvent.click on it silently does
+    // nothing (measured — the run stalled at 2 calls, not 3).
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(3));
+    expect(routingMock.calls[2].request.boat.id).toBe('salona-45');
   });
 });
