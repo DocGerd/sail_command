@@ -5,13 +5,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project
 
 SailCommand — an offline-capable PWA that plans time-optimal sailing routes
-for a Salona 45 in the Flensburg Fjord / Danish South Sea area
-(54.3–55.3°N, 9.4–11.0°E), using hourly Open-Meteo wind forecasts and an
-isochrone router that prices tacks/gybes as time penalties.
+for a three-boat Flensburg fleet (Salona 45; Salona 44 "SPEEDY GO!"; Elan
+Impression 444 "PIRANJA" — drafts 2.1/2.1/1.9 m, so TWO distinct depth gates)
+in the Flensburg Fjord / Danish South Sea area (54.3–55.3°N, 9.4–11.0°E),
+using hourly Open-Meteo wind forecasts and an isochrone router that prices
+tacks/gybes as time penalties. Only the Salona 45 is `hullVerified` with
+certificate-anchored polars; the other two are tier-C estimates, which
+SUPPRESSES their two-rig ★ comparison — a behavioural difference that has
+already put stale claims into user-facing docs (#54, shipped v0.12.0).
 
 **Source of truth:** `docs/superpowers/specs/2026-07-14-sail-command-design.md`
-(user-approved). Read it before making design-level decisions; do not silently
-deviate from it.
+(user-approved), plus `2026-08-10-multi-boat-design.md` for anything touching
+the boat catalogue, per-boat depth gates or polar provenance. Read them before
+making design-level decisions; do not silently deviate.
 
 ## Layout
 
@@ -90,7 +96,11 @@ deviate from it.
   passing. That run's 393 s wall time is NOT comparable to the 234 s figures
   above — it was measured while a CPU-heavy `app/sweep/` run occupied the
   machine; counts are load-independent, durations are not. Re-measure both
-  halves rather than inferring either from the other. The coverage PERCENTAGES above are UNTOUCHED — they
+  halves rather than inferring either from the other. Re-measured 2026-08-19
+  on `cbc6055` (the v0.12.0 cut) — **2032 tests, 143 files**, all passing;
+  that run's duration is DISCARDED rather than quoted, because six agents ran
+  concurrently — the same contention that invalidated the 393 s figure above.
+  The coverage PERCENTAGES above are UNTOUCHED — they
   were not re-measured this session (that needs `test:coverage`, a
   substantially longer run) and a scanning-only or assertion-adding test
   file is coverage-neutral to first order the same way PR #351's was; don't
@@ -124,6 +134,9 @@ deviate from it.
   is wider than the obvious paths: besides `app/src/routing/`,
   `app/src/lib/mask.ts`, `app/src/lib/depthGate.ts` (since #452),
   `app/public/data/`, `app/sweep/` and `pipeline/`,
+  `app/src/data/boats.ts` and `app/src/lib/boatDepth.ts` (both since #538 —
+  `sweepArms.ts:38` imports `boatById`/`DEFAULT_BOAT_ID`/`polarKey`;
+  `types.ts:1` and `planRoute.ts:24` import `boatDepth`),
   `sweepArms.ts` pulls `DEFAULT_SETTINGS` from `app/src/types.ts`,
   `uniformWindGrid` from `app/src/test/fixtures` and `solverTimeoutMs` from
   `app/src/test/timeouts`; `sweep/vitest.config.ts` loads
@@ -134,6 +147,16 @@ deviate from it.
   rule was wrong (measured 2026-08-13: #518's evidence did survive #513,
   #522 and #523, verified by running the closure check this rule prescribes
   — none of the 22 files they changed is in the closure).
+  **Never run a full sweep as a harness background task** — a harness
+  background task was killed at ~58 min (observed 2026-08-18 against Claude
+  Code 2.1.235; re-check after any harness upgrade, this is a harness-version
+  property). `base1` alone took ~1850 s UNLOADED — ~31 min, i.e. INSIDE that
+  ceiling: what exceeds it is the REQUIRED BASE double-run (2×) and a
+  BASE-vs-HEAD comparison (3×), so the ceiling bites on the control, never on
+  a single arm-set. Detach from the start
+  (`setsid` + `nohup`), and report the `SC_SWEEP_OUT` path AT DETACH, not on
+  completion: an agent died mid-sweep on 2026-08-18 and its output path died
+  with it. A killed run and a finished one are both silent.
   A STRONGER control than the required double-run
   exists once a prior run is on record: BASE *and* HEAD arm sha256 prefixes
   matching that run on a different machine, day and merge-base proves the
@@ -160,10 +183,21 @@ deviate from it.
   history: inflating the comfort margin SUPPRESSES tier-4 entry (11 rows at
   `DEFAULT_SETTINGS` vs 3 at margin 8.0, a strict subset, measured twice),
   so `relaxation-dense` is the broader tier-4 exerciser.
-- Full test suite takes ~4 min (a ~200 s seeded fast-check property suite +
-  a ~40 s real-mask solver acceptance file). Use focused filters while
-  iterating (`npm --prefix app run test -- <filter>`); give the full run a
-  generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
+- Full test suite: **499.9 s** (~8.3 min) on a quiet machine — measured
+  2026-08-19 at `04384c2`, 2032 tests / 143 files. Wall time is set almost
+  entirely by ONE file: `routing/realmask.repro.test.ts` alone takes
+  **477.4 s** (17 cases against the real committed mask/polars), with the
+  seeded fast-check property suite second at **239.6 s**; everything else
+  runs concurrently underneath them, which is why the total barely exceeds
+  the slowest file. The former "~4 min (a ~200 s property suite + a ~40 s
+  real-mask file)" was stale by ~2x on the total and by more than 10x on
+  real-mask — and it DISAGREED with `vite.config.ts`'s own "~680 s
+  combined" comment on `SLOW_TEST_FILES_FIRST`, which was the closer of the
+  two; when two artifacts state one fact, re-measure rather than pick.
+  Note that list's order is now inverted against its own "slowest first"
+  intent (property suite is listed before real-mask, which is ~2x slower).
+  Use focused filters while iterating (`npm --prefix app run test --
+  <filter>`); give the full run a generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
   (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
   per-test override, keyed OR positional, e.g. the property test's 900 s)
   from `app/src/test/timeouts.ts` (#342) rather than hardcoding a literal —
@@ -184,7 +218,12 @@ deviate from it.
   derivation in `timeouts.ts`'s `COVERAGE_MULTIPLIER` comment).
   **CI is slower than dev machines, but not by a flat multiplier** — measured
   2026-08-03 (#341, PR #335 work): `npm run test` local 249.8 s vs CI
-  ~515–535 s (~2.1×); `npm run test:coverage` local ~983–1029 s vs CI 2558 s
+  ~515–535 s (~2.1×) — **both halves of that pair measured against a 1206-test
+  suite.** The CI half re-measured 2026-08-18 at 1161 s against **1872 tests**
+  (#556), so that 2.25× is mostly suite GROWTH, not a slower runner: never
+  difference two durations measured at different suite sizes. Quote a ratio
+  only from two halves measured at the SAME count, and carry the count with
+  each figure; `npm run test:coverage` local ~983–1029 s vs CI 2558 s
   (~2.5×). Coverage instrumentation is a SEPARATE multiplier from runner
   speed — solver-heavy tests pay a bigger coverage penalty than component
   tests, so no single ratio predicts both. A job's `timeout-minutes` and a
@@ -239,6 +278,13 @@ deviate from it.
   `package.json`'s `version` ONLY when git throws (tarball / git-less build,
   #125). Don't bump it expecting the About dialog to move; don't delete it
   either — that fallback is the only thing it is for.
+- **To bump a transitive dev dependency, use `npm update <pkg> --package-lock-only`,
+  never `npm install <pkg>@^x --package-lock-only`** — the latter also adds it to
+  `package.json`'s `dependencies` and strips `"dev": true`, promoting a build-time
+  dep to a declared runtime one. Verify by parsing the lockfile (the diff shows
+  what changed, not what silently didn't) and by comparing built `dist` hashes.
+  Reproduced 2026-08-18 in PR #568 (which closed #533): the `install` form
+  added `dependencies.nanoid` AND stripped that entry's `"dev": true`.
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
   This makes EVERY Dependabot bump of one of the 11 runtime packages listed in
@@ -717,7 +763,9 @@ deviate from it.
   dark)` in `app.css`, so a both-themes verification pass needs Playwright
   `page.emulateMedia({ colorScheme })`, never a UI click.
 - Playwright MCP `page.screenshot({ path: './x.png' })` writes relative to the
-  REPO ROOT — write captures to /tmp (or move them out immediately) so a later
+  REPO ROOT **and hard-refuses an absolute path outside its allowlisted roots**
+  ("File access denied"), so writing straight to /tmp is not possible: pass a
+  relative name, then MOVE the file out and re-check `git status` — so a later
   `git add` cannot sweep them into a commit.
 - GPS dynamics ARE e2e-testable: `app/e2e/live.spec.ts` (#142) drives
   deterministic fix sequences via Playwright `context.setGeolocation` +
@@ -1406,6 +1454,17 @@ deviate from it.
   sits once at the top of the file. `.github/scripts/check-no-home-paths.sh`
   cannot catch this class (grep follows the link, the leak is in the blob) —
   tracked as #479.
+- **A field written by one branch and read by another under a DIFFERENT name
+  typechecks and renders nothing.** #565 wrote `draftProvenance` while #563
+  read an optional `keelAssumption?: string`; `boats.ts` merged cleanly keeping
+  BOTH, so the §N.2 keel disclosure would have rendered for NO boat — where 2
+  of the 3 shipped boats need it (`hullVerified` false). CAUGHT IN REVIEW
+  2026-08-18 and never shipped: `draftProvenance` is REQUIRED on `BoatDef`
+  (`app/src/data/boats.ts`), pinned by `boats.test.ts`'s `@ts-expect-error`
+  row, and `keelAssumption` now survives only in explanatory comments. Neither
+  branch's tests could see it — one asserts the catalogue has the field, the
+  other renders its own fixture. **The hazard needs OPTIONALITY: make such a
+  field required, so a missing one is a compile error.**
 - **A fix verified AT ITS OWN SITE says nothing about siblings.** #538 removed
   `getPlan`'s destructive write-back and proved BY RUN that `getPlan` no longer
   writes — while `replanWithVias` and the recalc-replace still reach `savePlan`
@@ -2746,7 +2805,14 @@ deviate from it.
   fallback.
 - **PIN THE BASE BRANCH in every agent brief**, and require the agent to
   report its merge-base as part of its deliverable — `isolation: worktree`
-  does NOT reliably inherit the session's checked-out branch. MEASURED
+  reliably comes up on the WRONG branch, not merely sometimes: **10 of 10**
+  worktree agents on 2026-08-18 landed on the then-current `main` — the
+  `v0.11.0` tag commit — **256 to 313** commits behind `develop` across that
+  day. (An earlier revision here said "98 to 316", which spliced two `develop`
+  tips NINE DAYS apart: 98 was its 2026-08-10 state and 316 its 2026-08-19
+  one. Name the ref, not the SHA — a bare SHA reads as durable and is not.)
+  Every one caught it only because the brief demanded the merge-base.
+  Fix with `git fetch` then `git switch -c <branch> origin/develop`. MEASURED
   (2026-08-06, PR #418): an implementer branched off `main`/v0.9.0
   (`c4e139d`) instead of `develop` and edited a `.github/workflows/deploy.yml`
   177 lines stale that lacked PR #403's entire #398 probe. **Every per-diff
