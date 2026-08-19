@@ -29,6 +29,46 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          # #534: maintainer chose the BROADEST built-in suite over the
+          # default. `queries:` is a single field on this shared step (not
+          # templated per matrix.language like `languages`/`build-mode`
+          # above), so it applies UNIFORMLY to BOTH matrix legs -
+          # javascript-typescript AND python each resolve their own
+          # language-specific `security-and-quality.qls` - deliberately,
+          # not as an accident of the matrix shape. For JS/TS this is NOT
+          # the generic `security-and-quality-selectors.yml`: as of CodeQL
+          # CLI 2.26.3 (this repo's own PR #588 Actions run, 2026-08-19),
+          # it is the security-extended selectors plus an allowlist of 102
+          # additional non-security query IDs named in that bundle's own
+          # `.qls` file at the time - a snapshot of a GitHub-maintained
+          # bundle this repo does not pin or control, so the count can
+          # drift on any future codeql-action/query-pack bump with nothing
+          # here to catch it; re-derive rather than trust it. Measured
+          # against this repo's BASE commit's own UNSCOPED push run (the
+          # default suite, before this diff's `queries:` widening):
+          # javascript-typescript went from 89 to 203 total rules (+114, 98
+          # of them outside the `Security/` query category - i.e. most of
+          # the widening is quality/maintainability rules, not new security
+          # coverage); python went from 45 to 174 total rules (+129). Both
+          # counts are consistent with, though not a re-proof of, the
+          # 102-query breakdown above. `queries:` is reachable because ADVANCED
+          # SETUP (explicit init+analyze steps, not GitHub's simplified
+          # default-setup UI toggle) is already in use in this workflow -
+          # this diff adds the `queries:` key itself, not the setup mode
+          # that makes it reachable. A `pull_request` run proves NOTHING
+          # about this widening: the action builds a `pr-diff-range`
+          # extension pack and passes it to `database run-queries`, so
+          # alerts are restricted to the changed lines (measured on this
+          # PR's own run, both matrix legs: "Persisted 14 diff range(s)
+          # across 5 file(s)", `--extension-packs=codeql-action/pr-diff-
+          # range`). Only an unscoped `push`/`schedule` scan on develop
+          # exercises the new queries repo-wide. CodeQL is also NOT a
+          # required check (`protect-main` requires only `app` + `e2e`),
+          # so whatever that first post-widen scan finds accumulates in
+          # the Security tab rather than blocking merges - triage it
+          # explicitly; a green CodeQL check on any PR, this one included,
+          # says nothing about what the widened suite finds repo-wide.
+          queries: security-and-quality
       - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
           category: '/language:${{ matrix.language }}'
