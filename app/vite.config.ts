@@ -331,8 +331,9 @@ function appVersion(command: 'build' | 'serve'): string {
 // vitest's own results cache never survives to the next run), vitest's
 // BaseSequencer.sort falls back to ordering files by size, descending. That
 // hurts a file that is SMALL but SLOW: invariants.property.test.ts is
-// 5,164 B — ranked 87th LARGEST of 144 test files (measured 2026-08-19 in
-// this checkout, post #587/#589 merge) — so it sorts well into the back
+// 5,164 B — ranked 88th LARGEST of 144 test files (re-measured after this
+// branch's own resync onto `origin/develop`, PR #588 review round 2) — so
+// it sorts well into the back
 // half by size and starts late, becoming the tail of the whole test step
 // even though other workers are free the entire time (measured:
 // https://github.com/DocGerd/sail_command/issues/214).

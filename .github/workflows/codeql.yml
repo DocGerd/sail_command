@@ -55,11 +55,19 @@ jobs:
           # SETUP (explicit init+analyze steps, not GitHub's simplified
           # default-setup UI toggle) is already in use in this workflow -
           # this diff adds the `queries:` key itself, not the setup mode
-          # that makes it reachable. CodeQL is NOT a required check
-          # (`protect-main` requires only `app` + `e2e`), so new alerts
-          # accumulate in the Security tab rather than blocking merges -
-          # triage the first post-widen scan rather than assuming silence
-          # means nothing new fired.
+          # that makes it reachable. A `pull_request` run proves NOTHING
+          # about this widening: the action builds a `pr-diff-range`
+          # extension pack and passes it to `database run-queries`, so
+          # alerts are restricted to the changed lines (measured on this
+          # PR's own run, both matrix legs: "Persisted 14 diff range(s)
+          # across 5 file(s)", `--extension-packs=codeql-action/pr-diff-
+          # range`). Only an unscoped `push`/`schedule` scan on develop
+          # exercises the new queries repo-wide. CodeQL is also NOT a
+          # required check (`protect-main` requires only `app` + `e2e`),
+          # so whatever that first post-widen scan finds accumulates in
+          # the Security tab rather than blocking merges - triage it
+          # explicitly; a green CodeQL check on any PR, this one included,
+          # says nothing about what the widened suite finds repo-wide.
           queries: security-and-quality
       - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
