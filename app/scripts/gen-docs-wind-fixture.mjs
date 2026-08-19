@@ -83,29 +83,28 @@
 // which are never sampled by this particular capture anyway.
 //
 // SPEED_LON_RANGE_KN widened 4->7 in a second pass of the same fix-wave
-// round, from the ACTUAL solved route's own leg table (RouteSummary's
-// TWS column — a stronger source than the GPX-trackpoint interpolation
-// above, since it's the router's own per-leg wind sample, not a re-derived
-// endpoint estimate), read via a real dev-server + Playwright pass, not
-// predicted: the 20 legs span TWS 6.8-13.4 kn, crossing BOTH the 7.5 kn and
-// 12.5 kn `barbImageId()` bucket boundaries — 3 legs bucket to "5" (near
-// Flensburg), the middle majority to "10", and 5 legs near the route's end
-// (12.5-13.4 kn, ~5 nm / ~26% of total distance, TWA 125-172°: a broad
-// reach through a run) to "15" — a real glyph SHAPE change (bucket 15 adds
-// a second, half-length feather below the first — see barbSegments() above)
-// on top of the tick-length change bucket 10 already gets over bucket 5.
-// HONEST CAVEAT (do not overstate this in any user-facing text): the
-// bucket-15 stretch sits near the route's Sønderborg end, which in the
-// committed docs/screenshots/plan-route.png capture framing falls mostly
-// BEHIND the on-map "Route layer controls" panel (top-right) — so the
-// crossing that is actually VISIBLE AND UNOCCLUDED in that specific PNG is
-// the 5->10 one (confirmed directly: cropping one isolated bucket-5 barb
-// near Flensburg and one isolated bucket-10 barb near Schelde at 8x zoom
-// shows a visibly longer single tick on the bucket-10 glyph, not merely a
-// different rotation). The 15-bucket legs are real and present in the
-// underlying wind field and route data; whether a given future recapture's
-// framing happens to reveal them unoccluded is not guaranteed and was not
-// specifically engineered for.
+// round (2026-08-09), from the ACTUAL solved route's own leg table
+// (RouteSummary's TWS column — a stronger source than the GPX-trackpoint
+// interpolation above, since it's the router's own per-leg wind sample, not
+// a re-derived endpoint estimate): the route crossed BOTH the 7.5 kn and
+// 12.5 kn `barbImageId()` bucket boundaries — a real glyph SHAPE change
+// (bucket 15 adds a second, half-length feather below the first — see
+// barbSegments() above) on top of the tick-length change bucket 10 already
+// gets over bucket 5, not merely a rotation difference.
+//
+// #577 (2026-08-19) narrowed the value further to 6.5 to restore a decisive
+// rig margin (see the constants comment below) — re-verified the bucket
+// crossing survived the retune via the real solved route's own per-leg TWS
+// (`planRoute()`, not a browser read this time; see below): on the
+// recommended (★) Genoa tab, 21 legs span TWS 6.8-12.9 kn, bucketing to
+// {"5": 3, "10": 17, "15": 1} — still all three buckets, though bucket 15
+// now covers only a single leg near the route's Sønderborg end (down from 5
+// pre-retune) rather than a ~26%-of-distance stretch. HONEST CAVEAT (do not
+// overstate this in any user-facing text): whether that one bucket-15 leg is
+// actually visible and unoccluded in any given recapture's framing has not
+// been re-verified after this retune (the pre-retune framing check found the
+// bucket-15 stretch mostly BEHIND the on-map "Route layer controls" panel);
+// only the 5->10 crossing was previously confirmed visible.
 //
 // Constants below were hand-tuned (see docs/screenshots/capture.mjs's own
 // header for the harbor pair and the reasoning) against this app's committed
@@ -113,17 +112,31 @@
 // and TWA ~70-95° (a close-to-beam reach), genoa consistently outpaces fock
 // by ~3-5% boat speed — genoa's light-air reaching advantage — which is
 // large enough over a ~19 nm route to clear RIG_TIE_BAND_MS (60 s,
-// routing/planRoute.ts) decisively even with the widened TWS range diluting
-// that advantage over its highest-wind final third (genoa/fock converge
-// near TWS 14, per the polar tables — MEASURED margin after widening:
-// still "Faster: Genoa" at 2h59min vs 3h02min, a 180s gap), and TWS 7-10 kn
-// at TWA ~70-95° yields genoa boat speeds of roughly 7-8 kn, comfortably
-// above the ~3.7 kn sail-speed floor (routing/isochrone.ts) that would
-// otherwise plan motor legs — see CLAUDE.md's "Motor legs are first-class"
-// domain rule for that floor's derivation. MEASURED end-to-end result
-// (2026-08-09, fix wave): 85% sail / 15% motor on the recommended (★)
-// Genoa tab, 86%/14% on Fock — both well above the >50% requirement, and
-// slightly HIGHER than the pre-widening 81%/19%, not lower.
+// routing/planRoute.ts) decisively, and TWS 7-10 kn at TWA ~70-95° yields
+// genoa boat speeds of roughly 7-8 kn, comfortably above the ~3.7 kn
+// sail-speed floor (routing/isochrone.ts) that would otherwise plan motor
+// legs — see CLAUDE.md's "Motor legs are first-class" domain rule for that
+// floor's derivation.
+//
+// #577 RETUNE (2026-08-19): the #54 multi-boat routing work (landed after
+// the 2026-08-09 figures below were measured) shifted this route/fixture
+// pair's solve enough that the margin had collapsed from the tuned ~180s
+// down to 51.2s — UNDER RIG_TIE_BAND_MS, so the recommendation had drifted
+// to a 'tie' (reproduced directly against develop @ 0c494f9 with the
+// then-unmodified generator: genoa 10817.6s, fock 10868.8s). Diagnosed and
+// fixed the same way as the original #459 tuning — not by trial-and-error
+// against a live browser, but by re-solving Flensburg->Sønderborg with the
+// real shipped mask/polars via `planRoute()` directly (same code path this
+// script's screenshot ultimately exercises, just called from a script
+// instead of a browser). SPEED_LON_RANGE_KN narrowed 7->6.5 (keeping the
+// TWS span wide enough to still cross both barbImageId() bucket boundaries
+// — MEASURED per-leg TWS 6.8-12.9 kn on Genoa, 6.8-13.0 kn on Fock, so the
+// route still spans the "5"/"10"/"15" barb buckets, not merely re-tuned back
+// toward the pre-#462 single-bucket state). MEASURED result at the retuned
+// constant (2026-08-19, same technique): genoa 10814.5s (3h00min) vs fock
+// 10961.1s (3h02min), a 146.6s margin — "Faster: Genoa" decisively — with
+// 82.7% sail / 17.3% motor on the recommended (★) Genoa tab and 86.3%/13.7%
+// on Fock, both comfortably above the >50% sail-dominance requirement.
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -145,7 +158,7 @@ const ROUTE_LAT0 = 54.75;
 const ROUTE_LAT1 = 54.95;
 
 const SPEED_BASE_KN = 6;
-const SPEED_LON_RANGE_KN = 7; // +7 kn west -> east across the route box
+const SPEED_LON_RANGE_KN = 6.5; // +6.5 kn west -> east across the route box
 const SPEED_LAT_RANGE_KN = 1; // +1 kn south -> north across the route box
 const SPEED_MIN_KN = 2; // clamp for physical plausibility outside the route box
 const SPEED_MAX_KN = 25;
