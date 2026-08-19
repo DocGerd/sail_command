@@ -936,6 +936,15 @@ describe('via-replan clobber guard (Phase E gate fix)', () => {
     // Fix 6: canPlan is false while that replan is in flight.
     expect(planButton).toBeDisabled();
 
+    // #571: the guidance line under the disabled Plan button now names WHY
+    // — before the fix, planDisabledReason never checked
+    // viaReplan.state.replanning, so a user removing/reordering a waypoint
+    // on a slow route saw every planner control disabled with no stated
+    // reason (up to ~135s worst case, PLAN_BUDGET_MS + PLAN_TIMEOUT_GRACE_MS
+    // in routing/workerClient.ts). Asserted on the exact localized VALUE
+    // (getByText against the dict string), not a boolean presence check.
+    expect(screen.getByText(de['planner.disabled.viaReplanning'])).toBeInTheDocument();
+
     // The user switches to a *different*, already-saved plan while the
     // replan above is still pending. PlansList populates asynchronously
     // (its own mount effect awaits listPlans()), hence findByRole rather

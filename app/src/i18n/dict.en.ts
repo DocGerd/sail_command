@@ -91,6 +91,11 @@ export const en = {
   // §3.5: terse disabled-button reason when both endpoints aren't set (the
   // gap-fill for the previously reasonless online-but-incomplete state).
   'planner.disabled.pickEndpoints': 'Select a start and destination.',
+  // #571: the same guidance-line slot, shown while a via-edit replan is in
+  // flight — see dict.de.ts's twin for the full rationale (typical-case
+  // wording, not the worst-case bound; a phase disclosure, not a
+  // fabricated percentage per #340).
+  'planner.disabled.viaReplanning': 'Recalculating the route — this can take up to a minute.',
   'planner.result.details': 'View details',
   // Swapped into the planner's live status region on plan completion — a
   // stable, atomic summary announced once per new plan (never on slider/

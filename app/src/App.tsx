@@ -8,7 +8,7 @@ import {
   useSettings,
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
-import { useViaReplan } from './state/replan';
+import { useViaReplan, viaReplanDisabledReasonKey } from './state/replan';
 import { useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
@@ -769,11 +769,22 @@ function AppShell() {
   // §3.5: the primary button always states WHY it's disabled. Offline is the
   // most blocking (nothing can be planned), then a missing endpoint. When both
   // endpoints are set and online, the button is enabled — reason is null.
-  const planDisabledReason = !online
-    ? t('error.offline')
-    : origin === null || destination === null
-      ? t('planner.disabled.pickEndpoints')
-      : null;
+  // #571: a via-replan in flight is checked FIRST, ahead of both — it's the
+  // most immediately relevant explanation of why every planner control (the
+  // Plan button here via `runBusy`, and the via ×/↑/↓/"add" controls
+  // directly, gated on `viaReplan.state.replanning` in PlannerPanel) is
+  // currently locked, and it can be true independent of `online` (a
+  // via-replan reuses the plan's stored windGrid and works offline — see
+  // useViaReplan's own docstring). Before this, removing a waypoint left
+  // this guidance line empty for the whole replan (up to ~135s worst case).
+  const viaReplanReasonKey = viaReplanDisabledReasonKey(viaReplan.state);
+  const planDisabledReason = viaReplanReasonKey
+    ? t(viaReplanReasonKey)
+    : !online
+      ? t('error.offline')
+      : origin === null || destination === null
+        ? t('planner.disabled.pickEndpoints')
+        : null;
 
   const plannerStatus = toPlannerStatus(planning, t);
   const stale = plan !== null && isStaleForecast(plan);

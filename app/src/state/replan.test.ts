@@ -6,6 +6,7 @@ import {
   ReplanError,
   replanWithVias,
   useViaReplan,
+  viaReplanDisabledReasonKey,
   type ReplanClient,
 } from './replan';
 import { destinationPoint } from '../lib/geo';
@@ -386,7 +387,6 @@ describe('replanWithVias', () => {
     expect(dispose, 'a timed-out replan must dispose its client').toHaveBeenCalledTimes(1);
   });
 
-
   // #553 MAJOR 5: the ONE rejection kind that must NOT tear the worker down.
   // `'boat-not-in-catalogue'` is raised by a client-side catalogue lookup
   // BEFORE plan() posts anything, so the worker never saw the request and is
@@ -634,5 +634,35 @@ describe('useViaReplan', () => {
     const first = result.current;
     rerender();
     expect(result.current).toBe(first);
+  });
+});
+
+// #571: viaReplanDisabledReasonKey is the mapping App.tsx's planDisabledReason
+// consumes to disclose WHY the planner is locked during a via-replan. Pinned
+// directly against ViaReplanState values here — no App render needed — so a
+// regression in the mapping itself (not just its wiring) fails a fast,
+// focused test.
+describe('viaReplanDisabledReasonKey (#571)', () => {
+  it('returns the disclosure key while a via-replan is in flight', () => {
+    expect(viaReplanDisabledReasonKey({ replanning: true, error: null, droppedCount: 0 })).toBe(
+      'planner.disabled.viaReplanning',
+    );
+  });
+
+  it('returns null when idle, regardless of error/droppedCount', () => {
+    expect(
+      viaReplanDisabledReasonKey({ replanning: false, error: null, droppedCount: 0 }),
+    ).toBeNull();
+    // Not vacuous to the `replanning` field alone: error/droppedCount being
+    // non-default does not itself flip the disclosure — only `replanning`
+    // does, matching App.tsx's own null-means-enabled contract for
+    // planDisabledReason.
+    expect(
+      viaReplanDisabledReasonKey({
+        replanning: false,
+        error: 'error.replanInit',
+        droppedCount: 2,
+      }),
+    ).toBeNull();
   });
 });
