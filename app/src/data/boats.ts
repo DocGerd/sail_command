@@ -360,27 +360,48 @@ export function polarKey(boatId: string, sailId: string): string {
   return `${boatId}/${sailId}`;
 }
 
-// #54: the default boat's full sail set, in catalogue order. Two kinds of
-// call site: App.tsx's handlePlan, the one production constructor with no
-// prior plan to inherit the solve order from; and the absent-sailIds
-// backfill in lib/recalc.ts, state/replan.ts and state/reroute.ts.
+/**
+ * #54: one boat's full sail set, in catalogue order — the solve order a
+ * `PlanRequest.sailIds` carries (spec E.3).
+ *
+ * The cast lives here rather than at each call site so its justification is
+ * stated once. `SailDef.id` is declared plain `string` (SailDef is the
+ * general per-boat shape, not narrowed to any one boat's literal ids) while
+ * `SailId` is the catalogue-derived union — so the cast is sound exactly
+ * when the argument is an entry of the const `BOATS` array above, whose sail
+ * ids ARE that union by construction.
+ *
+ * That is a property of the CALL SITES, not of the signature: `BoatDef` is the
+ * general shape, and nothing narrows `SailDef.id` to the catalogue, so a
+ * hand-built `BoatDef` literal with an unknown sail id typechecks here and is
+ * silently cast (MEASURED). A plan's stored `BoatSnapshot` is NOT that hazard —
+ * it is strictly narrower than `BoatDef` and the compiler rejects it outright
+ * (TS2345: missing draftProvenance, motorSpeedKn, maneuverPenaltyS). The two
+ * production call sites today pass a `boatById(...)` result, which always
+ * resolves inside the catalogue or throws. Feed it anything else and the cast
+ * is a lie.
+ *
+ * A caller holding a SELECTED boat must use this, never `DEFAULT_SAIL_IDS` —
+ * see that constant's own comment for the split.
+ */
+export function sailIdsOf(boat: BoatDef): readonly SailId[] {
+  return boat.sails.map((s) => s.id as SailId);
+}
+
+// #54: the DEFAULT boat's sail set. Its only remaining call sites are the
+// absent-sailIds backfills in lib/recalc.ts, state/replan.ts and
+// state/reroute.ts — paths reconstructing a request from a plan saved before
+// `sailIds` existed, where there is no selected boat to consult and the plan
+// predates the catalogue holding anything but the Salona 45.
 //
-// Task 11 landed PlanRequest.boat and deliberately left this in place: the
-// per-boat lookup it was expected to become needs a SELECTED boat.
+// #572 removed the other call site. App.tsx's handlePlan used this and, in
+// the same object literal, `defaultBoatSnapshot()` — so every new plan was
+// solved as a Salona 45 whatever the picker showed. It now reads the selected
+// boat through `sailIdsOf(boat)`.
 //
 // This says DEFAULT boat, and since #54's spec-N amendment that is no longer
 // the same thing as "the only boat" — the catalogue now holds three. The
 // earlier note here read "today there is exactly one boat, so this and
 // boatById(DEFAULT_BOAT_ID).sails name the same set"; that equivalence is gone
 // and the DEFAULT_BOAT_ID lookup is now load-bearing rather than incidental.
-// It stays correct because every call site listed above is one with no
-// selected boat to consult, which is still the Salona 45 — but a future call
-// site that DOES have a selected boat must read that boat's sails, not this.
-//
-// Cast is safe: boatById(DEFAULT_BOAT_ID) always resolves to a real entry of
-// the const `BOATS` array above, whose sail ids ARE the SailId union by
-// construction — `BoatDef.sails[].id` is typed as plain `string` (SailDef is
-// the general per-boat shape, not narrowed to any one boat's literal ids).
-export const DEFAULT_SAIL_IDS: readonly SailId[] = boatById(DEFAULT_BOAT_ID).sails.map(
-  (s) => s.id as SailId,
-);
+export const DEFAULT_SAIL_IDS: readonly SailId[] = sailIdsOf(boatById(DEFAULT_BOAT_ID));
