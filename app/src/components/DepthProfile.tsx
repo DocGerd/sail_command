@@ -610,7 +610,7 @@ function ProfileChart({
         const x = xOf(tick);
         return (
           <g key={`ind${k}`}>
-            <title>{`${formatTime(tick, lang)} · ${formatKn(w.speedKn)}`}</title>
+            <title>{`${formatTime(tick, lang)} · ${formatKn(w.speedKn, lang)}`}</title>
             <BarbGlyph speedKn={w.speedKn} dirFromDeg={w.dirFromDeg} x={x} y={WIND_ROW_Y} />
             {!lp.motor && <HeadingArrow headingDeg={lp.headingDeg} x={x} y={HEAD_ROW_Y} />}
           </g>

@@ -70,7 +70,7 @@ const GYBE_LEG: Leg = {
 
 describe('legsToFeatureCollection', () => {
   it('emits one LineString feature per leg, coordinates in [lon, lat] order', () => {
-    const fc = legsToFeatureCollection([SAIL_LEG]);
+    const fc = legsToFeatureCollection([SAIL_LEG], 'en');
     expect(fc.type).toBe('FeatureCollection');
     expect(fc.features).toHaveLength(1);
     expect(fc.features[0].geometry).toEqual({
@@ -83,7 +83,7 @@ describe('legsToFeatureCollection', () => {
   });
 
   it('tags a sail leg with kind, board, maneuver and a bare-knots speedLabel', () => {
-    const fc = legsToFeatureCollection([TACK_LEG]);
+    const fc = legsToFeatureCollection([TACK_LEG], 'en');
     expect(fc.features[0].properties).toEqual({
       kind: 'sail',
       board: 'port',
@@ -95,7 +95,7 @@ describe('legsToFeatureCollection', () => {
   });
 
   it('tags a motor leg with board null, maneuver null and a motor-prefixed speedLabel', () => {
-    const fc = legsToFeatureCollection([MOTOR_LEG]);
+    const fc = legsToFeatureCollection([MOTOR_LEG], 'en');
     expect(fc.features[0].properties).toEqual({
       kind: 'motor',
       board: null,
@@ -108,22 +108,22 @@ describe('legsToFeatureCollection', () => {
 
   it('tags legs carrying a #53 shallow flag with shallow: true', () => {
     const flagged: Leg = { ...SAIL_LEG, shallow: { minDepthM: 2.3 } };
-    const fc = legsToFeatureCollection([flagged, MOTOR_LEG]);
+    const fc = legsToFeatureCollection([flagged, MOTOR_LEG], 'en');
     expect(fc.features.map((f) => f.properties.shallow)).toEqual([true, false]);
   });
 
   it('uses the injected motor letter in the speedLabel', () => {
-    const fc = legsToFeatureCollection([MOTOR_LEG], { motorLetter: 'X' });
+    const fc = legsToFeatureCollection([MOTOR_LEG], 'en', { motorLetter: 'X' });
     expect(fc.features[0].properties.speedLabel).toBe('X · 6.5 kn');
   });
 
   it('tags each feature with its index into the legs array', () => {
-    const fc = legsToFeatureCollection([SAIL_LEG, TACK_LEG, MOTOR_LEG]);
+    const fc = legsToFeatureCollection([SAIL_LEG, TACK_LEG, MOTOR_LEG], 'en');
     expect(fc.features.map((f) => f.properties.legIndex)).toEqual([0, 1, 2]);
   });
 
   it('returns an empty feature collection for no legs', () => {
-    expect(legsToFeatureCollection([])).toEqual({ type: 'FeatureCollection', features: [] });
+    expect(legsToFeatureCollection([], 'en')).toEqual({ type: 'FeatureCollection', features: [] });
   });
 });
 
