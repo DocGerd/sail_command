@@ -27,12 +27,23 @@ export interface RouteLayerProps {
   // cheap setFilter() on the highlight layer only — never a source re-set —
   // so near-boundary GPS noise flipping between adjacent legs stays cheap.
   activeLegIndex: number | null;
-  // E8: via-waypoint re-route. ViaMarkers is rendered here (not as a
-  // sibling in App.tsx) mirroring LiveView's own BoatMarker — a plan's via
-  // points are route-scoped, and RouteLayer already receives `plan`. Both
-  // props are only meaningful once `plan` exists (renders null before
+  // #571 redesign: via-waypoint editing. ViaMarkers is rendered here (not as
+  // a sibling in App.tsx) mirroring LiveView's own BoatMarker — a plan's via
+  // points are route-scoped, and RouteLayer already receives `plan`. All
+  // three props are only meaningful once `plan` exists (renders null before
   // that), so App.tsx's wiring only needs to keep them defined once a plan
   // is active.
+  //
+  // `draftViaPoints` is App.tsx's DRAFT via list (never `plan.request.
+  // viaPoints` directly) — ViaMarkers renders FROM the draft, not the
+  // committed list, which is what makes an add/remove/reorder/drag show up
+  // on the map immediately, before the next Plan-route press applies it.
+  draftViaPoints: LatLon[];
+  // No longer means "a replan is in flight" (#571 redesign removed the
+  // auto-replan-on-edit path) — it now means "the draft differs from the
+  // committed plan.request.viaPoints", i.e. there is an unapplied edit.
+  // PROP NAME kept as `viaReplanning` — see ViaMarkers.tsx's own comment on
+  // its identically-named, identically-repurposed prop.
   viaReplanning: boolean;
   onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
@@ -469,6 +480,7 @@ export default function RouteLayer({
   plan,
   rig,
   activeLegIndex,
+  draftViaPoints,
   viaReplanning,
   onViaDragEnd,
 }: RouteLayerProps) {
@@ -828,11 +840,7 @@ export default function RouteLayer({
           <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
         </div>
       )}
-      <ViaMarkers
-        viaPoints={plan.request.viaPoints}
-        replanning={viaReplanning}
-        onDragEnd={onViaDragEnd}
-      />
+      <ViaMarkers viaPoints={draftViaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
       <RouteLegend />
     </div>
   );

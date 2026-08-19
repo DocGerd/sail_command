@@ -6,38 +6,47 @@ import { useT } from '../i18n';
 import type { LatLon } from '../types';
 
 export interface ViaMarkersProps {
-  // Source of truth for marker POSITIONS is always the *committed* plan
-  // (plan.request.viaPoints, from RouteLayer.tsx — unrelated to and
-  // unchanged by the #571 redesign below). #571 redesign: a via edit no
-  // longer replans in place, so this is no longer merely "until a rejected
-  // replan snaps it back" — it is now STRUCTURAL: RouteLayer.tsx has no
-  // draft to feed this component even if it wanted to, so an add/remove/
-  // reorder done in the panel is invisible HERE until the next Plan-route
-  // press changes `plan.request.viaPoints` itself. A drag is the one
-  // exception in practice — see dragend below — because MapLibre updates a
-  // marker's DOM position imperatively during the gesture, independent of
-  // this prop, and nothing here forces a rebuild when the prop hasn't
-  // changed. `replanning` below is the disclosure for this whole gap.
+  // #571 redesign (review fix): source of truth for marker POSITIONS is
+  // App.tsx's DRAFT via list (RouteLayer.tsx's `draftViaPoints` prop),
+  // never `plan.request.viaPoints` directly. This is what makes an add/
+  // remove/reorder/drag in the panel or on the map show up as markers
+  // immediately — the marker-building effect below rebuilds from this prop
+  // on every draft write, so an edit and its marker are never out of sync.
+  // The committed `plan.request.viaPoints` only catches up once the next
+  // Plan-route press applies the draft. `replanning` below is the
+  // disclosure that the two currently differ.
+  //
+  // An EARLIER version of this component (and its App.tsx caller) sourced
+  // this prop from `plan.request.viaPoints` instead, reasoning that a drag's
+  // own imperative DOM position would "just stay where dropped" since
+  // nothing would force a rebuild. That reasoning was wrong, measured in a
+  // real browser: App.tsx's drag handler is memoized on `[plan,
+  // draftViaPoints]`, so every draft write DOES change its identity, which
+  // IS in this effect's own dependency array below — a full rebuild fired on
+  // every drag, from the (unchanged) committed list, snapping every marker
+  // straight back. Worse, the snapped-back element then broke the SECOND
+  // drag of the same marker outright (a reference-equality lookup could no
+  // longer find it). Threading the draft through, as this version does,
+  // fixes both: the rebuild now reflects the actual edit instead of
+  // reverting it.
   viaPoints: LatLon[];
   // #571 redesign: PROP NAME kept as `replanning` — RouteLayer.tsx passes it
   // straight through under that exact key and is unrelated to/unchanged by
   // this task. Its MEANING has moved: no auto-replan exists any more (the
   // maintainer's #571 ruling), so this no longer means "a replan is in
-  // flight" — it means "the panel's draft via list no longer matches what's
-  // committed/shown on the map" (App.tsx's `viaDraftStale`, computed with
-  // `lib/planForm.ts`'s `viaPointsDiffer`). Shows the chip below as a
-  // MAP-side staleness disclosure; no longer gates dragging (a draft edit is
-  // never "in flight" — there is nothing async left for a second edit to
-  // race).
+  // flight" — it means "the draft (this component's own `viaPoints` prop)
+  // no longer matches the committed `plan.request.viaPoints`" (App.tsx's
+  // `viaDraftStale`, computed with `lib/planForm.ts`'s `viaPointsDiffer`).
+  // Shows the chip below as a MAP-side staleness disclosure; no longer gates
+  // dragging (a draft edit is never "in flight" — there is nothing async
+  // left for a second edit to race).
   replanning: boolean;
-  // Resolves true once the drag was applied to the DRAFT via list (App.tsx's
-  // handleViaDragEnd) — the marker's own DOM position, already at the
-  // dropped point (MapLibre set it imperatively during the drag), is simply
-  // left alone — or false when it could not be applied (e.g. the dragged
-  // point was already removed from the draft via the panel while its
-  // now-stale marker was still showing — see `viaPoints`'s own comment
-  // above), which triggers an explicit snap-back to the last committed
-  // position.
+  // Resolves true once the drag was applied to the draft via list (App.tsx's
+  // handleViaDragEnd), which also rebuilds every marker from the (now
+  // updated) `viaPoints` prop above — including the dragged one, at its new
+  // position. Resolves false only if App.tsx has no active plan at all
+  // (defensive; ViaMarkers itself never renders without one), which
+  // triggers an explicit snap-back to the marker's last position.
   onDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
 
@@ -71,11 +80,16 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
   const t = useT();
   const markersRef = useRef<Marker[]>([]);
 
-  // Rebuilt whenever the committed via list changes (add/remove/reorder from
-  // the panel, or a successful drag replan) — via points are few (v1: no
-  // hard cap, but expected single digits), so a full teardown/recreate per
-  // change is simpler than diffing/keying individual markers and cheap
-  // enough not to matter here, unlike RouteLayer's route-line geometry.
+  // Rebuilt whenever the DRAFT via list changes (add/remove/reorder from the
+  // panel, or a successful drag — #571 redesign: never a replan) — via
+  // points are few (v1: no hard cap, but expected single digits), so a full
+  // teardown/recreate per change is simpler than diffing/keying individual
+  // markers and cheap enough not to matter here, unlike RouteLayer's
+  // route-line geometry. `onDragEnd`'s own identity changing on every draft
+  // write (it is memoized on `[plan, draftViaPoints]` in App.tsx) is
+  // EXACTLY what makes this effect re-run on every drag too — see
+  // `viaPoints`'s own comment above for why that is now correct rather than
+  // a bug.
   useEffect(() => {
     if (!map) return;
     markersRef.current.forEach((m) => m.remove());
@@ -90,9 +104,11 @@ export default function ViaMarkers({ viaPoints, replanning, onDragEnd }: ViaMark
         const snapBack = () => marker.setLngLat([p.lon, p.lat] as LngLatLike);
         void onDragEnd(index, { lat: lngLat.lat, lon: lngLat.lng })
           .then((accepted) => {
-            // Rejected: the prop didn't change, so nothing will re-sync this
-            // marker's position on its own — explicitly snap the live DOM
-            // position back to the last committed point.
+            // Rejected (defensive only — App.tsx's handleViaDragEnd returns
+            // false only when no plan is active, which ViaMarkers itself
+            // never renders without): the prop didn't change, so nothing
+            // will re-sync this marker's position on its own — explicitly
+            // snap the live DOM position back to its last position.
             if (!accepted) snapBack();
           })
           // Defense-in-depth: onDragEnd (App.tsx's handleViaDragEnd) always

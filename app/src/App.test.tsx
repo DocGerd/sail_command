@@ -71,6 +71,22 @@ const mapTestHooks = vi.hoisted(() => ({
   // added sources). Lets tests observe the language-relabel rebuild wiring,
   // which previously no-opped because getSource returned undefined.
   sourceSetData: {} as Record<string, unknown>,
+  // #571 redesign review (BLOCKER 1 / MAJOR 3): every ViaMarkers marker ever
+  // constructed by FakeMarker below, in construction order, never spliced
+  // out on remove() (only flagged `removed`) — so a rebuild is visible as a
+  // NEW entry, not a mutation of an old one, exactly mirroring how a real
+  // MapLibre rebuild replaces marker instances. `dragTo(lat, lon)` simulates
+  // a drag gesture: sets the position imperatively (as MapLibre would during
+  // the gesture) and fires the registered 'dragend' handler, same as a real
+  // marker.
+  viaMarkers: [] as {
+    lat: number;
+    lon: number;
+    draggable: boolean;
+    removed: boolean;
+    dragendHandler: (() => void) | null;
+    dragTo: (lat: number, lon: number) => void;
+  }[],
 }));
 
 // Fake plan()-call queue for the RoutingClient mock below, shared the same
@@ -250,20 +266,47 @@ vi.mock('maplibre-gl', () => {
     }
     addImage() {}
   }
+  // #571 redesign review (BLOCKER 1 / MAJOR 3): instrumented so ViaMarkers'
+  // real construct/drag/remove sequence is observable via
+  // mapTestHooks.viaMarkers — every Marker() instance (BoatMarker's own
+  // included, though it never sets `draggable`) is recorded, never spliced
+  // out on remove(), so a rebuild reads as a new array entry rather than a
+  // mutated old one.
   class FakeMarker {
-    setLngLat() {
+    private record: (typeof mapTestHooks.viaMarkers)[number];
+    constructor(opts: { draggable?: boolean } = {}) {
+      const record: (typeof mapTestHooks.viaMarkers)[number] = {
+        lat: 0,
+        lon: 0,
+        draggable: Boolean(opts.draggable),
+        removed: false,
+        dragendHandler: null,
+        dragTo: (lat: number, lon: number) => {
+          record.lat = lat;
+          record.lon = lon;
+          record.dragendHandler?.();
+        },
+      };
+      this.record = record;
+      mapTestHooks.viaMarkers.push(record);
+    }
+    setLngLat(ll: [number, number]) {
+      this.record.lon = ll[0];
+      this.record.lat = ll[1];
       return this;
     }
     setRotation() {
       return this;
     }
     getLngLat() {
-      return { lat: 0, lng: 0 };
+      return { lat: this.record.lat, lng: this.record.lon };
     }
-    setDraggable() {
+    setDraggable(v: boolean) {
+      this.record.draggable = v;
       return this;
     }
-    on() {
+    on(event: string, handler: () => void) {
+      if (event === 'dragend') this.record.dragendHandler = handler;
       return this;
     }
     off() {
@@ -272,7 +315,9 @@ vi.mock('maplibre-gl', () => {
     addTo() {
       return this;
     }
-    remove() {}
+    remove() {
+      this.record.removed = true;
+    }
   }
   class FakeAttributionControl {}
   class FakeLngLatBounds {
@@ -975,6 +1020,80 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     expect(document.querySelector('.via-markers-spinner-chip')).toBeNull();
   });
 
+  // BLOCKER 1 / MAJOR 3 (review): map markers must track the DRAFT via list,
+  // not the committed one — an add/remove must show/hide a marker
+  // immediately, and dragging the SAME marker a SECOND time must still
+  // apply (the reference-equality `indexOf` lookup the old wiring used
+  // silently discarded every drag after the first, since the dragged
+  // element had already been replaced by a new object). Uses
+  // mapTestHooks.viaMarkers (FakeMarker, above) to observe the real
+  // construct/drag/remove sequence RouteLayer -> ViaMarkers drives.
+  it('map markers track the draft: an add/remove shows/hides a marker, and a SECOND drag of the same marker still applies', async () => {
+    const plan: Plan = {
+      id: 'plan-with-via',
+      name: 'Flensburg -> Marstal',
+      createdAtMs: Date.now() - 60_000,
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [VIA_A],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now() + 3_600_000,
+        settings: DEFAULT_SETTINGS,
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now() - 3_600_000, hours: 48 }),
+      result: okPlanResult(50),
+    };
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(50))).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+
+    const alive = () => mapTestHooks.viaMarkers.filter((m) => m.draggable && !m.removed);
+
+    // The plan's own committed via already shows one marker.
+    await waitFor(() => expect(alive()).toHaveLength(1));
+
+    // Add a second via — a draft-only edit — and the marker count follows
+    // immediately, with NO Plan-route press.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(54.83, 9.95);
+    await waitFor(() => expect(alive()).toHaveLength(2));
+
+    // Remove the ORIGINAL via — the marker count follows back down.
+    fireEvent.click(
+      within(viaSection).getByRole('button', {
+        name: de['planner.via.remove'].replace('{index}', '1'),
+      }),
+    );
+    await waitFor(() => expect(alive()).toHaveLength(1));
+
+    // Drag the ONE remaining marker twice in a row.
+    await act(async () => {
+      alive()[0].dragTo(54.9, 10.0);
+    });
+    let viaSectionRow = within(viaSection).getAllByRole('listitem')[0];
+    expect(viaSectionRow).toHaveTextContent(formatLatLon({ lat: 54.9, lon: 10.0 }));
+
+    await act(async () => {
+      alive()[0].dragTo(54.95, 10.05);
+    });
+    viaSectionRow = within(viaSection).getAllByRole('listitem')[0];
+    // The row this test exists to pin: under the pre-fix reference-equality
+    // lookup, this second drag was silently discarded and the panel stayed
+    // at the FIRST dragged position.
+    expect(viaSectionRow).toHaveTextContent(formatLatLon({ lat: 54.95, lon: 10.05 }));
+  });
+
   it('switching to a different plan while a via edit is pending discards the pending edit — the newly active plan shows its OWN committed via list', async () => {
     const planB: Plan = {
       id: 'plan-b-preseeded',
@@ -1027,6 +1146,41 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     // The pending via added to the FIRST plan is gone — Plan B shows its
     // own (empty) committed via list, never the abandoned draft.
     await waitFor(() => expect(within(viaSectionB).queryAllByRole('listitem')).toHaveLength(0));
+  });
+
+  // MAJOR 4 (review): every via edit on an EXISTING plan now reaches run()
+  // (there is no more replan-side disclosure to lean on — see
+  // droppedViaCount's own comment above handlePlan), so a too-close waypoint
+  // dropped there must still surface a banner, exactly like it did on the
+  // pre-#571 replan path. Without the App.tsx pre-check this reds: run()'s
+  // own internal dedupe silently drops the via with zero banner.
+  it('a too-close waypoint dropped by the Plan-route press surfaces a banner (MAJOR 4)', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    pickOriginAndDestination();
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    await waitFor(() => expect(routingMock.calls.length).toBe(1));
+    routingMock.calls[0].resolve(okPlanResult(10));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
+    );
+
+    // Add a via ~15 m from ORIGIN_A — inside the 60 m dedupe threshold.
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(ORIGIN_A.lat + 0.0001, ORIGIN_A.lon + 0.0001);
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+
+    // Press Plan route — run() will dedupe this via away internally.
+    fireEvent.click(screen.getByRole('button', { name: de['planner.plan'] }));
+    expect(await screen.findByText(de['banner.viaTooClose'])).toBeInTheDocument();
+
+    await waitFor(() => expect(routingMock.calls.length).toBe(2));
+    routingMock.calls[1].resolve(okPlanResult(10));
+
+    fireEvent.click(screen.getByRole('button', { name: de['banner.dismiss'] }));
+    expect(screen.queryByText(de['banner.viaTooClose'])).not.toBeInTheDocument();
   });
 });
 

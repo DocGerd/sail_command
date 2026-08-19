@@ -8,6 +8,7 @@ import {
   useSettings,
 } from './state/AppState';
 import { usePlanFlow, type PlanningState as FlowPlanningState } from './state/usePlanFlow';
+import { dedupeViaPoints } from './state/replan';
 import { useLiveReroute } from './state/reroute';
 import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
@@ -318,16 +319,24 @@ function AppShell() {
   // plan-form sync effect below, which now does this alongside
   // origin/destination/departureMs.
   //
-  // The COMMITTED list, `plan.request.viaPoints`, still exists and is what
-  // ViaMarkers/RouteLayer render on the map (RouteLayer.tsx is unrelated to
-  // and unchanged by this task) — so between an edit and the next Plan press
-  // the map's via MARKERS and the panel's via LIST can disagree (an add/
-  // remove/reorder never touches the map; only a drag's own imperative
-  // marker position tracks the edit, since nothing forces a marker rebuild
-  // when `plan.request.viaPoints` itself hasn't changed). `viaDraftStale`
-  // below is the disclosure for exactly this gap — see its own comment.
+  // RouteLayer.tsx renders ViaMarkers FROM this same draft (its own
+  // `draftViaPoints` prop, review fix) — not the committed
+  // `plan.request.viaPoints` — so an add/remove/reorder/drag shows up as a
+  // marker immediately, in step with the panel list. The committed list
+  // still exists (it's what the ROUTE LINE is drawn from, and what a
+  // rejected/no-op state falls back to) and can disagree with the draft
+  // between an edit and the next Plan press — `viaDraftStale` below is the
+  // disclosure for that gap, on the map; the panel's own Chip/live-region
+  // fold (via `formDirty`) is the equivalent disclosure there.
   const [draftViaPoints, setDraftViaPoints] = useState<LatLon[]>([]);
   const viaPoints = draftViaPoints;
+  // MAJOR 4 (review, #571 redesign): count of vias the LAST Plan-route press
+  // dropped as coincident with a neighbor (dedupeViaPoints, ~60 m threshold)
+  // — set in handlePlan below, drives the banner near the other via-editing
+  // banners. Recomputed (never accumulated) on every press, including a
+  // press that drops nothing (resets to 0) — same one-shot-per-attempt
+  // semantics the pre-#571 viaReplan.state.droppedCount had.
+  const [droppedViaCount, setDroppedViaCount] = useState(0);
   // null = tap-to-pick disarmed; 'origin'/'destination'/'via' = MapView.tapActive
   // is armed for that target. Disarmed by: a tap resolving (handleMapTap),
   // a harbor-search pick filling the armed field (handlePickOrigin/
@@ -483,29 +492,23 @@ function AppShell() {
     [viaPoints, handleViaPointsChange],
   );
 
-  // ViaMarkers' dragend handler. Markers themselves are still positioned
-  // from the COMMITTED `plan.request.viaPoints` (RouteLayer.tsx, unrelated
-  // to and unchanged by this task), so `index` here is the dragged marker's
-  // position in THAT list, not necessarily in `draftViaPoints` (the two can
-  // have diverged already via an add/remove/reorder done since the last
-  // Plan press). Locate the SAME point by reference in the current draft
-  // and update it there — #571 redesign: a drag must not replan either, only
-  // update the draft. Resolves true ("accepted": don't snap the marker back
-  // — its DOM position, set imperatively by MapLibre during the drag,
-  // simply stays where the user dropped it, since nothing here forces a
-  // marker rebuild) once applied to the draft, or false when the dragged
-  // point can no longer be found in the draft (e.g. it was already removed
-  // via the panel while its now-stale marker was still showing on the map —
-  // an accepted residual of markers tracking the committed list rather than
-  // the draft, see `draftViaPoints`'s own comment above) — there is nothing
-  // coherent to update, so the marker snaps back.
+  // ViaMarkers' dragend handler. Markers are now rendered FROM the draft
+  // (RouteLayer.tsx's `draftViaPoints` prop, review fix — markers used to be
+  // positioned from the committed `plan.request.viaPoints`, which required a
+  // reference-equality lookup here that broke on a SECOND drag of the same
+  // marker: the first drag replaces the draft element with a new object, so
+  // `plan.request.viaPoints[index]` was no longer found by `indexOf` on any
+  // later drag, and the marker silently stopped responding — BLOCKER,
+  // measured in a real browser). With markers sourced from the draft,
+  // `index` IS a draft index directly — no lookup needed, and always valid
+  // by construction (ViaMarkers builds it from `draftViaPoints.map`). A drag
+  // must not replan either — #571 redesign — just update the draft; always
+  // "accepted" (`true`) since there is no longer a case where the dragged
+  // point can't be found.
   const handleViaDragEnd = useCallback(
     async (index: number, next: LatLon): Promise<boolean> => {
       if (!plan) return false; // ViaMarkers only ever renders once a plan exists; guarded defensively
-      const original = plan.request.viaPoints[index];
-      const draftIndex = draftViaPoints.indexOf(original);
-      if (draftIndex === -1) return false;
-      setDraftViaPoints(draftViaPoints.map((v, i) => (i === draftIndex ? next : v)));
+      setDraftViaPoints(draftViaPoints.map((v, i) => (i === index ? next : v)));
       return true;
     },
     [plan, draftViaPoints],
@@ -533,13 +536,16 @@ function AppShell() {
   // GPX import (#3): seed a FRESH planner draft from a parsed .gpx. Import is
   // prefill-only (design §7): it must never mutate an active plan. So it clears
   // any active plan (setPlan(null)) and sets the draft origin/destination/via
-  // state directly, deliberately BYPASSING handleViaPointsChange — which, when a
-  // plan is active, would replan THAT plan with the imported vias but its old
-  // origin/destination/windGrid and persist the incoherent result (a route that
-  // ignores the imported endpoints). After this the panel shows a clean draft;
-  // the user sets departure/options and presses Plan, which mints a new plan.
-  // (setDraftViaPoints is only read while `plan` is null — see `viaPoints` above
-  // — so clearing the plan and seeding the draft in the same batch is coherent.)
+  // state directly, alongside setDraftViaPoints rather than through
+  // handleViaPointsChange — not because that handler is unsafe to call (#571
+  // redesign: it is now a plain, unconditional setDraftViaPoints, same as
+  // this call would be), but because import needs to clear `plan` AND seed
+  // origin/destination/vias together, in the SAME batch, which
+  // handleViaPointsChange alone doesn't do. After this the panel shows a
+  // clean draft; the user sets departure/options and presses Plan, which
+  // mints a new plan. (draftViaPoints is read unconditionally now — see
+  // its own comment above `viaPoints` — so clearing the plan and seeding
+  // the draft in the same batch is coherent regardless.)
   const handleImportRoute = useCallback(
     (o: PickedPoint, d: PickedPoint, vias: LatLon[]) => {
       setPlan(null);
@@ -662,6 +668,18 @@ function AppShell() {
 
   const handlePlan = useCallback(() => {
     if (!origin || !destination) return;
+    // MAJOR 4 (review, #571 redesign): usePlanFlow.ts's run() dedupes vias
+    // internally (~60 m coincident-waypoint guard) but has no banner surface
+    // of its own to disclose a drop from — the pre-#571 UI never needed one
+    // there, because a via edit on an EXISTING plan used to go through
+    // useViaReplan.replace(), which surfaced its own droppedCount via this
+    // same banner (state/replan.ts's dedupeViaPoints, reused here). Now that
+    // every via edit on an existing plan reaches run() too, that disclosure
+    // has to happen here instead — using the identical pure helper, purely
+    // to compute what's about to be dropped (run() still performs its own
+    // dedupe as the actual, authoritative enforcement; this is presentation
+    // only and duplicating the check costs nothing since it's O(vias)).
+    setDroppedViaCount(dedupeViaPoints(origin.point, viaPoints, destination.point).droppedCount);
     void run(
       {
         origin: origin.point,
@@ -790,14 +808,24 @@ function AppShell() {
       : false;
   // #571 redesign: the MAP-side counterpart of the same signal, fed to
   // ViaMarkers via RouteLayer's `viaReplanning` prop (kept exactly that PROP
-  // NAME — RouteLayer.tsx is unrelated to and unchanged by this task, and
-  // still forwards it under that key). Narrower than `formDirty` on purpose
-  // — the map disclosure is specifically about the via list (the one thing
-  // this task's map-side markers can visibly disagree with — see
-  // `draftViaPoints`'s own comment above), not every dirty form field.
-  // `plan !== null` mirrors `viaDraftStale`'s only meaningful precondition:
-  // ViaMarkers itself renders nothing without an active plan.
-  const viaDraftStale = plan !== null && viaPointsDiffer(draftViaPoints, plan.request.viaPoints);
+  // NAME — see ViaMarkers.tsx's own comment on the identically-repurposed
+  // prop). Narrower than `formDirty` on purpose — the map disclosure is
+  // specifically about the via list, not every dirty form field.
+  //
+  // Guarded on `origin !== null && destination !== null` for the SAME reason
+  // `formDirty` is, just above: right after loading a plan there's a
+  // one-effect-tick window where `plan` is already set but the sync effect
+  // hasn't yet written origin/destination/draftViaPoints — reading false
+  // there avoids comparing the stale/initial draft against the newly active
+  // plan's via list (review finding: measured on a warm reload, this window
+  // made the chip briefly disagree with the panel's own, correctly-silent
+  // stale indicator). `plan !== null` mirrors ViaMarkers' OWN precondition —
+  // it renders nothing without an active plan.
+  const viaDraftStale =
+    plan !== null &&
+    origin !== null &&
+    destination !== null &&
+    viaPointsDiffer(draftViaPoints, plan.request.viaPoints);
   // #299 fix (PR #486 review): the cross-tab staleness BANNER (.banner-area,
   // below) intentionally uses this NARROWER signal instead of `formDirty` —
   // see routingSettingsDirty's own comment in lib/planForm.ts for why (in
@@ -860,6 +888,7 @@ function AppShell() {
             plan={plan}
             rig={rig}
             activeLegIndex={activeLegIndex}
+            draftViaPoints={draftViaPoints}
             viaReplanning={viaDraftStale}
             onViaDragEnd={handleViaDragEnd}
           />
@@ -1092,6 +1121,23 @@ function AppShell() {
             dismissLabel={t('banner.dismiss')}
           >
             {t(liveReroute.state.error)}
+          </Banner>
+        )}
+        {/* MAJOR 4 (review, #571 redesign): the last Plan-route press silently
+            dropped a too-close via — see droppedViaCount's own comment above
+            handlePlan. Reuses the SAME banner.viaTooClose/.plural copy the
+            pre-#571 viaReplan-driven banner used (never deleted — see
+            dict.de.ts's/dict.en.ts's own note on those two keys), just
+            triggered from handlePlan's own pre-check instead of a replan. */}
+        {droppedViaCount > 0 && (
+          <Banner
+            kind="info"
+            onDismiss={() => setDroppedViaCount(0)}
+            dismissLabel={t('banner.dismiss')}
+          >
+            {t(droppedViaCount === 1 ? 'banner.viaTooClose' : 'banner.viaTooClose.plural', {
+              count: droppedViaCount,
+            })}
           </Banner>
         )}
       </div>

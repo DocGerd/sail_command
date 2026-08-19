@@ -652,6 +652,9 @@ export const de = {
   'banner.retry': 'Erneut versuchen',
   'banner.tapPick': 'Auf Karte tippen für {target}.',
   'banner.tapPick.cancel': 'Abbrechen',
+  // #571 redesign: triggered from App.tsx's handlePlan pre-check now (a
+  // dedupeViaPoints call mirroring what usePlanFlow.ts's run() does
+  // internally), not from a via-replan — the wording itself is unchanged.
   'banner.viaTooClose': 'Wegpunkt zu nah am Nachbarn — übersprungen',
   'banner.viaTooClose.plural': '{count} Wegpunkte zu nah an Nachbarn — übersprungen',
   'pwa.updateAvailable': 'Update verfügbar',
