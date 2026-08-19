@@ -215,10 +215,19 @@ export function usePlanFlow(deps: PlanFlowDeps = {}): {
       // (routing/planRoute.ts) as a zero-duration leg on the very first run.
       // Both the request handed to the worker below and the Plan persisted
       // at the end use `req` (reassigned here) so a saved plan's viaPoints
-      // always match what was actually routed. Silent drop, no banner — v1
-      // scope; replans surface a droppedCount (useViaReplan) because there's
-      // an existing plan/banner surface to attach it to, but run() has none
-      // yet at this point.
+      // always match what was actually routed. NOT a silent drop any more
+      // (MAJOR 4, PR #586 review — this comment previously said otherwise
+      // in both clauses): App.tsx's handlePlan, the only run() call site
+      // reachable from the Plan-route button, computes this SAME dedupe as
+      // a presentation-only pre-check and surfaces the dropped count via a
+      // banner BEFORE calling run(), so a banner surface DOES exist by the
+      // time this line runs. This call remains the actual, authoritative
+      // enforcement — App.tsx's is a duplicate purely for disclosure (cheap,
+      // O(vias)). The OTHER run() call site (PlansList recalc, App.tsx's
+      // handleRecalculate) has no such pre-check, but is not a live hazard:
+      // it re-submits a plan's own STORED request unchanged, whose via list
+      // already passed this exact dedupe when the plan was first created —
+      // droppedCount is 0 there by construction.
       req = { ...req, viaPoints: dedupeViaPoints(req.origin, req.viaPoints, req.destination).kept };
 
       transition({ phase: 'fetching-wind' });

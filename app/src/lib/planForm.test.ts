@@ -4,6 +4,7 @@ import {
   departureSeedMs,
   pickedPointsOfPlan,
   planFormDirty,
+  viaPointsDiffer,
   type PlanFormSnapshot,
 } from './planForm';
 import { nextFullHourMs } from '../components/PlannerPanel';
@@ -108,6 +109,10 @@ function matchingForm(): PlanFormSnapshot {
       label: 'Marstal',
     },
     departureMs: 1_780_000_000_000,
+    // A fresh array, deliberately not the same reference as
+    // ORIGINAL_REQUEST.viaPoints — proves planFormDirty/viaPointsDiffer
+    // compare CONTENT, not identity.
+    viaPoints: [{ lat: 54.83, lon: 9.9 }],
     settings: { ...ORIGINAL_REQUEST.settings },
   };
 }
@@ -179,6 +184,37 @@ describe('departureSeedMs (#301, extracted from PlansList.tsx:152)', () => {
   });
 });
 
+// #571 redesign: the shared comparison behind planFormDirty's viaPoints term
+// AND App.tsx's on-map staleness chip (ViaMarkers' repurposed `replanning`
+// prop) — tested standalone since it now has two independent consumers.
+describe('viaPointsDiffer', () => {
+  it('is false for two empty lists', () => {
+    expect(viaPointsDiffer([], [])).toBe(false);
+  });
+
+  it('is false for content-identical lists that are different array/point object references', () => {
+    expect(viaPointsDiffer([{ lat: 54.83, lon: 9.9 }], [{ lat: 54.83, lon: 9.9 }])).toBe(false);
+  });
+
+  it('is true when lengths differ', () => {
+    expect(viaPointsDiffer([{ lat: 54.83, lon: 9.9 }], [])).toBe(true);
+  });
+
+  it("is true when a point's lat differs", () => {
+    expect(viaPointsDiffer([{ lat: 54.83, lon: 9.9 }], [{ lat: 54.9, lon: 9.9 }])).toBe(true);
+  });
+
+  it("is true when a point's lon differs", () => {
+    expect(viaPointsDiffer([{ lat: 54.83, lon: 9.9 }], [{ lat: 54.83, lon: 10.0 }])).toBe(true);
+  });
+
+  it('is true when the same two points are reordered (order-sensitive, not a set/multiset comparison)', () => {
+    const a = { lat: 54.8, lon: 9.6 };
+    const b = { lat: 54.83, lon: 9.9 };
+    expect(viaPointsDiffer([a, b], [b, a])).toBe(true);
+  });
+});
+
 describe('planFormDirty (#301)', () => {
   it('is NOT dirty when the form matches the plan request exactly', () => {
     expect(planFormDirty(makePlan(), matchingForm(), true)).toBe(false);
@@ -211,6 +247,44 @@ describe('planFormDirty (#301)', () => {
     const form = matchingForm();
     form.destination = { source: 'tap', point: form.destination.point, label: 'tap label' };
     expect(planFormDirty(makePlan(), form, true)).toBe(true);
+  });
+
+  // #571 redesign: viaPoints is now part of the comparison — a via edit no
+  // longer replans in place, so it can diverge from plan.request.viaPoints
+  // exactly like origin/destination/departure/settings already could.
+  describe('viaPoints (#571 redesign)', () => {
+    it('is dirty when a via point is added', () => {
+      const form = matchingForm();
+      form.viaPoints = [...form.viaPoints, { lat: 54.9, lon: 10.0 }];
+      expect(planFormDirty(makePlan(), form, true)).toBe(true);
+    });
+
+    it('is dirty when the only via point is removed', () => {
+      const form = matchingForm();
+      form.viaPoints = [];
+      expect(planFormDirty(makePlan(), form, true)).toBe(true);
+    });
+
+    it("is dirty when a via point's coordinate changes (a drag)", () => {
+      const form = matchingForm();
+      form.viaPoints = [{ lat: 54.9, lon: 10.0 }];
+      expect(planFormDirty(makePlan(), form, true)).toBe(true);
+    });
+
+    it('is dirty when two via points are reordered (order-sensitive, not a set comparison)', () => {
+      const a = { lat: 54.8, lon: 9.6 };
+      const b = { lat: 54.83, lon: 9.9 };
+      const plan = makePlan({ ...ORIGINAL_REQUEST, viaPoints: [a, b] });
+      const form = matchingForm();
+      form.viaPoints = [b, a];
+      expect(planFormDirty(plan, form, true)).toBe(true);
+    });
+
+    it('is NOT dirty when viaPoints match by content, from a freshly-constructed array', () => {
+      const form = matchingForm();
+      form.viaPoints = [{ lat: 54.83, lon: 9.9 }]; // same content as ORIGINAL_REQUEST.viaPoints
+      expect(planFormDirty(makePlan(), form, true)).toBe(false);
+    });
   });
 
   // One row per routing-relevant field — each alone must flip the predicate.
@@ -290,6 +364,7 @@ describe('planFormDirty (#301)', () => {
         origin,
         destination,
         departureMs: ORIGINAL_REQUEST.departureMs,
+        viaPoints: [...ORIGINAL_REQUEST.viaPoints],
         settings: { ...ORIGINAL_REQUEST.settings },
       };
     }
@@ -315,15 +390,21 @@ describe('planFormDirty (#301)', () => {
   });
 
   // Mutation check (repo rule: a predicate that only reds in one direction is
-  // half-tested), MEASURED by hand against this file before trusting it, not
-  // merely asserted: forcing planFormDirty to `return true` unconditionally
-  // reds exactly the 6 'is NOT dirty' rows above (the matching-form baseline,
-  // showOwnship, aisApiKey, ownMmsi, the pre-#243-backfill 'NOT dirty' row,
-  // and the harborsAvailable=false 'NOT dirty' row) — 23/29 still pass.
-  // Forcing it to `return false` unconditionally reds exactly the 16 'is
-  // dirty'/'IS dirty' rows (departure, origin point, origin harbor id,
-  // destination point, destination harbor id, all 8 routing-relevant
-  // settings via it.each, the pre-#243-backfill 'IS dirty' row, and the two
-  // remaining harborsAvailable rows) — 13/29 still pass. Both directions
-  // discriminate on DIFFERENT rows, so the predicate is not half-tested.
+  // half-tested), RE-MEASURED against this file (#571 redesign added the
+  // viaPoints sub-describe above and the standalone viaPointsDiffer describe
+  // elsewhere in this file, both counted below): forcing planFormDirty to
+  // `return true` unconditionally reds exactly the 7 'is NOT dirty' rows in
+  // THIS describe (the matching-form baseline, showOwnship, aisApiKey,
+  // ownMmsi, the pre-#243-backfill 'NOT dirty' row, the harborsAvailable=false
+  // 'NOT dirty' row, and the new viaPoints-match-by-content row) — 33/40
+  // still pass (the other 13 — viaPointsDiffer's 6 rows plus
+  // pickedPointsOfPlan's 4 and departureSeedMs's 3 — never call
+  // planFormDirty at all, so this mutation cannot touch them). Forcing it to
+  // `return false` unconditionally reds exactly the 20 'is dirty'/'IS dirty'
+  // rows (departure, origin point, origin harbor id, destination point,
+  // destination harbor id, all 8 routing-relevant settings via it.each, the
+  // pre-#243-backfill 'IS dirty' row, the two remaining harborsAvailable
+  // rows, and the new 4 viaPoints-dirty rows: added/removed/moved/reordered)
+  // — 20/40 still pass. Both directions discriminate on DIFFERENT rows, so
+  // the predicate is not half-tested.
 });

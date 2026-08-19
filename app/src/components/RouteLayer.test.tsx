@@ -202,6 +202,7 @@ function renderRouteLayer(map: ReturnType<typeof makeFakeMap>, activeLegIndex: n
       plan={makePlan()}
       rig="genoa"
       activeLegIndex={activeLegIndex}
+      draftViaPoints={[]}
       viaReplanning={false}
       onViaDragEnd={async () => true}
     />,
@@ -219,6 +220,7 @@ function renderRouteLayerWithPlan(
       plan={plan}
       rig={rig}
       activeLegIndex={null}
+      draftViaPoints={plan.request.viaPoints}
       viaReplanning={false}
       onViaDragEnd={async () => true}
     />,
@@ -534,6 +536,7 @@ describe('RouteLayer style reload (#153)', () => {
         plan={makePlan()}
         rig="genoa"
         activeLegIndex={2}
+        draftViaPoints={[]}
         viaReplanning={false}
         onViaDragEnd={async () => true}
       />,
@@ -630,6 +633,7 @@ describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () 
           plan={makePlan()}
           rig="genoa"
           activeLegIndex={null}
+          draftViaPoints={[]}
           viaReplanning={false}
           onViaDragEnd={async () => true}
         />
