@@ -174,13 +174,14 @@ prose and citation residue from the multi-boat branch
 ([#552](https://github.com/DocGerd/sail_command/issues/552));
 `CLAUDE.md`'s CI timing figures, re-measured at 1161 s against a
 documented 515–535 s — mostly suite growth rather than a slower runner,
-so the file now carries the test count beside each duration
+so the file now carries the test count beside the `npm run test` figures
 ([#556](https://github.com/DocGerd/sail_command/issues/556)); a
 `BoatPicker` test fixture that derived from `BOATS[0]`, an index
 dependency on catalogue order rather than a named boat
 ([#569](https://github.com/DocGerd/sail_command/issues/569)); the docs
-screenshot capture script's dedicated wind fixture, drifted past its
-forecast horizon into a tied rig verdict
+screenshot capture script's dedicated wind fixture, retuned after its rig
+margin collapsed below the tie band and left the captured image with no ★
+at all
 ([#577](https://github.com/DocGerd/sail_command/issues/577)); the vitest
 sequencer's `SLOW_TEST_FILES_FIRST` list, ordered against its own
 "slowest first" comment

@@ -51,7 +51,8 @@ See [README → Development](README.md#development). Quick reference:
 - CI runs lint + typecheck before tests — vitest alone will not catch
   unused imports or type errors.
 - The full unit/property suite was measured at 499.9 s (~8.3 min) on a
-  quiet machine on 2026-08-19, at 2032 tests across 143 files. Wall time
+  quiet machine on 2026-08-19, when the suite held 2032 tests across 143
+  files. Wall time
   is set almost entirely by one file under `app/src/` —
   `routing/realmask.repro.test.ts` (477.4 s) — with the seeded fast-check
   property suite second (239.6 s); everything else runs concurrently
