@@ -1,6 +1,13 @@
 import { useMemo, type Ref } from 'react';
 import { useT, useLang } from '../i18n';
-import { formatHeading, formatKn, formatLegDuration, formatNm, formatTime } from '../lib/format';
+import {
+  formatHeading,
+  formatKn,
+  formatLegDuration,
+  formatLegNm,
+  formatNm,
+  formatTime,
+} from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
@@ -113,8 +120,8 @@ export function ShallowWarning({
     if (!mask || !legs || legs.length === 0) return null;
     const nm = shallowExposureNm(legs, mask, shallow.requestedDepthM);
     if (nm === null || nm <= 0) return null;
-    return formatNm(roundExposureNm(nm));
-  }, [legs, mask, shallow.requestedDepthM]);
+    return formatNm(roundExposureNm(nm), lang);
+  }, [legs, mask, shallow.requestedDepthM, lang]);
   // #516 increment 2 (requires #518): whether the exposure just measured
   // above is entirely inside #452's relaxation discs. Waypoints/allowances
   // per shallowConfinedWithinM's own contract: the SNAPPED origin/destination
@@ -228,7 +235,7 @@ export function ShallowWarning({
             existing mechanism/locator sentences below, whose own referents
             are untouched. */}
         {showConfined && (
-          <>{t('route.shallow.confined', { radius: formatNm(APPROACH_RADIUS_M / 1852) })} </>
+          <>{t('route.shallow.confined', { radius: formatNm(APPROACH_RADIUS_M / 1852, lang) })} </>
         )}
         {t('route.shallow.detail', {
           requested: shallow.requestedDepthM.toFixed(1),
@@ -475,7 +482,7 @@ export default function RouteSummary({
                   aria-hidden="true"
                 />
                 <span className="tabular-nums">
-                  {t('route.split.sail')} · {formatNm(summary.sailNm)} · {summary.sailPct}%
+                  {t('route.split.sail')} · {formatNm(summary.sailNm, lang)} · {summary.sailPct}%
                 </span>
               </span>
               <span className="ergebnis-split-item">
@@ -484,7 +491,7 @@ export default function RouteSummary({
                   aria-hidden="true"
                 />
                 <span className="tabular-nums">
-                  {t('route.split.motor')} · {formatNm(summary.motorNm)} · {summary.motorPct}%
+                  {t('route.split.motor')} · {formatNm(summary.motorNm, lang)} · {summary.motorPct}%
                 </span>
               </span>
             </div>
@@ -537,9 +544,17 @@ export default function RouteSummary({
                     </td>
                     <td>{formatHeading(leg.headingDeg)}</td>
                     <td>{leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}</td>
-                    <td>{formatKn(leg.twsKn)}</td>
-                    <td>{formatKn(leg.speedKn)}</td>
-                    <td>{formatNm(leg.distanceNm)}</td>
+                    <td>{formatKn(leg.twsKn, lang)}</td>
+                    {/* #439: NOT formatLegNm — speed keeps formatNm's one-
+                        decimal precision unchanged. Raising distance alone
+                        (below) to two decimals reopens the algebraic-
+                        mismatch readability concern this file's own comment
+                        on the table header warns about (distance/duration/
+                        speed are dependent by construction); flagged in the
+                        PR body rather than silently resolved by also
+                        touching speed's precision here. */}
+                    <td>{formatKn(leg.speedKn, lang)}</td>
+                    <td>{formatLegNm(leg.distanceNm, lang)}</td>
                     <td>
                       {leg.maneuverAtStart && (
                         <span className="chip chip-maneuver">

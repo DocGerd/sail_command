@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Popup } from 'maplibre-gl';
 import type { GeoJSONSource, Map as MaplibreMap, MapLayerMouseEvent } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
-import { useT } from '../i18n';
+import { useLang, useT } from '../i18n';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { aisFeatureCollection, aisPopupRows, type AisPopupProps } from '../lib/aisGeoJson';
 import { installStyleSetup } from '../lib/styleReload';
@@ -175,8 +175,13 @@ function setupLayers(map: MaplibreMap): void {
 export default function AisLayer({ targets }: { targets: AisTargetSnapshot[] }) {
   const map = useMapInstance();
   const t = useT();
+  const [lang] = useLang();
   const styleReadyRef = useRef(false);
   const tRef = useRef(t);
+  // #525: same fixRef idiom as tRef below — the click handler is registered
+  // once (deps `[map]`), so it must read the CURRENT language from a ref
+  // rather than closing over a stale one from mount.
+  const langRef = useRef(lang);
   // Latest snapshot, readable from the style setup below without re-running
   // that effect per snapshot: a re-add after a mid-session style reload must
   // paint the CURRENT targets, not the ones the mount effect closed over
@@ -184,6 +189,7 @@ export default function AisLayer({ targets }: { targets: AisTargetSnapshot[] }) 
   const targetsRef = useRef(targets);
   useEffect(() => {
     tRef.current = t;
+    langRef.current = lang;
     targetsRef.current = targets;
   });
 
@@ -240,7 +246,7 @@ export default function AisLayer({ targets }: { targets: AisTargetSnapshot[] }) 
       };
       const container = document.createElement('div');
       container.className = 'ais-popover';
-      for (const row of aisPopupRows(props, Date.now())) {
+      for (const row of aisPopupRows(props, Date.now(), langRef.current)) {
         const line = document.createElement('div');
         const label = document.createElement('strong');
         label.textContent = `${tRef.current(row.labelKey)}: `;

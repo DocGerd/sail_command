@@ -603,7 +603,7 @@ export default function RouteLayer({
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
     const legs = result?.legs ?? [];
-    const routeData = legsToFeatureCollection(legs, { motorLetter: t('route.motorLetter') });
+    const routeData = legsToFeatureCollection(legs, lang, { motorLetter: t('route.motorLetter') });
     const pointData = routePointFeatures(legs, result?.etaMs ?? 0, lang);
     (map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined)?.setData(routeData);
     (map.getSource(MANEUVER_SOURCE) as GeoJSONSource | undefined)?.setData(pointData);
@@ -614,11 +614,17 @@ export default function RouteLayer({
 
   // #324: the alt-rig overlay's line data. No labels/points depend on this
   // source (see setupLayers' comment), so — unlike the effect above — this
-  // never needs `lang` or `t()`.
+  // never needs `t()`, and its effect deps below deliberately omit `lang`:
+  // a language switch alone must not re-set this source's data. #525 made
+  // `lang` a REQUIRED positional argument to `legsToFeatureCollection` (it
+  // still computes an unused `speedLabel` internally), so it must be passed
+  // here too even though nothing ever renders it for this source — the
+  // outer `lang` binding is read, not depended on.
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const altData = legsToFeatureCollection(altResult?.legs ?? []);
+    const altData = legsToFeatureCollection(altResult?.legs ?? [], lang);
     (map.getSource(ROUTE_ALT_SOURCE) as GeoJSONSource | undefined)?.setData(altData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, styleEpoch, altResult]);
 
   // Maneuver letter labels are language-dependent: W/H (de), T/G (en).

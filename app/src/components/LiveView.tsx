@@ -356,12 +356,12 @@ export default function LiveView({
             <dt>{t('live.cog.label')}</dt>
             <dd>{steerable.fix.cogDeg !== null ? formatHeading(steerable.fix.cogDeg) : '—'}</dd>
             <dt>{t('live.sog.label')}</dt>
-            <dd>{steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn) : '—'}</dd>
+            <dd>{steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn, lang) : '—'}</dd>
           </dl>
 
           <p className="live-view-next-event">
             {nextEvent
-              ? `${t('live.nextEvent.label', { distance: formatNm(nextEvent.distNm) })} ${t(
+              ? `${t('live.nextEvent.label', { distance: formatNm(nextEvent.distNm, lang) })} ${t(
                   nextEvent.kind === 'motor-start'
                     ? 'live.nextEvent.motorStart'
                     : MANEUVER_LABEL_KEY[nextEvent.kind],
