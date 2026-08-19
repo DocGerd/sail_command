@@ -50,8 +50,13 @@ See [README → Development](README.md#development). Quick reference:
   that add or change behavior without tests will be asked to add them.
 - CI runs lint + typecheck before tests — vitest alone will not catch
   unused imports or type errors.
-- The full unit/property suite takes ~4 min (a ~200 s seeded fast-check
-  property file and a ~40 s real-mask solver acceptance file are expected).
+- The full unit/property suite was measured at 499.9 s (~8.3 min) on a
+  quiet machine on 2026-08-19, when the suite held 2032 tests across 143
+  files. Wall time
+  is set almost entirely by one file under `app/src/` —
+  `routing/realmask.repro.test.ts` (477.4 s) — with the seeded fast-check
+  property suite second (239.6 s); everything else runs concurrently
+  underneath them, so the total barely exceeds the slowest file.
   CI is slower than dev machines, but not by one flat multiplier, and the
   ratio is not stable as the suite grows — re-measure rather than
   extrapolate. Measured 2026-08-19 on `develop` (CI run 32217579848), the
@@ -136,17 +141,21 @@ prefixes are the mechanism.
 - `status:` — `status: needs-triage` (not yet assessed; default on new bugs) ·
   `status: blocked` (waiting on an external decision or dependency).
 
-**Known drift — verify the spelling before using a name.** The live label
-set currently also contains no-space duplicates of eight of these
-(`type:bug`, `type:chore`, `type:docs`, `priority:low`, `priority:medium`,
-`area:map`, `area:pipeline`, `area:tooling`), all of them attached to real
-issues. The spaced form above is the intended taxonomy; the duplicates are
-a cleanup tracked in
-[#401](https://github.com/DocGerd/sail_command/issues/401) (`v0.12.1`).
-Until that lands, a filter by one spelling silently misses issues tagged
-with the other and `gh issue create` fails with `not found` on the wrong
-one — check with
-`gh label list --repo DocGerd/sail_command --limit 60 --json name --jq '.[].name'`.
+**Label spelling is the spaced form — always a colon and a space, e.g.
+`type: bug`, never `type:bug`.** The taxonomy previously drifted: eight
+labels (`type:bug`, `type:chore`, `type:docs`, `priority:low`,
+`priority:medium`, `area:map`, `area:pipeline`, `area:tooling`) existed
+alongside their spaced equivalents, attached to real issues, so a filter by
+one spelling silently missed issues tagged with the other and
+`gh issue create`/`gh label create` could fail or recreate the ambiguity on
+the wrong one. That drift was resolved on 2026-08-19
+([#401](https://github.com/DocGerd/sail_command/issues/401)): every issue
+carrying a no-space label was re-tagged onto the spaced form, then all
+eight no-space label objects were deleted. `gh label list --repo
+DocGerd/sail_command --limit 100 --json name --jq '.[].name'` is the fact
+about the CURRENT label set, not this paragraph — check it before assuming
+a spelling exists, since nothing prevents the drift from being
+reintroduced by a future `gh label create`.
 Dependabot additionally applies `dependencies`, `github_actions`,
 `javascript` and `python`; those are bot-managed and outside this taxonomy.
 
@@ -160,17 +169,20 @@ labels on **pull requests** are applied automatically from changed paths by
 **Milestones**
 
 - `v0.13.0` — the next release.
-- `v0.12.1` — pending patch scope; per the PATCH exception below it shifts nothing.
+- `v0.14.0` — the release after next.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
 `v0.4.0` through `v0.12.0` are closed (plus the `v0.5.1` patch milestone).
-`v0.13.0` is open and scoped as the next release milestone, `v0.14.0` is
-opened fresh at this cut per the roll-forward convention below, and
-`v0.12.1` holds pending patch scope. Milestone state closes only once the
-release PR merges and the tag is pushed, so
+**The `v0.12.1` milestone has not closed yet — it still shows
+`state: open` on GitHub.** Nothing in it is still open and this cut's
+`CHANGELOG.md` section is already folded, but the milestone object itself
+only closes once the release PR merges and the tag is pushed, per the
+roll-forward convention below; until then,
 `gh api repos/DocGerd/sail_command/milestones` is the fact, not this
-sentence. The `v0.8.1` patch release (documentation-only) shipped
+sentence. `v0.13.0` is open and scoped as the next release milestone, and
+`v0.14.0` was opened fresh at the `v0.12.0` cut per the roll-forward
+convention below. The `v0.8.1` patch release (documentation-only) shipped
 on 2026-08-04 and, per the PATCH exception below, carries no milestone of
 its own.
 The [milestones page](https://github.com/DocGerd/sail_command/milestones) is
@@ -187,8 +199,9 @@ cannot drift from the tracker: [`ROADMAP.md`](ROADMAP.md) (milestone contents
 and themes), [`CHANGELOG.md`](CHANGELOG.md) (fold the pending
 [`changelog.d/`](changelog.d/README.md) fragments into the new version and
 delete them), [`README.md`](README.md) (known limitations),
-[`GOVERNANCE.md`](GOVERNANCE.md), and
-[`docs/security-assurance-case.md`](docs/security-assurance-case.md).
+[`GOVERNANCE.md`](GOVERNANCE.md), [`SECURITY.md`](SECURITY.md),
+[`docs/security-assurance-case.md`](docs/security-assurance-case.md),
+[`docs/acceptance.md`](docs/acceptance.md), and this file.
 
 ## Release tag signing (live, starting `v0.8.0`, #322)
 

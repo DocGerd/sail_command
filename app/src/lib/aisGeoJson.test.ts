@@ -81,6 +81,7 @@ describe('aisPopupRows', () => {
         lastUpdateMs: 0,
       },
       120_000, // 2 minutes later
+      'en',
     );
     expect(rows).toEqual([
       { labelKey: 'ais.popup.name', value: 'ALBATROS' },
@@ -104,6 +105,7 @@ describe('aisPopupRows', () => {
         lastUpdateMs: 0,
       },
       30_000,
+      'en',
     );
     expect(rows).toEqual([
       { labelKey: 'ais.popup.name', value: '211234560' },

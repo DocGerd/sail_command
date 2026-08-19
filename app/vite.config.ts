@@ -329,20 +329,49 @@ function appVersion(command: 'build' | 'serve'): string {
 
 // #214: with no cache (every CI run — `npm ci` wipes node_modules, so
 // vitest's own results cache never survives to the next run), vitest's
-// BaseSequencer.sort falls back to ordering files by size, descending. The
-// suite's single slowest file, invariants.property.test.ts, is also its
-// smallest (~4.4 KB against a ~66 KB largest file), so it sorts near the
-// BACK of ~97 files and starts ~109s late — becoming the tail of the whole
-// test step even though other workers are free the entire time (measured:
-// https://github.com/DocGerd/sail_command/issues/214). Pinning it (and the
-// next-slowest file) to the FRONT lets their ~680s combined CPU run
-// concurrently with the other ~95 files' ~230s instead of serially after
-// them. Order here is the desired START order (slowest first); add a file
-// to this list if a future addition shows the same
-// small-file/disproportionately-slow-run mismatch.
+// BaseSequencer.sort falls back to ordering files by size, descending. That
+// hurts a file that is SMALL but SLOW: invariants.property.test.ts is
+// 5,164 B — ranked 88th LARGEST of 144 test files (re-measured after this
+// branch's own resync onto `origin/develop`, PR #588 review round 2) — so
+// it sorts well into the back
+// half by size and starts late, becoming the tail of the whole test step
+// even though other workers are free the entire time (measured:
+// https://github.com/DocGerd/sail_command/issues/214).
+// realmask.repro.test.ts is a DIFFERENT case, not a second instance of the
+// same problem: at 42,532 B it is the 7th LARGEST of the 144 files
+// (App.test.tsx is the largest), so BaseSequencer's own
+// size-descending default would already start it near the front — not the
+// back — with no help from this array. Every figure in this paragraph is a
+// snapshot that decays as test files are added or grow; re-derive rather than
+// trust them (`git ls-tree -r -l HEAD -- app/src`). Measured 2026-08-19 at
+// 9068444. It is pinned here anyway because
+// "near the front" still means SIX files sort ahead of it by size alone,
+// each occupying a worker slot before realmask's own 477.4s (the suite's
+// single longest run) gets to start; pinning it to array position 1
+// guarantees the very first wave rather than the 7th, which is the
+// remaining head-start this array can buy once the small-file mismatch
+// below is fixed. Its start order also must not depend on incidental
+// byte-size correlation surviving a future edit to the file — not because
+// it shares invariants.property.test.ts's small-file mismatch.
+// Pinning both to the FRONT lets their CPU run concurrently with
+// everything else's instead of serially after it. Order here is the
+// desired START order (slowest wall-clock time first) — #581:
+// realmask.repro.test.ts (477.4s) is listed before
+// invariants.property.test.ts (239.6s), matching the 2026-08-19 measurement
+// at `04384c2` (CLAUDE.md's "Full test suite" entry) rather than the order
+// they were originally added in. Their summed per-file duration — call it
+// combined CPU time, i.e. what the two would cost run back-to-back on one
+// core — is 477.4 + 239.6 = 717.0s; that sum is DERIVED, never itself
+// measured as one figure, and it is necessarily MORE than the 499.9s
+// measured WALL-CLOCK time for the full suite at the same commit, because
+// these two files run concurrently with each other and with everything
+// else rather than serially. Add a file to this list if a future addition
+// shows the same small-file/disproportionately-slow-run mismatch that
+// motivates invariants.property.test.ts's entry, keeping the array sorted
+// slowest-first by wall-clock time.
 const SLOW_TEST_FILES_FIRST = [
-  'src/routing/invariants.property.test.ts',
   'src/routing/realmask.repro.test.ts',
+  'src/routing/invariants.property.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: only `sort` changes

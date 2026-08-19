@@ -82,7 +82,6 @@ export const en = {
   'planner.via.moveUp': 'Move waypoint {index} up',
   'planner.via.moveDown': 'Move waypoint {index} down',
   'planner.via.marker': 'Waypoint {index}',
-  'planner.via.replanning': 'Recalculating route with updated waypoints…',
   'planner.departure.label': 'Departure',
   'planner.plan': 'Plan route',
   // §3.5 empty/first-run: friendly guidance near the primary action while no
@@ -574,6 +573,9 @@ export const en = {
   'banner.retry': 'Try again',
   'banner.tapPick': 'Tap the map to set {target}.',
   'banner.tapPick.cancel': 'Cancel',
+  // #571 redesign: triggered from App.tsx's handlePlan pre-check now (a
+  // dedupeViaPoints call mirroring what usePlanFlow.ts's run() does
+  // internally), not from a via-replan — the wording itself is unchanged.
   'banner.viaTooClose': 'Waypoint too close to a neighbor — skipped',
   'banner.viaTooClose.plural': '{count} waypoints too close to a neighbor — skipped',
   'pwa.updateAvailable': 'Update available',

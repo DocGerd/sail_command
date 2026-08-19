@@ -52,6 +52,21 @@ making design-level decisions; do not silently deviate.
   ask-gate hook, and a subagent writing there would slip a spec edit past
   the gate. A spike doc is evidence for a decision, never a spec — promoting
   one to a spec is a main-session act.
+- `app/src/test/` is the DENSEST cluster of source-SCANNING guards: most of
+  them read a FOREIGN artifact (`readFileSync`, or `import.meta.glob(…,
+  {query:'?raw'})` for source scans) and assert against it, so editing
+  `app/src/data/boats.ts`, `pipeline/{verify_mask.py,build_polars.mjs,
+  estimate_polars.mjs,polars-source.json}`, `app/public/data/polars/*.json`,
+  `app/sweep/sweepArms.ts` or `app/src/app.css` can red the REQUIRED `app`
+  check from a file you never opened. Read the guard's own header before
+  changing its twin. Two more keepers live BESIDE their subject in
+  `app/src/lib/` — `panelWidth.test.ts` and `useBannerHeight.test.ts`, each
+  pinning an `app.css` literal against a TS constant — so this directory is
+  not the only place to look. And `.github/workflows/coverage.yml`'s
+  `timeout-minutes` is NOT guarded at all: `timeoutBudgetVsJobCap.test.ts`
+  DECLARES `JOB_CAP_MINUTES = 240` rather than reading it (PR #351 removed the
+  read after four fail-opens), so the two are kept in sync by a twin comment
+  only and #359 tracks restoring a real read.
 
 ## Commands
 
@@ -64,6 +79,12 @@ making design-level decisions; do not silently deviate.
   specs are the ONLY functional assurance for `src/sw.ts` and
   `src/routing/worker.ts` (both ~0% coverage by design), so a lint gap there
   was never cosmetic. No hand-run is needed any more.
+  The REQUIRED `app` job runs `.github/scripts/check-no-home-paths.sh`
+  immediately after `checkout` and before `setup-node`/`npm ci` (#474,
+  `ci.yml`'s `No leaked home paths (#474)` step, ~:37 — it needs neither):
+  any absolute per-user home path in ANY tracked file reds a required check,
+  `docs/**`, `.claude/**` and `CLAUDE.md` included. The usual vector is a pasted
+  agent transcript — use `<repo>`/`<scratchpad>` placeholders.
 - `npm --prefix X run <script>` chdirs into `X` before running; `npm --prefix X
   exec <bin>` does NOT — it resolves the binary from `X`'s `node_modules` but
   executes in the CALLER's cwd. `npm --prefix app exec vitest run -- <flags>`
@@ -73,38 +94,17 @@ making design-level decisions; do not silently deviate.
   use `run`, never `exec`, for anything that depends on `app/`'s config.
 - Statement coverage baseline: 93.92% (4100/4365 statements; branches 88.99%,
   functions 92.28%, lines 95.52%), measured 2026-08-03 via `npm --prefix app
-  run test:coverage`. The trailing test/file COUNT from that same 2026-08-03
-  measurement (1206 tests, 102 files) is now stale by exactly PR #351's own
-  +1/+1 (`app/src/test/timeoutGuard.test.ts`, #342's structural guard) — the
-  percentages above are untouched (a scanning-only test file is
-  coverage-neutral) and were correctly left unmeasured-again per that PR;
-  only the count needed updating, verified via a real `npm --prefix app run
-  test` run: **1207 tests, 103 files** (2026-08-03). Session 24 (2026-08-04)
-  merged four PRs (#380/#340 planner progress, #381/#378 route annotation
-  layers, #382/#368 banner clearance, #384/#324 second-rig overlay) that
-  together added test files (`app/src/lib/useBannerHeight.test.ts` among
-  them) and cases to several existing ones — the count is stale again by
-  more than a fixed delta this time, so it was re-measured rather than
-  hand-added: a real `npm --prefix app run test` run gives **1294 tests, 109
-  files** (2026-08-04); BOTH halves re-measured 2026-08-10 on develop
-  @ `9940b32` with maplibre-gl 6.2.0 installed — **1515 tests, 117 files**,
-  all passing, 234 s; re-measured again 2026-08-10 on develop @ `74fcd35`
-  after #504 — **1526 tests, 117 files**, all passing, 233.8 s (the file
-  count did NOT move because #504 added cases to four EXISTING test files
-  and no new one, the ordinary shape); re-measured 2026-08-13 on develop
-  @ `2195661` after the #508–#512 train — **1539 tests, 118 files**, all
-  passing. That run's 393 s wall time is NOT comparable to the 234 s figures
-  above — it was measured while a CPU-heavy `app/sweep/` run occupied the
-  machine; counts are load-independent, durations are not. Re-measure both
-  halves rather than inferring either from the other. Re-measured 2026-08-19
-  on `cbc6055` (the v0.12.0 cut) — **2032 tests, 143 files**, all passing;
-  that run's duration is DISCARDED rather than quoted, because six agents ran
-  concurrently — the same contention that invalidated the 393 s figure above.
-  The coverage PERCENTAGES above are UNTOUCHED — they
-  were not re-measured this session (that needs `test:coverage`, a
-  substantially longer run) and a scanning-only or assertion-adding test
-  file is coverage-neutral to first order the same way PR #351's was; don't
-  infer a new percentage from this count. Meets the OpenSSF
+  run test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
+  hand-added or inferred: **2032 tests, 143 files**, all passing (2026-08-19
+  at `cbc6055`, the v0.12.0 cut). That run's DURATION is DISCARDED — six agents ran
+  concurrently, the same contention that invalidated an earlier 393 s figure.
+  Two rules distilled from repeated re-measurements of this pair: **counts are
+  load-independent, durations are not** (never quote a duration measured under
+  load, and re-measure BOTH halves rather than infer either from the other);
+  and a scanning-only or assertion-adding test file is coverage-neutral to
+  first order, so **never infer a new percentage from a new count** — the
+  percentages above need `test:coverage`, a substantially longer run, and were
+  NOT re-measured at that cut. Meets the OpenSSF
   `test_statement_coverage80` criterion (≥80%) — it had simply never been
   measured before. `vite.config.ts`'s `coverage` block carries
   `thresholds.statements: 80` (#335) and `.github/workflows/coverage.yml`
@@ -183,6 +183,11 @@ making design-level decisions; do not silently deviate.
   history: inflating the comfort margin SUPPRESSES tier-4 entry (11 rows at
   `DEFAULT_SETTINGS` vs 3 at margin 8.0, a strict subset, measured twice),
   so `relaxation-dense` is the broader tier-4 exerciser.
+  A BASE control's QUALITY is readable from `compare.mjs`'s own A-side outcome
+  distribution — at `0c494f9`: `ok+shallow` 83, `ok` 74, plus 140 typed
+  failures across four causes. CHECK THE DISTRIBUTION before treating 297/297
+  byte-identical as evidence; a baseline dominated by error rows is
+  byte-stable through almost anything.
 - Full test suite: **499.9 s** (~8.3 min) on a quiet machine — measured
   2026-08-19 at `04384c2`, 2032 tests / 143 files. Wall time is set almost
   entirely by ONE file: `routing/realmask.repro.test.ts` alone takes
@@ -272,6 +277,18 @@ making design-level decisions; do not silently deviate.
   `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
   `mergeable_state: clean` — so a skipped-but-successful required check does
   satisfy `develop`'s gating.
+  To find out WHY e2e ran on a seemingly docs-only PR, run the real
+  classifier locally rather than guessing: `EVENT_NAME=pull_request
+  BASE_SHA=$b HEAD_SHA=$h GITHUB_OUTPUT=$(mktemp) GITHUB_STEP_SUMMARY=$(mktemp)
+  bash -e .github/scripts/classify-docs-only.sh` — it prints the changed
+  paths and the deciding one (`reason=non-docs path: …`). **Fetch the PR head
+  first** (`git fetch origin refs/pull/N/head:refs/remotes/origin/prN`): a
+  server-side `update-branch` merge commit is not in your clone, and the
+  script correctly fail-closes to `run_e2e=true` with "base or head commit
+  unreachable" — which looks like an answer and isn't. Measured 2026-08-19:
+  a 32-file docs sweep ran a full e2e run (6 min 38 s on that run) because
+  of exactly one path,
+  `.claude/skills/release/SKILL.md`.
 - `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
   dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
   to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
@@ -287,7 +304,7 @@ making design-level decisions; do not silently deviate.
   added `dependencies.nanoid` AND stripped that entry's `"dev": true`.
 - `npm --prefix app run notices` regenerates `app/public/THIRD-PARTY-NOTICES.txt`;
   CI fails if the committed file drifts — run it after any dependency change.
-  This makes EVERY Dependabot bump of one of the 11 runtime packages listed in
+  This makes EVERY Dependabot bump of one of the runtime packages listed in
   `app/scripts/gen-third-party-notices.mjs`'s `PACKAGES` array (react,
   react-dom, maplibre-gl, pmtiles, idb, @protomaps/basemaps, workbox-*) red on
   `app` — Dependabot cannot run project
@@ -295,6 +312,10 @@ making design-level decisions; do not silently deviate.
   `git diff --exit-code public/THIRD-PARTY-NOTICES.txt` step while `e2e` and
   CodeQL pass. Fix is mechanical — `npm ci` on the bump branch, run `notices`,
   commit the regenerated file (#248's entire real diff was two version strings).
+  A maplibre-gl bump reds `app` a SECOND, unrelated way:
+  `app/src/test/glyphFallbackWarningGuard.test.ts` reads
+  `node_modules/maplibre-gl/src/render/glyph_manager.ts` and fails if the
+  `Unable to load glyph range` warning is reworded or the file moves.
 - **Python gates live OUTSIDE the `app` toolchain and are NOT required checks.**
   Workflow `Python lint` (`python-lint.yml`), job **`ruff`**, runs `ruff check .`
   AND `ruff format --check .` under `working-directory: pipeline`; `Mask
@@ -311,12 +332,37 @@ making design-level decisions; do not silently deviate.
   `python-lint-requirements.txt` (measured 2026-08-18: venv 0.16.2 vs CI
   0.16.3) — the `node_modules`-vs-lockfile trap in a second language, so a
   local pass is evidence, not proof.
-- Pipeline: `npm --prefix pipeline run polars|harbors|seamarks|mask|icons` (mask needs
+- Pipeline: `npm --prefix pipeline run
+  polars|estimate|harbors|seamarks|mask|icons` (`estimate` = `estimate_polars.mjs`, the tier-C scalar estimator for the two
+  non-`hullVerified` boats). The basemap has NO npm script —
+  `pipeline/extract_basemap.sh [YYYYMMDD]`; per-asset detail and the
+  never-hand-edit-a-generated-file rule are in `pipeline/README.md`. (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
   requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
   when removing worktrees. `verify_mask.py` must exit 0: it flood-fill-checks
   every harbor snap and has a documented KNOWN_DISCONNECTED allowlist (#9).
+- **CodeQL runs `security-and-quality` (#534) — and a PR CANNOT validate a suite
+  change.** GitHub's `pull_request` analysis is DIFF-SCOPED (measured from the run
+  logs: `Computing PR diff ranges…`, and `--extension-packs=codeql-action/pr-diff-range`
+  on both matrix legs), so the adopting PR's zero-new-alerts result is guaranteed
+  and carries no information. The full inventory comes only from a `push` to
+  `develop` or the Monday 04:23 UTC schedule. The widening is large: **+114
+  javascript-typescript and +129 python** queries, re-derived by counting
+  `runs[0].tool.extensions[].rules` in the SARIF of the two unscoped `push`
+  analyses straddling the change (`23cb995` default vs `a39b3cf` widened, CodeQL
+  CLI 2.26.3 both sides). Quote the DELTAS, not absolutes — the absolute counts
+  drift on any `codeql-action`/query-pack bump with nothing here to catch it, and
+  `codeql.yml`'s own comment says to re-derive rather than trust them. CodeQL is
+  NOT a required check (`protect-main` = `app`+`e2e`), so alerts accumulate
+  silently — triage the post-merge push run. Dismissal comments are capped at
+  **280 chars**, so a dismissal must point at a linked evidence record (#600).
+- `ci.yml`'s THIRD job `hook-selftests` (advisory, not required) DISCOVERS every
+  TOP-LEVEL `*.sh` in `.claude/hooks/` and `.github/scripts/` (`-maxdepth 1`,
+  deliberately non-recursive, so a nested script is a conscious addition and
+  never a silent pickup) and demands BOTH exit 0 AND the literal `SELFTEST OK`
+  marker — so a new top-level script with no `--selftest` branch reds it, and
+  the job must never gain a `working-directory`.
 - Production build uses Vite `base: '/sail_command/'` (GitHub Pages) — local
   static serving must serve at that sub-path (and support HTTP Range for
   pmtiles).
@@ -424,7 +470,7 @@ making design-level decisions; do not silently deviate.
   `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
   correct regardless of which call site's commit lands first. NAMED
   COUPLING now points at `App.tsx`'s `<div className="banner-area">`
-  (rendered unconditionally, ~:958) and its App-level `useBannerHeight()`
+  (rendered unconditionally, ~:989) and its App-level `useBannerHeight()`
   call (~:169, kept purely for that write side-effect). Any rule that moves
   `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
   connected only through that runtime-measured layout value, invisible in
@@ -476,7 +522,7 @@ making design-level decisions; do not silently deviate.
   reasons, so do not generalise from one: `.sc-card` and `.sc-field` declare
   their base ABOVE their modifiers, whereas `.sc-btn` is ALSO named in a
   later GROUPED rule inside `@media (prefers-reduced-motion: reduce)`
-  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`, ~:2167) that
+  (`.sc-btn, .banner-action, .sc-disclosure-summary::before`, ~:2315) that
   sits below `.sc-btn-primary`/`-secondary`/`-ghost` and wins on source
   order — media queries add no specificity. It is harmless only because it
   sets `transition` alone, which no `.sc-btn-*` modifier touches. So a
@@ -674,6 +720,16 @@ making design-level decisions; do not silently deviate.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards).
+- **`ci.yml`'s `e2e` job has no `timeout-minutes`**, so it inherits GitHub's
+  6-hour default against a measured 3–4 min runtime. FOUR PRs' `e2e` wedged on
+  `npx playwright install --with-deps chromium` in one session — step-6 durations
+  **32, 54, 65 and 90 min** (jobs 96190476371 / 96137363922 / 96137652820 /
+  96149791212), with Actions reporting "operational" and no runner backlog;
+  successful `e2e` jobs that day ran ~8–9 min. Same rule as #415: a wedge clears by RETRYING, never
+  by waiting — the retry passed in ~8 min. Diagnose by STEP progress, not job
+  status; "in_progress" and "in_progress at step 6 of 8 for 40 min" are different
+  facts. `gh run cancel <id>` then `gh run rerun <id> --failed` re-runs only the
+  hung job, preserving green siblings.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -945,36 +1001,35 @@ making design-level decisions; do not silently deviate.
   longer "re-run the tag deploy" (provably a no-op against the same SHA,
   measured twice at the v0.9.0 cut) but "proceed to the back-merge" (step
   6), whose push carries a DIFFERENT SHA and rebuilds the site root from
-  `main` with the tag now visible.
+  `main` with the tag now visible — exercised at the v0.10.0 cut, where prod
+  then served the chunk name the tag run had built, proving that run's BUILD
+  was always correct and only its DEPLOYMENT no-opped.
 
-  **FIRST REAL EXERCISE — v0.10.0 cut (2026-08-07): it fired and was right.**
-  The merge-push Deploy COMPLETED at 10:53:21Z and the tag Deploy was created
-  at 10:54:04Z — a **43-second** margin, so `cancel-in-progress` had nothing to
-  cancel. That tightness IS the point: this is the slow-tag-push case, and it
-  is the normal human runbook flow. The tag Deploy went RED with 10x 404 on its
-  own entry chunk while the OLD #117/#118 basemap Range probe PASSED on attempt
-  1 in that same job (the archive is byte-identical across both builds): one
-  run, both verdicts. The back-merge remedy worked as documented, and prod then
-  served the SAME chunk name the tag run had built — proving that run's BUILD
-  was always correct and only its DEPLOYMENT no-opped. Its log does show
-  `#117a PROD REBUILD ... cache miss`, but do NOT cite this run as evidence
-  that the key's VERSION component caused the miss: only one cache entry per
-  release SHA has ever existed (main-mode runs do not save caches), so the SHA
-  component alone missed. The version-in-key rationale is real and documented
-  above; this run is not evidence for it.
-
-  **SECOND EXERCISE — v0.11.0 cut (2026-08-08): it did NOT fire, and the MARGIN
-  is not what decided that.** Merge-push Deploy created 12:21:46Z, tag Deploy
-  12:22:40Z — a **54-second** margin — and `cancel-in-progress` killed the merge
-  run MID-`build`, so its `deploy` job never created a Pages deployment and the
-  tag run's was the FIRST for that SHA. Compare v0.10.0's **43 seconds**, which
-  was NOT enough. A LONGER gap therefore came out safe where a shorter one did
-  not: never predict this from the gap, and do not read "fast tag push" as a
-  protection. The decisive fact is the earlier run's own `deploy` job conclusion —
-  `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq '.jobs[]|"\(.name): \(.conclusion)"'`;
-  `cancelled`/`null` means no deployment of that SHA exists (the tag run will
-  take), `success` means it does (the tag run will no-op). `smoke-probe` passing
-  on the tag run is then the positive proof it took.
+  **EXERCISED THREE TIMES; the margin is NOT a predictor.** On one basis
+  (Deploy workflow-RUN creation→creation) the gap was **128 s** at v0.10.0 (DID no-op —
+  the probe fired and was right), **54 s** at v0.11.0 (safe) and **70 s** at
+  v0.12.0 (safe). n=3 happens to run the intuitive way and that is NOT evidence:
+  the outcome is set by whether `cancel-in-progress` killed the earlier run
+  before its `deploy` job reached terminal `success`, not by the gap — so never
+  gate on the gap, and never read "fast tag push" as a protection. (An
+  older 43 s figure was completion→creation and is NOT comparable — differencing
+  the two bases is this file's own "two measurements of DIFFERENT subjects
+  cannot be differenced".)
+  **Gate on the earlier run's `deploy` JOB conclusion, and the test is TERMINAL
+  `success`, not deployment-object existence.** At v0.12.0 a Pages deployment
+  for that SHA WAS created and reached `error`, and the tag run's SECOND object
+  still TOOK — so a reader who checks the deployments API, finds an earlier
+  object and concludes they are in the no-op case would be wrong.
+  `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq
+  '.jobs[]|"\(.name): \(.conclusion)"'` — `cancelled`/`null` (MEASURED at
+  v0.12.0: the merge run's `deploy` job read `cancelled`) means the tag run will
+  take, `success` means it will no-op. Note the deployment OBJECT that run
+  created sat at `error` — a deployment-status value, which `.jobs[].conclusion`
+  can never emit; do not mix the two vocabularies. Confirm afterwards with the
+  ENTRY-CHUNK probe, never with the basemap Range probe: that archive is
+  byte-identical across both builds, so it passes straight through a no-op (one
+  v0.10.0 run showed both verdicts at once — a red entry-chunk probe beside a
+  green Range probe).
 - **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
   on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
   describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
@@ -1030,7 +1085,8 @@ making design-level decisions; do not silently deviate.
   attempt 1 succeeded in 11 s and all three retry steps SKIPPED.)
   A green deploy is therefore NOT evidence the retry works, and never will
   be — only the `::warning::` firing marks a genuine rescue. That run also
-  cannot discriminate `.outcome` from `.conclusion` (see the next bullet):
+  cannot discriminate `.outcome` from `.conclusion` (see the **GitHub Actions
+  expression gotchas** bullet below):
   on a SUCCEEDING step both read `success`, so the correct guard and the
   broken one are indistinguishable there.
 - **Deploy — a THIRD failure shape: an immediate 503 at deployment CREATION**
@@ -1090,8 +1146,8 @@ making design-level decisions; do not silently deviate.
   pages` CANCEL-supersedes, so a rapid merge train legitimately leaves several
   grey "cancelled" runs and only the final one matters; a cancelled LAST run
   means nothing deployed and looks identical to nothing happening. This is not
-  bookkeeping: a develop push redeploys and evicts PRODUCTION's CDN edge Range
-  objects even when zero prod bytes changed (measured on #117), and it is also
+  bookkeeping: a develop push evicts production's CDN edge Range objects as
+  described in the smoke-probe bullet above, and it is also
   the only thing that makes "check the About dialog on UAT" a meaningful request.
 - The github-pages ENVIRONMENT deployment policy (repo Settings, not YAML)
   gates deploys by triggering REF — branch entries `main`+`develop` (#96) plus
@@ -1137,7 +1193,8 @@ making design-level decisions; do not silently deviate.
   (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, unmoved
   through 6.3.0); `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
-  Nothing in the suite yet asserts a label actually renders (#320).
+  Label RENDERING is asserted since #320/PR #375 — `app/e2e/labels.spec.ts`,
+  written up in full under Verification lessons; #320 is closed.
 - `app/e2e/csp.spec.ts` closes the structural blind spot the rest of the
   suite has: `annotations.spec.ts:244-247` asserts ZERO Open-Meteo requests
   (the assertion moved from :167 when #378/PR #381 added ~247 lines earlier
@@ -1256,10 +1313,20 @@ making design-level decisions; do not silently deviate.
   on it before the warning path is even reached, so don't go hunting the
   build log for a line that never appears there; it's the one filename that
   is expected to be present and ignored, not an error case. Either way a
-  typo'd filename is invisible in the About dialog's preview, not loudly
+  MISNAMED FILE is invisible in the About dialog's preview, not loudly
   rejected; check the build log or `ls changelog.d/` against the
   filename pattern by eye if a fragment seems to be missing (release runbook
-  §2b makes the same check explicit at the fold step). `app/vite.config.ts`'s
+  §2b makes the same check explicit at the fold step).
+  **That fail-open covers the FILENAME, never the CONTENT** — and content fails
+  the OTHER way, loudly and wrongly rather than invisibly. A fragment whose body
+  opens with `### Fixed` is ACCEPTED, and `normalizeFragmentText` joins every
+  non-empty line with a space, so it ships to the About dialog as
+  `### Fixed - The map's scale bar…` and is what the cut folds in unless a human
+  catches it (§2b's fold is by hand). A leading `- ` IS tolerated and stripped.
+  Measured over the 6 fragments of one train: 2 carried a heading (the real
+  defect, both from ONE PR), 3 a leading `- `, 1 clean — 3 of the 4 PRs that
+  added a fragment deviated from the convention, so it is not discoverable at
+  the point of writing. `app/vite.config.ts`'s
   `changelogFragmentsPlugin` reads `changelog.d/*.md` Node-side via `fs` at
   build time (dev server, every `vite build` including the UAT deploy) and
   exposes them through the `virtual:changelog-fragments` module;
@@ -1297,73 +1364,40 @@ making design-level decisions; do not silently deviate.
   one honest "no user-visible changes" bullet only if that review turns up
   genuinely nothing. Config/tooling/docs-only PRs still add no fragment at
   all (unchanged from the original #131 rule).
-  `Closes #N` in a RELEASE PR does NOT close the issue: GitHub auto-closes only
-  on merge into the DEFAULT branch, which here is `develop`, not `main` (#132
-  stayed open after #210 merged, v0.5.0). Close release-scoped issues by hand at
-  the cut, or reference them from a develop-side PR instead.
-  The MIRROR trap on the develop side: GitHub's closing-keyword parser has NO
-  negation awareness, so a PR-body sentence such as "this PR does NOT close #N"
-  auto-closes #N on merge — the disclaimer written to PREVENT the close is what
-  triggers it (PR #257 hit this on 2026-07-30 and #211 had to be reopened by
-  hand). Keywords are `close/closes/closed`, `fix/fixes/fixed`,
-  `resolve/resolves/resolved`; never put one adjacent to an issue reference in a
-  PR body or commit message unless you mean it — not negated, not quoted, not
-  while explaining what the PR does NOT do (GitHub documents those two places;
-  keeping the PR title clean as well costs nothing). Phrase it without a
-  keyword ("#N stays open after this PR"); `Refs #N` is the safe reference form.
-  VERIFY issue state after every merge (`gh api repos/OWNER/REPO/issues/N --jq
-  .state`): the auto-close is silent and nothing in the merge output mentions it. For a
-  BODY-triggered close the `issues/N/timeline` `closed` event carried
-  `commit_id: null` (measured on the #257 incident), so the timeline did not name
-  its cause either; a commit-message-triggered close may instead record a real
-  SHA.
-  GitHub parses EVERY commit message in the merged range, not just the tip
-  commit or the PR body/title — an EARLY commit written before a scope change
-  fires just as surely. PR #335 merged with `Refs #319` in its body (both
-  body and title were regex-checked, by the implementer and the reviewer,
-  and both correctly found zero keywords); #319 auto-closed anyway because
-  `c36f865`, the branch's FIRST commit, written hours earlier when the PR
-  still intended to
-  close #319, ended `Closes #319` and survived a mid-flight descope. The check
-  nobody ran: `git log origin/develop..HEAD | grep -iE
-  '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'` — run it
-  before merging,
-  especially when a PR's scope changed mid-flight, since the stale intent
-  lives in an old commit the body/title check never sees. The commit-vs-body
-  timeline discriminator above is what identified the culprit here too: the
-  `closed` event carried a real `commit_id`, not `null`.
-  That pattern REPLACED an earlier `'(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'`
-  that was wrong in BOTH directions (measured 2026-08-07 on one probe file):
-  `[[:space:]]+` admits no `(`, so a bracket- or colon-separated ref slipped
-  through (`fix (#412`, `Closes: #321` — the colon form is a real GitHub
-  spelling, which is what the `:` in the class is for), while `fix[a-z]*`
-  greedily ate longer words, so `fixture #99` false-POSITIVED. The replacement
-  fixes the misses and NARROWS the false positives — it does not close them:
-  a word merely CONTAINING or ENDING with a keyword still matches (`postfix
-  #12`, `unclose #13`), which is the safe direction for a nudge. It also
-  deliberately drops the gerunds (`closing`/`fixing`/`resolving` are not
-  GitHub keywords, and the old `[a-z]*` matched them). The BRACKETED form is
-  now MEASURED and does NOT close: PR #538 merged into `develop` (the default
-  branch) carrying commit `66bdc8b` subject `fix(#54): …`, and #54 stayed open
-  with `updated_at` unmoved. Keep the grep matching it anyway — it is free, its
-  failure mode is silent, and one measurement of one form is not a licence to
-  write conventional-commit scopes around issue refs.
-  Mirror check in the OTHER direction: after a merge that deliberately used
-  `Refs #N` rather than a closing keyword because N's specified fix was NOT
-  implemented (PR #272, `Refs #216`), verify N STAYED open just as carefully
-  as you'd verify the others closed — the auto-close mechanism is silent
-  either way, so only an explicit `gh api …/issues/N --jq .state` check
-  distinguishes "correctly left open" from "silently closed."
-  That check is what caught a further sub-case (#279 → #265): the COMMIT had
-  already been corrected to `Refs #265`, but a stale `Closes #265` survived as
-  the PR BODY's last line from an earlier revision, and GitHub parses the
-  body independently — the merge closed #265 anyway (`commit_id: null` on the
-  timeline `closed` event, the same body-triggered signature as above).
-  Fixing the commit message does NOT fix the body, or vice versa — an agent
-  can truthfully report "changed it to Refs" while the other copy still says
-  `Closes`. Before merging, grep the PR BODY ITSELF for a closing keyword
-  adjacent to an issue number; never infer its content from the commit
-  message or from a report that it was fixed.
+  **Closing keywords have NO negation awareness, and GitHub documents TWO
+  firing locations: the PR BODY and EVERY commit message in the merged range**
+  (keep the PR TITLE clean too — it costs nothing, and this repo has never
+  measured whether it fires). "This PR does NOT close #N" closes #N — the disclaimer
+  written to prevent the close is what triggers it (PR #257; #211 reopened by
+  hand) — and an early commit surviving a mid-flight descope closes too (#335's
+  body and title were both regex-checked clean; commit `c36f865`, written hours
+  earlier, ended `Closes #319`). Auto-close fires ONLY on merge into the DEFAULT
+  branch, `develop` — so `Closes #N` in a RELEASE PR does nothing (#132 stayed
+  open after #210 merged); close release-scoped issues by hand at the cut.
+  Keywords are `close/closes/closed`, `fix/fixes/fixed`,
+  `resolve/resolves/resolved`; `Refs #N` is the safe reference form.
+  PRE-MERGE, check BOTH copies — fixing the commit does not fix the body, or
+  vice versa, so an agent can truthfully report "changed it to Refs" while the
+  other copy still says `Closes` (#279: a stale `Closes #265` survived as the
+  body's last line and closed it):
+  `git log origin/develop..HEAD | grep -iE
+  '(clos(e|es|ed)?|fix(e[sd])?|resolve[sd]?)[[:space:]:(]*#[0-9]+'`, plus the
+  same grep over the PR body itself. That pattern REPLACED an earlier
+  `'(clos|fix|resolv)[a-z]*[[:space:]]+#[0-9]+'` that was wrong in BOTH
+  directions (it missed `fix (#412` and `Closes: #321` — the colon form is a
+  real GitHub spelling — and false-POSITIVED on `fixture #99`); it still matches
+  `postfix #12`, which is the safe direction for a nudge, and it deliberately
+  drops the gerunds — `closing`/`fixing`/`resolving` are not GitHub keywords.
+  POST-MERGE, verify state in BOTH directions with
+  `gh api repos/OWNER/REPO/issues/N --jq .state`: the auto-close is silent, and
+  a deliberate `Refs #N` needs checking that N STAYED open just as carefully as
+  the others need checking that they closed (PR #272/#216). Timeline
+  discriminator (`gh api repos/OWNER/REPO/issues/N/timeline`): `commit_id: null`
+  on the `closed` event means body-triggered, a real SHA means commit-triggered.
+  MEASURED: the BRACKETED form does NOT close — PR #538 merged into `develop`
+  carrying commit `66bdc8b` subject `fix(#54): …` and #54 stayed open with
+  `updated_at` unmoved. Keep the grep matching it anyway; one measurement of one
+  form is not a licence to write conventional-commit scopes around issue refs.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -1373,6 +1407,27 @@ making design-level decisions; do not silently deviate.
 
 ## Verification lessons (hard-won)
 
+- **The CHECK can be the thing that's wrong — and it fails by ACCUSING a
+  correct artifact.** Verifying `CONTRIBUTING.md`'s "`v0.4.0` through
+  `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
+  `v0.12.1` PATCH milestone, so the check reported the claim FALSE when it was
+  true — the document was narrower and more careful than the test of it
+  (measured 2026-08-19). Third member of the accusing-check family, alongside
+  the INFEASIBLE-baseline (#264) and reads-BACKWARDS (#353) bullets below —
+  here it is the predicate's SCOPE that over-fires, not its baseline or its
+  aperture. Ask also *what would make this check fire when nothing is
+  wrong?* Before reporting a claim false, re-read the claim's exact scope,
+  and prefer a predicate built from the claim's OWN words over a pattern you
+  invented.
+- **Prose written for a post-action state creates a window where the repo
+  contradicts itself.** The v0.12.0 sweep landed `CONTRIBUTING.md` text
+  asserting "`v0.12.0` is closed" and "`v0.14.0` is opened fresh at this cut"
+  — both false until the milestone actions ran ~52 min later. Either make the
+  statement true in the SAME operation, or don't write it forward-dated. If it
+  must ship early, name the authority that supersedes it: that paragraph's own
+  closing line ("`gh api …/milestones` is the fact, not this sentence") is the
+  pattern to copy. Licensing two such claims also weakens your ability to spot
+  a THIRD, so brief a reviewer to hunt for others explicitly.
 - A suite that goes green only after its readiness wait is weakened — the
   weakened wait is the finding (#253). While the maplibre-gl 6 worker bundling
   was broken (see the PWA/deploy bullet above), `map.loaded()` could never
@@ -1406,11 +1461,11 @@ making design-level decisions; do not silently deviate.
   `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`, as `realmask.repro.test.ts`'s own
   DEFAULT_SETTINGS case asserts. The mechanism is #53's relaxation tier, which
   fires on `depthRelaxationMayHelp(cause)` (defined and called in
-  `planRoute.ts`, ~:203 / ~:506) whenever the failure cause is
+  `planRoute.ts`, ~:254 / ~:687) whenever the failure cause is
   mask-unreachability — **independent of `depthComfortMarginM`**, which is
   #243's soft comfort PREFERENCE (`planRoute.ts`'s only production use of
-  it, ~:302) and does not gate relaxation at all; `planRoute.ts`'s own
-  "Unaffected by #243" comment (~:485) says so.
+  it, ~:353) and does not gate relaxation at all; `planRoute.ts`'s own
+  "Unaffected by #243" comment (~:661) says so.
   Set `depthComfortMarginM: 0` and it still routes. The older "routes only at
   ≤ 2.3 m" phrasing is true of the GATE and MISLEADING about what a user
   experiences; it misdirected a live production triage for two rounds
@@ -1504,11 +1559,6 @@ making design-level decisions; do not silently deviate.
   coin-flip-grade experiment, not a mutation check. Size the repeat count
   against the failure rate you are trying to detect, and never read one
   green revert as "the gate does nothing".
-- **This session produced THREE distinct vacuity traps in one PR lineage — a
-  guard, then its fix, then the fix's data — the documented "a fix inherits
-  its bug's blind spot" pattern, one level deeper each time; not one was
-  found by reading, all three by constructing the failing input and running
-  it.**
 - A THIRD mutation-vacuity class, distinct from #50's equivalence-test trap
   and #216/#388's prose-vs-value trap below: **a mutation reddening a test
   does not establish the test guards anything REACHABLE.** Measured on PR
@@ -1679,31 +1729,23 @@ making design-level decisions; do not silently deviate.
   see the Deploy bullet above for the underlying mechanism).
 - Sharper case of the bullet above: a CI poll keyed on the CHECK NAME, not the
   RUN, misreports whenever two workflow runs attach same-named check-runs to
-  one commit. Bit TWICE in the v0.6.0 cut. PR #286 (`develop`→`main`) had
-  `develop`'s own tip as its head SHA, so the earlier develop-push run's
-  finished `app`/`e2e` sat on that commit alongside the PR's own still-running
-  ones — a poll matching `name == "app"/"e2e"` + completed declared green
-  while the gating run was still in flight. PR #289 (the back-merge) had
-  `main`'s tip — also the release tag commit — as its head SHA, so two `e2e`
-  successes from two different runs read as "app + e2e" done while both `app`
-  jobs were still running. Both times `mergeable_state: blocked` contradicted
-  the poll — that disagreement is the cross-check, not a fluke
-  (`mergeable_state` is also the merge-time tell in the #119 note under
-  Working style). Fix: key the poll on the RUN, not the name — `gh api
-  repos/OWNER/REPO/actions/runs/<id>/jobs` — and when a SHA might carry more
-  than one run, select it explicitly rather than assume there is only one;
-  the release skill's §5b already does this, picking the newest
-  `event == "push"` run for the same reason. The v0.7.0 cut hit BOTH
-  configurations again and both were caught by keying on explicit run IDs
-  rather than check names: the `develop`→`main` release PR carries develop's
-  own tip as its head SHA (the last feature merge's push run sits on that
-  commit alongside the PR's own); the back-merge PR carries `main`'s tip,
-  which is ALSO the tag commit — TEN runs on that one SHA at v0.7.0:
-  main-push CI + CodeQL + Python lint + Mask integrity + the CANCELLED
-  main-push Deploy, the tag's Deploy + Release, and the back-merge PR's OWN
-  CI + CodeQL + Labeler. `CI` and `CodeQL` each appear TWICE, and that
-  duplication IS the trap — two `CI` runs attach two sets of `app`/`e2e`
-  check-runs, exactly what a name-keyed poll cannot separate.
+  one commit. Bit TWICE at the v0.6.0 cut, once in each configuration: a
+  `develop`→`main` release PR carries DEVELOP's tip as its head SHA (the last
+  feature merge's push run already sits there with finished `app`/`e2e`), and a
+  back-merge PR carries `main`'s tip, which is ALSO the tag commit — TEN runs
+  on that one SHA at v0.7.0, with `CI` and `CodeQL` each appearing TWICE. That
+  duplication IS the trap: two `CI` runs attach two sets of `app`/`e2e`
+  check-runs, exactly what a name-keyed poll cannot separate, so a poll matching
+  `name == "app"/"e2e"` + completed declares green while the gating run is still
+  in flight. Both v0.6.0 times `mergeable_state: blocked` contradicted the poll
+  — that disagreement is the cross-check, not a fluke (`mergeable_state` is also the
+  merge-time tell in the #119 note under Working style). Fix: key the poll on
+  the RUN — `gh api repos/OWNER/REPO/actions/runs/<id>/jobs` — and when a SHA
+  might carry more than one run, select it explicitly rather than assume there
+  is only one; the release skill's §5b picks the newest `event == "push"` run
+  for exactly this reason. The same two configurations RECURRED at v0.7.0 and
+  were CAUGHT by run-ID keying — the only production evidence that this fix
+  works.
   INVERSE CASE (v0.10.0 cut) — keying on the RUN is necessary but NOT
   sufficient for the MERGE decision: release PR #429's head carried run
   31170778727 (event=pull_request) green at 10:46:40Z while its neighbour
@@ -1772,68 +1814,41 @@ making design-level decisions; do not silently deviate.
   pre-approved, so copying it byte-for-byte leaves no new claim to be wrong.
   Standing exception, and it must stay open: a supplied sentence believed
   WRONG is reported, never silently improved.
-- A fix INHERITS its bug's blind spot. #233's hook fix drew six Blockers over
-  two rounds, and all three of round 2's were the same mention-vs-invocation
-  class the fix existed to close, now living inside the fix itself; #228
-  produced four cascading z-index regressions, each caused by the previous
-  fix. Re-run the ORIGINAL defect class against the new code, and treat a
-  passing selftest table as proof only of the shapes it lists.
-  MEASURED 2026-08-10 across three fix waves on #499 and again inside #500's
-  OWN self-review: the vector is prose the agent adds UNREQUESTED while
-  trying to be thorough — an honest "unresolved" followed by a confident
-  wrong reason; an unrequested comparability caveat whose listed invariants
-  did not span the mask rebuild it crossed; one inherited word carried from
-  a DESCRIPTIVE claim into a PRESCRIPTIVE one, making a rule self-cancelling;
-  and a "correction" replacing a HALF-TRUE statement with an absolute
-  negative that was false for the other half. Four cheap remedies that
-  worked: brief an explicit ESCAPE HATCH — if a claim cannot be supported
-  from evidence read in a file during the task, DELETE it rather than hedge
-  it; require the do-not-touch list confirmed BY DIFF, not by trust;
-  announce a stopping rule and honour it (file the remaining Minors rather
-  than run another unreviewed wave); and prefer RETRIEVING the primary
-  artifact over constructing an argument — a disputed claim was settled by
-  reading the run's own JSON instead of arguing comparability.
-  Session 31 (2026-08-10, #493/PR #504) reproduced the class in wave after
-  wave of a multi-wave branch, comment-only waves included, each instance
-  sitting inside the fix for the previous one: a wrong "tightest tolerance"
-  claim;
-  then a correction that invented a DERIVATION the source explicitly denies
-  (every number in it verbatim correct — the defect was the *because*, which
-  is the form that survives a numeric check); then a `Chip`-primitive tidy-up
-  that regressed the rendered chip; then a restructure that broke an anaphor.
-  What ended it: briefing the REVIEWER at the replacement text specifically
-  and telling it to EXPECT a successor rather than assume the last fix
-  stopped it, plus an explicit minimal-diff stopping rule on the final wave —
-  whereupon the implementer caught its own unrequested explanatory clause and
-  cut it before running anything.
-  Session 28 (2026-08-06/07) produced fresh instances in EVERY ONE of the
-  three PRs merged that night — including one inside a **comment-only**
-  wording correction, where the entire content of the change was a single
-  comment and it still reproduced the class. (Deliberately no count: the
-  first write-up said "five" and the enumeration found ~10, one PR alone
-  exceeding five — a bare number in a durable instruction reads as an
-  enumeration.) The invariant across every one of them: **a claim
-  about code, stated from memory instead of re-read from the code**. Prose has
-  no compiler, so nothing else catches it. The remedy that worked: make claims
-  PER-SITE, which are falsifiable one site at a time — every failure was a
-  GENERALISATION ("two tests", "only grows", "not precise hit-tests").
-  **The CORRECTION is the highest-risk moment, not the original** — session
-  30's PR #434 ran the class repeatedly within one PR, each instance inside
-  the fix for the previous one: a false MECHANISM inside a correction of a
-  misleading claim; an unmeasured magnitude plus a citation to a figure
-  ALREADY REJECTED IN REVIEW as unreproducible, inside the fix for that same
-  unreproducible magnitude; an over-broad "helps" inside the fix for an
-  over-broad count. (State that middle form precisely: "cited a measurement
-  that did not exist" is a fabrication nobody commits, while citing one
-  already known to be bad is the error people actually make.) A
-  replacement arrives sounding authoritative and nobody re-attacks it as hard
-  as the original, so brief the reviewer at the REPLACEMENT TEXT specifically
-  and expect a further instance rather than assuming the last fix stopped it.
-  SEVERAL were GROUP NOUNS ("the measurement", "the worker-fatal paths") and
-  became falsifiable the moment they were split into members — the same
-  PER-SITE remedy above, one round later. But not all: the false-mechanism
-  instance was caught instead by checking the suspect field's ONE call site,
-  so per-site beats group-splitting as the general form.
+- A fix INHERITS its bug's blind spot, and **the CORRECTION is the highest-risk
+  moment, not the original** — a replacement arrives sounding authoritative and
+  nobody re-attacks it as hard as they attacked the original. Measured
+  repeatedly: #233 round 2 reproduced the mention-vs-invocation class INSIDE the
+  fix; #228 produced four cascading z-index regressions, each caused by the
+  previous fix; #499/#500, #493/PR #504 and PR #434 each ran the class wave
+  after wave, comment-only waves included, every instance sitting inside the fix
+  for the previous one.
+  THE VECTOR IS PROSE THE AGENT ADDS UNREQUESTED while trying to be thorough —
+  thoroughness is the vector, not carelessness. The invariant across every
+  instance: **a claim about code, stated from memory instead of re-read from the
+  code.** Prose has no compiler, so nothing else catches it.
+  Remedies that WORKED: (1) brief an explicit ESCAPE HATCH — if a claim cannot
+  be supported from evidence read in a file during the task, DELETE it rather
+  than hedge it; (2) require the do-not-touch list confirmed BY DIFF, not by
+  trust; (3) announce a stopping rule and honour it (file the remaining Minors
+  rather than run another unreviewed wave); (4) prefer RETRIEVING the primary
+  artifact over constructing an argument; (5) make claims PER-SITE — every
+  failure was a GENERALISATION or a GROUP NOUN, falsifiable the moment it is
+  split into members, though checking a suspect field's ONE call site beat
+  group-splitting as the general form; (6) brief the reviewer at the REPLACEMENT
+  TEXT specifically and tell it to EXPECT a successor rather than assume the
+  last fix stopped it.
+  Four shapes worth naming: a correction can invent a DERIVATION the source
+  explicitly denies while every number in it is verbatim correct — the defect is
+  the *because*, which survives a numeric check; a "correction" can replace
+  a HALF-TRUE statement with an absolute negative that is false for the other
+  half; a word can be carried from a DESCRIPTIVE claim into a PRESCRIPTIVE one,
+  making the rule self-cancelling; and a correction can cite a figure ALREADY
+  REJECTED IN REVIEW as unreproducible — "cited a measurement that did not
+  exist" is a fabrication nobody commits, while citing one already known to be
+  bad is the error people actually make. And never put a bare COUNT in a durable instruction: one write-up of
+  this very class said "five" and the enumeration found ~10, because a number
+  reads as an enumeration. And treat a passing selftest table as proof only of
+  the shapes it lists.
 - Documenting a rule fixes nothing already in flight. #412 (the #368-guard
   stale-geometry finding) was filed while `app/e2e/panel-resize.spec.ts` was
   being written in parallel under a brief that predated the finding — the
@@ -1884,8 +1899,11 @@ making design-level decisions; do not silently deviate.
   `Open Sans Regular,Arial Unicode MS Regular` — a fontstack this app does
   not ship — and silently renders via TinySDF. Pre-existing (dates to the
   original route-layers commit, well before #378/#324), audited against all
-  nine runtime symbol layers, tracked as #288. `labels.spec.ts` cannot see
-  it because that spec never plans a route. The missing-fontstack request
+  nine runtime symbol layers. Filed as #288, CLOSED as ANSWERED rather than
+  fixed — its closing comment records the cause, states the residual
+  explicitly, and asks for a fresh one-line issue if the `text-font` is to be
+  added. `sc-maneuver-labels` still ships without one. `labels.spec.ts` cannot
+  see this missing-fontstack case because that spec never plans a route. The missing-fontstack request
   itself is real in both environments, but its symptom differs: local `vite
   preview` returns the SPA fallback (HTTP 200, body starting `<!do`) for
   that path, so MapLibre's decode fails with `Unimplemented type: 4` — an
@@ -1928,7 +1946,7 @@ making design-level decisions; do not silently deviate.
   number decays on the next commit that inserts a line above it, and a
   currency check verifies at the instant of writing, so it structurally
   cannot catch that class. Write `App.tsx`'s `<div className="banner-area">`
-  (~:958): the name is the identity, the number is a hint. A citation to a
+  (~:989): the name is the identity, the number is a hint. A citation to a
   never-merged diff gets no line number at all. Validated same-day: hints
   written at 09:00 drifted 46 lines by 13:00 when a sibling PR inserted above
   them — the symbol anchor still found the site where a bare number would
@@ -1943,7 +1961,8 @@ making design-level decisions; do not silently deviate.
   above: a method that structurally cannot SEE a regression reports green
   through it, and a method that cannot DESCRIBE a failure reports it uselessly.
   Ask of any assertion: at 3am in CI, does the message name the actual value?
-  (#252 tracks auditing the remaining specs.)
+  (#252 was filed to audit the remaining specs — now CLOSED; re-file if a
+  boolean-predicate `expect.poll` turns up.)
 - A metric compared against an INFEASIBLE baseline is worse than no metric —
   it reads as a defect and points every downstream fix the wrong way. #264's
   "32.9% detour vs chord" was real travelled distance measured against a chord
@@ -1959,6 +1978,30 @@ making design-level decisions; do not silently deviate.
   healthy run reads as confirmation otherwise. The #415 deploy-retry bullet
   under PWA/E2E/deploy is the worked instance, including why a SUCCEEDING run
   cannot discriminate the correct guard from the broken one.
+- **A mutation check proves an assertion CAN fail, never that it covers the
+  hazard.** #535's fix reddened exactly its 3 new selftest rows and none of the
+  other 305 — an honest, well-constructed check. It was still a Blocker: it
+  tested whether a `sed` token STARTS with a quote, while the hazard is a write
+  anywhere in a shell-concatenated `argv`, so `sed -n p' w /tmp/OUT' <spec>`
+  stayed a SILENT ALLOW (five more shapes too). Ask BOTH "can this assertion
+  fail?" and "what else in this defect's class does it not see?" — only a
+  SIBLING-SHAPE ENUMERATION answers the second.
+- **A guard with an APERTURE needs something testing the aperture itself.**
+  #524's placeholder-parity guard extracted `/\{([a-zA-Z]+)\}/g` while `t()`'s
+  `vars` accepts a broader `Record`, so tokens outside that aperture were
+  invisible to the guard AND to its self-test — which only fed the extractor
+  shapes it already handled. A self-test written from the same mental model as
+  the guard can never find the gap. The structural fix (shipped) is a THIRD
+  guard cross-checking a deliberately PERMISSIVE scan against the aperture.
+- **A structural argument beats a measurement when one is available.** "Could
+  the depth hatch read as DEEPER and become a false signal?" is answerable only
+  probabilistically by sampling views — but `HATCH_RGBA` is pure black, so
+  compositing can only DECREASE luminance, and the `STOPS` ramp's alpha is
+  monotonically non-increasing with depth (fading transparent over a light
+  basemap), so deeper renders LIGHTER. The cue can therefore only ever move a
+  cell toward the more-cautious end, at every zoom, by construction; the
+  residual failure mode is UNDER-signalling, never false comfort. A measurement
+  bounds a failure RATE; a structural argument eliminates the failure MODE.
 - **Prose rots in FOUR distinct ways, and a sweep aimed at one misses the
   others** (#298/#300, where 8 findings were prose-accuracy defects):
   OVER-CLAIMING (a header saying "EVERY way this can fail" with three paths
@@ -2001,29 +2044,23 @@ making design-level decisions; do not silently deviate.
   structural guard — a per-file patch converges one CI run at a time.
   **Corollary for DELEGATION: enumerate FIRST, then scope the agent's file
   allowlist from the enumeration — never the other way round.** Measured
-  2026-08-06 (PR #402): a brief scoped its allowlist from the ISSUE's claim
-  about where the stale text lived. #341's issue text located the "6-10x CI
-  slower" claim in `CLAUDE.md` — that was backwards: `CLAUDE.md` already
-  carried the corrected, measured figures, and the live stale text was
-  actually in `CONTRIBUTING.md`. Four `.md`-adjacent locations were in view
-  across the fix (`CLAUDE.md`, falsely, per the issue's own claim;
-  `CONTRIBUTING.md`, fixed against the original allowlist; then
-  `.claude/agents/sail-implementer.md` and `README.md`, found only by a
-  follow-up enumeration and both OUTSIDE the allowlist the brief had derived
-  from the issue). That follow-up enumeration was itself under-scoped —
-  `git grep -n "..." -- '*.md'`, silently Markdown-only — and got reported as
-  "repo-wide" with "zero remaining instances." It wasn't: a reviewer's later,
-  genuinely unscoped grep found 14 more live instances in source/test
-  comments (`app/e2e/*.spec.ts`, `app/src/routing/*.test.ts`,
-  `app/src/lib/gpx.parse.test.ts`), of which 6 were fixed and 8 deliberately
-  left alone as a different, correctly-cited defect (a real, dated ~30-44x
-  solver-CI measurement, not the fabricated 6-10x figure). The
-  scoped-grep-reported-as-repo-wide over-claim is the SAME failure this
-  file's own "four ways prose rots" bullet documents, one layer further
-  out — occurring inside the very PR fixing prose-rot claims. An allowlist
-  derived from an unverified claim about the code is the enumerate-don't-patch
-  failure relocated one level up, into the brief. Same reason issue texts
-  are not ground truth for states they do not describe.
+  2026-08-06 (PR #402): a brief derived its allowlist from #341's ISSUE TEXT,
+  which located a stale "6-10x CI slower" claim in `CLAUDE.md`. That was
+  BACKWARDS — `CLAUDE.md` already carried the corrected figures and the live
+  stale text was in `CONTRIBUTING.md`; two further locations
+  (`.claude/agents/sail-implementer.md`, `README.md`) sat OUTSIDE the allowlist
+  entirely and surfaced only from a follow-up enumeration — which was then
+  itself under-scoped
+  (`git grep -n "..." -- '*.md'`, silently Markdown-only) yet reported as
+  "repo-wide, zero remaining instances" — a reviewer's genuinely unscoped grep
+  found 14 more in source/test comments, 6 fixed and 8 deliberately left as a
+  correctly-cited different defect — a dated ~30-44x solver-CI measurement in
+  `app/src/routing/*.test.ts`, not the fabricated 6-10x figure. So a scoped grep reported as repo-wide is
+  the same prose-rot over-claim this file documents, occurring INSIDE the PR
+  fixing prose-rot claims; and an allowlist derived from an unverified claim
+  about the code is enumerate-don't-patch relocated one level up, into the
+  brief. Same reason issue texts are not ground truth for states they do not
+  describe.
 - **A verification grep scoped to TOKENS checks only what its token list
   names — enumerate by CLAIM SHAPE.** PR #513's wave-5 twin check grepped
   `CBLSUB|PIPSOL|item 3.2|item 2.3|§3.4`, a list written into the BRIEF,
@@ -2054,7 +2091,14 @@ making design-level decisions; do not silently deviate.
   #64 (`852cb8c`, 2026-07-18 — ONE DAY after the script was authored) BROKE it,
   and nothing ever exercising it is why the break went unnoticed for three
   weeks — two separate causes, don't merge them. Three stale selectors were
-  fixed at the cut; the ★ wait still blocks it (#428). Durable form: a capture
+  fixed at the cut; the ★ wait itself was fixed separately at #459 (`27518d5`,
+  2026-08-09) — `capture.mjs` now polls the rig-comparison chip's TEXT instead
+  of a boolean `getByText('★')`. #428 stays open for its BROADER concern only:
+  nothing exercises this script, so it can rot as silently as #64 made it.
+  (Measured 2026-08-19: the script fails today on an UNRELATED cause — the
+  docs-only wind fixture `app/public/test-fixtures/wind-docs-plan-route.json`
+  is past its forecast horizon; regenerate it first, see below.)
+  Durable form: a capture
   or verification tool
   hardcoded to the PRODUCTION url can never capture a release candidate, since
   at cut time production IS by definition the previous release
@@ -2071,8 +2115,13 @@ making design-level decisions; do not silently deviate.
   day (2026-08-08: Flensburg→Sønderborg 13% sail; Maasholm→Bagenkop returns
   no-route at the default 3.0 m), which is why the deterministic `?windFixture=`
   path is the reproducible alternative — at the cost of a UNIFORM field, i.e.
-  identical wind barbs, a visible tell of synthetic data in a hero image. Open
-  as #459.
+  identical wind barbs, a visible tell of synthetic data in a hero image. #459
+  is CLOSED by PR #462 (`27518d5`, the same work referenced above):
+  `node app/scripts/gen-docs-wind-fixture.mjs`
+  writes the GITIGNORED `app/public/test-fixtures/wind-docs-plan-route.json`, a
+  NON-uniform docs-only field — regenerate it before every recapture (its
+  horizon drifts in ~6 days); never repoint `capture.mjs` at the e2e
+  `wind-sw12.json`.
 - **Repeated identical readings can be ONE stale reading — agreement is not
   convergence until each run is confirmed DISTINCT.** Probing six
   route/departure combinations for a screenshot (v0.11.0 cut) returned
@@ -2111,6 +2160,16 @@ making design-level decisions; do not silently deviate.
   repo's own timestamps and would have taught future sessions to distrust the
   control that worked. A claim about the RECORD, stated from memory instead
   of re-read from the record, is the same class as a claim about the code.
+- **A SIXTH way: the ORCHESTRATOR's own out-of-band action.** Unlike SAME-PR and
+  SIBLING-MERGE invalidation, the invalidator here is not a diff at all. An agent
+  wrote a `CONTRIBUTING.md` paragraph that was TRUE when written ("the 8
+  duplicate label objects have deliberately not been deleted yet"); the
+  orchestrator then executed the maintainer-approved deletions ~30 min later. No
+  hunk of the PR's own diff contains the invalidating change, and no sibling PR
+  does either. Caught only because the reviewer re-derived the claim against the
+  CURRENT WORLD STATE rather than against the diff. When the orchestrator mutates
+  real state (labels, milestones, deploys, issue state), re-check any in-flight
+  PR prose that DESCRIBES that state.
 - **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
   PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
   lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
@@ -2192,25 +2251,18 @@ making design-level decisions; do not silently deviate.
   and calling this "a known flake" for two sessions is exactly the
   write-off that rule exists to prevent — a lone red test contradicting a
   green suite deserves MORE weight than the suite.
-- **Five green signals can share one blind spot (#398).** Verifying the
-  v0.9.0 tag deploy actually reached production, three green signals missed
-  the same-SHA no-op: the run conclusion, the Pages deployment status
-  (`success`, with `environment_url` = the prod root), and `smoke-probe` —
-  which probes the `.pmtiles` archive, byte-identical between the two
-  builds, so it cannot distinguish them. The probe that DOES work compares
-  the run's own published `prod-manifest` (it records the entry chunk
-  `assets/index-<hash>.js` and `version.txt`) against the live site and
-  requests that exact filename: 404 vs 200 is decisive precisely because a
-  never-requested URL cannot be a stale cache hit. Do NOT verify by polling
-  `index.html` — GitHub Pages' CDN NORMALIZES QUERY STRINGS, so
-  `?cb=$RANDOM` is a no-op and curl, a real browser, `cache: 'no-store'` and
-  `cache: 'reload'` are all answered from the SAME edge object. Five checks
-  agreeing was one check with a shared blind spot, and it nearly triggered an
-  unnecessary production re-deploy; the tell was `x-cache: HIT` (with
-  `age: 392`, `cache-control: max-age=600`) on a URL never requested before.
-  Sibling of the existing "what class of failure can this method not
-  detect?" rule — here the answer was "any change at all".
-  **The 404 half of that argument is now MEASURED, not assumed** (PR #403
+- **Five green signals can share one blind spot (#398** — mechanism, the
+  entry-chunk probe and the CDN query-string normalization are under PWA/deploy;
+  do not restate them here**).** At the v0.9.0 cut the run conclusion, the Pages
+  deployment status and `smoke-probe` all read green through the same-SHA no-op,
+  because the probed `.pmtiles` archive is byte-identical across both builds.
+  Five checks agreeing was ONE check with a shared blind spot, and it nearly
+  triggered an unnecessary production re-deploy; the tell was `x-cache: HIT`
+  (`age: 392`, `cache-control: max-age=600`) on a URL never requested before.
+  Sibling of the "what class of failure can this method not detect?" rule —
+  here the answer was "any change at all".
+  **The 404 half of the entry-chunk argument (under PWA/deploy) is now
+  MEASURED, not assumed** (PR #403
   review, 2026-08-06): a never-deployed `assets/*.js` HEADs a genuine 404 on
   the real production CDN, not an SPA-fallback 200. That was worth checking
   rather than reasoning about, because local `vite preview` returns the SPA
@@ -2330,18 +2382,21 @@ making design-level decisions; do not silently deviate.
   readout divided simulated route TIME by the unrelated 6-day/144h forecast
   HORIZON — capped around 5% by construction and reset to 0% at every
   genoa→fock rig switch and every #53 depth-relaxation retry. Replaced with
-  a phase readout ("sail N of 2 (Rig)", i18n key `planner.status.routingRig`)
-  derived from `rig` alone via `RIG_ORDER` (`types.ts`, `['genoa', 'fock']`).
-  `runBoth` in `planRoute.ts` evaluates `genoa: run(...)` then
-  `fock: run(...)` as plain, SYNCHRONOUS object-literal properties — no
-  interleaving — which is what makes the numbering honest: genoa's solve
-  (and every progress message it reports) fully completes before fock's
-  starts. The coupling is enforced by `planRoute.test.ts`'s "#340: solve
-  order matches RIG_ORDER" guard test, which records the order rigs are
-  FIRST seen in via the progress callback into a plain array (deliberately
-  NOT a `Set`, which is order-blind) and asserts it equals `RIG_ORDER` —
-  mutation-checked: swapping `runBoth`'s two properties turns this red with
-  `['fock', 'genoa']` against the expected `RIG_ORDER`.
+  a phase readout ("sail N of 2 (Sail)", i18n key
+  `planner.status.routingSail`, rendered in `PlannerPanel.tsx`'s `statusText`)
+  derived from the plan request's OWN sail list — `PlanRequest.sailIds` in
+  `types.ts`, IN SOLVE ORDER — which #54 made the single source of truth by
+  DELETING the old `RIG_ORDER` module constant (it survives only in comments
+  recording that deletion; do not grep for it expecting a live symbol).
+  `runAll` in `planRoute.ts` evaluates `req.sailIds.map((sailId) => run(sailId,
+  …))` — a plain SYNCHRONOUS map, no interleaving — which is what makes the
+  numbering honest: each sail's solve (and every progress message it reports)
+  fully completes before the next one starts. The coupling is enforced by
+  `planRoute.test.ts`'s '#340/#54: solve order matches request.sailIds' guard
+  test, which solves with `sailIds: ['fock', 'genoa']` and asserts the
+  first-seen progress order equals that REVERSED list — non-vacuous by
+  construction, since under the deleted module constant it would report
+  `['genoa', 'fock']` whatever the request said.
 - **Motor legs are first-class**: planned where sailing speed falls below the
   SAIL-SPEED FLOOR `max(motorThresholdKn, motorSpeedKn - sailPreferenceKn)`
   (defaults 2.5 / 6.5 / 2.8 → floor 3.7 kn), run at motor speed, always flagged
@@ -2404,10 +2459,14 @@ making design-level decisions; do not silently deviate.
   #473, and the rule below holds either way). PR #411 NARROWED the coupling, it did not
   remove it: the two retry gates — named predicates `comfortRetryMayHelp` /
   `depthRelaxationMayHelp` — now branch on an INTERNAL `SolveFailureCause`
-  (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded'`), deliberately
+  (`'mask-blocked' | 'calm-without-motor' | 'horizon-exceeded' |
+  'budget-exhausted'` — four members since #432; both gates still admit only
+  `mask-blocked`, plus `horizon-exceeded` for `comfortRetryMayHelp`), deliberately
   kept OUT of `types.ts` so it cannot leak into UI code. The public
-  `NoRouteReason` is unchanged, derived from the cause at exactly two
-  presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE`. A LABELLING change
+  `NoRouteReason` is unchanged, derived from the cause at exactly three
+  presentation boundaries via `NO_ROUTE_LABEL_OF_CAUSE` — `noRouteLabel()` for
+  the per-sail result, the #432 budget guard immediately before the relaxation
+  BFS probes, and the final tier-4 return. A LABELLING change
   is now safe — free to reword or re-granularise with zero routing effect. A
   CLASSIFICATION change is NOT: the cause is still DERIVED from
   `SolveResult.reason`, the only failure signal `solve()` exposes. Proven,
@@ -2432,8 +2491,9 @@ making design-level decisions; do not silently deviate.
   (#433/PR #442 and #432/PR #453, both shipped 2026-08-07; this bullet
   previously described the pre-fix state and is rewritten, not amended).
   `RoutingError` in `workerClient.ts` carries a `readonly kind:
-  RoutingFailureKind` — FIVE members (`timeout`, `worker-fatal`,
-  `worker-error`, `messageerror`, `disposed`), and that five-vs-eight
+  RoutingFailureKind` — SIX members (`timeout`, `worker-fatal`,
+  `worker-error`, `messageerror`, `disposed`, `boat-not-in-catalogue` added by
+  #54 §I.3), and that six-vs-nine
   distinction IS the layering, not a detail: `ROUTING_FAILURE_MESSAGE_KEY`
   (`replan.ts`) keys on `RoutingFailureKind | 'worker-init' |
   'persist-failed' | 'wind-unclassified'`, and those three extra causes
@@ -2443,9 +2503,12 @@ making design-level decisions; do not silently deviate.
   that path:
   a retry hands the user a genuinely FRESH worker (helps
   `onerror`/`onmessageerror`/`disposed`), a wind blip is helped by
-  RE-FETCHING with no worker involved, and the input-deterministic pair
+  RE-FETCHING with no worker involved, and the input-deterministic ones
   (budget exhaustion, a deterministic `planRoute()` throw) cannot be helped
-  by retrying at all — do not glue one remedy sentence onto all of them.
+  by retrying at all. `boat-not-in-catalogue` is a fourth remedy again — raised
+  CLIENT-side by `RoutingClient.plan()` (`workerClient.ts`) before anything is
+  posted, so neither a retry nor a reload helps and the copy must name the
+  boat. Do not glue one remedy sentence onto all of them.
   NEVER infer a cause by matching a message string (the #282 label-as-control
   coupling in a new place), and keep `RoutingFailureKind` OUT of `types.ts`
   exactly as `SolveFailureCause` is.
@@ -2460,7 +2523,11 @@ making design-level decisions; do not silently deviate.
   so the new wall is >= the old one and anything that fitted the old client
   window fits the new worker window. All four former bare catches in
   `replan.ts`/`reroute.ts` now preserve the discriminator, but only the TWO
-  wrapping `plan()` dispose — the two wrapping `save()` deliberately do NOT,
+  wrapping `plan()` dispose UNLESS `failureLeavesWorkerHealthy(err)`
+  (`replan.ts`, today exactly `boat-not-in-catalogue`, whose worker never saw
+  the request; the same guard is at `reroute.ts` and `usePlanFlow.ts`, and must
+  never be made unconditional — `dispose()` calls `failAll()` on a singleton
+  shared by three consumers). The two wrapping `save()` deliberately do NOT,
   and their comments say why: routing SUCCEEDED and only the write failed, so
   the worker is healthy. Disposing there would be wrong. The plan-path pair
   pairs with `RoutingClient.isDisposed` + an `ensureClient()` rebuild —
@@ -2570,7 +2637,9 @@ making design-level decisions; do not silently deviate.
   conflict in the FIRST response and ask which governs — never silently comply
   with either side. Silently obeying the restriction cost a full docs sweep plus
   a ~15-call browser walkthrough of main-session context (2026-07-27); durable
-  enforcement (SessionStart hook or skill) tracked in #211.
+  enforcement shipped 2026-08-03 as a personal global SessionStart hook,
+  closing #211 — deliberately outside this repo's tracked config per the
+  personal-tooling convention, so a contributor's checkout has none of it.
   EXCEPTION — one case is SETTLED; do not re-raise it. A session-level "do not
   call the AgentTool / do not use workflows or deep-research unless the user
   requested it" is a hardcoded FALLBACK constant inside the Claude Code binary,
@@ -2803,6 +2872,22 @@ making design-level decisions; do not silently deviate.
   same agent re-loads its transcript with worktree + branch intact (verified,
   #111 round-1 fixes); a FRESH agent pointed at the surviving worktree is the
   fallback.
+- **A file allowlist is an ORCHESTRATION constraint and can silently shape an
+  API.** An inverted ownership assignment forbade a PR the very file the triage
+  plan had allocated to it; to compile under that constraint the implementer
+  gave `formatNm`/`formatKn` a `lang = 'de'` DEFAULT — which shipped a live
+  mixed-language ARIA announcement (English sentence, German number), caught
+  only because one test asserted on the whole announcement string. The premise
+  was false throughout: the branch believed to own the file never touched it.
+  Brief implementers to STOP and report when an allowlist blocks them, never to
+  compromise a signature to route around it; and brief reviewers to ask "is this
+  API shaped by architecture, or by the allowlist?"
+- **A required-parameter migration can become a rubber stamp.** Making `lang`
+  required turned 16 sites into compile errors — but the compiler proves a site
+  EXISTS, never that the value stamped there is CORRECT. 13 were test fixtures
+  given `'de'` to satisfy `tsc`. What made it safe was an explicit falsification:
+  flipping all 13 to `'en'` REDS with `Unable to find element: 77.0 nm`, proving
+  the DOM really contains German. Demand that probe on any such migration.
 - **PIN THE BASE BRANCH in every agent brief**, and require the agent to
   report its merge-base as part of its deliverable — `isolation: worktree`
   reliably comes up on the WRONG branch, not merely sometimes: **10 of 10**
@@ -2860,7 +2945,8 @@ making design-level decisions; do not silently deviate.
   (branch, commit, `git status`, process table), and if that is still
   ambiguous ASK — a question costs one round-trip and cannot be wrong, while
   every external signal is blind to an uncommitted worktree.
-- Monitors, three failure modes all measured 2026-08-07: `pgrep -f <pat>`
+- Monitors, four failure modes (the first three measured 2026-08-07, the fourth
+  2026-08-19): `pgrep -f <pat>`
   SELF-MATCHES a watcher whose own command line contains `<pat>` (so the count
   never reaches zero and the watch times out claiming "still running") — watch
   `/proc/<pid>` instead. Watch the DRIVER, not its first child: a script
@@ -2868,7 +2954,10 @@ making design-level decisions; do not silently deviate.
   announces completion at 1/N — and that fails LOUD and WRONG, worse than the
   silent case. And always emit on FAILURE and on never-started, not only on
   success: #443's `e2e` went red and a success-only filter would have been
-  indistinguishable from still-building.
+  indistinguishable from still-building. FOURTH mode: **`$!` after `setsid` is
+  the WRAPPER pid, not the driver** — it exits immediately, so a
+  `[ -d /proc/$PID ]` liveness check reports DEAD while the driver runs fine.
+  Have the driver print its own `$$` into its log and read the pid back.
 - BRIEFS ARE WRONG SOMETIMES — say so in the brief, and reward the pushback.
   In one session an implementer refused to build the shell parser its brief
   asked for (#235 is the false-POSITIVE direction, unreachable by globs, and
@@ -2941,6 +3030,25 @@ making design-level decisions; do not silently deviate.
   `.claude/settings.local.json`; global `~/.claude/` is personal cross-project
   only. Never commit secrets (AIS BYOK stays runtime-supplied). Full convention
   in CONTRIBUTING.md (#185).
+- **`.claude/settings.json` PostToolUse hooks fire on every Edit/Write**, and one
+  of them REWRITES what you just wrote: `.ts/.tsx/.css/.json` are auto-`prettier
+  --write`n, so the file on disk differs from your edit (don't re-Read and
+  conclude the edit failed). A `dict.*.ts` edit additionally runs a full
+  `npm --prefix app run typecheck` and BLOCKS on exit 2 — including on
+  PRE-EXISTING errors elsewhere in the tree, which is a confusing way to
+  discover someone else's broken branch.
+- **`gh api --jq` does NOT accept `--arg`** (fails `accepts 1 arg(s), received
+  4`). Pipe instead: `gh api URL | jq -r --arg p "$p" '…'`. Caught only by
+  foreground-testing a poll body before arming a Monitor — armed as written it
+  emits nothing forever, which reads as "still running".
+- **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
+  PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
+  while every check names an explicit ref (`origin/develop`,
+  `git show <sha>:<path>`); it bites the instant a bare `grep` reads a
+  working-tree path — and fails in the worst direction, since a missing
+  parameter reads as "the change was lost" when the file is merely old. A stale
+  tree does not error; it answers confidently with the previous truth. Run
+  `git merge --ff-only origin/develop` after merging, or keep naming refs.
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
 - UNDRAFTING a PR is GraphQL-only: `gh api repos/…/pulls/N --method PATCH -f
@@ -3024,9 +3132,14 @@ making design-level decisions; do not silently deviate.
   run's jobs — cancel the stale-SHA run first (verify `.head_sha`), then
   `POST …/actions/runs/<id>/rerun` (#119). `mergeable_state: unstable` = only
   OPTIONAL checks red — mergeable (required checks are `app`+`e2e` only);
-  scorecard's `analysis` job reds EVERY push to `main` by design
-  (default-branch-only action, #124), so release commits carry one cosmetic
-  red check-run — don't chase it.
+  scorecard (`.github/workflows/scorecard.yml`) push-triggers on `develop`
+  ONLY — plus a weekly `schedule` and a `branch_protection_rule` trigger, both
+  of which run on the default branch. #124 (`80cd5bf`, 2026-07-23) moved it OFF
+  `main` precisely because a default-branch-only action went red on every
+  release merge, so a `main` release commit now carries NO scorecard check-run
+  at all (verified 2026-08-19 on the `v0.12.0` merge `3f3b75e`, whose
+  check-runs list none). A red check-run on a release commit is therefore never
+  scorecard noise — chase it.
 - e2e's preview port is fixed (4173 in helpers.ts): full e2e runs from
   parallel worktrees contend — serialize them; per-agent dev ports are for
   manual browser passes only. The dirty wind fixture (see E2E section) also

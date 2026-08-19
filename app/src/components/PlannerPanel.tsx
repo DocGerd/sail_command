@@ -53,17 +53,15 @@ export interface PlannerPanelProps {
   // it — origin+destination as tap-source PickedPoints, vias as raw LatLon.
   onImportRoute: (origin: PickedPoint, destination: PickedPoint, viaPoints: LatLon[]) => void;
   onRequestMapTap: (target: TapTarget) => void; // parent arms MapView tap mode
-  // E8: via-waypoint re-route. Source of truth is the caller's — either a
-  // pre-first-plan local draft, or (once a plan exists) plan.request.viaPoints
-  // itself, so a rejected replan is reflected here automatically. Reorder is
-  // up/down buttons, not drag-and-drop (v1 scope).
+  // #571 redesign: via-waypoint editing. Source of truth is the caller's own
+  // DRAFT via list (App.tsx's `draftViaPoints`) — unconditionally, whether
+  // or not a plan is active. A via edit never replans in place any more (the
+  // maintainer's #571 ruling); it only takes effect on the next explicit
+  // Plan-route press. Reorder is up/down buttons, not drag-and-drop (v1
+  // scope).
   viaPoints: LatLon[];
   onRemoveVia: (index: number) => void;
   onReorderVia: (index: number, direction: 'up' | 'down') => void;
-  // True while a via edit (from this panel or a map-marker drag) is being
-  // replanned — disables the via controls so a second edit can't be queued
-  // while one is in flight (mirrors ViaMarkers' own disabled state).
-  viaReplanning: boolean;
   departureMs: number;
   onDepartureChange: (ms: number) => void;
   settings: Settings;
@@ -73,10 +71,25 @@ export interface PlannerPanelProps {
   // (SettingsPanel/BoatPicker); this panel never changes the selection.
   boat: BoatDef;
   canPlan: boolean;
+  // §3.5: the ONE reason the Plan button (and thus this whole form) is
+  // disabled — exactly two possible values today: `error.offline` (nothing
+  // can be planned offline) or `planner.disabled.pickEndpoints` (online, but
+  // origin/destination aren't both set yet); `null` means enabled. #64 phase
+  // 4: while `showOnboarding` below is true, the onboarding line is shown in
+  // this slot INSTEAD, and `planDisabledReason` is never rendered alongside
+  // it — see `showOnboarding`'s own comment for when each applies.
+  //
+  // #571 redesign: a dirty/stale form (including an unapplied via edit) is
+  // DELIBERATELY NOT a reason here and never disables the button — see
+  // `formDirty` below, a wholly separate, non-blocking concept: pressing
+  // Plan while dirty is exactly the normal, encouraged way to apply it.
   planDisabledReason: string | null;
   // #64 phase 4 (§3.5): drives the empty/first-run onboarding line, which only
-  // makes sense while online — offline gets the `error.offline` disabled reason
-  // (planDisabledReason) instead, since no endpoints can be planned offline.
+  // makes sense while online AND no plan exists yet — offline gets the
+  // `error.offline` disabled reason (planDisabledReason) instead, and once a
+  // plan exists (`showOnboarding`'s `!plan` gate) a still-missing endpoint
+  // instead gets `planner.disabled.pickEndpoints` — see planDisabledReason's
+  // own comment above for the full two-reason enumeration.
   online: boolean;
   onPlan: () => void;
   planning: PlannerStatus;
@@ -129,7 +142,6 @@ export default function PlannerPanel({
   viaPoints,
   onRemoveVia,
   onReorderVia,
-  viaReplanning,
   departureMs,
   onDepartureChange,
   settings,
@@ -290,7 +302,7 @@ export default function PlannerPanel({
     ? t('planner.result.announce', {
         arrival: formatDateTime(announcedResult.etaMs, lang),
         duration: formatDuration(announcedResult.durationMs),
-        distance: formatNm(announcedResult.distanceNm),
+        distance: formatNm(announcedResult.distanceNm, lang),
       })
     : '';
 
@@ -464,6 +476,11 @@ export default function PlannerPanel({
           </Button>
         </section>
 
+        {/* #571 redesign: no via control here is disabled while a plan is
+            running (`runBusy`) any more — a via edit only ever writes to the
+            draft, synchronously, with nothing that could race an in-flight
+            solve, matching how origin/destination editing is already
+            unblocked during one. */}
         <section aria-label={t('planner.via.label')} className="planner-via planner-endpoint">
           <h3 className="sc-section-title">{t('planner.via.label')}</h3>
           {viaPoints.length > 0 && (
@@ -473,7 +490,7 @@ export default function PlannerPanel({
                   <span className="planner-via-coord">{formatLatLon(v)}</span>
                   <Button
                     variant="ghost"
-                    disabled={viaReplanning || i === 0}
+                    disabled={i === 0}
                     onClick={() => onReorderVia(i, 'up')}
                     aria-label={t('planner.via.moveUp', { index: i + 1 })}
                   >
@@ -481,7 +498,7 @@ export default function PlannerPanel({
                   </Button>
                   <Button
                     variant="ghost"
-                    disabled={viaReplanning || i === viaPoints.length - 1}
+                    disabled={i === viaPoints.length - 1}
                     onClick={() => onReorderVia(i, 'down')}
                     aria-label={t('planner.via.moveDown', { index: i + 1 })}
                   >
@@ -489,7 +506,6 @@ export default function PlannerPanel({
                   </Button>
                   <Button
                     variant="ghost"
-                    disabled={viaReplanning}
                     onClick={() => onRemoveVia(i)}
                     aria-label={t('planner.via.remove', { index: i + 1 })}
                   >
@@ -499,7 +515,7 @@ export default function PlannerPanel({
               ))}
             </ol>
           )}
-          <Button variant="ghost" disabled={viaReplanning} onClick={() => onRequestMapTap('via')}>
+          <Button variant="ghost" onClick={() => onRequestMapTap('via')}>
             {t('planner.via.add')}
           </Button>
         </section>
@@ -558,9 +574,16 @@ export default function PlannerPanel({
 
       {/* §3.3: the primary action stays reachable at the panel bottom (sticky),
           never below a long scroll. §3.5: a single guidance/reason line under
-          it — onboarding when the trip is still empty (online), otherwise the
-          disabled reason (offline, or missing endpoints once a plan exists).
-          The two never render together, so the empty state reads as one hint. */}
+          it — onboarding while the trip is still empty and online
+          (showOnboarding), otherwise planDisabledReason's two possible
+          values (offline, or a still-missing endpoint) — see both props' own
+          comments above for the exact enumeration. The two never render
+          together, so the empty state reads as one hint.
+          #571 redesign: a dirty/stale form — including an unapplied via
+          edit — is NOT shown in this slot; it never disables the button.
+          That disclosure lives in the Ergebnis card's Chip and this panel's
+          live region below (both driven by `formDirty`), and on the map in
+          ViaMarkers' own chip (App.tsx's `viaDraftStale`). */}
       <div className="planner-actions">
         <Button variant="primary" onClick={onPlan} disabled={!canPlan}>
           {t('planner.plan')}

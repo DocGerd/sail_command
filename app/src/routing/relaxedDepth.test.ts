@@ -65,10 +65,22 @@ describe('findRelaxedGate under the #452 kill switch (#53 behaviour, unchanged)'
     expect(relaxedM(gapMask(24), [WEST, EAST], 2.5)).toBeCloseTo(2.4, 6);
   });
 
-  it('floating-point requested values quantize safely (requested 2.2 → only candidate 2.1)', () => {
-    // 2.2 * 10 = 22.000000000000004 in IEEE 754 — the ceiling computation must
-    // not let the rounding error admit 2.2 itself as a candidate.
-    expect(relaxedM(gapMask(30), [WEST, EAST], 2.2)).toBeCloseTo(2.1, 6);
+  it('#531: a COMPUTED requested value carrying float residue does not admit itself as a candidate', () => {
+    // `2.2` typed as a source literal is NOT a discriminating input here —
+    // `2.2 * 10 === 22` exactly, so the nudge is a no-op for it (measured: 0
+    // of 241 decimetre literals in [1.0, 25.0] overshoot; see relaxedDepth.ts
+    // ~L114-123). What genuinely overshoots is a COMPUTED depth: `0.1 + 2.2
+    // === 2.3000000000000003`, whose `×10` residue makes a bare
+    // `Math.ceil(requestedDepthM * 10) - 1` equal 23 (admitting 2.3 m — the
+    // requested depth itself, rounded to a decimetre — as a candidate gate)
+    // instead of the correct 22 (candidates 2.1/2.2 only). Mutation-verified:
+    // deleting `- 1e-9` from relaxedDepth.ts's `hiDm` line changes this
+    // case's result from 2.2 to 2.3.
+    const requestedDepthM = 0.1 + 2.2; // 2.3000000000000003
+    // Gap charted exactly 2.3 m: with the nudge, 2.3 is excluded from the
+    // candidate range and the highest connecting candidate is 2.2; without
+    // it, 2.3 becomes a candidate and (since 2.3 <= the 2.3 m gap) wins.
+    expect(relaxedM(gapMask(23), [WEST, EAST], requestedDepthM)).toBeCloseTo(2.2, 6);
   });
 
   it('never relaxes below boat draft: requested <= 2.1 yields null without probing', () => {

@@ -261,6 +261,14 @@ export interface ReplanDeps {
  * `savePlan`. Throws `ReplanError` instead of resolving on any failure
  * path (stale wind, no route, worker/persistence failure) so a caller
  * always gets a `MsgKey` to show, never a bare rejection.
+ *
+ * #571 redesign: App.tsx no longer calls this (or `useViaReplan` below) at
+ * all — a via edit is now plain, synchronous `draftViaPoints` form state,
+ * applied only on the next explicit Plan-route press (App.tsx's
+ * `handlePlan`/`run()`), per the maintainer's ruling that a via edit
+ * "should only calculate once clicked on calculate". Kept here, fully
+ * tested (replan.test.ts), as still-valid infrastructure for reusing the
+ * stored wind grid should a future feature want it back.
  */
 export async function replanWithVias(
   plan: Plan,
@@ -358,8 +366,11 @@ export interface ViaReplanState {
 const IDLE_STATE: ViaReplanState = { replanning: false, error: null, droppedCount: 0 };
 
 /**
- * Stateful wrapper around replanWithVias for ViaMarkers/PlannerPanel to
- * share: tracks `replanning`/`error`/`droppedCount` and guards against
+ * Stateful wrapper around replanWithVias, ORIGINALLY for ViaMarkers/
+ * PlannerPanel (via App.tsx) to share. #571 redesign: App.tsx no longer
+ * instantiates this hook at all (see replanWithVias's own comment above) —
+ * kept here, fully tested, as still-valid infrastructure. Tracks
+ * `replanning`/`error`/`droppedCount` and guards against
  * overlapping calls. Mirrors usePlanFlow.run's in-flight guard (a synchronous
  * ref, not just React state, since state only commits on the next render) —
  * design resolution: a replace() made while one is already in flight is a

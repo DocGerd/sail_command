@@ -62,7 +62,6 @@ function renderPanel(overrides: Overrides = {}) {
     viaPoints: [],
     onRemoveVia: vi.fn(),
     onReorderVia: vi.fn(),
-    viaReplanning: false,
     departureMs: Date.UTC(2026, 6, 20, 9, 0, 0),
     onDepartureChange: vi.fn(),
     settings: DEFAULT_SETTINGS,

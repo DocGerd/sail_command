@@ -31,7 +31,11 @@ function makeTempDir(): string {
 
 describe('readFragmentsFromDir', () => {
   it('returns [] for a missing directory, without throwing', () => {
-    const missing = join(tmpdir(), 'changelog-fragments-fs-test-does-not-exist');
+    // A freshly mkdtemp'd directory has no attacker-controlled contents
+    // (js/insecure-temporary-file, alert #16): a subpath inside it is
+    // guaranteed absent without needing a predictable, fixed-name path.
+    const base = makeTempDir();
+    const missing = join(base, 'does-not-exist');
     expect(readFragmentsFromDir(missing)).toEqual([]);
   });
 
@@ -65,7 +69,15 @@ describe('readFragmentsFromDir', () => {
 
   it('rejects a symlink shaped like a fragment name — the TARGET content never ends up in the fragment list', () => {
     const d = makeTempDir();
-    const canary = join(tmpdir(), 'changelog-fragments-fs-canary.txt');
+    // The canary lives in its OWN mkdtemp'd directory, deliberately OUTSIDE
+    // `d` — that separation is the point of the test (the symlink target
+    // must be unreachable via `d` alone). A fixed shared-/tmp path here was
+    // js/insecure-temporary-file (alert #16): a pre-planted symlink at a
+    // predictable name could redirect this write and the write-target's
+    // rmSync in `finally` would then delete the wrong thing. The directory
+    // name doesn't need to be predictable, only the "outside `d`" property.
+    const canaryDir = mkdtempSync(join(tmpdir(), 'changelog-fragments-fs-canary-'));
+    const canary = join(canaryDir, 'canary.txt');
     writeFileSync(canary, 'SECRET CANARY CONTENT — must never appear in a fragment');
     symlinkSync(canary, join(d, '400.fixed.md'));
     writeFileSync(join(d, '1.added.md'), 'kept');
@@ -79,13 +91,16 @@ describe('readFragmentsFromDir', () => {
       expect(warn.mock.calls[0][0]).toContain('400.fixed.md');
       expect(warn.mock.calls[0][0]).toContain('not a regular file');
     } finally {
-      rmSync(canary, { force: true });
+      rmSync(canaryDir, { recursive: true, force: true });
     }
   });
 
   it('rejects a dangling symlink shaped like a fragment name via entry.isFile(), never reaching the readFileSync try/catch', () => {
     const d = makeTempDir();
-    symlinkSync(join(tmpdir(), 'changelog-fragments-fs-nonexistent-target.txt'), join(d, '401.fixed.md'));
+    symlinkSync(
+      join(tmpdir(), 'changelog-fragments-fs-nonexistent-target.txt'),
+      join(d, '401.fixed.md'),
+    );
     writeFileSync(join(d, '1.added.md'), 'kept');
 
     const warn = vi.fn();

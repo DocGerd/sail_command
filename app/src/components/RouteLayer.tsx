@@ -27,12 +27,23 @@ export interface RouteLayerProps {
   // cheap setFilter() on the highlight layer only — never a source re-set —
   // so near-boundary GPS noise flipping between adjacent legs stays cheap.
   activeLegIndex: number | null;
-  // E8: via-waypoint re-route. ViaMarkers is rendered here (not as a
-  // sibling in App.tsx) mirroring LiveView's own BoatMarker — a plan's via
-  // points are route-scoped, and RouteLayer already receives `plan`. Both
-  // props are only meaningful once `plan` exists (renders null before
+  // #571 redesign: via-waypoint editing. ViaMarkers is rendered here (not as
+  // a sibling in App.tsx) mirroring LiveView's own BoatMarker — a plan's via
+  // points are route-scoped, and RouteLayer already receives `plan`. All
+  // three props are only meaningful once `plan` exists (renders null before
   // that), so App.tsx's wiring only needs to keep them defined once a plan
   // is active.
+  //
+  // `draftViaPoints` is App.tsx's DRAFT via list (never `plan.request.
+  // viaPoints` directly) — ViaMarkers renders FROM the draft, not the
+  // committed list, which is what makes an add/remove/reorder/drag show up
+  // on the map immediately, before the next Plan-route press applies it.
+  draftViaPoints: LatLon[];
+  // No longer means "a replan is in flight" (#571 redesign removed the
+  // auto-replan-on-edit path) — it now means "the draft differs from the
+  // committed plan.request.viaPoints", i.e. there is an unapplied edit.
+  // PROP NAME kept as `viaReplanning` — see ViaMarkers.tsx's own comment on
+  // its identically-named, identically-repurposed prop.
   viaReplanning: boolean;
   onViaDragEnd: (index: number, next: LatLon) => Promise<boolean>;
 }
@@ -469,6 +480,7 @@ export default function RouteLayer({
   plan,
   rig,
   activeLegIndex,
+  draftViaPoints,
   viaReplanning,
   onViaDragEnd,
 }: RouteLayerProps) {
@@ -603,7 +615,7 @@ export default function RouteLayer({
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
     const legs = result?.legs ?? [];
-    const routeData = legsToFeatureCollection(legs, { motorLetter: t('route.motorLetter') });
+    const routeData = legsToFeatureCollection(legs, lang, { motorLetter: t('route.motorLetter') });
     const pointData = routePointFeatures(legs, result?.etaMs ?? 0, lang);
     (map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined)?.setData(routeData);
     (map.getSource(MANEUVER_SOURCE) as GeoJSONSource | undefined)?.setData(pointData);
@@ -614,12 +626,21 @@ export default function RouteLayer({
 
   // #324: the alt-rig overlay's line data. No labels/points depend on this
   // source (see setupLayers' comment), so — unlike the effect above — this
-  // never needs `lang` or `t()`.
+  // never needs `t()`. #525 made `lang` a REQUIRED positional argument to
+  // `legsToFeatureCollection` (it still computes an unused `speedLabel`
+  // internally), so it must be passed here too even though nothing ever
+  // renders it for this source. `lang` IS listed in the deps below (PR #590
+  // review): `setData` with equivalent GeoJSON is idempotent and a language
+  // toggle is rare and user-initiated, so there is no real cost to avoid,
+  // and the sibling effect just above already depends on `lang` for the
+  // identical reason — suppressing it here only for this source would leave
+  // the one tool that could catch a future label added to this source
+  // already switched off.
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
-    const altData = legsToFeatureCollection(altResult?.legs ?? []);
+    const altData = legsToFeatureCollection(altResult?.legs ?? [], lang);
     (map.getSource(ROUTE_ALT_SOURCE) as GeoJSONSource | undefined)?.setData(altData);
-  }, [map, styleEpoch, altResult]);
+  }, [map, styleEpoch, altResult, lang]);
 
   // Maneuver letter labels are language-dependent: W/H (de), T/G (en).
   useEffect(() => {
@@ -828,11 +849,7 @@ export default function RouteLayer({
           <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
         </div>
       )}
-      <ViaMarkers
-        viaPoints={plan.request.viaPoints}
-        replanning={viaReplanning}
-        onDragEnd={onViaDragEnd}
-      />
+      <ViaMarkers viaPoints={draftViaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
       <RouteLegend />
     </div>
   );

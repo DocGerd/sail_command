@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage.enabled --coverage.provider=v8",
+    "test:sweep-unit": "node --test sweep/canonicalize.test.mjs",
     "lint": "eslint src e2e",
     "notices": "node scripts/gen-third-party-notices.mjs",
     "typecheck": "tsc -b --noEmit",
