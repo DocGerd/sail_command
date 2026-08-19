@@ -39,10 +39,11 @@ planning.
 
 Picking the boat, with each hull's draft, a provenance chip summarising the
 weakest tier across its polar tables (the per-sail tiers are inside the
-disclosure), and — where the draft is the model's standard keel rather than
-that hull's own papers — a disclosure saying so:
+disclosure); every boat also carries a note on where its stated draft comes
+from, and — where the draft is the model's standard keel rather than that
+hull's own papers — an additional disclosure saying so:
 
-![Boat tab: the three boats with draft and polar-provenance tier, and the assumed-keel disclosure on the two fleet boats](docs/screenshots/boat-selection.png)
+![Boat tab: the three boats with draft, polar-provenance tier and draft source note, and the assumed-keel disclosure on the two fleet boats](docs/screenshots/boat-selection.png)
 
 ## Install on Android
 
@@ -63,8 +64,9 @@ installs as a standalone icon and works fully offline after the first visit
 - Enter a departure and destination — via the curated harbor search, by
   tapping a harbor marker on the map, or by tapping anywhere on the map — and
   pick a departure time within the forecast horizon. A water-depths overlay
-  can be toggled on to shade the bathymetry (shallows warm, deep water fading
-  out) while you plan.
+  shades the bathymetry while you plan (shallows warm, deep water fading
+  out), and hatches water whose cautious, worst-case reading falls below
+  your safety depth; it is on by default and can be toggled off.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
   (marked ★). Where the two tables cannot honestly be ranked it says so
@@ -235,9 +237,13 @@ data; the code license is covered in the [License](#license) section below.
   (layer toggles + compass) and the bottom sheet leave no room for the
   scale bar, so it is suppressed rather than drawn over other controls —
   deliberate: drawing it in the wrong place would be worse. Short
-  **landscape** phones had the same limitation until `v0.11.0`
+  **landscape** phones were freed of the no-banner case in `v0.11.0`
   ([#231](https://github.com/DocGerd/sail_command/issues/231)), which
-  compacted the top-left chrome into a row there and reclaimed the room.
+  compacted the top-left chrome into a row there, and of the single-line
+  banner case in `v0.12.1`
+  ([#441](https://github.com/DocGerd/sail_command/issues/441)); two or more
+  banners stacked at once, or a banner that wraps to two lines, can still
+  suppress it there.
 
 ## Out of scope (v1)
 
