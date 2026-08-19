@@ -302,7 +302,7 @@ export default function PlannerPanel({
     ? t('planner.result.announce', {
         arrival: formatDateTime(announcedResult.etaMs, lang),
         duration: formatDuration(announcedResult.durationMs),
-        distance: formatNm(announcedResult.distanceNm),
+        distance: formatNm(announcedResult.distanceNm, lang),
       })
     : '';
 

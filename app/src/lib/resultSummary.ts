@@ -156,10 +156,10 @@ export function resultSummary(plan: Plan, result: RigResult, lang: Lang): Result
 
   return {
     arrivalText: formatDateTime(result.etaMs, lang),
-    distanceText: formatNm(result.distanceNm),
+    distanceText: formatNm(result.distanceNm, lang),
     durationText: formatDuration(result.durationMs),
     avgSpeedKn,
-    avgSpeedText: formatKn(avgSpeedKn),
+    avgSpeedText: formatKn(avgSpeedKn, lang),
     rigRecommendation,
     sailNm,
     motorNm,

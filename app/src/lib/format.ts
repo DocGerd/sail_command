@@ -11,12 +11,75 @@ function zeroPad(n: number, width: number): string {
   return String(n).padStart(width, '0');
 }
 
-export function formatNm(nm: number): string {
-  return `${nm.toFixed(1)} nm`;
+/**
+ * #525: German copy must use a decimal COMMA, not the point `toFixed(1)`
+ * always emitted — `dict.de.ts` is already comma-formatted everywhere else,
+ * so a bare `toFixed(1)` here was the one place the app spoke two decimal
+ * conventions at once. Same `Intl.NumberFormat` pattern as
+ * `depthDisclosure.ts`'s `formatDepthM` (one-decimal, locale-correct).
+ *
+ * `lang` is REQUIRED — no default. An earlier revision of this function
+ * defaulted it to 'de' so two call sites elsewhere in the tree could keep
+ * omitting the argument; CI then caught that default silently mixing
+ * languages in `PlannerPanel.tsx`'s live-region "plan ready" announcement
+ * (an English sentence rendering a German-formatted number, since the
+ * announcement's `distance` field kept the old positional
+ * `formatNm(announcedResult.distanceNm)` call). A required parameter turns
+ * that class of omission into a compile error instead of a silent wrong
+ * answer — the correct guard direction here, per the repo's own
+ * guard-asymmetry principle (CLAUDE.md).
+ */
+export function formatNm(nm: number, lang: Lang): string {
+  return `${new Intl.NumberFormat(LOCALES[lang], {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(nm)} nm`;
 }
 
-export function formatKn(kn: number): string {
-  return `${kn.toFixed(1)} kn`;
+/** Same locale contract as `formatNm` above — see its doc comment. */
+export function formatKn(kn: number, lang: Lang): string {
+  return `${new Intl.NumberFormat(LOCALES[lang], {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(kn)} kn`;
+}
+
+/**
+ * #439: per-LEG distance, deliberately NOT `formatNm` above. `formatNm`'s
+ * one-decimal rounding is fine for a plan-TOTAL (tens of nm, where 0.05 nm
+ * of rounding noise is invisible) but collapses distinct SHORT legs — a
+ * 0.5 nm harbor-approach leg and a 0.549 nm one both round to "0.5 nm" — so
+ * two genuinely different legs in the table read as identical. Fixed at TWO
+ * decimals (never adaptive-below-threshold; see #439's own "What to decide"
+ * section, resolved by the maintainer as a competent default rather than a
+ * blocking product call): the legs table already commits to `.tabular-nums`
+ * monospaced alignment, which two decimals fits as naturally as one, and a
+ * fixed precision needs no threshold logic to get wrong. `lang` is REQUIRED
+ * here, same as `formatNm`/`formatKn` above.
+ *
+ * Deliberately NOT applied to `route.legs.speed`'s `formatKn` in the same
+ * row — see that call site's own comment for why raising distance precision
+ * alone reopens the algebraic-mismatch concern `RouteSummary.tsx` already
+ * flags for distance/duration/speed, and why this PR states rather than
+ * resolves it.
+ *
+ * Residual, accepted: this moves the collision threshold from 0.05 nm to
+ * 0.005 nm rather than removing it — two legs under 0.005 nm still render
+ * identically, as "0.00 nm", which reads as zero distance. No observed leg
+ * is that short; revisit only with a measured case.
+ *
+ * Rendering an honest "<0.01 nm" instead of "0.00 nm" was considered and
+ * explicitly NOT done: #439's own "What to decide" section already
+ * deferred exactly this "0.0 nm vs an honest '<0.1 nm'" call to a future
+ * product/UX decision rather than an engineering one, and two decimals
+ * doesn't resolve that deferral — it only moves the threshold it applies
+ * at. Left for that same future product call.
+ */
+export function formatLegNm(nm: number, lang: Lang): string {
+  return `${new Intl.NumberFormat(LOCALES[lang], {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(nm)} nm`;
 }
 
 export function formatHeading(deg: number): string {

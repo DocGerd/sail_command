@@ -26,6 +26,7 @@ export interface LegProperties {
 
 export function legsToFeatureCollection(
   legs: Leg[],
+  lang: Lang,
   opts: { motorLetter?: string } = {},
 ): FeatureCollection<LineString, LegProperties> {
   const motorLetter = opts.motorLetter ?? 'M';
@@ -47,8 +48,8 @@ export function legsToFeatureCollection(
         legIndex,
         speedLabel:
           leg.kind === 'motor'
-            ? `${motorLetter} · ${formatKn(leg.speedKn)}`
-            : formatKn(leg.speedKn),
+            ? `${motorLetter} · ${formatKn(leg.speedKn, lang)}`
+            : formatKn(leg.speedKn, lang),
         shallow: leg.shallow !== undefined,
       },
     })),
