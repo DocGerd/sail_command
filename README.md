@@ -37,6 +37,12 @@ planning.
 |---|---|
 | ![Start view: map with curated harbors](docs/screenshots/start-view.png) | ![Planned route with per-leg detail and rig recommendation](docs/screenshots/plan-route.png) |
 
+Picking the boat, with each hull's draft, the provenance tier of its polar
+table, and — where the draft is the model's standard keel rather than that
+hull's own papers — a disclosure saying so:
+
+![Boat tab: the three fleet boats with draft, polar-provenance tier and assumed-keel disclosure](docs/screenshots/boat-selection.png)
+
 ## Install on Android
 
 Open the live URL in Chrome, then use the browser menu → **Add to Home
