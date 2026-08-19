@@ -460,8 +460,12 @@ for b in CATALOGUE_BOATS:
     ]
     low = [m for m in margins if m[3] < SNAP_MARGIN_FLOOR_M]
     print(f"snap-cell margin below {SNAP_MARGIN_FLOOR_M} m: {len(low)} of {len(margins)} scanned harbors")
-    for hid, snap_m, eff_gate_m, margin_m in sorted(low, key=lambda m: m[3]):
-        print(f"  LOW   {hid:16} snap {snap_m:.1f} m  gate {eff_gate_m:.1f} m  margin {margin_m:+.1f} m")
+    # #552 / spec §K: "each harbour's snap-cell margin", unconditionally — the
+    # loop below used to print ONLY the entries under SNAP_MARGIN_FLOOR_M, so
+    # a harbor with a healthy margin never appeared in the report at all.
+    for hid, snap_m, eff_gate_m, margin_m in sorted(margins, key=lambda m: m[3]):
+        flag = "LOW  " if margin_m < SNAP_MARGIN_FLOOR_M else "OK   "
+        print(f"  {flag} {hid:16} snap {snap_m:.1f} m  gate {eff_gate_m:.1f} m  margin {margin_m:+.1f} m")
 
 # Boat-independent, so printed once: what each harbor's connectivity ceiling
 # actually is, rather than only whether it clears today's gates.
