@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Popup } from 'maplibre-gl';
-import type { GeoJSONSource, Map as MaplibreMap, MapLayerMouseEvent } from 'maplibre-gl';
+import type {
+  CanvasSource,
+  GeoJSONSource,
+  Map as MaplibreMap,
+  MapLayerMouseEvent,
+} from 'maplibre-gl';
 import { useMapInstance } from './MapView';
+import { useSettings } from '../state/AppState';
 import { useLang, useT } from '../i18n';
 import { loadRoutingAssets, type RoutingAssets } from '../services/assets';
 import { harborFeatureCollection } from '../lib/harborGeoJson';
@@ -21,7 +27,11 @@ import {
   toSeamarkDisplayTier,
 } from '../lib/seamarkGlyphs';
 import { resolveSeamarkPopoverValue, seamarkPopoverRows } from '../lib/seamarkPopover';
-import { buildDepthImageData, depthSourceCorners } from '../lib/depthColor';
+import {
+  buildDepthImageData,
+  buildNavigabilityHatchImageData,
+  depthSourceCorners,
+} from '../lib/depthColor';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
@@ -47,6 +57,33 @@ export interface DataLayersProps {
 
 const DEPTH_SOURCE = 'sc-depth';
 const DEPTH_LAYER = 'sc-depth';
+// #492: the sparse hazard-hatch overlay — a SECOND canvas source/layer, kept
+// structurally separate from DEPTH_SOURCE/DEPTH_LAYER above (depthColor.ts's
+// HARD DOMAIN RULE: the absolute ramp never tracks safetyDepthM).
+const DEPTH_HATCH_SOURCE = 'sc-depth-hatch';
+const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
+// Debounce for rebuilding the hatch raster after safetyDepthM changes — the
+// mask is ~5.28M cells, so this must not run on every keystroke/tick of
+// whatever control edits the setting. 300ms: today's only editor
+// (SettingsPanel/PlannerPanel's NumberInput, via SAFETY_DEPTH_FIELD) commits
+// exclusively on blur (NumberInput.tsx: onCommit fires in handleBlur only),
+// so a burst of rebuilds is not reachable through the number field at all —
+// this debounce is cheap insurance against (a) a future continuous-drag
+// control, and (b) the one burst path that IS live today: BoatPicker's boat
+// radios select on arrow-key FOCUS, so arrowing through the list clamps
+// safetyDepthM up once per boat traversed, at key-repeat rate (see
+// BoatPicker.tsx's handleSelect comment). 300ms coalesces that while
+// staying imperceptible for a single deliberate blur-commit. MEASURED
+// (#492 review m6, in-browser Chromium against the real 2200x2400 mask,
+// createImageData+putImageData included — same method as the e2e suite):
+// three samples gave 28.3/28.7/28.5 ms for the hatch build vs 143.8/142.2/
+// 144.5 ms for buildDepthCanvas's own absolute-ramp build — same order of
+// magnitude, hatch ~5x cheaper (its LUT is a single boolean per byte, not
+// an RGBA interpolation). Either way the debounce, not the compute, is the
+// actual lag budget: today's only reachable path (a blur commit) always
+// pays this 300 ms before the safety cue updates, not the ~30 ms build
+// cost itself.
+const DEPTH_HATCH_DEBOUNCE_MS = 300;
 const HARBOR_SOURCE = 'sc-harbors';
 // Exported so App can hand MapView the same id its raw-tap gate queries: the
 // 'sc-harbor-points' literal lives in one place in production source. (The
@@ -100,7 +137,69 @@ function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElemen
   return canvas;
 }
 
-function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer): void {
+// #492: same shape as buildDepthCanvas above, but for the navigability-hatch
+// raster — a SEPARATE canvas/image, never merged into buildDepthCanvas's
+// buffer (depthColor.ts's HARD DOMAIN RULE). Built with the CURRENT
+// safetyDepthM at setup time so the cue is correct from the very first
+// paint; later changes are repainted by rebuildHatchCanvas below, debounced.
+function buildHatchCanvas(
+  meta: MaskMeta,
+  buffer: ArrayBuffer,
+  safetyDepthM: number,
+): HTMLCanvasElement | null {
+  const canvas = document.createElement('canvas');
+  canvas.width = meta.cols;
+  canvas.height = meta.rows;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const image = ctx.createImageData(meta.cols, meta.rows);
+  image.data.set(
+    buildNavigabilityHatchImageData(new Uint8Array(buffer), meta.rows, meta.cols, safetyDepthM),
+  );
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}
+
+// #492: repaints the ALREADY-CREATED hatch canvas in place (never
+// removes/re-adds the source or layer — that would churn map state and risk
+// a visible flash) whenever safetyDepthM changes, via the debounced effect
+// below. `animate: false` (set at addSource, same as DEPTH_SOURCE) means
+// MapLibre's CanvasSource only re-uploads its GL texture on a dimension
+// change or while `_playing` is true
+// (node_modules/maplibre-gl/src/source/canvas_source.ts's prepare()/play()/
+// pause(), re-derived against maplibre-gl@6.3.0 — app/package-lock.json's
+// pinned version as of this change): play() sets `_playing = true` and
+// triggers a repaint; pause() re-uploads the texture (prepare()) THEN clears
+// `_playing`. Calling both back-to-back therefore forces exactly one
+// re-upload of the freshly painted pixels, then returns to the static,
+// non-polling state — this stays a one-time raster build per change, not a
+// per-frame redraw.
+function rebuildHatchCanvas(
+  map: MaplibreMap,
+  meta: MaskMeta,
+  maskBuffer: ArrayBuffer,
+  safetyDepthM: number,
+): void {
+  const source = map.getSource(DEPTH_HATCH_SOURCE) as CanvasSource | undefined;
+  if (!source) return;
+  const canvas = source.getCanvas();
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return; // no 2D backend (jsdom) — matches buildHatchCanvas's own guard
+  const image = ctx.createImageData(meta.cols, meta.rows);
+  image.data.set(
+    buildNavigabilityHatchImageData(new Uint8Array(maskBuffer), meta.rows, meta.cols, safetyDepthM),
+  );
+  ctx.putImageData(image, 0, 0);
+  source.play();
+  source.pause();
+}
+
+function setupLayers(
+  map: MaplibreMap,
+  meta: MaskMeta,
+  maskBuffer: ArrayBuffer,
+  safetyDepthM: number,
+): void {
   // Anchor resolved at add time — see the ordering note above (#160).
   const beforeId = map.getLayer(AIS_STACK_BOTTOM_LAYER)
     ? AIS_STACK_BOTTOM_LAYER
@@ -132,6 +231,77 @@ function setupLayers(map: MaplibreMap, meta: MaskMeta, maskBuffer: ArrayBuffer):
           // transparent, deep water fading out); no fade so the toggle
           // flips instantly.
           paint: { 'raster-fade-duration': 0 },
+        },
+        beforeId,
+      );
+    }
+  }
+  // #492: the hazard-hatch overlay. Added with the SAME beforeId anchor
+  // right after DEPTH_LAYER above — MapLibre stacks same-beforeId additions
+  // in INSERTION order (each addLayer(layer, beforeId) call inserts
+  // immediately below beforeId, so a later call ends up ABOVE an earlier
+  // one), so this paints directly ABOVE the absolute ramp (legible over it)
+  // and, because every layer added further down this function (harbor
+  // circles/labels, seamarks) also shares beforeId, BELOW all of them (never
+  // obscures a click target or glyph). It also stays below the AIS/Route
+  // stack via the shared anchor itself — a plotted route's own #53 shallow
+  // casing, or AIS traffic, always wins if they ever visually coincide,
+  // which is the safe direction: a general navigability cue should never
+  // outrank a specific, already-computed safety warning.
+  //
+  // #492 review m9: this DOUBLES the depth overlay's retained memory —
+  // arithmetic, not measured (this environment has no device/GPU profiler
+  // to read GL texture memory back from): the mask is 2200x2400 cells
+  // (mask.meta.json), so ONE full-resolution RGBA canvas backing store is
+  // 2200*2400*4 = 21.12 MB, and CanvasSource.prepare() uploads it to an
+  // equally-sized GL texture — ~42.2 MB total for this canvas, on top of
+  // buildDepthCanvas's identical ~42.2 MB for the absolute ramp, so ~84.5 MB
+  // retained for the depth overlay alone once both layers exist. Not
+  // verified against a real mid-range device (none available here); the
+  // e2e suite elsewhere exercises depth+AIS+route together without a crash,
+  // which is weak evidence, not a memory profile. If this turns out to
+  // matter, M8's screen-space fill-pattern alternative (#599, see
+  // depthColor.ts's HATCH_PERIOD_CELLS comment) would also remove this
+  // second full-resolution raster entirely — not attempted here, since the
+  // maintainer's decision for THIS change was explicitly a second
+  // COMPOSITED layer, and merging the two canvases is the one thing the
+  // HARD DOMAIN RULE separation exists to prevent.
+  if (!map.getSource(DEPTH_HATCH_SOURCE)) {
+    const hatchCanvas = buildHatchCanvas(meta, maskBuffer, safetyDepthM);
+    if (hatchCanvas) {
+      map.addSource(DEPTH_HATCH_SOURCE, {
+        type: 'canvas',
+        canvas: hatchCanvas,
+        animate: false,
+        coordinates: depthSourceCorners(meta),
+      });
+      map.addLayer(
+        {
+          id: DEPTH_HATCH_LAYER,
+          type: 'raster',
+          source: DEPTH_HATCH_SOURCE,
+          // Hidden at creation, same convention as DEPTH_LAYER — the
+          // depthVisible sync effect applies the current state before any
+          // paint. No independent toggle: the hatch is a navigability
+          // annotation over the depth overlay, not an opt-in of its own.
+          layout: { visibility: 'none' },
+          paint: {
+            'raster-fade-duration': 0,
+            // #492 review M8: MapLibre's default 'linear' resampling
+            // smears the hatch's hard-edged stripes into soft gradients —
+            // an ADDITIONAL artifact on top of the documented zoom-scaling
+            // degradation (depthColor.ts's HATCH_PERIOD_CELLS comment),
+            // not a fix for it. 'nearest' at least keeps whatever renders
+            // crisp rather than blurred. SCOPE, measured against
+            // maplibre-gl@6.3.0: this governs MAGNIFICATION only —
+            // webgl/draw/draw_raster.ts:119 binds the MINIFICATION filter
+            // as a hardcoded gl.LINEAR_MIPMAP_NEAREST third argument
+            // (webgl/texture.ts:161-162), independent of this property, so
+            // at overview zoom (where the raster is minified) it has no
+            // effect at all. The style spec says the same: "texture
+            // magnification filter".
+            'raster-resampling': 'nearest',
+          },
         },
         beforeId,
       );
@@ -220,6 +390,18 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
+  // #492 review m10: DataLayers reads safetyDepthM via useSettings()
+  // directly rather than as a prop from App.tsx — a reviewed, confirmed
+  // decision, not a stopgap. App.tsx already re-renders DataLayers on
+  // every Settings/plan/rig/activeLegIndex change (rendered inline, no
+  // memo()), so this context read adds ZERO additional re-renders; a prop
+  // would give DataLayers a second, redundant source for a value it can
+  // already read directly — this component has no OTHER dependency on
+  // App.tsx at all, and already takes map/lang/t from context the same
+  // way. See this file's own #492 rebuild-effect comment below for how
+  // the value reaches the map.
+  const [settings] = useSettings();
+  const { safetyDepthM } = settings;
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
   const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
@@ -269,6 +451,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   useEffect(() => {
     assetsRef.current = assets;
   });
+  // #492: same pattern and rationale as assetsRef above — the style-setup
+  // closure below is armed ONCE per map instance/mount and must read the
+  // LATEST safetyDepthM at whatever moment a style reload re-creates the
+  // hatch source, not the value captured when the closure was created.
+  const safetyDepthMRef = useRef(safetyDepthM);
+  useEffect(() => {
+    safetyDepthMRef.current = safetyDepthM;
+  });
   const setupRef = useRef<() => void>(() => {});
 
   // Module-cached promise shared with App.tsx's own eager load — no second
@@ -308,7 +498,7 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
       const a = assetsRef.current;
       if (!a) return; // assets still loading — the arrival effect calls back in
       const missing = !map.getSource(HARBOR_SOURCE);
-      if (missing) setupLayers(map, a.maskMeta, a.maskBuffer);
+      if (missing) setupLayers(map, a.maskMeta, a.maskBuffer, safetyDepthMRef.current);
       setStyleEpoch((e) => (missing || e === 0 ? e + 1 : e));
     };
     setupRef.current = setup;
@@ -344,7 +534,39 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets || !map.getLayer(DEPTH_LAYER)) return;
     map.setLayoutProperty(DEPTH_LAYER, 'visibility', depthVisible ? 'visible' : 'none');
+    // #492: no independent toggle for the hazard-hatch layer — it rides the
+    // SAME depthVisible state as the absolute ramp above (this file's
+    // FORBIDDEN-file allowlist for this change excludes the i18n dict a new
+    // checkbox label would need, and conceptually the hatch is an
+    // annotation over the depth overlay, not a separate opt-in). A legend
+    // explaining the symbol itself is a separate gap, tracked as #598.
+    // Guarded
+    // separately from DEPTH_LAYER's own `!map.getLayer` check above since
+    // the hatch layer can legitimately not exist yet (jsdom has no 2D
+    // canvas backend at all — see buildHatchCanvas — or a slow style reload
+    // window) even once DEPTH_LAYER does.
+    if (map.getLayer(DEPTH_HATCH_LAYER)) {
+      map.setLayoutProperty(DEPTH_HATCH_LAYER, 'visibility', depthVisible ? 'visible' : 'none');
+    }
   }, [map, styleEpoch, assets, depthVisible]);
+
+  // #492: rebuild the hazard-hatch raster whenever safetyDepthM changes,
+  // DEBOUNCED (DEPTH_HATCH_DEBOUNCE_MS — see that constant's own comment for
+  // the interval and why). Also fires once on initial setup (styleEpoch
+  // 0 -> 1), redundantly repainting the SAME data buildHatchCanvas already
+  // painted at creation — harmless (idempotent) and simpler than special-
+  // casing the first run. `map.getLayer(DEPTH_HATCH_LAYER)` inside the
+  // timeout, not the effect guard, so a change queued just before a style
+  // reload wipes the layer doesn't throw — it just quietly finds nothing to
+  // repaint, matching the depthVisible effect's own no-op-when-absent shape.
+  useEffect(() => {
+    if (!map || styleEpoch === 0 || !assets) return;
+    const timer = window.setTimeout(() => {
+      if (!map.getLayer(DEPTH_HATCH_LAYER)) return;
+      rebuildHatchCanvas(map, assets.maskMeta, assets.maskBuffer, safetyDepthM);
+    }, DEPTH_HATCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [map, styleEpoch, assets, safetyDepthM]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the
