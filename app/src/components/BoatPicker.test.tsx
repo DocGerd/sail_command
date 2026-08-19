@@ -172,6 +172,33 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     expect(assumed, 'no assumed-keel boat in the catalogue').toBeGreaterThan(0);
   });
 
+  it('#566: renders every boat’s draftProvenance.note, INCLUDING the hull-verified Salona 45', () => {
+    renderPicker();
+    // The loop covers every catalogue boat; its expected text comes from the
+    // SAME catalogue the component reads, so on its own it can't catch an
+    // implementation that renders the WRONG note — the standalone
+    // salona-45 assertion below (a hand-derived substring) is what catches
+    // that, the same "one hardcoded anchor beside the derived loop" idiom
+    // this file already uses for draft, above.
+    for (const boat of BOATS) {
+      const option = within(optionFor(boat.id));
+      expect(option.getByText(boat.draftProvenance.note), boat.id).toBeInTheDocument();
+    }
+    // #566's whole point, pinned directly: gating this note on
+    // `keelUnverified` (as the sibling keel-caveat sentence correctly IS
+    // gated) would silently drop the hull-verified reference boat's OWN
+    // citation — the exact failure this decision exists to prevent. This
+    // assertion is independent of the loop above: it targets ONLY the
+    // hull-verified boat, on a substring unique to ITS note, so a
+    // `keelUnverified &&`-gated render regresses this row specifically even
+    // if some other regression left the loop green.
+    expect(
+      within(optionFor('salona-45')).getByText(
+        /reference boat, model-level with no individual vessel/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('starts with an empty live region rather than a stale announcement', () => {
     renderPicker();
     const status = screen.getByRole('status');

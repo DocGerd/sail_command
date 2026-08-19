@@ -907,19 +907,47 @@ select {
    Nesting feature, unrelated to that MQ3-vs-MQ4 concern, but there is no
    reason to reach for it here when a flat query says the same thing more
    portably).
-   RESIDUAL, tracked as #441, NOT fixed here: the margin this rule reclaims
-   (measured ~16-18px at 740x360) is SMALLER than one line of `.banner-area`
-   (measured ~32px+). `.map-stack-tl`'s pushed `top` tracks
-   `--sc-banner-height` 1:1 (the narrow banner-clearance rule above, and its
-   own `ScaleBar` coupling note in this repo's CLAUDE.md) — that coupling is
-   a RUNTIME-MEASURED value, invisible in this CSS and in any diff, so any
-   banner rendered at all (not only the dismissible SW "offline ready"
-   toast this fix's own e2e guard dismisses — `needRefresh`, the
-   update-available banner, has NO dismiss affordance and fires on every
-   deploy) re-exhausts this margin and re-suppresses ScaleBar for as long as
-   it is showing. This block does not widen the reclaimed margin to survive
-   a banner, give `needRefresh` a dismiss, or let ScaleBar reposition instead
-   of suppress — #441 is where that design decision belongs. */
+   #441 FIX (was a documented RESIDUAL here): the margin the rule above
+   reclaims (measured ~16-18px at 740x360) is SMALLER than one line of
+   `.banner-area` (measured ~32px+), and `.map-stack-tl`'s pushed `top`
+   tracks `--sc-banner-height` 1:1 (the narrow banner-clearance rule above),
+   so any rendered banner re-exhausted that margin. `needRefresh` (the
+   update-available banner) now has a dismiss affordance too
+   (`ReloadPrompt.tsx`) — but a dismissed banner is SESSION-scoped, and the
+   `offline`/`error` banners this app also renders have no dismiss at all —
+   so this block closes the GENERAL case, not just the dismissible one.
+   `.map-stack-tl` itself has NO more margin left to give: its row height is
+   already at the compass's 44px (2.75rem) touch-target floor (below rule),
+   and its `top` offset is the #368 banner-clearance push, whose own comment
+   REFUSES a smaller ceiling because that reopens #368's banner hit-test
+   collision. MEASURED (740x360, Plan tab — `.app-bottom-sheet` already at
+   its 55vh cap, the worst case): a single 32px banner line pushes
+   `.map-stack-tl`'s bottom edge 100px -> 132px, dropping ScaleBar's
+   suppression ceiling 222px -> 190px against an unchanged 206px floor — a
+   16px shortfall neither the compass floor nor the banner-clearance push
+   can close.
+   The remaining lever is the OTHER half of that floor: `.app-bottom-sheet`'s
+   own reserved height. The sheet is already AT its 55vh cap on this
+   viewport (its Plan-tab content needs more room than that and is already
+   scrolling internally), so trimming the cap further costs more scroll, not
+   lost functionality — the same trade the checkbox-padding/min-height cuts
+   below already make. MEASURED live against a dev server (not derived on
+   paper): shrinking the cap to 45vh clears ScaleBar's suppression with a
+   single banner line at all three short-landscape viewports — sheet height
+   198px -> 162px at 740x360 (20px margin), 214.5px -> 175.5px at 844x390
+   (~36.5px margin), 236.5px -> 193.5px at 932x430 (already clear before this
+   change, more so after). `.map-stack-tl`/`.route-layer-controls`'s own
+   max-height (base narrow rule, above) reserves the SAME 55vh above the
+   sheet by a NAMED COUPLING to it — narrowed to 45vh here too so the two
+   numbers can't silently diverge; at today's content sizes (~41-44px)
+   neither cluster is anywhere near either ceiling, so this second change has
+   no visible effect today, but keeps the coupling honest for whoever reads
+   it next.
+   Only ONE banner line is the guaranteed case, per #441's own scope: two
+   stacked banners (~64px) or a two-line wrap are NOT re-measured against
+   this margin and may still suppress — an accepted residual, the same shape
+   as the base #368 rule's own "extreme combination this rule does not
+   target" acceptance (see that rule's comment). */
 @media (max-width: 1023.98px) and (max-height: 500px) and (orientation: landscape) {
   .map-stack-tl {
     flex-direction: row;
@@ -962,6 +990,28 @@ select {
      control that was never text input in the first place. */
   .data-layer-controls input[type='checkbox'] {
     min-height: 24px;
+  }
+
+  /* #441: see this block's own opening comment for the full derivation —
+     `.map-stack-tl` itself is out of margin to give (compass touch-target
+     floor + the #368 banner-clearance push, neither negotiable), so this
+     spends the OTHER lever ScaleBar's suppression ceiling depends on: how
+     much height `.app-bottom-sheet` reserves. 45vh (from the base 55vh) is
+     the MEASURED amount that clears ScaleBar's suppression with a single
+     banner line at every short-landscape viewport this repo tests. */
+  .app-bottom-sheet {
+    max-height: 45vh;
+  }
+
+  /* NAMED COUPLING with the rule immediately above: both reserve the SAME
+     vh above the sheet, so they must change together (see this block's own
+     opening comment) — `var(--sc-banner-clear-top)` is inherited from the
+     base narrow rule above (`@media (max-width: 1023.98px)`), which already
+     declares it on these same two selectors; this rule only narrows
+     `max-height`'s own 55vh term to match the sheet's new 45vh cap. */
+  .map-stack-tl,
+  .route-layer-controls {
+    max-height: calc(100dvh - var(--sc-banner-clear-top) - 45vh - 0.5rem);
   }
 }
 
@@ -1978,10 +2028,23 @@ select {
   font-size: 0.9rem;
 }
 
-/* Spec N.2's keel disclosure, and the per-sail source notes: small, but
-   never dimmed below the body colour — an unchecked-draft caveat that reads
-   as decoration has failed at the one job it exists for. */
+/* Spec N.2's keel disclosure, the #566 draft-provenance note below, and the
+   per-sail source notes further down: small, but never dimmed below the
+   body colour — an unchecked-draft caveat (or a safety-adjacent citation)
+   that reads as decoration has failed at the one job it exists for. */
 .boat-option-keel {
+  grid-column: 2;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* #566: `draftProvenance.note`, rendered for every boat (BoatPicker.tsx
+   says why). Shares `.boat-option-keel`'s treatment — same grid column,
+   same undimmed body colour, same size — since it carries the same
+   safety-adjacent weight (draft feeds the depth gate); a smaller, dimmed
+   citation style would read as decoration, which the comment above already
+   rejects for this exact class of text. */
+.boat-option-draft-note {
   grid-column: 2;
   margin: 0;
   font-size: 0.85rem;

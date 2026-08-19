@@ -116,6 +116,18 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           {t('boat.keel.assumed', { keel: boat.draftProvenance.keel })}
         </p>
       )}
+      {/* #566. `draftProvenance.note` is REQUIRED on every catalogue entry
+          (boats.ts) but had zero consumers — including on the hull-verified
+          Salona 45, which carries its own model-level citation. Rendered
+          UNCONDITIONALLY, never gated on `keelUnverified`: gating it would
+          silently drop the reference boat's own note, exactly the failure
+          this decision exists to prevent (the keel caveat right above is
+          fine to gate — it states a DIFFERENT fact, "this draft was not
+          hull-verified", which is trivially false for the reference boat —
+          but the note is a citation that exists for every boat regardless).
+          Catalogue data per spec F.3, same as `sail.polarProvenance.note`
+          below — not an i18n key, so it renders as authored, verbatim. */}
+      <p className="boat-option-draft-note">{boat.draftProvenance.note}</p>
       <Disclosure className="boat-option-polars" summary={t('boat.polarDetail.summary')}>
         <ul className="boat-option-sails">
           {boat.sails.map((sail) => (

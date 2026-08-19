@@ -15,7 +15,10 @@ describe('#54 weakestPolarTier: the fail-closed empty case', () => {
     // the direction: deriving from an empty list instead — `Math.max` of
     // nothing is `-Infinity` — would index the tier table with a non-tier.
     // MEASURED: without this row, flipping the initial value to
-    // 'certificate' leaves the two BoatPicker files 23/23 green.
+    // 'certificate' leaves the two BoatPicker files 28/28 green (#569 — the
+    // stale '23/23' this comment carried predates #566's four new rows
+    // across both files; re-measure with `grep -c "it(\|test("` rather than
+    // hand-adding, since it drifts with every row either file gains).
     const sailless = { ...boatById(DEFAULT_BOAT_ID), sails: [] };
     expect(weakestPolarTier(sailless)).toBe('estimated');
   });

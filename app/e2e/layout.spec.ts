@@ -886,3 +886,63 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
     }
   });
 }
+
+// #441: the #231 loop above closes the NO-banner case; this closes the case
+// #231's own comment left open — the fix's own residual note said the
+// margin #231 reclaimed (~16-18px at 740x360) was SMALLER than one line of
+// `.banner-area` (~32px+), so ANY rendered banner re-exhausted it and
+// re-suppressed ScaleBar, `needRefresh` (no dismiss at the time) included.
+// Exercised here via the OFFLINE banner (`Planung deaktiviert`), not
+// `needRefresh` itself: mechanistically identical for this purpose —
+// ScaleBar's suppression ceiling reads `.banner-area`'s REAL rendered
+// height via `--sc-banner-height` (lib/useBannerHeight.ts), regardless of
+// WHICH banner produced it — and the offline banner is the one this e2e
+// suite can reliably force (`context.setOffline(true)`, the same
+// substitution the #368 tests above already make) without faking a genuine
+// waiting-SW registration inside a single Playwright preview build.
+// `needRefresh`'s own NEW dismiss control (ReloadPrompt.tsx) is covered
+// separately in ReloadPrompt.test.tsx (a unit test, since forcing a real
+// `needRefresh` here isn't practical) — not re-covered by this test.
+for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
+  test(`#441: ScaleBar survives one banner line on short landscape (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      // Clear the incidental SW "offline ready" toast first (best-effort,
+      // same as the #231 loop above) so the ONLY banner up for the
+      // assertion below is the offline one this test forces — never two
+      // banners stacked at once, which would exercise #441's own accepted
+      // residual (see app.css's #441 comment), not its guaranteed scope.
+      await page
+        .locator('.reload-prompt .banner-dismiss')
+        .click({ timeout: 5_000 })
+        .catch(() => {});
+
+      await page.context().setOffline(true);
+      const offlineBanner = page.locator('.banner-message', { hasText: 'Planung deaktiviert' });
+      await expect(offlineBanner).toBeVisible();
+      // Confirms exactly ONE banner is up (not the two-banner residual case)
+      // before trusting the suppression assertion below.
+      await expect(page.locator('.banner-area .banner')).toHaveCount(1);
+
+      const scaleBar = page.locator('.scale-bar');
+      // #412: poll the CLASS, re-read every tick — never a value frozen
+      // before the `--sc-banner-height` ResizeObserver write (and the CSS
+      // push it drives) has settled.
+      await expect
+        .poll(async () => (await scaleBar.getAttribute('class')) ?? '', { timeout: 10_000 })
+        .not.toMatch(/scale-bar-suppressed/);
+    } finally {
+      await page
+        .context()
+        .setOffline(false)
+        .catch(() => {});
+      server.kill();
+    }
+  });
+}
