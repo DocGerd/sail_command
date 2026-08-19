@@ -65,13 +65,12 @@ mask still lets a route cross water charted below the requested safety
 depth ([#455](https://github.com/DocGerd/sail_command/issues/455)).
 `v0.12.0` closed the worst of it — the mask blend now carries a proven
 0.9 m bound, so no cell *navigable at* the default 3.0 m gate reads below
-the boat's draft. A relaxed route can still reach a cautious reading as low
-as the boat's own draft minus that 0.9 m bound — the relaxation floor is
-per boat (`relaxationFloorM`, `app/src/lib/boatDepth.ts`), so a
-shallower-drafted hull reaches a shallower figure. Both that floor and the
-shallow water a route actually crosses are now disclosed on the route
-itself. But roughly ten thousand gate-crossing
-cells remain
+the boat's draft. A relaxed route can still reach a cautious reading as
+low as the boat's own draft minus that 0.9 m bound — the relaxation floor
+is per boat (`relaxationFloorM`, `app/src/lib/boatDepth.ts`), so a
+shallower-drafted hull reaches a shallower figure. Both that cautious
+reading and the shallow water a route actually crosses are now disclosed
+on the route itself. But roughly ten thousand gate-crossing cells remain
 (10,746 at the shipped tolerance, measured in
 `docs/spikes/455-depth-mask-optimism.md`), so the issue stays open rather
 than being declared done.
@@ -180,8 +179,8 @@ so the file now carries the test count beside the `npm run test` figures
 dependency on catalogue order rather than a named boat
 ([#569](https://github.com/DocGerd/sail_command/issues/569)); the docs
 screenshot capture script's dedicated wind fixture, retuned after its rig
-margin collapsed below the tie band and left the captured image with no ★
-at all
+margin collapsed below the tie band, which would have left the captured
+image with no ★ at all
 ([#577](https://github.com/DocGerd/sail_command/issues/577)); the vitest
 sequencer's `SLOW_TEST_FILES_FIRST` list, ordered against its own
 "slowest first" comment
@@ -208,7 +207,7 @@ dictionaries enforced key parity but not placeholder parity, so a
 deleting it left the suite green
 ([#519](https://github.com/DocGerd/sail_command/issues/519)).
 
-The `v0.12.0` cut fixed six items in this area, most of them guards that
+The `v0.12.0` cut fixed fourteen items in this area. Six were guards that
 could be merged past. `eslint` never covered `app/e2e/**` — the script was
 `eslint src`, so the Playwright specs that are the only functional
 assurance for the service worker and the routing worker went unlinted
@@ -235,7 +234,7 @@ correction to user-facing copy that promised integrity and fields the app
 cannot verify ([#547](https://github.com/DocGerd/sail_command/issues/547))
 and the README hero screenshot showing a mostly-motor route
 ([#459](https://github.com/DocGerd/sail_command/issues/459)).
-Two process spikes also closed in this cut, recorded here because neither
+Two process spikes also closed in `v0.12.0`, recorded here because neither
 changed product code: whether the architecture still fits, which found
 that it does and declined every structural candidate except an
 incremental `AppShell` extraction
