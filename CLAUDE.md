@@ -281,7 +281,8 @@ making design-level decisions; do not silently deviate.
   server-side `update-branch` merge commit is not in your clone, and the
   script correctly fail-closes to `run_e2e=true` with "base or head commit
   unreachable" — which looks like an answer and isn't. Measured 2026-08-19:
-  a 30-file docs sweep ran a FULL ~30 min e2e because of exactly one path,
+  a 32-file docs sweep ran a full e2e run (6 min 38 s on that run) because
+  of exactly one path,
   `.claude/skills/release/SKILL.md`.
 - `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
   dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
@@ -983,21 +984,33 @@ making design-level decisions; do not silently deviate.
   not: never predict this from the gap, and do not read "fast tag push" as a
   protection. The decisive fact is the earlier run's own `deploy` job conclusion —
   `gh api repos/OWNER/REPO/actions/runs/<merge-run-id>/jobs --jq '.jobs[]|"\(.name): \(.conclusion)"'`;
-  `cancelled`/`null` means no deployment of that SHA exists (the tag run will
-  take), `success` means it does (the tag run will no-op). `smoke-probe` passing
+  `cancelled`/`null` means no deployment of that SHA reached terminal
+  `success` (the tag run will take), `success` means one did (the tag run will
+  no-op). Note the test is TERMINAL SUCCESS, not existence — see the third
+  exercise below, where an earlier deployment object existed and the tag run's
+  still took. `smoke-probe` passing
   on the tag run is then the positive proof it took.
 
-  **THIRD EXERCISE — v0.12.0 cut (2026-08-19): it did NOT fire, at a margin
-  LONGER than the one that failed.** Merge-push deploy created 11:00:02Z, tag
-  deploy 11:01:12Z — **70 seconds**, against v0.10.0's 43 s that DID no-op and
-  v0.11.0's 54 s that did not. The gap is now measured non-monotonic in both
-  directions and carries no signal whatever; stop reaching for it. What
-  decided it: `cancel-in-progress` killed the merge run while it was still in
-  `build`, so its `deploy` job never created a Pages deployment at all
-  (`deploy: cancelled`) and the tag run's was the FIRST for that SHA. Gate on
-  that job conclusion — one API call — and confirm afterwards with the
-  entry-chunk probe: production served a bare `v0.12.0` with no `git
-  describe` suffix anywhere in the live chunk.
+  **THIRD EXERCISE — v0.12.0 cut (2026-08-19): it did NOT fire, and it
+  CORRECTS the rule above.** Quote margins on ONE basis or not at all:
+  creation→creation gives v0.10.0 **128 s** (DID no-op), v0.11.0 **54 s**
+  (safe), v0.12.0 **70 s** (safe). The `43 s` quoted two paragraphs up is
+  completion→creation and is NOT comparable with those — differencing the two
+  bases is this file's own "two measurements of DIFFERENT subjects cannot be
+  differenced", committed inside the bullet warning against it. So: the gap has
+  come out safe at 54 s and 70 s and unsafe at 128 s; it is not a predictor,
+  gate on the job conclusion instead.
+  **What this cut corrects:** `cancel-in-progress` cancelled the merge run 8 s
+  into its `deploy` job — `build` had already SUCCEEDED (11:01:04Z) — and a
+  Pages deployment for that SHA WAS created (`5981044177`, ref `main`), reaching
+  `in_progress` and then `error` at 11:01:16Z. The tag run's (`5981063675`, ref
+  `v0.12.0`) was the SECOND deployment object for that SHA and it TOOK, reaching
+  `success` at 11:02:38Z. What decides a no-op is therefore whether an earlier
+  deployment reached terminal **`success`**, NOT whether a deployment object
+  exists — a reader who checks the deployments API, finds an earlier object for
+  their SHA and concludes they are in the no-op case would be wrong. Confirm
+  afterwards with the entry-chunk probe: production served a bare `v0.12.0`
+  with no `git describe` suffix anywhere in the live chunk.
 - **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
   on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
   describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
@@ -1401,15 +1414,17 @@ making design-level decisions; do not silently deviate.
   `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
   `v0.12.1` PATCH milestone, so the check reported the claim FALSE when it was
   true — the document was narrower and more careful than the test of it
-  (measured 2026-08-19). Sibling of "what class of failure can this method not
-  detect?", inverted: ask also *what would make this check fire when nothing
-  is wrong?* Before reporting a claim false, re-read the claim's exact scope,
+  (measured 2026-08-19). Third member of the accusing-check family, alongside
+  the INFEASIBLE-baseline (#264) and reads-BACKWARDS (#353) bullets below —
+  here it is the predicate's SCOPE that over-fires, not its baseline or its
+  aperture. Ask also *what would make this check fire when nothing is
+  wrong?* Before reporting a claim false, re-read the claim's exact scope,
   and prefer a predicate built from the claim's OWN words over a pattern you
   invented.
 - **Prose written for a post-action state creates a window where the repo
   contradicts itself.** The v0.12.0 sweep landed `CONTRIBUTING.md` text
   asserting "`v0.12.0` is closed" and "`v0.14.0` is opened fresh at this cut"
-  — both false until the milestone actions ran hours later. Either make the
+  — both false until the milestone actions ran ~52 min later. Either make the
   statement true in the SAME operation, or don't write it forward-dated. If it
   must ship early, name the authority that supersedes it: that paragraph's own
   closing line ("`gh api …/milestones` is the fact, not this sentence") is the
