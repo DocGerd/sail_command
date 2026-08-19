@@ -112,9 +112,15 @@ export function findRelaxedGate(
   // two forms disagree zero times (they disagree on 2205 of 4501
   // millimetre-spaced floors, which is what makes that zero evidence).
   const loDm = Math.ceil(floorM * 10 - 1e-9);
-  // Highest decimeter strictly below the requested depth. The 1e-9 nudge
-  // absorbs IEEE 754 artifacts like 2.2 * 10 === 22.000000000000004, which
-  // would otherwise admit the requested depth itself as a candidate.
+  // Highest decimeter strictly below the requested depth. #531: `2.2 * 10
+  // === 22.000000000000004` is FALSE (`2.2 * 10 === 22` exactly) — a typed,
+  // decimetre-quantised literal never needs the nudge (measured: 0 of 241
+  // literals in [1.0, 25.0] overshoot). The real hazard is a COMPUTED,
+  // non-decimetre-typed depth carrying ordinary floating-point residue, e.g.
+  // `0.1 + 0.2 === 0.30000000000000004` — `×10` gives `3.0000000000000004`,
+  // and a bare `Math.ceil` rounds that UP to 4 instead of 3, admitting one
+  // decimetre more than requested. The 1e-9 nudge absorbs exactly that
+  // residue before the ceil.
   const hiDm = Math.ceil(requestedDepthM * 10 - 1e-9) - 1;
   if (hiDm < loDm) return null;
 

@@ -47,20 +47,33 @@ import { describe, it, expect, afterAll } from 'vitest';
 // landing outside the output directory.
 //
 // The state it defends against WAS reached, out-of-band in a scratch tree, and
-// needs THREE conditions together: the sail-id guard removed, the two-pass
-// restructure reverted to inline writes, AND the escaping sail written before
-// a LATER boat fails validation, with no legitimate sail written first — in
-// practice the escaping sail is its boat's ONLY sail.
+// needs FOUR conditions together (#552 — re-derived and reproduced against a
+// hand-mutated scratch copy of the real script; an earlier revision of this
+// comment said THREE and was wrong, see below): the sail-id guard removed,
+// the two-pass restructure reverted to inline writes, the escaping sail
+// written before a LATER boat fails validation, AND no legitimate sail
+// landing in `polars/` at any point before that failure — which needs BOTH
+// that the escaping boat contributes no legitimate sibling of its own (in
+// practice: it is that boat's ONLY sail) AND that no EARLIER boat in the
+// source has already written its own legitimate sails there first.
 //
 //   exit code 1                                  <- build DID fail
 //   readdir(polars/) -> []                       <- directory-scoped PASSES
 //   whole tree -> app/public/data/ESCAPED.json   <- tree walk REDS
 //
-// Drop any one of the three and it is unreachable. With the two-pass
+// Drop any one of the four and it is unreachable. With the two-pass
 // restructure in place nothing is written before the throw; with inline writes
 // but no later failure the build exits 0 and `polars/` holds the legitimate
-// files, so the directory-scoped assertion fails rather than passes. Earlier
-// retellings of this named only the first two conditions and do not reproduce.
+// files, so the directory-scoped assertion fails rather than passes.
+// MEASURED (#552): reordering the source so one legitimate boat is processed
+// BEFORE the escaping one — otherwise identical, escaping sail still its own
+// boat's only sail, later boat still fails — makes `readdir(polars/)` return
+// that legitimate boat's two real files instead of `[]`, so the
+// directory-scoped assertion no longer passes either: the fourth condition is
+// independently load-bearing, not implied by the other three. Earlier
+// retellings of this named only the first two conditions and do not
+// reproduce; a later retelling named three and reproduces only when the
+// escaping boat also happens to be first in the source.
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const SCRIPT = join(REPO, 'pipeline', 'build_polars.mjs');
@@ -329,7 +342,11 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     src.boats.push(clone);
     const r = run(src);
     expect(r.ok).toBe(false);
-    expect(r.output).toContain('salona-45');
+    // #552: `toContain('salona-45')` alone does not discriminate THIS failure
+    // from any of the other 8 assertions in this file that also match
+    // 'salona-45' in unrelated messages — tighten to the literal
+    // `requireField` message (build_polars.mjs's `duplicate boat id: ${id}`).
+    expect(r.output).toContain('duplicate boat id');
     expect(allWrittenFiles(r)).toEqual([]);
   });
 
