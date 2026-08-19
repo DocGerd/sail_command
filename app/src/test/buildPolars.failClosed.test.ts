@@ -343,7 +343,7 @@ describe('#54 Task 12: build_polars.mjs fails closed', () => {
     const r = run(src);
     expect(r.ok).toBe(false);
     // #552: `toContain('salona-45')` alone does not discriminate THIS failure
-    // from any of the other 8 assertions in this file that also match
+    // from any of the other 9 assertions in this file that also match
     // 'salona-45' in unrelated messages — tighten to the literal
     // `requireField` message (build_polars.mjs's `duplicate boat id: ${id}`).
     expect(r.output).toContain('duplicate boat id');

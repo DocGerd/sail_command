@@ -118,9 +118,9 @@ export function findRelaxedGate(
   // literals in [1.0, 25.0] overshoot). The real hazard is a COMPUTED,
   // non-decimetre-typed depth carrying ordinary floating-point residue, e.g.
   // `0.1 + 0.2 === 0.30000000000000004` — `×10` gives `3.0000000000000004`,
-  // and a bare `Math.ceil` rounds that UP to 4 instead of 3, admitting one
-  // decimetre more than requested. The 1e-9 nudge absorbs exactly that
-  // residue before the ceil.
+  // and a bare `Math.ceil` rounds that UP to 4 instead of 3, admitting the
+  // requested depth itself (quantised to a decimetre) as a candidate gate.
+  // The 1e-9 nudge absorbs exactly that residue before the ceil.
   const hiDm = Math.ceil(requestedDepthM * 10 - 1e-9) - 1;
   if (hiDm < loDm) return null;
 
