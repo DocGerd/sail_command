@@ -272,6 +272,17 @@ making design-level decisions; do not silently deviate.
   `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
   `mergeable_state: clean` — so a skipped-but-successful required check does
   satisfy `develop`'s gating.
+  To find out WHY e2e ran on a seemingly docs-only PR, run the real
+  classifier locally rather than guessing: `EVENT_NAME=pull_request
+  BASE_SHA=$b HEAD_SHA=$h GITHUB_OUTPUT=$(mktemp) GITHUB_STEP_SUMMARY=$(mktemp)
+  bash -e .github/scripts/classify-docs-only.sh` — it prints the changed
+  paths and the deciding one (`reason=non-docs path: …`). **Fetch the PR head
+  first** (`git fetch origin refs/pull/N/head:refs/remotes/origin/prN`): a
+  server-side `update-branch` merge commit is not in your clone, and the
+  script correctly fail-closes to `run_e2e=true` with "base or head commit
+  unreachable" — which looks like an answer and isn't. Measured 2026-08-19:
+  a 30-file docs sweep ran a FULL ~30 min e2e because of exactly one path,
+  `.claude/skills/release/SKILL.md`.
 - `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
   dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
   to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
@@ -975,6 +986,18 @@ making design-level decisions; do not silently deviate.
   `cancelled`/`null` means no deployment of that SHA exists (the tag run will
   take), `success` means it does (the tag run will no-op). `smoke-probe` passing
   on the tag run is then the positive proof it took.
+
+  **THIRD EXERCISE — v0.12.0 cut (2026-08-19): it did NOT fire, at a margin
+  LONGER than the one that failed.** Merge-push deploy created 11:00:02Z, tag
+  deploy 11:01:12Z — **70 seconds**, against v0.10.0's 43 s that DID no-op and
+  v0.11.0's 54 s that did not. The gap is now measured non-monotonic in both
+  directions and carries no signal whatever; stop reaching for it. What
+  decided it: `cancel-in-progress` killed the merge run while it was still in
+  `build`, so its `deploy` job never created a Pages deployment at all
+  (`deploy: cancelled`) and the tag run's was the FIRST for that SHA. Gate on
+  that job conclusion — one API call — and confirm afterwards with the
+  entry-chunk probe: production served a bare `v0.12.0` with no `git
+  describe` suffix anywhere in the live chunk.
 - **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
   on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
   describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
@@ -1373,6 +1396,25 @@ making design-level decisions; do not silently deviate.
 
 ## Verification lessons (hard-won)
 
+- **The CHECK can be the thing that's wrong — and it fails by ACCUSING a
+  correct artifact.** Verifying `CONTRIBUTING.md`'s "`v0.4.0` through
+  `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
+  `v0.12.1` PATCH milestone, so the check reported the claim FALSE when it was
+  true — the document was narrower and more careful than the test of it
+  (measured 2026-08-19). Sibling of "what class of failure can this method not
+  detect?", inverted: ask also *what would make this check fire when nothing
+  is wrong?* Before reporting a claim false, re-read the claim's exact scope,
+  and prefer a predicate built from the claim's OWN words over a pattern you
+  invented.
+- **Prose written for a post-action state creates a window where the repo
+  contradicts itself.** The v0.12.0 sweep landed `CONTRIBUTING.md` text
+  asserting "`v0.12.0` is closed" and "`v0.14.0` is opened fresh at this cut"
+  — both false until the milestone actions ran hours later. Either make the
+  statement true in the SAME operation, or don't write it forward-dated. If it
+  must ship early, name the authority that supersedes it: that paragraph's own
+  closing line ("`gh api …/milestones` is the fact, not this sentence") is the
+  pattern to copy. Licensing two such claims also weakens your ability to spot
+  a THIRD, so brief a reviewer to hunt for others explicitly.
 - A suite that goes green only after its readiness wait is weakened — the
   weakened wait is the finding (#253). While the maplibre-gl 6 worker bundling
   was broken (see the PWA/deploy bullet above), `map.loaded()` could never
