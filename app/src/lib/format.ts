@@ -18,21 +18,18 @@ function zeroPad(n: number, width: number): string {
  * conventions at once. Same `Intl.NumberFormat` pattern as
  * `depthDisclosure.ts`'s `formatDepthM` (one-decimal, locale-correct).
  *
- * `lang` DEFAULTS to 'de' (matching `I18nProvider`'s own default) rather
- * than being required: two production call sites this batch is FORBIDDEN
- * from touching — `PlannerPanel.tsx`'s live-region announcement (owned by a
- * parallel #571 batch) and every `formatNm(N)` fixture literal in
- * `App.test.tsx` (outside this batch's file allowlist) — call this
- * positionally with no `lang` argument. A required parameter would not
- * typecheck at either site. The default keeps both compiling and, because
- * both render under the app's own default 'de' locale in practice, produces
- * the SAME output they already expect — but it also means `formatNm(x, lang)`
- * with a MISSING `lang` argument is no longer a type error anywhere else in
- * the tree, only silently wrong at runtime. `app/src/test/
- * i18nNumberFormatGuard.test.ts` is the structural guard that stands in for
- * the type system here, allowlisting exactly the one known residual above.
+ * `lang` is REQUIRED — no default. An earlier revision of this function
+ * defaulted it to 'de' so two call sites elsewhere in the tree could keep
+ * omitting the argument; CI then caught that default silently mixing
+ * languages in `PlannerPanel.tsx`'s live-region "plan ready" announcement
+ * (an English sentence rendering a German-formatted number, since the
+ * announcement's `distance` field kept the old positional
+ * `formatNm(announcedResult.distanceNm)` call). A required parameter turns
+ * that class of omission into a compile error instead of a silent wrong
+ * answer — the correct guard direction here, per the repo's own
+ * guard-asymmetry principle (CLAUDE.md).
  */
-export function formatNm(nm: number, lang: Lang = 'de'): string {
+export function formatNm(nm: number, lang: Lang): string {
   return `${new Intl.NumberFormat(LOCALES[lang], {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
@@ -40,7 +37,7 @@ export function formatNm(nm: number, lang: Lang = 'de'): string {
 }
 
 /** Same locale contract as `formatNm` above — see its doc comment. */
-export function formatKn(kn: number, lang: Lang = 'de'): string {
+export function formatKn(kn: number, lang: Lang): string {
   return `${new Intl.NumberFormat(LOCALES[lang], {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
@@ -58,9 +55,7 @@ export function formatKn(kn: number, lang: Lang = 'de'): string {
  * blocking product call): the legs table already commits to `.tabular-nums`
  * monospaced alignment, which two decimals fits as naturally as one, and a
  * fixed precision needs no threshold logic to get wrong. `lang` is REQUIRED
- * here (no default) — this function's only call site (`RouteSummary.tsx`'s
- * legs table) already has `lang` in scope, so there is no forbidden-file
- * trap forcing a default the way there is for `formatNm`/`formatKn` above.
+ * here, same as `formatNm`/`formatKn` above.
  *
  * Deliberately NOT applied to `route.legs.speed`'s `formatKn` in the same
  * row — see that call site's own comment for why raising distance precision

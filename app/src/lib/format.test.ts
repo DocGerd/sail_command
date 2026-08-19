@@ -74,12 +74,6 @@ describe('formatNm', () => {
   it('formats zero in German, comma separator', () => {
     expect(formatNm(0, 'de')).toBe('0,0 nm');
   });
-
-  // #525: `lang` defaults to 'de' — see format.ts's own doc comment for why
-  // (two production call sites this batch cannot touch call positionally).
-  it('defaults to German (comma) when lang is omitted', () => {
-    expect(formatNm(12.34)).toBe('12,3 nm');
-  });
 });
 
 describe('formatKn', () => {
@@ -97,10 +91,6 @@ describe('formatKn', () => {
 
   it('rounds to one decimal in German, comma separator', () => {
     expect(formatKn(6.449, 'de')).toBe('6,4 kn');
-  });
-
-  it('defaults to German (comma) when lang is omitted', () => {
-    expect(formatKn(6.5)).toBe('6,5 kn');
   });
 });
 
