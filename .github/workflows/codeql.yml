@@ -29,6 +29,22 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          # #534: maintainer chose the BROADEST built-in suite over the
+          # default. `queries:` is a single field on this shared step (not
+          # templated per matrix.language like `languages`/`build-mode`
+          # above), so it applies UNIFORMLY to BOTH matrix legs -
+          # javascript-typescript AND python each resolve their own
+          # language-specific `security-and-quality.qls` - deliberately,
+          # not as an accident of the matrix shape. For JS/TS this is NOT
+          # the generic `security-and-quality-selectors.yml`: it is the
+          # security-extended selectors plus an explicit allowlist of 102
+          # additional non-security query IDs, reachable only via this
+          # advanced-setup `queries:` key (already in use here). CodeQL is
+          # NOT a required check (`protect-main` requires only `app` +
+          # `e2e`), so new alerts accumulate in the Security tab rather
+          # than blocking merges - triage the first post-widen scan
+          # rather than assuming silence means nothing new fired.
+          queries: security-and-quality
       - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
         with:
           category: '/language:${{ matrix.language }}'

@@ -41,6 +41,14 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
+      # #537: app/sweep/canonicalize.test.mjs guards a Critical defect (the
+      # #54 rename-vs-solve-order coupling) but is never collected by vitest
+      # (app/sweep/ is deliberately excluded from vite.config.ts's `include`
+      # so the ~20 min #282 arm sweep never runs here - see the `app/sweep/`
+      # bullet in CLAUDE.md). This step runs ONLY that one file under plain
+      # Node (`node --test`), never `sweep/vitest.config.ts` - the expensive
+      # nine-arm harness stays exclusively on-demand.
+      - run: npm run test:sweep-unit
       - run: npm run build
       # Drift guard: a dependency bump that forgets to regenerate the
       # committed third-party notices fails CI. Pathspec is relative to the

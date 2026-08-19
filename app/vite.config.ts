@@ -330,19 +330,23 @@ function appVersion(command: 'build' | 'serve'): string {
 // #214: with no cache (every CI run — `npm ci` wipes node_modules, so
 // vitest's own results cache never survives to the next run), vitest's
 // BaseSequencer.sort falls back to ordering files by size, descending. The
-// suite's single slowest file, invariants.property.test.ts, is also its
-// smallest (~4.4 KB against a ~66 KB largest file), so it sorts near the
-// BACK of ~97 files and starts ~109s late — becoming the tail of the whole
+// suite's slow files are also comparatively small (~4.4 KB
+// invariants.property.test.ts against a ~66 KB largest file), so they sort
+// near the BACK of ~97 files and start late — becoming the tail of the whole
 // test step even though other workers are free the entire time (measured:
-// https://github.com/DocGerd/sail_command/issues/214). Pinning it (and the
-// next-slowest file) to the FRONT lets their ~680s combined CPU run
-// concurrently with the other ~95 files' ~230s instead of serially after
-// them. Order here is the desired START order (slowest first); add a file
+// https://github.com/DocGerd/sail_command/issues/214). Pinning them to the
+// FRONT lets their combined CPU run concurrently with everything else's
+// instead of serially after it. Order here is the desired START order
+// (slowest first) — #581: realmask.repro.test.ts (477.4s) is listed before
+// invariants.property.test.ts (239.6s), ~717.0s combined, matching the
+// 2026-08-19 measurement at `04384c2` (CLAUDE.md's "Full test suite"
+// entry) rather than the order they were originally added in. Add a file
 // to this list if a future addition shows the same
-// small-file/disproportionately-slow-run mismatch.
+// small-file/disproportionately-slow-run mismatch, keeping the array
+// sorted slowest-first.
 const SLOW_TEST_FILES_FIRST = [
-  'src/routing/invariants.property.test.ts',
   'src/routing/realmask.repro.test.ts',
+  'src/routing/invariants.property.test.ts',
 ];
 
 // Extends BaseSequencer rather than reimplementing it: only `sort` changes

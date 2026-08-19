@@ -1293,23 +1293,33 @@ grep_readonly_ok() {
 # this comment claimed it was — "tokenises into two fragments and matches
 # nothing" (PR #532 review, MAJOR 3). Only sometimes: `sed -n '1,5 p' f`
 # splits into `'1,5` + `p'`, whose first fragment matches no shape, so that
-# one does fire. But `sed -n 'p w /tmp/OUT' f` splits into `'p` + `w` +
-# `/tmp/OUT'`, and the FIRST fragment unquotes to a valid bare `p`, so the
-# script is accepted and the remaining fragments are read as file operands —
-# the command is EXEMPTED, silently.
+# one does fire. But `sed -n 'p w /tmp/OUT' f` used to split into `'p` + `w`
+# + `/tmp/OUT'`, and the FIRST fragment unquoted to a valid bare `p`, so the
+# script was accepted and the remaining fragments were read as file
+# operands — the command was EXEMPTED, silently (#535).
 #
-# WHY THAT IS STILL SAFE, stated because it is a DEPENDENCY and was unstated:
-# it rests on two things, only one of which is ours. Ours: `;` and newline
-# are in WRITE_CAPABLE_CHARS, so neither can appear at all. NOT ours: GNU sed
+# #535 FIX: a balanced-quote check now runs on the RAW script-candidate
+# token, BEFORE unquote_token() ever sees it — if the token's first
+# character is `'` or `"` and it does not CLOSE with that SAME character as
+# its own last character (or is only that one character long), the token is
+# rejected outright rather than handed to unquote_token(), which would
+# otherwise strip the lone leading quote unconditionally and turn `'p` into
+# a whitelisted bare `p`. This closes the GNU-sed-specific half of the
+# dependency described below WITHOUT relying on it — the check is a
+# property of the token text alone, true regardless of what any particular
+# sed implementation does with whitespace inside a script.
+#
+# WHY THIS WAS PREVIOUSLY STILL SAFE, kept for history: it rested on two
+# things, only one of which was ours. Ours: `;` and newline are in
+# WRITE_CAPABLE_CHARS, so neither can appear at all. NOT ours: GNU sed
 # requires one of exactly those two to separate commands, so whitespace alone
-# cannot start a second command — MEASURED against GNU sed 4.9, `sed -n
+# could not start a second command — MEASURED against GNU sed 4.9, `sed -n
 # 'p w /tmp/OUT' t.txt` exits 1 with "extra characters after command" and
-# creates nothing. If a sed implementation ever separated commands on
-# whitespace, this shape becomes a live write and nothing here would notice.
-# A balanced-quote requirement on the script token (reject a token that opens
-# a quote without closing it) would remove the third-party half of that
-# dependency; it is deliberately NOT implemented here, so it stays a stated
-# risk rather than a silent one.
+# creates nothing. Had a sed implementation ever separated commands on
+# whitespace, this shape would have become a live write with nothing here to
+# notice. The balanced-quote check above removes that third-party dependency
+# entirely, so this paragraph is no longer load-bearing — it stays only as
+# the record of what the risk was before the fix.
 SED_SAFE_SHORT_FLAG_CHARS='nEr'
 SED_SAFE_LONG_FLAGS=(--quiet --silent --regexp-extended)
 sed_readonly_ok() {
@@ -1337,6 +1347,21 @@ sed_readonly_ok() {
           esac
           continue
           ;;
+      esac
+      # #535: balanced-quote check on the RAW token, before unquote_token()
+      # strips anything. unquote_token() removes a LEADING quote
+      # unconditionally, even when this whitespace-split fragment never
+      # closes it — so without this check, a quoted multi-word script like
+      # `'p w /tmp/OUT'` (which THIS function's own `read -ra` splits into
+      # `'p`, `w`, `/tmp/OUT'` — not a real shell re-tokenisation) would
+      # have its first fragment unquoted from `'p` to a bare `p`, matching
+      # the whitelist and silently accepting the whole script while `w` and
+      # `/tmp/OUT'` pass through unchallenged as file operands. Reject any
+      # token that OPENS a quote (first character `'` or `"`) without
+      # CLOSING that SAME quote as its own last character.
+      case "$tok" in
+        \'*) { [ "${#tok}" -gt 1 ] && [ "${tok: -1}" = "'" ]; } || return 1 ;;
+        \"*) { [ "${#tok}" -gt 1 ] && [ "${tok: -1}" = '"' ]; } || return 1 ;;
       esac
       script=$(unquote_token "$tok")
       have_script=1
@@ -1683,7 +1708,14 @@ if [ "${1:-}" = "--selftest" ]; then
   # (wave 4) 300 -> 301, +1: the bound's UNIT row. `${#cmd}` counts
   # characters under C.UTF-8, so a 32 768-CHARACTER limit admitted ~131 KB of
   # UTF-8; this row fires only if the bound is measured in bytes.
-  EXPECTED_CASES=301
+  # (#535) 301 -> 308, +7: the balanced-quote check on the sed script token.
+  # THREE must-fire rows (single-quote SPEC, single-quote build-output,
+  # double-quote SPEC) for the `sed -n 'p w /tmp/OUT' <path>` shape that was
+  # silently exempt before this fix; FOUR must-stay-silent bounding rows
+  # (the acceptance criteria's named shapes: quoted numeric range, bare
+  # numeric address, quoted regex address, bare command script) proving the
+  # check does not regress the #530 read-only ergonomics.
+  EXPECTED_CASES=308
 
   # (#309 fix-wave m1, moved here by #404 so decide()/decide_exempt() below
   # can use it too - they now drive the production entry point through it
@@ -2316,6 +2348,30 @@ if [ "${1:-}" = "--selftest" ]; then
   # on reject-everything) - it was vacuous against the one mutation it named,
   # which is the #216 shape one level up, in a row's own description.
   decide_exempt "#532 quoted filename operand must stay exempt"    "sed -n 5p 'app/public/THIRD-PARTY-NOTICES.txt'"
+
+  # ======================================================================
+  # #535 - UNBALANCED-QUOTE sed SCRIPT token. `sed -n 'p w /tmp/OUT' <path>`
+  # used to split (this function's own whitespace `read -ra`, not a real
+  # shell re-tokenisation) into `'p` + `w` + `/tmp/OUT'`, and
+  # unquote_token()'s unconditional one-layer strip turned the FIRST
+  # fragment into a bare `p`, matching the script whitelist and silently
+  # accepting the whole thing while `w` and `/tmp/OUT'` passed through
+  # unchallenged as file operands - a live write shape reachable on the
+  # SPEC arm. Both quote spellings are pinned, matching the sed/grep
+  # DOUBLED/mixed-quote rows above this block. SPEC and build-output arms
+  # both pinned, matching the ask/advisory split used throughout this file.
+  decide ask      "#535 sed unbalanced-quote script 'p w /tmp/OUT' (SPEC ARM)"     "sed -n 'p w /tmp/OUT' docs/superpowers/specs/x.md"
+  decide advisory "#535 sed unbalanced-quote script 'p w /tmp/OUT' (build output)" "sed -n 'p w /tmp/OUT' app/public/data/mask.bin"
+  decide ask      '#535 sed unbalanced DOUBLE-quote script (SPEC ARM)'            'sed -n "p w /tmp/OUT" docs/superpowers/specs/x.md'
+  # BOUNDING ROWS - no regression in the read-only ergonomics #530 restored
+  # and this fix is not obligated to touch: the balanced-quote check must
+  # fire ONLY on a token that opens a quote it does not close, never on a
+  # properly closed quoted script or a bare unquoted one. These four are the
+  # acceptance criteria's named still-silent shapes.
+  decide_exempt "#535 no regression: quoted numeric range stays exempt"  "sed -n '1,40p' app/public/data/harbors.json"
+  decide_exempt "#535 no regression: bare numeric address stays exempt"  "sed -n 5p app/public/data/harbors.json"
+  decide_exempt "#535 no regression: quoted regex address stays exempt"  "sed -n '/pattern/p' docs/superpowers/specs/x.md"
+  decide_exempt "#535 no regression: bare command script stays exempt"   "sed -n p app/public/data/harbors.json"
 
   # ======================================================================
   # PR #532 re-review, MAJOR A - GLOB operands. `*`, `?`, `[`, `]` are not in
