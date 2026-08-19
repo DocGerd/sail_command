@@ -2105,6 +2105,39 @@ describe('plan-form sync (#301)', () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+
+    // #572: close the FRESH module graph's own IndexedDB connection.
+    // `vi.resetModules()` above gave this test's dynamically-imported App its
+    // own `services/db.ts` instance, with its own `dbPromise` cache. The
+    // file-level beforeEach calls the STATICALLY imported
+    // `__resetDbForTests()`, which can only close the ORIGINAL instance's
+    // connection — so the fresh one is left open and the `deleteDB(...)`
+    // inside that helper blocks on it indefinitely, timing out the next
+    // test's hook after 10 s.
+    //
+    // Pre-existing and latent, not introduced by #572: this was the last
+    // test in the file, so nothing had ever run after it. MEASURED — a
+    // trivial `expect(1).toBe(1)` appended after it fails with the identical
+    // `Hook timed out in 10000ms`, and passes with this cleanup in place.
+    //
+    // The import resolves from the post-reset registry, so it IS the fresh
+    // instance rather than a third one.
+    //
+    // `cleanup()` FIRST, and it is load-bearing rather than tidiness: with
+    // FreshApp still mounted its effects re-open the database as soon as the
+    // helper closes it, so `deleteDB` blocks again and the failure merely
+    // moves from the next test's hook into this test's own 5 s budget
+    // (measured). Unmounting first is what makes the close stick. The
+    // file-level afterEach calls `cleanup()` again, which is a no-op.
+    cleanup();
+    const freshDb = await import('./services/db');
+    // BOTH instances, concurrently. This test opened the ORIGINAL instance's
+    // connection itself with the `db.savePlan(plan)` above, so resetting only
+    // the fresh one leaves that second connection to block the same
+    // `deleteDB` (measured — the hang simply moves). Each helper closes its
+    // own connection before awaiting the delete, so running them together
+    // gets both closed before either delete has to make progress.
+    await Promise.all([db.__resetDbForTests(), freshDb.__resetDbForTests()]);
   });
 });
 // #572: the selection → request span. Nothing asserted this before: the
