@@ -65,9 +65,12 @@ mask still lets a route cross water charted below the requested safety
 depth ([#455](https://github.com/DocGerd/sail_command/issues/455)).
 `v0.12.0` closed the worst of it — the mask blend now carries a proven
 0.9 m bound, so no cell *navigable at* the default 3.0 m gate reads below
-the boat's draft. A relaxed route can still reach a 1.2 m cautious reading,
-and both that floor and the shallow water a route actually crosses are now
-disclosed on the route itself. But roughly ten thousand gate-crossing
+the boat's draft. A relaxed route can still reach a cautious reading as low
+as the boat's own draft minus that 0.9 m bound — the relaxation floor is
+per boat (`relaxationFloorM`, `app/src/lib/boatDepth.ts`), so a
+shallower-drafted hull reaches a shallower figure. Both that floor and the
+shallow water a route actually crosses are now disclosed on the route
+itself. But roughly ten thousand gate-crossing
 cells remain
 (10,746 at the shipped tolerance, measured in
 `docs/spikes/455-depth-mask-optimism.md`), so the issue stays open rather
@@ -231,6 +234,18 @@ correction to user-facing copy that promised integrity and fields the app
 cannot verify ([#547](https://github.com/DocGerd/sail_command/issues/547))
 and the README hero screenshot showing a mostly-motor route
 ([#459](https://github.com/DocGerd/sail_command/issues/459)).
+Two process spikes also closed in this cut, recorded here because neither
+changed product code: whether the architecture still fits, which found
+that it does and declined every structural candidate except an
+incremental `AppShell` extraction
+([#446](https://github.com/DocGerd/sail_command/issues/446),
+`docs/spikes/446-architecture-fit.md`); and a review of `CLAUDE.md` and
+this project's Claude Code automation, which recommended moving knowledge
+into directory-scoped memory files rather than shortening the file, and
+left the automation almost entirely alone
+([#444](https://github.com/DocGerd/sail_command/issues/444),
+`docs/spikes/444-claude-md-and-automation.md`) — the six accuracy defects
+it measured are the #467 correction above.
 
 The `v0.11.0` cut fixed three items in
 this area: the no-route `reason` control-input coupling, previously only
