@@ -339,7 +339,7 @@ function appVersion(command: 'build' | 'serve'): string {
 // https://github.com/DocGerd/sail_command/issues/214).
 // realmask.repro.test.ts is a DIFFERENT case, not a second instance of the
 // same problem: at 42,532 B it is the 7th LARGEST of the 144 files (the
-// largest is App.test.tsx at 103,255 B), so BaseSequencer's own
+// largest is App.test.tsx at 103,333 B), so BaseSequencer's own
 // size-descending default would already start it near the front — not the
 // back — with no help from this array. It is pinned here anyway because
 // "near the front" still means SIX files sort ahead of it by size alone,
