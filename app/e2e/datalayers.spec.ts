@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { startPreview, mapReady } from './helpers';
+import { startPreview, mapReady, EDGE_VIEWPORTS } from './helpers';
 
 // #38/#39 always-mounted map data layers. What this asserts (and why it's
 // not theater): the depth toggle must exist BEFORE any plan (the whole point
@@ -211,7 +211,12 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
     // sub-minimum (WCAG 2.5.8 Target Size, Minimum, requires >=24x24 CSS
     // px) and rejected before shipping. Guard both dimensions explicitly so
     // a future height-budget fix can't silently reintroduce the same
-    // trade-off unnoticed.
+    // trade-off unnoticed. At THIS viewport (standard default, plenty of
+    // room, no banner) the legend is always reachable, so a plain
+    // `boundingBox()` poll is sufficient here — the EDGE_VIEWPORTS x
+    // language sweep below is what has to distinguish "properly hidden"
+    // from "clipped but still occupying space", since only the narrow/short
+    // edge cases can produce that state.
     await expect
       .poll(async () => {
         const box = await summary.boundingBox();
@@ -250,6 +255,99 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
   }
 });
 
+// #598 review round 3, Major 2 + Minor 1: the touch-target poll above only
+// exercises ONE viewport, where the legend is always reachable — it cannot
+// see the class of bug round 3 actually found (a CSS clip that fires on the
+// COLLAPSED row too, with no banner, at exactly the short-landscape edge
+// viewports). Asserting on `.map-stack-tl`'s or ScaleBar's geometry (what
+// #231/#441 already cover) is structurally blind to this: those pass
+// whenever the legend contributes zero measured height to the cluster,
+// which is true BOTH when it is correctly hidden AND when it is clipped to
+// zero height while still occupying a DOM slot — a 28/28 green run on the
+// round-2 code proved exactly that (see this file's own history). This test
+// asserts on the LEGEND ITSELF, across every EDGE_VIEWPORTS entry and both
+// languages, and requires one of exactly two valid states — never a third:
+//
+//   (a) PROPERLY UNREACHABLE — the native `hidden` attribute is set, so the
+//       element is invisible per Playwright's actionability check AND
+//       structurally refuses focus (browsers do not focus a descendant of a
+//       `display: none` subtree). This is what closes Minor 1: a clipped
+//       `overflow: hidden` `<summary>` at 0 height stayed FOCUSABLE
+//       (`document.activeElement === summary` measured `true` after
+//       `.focus()`), a genuine keyboard trap `hidden` cannot reproduce.
+//   (b) REACHABLE — the real box is >=24 CSS px on both axes (WCAG 2.5.8)
+//       and does not overlap the tab strip, the one chrome element every
+//       one of these short/narrow viewports sits closest to.
+//
+// MUTATION-CHECKED both ways against the current code (not merely a
+// hypothetical): forcing `.depth-legend > summary { min-height: 20px }`
+// reds this test at every reachable viewport (20 < 24); forcing
+// `legendHidden` to stay `false` unconditionally (simulating round-2's
+// shipped bug, where nothing ever hid the control) reds it at
+// `shortLandscape740`/`shortLandscape844`/`shortLandscape932` with a
+// clipped, still-technically-visible-but-sub-24px box — both probes run and
+// reverted before landing this test; see the PR self-review thread for the
+// raw numbers.
+test('depth-hatch legend (#598) is either reachable or properly unreachable, never a third state, across EDGE_VIEWPORTS x language', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    for (const lang of ['de', 'en'] as const) {
+      const context = await browser.newContext();
+      await context.addInitScript((l) => {
+        window.localStorage.setItem('sc-lang', l);
+      }, lang);
+      const page = await context.newPage();
+      try {
+        for (const [name, vp] of Object.entries(EDGE_VIEWPORTS)) {
+          await page.setViewportSize(vp);
+          await page.goto(server.url);
+          await mapReady(page);
+
+          const details = page.locator('details.depth-legend');
+          const summary = details.locator('summary');
+          const isHiddenAttr = await details.evaluate((el) => (el as HTMLDetailsElement).hidden);
+          const label = `${name} (${vp.width}x${vp.height}) / ${lang}`;
+
+          if (isHiddenAttr) {
+            await expect(summary, `${label}: hidden legend must not be visible`).toBeHidden();
+            await summary.evaluate((el) => (el as HTMLElement).focus());
+            const focused = await summary.evaluate((el) => document.activeElement === el);
+            expect(focused, `${label}: hidden legend must refuse focus (Minor 1)`).toBe(false);
+          } else {
+            const box = await summary.boundingBox();
+            expect(box, `${label}: not hidden but has no box at all`).not.toBeNull();
+            if (!box) continue; // unreachable after the assertion above; narrows the type
+            expect(
+              Math.min(box.width, box.height),
+              `${label}: sub-target box ${JSON.stringify(box)} (Major 2)`,
+            ).toBeGreaterThanOrEqual(24);
+
+            const tablist = page.getByRole('tablist');
+            const tb = await tablist.boundingBox();
+            if (tb) {
+              const overlapX = Math.max(
+                0,
+                Math.min(box.x + box.width, tb.x + tb.width) - Math.max(box.x, tb.x),
+              );
+              const overlapY = Math.max(
+                0,
+                Math.min(box.y + box.height, tb.y + tb.height) - Math.max(box.y, tb.y),
+              );
+              expect(overlapX * overlapY, `${label}: legend overlaps tab strip`).toBe(0);
+            }
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});
+
 // #598 review follow-up (touch-target round): a SEPARATE defect from the
 // one this whole round set out to fix, found by measuring rather than
 // assuming the fix was complete. `.depth-legend` deliberately sets no
@@ -264,7 +362,11 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
 // OVER it rather than staying behind it. Fixed with a bounded, scrollable
 // `max-height` on `.depth-legend-body` (app.css, whose own comment carries
 // the full derivation); this pins the fix at the TIGHTEST tested viewport,
-// where the available room is smallest.
+// where the available room is smallest. STILL the mechanism for the OPEN
+// body specifically — round 3 (Major 1) removed only `.depth-legend`'s OWN
+// outer clip, replacing it with the JS reachability gate that decides
+// whether the COLLAPSED control is offered at all; see this test's own
+// banner-dismiss step for why that gate is exercised here too.
 test('depth-hatch legend (#598), once opened, never overlaps the tab strip at the narrowest tested viewport', async ({
   page,
 }) => {
@@ -273,6 +375,24 @@ test('depth-hatch legend (#598), once opened, never overlaps the tab strip at th
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto(server.url);
     await mapReady(page);
+
+    // #598 review round 3: dismiss the incidental SW "offline ready" toast
+    // BEFORE asserting reachability — same idiom as layout.spec.ts's own
+    // `.reload-prompt .banner-dismiss` clicks. Not incidental here the way
+    // it is there: with a real banner up, the JS reachability gate this
+    // round shipped (DataLayers.tsx's `useLayoutEffect`) correctly computes
+    // a sub-44px budget at this exact viewport (375x667, banner ~48px tall)
+    // and HIDES the control outright — MEASURED live, `legendHidden` true,
+    // `.depth-legend` carries `hidden`, and the click below would time out
+    // waiting on an invisible element. That is the control doing its job,
+    // not a bug; this test's own purpose is narrower — proving the OPEN
+    // body stays bounded once the control IS reachable, so it needs the
+    // steady-state (no banner) case, the same way the test would look on
+    // any load past the toast's lifetime.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
 
     await page.getByText('Legende', { exact: true }).click();
     const legend = page.locator('.depth-legend');

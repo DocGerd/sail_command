@@ -405,6 +405,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
   const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
+  // #598 review round 3: whether `.depth-legend` has enough room to render
+  // reachably at all — computed in the `useLayoutEffect` below (not
+  // persisted; this is pure layout, recomputed every time the geometry it
+  // depends on changes). `false` (reachable) is the right INITIAL guess for
+  // the common case — a real first-paint mismatch is closed by
+  // `useLayoutEffect` running before paint, same as the `--sc-depth-
+  // controls-height` write below.
+  const [legendHidden, setLegendHidden] = useState(false);
   // #7: default OFF — ~1,794 points is a dense specialist layer (vs. 33
   // harbor markers) that would clutter the map before the user opts in.
   const [seamarksVisible, setSeamarksVisible] = usePersistedToggle('sc-seamarks-visible', false);
@@ -715,14 +723,22 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // constant (2.75rem/44px, `.compass-control .compass-btn`) — only this
   // one value needs measuring, not two.
   //
-  // No `useState`/return value needed (unlike useBannerHeight): nothing in
-  // THIS component's own render depends on the number, only the DOM side
-  // effect does — no other call site exists today, so it isn't exported.
+  // #598 review round 3 (Major 1 + Minor 1): this effect ALSO decides
+  // whether `.depth-legend` is reachable at all, via the `legendHidden`
+  // state below, set on the native `hidden` attribute in the return JSX.
+  // A pure-CSS `max-height` clip was tried first and rejected TWICE —
+  // app.css's own `.depth-legend` comment carries the full story — because
+  // CSS `calc()` can neither branch on which of `.map-stack-tl`'s THREE
+  // layout modes (wide / narrow column / narrow-and-short row) is live, nor
+  // remove a 0-height element from the accessibility tree or tab order.
+  // Both are ordinary `if`/DOM-attribute operations in JS, so the whole
+  // reachability decision (not just the height measurement) moved here.
   //
   // `useLayoutEffect`, not `useEffect`: matches useBannerHeight's own
-  // reasoning (PR #382 review) — the value affects `.depth-legend`'s
-  // position from the very first paint, and a plain `useEffect` fires AFTER
-  // paint, leaving a frame where the CSS fallback below governs.
+  // reasoning (PR #382 review) — both the position AND the reachability of
+  // this element must be correct from the very first paint, and a plain
+  // `useEffect` fires AFTER paint, leaving a frame where a stale/default
+  // state would show.
   useLayoutEffect(() => {
     if (typeof ResizeObserver !== 'function') return; // jsdom guard, matches useBannerHeight.ts
     const el = document.querySelector<HTMLElement>('.data-layer-controls');
@@ -738,19 +754,99 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     // `getBoundingClientRect().height` (border-box, matching `offsetHeight`
     // and everything `.depth-legend`'s `top` calc needs to clear) on every
     // callback instead of trusting the entry.
-    const write = () => {
+    //
+    // The SAME query string as app.css's own short-landscape rule
+    // (`@media (max-width: 1023.98px) and (max-height: 500px) and
+    // (orientation: landscape)`) — kept as a literal, not a shared constant,
+    // because CSS media-query text and a JS `matchMedia` argument have no
+    // common module to live in; re-check this string against that rule's
+    // own text if either ever changes (NAMED COUPLING).
+    const SHORT_LANDSCAPE_QUERY =
+      '(max-width: 1023.98px) and (max-height: 500px) and (orientation: landscape)';
+    // Read directly rather than through `--sc-banner-height`
+    // (`useBannerHeight.ts`'s own custom property): that property is
+    // written by a SEPARATE `ResizeObserver` instance owned by that other
+    // hook, observing the SAME `.banner-area` element this effect also
+    // observes below — MEASURED live (round 3 self-review, the tab-strip-
+    // overlap regression test): when `.banner-area` grows from 0 to 48px on
+    // a real cold load, this component's own resize callback can fire
+    // before that OTHER observer's callback has written the fresh value,
+    // so reading the property here saw a stale `0px` and computed a budget
+    // that was `>=44` when the real, settled budget was `14.56`. Reading
+    // `bannerEl`'s own `getBoundingClientRect().height` sidesteps the
+    // cross-observer ordering entirely — same technique this effect
+    // already uses for `.data-layer-controls`'s own height, above.
+    const bannerEl = document.querySelector<HTMLElement>('.banner-area');
+    const recompute = () => {
       document.documentElement.style.setProperty(
         '--sc-depth-controls-height',
         `${el.getBoundingClientRect().height}px`,
       );
+      // Wide layout: no sheet-overlay ceiling exists at all (app.css's own
+      // wide-layout comment on `.depth-legend-body`) — always reachable.
+      if (window.matchMedia('(min-width: 1024px)').matches) {
+        setLegendHidden(false);
+        return;
+      }
+      // Short landscape: `.map-stack-tl` flips to `flex-direction: row`
+      // (app.css), putting the compass BESIDE the toggles instead of below
+      // them — `.depth-legend`'s own `top` (60px past the compass, in
+      // COLUMN terms) no longer corresponds to real free space in that
+      // layout. Rather than derive a second, row-mode geometry for a
+      // control that would be sharing an already cramped strip with the
+      // compass, this repo's own `#231` fix already spends this viewport
+      // class's scarce height budget on the compass and the two PRIMARY
+      // toggles; the legend simply does not fit there and says so.
+      if (window.matchMedia(SHORT_LANDSCAPE_QUERY).matches) {
+        setLegendHidden(true);
+        return;
+      }
+      // Narrow column layout: mirrors `.map-stack-tl`'s own proven-safe
+      // ceiling (`calc(100dvh - var(--sc-banner-clear-top) - 55vh -
+      // 0.5rem)`, app.css) minus everything `.depth-legend` itself sits
+      // below within that budget (the compass's own 60px offset, above,
+      // plus the 44px touch target this checks room FOR) — the identical
+      // arithmetic app.css's rejected CSS draft used, just able to branch
+      // on layout mode and produce a boolean instead of an unenforceable
+      // clip. `bannerEl` may not be mounted yet (defensive only —
+      // `.banner-area` renders unconditionally, App.tsx) or may genuinely
+      // be 0px tall (no banner showing); either way `0` is the CORRECT
+      // real measurement, not a fallback standing in for one — this reads
+      // `.banner-area`'s own live geometry directly (see this effect's own
+      // comment above `bannerEl`'s declaration), never the generous 176px
+      // constant, which is for a DIFFERENT failure mode (no measurement
+      // possible at all) that does not apply here.
+      const bannerHeightPx = bannerEl ? bannerEl.getBoundingClientRect().height : 0;
+      const bannerClearTopPx = 56 + bannerHeightPx; // 3.5rem + banner
+      const budgetPx =
+        window.innerHeight -
+        bannerClearTopPx -
+        window.innerHeight * 0.55 -
+        8 - // 0.5rem
+        el.getBoundingClientRect().height -
+        60; // gap + compass + gap, matching `.depth-legend`'s own `top`
+      setLegendHidden(budgetPx < 44);
     };
-    const ro = new ResizeObserver(write);
+    const ro = new ResizeObserver(recompute);
     ro.observe(el);
+    // `.banner-area` independently changes the SAME budget (a banner can
+    // mount/unmount/resize without `.data-layer-controls` itself changing
+    // size) — observe it too, same ResizeObserver instance. `bannerEl` was
+    // already queried above, before `recompute`'s own closure, so both this
+    // observation and the read inside `recompute` share the SAME node.
+    if (bannerEl) ro.observe(bannerEl);
+    // A pure viewport resize/rotation (no `.data-layer-controls` or
+    // `.banner-area` size change) also moves the budget — `window.innerHeight`
+    // and the media queries above both depend on it directly.
+    window.addEventListener('resize', recompute);
     // Same reasoning as useBannerHeight.ts's own first-callback comment: the
     // initial ResizeObserver callback is queued for a later frame, not
     // delivered synchronously, so measure once immediately too.
-    write();
-    return () => ro.disconnect();
+    recompute();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', recompute);
+    };
   }, []);
 
   // Always-mounted control cluster — top-LEFT of the map, so it can never
@@ -797,8 +893,15 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
           and sets no `overflow`, so an over-height legend can extend past
           its own box unclipped, same as the compass already can (that
           rule's own comment). Reading order stays sensible either way:
-          toggles, then this legend, then the compass. */}
-      <details className="depth-legend">
+          toggles, then this legend, then the compass.
+          #598 review round 3: `hidden={legendHidden}` (native HTML
+          attribute, set by the `useLayoutEffect` above) is what actually
+          decides reachability now — `display: none`, out of the
+          accessibility tree, unfocusable, all at once. See that effect's
+          own comment for the full derivation across all three layout
+          modes; app.css's `.depth-legend` comment records why a CSS-only
+          `max-height` clip was tried first and rejected. */}
+      <details className="depth-legend" hidden={legendHidden}>
         <summary>{t('map.depth.legend.title')}</summary>
         <div className="depth-legend-body">
           <p className="depth-legend-row">

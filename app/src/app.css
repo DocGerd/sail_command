@@ -680,32 +680,34 @@ select {
      low costs nothing but a small gap, landing too HIGH risks the legend
      rendering under/over the compass. */
   top: calc(var(--sc-depth-controls-height, 130px) + 60px);
-  /* MEASURED RESIDUAL, reported rather than silently accepted: bounding
-     only `.depth-legend-body` (below) closes the tab-strip overlap for the
-     BODY, but the offline-ready toast banner (fires on every fresh load,
-     see that rule's own comment) can push `.map-stack-tl`'s budget down
-     far enough that even the 44px SUMMARY, at this element's fixed 60px
-     offset past the compass, no longer fits — MEASURED live: a 48px
-     banner at 375x667 leaves only ~22.6px past the compass in total, under
-     even the WCAG 2.5.8 24px minimum. This bound (same formula as the body,
-     applied to the WHOLE element so overflow:hidden clips the SUMMARY too
-     rather than letting it alone escape into the tab strip) makes that
-     RARE combination (banner present + this narrow + the legend opened —
-     collapsed and no-banner states are UNAFFECTED, proven zero-cost
-     elsewhere in this file) degrade to a shrunken-or-invisible trigger
-     instead of an overlap. Judged the lesser failure — a momentarily
-     unreachable secondary disclosure vs. a primary navigation control
-     partly obscured — but it IS a real trade against the touch-target
-     guarantee elsewhere in this PR, not a fully closed gap; flagged for
-     the maintainer rather than presented as solved. */
-  max-height: max(
-    0px,
-    calc(
-      100dvh - var(--sc-banner-clear-top, 3.5rem) - 55vh - 0.5rem -
-        var(--sc-depth-controls-height, 130px) - 60px
-    )
-  );
-  overflow: hidden;
+  /* #598 review round 3 (Major 1 + Minor 1): a CSS-only `max-height: max(0px,
+     calc(...))` + `overflow: hidden` clip was tried here and REJECTED, twice
+     over. First, the calc() only ever encoded the COLUMN layout's geometry
+     (this element's own `top`, above) — `.map-stack-tl` flips to
+     `flex-direction: row` in short landscape (its own rule, below,
+     `max-width: 1023.98px and max-height: 500px and orientation: landscape`),
+     and nothing here had a matching override, so the clip UNDER-fired at
+     exactly two of this repo's own named `EDGE_VIEWPORTS`
+     (`shortLandscape740`/`shortLandscape844`) with NO banner involved at
+     all — measured 0px and 10.31px of budget there, i.e. genuinely
+     unreachable, not merely narrow. Second, EVEN where the clip fired
+     correctly, `overflow: hidden` alone leaves a 0-height `<summary>`
+     FOCUSABLE — `document.activeElement === summary` after `.focus()`
+     measured `true` while `elementFromPoint` at its centre resolved to a
+     different element: a keyboard target that is invisible AND
+     pointer-unreachable, worse than the control simply not offering itself.
+     Both defects share one root cause: CSS `calc()` cannot BRANCH on which
+     layout mode is live or hide something from the accessibility tree, so a
+     clip-based approach needs a correct formula for every mode it can be
+     evaluated in, and a second mechanism on top for focus. Replaced with a
+     JS-computed reachability gate (DataLayers.tsx's `useLayoutEffect`,
+     alongside the `--sc-depth-controls-height` write) that mirrors the SAME
+     column-mode budget as a real subtraction, checks `window.matchMedia`
+     against the EXACT short-landscape query for the row-mode case, and sets
+     the native `hidden` attribute — `display: none`, removed from the
+     accessibility tree, unfocusable, all in one browser-native mechanism,
+     no bespoke CSS needed for either failure mode. See that effect's own
+     comment for the full derivation and the wide-layout early return. */
 }
 
 .depth-legend > summary {
@@ -800,30 +802,18 @@ select {
   overflow-y: auto;
 }
 
-/* The narrow-layout formulas above (both this element's own `max-height`
-   and `.depth-legend-body`'s) bake in TWO narrow-only assumptions that do
-   not hold at >=1024px: `.map-stack-tl`'s own `top` is `0.75rem` there, not
-   the `3.5rem`/`--sc-banner-clear-top` term those formulas subtract (NAMED
-   COUPLING, `.map-stack-tl`'s own rule below), and the bottom sheet is a
-   STATIC SIDE COLUMN at that width (app.css's wide-layout rules), not an
-   overlay competing for the SAME vertical space the map occupies — so
+/* `.depth-legend-body`'s own narrow-layout formula (above) bakes in a
+   narrow-only assumption that does not hold at >=1024px: the bottom sheet
+   is a STATIC SIDE COLUMN at that width (app.css's wide-layout rules), not
+   an overlay competing for the SAME vertical space the map occupies — so
    there is no sheet ceiling to stay clear of at all. Applying the narrow
-   formulas unscoped would starve both of room they don't need to give up
-   on desktop — MEASURED, not just reasoned: before this override existed,
-   `.depth-legend`'s own outer bound (its own rule, above) resolved to a
-   cramped 122px at 1280x800, the SAME stale-narrow-assumption bug that
-   rule's own comment documents for the body. Relaxed here to flat,
-   generous bounds instead of a second pair of calc()s for boundaries that
-   do not exist on wide layout. `.depth-legend` itself also needs
-   `overflow: visible` restored — its own base rule sets `overflow: hidden`
-   specifically to protect the narrow-layout tab strip from an unbounded
-   body, a concern that (like the height formula) does not exist here. */
+   formula unscoped would starve it of room it doesn't need to give up on
+   desktop. Relaxed here to a flat, generous bound instead of a second
+   calc() for a boundary that does not exist on wide layout.
+   `.depth-legend` ITSELF needs no such override any more — reachability
+   (including the wide-layout "always reachable" case) is decided in JS
+   now (DataLayers.tsx's `useLayoutEffect`), not by a CSS `max-height`. */
 @media (min-width: 1024px) {
-  .depth-legend {
-    max-height: none;
-    overflow: visible;
-  }
-
   .depth-legend-body {
     max-height: 24rem;
   }

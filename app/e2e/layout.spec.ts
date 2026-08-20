@@ -851,6 +851,21 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
     // `.data-layer-controls`, so this needs no text-based disambiguation
     // against RouteLegend's own "Legend" summary (unlike the old
     // `dataControls.getByText('Legend', { exact: true })` form).
+    // #598 review round 3: dismiss the incidental SW "offline ready" toast
+    // BEFORE opening the legend — same idiom as this file's own #368
+    // tests. Not incidental at THIS viewport any more: with a real banner
+    // up, the round-3 JS reachability gate (DataLayers.tsx) correctly
+    // computes a sub-44px budget at 320px width with a banner present and
+    // HIDES the control outright (MEASURED live: the click below timed out
+    // waiting on an invisible `<summary>` before this dismiss was added).
+    // That is the gate doing its job, not a bug this test exists to catch —
+    // its own purpose is the collision/overflow check once the legend IS
+    // reachable and open, which needs the steady-state (no banner) case.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+
     const depthLegend = page.locator('.depth-legend');
     await depthLegend.locator('> summary').click();
     await expect(depthLegend).toHaveJSProperty('open', true);
