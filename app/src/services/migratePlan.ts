@@ -297,12 +297,24 @@ function migrateRequest(
   // and skip this reconstruction even though `result.sails` is non-empty
   // (migrateSails already refuses `out.length === 0`). planRoute's `runAll`
   // maps over this list, so an empty one made every tier `[]` and threw.
-  const sailIds =
+  //
+  // #551: a stored sailIds is accepted only when it ALSO names nothing but
+  // sails the migrated boat snapshot actually carries. Without this, a
+  // foreign or stale sailId (a plan imported from a different boat, or one
+  // whose boat snapshot was replaced) reaches planRoute.ts's polarFor,
+  // which throws `#54: no polar table for ${key}` rather than degrading to
+  // an honest unreadable row. Checked against `boat` (the migrated
+  // snapshot), never the catalogue — a plan whose boat has left the
+  // catalogue must still open (§I.3), and its sailIds are valid exactly
+  // when they match ITS OWN stored sails, not today's BOATS.
+  const storedSailIdsAreValid =
     Array.isArray(request.sailIds) &&
     request.sailIds.length > 0 &&
-    request.sailIds.every((s) => typeof s === 'string')
-      ? (request.sailIds as SailId[])
-      : sails.map((s) => s.sailId);
+    request.sailIds.every((s) => typeof s === 'string') &&
+    request.sailIds.every((s) => boat.sails.some((sail) => sail.id === s));
+  const sailIds = storedSailIdsAreValid
+    ? (request.sailIds as SailId[])
+    : sails.map((s) => s.sailId);
   return { ...request, sailIds, boat } as unknown as PlanRequest;
 }
 

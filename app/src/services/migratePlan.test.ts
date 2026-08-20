@@ -147,6 +147,37 @@ describe('#54 migratePlan: pre-#54 records', () => {
     expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
   });
 
+  // #551: a stored sailIds used to be accepted verbatim whenever it was a
+  // non-empty array of strings, with NO cross-check against the migrated
+  // boat snapshot's own sails — so a foreign or stale sailId (e.g. a
+  // record whose boat snapshot was later replaced by one with a smaller
+  // sail set) reached planRoute.ts's polarFor, which throws "#54: no polar
+  // table for ${key}" on exactly this shape. Fixed to reject the stored
+  // list WHOLESALE and fall back to the existing reconstruction whenever
+  // any entry names a sail the boat snapshot doesn't have.
+  it('rejects a stored sailIds naming a sail the boat snapshot does not have, falling back to the reconstruction', () => {
+    const raw = legacyPlan();
+    const request = raw.request as Record<string, unknown>;
+    // A boat snapshot carrying ONLY genoa — no fock. Same shape as the
+    // "left the catalogue" fixture above, deliberately smaller.
+    request.boat = {
+      id: 'gone-45',
+      name: 'Gone 45',
+      draftM: 2.4,
+      sails: [
+        { id: 'genoa', label: 'Genoa 150 %', polarProvenance: { tier: 'estimated', note: 'n' } },
+      ],
+    };
+    // 'fock' is foreign to that boat — the plan's OWN result still compared
+    // genoa and fock (legacyPlan()'s fixture), so this models a record
+    // whose boat snapshot narrowed after sailIds was written.
+    request.sailIds = ['fock'];
+    const migrated = migratePlan(raw)!;
+    // Rejected wholesale, not filtered down to the valid remainder —
+    // reconstructed from the sails the plan actually compared.
+    expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
+  });
+
   it('carries a per-sail no-route reason across from its <rig>Reason sibling', () => {
     const raw = legacyPlan();
     const result = raw.result as Record<string, unknown>;

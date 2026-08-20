@@ -87,24 +87,38 @@ function readNumber(raw: unknown, key: string): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
-function unreadableRow(raw: unknown): PlanSummary {
+// #551: readString(raw, 'id') returns '' for ANY non-string stored id —
+// e.g. an imported (#3) or foreign-written record whose id is a number,
+// since numbers are valid IndexedDB keys. Two such records, each with a
+// DIFFERENT real primary key, both read '' from readString and would
+// collide on React key and on delete target. `key` is the record's ACTUAL
+// IndexedDB primary key (from listPlans' cursor, or undefined when this is
+// exercised without an IndexedDB round trip per summarizePlanRecord's own
+// doc comment) — used only as a fallback, so a record whose stored `id`
+// really IS a usable string (the overwhelmingly common case, including a
+// genuinely empty-string id) is unaffected.
+function unreadableRow(raw: unknown, key?: unknown): PlanSummary {
+  const storedId = readString(raw, 'id');
   return {
     kind: 'unreadable',
     // Read here rather than returned by migratePlan: the normaliser's own
     // answer is a single null by design, and this is the one caller that
     // needs to tell the two apart.
     reason: readNumber(raw, 'schemaVersion') > PLAN_SCHEMA_VERSION ? 'newer-version' : 'damaged',
-    id: readString(raw, 'id'),
+    id: storedId !== '' ? storedId : key === undefined ? '' : String(key),
     name: readString(raw, 'name'),
     createdAtMs: readNumber(raw, 'createdAtMs'),
   };
 }
 
 /** One stored record → one list row. Exported so the row shapes can be
- * exercised without an IndexedDB round trip. */
-export function summarizePlanRecord(raw: unknown): PlanSummary {
+ * exercised without an IndexedDB round trip. `key` is the record's real
+ * IndexedDB primary key when known (see unreadableRow's comment) — pass it
+ * whenever one is available; the 'ok' path never needs it, since
+ * migratePlan already refuses any record whose `id` field isn't a string. */
+export function summarizePlanRecord(raw: unknown, key?: unknown): PlanSummary {
   const plan = migratePlan(raw);
-  if (plan === null) return unreadableRow(raw);
+  if (plan === null) return unreadableRow(raw, key);
   return {
     kind: 'ok',
     id: plan.id,
@@ -129,7 +143,23 @@ export async function listPlans(): Promise<PlanSummary[]> {
   // silent skip is the §I.3 defect this task removes, so the listing cannot
   // be built on a structure that reproduces it. readNumber is the same
   // tolerant reader the placeholder row uses.
-  const all = await (await db()).getAll('plans');
+  //
+  // #551: a CURSOR, not `getAll`, because getAll returns only VALUES — the
+  // record's own `id` field, which readString collapses to '' for any
+  // non-string primary key (see unreadableRow's comment). A cursor carries
+  // the REAL primary key (`cursor.key`) alongside each value, and doing so
+  // inside ONE transaction makes the (key, value) pairing atomic rather
+  // than assumed — a separate getAll()+getAllKeys() pair would each open
+  // their own transaction, leaving a window for a concurrent write to shift
+  // one relative to the other.
+  const all: { key: unknown; raw: unknown }[] = [];
+  const tx = (await db()).transaction('plans', 'readonly');
+  let cursor = await tx.store.openCursor();
+  while (cursor) {
+    all.push({ key: cursor.key, raw: cursor.value });
+    cursor = await cursor.continue();
+  }
+  await tx.done;
   // Newest first: createdAtMs descending, ties broken by id descending. That
   // reproduces the reversed index order for every record the index actually
   // returned AND whose ids are this app's own lowercase-hex
@@ -139,8 +169,8 @@ export async function listPlans(): Promise<PlanSummary[]> {
   // the index omitted entirely (absent/NaN createdAtMs) now sort to the end
   // via readNumber's 0 fallback, which is the point of this hunk.
   const ordered = [...all].sort((a, b) => {
-    const byDate = readNumber(b, 'createdAtMs') - readNumber(a, 'createdAtMs');
-    return byDate !== 0 ? byDate : readString(b, 'id').localeCompare(readString(a, 'id'));
+    const byDate = readNumber(b.raw, 'createdAtMs') - readNumber(a.raw, 'createdAtMs');
+    return byDate !== 0 ? byDate : readString(b.raw, 'id').localeCompare(readString(a.raw, 'id'));
   });
   const summaries: PlanSummary[] = [];
   // Isolated per row: one corrupt record must not blank out the entire list
@@ -155,12 +185,12 @@ export async function listPlans(): Promise<PlanSummary[]> {
   // survive structured clone into IndexedDB. Logged, not surfaced as a
   // banner: a data-integrity issue the user can't act on beyond "some plan
   // somewhere is broken", not a transient failure.
-  for (const p of ordered) {
+  for (const { key, raw } of ordered) {
     try {
-      summaries.push(summarizePlanRecord(p));
+      summaries.push(summarizePlanRecord(raw, key));
     } catch (err) {
       console.error('listPlans: unreadable plan record', err);
-      summaries.push(unreadableRow(p));
+      summaries.push(unreadableRow(raw, key));
     }
   }
   return summaries;

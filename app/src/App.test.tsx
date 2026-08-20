@@ -133,6 +133,26 @@ vi.mock('./services/openMeteo', async (importOriginal) => {
   };
 });
 
+// #551 item 3: DepthProfile itself is not under test here — App.tsx's own
+// prop wiring is. DepthProfile needs a loaded mask plus real leg geometry
+// to render its SVG chart at all (see its own file for why — it returns
+// null on an empty legs list, and the safety-depth line renders only when
+// `safetyDepthM <= axisMax`), machinery this file's fetch mock doesn't
+// otherwise need to model. Swapping it for a probe that records the props
+// it was called with tests exactly what item 3 is about — which VALUE
+// App.tsx passes as `safetyDepthM` — without dragging in DepthProfile's own
+// rendering path (covered by its own test file, which this task must not
+// edit — a sibling issue, #520, owns it in this same milestone).
+const depthProfileProps = vi.hoisted(() => ({
+  last: null as { safetyDepthM: number } | null,
+}));
+vi.mock('./components/DepthProfile', () => ({
+  default: (props: { safetyDepthM: number }) => {
+    depthProfileProps.last = { safetyDepthM: props.safetyDepthM };
+    return null;
+  },
+}));
+
 // jsdom has no WebGL/canvas backend, so MapLibre GL is mocked wholesale here
 // (mirrors the "not unit-tested" notes in RouteLayer.tsx/BoatMarker.tsx —
 // this is the first suite to mount MapView, so it's the one that needs the
@@ -498,6 +518,7 @@ beforeEach(async () => {
   for (const key of Object.keys(mapTestHooks.harborHitFeatures))
     delete mapTestHooks.harborHitFeatures[key];
   for (const key of Object.keys(mapTestHooks.sourceSetData)) delete mapTestHooks.sourceSetData[key];
+  depthProfileProps.last = null;
 });
 
 // Screen pixel a harbor marker sits at for these tests, and a raw click
@@ -664,6 +685,48 @@ describe('App', () => {
     // Back to the Plan tab — the inline field must reflect the Boat-tab edit.
     fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
     expect(screen.getByLabelText(de['options.safetyDepth.label'])).toHaveValue(4);
+  });
+
+  // #551 item 3: DepthProfile must render against the PLAN's OWN safety
+  // depth (plan.request.settings.safetyDepthM), mirroring LiveView.tsx's
+  // existing `plan.request.settings.safetyDepthM` pattern — never the
+  // live/current settings, which the test above just proved is a SEPARATE,
+  // freely-editable value that can diverge from what a saved plan was
+  // actually solved under. Loads a plan whose stored safety depth (5.5)
+  // differs from the live default (DEFAULT_SETTINGS.safetyDepthM, 3.0,
+  // never touched by this test) and confirms the prop DepthProfile receives
+  // is the plan's, not the live one. DepthProfile is mocked to a prop probe
+  // (module-level vi.mock above) — its own real rendering (mask loading,
+  // SVG chart) is exercised elsewhere and is not what this bug is about.
+  it("DepthProfile receives the loaded plan's own safety depth, not the live Boat-tab setting (#551)", async () => {
+    const plan: Plan = {
+      id: 'depth-profile-plan',
+      name: 'Depth Profile Plan',
+      createdAtMs: Date.now(),
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now(),
+        settings: { ...DEFAULT_SETTINGS, safetyDepthM: 5.5 },
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now(), hours: 24 }),
+      result: okPlanResult(33),
+    };
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+
+    await waitFor(() => expect(depthProfileProps.last).not.toBeNull());
+    expect(depthProfileProps.last?.safetyDepthM).toBe(5.5);
   });
 
   // #299 fix (PR #486 review, Major 1): the boat-settings link lives inside
@@ -1055,9 +1118,7 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     );
 
     // Dirty the departure first — a non-via reason formDirty goes true.
-    const departureInput = screen.getByLabelText(
-      de['planner.departure.label'],
-    ) as HTMLInputElement;
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
     const editedMs = Date.now() + 5 * 3_600_000;
     fireEvent.change(departureInput, { target: { value: toLocalInputValue(editedMs) } });
     expect(departureInput.value).toBe(toLocalInputValue(editedMs));

@@ -1246,7 +1246,18 @@ function AppShell() {
                 />
               )}
               {plan && rig && (
-                <DepthProfile plan={plan} rig={rig} safetyDepthM={settings.safetyDepthM} />
+                // #551: the plan's OWN request settings, not the live
+                // settings — mirrors LiveView.tsx's `plan.request.settings
+                // .safetyDepthM` pattern. `settings.safetyDepthM` is the
+                // CURRENT Plan-tab/Boat-tab value, which the user may have
+                // lowered (or raised) after this plan was computed; the
+                // chart must render against the depth gate the plan was
+                // actually solved under.
+                <DepthProfile
+                  plan={plan}
+                  rig={rig}
+                  safetyDepthM={plan.request.settings.safetyDepthM}
+                />
               )}
               <PlansList online={online} busy={runBusy} onRecalculate={handleRecalculate} />
             </>

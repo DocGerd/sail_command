@@ -961,4 +961,44 @@ describe('#54 lazy plan migration at the read boundary', () => {
     expect(rows.map((r) => [r.id, r.kind])).toEqual([['no-date', 'unreadable']]);
     expect(rows[0]!.createdAtMs).toBe(0);
   });
+
+  // #551: readString(raw, 'id') returned '' for ANY non-string stored id, so
+  // two records with DIFFERENT real primary keys both displayed id: '' — a
+  // React key collision, and a shared (empty-string) delete target. Numbers
+  // ARE valid IndexedDB keys, so this is genuinely constructible (confirmed
+  // first against fake-indexeddb directly: a numeric `id` really does
+  // round-trip through put/getAll, and `readString` really does collapse it
+  // to '' — the raw record's `id` field, not the store's own primary key).
+  // migratePlan refuses any record whose `id` field isn't a string
+  // (`typeof id !== 'string'`), so BOTH records land on the unreadable path
+  // regardless of anything else in them.
+  it('#551: two records with different non-string primary keys get distinct, non-empty displayed ids', async () => {
+    const numericA = {
+      id: 12345,
+      name: 'Numeric A',
+      createdAtMs: 1000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    const numericB = {
+      id: 67890,
+      name: 'Numeric B',
+      createdAtMs: 2000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    await savePlan(numericA);
+    await savePlan(numericB);
+
+    const rows = await listPlans();
+    // Newest first (createdAtMs desc) — 'Numeric B' (2000) before 'Numeric A'
+    // (1000). The displayed id is the record's REAL IndexedDB primary key,
+    // stringified — never the empty string readString alone would produce.
+    expect(rows.map((r) => [r.name, r.kind === 'unreadable' ? r.id : 'n/a'])).toEqual([
+      ['Numeric B', '67890'],
+      ['Numeric A', '12345'],
+    ]);
+  });
 });
