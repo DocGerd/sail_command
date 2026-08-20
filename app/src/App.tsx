@@ -56,7 +56,14 @@ import { boatById, sailIdsOf } from './data/boats';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
-import { boatSnapshot, type Harbor, type LatLon, type PickedPoint, type Plan } from './types';
+import {
+  boatSnapshot,
+  DEFAULT_SETTINGS,
+  type Harbor,
+  type LatLon,
+  type PickedPoint,
+  type Plan,
+} from './types';
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
@@ -1253,10 +1260,24 @@ function AppShell() {
                 // lowered (or raised) after this plan was computed; the
                 // chart must render against the depth gate the plan was
                 // actually solved under.
+                //
+                // #551 review MAJOR 1: `migratePlan.ts` never validates
+                // `request.settings` at all (zero occurrences of the
+                // string 'settings' in that file — `migrateRequest` spreads
+                // it straight through unchecked), so a record with no
+                // `request.settings` migrates non-null and a bare
+                // `plan.request.settings.safetyDepthM` throws
+                // `TypeError: Cannot read properties of undefined`. With no
+                // error boundary anywhere in app/src, that blanks the whole
+                // app. Spread over DEFAULT_SETTINGS first, matching the
+                // house pattern at every other stored-settings read site
+                // (reroute.ts, lib/planForm.ts, lib/recalc.ts) — LiveView.tsx
+                // is the one exception and is a narrower exposure (behind
+                // the Live tab only), not the pattern to copy.
                 <DepthProfile
                   plan={plan}
                   rig={rig}
-                  safetyDepthM={plan.request.settings.safetyDepthM}
+                  safetyDepthM={{ ...DEFAULT_SETTINGS, ...plan.request.settings }.safetyDepthM}
                 />
               )}
               <PlansList online={online} busy={runBusy} onRecalculate={handleRecalculate} />

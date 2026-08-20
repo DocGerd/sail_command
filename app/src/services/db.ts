@@ -87,6 +87,48 @@ function readNumber(raw: unknown, key: string): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
+// #551 review round 2 (Minor 2, self-review, sharpened by an independent
+// PWA-reviewer repro on the same line): the FALLBACK display id for a
+// non-string primary key needs a serialization `String(key)` doesn't give.
+// MEASURED live against openDB/fake-indexeddb by review: `String(12345)`
+// and `String('12345')` are the same text; `String([1,2])` and
+// `String(['1,2'])` are the same text (Array.prototype.join drops
+// element-type information); `String([])` is `''`, colliding with a real
+// empty-string id; and `Date#toString()` DROPS SUB-SECOND PRECISION, so two
+// distinct same-second Date keys stringify identically.
+function displayIdOfKey(key: unknown): string {
+  // A STRING key passes through UNCHANGED, deliberately never
+  // JSON.stringify'd. This is what makes a genuinely empty-string id
+  // round-trip correctly: `storedId !== ''` (unreadableRow, below) is
+  // false BOTH when raw.id is missing/non-string AND when raw.id really IS
+  // the string '' — the two are indistinguishable from `storedId` alone,
+  // so this function is reached for a legitimate empty-string id too, and
+  // `key` for that record is exactly `''` (keyPath derives the key from
+  // the id field). JSON.stringify('') is `'""'`, which would silently
+  // change what a NEVER-BROKEN case displays.
+  if (typeof key === 'string') return key;
+  // Every OTHER IndexedDB key type gets JSON.stringify, which preserves
+  // the structural differences String() drops: bracket/quote placement for
+  // Array keys, and Date#toJSON()'s millisecond precision for Date keys —
+  // closing the two collisions MEASURED above.
+  //
+  // NOT closed by this or any other key-only transform, and left as a
+  // DOCUMENTED residual: a non-string key can still coincide, digit for
+  // digit, with an UNRELATED real string id sitting on a DIFFERENT record
+  // (e.g. numeric key 12345 vs a genuine string id '12345') — `readString`
+  // returns a non-empty string id verbatim, which never reaches this
+  // function at all, so no transform applied only HERE can prevent that
+  // cross-path collision. Also unaddressed: an ArrayBuffer/typed-array key
+  // (JSON.stringify degrades it to an opaque `{}`/index-keyed object).
+  // Both are reachable only via a future importer or foreign writer
+  // (#551's own framing) and are narrower than the original all-non-string
+  // ids-collapse-to-'' defect this fix closes — fixing either would need a
+  // distinguishing PREFIX on every fallback id, changing what the
+  // overwhelmingly common (real string id) case displays: the
+  // general-purpose key-identification scheme review said not to build.
+  return JSON.stringify(key) ?? String(key);
+}
+
 // #551: readString(raw, 'id') returns '' for ANY non-string stored id —
 // e.g. an imported (#3) or foreign-written record whose id is a number,
 // since numbers are valid IndexedDB keys. Two such records, each with a
@@ -105,7 +147,7 @@ function unreadableRow(raw: unknown, key?: unknown): PlanSummary {
     // answer is a single null by design, and this is the one caller that
     // needs to tell the two apart.
     reason: readNumber(raw, 'schemaVersion') > PLAN_SCHEMA_VERSION ? 'newer-version' : 'damaged',
-    id: storedId !== '' ? storedId : key === undefined ? '' : String(key),
+    id: storedId !== '' ? storedId : key === undefined ? '' : displayIdOfKey(key),
     name: readString(raw, 'name'),
     createdAtMs: readNumber(raw, 'createdAtMs'),
   };
@@ -255,8 +297,43 @@ export async function getPlan(id: string): Promise<Plan | undefined> {
   return plan ?? undefined;
 }
 
+// #551 review round 2 (Minor 1, self-review — explicitly "in scope, not
+// deferrable"): a plain `store.delete(id)` is a SILENT NO-OP for a
+// non-string primary key, because IndexedDB key comparison is type-
+// sensitive — the displayed id for such a row is a STRING (`'12345'`, from
+// displayIdOfKey above), and it never equals the real numeric/Date/Array
+// key it was derived from. Item 1's own acceptance criteria names the
+// delete target alongside the React key, so fixing only the display
+// collision leaves the row undeletable — worse than before in one respect:
+// it now looks like a working control.
+//
+// The direct `getKey` + `delete` path stays first and is the one every
+// real stored plan (a `crypto.randomUUID()` string id) takes — a cursor
+// scan of the whole store on every delete would be a needless O(n) cost
+// for the common case. Only when no record's REAL key equals `id` exactly
+// does this fall back to a cursor scan matching by `displayIdOfKey`, the
+// SAME serialization `unreadableRow` used to derive `id` in the first
+// place — so a row a user can SEE is a row this can delete.
+//
+// Residual, matching displayIdOfKey's own documented gap: two distinct
+// primary keys that happen to serialize to the same JSON text (the
+// ArrayBuffer/typed-array case) would both match the scan and this deletes
+// the FIRST one found — the same collision the display id already carries,
+// not a new one this function introduces.
 export async function deletePlan(id: string): Promise<void> {
-  await (await db()).delete('plans', id);
+  const store = (await db()).transaction('plans', 'readwrite').store;
+  if ((await store.getKey(id)) !== undefined) {
+    await store.delete(id);
+    return;
+  }
+  let cursor = await store.openCursor();
+  while (cursor) {
+    if (displayIdOfKey(cursor.key) === id) {
+      await cursor.delete();
+      return;
+    }
+    cursor = await cursor.continue();
+  }
 }
 
 export async function loadSettings(): Promise<Settings | undefined> {

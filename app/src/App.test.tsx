@@ -729,6 +729,52 @@ describe('App', () => {
     expect(depthProfileProps.last?.safetyDepthM).toBe(5.5);
   });
 
+  // #551 review MAJOR 1: `migratePlan.ts` never validates `request.settings`
+  // at all (grep confirms zero occurrences of the string 'settings' in that
+  // file), so a stored record with no `request.settings` migrates non-null.
+  // A bare `plan.request.settings.safetyDepthM` at the item-3 fix's call
+  // site would throw `TypeError: Cannot read properties of undefined` on
+  // exactly this shape — and with no error boundary anywhere in app/src,
+  // that unmounts the whole React root, not just the depth profile. This
+  // record is reachable via a future importer (#3) or foreign writer, the
+  // same latent class #551's other two items are about.
+  it('does not crash on a plan whose stored request has no settings at all, and falls back to DEFAULT_SETTINGS (#551 MAJOR 1)', async () => {
+    const noSettingsPlan: Record<string, unknown> = {
+      id: 'no-settings-plan',
+      name: 'No Settings Plan',
+      createdAtMs: Date.now(),
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now(),
+        // settings DELIBERATELY ABSENT.
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now(), hours: 24 }),
+      result: okPlanResult(33),
+    };
+    await db.savePlan(noSettingsPlan as unknown as Plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: new RegExp(noSettingsPlan.name as string) }),
+    );
+
+    await waitFor(() => expect(depthProfileProps.last).not.toBeNull());
+    // The DEFAULT_SETTINGS fallback, not a thrown error.
+    expect(depthProfileProps.last?.safetyDepthM).toBe(DEFAULT_SETTINGS.safetyDepthM);
+    // The tell for "blanked the whole app": the shell heading is still
+    // mounted, not just the depth profile probe.
+    expect(screen.getByRole('heading', { name: 'SailCommand' })).toBeInTheDocument();
+  });
+
   // #299 fix (PR #486 review, Major 1): the boat-settings link lives inside
   // PlannerPanel, which UNMOUNTS the instant the tab switches away from
   // 'plan' — without an explicit focus move, activating it drops keyboard

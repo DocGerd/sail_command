@@ -147,34 +147,77 @@ describe('#54 migratePlan: pre-#54 records', () => {
     expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
   });
 
-  // #551: a stored sailIds used to be accepted verbatim whenever it was a
-  // non-empty array of strings, with NO cross-check against the migrated
-  // boat snapshot's own sails — so a foreign or stale sailId (e.g. a
-  // record whose boat snapshot was later replaced by one with a smaller
-  // sail set) reached planRoute.ts's polarFor, which throws "#54: no polar
-  // table for ${key}" on exactly this shape. Fixed to reject the stored
-  // list WHOLESALE and fall back to the existing reconstruction whenever
-  // any entry names a sail the boat snapshot doesn't have.
-  it('rejects a stored sailIds naming a sail the boat snapshot does not have, falling back to the reconstruction', () => {
+  // #551 review round 2 (two independent reviewers): a stored sailIds used
+  // to be accepted verbatim whenever it was a non-empty array of strings,
+  // with NO cross-check at all — so a foreign or stale sailId reached
+  // planRoute.ts's polarFor, which throws "#54: no polar table for ${key}".
+  // The FIRST round of this fix checked against the migrated boat
+  // snapshot's own `boat.sails` — but `polarFor` resolves polars against
+  // `boatById(catalogueBoatId(boat.id))`, the CATALOGUE's own entry for
+  // that id, never `boat.sails`. This test is that gap: a real catalogue
+  // boat.id whose SELF-REPORTED `boat.sails` (falsely) includes a sail no
+  // catalogue boat carries — checking `boat.sails` alone would have
+  // accepted it.
+  it('rejects a stored sailIds naming a sail the CATALOGUE does not have for this boat.id, even when the self-reported boat.sails claims it (#551 review round 2)', () => {
     const raw = legacyPlan();
     const request = raw.request as Record<string, unknown>;
-    // A boat snapshot carrying ONLY genoa — no fock. Same shape as the
-    // "left the catalogue" fixture above, deliberately smaller.
     request.boat = {
-      id: 'gone-45',
-      name: 'Gone 45',
-      draftM: 2.4,
+      id: 'salona-45',
+      name: 'Salona 45',
+      draftM: 2.1,
       sails: [
-        { id: 'genoa', label: 'Genoa 150 %', polarProvenance: { tier: 'estimated', note: 'n' } },
+        { id: 'genoa', label: 'Genoa 135 %', polarProvenance: { tier: 'modelled', note: 'n' } },
+        // Real catalogue salona-45 has genoa+fock only — 'spinnaker' is
+        // foreign to EVERY catalogue boat, self-reported here anyway.
+        { id: 'spinnaker', label: 'Spinnaker', polarProvenance: { tier: 'estimated', note: 'n' } },
       ],
     };
-    // 'fock' is foreign to that boat — the plan's OWN result still compared
-    // genoa and fock (legacyPlan()'s fixture), so this models a record
-    // whose boat snapshot narrowed after sailIds was written.
-    request.sailIds = ['fock'];
+    request.sailIds = ['genoa', 'spinnaker'];
     const migrated = migratePlan(raw)!;
-    // Rejected wholesale, not filtered down to the valid remainder —
-    // reconstructed from the sails the plan actually compared.
+    // Rejected wholesale — reconstructed from the sails the plan actually
+    // compared (legacyPlan()'s genoa+fock), filtered against the
+    // CATALOGUE, where both are real.
+    expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
+  });
+
+  // #551 review round 2, MAJOR 2: the FALLBACK reconstruction was never
+  // cross-checked at all — `sails.map(s => s.sailId)` comes straight from
+  // `migrateSails`, which validates a `sailId` only to be a string, with
+  // zero catalogue check. So rejecting a bad stored list could still hand
+  // the SAME foreign sail back through the fallback. Forces the fallback
+  // path (no stored sailIds at all — the pre-#54 shape) with a THIRD,
+  // catalogue-foreign sail ('spinnaker') present only in the RESULT's own
+  // (modern-shape) sails list, alongside two genuinely real ones.
+  it('filters the fallback reconstruction against the catalogue too — a rejected foreign sail cannot come back through it (#551 review round 2, MAJOR 2)', () => {
+    const raw = legacyPlan();
+    const request = raw.request as Record<string, unknown>;
+    const result = raw.result as Record<string, unknown>;
+    delete result.genoa;
+    delete result.fock;
+    delete result.genoaReason;
+    delete result.fockReason;
+    result.sails = [
+      { sailId: 'genoa', result: legacyRigResult('genoa', 111_000), reason: null },
+      { sailId: 'fock', result: null, reason: 'unreachable' },
+      { sailId: 'spinnaker', result: null, reason: 'unreachable' },
+    ];
+    result.recommended = 'genoa';
+    // Self-consistent, catalogue-agreeing boat.sails — the FIRST-round
+    // `boat.sails` check would have missed this entirely, since the
+    // foreign sail is visible only through the RESULT's sails list.
+    request.boat = {
+      id: 'salona-45',
+      name: 'Salona 45',
+      draftM: 2.1,
+      sails: [
+        { id: 'genoa', label: 'Genoa 135 %', polarProvenance: { tier: 'modelled', note: 'n' } },
+        { id: 'fock', label: 'Jib 110 %', polarProvenance: { tier: 'certificate', note: 'n' } },
+      ],
+    };
+    // No stored sailIds — forces the fallback reconstruction.
+    delete request.sailIds;
+    const migrated = migratePlan(raw)!;
+    // 'spinnaker' is dropped by the fallback's own catalogue filter.
     expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
   });
 

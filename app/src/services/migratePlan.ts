@@ -1,4 +1,4 @@
-import { boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
 import {
   boatSnapshot,
   PLAN_SCHEMA_VERSION,
@@ -281,10 +281,59 @@ function migrateBoat(
   return stored as unknown as BoatSnapshot;
 }
 
+// #551 review round 2 (two independent reviewers converged on this): the
+// hazard this exists to prevent — planRoute.ts's polarFor throwing `#54: no
+// polar table for ${key}` — is decided by `polarKey(deps.boat.id, sailId)`,
+// where `deps.boat = boatById(catalogueBoatId(request.boat.id))`
+// (protocol.ts + workerClient.ts's `catalogueBoatId`) — the CATALOGUE's OWN
+// entry for this boat id. `polarFor` never consults the migrated
+// `BoatSnapshot.sails` at all. So the authority a sailId must agree with is
+// BOATS itself, not the record's self-reported `boat.sails` snapshot (which
+// `migrateBoat` validates only structurally — id/label/polarProvenance
+// shape, never against the catalogue): a foreign/imported record can claim a
+// sail in `boat.sails` that the catalogue's SAME-id boat does not carry, and
+// checking against the snapshot would let it straight through to the crash
+// it exists to prevent.
+//
+// Deliberately inlined via `BOATS` (not `catalogueBoatId` from
+// routing/workerClient.ts, which is the identical `BOATS.find(...)` lookup
+// under a different name) — this file is a services/-layer read-time
+// normaliser and has no existing dependency on routing/, and importing one
+// pure lookup is not worth adding that edge.
+//
+// Returns null (not, say, an empty array) when `boatId` is off-catalogue:
+// §I.3 requires a plan whose boat has left the catalogue to still open, and
+// `RoutingClient.plan()` (workerClient.ts) already rejects an off-catalogue
+// `request.boat.id` client-side as 'boat-not-in-catalogue' BEFORE `polarFor`
+// is ever reached — so sailIds validity is moot for that case, and the null
+// return is what makes `sailIsSafe` below pass everything unconditionally
+// for it, rather than refusing an otherwise-honest pre-#54 or off-catalogue
+// record.
+function catalogueSailIds(boatId: string): readonly string[] | null {
+  const catalogueBoat = BOATS.find((b) => b.id === boatId);
+  return catalogueBoat ? catalogueBoat.sails.map((s) => s.id) : null;
+}
+
 function migrateRequest(
   request: Record<string, unknown>,
   sails: readonly SailResult[],
   fallbackBoat: BoatSnapshot,
+  // #551 review round 2 fix-wave 2 (caught by the PRE-EXISTING
+  // migratePlan.catalogueRename.test.ts, which round-2's first pass never
+  // ran): whether `sails` was built from the MODERN `result.sails` array
+  // (migrateSails' Array.isArray(stored) branch) as opposed to the LEGACY
+  // `<rig>Reason` field pair. That distinction is exactly what
+  // LEGACY_SAIL_FIELDS' own comment at the top of this file protects — a
+  // pre-#54 record's sail ids are FROZEN HISTORY, deliberately never
+  // resolved through the catalogue, so that a later catalogue rename cannot
+  // make an already-stored record unreadable. Catalogue-filtering the
+  // FALLBACK reconstruction unconditionally (this fix's first pass)
+  // reintroduced exactly the failure catalogueRename's own header describes
+  // ("the first implementation cancelled it one line later ... under which
+  // a rename made EVERY pre-#54 plan unreadable") through a different door
+  // — BOATS instead of boat.sails, same blind spot. The catalogue filter
+  // below therefore applies ONLY when this is true.
+  sailsAreModernShape: boolean,
 ): PlanRequest | null {
   const boat = migrateBoat(request, fallbackBoat);
   if (boat === null) return null;
@@ -298,24 +347,50 @@ function migrateRequest(
   // (migrateSails already refuses `out.length === 0`). planRoute's `runAll`
   // maps over this list, so an empty one made every tier `[]` and threw.
   //
-  // #551: a stored sailIds is accepted only when it ALSO names nothing but
-  // sails the migrated boat snapshot actually carries. Without this, a
-  // foreign or stale sailId (a plan imported from a different boat, or one
-  // whose boat snapshot was replaced) reaches planRoute.ts's polarFor,
-  // which throws `#54: no polar table for ${key}` rather than degrading to
-  // an honest unreadable row. Checked against `boat` (the migrated
-  // snapshot), never the catalogue — a plan whose boat has left the
-  // catalogue must still open (§I.3), and its sailIds are valid exactly
-  // when they match ITS OWN stored sails, not today's BOATS.
+  // #551: the STORED sailIds is validated against `catalogueSailIds(boat.id)`
+  // — see that function's own comment for WHY it is the catalogue and not
+  // `boat.sails`. This branch is unconditionally safe to catalogue-check
+  // regardless of legacy/modern: a pre-#54 record NEVER carries
+  // `request.sailIds` at all (the field didn't exist yet), so
+  // `storedSailIdsAreValid` is always false for one and this check is
+  // simply never exercised by a legacy record.
+  //
+  // `typeof s === 'string'` is NOT redundant here even though `sailIsSafe`
+  // looks like it would already reject a non-string entry: it does, but
+  // ONLY when `catalogueSails !== null`. For an off-catalogue boat,
+  // `sailIsSafe` returns true UNCONDITIONALLY (see catalogueSailIds'
+  // comment), so without this term a non-string entry would slip through
+  // in exactly that case. It also still licenses the `as SailId[]` cast
+  // below.
+  const catalogueSails = catalogueSailIds(boat.id);
+  const sailIsSafe = (s: string): boolean => catalogueSails === null || catalogueSails.includes(s);
   const storedSailIdsAreValid =
     Array.isArray(request.sailIds) &&
     request.sailIds.length > 0 &&
     request.sailIds.every((s) => typeof s === 'string') &&
-    request.sailIds.every((s) => boat.sails.some((sail) => sail.id === s));
-  const sailIds = storedSailIdsAreValid
-    ? (request.sailIds as SailId[])
+    request.sailIds.every((s) => sailIsSafe(s as string));
+  if (storedSailIdsAreValid) {
+    return { ...request, sailIds: request.sailIds as SailId[], boat } as unknown as PlanRequest;
+  }
+  // The FALLBACK reconstruction: catalogue-filtered ONLY for a modern-shape
+  // `sails` list (#551 review round 2, MAJOR 2 — `migrateSails` validates a
+  // modern entry's `sailId` only to be a string, zero catalogue check, so
+  // this path was exactly as unguarded as the stored list). A legacy-shape
+  // `sails` list is passed through UNFILTERED, preserving the frozen-history
+  // guarantee `LEGACY_SAIL_FIELDS` exists for.
+  const reconstructedSailIds = sailsAreModernShape
+    ? sails.map((s) => s.sailId).filter(sailIsSafe)
     : sails.map((s) => s.sailId);
-  return { ...request, sailIds, boat } as unknown as PlanRequest;
+  // A now-EMPTY result is possible here in a way it never was before this
+  // filter existed: every catalogue-foreign sail a MODERN-shape plan
+  // compared gets dropped (never for a legacy-shape one, which is
+  // unfiltered and — per migrateSails — already guaranteed non-empty).
+  // `runAll` maps over `sailIds`, so `[]` is the same hazard the
+  // pre-existing `length > 0` term above guards on the stored side — refuse
+  // the whole record (the honest #54 unreadable-row outcome) rather than
+  // hand `plan()` a request with nothing left to solve.
+  if (reconstructedSailIds.length === 0) return null;
+  return { ...request, sailIds: reconstructedSailIds, boat } as unknown as PlanRequest;
 }
 
 export function migratePlan(raw: unknown): Plan | null {
@@ -336,7 +411,17 @@ export function migratePlan(raw: unknown): Plan | null {
   const fallbackBoat = boatSnapshot(boatById(DEFAULT_BOAT_ID));
   const migratedResult = migrateResult(result);
   if (migratedResult === null) return null;
-  const migratedRequest = migrateRequest(request, migratedResult.sails, fallbackBoat);
+  // Read straight off the RAW result, mirroring migrateSails' own dispatch
+  // (`Array.isArray(stored)` on `result.sails`) — see migrateRequest's
+  // `sailsAreModernShape` parameter comment for why this distinction must
+  // survive into the fallback-reconstruction catalogue check.
+  const sailsAreModernShape = Array.isArray(result.sails);
+  const migratedRequest = migrateRequest(
+    request,
+    migratedResult.sails,
+    fallbackBoat,
+    sailsAreModernShape,
+  );
   if (migratedRequest === null) return null;
 
   return {
