@@ -654,7 +654,13 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference
     // between them is pure hatch (the ramp is gate-blind).
-    const framesAt = async (zoom: number) => {
+    // `minFraction` is PER ZOOM on purpose. A single shared floor would have
+    // to sit below the smaller of the two measurements, which would have
+    // silently WEAKENED the z16 coverage assertion this test already
+    // shipped (> 0.15) down to the z9-compatible value — a weakened check
+    // hiding inside a rewrite is exactly the shape this repo has been bitten
+    // by before. z16 keeps its original 0.15 unchanged.
+    const framesAt = async (zoom: number, minFraction: number) => {
       await safetyDepth.fill('2.2');
       await safetyDepth.blur();
       await jumpTo(zoom);
@@ -671,21 +677,23 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
           message: `raising safetyDepthM at z${zoom} must hatch a measurable fraction of the canvas`,
           timeout: 30_000,
         })
-        // 0.02's PRIMARY job is licensing — establishing the hatch really
-        // renders, so the stripe-width numbers below measure a pattern
-        // rather than noise. MEASURED at 0.045 at z9 (most of an overview
-        // frame is land) and 0.25 at z16.
+        // PRIMARY job is licensing — establishing the hatch really renders,
+        // so the stripe-width numbers below measure a pattern rather than
+        // noise. MEASURED: 0.045 at z9 (most of an overview frame is land)
+        // against its 0.02 floor, and 0.25 at z16 against the 0.15 floor
+        // this test already shipped.
         //
-        // It turns out to carry real detection power too, which is worth
-        // stating rather than leaving to be rediscovered: reverting to the
-        // pre-#599 fixed band drops the z9 figure to 0.0057, an 8x collapse.
-        // That IS the wash-out, quantified — at ~1px wide the stripes are
-        // minified and mipmap-averaged, so almost no pixel still reads as
-        // near-black even though the same 25% of cells are painted. So this
-        // gate reds under the mutation BEFORE the z9 stripe assertion is
-        // reached; both were separately confirmed load-bearing by relaxing
-        // this floor and re-running (z9 measured 2px against its >=4 bound).
-        .toBeGreaterThan(0.02);
+        // The z9 floor turns out to carry real detection power too, which is
+        // worth stating rather than leaving to be rediscovered: reverting to
+        // the pre-#599 fixed band drops that figure to 0.0057, an 8x
+        // collapse. That IS the wash-out, quantified — at ~1px wide the
+        // stripes are minified and mipmap-averaged, so almost no pixel still
+        // reads as near-black even though the same 25% of cells are painted.
+        // So this gate reds under the mutation BEFORE the z9 stripe
+        // assertion is reached; both were separately confirmed load-bearing
+        // by relaxing this floor and re-running (z9 measured 2px against its
+        // >=4 bound).
+        .toBeGreaterThan(minFraction);
       const high = await settledCanvas(page, canvas);
       const highFraction = await hatchedFraction(page, high);
       expect(highFraction, `z${zoom}: raising the gate must hatch MORE, not less`).toBeGreaterThan(
@@ -698,7 +706,7 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
     // The defect: the fixed 2-cell stripe rendered ~1.06 px wide here and
     // washed out. The z9 band is (27, 15) -> ~7.9 px. 4 px sits between the
     // two; the old constants cannot reach it at any sub-pixel-per-cell zoom.
-    const z9 = await framesAt(9);
+    const z9 = await framesAt(9, 0.02);
     const z9Runs = await hatchRunLengthsPx(page, z9.low, z9.high);
     const z9Stripe = percentile(z9Runs, 90);
     expect(
@@ -712,7 +720,7 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
     // 2-cell (~135.6 px) band. 100 px sits between the two. This is the
     // accepted limit of the per-cell-raster approach, not a fix: see
     // depthColor.ts's "WHAT THIS DOES NOT ACHIEVE" note.
-    const z16 = await framesAt(16);
+    const z16 = await framesAt(16, 0.15);
     const z16Runs = await hatchRunLengthsPx(page, z16.low, z16.high);
     const z16Stripe = percentile(z16Runs, 90);
     expect(
