@@ -88,7 +88,7 @@ selected in §1.
     missing ★ on these two boats is the designed outcome, not a defect — their
     two tables differ by the Salona 45's overlay ramp, which carries no
     information about the hull.
-  - **Either boat, if the chip reads "The search ran out of time before
+  - **Any boat, if the chip reads "The search ran out of time before
     comparing both sails, so no faster rig is claimed"** — the plan's search
     hit its wall-clock budget before both sails finished. No ★ is shown, and
     one sail tab may carry a no-route reason instead of an ETA. Correct

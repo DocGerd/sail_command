@@ -33,9 +33,10 @@ states how far ([#612](https://github.com/DocGerd/sail_command/issues/612)).
 A relaxed route can still reach a cautious reading as low as the boat's own
 draft minus that 0.9 m bound — the relaxation floor is per boat
 (`relaxationFloorM`, `app/src/lib/boatDepth.ts`), so a shallower-drafted hull
-reaches a shallower figure. After `v0.12.0`'s proven blend bound, every one of
-those residual cells lies between the boat's draft and the requested depth
-rather than below the hull.
+reaches a shallower figure. After `v0.12.0`'s proven blend bound, a cell
+navigable at a boat's own default gate — its draft plus that 0.9 m bound —
+cannot read below that boat's draft; a gate lowered by hand lowers that floor
+with it.
 
 Four further user-visible changes, across five issues, landed alongside it.
 The map's depth overlay gained a legend for the cautious-reading hatch —
@@ -74,9 +75,8 @@ sit German-copy and provenance-text residue from the multi-boat work
 [#596](https://github.com/DocGerd/sail_command/issues/596),
 [#607](https://github.com/DocGerd/sail_command/issues/607)), a collapsible
 map-overlay cluster for small screens
-([#628](https://github.com/DocGerd/sail_command/issues/628)), and
-test-integrity and documentation-accuracy items — including a wording defect
-in this very file ([#616](https://github.com/DocGerd/sail_command/issues/616)).
+([#628](https://github.com/DocGerd/sail_command/issues/628)),
+and test-integrity and documentation-accuracy items.
 
 ## Themes for the next year
 
