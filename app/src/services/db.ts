@@ -87,24 +87,83 @@ function readNumber(raw: unknown, key: string): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0;
 }
 
-function unreadableRow(raw: unknown): PlanSummary {
+// #551 review round 2 (Minor 2, self-review, sharpened by an independent
+// PWA-reviewer repro on the same line): the FALLBACK display id for a
+// non-string primary key needs a serialization `String(key)` doesn't give.
+// MEASURED live against openDB/fake-indexeddb by review: `String(12345)`
+// and `String('12345')` are the same text; `String([1,2])` and
+// `String(['1,2'])` are the same text (Array.prototype.join drops
+// element-type information); `String([])` is `''`, colliding with a real
+// empty-string id; and `Date#toString()` DROPS SUB-SECOND PRECISION, so two
+// distinct same-second Date keys stringify identically.
+function displayIdOfKey(key: unknown): string {
+  // A STRING key passes through UNCHANGED, deliberately never
+  // JSON.stringify'd. This is what makes a genuinely empty-string id
+  // round-trip correctly: `storedId !== ''` (unreadableRow, below) is
+  // false BOTH when raw.id is missing/non-string AND when raw.id really IS
+  // the string '' — the two are indistinguishable from `storedId` alone,
+  // so this function is reached for a legitimate empty-string id too, and
+  // `key` for that record is exactly `''` (keyPath derives the key from
+  // the id field). JSON.stringify('') is `'""'`, which would silently
+  // change what a NEVER-BROKEN case displays.
+  if (typeof key === 'string') return key;
+  // Every OTHER IndexedDB key type gets JSON.stringify, which preserves
+  // the structural differences String() drops: bracket/quote placement for
+  // Array keys, and Date#toJSON()'s millisecond precision for Date keys —
+  // closing the two collisions MEASURED above.
+  //
+  // NOT closed by this or any other key-only transform, and left as a
+  // DOCUMENTED residual: a non-string key can still coincide, digit for
+  // digit, with an UNRELATED real string id sitting on a DIFFERENT record
+  // (e.g. numeric key 12345 vs a genuine string id '12345') — `readString`
+  // returns a non-empty string id verbatim, which never reaches this
+  // function at all, so no transform applied only HERE can prevent that
+  // cross-path collision. Also unaddressed: an ArrayBuffer/typed-array key
+  // (JSON.stringify degrades it to an opaque `{}`/index-keyed object).
+  // Both are reachable only via a future importer or foreign writer
+  // (#551's own framing) and are narrower than the original all-non-string
+  // ids-collapse-to-'' defect this fix closes — fixing either would need a
+  // distinguishing PREFIX on every fallback id, changing what the
+  // overwhelmingly common (real string id) case displays: the
+  // general-purpose key-identification scheme review said not to build.
+  // This is NOT only a display collision — see deletePlan's own comment
+  // below (#551 review round 3, Minor 4): the same cross-path pair makes
+  // deletePlan's DIRECT lookup path delete the WRONG row.
+  return JSON.stringify(key) ?? String(key);
+}
+
+// #551: readString(raw, 'id') returns '' for ANY non-string stored id —
+// e.g. an imported (#3) or foreign-written record whose id is a number,
+// since numbers are valid IndexedDB keys. Two such records, each with a
+// DIFFERENT real primary key, both read '' from readString and would
+// collide on React key and on delete target. `key` is the record's ACTUAL
+// IndexedDB primary key (from listPlans' cursor, or undefined when this is
+// exercised without an IndexedDB round trip per summarizePlanRecord's own
+// doc comment) — used only as a fallback, so a record whose stored `id`
+// really IS a usable string (the overwhelmingly common case, including a
+// genuinely empty-string id) is unaffected.
+function unreadableRow(raw: unknown, key?: unknown): PlanSummary {
+  const storedId = readString(raw, 'id');
   return {
     kind: 'unreadable',
     // Read here rather than returned by migratePlan: the normaliser's own
     // answer is a single null by design, and this is the one caller that
     // needs to tell the two apart.
     reason: readNumber(raw, 'schemaVersion') > PLAN_SCHEMA_VERSION ? 'newer-version' : 'damaged',
-    id: readString(raw, 'id'),
+    id: storedId !== '' ? storedId : key === undefined ? '' : displayIdOfKey(key),
     name: readString(raw, 'name'),
     createdAtMs: readNumber(raw, 'createdAtMs'),
   };
 }
 
 /** One stored record → one list row. Exported so the row shapes can be
- * exercised without an IndexedDB round trip. */
-export function summarizePlanRecord(raw: unknown): PlanSummary {
+ * exercised without an IndexedDB round trip. `key` is the record's real
+ * IndexedDB primary key when known (see unreadableRow's comment) — pass it
+ * whenever one is available; the 'ok' path never needs it, since
+ * migratePlan already refuses any record whose `id` field isn't a string. */
+export function summarizePlanRecord(raw: unknown, key?: unknown): PlanSummary {
   const plan = migratePlan(raw);
-  if (plan === null) return unreadableRow(raw);
+  if (plan === null) return unreadableRow(raw, key);
   return {
     kind: 'ok',
     id: plan.id,
@@ -129,7 +188,23 @@ export async function listPlans(): Promise<PlanSummary[]> {
   // silent skip is the §I.3 defect this task removes, so the listing cannot
   // be built on a structure that reproduces it. readNumber is the same
   // tolerant reader the placeholder row uses.
-  const all = await (await db()).getAll('plans');
+  //
+  // #551: a CURSOR, not `getAll`, because getAll returns only VALUES — the
+  // record's own `id` field, which readString collapses to '' for any
+  // non-string primary key (see unreadableRow's comment). A cursor carries
+  // the REAL primary key (`cursor.key`) alongside each value, and doing so
+  // inside ONE transaction makes the (key, value) pairing atomic rather
+  // than assumed — a separate getAll()+getAllKeys() pair would each open
+  // their own transaction, leaving a window for a concurrent write to shift
+  // one relative to the other.
+  const all: { key: unknown; raw: unknown }[] = [];
+  const tx = (await db()).transaction('plans', 'readonly');
+  let cursor = await tx.store.openCursor();
+  while (cursor) {
+    all.push({ key: cursor.key, raw: cursor.value });
+    cursor = await cursor.continue();
+  }
+  await tx.done;
   // Newest first: createdAtMs descending, ties broken by id descending. That
   // reproduces the reversed index order for every record the index actually
   // returned AND whose ids are this app's own lowercase-hex
@@ -139,8 +214,8 @@ export async function listPlans(): Promise<PlanSummary[]> {
   // the index omitted entirely (absent/NaN createdAtMs) now sort to the end
   // via readNumber's 0 fallback, which is the point of this hunk.
   const ordered = [...all].sort((a, b) => {
-    const byDate = readNumber(b, 'createdAtMs') - readNumber(a, 'createdAtMs');
-    return byDate !== 0 ? byDate : readString(b, 'id').localeCompare(readString(a, 'id'));
+    const byDate = readNumber(b.raw, 'createdAtMs') - readNumber(a.raw, 'createdAtMs');
+    return byDate !== 0 ? byDate : readString(b.raw, 'id').localeCompare(readString(a.raw, 'id'));
   });
   const summaries: PlanSummary[] = [];
   // Isolated per row: one corrupt record must not blank out the entire list
@@ -155,12 +230,12 @@ export async function listPlans(): Promise<PlanSummary[]> {
   // survive structured clone into IndexedDB. Logged, not surfaced as a
   // banner: a data-integrity issue the user can't act on beyond "some plan
   // somewhere is broken", not a transient failure.
-  for (const p of ordered) {
+  for (const { key, raw } of ordered) {
     try {
-      summaries.push(summarizePlanRecord(p));
+      summaries.push(summarizePlanRecord(raw, key));
     } catch (err) {
       console.error('listPlans: unreadable plan record', err);
-      summaries.push(unreadableRow(p));
+      summaries.push(unreadableRow(raw, key));
     }
   }
   return summaries;
@@ -225,8 +300,49 @@ export async function getPlan(id: string): Promise<Plan | undefined> {
   return plan ?? undefined;
 }
 
+// #551 review round 2 (Minor 1, self-review — explicitly "in scope, not
+// deferrable"): a plain `store.delete(id)` is a SILENT NO-OP for a
+// non-string primary key, because IndexedDB key comparison is type-
+// sensitive — the displayed id for such a row is a STRING (`'12345'`, from
+// displayIdOfKey above), and it never equals the real numeric/Date/Array
+// key it was derived from. Item 1's own acceptance criteria names the
+// delete target alongside the React key, so fixing only the display
+// collision leaves the row undeletable — worse than before in one respect:
+// it now looks like a working control.
+//
+// The direct `getKey` + `delete` path stays first and is the one every
+// real stored plan (a `crypto.randomUUID()` string id) takes — a cursor
+// scan of the whole store on every delete would be a needless O(n) cost
+// for the common case. Only when no record's REAL key equals `id` exactly
+// does this fall back to a cursor scan matching by `displayIdOfKey`, the
+// SAME serialization `unreadableRow` used to derive `id` in the first
+// place — so a row a user can SEE is a row this can delete.
+//
+// Residual, and it is on the DIRECT path, not only the scan: a non-string key
+// whose serialization equals an UNRELATED record's real string id (numeric key
+// 12345 vs string id '12345') makes getKey match that OTHER record, so this
+// deletes the wrong row and leaves the targeted one in place. MEASURED. Same
+// cross-path collision displayIdOfKey documents; closing it needs a
+// distinguishing prefix on every fallback id, deliberately not built here.
+//
+// Separately, and genuinely minor: a delete of an id present in NEITHER path
+// (e.g. a double-tap after the row is already gone) walks the whole store
+// before returning — O(n), not O(1), on that path. Fine at realistic plan
+// counts.
 export async function deletePlan(id: string): Promise<void> {
-  await (await db()).delete('plans', id);
+  const store = (await db()).transaction('plans', 'readwrite').store;
+  if ((await store.getKey(id)) !== undefined) {
+    await store.delete(id);
+    return;
+  }
+  let cursor = await store.openCursor();
+  while (cursor) {
+    if (displayIdOfKey(cursor.key) === id) {
+      await cursor.delete();
+      return;
+    }
+    cursor = await cursor.continue();
+  }
 }
 
 export async function loadSettings(): Promise<Settings | undefined> {

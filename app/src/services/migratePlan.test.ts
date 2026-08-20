@@ -147,6 +147,115 @@ describe('#54 migratePlan: pre-#54 records', () => {
     expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
   });
 
+  // #551 review round 2 (two independent reviewers): a stored sailIds used
+  // to be accepted verbatim whenever it was a non-empty array of strings,
+  // with NO cross-check at all — so a foreign or stale sailId reached
+  // planRoute.ts's polarFor, which throws "#54: no polar table for ${key}".
+  // The FIRST round of this fix checked against the migrated boat
+  // snapshot's own `boat.sails` — but `polarFor` resolves polars against
+  // `boatById(catalogueBoatId(boat.id))`, the CATALOGUE's own entry for
+  // that id, never `boat.sails`. This test is that gap: a real catalogue
+  // boat.id whose SELF-REPORTED `boat.sails` (falsely) includes a sail no
+  // catalogue boat carries — checking `boat.sails` alone would have
+  // accepted it.
+  it('rejects a stored sailIds naming a sail the CATALOGUE does not have for this boat.id, even when the self-reported boat.sails claims it (#551 review round 2)', () => {
+    const raw = legacyPlan();
+    const request = raw.request as Record<string, unknown>;
+    request.boat = {
+      id: 'salona-45',
+      name: 'Salona 45',
+      draftM: 2.1,
+      sails: [
+        { id: 'genoa', label: 'Genoa 135 %', polarProvenance: { tier: 'modelled', note: 'n' } },
+        // Real catalogue salona-45 has genoa+fock only — 'spinnaker' is
+        // foreign to EVERY catalogue boat, self-reported here anyway.
+        { id: 'spinnaker', label: 'Spinnaker', polarProvenance: { tier: 'estimated', note: 'n' } },
+      ],
+    };
+    request.sailIds = ['genoa', 'spinnaker'];
+    const migrated = migratePlan(raw)!;
+    // Rejected wholesale — reconstructed from the sails the plan actually
+    // compared (legacyPlan()'s genoa+fock), filtered against the
+    // CATALOGUE, where both are real.
+    expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
+  });
+
+  // #551 review round 2, MAJOR 2: the FALLBACK reconstruction was never
+  // cross-checked at all — `sails.map(s => s.sailId)` comes straight from
+  // `migrateSails`, which validates a `sailId` only to be a string, with
+  // zero catalogue check. So rejecting a bad stored list could still hand
+  // the SAME foreign sail back through the fallback. Forces the fallback
+  // path (no stored sailIds at all — the pre-#54 shape) with a THIRD,
+  // catalogue-foreign sail ('spinnaker') present only in the RESULT's own
+  // (modern-shape) sails list, alongside two genuinely real ones.
+  it('filters the fallback reconstruction against the catalogue too — a rejected foreign sail cannot come back through it (#551 review round 2, MAJOR 2)', () => {
+    const raw = legacyPlan();
+    const request = raw.request as Record<string, unknown>;
+    const result = raw.result as Record<string, unknown>;
+    delete result.genoa;
+    delete result.fock;
+    delete result.genoaReason;
+    delete result.fockReason;
+    result.sails = [
+      { sailId: 'genoa', result: legacyRigResult('genoa', 111_000), reason: null },
+      { sailId: 'fock', result: null, reason: 'unreachable' },
+      { sailId: 'spinnaker', result: null, reason: 'unreachable' },
+    ];
+    result.recommended = 'genoa';
+    // Self-consistent, catalogue-agreeing boat.sails — the FIRST-round
+    // `boat.sails` check would have missed this entirely, since the
+    // foreign sail is visible only through the RESULT's sails list.
+    request.boat = {
+      id: 'salona-45',
+      name: 'Salona 45',
+      draftM: 2.1,
+      sails: [
+        { id: 'genoa', label: 'Genoa 135 %', polarProvenance: { tier: 'modelled', note: 'n' } },
+        { id: 'fock', label: 'Jib 110 %', polarProvenance: { tier: 'certificate', note: 'n' } },
+      ],
+    };
+    // No stored sailIds — forces the fallback reconstruction.
+    delete request.sailIds;
+    const migrated = migratePlan(raw)!;
+    // 'spinnaker' is dropped by the fallback's own catalogue filter.
+    expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
+  });
+
+  // #551 review round 2, Minor 3 (the reviewer's own probe): pins that
+  // `typeof s === 'string'` is load-bearing for an OFF-CATALOGUE boat,
+  // where `sailIsSafe` alone would pass ANY value unconditionally —
+  // including a non-string one. Off-catalogue boat id ('gone-45', not in
+  // BOATS, so `catalogueSailIds` returns null) + a raw NUMBER inside the
+  // stored sailIds array: with the term present this is rejected (typeof
+  // check fails) and falls to the unfiltered legacy reconstruction.
+  //
+  // MUTATION-CHECKED (deleting the term, restored after): the raw number
+  // does NOT simply "survive into request.sailIds" as `sailIsSafe(12345)`
+  // alone would suggest — `storedSailIdsAreValid` does go true and
+  // `sailIds` does become `[12345]`, but review round 3's OWN
+  // `!sailIds.includes(recommended)` invariant then catches it one line
+  // later (12345 !== 'genoa') and refuses the whole record, so the
+  // observed mutant behaviour is `migratePlan(raw) === null`, not a
+  // shipped numeric sailId. Both are wrong outcomes for a valid off-
+  // catalogue record; this test pins the CORRECT one (term present).
+  it('typeof-string check rejects a non-string stored sailId even for an off-catalogue boat, where sailIsSafe alone would pass anything (#551 review round 2 Minor 3)', () => {
+    const raw = legacyPlan();
+    const request = raw.request as Record<string, unknown>;
+    request.boat = {
+      id: 'gone-45',
+      name: 'Gone 45',
+      draftM: 2.4,
+      sails: [
+        { id: 'genoa', label: 'Genoa 150 %', polarProvenance: { tier: 'estimated', note: 'n' } },
+      ],
+    };
+    request.sailIds = [12345];
+    const migrated = migratePlan(raw)!;
+    // Rejected — falls to the (unfiltered, off-catalogue) legacy
+    // reconstruction, never the raw number.
+    expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
+  });
+
   it('carries a per-sail no-route reason across from its <rig>Reason sibling', () => {
     const raw = legacyPlan();
     const result = raw.result as Record<string, unknown>;
