@@ -363,7 +363,9 @@ const DECIMETRE_EPS = 1e-9;
  *
  * WHY NOT THE LITERAL `safetyDepthM + MASK_TOLERANCE_M`: it is not equivalent
  * to that LUT at the boundary byte. MEASURED over the reachable gate domain
- * (`SAFETY_DEPTH_FIELD` is min 2.0 / max 10 / step 0.1) against bytes 1..254,
+ * (2.0 m — the Elan's, via `safetyDepthFieldFor`, NOT `SAFETY_DEPTH_FIELD.min`,
+ * which is the DEFAULT boat's 2.2 — through `SAFETY_DEPTH_FIELD.max` 10, in
+ * 0.1 steps) against bytes 1..254,
  * the naive sum disagrees with the LUT on **18** (gate, byte) pairs — among
  * them a gate of 3.2 m at byte 41 (4.1 m) and 3.7 m at byte 46 — because
  * `3.2 + 0.9` lands a hair above the real 4.1 and `4.1 < 4.1000000000000005`

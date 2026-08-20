@@ -595,7 +595,7 @@ describe('marginalDepthThresholdM / marginalExposureNm (#612)', () => {
   it('the BOUNDARY byte is excluded — a cell charted at exactly gate + T is NOT marginal', () => {
     // The whole reason marginalDepthThresholdM exists rather than a bare
     // `safetyDepthM + MASK_TOLERANCE_M`. `3.2 + 0.9` evaluates to
-    // 4.100000000000001 in IEEE754, so the naive sum calls a 4.1 m cell
+    // 4.1000000000000005 in IEEE754, so the naive sum calls a 4.1 m cell
     // marginal while depthColor.ts's hatch LUT — floor10(4.1 - 0.9) = 3.2,
     // which is not < 3.2 — does not. Pinned as a VALUE here as well as
     // behaviourally in test/maskTolerance.test.ts's cross-artifact twin, so a
@@ -676,7 +676,8 @@ describe('marginalDepthThresholdM / marginalExposureNm (#612)', () => {
   it('capped (byte 255) cells are never marginal, at every reachable gate', () => {
     // Same rule shallowExposureNm already follows: a cap is a floor, not a
     // reading (CLAUDE.md's byte-254 rule). Asserted across the whole
-    // SAFETY_DEPTH_FIELD domain (min 2.0 for the Elan, max 10, step 0.1)
+    // reachable gate domain (2.0 m, the Elan's own minimum via
+    // safetyDepthFieldFor, through SAFETY_DEPTH_FIELD.max 10, in 0.1 steps)
     // rather than at one gate, because depthColor.ts's hatch LUT — the
     // artifact this criterion is twinned against — evaluates byte 255 as
     // 25.4 m and would begin hatching it above a 24.5 m gate. The two agree
