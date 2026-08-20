@@ -205,6 +205,19 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
 
     const summary = page.getByText('Legende', { exact: true });
     await expect(summary).toBeVisible();
+    // #598 review follow-up (touch-target round): a control meant to be
+    // tapped on a boat, one-handed, in motion. A prior draft shrank this to
+    // a 20px row to buy back `.map-stack-tl` height for ScaleBar — MEASURED
+    // sub-minimum (WCAG 2.5.8 Target Size, Minimum, requires >=24x24 CSS
+    // px) and rejected before shipping. Guard both dimensions explicitly so
+    // a future height-budget fix can't silently reintroduce the same
+    // trade-off unnoticed.
+    await expect
+      .poll(async () => {
+        const box = await summary.boundingBox();
+        return box ? Math.min(box.width, box.height) : 0;
+      })
+      .toBeGreaterThanOrEqual(24);
     const details = page.locator('details.depth-legend');
     // Default-collapsed per the maintainer ruling — `open` is a real DOM
     // attribute on a native <details>, so this is a structural check, not a
@@ -232,6 +245,62 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
     // occurrence elsewhere on the page (e.g. the no-route error copy).
     await expect(details).not.toContainText('flaches Wasser');
     await expect(details).not.toContainText('Flachwasser');
+  } finally {
+    server.kill();
+  }
+});
+
+// #598 review follow-up (touch-target round): a SEPARATE defect from the
+// one this whole round set out to fix, found by measuring rather than
+// assuming the fix was complete. `.depth-legend` deliberately sets no
+// `overflow` on itself so it can extend past `.map-stack-tl`'s own computed
+// height unclipped, same as the compass already can (app.css's own
+// comment) — harmless for the compass (a small fixed-size control) but this
+// copy's full basis paragraph is ~450 characters, which at the legend's
+// narrow width wraps into ~30 lines. UNBOUNDED, that measured live at
+// ~1150px tall and spilled through the tab strip into the bottom sheet
+// (`legend.bottom` 1431px against a 667px viewport) — `.map-stack-tl` is
+// Tier 2, that content is lower in the same stacking lineage, so it painted
+// OVER it rather than staying behind it. Fixed with a bounded, scrollable
+// `max-height` on `.depth-legend-body` (app.css, whose own comment carries
+// the full derivation); this pins the fix at the TIGHTEST tested viewport,
+// where the available room is smallest.
+test('depth-hatch legend (#598), once opened, never overlaps the tab strip at the narrowest tested viewport', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto(server.url);
+    await mapReady(page);
+
+    await page.getByText('Legende', { exact: true }).click();
+    const legend = page.locator('.depth-legend');
+    await expect(legend).toHaveJSProperty('open', true);
+
+    const tablist = page.getByRole('tablist');
+    await expect(tablist).toBeVisible();
+
+    // Poll the actual overlap AREA (both axes), not a boolean or a
+    // Y-axis-only comparison — the latter false-positived at wide layout,
+    // where the tab strip lives in a different horizontal column entirely
+    // and a Y-only check would wrongly flag it.
+    await expect
+      .poll(async () => {
+        const lb = await legend.boundingBox();
+        const tb = await tablist.boundingBox();
+        if (!lb || !tb) return -1;
+        const overlapX = Math.max(
+          0,
+          Math.min(lb.x + lb.width, tb.x + tb.width) - Math.max(lb.x, tb.x),
+        );
+        const overlapY = Math.max(
+          0,
+          Math.min(lb.y + lb.height, tb.y + tb.height) - Math.max(lb.y, tb.y),
+        );
+        return overlapX * overlapY;
+      })
+      .toBe(0);
   } finally {
     server.kill();
   }

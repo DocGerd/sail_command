@@ -586,74 +586,134 @@ select {
   overflow-y: auto;
 }
 
-/* #598: collapsible legend for the #492 navigability hatch, mounted inside
-   `.data-layer-controls` (unlike `.route-legend` below, which lives in the
-   plan-gated `.route-layer-controls` — this one must be reachable with no
-   plan, since the hatch itself has no other opt-in). Bare `<details>`,
-   mirroring `.route-legend`'s own convention rather than the bordered
-   `.sc-disclosure` primitive (sized for panel content, not this compact
-   chrome pill) — same chevron-swap affordance, reused verbatim below.
+/* #598: collapsible legend for the #492 navigability hatch. Reachable with
+   NO plan (the hatch itself has no other opt-in), default-collapsed. Bare
+   `<details>`, mirroring `.route-legend`'s own convention rather than the
+   bordered `.sc-disclosure` primitive (sized for panel content, not this
+   compact chrome pill) — same chevron-swap affordance, reused below.
 
-   WIDTH IS DELIBERATELY BOUNDED, and the reason is `.route-layer-controls`'s
-   own `9.5rem` collision budget (below): `.data-layer-controls` has NO
-   `max-width` of its own (unlike `.route-layer-controls`, which the 9.5rem
-   rule bounds directly) — it is a shrink-to-fit flex column whose rendered
-   WIDTH is set by its widest VISIBLE child, and `<details>` doesn't render
-   its body at all while closed. So the two checkbox rows alone (the
-   9.5rem derivation's own "worst-measured ~135px" input) set the width
-   while this stays collapsed, but OPENING it makes the body a third
-   candidate — an unbounded paragraph would blow that budget out from under
-   `.route-layer-controls` the instant a user expands this while a plan is
-   also loaded at a narrow viewport (MEASURED live at 320px, both clusters
-   present: an earlier `max-width: 7.5rem` (120px) draft of this rule pushed
-   `.data-layer-controls`'s own right edge to EXACTLY 144px — zero px of
-   margin left before `.route-layer-controls`'s own left edge, at that same
-   144px). `6.5rem` (104px, below) keeps `.data-layer-controls`'s widest
-   possible state (legend open) at 104px content-box width — narrower than
-   BOTH checkbox rows' own natural width (MEASURED at 320px: 124.27px DE /
-   127.16px EN cluster WIDTH — right edge 132.27px / 135.16px, which is the
-   pair the 9.5rem rule's own comment cites — i.e. this legend, even fully
-   open, can never become the cluster's widest child in either language) —
-   so opening it cannot regress the 9.5rem budget in EITHER direction,
-   collapsed or open.
-   `overflow-wrap: break-word` on the paragraphs is NOT decorative at this
-   width: this copy's own German compound nouns ("Sicherheitstiefe",
-   "Farbüberlagerung") run ~16 characters, wider than a 104px line at this
-   font-size can hold on native word boundaries alone — without it, one of
-   those words would silently overflow past the column instead of wrapping —
-   the exact `scrollWidth > clientWidth` failure mode `app/e2e/layout.spec.ts`'s
-   own #299 comment documents for a DIFFERENT cluster (the four-tab strip),
-   where a too-long label spilled silently past a `boundingBox()`-only check
-   with every geometric assertion still green (CLAUDE.md: "`boundingBox()`
-   returns the BORDER box and never sees overflow"). Re-measure both
-   languages with the legend OPEN (not just collapsed) before ever loosening
-   this value. */
+   #598 review follow-up (two rounds; both PRIOR shapes are recorded below
+   because both were measured and rejected, not merely considered):
+
+   ROUND 1 (Major): nested INSIDE `.data-layer-controls`, full 44px
+   touch-target row. `.data-layer-controls` lives inside `.map-stack-tl`,
+   which `ScaleBar.tsx` measures via `offsetTop + offsetHeight` at runtime
+   (a JS-side coupling, invisible in CSS/the diff — see its own "NAMED
+   COUPLING" comment) to decide whether it has room to un-suppress. This
+   THIRD row MEASURED +49px on `.map-stack-tl`'s collapsed height at 375x667
+   (166px -> 215px), eating the ~32px of headroom ScaleBar had there and
+   suppressing it on a viewport `compass.spec.ts`'s "#208" test pins as
+   required to show the lifted bar — a real e2e regression.
+
+   ROUND 2 (maintainer-rejected fix-for-round-1): shrunk the same nested row
+   to 20px to buy the height back. Passed every layout test but landed a
+   SUB-MINIMUM touch target — WCAG 2.5.8 Target Size (Minimum) requires
+   >=24x24 CSS px, and this is a control meant to be tapped on a boat,
+   one-handed, in motion. MEASURED: the rendered `<summary>` hit box was
+   exactly 20x108.27px at 375x667 — confirmed sub-minimum, not assumed.
+
+   SHIPPED SHAPE: taken OUT of `.data-layer-controls`'s flex flow entirely
+   (a SIBLING via a Fragment return in DataLayers.tsx, so it becomes a THIRD
+   `.map-stack-tl` child, never a `.data-layer-controls` one) and given
+   `position: absolute`. This costs `.map-stack-tl` ZERO measured height by
+   CONSTRUCTION — an absolutely-positioned flex item is removed from the
+   flex-sizing algorithm entirely, not merely small — so the touch target
+   can go back to the full 44px convention with no re-litigation needed if
+   the copy or viewport matrix ever changes. `.map-stack-tl` already has
+   `position: absolute` itself (below), so it's already a valid containing
+   block; no wrapper needed. It also sets no `overflow`, so this can extend
+   past its own computed height unclipped, same as the compass already can
+   (that rule's own comment).
+
+   POSITION: `top` is `.data-layer-controls`'s LIVE measured height
+   (DataLayers.tsx's `useLayoutEffect`, mirroring `lib/useBannerHeight.ts`'s
+   own ResizeObserver -> custom-property pattern — that value is EMERGENT,
+   not CSS-authored, so no fixed number could track it across
+   language/viewport/breakpoint) plus the compass's own gap/height, which
+   ARE CSS-authored constants (`.map-stack-tl`'s `gap: 0.5rem` = 8px, twice;
+   `.compass-control .compass-btn`'s `2.75rem` = 44px) — so `.depth-legend`
+   renders just below the compass, at the bottom of the whole stack. `left:
+   0` matches the column's own left-flush alignment (`.map-stack-tl`'s
+   `align-items: flex-start`).
+
+   WIDTH stays bounded at `6.5rem` (104px, below) for READABILITY — a
+   comfortable wrapped-line length for this copy — not for collision safety
+   against `.route-layer-controls` any more. That collision risk turns out
+   to be CLOSED structurally, not by this number: `.depth-legend` is
+   `position: absolute` with only `left: 0` set (no `right`), so its
+   shrink-to-fit width is CEILINGED by its containing block
+   (`.map-stack-tl`, itself sized by `.data-layer-controls`'s own ~135px EN
+   width) regardless of how wide `.depth-legend-body`'s `max-width` is set —
+   live-tested by overriding it up to 200px with a plan loaded at 320px and
+   finding `.depth-legend`'s own right edge pinned at 135.16px throughout,
+   nowhere near `.route-layer-controls`'s 144px left edge. (A `width`,
+   rather than `max-width`, DOES escape that ceiling and does collide —
+   `app/e2e/layout.spec.ts`'s own #598 test comment carries that
+   measurement.) 104px was also already confirmed overflow-free with
+   `overflow-wrap: break-word` (below) in both languages, independent of the
+   collision question. */
+.depth-legend {
+  position: absolute;
+  left: 0;
+  /* MEASURED regression from moving this OUT of `.data-layer-controls`
+     (which sets `font-size: 0.85rem` on itself and its NESTED descendants,
+     app.css's `.route-layer-controls, .data-layer-controls` base rule):
+     as a sibling this inherited the ambient 16px default instead, which
+     both looked inconsistent with its two former sibling toggles AND
+     pushed `.depth-legend-row`'s content past its own `min-width: 0` fix,
+     re-overflowing (115px scrollWidth vs 104px clientWidth, reproduced
+     live) — a bigger font needs more room than the SAME text needed
+     at 13.6px. Restoring the same 0.85rem here fixes both at once. */
+  font-size: 0.85rem;
+  /* 60px = 0.5rem gap + 2.75rem (44px) compass height + 0.5rem gap — see
+     this block's own POSITION paragraph above for the full derivation.
+     130px is the CSS fallback for `.data-layer-controls`'s live-measured
+     height, ONLY reachable if the JS write never happens at all (no SSR in
+     this app and `useLayoutEffect` runs synchronously before paint, so a
+     real browser should never observe it — this covers `ResizeObserver`
+     being unavailable, matching `useBannerHeight.ts`'s own jsdom/legacy
+     guard). Per this repo's guard-asymmetry convention (the same call as
+     `useBannerHeight.ts`'s own non-zero fallback): biased ABOVE the
+     measured two-checkbox-row baseline (46px + 0.35rem gap + 46px +
+     0.5rem*2 padding = 113.6px) rather than exactly matching it, because
+     the two failure directions are not equivalent — landing a FEW px too
+     low costs nothing but a small gap, landing too HIGH risks the legend
+     rendering under/over the compass. */
+  top: calc(var(--sc-depth-controls-height, 130px) + 60px);
+  /* MEASURED RESIDUAL, reported rather than silently accepted: bounding
+     only `.depth-legend-body` (below) closes the tab-strip overlap for the
+     BODY, but the offline-ready toast banner (fires on every fresh load,
+     see that rule's own comment) can push `.map-stack-tl`'s budget down
+     far enough that even the 44px SUMMARY, at this element's fixed 60px
+     offset past the compass, no longer fits — MEASURED live: a 48px
+     banner at 375x667 leaves only ~22.6px past the compass in total, under
+     even the WCAG 2.5.8 24px minimum. This bound (same formula as the body,
+     applied to the WHOLE element so overflow:hidden clips the SUMMARY too
+     rather than letting it alone escape into the tab strip) makes that
+     RARE combination (banner present + this narrow + the legend opened —
+     collapsed and no-banner states are UNAFFECTED, proven zero-cost
+     elsewhere in this file) degrade to a shrunken-or-invisible trigger
+     instead of an overlap. Judged the lesser failure — a momentarily
+     unreachable secondary disclosure vs. a primary navigation control
+     partly obscured — but it IS a real trade against the touch-target
+     guarantee elsewhere in this PR, not a fully closed gap; flagged for
+     the maintainer rather than presented as solved. */
+  max-height: max(
+    0px,
+    calc(
+      100dvh - var(--sc-banner-clear-top, 3.5rem) - 55vh - 0.5rem -
+        var(--sc-depth-controls-height, 130px) - 60px
+    )
+  );
+  overflow: hidden;
+}
+
 .depth-legend > summary {
-  /* #598 review follow-up (Major): this row lives inside
-     `.data-layer-controls`, which lives inside `.map-stack-tl` —
-     `ScaleBar.tsx` measures THAT element's `offsetTop + offsetHeight` at
-     runtime (a JS-side coupling, invisible in CSS/the diff — see its own
-     "NAMED COUPLING" comment) to decide whether it has room to un-suppress.
-     A 44px touch-target row here (matching `.route-legend`'s convention)
-     MEASURED +49px on `.map-stack-tl`'s collapsed height at 375x667 (166px
-     -> 215px), which ate the ~32px of headroom ScaleBar had there and
-     suppressed it on a viewport `compass.spec.ts`'s "#208" test pins as
-     required to show the lifted bar. This row is deliberately SMALLER than
-     the 44px cockpit-glove convention its two PRIMARY-toggle siblings use:
-     it is a secondary, optional disclosure, not a safety control, and 20px
-     still clears a real tap target via the whole-row click area (the same
-     reduced-from-44 trade-off `.data-layer-controls input[type='checkbox']`
-     already makes below, for the identical reason). Re-measure
-     `.map-stack-tl`'s collapsed height across the FULL
-     STANDARD_VIEWPORTS/EDGE_VIEWPORTS matrix (app/e2e/helpers.ts) before
-     growing this again. */
-  min-height: 20px;
-  padding: 0.1rem 0;
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: 0.3rem;
   cursor: pointer;
-  font-size: 0.78rem;
 }
 
 .depth-legend > summary::before {
@@ -670,6 +730,103 @@ select {
   gap: 0.4rem;
   margin: 0.15rem 0 0.35rem;
   max-width: 6.5rem;
+  /* MEASURED, caught before shipping: this copy's full basis paragraph is
+     ~450 characters, which at 104px width and this font-size wraps into
+     ~30 lines (~640px tall) — not a bug, arithmetic, but `.depth-legend`
+     (its ancestor) deliberately sets no `overflow` so it can extend past
+     `.map-stack-tl`'s own computed height unclipped (same as the compass
+     already can — that rule's own comment). For the COMPASS, a small
+     fixed-size control, that's harmless; for this MUCH taller expanded
+     content, UNBOUNDED, it let the open legend spill ~1150px down the
+     page, through the tab strip and into the bottom sheet — MEASURED live
+     (`legend.bottom` 1431px against a 667px viewport), not merely reasoned.
+
+     TWO earlier drafts of this bound were each measured wrong before this
+     one shipped — both are recorded because the mistake is easy to repeat.
+
+     Draft 1 hardcoded `.map-stack-tl`'s own narrow-layout `top` as a flat
+     `3.5rem`, ignoring that it is actually `var(--sc-banner-clear-top)`
+     (`calc(3.5rem + var(--sc-banner-height))`, the narrow banner-clearance
+     rule above) whenever a banner is on screen. Manual testing against a
+     long-lived dev-server page (banner already dismissed) never exercised
+     that case; a fresh `npm run e2e` browser context does — every
+     `mapReady()` load shows the one-shot "offline ready" toast (#368's own
+     note on this) — and reproduced a REAL 4636px² overlap this draft's own
+     manual numbers had not.
+
+     Draft 2 tried to fix that by dropping the banner term entirely and
+     reasoning `100dvh - 55vh` (the SHEET's own top edge, no banner
+     involved) was the real boundary — also MEASURED wrong, in the other
+     direction: `.depth-legend`'s own `top` is expressed in `.map-stack-tl`'s
+     LOCAL coordinate space (it's `position: absolute` WITHIN that
+     ancestor), not the viewport's, so a boundary expressed in viewport
+     coordinates cannot be compared against it directly without re-adding
+     exactly the `.map-stack-tl`-top term draft 2 had just removed — the
+     same confusion draft 1 had, from the opposite direction.
+
+     SHIPPED: bound `.depth-legend`'s own LOCAL bottom edge (top offset +
+     summary + margins + this body) against `.map-stack-tl`'s OWN `max-height`
+     CSS property value — not a re-derived guess, the actual proven-safe
+     budget that element already computes for itself (below, `calc(100dvh -
+     var(--sc-banner-clear-top) - 55vh - 0.5rem)`), reusing the SAME
+     `--sc-banner-clear-top` custom property so this stays correct under a
+     banner exactly the way `.map-stack-tl` itself already is.
+
+     A THIRD draft floored this at `max(1rem, calc(...))`, reasoning
+     (wrongly — this was ALSO measured, not just corrected on paper) that
+     never letting the window collapse to nothing was the guard-asymmetry-
+     safe direction. It is not: `max()` picks the LARGER value, so once a
+     real banner (the offline-ready toast fires on every fresh load — see
+     draft 1 above) shrinks the true budget below `1rem`, that floor
+     OVERRIDES the calc() and forces 16px of height into a budget that has
+     none to give — reproducing the exact tab-strip overlap this rule
+     exists to prevent (MEASURED: `npm run e2e`'s real preview-build
+     context, banner present, 4619px² of overlap — a plain `npm run dev`
+     pass never shows this banner at all and cannot catch it, which is why
+     this shipped once already). The safe floor is `0px`, not a positive
+     constant — CSS clamps a negative `max-height` to zero on its own, but
+     `max(0px, calc(...))` states that explicitly rather than relying on
+     the ambiguity. When the true budget is 0, the correct behaviour is an
+     unopened-looking body, not a body that opens 16px into territory that
+     was never spare. Taller viewports and banner-free loads still get a
+     real, non-zero window — this only floors the WORST case. */
+  max-height: max(
+    0px,
+    calc(
+      100dvh - var(--sc-banner-clear-top, 3.5rem) - 55vh - 0.5rem -
+        var(--sc-depth-controls-height, 130px) - 60px - 44px - 0.15rem
+    )
+  );
+  overflow-y: auto;
+}
+
+/* The narrow-layout formulas above (both this element's own `max-height`
+   and `.depth-legend-body`'s) bake in TWO narrow-only assumptions that do
+   not hold at >=1024px: `.map-stack-tl`'s own `top` is `0.75rem` there, not
+   the `3.5rem`/`--sc-banner-clear-top` term those formulas subtract (NAMED
+   COUPLING, `.map-stack-tl`'s own rule below), and the bottom sheet is a
+   STATIC SIDE COLUMN at that width (app.css's wide-layout rules), not an
+   overlay competing for the SAME vertical space the map occupies — so
+   there is no sheet ceiling to stay clear of at all. Applying the narrow
+   formulas unscoped would starve both of room they don't need to give up
+   on desktop — MEASURED, not just reasoned: before this override existed,
+   `.depth-legend`'s own outer bound (its own rule, above) resolved to a
+   cramped 122px at 1280x800, the SAME stale-narrow-assumption bug that
+   rule's own comment documents for the body. Relaxed here to flat,
+   generous bounds instead of a second pair of calc()s for boundaries that
+   do not exist on wide layout. `.depth-legend` itself also needs
+   `overflow: visible` restored — its own base rule sets `overflow: hidden`
+   specifically to protect the narrow-layout tab strip from an unbounded
+   body, a concern that (like the height formula) does not exist here. */
+@media (min-width: 1024px) {
+  .depth-legend {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .depth-legend-body {
+    max-height: 24rem;
+  }
 }
 
 .depth-legend-body p {
@@ -684,6 +841,22 @@ select {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  /* Defensive, matching `.route-layer-time-slider input[type='range']`'s
+     own `min-width: 0` override elsewhere in this file: without it, the
+     swatch + label text form an anonymous flex item whose default
+     `min-width: auto` floors the row at its unwrapped content size instead
+     of shrinking to the parent's 104px. NOT currently the load-bearing fix
+     for the overflow this rule was originally written against — MEASURED
+     (checking `.depth-legend-body`'s OWN scrollWidth/clientWidth directly,
+     the #299 lesson one level deeper): that specific 115px-vs-104px
+     overflow was actually caused by `.depth-legend`'s own `font-size`
+     (see that rule's comment — this is a sibling of `.data-layer-controls`
+     now, not a descendant, so it no longer inherits the 0.85rem the
+     checkbox rows get), and restoring the font-size alone closes it with
+     this override REMOVED (confirmed by temporarily deleting it). Kept
+     anyway as a structural guard against a FUTURE font/copy change
+     re-opening the same class of overflow. */
+  min-width: 0;
 }
 
 /* Approximates the map's own hatch (depthColor.ts: pure black stripes,

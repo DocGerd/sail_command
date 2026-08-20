@@ -783,18 +783,40 @@ test('#277: .data-layer-controls and .route-layer-controls never intersect at 32
 
 // #598: the same #277 scenario, but with the NEW depth-hatch legend OPENED
 // too — the co-occurrence #277 alone can't see, since it never interacts
-// with either cluster's own collapsible content. `.data-layer-controls` has
-// NO `max-width` of its own (unlike `.route-layer-controls`, bounded
-// directly by the `9.5rem` rule in app.css) — it's a shrink-to-fit flex
-// column, so an unbounded legend body would grow it past the #277 budget
-// the instant a user opens it while a plan is loaded at a narrow viewport.
-// app.css's `.depth-legend-body` rule bounds this deliberately (its own
-// comment carries the live measurement this test pins); this is the
-// regression guard for that bound, in BOTH directions — overlap (the #277
-// shape) AND silent overflow (`boundingBox()` cannot see the latter at all
-// — CLAUDE.md's own "`boundingBox()` returns the BORDER box and never sees
-// overflow" lesson, #299 — so `scrollWidth`/`clientWidth` is the
-// discriminating assertion here, same as that lesson's own fix).
+// with either cluster's own collapsible content.
+//
+// #598 review follow-up (touch-target round): `.depth-legend` is now a
+// SIBLING of `.data-layer-controls`, not a descendant (app.css/
+// DataLayers.tsx's own comments carry the full rationale — moved out of the
+// flex flow so it costs `.map-stack-tl` zero measured height, which is what
+// let the touch target go back to a full 44px). That moves WHICH element is
+// this test's actual moving part: `.data-layer-controls` no longer grows at
+// all when the legend opens (the #277 pin already covers its own, unchanged
+// collapsed state), so the overflow/clearance checks below target
+// `.depth-legend`/`.depth-legend-body` — the element that actually changes
+// size and position — not `.data-layer-controls`.
+//
+// Both assertion SHAPES from the original Major 2 fix are preserved: silent
+// overflow (`boundingBox()` cannot see it at all — CLAUDE.md's own
+// "`boundingBox()` returns the BORDER box and never sees overflow" lesson,
+// #299) via `scrollWidth`/`clientWidth`, and POSITIVE clearance rather than
+// mere non-intersection. What that clearance check actually discriminates
+// changed with the restructure, MEASURED not assumed: `.depth-legend` is
+// `position: absolute` with only `left: 0` set (no `right`), so its
+// shrink-to-fit width is CEILINGED by its containing block
+// (`.map-stack-tl`, itself sized by `.data-layer-controls`'s own ~135px EN
+// width) — live-tested by overriding `.depth-legend-body`'s `max-width` up
+// to 200px at this exact scenario and finding `.depth-legend`'s own right
+// edge pinned at 135.16px regardless, never reaching anywhere near
+// `.route-layer-controls`'s 144px. So an ordinary `max-width` bump on the
+// body (the shape Major 2's ORIGINAL finding was about, on the
+// pre-restructure nested architecture) can no longer reopen this
+// collision — that near-miss is now structurally closed, not merely
+// narrowed. The guard still has teeth against a DIFFERENT mutation: a
+// forced `width` (escaping the shrink-to-fit ceiling instead of bounding
+// within it) reds it with a real 4940px² overlap, confirmed live. Kept as a
+// backstop against that shape and against any future change to
+// `.depth-legend`'s own `left`/positioning, not as a near-miss catcher.
 test('#598: opening the depth-hatch legend does not overflow or collide with .route-layer-controls at 320px (EN)', async ({
   page,
 }) => {
@@ -825,42 +847,45 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
     const routeControls = page.locator('.route-layer-controls');
     await expect(routeControls).toBeVisible();
 
-    const dataControls = page.locator('.data-layer-controls');
-    // Open the #598 legend — the state #277 never reaches. Scoped to
-    // `.data-layer-controls`: RouteLegend's OWN "Legend" summary is also on
-    // the page now that a plan is loaded, and an unscoped locator would hit
-    // Playwright's strict-mode ambiguity (two matches) instead of clicking
-    // the right one.
-    await dataControls.getByText('Legend', { exact: true }).click();
-    await expect(dataControls.locator('details.depth-legend')).toHaveJSProperty('open', true);
+    // `.depth-legend` is uniquely classed and no longer nested inside
+    // `.data-layer-controls`, so this needs no text-based disambiguation
+    // against RouteLegend's own "Legend" summary (unlike the old
+    // `dataControls.getByText('Legend', { exact: true })` form).
+    const depthLegend = page.locator('.depth-legend');
+    await depthLegend.locator('> summary').click();
+    await expect(depthLegend).toHaveJSProperty('open', true);
 
-    // THE discriminating assertion for silent overflow — see this block's
-    // own header comment for why `boundingBox()` alone cannot catch it.
+    // Silent-overflow check, now on the element that actually holds the
+    // wrapped copy.
+    const depthLegendBody = page.locator('.depth-legend-body');
     await expect
-      .poll(() => dataControls.evaluate((el) => el.scrollWidth - el.clientWidth), {
+      .poll(() => depthLegendBody.evaluate((el) => el.scrollWidth - el.clientWidth), {
         timeout: 5_000,
       })
       .toBeLessThanOrEqual(0);
 
-    // Same overlap check as #277, now with the wider (legend-open) state.
+    // `.data-layer-controls` itself: unaffected by the legend opening under
+    // the current architecture, but kept as a residual regression guard —
+    // this is exactly the #277 pin's own shape, cheap to re-assert here.
+    const dataControls = page.locator('.data-layer-controls');
     await expect
       .poll(async () => overlapArea(await box(dataControls), await box(routeControls)), {
         timeout: 10_000,
       })
       .toBe(0);
 
-    // PR #625 self-review Major 2, MEASURED not reasoned: `overlapArea ===
-    // 0` alone does NOT discriminate — restoring the rejected
-    // `max-width: 7.5rem` draft on `.depth-legend-body` (app.css) lands both
-    // edges on EXACTLY 144px at this viewport, so the two clusters TOUCH
-    // without intersecting and the check above stays green (`1 passed`,
-    // reviewer-reproduced). Requiring POSITIVE clearance is what actually
-    // reds on that draft while staying comfortably green on the shipped
-    // 6.5rem bound (11.73px DE / 8.84px EN of measured clearance).
+    // Non-intersection alone does not discriminate a near-miss (the
+    // original Major 2 finding, on the pre-restructure architecture) — keep
+    // requiring POSITIVE clearance, now for `.depth-legend` itself.
+    await expect
+      .poll(async () => overlapArea(await box(depthLegend), await box(routeControls)), {
+        timeout: 10_000,
+      })
+      .toBe(0);
     await expect
       .poll(
         async () => {
-          const d = await box(dataControls);
+          const d = await box(depthLegend);
           const r = await box(routeControls);
           return r.x - (d.x + d.width);
         },

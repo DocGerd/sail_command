@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Popup } from 'maplibre-gl';
 import type {
   CanvasSource,
@@ -700,27 +700,104 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     };
   }, [map, styleEpoch, assets]);
 
+  // #598 review follow-up: publishes `.data-layer-controls`'s LIVE rendered
+  // height as a CSS custom property, so `.depth-legend` (a SIBLING, not a
+  // child — see the return below) can be positioned just below it without
+  // contributing to ITS height. Mirrors lib/useBannerHeight.ts's own
+  // established pattern (ResizeObserver -> `document.documentElement.style.
+  // setProperty`) for the identical reason: `.data-layer-controls`'s
+  // rendered height is EMERGENT, not CSS-authored — it comes from the
+  // global `input, select { min-height: 40px }` rule plus font metrics plus
+  // the narrow+short `flex-direction: row` variant (app.css) — no single
+  // number describes it across every language/viewport/breakpoint, so only
+  // a live measurement can position something after it without guessing.
+  // The compass's OWN height, by contrast, IS a stable CSS-authored
+  // constant (2.75rem/44px, `.compass-control .compass-btn`) — only this
+  // one value needs measuring, not two.
+  //
+  // No `useState`/return value needed (unlike useBannerHeight): nothing in
+  // THIS component's own render depends on the number, only the DOM side
+  // effect does — no other call site exists today, so it isn't exported.
+  //
+  // `useLayoutEffect`, not `useEffect`: matches useBannerHeight's own
+  // reasoning (PR #382 review) — the value affects `.depth-legend`'s
+  // position from the very first paint, and a plain `useEffect` fires AFTER
+  // paint, leaving a frame where the CSS fallback below governs.
+  useLayoutEffect(() => {
+    if (typeof ResizeObserver !== 'function') return; // jsdom guard, matches useBannerHeight.ts
+    const el = document.querySelector<HTMLElement>('.data-layer-controls');
+    if (!el) return;
+    // MEASURED bug caught before shipping: `ResizeObserverEntry.contentRect`
+    // reports the CONTENT box (padding excluded) — `.data-layer-controls`
+    // has `padding: 0.5rem` (16px total), so reading `contentRect.height`
+    // under-measured by exactly that 16px (97.59px vs the real 113.59px
+    // border-box height, confirmed live). `useBannerHeight.ts` reads the
+    // same `contentRect` field safely only because `.banner-area` happens
+    // to carry zero padding — that isn't a property of the TECHNIQUE, it's
+    // a property of THAT element, so it doesn't generalise here. Read
+    // `getBoundingClientRect().height` (border-box, matching `offsetHeight`
+    // and everything `.depth-legend`'s `top` calc needs to clear) on every
+    // callback instead of trusting the entry.
+    const write = () => {
+      document.documentElement.style.setProperty(
+        '--sc-depth-controls-height',
+        `${el.getBoundingClientRect().height}px`,
+      );
+    };
+    const ro = new ResizeObserver(write);
+    ro.observe(el);
+    // Same reasoning as useBannerHeight.ts's own first-callback comment: the
+    // initial ResizeObserver callback is queued for a later frame, not
+    // delivered synchronously, so measure once immediately too.
+    write();
+    return () => ro.disconnect();
+  }, []);
+
   // Always-mounted control cluster — top-LEFT of the map, so it can never
   // collide with RouteLayer's plan-gated cluster at the top-right (app.css).
   return (
-    <div className="data-layer-controls">
-      <label>
-        <input
-          type="checkbox"
-          checked={depthVisible}
-          onChange={(e) => setDepthVisible(e.target.checked)}
-        />
-        {t('map.depth.toggle')}
-      </label>
-      {/* #598: legend for the #492 navigability hatch — mounted here, not in
-          RouteLegend.tsx/.route-legend, because that legend is plan-gated
-          (inside .route-layer-controls) while the hatch is on by default
-          with NO plan (depthVisible defaults true). Follows .route-legend's
-          own bare <details>/<summary> convention (app.css) rather than the
-          bordered .sc-disclosure primitive, which is sized for panel content
-          — this is a compact map-chrome pill, same family as the row above.
-          Default-collapsed per the maintainer ruling on #598; covers the
-          hatch SYMBOL only, never the absolute depth-ramp colours. */}
+    <>
+      <div className="data-layer-controls">
+        <label>
+          <input
+            type="checkbox"
+            checked={depthVisible}
+            onChange={(e) => setDepthVisible(e.target.checked)}
+          />
+          {t('map.depth.toggle')}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={seamarksVisible}
+            onChange={(e) => setSeamarksVisible(e.target.checked)}
+          />
+          {t('map.seamarks.toggle')}
+        </label>
+      </div>
+      {/* #598 review follow-up: a SIBLING of `.data-layer-controls`, not a
+          child of it — a Fragment return with two roots, so App.tsx's
+          `<div className="map-stack-tl"><DataLayers/><CompassControl/>
+          </div>` places this as a THIRD `.map-stack-tl` child. Two prior
+          shapes were tried and rejected, in order:
+            1. Nested inside `.data-layer-controls`, full 44px touch target
+               — pushed `.map-stack-tl`'s own measured height +49px at
+               375x667 (166px -> 215px), suppressing ScaleBar (a REAL e2e
+               regression, `compass.spec.ts`'s #208 test).
+            2. Nested, shrunk to a 20px row to buy back that height — passed
+               the layout tests but landed a SUB-MINIMUM touch target
+               (WCAG 2.5.8 requires >=24x24 CSS px; this is a control meant
+               to be tapped on a boat, one-handed, in motion).
+          This third shape spends neither: taken OUT of
+          `.data-layer-controls`'s flex flow entirely (so it costs
+          `.map-stack-tl` ZERO measured height, structurally, not by a tuned
+          number) via `position: absolute` in app.css, positioned BELOW the
+          compass. `.map-stack-tl` already has `position: absolute` itself
+          (app.css) — already a valid containing block, no extra wrapper —
+          and sets no `overflow`, so an over-height legend can extend past
+          its own box unclipped, same as the compass already can (that
+          rule's own comment). Reading order stays sensible either way:
+          toggles, then this legend, then the compass. */}
       <details className="depth-legend">
         <summary>{t('map.depth.legend.title')}</summary>
         <div className="depth-legend-body">
@@ -732,14 +809,6 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
           <p>{t('map.depth.legend.caveat')}</p>
         </div>
       </details>
-      <label>
-        <input
-          type="checkbox"
-          checked={seamarksVisible}
-          onChange={(e) => setSeamarksVisible(e.target.checked)}
-        />
-        {t('map.seamarks.toggle')}
-      </label>
-    </div>
+    </>
   );
 }
