@@ -237,9 +237,13 @@ describe('hatchBandForZoom (#599)', () => {
     // (COUNT of indices, sMax - sMin + 1 — not the span; the bound is tight
     // and observed saturated at exactly `gap`). 12 is the largest gap at
     // which no marginal region of >=100 cells goes unpainted anywhere in the
-    // real mask, across eight gates (2.2/2.5/2.8/3.0/3.5/4.0/5.0/10) x the
-    // three shipped bands. Blanking is phase-dependent, not a function of
-    // the gap alone — see depthColor.ts's SAFETY note for both.
+    // real mask at the five INTEGER-zoom bands, across eight gates
+    // (2.2/2.5/2.8/3.0/3.5/4.0/5.0/10) — 40 clean combinations. It is NOT
+    // sufficient at fractional-zoom bands: 14 of the full 120-combination
+    // sweep still blank a >=100-cell region. Blanking is phase-dependent,
+    // not a function of the gap alone — see depthColor.ts's SAFETY note for
+    // that known residual. This test pins the CAP, not the absence of the
+    // residual.
     for (let z = 0; z <= 22; z += 0.5) {
       const { periodCells, stripeCells } = hatchBandForZoom(z);
       expect(periodCells - stripeCells).toBeLessThanOrEqual(12);

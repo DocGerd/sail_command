@@ -221,22 +221,28 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // Measured over the real committed mask (2200x2400) by labelling every
 // 4-connected marginal region and counting those that receive zero painted
 // cells, across EIGHT gates (2.2 / 2.5 / 2.8 / 3.0 / 3.5 / 4.0 / 5.0 / 10 m)
-// x the three real shipped bands — 24 combinations, independently
-// re-measured from a clean reimplementation:
+// x EVERY band this function can select over z0..z22 — 15 of them, because
+// FRACTIONAL zooms are reachable by any pinch/wheel gesture and each
+// integer stripe count from 15 down to 1 occurs. 120 combinations:
 //
-//   gap 12 -> 0 regions of >=100 cells blank in ALL 24 combinations.
-//             Largest blank region of ANY size: 68 cells, so the >=100
-//             threshold keeps ~32% margin — not a knife-edge.
 //   gap 15 -> blanks a >=100-cell region at gates 2.8, 3.0, 3.5, 4.0 AND
 //             5.0 (not at 2.2 or 10).
+//   gap 12 -> blanks a >=100-cell region in 14 of the 120. Largest blank
+//             region of ANY size: 115 cells.
 //
-// NUANCE, stated because the obvious reading is wrong: blanking is not a
-// function of the gap ALONE, it is phase-dependent — it depends on the
-// stripe too, and so on the whole (period, stripe) pair. A stripe-1/gap-15
-// probe blanks only at gate 2.2, and a stripe-5/gap-15 probe never blanks
-// at all. The gap is the right knob to CAP because it bounds the guarantee
-// above, but "gap <= 12" is not by itself a proof for an arbitrary band —
-// the 24-combination sweep is over the bands actually shipped.
+// KNOWN RESIDUAL, stated plainly rather than rounded off: the cap is
+// NECESSARY BUT NOT SUFFICIENT. Blanking is PHASE-dependent — a function of
+// the whole (period, stripe) pair, not of the gap alone — so bounding the
+// gap bounds the guarantee above without eliminating the failure. The 14
+// failures are bands 24/12, 23/11 and 18/6 (gates 2.8-4.0) plus 25/13 and
+// 21/9 (gate 2.2); every one of them sits at a FRACTIONAL zoom.
+//
+// The five bands reachable at INTEGER zooms — 27/15, 20/8, 16/4, 8/2, 4/1 —
+// are clean in all 40 of their gate x band combinations. Quantising the
+// zoom before selecting a band would therefore close this residual by
+// construction, and would also tighten the achieved on-screen stripe range
+// (no band would be entered part-way through). Not applied here pending a
+// maintainer decision, since it changes shipped rendering behaviour.
 //
 // Hence the cap is 12 cells (~560 m), the largest gap at which no marginal
 // region of >=100 cells (~0.2 km2) can disappear at any gate tested. The
