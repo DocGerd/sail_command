@@ -74,6 +74,20 @@ jobs:
   # outweighs a few extra seconds on lockfile-changing PRs only.
   e2e:
     runs-on: ubuntu-latest
+    # #605: with no cap this job inherited GitHub's 360-minute default, so a
+    # wedged `npx playwright install --with-deps chromium` looked "healthy"
+    # for hours instead of failing fast (32/54/65/90 min on PR runs, ~5h15m
+    # once on a develop push - `ci.yml`'s push-runs-queue-behind-same-ref
+    # concurrency group means one such wedge blocks every later develop push
+    # too). Re-measured 2026-08-20 via the Actions API over 8 real (non-
+    # docs-only-skip) `e2e` job runs on develop pushes and PRs: 5m53s-13m22s
+    # (run 32311697344 shortest, run 32303526023 longest - that longest run's
+    # own `playwright install` step alone took 6m32s, a healthy-but-slow
+    # install, not a wedge). 30 min clears that measured worst case by >2x
+    # while still converting a silent multi-hour wedge into a fast, obviously
+    # -retryable red (CLAUDE.md: "tens of minutes, not hours") - see the
+    # retry runbook in this file's own PWA/E2E/deploy section of CLAUDE.md.
+    timeout-minutes: 30
     defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
