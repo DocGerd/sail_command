@@ -120,7 +120,7 @@ const FOCK_RESULT: RigResult = {
 // over the genoa/fock fields. Now that RigResult per sail lives in a `sails`
 // list, overrides target genoa specifically (the only rig any test here
 // overrides) — `'genoa' in overrides` distinguishes "not passed" (keep the
-// default GENOA_RESULT) from an explicit `null` (line 191 below).
+// default GENOA_RESULT) from an explicit `null` (the `genoa: null` case below).
 function makePlan(
   overrides: { genoa?: RigResult | null; genoaReason?: NoRouteReason | null } = {},
   windGrid?: WindGrid,
