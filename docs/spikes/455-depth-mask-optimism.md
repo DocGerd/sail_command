@@ -656,3 +656,459 @@ Deltas at T = 0.9 against the shipped mask:
   blocking prerequisite in §5.2, not as a follow-up.
 - **No backend, offline-first** — a pipeline constant change; nothing moves to
   runtime.
+
+---
+
+## 9. ADDENDUM (2026-08-20) — the route-level trip rate
+
+- **Issue:** #455, rescoped by the maintainer on 2026-08-20 to the
+  **measurement + threshold-ruling half**. The implementation half — mounting
+  the disclosure stack on routes that never relax — is **#612**, explicitly
+  gated on this section.
+- **Status:** measurement complete; **decision open** (§9.8). This addendum
+  contains no ruling and no recommendation.
+- **Appended, not merged.** §§0–8 above were written on 2026-08-09 against the
+  **pre-#476** mask and are left byte-unchanged. §9.2 says which of their
+  figures no longer describe the committed artifact.
+
+### 9.1 The question, and why the existing number could not answer it
+
+#455's blocker was one unmeasured precondition. The figure on record —
+**2.47% of navigable cells** — is a **CELL** rate. Whether a route-level notice
+keyed on those cells would be a *warning* or *wallpaper* is a property of
+**ROUTES**, and routes are not random samples of cells: they are the solver's
+own shortest paths through them, so the two rates are free to differ in either
+direction by any amount.
+
+**These two rates are never differenced anywhere in this document, and must
+not be.** They measure different subjects over different populations. A ratio
+between them would be meaningless arithmetic.
+
+The criterion measured here is the one the issue's 2026-08-18 comment named as
+sound — the T-bound one, using the existing shipped helper:
+
+```
+shallowExposureNm(legs, mask, settings.safetyDepthM + MASK_TOLERANCE_M) > 0
+```
+
+**Why `gate + T` and not `gate`.** `cellNavigable` requires `depth >= gate`, so
+`segmentShallowestBelow(a, b, gate)` finds nothing on any solver-validated
+segment — the naive repair is *vacuous by construction*. This addendum measures
+that vacuity rather than asserting it: see the control in §9.4.
+
+**What the number is a bound between.** Because `build_mask.py` takes bilinear
+over the conservative `Resampling.max` reading only where the two agree within
+`T`, every cell satisfies `depth_blend <= depth_max + T`, hence
+`depth_max >= depth_blend - T`. So `shipped < gate + T` is exactly the set
+whose **cautious lower bound** can sit under the gate. It is a bound between
+**two readings of one EMODnet product** — never a bound on chart truth, and
+never a clearance. The real seabed may be shallower than either reading.
+
+### 9.2 SUPERSESSION — figures in this file and in #455 that are stale
+
+The issue title, the issue body and parts of §§2.2–2.4 above predate **PR #476**
+(`TOLERANCE_M` 2.0 → 0.9). They are **not** descriptions of the committed mask.
+
+| Stale claim | Where | Status |
+|---|---|---|
+| `TOLERANCE_M = 2.0` | issue body, §2.1 | **Superseded** — `pipeline/build_mask.py` ships **0.9** |
+| "up to **2.0 m** on **48%** of water cells" | issue **title** | **Superseded twice**: the 2.0 m bound is now 0.9 m, and §2.4 already ruled 48.35% the wrong *basis* |
+| **924** cells below the 2.1 m draft | issue body, §2.3 | **Superseded** — **0** after #476 |
+| **14,715** gate-crossers | issue body, §2.3 | **Superseded** — **10,746** after #476 |
+| "routes cross sub-safety-depth water with **NO warning at all**" | issue **title** | **Superseded** — see §9.3; #492 shipped a per-cell cue, default on |
+| Water **2,646,047** / navigable-at-3.0 **2,473,845** | §2.2, §2.3 | **Superseded** — re-derived below as **2,639,957** / **2,470,330** |
+| Overstated fraction **45.08%** (1,192,923 / 2,646,047) | §2.4 | **Basis-correct but pre-#476.** It describes the T=2.0 artifact. NOT re-derived here — see the honesty note below |
+
+**Re-derived here from the committed `mask.bin`** (`node app/sweep/tripRate.mjs
+--mask-cells`; basis: the encoded byte decoded as `src/lib/mask.ts` decodes it —
+`0` = land/unsurveyed/drying, `255` = 25.4 m, else `byte/10`; "water" = byte ≠ 0):
+
+| Quantity | Measured on the committed mask |
+|---|---|
+| Grid | 2400 × 2200 = **5,280,000** cells |
+| Byte 0 (land **or** unsurveyed **or** drying — indistinguishable) | **2,640,043** |
+| Water (byte ≠ 0) | **2,639,957** (49.9992% of grid) |
+| Byte 254 / byte 255 | **0** / **306,766** |
+| Navigable at 3.0 m (`d >= 3.0`) | **2,470,330** |
+| T-bound cells at 3.0 m (`3.0 <= d < 3.9`) | **61,088** = **2.4729%** of navigable |
+
+**Internal corroboration that this is the post-#476 artifact:** §8 above
+predicted the tightening would cost **3,515** cells their navigability.
+Measured: 2,473,845 − 2,470,330 = **3,515 exactly**. The prediction and the
+shipped artifact agree to the cell.
+
+**The 2.47% figure reproduces exactly** (61,088 / 2,470,330), so the issue's
+2026-08-18 comment is confirmed rather than merely carried forward.
+
+**Honesty note on what was NOT re-derived.** The **10,746** true
+conservative-vs-shipped crossers and the post-#476 overstatement fraction both
+require recomputing a pure-`Resampling.max` build from
+`pipeline/data-src/emodnet_dtm.tif` with rasterio — that cache is gitignored and
+is not present in the worktree this addendum was written in. Those two figures
+are therefore **cited, not re-derived**, and are quoted from #455's 2026-08-18
+comment. Note their relationship: the **61,088-cell set is a strict SUPERSET of
+the 10,746-cell set** — every true crosser has `shipped < gate + T`, but a cell
+in that band whose cautious reading happens not to be lower is counted by the
+shipped-byte predicate and not by the conservative one. The ~5.7× ratio between
+the two counts is consistent with that containment and is not evidence of a
+discrepancy.
+
+### 9.3 NARROWING — #492 already ships a per-cell cue at this exact criterion
+
+**The issue title's "with NO warning at all" is out of date, and the maintainer
+should not rule on that description.**
+
+`app/src/lib/depthColor.ts`'s `buildNavigabilityHatchImageData` builds its LUT as
+
+```
+marginal[b] = cautiousDepthLowerBoundM(byteToDepthM(b)) < safetyDepthM
+```
+
+and `cautiousDepthLowerBoundM(d) = d - MASK_TOLERANCE_M` (floored at 0.1 m,
+clamped at 0). So `d - T < gate` ⟺ **`d < gate + T`** — **algebraically the
+identical criterion** measured in this addendum, evaluated per cell instead of
+per route.
+
+It renders as the `sc-depth-hatch` MapLibre layer (`DataLayers.tsx`) and is
+**ON by default**: it has **no independent toggle** and rides `depthVisible`,
+which is `usePersistedToggle('sc-depth-visible', true)`. The code says so at the
+call site — *"no independent toggle for the hazard-hatch layer — it rides the
+SAME depthVisible state as the absolute ramp"*.
+
+**So the accurate statement of the remaining gap is narrower than the issue
+title:** every T-bound cell a route crosses is **already hatched on the map**;
+what is missing is a **ROUTE-SCOPED** signal — a per-plan statement in the
+results panel that *this route* crosses such water, and how far.
+
+Two known limits of the shipped cue, both already tracked, both relevant to
+whether a route-scoped signal is still wanted:
+
+- **No legend explains the symbol** — #598, open, and named in
+  `DataLayers.tsx`'s own comment.
+- **At overview zoom the pattern is a sparse speckle, not a readable hatch** —
+  measured and documented in `depthColor.ts` (the period is expressed in mask
+  cells, so on-screen size scales with zoom; #599). Its residual failure mode is
+  structurally **under**-signalling, never false comfort: `HATCH_RGBA` is pure
+  black, so compositing can only darken.
+
+### 9.4 The corpus — stated in full, because a bare percentage is not a finding
+
+Everything in §9.5 comes from **one** `app/sweep/` arm-set run. Quoting any
+figure below without this clause makes it unfalsifiable.
+
+| Parameter | Value |
+|---|---|
+| Harness | `app/sweep/` (#282/#450/#488), arm-set run `base1`, detached |
+| BASE | merge-base **`00a33ab`** — `origin/develop` tip at run time |
+| Run window | started 2026-08-20T12:58:50+02:00, **`=== base1 exit=0 ===`** at 13:25:02+02:00 |
+| Arms | **9**, as committed in `sweepArms.ts` — parameters read from `ARMS`, never hand-copied |
+| Destinations | all **33** entries of the committed `app/public/data/harbors.json`, the origin included (self-pair) |
+| Plans | 9 × 33 = **297** |
+| Origins | **Flensburg** (6 arms), **Marstal** (3 arms: `margin-zero`, `relaxation-dense`, `margin-extreme`) |
+| Departure | `T0` = **2026-07-15T06:00:00Z**, fixed |
+| Wind | **uniform synthetic** fields — 12 kn/225° (`breeze`, `no-comfort`, `short-horizon` at a 3 h grid, all three Marstal arms); 3 kn/0° (`light-motorless`); 0.15 kn/0° (`becalmed`, `deep-becalmed`) |
+| Gate (`safetyDepthM`) | **3.0 m** on seven arms; **4.0 m** `deep-becalmed`; **2.9 m** `margin-extreme` |
+| Threshold | per-arm `gate + 0.9` — **3.9 / 4.9 / 3.8 m** |
+| Boat | catalogue default — Salona 45, draft **2.1 m**, both sails (`genoa`, `fock`) |
+| Data | the **real committed** `mask.bin` + polars |
+| Legs basis | the **RECOMMENDED** sail's legs — what `RouteSummary` actually renders |
+
+**`becalmed` and `deep-becalmed` are VACUOUS and are excluded from every
+denominator below.** Measured on this run: **33/33 error rows each** (`becalmed`
+28 `calm-motor-off` + 5 `unreachable`; `deep-becalmed` 27 `calm-motor-off` +
+3 `unreachable` + 3 `snap-failed-destination`). They contain zero routes, so
+their byte-identity would survive any mask change including a catastrophic one.
+They are named here so a future reader cannot quietly re-admit them.
+
+**Outcome distribution of the arm files actually consumed** (all 297 rows, so
+the baseline's quality is visible rather than assumed):
+
+| Outcome | Rows |
+|---|---|
+| `ok` (no `shallow` block) | **74** |
+| `ok+shallow` (a #53 relaxation fired) | **83** |
+| `error: unreachable` | **54** |
+| `error: calm-motor-off` | **55** |
+| `error: beyond-horizon` | **28** |
+| `error: snap-failed-destination` | **3** |
+| **Total** | **297** |
+
+Of the 74 `ok` rows, **7** are **self-pairs** (each arm's own origin appearing
+in its destination list — zero distance, structurally incapable of tripping).
+They are reported separately and excluded from the headline denominator, giving
+**67** non-relaxed plans.
+
+**THE CONTROL, and it is load-bearing.** For every one of the 67 non-relaxed
+plans the same walk was also run at the **bare gate**:
+`shallowExposureNm(legs, mask, gate)` returned **0.0 nm on 67 of 67**. Two
+things follow.
+
+1. It confirms **by measurement** that the naive repair (`flagShallowLegs` at
+   the requested gate on tier1/tier2) is **vacuous** — exactly as the issue's
+   2026-08-18 comment predicted, now measured rather than argued.
+2. It is a **differential test** of two independently-written DDA walks over 67
+   real routes' legs: `shallowExposureNm`'s walk and the solver's own
+   `segmentNavigable`. Had they disagreed anywhere, this would have read
+   non-zero and no figure in §9.5 would have been safe to quote.
+
+Consequently **every nautical mile reported in §9.5 lies in `[gate, gate + T)`** —
+T-bound exposure, never a gate violation.
+
+`unknown (null)` — the #251/#255 out-of-mask/iteration-guard result, which must
+never be folded into "clear" — occurred on **0 of 67**.
+
+### 9.5 THE MEASUREMENT
+
+Reproduce with:
+
+```
+node app/sweep/tripRate.mjs <armDir>          # <armDir> = a sweep run's SC_SWEEP_OUT
+node app/sweep/tripRate.mjs <armDir> --json   # machine-readable
+node app/sweep/tripRate.mjs --mask-cells      # §9.2's cell figures
+```
+
+`app/sweep/tripRate.mjs` is committed by this change specifically so this
+measurement does not repeat #455's original fate: its `/tmp/shallow-probe/`
+scripts are lost and its route-level figures are now unreproducible.
+
+#### Headline — NON-RELAXED population (`PlanResult.shallow` absent, self-pairs excluded)
+
+| | |
+|---|---|
+| Plans | **67** |
+| **Trips (`exposure > 0`)** | **55 — 82.1%** |
+| Clear (`exposure == 0`) | 12 — 17.9% |
+| Unknown (`null`) | **0** |
+| Any-sail basis (either rig's own track trips) | 55 — identical to the recommended-sail basis |
+
+Exposure over the 55 tripping plans:
+
+| | min | p25 | median | p75 | p90 | max | mean |
+|---|---|---|---|---|---|---|---|
+| **nm** | 0.0029 | 0.4116 | **0.9072** | 1.3782 | 2.0765 | 3.6298 | 1.0114 |
+| **% of that route** | 0.01 | 0.90 | **2.41** | 3.62 | 5.26 | 7.38 | 2.58 |
+
+#### The pooled figure is NOT a user-frequency estimate — read the per-arm split
+
+The arms are **settings probes, not a usage distribution**. Pooling weights each
+arm by how many `ok` rows it happens to produce, which has nothing to do with
+how often a real user is in that configuration. The per-arm split is the
+decision-relevant view:
+
+| Arm | Settings | n | Trips | Rate | median nm | median % | max nm |
+|---|---|---|---|---|---|---|---|
+| **`breeze`** | **`DEFAULT_SETTINGS`** | 26 | 16 | **61.5%** | **0.3068** | **0.73%** | 1.2137 |
+| `no-comfort` | `depthComfortMarginM: 0` | 26 | 25 | **96.2%** | 1.2000 | 3.28% | 3.6298 |
+| `light-motorless` | TWS 3, engine off | 14 | 14 | **100%** | 0.9485 | 2.85% | 2.1276 |
+| `short-horizon` | 3 h wind grid | 1 | 0 | 0% | — | — | — |
+| `margin-zero` / `relaxation-dense` / `margin-extreme` | Marstal origin | **0** | — | — | — | — | — |
+
+Two things this split shows that the pooled number hides:
+
+- **`breeze` is the only arm running shipped `DEFAULT_SETTINGS`**, and it trips
+  on **61.5%**, not 82.1% — with a median exposure of **0.31 nm (0.73% of the
+  route)** and a **maximum** of 1.21 nm (1.99%). Its p25 is 0.14 nm and its
+  smallest trips are **0.0029 nm (~5.4 m)**, 0.0170 nm and 0.0426 nm.
+- **The #243 comfort margin is doing measurable work.** `breeze` and
+  `no-comfort` share the same origin, wind field, gate and departure and differ
+  only in `depthComfortMarginM` (2.0 vs 0): **61.5% vs 96.2%**, median exposure
+  **0.31 nm vs 1.20 nm**. The shipped default already steers routes away from
+  T-bound water; turning it off roughly quadruples the median exposure.
+- **The three Marstal arms contribute ZERO non-relaxed plans.** Every one of
+  their 27 `ok` rows carries a `shallow` block, and their only non-relaxed row
+  is the self-pair. The non-relaxed population is therefore entirely
+  Flensburg-origin — a real narrowing of this corpus, stated so it is not
+  mistaken for region-wide coverage.
+
+#### RELAXED population — reported separately, never merged
+
+| | |
+|---|---|
+| Plans | **83** |
+| Trips | **83 — 100%** |
+| Exposure nm | min 0.5499, p25 0.7613, **median 1.0196**, p75 1.4925, max 3.5581 |
+| Exposure % of route | min 1.30, **median 3.43**, max 8.18 |
+
+These plans **already disclose** — `flagShallowLegs` ran, `PlanResult.shallow`
+is set, and the #504/#509/#518/#523 stack renders. That every one of them also
+trips the T-bound criterion is expected, not a finding: a relaxed route solved
+*below* the requested gate, so it necessarily crosses water under `gate + T`.
+Their `exposure@gate` is non-zero on 83 of 83 — which is the relaxation itself,
+**not** a control failure. The two populations are kept apart throughout
+precisely so this cannot be read as one number.
+
+#### Self-pairs
+
+7 plans, zero distance, **0 trips**, 0 unknown — reported so the 74 `ok` rows
+reconcile as 67 + 7 rather than appearing to go missing.
+
+### 9.6 What the disclosure stack does today — verified, not assumed
+
+Re-read on 2026-08-20 against `00a33ab`:
+
+- `flagShallowLegs` — the **only** producer of `Leg.shallow` / `ShallowInfo` —
+  has exactly **three** call sites in `app/src/routing/planRoute.ts` (~:713,
+  ~:723, ~:738) and **all three sit inside `if (relaxed !== null)`** (~:696).
+- Every non-relaxed success returns `assemble(tierN, null)` (~:603, ~:614,
+  ~:630).
+
+So on the **67** non-relaxed plans measured above, the banner, the cautious chip
+and the exposure sentence do not mount at all — the component is never reached,
+which is why no test could have caught it (every test of that UI constructs a
+non-null `ShallowInfo` and so exercises the component, not the mount).
+
+### 9.7 SAFETY FRAMING — two branches, and the one-branch version is false
+
+Any copy written from this measurement must keep these apart. Collapsing them
+in either direction produces a false statement.
+
+**Branch 1 — DISCLOSED, and it is real at DEFAULT settings.**
+`defaultSafetyDepthM(b) = ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` while
+`relaxationFloorM(b) = ceilToDecimetre(b.draftM)` — **no tolerance added**. So
+at a boat's own default gate, #53 relaxation searches
+`[relaxationFloorM(boat), requestedDepthM)`, and the mask floor at a relaxed
+gate `G'` is `G' - T`, reaching `draft - T` (**1.2 m under the Salona 45's
+2.1 m hull**) **with no user action at all**. `realmask.repro.test.ts` pins
+Flensburg→Marstal at `requestedDepthM 3.0` / `usedDepthM ≈ 2.3`. These cases
+**are disclosed** — `shallow` is set, `isSevere` fires, and the app's own
+`about.caveats.depthMask` string already says so: *"it can be as little as
+{floor} m where a route falls back to a shallower depth to stay connected,
+flagged on the resulting route."*
+
+**Never write "below-draft requires a user-lowered gate."** The app's own
+shipped copy contradicts it.
+
+**Branch 2 — the UNDISCLOSED residual, which is what #612 would cover.** On a
+**non-relaxed** route the gate is never lowered, so the cautious floor is
+`gate - T`. Because `defaultSafetyDepthM` is `ceilToDecimetre(draft + T)`, that
+is **exactly the draft** for all three catalogue boats (2.1 → 3.0 → 2.1;
+1.9 → 2.8 → 1.9), zero margin. **The undisclosed residual therefore bottoms out
+AT the hull and never below it.** That is what makes this a disclosure-
+**completeness** gap rather than a silent below-draft hazard — and it is also
+why option (B) in §9.8 cannot fire at any catalogue default.
+
+**Both branches are bounds between two readings of the SAME EMODnet product.**
+Neither is chart truth. Nothing here has been checked against a nautical chart,
+and the real seabed may be shallower than either reading.
+
+### 9.8 DECISION REQUIRED — options, not a recommendation
+
+This section deliberately contains **no ruling**. The measurement is above; the
+trade-offs are below; the call is the maintainer's.
+
+#### D1. Which trigger, if any
+
+**(A) Per-leg mask walk at `gate + MASK_TOLERANCE_M`**, via the existing
+`shallowExposureNm` / `segmentShallowestBelow` (both already take an arbitrary
+threshold).
+
+- *Measured firing rate:* **61.5%** of `DEFAULT_SETTINGS` plans (`breeze`),
+  **82.1%** pooled across the non-relaxed corpus, **100%** with the engine off
+  in light air.
+- *Measured magnitude at defaults:* median **0.31 nm (0.73% of route)**, max
+  **1.21 nm (1.99%)**, p25 **0.14 nm**, smallest **0.0029 nm (~5.4 m)**.
+- *Reading:* on the shipped default settings this is closer to "most routes,
+  small distances" than to a rare, sharp alarm. Whether ~3 routes in 5 carrying
+  a sub-nautical-mile notice reads as informative or as chrome is a **product
+  judgement**, and it is the judgement this measurement exists to inform. A
+  distance threshold or a percentage-of-route threshold would move the rate;
+  neither is proposed here, because picking one is the ruling.
+
+**(B) Per-plan severity `gate - MASK_TOLERANCE_M < boat.draftM`.** No mask walk
+at all.
+
+- *Measured:* fires on **0 of 67** non-relaxed plans in this corpus.
+- *Why, structurally:* `defaultSafetyDepthM = ceilToDecimetre(draft + T)` makes
+  `gate - T == draft` **exactly** at every catalogue boat's default, so the
+  strict `<` is **false by construction** — verified for all three boats
+  (2.1/2.1/1.9 m). It becomes true only once a user lowers the gate below the
+  default (UI minimum 2.2 m). In this corpus only `margin-extreme` runs a
+  lowered gate (2.9 m → `gate - T = 2.0 < 2.1` **true**), and that arm
+  contributes **zero** non-relaxed plans, which is why the corpus figure is 0
+  rather than merely small.
+- *Reading:* as a **trigger** it is silent for every default-settings user. As
+  an **escalation** it is precise: it fires exactly when the cautious floor
+  really does drop under the hull.
+
+**(C) (A) as trigger, (B) as the `isSevere` escalation** — the pairing
+`ShallowWarning` already implements.
+
+- *Measured:* trigger fires as (A); escalation fires on **0 of 67** here, and
+  would fire only for a user who lowered the gate.
+- *Reading:* preserves the shipped two-level shape and adds no new UX concept.
+  Its cost is that the common case is the un-escalated one, so the escalation
+  is a rarely-exercised path — the class this repo's own rule flags as "not
+  verified by the trigger's absence".
+
+#### D2. Is a route-level notice still wanted at all, given #492?
+
+Genuinely open, and the reason §9.3 exists. Every T-bound cell is **already
+hatched on the map by default**. The remaining gap is scope, not detection: the
+map answers *"is there such water here?"* and nothing answers *"does my route
+cross it, and for how far?"*. Weighing against a route-level notice: it would
+duplicate an already-shipped cue at the measured 61.5%/82.1% rate. Weighing for
+it: the hatch has no legend (**#598**, open) and degrades to a sparse speckle at
+overview zoom (**#599**), so a user planning at z9 may never perceive it — and a
+distance is information the map cannot convey at any zoom.
+
+#### D3. Should the map casing and the legend swatch participate?
+
+**They should not be reused unchanged, and this is a copy-correctness problem,
+not a styling one.** Verified in both dictionaries:
+
+- `routeGeoJson.ts` sets `shallow: leg.shallow !== undefined`, which drives
+  `RouteLayer`'s `sc-route-shallow` casing — so today it is relaxation-only,
+  like the rest of the stack.
+- `route.legend.shallow` reads **"Charted shallower than safety depth"** /
+  **"Flacher als Sicherheitstiefe kartiert"**.
+- `route.shallow.exposure` reads **"{dist} of this route crosses water charted
+  shallower than your safety depth of {requested} m"** / **"…, das flacher als
+  die eingestellte Sicherheitstiefe von {requested} m kartiert ist"**.
+
+Both assert the **charted (shipped)** reading is below the gate. For a T-bound
+crosser the shipped reading is **at or above** the gate by construction — so
+both strings would be **false** if reused for option (A), in both languages.
+
+By contrast `route.shallow.lead` — *"a more cautious reading of the charted
+depth data could run as low as {cautious} m"* — is **basis-correct** for a
+T-bound crosser and could be reused as-is.
+
+So D3 is really: extend the shipped semantics (new copy in de **and** en, in
+which case the casing and swatch can participate), or leave casing and swatch
+relaxation-only and give the T-bound case its own distinct treatment. Either is
+defensible; silently reusing the existing strings is not.
+
+#### D4. Which of spike item 4's disclosure surfaces should ship
+
+Re-verified on 2026-08-20 against `00a33ab`:
+
+| Surface | State |
+|---|---|
+| About dialog (`about.caveats.depthMask`) | **Shipped** — names the tolerance, the `G − T` floor and the relaxation case |
+| `README.md` | **Shipped** — describes the hatch (*"hatches water whose cautious, worst-case reading falls below your safety depth"*) and the 0.9 m tolerance in the safety-depth default |
+| `SECURITY.md` | **Absent** — zero occurrences of "depth" |
+| `docs/security-assurance-case.md` | **Absent** — mentions the depth gate and `verify_mask.py`, but nothing on the tolerance, the cautious reading or the overstatement |
+| `DepthProfile` caption | **Absent** — the component has no caption and no such i18n key exists |
+
+Item 4 originally called for five surfaces; **two shipped, three did not**. Each
+is independent of D1–D3 and costs nothing in routing.
+
+### 9.9 Limits of this measurement — stated so it is not over-read
+
+- **One wind regime per arm, all synthetic and uniform.** No real Open-Meteo
+  forecast was used. Route geometry drives everything measured here, so a
+  different wind field gives different routes and a different rate.
+- **One departure instant** (`T0`), one boat (Salona 45), one origin per arm.
+- **The non-relaxed population is entirely Flensburg-origin** (§9.5) — 67 plans
+  over only **26 distinct destinations** (the same harbours recur across arms),
+  not a region-wide sample.
+- **A trip rate is not a hazard rate.** It counts routes crossing cells whose
+  *cautious reading* is under the gate. Per §9.7 branch 2, on these non-relaxed
+  routes that cautious floor is the hull itself, never below it.
+- **Not chart truth.** Every figure is a bound between two readings of one
+  EMODnet product.
+- **`becalmed` / `deep-becalmed` excluded** as vacuous (§9.4) — do not re-admit
+  them to raise an `n`.
+- **`PlanResult` is untouched.** This addendum measures; it changes no routing
+  and adds no field, so no #282 sweep is owed by it. #612's implementation, if
+  it changes which plans carry a `shallow` block, **would** owe one.
