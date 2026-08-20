@@ -244,7 +244,11 @@ function subRequestedCrossings(
  * legs stay byte-identical; `APPROACH_RADIUS_M = 20000` leaves every farthest
  * distance at 0.607/0.667 nm though the Flensburg genoa still moves (22 -> 27
  * legs, 54 -> 61 crossings); `findRelaxedGate`'s phase-2 per-disc ascent
- * disabled is byte-identical to baseline on all four rig/route combinations.
+ * disabled is byte-identical to baseline on all four SOLVER rig/route
+ * combinations the probe measured (both rigs on both passages) — a superset of
+ * the three calls the assertions at these two sites actually make, since the
+ * Flensburg test loops both rigs while the Bagenkop one checks only the
+ * recommended rig.
  * So the mutations reach, and the assertion does not see them. At
  * DEFAULT_SETTINGS the #243 comfort preference already holds these routes in
  * deep water everywhere but the pinch, so a gate-localization regression is NOT
@@ -553,12 +557,17 @@ describe('real mask routing (issue #20)', () => {
         // the residual #494 §(a) actually names. No NEW knife-edge — every
         // baseline crossing here is nearer the destination than the origin, so
         // this bound and the `nearestM` one above are the SAME number on
-        // correct behaviour — but the shared headroom is genuinely thin and
-        // that predates #494: MEASURED on the first rig, 83 crossings spanning
-        // 0.079-0.997 nm from the Marstal snap against the 1.02 nm bound, i.e.
-        // ~23 m of margin. Widening the bound would forfeit the teeth; the
-        // honest reading is that a legitimate route shift of a few tens of
-        // metres here reds BOTH assertions, not just this one.
+        // correct behaviour — but the shared headroom is thin in the unit that
+        // matters, and that predates #494: MEASURED 83 crossings on the first
+        // rig (172 across both), spanning 0.079-0.997 nm from the Marstal snap
+        // against the 1.02 nm bound. That leaves 1.02 - 0.997 = 0.023 nm, i.e.
+        // ~42 m — which sounds comfortable until it is read against the ~46 m
+        // mask cell this file samples below: the margin is under ONE CELL, so a
+        // single cell of outward drift at the farthest crossing reds it. State
+        // it that way rather than as a bare metre count, which invites exactly
+        // the widening the paragraph above rules out. Widening the bound would
+        // forfeit the teeth, and the drift would red BOTH assertions anyway,
+        // not just this one.
         expectRelaxedWaterConfinedToPinch(
           rig.legs,
           settings.safetyDepthM,
