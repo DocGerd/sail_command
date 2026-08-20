@@ -199,8 +199,8 @@ making design-level decisions; do not silently deviate.
   real-mask — and it DISAGREED with `vite.config.ts`'s own "~680 s
   combined" comment on `SLOW_TEST_FILES_FIRST`, which was the closer of the
   two; when two artifacts state one fact, re-measure rather than pick.
-  Note that list's order is now inverted against its own "slowest first"
-  intent (property suite is listed before real-mask, which is ~2x slower).
+  That list IS in slowest-first order (`vite.config.ts:373-374`: real-mask,
+  then the property suite) — a previous "now inverted" note here was wrong.
   Use focused filters while iterating (`npm --prefix app run test --
   <filter>`); give the full run a generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
   (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
@@ -720,8 +720,15 @@ making design-level decisions; do not silently deviate.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards).
-- **`ci.yml`'s `e2e` job has no `timeout-minutes`**, so it inherits GitHub's
-  6-hour default against a measured 3–4 min runtime. FOUR PRs' `e2e` wedged on
+- **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (`ci.yml:99`, #605) —
+  derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
+  3–4 min this file used to quote; a wedge now reds in 30 min instead of 360.
+  An older **16m43s** outlier sits outside that window and sets the real margin
+  at ~1.79x, not 2.06x — size any future change against the outlier, not the
+  sampled range. It BOUNDS wedge damage, it does not prevent it: a wedge still
+  queue-blocks later develop pushes until it reds. The PRE-CAP wedges below
+  (32/54/65/90 min) are durations the 30-min cap now forbids — they are the
+  evidence FOR the cap, not observations of current behaviour. FOUR PRs' `e2e` wedged on
   `npx playwright install --with-deps chromium` in one session — step-6 durations
   **32, 54, 65 and 90 min** (jobs 96190476371 / 96137363922 / 96137652820 /
   96149791212), with Actions reporting "operational" and no runner backlog;
@@ -1806,6 +1813,13 @@ making design-level decisions; do not silently deviate.
   tests (#208); a camera fake that doesn't model `map.resetNorth()` cannot
   show a settle that never arrives (#203). Ask of any green result: *what
   class of failure can this method not detect?*
+- **A measurement's APERTURE can be narrower than the claim drawn from it** — and
+  the swept subset being genuinely clean is what makes it read as conclusive.
+  #599: two sweeps covering 3 of 15 reachable bands concluded a gap cap safe; the
+  full space had 14/120 combinations blanking a ≥100-cell marginal region.
+  Enumerate the reachable SET first, then sweep it. Related: a guard can pass
+  because its SAMPLE POINTS never reach the failing value (a `<= 16` bound held
+  only because a 0.25 step grid missed every band top; true max 16.95).
 - The sibling question belongs BEFORE the check is demanded, not after: a
   brief asking for evidence a method structurally cannot produce will get it
   — fabricated. #368 (PR #382 review): an implementer was asked to prove a
@@ -1843,6 +1857,12 @@ making design-level decisions; do not silently deviate.
   pre-approved, so copying it byte-for-byte leaves no new claim to be wrong.
   Standing exception, and it must stay open: a supplied sentence believed
   WRONG is reported, never silently improved.
+  Distinct rule, NOT an exception to this one (#599 — it was an orchestrator-
+  relayed measurement, not supplied replacement text): before adopting a
+  NUMERIC correction, check both sides define the QUANTITY identically. A
+  "tighter" bound differed only by count (`sMax-sMin+1`) vs span
+  (`sMax-sMin`); complying would have made a safety bound wrong by one. State
+  the definition beside any countable bound.
 - A fix INHERITS its bug's blind spot, and **the CORRECTION is the highest-risk
   moment, not the original** — a replacement arrives sounding authoritative and
   nobody re-attacks it as hard as they attacked the original. Measured
@@ -2050,6 +2070,13 @@ making design-level decisions; do not silently deviate.
   has no compiler, so the second copy is the only thing playing that role) plus
   QUOTE THE METHOD, not only the result (`(w/2)·sin45°` survives a constant
   change and can be run BACKWARDS to find a better fix; a bare number cannot).
+  Twin search only works if someone RUNS the comparison (#599): `depthColor.ts`
+  derived screen scale from `156543.03` (the 256-px-tile constant) while
+  `mapOrientation.test.ts`'s `metresPerPixel()` already carried the correct
+  512-px form — both shipped, nothing compared them, and the issue text copied
+  the wrong one. `156543.03` is a REAL, correct constant (for 256-px tiles), so
+  numeric checking passes straight through: the defect is the BASIS, not the
+  digits. CROSS-REFERENCE a twin in both directions.
   A negative report — "I re-read everything and found nothing" — is
   unfalsifiable from outside: spot-check 2–3 claims naming a NUMBER or COUNT,
   which are the falsifiable ones. CHANGELOG prose gets the SAME evidentiary
@@ -2991,6 +3018,12 @@ making design-level decisions; do not silently deviate.
   re-verify the MERGED artifact instead of carrying the review forward.
   Nothing was lost that time only because the `deploy` job happened to be
   byte-identical across both refs; that is luck, not a control.
+  SHARPER (PR #630): a defect can be absent from BOTH sides and created by the
+  COMPOSITION — #624 merged after #630 branched and made a previously-safe read
+  unsafe (`App.test.tsx` 68/68 on develop, 67/68 merged). So re-running CI on the
+  PR head is not enough — the merged tree is a THIRD artifact neither parent
+  tested. This is the SIBLING-MERGE invalidation bullet (Verification lessons)
+  meeting this one; read them together.
 - Agent stall patterns (session 7, 6/6 recoveries): an implementer that stops
   "waiting on an armed watcher/monitor" while its notification shows NO live
   background children is asleep forever — nudge it to check the result in the
