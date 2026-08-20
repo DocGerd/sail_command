@@ -302,6 +302,21 @@ export const de = {
   // ohne eigene Kartenautorität.
   'route.shallow.caveat':
     'Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+  // #612: siehe dict.en.ts's Kommentar für Zweck, Auslöser, Eskalation und
+  // die beiden Klauseln, die hier bewusst FEHLEN. Formulierung an bereits
+  // ausgelieferte, geprüfte Kopie angelehnt: "eine vorsichtigere Lesart der
+  // Kartentiefen" ist wörtlich aus route.shallow.lead oben, und "unter den
+  // Bootstiefgang von {draft} m" wörtlich aus route.shallow.leadSevere (deren
+  // Kommentar erklärt, warum nicht "Tiefgang des Boots von"). PLURAL
+  // "verlaufen" wie in route.shallow.exposure, aus demselben Grund: formatNm
+  // liefert immer eine Dezimalzahl, die Seemeilen im Plural verlangt.
+  // Bewusst NICHT "derselben Tiefendaten" — CLAUDE.md führt genau dieses Wort
+  // als Anaphern-Defekt (#493/#504); "der Kartentiefen" benennt den Bezug
+  // direkt und bleibt aus jeder Position heraus richtig.
+  'route.marginal.notice':
+    '{dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt.',
+  'route.marginal.noticeSevere':
+    'Achtung: {dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt — bei dieser Einstellung kann diese Lesart unter den Bootstiefgang von {draft} m fallen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',

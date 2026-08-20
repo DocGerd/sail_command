@@ -3,7 +3,14 @@ import fc from 'fast-check';
 import { APPROACH_RADIUS_M } from './depthGate';
 import { haversineNm } from './geo';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
-import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from './shallowExposure';
+import { MASK_TOLERANCE_M } from './mask';
+import {
+  marginalDepthThresholdM,
+  marginalExposureNm,
+  roundExposureNm,
+  shallowConfinedWithinM,
+  shallowExposureNm,
+} from './shallowExposure';
 import type { NavMask } from './mask';
 import type { LatLon, Leg, MaskMeta } from '../types';
 
@@ -571,5 +578,114 @@ describe('shallowConfinedWithinM (#516 increment 2)', () => {
       APPROACH_RADIUS_M,
     );
     expect(result).toBeNull();
+  });
+});
+
+describe('marginalDepthThresholdM / marginalExposureNm (#612)', () => {
+  it('the threshold is the gate PLUS the mask tolerance, on the decimetre grid', () => {
+    // Hand-derived, not read back from the implementation: at the Salona 45's
+    // own default gate of 3.0 m the conservative criterion is
+    // `charted depth < 3.0 + 0.9`, i.e. 3.9 m; at the Elan's 2.8 m gate, 3.7 m;
+    // at the default boat's 2.2 m field minimum, 3.1 m.
+    expect(marginalDepthThresholdM(3.0)).toBe(3.9);
+    expect(marginalDepthThresholdM(2.8)).toBe(3.7);
+    expect(marginalDepthThresholdM(2.2)).toBe(3.1);
+  });
+
+  it('the BOUNDARY byte is excluded — a cell charted at exactly gate + T is NOT marginal', () => {
+    // The whole reason marginalDepthThresholdM exists rather than a bare
+    // `safetyDepthM + MASK_TOLERANCE_M`. `3.2 + 0.9` evaluates to
+    // 4.100000000000001 in IEEE754, so the naive sum calls a 4.1 m cell
+    // marginal while depthColor.ts's hatch LUT — floor10(4.1 - 0.9) = 3.2,
+    // which is not < 3.2 — does not. Pinned as a VALUE here as well as
+    // behaviourally in test/maskTolerance.test.ts's cross-artifact twin, so a
+    // regression to the naive form reds in both places.
+    expect(3.2 + MASK_TOLERANCE_M).toBeGreaterThan(4.1); // the residue itself
+    expect(marginalDepthThresholdM(3.2)).toBe(4.1); // ... which this removes
+    const ROW = 100;
+    const a = pointAt(ROW + 0.5, 50.3);
+    const b = pointAt(ROW + 0.5, 70.7);
+    const leg = makeLeg(a, b, 10);
+    // Every cell charted at EXACTLY the boundary depth for a 3.2 m gate.
+    expect(
+      marginalExposureNm(
+        [leg],
+        makeMask(() => 41 /* 4.1 m */),
+        3.2,
+      ),
+    ).toBe(0);
+    // One decimetre shallower and the same route is fully exposed — the
+    // discriminating control for the zero above, which would otherwise be
+    // satisfied by a walk that measured nothing at all.
+    expect(
+      marginalExposureNm(
+        [leg],
+        makeMask(() => 40 /* 4.0 m */),
+        3.2,
+      ),
+    ).toBeCloseTo(10, 6);
+  });
+
+  it('measures marginal water the bare-gate threshold cannot see (#455 §9: 0.0 nm on 67/67)', () => {
+    // The measured trap this helper exists for. Every cell is charted at
+    // EXACTLY the 3.0 m gate, so the route is fully solver-valid and
+    // shallowExposureNm at the bare gate reads exactly 0 — the same result
+    // #455's spike measured on 67 of 67 real non-relaxed plans. The
+    // conservative reading of those same cells is 3.0 - 0.9 = 2.1 m, below
+    // the gate, so the marginal walk reads the whole route.
+    const ROW = 100;
+    const a = pointAt(ROW + 0.5, 50.3);
+    const b = pointAt(ROW + 0.5, 70.7);
+    const mask = makeMask(() => 30 /* exactly 3.0 m */);
+    const leg = makeLeg(a, b, 8);
+    expect(shallowExposureNm([leg], mask, 3.0)).toBe(0);
+    expect(marginalExposureNm([leg], mask, 3.0)).toBeCloseTo(8, 6);
+  });
+
+  it('a 3-cell marginal band measures the same fraction the shallow walk measures for a shallow one', () => {
+    // Same geometry as this file's own hand-derived shallowExposureNm case
+    // (row 100, grid-x 50.3 -> 70.7, columns 55/56/57 flagged), so the
+    // expected 3.0 is the SAME independently hand-derived number: 3 full
+    // interior columns of a 20.4-cell span, times a distanceNm set equal to
+    // that span. Only the depth differs — 3.5 m is ABOVE the 3.0 m gate, so
+    // invisible to shallowExposureNm, and below the 3.9 m marginal threshold.
+    const ROW = 100;
+    const a = pointAt(ROW + 0.5, 50.3);
+    const b = pointAt(ROW + 0.5, 70.7);
+    const MARGINAL_COLS = new Set([55, 56, 57]);
+    const mask = makeMask(
+      (row, col) => (row === ROW && MARGINAL_COLS.has(col) ? 35 /* 3.5 m */ : 200) /* 20 m */,
+    );
+    const leg = makeLeg(a, b, 70.7 - 50.3);
+    expect(shallowExposureNm([leg], mask, 3.0)).toBe(0);
+    expect(marginalExposureNm([leg], mask, 3.0)).toBeCloseTo(3, 6);
+  });
+
+  it('inherits the null-for-the-whole-route contract (endpoint outside mask coverage)', () => {
+    const outside = { lat: TEST_MASK_META.north + 1, lon: TEST_MASK_META.west + 0.01 };
+    const inside = pointAt(100.5, 50.3);
+    expect(
+      marginalExposureNm(
+        [makeLeg(inside, outside, 5)],
+        makeMask(() => 30),
+        3.0,
+      ),
+    ).toBeNull();
+  });
+
+  it('capped (byte 255) cells are never marginal, at every reachable gate', () => {
+    // Same rule shallowExposureNm already follows: a cap is a floor, not a
+    // reading (CLAUDE.md's byte-254 rule). Asserted across the whole
+    // SAFETY_DEPTH_FIELD domain (min 2.0 for the Elan, max 10, step 0.1)
+    // rather than at one gate, because depthColor.ts's hatch LUT — the
+    // artifact this criterion is twinned against — evaluates byte 255 as
+    // 25.4 m and would begin hatching it above a 24.5 m gate. The two agree
+    // because that gate is unreachable, so the agreement has to be asserted
+    // as a property of the DOMAIN, not sampled at 3.0 m and assumed.
+    const leg = makeLeg(pointAt(100.5, 50.3), pointAt(100.5, 70.7), 10);
+    const mask = makeMask(() => 255);
+    for (let gateDm = 20; gateDm <= 100; gateDm++) {
+      expect(marginalExposureNm([leg], mask, gateDm / 10)).toBe(0);
+    }
   });
 });

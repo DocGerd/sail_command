@@ -23,6 +23,7 @@
 //    flagShallowLegs folds over BOTH rigs' legs. The two can legitimately
 //    disagree on the very same plan; that is not a bug in either.
 import { haversineNm } from './geo';
+import { MASK_TOLERANCE_M } from './mask';
 import type { LatLon, Leg, MaskMeta } from '../types';
 import type { NavMask } from './mask';
 
@@ -334,4 +335,78 @@ export function shallowConfinedWithinM(
  */
 export function roundExposureNm(nm: number): number {
   return Math.ceil(nm * 10 - 1e-9) / 10 + 0;
+}
+
+// Sub-decimetre nudge, matching cautiousDepthLowerBoundM's own epsilon
+// (mask.ts) and roundExposureNm's above: it absorbs IEEE754 residue in
+// `safetyDepthM * 10` without ever being large enough to cross a real 0.1 m
+// step. Applied SUBTRACTED-before-ceil, so a gate that is exactly on the
+// decimetre grid cannot be nudged up an unearned decimetre.
+const DECIMETRE_EPS = 1e-9;
+
+/**
+ * #612: the depth threshold at which a cell counts as MARGINAL — the
+ * conservative criterion, `depth < safetyDepthM + MASK_TOLERANCE_M`, expressed
+ * so it lands on the mask's own decimetre grid exactly.
+ *
+ * WHY THIS EXISTS AS A NAMED FUNCTION rather than a bare `+ MASK_TOLERANCE_M`
+ * at each call site: this inequality already has a SECOND consumer that
+ * predates it — `depthColor.ts`'s `buildNavigabilityHatchImageData` builds its
+ * per-byte LUT as `marginal[b] = cautiousDepthLowerBoundM(byteToDepthM(b)) <
+ * safetyDepthM`, which is the SAME inequality written the other way round
+ * (cautiousDepthLowerBoundM floors `d - T` to a decimetre, so
+ * `floor10(d - T) < G` iff `d < G + T`). No compiler spans the two
+ * expressions, so `test/maskTolerance.test.ts` pins them against each other
+ * behaviourally — a route line counting exposure over cells the map does not
+ * hatch (or the reverse) is a user-visible contradiction between two views of
+ * one hazard.
+ *
+ * WHY NOT THE LITERAL `safetyDepthM + MASK_TOLERANCE_M`: it is not equivalent
+ * to that LUT at the boundary byte. MEASURED over the reachable gate domain
+ * (`SAFETY_DEPTH_FIELD` is min 2.0 / max 10 / step 0.1) against bytes 1..254,
+ * the naive sum disagrees with the LUT on **18** (gate, byte) pairs — among
+ * them a gate of 3.2 m at byte 41 (4.1 m) and 3.7 m at byte 46 — because
+ * `3.2 + 0.9` lands a hair above the real 4.1 and `4.1 < 4.1000000000000005`
+ * is true while `floor10(4.1 - 0.9) = 3.2 < 3.2` is false. Rebuilding the
+ * threshold from integer decimetres removes the residue: `gateDm` is the
+ * gate in whole decimetres (`ceil`, so a non-grid gate rounds the way the
+ * floor-based LUT does), `MASK_TOLERANCE_M * 10` is exactly 9 for T = 0.9, and
+ * `(gateDm + 9) / 10` is bit-identical to the `byte / 10` NavMask decodes for
+ * that same byte — so the strict `<` decides the boundary case identically on
+ * both sides. Re-measured across T ∈ {0.5, 0.85, 0.87, 0.9, 1.2}: zero
+ * divergences, so the form is not fitted to today's constant.
+ */
+export function marginalDepthThresholdM(safetyDepthM: number): number {
+  const gateDm = Math.ceil(safetyDepthM * 10 - DECIMETRE_EPS);
+  return (gateDm + MASK_TOLERANCE_M * 10) / 10;
+}
+
+/**
+ * #612: how far along `legs` the route crosses MARGINAL water — cells the
+ * shipped mask charts AT OR ABOVE `safetyDepthM` (so the solver validated
+ * them, and the route did not have to relax) but whose more cautious reading
+ * of the same EMODnet product falls below it.
+ *
+ * This is the only sound predicate for a route that did NOT relax, and that is
+ * MEASURED rather than argued (#455 spike §9): a control walk at the bare gate
+ * reads 0.0 nm on 67/67 non-relaxed plans, because a non-relaxed success is
+ * validated at `uniformGate(safetyDepthM)` and so
+ * `segmentShallowestBelow(a, b, safetyDepthM)` returns null for every
+ * solver-validated segment by construction. "Also flag the non-relaxed path
+ * with the existing threshold" compiles, leaves every test green, and
+ * discloses nothing.
+ *
+ * Deliberately a thin wrapper over shallowExposureNm rather than a second
+ * walk: same cell-exact traversal, same null-for-the-whole-route contract (see
+ * shallowExposureNm's own doc comment — callers must omit the sentence, never
+ * substitute a fallback number), same per-rig / currently-loaded-mask caveats.
+ * Only the threshold differs, and it comes from marginalDepthThresholdM above
+ * so the two consumers of that one inequality cannot drift.
+ */
+export function marginalExposureNm(
+  legs: readonly Leg[],
+  mask: NavMask,
+  safetyDepthM: number,
+): number | null {
+  return shallowExposureNm(legs, mask, marginalDepthThresholdM(safetyDepthM));
 }
