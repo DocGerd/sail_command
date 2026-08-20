@@ -4,6 +4,9 @@ import {
   buildNavigabilityHatchImageData,
   depthByteToRgba,
   depthSourceCorners,
+  hatchBandForZoom,
+  hatchScreenPxPerCell,
+  HATCH_FALLBACK_BAND,
   HATCH_RGBA,
 } from './depthColor';
 import { TEST_MASK_META } from '../test/fixtures';
@@ -148,6 +151,148 @@ describe('buildNavigabilityHatchImageData (#492)', () => {
     expect(() => buildDepthImageData(m, 1, 1, 3)).not.toThrow();
     // @ts-expect-error same rule for the per-byte ramp
     expect(depthByteToRgba(1, 3)).toBeDefined();
+  });
+});
+
+const DATA_LAYERS_SOURCES = import.meta.glob<string>('../components/DataLayers.tsx', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+const DATA_LAYERS_SOURCE = (() => {
+  const hit = Object.entries(DATA_LAYERS_SOURCES).find(([k]) =>
+    k.endsWith('components/DataLayers.tsx'),
+  );
+  // Fail CLOSED: a glob that stops matching must red, not silently pass.
+  if (!hit) throw new Error('DataLayers.tsx source not found via import.meta.glob');
+  return hit[1];
+})();
+
+describe('hatchBandForZoom (#599)', () => {
+  // Independent re-derivation of screenPxPerCell, deliberately NOT importing
+  // hatchScreenPxPerCell: deriving the expectation from the function under
+  // test is the tautology this repo keeps paying for. These four constants
+  // are the ones a reader can check against mask.meta.json and the Web
+  // Mercator definition, and the results were confirmed in a real browser
+  // via map.project() (z9 0.5296, z12 4.2367, z16 67.7867 px/cell).
+  const expectedPxPerCell = (z: number) =>
+    46.67 / ((40075016.686 * Math.cos((54.8 * Math.PI) / 180)) / (512 * 2 ** z));
+
+  it('agrees with the real browser measurement to within 0.05% at every zoom', () => {
+    // RELATIVE, not toBeCloseTo: the quantity spans 0.53 px at z9 to 271 px
+    // at z18, so a fixed decimal tolerance is vacuously loose at one end and
+    // impossible at the other. Right-hand values are the MEASURED ones from
+    // Chromium (map.project() on two points one mask cell apart).
+    for (const [z, measured] of [
+      [9, 0.5296],
+      [11, 2.1183],
+      [12, 4.2367],
+      [16, 67.7867],
+      [18, 271.1469],
+    ] as const) {
+      for (const derived of [expectedPxPerCell(z), hatchScreenPxPerCell(z)]) {
+        expect(Math.abs(derived - measured) / measured).toBeLessThan(0.0005);
+      }
+    }
+  });
+
+  it('reproduces the pre-#599 fixed pair (8, 2) at z12 — the one zoom it was right for', () => {
+    expect(hatchBandForZoom(12)).toEqual({ periodCells: 8, stripeCells: 2 });
+    expect(HATCH_FALLBACK_BAND).toEqual({ periodCells: 8, stripeCells: 2 });
+  });
+
+  it('holds the on-screen stripe within 5.3-16 px across z9..z13.5, where the old pair spanned 1.1-19 px', () => {
+    // THE DEFECT, stated as a comparison rather than asserted in prose: the
+    // old fixed 2-cell stripe is what produced #599's sub-pixel wash.
+    const widths: number[] = [];
+    const oldWidths: number[] = [];
+    for (let z = 9; z <= 13.5; z += 0.25) {
+      const px = expectedPxPerCell(z);
+      widths.push(hatchBandForZoom(z).stripeCells * px);
+      oldWidths.push(2 * px);
+    }
+    expect(Math.min(...widths)).toBeGreaterThanOrEqual(5.3);
+    expect(Math.max(...widths)).toBeLessThanOrEqual(16);
+    // The control: the old constants are OUTSIDE that band at both ends, so
+    // the assertion above is not one every band would satisfy.
+    expect(Math.min(...oldWidths)).toBeLessThan(1.2);
+    expect(Math.max(...oldWidths)).toBeGreaterThan(18);
+  });
+
+  it('never asks the raster for a sub-cell stripe, and clamps to 1 cell above ~z13.6', () => {
+    for (let z = 13.6; z <= 22; z += 0.2) {
+      expect(hatchBandForZoom(z)).toEqual({ periodCells: 4, stripeCells: 1 });
+    }
+  });
+
+  it('caps the GAP at 12 cells at every zoom — the measured no-blank-region bound', () => {
+    // Gap, not period, is what decides whether a marginal region can fall
+    // entirely between stripes: a 4-connected region's (outRow + col) values
+    // are a contiguous range, so extent >= gap+1 always catches a stripe.
+    // 12 is the largest gap at which no marginal region of >=100 cells goes
+    // unpainted anywhere in the real mask, at gates 2.2/2.8/3.0/10 — see
+    // depthColor.ts's SAFETY note for the measurement.
+    for (let z = 0; z <= 22; z += 0.5) {
+      const { periodCells, stripeCells } = hatchBandForZoom(z);
+      expect(periodCells - stripeCells).toBeLessThanOrEqual(12);
+      expect(stripeCells).toBeGreaterThanOrEqual(1);
+      expect(periodCells).toBeGreaterThan(stripeCells); // never a solid fill
+    }
+  });
+
+  it('freezes below z9 rather than growing the band without bound', () => {
+    expect(hatchBandForZoom(0)).toEqual(hatchBandForZoom(9));
+    expect(hatchBandForZoom(-5)).toEqual(hatchBandForZoom(9));
+  });
+
+  it('#599 SAFETY: the band changes WHICH marginal cells are painted, never WHICH are marginal', () => {
+    // The set of marginal cells is the safety surface (#612's twin-pin reads
+    // it back out of this same function). Recover it band-independently: a
+    // 1-cell period paints every marginal cell, so that set is the criterion
+    // itself. It must be identical for every band the zoom range can select.
+    const COLS = 256;
+    const ROWS = 32;
+    const data = new Uint8Array(ROWS * COLS);
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) data[r * COLS + c] = c;
+    const solid = { periodCells: 1, stripeCells: 1 };
+    for (const gate of [2.2, 2.8, 3.0, 5.0, 10]) {
+      const all = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, solid);
+      const marginalBytes = new Set<number>();
+      for (let c = 0; c < COLS; c++) if (all[c * 4 + 3] !== 0) marginalBytes.add(c);
+      // Every band paints a SUBSET of that set and never anything outside it.
+      for (const z of [9, 10, 11, 12, 13, 16, 22]) {
+        const img = buildNavigabilityHatchImageData(data, ROWS, COLS, gate, hatchBandForZoom(z));
+        const painted = new Set<number>();
+        for (let r = 0; r < ROWS; r++)
+          for (let c = 0; c < COLS; c++) if (img[(r * COLS + c) * 4 + 3] !== 0) painted.add(c);
+        // ROWS(32) >= every period, so each column meets the stripe at least
+        // once and `painted` recovers the full criterion, not a phase sample.
+        expect([...painted].sort((a, b) => a - b)).toEqual(
+          [...marginalBytes].sort((a, b) => a - b),
+        );
+      }
+    }
+  });
+
+  it('#599: every PRODUCTION call site passes a band (the optional parameter is for guards only)', () => {
+    // buildNavigabilityHatchImageData's `band` is optional so the two
+    // criterion guards that call the 4-argument form keep exercising the
+    // fallback band unchanged. That optionality would otherwise let a
+    // production call site silently ship the pre-#599 fixed pair at every
+    // zoom, which no type error and no unit test would catch — so the
+    // production source is scanned instead.
+    //
+    // `import.meta.glob(..., '?raw')` rather than node:fs — the browser-safe
+    // form (relaxedDepth.test.ts / sailLiteralCallSites.test.ts), which needs
+    // no tsconfig.app.json exclusion. Keys are relative to THIS file's own
+    // directory, and the lookup fails CLOSED so a glob that stops matching
+    // reds instead of silently passing.
+    const src = DATA_LAYERS_SOURCE;
+    const calls = src.split('buildNavigabilityHatchImageData(').slice(1);
+    expect(calls.length, 'expected DataLayers.tsx to still call the hatch builder').toBe(2);
+    for (const call of calls) {
+      expect(call.slice(0, 400)).toContain('hatchBandForZoom(map.getZoom())');
+    }
   });
 });
 

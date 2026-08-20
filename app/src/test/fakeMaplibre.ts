@@ -107,6 +107,15 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       else layerOrder.splice(at, 0, layer.id);
     }),
     getLayer: (id: string) => layers.get(id),
+    // #599: DataLayers reads the live zoom to pick the depth hatch's stripe
+    // band (depthColor.ts's hatchBandForZoom). jsdom DOES supply a 2D canvas
+    // context here, so buildHatchCanvas really does reach this call rather
+    // than bailing out — without it every component test that mounts
+    // DataLayers throws `map.getZoom is not a function`. Returns MapView's
+    // own initial ZOOM so the fake starts where the app does; no test asserts
+    // band geometry through the fake (depthColor.test.ts covers the band
+    // function directly).
+    getZoom: vi.fn(() => 9),
     removeLayer: vi.fn((id: string) => {
       layers.delete(id);
       const at = layerOrder.indexOf(id);
