@@ -123,6 +123,9 @@ function makePlan(
     // fallback (absent field -> `{ kind: 'decided', rig: recommended }`),
     // matching every pre-#259 PlanResultOk literal elsewhere in the suite.
     rigRecommendation?: RigRecommendation;
+    // #540: defaults to true (every pre-existing test's assumption); pass
+    // false to exercise the budget-truncated disclosure path.
+    comparisonComplete?: boolean;
   } = {},
 ): Plan {
   return {
@@ -149,7 +152,7 @@ function makePlan(
         { sailId: 'fock', result: FOCK_RESULT, reason: null },
       ],
       recommended: overrides.recommended ?? 'genoa',
-      comparisonComplete: true,
+      comparisonComplete: overrides.comparisonComplete ?? true,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
       ...(overrides.rigRecommendation ? { rigRecommendation: overrides.rigRecommendation } : {}),
@@ -265,6 +268,63 @@ describe('RouteSummary', () => {
       screen.getByText('The sails were not compared for this passage, so no faster rig is claimed'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
+  });
+
+  // #540 spec §E.3: same 'not-compared' verdict as the row above, but the
+  // DISCRIMINATING control (comparisonComplete: false) — the budget-specific
+  // sentence must render INSTEAD of the generic rigNotCompared one, never
+  // both, never neither.
+  it('#540: a not-compared verdict with comparisonComplete false shows the budget-truncated sentence, not the generic one', () => {
+    const plan = makePlan({
+      rigRecommendation: { kind: 'not-compared' },
+      comparisonComplete: false,
+    });
+    renderSummary({ plan, rig: 'genoa' });
+    const tablist = screen.getByRole('tablist', { name: 'Rig comparison' });
+    expect(within(tablist).queryAllByLabelText('Recommended')).toHaveLength(0);
+    expect(
+      screen.getByText(
+        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+      ),
+    ).toBeInTheDocument();
+    // The generic sentence must NOT also render.
+    expect(
+      screen.queryByText(
+        'The sails were not compared for this passage, so no faster rig is claimed',
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
+  });
+
+  // #540: the N=1 / N>=3 / tier-C-suppressed / one-sail-failed cases all
+  // report comparisonComplete: true (only budget exhaustion sets it false),
+  // so the budget-specific sentence must NOT render for an ordinary
+  // not-compared verdict — pinned explicitly rather than relying on the
+  // #553 row above staying green by coincidence.
+  it('#540: a not-compared verdict with comparisonComplete true (the default) never shows the budget-truncated sentence', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'not-compared' } });
+    renderSummary({ plan, rig: 'genoa' });
+    expect(
+      screen.queryByText(
+        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  // Discriminating control the other direction: 'tie'/'moot' must ignore
+  // comparisonComplete entirely — resultVerdictKey only special-cases
+  // 'not-compared'.
+  it('#540: comparisonComplete false does not affect a tie verdict', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'tie' }, comparisonComplete: false });
+    renderSummary({ plan, rig: 'genoa' });
+    expect(
+      screen.getByText('Genoa and Fock are effectively tied for this passage'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('#259: a decided comparison for fock badges the fock tab, not genoa', () => {
