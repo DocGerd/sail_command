@@ -340,7 +340,18 @@ export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] |
   // would say the same hazard twice in two vocabularies. Gated HERE rather
   // than at the two call sites so the two can never drift — the defect #612
   // exists to fix was itself a mount condition, not a component.
-  const relaxed = plan.result.shallow !== null;
+  //
+  // TRUTHINESS, deliberately, so this is the EXACT COMPLEMENT of the gate
+  // both banner call sites already use (`plan.result.shallow &&` in
+  // RouteSummary below, `plan?.result.shallow ?? null` in PlannerPanel) — the
+  // two disclosures are then provably never both shown and never both hidden,
+  // whatever shape the field takes. `!== null` would be WRONG and silently
+  // so: `PlanResult.shallow` is `readonly shallow?: ShallowInfo` and, under
+  // exactOptionalPropertyTypes, a non-relaxed plan OMITS the key entirely
+  // rather than setting it — so `undefined !== null` is true and this notice
+  // would never render for the very routes it exists for. Caught by tsc only
+  // because the test fixtures had to spell the absent state out.
+  const relaxed = Boolean(plan.result.shallow);
   // Same contract as ShallowWarning's own exposure figure, deliberately: null
   // whenever there is nothing honest to say — no legs for the active rig, no
   // mask yet (useNavMask starts null and resolves asynchronously), a walk that

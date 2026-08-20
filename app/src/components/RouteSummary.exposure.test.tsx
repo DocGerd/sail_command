@@ -478,3 +478,200 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
     expect(detail?.textContent).toContain('was not passable');
   });
 });
+
+// ---------------------------------------------------------------------------
+// #612: the quiet MARGINAL-depth notice, for a route that did NOT relax.
+//
+// Everything above renders off a NON-NULL `PlanResult.shallow`, which is what
+// #455 found: planRoute.ts sets that field only inside its relaxation branch,
+// so every test in this file (and every other test of the disclosure stack)
+// hands the component the one state the defect could not occur in. These rows
+// use `shallow: null` — the ordinary route — throughout.
+// ---------------------------------------------------------------------------
+
+// Cells charted 3.5 m: ABOVE the 3.0 m default gate, so the route is fully
+// solver-valid and the whole `route.shallow.*` family measures 0.0 nm here
+// (the MEASURED trap — #455 spike section 9 reads 0.0 nm on 67/67 non-relaxed
+// plans at the bare gate). Below the 3.9 m marginal threshold, so the
+// conservative walk reads them. Same row/columns as shallowMask() above, so
+// the exposure arithmetic is the same independently hand-derived 3.0 nm.
+function marginalMask() {
+  return assetsWithMask(
+    (row, col) =>
+      row === ROW && (col === 55 || col === 56 || col === 57) ? 35 /* 3.5 m */ : 200 /* 20 m */,
+  );
+}
+
+/**
+ * A plan that did NOT relax — `shallow: null`, the state no existing test in
+ * this file constructs. `safetyDepthM` is spread over DEFAULT_SETTINGS so a
+ * row can vary the gate (and hence the severity condition) and nothing else.
+ */
+function makeNonRelaxedPlan(legs: Leg[], safetyDepthM = DEFAULT_SETTINGS.safetyDepthM): Plan {
+  const base = makePlan(legs);
+  // `PlanResult.shallow` is `readonly shallow?: ShallowInfo` and, under
+  // exactOptionalPropertyTypes, a non-relaxed plan OMITS the key entirely —
+  // it is never set to null or undefined (types.ts says so at the field).
+  // So the absent state has to be built by DELETING the key, not by assigning
+  // a falsy one; assigning `shallow: null` does not even typecheck, and if it
+  // had, it would have hidden a production gate that read `!== null`.
+  // Dropping the key IS the point of this destructure, so the binding is
+  // deliberately unused. Keeps full typing (no cast), which a `delete` on a
+  // Record<string, unknown> copy would have to give up.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { shallow: _dropped, ...resultWithoutShallow } = base.result;
+  return {
+    ...base,
+    request: { ...base.request, settings: { ...DEFAULT_SETTINGS, safetyDepthM } },
+    result: resultWithoutShallow,
+  };
+}
+
+async function renderNonRelaxed(legs: Leg[], safetyDepthM?: number) {
+  localStorage.setItem('sc-lang', 'en');
+  const plan =
+    safetyDepthM === undefined ? makeNonRelaxedPlan(legs) : makeNonRelaxedPlan(legs, safetyDepthM);
+  const { container } = render(
+    <I18nProvider>
+      <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+    </I18nProvider>,
+  );
+  await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+  await act(async () => {});
+  return container;
+}
+
+describe('#612: the marginal-depth notice on a route that did not relax', () => {
+  it('renders the quiet line with its measured FIGURE', async () => {
+    mockedLoad.mockResolvedValue(marginalMask());
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    const notice = container.querySelector('.marginal-depth-notice');
+    expect(notice).not.toBeNull();
+    // The VALUE, never merely that a key resolved (#388's prose-vs-value
+    // trap). 3.0 nm is shallowExposure.test.ts's own hand derivation for this
+    // exact leg/column geometry, unchanged by the depth swap.
+    expect(notice?.textContent).toContain(
+      '3.0 nm of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of 3.0 m.',
+    );
+    // The banner the relaxed path renders must NOT appear — this plan has no
+    // `shallow` block, and the two disclosures are complementary, never both.
+    expect(container.querySelector('.shallow-warning')).toBeNull();
+  });
+
+  it('renders NOTHING at all when the route touches no marginal cell — with a discriminating control', async () => {
+    // The absence half. `deepMask()` (every cell 20 m) is the ONE difference
+    // from the row above: same legs, same plan, same settle sequence.
+    mockedLoad.mockResolvedValue(deepMask());
+    const absent = await renderNonRelaxed([EXPOSURE_LEG]);
+    expect(absent.querySelector('.marginal-depth-notice')).toBeNull();
+    // Not merely "no element": no zero-valued sentence either, in any of the
+    // shapes a degraded render could take. Scoped to the notice's OWN
+    // wording — a bare `not.toContain('0.0 nm')` over the whole card fires on
+    // the sail/motor split strip's legitimate "Sailing · 0.0 nm · 0%"
+    // (MEASURED: that is what this assertion caught first), which is a
+    // different element saying a true thing.
+    expect(absent.textContent).not.toContain('a more cautious reading');
+    expect(absent.textContent).not.toContain('nm of this route crosses');
+
+    // THE CONTROL. An absence assertion carries no information until the
+    // evidence-generating process is shown to run, so change exactly one
+    // input — the mask — and confirm the same construction DOES render.
+    cleanup();
+    mockedLoad.mockResolvedValue(marginalMask());
+    const present = await renderNonRelaxed([EXPOSURE_LEG]);
+    const revived = present.querySelector('.marginal-depth-notice');
+    // Non-null FIRST, so a control that silently stops rendering reports the
+    // missing element rather than an "undefined and string" argument error.
+    expect(revived, 'control: a marginal mask must make the notice render').not.toBeNull();
+    expect(revived?.textContent).toContain('3.0 nm');
+  });
+
+  it('never renders on a RELAXED route — that is the banner’s job', async () => {
+    // makePlan (not makeNonRelaxedPlan) carries a non-null `shallow`, and the
+    // mask is marginal, so the notice's own trigger would fire if the
+    // relaxation gate were absent. Both disclosures describing one hazard in
+    // two vocabularies is exactly what the #455 ruling forbids.
+    mockedLoad.mockResolvedValue(marginalMask());
+    const container = await renderAndSettle([EXPOSURE_LEG]);
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    expect(container.querySelector('.shallow-warning')).not.toBeNull();
+    expect(container.querySelector('.marginal-depth-notice')).toBeNull();
+  });
+
+  it('is QUIET: no role="alert" and no banner treatment at a default gate', async () => {
+    // The #455 ruling amendment honours its own wallpaper bar by demoting the
+    // SURFACE (measured trip rate 61.5% on shipped defaults), so this element
+    // must not be assertive in the ordinary case.
+    mockedLoad.mockResolvedValue(marginalMask());
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    const notice = container.querySelector('.marginal-depth-notice');
+    expect(notice?.getAttribute('role')).toBeNull();
+    expect(notice?.className).not.toContain('marginal-depth-notice--severe');
+    // And it makes NO claim about the draft in this branch — writing one
+    // would read as "below-draft requires a user-lowered gate", which the
+    // app's own about.caveats.depthMask contradicts.
+    expect(notice?.textContent).not.toContain('draft');
+    expect(notice?.textContent).not.toContain('Caution:');
+  });
+
+  it('escalates only when the gate’s own cautious floor falls under the boat’s draft', async () => {
+    // gate - MASK_TOLERANCE_M < draftM. At the default boat's 2.1 m draft
+    // that is 3.0 - 0.9 = 2.1, NOT below 2.1 — false at the default gate by
+    // construction. 2.9 m (above this boat's 2.2 m field minimum, so a user
+    // can really type it) gives 2.0 < 2.1 and fires.
+    mockedLoad.mockResolvedValue(marginalMask());
+    const container = await renderNonRelaxed([EXPOSURE_LEG], 2.9);
+    const notice = container.querySelector('.marginal-depth-notice');
+    expect(notice?.className).toContain('marginal-depth-notice--severe');
+    expect(notice?.getAttribute('role')).toBe('alert');
+    const text = notice?.textContent ?? '';
+    expect(text).toContain('Caution: 3.0 nm of this route crosses water');
+    expect(text).toContain('safety depth of 2.9 m');
+    // Names the SETTING as the condition, never a general claim about drafts.
+    expect(text).toContain("at this setting that reading can fall below this boat's 2.1 m draft");
+  });
+
+  it('never borrows the relaxed copy, which is false on this route in both clauses', async () => {
+    // route.shallow.detail says the requested depth "was not passable, so
+    // this route was planned at a reduced X m instead" — nothing was reduced.
+    // route.shallow.exposure measures charted-below-gate distance, which is
+    // 0 here by construction. Both are false, in both languages.
+    mockedLoad.mockResolvedValue(marginalMask());
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    expect(container.textContent).not.toContain('was not passable');
+    expect(container.textContent).not.toContain('crosses water charted shallower');
+    expect(container.textContent).not.toContain('A lower safety depth setting');
+  });
+
+  it('omits the line while the mask is still loading — no fallback number', async () => {
+    // mockedLoad left at the beforeEach default: never resolves. Same
+    // contract as ShallowWarning's own exposure figure.
+    localStorage.setItem('sc-lang', 'en');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeNonRelaxedPlan([EXPOSURE_LEG])} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(container.querySelector('.marginal-depth-notice')).toBeNull();
+  });
+
+  it('renders the German copy with a German number', async () => {
+    // The de/en pair is what makes a mixed-language announcement impossible
+    // to ship unnoticed — formatNm is locale-aware (#525), so the DE figure
+    // must read "3,0 nm", never "3.0 nm".
+    localStorage.setItem('sc-lang', 'de');
+    mockedLoad.mockResolvedValue(marginalMask());
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeNonRelaxedPlan([EXPOSURE_LEG])} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    const notice = container.querySelector('.marginal-depth-notice');
+    expect(notice?.textContent).toContain(
+      '3,0 nm dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von 3.0 m setzt.',
+    );
+  });
+});
