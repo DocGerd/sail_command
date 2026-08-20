@@ -730,6 +730,18 @@ making design-level decisions; do not silently deviate.
   status; "in_progress" and "in_progress at step 6 of 8 for 40 min" are different
   facts. `gh run cancel <id>` then `gh run rerun <id> --failed` re-runs only the
   hung job, preserving green siblings.
+- **`ci.yml`'s concurrency group is `ci-${{ github.ref }}` with
+  `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`** — PR runs
+  cancel-supersede, but a PUSH to `main`/`develop` QUEUES behind a same-ref run
+  still in flight. MEASURED 2026-08-19: push run 32275477320 (`develop`, head
+  `bb2520a`) wedged `e2e` on `playwright install` for ~5h15m — an order of
+  magnitude past the PR-run wedges above, and on a push run, where nothing
+  supersedes it — and the next develop push (run 32303526023, created
+  21:22:20Z) started all three of its jobs at 21:37:16Z, seconds after that
+  cancellation. A push run holding at ZERO started jobs is the group waiting:
+  find the in-flight same-ref run before investigating the new one. Let the
+  healthy jobs reach `success` BEFORE cancelling, so `rerun --failed` re-runs
+  only the wedged job instead of all of them.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1005,16 +1017,21 @@ making design-level decisions; do not silently deviate.
   then served the chunk name the tag run had built, proving that run's BUILD
   was always correct and only its DEPLOYMENT no-opped.
 
-  **EXERCISED THREE TIMES; the margin is NOT a predictor.** On one basis
+  **EXERCISED FOUR TIMES; the margin is NOT a predictor.** On one basis
   (Deploy workflow-RUN creation→creation) the gap was **128 s** at v0.10.0 (DID no-op —
-  the probe fired and was right), **54 s** at v0.11.0 (safe) and **70 s** at
-  v0.12.0 (safe). n=3 happens to run the intuitive way and that is NOT evidence:
+  the probe fired and was right), **54 s** at v0.11.0 (safe), **70 s** at
+  v0.12.0 (safe) and **43 s** at v0.12.1 (safe — merge-push run 32313173754
+  had every job `cancelled`, so tag run 32313225085 at the same head deployed
+  cleanly), the last being SMALLER than both earlier safe gaps AND than the
+  128 s one that DID no-op. n=4 happens to run the intuitive way and that is
+  NOT evidence:
   the outcome is set by whether `cancel-in-progress` killed the earlier run
   before its `deploy` job reached terminal `success`, not by the gap — so never
   gate on the gap, and never read "fast tag push" as a protection. (An
-  older 43 s figure was completion→creation and is NOT comparable — differencing
-  the two bases is this file's own "two measurements of DIFFERENT subjects
-  cannot be differenced".)
+  older, UNRELATED 43 s figure was completion→creation and is NOT comparable —
+  differencing the two bases is this file's own "two measurements of DIFFERENT
+  subjects cannot be differenced", and two same-valued figures on different
+  bases must not be conflated.)
   **Gate on the earlier run's `deploy` JOB conclusion, and the test is TERMINAL
   `success`, not deployment-object existence.** At v0.12.0 a Pages deployment
   for that SHA WAS created and reached `error`, and the tag run's SECOND object
@@ -1347,6 +1364,11 @@ making design-level decisions; do not silently deviate.
   `## [X.Y.Z] - date` section (grouped under the matching `### Category`
   heading) and update the comparison links at the bottom, then DELETE the
   fragment files (release runbook `.claude/skills/release/SKILL.md` §2b).
+  `app/src/lib/changelog.ts`'s `ENTRY_RE` is `/^- (.*)$/` — anchored with NO
+  leading whitespace — so folding a multi-entry fragment as an INDENTED
+  sub-list silently glues the indented bullet onto the previous entry, dash
+  and all (measured at the v0.12.0 sweep `2d06f33`: 3 entries written, 2
+  parsed back). Fold every entry as a TOP-LEVEL bullet.
   Rolling a NON-empty set of fragments → `[X.Y.Z]` at a cut needs NO test
   edits: `ChangelogView` filters the now-empty `[Unreleased]` and
   `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
@@ -1407,6 +1429,13 @@ making design-level decisions; do not silently deviate.
 
 ## Verification lessons (hard-won)
 
+- A MapLibre-rendered map feature has NO DOM node, so an MCP `browser_click`
+  or locator aimed at one fails with a CSS-selector parse error rather than
+  clicking (measured 2026-08-19 verifying #492's depth hatching). Verify
+  canvas-only rendering by full screenshot plus a Pillow crop/zoom
+  (`Image.crop().resize(…, Image.LANCZOS)` — ImageMagick is not installed
+  here), or programmatically via `queryRenderedFeatures`; never by trying to
+  interact with the canvas.
 - **The CHECK can be the thing that's wrong — and it fails by ACCUSING a
   correct artifact.** Verifying `CONTRIBUTING.md`'s "`v0.4.0` through
   `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
@@ -2095,9 +2124,20 @@ making design-level decisions; do not silently deviate.
   2026-08-09) — `capture.mjs` now polls the rig-comparison chip's TEXT instead
   of a boolean `getByText('★')`. #428 stays open for its BROADER concern only:
   nothing exercises this script, so it can rot as silently as #64 made it.
-  (Measured 2026-08-19: the script fails today on an UNRELATED cause — the
-  docs-only wind fixture `app/public/test-fixtures/wind-docs-plan-route.json`
-  is past its forecast horizon; regenerate it first, see below.)
+  That fixture decays TWO independent ways, and horizon is the one that
+  MISLEADS: a ROUTING change invalidates it while it is perfectly fresh.
+  #577 (closed v0.12.1) — #54's multi-boat work collapsed the genoa/fock
+  margin from ~180 s to 51.2 s, under `RIG_TIE_BAND_MS`, so the ★ silently
+  became a tie and #459's sail-dominance requirement lapsed; the fix RETUNED
+  `SPEED_LON_RANGE_KN` in `gen-docs-wind-fixture.mjs`, not the horizon. Never
+  attribute a docs-fixture failure to horizon drift without checking the rig
+  margin first — a v0.12.1 docs-sweep auditor did exactly that, and the wrong
+  cause survived its own adversarial verifier.
+  `capture.mjs` also covers only TWO of README's three images: its two
+  `page.screenshot()` calls emit `start-view.png` and `plan-route.png` and it
+  never opens the Boat tab, so `boat-selection.png` is a HAND capture against
+  a local production build and a recapture that only runs the script ships it
+  stale (verified 2026-08-20).
   Durable form: a capture
   or verification tool
   hardcoded to the PRODUCTION url can never capture a release candidate, since
@@ -2629,7 +2669,14 @@ making design-level decisions; do not silently deviate.
   new feature that silently assumes connectivity is a bug.
 - The app is a passage-planning aid, not a navigation device — user-facing
   copy must not claim chart authority.
-- UI strings always go through the i18n dictionary (de/en), never hardcoded.
+- UI strings always go through the i18n dictionary (de/en), never hardcoded —
+  EXCEPT catalogue provenance notes, a deliberate spec-sanctioned exception:
+  `BoatPicker.tsx` renders `draftProvenance.note` / `polarProvenance.note` as
+  raw interpolated strings, never through `t()` ("Catalogue data per spec
+  F.3 … not an i18n key, so it renders as authored, verbatim"), because
+  paraphrasing a source citation per language is how a citation becomes
+  wrong. English text under a German Boat tab is EXPECTED, not a bug; a
+  v0.12.1 verification pass re-filed it as an anomaly (#607).
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
@@ -2666,16 +2713,17 @@ making design-level decisions; do not silently deviate.
   (high/med/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
   optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
   apply type+area+priority to every new issue. Taxonomy documented in
-  CONTRIBUTING.md (#167/#168). **The taxonomy has DRIFTED into space/no-space
-  duplicates** (found during the v0.9.0 cut): `priority: high` /
-  `priority: medium` / `priority: low` coexist with `priority:medium` /
-  `priority:low`, and `area: deploy` / `area: map` / `area: routing` /
-  `area: pwa` / `area: ais` / `area: pipeline` / `area: tooling` coexist with
-  `area:tooling` / `area:map` / `area:pipeline`. `gh issue create` fails with
-  `could not add label: '<name>' not found` on the wrong spelling, and
-  filtering by one silently misses issues tagged with the other. Verify with
+  CONTRIBUTING.md (#167/#168). The taxonomy DRIFTED into space/no-space
+  duplicates (found at the v0.9.0 cut) and was CLEANED UP 2026-08-19 (#401):
+  every no-space-labelled issue was re-tagged onto the spaced form and all
+  eight no-space label objects deleted. `gh issue create` still fails with
+  `could not add label: '<name>' not found` on a wrong spelling, and nothing
+  prevents recurrence via a future `gh label create`, so keep verifying with
   `gh label list --repo DocGerd/sail_command --limit 60 --json name --jq
-  '.[].name'` before using a label name; a cleanup pass is unscheduled.
+  '.[].name'` before using a label name — but do NOT re-plan the cleanup as
+  outstanding. Separately, there is no `area:` member for user-facing copy,
+  i18n or UI component structure; five open issues carry none for that
+  reason, and forcing a wrong one is worse than leaving it bare (#610).
 - Design a guard around its ASYMMETRY: a BLOCKING guard should fail closed, a
   NUDGE should fail open. #233's command segmenter exits 0 while emitting
   confidently-wrong segments, so its fail-closed path covers none of its
@@ -2920,6 +2968,17 @@ making design-level decisions; do not silently deviate.
   clean review leaves nothing new on the PR to read, so that silence is
   indistinguishable from a check that never ran. Read the verdict from the
   PR's reviews/comments artifacts FIRST; nudge only if genuinely absent.
+  Team (SendMessage-only) reviewer variant, measured at the v0.12.1 cut: with
+  no PR there is NO artifact to check, and a nudge is not reliably corrective —
+  one reviewer completed two full passes and never called `SendMessage` once,
+  answering an explicit "send the findings now" nudge with another plain
+  end-turn text block, losing its entire second pass; another delivered only to
+  a nudge that RE-STATED the exact report format. So re-state the format in the
+  nudge, confirm a `SendMessage` call actually happened rather than reading a
+  plain-text reply as delivery, and after a SECOND non-delivery spawn a
+  replacement instead of nudging again. Such an agent also has no Write/Edit
+  tool and a read-only Bash, so briefing it to keep an on-disk fallback copy of
+  its report is unsatisfiable.
   Worktree cleanup ritual: agent runs `find app/node_modules -delete`
   (`rm -rf` is permission-blocked even in the main session; `find -delete` is
   allowed), then the main session runs `git worktree remove` — force-free. Parallel

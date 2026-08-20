@@ -124,7 +124,18 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
 - **`ROADMAP.md`** — update `Current release:` and promote Now → Next: the
   shipped milestone's section goes away, the next one becomes "Now". Re-check
   every issue number named there against the tracker; this file was wrong
-  within a day of being written.
+  within a day of being written. **Bump `Current release:` HERE, in the same
+  commit — do not defer it to step 6.** The tag not existing yet is not a
+  reason to wait: this same commit already writes `## Now — vX.Y.Z` below it
+  and `CHANGELOG.md`'s own `## [X.Y.Z] - date` heading, both forward-dated by
+  the identical margin, and `34b908e` deferred `CONTRIBUTING.md`'s
+  closed-milestone range on that same reasoning — so it was never a property
+  of this one field. Deferring it is what makes the sweep commit contradict
+  itself: measured at the v0.12.1 cut, where `34b908e` left `Current release:
+  **v0.12.0**` in the same commit as its own `## Now — v0.12.1` header (the
+  same shape as `4f18383` and `4fe0890` at the v0.10.0 and v0.11.0 cuts),
+  caught by a review round before the release PR merged and fixed in
+  `79d82c5`. Step 6 verifies this field; it does not set it.
 - **`README.md`** — re-verify the known-limitations section actually still
   describes the shipped build.
 - **`GOVERNANCE.md`** — it carries a standing release duty and is re-read at
@@ -169,7 +180,7 @@ manually at the cut, or reference them from a develop-side PR instead.
 | 5b | 🛑 **WAIT for the tag deploy, then verify** | **Do not push or merge anything to `develop` until this passes** — see the cancellation hazard below. |
 | 5c | 🛑 **Verify the GitHub Release exists** | Now automated (#175) — the tag push also triggers `release.yml`. A green 5b is not evidence this happened; see 5c below. |
 | 5d | 🛑 **Verify GitHub shows the tag/Release as Verified** | The local `git tag -v` in step 5 proves the signature to this machine only — 5d checks the badge a third party actually sees. See 5d below. |
-| 6 | BACK-MERGE `main` → `develop` | Open a `chore/backmerge` PR into `develop` so `develop` stays strictly ahead of `main`. Full CI re-runs. This is a develop-merge — the assistant may merge it directly. **Bump `ROADMAP.md`'s `Current release:` line to the tag just pushed as part of this PR** — it's the one §2b-swept field that can't be correct until the tag actually exists, so §2b (which runs before step 3) necessarily leaves it describing the *previous* release; this step is its owner. |
+| 6 | BACK-MERGE `main` → `develop` | Open a `chore/backmerge` PR into `develop` so `develop` stays strictly ahead of `main`. Full CI re-runs. This is a develop-merge — the assistant may merge it directly. **Verify `ROADMAP.md`'s `Current release:` line already names the tag just pushed** — §2b bumps it in-sweep, forward-dated by the same margin as the `## Now — vX.Y.Z` header and the `## [X.Y.Z] - date` CHANGELOG heading that same commit already writes. If §2b skipped it, bump it here. Deferring it to this step was the earlier convention (`f422fa1`, `435eb3a`, `70f80da`, `47d189f` each bumped it on a `chore/backmerge` branch and each worked) and is dropped because it left the sweep commit contradicting itself — `34b908e`, v0.12.1. |
 
 ## 5a. Assert the ref BEFORE tagging — local `main` is routinely stale
 
