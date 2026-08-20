@@ -195,7 +195,7 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //     target at z12.917 (px = 8), the continuous stripe count would fall
 //     to 1 at z12.332 (px = 5.333, where round(8/px) crosses 1.5), and
 //     round(8/px) would reach 0 at z13.917 (px = 16). An earlier revision
-//     wrote "~z13.6" at four sites; that value is none of the three.
+//     wrote "~z13.6" at five sites; that value is none of the three.
 //   * At z13 and above a single mask cell is ALREADY wider than the
 //     target, so stripe = 1 cell is the finest thing a per-cell raster can
 //     express and the on-screen stripe resumes doubling per zoom level.
