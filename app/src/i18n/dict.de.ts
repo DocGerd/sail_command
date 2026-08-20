@@ -215,6 +215,16 @@ export const de = {
   // stattgefunden. Siehe dict.en.ts für die drei auslösenden Fälle.
   'route.rigNotCompared':
     'Die Segel wurden für diese Passage nicht verglichen — es wird kein schnelleres Rigg angegeben',
+  // #540 spec §E.3: a budget-exhausted sail is ALSO a 'not-compared' verdict
+  // (rigVerdictKey collapses onto route.rigNotCompared above), but a stalled
+  // search reads very differently from "nothing to compare" — the ★-suppressed
+  // recommendation is still computed over one completed sail only, and this
+  // sentence is what stops that from being misread as a finished two-sail
+  // comparison. Rendered instead of rigNotCompared exactly when
+  // PlanResultOk.comparisonComplete is false; see dict.en.ts for the derived
+  // MsgKey helper (resultVerdictKey in lib/resultSummary.ts).
+  'route.comparisonIncomplete':
+    'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
