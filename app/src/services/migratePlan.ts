@@ -380,14 +380,16 @@ function migrateRequest(
   // re-solve (replan.ts, recalc.ts, reroute.ts), so a `sailIds` that has
   // silently dropped the recommended sail can never reproduce the
   // recommendation the UI is currently showing: the record would be
-  // internally inconsistent in a way nothing downstream can detect. This is
-  // what closes the modern/legacy asymmetry the catalogue filter above
-  // introduces: a catalogue rename can orphan a MODERN record's recommended
-  // sail from the fallback reconstruction exactly as it would once have
-  // made a LEGACY record unreadable outright — refusing here (an honest
-  // #54 unreadable row) treats both shapes the same way when their
-  // recommended sail cannot be reproduced, rather than silently accepting
-  // one and outright refusing the other.
+  // internally inconsistent in a way nothing downstream can detect.
+  //
+  // Fires on ANY path whose sailIds omits `recommended` — most reachably a
+  // stored sailIds that simply disagrees with the stored result, with no
+  // catalogue rename involved. On the LEGACY fallback it can never fire:
+  // that branch is unfiltered and migrateResult already guarantees
+  // `recommended` is among `sails`, so legacy records keep their
+  // frozen-history readability while a modern record whose recommended sail
+  // the catalogue filter drops is refused. The asymmetry is therefore
+  // narrowed to a loud refusal instead of a silent desync, not removed.
   //
   // Subsumes the pre-existing "`sailIds` must be non-empty" requirement
   // rather than sitting beside it as a separate check: `recommended` is

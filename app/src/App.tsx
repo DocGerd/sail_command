@@ -1288,12 +1288,26 @@ function AppShell() {
                 // safety-relevant chart, so closed with a finite guard
                 // instead of a spread: the only value ever accepted is a
                 // real `number`, whatever the source.
+                //
+                // #551 review round 3 follow-up: the guard's first cut used
+                // `typeof x === 'number'`, which ALSO admits `NaN` and
+                // `±Infinity` (both are typeof 'number'). `NaN` silently
+                // drops both cues (`s.depthM < NaN` is always false, so no
+                // shallow run is shaded, and `NaN <= axisMax` is false, so
+                // the safety line is omitted too). `Infinity` is worse:
+                // `s.depthM < Infinity` is always TRUE, so EVERY sample is
+                // shaded shallow while `Infinity <= axisMax` still omits the
+                // safety line that would explain why — a whole-route false
+                // alarm with no referent. `Number.isFinite` closes all three
+                // (undefined/NaN/±Infinity) in one predicate while still
+                // accepting a legitimate `0`, which a truthiness check would
+                // have swallowed.
                 <DepthProfile
                   plan={plan}
                   rig={rig}
                   safetyDepthM={
-                    typeof plan.request.settings?.safetyDepthM === 'number'
-                      ? plan.request.settings.safetyDepthM
+                    Number.isFinite(plan.request.settings?.safetyDepthM)
+                      ? (plan.request.settings.safetyDepthM as number)
                       : DEFAULT_SETTINGS.safetyDepthM
                   }
                 />

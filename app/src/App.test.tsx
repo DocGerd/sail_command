@@ -817,6 +817,49 @@ describe('App', () => {
     expect(depthProfileProps.last?.safetyDepthM).toBe(DEFAULT_SETTINGS.safetyDepthM);
   });
 
+  // #551 review round 3 follow-up: `typeof x === 'number'` (the prior
+  // guard) is ALSO true for `Infinity` — the damaging degenerate value,
+  // since `DepthProfile` shades every sample whose depth is LESS than the
+  // safety depth (`s.depthM < Infinity` is always true) while ALSO omitting
+  // the safety line that would explain why (`Infinity <= axisMax` is
+  // false) — a whole-route false alarm with no referent. This is the one
+  // failure mode a real user would actually see, which is why it gets its
+  // own dedicated test rather than folding into the undefined case above.
+  it('falls back to DEFAULT_SETTINGS when the stored settings object carries safetyDepthM: Infinity (#551 review round 3 follow-up)', async () => {
+    const infiniteDepthPlan: Record<string, unknown> = {
+      id: 'infinite-depth-plan',
+      name: 'Infinite Depth Plan',
+      createdAtMs: Date.now(),
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now(),
+        settings: { ...DEFAULT_SETTINGS, safetyDepthM: Infinity },
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now(), hours: 24 }),
+      result: okPlanResult(33),
+    };
+    await db.savePlan(infiniteDepthPlan as unknown as Plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: new RegExp(infiniteDepthPlan.name as string),
+      }),
+    );
+
+    await waitFor(() => expect(depthProfileProps.last).not.toBeNull());
+    expect(depthProfileProps.last?.safetyDepthM).toBe(DEFAULT_SETTINGS.safetyDepthM);
+  });
+
   // #299 fix (PR #486 review, Major 1): the boat-settings link lives inside
   // PlannerPanel, which UNMOUNTS the instant the tab switches away from
   // 'plan' — without an explicit focus move, activating it drops keyboard
