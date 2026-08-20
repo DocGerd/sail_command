@@ -142,9 +142,18 @@ describe('router invariants', () => {
           // keeps exactly its old invariant-1 threshold; a relaxed plan is
           // licensed to cross shoal cells down to `usedDepthM`, and asserting
           // the requested depth there would red on correct behaviour. The
-          // relaxed-path block below is what stops this from being a blanket
-          // weakening — it pins where `usedDepthM` may sit and what the legs
-          // that used it must report.
+          // relaxed-path block below is what stops the DEPTH half of that from
+          // being a blanket weakening — it pins where `usedDepthM` may sit and
+          // what the legs that used it must report.
+          //
+          // RESIDUAL: `uniformGate` licenses sub-requested water ANYWHERE on the
+          // route, while the shipped `ApproachGate` licenses it only inside a
+          // waypoint disc. This battery does not check that locality — the
+          // shoal ring is drawn inside the origin's own disc by construction,
+          // so an assertion here would be a theorem of the fixture, not a test
+          // of the gate. `realmask.repro.test.ts`'s margin-0 case is what
+          // covers it. So the block below restores the DEPTH half of what
+          // invariant 1 gives up, not the space half.
           const solvedGateM = r.shallow ? r.shallow.usedDepthM : DEFAULT_SETTINGS.safetyDepthM;
           for (const rig of [genoa, fock]) {
             if (!rig) continue;

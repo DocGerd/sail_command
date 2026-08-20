@@ -234,15 +234,24 @@ function subRequestedCrossings(
  * "2.9 m at 7.32 nm from the pinch" (Bagenkop) — so the bound is tight, the
  * crossing set is real, and the two anchors are not interchangeable.
  *
- * WHAT THIS DOES NOT CLAIM. Three localization-reverting mutations were run
- * against both call sites and ALL THREE left the farthest distance unchanged
- * (0.607/0.667 nm): `APPROACH_RADIUS_M = Infinity` (the documented pre-#452
- * route-wide kill switch), `APPROACH_RADIUS_M = 20000`, and `findRelaxedGate`'s
- * phase-2 per-disc ascent disabled. At DEFAULT_SETTINGS the #243 comfort
- * preference already holds these routes in deep water everywhere but the pinch,
- * so a gate-localization regression is NOT detectable here — that is what the
- * `depthComfortMarginM: 0` test above is for, and its own comment says so. Read
- * this as a structural pin plus a disclosure check, not as a locality detector.
+ * WHAT THIS DOES NOT CLAIM, at the two DEFAULT_SETTINGS call sites. Three
+ * localization-reverting mutations were run against both, and ALL THREE left
+ * every farthest distance INSIDE the bound — which is the claim; the distances
+ * themselves are not all unchanged, and saying so was the sharper statement:
+ * `APPROACH_RADIUS_M = Infinity` (the documented pre-#452 route-wide kill
+ * switch) moves the Flensburg GENOA from 0.607 to 0.572 nm as its leg count
+ * goes 22 -> 31, while the Flensburg fock (0.667 nm) and Bagenkop (0.607 nm)
+ * legs stay byte-identical; `APPROACH_RADIUS_M = 20000` leaves every farthest
+ * distance at 0.607/0.667 nm though the Flensburg genoa still moves (22 -> 27
+ * legs, 54 -> 61 crossings); `findRelaxedGate`'s phase-2 per-disc ascent
+ * disabled is byte-identical to baseline on all four rig/route combinations.
+ * So the mutations reach, and the assertion does not see them. At
+ * DEFAULT_SETTINGS the #243 comfort preference already holds these routes in
+ * deep water everywhere but the pinch, so a gate-localization regression is NOT
+ * detectable at those two sites. It IS detectable at the third call site — the
+ * `depthComfortMarginM: 0` test below, added by the #494 review — so read the
+ * DEFAULT_SETTINGS pair as a structural pin plus a disclosure check, and the
+ * margin-0 call as the locality detector.
  */
 function expectRelaxedWaterConfinedToPinch(
   legs: Leg[],
@@ -529,6 +538,33 @@ describe('real mask routing (issue #20)', () => {
               );
           }
         }
+        // #494 review F1/F2: the PINCH-anchored form of the same bound, at the
+        // ONE configuration in this file where it can red — and the licence row
+        // this test otherwise lacks entirely (`offenders` empty because nothing
+        // was crossed reads identically to `offenders` empty because everything
+        // was confined; MEASURED 172 crossings at baseline, but nothing pinned
+        // that).
+        //
+        // NOT redundant with the `nearestM` bound above, and not a second copy
+        // of it. `gateAtCell` returns the requested depth outside EVERY disc,
+        // so "inside SOME disc" is a theorem of the shipped gate and the
+        // `nearestM` form can never red for a stray the ORIGIN disc absorbs.
+        // Anchoring on the destination alone removes that absorber, which is
+        // the residual #494 §(a) actually names. No NEW knife-edge — every
+        // baseline crossing here is nearer the destination than the origin, so
+        // this bound and the `nearestM` one above are the SAME number on
+        // correct behaviour — but the shared headroom is genuinely thin and
+        // that predates #494: MEASURED on the first rig, 83 crossings spanning
+        // 0.079-0.997 nm from the Marstal snap against the 1.02 nm bound, i.e.
+        // ~23 m of margin. Widening the bound would forfeit the teeth; the
+        // honest reading is that a legitimate route shift of a few tens of
+        // metres here reds BOTH assertions, not just this one.
+        expectRelaxedWaterConfinedToPinch(
+          rig.legs,
+          settings.safetyDepthM,
+          res.snappedDestination,
+          'margin 0: relaxed water away from the Marstal pinch',
+        );
       }
       // Report the actual offending cells, not a bare boolean: at 3am in CI
       // the depth and the distance are the whole diagnostic.
