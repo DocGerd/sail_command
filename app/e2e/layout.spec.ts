@@ -912,6 +912,101 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
   }
 });
 
+// #638: two blind spots in the #598 test above and in
+// `DataLayers.test.tsx`'s #598 block. That test above runs ONLY at 320px
+// and asserts overflow/collision, never a wide viewport, a colour scheme,
+// or `background` — and `DataLayers.test.tsx`'s block is jsdom, which
+// computes no real paint at all. Both guards were green and correct; they
+// measure quantities orthogonal to this defect. `.depth-legend` never
+// declared the panel chrome its siblings get from the `.route-layer-
+// controls, .data-layer-controls` base rule (app.css's own #638 comment —
+// measured `background-color: rgba(0,0,0,0)` at every viewport/theme
+// before the fix), and `.depth-legend-body`'s narrow-tuned `max-width:
+// 6.5rem` (104px) stayed live at wide viewports too, mid-word-breaking the
+// legend's longest German compound ("Farbüberlagerung", 120.86px in this
+// font — app.css's own #638 comment carries the full measurement).
+//
+// Reachable with NO route plan: `depthVisible` defaults ON and the legend's
+// wide-layout reachability gate (DataLayers.tsx's `useLayoutEffect`,
+// app.css's own comment on it) is "always reachable" at >=1024px — verified
+// live against a real dev server before writing this, no plan or banner
+// dismissal needed here (unlike the 320px test above, which needs both).
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`#638: the depth-hatch legend paints a real panel background and does not squeeze its longest word at ${STANDARD_VIEWPORTS.desktopHd.width}x${STANDARD_VIEWPORTS.desktopHd.height} (${colorScheme})`, async ({
+    page,
+  }) => {
+    // Dark mode has no in-app toggle (pure `prefers-color-scheme`,
+    // CLAUDE.md) — emulate it rather than looking for a UI control, and
+    // set it BEFORE navigation so the very first paint already uses it.
+    await page.emulateMedia({ colorScheme });
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
+      await page.goto(server.url);
+      await mapReady(page);
+
+      const depthLegend = page.locator('.depth-legend');
+      await depthLegend.locator('> summary').click();
+      await expect(depthLegend).toHaveJSProperty('open', true);
+
+      // Panel chrome: assert the `background` SHORTHAND, never
+      // `backgroundColor` alone — CLAUDE.md's #493/#506 lesson is that
+      // `backgroundColor` can read `rgba(0,0,0,0)` in BOTH the broken and
+      // fixed states because it doesn't reflect a `color-mix()`/`var()`
+      // shorthand declaration the same way; the shorthand string is what
+      // actually discriminates "no background declared at all" from a
+      // real, painted one. Re-sampled every poll tick, not frozen before
+      // paint has settled (#412's stale-geometry lesson, applied to a CSS
+      // property read instead of a bounding box).
+      await expect
+        .poll(() => depthLegend.evaluate((el) => getComputedStyle(el).background), {
+          timeout: 5_000,
+        })
+        .not.toMatch(/^rgba\(0,\s*0,\s*0,\s*0\)/);
+
+      // Not squeezed, signal 1: the narrow-tuned 104px bound must not still
+      // be governing at this width — the wide-layout override must have
+      // taken.
+      const depthLegendBody = page.locator('.depth-legend-body');
+      await expect
+        .poll(() => depthLegendBody.evaluate((el) => getComputedStyle(el).maxWidth), {
+          timeout: 5_000,
+        })
+        .not.toBe('104px');
+
+      // Not squeezed, signal 2 — the actual reported symptom: the legend's
+      // longest German compound must render as ONE unbroken line, never
+      // split across two. `scrollWidth`/`clientWidth` (the #598 test's own
+      // silent-overflow check) cannot see this: `overflow-wrap: break-word`
+      // keeps both equal to the (too-narrow) bound even while breaking a
+      // word inside it — only `Range.getClientRects()` on the word itself
+      // detects a break, by reporting more than one rect.
+      const word = 'Farbüberlagerung';
+      const rectCount = await depthLegendBody.evaluate((body, needle) => {
+        for (const p of Array.from(body.querySelectorAll('p'))) {
+          for (const node of Array.from(p.childNodes)) {
+            if (node.nodeType !== Node.TEXT_NODE) continue;
+            const text = node.textContent ?? '';
+            const start = text.indexOf(needle);
+            if (start === -1) continue;
+            const range = document.createRange();
+            range.setStart(node, start);
+            range.setEnd(node, start + needle.length);
+            return range.getClientRects().length;
+          }
+        }
+        return -1;
+      }, word);
+      expect(
+        rectCount,
+        `expected "${word}" to render as one unbroken line (-1 means the word was not found in the legend copy at all, a different failure)`,
+      ).toBe(1);
+    } finally {
+      server.kill();
+    }
+  });
+}
+
 // #231: on a SHORT LANDSCAPE narrow viewport, the base COLUMN layout for
 // `.map-stack-tl` (DataLayers' two toggles stacked, then the compass) was
 // measured (#231's own issue text) to occupy ~46% of a 360px-tall viewport,

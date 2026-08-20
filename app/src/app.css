@@ -655,6 +655,29 @@ select {
 .depth-legend {
   position: absolute;
   left: 0;
+  /* #638: `.depth-legend` was extracted from `.data-layer-controls`'s flex
+     flow (see the SHIPPED SHAPE paragraph in this block's own ancestor
+     comment above) and never re-declared the panel chrome it used to
+     inherit for free — measured `background-color: rgba(0,0,0,0)` on this
+     element, `.depth-legend-body` and its `<p>` children at every viewport
+     and theme. A DEDICATED declaration here (not joining `.depth-legend` to
+     the `.route-layer-controls, .data-layer-controls` base rule above) is
+     deliberate: that base rule also sets `display: flex; flex-direction:
+     column; gap: 0.35rem`, which would change this `<details>` element's
+     box type from `block` to `flex` — untested territory for a
+     `<summary>` + `.depth-legend-body` pair that already has its own
+     flex/gap rules one level down, and changing `display` risks a second,
+     unrelated regression in the same edit as a chrome fix. Reusing the
+     EXACT SAME token expression as that base rule (`color-mix(in srgb,
+     var(--sc-bg) 90%, transparent)` / `border-radius: 8px` / `padding:
+     0.5rem`) keeps the pill look identical to `.route-layer-controls` and
+     `.data-layer-controls` without touching layout mode. `--sc-bg` is
+     redefined per theme in this file's `@media (prefers-color-scheme:
+     dark)` block near the top, so this repaints correctly in both themes
+     with no separate dark-mode override needed. */
+  background: color-mix(in srgb, var(--sc-bg) 90%, transparent);
+  border-radius: 8px;
+  padding: 0.5rem;
   /* MEASURED regression from moving this OUT of `.data-layer-controls`
      (which sets `font-size: 0.85rem` on itself and its NESTED descendants,
      app.css's `.route-layer-controls, .data-layer-controls` base rule):
@@ -812,10 +835,37 @@ select {
    calc() for a boundary that does not exist on wide layout.
    `.depth-legend` ITSELF needs no such override any more — reachability
    (including the wide-layout "always reachable" case) is decided in JS
-   now (DataLayers.tsx's `useLayoutEffect`), not by a CSS `max-height`. */
+   now (DataLayers.tsx's `useLayoutEffect`), not by a CSS `max-height`.
+   #638: the base rule's `max-width: 6.5rem` (104px) was tuned for narrow
+   chrome and was never overridden here for width, only for height — so it
+   stayed live at 1024px+ too and mid-word-broke the legend's longest German
+   compounds ("Farbüberlagerung", "Sicherheitstiefe") on desktop. MEASURED
+   (Chromium, live `.depth-legend-body` computed font `13.6px system-ui,
+   sans-serif`, canvas `measureText` cross-checked against
+   `Range.getClientRects()` on the rendered word — the second method is what
+   actually detects a mid-word break, since it reports the word split across
+   two rects instead of one): the widest single token across both dicts'
+   legend strings is German's "Farbüberlagerung" at 120.86px; live-tested
+   sweep of `max-width` values confirmed it renders as ONE unbroken line
+   (`getClientRects().length === 1`) from 7.6rem (121.6px) upward, and still
+   splits into two rects (mid-word break) at 7.5rem (120px) — a hairline
+   below the word's own width. 9rem (144px) is chosen for ~23px/19%
+   safety margin over the bare 120.86px threshold (cross-browser/OS
+   `system-ui` font-metric variance is unmeasured here), while staying a
+   comfortable wrapped-line length rather than the whole-panel width — this
+   scopes ONLY the defect (mid-word breaking), not a general column-width
+   redesign. No collision risk: `.depth-legend`'s shrink-to-fit sizing
+   (position: absolute, `left` set, no `right` — CSS 2.1 §10.3.7) settles at
+   its OWN content's natural width once `max-width` clears the widest word,
+   confirmed live by sweeping `max-width` from 8rem to 50rem and finding
+   `.depth-legend`'s rendered width plateaus at a constant 136.86px
+   (120.86px word + this rule's own 0.5rem/8px padding × 2) the entire time
+   — raising the bound further has no effect once content, not the bound,
+   is what is being measured. */
 @media (min-width: 1024px) {
   .depth-legend-body {
     max-height: 24rem;
+    max-width: 9rem;
   }
 }
 
