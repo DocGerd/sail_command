@@ -2098,6 +2098,52 @@ select {
   color: var(--sc-banner-error-fg);
 }
 
+/* #612: the QUIET route-scoped marginal-depth line, for a route that did NOT
+   relax. Deliberately a WEAKER treatment than .shallow-warning above, and
+   every difference is load-bearing rather than decorative — the #455 ruling
+   amendment honours its own "> 50 % of non-relaxed plans is wallpaper" bar by
+   DEMOTING THE SURFACE instead of hiding data (measured trip rate: 61.5 % on
+   shipped defaults), so this must not read as a second banner:
+     - NO background wash (.shallow-warning has --sc-depth-warning-bg),
+     - a 2px left rule instead of 4px,
+     - 0.85rem, matching .shallow-warning__caveat's secondary size rather than
+       its 1rem lead,
+     - normal weight — nothing here is emphasised.
+   It keeps --sc-depth-warning-text (#251's family) so the same hazard reads
+   as the same hazard wherever it appears; that token is the WCAG-safe text
+   colour of the family (6.54:1 light / 8.37:1 dark), never the -fg wash
+   colour, which is 2.18:1 as text. */
+.marginal-depth-notice {
+  margin: 0;
+  padding: 0.35rem 0 0.35rem 0.55rem;
+  border-left: 2px solid var(--sc-depth-warning-fg);
+  color: var(--sc-depth-warning-text);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+/* MODIFIER on .marginal-depth-notice above, applied together with the base
+   class, never alone — the same escalation condition .shallow-warning--severe
+   uses (`gate - MASK_TOLERANCE_M < draft`), which for a NON-relaxed route can
+   only be reached by a user lowering their own safety depth. Reuses
+   --sc-banner-error-* (the app's error severity family, which already carries
+   its own dark variants) so the escalation reads as a different TIER rather
+   than the same one turned up, exactly as .shallow-warning--severe does.
+   Severity is not colour alone (WCAG 1.4.1): the copy itself switches to
+   route.marginal.noticeSevere, which names the draft in words, and the
+   element additionally takes role="alert" in this state only.
+   COMPOUND SELECTOR (`.marginal-depth-notice.marginal-depth-notice--severe`),
+   not the bare modifier: two single-class selectors tie on specificity and
+   source order decides, which is how .chip-shallow and
+   .chip-shallow-cautious both silently failed to render (#493/#506). The base
+   rule happens to be declared ABOVE this one, so a bare modifier would win
+   today — the compound form makes that independent of declaration order, so a
+   future reordering of this file cannot silently revert it. */
+.marginal-depth-notice.marginal-depth-notice--severe {
+  border-left-color: var(--sc-banner-error-fg);
+  color: var(--sc-banner-error-fg);
+}
+
 /* #452 gap 3: per-leg shallow marker in the legs table — same
    --sc-depth-warning-* family as .shallow-warning above (#251), so the
    hazard reads consistently between the plan-level banner and the row that
