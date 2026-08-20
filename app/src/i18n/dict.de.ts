@@ -407,6 +407,23 @@ export const de = {
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',
+  // #598: Legende der #492-Schraffur (siehe dict.en.ts für die volle
+  // Begründung — nie "flaches Wasser", die Schraffur ist ein Hinweis auf
+  // eine vorsichtige Lesart, kein Flachwasser-Indikator).
+  'map.depth.legend.title': 'Legende',
+  'map.depth.legend.hatchLabel': 'Schraffur: vorsichtige Lesart',
+  // PR #625 self-review Minor 3: the final clause's "sie" (feminine) bound to
+  // "die Schraffur"/"die Farbe" — no reading reached the intended referent,
+  // "das Wasser" (neuter). Replaced verbatim per the review's suggested fix;
+  // English "it" was never gender-bound, so that half needed no change.
+  'map.depth.legend.basis':
+    'Die diagonale Schraffur markiert Wasser, bei dem die vorsichtigere der beiden Lesarten hinter der Farbüberlagerung unter Ihre Sicherheitstiefe fallen könnte — auch wenn die angezeigte Farbe noch unbedenklich wirkt. Sie kann auch Wasser markieren, das tatsächlich tief genug ist; dieser Kompromiss ist beabsichtigt, damit die Schraffur eher zu oft warnt, als das Wasser unbedenklich wirken zu lassen, obwohl es das vielleicht nicht ist.',
+  // #597 — PR #625 self-review Major 1 (see dict.en.ts's own comment for the
+  // full defect/derivation): "sieht genauso aus wie Land" was FALSE, in the
+  // dangerous direction. Byte 0 gets no paint at all either way, so this
+  // water renders as ordinary basemap blue, not anything land-coloured.
+  'map.depth.legend.caveat':
+    'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser. Fehlende Schraffur ist keine Garantie, dass das Wasser unbedenklich ist — es kann sich schlicht um eine Stelle ohne Daten handeln.',
   // Seezeichen-Overlay (#7) — standardmäßig AUS, Opt-in.
   'map.seamarks.toggle': 'Seezeichen',
   'seamark.popover.type': 'Typ',

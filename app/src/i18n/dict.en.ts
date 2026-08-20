@@ -450,6 +450,39 @@ export const en = {
   // OF the number, never alongside it.
   'profile.minDepthUnknown': 'min. — unknown',
   'map.depth.toggle': 'Water depths',
+  // #598: collapsible legend for the #492 navigability hatch, default
+  // collapsed, rendered inside .data-layer-controls so it's reachable
+  // without a plan (the hatch itself has no other toggle/opt-in — it rides
+  // depthVisible). Covers the HATCH SYMBOL only, never the absolute
+  // depth-ramp colours (out of scope per the maintainer ruling on #598).
+  // Deliberately says "cautious reading", never "shallow water" — the hatch
+  // is a cautious-reading indicator, not a shallow-water one, and can flag
+  // water that is in fact deep enough (depthColor.ts's own doc comment on
+  // buildNavigabilityHatchImageData has the full derivation). The basis
+  // clause states the CONSERVATIVE mechanism without hardcoding
+  // MASK_TOLERANCE_M's 0.9 m literal in prose — see mask.ts for that
+  // constant if a numeric citation is ever needed here.
+  'map.depth.legend.title': 'Legend',
+  'map.depth.legend.hatchLabel': 'Cautious-reading hatch',
+  'map.depth.legend.basis':
+    'Diagonal hatching flags water where the more cautious of the two depth readings behind the colour overlay could fall below your safety depth — even where the shown colour still looks clear. It can flag water that turns out to be deep enough; that trade-off is deliberate, so the hatching favours over-warning rather than looking clear when it might not be.',
+  // #597: the caveat this legend was created to carry — unsurveyed/drying
+  // water (mask byte 0) is indistinguishable from land and gets no cue at
+  // all, so its ABSENCE must never read as "clear". Kept as its own
+  // sentence/key rather than folded into the basis paragraph above so a
+  // future edit to one cannot silently drop the other.
+  //
+  // PR #625 self-review Major 1: the first version of sentence 1 said this
+  // water "looks the same as dry land" — false, and false in the DANGEROUS
+  // direction. depthColor.ts:82 returns fully transparent for byte 0 and the
+  // hatch LUT loop (depthColor.ts:243) starts at b=1, so the app paints
+  // NOTHING over byte 0 either way — what a user actually sees there is the
+  // basemap alone, i.e. ORDINARY BLUE WATER (OSM land polygons don't cover
+  // unsurveyed water or drying flats), not anything land-coloured. The old
+  // wording handed the user an inverted detection heuristic ("scan for
+  // land-like patches"); #597's own issue text states the correct direction.
+  'map.depth.legend.caveat':
+    'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
   'map.seamarks.toggle': 'Seamarks',
   'seamark.popover.type': 'Type',
