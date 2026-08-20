@@ -803,6 +803,14 @@ whether a route-scoped signal is still wanted:
   structurally **under**-signalling, never false comfort: `HATCH_RGBA` is pure
   black, so compositing can only darken.
 
+  > **Superseded 2026-08-20, after this spike was written.** Both bullets above
+  > were true when written and are kept as the record of what this decision
+  > rested on. Since then #598 shipped the legend (closed), and #599 made the
+  > hatch pick its stripe geometry per zoom band — the on-screen stripe at z9
+  > went from ~1 px to ~8 px measured in a real browser, so the overview-zoom
+  > speckle is fixed. This spike's conclusion is unaffected: it turns on the
+  > measured 61.5%/82.1% duplication rate, not on either of these two points.
+
 ### 9.4 The corpus — stated in full, because a bare percentage is not a finding
 
 Everything in §9.5 comes from **one** `app/sweep/` arm-set run. Quoting any
@@ -1088,6 +1096,11 @@ duplicate an already-shipped cue at the measured 61.5%/82.1% rate. Weighing for
 it: the hatch has no legend (**#598**, open), and at the app's own initial z9 it
 renders as a sparse speckle rather than a readable pattern (**#599** — the
 period is expressed in mask cells, so on-screen size scales with zoom).
+[**Superseded 2026-08-20**: both "weighing for" points were true when written
+and are kept as written, because they are part of how this decision was
+reached. #598 has since closed (the legend shipped) and #599 fixed the
+zoom-scaling — the z9 on-screen stripe went from ~1 px to ~8 px, measured. The
+verdict below stands on the duplication rate, which neither change touches.]
 `depthColor.ts`'s own measurement is worth stating exactly rather than
 overstating: the touched pixels really are dark (mean luminance shift 62, max
 160, 28% dropping >100), they are simply too small and too sparse to *read as a

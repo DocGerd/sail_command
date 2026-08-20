@@ -31,6 +31,7 @@ import {
   buildDepthImageData,
   buildNavigabilityHatchImageData,
   depthSourceCorners,
+  hatchBandForZoom,
 } from '../lib/depthColor';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
@@ -62,7 +63,8 @@ const DEPTH_LAYER = 'sc-depth';
 // HARD DOMAIN RULE: the absolute ramp never tracks safetyDepthM).
 const DEPTH_HATCH_SOURCE = 'sc-depth-hatch';
 const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
-// Debounce for rebuilding the hatch raster after safetyDepthM changes — the
+// Debounce for rebuilding the hatch raster after safetyDepthM OR the #599
+// zoom band changes — the
 // mask is ~5.28M cells, so this must not run on every keystroke/tick of
 // whatever control edits the setting. 300ms: today's only editor
 // (SettingsPanel/PlannerPanel's NumberInput, via SAFETY_DEPTH_FIELD) commits
@@ -83,6 +85,31 @@ const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // actual lag budget: today's only reachable path (a blur commit) always
 // pays this 300 ms before the safety cue updates, not the ~30 ms build
 // cost itself.
+//
+// #599 RE-MEASURED, same method (in-browser Chromium, real 2200x2400 mask,
+// createImageData+putImageData included), 5 samples: 40.7 / 27.1 / 28.7 /
+// 35.3 / 34.4 ms — median 34.4, range 27-41. The 28.x figures above are
+// still reproducible but sit at the OPTIMISTIC end of today's spread, so
+// size anything against ~35-40 ms, not ~28.
+//
+// #599 also makes ZOOM a second trigger, and that is the one that could
+// turn this into a per-interaction cost. It is deliberately NOT a second
+// debounce; the band is folded into the SAME timer below, for two reasons.
+// (1) Both inputs feed the identical rebuild, so one timer means a
+// simultaneous change (zoom while a boat radio is clamping safetyDepthM)
+// costs ONE rebuild, where two independent timers would cost two.
+// (2) The trigger is the BAND, not the zoom, and hatchBandForZoom quantises
+// to whole zoom levels (#599 fix wave), so only FIVE bands are reachable
+// across z9-z22 and a gesture that stays inside one arms no timer at all.
+// MEASURED, not predicted — an earlier revision of this comment asserted
+// "five distinct values / no timer at all" while selection was still
+// CONTINUOUS, where 15 bands are reachable and it was simply false: eight
+// wheel notches from z9 rebuilt 7-8 times. After quantisation the same eight
+// notches rebuild 1-4 times depending on notch size (2 at a 0.25 notch, 1 at
+// 0.125, 4 at a coarse 0.5). Band changes over a full z9->z22 sweep drop
+// from 14 to 4, all at integer crossings.
+// `zoomend` (not `zoom`) is the source, so a continuous pinch/wheel
+// gesture is already coalesced by MapLibre before this debounce sees it.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
 const HARBOR_SOURCE = 'sc-harbors';
 // Exported so App can hand MapView the same id its raw-tap gate queries: the
@@ -142,7 +169,15 @@ function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElemen
 // buffer (depthColor.ts's HARD DOMAIN RULE). Built with the CURRENT
 // safetyDepthM at setup time so the cue is correct from the very first
 // paint; later changes are repainted by rebuildHatchCanvas below, debounced.
+//
+// #599: takes `map` purely to read the CURRENT zoom for hatchBandForZoom, so
+// the very first paint already uses the right band. ORDERING IS LOAD-BEARING:
+// map.getZoom() is called only AFTER the `!ctx` bail-out, because jsdom has no
+// 2D canvas backend and the shared test fake exposes no getZoom — every unit
+// test that mounts this component takes the `return null` path and must never
+// reach the call.
 function buildHatchCanvas(
+  map: MaplibreMap,
   meta: MaskMeta,
   buffer: ArrayBuffer,
   safetyDepthM: number,
@@ -154,7 +189,13 @@ function buildHatchCanvas(
   if (!ctx) return null;
   const image = ctx.createImageData(meta.cols, meta.rows);
   image.data.set(
-    buildNavigabilityHatchImageData(new Uint8Array(buffer), meta.rows, meta.cols, safetyDepthM),
+    buildNavigabilityHatchImageData(
+      new Uint8Array(buffer),
+      meta.rows,
+      meta.cols,
+      safetyDepthM,
+      hatchBandForZoom(map.getZoom()),
+    ),
   );
   ctx.putImageData(image, 0, 0);
   return canvas;
@@ -186,8 +227,16 @@ function rebuildHatchCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return; // no 2D backend (jsdom) — matches buildHatchCanvas's own guard
   const image = ctx.createImageData(meta.cols, meta.rows);
+  // #599: same ordering rule as buildHatchCanvas — getZoom() sits behind both
+  // bail-outs above, so jsdom (where the source never exists) never reaches it.
   image.data.set(
-    buildNavigabilityHatchImageData(new Uint8Array(maskBuffer), meta.rows, meta.cols, safetyDepthM),
+    buildNavigabilityHatchImageData(
+      new Uint8Array(maskBuffer),
+      meta.rows,
+      meta.cols,
+      safetyDepthM,
+      hatchBandForZoom(map.getZoom()),
+    ),
   );
   ctx.putImageData(image, 0, 0);
   source.play();
@@ -260,14 +309,14 @@ function setupLayers(
   // verified against a real mid-range device (none available here); the
   // e2e suite elsewhere exercises depth+AIS+route together without a crash,
   // which is weak evidence, not a memory profile. If this turns out to
-  // matter, M8's screen-space fill-pattern alternative (#599, see
-  // depthColor.ts's HATCH_PERIOD_CELLS comment) would also remove this
+  // matter, M8's screen-space fill-pattern alternative (the option #599 did
+  // NOT take — see depthColor.ts's hatchBandForZoom comment) would also remove this
   // second full-resolution raster entirely — not attempted here, since the
   // maintainer's decision for THIS change was explicitly a second
   // COMPOSITED layer, and merging the two canvases is the one thing the
   // HARD DOMAIN RULE separation exists to prevent.
   if (!map.getSource(DEPTH_HATCH_SOURCE)) {
-    const hatchCanvas = buildHatchCanvas(meta, maskBuffer, safetyDepthM);
+    const hatchCanvas = buildHatchCanvas(map, meta, maskBuffer, safetyDepthM);
     if (hatchCanvas) {
       map.addSource(DEPTH_HATCH_SOURCE, {
         type: 'canvas',
@@ -289,9 +338,9 @@ function setupLayers(
             'raster-fade-duration': 0,
             // #492 review M8: MapLibre's default 'linear' resampling
             // smears the hatch's hard-edged stripes into soft gradients —
-            // an ADDITIONAL artifact on top of the documented zoom-scaling
-            // degradation (depthColor.ts's HATCH_PERIOD_CELLS comment),
-            // not a fix for it. 'nearest' at least keeps whatever renders
+            // an ADDITIONAL artifact, independent of the zoom-scaling
+            // degradation #599's hatchBandForZoom addresses (depthColor.ts),
+            // and neither fixes the other. 'nearest' at least keeps whatever renders
             // crisp rather than blurred. SCOPE, measured against
             // maplibre-gl@6.3.0: this governs MAGNIFICATION only —
             // webgl/draw/draw_raster.ts:119 binds the MINIFICATION filter
@@ -468,6 +517,29 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     safetyDepthMRef.current = safetyDepthM;
   });
   const setupRef = useRef<() => void>(() => {});
+  // #599: a CHANGE TRIGGER for the hatch rebuild, not the band itself — the
+  // rebuild reads the live zoom straight off the map (behind the jsdom
+  // guards in rebuildHatchCanvas), so what this state has to carry is only
+  // "the band is no longer the one the canvas was painted with". Storing the
+  // band's identity as a string is what makes that work: React bails out of
+  // a setState to an Object.is-equal value, so every zoomend landing inside
+  // the SAME band re-renders nothing and arms no timer — only a genuine
+  // boundary crossing reaches the debounced effect below. An object would
+  // defeat that (a fresh reference every time) and rebuild on every gesture.
+  // Starts null: the setup path already painted the correct band for the
+  // initial zoom, and the first zoomend simply re-confirms it.
+  const [hatchBandKey, setHatchBandKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!map) return;
+    const onZoomEnd = () => {
+      const band = hatchBandForZoom(map.getZoom());
+      setHatchBandKey(`${band.periodCells}/${band.stripeCells}`);
+    };
+    map.on('zoomend', onZoomEnd);
+    return () => {
+      map.off('zoomend', onZoomEnd);
+    };
+  }, [map]);
 
   // Module-cached promise shared with App.tsx's own eager load — no second
   // fetch. Best-effort like App's: a failed fetch just leaves the layers off
@@ -558,9 +630,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     }
   }, [map, styleEpoch, assets, depthVisible]);
 
-  // #492: rebuild the hazard-hatch raster whenever safetyDepthM changes,
+  // #492/#599: rebuild the hazard-hatch raster whenever safetyDepthM OR the
+  // zoom band changes,
   // DEBOUNCED (DEPTH_HATCH_DEBOUNCE_MS — see that constant's own comment for
-  // the interval and why). Also fires once on initial setup (styleEpoch
+  // the interval, the re-measured build cost, and why the two triggers share
+  // ONE timer instead of getting a debounce each). `hatchBandKey` is in the
+  // dependency array purely as that trigger; the band VALUE is re-read from
+  // the map inside rebuildHatchCanvas, so a rebuild can never paint a band
+  // staler than the current camera. Also fires once on initial setup (styleEpoch
   // 0 -> 1), redundantly repainting the SAME data buildHatchCanvas already
   // painted at creation — harmless (idempotent) and simpler than special-
   // casing the first run. `map.getLayer(DEPTH_HATCH_LAYER)` inside the
@@ -568,13 +645,20 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // reload wipes the layer doesn't throw — it just quietly finds nothing to
   // repaint, matching the depthVisible effect's own no-op-when-absent shape.
   useEffect(() => {
-    if (!map || styleEpoch === 0 || !assets) return;
+    // #599 review m7: gated on depthVisible — repainting a 2200x2400 raster
+    // nobody can see is pure cost, and zoom being a trigger makes it a
+    // RECURRING one (4 invisible rebuilds across 8 measured gestures before
+    // this gate). `depthVisible` is a dependency as well as a guard, so
+    // turning the overlay back ON re-runs this and repaints with whatever
+    // safetyDepthM/band changed while it was hidden — the canvas can never
+    // be shown stale, which is what makes skipping the hidden rebuilds safe.
+    if (!map || styleEpoch === 0 || !assets || !depthVisible) return;
     const timer = window.setTimeout(() => {
       if (!map.getLayer(DEPTH_HATCH_LAYER)) return;
       rebuildHatchCanvas(map, assets.maskMeta, assets.maskBuffer, safetyDepthM);
     }, DEPTH_HATCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [map, styleEpoch, assets, safetyDepthM]);
+  }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the

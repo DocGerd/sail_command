@@ -849,9 +849,33 @@ select {
   min-width: 0;
 }
 
-/* Approximates the map's own hatch (depthColor.ts: pure black stripes,
-   HATCH_PERIOD_CELLS=8 / HATCH_STRIPE_WIDTH_CELLS=2, i.e. a 25% duty cycle,
-   at 45deg) over a fixed pale backdrop — a THEME-INVARIANT literal, same
+/* Approximates the map's own hatch as an ICON — deliberately NOT to scale.
+   depthColor.ts paints pure black 45deg stripes whose geometry is measured
+   in MASK CELLS and chosen PER ZOOM BAND (#599), so there is no single
+   stripe/gap pair here to mirror. What that scheme holds roughly constant
+   is the ON-SCREEN stripe width, near an 8 px target:
+
+     metresPerScreenPx(z) = 40075016.6856 m * cos(lat) / (512 * 2^z)
+     screenPxPerCell(z)   = 46.67 m / metresPerScreenPx(z)
+     stripeCells          = max(1, round(8 / screenPxPerCell(floor(z))))
+     gapCells             = min(3 * stripeCells, 12)
+
+   512 because MapLibre's zoom is 512-px-tile based — mapOrientation.test.ts
+   derives the same ground resolution independently, and depthColor.ts's own
+   block comment carries the browser measurements plus the measured basis
+   for the gap cap. Note the floor(z): the zoom is QUANTISED to whole levels,
+   which is what keeps the reachable band set to five and is load-bearing for
+   safety, not rounding tidiness. Consequence for this swatch: the map's real
+   on-screen stripe runs 7.9-16.9 px from z9 to z13 and doubles per zoom level
+   above that, at a 25% duty cycle from z11 up but 40-56% at z10 and below,
+   where the gap cap bites. (An earlier revision said "~8 px ... to ~z13.6";
+   the stripe is a RANGE, not ~8 px, and 13.6 is none of the three real
+   thresholds — 12.332, 12.917, 13.917 — see depthColor.ts.) The 2 px stripe in an 8 px period below is simply a
+   legible 25% icon at chrome size — it matches the design's NOMINAL duty,
+   not any particular zoom's rendered geometry. Do not "correct" it to a
+   specific band's numbers; no single band is the right one to copy.
+
+   The pale backdrop is a THEME-INVARIANT literal, same
    convention as `.route-legend-shallow`/`.route-legend-alt-rig` below: on
    the real map the hatch composites over water/basemap, never over this
    chrome's own `--sc-bg`, and pure black would vanish against dark chrome
