@@ -722,6 +722,25 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
     // Both ends measured, so the ratio is the real thing #599 bounded: a
     // fixed cell-space band would put ~128x between these two numbers.
     expect(z16Stripe / z9Stripe, 'stripe growth across z9..z16 must stay bounded').toBeLessThan(32);
+
+    // ---- the zoomend REBUILD, isolated ----
+    // Neither measurement above can see whether the `zoomend` trigger works:
+    // both changed the gate AND the zoom together, so the safetyDepthM effect
+    // would have rebuilt the raster even with the zoom listener removed —
+    // and a user who merely zooms, without touching the gate, is the common
+    // case the whole feature is for. So: jump back to z9 leaving
+    // safetyDepthM at 10, which makes the zoom listener the ONLY thing that
+    // can rebuild. The gate-2.2 frame from the z9 phase is still a valid
+    // reference — same zoom, same centre, gate differs — so the hatch stays
+    // isolated the same way.
+    await jumpTo(9);
+    const backAtZ9 = await settledCanvas(page, canvas, 3); // outlast DEPTH_HATCH_DEBOUNCE_MS
+    const rebuiltRuns = await hatchRunLengthsPx(page, z9.low, backAtZ9);
+    const rebuiltStripe = percentile(rebuiltRuns, 90);
+    expect(
+      rebuiltStripe,
+      `zooming out with the gate untouched must rebuild the raster into the z9 band: measured ${rebuiltStripe}px (p90 of ${rebuiltRuns.length} runs). A stuck z16 band paints a 1-cell stripe, which is ~0.5px at z9.`,
+    ).toBeGreaterThanOrEqual(4);
   } finally {
     server.kill();
   }
