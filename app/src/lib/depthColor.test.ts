@@ -116,9 +116,13 @@ describe('buildNavigabilityHatchImageData (#492)', () => {
     const img = buildNavigabilityHatchImageData(mask, 8, 8, 10);
     let hatched = 0;
     for (let i = 0; i < 64; i++) if (img[i * 4 + 3] !== 0) hatched++;
-    // Exact, not approximate: an 8x8 grid is exactly one HATCH_PERIOD_PX (8)
-    // in both dimensions, so the diagonal stripe visits exactly 2 of every 8
-    // columns per row (64 * 2/8 = 16) with no boundary remainder.
+    // Exact, not approximate: this call passes no band, so it uses
+    // HATCH_FALLBACK_BAND — period 8, stripe 2 — and an 8x8 grid is exactly
+    // one period in both dimensions, so the diagonal stripe visits exactly
+    // 2 of every 8 columns per row (64 * 2/8 = 16) with no boundary
+    // remainder. (#599 renamed the constants this comment used to cite;
+    // the assertion itself is unchanged, and the fallback band deliberately
+    // reproduces the pre-#599 fixed pair so it stays 16.)
     expect(hatched).toBe(16);
   });
 

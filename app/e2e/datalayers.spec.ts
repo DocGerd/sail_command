@@ -98,11 +98,16 @@ async function hatchedPixels(page: Page, shot: Buffer): Promise<number> {
   }, shot.toString('base64'));
 }
 
-// #492 review M8: measures the documented zoom-dependent DEGRADATION
-// directly (depthColor.ts's HATCH_PERIOD_CELLS comment carries the full
-// table) rather than asserting it only in prose — returns the FRACTION of
-// canvas pixels that read as hatched, so a "wide band" reading is a large
-// fraction, not merely a nonzero one. Same img-src-not-fetch decode as
+// Returns the FRACTION of canvas pixels that read as hatched.
+//
+// #599 CORRECTION: this was introduced (as #492 review M8) claiming to
+// measure "the documented zoom-dependent DEGRADATION directly", so that a
+// "wide band" reading would be a large fraction. It never could: the
+// coverage fraction is invariant to the stripe period — the duty cycle is
+// what sets it, and that was constant across zoom — so this number cannot
+// discriminate a fine hatch from a wide band. The stripe-width measurement
+// that CAN is hatchRunLengthsPx below; this one's real job is establishing
+// that the hatch renders at all over a marginal area. Same img-src-not-fetch decode as
 // hatchedPixels above (see its comment); kept as a separate function
 // rather than refactored into it so that helper's own body, once corrected
 // for the CSP issue, stays a single self-contained unit.
