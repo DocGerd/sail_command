@@ -221,6 +221,41 @@ describe('#54 migratePlan: pre-#54 records', () => {
     expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
   });
 
+  // #551 review round 2, Minor 3 (the reviewer's own probe): pins that
+  // `typeof s === 'string'` is load-bearing for an OFF-CATALOGUE boat,
+  // where `sailIsSafe` alone would pass ANY value unconditionally —
+  // including a non-string one. Off-catalogue boat id ('gone-45', not in
+  // BOATS, so `catalogueSailIds` returns null) + a raw NUMBER inside the
+  // stored sailIds array: with the term present this is rejected (typeof
+  // check fails) and falls to the unfiltered legacy reconstruction.
+  //
+  // MUTATION-CHECKED (deleting the term, restored after): the raw number
+  // does NOT simply "survive into request.sailIds" as `sailIsSafe(12345)`
+  // alone would suggest — `storedSailIdsAreValid` does go true and
+  // `sailIds` does become `[12345]`, but review round 3's OWN
+  // `!sailIds.includes(recommended)` invariant then catches it one line
+  // later (12345 !== 'genoa') and refuses the whole record, so the
+  // observed mutant behaviour is `migratePlan(raw) === null`, not a
+  // shipped numeric sailId. Both are wrong outcomes for a valid off-
+  // catalogue record; this test pins the CORRECT one (term present).
+  it('typeof-string check rejects a non-string stored sailId even for an off-catalogue boat, where sailIsSafe alone would pass anything (#551 review round 2 Minor 3)', () => {
+    const raw = legacyPlan();
+    const request = raw.request as Record<string, unknown>;
+    request.boat = {
+      id: 'gone-45',
+      name: 'Gone 45',
+      draftM: 2.4,
+      sails: [
+        { id: 'genoa', label: 'Genoa 150 %', polarProvenance: { tier: 'estimated', note: 'n' } },
+      ],
+    };
+    request.sailIds = [12345];
+    const migrated = migratePlan(raw)!;
+    // Rejected — falls to the (unfiltered, off-catalogue) legacy
+    // reconstruction, never the raw number.
+    expect(migrated.request.sailIds).toEqual(['genoa', 'fock']);
+  });
+
   it('carries a per-sail no-route reason across from its <rig>Reason sibling', () => {
     const raw = legacyPlan();
     const result = raw.result as Record<string, unknown>;

@@ -317,6 +317,7 @@ function catalogueSailIds(boatId: string): readonly string[] | null {
 function migrateRequest(
   request: Record<string, unknown>,
   sails: readonly SailResult[],
+  recommended: SailId,
   fallbackBoat: BoatSnapshot,
   // #551 review round 2 fix-wave 2 (caught by the PRE-EXISTING
   // migratePlan.catalogueRename.test.ts, which round-2's first pass never
@@ -326,13 +327,8 @@ function migrateRequest(
   // LEGACY_SAIL_FIELDS' own comment at the top of this file protects — a
   // pre-#54 record's sail ids are FROZEN HISTORY, deliberately never
   // resolved through the catalogue, so that a later catalogue rename cannot
-  // make an already-stored record unreadable. Catalogue-filtering the
-  // FALLBACK reconstruction unconditionally (this fix's first pass)
-  // reintroduced exactly the failure catalogueRename's own header describes
-  // ("the first implementation cancelled it one line later ... under which
-  // a rename made EVERY pre-#54 plan unreadable") through a different door
-  // — BOATS instead of boat.sails, same blind spot. The catalogue filter
-  // below therefore applies ONLY when this is true.
+  // make an already-stored record unreadable. The catalogue filter below
+  // applies to the fallback reconstruction ONLY when this is true.
   sailsAreModernShape: boolean,
 ): PlanRequest | null {
   const boat = migrateBoat(request, fallbackBoat);
@@ -340,12 +336,6 @@ function migrateRequest(
   if (typeof request.departureMs !== 'number') return null;
   // A pre-#54 request has no sailIds; the sails the plan actually compared,
   // in the order the result lists them, is the honest reconstruction of it.
-  //
-  // `length > 0` is load-bearing, not defensive noise: `[].every(...)` is
-  // VACUOUSLY TRUE, so an empty stored list used to be taken as authoritative
-  // and skip this reconstruction even though `result.sails` is non-empty
-  // (migrateSails already refuses `out.length === 0`). planRoute's `runAll`
-  // maps over this list, so an empty one made every tier `[]` and threw.
   //
   // #551: the STORED sailIds is validated against `catalogueSailIds(boat.id)`
   // — see that function's own comment for WHY it is the catalogue and not
@@ -361,7 +351,11 @@ function migrateRequest(
   // `sailIsSafe` returns true UNCONDITIONALLY (see catalogueSailIds'
   // comment), so without this term a non-string entry would slip through
   // in exactly that case. It also still licenses the `as SailId[]` cast
-  // below.
+  // below. Pinned by 'typeof-string check rejects a non-string stored
+  // sailId even for an off-catalogue boat' in migratePlan.test.ts (#551
+  // review round 2 Minor 3 — the reviewer's own probe: this term reds 0/88
+  // on its own for an ON-catalogue boat, and only the off-catalogue
+  // combination separates the two readings).
   const catalogueSails = catalogueSailIds(boat.id);
   const sailIsSafe = (s: string): boolean => catalogueSails === null || catalogueSails.includes(s);
   const storedSailIdsAreValid =
@@ -369,28 +363,43 @@ function migrateRequest(
     request.sailIds.length > 0 &&
     request.sailIds.every((s) => typeof s === 'string') &&
     request.sailIds.every((s) => sailIsSafe(s as string));
-  if (storedSailIdsAreValid) {
-    return { ...request, sailIds: request.sailIds as SailId[], boat } as unknown as PlanRequest;
-  }
   // The FALLBACK reconstruction: catalogue-filtered ONLY for a modern-shape
   // `sails` list (#551 review round 2, MAJOR 2 — `migrateSails` validates a
   // modern entry's `sailId` only to be a string, zero catalogue check, so
   // this path was exactly as unguarded as the stored list). A legacy-shape
   // `sails` list is passed through UNFILTERED, preserving the frozen-history
   // guarantee `LEGACY_SAIL_FIELDS` exists for.
-  const reconstructedSailIds = sailsAreModernShape
-    ? sails.map((s) => s.sailId).filter(sailIsSafe)
-    : sails.map((s) => s.sailId);
-  // A now-EMPTY result is possible here in a way it never was before this
-  // filter existed: every catalogue-foreign sail a MODERN-shape plan
-  // compared gets dropped (never for a legacy-shape one, which is
-  // unfiltered and — per migrateSails — already guaranteed non-empty).
-  // `runAll` maps over `sailIds`, so `[]` is the same hazard the
-  // pre-existing `length > 0` term above guards on the stored side — refuse
-  // the whole record (the honest #54 unreadable-row outcome) rather than
-  // hand `plan()` a request with nothing left to solve.
-  if (reconstructedSailIds.length === 0) return null;
-  return { ...request, sailIds: reconstructedSailIds, boat } as unknown as PlanRequest;
+  const sailIds: readonly SailId[] = storedSailIdsAreValid
+    ? (request.sailIds as SailId[])
+    : sailsAreModernShape
+      ? sails.map((s) => s.sailId).filter(sailIsSafe)
+      : sails.map((s) => s.sailId);
+  // #551 review round 3 MAJOR: whichever path produced `sailIds`, the
+  // RECOMMENDED sail must be a MEMBER of it. Every replan/recalc path reads
+  // `request.sailIds` — never `result.recommended` — to decide what to
+  // re-solve (replan.ts, recalc.ts, reroute.ts), so a `sailIds` that has
+  // silently dropped the recommended sail can never reproduce the
+  // recommendation the UI is currently showing: the record would be
+  // internally inconsistent in a way nothing downstream can detect. This is
+  // what closes the modern/legacy asymmetry the catalogue filter above
+  // introduces: a catalogue rename can orphan a MODERN record's recommended
+  // sail from the fallback reconstruction exactly as it would once have
+  // made a LEGACY record unreadable outright — refusing here (an honest
+  // #54 unreadable row) treats both shapes the same way when their
+  // recommended sail cannot be reproduced, rather than silently accepting
+  // one and outright refusing the other.
+  //
+  // Subsumes the pre-existing "`sailIds` must be non-empty" requirement
+  // rather than sitting beside it as a separate check: `recommended` is
+  // always a real, non-empty SailId string (migrateResult already refuses
+  // an invalid one), so `[].includes(recommended)` is always false — an
+  // empty `sailIds` fails THIS check on its own, with no separate
+  // `length === 0` branch needed. `[].every(...)`'s VACUOUS-TRUE trap
+  // (which is why the STORED path's `length > 0` term above stays
+  // separate) does not apply to `.includes`, which is false, not
+  // vacuously true, on an empty array.
+  if (!sailIds.includes(recommended)) return null;
+  return { ...request, sailIds, boat } as unknown as PlanRequest;
 }
 
 export function migratePlan(raw: unknown): Plan | null {
@@ -419,6 +428,7 @@ export function migratePlan(raw: unknown): Plan | null {
   const migratedRequest = migrateRequest(
     request,
     migratedResult.sails,
+    migratedResult.recommended,
     fallbackBoat,
     sailsAreModernShape,
   );

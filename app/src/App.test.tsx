@@ -775,6 +775,48 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'SailCommand' })).toBeInTheDocument();
   });
 
+  // #551 review round 3, Minor 5: an object SPREAD (`{ ...DEFAULT_SETTINGS,
+  // ...plan.request.settings }`, the fix this test's sibling above measured
+  // as correct for every OTHER degenerate shape) does not default an
+  // EXPLICITLY-present `safetyDepthM: undefined` — object spread copies an
+  // own key whose value is `undefined` and overwrites the default with it,
+  // `??` semantics do not apply. Structured clone preserves `undefined`
+  // object values into IndexedDB, so this shape is genuinely storable.
+  it('falls back to DEFAULT_SETTINGS when the stored settings object explicitly carries safetyDepthM: undefined (#551 review round 3 Minor 5)', async () => {
+    const undefinedDepthPlan: Record<string, unknown> = {
+      id: 'undefined-depth-plan',
+      name: 'Undefined Depth Plan',
+      createdAtMs: Date.now(),
+      schemaVersion: PLAN_SCHEMA_VERSION,
+      request: {
+        origin: ORIGIN_A,
+        destination: DEST_A,
+        viaPoints: [],
+        originHarborId: null,
+        destinationHarborId: null,
+        departureMs: Date.now(),
+        settings: { ...DEFAULT_SETTINGS, safetyDepthM: undefined },
+        sailIds: ['genoa', 'fock'],
+        boat: defaultBoatSnapshot(),
+      },
+      windGrid: uniformWindGrid(10, 250, { t0Ms: Date.now(), hours: 24 }),
+      result: okPlanResult(33),
+    };
+    await db.savePlan(undefinedDepthPlan as unknown as Plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: new RegExp(undefinedDepthPlan.name as string),
+      }),
+    );
+
+    await waitFor(() => expect(depthProfileProps.last).not.toBeNull());
+    expect(depthProfileProps.last?.safetyDepthM).toBe(DEFAULT_SETTINGS.safetyDepthM);
+  });
+
   // #299 fix (PR #486 review, Major 1): the boat-settings link lives inside
   // PlannerPanel, which UNMOUNTS the instant the tab switches away from
   // 'plan' — without an explicit focus move, activating it drops keyboard

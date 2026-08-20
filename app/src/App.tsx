@@ -1269,15 +1269,33 @@ function AppShell() {
                 // `plan.request.settings.safetyDepthM` throws
                 // `TypeError: Cannot read properties of undefined`. With no
                 // error boundary anywhere in app/src, that blanks the whole
-                // app. Spread over DEFAULT_SETTINGS first, matching the
-                // house pattern at every other stored-settings read site
-                // (reroute.ts, lib/planForm.ts, lib/recalc.ts) — LiveView.tsx
-                // is the one exception and is a narrower exposure (behind
-                // the Live tab only), not the pattern to copy.
+                // app.
+                //
+                // #551 review round 3, Minor 5: a plain
+                // `{ ...DEFAULT_SETTINGS, ...plan.request.settings }` spread
+                // (the pattern reroute.ts/lib/planForm.ts/lib/recalc.ts use
+                // for a STORED settings object generally) defaults every
+                // absent/wrong-typed/null `settings` shape correctly, but an
+                // explicitly-present `safetyDepthM: undefined` survives a
+                // spread unchanged (object spread copies an own key whose
+                // value is `undefined`; `??` semantics do not apply) —
+                // structured clone preserves `undefined` object values into
+                // IndexedDB, so a foreign/imported record can carry that
+                // shape. The consequence is mild (DepthProfile's safety line
+                // renders under `safetyDepthM <= axisMax`, and
+                // `undefined <= axisMax` is `false`, so the line is silently
+                // OMITTED rather than throwing) but still wrong on a
+                // safety-relevant chart, so closed with a finite guard
+                // instead of a spread: the only value ever accepted is a
+                // real `number`, whatever the source.
                 <DepthProfile
                   plan={plan}
                   rig={rig}
-                  safetyDepthM={{ ...DEFAULT_SETTINGS, ...plan.request.settings }.safetyDepthM}
+                  safetyDepthM={
+                    typeof plan.request.settings?.safetyDepthM === 'number'
+                      ? plan.request.settings.safetyDepthM
+                      : DEFAULT_SETTINGS.safetyDepthM
+                  }
                 />
               )}
               <PlansList online={online} busy={runBusy} onRecalculate={handleRecalculate} />

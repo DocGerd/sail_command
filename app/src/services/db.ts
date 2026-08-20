@@ -126,6 +126,9 @@ function displayIdOfKey(key: unknown): string {
   // distinguishing PREFIX on every fallback id, changing what the
   // overwhelmingly common (real string id) case displays: the
   // general-purpose key-identification scheme review said not to build.
+  // This is NOT only a display collision — see deletePlan's own comment
+  // below (#551 review round 3, Minor 4): the same cross-path pair makes
+  // deletePlan's DIRECT lookup path delete the WRONG row.
   return JSON.stringify(key) ?? String(key);
 }
 
@@ -315,11 +318,17 @@ export async function getPlan(id: string): Promise<Plan | undefined> {
 // SAME serialization `unreadableRow` used to derive `id` in the first
 // place — so a row a user can SEE is a row this can delete.
 //
-// Residual, matching displayIdOfKey's own documented gap: two distinct
-// primary keys that happen to serialize to the same JSON text (the
-// ArrayBuffer/typed-array case) would both match the scan and this deletes
-// the FIRST one found — the same collision the display id already carries,
-// not a new one this function introduces.
+// Residual, and it is on the DIRECT path, not only the scan: a non-string key
+// whose serialization equals an UNRELATED record's real string id (numeric key
+// 12345 vs string id '12345') makes getKey match that OTHER record, so this
+// deletes the wrong row and leaves the targeted one in place. MEASURED. Same
+// cross-path collision displayIdOfKey documents; closing it needs a
+// distinguishing prefix on every fallback id, deliberately not built here.
+//
+// Separately, and genuinely minor: a delete of an id present in NEITHER path
+// (e.g. a double-tap after the row is already gone) walks the whole store
+// before returning — O(n), not O(1), on that path. Fine at realistic plan
+// counts.
 export async function deletePlan(id: string): Promise<void> {
   const store = (await db()).transaction('plans', 'readwrite').store;
   if ((await store.getKey(id)) !== undefined) {
