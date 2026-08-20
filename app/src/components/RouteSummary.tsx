@@ -18,11 +18,17 @@ import {
   rigRecommendationOf,
   sailLabelKey,
 } from '../lib/resultSummary';
-import { roundExposureNm, shallowConfinedWithinM, shallowExposureNm } from '../lib/shallowExposure';
+import {
+  marginalExposureNm,
+  roundExposureNm,
+  shallowConfinedWithinM,
+  shallowExposureNm,
+} from '../lib/shallowExposure';
 import { useWideLayout } from '../lib/useWideLayout';
 import { useNavMask } from '../state/useNavMask';
 import { safetyDepthFieldFor } from './OptionsPanel';
 import type { MsgKey } from '../i18n/dict.de';
+import { DEFAULT_SETTINGS } from '../types';
 import type { Board, Leg, NoRouteReason, Plan, SailId, ShallowInfo } from '../types';
 import Card from './Card';
 import Chip from './Chip';
@@ -280,6 +286,133 @@ export function ShallowWarning({
   );
 }
 
+/**
+ * #612 (the implementation half of #455): the route-scoped MARGINAL-depth
+ * notice, for a route that did NOT relax.
+ *
+ * WHY IT EXISTS. Every `ShallowWarning` above renders off `PlanResult.shallow`,
+ * which planRoute.ts sets only inside its `if (relaxed !== null)` block — so
+ * an ordinary, non-relaxed route disclosed nothing at all about the ~10,746
+ * gate-crossing cells #455 measured. The map's own per-cell hatch (#492,
+ * `sc-depth-hatch`) does cover them, but nothing route-scoped did: a user
+ * reading the results panel never learned that THEIR route crosses such water.
+ *
+ * WHY IT IS A QUIET <p> AND NOT A BANNER. Maintainer ruling on #455
+ * (2026-08-20) plus its amendment: a bar of "> 50 % of non-relaxed plans makes
+ * a bare presence notice wallpaper" was fixed BEFORE the trip rate was
+ * measured, and the measurement tripped it — 61.5 % on shipped defaults
+ * (`breeze`, 16/26), 82.1 % pooled (55/67). The ruling honours the bar by
+ * DEMOTING THE SURFACE rather than hiding data: the line renders on every
+ * tripping route with no magnitude gate to defend, and it MUST state the
+ * exposure figure ("≈0.3 nm" and "≈2 nm" are different situations), because a
+ * bare presence notice is precisely what the bar rejected.
+ *
+ * SEVERITY, and why it is not flattened into ShallowWarning's. A non-relaxed
+ * crosser's CHARTED depth bottoms out AT the requested gate; a relaxed route
+ * genuinely goes below it, and at DEFAULT settings below the hull (relaxation
+ * searches [relaxationFloorM(boat), requestedDepthM) — realmask.repro pins
+ * Flensburg->Marstal at usedDepthM ~2.3 under a 2.1 m hull, and
+ * `about.caveats.depthMask` discloses exactly that). Two different risk
+ * classes, so they get two different presentations. The one thing that DOES
+ * escalate here is the same per-plan condition ShallowWarning uses,
+ * `gate - MASK_TOLERANCE_M < draft` — false at every catalogue boat's own
+ * default gate by construction, so it fires only once a user has lowered their
+ * safety depth. Ruling §4: the non-relaxed / NON-SEVERE case must not be an
+ * assertive role="alert"; "that stays for the relaxed-or-severe case", which
+ * a non-relaxed severe route is a member of. Exposure magnitude never
+ * escalates this line on its own.
+ *
+ * PRESENTATION-ONLY, deliberately: recomputed at render from the plan's own
+ * legs, the currently-loaded mask and `plan.request.settings.safetyDepthM`.
+ * `PlanResult` gains no field, `types.ts` and `routing/**` are untouched, so
+ * the plan's bytes are identical and NO #282 acceptance sweep is owed — the
+ * same shape #516/#518/#539 took, for the same reason.
+ */
+export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] | null }) {
+  const t = useT();
+  const [lang] = useLang();
+  const mask = useNavMask();
+  // The REQUESTED gate this plan was computed at, from the plan's own frozen
+  // settings — never the live OptionsPanel value, so a re-opened plan keeps
+  // describing the gate it was actually solved against.
+  // GUARDED, per #624/#551: `migratePlan.ts` never validates `request.settings`,
+  // so a stored plan without it migrates NON-NULL and a bare read throws
+  // `TypeError: Cannot read properties of undefined`. With no error boundary
+  // anywhere in app/src that blanks the whole app — a safety notice taking the
+  // results panel down with it is strictly worse than the silent no-op #612
+  // exists to fix. MEASURED by PR #630's review: `App.test.tsx` is 68/68 on
+  // plain develop and 67/68 once this branch is merged into it, a cross-PR
+  // composition defect invisible against either side alone.
+  //
+  // `Number.isFinite`, not `typeof === 'number'` and not a
+  // `{ ...DEFAULT_SETTINGS, ...settings }` spread: object spread copies an own
+  // key whose value is `undefined`, and `typeof NaN` / `typeof Infinity` are
+  // both `'number'`. A NaN gate would render "your safety depth of NaN m" in
+  // safety copy and reach marginalDepthThresholdM as `Math.ceil(NaN)`,
+  // silently suppressing the notice on every route. This form closes all four
+  // while still accepting a legitimate 0.
+  const gateM = Number.isFinite(plan.request.settings?.safetyDepthM)
+    ? (plan.request.settings.safetyDepthM as number)
+    : DEFAULT_SETTINGS.safetyDepthM;
+  // A relaxed route is ShallowWarning's business, not this line's: it already
+  // gets a banner carrying a strictly stronger statement, and rendering both
+  // would say the same hazard twice in two vocabularies. Gated HERE rather
+  // than at the two call sites so the two can never drift — the defect #612
+  // exists to fix was itself a mount condition, not a component.
+  //
+  // TRUTHINESS, deliberately, so this is the EXACT COMPLEMENT of the gate
+  // both banner call sites already use (`plan.result.shallow &&` in
+  // RouteSummary below, `plan?.result.shallow ?? null` in PlannerPanel) — the
+  // two disclosures are then provably never both shown and never both hidden,
+  // whatever shape the field takes. `!== null` would be WRONG and silently
+  // so: `PlanResult.shallow` is `readonly shallow?: ShallowInfo` and, under
+  // exactOptionalPropertyTypes, a non-relaxed plan OMITS the key entirely
+  // rather than setting it — so `undefined !== null` is true and this notice
+  // would never render for the very routes it exists for. Caught by tsc only
+  // because the test fixtures had to spell the absent state out.
+  const relaxed = Boolean(plan.result.shallow);
+  // Same contract as ShallowWarning's own exposure figure, deliberately: null
+  // whenever there is nothing honest to say — no legs for the active rig, no
+  // mask yet (useNavMask starts null and resolves asynchronously), a walk that
+  // left mask coverage or tripped its iteration guard (marginalExposureNm
+  // returns null for the WHOLE route in that case, per the #251/#255 rule),
+  // or a MEASURED ZERO. A zero renders NOTHING at all — not an empty
+  // container and not a "0.0 nm" sentence, which would be a notice about the
+  // absence of the thing it is a notice about.
+  const exposureDist = useMemo(() => {
+    if (relaxed || !mask || !legs || legs.length === 0) return null;
+    const nm = marginalExposureNm(legs, mask, gateM);
+    if (nm === null || nm <= 0) return null;
+    return formatNm(roundExposureNm(nm), lang);
+  }, [relaxed, legs, mask, gateM, lang]);
+  if (exposureDist === null) return null;
+  // THE PLAN'S OWN BOAT, never the live picker selection and never a
+  // `boatById` lookup — `plan.request.boat` is a by-value snapshot (#54 spec
+  // §I.3) and that boat may have left the catalogue. Same read, and the same
+  // reason, as ShallowWarning's `draftM` above.
+  const draftM = plan.request.boat.draftM;
+  const isSevere = gateM - MASK_TOLERANCE_M < draftM;
+  return (
+    <p
+      className={
+        isSevere ? 'marginal-depth-notice marginal-depth-notice--severe' : 'marginal-depth-notice'
+      }
+      role={isSevere ? 'alert' : undefined}
+    >
+      {t(isSevere ? 'route.marginal.noticeSevere' : 'route.marginal.notice', {
+        dist: exposureDist,
+        requested: gateM.toFixed(1),
+        // `toFixed(1)` in both languages, matching route.shallow.lead's own
+        // {draft} slot exactly — the German decimal-comma question for DEPTH
+        // values is a known, deliberately-scoped-out inconsistency (see
+        // ShallowWarning's lead comment above); this key must not resolve it
+        // unilaterally in one of the two places the same number appears.
+        draft: draftM.toFixed(1),
+      })}
+    </p>
+  );
+}
+
 export interface RouteSummaryProps {
   plan: Plan;
   rig: SailId;
@@ -457,6 +590,17 @@ export default function RouteSummary({
       {plan.result.shallow && (
         <ShallowWarning shallow={plan.result.shallow} legs={result?.legs ?? null} plan={plan} />
       )}
+
+      {/* #612: the complement of the banner above — a quiet route-scoped line
+          for a route that did NOT relax and so has no `shallow` block to
+          render a banner from. Rendered UNCONDITIONALLY here: the
+          not-relaxed / mask-loaded / non-zero-exposure gate lives inside the
+          component, deliberately, so this call site and PlannerPanel's cannot
+          drift apart on the very condition #612 exists to fix. Per-rig, unlike
+          the plan-level banner above — the walk uses the ACTIVE rig's own
+          legs, so the two rig tabs can legitimately show different figures (or
+          one show none), which is the honest per-rig answer. */}
+      <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />
 
       {!result || !summary ? (
         <p role="alert">{t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.internal')}</p>

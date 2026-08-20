@@ -26,7 +26,10 @@ import Skeleton from './Skeleton';
 // #452: the shallow-water warning is plan-level (RouteSummary's own note
 // explains why) — shared here so the FIRST surface a user sees a result on
 // carries the same warning as the Routes tab, not just a second copy of it.
-import { ShallowWarning } from './RouteSummary';
+// #612: the non-relaxed complement of that warning, shared for the same
+// reason — see MarginalDepthNotice's own doc comment for why it is a quiet
+// <p> rather than a second banner.
+import { MarginalDepthNotice, ShallowWarning } from './RouteSummary';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -699,6 +702,14 @@ export default function PlannerPanel({
           {plan && shallow && (
             <ShallowWarning shallow={shallow} legs={result?.legs ?? null} plan={plan} />
           )}
+          {/* #612: the complement of the banner above, for a route that did NOT
+              relax — same shared component and copy as RouteSummary's own, so
+              the quiet marginal-depth line can never drift between the first
+              surface a user sees a result on and the Routes tab. The
+              not-relaxed / mask-loaded / non-zero-exposure gate lives inside
+              the component itself; the `plan &&` here is the same TYPE-LEVEL
+              requirement as the banner's above. */}
+          {plan && <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />}
           {summary && (
             <>
               <div className="planner-result-primary">
