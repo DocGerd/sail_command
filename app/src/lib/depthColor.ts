@@ -218,6 +218,17 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // largest blank region observed spans exactly `gap` indices (12 for the
 // gap-12 bands, 15 for gap-15), i.e. one short of the guarantee.
 //
+// SCOPE OF THAT ARGUMENT — it is TRUE but does NOT bound what the safety
+// claim needs bounded, and conflating the two is why this was missed
+// twice. It bounds diagonal EXTENT; the safety claim is about AREA
+// (regions of >=100 cells). Area does not imply extent: a region can be
+// large and yet narrow ACROSS the stripes. Measured on the real failures —
+// zero violations of the bound, and every blank >=100-cell region has a
+// diagonal extent of just 11-12 (against gap 12) while spanning 101-115
+// CELLS. So the bound holds and the failure happens anyway. Use it to
+// reason about elongated regions; never as evidence that a big region is
+// safe.
+//
 // Measured over the real committed mask (2200x2400) by labelling every
 // 4-connected marginal region and counting those that receive zero painted
 // cells, across EIGHT gates (2.2 / 2.5 / 2.8 / 3.0 / 3.5 / 4.0 / 5.0 / 10 m)
@@ -237,9 +248,20 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //     NOT SUFFICIENT on its own: blanking is PHASE-dependent, a function of
 //     the whole (period, stripe) pair rather than of the gap, so capping
 //     the gap does not by itself eliminate the failure. The 14 failing
-//     combinations above are all gap-12 bands — 24/12, 23/11, 18/6 (gates
-//     2.8-4.0) plus 25/13 and 21/9 (gate 2.2) — and every one of them sits
-//     at a FRACTIONAL zoom.
+//     combinations above are all gap-12 bands, every one at a FRACTIONAL
+//     zoom, and they are NOT in an exotic corner of the zoom space — under
+//     continuous selection they occupy:
+//
+//       25/13  z9.16 .. z9.27      (gate 2.2)
+//       24/12  z9.27 .. z9.39      (gates 2.8, 3.0, 3.5, 4.0)
+//       23/11  z9.39 .. z9.52      (gates 2.8, 3.0, 3.5, 4.0)
+//       21/9   z9.67 .. z9.83      (gate 2.2)
+//       18/6   z10.22 .. z10.46    (gates 2.8, 3.0, 3.5, 4.0)
+//
+//     MapView.tsx's initial ZOOM is 9. Every one of those ranges is within
+//     ~0.2 to ~1.5 zoom levels of where every user starts — one small pinch
+//     away, not a corner case. That, rather than a bare "14 of 120", is the
+//     fact that justifies the quantisation below.
 //   * hatchBandForZoom's Math.floor QUANTISATION is what makes the cap
 //     sufficient, by shrinking the reachable band set from 15 to 5. Those 5
 //     (27/15, 20/8, 16/4, 8/2, 4/1) are clean in ALL 40 of their gate x band
