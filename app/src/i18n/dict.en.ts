@@ -415,8 +415,18 @@ export const en = {
   // all, so its ABSENCE must never read as "clear". Kept as its own
   // sentence/key rather than folded into the basis paragraph above so a
   // future edit to one cannot silently drop the other.
+  //
+  // PR #625 self-review Major 1: the first version of sentence 1 said this
+  // water "looks the same as dry land" — false, and false in the DANGEROUS
+  // direction. depthColor.ts:82 returns fully transparent for byte 0 and the
+  // hatch LUT loop (depthColor.ts:243) starts at b=1, so the app paints
+  // NOTHING over byte 0 either way — what a user actually sees there is the
+  // basemap alone, i.e. ORDINARY BLUE WATER (OSM land polygons don't cover
+  // unsurveyed water or drying flats), not anything land-coloured. The old
+  // wording handed the user an inverted detection heuristic ("scan for
+  // land-like patches"); #597's own issue text states the correct direction.
   'map.depth.legend.caveat':
-    'Unsurveyed and drying water carries no hatching at all and looks the same as dry land. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
+    'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
   'map.seamarks.toggle': 'Seamarks',
   'seamark.popover.type': 'Type',

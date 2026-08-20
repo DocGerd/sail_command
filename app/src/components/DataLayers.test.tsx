@@ -6,6 +6,8 @@ import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { AppStateProvider, useSettings } from '../state/AppState';
 import { __resetDbForTests } from '../services/db';
 import { de } from '../i18n/dict.de';
+import { en } from '../i18n/dict.en';
+import type { MsgKey } from '../i18n/dict.de';
 
 // #153: DataLayers' style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach). The depth
@@ -194,6 +196,24 @@ describe('#598 depth-hatch legend', () => {
     expect(getByText(de['map.depth.legend.hatchLabel'])).toBeInTheDocument();
     expect(getByText(de['map.depth.legend.basis'])).toBeInTheDocument();
     expect(getByText(de['map.depth.legend.caveat'])).toBeInTheDocument();
+  });
+
+  // PR #625 self-review Minor 2: the e2e `not.toContainText('flaches
+  // Wasser')` guard (datalayers.spec.ts) is DE-only, so an EN "shallow
+  // water" regression had no pin at all. Asserts against the SHIPPED dict
+  // strings directly (both languages, every legend key), rather than adding
+  // a second e2e language pass for the same check.
+  it('never calls the hatch "shallow water" in either language (#598)', () => {
+    const keys: readonly MsgKey[] = [
+      'map.depth.legend.hatchLabel',
+      'map.depth.legend.basis',
+      'map.depth.legend.caveat',
+    ];
+    for (const k of keys) {
+      expect(en[k].toLowerCase()).not.toContain('shallow water');
+      expect(de[k].toLowerCase()).not.toContain('flaches wasser');
+      expect(de[k].toLowerCase()).not.toContain('flachwasser');
+    }
   });
 });
 

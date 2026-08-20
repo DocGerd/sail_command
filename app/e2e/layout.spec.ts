@@ -848,6 +848,25 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
         timeout: 10_000,
       })
       .toBe(0);
+
+    // PR #625 self-review Major 2, MEASURED not reasoned: `overlapArea ===
+    // 0` alone does NOT discriminate — restoring the rejected
+    // `max-width: 7.5rem` draft on `.depth-legend-body` (app.css) lands both
+    // edges on EXACTLY 144px at this viewport, so the two clusters TOUCH
+    // without intersecting and the check above stays green (`1 passed`,
+    // reviewer-reproduced). Requiring POSITIVE clearance is what actually
+    // reds on that draft while staying comfortably green on the shipped
+    // 6.5rem bound (11.73px DE / 8.84px EN of measured clearance).
+    await expect
+      .poll(
+        async () => {
+          const d = await box(dataControls);
+          const r = await box(routeControls);
+          return r.x - (d.x + d.width);
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThan(0);
   } finally {
     server.kill();
   }

@@ -610,11 +610,12 @@ select {
    margin left before `.route-layer-controls`'s own left edge, at that same
    144px). `6.5rem` (104px, below) keeps `.data-layer-controls`'s widest
    possible state (legend open) at 104px content-box width — narrower than
-   BOTH checkbox rows' own natural width (MEASURED: 124.27px DE / ~127.16px
-   EN total right edge — the same figures the `9.5rem` rule's own comment
-   cites — i.e. this legend, even fully open, can never become the cluster's
-   widest child in either language) — so opening it cannot regress the
-   9.5rem budget in EITHER direction, collapsed or open.
+   BOTH checkbox rows' own natural width (MEASURED at 320px: 124.27px DE /
+   127.16px EN cluster WIDTH — right edge 132.27px / 135.16px, which is the
+   pair the 9.5rem rule's own comment cites — i.e. this legend, even fully
+   open, can never become the cluster's widest child in either language) —
+   so opening it cannot regress the 9.5rem budget in EITHER direction,
+   collapsed or open.
    `overflow-wrap: break-word` on the paragraphs is NOT decorative at this
    width: this copy's own German compound nouns ("Sicherheitstiefe",
    "Farbüberlagerung") run ~16 characters, wider than a 104px line at this
@@ -628,11 +629,31 @@ select {
    languages with the legend OPEN (not just collapsed) before ever loosening
    this value. */
 .depth-legend > summary {
-  min-height: 44px;
+  /* #598 review follow-up (Major): this row lives inside
+     `.data-layer-controls`, which lives inside `.map-stack-tl` —
+     `ScaleBar.tsx` measures THAT element's `offsetTop + offsetHeight` at
+     runtime (a JS-side coupling, invisible in CSS/the diff — see its own
+     "NAMED COUPLING" comment) to decide whether it has room to un-suppress.
+     A 44px touch-target row here (matching `.route-legend`'s convention)
+     MEASURED +49px on `.map-stack-tl`'s collapsed height at 375x667 (166px
+     -> 215px), which ate the ~32px of headroom ScaleBar had there and
+     suppressed it on a viewport `compass.spec.ts`'s "#208" test pins as
+     required to show the lifted bar. This row is deliberately SMALLER than
+     the 44px cockpit-glove convention its two PRIMARY-toggle siblings use:
+     it is a secondary, optional disclosure, not a safety control, and 20px
+     still clears a real tap target via the whole-row click area (the same
+     reduced-from-44 trade-off `.data-layer-controls input[type='checkbox']`
+     already makes below, for the identical reason). Re-measure
+     `.map-stack-tl`'s collapsed height across the FULL
+     STANDARD_VIEWPORTS/EDGE_VIEWPORTS matrix (app/e2e/helpers.ts) before
+     growing this again. */
+  min-height: 20px;
+  padding: 0.1rem 0;
   display: flex;
   align-items: center;
   gap: 0.3rem;
   cursor: pointer;
+  font-size: 0.78rem;
 }
 
 .depth-legend > summary::before {

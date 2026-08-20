@@ -216,10 +216,14 @@ test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and ca
     await expect(details).toHaveJSProperty('open', true);
     await expect(page.getByText('Schraffur: vorsichtige Lesart')).toBeVisible();
     // The #597 caveat this legend was created to carry — absence of hatching
-    // must never read as "clear".
+    // must never read as "clear". PR #625 self-review Major 1: the copy this
+    // quotes was corrected (byte 0 renders as ordinary water, never anything
+    // land-coloured) — this quote must move in lockstep with dict.de.ts's
+    // `map.depth.legend.caveat` or it reds on the very defect it exists to
+    // catch (a stale quote can never fail).
     await expect(
       page.getByText(
-        'Unvermessenes und trockenfallendes Wasser trägt gar keine Schraffur und sieht genauso aus wie Land.',
+        'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser.',
       ),
     ).toBeVisible();
     // #598 maintainer ruling: never "shallow water" / "flaches Wasser" — the
