@@ -74,6 +74,29 @@ jobs:
   # outweighs a few extra seconds on lockfile-changing PRs only.
   e2e:
     runs-on: ubuntu-latest
+    # #605: with no cap this job inherited GitHub's 360-minute default, so a
+    # wedged `npx playwright install --with-deps chromium` looked "healthy"
+    # for hours instead of failing fast (32/54/65/90 min on PR runs, ~5h15m
+    # once on a develop push - `ci.yml`'s push-runs-queue-behind-same-ref
+    # concurrency group means one such wedge blocks every later develop push
+    # too). Re-measured 2026-08-20 via the Actions API: the 8 most recent
+    # real (non-docs-skip) `e2e` completions ordered by RUN CREATION time
+    # (not job started_at, which lags creation under the same push-queue
+    # behavior above) are 32353038925 (7m02s), 32335374485 (7m15s),
+    # 32334063726 (7m26s), 32314957244 (7m10s), 32311732590 (7m06s),
+    # 32311697344 (5m53s), 32303526023 (13m22s), 32301750085 (14m33s) -
+    # range 5m53s-14m33s, worst case run 32301750085. An older completion
+    # outside this window, run 32190387219 (2026-08-18, 16m43s), is also
+    # cleared. 30 min clears the sampled worst case (14m33s) at ~2.06x and
+    # the 16m43s outlier at ~1.79x, while still converting a silent
+    # multi-hour wedge into a fast, obviously-retryable red (CLAUDE.md:
+    # "tens of minutes, not hours"). This BOUNDS wedge damage, it does not
+    # eliminate it: a wedge on a develop push still queue-blocks every later
+    # develop push for up to this cap (same concurrency group as above), and
+    # a human still has to notice the red and retry (`gh run cancel` /
+    # `gh run rerun --failed`, per this file's own PWA/E2E/deploy section of
+    # CLAUDE.md) - nothing here auto-retries.
+    timeout-minutes: 30
     defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
