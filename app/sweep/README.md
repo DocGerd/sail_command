@@ -61,11 +61,24 @@ for seven of them.
 
 That run's A-side outcome distribution was `ok` 74, `ok+shallow` 83, plus 140
 typed failures (`calm-motor-off` 55, `unreachable` 54, `beyond-horizon` 28,
-`snap-failed-destination` 3) — **identical to the distribution recorded at
-`0c494f9`**, i.e. stable across a different day and merge-base, which is the
-stronger control. Carry the standing caveat with any citation: `becalmed` and
-`deep-becalmed` are VACUOUS as safety evidence (33/33 error rows each), so
-their byte-identity above is determinism evidence only, never safety evidence.
+`snap-failed-destination` 3). The three AGGREGATE figures (`ok` 74,
+`ok+shallow` 83, 140 typed failures) match the record at `0c494f9` — that
+record carries only those three, not the per-cause split, so this is agreement
+on what both measured, NOT a full match. It is also **not** the "stronger
+control" CLAUDE.md defines: that requires matching per-arm sha256 PREFIXES
+across machine/day/merge-base, and no prefixes are on record for `0c494f9`.
+
+Note `margin-zero`'s prefix here (`fa5e30f1`) differs from the `44f1e2…`
+recorded at the PR #488 review — different arm definitions and merge-base, so
+the two are not comparable; do not read the difference as non-determinism.
+
+Carry the standing caveat with any citation: `becalmed` and `deep-becalmed` are
+VACUOUS as safety evidence (33/33 error rows each), so their byte-identity
+above is determinism evidence only, never safety evidence.
+
+**"COMPLETE" describes THIS run's nine arms at `00a33ab` — it does NOT
+discharge the per-change BASE double-run.** That control must still be recorded
+against the merge-base of whatever branch it will certify.
 
 ## Why it lives here and not under `src/`
 

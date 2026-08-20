@@ -723,8 +723,12 @@ making design-level decisions; do not silently deviate.
 - **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (`ci.yml:99`, #605) —
   derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
   3–4 min this file used to quote; a wedge now reds in 30 min instead of 360.
-  It BOUNDS wedge damage, it does not prevent it: a wedge still queue-blocks
-  later develop pushes until it reds. FOUR PRs' `e2e` wedged on
+  An older **16m43s** outlier sits outside that window and sets the real margin
+  at ~1.79x, not 2.06x — size any future change against the outlier, not the
+  sampled range. It BOUNDS wedge damage, it does not prevent it: a wedge still
+  queue-blocks later develop pushes until it reds. The PRE-CAP wedges below
+  (32/54/65/90 min) are durations the 30-min cap now forbids — they are the
+  evidence FOR the cap, not observations of current behaviour. FOUR PRs' `e2e` wedged on
   `npx playwright install --with-deps chromium` in one session — step-6 durations
   **32, 54, 65 and 90 min** (jobs 96190476371 / 96137363922 / 96137652820 /
   96149791212), with Actions reporting "operational" and no runner backlog;
@@ -1853,10 +1857,12 @@ making design-level decisions; do not silently deviate.
   pre-approved, so copying it byte-for-byte leaves no new claim to be wrong.
   Standing exception, and it must stay open: a supplied sentence believed
   WRONG is reported, never silently improved.
-  SECOND exception (#599): before adopting a supplied NUMERIC correction, check
-  both sides define the QUANTITY identically — a "tighter" bound differed only by
-  count (`sMax-sMin+1`) vs span (`sMax-sMin`), and adopting it would have made a
-  safety bound wrong by one. State the definition beside any countable bound.
+  Distinct rule, NOT an exception to this one (#599 — it was an orchestrator-
+  relayed measurement, not supplied replacement text): before adopting a
+  NUMERIC correction, check both sides define the QUANTITY identically. A
+  "tighter" bound differed only by count (`sMax-sMin+1`) vs span
+  (`sMax-sMin`); complying would have made a safety bound wrong by one. State
+  the definition beside any countable bound.
 - A fix INHERITS its bug's blind spot, and **the CORRECTION is the highest-risk
   moment, not the original** — a replacement arrives sounding authoritative and
   nobody re-attacks it as hard as they attacked the original. Measured
@@ -2066,10 +2072,11 @@ making design-level decisions; do not silently deviate.
   change and can be run BACKWARDS to find a better fix; a bare number cannot).
   Twin search only works if someone RUNS the comparison (#599): `depthColor.ts`
   derived screen scale from `156543.03` (the 256-px-tile constant) while
-  `mapOrientation.ts` already carried the correct 512-px form — both shipped,
-  nothing compared them, and the issue text copied the wrong one. `156543.03` is
-  a REAL, correct constant, so numeric checking passes straight through: the
-  defect is the BASIS, not the digits. CROSS-REFERENCE a twin in both directions.
+  `mapOrientation.test.ts`'s `metresPerPixel()` already carried the correct
+  512-px form — both shipped, nothing compared them, and the issue text copied
+  the wrong one. `156543.03` is a REAL, correct constant (for 256-px tiles), so
+  numeric checking passes straight through: the defect is the BASIS, not the
+  digits. CROSS-REFERENCE a twin in both directions.
   A negative report — "I re-read everything and found nothing" — is
   unfalsifiable from outside: spot-check 2–3 claims naming a NUMBER or COUNT,
   which are the falsifiable ones. CHANGELOG prose gets the SAME evidentiary
@@ -3014,7 +3021,9 @@ making design-level decisions; do not silently deviate.
   SHARPER (PR #630): a defect can be absent from BOTH sides and created by the
   COMPOSITION — #624 merged after #630 branched and made a previously-safe read
   unsafe (`App.test.tsx` 68/68 on develop, 67/68 merged). So re-running CI on the
-  PR head is NOT enough: when the base moves, re-REVIEW the merged artifact.
+  PR head is not enough — the merged tree is a THIRD artifact neither parent
+  tested. This is the SIBLING-MERGE invalidation bullet (Verification lessons)
+  meeting this one; read them together.
 - Agent stall patterns (session 7, 6/6 recoveries): an implementer that stops
   "waiting on an armed watcher/monitor" while its notification shows NO live
   background children is asleep forever — nudge it to check the result in the
