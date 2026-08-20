@@ -230,19 +230,46 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //   gap 12 -> blanks a >=100-cell region in 14 of the 120. Largest blank
 //             region of ANY size: 115 cells.
 //
-// KNOWN RESIDUAL, stated plainly rather than rounded off: the cap is
-// NECESSARY BUT NOT SUFFICIENT. Blanking is PHASE-dependent — a function of
-// the whole (period, stripe) pair, not of the gap alone — so bounding the
-// gap bounds the guarantee above without eliminating the failure. The 14
-// failures are bands 24/12, 23/11 and 18/6 (gates 2.8-4.0) plus 25/13 and
-// 21/9 (gate 2.2); every one of them sits at a FRACTIONAL zoom.
+// TWO MECHANISMS CLOSE THIS, AND THEY DO DIFFERENT JOBS — do not collapse
+// them, and never restore a claim that the cap alone suffices:
 //
-// The five bands reachable at INTEGER zooms — 27/15, 20/8, 16/4, 8/2, 4/1 —
-// are clean in all 40 of their gate x band combinations. Quantising the
-// zoom before selecting a band would therefore close this residual by
-// construction, and would also tighten the achieved on-screen stripe range
-// (no band would be entered part-way through). Not applied here pending a
-// maintainer decision, since it changes shipped rendering behaviour.
+//   * HATCH_MAX_GAP_CELLS bounds the guarantee ABOVE. It is NECESSARY but
+//     NOT SUFFICIENT on its own: blanking is PHASE-dependent, a function of
+//     the whole (period, stripe) pair rather than of the gap, so capping
+//     the gap does not by itself eliminate the failure. The 14 failing
+//     combinations above are all gap-12 bands — 24/12, 23/11, 18/6 (gates
+//     2.8-4.0) plus 25/13 and 21/9 (gate 2.2) — and every one of them sits
+//     at a FRACTIONAL zoom.
+//   * hatchBandForZoom's Math.floor QUANTISATION is what makes the cap
+//     sufficient, by shrinking the reachable band set from 15 to 5. Those 5
+//     (27/15, 20/8, 16/4, 8/2, 4/1) are clean in ALL 40 of their gate x band
+//     combinations, re-measured against the quantised selection itself
+//     rather than inherited from the pre-quantisation sweep; largest blank
+//     of any size 68 cells, against the >=100 threshold.
+//
+// So the safety property is a CONSTRUCTION (a small, enumerated, swept band
+// set), not a tuned constant. Removing the floor re-opens 14 failures even
+// though the cap is untouched — which is exactly why it must not be
+// "simplified" away as redundant rounding.
+//
+// COST, measured rather than assumed, because this is a TRADE and not a free
+// win. Quantising means z12.9 renders the band chosen for z12, so the cell is
+// ~2^0.9 larger on screen than that band was sized for. Achieved on-screen
+// stripe over z9..z13.6:
+//
+//   continuous  min 5.36 px  max 12.84 px   (worst deviation 1.61x target)
+//   quantised   min 7.94 px  max 16.95 px   (worst deviation 2.12x target)
+//
+// The min/max RATIO narrows slightly (2.39x -> 2.13x) and the floor improves,
+// but the WORST DEVIATION FROM THE 8 px TARGET GETS WORSE — a stripe can now
+// reach ~17 px at the top of a band where it previously reached ~13 px. An
+// earlier revision of this comment claimed quantisation "tightens the
+// achieved stripe range"; that was true only of the ratio and is misleading
+// about legibility, so it is stated as the trade it is. Still bounded, still
+// far from the ~1 px wash-out #599 exists to fix. A finer quantisation (half
+// zoom levels) would cut the worst deviation to ~1.41x, but it makes ~10
+// bands reachable and would need its own 8-gate sweep before it could be
+// called safe — not attempted here.
 //
 // Hence the cap is 12 cells (~560 m), the largest gap at which no marginal
 // region of >=100 cells (~0.2 km2) can disappear at any gate tested. The
@@ -304,7 +331,14 @@ export function hatchScreenPxPerCell(zoom: number): number {
  * See the block comment above for the arithmetic and the measurements.
  */
 export function hatchBandForZoom(zoom: number): HatchBand {
-  const z = Math.max(HATCH_MIN_BAND_ZOOM, zoom);
+  // QUANTISED to whole zoom levels (#599 fix wave). Two reasons, in order of
+  // importance. (1) SAFETY, by construction: continuous selection makes 15
+  // distinct bands reachable, 14 of whose gate x band combinations blank a
+  // marginal region of >=100 cells — see the SAFETY note above. Flooring
+  // makes exactly 5 bands reachable, and those 5 are clean in all 40 of
+  // theirs. (2) It cuts rebuild churn from 14 band changes to 4 over a
+  // z9->z22 sweep (MEASURED), all at integer crossings.
+  const z = Math.max(HATCH_MIN_BAND_ZOOM, Math.floor(zoom));
   const stripeCells = Math.max(1, Math.round(HATCH_TARGET_STRIPE_PX / hatchScreenPxPerCell(z)));
   const gapCells = Math.min(HATCH_GAP_PER_STRIPE * stripeCells, HATCH_MAX_GAP_CELLS);
   return { periodCells: stripeCells + gapCells, stripeCells };

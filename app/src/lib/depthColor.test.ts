@@ -237,18 +237,44 @@ describe('hatchBandForZoom (#599)', () => {
     // (COUNT of indices, sMax - sMin + 1 — not the span; the bound is tight
     // and observed saturated at exactly `gap`). 12 is the largest gap at
     // which no marginal region of >=100 cells goes unpainted anywhere in the
-    // real mask at the five INTEGER-zoom bands, across eight gates
-    // (2.2/2.5/2.8/3.0/3.5/4.0/5.0/10) — 40 clean combinations. It is NOT
-    // sufficient at fractional-zoom bands: 14 of the full 120-combination
-    // sweep still blank a >=100-cell region. Blanking is phase-dependent,
-    // not a function of the gap alone — see depthColor.ts's SAFETY note for
-    // that known residual. This test pins the CAP, not the absence of the
-    // residual.
+    // real mask at the five reachable bands, across eight gates
+    // (2.2/2.5/2.8/3.0/3.5/4.0/5.0/10) — 40 clean combinations. The cap is
+    // NOT sufficient alone: blanking is phase-dependent, and before the
+    // Math.floor quantisation 15 bands were reachable, 14 of whose
+    // combinations blanked a >=100-cell region. The quantisation is what
+    // makes the cap sufficient, by shrinking the reachable set to those 5 —
+    // see depthColor.ts's SAFETY note for which mechanism does which. This
+    // test pins the CAP; the band-set size is pinned by the two tests below.
     for (let z = 0; z <= 22; z += 0.5) {
       const { periodCells, stripeCells } = hatchBandForZoom(z);
       expect(periodCells - stripeCells).toBeLessThanOrEqual(12);
       expect(stripeCells).toBeGreaterThanOrEqual(1);
       expect(periodCells).toBeGreaterThan(stripeCells); // never a solid fill
+    }
+  });
+
+  it('#599 SAFETY: quantises to whole zoom levels, so only FIVE bands are reachable', () => {
+    // THE KEEPER FOR Math.floor. Without it 15 bands are reachable and 14
+    // gate x band combinations blank a marginal region of >=100 cells in the
+    // real mask (depthColor.ts's SAFETY note). The safety property here is
+    // the SIZE and MEMBERSHIP of this set, not any one band, so a future
+    // reader cannot "simplify" the floor away as redundant rounding without
+    // reddening this.
+    const seen = new Map<string, number>();
+    for (let z = 0; z <= 22; z += 0.05) {
+      const b = hatchBandForZoom(z);
+      seen.set(`${b.periodCells}/${b.stripeCells}`, b.periodCells - b.stripeCells);
+    }
+    expect([...seen.keys()].sort()).toEqual(['16/4', '20/8', '27/15', '4/1', '8/2']);
+    // A fractional zoom must give the SAME band as the integer below it.
+    for (const [z, frac] of [
+      [9, 9.9],
+      [10, 10.5],
+      [11, 11.99],
+      [12, 12.5],
+      [13, 13.75],
+    ] as const) {
+      expect(hatchBandForZoom(frac)).toEqual(hatchBandForZoom(z));
     }
   });
 
