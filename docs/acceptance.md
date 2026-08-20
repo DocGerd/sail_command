@@ -47,6 +47,13 @@ results table at the bottom, and note it in the box below the check.
 - [ ] **At least one fleet boat is exercised.** Run §2 or §3 under SPEEDY GO!
       or PIRANJA, so the suppressed rig comparison in §2.5 is actually
       reached; a pass made entirely on the Salona 45 never exercises it.
+- [ ] **Depth-hatch legend.** On the map, below the "Water depths" /
+      "Seamarks" toggles and the compass, open the collapsed **Legend**
+      disclosure and confirm it explains the cautious-reading hatch and
+      states that unsurveyed/drying water carries no hatching (#598/#597).
+      In short landscape, and in any narrow layout with too little height
+      left below the compass, the legend is deliberately not rendered at
+      all — by design, not a missing control.
 
 ## 2. Route A — Flensburg → Marstal
 
@@ -81,6 +88,11 @@ selected in §1.
     missing ★ on these two boats is the designed outcome, not a defect — their
     two tables differ by the Salona 45's overlay ramp, which carries no
     information about the hull.
+  - **Any boat, if the chip reads "The search ran out of time before
+    comparing both sails, so no faster rig is claimed"** — the plan's search
+    hit its wall-clock budget before both sails finished. No ★ is shown, and
+    one sail tab may carry a no-route reason instead of an ETA. Correct
+    behaviour (#540) — record the route and departure in §5 and pass.
 - [ ] **2.6 Motor legs (if any) are gray-dashed and listed.** If sailing
       speed would be too low anywhere on the route, that leg is rendered
       dashed/gray on the map and appears explicitly as a motor leg in the
@@ -97,13 +109,35 @@ selected in §1.
       cautious, worst-case reading falls below your safety depth is drawn
       with sparse hatching over the depth colors — including water the
       absolute depth colors alone show as clear. This is correct behaviour
-      (#492); do not file it as an artifact.
+      (#492); do not file it as an artifact. Two further expected effects:
+      the stripes can change width when you cross a whole zoom level — only
+      some crossings change them — repainting roughly a third of a second
+      after the gesture settles (#599), and unsurveyed or drying water
+      carries **no** hatching and no other cue at all, so absence of
+      hatching is never a "the water is clear" signal (#597).
+- [ ] **2.10 Marginal-depth line on a route that did NOT relax.** If the
+      results panel shows "… of this route crosses water that a more
+      cautious reading of the charted depth data puts below your safety
+      depth of … m", that is the new #612 disclosure for an ordinary route —
+      correct behaviour, not a sign the router ignored your setting. It
+      tripped on 61.5 % of non-relaxed plans at shipped defaults in the #455
+      measurement. It never appears together with the relaxed-route shallow
+      banner. Route A commonly relaxes at default settings, so expect the
+      banner there and this line more often on route B; its absence is fine
+      either way.
+- [ ] **2.11 Depth profile is pinned to the plan.** Note the profile's
+      "Safety depth" line, then change the safety depth on the Boat tab. The
+      line must NOT move: the chart reads the depth the open plan was
+      requested at, not the current setting (#551). It moves only after a
+      re-plan.
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
 ## 3. Route B — Flensburg → Sønderborg
 
 Repeat the same route/rig/motor/ETA checks as §2 for Flensburg → Sønderborg.
+Checks 2.9–2.11 (depth hatching, marginal-depth line, depth profile) apply
+here too, with the same expected outcomes.
 
 - [ ] **3.1** Route stays in water.
 - [ ] **3.2** Rounds Broager Land / Kegnæs sanely.
