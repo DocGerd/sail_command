@@ -205,26 +205,48 @@ describe('hatchBandForZoom (#599)', () => {
     expect(HATCH_FALLBACK_BAND).toEqual({ periodCells: 8, stripeCells: 2 });
   });
 
-  it('holds the on-screen stripe within 5.3-16 px across z9..z13.5, where the old pair spanned 1.1-19 px', () => {
+  it('holds the on-screen stripe within 7.9-17 px across z9..z13, where the old pair spanned 1.1-19 px', () => {
     // THE DEFECT, stated as a comparison rather than asserted in prose: the
     // old fixed 2-cell stripe is what produced #599's sub-pixel wash.
-    const widths: number[] = [];
-    const oldWidths: number[] = [];
-    for (let z = 9; z <= 13.5; z += 0.25) {
-      const px = expectedPxPerCell(z);
-      widths.push(hatchBandForZoom(z).stripeCells * px);
-      oldWidths.push(2 * px);
-    }
-    expect(Math.min(...widths)).toBeGreaterThanOrEqual(5.3);
-    expect(Math.max(...widths)).toBeLessThanOrEqual(16);
-    // The control: the old constants are OUTSIDE that band at both ends, so
-    // the assertion above is not one every band would satisfy.
+    //
+    // SAMPLING IS PART OF THE ASSERTION HERE. An earlier revision swept
+    // z9..z13.5 on a 0.25 grid and asserted `<= 16`, which PASSED at a
+    // sampled max of 14.25 — while the true maximum is 16.95, at the TOP of
+    // a band. The grid stepped straight over every band top, so the guard
+    // was vacuous: it passed because of where it looked, not because the
+    // property held. The sweep now explicitly includes each band's last
+    // reachable moment.
+    const zooms: number[] = [];
+    for (let z = 9; z <= 13; z += 0.25) zooms.push(z);
+    for (const n of [9, 10, 11, 12]) zooms.push(n + 0.999); // band tops
+    const widths = zooms.map((z) => hatchBandForZoom(z).stripeCells * expectedPxPerCell(z));
+    const oldWidths = zooms.map((z) => 2 * expectedPxPerCell(z));
+    expect(Math.min(...widths)).toBeGreaterThanOrEqual(7.9);
+    expect(Math.max(...widths)).toBeLessThanOrEqual(17);
+    // NON-VACUITY: the band tops really are where the maximum lives, so the
+    // bound above is exercised rather than stepped over. Reds if the sweep
+    // ever stops sampling them.
+    expect(Math.max(...widths)).toBeGreaterThan(16);
+    // THE CONTROL, corrected: an earlier revision asserted the old pair's
+    // max exceeded 18 px, which is only true if the sweep runs past z13 —
+    // over z9..z13 the old max is 16.95, INSIDE the band asserted above, so
+    // that form of the control was false here rather than discriminating.
+    // What actually separates the two schemes at this range is the FLOOR and
+    // the SPREAD: the old fixed pair washes out to ~1 px at z9 and spans 16x,
+    // where the band scheme holds a 7.9 px floor and spans 2.1x.
+    const spread = (a: number[]) => Math.max(...a) / Math.min(...a);
     expect(Math.min(...oldWidths)).toBeLessThan(1.2);
-    expect(Math.max(...oldWidths)).toBeGreaterThan(18);
+    expect(spread(oldWidths)).toBeGreaterThan(10);
+    expect(spread(widths)).toBeLessThan(2.5);
   });
 
-  it('never asks the raster for a sub-cell stripe, and clamps to 1 cell above ~z13.6', () => {
-    for (let z = 13.6; z <= 22; z += 0.2) {
+  it('never asks the raster for a sub-cell stripe, and clamps to 1 cell from z13 up', () => {
+    // z13, not the "~z13.6" an earlier revision used: under the shipped
+    // Math.floor quantisation the stripe count is round(8 / px(floor(z))),
+    // which reaches 1 at floor(z) = 13 exactly. (The three real thresholds
+    // in the continuous scheme are z12.332, z12.917 and z13.917 — see
+    // depthColor.ts; none of them is 13.6.)
+    for (let z = 13; z <= 22; z += 0.2) {
       expect(hatchBandForZoom(z)).toEqual({ periodCells: 4, stripeCells: 1 });
     }
   });

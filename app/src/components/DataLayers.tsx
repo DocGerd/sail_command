@@ -98,11 +98,16 @@ const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // (1) Both inputs feed the identical rebuild, so one timer means a
 // simultaneous change (zoom while a boat radio is clamping safetyDepthM)
 // costs ONE rebuild, where two independent timers would cost two.
-// (2) The trigger is the BAND, not the zoom: hatchBandForZoom is a step
-// function with only five distinct values over z9-z22, so the overwhelming
-// majority of zoom gestures — including every gesture entirely inside one
-// band, and every pan — produce no state change and therefore no timer at
-// all. The rebuild is armed only when a boundary is actually crossed.
+// (2) The trigger is the BAND, not the zoom, and hatchBandForZoom quantises
+// to whole zoom levels (#599 fix wave), so only FIVE bands are reachable
+// across z9-z22 and a gesture that stays inside one arms no timer at all.
+// MEASURED, not predicted — an earlier revision of this comment asserted
+// "five distinct values / no timer at all" while selection was still
+// CONTINUOUS, where 15 bands are reachable and it was simply false: eight
+// wheel notches from z9 rebuilt 7-8 times. After quantisation the same eight
+// notches rebuild 1-4 times depending on notch size (2 at a 0.25 notch, 1 at
+// 0.125, 4 at a coarse 0.5). Band changes over a full z9->z22 sweep drop
+// from 14 to 4, all at integer crossings.
 // `zoomend` (not `zoom`) is the source, so a continuous pinch/wheel
 // gesture is already coalesced by MapLibre before this debounce sees it.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
@@ -640,13 +645,20 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // reload wipes the layer doesn't throw — it just quietly finds nothing to
   // repaint, matching the depthVisible effect's own no-op-when-absent shape.
   useEffect(() => {
-    if (!map || styleEpoch === 0 || !assets) return;
+    // #599 review m7: gated on depthVisible — repainting a 2200x2400 raster
+    // nobody can see is pure cost, and zoom being a trigger makes it a
+    // RECURRING one (4 invisible rebuilds across 8 measured gestures before
+    // this gate). `depthVisible` is a dependency as well as a guard, so
+    // turning the overlay back ON re-runs this and repaints with whatever
+    // safetyDepthM/band changed while it was hidden — the canvas can never
+    // be shown stale, which is what makes skipping the hidden rebuilds safe.
+    if (!map || styleEpoch === 0 || !assets || !depthVisible) return;
     const timer = window.setTimeout(() => {
       if (!map.getLayer(DEPTH_HATCH_LAYER)) return;
       rebuildHatchCanvas(map, assets.maskMeta, assets.maskBuffer, safetyDepthM);
     }, DEPTH_HATCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey]);
+  }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the

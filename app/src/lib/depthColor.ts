@@ -189,20 +189,28 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // WHAT THIS DOES NOT ACHIEVE, stated plainly rather than left to be
 // discovered. This is STEPWISE invariance across discrete bands, NOT
 // zoom-invariance:
-//   * Between z9 and ~z13.6 the on-screen stripe is held to 5.3-16 px
-//     (the rounding spread of an integer cell count around an 8 px
-//     target), which is the range the wash-out complaint was about.
-//   * Above ~z13.6 a single mask cell is ALREADY wider than the target,
-//     so stripe = 1 cell is the finest thing a per-cell raster can
+//   * Between z9 and z13 the on-screen stripe is held to 7.9-16.9 px,
+//     which is the range the wash-out complaint was about. Every zoom
+//     here is DERIVED, not eyeballed: a mask cell reaches the 8 px
+//     target at z12.917 (px = 8), the continuous stripe count would fall
+//     to 1 at z12.332 (px = 5.333, where round(8/px) crosses 1.5), and
+//     round(8/px) would reach 0 at z13.917 (px = 16). An earlier revision
+//     wrote "~z13.6" at four sites; that value is none of the three.
+//   * At z13 and above a single mask cell is ALREADY wider than the
+//     target, so stripe = 1 cell is the finest thing a per-cell raster can
 //     express and the on-screen stripe resumes doubling per zoom level.
 //     It is exactly HALF the old width there (1 cell instead of 2), which
 //     is an improvement, not a fix. Genuinely fixing the close-zoom end
 //     needs screen-space rendering (a fill-pattern layer), which the
 //     maintainer weighed against this and did not choose for #599 — it
 //     needs a mask-cells-to-polygons geometry pass.
-//   * Below z9 the band is frozen (the whole ~103 km mask bbox is already
-//     wider than a desktop viewport there), so the stripe shrinks again
-//     as the user zooms further out.
+//   * Below z9 the band is frozen, so the stripe shrinks again as the user
+//     zooms further out. The reason is that z9 already shows the whole
+//     dataset, not that the data overflows the screen: the mask bbox is
+//     ~103 km wide, which at z9's 88.1 m/px is ~1166 px — comfortably
+//     INSIDE a desktop viewport, so zooming out further adds empty sea
+//     rather than detail. (An earlier revision said "wider than a desktop
+//     viewport", which is false for width at any usual desktop size.)
 //
 // SAFETY: WHY THE GAP IS CAPPED AT HATCH_MAX_GAP_CELLS, MEASURED. Growing
 // the period to hold the stripe near target also grows the GAP, and a
@@ -276,15 +284,16 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 //
 // COST, measured rather than assumed, because this is a TRADE and not a free
 // win. Quantising means z12.9 renders the band chosen for z12, so the cell is
-// ~2^0.9 larger on screen than that band was sized for. Achieved on-screen
-// stripe over z9..z13.6:
+// ~2^0.9 larger on screen than that band was sized for — under Math.floor
+// EVERY band is entered part-way through, and that is precisely what creates
+// the band-top maxima below. Achieved on-screen stripe over z9..z13.917 (the
+// range across which the continuous scheme still varied its stripe count):
 //
-//   continuous  min 5.36 px  max 12.84 px   (worst deviation 1.61x target)
-//   quantised   min 7.94 px  max 16.95 px   (worst deviation 2.12x target)
+//   continuous  min 5.34 px  max 15.99 px   (ratio 3.00x)
+//   quantised   min 7.94 px  max 16.95 px   (ratio 2.13x)
 //
-// The min/max RATIO narrows slightly (2.39x -> 2.13x) and the floor improves,
-// but the WORST DEVIATION FROM THE 8 px TARGET GETS WORSE — a stripe can now
-// reach ~17 px at the top of a band where it previously reached ~13 px. An
+// The min/max RATIO narrows (3.00x -> 2.13x) and the floor improves, but the
+// MAXIMUM GETS WORSE, 15.99 -> 16.95 px. An
 // earlier revision of this comment claimed quantisation "tightens the
 // achieved stripe range"; that was true only of the ratio and is misleading
 // about legibility, so it is stated as the trade it is. Still bounded, still
@@ -293,9 +302,14 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // bands reachable and would need its own 8-gate sweep before it could be
 // called safe — not attempted here.
 //
-// Hence the cap is 12 cells (~560 m), the largest gap at which no marginal
-// region of >=100 cells (~0.2 km2) can disappear at any gate tested. The
-// cap is what raises the duty cycle to 40-56% at z10 and below rather
+// Hence the cap is 12 cells (~560 m). Say precisely what that buys, because
+// an earlier revision of this very sentence claimed the cap was "the largest
+// gap at which no marginal region of >=100 cells can disappear at any gate
+// tested" — the claim retracted above, left standing as the conclusion after
+// its own premise had been withdrawn. It is NOT what the cap gives. The cap
+// bounds the guarantee above; the quantisation below is what makes the set
+// of reachable bands small enough for that bound to hold everywhere. Neither
+// alone is sufficient. The cap is also what raises the duty cycle to 40-56% at z10 and below rather
 // than holding 25%: MORE coverage than the design's nominal 25%, i.e. the
 // over-signalling direction, which is the safe one for a hazard cue.
 //

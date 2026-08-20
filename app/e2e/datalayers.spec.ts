@@ -648,8 +648,10 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
           window as unknown as {
             __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
           }
-        ).__scE2eMap // already installed window.__scE2eMap as a side effect. // wackerballig's own snap point — no animation. mapReady() has
-          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
+        )
+          // wackerballig's own snap point — no animation. mapReady() has
+          // already installed window.__scE2eMap as a side effect.
+          .__scE2eMap.jumpTo({ zoom: z, center: [9.872, 54.7604] });
       }, zoom);
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference
@@ -749,6 +751,24 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
       rebuiltStripe,
       `zooming out with the gate untouched must rebuild the raster into the z9 band: measured ${rebuiltStripe}px (p90 of ${rebuiltRuns.length} runs). A stuck z16 band paints a 1-cell stripe, which is ~0.5px at z9.`,
     ).toBeGreaterThanOrEqual(4);
+
+    // ---- FRACTIONAL zoom: the quantisation itself ----
+    // Every phase above uses an INTEGER jumpTo, and hatchBandForZoom only
+    // differs between continuous and Math.floor selection at FRACTIONAL
+    // zooms — so nothing above can observe the #599 fix-wave quantisation
+    // that closed the band-blanking residual, and a revert of the floor
+    // would leave the whole suite green. z10.9 is chosen because the two
+    // schemes are furthest apart there: quantised uses the z10 band
+    // (stripe 8 cells -> ~15.8 px), continuous would pick stripe 4
+    // (-> ~7.9 px). 12 px sits between them, nearer neither.
+    await jumpTo(10.9);
+    const atFractional = await settledCanvas(page, canvas, 3);
+    const fracRuns = await hatchRunLengthsPx(page, z9.low, atFractional);
+    const fracStripe = percentile(fracRuns, 90);
+    expect(
+      fracStripe,
+      `a fractional zoom must use the band of the whole zoom below it (#599 quantisation): measured ${fracStripe}px (p90 of ${fracRuns.length} runs). Quantised z10.9 predicts ~15.8px; continuous selection would predict ~7.9px.`,
+    ).toBeGreaterThan(12);
   } finally {
     server.kill();
   }
