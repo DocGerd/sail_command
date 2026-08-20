@@ -216,6 +216,22 @@ export const en = {
   // than that the sails are equal, because that is the honest difference.
   'route.rigNotCompared':
     'The sails were not compared for this passage, so no faster rig is claimed',
+  // #540 spec §E.3: a budget-exhausted sail is ALSO a 'not-compared' verdict
+  // (rigVerdictKey collapses it onto rigNotCompared above), but a stalled
+  // search reads very differently from "nothing to compare" — the
+  // ★-suppressed recommendation is still computed over one completed sail
+  // only, and without this sentence that reads as a finished two-sail
+  // comparison rather than a truncated one. Rendered instead of
+  // rigNotCompared exactly when PlanResultOk.comparisonComplete is false
+  // (resultVerdictKey in lib/resultSummary.ts derives which key to use).
+  // Per the DocGerd comment on #540: comparisonComplete is computed PER
+  // TIER, not per plan — a plan that fell back to an earlier tier after a
+  // budget-truncated attempt can still report comparisonComplete: true for
+  // the tier that actually produced the result. This sentence claims only
+  // "the reported comparison did not finish", not "nothing anywhere in this
+  // plan's search was cut short".
+  'route.comparisonIncomplete':
+    'The search ran out of time before comparing both sails, so no faster rig is claimed',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts

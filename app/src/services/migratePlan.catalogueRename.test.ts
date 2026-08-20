@@ -86,6 +86,87 @@ function legacyPlan(): Record<string, unknown> {
   };
 }
 
+// #551 review round 2 MAJOR (the review that found this file protects only
+// LEGACY records from a catalogue rename): a MODERN record — one with a
+// `request.boat` snapshot and a `result.sails` array, both introduced by
+// #54 — has its OWN sailIds catalogue-cross-checked (#551's whole point),
+// so a rename can affect it too, through a completely different mechanism
+// than the legacy one this file was written to guard. `boat.id: 'salona-45'`
+// matches the mocked catalogue's (unchanged) id, so `catalogueSailIds`
+// resolves it to the RENAMED sails.
+function modernPlan(): Record<string, unknown> {
+  return {
+    id: 'modern-1',
+    name: 'Flensburg → Marstal (modern)',
+    createdAtMs: 1_700_000_000_000,
+    request: {
+      origin: { lat: 54.79, lon: 9.43 },
+      destination: { lat: 54.85, lon: 10.51 },
+      viaPoints: [],
+      originHarborId: 'flensburg',
+      destinationHarborId: 'marstal',
+      departureMs: 1_700_003_600_000,
+      settings: { ...DEFAULT_SETTINGS },
+      // PRE-RENAME stored ids — a real modern record written before the
+      // catalogue rename happened.
+      sailIds: ['genoa', 'fock'],
+      boat: {
+        id: 'salona-45',
+        name: 'Salona 45',
+        draftM: 2.1,
+        sails: [
+          { id: 'genoa', label: 'Genoa 135 %', polarProvenance: { tier: 'modelled', note: 'n' } },
+          { id: 'fock', label: 'Jib 110 %', polarProvenance: { tier: 'certificate', note: 'n' } },
+        ],
+      },
+    },
+    windGrid: {
+      lats: [54.0],
+      lons: [9.0],
+      timesMs: [1000],
+      speedKn: new Float32Array([5]),
+      dirFromDeg: new Float32Array([90]),
+      gustKn: new Float32Array([7]),
+      fetchedAtMs: 1_626_340_800_000,
+      model: 'open-meteo',
+    },
+    result: {
+      status: 'ok',
+      sails: [
+        {
+          sailId: 'genoa',
+          result: {
+            sailId: 'genoa',
+            legs: [],
+            etaMs: 111_000,
+            durationMs: 1,
+            distanceNm: 1,
+            maneuverCount: 0,
+            motorDistanceNm: 0,
+          },
+          reason: null,
+        },
+        {
+          sailId: 'fock',
+          result: {
+            sailId: 'fock',
+            legs: [],
+            etaMs: 222_000,
+            durationMs: 1,
+            distanceNm: 1,
+            maneuverCount: 0,
+            motorDistanceNm: 0,
+          },
+          reason: null,
+        },
+      ],
+      recommended: 'genoa',
+      snappedOrigin: { lat: 54.79, lon: 9.43 },
+      snappedDestination: { lat: 54.85, lon: 10.51 },
+    },
+  };
+}
+
 describe('#54 migratePlan is not coupled to the catalogue sail ids', () => {
   it('the mocked catalogue really did rename genoa', async () => {
     const { BOATS } = await import('../data/boats');
@@ -102,5 +183,46 @@ describe('#54 migratePlan is not coupled to the catalogue sail ids', () => {
     // The relabelled boat snapshot does follow the catalogue, because that is
     // a statement about the boat rather than about what this plan solved.
     expect(migrated!.request.boat.sails.map((s) => s.id)).toEqual(['code0', 'fock']);
+  });
+});
+
+// #551 review round 2/3: this file had exactly two tests, both legacy —
+// nothing here could see a MODERN record's own exposure to a catalogue
+// rename, introduced by #551's own sailIds cross-check. The invariant these
+// three tests pin: a rename must never desynchronise `request.sailIds` from
+// `result.sails`/`result.recommended`, in EITHER record shape — chosen over
+// the alternative (silently letting `recommended` fall out of `sailIds`)
+// because every replan/recalc path reads `request.sailIds`, never
+// `result.recommended`, to decide what to re-solve.
+describe('#551 review round 3: a MODERN record is not silently desynchronised by a catalogue rename either', () => {
+  it('refuses (unreadable) a modern record whose RECOMMENDED sail was renamed out of the catalogue, rather than silently dropping it from sailIds', () => {
+    // Stored sailIds ['genoa','fock'] fails the catalogue check post-rename
+    // (genoa -> code0), so this falls to the fallback reconstruction, which
+    // filters 'genoa' out too — leaving sailIds=['fock'] without the
+    // recommended 'genoa'. Refused rather than returned inconsistent.
+    expect(migratePlan(modernPlan())).toBeNull();
+  });
+
+  it('refuses (unreadable) a modern record whose ONLY sail was renamed out of the catalogue', () => {
+    const raw = modernPlan();
+    const request = raw.request as Record<string, unknown>;
+    const result = raw.result as Record<string, unknown>;
+    delete request.sailIds; // forces the fallback reconstruction
+    result.sails = [(result.sails as unknown[])[0]]; // genoa only
+    result.recommended = 'genoa';
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  it('reads a modern record correctly when its RECOMMENDED sail survives the rename — only the renamed, non-recommended sail is dropped', () => {
+    const raw = modernPlan();
+    (raw.result as Record<string, unknown>).recommended = 'fock';
+    const migrated = migratePlan(raw);
+    expect(migrated).not.toBeNull();
+    // 'genoa' (renamed to 'code0' in the catalogue) is dropped from
+    // sailIds; 'fock' (the recommended sail, unaffected by the rename)
+    // survives. result.sails is untouched — it is the historical record of
+    // what this plan actually solved, not something a rename may edit.
+    expect(migrated!.request.sailIds).toEqual(['fock']);
+    expect(migrated!.result.sails.map((s) => s.sailId)).toEqual(['genoa', 'fock']);
   });
 });
