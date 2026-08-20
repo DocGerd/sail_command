@@ -716,7 +716,7 @@ The issue title, the issue body and parts of §§2.2–2.4 above predate **PR #4
 | "up to **2.0 m** on **48%** of water cells" | issue **title** | **Superseded twice**: the 2.0 m bound is now 0.9 m, and §2.4 already ruled 48.35% the wrong *basis* |
 | **924** cells below the 2.1 m draft | issue body, §2.3 | **Superseded** — **0** after #476 |
 | **14,715** gate-crossers | issue body, §2.3 | **Superseded** — **10,746** after #476 |
-| "routes cross sub-safety-depth water with **NO warning at all**" | issue **title** | **Superseded** — see §9.3; #492 shipped a per-cell cue, default on |
+| "routes cross sub-safety-depth water with **NO warning at all**" | issue **title** | **Superseded AS WRITTEN, and the defect is NOT gone** — #492 ships a per-cell cue at the identical criterion, default on, so "no warning at all" is false; the accurate residual is **"no ROUTE-SCOPED signal"** (§9.3) |
 | Water **2,646,047** / navigable-at-3.0 **2,473,845** | §2.2, §2.3 | **Superseded** — re-derived below as **2,639,957** / **2,470,330** |
 | Overstated fraction **45.08%** (1,192,923 / 2,646,047) | §2.4 | **Basis-correct but pre-#476.** It describes the T=2.0 artifact. NOT re-derived here — see the honesty note below |
 
