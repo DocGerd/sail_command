@@ -367,6 +367,29 @@ export function hatchScreenPxPerCell(zoom: number): number {
  * See the block comment above for the arithmetic and the measurements.
  */
 export function hatchBandForZoom(zoom: number): HatchBand {
+  // FAIL CLOSED on a non-finite zoom. Not because a NaN zoom is expected —
+  // no call site produces one today — but because of the DIRECTION it fails
+  // in, which this PR newly made reachable: before #599 the band was a fixed
+  // pair, so no zoom value could reach it at all.
+  //
+  // MEASURED, not assumed: a NaN zoom propagates through Math.floor, the
+  // rounding and Math.max to give { periodCells: NaN, stripeCells: NaN }, and
+  // the paint predicate `(outRow + col) % NaN < NaN` is false for EVERY cell.
+  // The result is a map with ZERO hatch and no error, no warning, nothing —
+  // marginal water rendering as unmarked, which is precisely the direction
+  // this repo's guard-asymmetry rule forbids for a safety cue: it must fail
+  // toward OVER-warning, never toward looking clear.
+  //
+  // Number.isFinite, NOT `typeof zoom === 'number'`: typeof NaN and typeof
+  // Infinity are both 'number', so that test admits exactly the values this
+  // guard exists to reject.
+  //
+  // ±Infinity is included for determinism rather than to fix a second silent
+  // failure — measured, they currently land on real bands ((4,1) and (27,15))
+  // by accident of the arithmetic, not by design. HATCH_FALLBACK_BAND is
+  // declared below, which is safe because this module's own initialisation
+  // calls this function with a finite zoom and so never takes this branch.
+  if (!Number.isFinite(zoom)) return HATCH_FALLBACK_BAND;
   // QUANTISED to whole zoom levels (#599 fix wave). Two reasons, in order of
   // importance. (1) SAFETY, by construction: continuous selection makes 15
   // distinct bands reachable, 14 of whose gate x band combinations blank a

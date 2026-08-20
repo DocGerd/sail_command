@@ -300,6 +300,30 @@ describe('hatchBandForZoom (#599)', () => {
     }
   });
 
+  it('#599 SAFETY: fails CLOSED on a non-finite zoom instead of painting nothing', () => {
+    // A NaN zoom used to yield { periodCells: NaN, stripeCells: NaN }, and
+    // `(outRow + col) % NaN < NaN` is false for every cell — a map with ZERO
+    // hatch, silently. Marginal water rendering as unmarked is the one
+    // direction a safety cue must never fail in.
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      expect(hatchBandForZoom(bad)).toEqual(HATCH_FALLBACK_BAND);
+      // The property that actually matters is that the band can PAINT: both
+      // fields finite, and a non-empty stripe within the period.
+      const { periodCells, stripeCells } = hatchBandForZoom(bad);
+      expect(Number.isFinite(periodCells) && Number.isFinite(stripeCells)).toBe(true);
+      expect(stripeCells).toBeGreaterThanOrEqual(1);
+      expect(periodCells).toBeGreaterThan(stripeCells);
+    }
+    // END-TO-END, not just the band object: a NaN zoom must still hatch a
+    // uniformly-marginal mask. This is the assertion that would have caught
+    // the original defect, since the band object alone looks harmless.
+    const mask = new Uint8Array(64).fill(1); // 8x8, always marginal
+    const img = buildNavigabilityHatchImageData(mask, 8, 8, 10, hatchBandForZoom(NaN));
+    let painted = 0;
+    for (let i = 0; i < 64; i++) if (img[i * 4 + 3] !== 0) painted++;
+    expect(painted, 'a non-finite zoom must not silently paint zero hatch').toBeGreaterThan(0);
+  });
+
   it('freezes below z9 rather than growing the band without bound', () => {
     expect(hatchBandForZoom(0)).toEqual(hatchBandForZoom(9));
     expect(hatchBandForZoom(-5)).toEqual(hatchBandForZoom(9));
