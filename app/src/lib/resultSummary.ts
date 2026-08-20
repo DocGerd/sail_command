@@ -135,6 +135,43 @@ export function rigVerdictKey(kind: Exclude<RigRecommendation['kind'], 'decided'
   }
 }
 
+/**
+ * #540 spec §E.3: the MsgKey a display surface should render for a
+ * non-'decided' verdict, given ALSO whether the plan's comparison finished.
+ *
+ * `rigVerdictKey` alone maps every 'not-compared' cause — N=1, N>=3, one
+ * sail failing, tier-C suppression, AND budget exhaustion — onto the single
+ * generic `route.rigNotCompared`. That collapses "there was nothing to
+ * compare" and "we ran out of time before finishing the comparison" into
+ * one sentence, which is exactly the misread spec §E.3 exists to prevent: a
+ * budget-truncated plan still returns `status: 'ok'` with a recommendation
+ * computed over one completed sail, and presenting that unchanged reads as
+ * "we compared both and this one is faster".
+ *
+ * Driven by `PlanResultOk.comparisonComplete` (already computed by
+ * `planRoute.ts`'s `assemble()` — no new field). No new `RigRecommendation`
+ * variant: this stays a presentation-only reinterpretation of the existing
+ * 'not-compared' kind, so `PlanResult` and `RigRecommendation` stay
+ * byte-identical and no `app/sweep/` acceptance sweep is owed.
+ *
+ * Deliberately narrower than "nothing in this plan's search was ever cut
+ * short" — see the #540 issue comment quoted in dict.en.ts's
+ * `route.comparisonIncomplete` entry: `comparisonComplete` is computed PER
+ * TIER, so a plan that fell back to an earlier tier after a
+ * budget-truncated attempt can still report `true` for the tier that
+ * produced the result. This only claims the REPORTED comparison did not
+ * finish.
+ */
+export function resultVerdictKey(
+  kind: Exclude<RigRecommendation['kind'], 'decided'>,
+  comparisonComplete: boolean,
+): MsgKey {
+  if (kind === 'not-compared' && !comparisonComplete) {
+    return 'route.comparisonIncomplete';
+  }
+  return rigVerdictKey(kind);
+}
+
 /** Average speed in knots over the whole passage; 0 for a zero-duration result. */
 export function averageSpeedKn(distanceNm: number, durationMs: number): number {
   const hours = durationMs / 3_600_000;

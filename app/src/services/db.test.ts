@@ -961,4 +961,124 @@ describe('#54 lazy plan migration at the read boundary', () => {
     expect(rows.map((r) => [r.id, r.kind])).toEqual([['no-date', 'unreadable']]);
     expect(rows[0]!.createdAtMs).toBe(0);
   });
+
+  // #551: readString(raw, 'id') returned '' for ANY non-string stored id, so
+  // two records with DIFFERENT real primary keys both displayed id: '' — a
+  // React key collision, and a shared (empty-string) delete target. Numbers
+  // ARE valid IndexedDB keys, so this is genuinely constructible (confirmed
+  // first against fake-indexeddb directly: a numeric `id` really does
+  // round-trip through put/getAll, and `readString` really does collapse it
+  // to '' — the raw record's `id` field, not the store's own primary key).
+  // migratePlan refuses any record whose `id` field isn't a string
+  // (`typeof id !== 'string'`), so BOTH records land on the unreadable path
+  // regardless of anything else in them.
+  it('#551: two records with different non-string primary keys get distinct, non-empty displayed ids', async () => {
+    const numericA = {
+      id: 12345,
+      name: 'Numeric A',
+      createdAtMs: 1000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    const numericB = {
+      id: 67890,
+      name: 'Numeric B',
+      createdAtMs: 2000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    await savePlan(numericA);
+    await savePlan(numericB);
+
+    const rows = await listPlans();
+    // Newest first (createdAtMs desc) — 'Numeric B' (2000) before 'Numeric A'
+    // (1000). The displayed id is the record's REAL IndexedDB primary key,
+    // stringified — never the empty string readString alone would produce.
+    expect(rows.map((r) => [r.name, r.kind === 'unreadable' ? r.id : 'n/a'])).toEqual([
+      ['Numeric B', '67890'],
+      ['Numeric A', '12345'],
+    ]);
+  });
+
+  // #551 review round 2, Minor 1 (self-review — explicitly "in scope, not
+  // deferrable"): a unique DISPLAYED id is only half of #551 item 1's
+  // acceptance — the other half is that the delete control must actually
+  // work. Before this fix, `deletePlan(displayedId)` on a non-string-keyed
+  // row was a SILENT NO-OP: IndexedDB key comparison is type-sensitive, so
+  // the string '12345' never matches the real numeric key 12345.
+  it('#551: deletePlan deletes a row whose displayed id came from a non-string primary key (Minor 1)', async () => {
+    const numeric = {
+      id: 12345,
+      name: 'Numeric',
+      createdAtMs: 1000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    await savePlan(numeric);
+    const before = await listPlans();
+    expect(before).toHaveLength(1);
+    const displayedId = before[0]!.id;
+    expect(displayedId).toBe('12345');
+
+    await deletePlan(displayedId);
+
+    expect(await listPlans()).toHaveLength(0);
+  });
+
+  // #551 review round 2, Minor 2 (folded with a second, independent PWA-
+  // reviewer finding on the same line): String()-based display ids
+  // collided for Array keys differing only in bracket/quote placement
+  // (`[1,2]` vs `['1,2']`) and for Date keys under a second apart
+  // (`Date#toString()` has no sub-second precision) — both reproduce
+  // item 1's ORIGINAL React-key/delete-target collision for a narrower key
+  // class. JSON.stringify (used for any non-string key) preserves both
+  // distinctions.
+  it('#551: Array and Date primary keys that String() would collide stay distinct under JSON.stringify (Minor 2)', async () => {
+    const arrA = { id: [1, 2], name: 'Arr A', createdAtMs: 4000 } as unknown as Plan;
+    const arrB = { id: ['1,2'], name: 'Arr B', createdAtMs: 3000 } as unknown as Plan;
+    const t0 = 1_767_267_015_100;
+    const t1 = 1_767_267_015_900; // 800ms later, same wall-clock second
+    const dateA = { id: new Date(t0), name: 'Date A', createdAtMs: 2000 } as unknown as Plan;
+    const dateB = { id: new Date(t1), name: 'Date B', createdAtMs: 1000 } as unknown as Plan;
+    await savePlan(arrA);
+    await savePlan(arrB);
+    await savePlan(dateA);
+    await savePlan(dateB);
+
+    const rows = await listPlans();
+    const ids = rows.map((r) => (r.kind === 'unreadable' ? r.id : 'n/a'));
+    expect(new Set(ids).size).toBe(4);
+  });
+
+  // The genuinely-empty-string id is the case `displayIdOfKey`'s
+  // string-passthrough branch exists to protect: without it,
+  // `JSON.stringify('')` would silently turn a never-broken '' id into
+  // '""'. Kept as its own regression pin, separate from the Array/Date
+  // test above, since it is what a careless "always JSON.stringify"
+  // rewrite would break.
+  it("#551: a genuinely empty-string primary key still displays as '', not JSON-quoted", async () => {
+    const emptyId = {
+      id: '',
+      name: 'Empty Id',
+      createdAtMs: 1000,
+      request: {},
+      windGrid: {},
+      result: {},
+    } as unknown as Plan;
+    await savePlan(emptyId);
+
+    const rows = await listPlans();
+    expect(rows).toEqual([
+      {
+        kind: 'unreadable',
+        reason: 'damaged',
+        id: '',
+        name: 'Empty Id',
+        createdAtMs: 1000,
+      },
+    ]);
+  });
 });
