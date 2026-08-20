@@ -2353,6 +2353,32 @@ making design-level decisions; do not silently deviate.
   `planRoute.ts` re-snaps 46.3 m onto a conservative-3.0 m cell, losing zero
   pairs. Gate-conditional: the floor degrades to 1.3 m at the UI's 2.2 m
   minimum. ~10,746 crossers remain, so #455 stays OPEN.
+- **Every per-boat depth lever is on the GATE side, and the two gates differ**
+  (#54/#539, `app/src/lib/boatDepth.ts`). `defaultSafetyDepthM(b)` is
+  `ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` — so `gate - T = draft`
+  EXACTLY, ZERO margin, for all three catalogue boats — while
+  `relaxationFloorM(b)` is `ceilToDecimetre(b.draftM)`, NO tolerance added.
+  So at every boat's OWN default gate, #53 relaxation reaches `draft - T`
+  (1.2 m under the Salona's 2.1 m hull) with no user action: below-draft at
+  DEFAULTS is REAL. State it in TWO branches or it is false — those cases are
+  DISCLOSED (a relaxed route sets `shallow` and `isSevere` fires), and the
+  UNDISCLOSED residual (non-relaxed gate-crossers) bottoms out AT the hull,
+  never below. NEVER write "below-draft requires a user-lowered gate": the
+  app's own `about.caveats.depthMask` string contradicts it. T cannot be
+  per-boat — one mask, one blend, one constant. `BOAT_DRAFT_M`
+  (`relaxedDepth.ts`) still compiles but is the Salona-45 module constant, NOT
+  the production path; `boatDepth.ts` calls leaving it in "THE SINGLE MOST
+  DANGEROUS SHORTCUT IN THIS FEATURE".
+- **The disclosure stack mounts ONLY on relaxed routes** (#455; verified
+  2026-08-20). All three `flagShallowLegs` call sites (`planRoute.ts`
+  ~:713/:723/:738) sit inside `if (relaxed !== null)`; every non-relaxed
+  success returns `assemble(tierN, null)` (~:603/:614/:630). So the banner,
+  the cautious chip and the exposure sentence — four PRs of depth UI
+  (#504/#509/#518/#523) — render for NO ordinary route, while ~10,746
+  gate-crossing cells produce no per-route signal. NO test can catch this:
+  every one constructs a non-null `ShallowInfo`, so the defect is in whether
+  the component MOUNTS, not in the component. #612 is the fix, gated on #455's
+  measurement half.
 - **The cautious floor is now DISCLOSED at the leg, not fixed** (#493, PR #504,
   shipped 2026-08-10). Because the mask is built so `depth_blend <= depth_max
   + T`, the inequality runs BACKWARDS too — `conservative >= shipped - T` per
@@ -2366,11 +2392,14 @@ making design-level decisions; do not silently deviate.
   TypeScript). Surfaced in the legs-table cautious chip and in the
   `ShallowWarning` banner, which is ONE `role="alert"` container with
   lead/detail/caveat children — the lead carries the floor and, when
-  `usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M`, that it falls below the
-  draft. That gate is UNCONDITIONALLY TRUE at the 3.0 m default (relaxation
-  searches `[BOAT_DRAFT_M, requestedDepthM)`, so `usedDepthM <= 2.9`); it only
-  discriminates above a 3.0 m gate — which is why the two-tier banner was
-  folded into one. DELIBERATELY presentation-only: no field was added to
+  `usedDepthM - MASK_TOLERANCE_M < plan.request.boat.draftM`, that it falls
+  below the draft — the by-value SNAPSHOT, never a `boatById` lookup, since
+  that boat may have left the catalogue (`RouteSummary.tsx` :: `isSevere`,
+  changed at #539; before it this read `BOAT_DRAFT_M` and rendered the wrong
+  number in the app's most severe depth copy). That gate is UNCONDITIONALLY
+  TRUE at EVERY boat's own default gate, not just at 3.0 (relaxation searches
+  `[relaxationFloorM(boat), requestedDepthM)`); it only discriminates above
+  it — which is why the two-tier banner was folded into one. DELIBERATELY presentation-only: no field was added to
   `ShallowInfo`/`Leg.shallow`, so `PlanResult` stays byte-identical, the
   `app/sweep/` baseline stays comparable and NO #282 sweep is owed. The
   measured conservative reading (1.80 m on Flensburg->Marstal) still needs
