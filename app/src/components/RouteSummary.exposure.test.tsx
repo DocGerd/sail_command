@@ -656,6 +656,43 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
     expect(container.querySelector('.marginal-depth-notice')).toBeNull();
   });
 
+  it('does not crash on a stored plan whose request has no settings at all (#551/#624)', async () => {
+    // CROSS-PR COMPOSITION regression, invisible against this branch's own
+    // base: #624 (#551) landed after it and established that
+    // `migratePlan.ts` never validates `request.settings`, so such a record
+    // migrates NON-NULL and any bare `settings.safetyDepthM` read throws.
+    // With no error boundary anywhere in app/src that blanks the whole app.
+    // Pinned HERE rather than relying on App.test.tsx's own #551 row, which
+    // lives in a different file and could pass while this component is the
+    // thing throwing.
+    mockedLoad.mockResolvedValue(marginalMask());
+    localStorage.setItem('sc-lang', 'en');
+    const base = makeNonRelaxedPlan([EXPOSURE_LEG]);
+    // `settings` is REQUIRED on PlanRequest, so the stored-record shape this
+    // guards against has to be built by dropping the key — the same reason
+    // makeNonRelaxedPlan above drops `shallow`.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { settings: _dropped, ...requestWithoutSettings } = base.request;
+    const plan = { ...base, request: requestWithoutSettings } as unknown as Plan;
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    // Not merely "did not throw": it falls back to DEFAULT_SETTINGS and still
+    // states a real gate, so the notice degrades to correct rather than to a
+    // "safety depth of NaN m" sentence — the failure mode `Number.isFinite`
+    // closes that a `typeof === 'number'` check or an object spread would not.
+    const notice = container.querySelector('.marginal-depth-notice');
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain(
+      `safety depth of ${DEFAULT_SETTINGS.safetyDepthM.toFixed(1)} m`,
+    );
+    expect(notice?.textContent).not.toContain('NaN');
+  });
+
   it('renders the German copy with a German number', async () => {
     // The de/en pair is what makes a mixed-language announcement impossible
     // to ship unnoticed — formatNm is locale-aware (#525), so the DE figure

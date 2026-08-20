@@ -28,6 +28,7 @@ import { useWideLayout } from '../lib/useWideLayout';
 import { useNavMask } from '../state/useNavMask';
 import { safetyDepthFieldFor } from './OptionsPanel';
 import type { MsgKey } from '../i18n/dict.de';
+import { DEFAULT_SETTINGS } from '../types';
 import type { Board, Leg, NoRouteReason, Plan, SailId, ShallowInfo } from '../types';
 import Card from './Card';
 import Chip from './Chip';
@@ -334,7 +335,25 @@ export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] |
   // The REQUESTED gate this plan was computed at, from the plan's own frozen
   // settings — never the live OptionsPanel value, so a re-opened plan keeps
   // describing the gate it was actually solved against.
-  const gateM = plan.request.settings.safetyDepthM;
+  // GUARDED, per #624/#551: `migratePlan.ts` never validates `request.settings`,
+  // so a stored plan without it migrates NON-NULL and a bare read throws
+  // `TypeError: Cannot read properties of undefined`. With no error boundary
+  // anywhere in app/src that blanks the whole app — a safety notice taking the
+  // results panel down with it is strictly worse than the silent no-op #612
+  // exists to fix. MEASURED by PR #630's review: `App.test.tsx` is 68/68 on
+  // plain develop and 67/68 once this branch is merged into it, a cross-PR
+  // composition defect invisible against either side alone.
+  //
+  // `Number.isFinite`, not `typeof === 'number'` and not a
+  // `{ ...DEFAULT_SETTINGS, ...settings }` spread: object spread copies an own
+  // key whose value is `undefined`, and `typeof NaN` / `typeof Infinity` are
+  // both `'number'`. A NaN gate would render "your safety depth of NaN m" in
+  // safety copy and reach marginalDepthThresholdM as `Math.ceil(NaN)`,
+  // silently suppressing the notice on every route. This form closes all four
+  // while still accepting a legitimate 0.
+  const gateM = Number.isFinite(plan.request.settings?.safetyDepthM)
+    ? (plan.request.settings.safetyDepthM as number)
+    : DEFAULT_SETTINGS.safetyDepthM;
   // A relaxed route is ShallowWarning's business, not this line's: it already
   // gets a banner carrying a strictly stronger statement, and rendering both
   // would say the same hazard twice in two vocabularies. Gated HERE rather
