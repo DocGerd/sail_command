@@ -161,7 +161,10 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // 2^z / 966.7. MEASURED in Chromium against the real map via
 // map.project() one cell apart, which is what settled the constant: z9
 // 0.5296, z12 4.2367, z16 67.7867 px per cell — all within 0.1% of the
-// formula. NOTE the previous revision of this comment used 156543.03,
+// formula. TWIN: lib/mapOrientation.test.ts's metresPerPixel() derives the
+// same ground resolution independently for the scale bar, in the same
+// 512-px-tile form — check the two agree before changing either.
+// NOTE the previous revision of this comment used 156543.03,
 // the 256-px-tile constant, and so tabulated every on-screen figure at
 // HALF its true value; the issue text of #599 inherited that table. Do
 // not restore either.
