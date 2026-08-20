@@ -281,6 +281,49 @@ describe('#54 migratePlan: pre-#54 records', () => {
     expect(migratePlan(raw)!.result.comparisonComplete).toBe(false);
   });
 
+  // #540: the target window between #259 (rigRecommendation shipped,
+  // 2026-07-31 79ef507) and #553 (the not-compared fallback, 2026-08-18
+  // bc295e2) — a record whose stored `rigRecommendation` is `{kind:
+  // 'decided'}` (legacyPlan()'s own fixture, unchanged since it predates
+  // #553's fix) alongside a DERIVED comparisonComplete: false (this record
+  // has no stored comparisonComplete field either, so it takes the same
+  // derived path the row above exercises). The stale 'decided' verdict must
+  // be overridden to 'not-compared', never passed through as a live star on
+  // a comparison that never finished.
+  it('#540: overrides a stale decided verdict to not-compared when the derived comparisonComplete is false', () => {
+    const raw = legacyPlan();
+    const result = raw.result as Record<string, unknown>;
+    result.fock = null;
+    result.fockReason = 'search-budget-exceeded';
+    expect(result.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.comparisonComplete).toBe(false);
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'not-compared' });
+  });
+
+  // Discriminating control for the row above: the SAME stored 'decided'
+  // verdict, but comparisonComplete stays true (no sail cut short by the
+  // budget) — legacyPlan()'s unmodified shape. The override must NOT fire
+  // here; the stored verdict passes through unchanged, matching every other
+  // 'records this build already understands' expectation.
+  it('#540: leaves a decided verdict unchanged when comparisonComplete is true', () => {
+    const migrated = migratePlan(legacyPlan())!;
+    expect(migrated.result.comparisonComplete).toBe(true);
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'decided', rig: 'genoa' });
+  });
+
+  // #540: a record with an EXPLICIT stored comparisonComplete: false (the
+  // post-4547ced, pre-#553 window — a narrower slice of the same target
+  // window, where the flag is read directly rather than derived) must get
+  // the same override.
+  it('#540: overrides a stale decided verdict when comparisonComplete is stored explicitly as false', () => {
+    const raw = legacyPlan();
+    const result = raw.result as Record<string, unknown>;
+    result.comparisonComplete = false;
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'not-compared' });
+  });
+
   it('leaves the input record untouched', () => {
     const raw = legacyPlan();
     const before = JSON.stringify({ id: raw.id, request: raw.request, result: raw.result });

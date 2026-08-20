@@ -211,6 +211,29 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
       ? result.comparisonComplete
       : !sails.some((s) => s.result === null && s.reason === BUDGET_REASON);
 
+  // #540: a record written between #259 (rigRecommendation shipped,
+  // 2026-07-31 79ef507) and #553 (the not-compared fallback, 2026-08-18
+  // bc295e2) can carry `rigRecommendation: { kind: 'decided' }` even though
+  // one sail was cut short by the plan's wall-clock budget. Before #553,
+  // planRoute.ts's ELSE branch — any solve that did NOT take the two-sail
+  // compareRigs path, including a budget-exhausted sail — ALSO stamped
+  // `decided`, not `not-compared`; #553 is what taught it to decline
+  // instead. `comparisonComplete` shipped in between (2026-08-15 4547ced),
+  // so a record from that window can carry a computed `comparisonComplete:
+  // false` beside a `decided` verdict predating the fix that would have
+  // suppressed it — a live star on a comparison the record's own flag says
+  // never finished. A record with NO stored `rigRecommendation` at all
+  // (pre-79ef507) is NOT this case: it predates `comparisonComplete`
+  // (2026-08-15) AND the internal budget-exhaustion cause it derives from
+  // (2026-08-07 b4c383f) entirely, so it cannot contain a budget-exhausted
+  // sail — rigRecommendationOf()'s own `?? { kind: 'decided', ... }`
+  // fallback correctly stars it, and that path is left untouched here.
+  const storedRigRecommendation = result.rigRecommendation;
+  const staleDecidedStar =
+    isRecord(storedRigRecommendation) &&
+    storedRigRecommendation.kind === 'decided' &&
+    !comparisonComplete;
+
   // ANNOTATED, never `... as PlanResultOk`. This literal enumerates the
   // fields it carries, so a future required field on PlanResultOk would be
   // silently stripped from every stored plan on read — and a trailing cast
@@ -233,13 +256,18 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
     ...(result.shallow !== undefined
       ? { shallow: result.shallow as NonNullable<PlanResultOk['shallow']> }
       : {}),
-    ...(result.rigRecommendation !== undefined
-      ? {
-          rigRecommendation: result.rigRecommendation as NonNullable<
-            PlanResultOk['rigRecommendation']
-          >,
-        }
-      : {}),
+    ...(staleDecidedStar
+      ? // #540: override the stale 'decided' verdict rather than pass it
+        // through — see staleDecidedStar's own comment above for the window
+        // this targets.
+        { rigRecommendation: { kind: 'not-compared' } as const }
+      : result.rigRecommendation !== undefined
+        ? {
+            rigRecommendation: result.rigRecommendation as NonNullable<
+              PlanResultOk['rigRecommendation']
+            >,
+          }
+        : {}),
     snappedOrigin: result.snappedOrigin as unknown as PlanResultOk['snappedOrigin'],
     snappedDestination: result.snappedDestination as unknown as PlanResultOk['snappedDestination'],
   };
