@@ -515,18 +515,102 @@ test('navigability hatch (#492) reacts to safetyDepthM only while the depth over
   }
 });
 
-// #492 review M8: at overview zoom (z9, the app's own initial ZOOM —
-// MapView.tsx:62) the hatch's on-screen period is sub-pixel (~2.1px, see
-// depthColor.ts's HATCH_PERIOD_CELLS comment for the full table) and reads
-// as a sparse, high-contrast SPECKLE rather than a visible hatch — MEASURED
-// (PR #591 re-review) as a mean 62/max 160 luminance drop on touched
-// pixels, not a flat/uniform tint; at close zoom the SAME mask-cell-sized
-// period is hundreds of screen pixels, so "sparse hatch" degrades into a
-// wide, near-opaque BAND. This measures that degradation directly — at z16 a high
-// gate should hatch a LARGE, easily-measurable fraction of the canvas, not
-// a sparse pattern — rather than asserting it only in prose. Tracked as
-// #599 (screen-space rendering, e.g. a fill-pattern layer, would make the
-// on-screen period zoom-invariant) rather than fixed in this change.
+// Measures the on-screen width of individual hatch STRIPES, isolating them
+// from everything else on the canvas by DIFFERENCING TWO GATES: the absolute
+// depth ramp is gate-blind by depthColor.ts's HARD DOMAIN RULE, so every
+// pixel that darkens between a low and a high safetyDepthM is hatch and only
+// hatch. Basemap, labels and chrome cancel exactly.
+//
+// Returns the run lengths (in screen px) of horizontally-consecutive
+// newly-hatched pixels. Runs touching a row edge are DISCARDED — they are
+// truncated by the viewport, not by the pattern. Reported as a HIGH
+// PERCENTILE rather than a mean or median: a run can be cut short where a
+// marginal region ends, but it can never exceed the stripe width (gaps
+// separate stripes by construction), so the upper tail estimates the true
+// on-screen stripe width from BELOW and never overestimates it.
+//
+// Horizontal scanning is the right axis even though the stripes run at 45deg:
+// the pattern is `(outRow + col) % period < stripe`, so at a FIXED row it has
+// period `period` and on-run `stripe` in COLUMNS exactly — the diagonal
+// costs nothing here.
+async function hatchRunLengthsPx(page: Page, low: Buffer, high: Buffer): Promise<number[]> {
+  return page.evaluate(
+    async ([a64, b64]) => {
+      const decode = async (b64: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${b64}`;
+        await img.decode();
+        const c = new OffscreenCanvas(img.naturalWidth, img.naturalHeight);
+        const g = c.getContext('2d')!;
+        g.drawImage(img, 0, 0);
+        return {
+          d: g.getImageData(0, 0, img.naturalWidth, img.naturalHeight).data,
+          w: img.naturalWidth,
+          h: img.naturalHeight,
+        };
+      };
+      const A = await decode(a64);
+      const B = await decode(b64);
+      if (A.w !== B.w || A.h !== B.h) throw new Error('frame size changed between gates');
+      const lum = (d: Uint8ClampedArray, i: number) =>
+        0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      // 40: HATCH_RGBA is [0,0,0,190], so a fully-covered pixel drops
+      // luminance by >100 even over the darkest STOPS colour; 40 keeps
+      // partially-covered edge pixels and minified (mipmapped) overview-zoom
+      // pixels while staying far above frame noise.
+      const DROP = 40;
+      const runs: number[] = [];
+      for (let y = 0; y < A.h; y++) {
+        let run = 0;
+        for (let x = 0; x < A.w; x++) {
+          const i = (y * A.w + x) * 4;
+          if (lum(A.d, i) - lum(B.d, i) > DROP) {
+            run++;
+            if (x === A.w - 1 && run > 0) run = 0; // touches the right edge
+          } else {
+            // a run starting at x===0 touched the left edge: drop it
+            if (run > 0 && x - run > 0) runs.push(run);
+            run = 0;
+          }
+        }
+      }
+      return runs;
+    },
+    [low.toString('base64'), high.toString('base64')] as const,
+  );
+}
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+}
+
+// #599 (was #492 review M8, INVERTED): this test used to DOCUMENT the
+// zoom-scaling degradation — the hatch's period was expressed in mask cells
+// with one fixed pair applied at every zoom, so it washed out to a sub-pixel
+// speckle at the app's own initial z9 and coarsened into individually huge
+// bands close in. depthColor.ts's hatchBandForZoom now picks the pair per
+// zoom, and this test guards that the degradation does not come back.
+//
+// It measures the on-screen STRIPE WIDTH at both ends of the range, which is
+// the quantity that was broken. Note what the ORIGINAL M8 assertion could
+// not see: it asserted a COVERAGE FRACTION, and the coverage fraction is
+// invariant to the period (25% duty at any band) — that test's own comment
+// says so. So the fraction half was never able to discriminate a fine hatch
+// from a wide band, despite the title claiming to measure exactly that. The
+// fraction assertions are KEPT below, in the role they can actually play:
+// establishing that the hatch is rendering at all over a marginal area,
+// which is what LICENSES reading the stripe-width numbers as measurements of
+// a real pattern rather than of noise.
+//
+// MEASURED expectations (Chromium, map.project() on two points one mask cell
+// apart): 0.5296 screen px per mask cell at z9, 67.7867 at z16.
+//   z9  band (27,15): stripe 15 cells -> ~7.9 px   (old fixed pair: ~1.06 px)
+//   z16 band  (4, 1): stripe  1 cell  -> ~67.8 px  (old fixed pair: ~135.6 px)
+// The thresholds below sit between the two in each case, so reverting
+// hatchBandForZoom to the old fixed (8, 2) reds both — verified by running
+// exactly that mutation, not assumed.
 //
 // LOCATION: the app's own default map centre ([9.9, 54.85], MapView.tsx's
 // CENTER) sits over the fjord's main channel, MEASURED against the real
@@ -540,7 +624,7 @@ test('navigability hatch (#492) reacts to safetyDepthM only while the depth over
 // snap point gives 41% of cells marginal at a 2.2 m gate vs 97% at 10 m —
 // a location chosen from MEASUREMENT, not assumed from the harbor's prose
 // alone.
-test('navigability hatch (#492): at close zoom the pattern degrades to a wide band, not a sparse hatch (M8, tracked as #599)', async ({
+test('navigability hatch (#599): the on-screen stripe stays legible at overview zoom and does not become a wide band close in', async ({
   page,
 }) => {
   const server = await startPreview();
@@ -553,46 +637,86 @@ test('navigability hatch (#492): at close zoom the pattern degrades to a wide ba
     await mapReady(page);
 
     const safetyDepth = page.getByLabel('Sicherheitstiefe (m)');
-    await safetyDepth.fill('2.2');
-    await safetyDepth.blur();
+    const jumpTo = (zoom: number) =>
+      page.evaluate((z) => {
+        (
+          window as unknown as {
+            __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
+          }
+        ).__scE2eMap // already installed window.__scE2eMap as a side effect. // wackerballig's own snap point — no animation. mapReady() has
+          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
+      }, zoom);
 
-    // Jump straight to z16, centred on wackerballig's own snap point (no
-    // animation) via the real map instance — mapReady() has already
-    // installed window.__scE2eMap as a side effect.
-    await page.evaluate(() => {
-      (
-        window as unknown as {
-          __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
-        }
-      ).__scE2eMap.jumpTo({ zoom: 16, center: [9.872, 54.7604] });
-    });
-    const lowGate = await settledCanvas(page, canvas);
-    const lowFraction = await hatchedFraction(page, lowGate);
+    // Two frames per zoom, differing ONLY in safetyDepthM, so the difference
+    // between them is pure hatch (the ramp is gate-blind).
+    const framesAt = async (zoom: number) => {
+      await safetyDepth.fill('2.2');
+      await safetyDepth.blur();
+      await jumpTo(zoom);
+      const low = await settledCanvas(page, canvas);
+      const lowFraction = await hatchedFraction(page, low);
+      await safetyDepth.fill('10');
+      await safetyDepth.blur();
+      // Poll the VALUE, not a boolean: on failure the message carries the
+      // fraction that was actually reached. This also LICENSES the stripe
+      // measurement below — an absence of wide stripes means nothing until
+      // the hatch is established to be rendering at all.
+      await expect
+        .poll(async () => hatchedFraction(page, await canvas.screenshot()), {
+          message: `raising safetyDepthM at z${zoom} must hatch a measurable fraction of the canvas`,
+          timeout: 30_000,
+        })
+        // 0.02's PRIMARY job is licensing — establishing the hatch really
+        // renders, so the stripe-width numbers below measure a pattern
+        // rather than noise. MEASURED at 0.045 at z9 (most of an overview
+        // frame is land) and 0.25 at z16.
+        //
+        // It turns out to carry real detection power too, which is worth
+        // stating rather than leaving to be rediscovered: reverting to the
+        // pre-#599 fixed band drops the z9 figure to 0.0057, an 8x collapse.
+        // That IS the wash-out, quantified — at ~1px wide the stripes are
+        // minified and mipmap-averaged, so almost no pixel still reads as
+        // near-black even though the same 25% of cells are painted. So this
+        // gate reds under the mutation BEFORE the z9 stripe assertion is
+        // reached; both were separately confirmed load-bearing by relaxing
+        // this floor and re-running (z9 measured 2px against its >=4 bound).
+        .toBeGreaterThan(0.02);
+      const high = await settledCanvas(page, canvas);
+      const highFraction = await hatchedFraction(page, high);
+      expect(highFraction, `z${zoom}: raising the gate must hatch MORE, not less`).toBeGreaterThan(
+        lowFraction,
+      );
+      return { low, high };
+    };
 
-    // Threshold (0.15) is MEASURED, not guessed: an earlier draft asserted
-    // > 0.5 from the raw mask sample's ~97% marginal-cell estimate at this
-    // gate, and the REAL rendered fraction came back 0.254 — because the
-    // hatch's 25% stripe/gap DENSITY (HATCH_STRIPE_WIDTH_CELLS /
-    // HATCH_PERIOD_CELLS, depthColor.ts) scales UNIFORMLY with zoom, so the
-    // COVERAGE FRACTION of a marginal area stays ~constant at any zoom —
-    // only the per-stripe on-screen SIZE changes (sub-pixel at z9, hundreds
-    // of px at z16). 0.15 leaves margin below the measured 0.254 for
-    // land/basemap chrome/run-to-run variance while staying well above
-    // anything a near-zero, still-broken mechanism could produce (compare
-    // the ~0.001 this test measured at the app's default centre, over the
-    // fjord's deep channel, before this location was corrected).
-    await safetyDepth.fill('10');
-    await safetyDepth.blur();
-    await expect
-      .poll(async () => hatchedFraction(page, await canvas.screenshot()), {
-        message:
-          'raising safetyDepthM at close zoom must hatch a LARGE, measurable fraction of the canvas',
-        timeout: 30_000,
-      })
-      .toBeGreaterThan(0.15);
-    const highGate = await settledCanvas(page, canvas);
-    const highFraction = await hatchedFraction(page, highGate);
-    expect(highFraction).toBeGreaterThan(lowFraction);
+    // ---- overview zoom (z9, the app's own initial ZOOM, MapView.tsx) ----
+    // The defect: the fixed 2-cell stripe rendered ~1.06 px wide here and
+    // washed out. The z9 band is (27, 15) -> ~7.9 px. 4 px sits between the
+    // two; the old constants cannot reach it at any sub-pixel-per-cell zoom.
+    const z9 = await framesAt(9);
+    const z9Runs = await hatchRunLengthsPx(page, z9.low, z9.high);
+    const z9Stripe = percentile(z9Runs, 90);
+    expect(
+      z9Stripe,
+      `overview zoom: hatch stripes measured ${z9Stripe}px wide (p90 of ${z9Runs.length} runs) — the pre-#599 fixed band rendered ~1px here and washed out`,
+    ).toBeGreaterThanOrEqual(4);
+
+    // ---- harbour-approach zoom (z16) ----
+    // One mask cell is already ~67.8 px here, so the raster cannot draw a
+    // stripe finer than that — the band clamps to 1 cell, HALVING the old
+    // 2-cell (~135.6 px) band. 100 px sits between the two. This is the
+    // accepted limit of the per-cell-raster approach, not a fix: see
+    // depthColor.ts's "WHAT THIS DOES NOT ACHIEVE" note.
+    const z16 = await framesAt(16);
+    const z16Runs = await hatchRunLengthsPx(page, z16.low, z16.high);
+    const z16Stripe = percentile(z16Runs, 90);
+    expect(
+      z16Stripe,
+      `close zoom: hatch stripes measured ${z16Stripe}px wide (p90 of ${z16Runs.length} runs) — the pre-#599 fixed band rendered ~136px bands here`,
+    ).toBeLessThanOrEqual(100);
+    // Both ends measured, so the ratio is the real thing #599 bounded: a
+    // fixed cell-space band would put ~128x between these two numbers.
+    expect(z16Stripe / z9Stripe, 'stripe growth across z9..z16 must stay bounded').toBeLessThan(32);
   } finally {
     server.kill();
   }
