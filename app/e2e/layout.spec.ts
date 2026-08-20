@@ -949,30 +949,55 @@ for (const colorScheme of ['light', 'dark'] as const) {
       await depthLegend.locator('> summary').click();
       await expect(depthLegend).toHaveJSProperty('open', true);
 
-      // Panel chrome: assert the `background` SHORTHAND, never
-      // `backgroundColor` alone — CLAUDE.md's #493/#506 lesson is that
-      // `backgroundColor` can read `rgba(0,0,0,0)` in BOTH the broken and
-      // fixed states because it doesn't reflect a `color-mix()`/`var()`
-      // shorthand declaration the same way; the shorthand string is what
-      // actually discriminates "no background declared at all" from a
-      // real, painted one. Re-sampled every poll tick, not frozen before
-      // paint has settled (#412's stale-geometry lesson, applied to a CSS
-      // property read instead of a bounding box).
+      // Panel chrome: compare `.depth-legend`'s resolved background
+      // against `.data-layer-controls`'s — the SAME token expression
+      // (app.css's #638 comment) — as an EQUALITY check, not merely
+      // "non-transparent". A non-transparent-only check passes on ANY
+      // opaque colour, theme-blind included: review MEASURED that
+      // `background: #ffffff` (opaque white, wrong in dark mode) satisfied
+      // a prior `.not.toMatch(/^rgba\(0, 0, 0, 0\)/)` form in BOTH colour
+      // schemes, even though `.depth-legend`'s `color` in dark mode is
+      // `rgb(236, 238, 241)` — near-white text on a white panel, exactly
+      // #638's screenshot symptom. `backgroundColor`, not the `background`
+      // SHORTHAND: CLAUDE.md's #493/#506 caveat that `backgroundColor`
+      // can't discriminate `color-mix()`/`var()` is JSDOM-scoped — this
+      // spec runs in real Chromium, where `backgroundColor` DOES
+      // discriminate correctly (measured: `rgba(0, 0, 0, 0)` with the
+      // chrome reverted vs. `color(srgb 0.98… / 0.9)` light / `color(srgb
+      // 0.05… / 0.9)` dark at head). The shorthand form was also a
+      // NEGATIVE match against one assumed "transparent" spelling and
+      // would fail OPEN if a future engine serialises it differently
+      // (e.g. `color(srgb 0 0 0 / 0)`); this equality form makes no
+      // assumption about either side's serialisation, only that they
+      // match. Re-sampled every poll tick, not frozen before paint has
+      // settled (#412's stale-geometry lesson).
+      const siblingBg = await page
+        .locator('.data-layer-controls')
+        .evaluate((el) => getComputedStyle(el).backgroundColor);
       await expect
-        .poll(() => depthLegend.evaluate((el) => getComputedStyle(el).background), {
+        .poll(() => depthLegend.evaluate((el) => getComputedStyle(el).backgroundColor), {
           timeout: 5_000,
         })
-        .not.toMatch(/^rgba\(0,\s*0,\s*0,\s*0\)/);
+        .toBe(siblingBg);
 
-      // Not squeezed, signal 1: the narrow-tuned 104px bound must not still
-      // be governing at this width — the wide-layout override must have
-      // taken.
+      // Not squeezed, signal 1: the wide-layout override must actually be
+      // the value governing here. POSITIVE form, not "not the narrow
+      // 104px value" — review found the negative form both fail-open (a
+      // future narrow-bound bump to e.g. 105.6px would satisfy "not
+      // 104px" while still being the wrong value) and, on its own,
+      // strictly SUBSUMED by signal 2 below (no reachable mutation reds
+      // it that signal 2 does not). This positive form is NOT subsumed:
+      // at a `max-width` below 144px that still clears the widest word
+      // (e.g. 7.65rem/122.4px — app.css's #638 comment carries that
+      // sweep), signal 2 stays green while this assertion reds, so it
+      // independently pins the CHOSEN value rather than merely "wide
+      // enough not to break".
       const depthLegendBody = page.locator('.depth-legend-body');
       await expect
         .poll(() => depthLegendBody.evaluate((el) => getComputedStyle(el).maxWidth), {
           timeout: 5_000,
         })
-        .not.toBe('104px');
+        .toBe('144px');
 
       // Not squeezed, signal 2 — the actual reported symptom: the legend's
       // longest German compound must render as ONE unbroken line, never

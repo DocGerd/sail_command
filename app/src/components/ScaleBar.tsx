@@ -64,6 +64,14 @@ export default function ScaleBar() {
   // folded in — see the effect below), not a raw occluder measurement.
   const [bottomPx, setBottomPx] = useState<number | null>(null);
   const [suppressed, setSuppressed] = useState(false);
+  // #640 (MAJOR 4): whether the #598 depth-hatch legend, when expanded,
+  // visually covers this bar. A SEPARATE boolean, OR'd into the render
+  // class below rather than folded into `suppressed` above: `suppressed`
+  // is owned by the narrow-only occlusion effect further down (keyed on
+  // `[isWide, bannerHeight]`, early-returning at wide), and writing into it
+  // from a second effect would race whichever effect's `setSuppressed`
+  // ran last. This state is written by its OWN effect, below.
+  const [legendOccludesBar, setLegendOccludesBar] = useState(false);
 
   // `useT()` returns a fresh closure every render, so it can never be an
   // effect dependency. This sync effect is declared BEFORE the map effect, so
@@ -355,10 +363,113 @@ export default function ScaleBar() {
     };
   }, [isWide, bannerHeight]);
 
+  // #640 (MAJOR 4): the #598 depth-hatch legend, when expanded, can cover
+  // this bar's own corner — MEASURED (390x844 and 1024x600, both no plan
+  // loaded, legend open): 1837.7px² of overlap, 100% of the bar's own
+  // area, at BOTH a narrow and a wide viewport. That overlap itself is
+  // PRE-EXISTING (identical on `develop`, before #638): app.css's own
+  // tier-order comment (above `.app-header`) says untiered elements like
+  // this bar must let map chrome draw OVER them, and names THIS bar's own
+  // JS lift as the mechanism that is supposed to keep it clear rather than
+  // silently buried — the same job the effect above already does for the
+  // Live readout and the bottom sheet. #638 is what turned a harmless
+  // overlap into a defect: before it, `.depth-legend` painted no
+  // background, so an overlap was see-through; now it is opaque, so the
+  // SAME geometry silently erases the bar instead.
+  //
+  // Deliberately a SEPARATE effect from the narrow-only one above, for two
+  // reasons. (1) `.depth-legend` exists and can grow tall in EITHER
+  // layout — narrow's `.depth-legend-body` bounds itself dynamically
+  // against the bottom sheet (app.css), wide's is a flat `24rem`
+  // (`@media (min-width: 1024px)`) with no viewport-height awareness at
+  // all, which is why the wide case reproduces on a merely SHORT wide
+  // viewport (1024x600) — so this must run at BOTH `isWide` values, where
+  // the effect above deliberately bails at `isWide` (wide parks the bar at
+  // a flat CSS `bottom: 0.75rem`, no JS position to compute). (2) A CSS-
+  // only static bound was considered and rejected for this exact
+  // reachability problem once already, for `.depth-legend` itself (see
+  // that element's own app.css comment, "#598 review round 3") — a fixed
+  // max-height cannot adapt to an arbitrary wide-layout viewport HEIGHT
+  // (wide only gates on width), so no single static bound is safe at
+  // every wide viewport without shrinking the legend far enough to defeat
+  // #638's own readability goal. `getBoundingClientRect()` on both
+  // elements sidesteps the offsetParent bookkeeping the effect above needs
+  // (`.depth-legend`'s offsetParent is `.map-stack-tl`, not `host`):
+  // viewport coordinates are directly comparable regardless of which
+  // positioning context either element resolves against, and work
+  // identically whether the bar's OWN position is JS-computed (narrow) or
+  // CSS-fixed (wide).
+  //
+  // A plain boolean OR'd into the render class (not a `bottomPx`/lift
+  // computation): the fix this state exists for is "suppress rather than
+  // silently cover" per app.css's own tier-order principle, not "reposition
+  // to make room" — the bar has nowhere clear to move TO while the legend
+  // occupies this whole corner in either layout.
+  useEffect(() => {
+    const host = rootRef.current?.parentElement;
+    const bar = rootRef.current;
+    if (!host || !bar) return;
+    const legend = host.querySelector<HTMLElement>('.depth-legend');
+    if (!legend) return;
+
+    const check = () => {
+      // Re-read every call, never frozen (#412's stale-geometry lesson).
+      // `hidden` (DataLayers.tsx's own reachability gate) is `display:
+      // none` — its rect is already all-zero and would never overlap, but
+      // checking the property directly is cheaper and clearer than relying
+      // on that incidentally.
+      if (legend.hidden) {
+        setLegendOccludesBar(false);
+        return;
+      }
+      const l = legend.getBoundingClientRect();
+      const b = bar.getBoundingClientRect();
+      const overlaps = l.left < b.right && l.right > b.left && l.top < b.bottom && l.bottom > b.top;
+      setLegendOccludesBar(overlaps);
+    };
+
+    check();
+    // Covers the legend opening/closing/hiding: ALL of those are
+    // border-box size changes on `legend` itself (including the
+    // transitions to/from zero size that `hidden`/a collapsed `<details>`
+    // produce — ResizeObserver reports a transition to zero, not just away
+    // from it), so no separate MutationObserver on the `open`/`hidden`
+    // attributes is needed.
+    //
+    // Deliberately does NOT also observe `bar`, despite the symmetry that
+    // might suggest it — MEASURED, this is a real bug I caught and removed,
+    // not a hypothetical: `bar`'s box changes size (collapses to 0x0) the
+    // MOMENT `legendOccludesBar` suppresses it, and that size change would
+    // itself re-fire an observer watching `bar`, re-running `check()` with
+    // a now-zero-sized bar rect that never overlaps anything, un-
+    // suppressing it, growing it back to its real size, re-firing again —
+    // an unbounded feedback loop between this effect's OWN output and its
+    // OWN input. Observed live: 51 alternating true/false calls before the
+    // browser's ResizeObserver loop simply stopped delivering further
+    // notifications, and which value it froze on was TIMING-dependent (an
+    // unrelated `console.log` in the callback changed the final outcome
+    // from "not suppressed" to "suppressed" on an otherwise identical run —
+    // the smoking gun that this was a race, not a fix). `bar`'s own size
+    // never needs live observation here anyway: `legendOccludesBar` starts
+    // `false` and the legend defaults collapsed, so the only way this check
+    // becomes live is a user opening the legend well after the bar's first
+    // paint has settled — by which point its box is already correct.
+    const canObserveResize = typeof ResizeObserver === 'function';
+    const ro = canObserveResize ? new ResizeObserver(check) : null;
+    ro?.observe(legend);
+    return () => ro?.disconnect();
+    // `bottomPx` deliberately in the deps: it is how the OTHER effect
+    // repositions this bar at narrow layout, and a reposition with no
+    // corresponding legend resize (e.g. the bottom sheet growing) needs a
+    // fresh `check()` against the bar's NEW position too — re-running this
+    // effect re-attaches the observers (cheap) and calls `check()`
+    // immediately as part of that.
+  }, [bottomPx]);
+
   return (
     <div
       ref={rootRef}
-      className={`scale-bar${suppressed ? ' scale-bar-suppressed' : ''}`}
+      className={`scale-bar${suppressed || legendOccludesBar ? ' scale-bar-suppressed' : ''}`}
       /* NAMED COUPLING: SCALE_LIFT_GAP_PX mirrors the `0.5rem` breathing space
          in .scale-bar's own stylesheet offset (app.css). Written inline rather
          than through a custom property because it REPLACES that offset

@@ -637,17 +637,37 @@ select {
    `align-items: flex-start`).
 
    WIDTH stays bounded at `6.5rem` (104px, below) for READABILITY — a
-   comfortable wrapped-line length for this copy — not for collision safety
-   against `.route-layer-controls` any more. That collision risk turns out
-   to be CLOSED structurally, not by this number: `.depth-legend` is
-   `position: absolute` with only `left: 0` set (no `right`), so its
-   shrink-to-fit width is CEILINGED by its containing block
-   (`.map-stack-tl`, itself sized by `.data-layer-controls`'s own ~135px EN
-   width) regardless of how wide `.depth-legend-body`'s `max-width` is set —
-   live-tested by overriding it up to 200px with a plan loaded at 320px and
-   finding `.depth-legend`'s own right edge pinned at 135.16px throughout,
-   nowhere near `.route-layer-controls`'s 144px left edge. (A `width`,
-   rather than `max-width`, DOES escape that ceiling and does collide —
+   comfortable wrapped-line length for this copy. #638 UPDATE: it is ALSO
+   load-bearing for collision safety again, which this paragraph used to
+   say was no longer true. `.depth-legend` is `position:
+   absolute` with only `left: 0` set (no `right`), so its shrink-to-fit
+   width is `min(max(preferred-minimum, available), preferred)` against its
+   containing block (`.map-stack-tl`, ~124.27px available here). Before
+   #638, `.depth-legend`'s preferred-minimum was just the longest wrapped
+   WORD (~120.86px, `overflow-wrap: break-word` does not itself reduce
+   preferred-minimum — only `overflow-wrap: anywhere` would), smaller than
+   the ~124.27px available — so the ceiling always won and the CLOSED-
+   structurally claim below held regardless of `max-width`, confirmed live
+   up to 200px. #638 added `padding: 0.5rem` (8px/side) to `.depth-legend`
+   itself for its own panel chrome (below), which raises preferred-minimum
+   to word + 2x padding = ~136.86px — now LARGER than the ~124.27px
+   available, so `max(preferred-minimum, available)` picks preferred-
+   minimum and the ceiling no longer binds at all: MEASURED at 1920x1080
+   and 1024x900, `.map-stack-tl` stays flat at 124.27px with or without the
+   padding, while `.depth-legend` stays ceilinged at 124.27px with the
+   padding removed but reaches 136.86px with it — a direct swap of which
+   `max()` argument wins. What actually still keeps the legend inside
+   `.map-stack-tl` at narrow TODAY is this 104px `max-width` value itself:
+   MEASURED (390px viewport, sweeping `.depth-legend-body`'s `max-width`),
+   `.depth-legend`'s own width tracks `max-width + 16px` linearly starting
+   at 108.27px (124 at exactly 108.27px, 125 at 109px, …) until it plateaus
+   at 136.86px from 120.86px up — so the ceiling protects ONLY values at or
+   below ~108.27px (124.27 − 16px padding), leaving just ~4.27px of
+   headroom above the current 104px. Raising this bound past ~108.27px
+   re-opens the collision this paragraph used to declare structurally
+   impossible — check `.depth-legend`'s actual width against
+   `.route-layer-controls`, don't assume the ceiling still protects it. (A
+   `width`, rather than `max-width`, escapes the SAME way and always did —
    `app/e2e/layout.spec.ts`'s own #598 test comment carries that
    measurement.) 104px was also already confirmed overflow-free with
    `overflow-wrap: break-word` (below) in both languages, independent of the
@@ -851,17 +871,25 @@ select {
    splits into two rects (mid-word break) at 7.5rem (120px) — a hairline
    below the word's own width. 9rem (144px) is chosen for ~23px/19%
    safety margin over the bare 120.86px threshold (cross-browser/OS
-   `system-ui` font-metric variance is unmeasured here), while staying a
-   comfortable wrapped-line length rather than the whole-panel width — this
-   scopes ONLY the defect (mid-word breaking), not a general column-width
-   redesign. No collision risk: `.depth-legend`'s shrink-to-fit sizing
-   (position: absolute, `left` set, no `right` — CSS 2.1 §10.3.7) settles at
-   its OWN content's natural width once `max-width` clears the widest word,
-   confirmed live by sweeping `max-width` from 8rem to 50rem and finding
-   `.depth-legend`'s rendered width plateaus at a constant 136.86px
-   (120.86px word + this rule's own 0.5rem/8px padding × 2) the entire time
-   — raising the bound further has no effect once content, not the bound,
-   is what is being measured. */
+   `system-ui` font-metric variance is unmeasured here) — this scopes ONLY
+   the defect (mid-word breaking), not a general column-width redesign.
+   NOT chosen for line length: the sweep above already shows every value
+   from 7.65rem to 50rem renders the SAME 120.86px body width once it
+   clears the word — 9rem does not pick a wrapped-line length, it only has
+   to clear the widest token, so there is no "comfortable line length"
+   effect to credit it with. No risk from RAISING this value specifically:
+   `.depth-legend`'s shrink-to-fit sizing (position: absolute, `left` set,
+   no `right` — CSS 2.1 §10.3.7) settles at its OWN content's natural width
+   once `max-width` clears the widest word, confirmed live by sweeping
+   `max-width` from 8rem to 50rem and finding `.depth-legend`'s rendered
+   width plateaus at a constant 136.86px (120.86px word + this rule's own
+   0.5rem/8px padding × 2) the entire time — raising the bound further has
+   no effect once content, not the bound, is what is being measured. That
+   is a narrower claim than "collision-safe": whether 136.86px itself
+   collides with `.route-layer-controls` at wide layout is NOT established
+   here — see the #638 UPDATE on `.depth-legend`'s own WIDTH paragraph
+   above, which found the padding this same PR added removes the
+   containing-block ceiling that used to make that claim true at narrow. */
 @media (min-width: 1024px) {
   .depth-legend-body {
     max-height: 24rem;
