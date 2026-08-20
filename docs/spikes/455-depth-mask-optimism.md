@@ -832,6 +832,12 @@ denominator below.** Measured on this run: **33/33 error rows each** (`becalmed`
 their byte-identity would survive any mask change including a catastrophic one.
 They are named here so a future reader cannot quietly re-admit them.
 
+**All 67 non-relaxed plans sit at gate 3.0 m / threshold 3.9 m** — the two arms
+with a different gate (`deep-becalmed` 4.0, `margin-extreme` 2.9) contribute no
+non-relaxed plans, so **the pooled figure mixes no gates**. The 4.9 / 3.8
+thresholds in the table above are still real: the relaxed population and the
+per-arm table do use them.
+
 **Outcome distribution of the arm files actually consumed** (all 297 rows, so
 the baseline's quality is visible rather than assumed):
 
@@ -861,10 +867,7 @@ things follow.
 1. It confirms **by measurement** that the naive repair (`flagShallowLegs` at
    the requested gate on tier1/tier2) is **vacuous** — exactly as the issue's
    2026-08-18 comment predicted, now measured rather than argued.
-2. It is a **differential test** of two independently-written DDA walks over 67
-   real routes' legs: `shallowExposureNm`'s walk and the solver's own
-   `segmentNavigable`. Had they disagreed anywhere, this would have read
-   non-zero and no figure in §9.5 would have been safe to quote.
+2. It is a **one-sided** check on `shallowExposureNm`'s walk: it can only detect **over**-visiting — a cell the solver never validated. A walk visiting *fewer* cells than the solver's would also read 0.0 nm, so this control alone does not establish the two traversals agree, and an under-visiting bug would deflate §9.5's rates while leaving this green. The traversals were therefore compared **directly**, by sequence rather than by outcome (the #516/PR #523 method — a recording `depthInfoM` facade against `NavMask`'s private `walkCells`): over all 67 routes, **1,871 legs / 130,930 cells, zero mismatches**, in order.
 
 Consequently **every nautical mile reported in §9.5 lies in `[gate, gate + T)`** —
 T-bound exposure, never a gate violation.
@@ -1101,17 +1104,25 @@ not a styling one.** Verified in both dictionaries:
   like the rest of the stack.
 - `route.legend.shallow` reads **"Charted shallower than safety depth"** /
   **"Flacher als Sicherheitstiefe kartiert"**.
-- `route.shallow.exposure` reads **"{dist} of this route crosses water charted
-  shallower than your safety depth of {requested} m"** / **"…, das flacher als
-  die eingestellte Sicherheitstiefe von {requested} m kartiert ist"**.
+- `route.shallow.exposure` reads, in full, **"{dist} of this route crosses
+  water charted shallower than your safety depth of {requested} m."** /
+  **"{dist} dieser Route verlaufen durch Wasser, das flacher als die
+  eingestellte Sicherheitstiefe von {requested} m kartiert ist."**
 
 Both assert the **charted (shipped)** reading is below the gate. For a T-bound
 crosser the shipped reading is **at or above** the gate by construction — so
 both strings would be **false** if reused for option (A), in both languages.
 
-By contrast `route.shallow.lead` — *"a more cautious reading of the charted
-depth data could run as low as {cautious} m"* — is **basis-correct** for a
-T-bound crosser and could be reused as-is.
+By contrast `route.shallow.lead` is **basis-correct** for a T-bound crosser and
+could be reused as-is. Quoted in full, because an implementer will reuse this
+string verbatim and the leading token changes its prominence:
+
+> **"Caution: a more cautious reading of the charted depth data could run as low
+> as {cautious} m."**
+
+Note the shipped `Caution: ` prefix and the trailing period — both are part of
+the string. Anyone reusing it for a deliberately quiet, non-assertive line must
+decide about that prefix consciously rather than inherit it unnoticed.
 
 So D3 is really: extend the shipped semantics (new copy in de **and** en, in
 which case the casing and swatch can participate), or leave casing and swatch

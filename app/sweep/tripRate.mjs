@@ -22,6 +22,14 @@
  * future sweep run, silently enlarging the #282 harness whose whole value is
  * that its arm set is fixed. This must never be part of that harness.
  *
+ * It is also OUTSIDE the sweep's input closure despite living in this
+ * directory: nothing imports it, so it cannot affect any arm's output and
+ * landing it does not invalidate a recorded BASE control. CLAUDE.md names
+ * `app/sweep/` as part of that closure and tells you to DEFAULT TO RE-RUNNING,
+ * which is the right rule — this file is a stated exemption to it, with its
+ * reason, so the exemption does not have to be re-derived. The import arrow
+ * runs one way only: this file reads `ARMS`, `ARMS` never reads this file.
+ *
  * THRESHOLD PROVENANCE — no hand-copied literals. The per-arm gate is read
  * from `ARMS` in `sweepArms.ts` (the same object the run itself used) and the
  * tolerance from `MASK_TOLERANCE_M` in `src/lib/mask.ts` (the TS twin of
@@ -188,6 +196,15 @@ const pct = (num, den) => (den === 0 ? 'n/a' : `${((100 * num) / den).toFixed(1)
  * so a non-relaxed route must read exactly 0 there. A non-zero would mean this
  * walk and the solver's disagree, and every headline number below would be
  * unsafe to quote.
+ *
+ * DO NOT READ THAT AS THE CONVERSE. The control is ONE-SIDED: it detects only
+ * OVER-visiting (a cell the solver never validated). A walk visiting FEWER
+ * cells than the solver's — or none at all — reads 0.0 nm too, so `expG == 0`
+ * does NOT establish that the two traversals agree, and an under-visiting bug
+ * would deflate `expT` while leaving this green. What establishes agreement is
+ * a SEQUENCE differential (the #516/PR #523 method — a recording `depthInfoM`
+ * facade against `NavMask`'s private `walkCells`), run over all 67 non-relaxed
+ * routes: 1,871 legs / 130,930 cells, zero mismatches, in order.
  */
 function measure(legs, thresholdM, gateM) {
   if (!Array.isArray(legs) || legs.length === 0) return null;
