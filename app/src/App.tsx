@@ -56,7 +56,14 @@ import { boatById, sailIdsOf } from './data/boats';
 import { usePersistedBoatId } from './lib/usePersistedBoatId';
 import type { MsgKey } from './i18n/dict.de';
 import type { Tab } from './lib/sessionSnapshot';
-import { boatSnapshot, type Harbor, type LatLon, type PickedPoint, type Plan } from './types';
+import {
+  boatSnapshot,
+  DEFAULT_SETTINGS,
+  type Harbor,
+  type LatLon,
+  type PickedPoint,
+  type Plan,
+} from './types';
 
 // The harbor-marker and seamark-glyph layers (DataLayers) each own any click
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
@@ -1246,7 +1253,64 @@ function AppShell() {
                 />
               )}
               {plan && rig && (
-                <DepthProfile plan={plan} rig={rig} safetyDepthM={settings.safetyDepthM} />
+                // #551: the plan's OWN request settings, not the live
+                // settings — mirrors LiveView.tsx's `plan.request.settings
+                // .safetyDepthM` pattern. `settings.safetyDepthM` is the
+                // CURRENT Plan-tab/Boat-tab value, which the user may have
+                // lowered (or raised) after this plan was computed; the
+                // chart must render against the depth gate the plan was
+                // actually solved under.
+                //
+                // #551 review MAJOR 1: `migratePlan.ts` never validates
+                // `request.settings` at all (zero occurrences of the
+                // string 'settings' in that file — `migrateRequest` spreads
+                // it straight through unchecked), so a record with no
+                // `request.settings` migrates non-null and a bare
+                // `plan.request.settings.safetyDepthM` throws
+                // `TypeError: Cannot read properties of undefined`. With no
+                // error boundary anywhere in app/src, that blanks the whole
+                // app.
+                //
+                // #551 review round 3, Minor 5: a plain
+                // `{ ...DEFAULT_SETTINGS, ...plan.request.settings }` spread
+                // (the pattern reroute.ts/lib/planForm.ts/lib/recalc.ts use
+                // for a STORED settings object generally) defaults every
+                // absent/wrong-typed/null `settings` shape correctly, but an
+                // explicitly-present `safetyDepthM: undefined` survives a
+                // spread unchanged (object spread copies an own key whose
+                // value is `undefined`; `??` semantics do not apply) —
+                // structured clone preserves `undefined` object values into
+                // IndexedDB, so a foreign/imported record can carry that
+                // shape. The consequence is mild (DepthProfile's safety line
+                // renders under `safetyDepthM <= axisMax`, and
+                // `undefined <= axisMax` is `false`, so the line is silently
+                // OMITTED rather than throwing) but still wrong on a
+                // safety-relevant chart, so closed with a finite guard
+                // instead of a spread: the only value ever accepted is a
+                // real `number`, whatever the source.
+                //
+                // #551 review round 3 follow-up: the guard's first cut used
+                // `typeof x === 'number'`, which ALSO admits `NaN` and
+                // `±Infinity` (both are typeof 'number'). `NaN` silently
+                // drops both cues (`s.depthM < NaN` is always false, so no
+                // shallow run is shaded, and `NaN <= axisMax` is false, so
+                // the safety line is omitted too). `Infinity` is worse:
+                // `s.depthM < Infinity` is always TRUE, so EVERY sample is
+                // shaded shallow while `Infinity <= axisMax` still omits the
+                // safety line that would explain why — a whole-route false
+                // alarm with no referent. `Number.isFinite` closes all three
+                // (undefined/NaN/±Infinity) in one predicate while still
+                // accepting a legitimate `0`, which a truthiness check would
+                // have swallowed.
+                <DepthProfile
+                  plan={plan}
+                  rig={rig}
+                  safetyDepthM={
+                    Number.isFinite(plan.request.settings?.safetyDepthM)
+                      ? (plan.request.settings.safetyDepthM as number)
+                      : DEFAULT_SETTINGS.safetyDepthM
+                  }
+                />
               )}
               <PlansList online={online} busy={runBusy} onRecalculate={handleRecalculate} />
             </>

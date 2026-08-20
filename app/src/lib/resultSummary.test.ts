@@ -11,7 +11,13 @@ import { BOATS } from '../data/boats';
 import { de } from '../i18n/dict.de';
 import { en } from '../i18n/dict.en';
 import { formatDateTime } from './format';
-import { averageSpeedKn, resultSummary, rigRecommendationOf, sailLabelKey } from './resultSummary';
+import {
+  averageSpeedKn,
+  resultSummary,
+  resultVerdictKey,
+  rigRecommendationOf,
+  sailLabelKey,
+} from './resultSummary';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
 
@@ -189,6 +195,26 @@ describe('rigRecommendationOf (#259)', () => {
   it('falls back to a decided pick of `recommended` when absent', () => {
     const plan = makePlan('fock');
     expect(rigRecommendationOf(plan.result)).toEqual({ kind: 'decided', rig: 'fock' });
+  });
+});
+
+describe('resultVerdictKey (#540 spec §E.3)', () => {
+  it("maps 'not-compared' with comparisonComplete true to the generic no-comparison key", () => {
+    expect(resultVerdictKey('not-compared', true)).toBe('route.rigNotCompared');
+  });
+
+  it("maps 'not-compared' with comparisonComplete false to the budget-truncated key", () => {
+    expect(resultVerdictKey('not-compared', false)).toBe('route.comparisonIncomplete');
+  });
+
+  it("'tie' ignores comparisonComplete entirely (discriminating control)", () => {
+    expect(resultVerdictKey('tie', true)).toBe('route.rigTie');
+    expect(resultVerdictKey('tie', false)).toBe('route.rigTie');
+  });
+
+  it("'moot' ignores comparisonComplete entirely (discriminating control)", () => {
+    expect(resultVerdictKey('moot', true)).toBe('route.rigMoot');
+    expect(resultVerdictKey('moot', false)).toBe('route.rigMoot');
   });
 });
 

@@ -14,8 +14,8 @@ import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import {
   resultSummary,
+  resultVerdictKey,
   rigRecommendationOf,
-  rigVerdictKey,
   sailLabelKey,
 } from '../lib/resultSummary';
 import {
@@ -557,7 +557,7 @@ export default function RouteSummary({
       <Chip className="chip-faster-rig">
         {rigRecommendation.kind === 'decided'
           ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
-          : t(rigVerdictKey(rigRecommendation.kind))}
+          : t(resultVerdictKey(rigRecommendation.kind, plan.result.comparisonComplete))}
       </Chip>
 
       {stale && <p role="alert">{t('route.staleForecast')}</p>}
