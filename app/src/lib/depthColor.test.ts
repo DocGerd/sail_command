@@ -230,12 +230,16 @@ describe('hatchBandForZoom (#599)', () => {
   });
 
   it('caps the GAP at 12 cells at every zoom — the measured no-blank-region bound', () => {
-    // Gap, not period, is what decides whether a marginal region can fall
-    // entirely between stripes: a 4-connected region's (outRow + col) values
-    // are a contiguous range, so extent >= gap+1 always catches a stripe.
-    // 12 is the largest gap at which no marginal region of >=100 cells goes
-    // unpainted anywhere in the real mask, at gates 2.2/2.8/3.0/10 — see
-    // depthColor.ts's SAFETY note for the measurement.
+    // The gap bounds whether a marginal region can fall entirely between
+    // stripes: a 4-connected region's (outRow + col) values are a contiguous
+    // range and a gap is exactly `gap` consecutive values, so a region
+    // spanning gap+1 or more distinct indices always catches a stripe
+    // (COUNT of indices, sMax - sMin + 1 — not the span; the bound is tight
+    // and observed saturated at exactly `gap`). 12 is the largest gap at
+    // which no marginal region of >=100 cells goes unpainted anywhere in the
+    // real mask, across eight gates (2.2/2.5/2.8/3.0/3.5/4.0/5.0/10) x the
+    // three shipped bands. Blanking is phase-dependent, not a function of
+    // the gap alone — see depthColor.ts's SAFETY note for both.
     for (let z = 0; z <= 22; z += 0.5) {
       const { periodCells, stripeCells } = hatchBandForZoom(z);
       expect(periodCells - stripeCells).toBeLessThanOrEqual(12);

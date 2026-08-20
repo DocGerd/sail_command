@@ -210,13 +210,33 @@ export const HATCH_RGBA: Rgba = [0, 0, 0, 190];
 // NOTHING — a new, feature-selective way to under-signal that the old
 // fixed pair did not have. That risk is bounded exactly, not estimated: a
 // 4-connected region's (outRow + col) values form a CONTIGUOUS integer
-// range, so a region whose diagonal extent is >= gap+1 ALWAYS contains a
-// painted cell. Measured over the real committed mask (2200x2400) by
-// labelling every 4-connected marginal region and counting those that
-// receive zero painted cells, at gates 2.2 / 2.8 / 3.0 / 10 m:
+// range, and a gap is exactly `gap` consecutive such values, so any region
+// spanning gap+1 or more CONSECUTIVE diagonal indices ALWAYS contains a
+// painted cell. Say WHICH COUNT that is, because the off-by-one matters:
+// it is the NUMBER of distinct indices (sMax - sMin + 1), not the span
+// (sMax - sMin). The bound is tight and empirically SATURATED — the
+// largest blank region observed spans exactly `gap` indices (12 for the
+// gap-12 bands, 15 for gap-15), i.e. one short of the guarantee.
 //
-//   gap 15 -> up to 1 region of >=100 cells renders blank (gates 2.8, 3.0)
-//   gap 12 -> 0 of 89-167 regions of >=100 cells blank, at EVERY gate
+// Measured over the real committed mask (2200x2400) by labelling every
+// 4-connected marginal region and counting those that receive zero painted
+// cells, across EIGHT gates (2.2 / 2.5 / 2.8 / 3.0 / 3.5 / 4.0 / 5.0 / 10 m)
+// x the three real shipped bands — 24 combinations, independently
+// re-measured from a clean reimplementation:
+//
+//   gap 12 -> 0 regions of >=100 cells blank in ALL 24 combinations.
+//             Largest blank region of ANY size: 68 cells, so the >=100
+//             threshold keeps ~32% margin — not a knife-edge.
+//   gap 15 -> blanks a >=100-cell region at gates 2.8, 3.0, 3.5, 4.0 AND
+//             5.0 (not at 2.2 or 10).
+//
+// NUANCE, stated because the obvious reading is wrong: blanking is not a
+// function of the gap ALONE, it is phase-dependent — it depends on the
+// stripe too, and so on the whole (period, stripe) pair. A stripe-1/gap-15
+// probe blanks only at gate 2.2, and a stripe-5/gap-15 probe never blanks
+// at all. The gap is the right knob to CAP because it bounds the guarantee
+// above, but "gap <= 12" is not by itself a proof for an arbitrary band —
+// the 24-combination sweep is over the bands actually shipped.
 //
 // Hence the cap is 12 cells (~560 m), the largest gap at which no marginal
 // region of >=100 cells (~0.2 km2) can disappear at any gate tested. The
