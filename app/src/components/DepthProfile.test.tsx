@@ -533,8 +533,14 @@ describe('DepthProfile', () => {
     const summary = container.querySelector('.depth-profile-summary')?.textContent ?? '';
     // F8: a visible, unmistakable placeholder — not blank.
     expect(summary).toContain('min. — unknown');
-    // F7: reds under the deleted fallback, which would render 'min. 20.0 m'
-    // (leg 1's own reading) instead of the placeholder.
+    // F7: reds under the deleted fallback, which would render 'min. 0.0 m'
+    // (#520, empirically confirmed by temporarily restoring
+    // `exhaustiveMin ?? (samples.length ? samples.reduce(...) : null)`) —
+    // ~27 of the 60 samples fall outside TEST_MASK_META on leg 2 and read
+    // `{ depthM: 0, capped: false }`, winning the sparse-minimum reduce, so
+    // this fixture demonstrates the PESSIMISTIC failure direction (a number
+    // shallower than any real depth), not the optimistic one. The optimistic
+    // direction on the null-fallback path specifically remains unexercised.
     expect(summary).not.toMatch(/\d/);
   });
 });
