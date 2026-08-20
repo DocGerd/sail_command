@@ -168,7 +168,8 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.13.0` — this cut; its milestone closes when the release PR merges and the tag is pushed.
+- `v0.13.0` — this cut; its milestone closes when the release PR merges and
+  the tag is pushed.
 - `v0.13.1` — the release after it, a PATCH cut (see the PATCH exception below).
 - `v0.14.0` — the next MINOR release.
 - `v0.15.0` — opened fresh at this cut, per the roll-forward convention

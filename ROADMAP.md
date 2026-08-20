@@ -64,7 +64,7 @@ CI robustness — and are covered under "Development workflow" below.
 ## Next — v0.13.1
 
 The [`v0.13.1` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds 18 issues, none of them large: a patch cut of correctness and copy
+holds the small stuff, none of it large: a patch cut of correctness and copy
 fixes. Two would blank or empty a rendered surface outright — a settings-less
 stored record blanking the app in Live View
 ([#632](https://github.com/DocGerd/sail_command/issues/632)) and an

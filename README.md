@@ -75,8 +75,9 @@ installs as a standalone icon and works fully offline after the first visit
   instead of naming a winner: on the two fleet boats both tables are
   *estimated* and differ only by a documented overlay ramp rather than by
   anything about the hull, so no faster sail is claimed. It says so again when
-  the search ran out of time before both sails were compared. Tacks and gybes are
-  priced as a time penalty inside the routing cost, not bolted on afterwards.
+  the search ran out of time before both sails were compared. Tacks and gybes
+  are priced as a time penalty inside the routing cost, not bolted on
+  afterwards.
 - Land and depth are respected against a configurable safety depth, whose
   default is the selected boat's draft plus the depth mask's 0.9 m tolerance
   — 3.0 m for the 2.1 m-draft Salona 45 and Salona 44, 2.8 m for the 1.9 m
@@ -134,7 +135,8 @@ true offline reload against a killed preview server.
 
 Timeout policy: solver-heavy test files set generous file-level timeouts
 (imported from `app/src/test/timeouts.ts` — `SOLVER_TEST_TIMEOUT_MS`, and the
-seeded property suite's 900 s). CI is slower than dev machines, but not by one flat multiplier:
+seeded property suite's 900 s). CI is slower than dev machines, but not by
+one flat multiplier:
 measured 2026-08-03 (#341) for the vitest unit suite, `npm run test` ran
 249.8 s local vs ~515–535 s on CI (~2.1×), and `npm run test:coverage` ran
 ~983–1029 s local vs 2558 s on CI (~2.5×) — coverage instrumentation is a
