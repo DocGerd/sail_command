@@ -664,7 +664,8 @@ Deltas at T = 0.9 against the shipped mask:
 - **Issue:** #455, rescoped by the maintainer on 2026-08-20 to the
   **measurement + threshold-ruling half**. The implementation half — mounting
   the disclosure stack on routes that never relax — is **#612**, explicitly
-  gated on this section.
+  gated on #455: on the measurement below **and** on the maintainer's answer to
+  §9.8, which this document does not supply.
 - **Status:** measurement complete; **decision open** (§9.8). This addendum
   contains no ruling and no recommendation.
 - **Appended, not merged.** §§0–8 above were written on 2026-08-09 against the
@@ -764,10 +765,21 @@ should not rule on that description.**
 marginal[b] = cautiousDepthLowerBoundM(byteToDepthM(b)) < safetyDepthM
 ```
 
-and `cautiousDepthLowerBoundM(d) = d - MASK_TOLERANCE_M` (floored at 0.1 m,
-clamped at 0). So `d - T < gate` ⟺ **`d < gate + T`** — **algebraically the
-identical criterion** measured in this addendum, evaluated per cell instead of
-per route.
+and `cautiousDepthLowerBoundM(d)` is `d - MASK_TOLERANCE_M`, quantised **down**
+to a 0.1 m step (`Math.floor(bound * 10 + 1e-9) / 10`) and clamped at 0.
+
+So the hatch tests `floor₁₀(d - T) < gate`, while this addendum measures
+`d < gate + T`. **On the domain the mask actually carries these are the same
+predicate**, and the quantisation is why that needs saying rather than
+assuming: every shipped depth is a decimetre multiple (`byte/10`, or 25.4 m for
+byte 255), so `d - T` is already an exact decimetre multiple and `floor₁₀`
+returns it unchanged — the `1e-9` epsilon exists precisely to stop an IEEE754
+residue costing an unearned decimetre. The `Math.max(0, …)` clamp does not break
+it either: it only engages for `d < 0.9 m`, where both predicates are true for
+any positive gate.
+
+So the shipped per-cell cue and the route-level criterion measured here are the
+**same test**, evaluated per cell instead of per route.
 
 It renders as the `sc-depth-hatch` MapLibre layer (`DataLayers.tsx`) and is
 **ON by default**: it has **no independent toggle** and rides `depthVisible`,
@@ -833,10 +845,13 @@ the baseline's quality is visible rather than assumed):
 | `error: snap-failed-destination` | **3** |
 | **Total** | **297** |
 
-Of the 74 `ok` rows, **7** are **self-pairs** (each arm's own origin appearing
-in its destination list — zero distance, structurally incapable of tripping).
-They are reported separately and excluded from the headline denominator, giving
-**67** non-relaxed plans.
+Of the 74 `ok` rows, **7** are **self-pairs** — one for each of the **seven
+non-vacuous arms**, whose own origin also appears in its destination list. They
+are zero-distance and structurally incapable of tripping. (`becalmed` and
+`deep-becalmed` have self-pair rows too, but both are error rows and both arms
+are excluded anyway, which is why this is 7 and not 9.) They are reported
+separately and excluded from the headline denominator, giving **67**
+non-relaxed plans.
 
 **THE CONTROL, and it is load-bearing.** For every one of the 67 non-relaxed
 plans the same walk was also run at the **bare gate**:
@@ -903,12 +918,18 @@ decision-relevant view:
 | `short-horizon` | 3 h wind grid | 1 | 0 | 0% | — | — | — |
 | `margin-zero` / `relaxation-dense` / `margin-extreme` | Marstal origin | **0** | — | — | — | — | — |
 
-Two things this split shows that the pooled number hides:
+What this split shows that the pooled number hides:
 
-- **`breeze` is the only arm running shipped `DEFAULT_SETTINGS`**, and it trips
-  on **61.5%**, not 82.1% — with a median exposure of **0.31 nm (0.73% of the
-  route)** and a **maximum** of 1.21 nm (1.99%). Its p25 is 0.14 nm and its
-  smallest trips are **0.0029 nm (~5.4 m)**, 0.0170 nm and 0.0426 nm.
+- **`breeze` is the closest arm to ordinary use, and it trips on 61.5%, not
+  82.1%** — median exposure **0.31 nm (0.73% of the route)**, **maximum**
+  1.21 nm (1.99%), p25 0.14 nm, and smallest trips of **0.0029 nm (~5.4 m)**,
+  0.0170 nm and 0.0426 nm. Stated precisely, because three arms use
+  `DEFAULT_SETTINGS` and it would be easy to over-claim here: `short-horizon`
+  and `relaxation-dense` use it too, but the first contributes a single
+  non-relaxed plan (its wind grid is only 3 h, so 26 of its rows die
+  `beyond-horizon`) and the second contributes none (Marstal origin — every
+  route relaxes). `breeze` is therefore the only arm supplying a **substantial**
+  non-relaxed population at shipped defaults over a full-horizon wind field.
 - **The #243 comfort margin is doing measurable work.** `breeze` and
   `no-comfort` share the same origin, wind field, gate and departure and differ
   only in `depthComfortMarginM` (2.0 vs 0): **61.5% vs 96.2%**, median exposure
@@ -953,9 +974,17 @@ Re-read on 2026-08-20 against `00a33ab`:
   ~:630).
 
 So on the **67** non-relaxed plans measured above, the banner, the cautious chip
-and the exposure sentence do not mount at all — the component is never reached,
-which is why no test could have caught it (every test of that UI constructs a
-non-null `ShallowInfo` and so exercises the component, not the mount).
+and the exposure sentence do not mount at all.
+
+**Why no test could have caught it — enumerated rather than asserted.**
+`ShallowWarning` is declared in `RouteSummary.tsx` (~:59) with
+`shallow: ShallowInfo` (~:64) — **required and non-nullable**. Exactly three
+test files reference it (`RouteSummary.test.tsx`,
+`RouteSummary.exposure.test.tsx`, `PlannerPanel.test.tsx`), and every one
+constructs a literal `shallow: { … }` fixture; **none** passes `null` or
+`undefined` (checked, zero occurrences). So the suite exercises the
+**component** and never the **mount decision**, which is the layer the defect
+lives in.
 
 ### 9.7 SAFETY FRAMING — two branches, and the one-branch version is false
 
@@ -1002,10 +1031,12 @@ trade-offs are below; the call is the maintainer's.
 `shallowExposureNm` / `segmentShallowestBelow` (both already take an arbitrary
 threshold).
 
-- *Measured firing rate:* **61.5%** of `DEFAULT_SETTINGS` plans (`breeze`),
-  **82.1%** pooled across the non-relaxed corpus, **100%** with the engine off
-  in light air.
-- *Measured magnitude at defaults:* median **0.31 nm (0.73% of route)**, max
+- *Measured firing rate:* **61.5%** on `breeze` (shipped defaults, full-horizon
+  wind — see §9.5 for why it is the representative arm and not simply "the
+  `DEFAULT_SETTINGS` arm"), **82.1%** pooled across the non-relaxed corpus,
+  **96.2%** with the comfort margin at 0, **100%** with the engine off in light
+  air.
+- *Measured magnitude on `breeze`:* median **0.31 nm (0.73% of route)**, max
   **1.21 nm (1.99%)**, p25 **0.14 nm**, smallest **0.0029 nm (~5.4 m)**.
 - *Reading:* on the shipped default settings this is closer to "most routes,
   small distances" than to a rare, sharp alarm. Whether ~3 routes in 5 carrying
@@ -1022,7 +1053,11 @@ at all.
   `gate - T == draft` **exactly** at every catalogue boat's default, so the
   strict `<` is **false by construction** — verified for all three boats
   (2.1/2.1/1.9 m). It becomes true only once a user lowers the gate below the
-  default (UI minimum 2.2 m). In this corpus only `margin-extreme` runs a
+  default, and how far they *can* is itself per-boat: `OptionsPanel.tsx`'s
+  `SAFETY_DEPTH_FIELD.min` is `minSafetyDepthM(boatById(DEFAULT_BOAT_ID))`, a
+  derived value rather than a literal, which evaluates to **2.2 m** for the
+  Salona 45 — do not quote 2.2 as a flat UI floor. In this corpus only
+  `margin-extreme` runs a
   lowered gate (2.9 m → `gate - T = 2.0 < 2.1` **true**), and that arm
   contributes **zero** non-relaxed plans, which is why the corpus figure is 0
   rather than merely small.
@@ -1047,9 +1082,14 @@ hatched on the map by default**. The remaining gap is scope, not detection: the
 map answers *"is there such water here?"* and nothing answers *"does my route
 cross it, and for how far?"*. Weighing against a route-level notice: it would
 duplicate an already-shipped cue at the measured 61.5%/82.1% rate. Weighing for
-it: the hatch has no legend (**#598**, open) and degrades to a sparse speckle at
-overview zoom (**#599**), so a user planning at z9 may never perceive it — and a
-distance is information the map cannot convey at any zoom.
+it: the hatch has no legend (**#598**, open), and at the app's own initial z9 it
+renders as a sparse speckle rather than a readable pattern (**#599** — the
+period is expressed in mask cells, so on-screen size scales with zoom).
+`depthColor.ts`'s own measurement is worth stating exactly rather than
+overstating: the touched pixels really are dark (mean luminance shift 62, max
+160, 28% dropping >100), they are simply too small and too sparse to *read as a
+pattern* — so the honest concern is legibility at planning zoom, not absence.
+And a **distance** is information the map cannot convey at any zoom.
 
 #### D3. Should the map casing and the legend swatch participate?
 
@@ -1088,7 +1128,7 @@ Re-verified on 2026-08-20 against `00a33ab`:
 | `README.md` | **Shipped** — describes the hatch (*"hatches water whose cautious, worst-case reading falls below your safety depth"*) and the 0.9 m tolerance in the safety-depth default |
 | `SECURITY.md` | **Absent** — zero occurrences of "depth" |
 | `docs/security-assurance-case.md` | **Absent** — mentions the depth gate and `verify_mask.py`, but nothing on the tolerance, the cautious reading or the overstatement |
-| `DepthProfile` caption | **Absent** — the component has no caption and no such i18n key exists |
+| `DepthProfile` caption | **Absent** — the component's whole i18n surface is the eight `profile.*` keys (`title`, `depthAxis`, `deepCap`, `safetyDepth`, `heading`, `wind`, `minDepth`, `minDepthUnknown`); none mentions the tolerance or the cautious reading |
 
 Item 4 originally called for five surfaces; **two shipped, three did not**. Each
 is independent of D1–D3 and costs nothing in routing.
