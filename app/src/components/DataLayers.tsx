@@ -712,6 +712,26 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
         />
         {t('map.depth.toggle')}
       </label>
+      {/* #598: legend for the #492 navigability hatch — mounted here, not in
+          RouteLegend.tsx/.route-legend, because that legend is plan-gated
+          (inside .route-layer-controls) while the hatch is on by default
+          with NO plan (depthVisible defaults true). Follows .route-legend's
+          own bare <details>/<summary> convention (app.css) rather than the
+          bordered .sc-disclosure primitive, which is sized for panel content
+          — this is a compact map-chrome pill, same family as the row above.
+          Default-collapsed per the maintainer ruling on #598; covers the
+          hatch SYMBOL only, never the absolute depth-ramp colours. */}
+      <details className="depth-legend">
+        <summary>{t('map.depth.legend.title')}</summary>
+        <div className="depth-legend-body">
+          <p className="depth-legend-row">
+            <span className="depth-legend-swatch" aria-hidden="true" />
+            {t('map.depth.legend.hatchLabel')}
+          </p>
+          <p>{t('map.depth.legend.basis')}</p>
+          <p>{t('map.depth.legend.caveat')}</p>
+        </div>
+      </details>
       <label>
         <input
           type="checkbox"

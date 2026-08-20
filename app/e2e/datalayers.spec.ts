@@ -185,6 +185,54 @@ test('depth toggle is available pre-plan, defaults ON (#63), flips the rendered 
   }
 });
 
+// #598: the hazard-hatch legend — reachable with NO plan (same
+// always-mounted cluster as the depth toggle above), default-collapsed, and
+// carries the #597 caveat once opened. `<details>` HAS a real DOM handle
+// (unlike the canvas raster the toggle test above verifies), so this is a
+// plain accessibility-tree/text assertion, not a pixel readback.
+test('depth-hatch legend (#598) is reachable pre-plan, default-collapsed, and carries the #597 caveat once opened', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(server.url);
+
+    // Present with no plan, alongside the depth toggle — same always-mounted
+    // cluster, same reason (#598's own maintainer ruling: reachable without
+    // an active plan, since the hatch itself has no other opt-in).
+    await expect(page.getByRole('checkbox', { name: 'Wassertiefen' })).toBeVisible();
+    await expect(page.locator('.route-layer-controls')).toHaveCount(0);
+
+    const summary = page.getByText('Legende', { exact: true });
+    await expect(summary).toBeVisible();
+    const details = page.locator('details.depth-legend');
+    // Default-collapsed per the maintainer ruling — `open` is a real DOM
+    // attribute on a native <details>, so this is a structural check, not a
+    // CSS-visibility inference.
+    await expect(details).not.toHaveAttribute('open');
+    await expect(details).toHaveJSProperty('open', false);
+
+    await summary.click();
+    await expect(details).toHaveJSProperty('open', true);
+    await expect(page.getByText('Schraffur: vorsichtige Lesart')).toBeVisible();
+    // The #597 caveat this legend was created to carry — absence of hatching
+    // must never read as "clear".
+    await expect(
+      page.getByText(
+        'Unvermessenes und trockenfallendes Wasser trägt gar keine Schraffur und sieht genauso aus wie Land.',
+      ),
+    ).toBeVisible();
+    // #598 maintainer ruling: never "shallow water" / "flaches Wasser" — the
+    // hatch is a cautious-reading indicator, not a shallow-water one. Scoped
+    // to the legend's own container so this can't be tripped by an unrelated
+    // occurrence elsewhere on the page (e.g. the no-route error copy).
+    await expect(details).not.toContainText('flaches Wasser');
+    await expect(details).not.toContainText('Flachwasser');
+  } finally {
+    server.kill();
+  }
+});
+
 // #492: the sparse hazard-hatch overlay (depthColor.ts's
 // buildNavigabilityHatchImageData, DataLayers.tsx's DEPTH_HATCH_LAYER) has
 // no real DOM handle either — same rationale as the depth-toggle test above,

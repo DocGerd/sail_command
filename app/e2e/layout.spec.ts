@@ -781,6 +781,78 @@ test('#277: .data-layer-controls and .route-layer-controls never intersect at 32
   }
 });
 
+// #598: the same #277 scenario, but with the NEW depth-hatch legend OPENED
+// too — the co-occurrence #277 alone can't see, since it never interacts
+// with either cluster's own collapsible content. `.data-layer-controls` has
+// NO `max-width` of its own (unlike `.route-layer-controls`, bounded
+// directly by the `9.5rem` rule in app.css) — it's a shrink-to-fit flex
+// column, so an unbounded legend body would grow it past the #277 budget
+// the instant a user opens it while a plan is loaded at a narrow viewport.
+// app.css's `.depth-legend-body` rule bounds this deliberately (its own
+// comment carries the live measurement this test pins); this is the
+// regression guard for that bound, in BOTH directions — overlap (the #277
+// shape) AND silent overflow (`boundingBox()` cannot see the latter at all
+// — CLAUDE.md's own "`boundingBox()` returns the BORDER box and never sees
+// overflow" lesson, #299 — so `scrollWidth`/`clientWidth` is the
+// discriminating assertion here, same as that lesson's own fix).
+test('#598: opening the depth-hatch legend does not overflow or collide with .route-layer-controls at 320px (EN)', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    await page.getByRole('button', { name: 'English anzeigen' }).click();
+
+    await page.getByRole('tab', { name: 'Plan' }).click();
+    const originSection = page.getByRole('region', { name: 'Origin' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    const originResults = originSection.getByRole('option');
+    await expect(originResults).toHaveCount(1);
+    await originResults.first().click();
+
+    const destSection = page.getByRole('region', { name: 'Destination' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    const destResults = destSection.getByRole('option');
+    await expect(destResults).toHaveCount(1);
+    await destResults.first().click();
+
+    const planButton = page.getByRole('button', { name: 'Plan route' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    const routeControls = page.locator('.route-layer-controls');
+    await expect(routeControls).toBeVisible();
+
+    const dataControls = page.locator('.data-layer-controls');
+    // Open the #598 legend — the state #277 never reaches. Scoped to
+    // `.data-layer-controls`: RouteLegend's OWN "Legend" summary is also on
+    // the page now that a plan is loaded, and an unscoped locator would hit
+    // Playwright's strict-mode ambiguity (two matches) instead of clicking
+    // the right one.
+    await dataControls.getByText('Legend', { exact: true }).click();
+    await expect(dataControls.locator('details.depth-legend')).toHaveJSProperty('open', true);
+
+    // THE discriminating assertion for silent overflow — see this block's
+    // own header comment for why `boundingBox()` alone cannot catch it.
+    await expect
+      .poll(() => dataControls.evaluate((el) => el.scrollWidth - el.clientWidth), {
+        timeout: 5_000,
+      })
+      .toBeLessThanOrEqual(0);
+
+    // Same overlap check as #277, now with the wider (legend-open) state.
+    await expect
+      .poll(async () => overlapArea(await box(dataControls), await box(routeControls)), {
+        timeout: 10_000,
+      })
+      .toBe(0);
+  } finally {
+    server.kill();
+  }
+});
+
 // #231: on a SHORT LANDSCAPE narrow viewport, the base COLUMN layout for
 // `.map-stack-tl` (DataLayers' two toggles stacked, then the compass) was
 // measured (#231's own issue text) to occupy ~46% of a 360px-tall viewport,

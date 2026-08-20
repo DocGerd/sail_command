@@ -586,6 +586,107 @@ select {
   overflow-y: auto;
 }
 
+/* #598: collapsible legend for the #492 navigability hatch, mounted inside
+   `.data-layer-controls` (unlike `.route-legend` below, which lives in the
+   plan-gated `.route-layer-controls` — this one must be reachable with no
+   plan, since the hatch itself has no other opt-in). Bare `<details>`,
+   mirroring `.route-legend`'s own convention rather than the bordered
+   `.sc-disclosure` primitive (sized for panel content, not this compact
+   chrome pill) — same chevron-swap affordance, reused verbatim below.
+
+   WIDTH IS DELIBERATELY BOUNDED, and the reason is `.route-layer-controls`'s
+   own `9.5rem` collision budget (below): `.data-layer-controls` has NO
+   `max-width` of its own (unlike `.route-layer-controls`, which the 9.5rem
+   rule bounds directly) — it is a shrink-to-fit flex column whose rendered
+   WIDTH is set by its widest VISIBLE child, and `<details>` doesn't render
+   its body at all while closed. So the two checkbox rows alone (the
+   9.5rem derivation's own "worst-measured ~135px" input) set the width
+   while this stays collapsed, but OPENING it makes the body a third
+   candidate — an unbounded paragraph would blow that budget out from under
+   `.route-layer-controls` the instant a user expands this while a plan is
+   also loaded at a narrow viewport (MEASURED live at 320px, both clusters
+   present: an earlier `max-width: 7.5rem` (120px) draft of this rule pushed
+   `.data-layer-controls`'s own right edge to EXACTLY 144px — zero px of
+   margin left before `.route-layer-controls`'s own left edge, at that same
+   144px). `6.5rem` (104px, below) keeps `.data-layer-controls`'s widest
+   possible state (legend open) at 104px content-box width — narrower than
+   BOTH checkbox rows' own natural width (MEASURED: 124.27px DE / ~127.16px
+   EN total right edge — the same figures the `9.5rem` rule's own comment
+   cites — i.e. this legend, even fully open, can never become the cluster's
+   widest child in either language) — so opening it cannot regress the
+   9.5rem budget in EITHER direction, collapsed or open.
+   `overflow-wrap: break-word` on the paragraphs is NOT decorative at this
+   width: this copy's own German compound nouns ("Sicherheitstiefe",
+   "Farbüberlagerung") run ~16 characters, wider than a 104px line at this
+   font-size can hold on native word boundaries alone — without it, one of
+   those words would silently overflow past the column instead of wrapping —
+   the exact `scrollWidth > clientWidth` failure mode `app/e2e/layout.spec.ts`'s
+   own #299 comment documents for a DIFFERENT cluster (the four-tab strip),
+   where a too-long label spilled silently past a `boundingBox()`-only check
+   with every geometric assertion still green (CLAUDE.md: "`boundingBox()`
+   returns the BORDER box and never sees overflow"). Re-measure both
+   languages with the legend OPEN (not just collapsed) before ever loosening
+   this value. */
+.depth-legend > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+.depth-legend > summary::before {
+  content: '\25B8';
+}
+
+.depth-legend[open] > summary::before {
+  content: '\25BE';
+}
+
+.depth-legend-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.15rem 0 0.35rem;
+  max-width: 6.5rem;
+}
+
+.depth-legend-body p {
+  margin: 0;
+  line-height: 1.35;
+  /* See this block's own opening comment — required at this width for the
+     copy's own long German compound nouns, not merely defensive. */
+  overflow-wrap: break-word;
+}
+
+.depth-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Approximates the map's own hatch (depthColor.ts: pure black stripes,
+   HATCH_PERIOD_CELLS=8 / HATCH_STRIPE_WIDTH_CELLS=2, i.e. a 25% duty cycle,
+   at 45deg) over a fixed pale backdrop — a THEME-INVARIANT literal, same
+   convention as `.route-legend-shallow`/`.route-legend-alt-rig` below: on
+   the real map the hatch composites over water/basemap, never over this
+   chrome's own `--sc-bg`, and pure black would vanish against dark chrome
+   without an explicit backdrop. */
+.depth-legend-swatch {
+  flex: none;
+  width: 1.25rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  background-color: #bcdcf2;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.78) 0,
+    rgba(0, 0, 0, 0.78) 2px,
+    transparent 2px,
+    transparent 8px
+  );
+}
+
 /* NAMED COUPLING: `top: 3.5rem` clears the narrow-layout .app-header, which
    overlays the map — the wide media query below drops it to 0.75rem because
    at >=1024px the header lives in the panel column instead. Mirrored exactly

@@ -382,6 +382,16 @@ export const de = {
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',
+  // #598: Legende der #492-Schraffur (siehe dict.en.ts für die volle
+  // Begründung — nie "flaches Wasser", die Schraffur ist ein Hinweis auf
+  // eine vorsichtige Lesart, kein Flachwasser-Indikator).
+  'map.depth.legend.title': 'Legende',
+  'map.depth.legend.hatchLabel': 'Schraffur: vorsichtige Lesart',
+  'map.depth.legend.basis':
+    'Die diagonale Schraffur markiert Wasser, bei dem die vorsichtigere der beiden Lesarten hinter der Farbüberlagerung unter Ihre Sicherheitstiefe fallen könnte — auch wenn die angezeigte Farbe noch unbedenklich wirkt. Sie kann auch Wasser markieren, das tatsächlich tief genug ist; dieser Kompromiss ist beabsichtigt, damit die Schraffur eher zu oft warnt, als unbedenklich zu wirken, obwohl sie es nicht ist.',
+  // #597
+  'map.depth.legend.caveat':
+    'Unvermessenes und trockenfallendes Wasser trägt gar keine Schraffur und sieht genauso aus wie Land. Fehlende Schraffur ist keine Garantie, dass das Wasser unbedenklich ist — es kann sich schlicht um eine Stelle ohne Daten handeln.',
   // Seezeichen-Overlay (#7) — standardmäßig AUS, Opt-in.
   'map.seamarks.toggle': 'Seezeichen',
   'seamark.popover.type': 'Typ',
