@@ -69,8 +69,10 @@ control" CLAUDE.md defines: that requires matching per-arm sha256 PREFIXES
 across machine/day/merge-base, and no prefixes are on record for `0c494f9`.
 
 Note `margin-zero`'s prefix here (`fa5e30f1`) differs from the `44f1e2…`
-recorded at the PR #488 review — different arm definitions and merge-base, so
-the two are not comparable; do not read the difference as non-determinism.
+recorded at the PR #488 review. The ARM DEFINITION is byte-identical between
+the two commits — the difference comes from the intervening merge-base
+(serializer and solver changes), so the two prefixes are not comparable; do not
+read the difference as non-determinism.
 
 Carry the standing caveat with any citation: `becalmed` and `deep-becalmed` are
 VACUOUS as safety evidence (33/33 error rows each), so their byte-identity
