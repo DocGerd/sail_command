@@ -138,6 +138,137 @@ function exposureNm(legs: Leg[], thresholdM: number): number {
   return nm;
 }
 
+// ---------------------------------------------------------------------------
+// #452 / #494 approach-disc geometry, shared by the #452 route-wide test below
+// and the #494 per-leg assertions at the two RELAXED-path call sites.
+//
+// Hoisted to module scope by #494 rather than copied: two independent
+// haversines in one file is exactly the kind of duplicated prose-and-arithmetic
+// that drifts silently. It still never calls into depthGate.ts, so needle and
+// haystack stay independently sourced — the implementation tests an ELLIPSE in
+// grid space (a linearised metres-per-degree at the waypoint's own latitude)
+// while everything here measures an exact haversine.
+// ---------------------------------------------------------------------------
+
+const R_EARTH_M = 6_371_000;
+const toRadLocal = (d: number) => (d * Math.PI) / 180;
+function metresBetween(a: LatLon, b: LatLon): number {
+  const dLat = toRadLocal(b.lat - a.lat);
+  const dLon = toRadLocal(b.lon - a.lon);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadLocal(a.lat)) * Math.cos(toRadLocal(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R_EARTH_M * Math.asin(Math.sqrt(h));
+}
+
+const CELL_LAT_STEP = (maskMeta.north - maskMeta.south) / maskMeta.rows;
+const CELL_LON_STEP = (maskMeta.east - maskMeta.west) / maskMeta.cols;
+/** The cell CENTRE is what disc membership is defined on. */
+function centreOf(p: LatLon): LatLon {
+  return {
+    lat:
+      maskMeta.south + (Math.floor((p.lat - maskMeta.south) / CELL_LAT_STEP) + 0.5) * CELL_LAT_STEP,
+    lon:
+      maskMeta.west + (Math.floor((p.lon - maskMeta.west) / CELL_LON_STEP) + 0.5) * CELL_LON_STEP,
+  };
+}
+
+/**
+ * The 1 nm approach radius plus a 2% allowance for the grid-ellipse vs.
+ * haversine difference described above (well under 1% over 1852 m).
+ *
+ * The 1852 is a LITERAL on purpose — deriving it from `depthGate.ts`'s
+ * `APPROACH_RADIUS_M` (imported in this file for the #54 rows) would make
+ * needle and haystack the same source, so raising the production radius would
+ * raise this bound with it and no assertion here could ever red.
+ */
+const APPROACH_LIMIT_M = 1852 * 1.02;
+
+/**
+ * Every cell charted below `requestedDepthM` that these legs actually cross,
+ * with each one's distance to `anchor`'s cell centre.
+ *
+ * Samples well below the ~46 m cell pitch, so any cell crossed for more than a
+ * step is seen; a corner-clip shorter than one step can still be missed, which
+ * is why callers are sized to catch gross violations kilometres out rather than
+ * to certify an exact zero.
+ */
+function subRequestedCrossings(
+  legs: Leg[],
+  requestedDepthM: number,
+  anchor: LatLon,
+): { depthM: number; metresFromAnchor: number }[] {
+  const out: { depthM: number; metresFromAnchor: number }[] = [];
+  for (const leg of legs) {
+    const legM = metresBetween(leg.start, leg.end);
+    const steps = Math.max(2, Math.ceil(legM / 10));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const p: LatLon = {
+        lat: leg.start.lat + (leg.end.lat - leg.start.lat) * t,
+        lon: leg.start.lon + (leg.end.lon - leg.start.lon) * t,
+      };
+      const info = mask.depthInfoM(p);
+      // Deep-capped cells are a floor, never a shallow reading (#53).
+      if (info.capped || info.depthM >= requestedDepthM) continue;
+      out.push({ depthM: info.depthM, metresFromAnchor: metresBetween(anchor, centreOf(p)) });
+    }
+  }
+  return out;
+}
+
+/**
+ * #494 §(a): the PER-LEG half of what `exposureNm(legs, 3.0) < 0.6` already
+ * bounds at the route level — the relaxed gate may license sub-requested water
+ * at the PINCH that forced the relaxation, and nowhere else.
+ *
+ * Stronger than the #452 mechanism guarantees, deliberately. `gateAtCell`
+ * returns `requestedDepthM` outside EVERY disc, so "within one approach disc of
+ * SOME waypoint" is a theorem of the shipped gate; this asserts confinement to
+ * ONE NAMED waypoint, which the origin's own disc could legitimately violate.
+ *
+ * MEASURED, both halves, 2026-08-20. Headroom: the farthest sub-requested cell
+ * on either passage sits 0.667 nm from the Marstal snap, against the 1.02 nm
+ * bound. Discriminating probe: passing `res.snappedOrigin` here instead reds
+ * BOTH call sites — "2.9 m at 38.36 nm from the pinch" (Flensburg) and
+ * "2.9 m at 7.32 nm from the pinch" (Bagenkop) — so the bound is tight, the
+ * crossing set is real, and the two anchors are not interchangeable.
+ *
+ * WHAT THIS DOES NOT CLAIM. Three localization-reverting mutations were run
+ * against both call sites and ALL THREE left the farthest distance unchanged
+ * (0.607/0.667 nm): `APPROACH_RADIUS_M = Infinity` (the documented pre-#452
+ * route-wide kill switch), `APPROACH_RADIUS_M = 20000`, and `findRelaxedGate`'s
+ * phase-2 per-disc ascent disabled. At DEFAULT_SETTINGS the #243 comfort
+ * preference already holds these routes in deep water everywhere but the pinch,
+ * so a gate-localization regression is NOT detectable here — that is what the
+ * `depthComfortMarginM: 0` test above is for, and its own comment says so. Read
+ * this as a structural pin plus a disclosure check, not as a locality detector.
+ */
+function expectRelaxedWaterConfinedToPinch(
+  legs: Leg[],
+  requestedDepthM: number,
+  pinch: LatLon,
+  label: string,
+) {
+  const crossings = subRequestedCrossings(legs, requestedDepthM, pinch);
+  // LICENCE, and it must come first: the confinement assertion below is an
+  // ABSENCE assertion, and an empty crossing set satisfies it while proving
+  // nothing. This is the row that establishes there was anything to confine.
+  expect(
+    crossings.length,
+    `${label}: the route crosses NO cell below ${requestedDepthM} m, so the confinement assertion below would pass vacuously`,
+  ).toBeGreaterThan(0);
+  // Report the offending cells, not a bare boolean: at 3am in CI the depth and
+  // the distance are the whole diagnostic.
+  const strays = crossings
+    .filter((c) => c.metresFromAnchor > APPROACH_LIMIT_M)
+    .map(
+      (c) =>
+        `${c.depthM.toFixed(1)} m at ${(c.metresFromAnchor / 1852).toFixed(2)} nm from the pinch`,
+    );
+  expect(strays.slice(0, 10), label).toEqual([]);
+}
+
 describe('real mask routing (issue #20)', () => {
   it('open water sanity: fjord mouth -> open baltic', () => {
     const res = solveGenoa(FJORD_MOUTH, OPEN_BALTIC, 270, DEFAULT_SETTINGS);
@@ -298,6 +429,18 @@ describe('real mask routing (issue #20)', () => {
         expect(rig!.distanceNm).toBeGreaterThan(30);
         expect(rig!.durationMs).toBeLessThan(12 * 3_600_000);
         expectLegsNavigable(rig!.legs, res.shallow!.usedDepthM);
+        // #494 §(a): `expectLegsNavigable` above checks the CHOSEN gate
+        // (2.3 m), which by construction cannot see anything the relaxation
+        // licensed. This is the missing per-leg half: the sub-requested water
+        // it licensed is confined to the Marstal approach — the pinch the two
+        // `cellsConnected` rows at the top of this test identify as the reason
+        // the relaxation happened at all.
+        expectRelaxedWaterConfinedToPinch(
+          rig!.legs,
+          res.shallow!.requestedDepthM,
+          res.snappedDestination,
+          'Flensburg -> Marstal: relaxed water away from the Marstal pinch',
+        );
         const flagged = rig!.legs.filter((l) => l.shallow);
         expect(flagged.length).toBeGreaterThan(0);
         for (const leg of flagged) {
@@ -348,33 +491,16 @@ describe('real mask routing (issue #20)', () => {
       expect(res.status).toBe('ok');
       if (res.status !== 'ok') return;
 
-      const R_EARTH_M = 6_371_000;
-      const toRadLocal = (d: number) => (d * Math.PI) / 180;
-      const metresBetween = (a: LatLon, b: LatLon): number => {
-        const dLat = toRadLocal(b.lat - a.lat);
-        const dLon = toRadLocal(b.lon - a.lon);
-        const h =
-          Math.sin(dLat / 2) ** 2 +
-          Math.cos(toRadLocal(a.lat)) * Math.cos(toRadLocal(b.lat)) * Math.sin(dLon / 2) ** 2;
-        return 2 * R_EARTH_M * Math.asin(Math.sqrt(h));
-      };
-      const latStep = (maskMeta.north - maskMeta.south) / maskMeta.rows;
-      const lonStep = (maskMeta.east - maskMeta.west) / maskMeta.cols;
-      // The cell CENTRE is what disc membership is defined on, so a sampled
-      // point is snapped back to its own cell centre before measuring.
-      const centreOf = (p: LatLon): LatLon => ({
-        lat: maskMeta.south + (Math.floor((p.lat - maskMeta.south) / latStep) + 0.5) * latStep,
-        lon: maskMeta.west + (Math.floor((p.lon - maskMeta.west) / lonStep) + 0.5) * lonStep,
-      });
       const anchors = [res.snappedOrigin, res.snappedDestination];
-      // The implementation tests an ellipse in GRID space (a linearised
-      // metres-per-degree at the waypoint's own latitude); this test measures
-      // an exact haversine. Over 1852 m the two differ by well under 1%, so a
-      // 2% allowance absorbs the difference without weakening anything that
-      // matters: reverting to the pre-#452 route-wide gate (spike §3, M8) reds
-      // this test with offenders 7.46-8.01 nm from the nearest waypoint —
-      // 12.0-13.0 km past the 1852 m radius, against a 37 m allowance.
-      const LIMIT_M = 1852 * 1.02;
+      // `metresBetween`, `centreOf` and `APPROACH_LIMIT_M` moved to module
+      // scope in #494 so the two relaxed-path call sites share this exact
+      // geometry instead of re-deriving it. The 2% allowance they carry
+      // absorbs the grid-ellipse vs. haversine difference without weakening
+      // anything that matters here: reverting to the pre-#452 route-wide gate
+      // (spike §3, M8) reds this test with offenders 7.46-8.01 nm from the
+      // nearest waypoint — 12.0-13.0 km past the 1852 m radius, against a
+      // 37 m allowance.
+      const LIMIT_M = APPROACH_LIMIT_M;
 
       const offenders: string[] = [];
       for (const rig of [sailResult(res, 'genoa'), sailResult(res, 'fock')]) {
@@ -498,6 +624,16 @@ describe('#243 depth comfort preference (real mask)', () => {
       const rig = sailResult(res, res.recommended);
       expect(rig).not.toBeNull();
       expectLegsNavigable(rig!.legs, res.shallow!.usedDepthM);
+      // #494 §(a): the second RELAXED-path call site. Same pinch as the
+      // Flensburg case — Marstal's pocket is what only 4-connects below
+      // 2.4 m — reached from the opposite side of the fjord, so the origin
+      // anchor is 7.3 nm away here against 38.4 nm there.
+      expectRelaxedWaterConfinedToPinch(
+        rig!.legs,
+        res.shallow!.requestedDepthM,
+        res.snappedDestination,
+        'Bagenkop -> Marstal: relaxed water away from the Marstal pinch',
+      );
     },
   );
 
