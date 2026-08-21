@@ -95,8 +95,8 @@ making design-level decisions; do not silently deviate.
 - Statement coverage baseline: 93.92% (4100/4365 statements; branches 88.99%,
   functions 92.28%, lines 95.52%), measured 2026-08-03 via `npm --prefix app
   run test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
-  hand-added or inferred: **2032 tests, 143 files**, all passing (2026-08-19
-  at `cbc6055`, the v0.12.0 cut). That run's DURATION is DISCARDED — six agents ran
+  hand-added or inferred: **2136 tests, 145 files**, all passing (2026-08-21
+  at `5b2032d`, the v0.13.0 cut). That run's DURATION is DISCARDED — a browser agent ran
   concurrently, the same contention that invalidated an earlier 393 s figure.
   Two rules distilled from repeated re-measurements of this pair: **counts are
   load-independent, durations are not** (never quote a duration measured under
@@ -1024,7 +1024,14 @@ making design-level decisions; do not silently deviate.
   then served the chunk name the tag run had built, proving that run's BUILD
   was always correct and only its DEPLOYMENT no-opped.
 
-  **EXERCISED FOUR TIMES; the margin is NOT a predictor.** On one basis
+  **EXERCISED FIVE TIMES; the margin is NOT a predictor, and n=5 now PROVES
+  it rather than merely failing to refute it: v0.13.0's gap was 54 s and the
+  tag run TOOK, while v0.11.0's 54 s was also safe and v0.10.0's 128 s
+  no-opped — the SAME gap value now appears on BOTH outcomes, so the gap
+  carries zero information.** At v0.13.0 the gate read correctly in advance:
+  merge-push run `32441905475` had `deploy: completed/cancelled` (all five
+  jobs), so tag run `32441958743` deployed cleanly and `smoke-probe` passed.
+  On one basis
   (Deploy workflow-RUN creation→creation) the gap was **128 s** at v0.10.0 (DID no-op —
   the probe fired and was right), **54 s** at v0.11.0 (safe), **70 s** at
   v0.12.0 (safe) and **43 s** at v0.12.1 (safe — merge-push run 32313173754
@@ -1805,6 +1812,25 @@ making design-level decisions; do not silently deviate.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
+- **A guard can pass forever for TWO opposite reasons, and both shipped a
+  defect in v0.13.0.** (a) JOINT BLINDNESS — #638's legend rendered with no
+  panel background and a 104px column at every viewport, while its only e2e
+  guard ran at **320px ONLY** (asserting overflow and collision) and its unit
+  guard was jsdom, which computes no paint. Both green, both CORRECT; they
+  measure quantities orthogonal to the defect. For viewport-conditional CSS a
+  guard at one viewport is evidence about THAT viewport — pair it with the
+  shared `STANDARD_VIEWPORTS`/`EDGE_VIEWPORTS` matrix. (b) CALIBRATED TO THE
+  LIMITATION — #648's hatch pixelation is measured by exactly the right guard
+  (`datalayers.spec.ts`'s z16 stripe-width test), whose threshold is `<= 100px`
+  with an adjacent comment reading "the accepted limit of the per-cell-raster
+  approach, not a fix". A guard whose bound was set to tolerate the known
+  residual can NEVER fire on it. Ask both "what can this not see?" and "was
+  this threshold chosen to accept the thing I am asking it to catch?"
+- **The release ship gate earns its cost — do not optimise it away as
+  ceremony.** At the v0.13.0 cut, `app`, `e2e`, `hook-selftests`, CodeQL,
+  Scorecard, Deploy and 2136 unit tests were ALL green, and a human looking at
+  a screenshot found #638 in a control reachable with ZERO setup
+  (`depthVisible` defaults ON, no plan required).
 - A verification method that structurally cannot see a regression class will
   report green through it. Three separate cases in one day:
   `queryRenderedFeatures` counts are order-independent, so a per-family
@@ -2379,7 +2405,11 @@ making design-level decisions; do not silently deviate.
   reproduces only under a fixed-snap convention the app does not use —
   `planRoute.ts` re-snaps 46.3 m onto a conservative-3.0 m cell, losing zero
   pairs. Gate-conditional: the floor degrades to 1.3 m at the UI's 2.2 m
-  minimum. ~10,746 crossers remain, so #455 stays OPEN.
+  minimum. ~10,746 crossers remain — cited, not re-derived, and on the
+  NAVIGABLE-cell basis (45.08%); 48.35% is the wrong denominator. #455 CLOSED
+  2026-08-20 on a deliberately narrowed basis (#492's per-cell hatch already
+  discloses exactly this criterion), so the mask optimism is now an ACCEPTED,
+  DISCLOSED source-data limit — the residual itself is tracked in NO issue.
 - **Every per-boat depth lever is on the GATE side, and the two gates differ**
   (#54/#539, `app/src/lib/boatDepth.ts`). `defaultSafetyDepthM(b)` is
   `ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` — so `gate - T = draft`
@@ -2399,16 +2429,31 @@ making design-level decisions; do not silently deviate.
   the production path; passing it as `findRelaxedGate`'s `floorM` instead of
   `relaxationFloorM(deps.boat)` is what `boatDepth.ts` calls "THE SINGLE MOST
   DANGEROUS SHORTCUT IN THIS FEATURE" — surviving reads are test-side only.
+- **#53 relaxation is PER-CELL, not route-wide — since v0.12.0** (#452 P3,
+  `e63f8cb`). `depthGate.ts`'s `APPROACH_RADIUS_M = 1852` + `gateAtCell` return
+  the REQUESTED depth outside every waypoint disc; `findRelaxedGate` replaced
+  the old scalar and `planRoute.ts` never rebuilds `{ ...s, safetyDepthM }`.
+  Measured 2026-08-21: Flensburg→Marstal crosses **0.000 nm** of sub-gate water
+  beyond 1 nm of Marstal, 1.18x the provable floor. **#452's TITLE still says
+  "the WHOLE route" and is STALE in both clauses** — it closed ACCIDENTALLY, on
+  a stray bare `fix #452` in a docs commit SUBJECT (`f99a5d68`), while the real
+  fix (PR #518) used `Refs`. Briefing an agent from that title produced a false
+  premise this session (#649). Note the bare form closes even after a
+  conventional-commit prefix, unlike the measured bracketed `fix(#54):`.
 - **The disclosure stack mounts ONLY on relaxed routes** (#455; verified
-  2026-08-20). All three `flagShallowLegs` call sites (`planRoute.ts`
+  2026-08-20, re-verified 2026-08-21 AFTER #612 — still true). All three `flagShallowLegs` call sites (`planRoute.ts`
   ~:713/:723/:738) sit inside `if (relaxed !== null)`; every non-relaxed
   success returns `assemble(tierN, null)` (~:603/:614/:630). So the banner,
   the cautious chip and the exposure sentence — four PRs of depth UI
   (#504/#509/#518/#523) — render for NO ordinary route, while ~10,746
   gate-crossing cells produce no per-route signal. NO test caught this: every
   test that renders the stack hands it a non-null `ShallowInfo`, so the defect
-  is in whether the component MOUNTS, not in the component. #612 is the fix,
-  gated on #455's measurement half.
+  is in whether the component MOUNTS, not in the component. **#612 did NOT
+  close this** — it shipped a SEPARATE, low-prominence `marginal-depth-notice`
+  (`RouteSummary.tsx`, driven by `marginalExposureNm`) gated as the banner's
+  exact COMPLEMENT, over a DIFFERENT population: charted readings AT OR ABOVE
+  the gate whose cautious reading falls below it. Do not read #612 as having
+  mounted the stack.
 - **The cautious floor is now DISCLOSED at the leg, not fixed** (#493, PR #504,
   shipped 2026-08-10). Because the mask is built so `depth_blend <= depth_max
   + T`, the inequality runs BACKWARDS too — `conservative >= shipped - T` per
@@ -3166,6 +3211,27 @@ making design-level decisions; do not silently deviate.
   4`). Pipe instead: `gh api URL | jq -r --arg p "$p" '…'`. Caught only by
   foreground-testing a poll body before arming a Monitor — armed as written it
   emits nothing forever, which reads as "still running".
+- **REST and GraphQL disagree on the review-event enum.** `POST
+  /repos/{o}/{r}/pulls/{n}/reviews` wants `event: "COMMENT"`; `"COMMENTED"` is
+  the GraphQL spelling and 422s with `Variable $event of type
+  PullRequestReviewEvent was provided invalid value`. Same family as
+  `.jobs[].conclusion` vs a deployment-status value — never mix the two
+  vocabularies.
+- **`jq --arg` cannot carry a base64 image payload** — `Argument list too
+  long`, surfacing as a misleading `{"message":"Body should be a JSON
+  object"}` HTTP 400 from `gh` rather than an argv error. Use `jq --rawfile`
+  or build the JSON in Python. Hit whenever a UI-bug screenshot is uploaded to
+  the `issue-assets` branch via `gh api PUT /contents/`.
+- **Never use `FETCH_HEAD` in this checkout.** It is shared with concurrent
+  agents and gets overwritten mid-task: a reviewer's `FETCH_HEAD` silently
+  resolved to `develop`, its grep for the PR's content came back EMPTY, and
+  that empty would have read as a FINDING. Always
+  `git fetch origin <branch>:refs/remotes/origin/<name>` and name the ref.
+- **An un-isolated agent can leave the SHARED CHECKOUT on ITS branch.** A
+  git-plumbing agent ran `git switch -c` in the repo root, silently moving the
+  session off `develop` (measured 2026-08-21; nothing lost, tree was clean).
+  Check `git rev-parse --abbrev-ref HEAD` after delegating any git task to an
+  un-isolated agent, or give it `isolation: worktree`.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,
