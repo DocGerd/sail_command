@@ -5,6 +5,9 @@ import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './DataLayers';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
 import { AppStateProvider, useSettings } from '../state/AppState';
 import { __resetDbForTests } from '../services/db';
+import { de } from '../i18n/dict.de';
+import { en } from '../i18n/dict.en';
+import type { MsgKey } from '../i18n/dict.de';
 
 // #153: DataLayers' style-reload re-add against the shared fake map (jsdom
 // has no MapLibre runtime — the BoatMarker.test.tsx approach). The depth
@@ -161,6 +164,56 @@ describe('DataLayers setup', () => {
     });
     expect(map.sources.has(HARBOR_SOURCE)).toBe(true);
     expect(sourceData(map, HARBOR_SOURCE).features).toHaveLength(1);
+  });
+});
+
+// #598: the depth-hatch legend's return JSX doesn't gate on map/styleEpoch/
+// assets at all (see DataLayers.tsx's own comment on the always-mounted
+// control cluster), so unlike the describe blocks above this needs no map
+// and no settle wait — that absence IS the #598 requirement (reachable with
+// NO active plan) made concrete. Expectations import the SHIPPED dict
+// strings rather than re-typing them, so this stays a wiring/structure
+// check (details exists, starts closed, the right t() keys are used) and
+// does not duplicate the copy-accuracy review the PR body carries.
+describe('#598 depth-hatch legend', () => {
+  it('is present with no map/plan at all, and starts collapsed', () => {
+    const { container, getByText } = renderDataLayers();
+    const details = container.querySelector('details.depth-legend');
+    expect(details).not.toBeNull();
+    expect(details?.hasAttribute('open')).toBe(false);
+    expect(getByText(de['map.depth.legend.title'])).toBeInTheDocument();
+  });
+
+  it('reveals the conservative-basis and #597 caveat copy once opened', () => {
+    const { container, getByText } = renderDataLayers();
+    const details = container.querySelector('details.depth-legend') as HTMLDetailsElement;
+    // Native <details>/<summary> — no React state to drive, so flipping the
+    // DOM property directly is the faithful equivalent of a user click
+    // (RouteLegend.tsx's own uncontrolled <details> gets the same treatment
+    // nowhere else in this suite, since it's plan-gated and covered by
+    // its own component test instead).
+    details.open = true;
+    expect(getByText(de['map.depth.legend.hatchLabel'])).toBeInTheDocument();
+    expect(getByText(de['map.depth.legend.basis'])).toBeInTheDocument();
+    expect(getByText(de['map.depth.legend.caveat'])).toBeInTheDocument();
+  });
+
+  // PR #625 self-review Minor 2: the e2e `not.toContainText('flaches
+  // Wasser')` guard (datalayers.spec.ts) is DE-only, so an EN "shallow
+  // water" regression had no pin at all. Asserts against the SHIPPED dict
+  // strings directly (both languages, every legend key), rather than adding
+  // a second e2e language pass for the same check.
+  it('never calls the hatch "shallow water" in either language (#598)', () => {
+    const keys: readonly MsgKey[] = [
+      'map.depth.legend.hatchLabel',
+      'map.depth.legend.basis',
+      'map.depth.legend.caveat',
+    ];
+    for (const k of keys) {
+      expect(en[k].toLowerCase()).not.toContain('shallow water');
+      expect(de[k].toLowerCase()).not.toContain('flaches wasser');
+      expect(de[k].toLowerCase()).not.toContain('flachwasser');
+    }
   });
 });
 

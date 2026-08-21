@@ -199,8 +199,8 @@ making design-level decisions; do not silently deviate.
   real-mask — and it DISAGREED with `vite.config.ts`'s own "~680 s
   combined" comment on `SLOW_TEST_FILES_FIRST`, which was the closer of the
   two; when two artifacts state one fact, re-measure rather than pick.
-  Note that list's order is now inverted against its own "slowest first"
-  intent (property suite is listed before real-mask, which is ~2x slower).
+  That list IS in slowest-first order (`vite.config.ts:373-374`: real-mask,
+  then the property suite) — a previous "now inverted" note here was wrong.
   Use focused filters while iterating (`npm --prefix app run test --
   <filter>`); give the full run a generous timeout. Solver-heavy test files import `SOLVER_TEST_TIMEOUT_MS`
   (file-level `vi.setConfig`) or call `solverTimeoutMs(baseMs)` (a larger
@@ -720,8 +720,15 @@ making design-level decisions; do not silently deviate.
   Single-spec runs work: `npm --prefix app run e2e -- plan.spec.ts` — validate a
   failing spec locally before burning a ~10 min CI cycle (pree2e still rebuilds;
   restore the wind fixture afterwards).
-- **`ci.yml`'s `e2e` job has no `timeout-minutes`**, so it inherits GitHub's
-  6-hour default against a measured 3–4 min runtime. FOUR PRs' `e2e` wedged on
+- **`ci.yml`'s `e2e` job caps at `timeout-minutes: 30`** (`ci.yml:99`, #605) —
+  derived from 8 re-measured real runs spanning **5m53s–14m33s**, not the stale
+  3–4 min this file used to quote; a wedge now reds in 30 min instead of 360.
+  An older **16m43s** outlier sits outside that window and sets the real margin
+  at ~1.79x, not 2.06x — size any future change against the outlier, not the
+  sampled range. It BOUNDS wedge damage, it does not prevent it: a wedge still
+  queue-blocks later develop pushes until it reds. The PRE-CAP wedges below
+  (32/54/65/90 min) are durations the 30-min cap now forbids — they are the
+  evidence FOR the cap, not observations of current behaviour. FOUR PRs' `e2e` wedged on
   `npx playwright install --with-deps chromium` in one session — step-6 durations
   **32, 54, 65 and 90 min** (jobs 96190476371 / 96137363922 / 96137652820 /
   96149791212), with Actions reporting "operational" and no runner backlog;
@@ -730,6 +737,18 @@ making design-level decisions; do not silently deviate.
   status; "in_progress" and "in_progress at step 6 of 8 for 40 min" are different
   facts. `gh run cancel <id>` then `gh run rerun <id> --failed` re-runs only the
   hung job, preserving green siblings.
+- **`ci.yml`'s concurrency group is `ci-${{ github.ref }}` with
+  `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`** — PR runs
+  cancel-supersede, but a PUSH to `main`/`develop` QUEUES behind a same-ref run
+  still in flight. MEASURED 2026-08-19: push run 32275477320 (`develop`, head
+  `bb2520a`) wedged `e2e` on `playwright install` for ~5h15m — an order of
+  magnitude past the PR-run wedges above, and on a push run, where nothing
+  supersedes it — and the next develop push (run 32303526023, created
+  21:22:20Z) started all three of its jobs at 21:37:16Z, seconds after that
+  cancellation. A push run holding at ZERO started jobs is the group waiting:
+  find the in-flight same-ref run before investigating the new one. Let the
+  healthy jobs reach `success` BEFORE cancelling, so `rerun --failed` re-runs
+  only the wedged job instead of all of them.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1005,16 +1024,21 @@ making design-level decisions; do not silently deviate.
   then served the chunk name the tag run had built, proving that run's BUILD
   was always correct and only its DEPLOYMENT no-opped.
 
-  **EXERCISED THREE TIMES; the margin is NOT a predictor.** On one basis
+  **EXERCISED FOUR TIMES; the margin is NOT a predictor.** On one basis
   (Deploy workflow-RUN creation→creation) the gap was **128 s** at v0.10.0 (DID no-op —
-  the probe fired and was right), **54 s** at v0.11.0 (safe) and **70 s** at
-  v0.12.0 (safe). n=3 happens to run the intuitive way and that is NOT evidence:
+  the probe fired and was right), **54 s** at v0.11.0 (safe), **70 s** at
+  v0.12.0 (safe) and **43 s** at v0.12.1 (safe — merge-push run 32313173754
+  had every job `cancelled`, so tag run 32313225085 at the same head deployed
+  cleanly), the last being SMALLER than both earlier safe gaps AND than the
+  128 s one that DID no-op. n=4 happens to run the intuitive way and that is
+  NOT evidence:
   the outcome is set by whether `cancel-in-progress` killed the earlier run
   before its `deploy` job reached terminal `success`, not by the gap — so never
   gate on the gap, and never read "fast tag push" as a protection. (An
-  older 43 s figure was completion→creation and is NOT comparable — differencing
-  the two bases is this file's own "two measurements of DIFFERENT subjects
-  cannot be differenced".)
+  older, UNRELATED 43 s figure was completion→creation and is NOT comparable —
+  differencing the two bases is this file's own "two measurements of DIFFERENT
+  subjects cannot be differenced", and two same-valued figures on different
+  bases must not be conflated.)
   **Gate on the earlier run's `deploy` JOB conclusion, and the test is TERMINAL
   `success`, not deployment-object existence.** At v0.12.0 a Pages deployment
   for that SHA WAS created and reached `error`, and the tag run's SECOND object
@@ -1347,6 +1371,11 @@ making design-level decisions; do not silently deviate.
   `## [X.Y.Z] - date` section (grouped under the matching `### Category`
   heading) and update the comparison links at the bottom, then DELETE the
   fragment files (release runbook `.claude/skills/release/SKILL.md` §2b).
+  `app/src/lib/changelog.ts`'s `ENTRY_RE` is `/^- (.*)$/` — anchored with NO
+  leading whitespace — so folding a multi-entry fragment as an INDENTED
+  sub-list silently glues the indented bullet onto the previous entry, dash
+  and all (measured at the v0.12.0 sweep `2d06f33`: 3 entries written, 2
+  parsed back). Fold every entry as a TOP-LEVEL bullet.
   Rolling a NON-empty set of fragments → `[X.Y.Z]` at a cut needs NO test
   edits: `ChangelogView` filters the now-empty `[Unreleased]` and
   `changelog.test.ts` pins only the released TAIL (`versions.slice(-5)`) —
@@ -1407,6 +1436,13 @@ making design-level decisions; do not silently deviate.
 
 ## Verification lessons (hard-won)
 
+- A MapLibre-rendered map feature has NO DOM node, so an MCP `browser_click`
+  or locator aimed at one fails with a CSS-selector parse error rather than
+  clicking (measured 2026-08-19 verifying #492's depth hatching). Verify
+  canvas-only rendering by full screenshot plus a Pillow crop/zoom
+  (`Image.crop().resize(…, Image.LANCZOS)` — ImageMagick is not installed
+  here), or programmatically via `queryRenderedFeatures`; never by trying to
+  interact with the canvas.
 - **The CHECK can be the thing that's wrong — and it fails by ACCUSING a
   correct artifact.** Verifying `CONTRIBUTING.md`'s "`v0.4.0` through
   `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
@@ -1777,6 +1813,13 @@ making design-level decisions; do not silently deviate.
   tests (#208); a camera fake that doesn't model `map.resetNorth()` cannot
   show a settle that never arrives (#203). Ask of any green result: *what
   class of failure can this method not detect?*
+- **A measurement's APERTURE can be narrower than the claim drawn from it** — and
+  the swept subset being genuinely clean is what makes it read as conclusive.
+  #599: two sweeps covering 3 of 15 reachable bands concluded a gap cap safe; the
+  full space had 14/120 combinations blanking a ≥100-cell marginal region.
+  Enumerate the reachable SET first, then sweep it. Related: a guard can pass
+  because its SAMPLE POINTS never reach the failing value (a `<= 16` bound held
+  only because a 0.25 step grid missed every band top; true max 16.95).
 - The sibling question belongs BEFORE the check is demanded, not after: a
   brief asking for evidence a method structurally cannot produce will get it
   — fabricated. #368 (PR #382 review): an implementer was asked to prove a
@@ -1814,6 +1857,12 @@ making design-level decisions; do not silently deviate.
   pre-approved, so copying it byte-for-byte leaves no new claim to be wrong.
   Standing exception, and it must stay open: a supplied sentence believed
   WRONG is reported, never silently improved.
+  Distinct rule, NOT an exception to this one (#599 — it was an orchestrator-
+  relayed measurement, not supplied replacement text): before adopting a
+  NUMERIC correction, check both sides define the QUANTITY identically. A
+  "tighter" bound differed only by count (`sMax-sMin+1`) vs span
+  (`sMax-sMin`); complying would have made a safety bound wrong by one. State
+  the definition beside any countable bound.
 - A fix INHERITS its bug's blind spot, and **the CORRECTION is the highest-risk
   moment, not the original** — a replacement arrives sounding authoritative and
   nobody re-attacks it as hard as they attacked the original. Measured
@@ -2021,6 +2070,13 @@ making design-level decisions; do not silently deviate.
   has no compiler, so the second copy is the only thing playing that role) plus
   QUOTE THE METHOD, not only the result (`(w/2)·sin45°` survives a constant
   change and can be run BACKWARDS to find a better fix; a bare number cannot).
+  Twin search only works if someone RUNS the comparison (#599): `depthColor.ts`
+  derived screen scale from `156543.03` (the 256-px-tile constant) while
+  `mapOrientation.test.ts`'s `metresPerPixel()` already carried the correct
+  512-px form — both shipped, nothing compared them, and the issue text copied
+  the wrong one. `156543.03` is a REAL, correct constant (for 256-px tiles), so
+  numeric checking passes straight through: the defect is the BASIS, not the
+  digits. CROSS-REFERENCE a twin in both directions.
   A negative report — "I re-read everything and found nothing" — is
   unfalsifiable from outside: spot-check 2–3 claims naming a NUMBER or COUNT,
   which are the falsifiable ones. CHANGELOG prose gets the SAME evidentiary
@@ -2095,9 +2151,20 @@ making design-level decisions; do not silently deviate.
   2026-08-09) — `capture.mjs` now polls the rig-comparison chip's TEXT instead
   of a boolean `getByText('★')`. #428 stays open for its BROADER concern only:
   nothing exercises this script, so it can rot as silently as #64 made it.
-  (Measured 2026-08-19: the script fails today on an UNRELATED cause — the
-  docs-only wind fixture `app/public/test-fixtures/wind-docs-plan-route.json`
-  is past its forecast horizon; regenerate it first, see below.)
+  That fixture decays TWO independent ways, and horizon is the one that
+  MISLEADS: a ROUTING change invalidates it while it is perfectly fresh.
+  #577 (closed v0.12.1) — #54's multi-boat work collapsed the genoa/fock
+  margin from ~180 s to 51.2 s, under `RIG_TIE_BAND_MS`, so the ★ silently
+  became a tie and #459's sail-dominance requirement lapsed; the fix RETUNED
+  `SPEED_LON_RANGE_KN` in `gen-docs-wind-fixture.mjs`, not the horizon. Never
+  attribute a docs-fixture failure to horizon drift without checking the rig
+  margin first — a v0.12.1 docs-sweep auditor did exactly that, and the wrong
+  cause survived its own adversarial verifier.
+  `capture.mjs` also covers only TWO of README's three images: its two
+  `page.screenshot()` calls emit `start-view.png` and `plan-route.png` and it
+  never opens the Boat tab, so `boat-selection.png` is a HAND capture against
+  a local production build and a recapture that only runs the script ships it
+  stale (verified 2026-08-20).
   Durable form: a capture
   or verification tool
   hardcoded to the PRODUCTION url can never capture a release candidate, since
@@ -2313,6 +2380,35 @@ making design-level decisions; do not silently deviate.
   `planRoute.ts` re-snaps 46.3 m onto a conservative-3.0 m cell, losing zero
   pairs. Gate-conditional: the floor degrades to 1.3 m at the UI's 2.2 m
   minimum. ~10,746 crossers remain, so #455 stays OPEN.
+- **Every per-boat depth lever is on the GATE side, and the two gates differ**
+  (#54/#539, `app/src/lib/boatDepth.ts`). `defaultSafetyDepthM(b)` is
+  `ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` — so `gate - T = draft`
+  EXACTLY, ZERO margin, for all three catalogue boats — while
+  `relaxationFloorM(b)` is `ceilToDecimetre(b.draftM)`, NO tolerance added.
+  So at every boat's OWN default gate, #53 relaxation reaches
+  `relaxationFloorM(b) - T` — exactly `draft - T` for a decimetre draft
+  (1.2 m under the Salona's 2.1 m hull), never below `draft - T` for any
+  other — with no user action: below-draft at DEFAULTS is REAL. State it in
+  TWO branches or it is false — those cases are
+  DISCLOSED (a relaxed route sets `shallow` and `isSevere` fires), and the
+  UNDISCLOSED residual (non-relaxed gate-crossers) bottoms out AT the hull,
+  never below. NEVER write "below-draft requires a user-lowered gate": the
+  app's own `about.caveats.depthMask` string contradicts it. T cannot be
+  per-boat — one mask, one blend, one constant. `BOAT_DRAFT_M`
+  (`relaxedDepth.ts`) still compiles but is the Salona-45 module constant, NOT
+  the production path; passing it as `findRelaxedGate`'s `floorM` instead of
+  `relaxationFloorM(deps.boat)` is what `boatDepth.ts` calls "THE SINGLE MOST
+  DANGEROUS SHORTCUT IN THIS FEATURE" — surviving reads are test-side only.
+- **The disclosure stack mounts ONLY on relaxed routes** (#455; verified
+  2026-08-20). All three `flagShallowLegs` call sites (`planRoute.ts`
+  ~:713/:723/:738) sit inside `if (relaxed !== null)`; every non-relaxed
+  success returns `assemble(tierN, null)` (~:603/:614/:630). So the banner,
+  the cautious chip and the exposure sentence — four PRs of depth UI
+  (#504/#509/#518/#523) — render for NO ordinary route, while ~10,746
+  gate-crossing cells produce no per-route signal. NO test caught this: every
+  test that renders the stack hands it a non-null `ShallowInfo`, so the defect
+  is in whether the component MOUNTS, not in the component. #612 is the fix,
+  gated on #455's measurement half.
 - **The cautious floor is now DISCLOSED at the leg, not fixed** (#493, PR #504,
   shipped 2026-08-10). Because the mask is built so `depth_blend <= depth_max
   + T`, the inequality runs BACKWARDS too — `conservative >= shipped - T` per
@@ -2326,11 +2422,15 @@ making design-level decisions; do not silently deviate.
   TypeScript). Surfaced in the legs-table cautious chip and in the
   `ShallowWarning` banner, which is ONE `role="alert"` container with
   lead/detail/caveat children — the lead carries the floor and, when
-  `usedDepthM - MASK_TOLERANCE_M < BOAT_DRAFT_M`, that it falls below the
-  draft. That gate is UNCONDITIONALLY TRUE at the 3.0 m default (relaxation
-  searches `[BOAT_DRAFT_M, requestedDepthM)`, so `usedDepthM <= 2.9`); it only
-  discriminates above a 3.0 m gate — which is why the two-tier banner was
-  folded into one. DELIBERATELY presentation-only: no field was added to
+  `usedDepthM - MASK_TOLERANCE_M < plan.request.boat.draftM`, that it falls
+  below the draft — the by-value SNAPSHOT, never a `boatById` lookup, since
+  that boat may have left the catalogue (`RouteSummary.tsx` :: `isSevere`,
+  changed at #539; before it this read `BOAT_DRAFT_M` and rendered the wrong
+  number in the app's most severe depth copy). That gate is UNCONDITIONALLY
+  TRUE at EVERY boat's own default gate, not just at 3.0 (relaxation searches
+  `[relaxationFloorM(boat), requestedDepthM)`); it only discriminates above
+  it — which is why the two-tier banner was folded into one. DELIBERATELY
+  presentation-only: no field was added to
   `ShallowInfo`/`Leg.shallow`, so `PlanResult` stays byte-identical, the
   `app/sweep/` baseline stays comparable and NO #282 sweep is owed. The
   measured conservative reading (1.80 m on Flensburg->Marstal) still needs
@@ -2629,7 +2729,14 @@ making design-level decisions; do not silently deviate.
   new feature that silently assumes connectivity is a bug.
 - The app is a passage-planning aid, not a navigation device — user-facing
   copy must not claim chart authority.
-- UI strings always go through the i18n dictionary (de/en), never hardcoded.
+- UI strings always go through the i18n dictionary (de/en), never hardcoded —
+  EXCEPT catalogue provenance notes, a deliberate spec-sanctioned exception:
+  `BoatPicker.tsx` renders `draftProvenance.note` / `polarProvenance.note` as
+  raw interpolated strings, never through `t()` ("Catalogue data per spec
+  F.3 … not an i18n key, so it renders as authored, verbatim"), because
+  paraphrasing a source citation per language is how a citation becomes
+  wrong. English text under a German Boat tab is EXPECTED, not a bug; a
+  v0.12.1 verification pass re-filed it as an anomaly (#607).
 - Implementation work goes through the `.claude/agents/` defs: spawn a FRESH
   `sail-implementer` per task (never reuse across tasks); one persistent
   `sail-reviewer` per PR for the fix→re-review loop, retired at merge.
@@ -2666,16 +2773,17 @@ making design-level decisions; do not silently deviate.
   (high/med/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
   optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
   apply type+area+priority to every new issue. Taxonomy documented in
-  CONTRIBUTING.md (#167/#168). **The taxonomy has DRIFTED into space/no-space
-  duplicates** (found during the v0.9.0 cut): `priority: high` /
-  `priority: medium` / `priority: low` coexist with `priority:medium` /
-  `priority:low`, and `area: deploy` / `area: map` / `area: routing` /
-  `area: pwa` / `area: ais` / `area: pipeline` / `area: tooling` coexist with
-  `area:tooling` / `area:map` / `area:pipeline`. `gh issue create` fails with
-  `could not add label: '<name>' not found` on the wrong spelling, and
-  filtering by one silently misses issues tagged with the other. Verify with
+  CONTRIBUTING.md (#167/#168). The taxonomy DRIFTED into space/no-space
+  duplicates (found at the v0.9.0 cut) and was CLEANED UP 2026-08-19 (#401):
+  every no-space-labelled issue was re-tagged onto the spaced form and all
+  eight no-space label objects deleted. `gh issue create` still fails with
+  `could not add label: '<name>' not found` on a wrong spelling, and nothing
+  prevents recurrence via a future `gh label create`, so keep verifying with
   `gh label list --repo DocGerd/sail_command --limit 60 --json name --jq
-  '.[].name'` before using a label name; a cleanup pass is unscheduled.
+  '.[].name'` before using a label name — but do NOT re-plan the cleanup as
+  outstanding. Separately, there is no `area:` member for user-facing copy,
+  i18n or UI component structure; five open issues carry none for that
+  reason, and forcing a wrong one is worse than leaving it bare (#610).
 - Design a guard around its ASYMMETRY: a BLOCKING guard should fail closed, a
   NUDGE should fail open. #233's command segmenter exits 0 while emitting
   confidently-wrong segments, so its fail-closed path covers none of its
@@ -2910,6 +3018,12 @@ making design-level decisions; do not silently deviate.
   re-verify the MERGED artifact instead of carrying the review forward.
   Nothing was lost that time only because the `deploy` job happened to be
   byte-identical across both refs; that is luck, not a control.
+  SHARPER (PR #630): a defect can be absent from BOTH sides and created by the
+  COMPOSITION — #624 merged after #630 branched and made a previously-safe read
+  unsafe (`App.test.tsx` 68/68 on develop, 67/68 merged). So re-running CI on the
+  PR head is not enough — the merged tree is a THIRD artifact neither parent
+  tested. This is the SIBLING-MERGE invalidation bullet (Verification lessons)
+  meeting this one; read them together.
 - Agent stall patterns (session 7, 6/6 recoveries): an implementer that stops
   "waiting on an armed watcher/monitor" while its notification shows NO live
   background children is asleep forever — nudge it to check the result in the
@@ -2920,6 +3034,17 @@ making design-level decisions; do not silently deviate.
   clean review leaves nothing new on the PR to read, so that silence is
   indistinguishable from a check that never ran. Read the verdict from the
   PR's reviews/comments artifacts FIRST; nudge only if genuinely absent.
+  Team (SendMessage-only) reviewer variant, measured at the v0.12.1 cut: with
+  no PR there is NO artifact to check, and a nudge is not reliably corrective —
+  one reviewer completed two full passes and never called `SendMessage` once,
+  answering an explicit "send the findings now" nudge with another plain
+  end-turn text block, losing its entire second pass; another delivered only to
+  a nudge that RE-STATED the exact report format. So re-state the format in the
+  nudge, confirm a `SendMessage` call actually happened rather than reading a
+  plain-text reply as delivery, and after a SECOND non-delivery spawn a
+  replacement instead of nudging again. Such an agent also has no Write/Edit
+  tool and a read-only Bash, so briefing it to keep an on-disk fallback copy of
+  its report is unsatisfiable.
   Worktree cleanup ritual: agent runs `find app/node_modules -delete`
   (`rm -rf` is permission-blocked even in the main session; `find -delete` is
   allowed), then the main session runs `git worktree remove` — force-free. Parallel

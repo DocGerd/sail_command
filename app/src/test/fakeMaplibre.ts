@@ -107,6 +107,25 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       else layerOrder.splice(at, 0, layer.id);
     }),
     getLayer: (id: string) => layers.get(id),
+    // #599: DataLayers reads the live zoom to pick the depth hatch's stripe
+    // band (depthColor.ts's hatchBandForZoom), from inside buildHatchCanvas.
+    //
+    // WHY THAT CALL IS REACHABLE FROM A TEST AT ALL — one cause, stated once,
+    // because an earlier revision of this comment gave three and the
+    // load-bearing one was wrong. It is NOT that jsdom supplies a 2D canvas
+    // context: jsdom does not, and buildHatchCanvas's `if (!ctx) return null`
+    // bails out before the getZoom call in an ordinary test. It is that
+    // components/layerOrder.test.tsx installs its OWN
+    // HTMLCanvasElement.prototype.getContext fake, which returns a working
+    // stub for any 4x4 canvas — exactly the size of that file's maskMeta
+    // fixture — so there, and only there, buildHatchCanvas runs to completion
+    // and calls map.getZoom(). Without this entry all 6 of that file's tests
+    // throw `map.getZoom is not a function` (MEASURED).
+    //
+    // Returns MapView's own initial ZOOM so the fake starts where the app
+    // does. No test asserts band geometry through the fake —
+    // depthColor.test.ts covers hatchBandForZoom directly.
+    getZoom: vi.fn(() => 9),
     removeLayer: vi.fn((id: string) => {
       layers.delete(id);
       const at = layerOrder.indexOf(id);

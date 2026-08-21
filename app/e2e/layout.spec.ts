@@ -781,6 +781,137 @@ test('#277: .data-layer-controls and .route-layer-controls never intersect at 32
   }
 });
 
+// #598: the same #277 scenario, but with the NEW depth-hatch legend OPENED
+// too — the co-occurrence #277 alone can't see, since it never interacts
+// with either cluster's own collapsible content.
+//
+// #598 review follow-up (touch-target round): `.depth-legend` is now a
+// SIBLING of `.data-layer-controls`, not a descendant (app.css/
+// DataLayers.tsx's own comments carry the full rationale — moved out of the
+// flex flow so it costs `.map-stack-tl` zero measured height, which is what
+// let the touch target go back to a full 44px). That moves WHICH element is
+// this test's actual moving part: `.data-layer-controls` no longer grows at
+// all when the legend opens (the #277 pin already covers its own, unchanged
+// collapsed state), so the overflow/clearance checks below target
+// `.depth-legend`/`.depth-legend-body` — the element that actually changes
+// size and position — not `.data-layer-controls`.
+//
+// Both assertion SHAPES from the original Major 2 fix are preserved: silent
+// overflow (`boundingBox()` cannot see it at all — CLAUDE.md's own
+// "`boundingBox()` returns the BORDER box and never sees overflow" lesson,
+// #299) via `scrollWidth`/`clientWidth`, and POSITIVE clearance rather than
+// mere non-intersection. What that clearance check actually discriminates
+// changed with the restructure, MEASURED not assumed: `.depth-legend` is
+// `position: absolute` with only `left: 0` set (no `right`), so its
+// shrink-to-fit width is CEILINGED by its containing block
+// (`.map-stack-tl`, itself sized by `.data-layer-controls`'s own ~135px EN
+// width) — live-tested by overriding `.depth-legend-body`'s `max-width` up
+// to 200px at this exact scenario and finding `.depth-legend`'s own right
+// edge pinned at 135.16px regardless, never reaching anywhere near
+// `.route-layer-controls`'s 144px. So an ordinary `max-width` bump on the
+// body (the shape Major 2's ORIGINAL finding was about, on the
+// pre-restructure nested architecture) can no longer reopen this
+// collision — that near-miss is now structurally closed, not merely
+// narrowed. The guard still has teeth against a DIFFERENT mutation: a
+// forced `width` (escaping the shrink-to-fit ceiling instead of bounding
+// within it) reds it with a real 4940px² overlap, confirmed live. Kept as a
+// backstop against that shape and against any future change to
+// `.depth-legend`'s own `left`/positioning, not as a near-miss catcher.
+test('#598: opening the depth-hatch legend does not overflow or collide with .route-layer-controls at 320px (EN)', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    await page.getByRole('button', { name: 'English anzeigen' }).click();
+
+    await page.getByRole('tab', { name: 'Plan' }).click();
+    const originSection = page.getByRole('region', { name: 'Origin' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    const originResults = originSection.getByRole('option');
+    await expect(originResults).toHaveCount(1);
+    await originResults.first().click();
+
+    const destSection = page.getByRole('region', { name: 'Destination' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    const destResults = destSection.getByRole('option');
+    await expect(destResults).toHaveCount(1);
+    await destResults.first().click();
+
+    const planButton = page.getByRole('button', { name: 'Plan route' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    const routeControls = page.locator('.route-layer-controls');
+    await expect(routeControls).toBeVisible();
+
+    // `.depth-legend` is uniquely classed and no longer nested inside
+    // `.data-layer-controls`, so this needs no text-based disambiguation
+    // against RouteLegend's own "Legend" summary (unlike the old
+    // `dataControls.getByText('Legend', { exact: true })` form).
+    // #598 review round 3: dismiss the incidental SW "offline ready" toast
+    // BEFORE opening the legend — same idiom as this file's own #368
+    // tests. Not incidental at THIS viewport any more: with a real banner
+    // up, the round-3 JS reachability gate (DataLayers.tsx) correctly
+    // computes a sub-44px budget at 320px width with a banner present and
+    // HIDES the control outright (MEASURED live: the click below timed out
+    // waiting on an invisible `<summary>` before this dismiss was added).
+    // That is the gate doing its job, not a bug this test exists to catch —
+    // its own purpose is the collision/overflow check once the legend IS
+    // reachable and open, which needs the steady-state (no banner) case.
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+
+    const depthLegend = page.locator('.depth-legend');
+    await depthLegend.locator('> summary').click();
+    await expect(depthLegend).toHaveJSProperty('open', true);
+
+    // Silent-overflow check, now on the element that actually holds the
+    // wrapped copy.
+    const depthLegendBody = page.locator('.depth-legend-body');
+    await expect
+      .poll(() => depthLegendBody.evaluate((el) => el.scrollWidth - el.clientWidth), {
+        timeout: 5_000,
+      })
+      .toBeLessThanOrEqual(0);
+
+    // `.data-layer-controls` itself: unaffected by the legend opening under
+    // the current architecture, but kept as a residual regression guard —
+    // this is exactly the #277 pin's own shape, cheap to re-assert here.
+    const dataControls = page.locator('.data-layer-controls');
+    await expect
+      .poll(async () => overlapArea(await box(dataControls), await box(routeControls)), {
+        timeout: 10_000,
+      })
+      .toBe(0);
+
+    // Non-intersection alone does not discriminate a near-miss (the
+    // original Major 2 finding, on the pre-restructure architecture) — keep
+    // requiring POSITIVE clearance, now for `.depth-legend` itself.
+    await expect
+      .poll(async () => overlapArea(await box(depthLegend), await box(routeControls)), {
+        timeout: 10_000,
+      })
+      .toBe(0);
+    await expect
+      .poll(
+        async () => {
+          const d = await box(depthLegend);
+          const r = await box(routeControls);
+          return r.x - (d.x + d.width);
+        },
+        { timeout: 10_000 },
+      )
+      .toBeGreaterThan(0);
+  } finally {
+    server.kill();
+  }
+});
+
 // #231: on a SHORT LANDSCAPE narrow viewport, the base COLUMN layout for
 // `.map-stack-tl` (DataLayers' two toggles stacked, then the compass) was
 // measured (#231's own issue text) to occupy ~46% of a 360px-tall viewport,

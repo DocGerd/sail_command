@@ -12,7 +12,7 @@ import {
 import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
-import { resultSummary, rigVerdictKey, sailLabelKey } from '../lib/resultSummary';
+import { resultSummary, resultVerdictKey, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
@@ -26,7 +26,10 @@ import Skeleton from './Skeleton';
 // #452: the shallow-water warning is plan-level (RouteSummary's own note
 // explains why) — shared here so the FIRST surface a user sees a result on
 // carries the same warning as the Routes tab, not just a second copy of it.
-import { ShallowWarning } from './RouteSummary';
+// #612: the non-relaxed complement of that warning, shared for the same
+// reason — see MarginalDepthNotice's own doc comment for why it is a quiet
+// <p> rather than a second banner.
+import { MarginalDepthNotice, ShallowWarning } from './RouteSummary';
 
 export type TapTarget = 'origin' | 'destination' | 'via';
 
@@ -267,6 +270,12 @@ export default function PlannerPanel({
   // shallow plan on a rig whose own result is null). The Card below is now
   // gated on `summary || shallow`, not `summary` alone.
   const shallow = plan?.result.shallow ?? null;
+  // #540: plan-level, like `shallow` immediately above — feeds
+  // resultVerdictKey() for the rig-comparison chip below. Defaults to `true`
+  // (never trips the budget-specific copy) when `plan` is absent; the chip
+  // that reads it is gated on `summary`, which is itself null whenever
+  // `plan` is, so the default is never actually rendered.
+  const comparisonComplete = plan?.result.comparisonComplete ?? true;
 
   // Cross-PR composition fix (Refs #299, found by an adversarial cumulative-
   // diff sweep over PR #486): computed independently of App.tsx's own
@@ -651,7 +660,7 @@ export default function PlannerPanel({
               <Chip className="chip-faster-rig">
                 {summary.rigRecommendation.kind === 'decided'
                   ? t('route.fasterRig', { rig: t(sailLabelKey(summary.rigRecommendation.rig)) })
-                  : t(rigVerdictKey(summary.rigRecommendation.kind))}
+                  : t(resultVerdictKey(summary.rigRecommendation.kind, comparisonComplete))}
               </Chip>
               {/* #301: the form has drifted from this displayed route — a
                   re-run right now would produce something different. Sits ON
@@ -693,6 +702,14 @@ export default function PlannerPanel({
           {plan && shallow && (
             <ShallowWarning shallow={shallow} legs={result?.legs ?? null} plan={plan} />
           )}
+          {/* #612: the complement of the banner above, for a route that did NOT
+              relax — same shared component and copy as RouteSummary's own, so
+              the quiet marginal-depth line can never drift between the first
+              surface a user sees a result on and the Routes tab. The
+              not-relaxed / mask-loaded / non-zero-exposure gate lives inside
+              the component itself; the `plan &&` here is the same TYPE-LEVEL
+              requirement as the banner's above. */}
+          {plan && <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />}
           {summary && (
             <>
               <div className="planner-result-primary">

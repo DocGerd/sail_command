@@ -46,17 +46,41 @@ comfort margin from 0 to the shipped 2.0 m default therefore moves 16 of 33
 routes, not all 27 — the remaining 11 rows are ones where the extra pricing
 changes nothing observable.
 
-**Determinism control (partial, PR #488 review): `margin-zero` run twice,
-byte-identical** — `sha256 44f1e2…4f2342b` both times (matches this
-session's own run too). The three #452 arms otherwise share `README.md`'s
-"no `deadline` argument passed" structural argument for why a byte-identical
-BASE double-run is expected (`runArm` never budgets `planRoute()`, so #432's
-wall-clock `PLAN_BUDGET_MS` never engages and nothing time-dependent feeds
-the solver) — but only one of the three has actually been run twice.
-`relaxation-dense` and `margin-extreme` are UNMEASURED for determinism;
-`margin-extreme` is the one to double-run first if this ever needs full
-confidence, since it is the only one of the three whose control flow depends
-on a tier-3 *failure* rather than a tier-3 success.
+**Determinism control (COMPLETE, 2026-08-20 at `00a33ab`): all nine arms run
+twice, 297/297 plans byte-identical.** Per-arm sha256 prefixes, both runs:
+`becalmed 8dc119cd`, `breeze 7aa9fb56`, `deep-becalmed 7e7ac2e1`,
+`light-motorless 0ded5d87`, `margin-extreme ae91bf71`, `margin-zero fa5e30f1`,
+`no-comfort 9fa297c8`, `relaxation-dense f4907139`, `short-horizon 3fb63b77`.
+This supersedes the earlier partial control (PR #488 review measured only
+`margin-zero`, and this file used to record `relaxation-dense` and
+`margin-extreme` as UNMEASURED). The "no `deadline` argument passed"
+structural argument — `runArm` never budgets `planRoute()`, so #432's
+wall-clock `PLAN_BUDGET_MS` never engages and nothing time-dependent feeds the
+solver — is now corroborated empirically for all nine arms rather than argued
+for seven of them.
+
+That run's A-side outcome distribution was `ok` 74, `ok+shallow` 83, plus 140
+typed failures (`calm-motor-off` 55, `unreachable` 54, `beyond-horizon` 28,
+`snap-failed-destination` 3). The three AGGREGATE figures (`ok` 74,
+`ok+shallow` 83, 140 typed failures) match the record at `0c494f9` — that
+record carries only those three, not the per-cause split, so this is agreement
+on what both measured, NOT a full match. It is also **not** the "stronger
+control" CLAUDE.md defines: that requires matching per-arm sha256 PREFIXES
+across machine/day/merge-base, and no prefixes are on record for `0c494f9`.
+
+Note `margin-zero`'s prefix here (`fa5e30f1`) differs from the `44f1e2…`
+recorded at the PR #488 review. The ARM DEFINITION is byte-identical between
+the two commits — the difference comes from the intervening merge-base
+(serializer and solver changes), so the two prefixes are not comparable; do not
+read the difference as non-determinism.
+
+Carry the standing caveat with any citation: `becalmed` and `deep-becalmed` are
+VACUOUS as safety evidence (33/33 error rows each), so their byte-identity
+above is determinism evidence only, never safety evidence.
+
+**"COMPLETE" describes THIS run's nine arms at `00a33ab` — it does NOT
+discharge the per-change BASE double-run.** That control must still be recorded
+against the merge-base of whatever branch it will certify.
 
 ## Why it lives here and not under `src/`
 

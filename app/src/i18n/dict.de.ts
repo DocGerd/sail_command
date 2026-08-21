@@ -215,6 +215,16 @@ export const de = {
   // stattgefunden. Siehe dict.en.ts für die drei auslösenden Fälle.
   'route.rigNotCompared':
     'Die Segel wurden für diese Passage nicht verglichen — es wird kein schnelleres Rigg angegeben',
+  // #540 spec §E.3: a budget-exhausted sail is ALSO a 'not-compared' verdict
+  // (rigVerdictKey collapses onto route.rigNotCompared above), but a stalled
+  // search reads very differently from "nothing to compare" — the ★-suppressed
+  // recommendation is still computed over one completed sail only, and this
+  // sentence is what stops that from being misread as a finished two-sail
+  // comparison. Rendered instead of rigNotCompared exactly when
+  // PlanResultOk.comparisonComplete is false; see dict.en.ts for the derived
+  // MsgKey helper (resultVerdictKey in lib/resultSummary.ts).
+  'route.comparisonIncomplete':
+    'Die Suche wurde durch Zeitüberschreitung abgebrochen, bevor beide Segel verglichen werden konnten — es wird kein schnelleres Rigg angegeben',
   'route.staleForecast':
     'Die Wettervorhersage ist mehr als 12 Stunden älter als die Abfahrt — die Windbedingungen können sich seither geändert haben.',
   // #53/#452: honest passage-planning-aid copy — see dict.en.ts's comment
@@ -302,6 +312,21 @@ export const de = {
   // ohne eigene Kartenautorität.
   'route.shallow.caveat':
     'Kartendaten können reale Tiefen sowohl unter- als auch überschätzen, daher ist diese Warnung nicht vollständig: Ein Abschnitt ohne Warnung ist nicht garantiert frei von Untiefen. Markierte Abschnitte mit amtlicher Seekarte und Echolot prüfen.',
+  // #612: siehe dict.en.ts's Kommentar für Zweck, Auslöser, Eskalation und
+  // die beiden Klauseln, die hier bewusst FEHLEN. Formulierung an bereits
+  // ausgelieferte, geprüfte Kopie angelehnt: "eine vorsichtigere Lesart der
+  // Kartentiefen" ist wörtlich aus route.shallow.lead oben, und "unter den
+  // Bootstiefgang von {draft} m" wörtlich aus route.shallow.leadSevere (deren
+  // Kommentar erklärt, warum nicht "Tiefgang des Boots von"). PLURAL
+  // "verlaufen" wie in route.shallow.exposure, aus demselben Grund: formatNm
+  // liefert immer eine Dezimalzahl, die Seemeilen im Plural verlangt.
+  // Bewusst NICHT "derselben Tiefendaten" — CLAUDE.md führt genau dieses Wort
+  // als Anaphern-Defekt (#493/#504); "der Kartentiefen" benennt den Bezug
+  // direkt und bleibt aus jeder Position heraus richtig.
+  'route.marginal.notice':
+    '{dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt.',
+  'route.marginal.noticeSevere':
+    'Achtung: {dist} dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von {requested} m setzt — bei dieser Einstellung kann diese Lesart unter den Bootstiefgang von {draft} m fallen.',
   'route.totals.distance': 'Distanz',
   'route.totals.duration': 'Dauer',
   'route.totals.eta': 'Ankunft',
@@ -382,6 +407,23 @@ export const de = {
   // Deliberately terse: shares the narrow-viewport map-top row with the
   // plan-gated wind-barb toggle on the opposite side (app.css).
   'map.depth.toggle': 'Wassertiefen',
+  // #598: Legende der #492-Schraffur (siehe dict.en.ts für die volle
+  // Begründung — nie "flaches Wasser", die Schraffur ist ein Hinweis auf
+  // eine vorsichtige Lesart, kein Flachwasser-Indikator).
+  'map.depth.legend.title': 'Legende',
+  'map.depth.legend.hatchLabel': 'Schraffur: vorsichtige Lesart',
+  // PR #625 self-review Minor 3: the final clause's "sie" (feminine) bound to
+  // "die Schraffur"/"die Farbe" — no reading reached the intended referent,
+  // "das Wasser" (neuter). Replaced verbatim per the review's suggested fix;
+  // English "it" was never gender-bound, so that half needed no change.
+  'map.depth.legend.basis':
+    'Die diagonale Schraffur markiert Wasser, bei dem die vorsichtigere der beiden Lesarten hinter der Farbüberlagerung unter Ihre Sicherheitstiefe fallen könnte — auch wenn die angezeigte Farbe noch unbedenklich wirkt. Sie kann auch Wasser markieren, das tatsächlich tief genug ist; dieser Kompromiss ist beabsichtigt, damit die Schraffur eher zu oft warnt, als das Wasser unbedenklich wirken zu lassen, obwohl es das vielleicht nicht ist.',
+  // #597 — PR #625 self-review Major 1 (see dict.en.ts's own comment for the
+  // full defect/derivation): "sieht genauso aus wie Land" was FALSE, in the
+  // dangerous direction. Byte 0 gets no paint at all either way, so this
+  // water renders as ordinary basemap blue, not anything land-coloured.
+  'map.depth.legend.caveat':
+    'Unvermessenes und trockenfallendes Wasser trägt ebenfalls keine Schraffur und ist durch nichts gekennzeichnet, sieht also aus wie gewöhnliches Wasser. Fehlende Schraffur ist keine Garantie, dass das Wasser unbedenklich ist — es kann sich schlicht um eine Stelle ohne Daten handeln.',
   // Seezeichen-Overlay (#7) — standardmäßig AUS, Opt-in.
   'map.seamarks.toggle': 'Seezeichen',
   'seamark.popover.type': 'Typ',

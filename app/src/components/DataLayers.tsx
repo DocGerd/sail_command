@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Popup } from 'maplibre-gl';
 import type {
   CanvasSource,
@@ -31,6 +31,7 @@ import {
   buildDepthImageData,
   buildNavigabilityHatchImageData,
   depthSourceCorners,
+  hatchBandForZoom,
 } from '../lib/depthColor';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
@@ -62,7 +63,8 @@ const DEPTH_LAYER = 'sc-depth';
 // HARD DOMAIN RULE: the absolute ramp never tracks safetyDepthM).
 const DEPTH_HATCH_SOURCE = 'sc-depth-hatch';
 const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
-// Debounce for rebuilding the hatch raster after safetyDepthM changes — the
+// Debounce for rebuilding the hatch raster after safetyDepthM OR the #599
+// zoom band changes — the
 // mask is ~5.28M cells, so this must not run on every keystroke/tick of
 // whatever control edits the setting. 300ms: today's only editor
 // (SettingsPanel/PlannerPanel's NumberInput, via SAFETY_DEPTH_FIELD) commits
@@ -83,6 +85,31 @@ const DEPTH_HATCH_LAYER = 'sc-depth-hatch';
 // actual lag budget: today's only reachable path (a blur commit) always
 // pays this 300 ms before the safety cue updates, not the ~30 ms build
 // cost itself.
+//
+// #599 RE-MEASURED, same method (in-browser Chromium, real 2200x2400 mask,
+// createImageData+putImageData included), 5 samples: 40.7 / 27.1 / 28.7 /
+// 35.3 / 34.4 ms — median 34.4, range 27-41. The 28.x figures above are
+// still reproducible but sit at the OPTIMISTIC end of today's spread, so
+// size anything against ~35-40 ms, not ~28.
+//
+// #599 also makes ZOOM a second trigger, and that is the one that could
+// turn this into a per-interaction cost. It is deliberately NOT a second
+// debounce; the band is folded into the SAME timer below, for two reasons.
+// (1) Both inputs feed the identical rebuild, so one timer means a
+// simultaneous change (zoom while a boat radio is clamping safetyDepthM)
+// costs ONE rebuild, where two independent timers would cost two.
+// (2) The trigger is the BAND, not the zoom, and hatchBandForZoom quantises
+// to whole zoom levels (#599 fix wave), so only FIVE bands are reachable
+// across z9-z22 and a gesture that stays inside one arms no timer at all.
+// MEASURED, not predicted — an earlier revision of this comment asserted
+// "five distinct values / no timer at all" while selection was still
+// CONTINUOUS, where 15 bands are reachable and it was simply false: eight
+// wheel notches from z9 rebuilt 7-8 times. After quantisation the same eight
+// notches rebuild 1-4 times depending on notch size (2 at a 0.25 notch, 1 at
+// 0.125, 4 at a coarse 0.5). Band changes over a full z9->z22 sweep drop
+// from 14 to 4, all at integer crossings.
+// `zoomend` (not `zoom`) is the source, so a continuous pinch/wheel
+// gesture is already coalesced by MapLibre before this debounce sees it.
 const DEPTH_HATCH_DEBOUNCE_MS = 300;
 const HARBOR_SOURCE = 'sc-harbors';
 // Exported so App can hand MapView the same id its raw-tap gate queries: the
@@ -142,7 +169,15 @@ function buildDepthCanvas(meta: MaskMeta, buffer: ArrayBuffer): HTMLCanvasElemen
 // buffer (depthColor.ts's HARD DOMAIN RULE). Built with the CURRENT
 // safetyDepthM at setup time so the cue is correct from the very first
 // paint; later changes are repainted by rebuildHatchCanvas below, debounced.
+//
+// #599: takes `map` purely to read the CURRENT zoom for hatchBandForZoom, so
+// the very first paint already uses the right band. ORDERING IS LOAD-BEARING:
+// map.getZoom() is called only AFTER the `!ctx` bail-out, because jsdom has no
+// 2D canvas backend and the shared test fake exposes no getZoom — every unit
+// test that mounts this component takes the `return null` path and must never
+// reach the call.
 function buildHatchCanvas(
+  map: MaplibreMap,
   meta: MaskMeta,
   buffer: ArrayBuffer,
   safetyDepthM: number,
@@ -154,7 +189,13 @@ function buildHatchCanvas(
   if (!ctx) return null;
   const image = ctx.createImageData(meta.cols, meta.rows);
   image.data.set(
-    buildNavigabilityHatchImageData(new Uint8Array(buffer), meta.rows, meta.cols, safetyDepthM),
+    buildNavigabilityHatchImageData(
+      new Uint8Array(buffer),
+      meta.rows,
+      meta.cols,
+      safetyDepthM,
+      hatchBandForZoom(map.getZoom()),
+    ),
   );
   ctx.putImageData(image, 0, 0);
   return canvas;
@@ -186,8 +227,16 @@ function rebuildHatchCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return; // no 2D backend (jsdom) — matches buildHatchCanvas's own guard
   const image = ctx.createImageData(meta.cols, meta.rows);
+  // #599: same ordering rule as buildHatchCanvas — getZoom() sits behind both
+  // bail-outs above, so jsdom (where the source never exists) never reaches it.
   image.data.set(
-    buildNavigabilityHatchImageData(new Uint8Array(maskBuffer), meta.rows, meta.cols, safetyDepthM),
+    buildNavigabilityHatchImageData(
+      new Uint8Array(maskBuffer),
+      meta.rows,
+      meta.cols,
+      safetyDepthM,
+      hatchBandForZoom(map.getZoom()),
+    ),
   );
   ctx.putImageData(image, 0, 0);
   source.play();
@@ -260,14 +309,14 @@ function setupLayers(
   // verified against a real mid-range device (none available here); the
   // e2e suite elsewhere exercises depth+AIS+route together without a crash,
   // which is weak evidence, not a memory profile. If this turns out to
-  // matter, M8's screen-space fill-pattern alternative (#599, see
-  // depthColor.ts's HATCH_PERIOD_CELLS comment) would also remove this
+  // matter, M8's screen-space fill-pattern alternative (the option #599 did
+  // NOT take — see depthColor.ts's hatchBandForZoom comment) would also remove this
   // second full-resolution raster entirely — not attempted here, since the
   // maintainer's decision for THIS change was explicitly a second
   // COMPOSITED layer, and merging the two canvases is the one thing the
   // HARD DOMAIN RULE separation exists to prevent.
   if (!map.getSource(DEPTH_HATCH_SOURCE)) {
-    const hatchCanvas = buildHatchCanvas(meta, maskBuffer, safetyDepthM);
+    const hatchCanvas = buildHatchCanvas(map, meta, maskBuffer, safetyDepthM);
     if (hatchCanvas) {
       map.addSource(DEPTH_HATCH_SOURCE, {
         type: 'canvas',
@@ -289,9 +338,9 @@ function setupLayers(
             'raster-fade-duration': 0,
             // #492 review M8: MapLibre's default 'linear' resampling
             // smears the hatch's hard-edged stripes into soft gradients —
-            // an ADDITIONAL artifact on top of the documented zoom-scaling
-            // degradation (depthColor.ts's HATCH_PERIOD_CELLS comment),
-            // not a fix for it. 'nearest' at least keeps whatever renders
+            // an ADDITIONAL artifact, independent of the zoom-scaling
+            // degradation #599's hatchBandForZoom addresses (depthColor.ts),
+            // and neither fixes the other. 'nearest' at least keeps whatever renders
             // crisp rather than blurred. SCOPE, measured against
             // maplibre-gl@6.3.0: this governs MAGNIFICATION only —
             // webgl/draw/draw_raster.ts:119 binds the MINIFICATION filter
@@ -405,6 +454,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // #63: default ON, persisted — mirrors RouteLayer's barbs/annotations
   // toggles. An explicit "off" survives reloads; a fresh profile sees depth.
   const [depthVisible, setDepthVisible] = usePersistedToggle('sc-depth-visible', true);
+  // #598 review round 3: whether `.depth-legend` has enough room to render
+  // reachably at all — computed in the `useLayoutEffect` below (not
+  // persisted; this is pure layout, recomputed every time the geometry it
+  // depends on changes). `false` (reachable) is the right INITIAL guess for
+  // the common case — a real first-paint mismatch is closed by
+  // `useLayoutEffect` running before paint, same as the `--sc-depth-
+  // controls-height` write below.
+  const [legendHidden, setLegendHidden] = useState(false);
   // #7: default OFF — ~1,794 points is a dense specialist layer (vs. 33
   // harbor markers) that would clutter the map before the user opts in.
   const [seamarksVisible, setSeamarksVisible] = usePersistedToggle('sc-seamarks-visible', false);
@@ -460,6 +517,29 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     safetyDepthMRef.current = safetyDepthM;
   });
   const setupRef = useRef<() => void>(() => {});
+  // #599: a CHANGE TRIGGER for the hatch rebuild, not the band itself — the
+  // rebuild reads the live zoom straight off the map (behind the jsdom
+  // guards in rebuildHatchCanvas), so what this state has to carry is only
+  // "the band is no longer the one the canvas was painted with". Storing the
+  // band's identity as a string is what makes that work: React bails out of
+  // a setState to an Object.is-equal value, so every zoomend landing inside
+  // the SAME band re-renders nothing and arms no timer — only a genuine
+  // boundary crossing reaches the debounced effect below. An object would
+  // defeat that (a fresh reference every time) and rebuild on every gesture.
+  // Starts null: the setup path already painted the correct band for the
+  // initial zoom, and the first zoomend simply re-confirms it.
+  const [hatchBandKey, setHatchBandKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!map) return;
+    const onZoomEnd = () => {
+      const band = hatchBandForZoom(map.getZoom());
+      setHatchBandKey(`${band.periodCells}/${band.stripeCells}`);
+    };
+    map.on('zoomend', onZoomEnd);
+    return () => {
+      map.off('zoomend', onZoomEnd);
+    };
+  }, [map]);
 
   // Module-cached promise shared with App.tsx's own eager load — no second
   // fetch. Best-effort like App's: a failed fetch just leaves the layers off
@@ -550,9 +630,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     }
   }, [map, styleEpoch, assets, depthVisible]);
 
-  // #492: rebuild the hazard-hatch raster whenever safetyDepthM changes,
+  // #492/#599: rebuild the hazard-hatch raster whenever safetyDepthM OR the
+  // zoom band changes,
   // DEBOUNCED (DEPTH_HATCH_DEBOUNCE_MS — see that constant's own comment for
-  // the interval and why). Also fires once on initial setup (styleEpoch
+  // the interval, the re-measured build cost, and why the two triggers share
+  // ONE timer instead of getting a debounce each). `hatchBandKey` is in the
+  // dependency array purely as that trigger; the band VALUE is re-read from
+  // the map inside rebuildHatchCanvas, so a rebuild can never paint a band
+  // staler than the current camera. Also fires once on initial setup (styleEpoch
   // 0 -> 1), redundantly repainting the SAME data buildHatchCanvas already
   // painted at creation — harmless (idempotent) and simpler than special-
   // casing the first run. `map.getLayer(DEPTH_HATCH_LAYER)` inside the
@@ -560,13 +645,20 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // reload wipes the layer doesn't throw — it just quietly finds nothing to
   // repaint, matching the depthVisible effect's own no-op-when-absent shape.
   useEffect(() => {
-    if (!map || styleEpoch === 0 || !assets) return;
+    // #599 review m7: gated on depthVisible — repainting a 2200x2400 raster
+    // nobody can see is pure cost, and zoom being a trigger makes it a
+    // RECURRING one (4 invisible rebuilds across 8 measured gestures before
+    // this gate). `depthVisible` is a dependency as well as a guard, so
+    // turning the overlay back ON re-runs this and repaints with whatever
+    // safetyDepthM/band changed while it was hidden — the canvas can never
+    // be shown stale, which is what makes skipping the hidden rebuilds safe.
+    if (!map || styleEpoch === 0 || !assets || !depthVisible) return;
     const timer = window.setTimeout(() => {
       if (!map.getLayer(DEPTH_HATCH_LAYER)) return;
       rebuildHatchCanvas(map, assets.maskMeta, assets.maskBuffer, safetyDepthM);
     }, DEPTH_HATCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [map, styleEpoch, assets, safetyDepthM]);
+  }, [map, styleEpoch, assets, safetyDepthM, hatchBandKey, depthVisible]);
 
   // Seamark glyphs (#7) — registered/set once per assets load, independent of
   // the visibility toggle (so the layer is ready to paint the instant the
@@ -700,26 +792,210 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     };
   }, [map, styleEpoch, assets]);
 
+  // #598 review follow-up: publishes `.data-layer-controls`'s LIVE rendered
+  // height as a CSS custom property, so `.depth-legend` (a SIBLING, not a
+  // child — see the return below) can be positioned just below it without
+  // contributing to ITS height. Mirrors lib/useBannerHeight.ts's own
+  // established pattern (ResizeObserver -> `document.documentElement.style.
+  // setProperty`) for the identical reason: `.data-layer-controls`'s
+  // rendered height is EMERGENT, not CSS-authored — it comes from the
+  // global `input, select { min-height: 40px }` rule plus font metrics plus
+  // the narrow+short `flex-direction: row` variant (app.css) — no single
+  // number describes it across every language/viewport/breakpoint, so only
+  // a live measurement can position something after it without guessing.
+  // The compass's OWN height, by contrast, IS a stable CSS-authored
+  // constant (2.75rem/44px, `.compass-control .compass-btn`) — only this
+  // one value needs measuring, not two.
+  //
+  // #598 review round 3 (Major 1 + Minor 1): this effect ALSO decides
+  // whether `.depth-legend` is reachable at all, via the `legendHidden`
+  // state below, set on the native `hidden` attribute in the return JSX.
+  // A pure-CSS `max-height` clip was tried first and rejected TWICE —
+  // app.css's own `.depth-legend` comment carries the full story — because
+  // CSS `calc()` can neither branch on which of `.map-stack-tl`'s THREE
+  // layout modes (wide / narrow column / narrow-and-short row) is live, nor
+  // remove a 0-height element from the accessibility tree or tab order.
+  // Both are ordinary `if`/DOM-attribute operations in JS, so the whole
+  // reachability decision (not just the height measurement) moved here.
+  //
+  // `useLayoutEffect`, not `useEffect`: matches useBannerHeight's own
+  // reasoning (PR #382 review) — both the position AND the reachability of
+  // this element must be correct from the very first paint, and a plain
+  // `useEffect` fires AFTER paint, leaving a frame where a stale/default
+  // state would show.
+  useLayoutEffect(() => {
+    if (typeof ResizeObserver !== 'function') return; // jsdom guard, matches useBannerHeight.ts
+    const el = document.querySelector<HTMLElement>('.data-layer-controls');
+    if (!el) return;
+    // MEASURED bug caught before shipping: `ResizeObserverEntry.contentRect`
+    // reports the CONTENT box (padding excluded) — `.data-layer-controls`
+    // has `padding: 0.5rem` (16px total), so reading `contentRect.height`
+    // under-measured by exactly that 16px (97.59px vs the real 113.59px
+    // border-box height, confirmed live). `useBannerHeight.ts` reads the
+    // same `contentRect` field safely only because `.banner-area` happens
+    // to carry zero padding — that isn't a property of the TECHNIQUE, it's
+    // a property of THAT element, so it doesn't generalise here. Read
+    // `getBoundingClientRect().height` (border-box, matching `offsetHeight`
+    // and everything `.depth-legend`'s `top` calc needs to clear) on every
+    // callback instead of trusting the entry.
+    //
+    // The SAME query string as app.css's own short-landscape rule
+    // (`@media (max-width: 1023.98px) and (max-height: 500px) and
+    // (orientation: landscape)`) — kept as a literal, not a shared constant,
+    // because CSS media-query text and a JS `matchMedia` argument have no
+    // common module to live in; re-check this string against that rule's
+    // own text if either ever changes (NAMED COUPLING).
+    const SHORT_LANDSCAPE_QUERY =
+      '(max-width: 1023.98px) and (max-height: 500px) and (orientation: landscape)';
+    // Read directly rather than through `--sc-banner-height`
+    // (`useBannerHeight.ts`'s own custom property): that property is
+    // written by a SEPARATE `ResizeObserver` instance owned by that other
+    // hook, observing the SAME `.banner-area` element this effect also
+    // observes below — MEASURED live (round 3 self-review, the tab-strip-
+    // overlap regression test): when `.banner-area` grows from 0 to 48px on
+    // a real cold load, this component's own resize callback can fire
+    // before that OTHER observer's callback has written the fresh value,
+    // so reading the property here saw a stale `0px` and computed a budget
+    // that was `>=44` when the real, settled budget was `14.56`. Reading
+    // `bannerEl`'s own `getBoundingClientRect().height` sidesteps the
+    // cross-observer ordering entirely — same technique this effect
+    // already uses for `.data-layer-controls`'s own height, above.
+    const bannerEl = document.querySelector<HTMLElement>('.banner-area');
+    const recompute = () => {
+      document.documentElement.style.setProperty(
+        '--sc-depth-controls-height',
+        `${el.getBoundingClientRect().height}px`,
+      );
+      // Wide layout: no sheet-overlay ceiling exists at all (app.css's own
+      // wide-layout comment on `.depth-legend-body`) — always reachable.
+      if (window.matchMedia('(min-width: 1024px)').matches) {
+        setLegendHidden(false);
+        return;
+      }
+      // Short landscape: `.map-stack-tl` flips to `flex-direction: row`
+      // (app.css), putting the compass BESIDE the toggles instead of below
+      // them — `.depth-legend`'s own `top` (60px past the compass, in
+      // COLUMN terms) no longer corresponds to real free space in that
+      // layout. Rather than derive a second, row-mode geometry for a
+      // control that would be sharing an already cramped strip with the
+      // compass, this repo's own `#231` fix already spends this viewport
+      // class's scarce height budget on the compass and the two PRIMARY
+      // toggles; the legend simply does not fit there and says so.
+      if (window.matchMedia(SHORT_LANDSCAPE_QUERY).matches) {
+        setLegendHidden(true);
+        return;
+      }
+      // Narrow column layout: mirrors `.map-stack-tl`'s own proven-safe
+      // ceiling (`calc(100dvh - var(--sc-banner-clear-top) - 55vh -
+      // 0.5rem)`, app.css) minus everything `.depth-legend` itself sits
+      // below within that budget (the compass's own 60px offset, above,
+      // plus the 44px touch target this checks room FOR) — the identical
+      // arithmetic app.css's rejected CSS draft used, just able to branch
+      // on layout mode and produce a boolean instead of an unenforceable
+      // clip. `bannerEl` may not be mounted yet (defensive only —
+      // `.banner-area` renders unconditionally, App.tsx) or may genuinely
+      // be 0px tall (no banner showing); either way `0` is the CORRECT
+      // real measurement, not a fallback standing in for one — this reads
+      // `.banner-area`'s own live geometry directly (see this effect's own
+      // comment above `bannerEl`'s declaration), never the generous 176px
+      // constant, which is for a DIFFERENT failure mode (no measurement
+      // possible at all) that does not apply here.
+      const bannerHeightPx = bannerEl ? bannerEl.getBoundingClientRect().height : 0;
+      const bannerClearTopPx = 56 + bannerHeightPx; // 3.5rem + banner
+      const budgetPx =
+        window.innerHeight -
+        bannerClearTopPx -
+        window.innerHeight * 0.55 -
+        8 - // 0.5rem
+        el.getBoundingClientRect().height -
+        60; // gap + compass + gap, matching `.depth-legend`'s own `top`
+      setLegendHidden(budgetPx < 44);
+    };
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    // `.banner-area` independently changes the SAME budget (a banner can
+    // mount/unmount/resize without `.data-layer-controls` itself changing
+    // size) — observe it too, same ResizeObserver instance. `bannerEl` was
+    // already queried above, before `recompute`'s own closure, so both this
+    // observation and the read inside `recompute` share the SAME node.
+    if (bannerEl) ro.observe(bannerEl);
+    // A pure viewport resize/rotation (no `.data-layer-controls` or
+    // `.banner-area` size change) also moves the budget — `window.innerHeight`
+    // and the media queries above both depend on it directly.
+    window.addEventListener('resize', recompute);
+    // Same reasoning as useBannerHeight.ts's own first-callback comment: the
+    // initial ResizeObserver callback is queued for a later frame, not
+    // delivered synchronously, so measure once immediately too.
+    recompute();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', recompute);
+    };
+  }, []);
+
   // Always-mounted control cluster — top-LEFT of the map, so it can never
   // collide with RouteLayer's plan-gated cluster at the top-right (app.css).
   return (
-    <div className="data-layer-controls">
-      <label>
-        <input
-          type="checkbox"
-          checked={depthVisible}
-          onChange={(e) => setDepthVisible(e.target.checked)}
-        />
-        {t('map.depth.toggle')}
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={seamarksVisible}
-          onChange={(e) => setSeamarksVisible(e.target.checked)}
-        />
-        {t('map.seamarks.toggle')}
-      </label>
-    </div>
+    <>
+      <div className="data-layer-controls">
+        <label>
+          <input
+            type="checkbox"
+            checked={depthVisible}
+            onChange={(e) => setDepthVisible(e.target.checked)}
+          />
+          {t('map.depth.toggle')}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={seamarksVisible}
+            onChange={(e) => setSeamarksVisible(e.target.checked)}
+          />
+          {t('map.seamarks.toggle')}
+        </label>
+      </div>
+      {/* #598 review follow-up: a SIBLING of `.data-layer-controls`, not a
+          child of it — a Fragment return with two roots, so App.tsx's
+          `<div className="map-stack-tl"><DataLayers/><CompassControl/>
+          </div>` places this as a THIRD `.map-stack-tl` child. Two prior
+          shapes were tried and rejected, in order:
+            1. Nested inside `.data-layer-controls`, full 44px touch target
+               — pushed `.map-stack-tl`'s own measured height +49px at
+               375x667 (166px -> 215px), suppressing ScaleBar (a REAL e2e
+               regression, `compass.spec.ts`'s #208 test).
+            2. Nested, shrunk to a 20px row to buy back that height — passed
+               the layout tests but landed a SUB-MINIMUM touch target
+               (WCAG 2.5.8 requires >=24x24 CSS px; this is a control meant
+               to be tapped on a boat, one-handed, in motion).
+          This third shape spends neither: taken OUT of
+          `.data-layer-controls`'s flex flow entirely (so it costs
+          `.map-stack-tl` ZERO measured height, structurally, not by a tuned
+          number) via `position: absolute` in app.css, positioned BELOW the
+          compass. `.map-stack-tl` already has `position: absolute` itself
+          (app.css) — already a valid containing block, no extra wrapper —
+          and sets no `overflow`, so an over-height legend can extend past
+          its own box unclipped, same as the compass already can (that
+          rule's own comment). Reading order stays sensible either way:
+          toggles, then this legend, then the compass.
+          #598 review round 3: `hidden={legendHidden}` (native HTML
+          attribute, set by the `useLayoutEffect` above) is what actually
+          decides reachability now — `display: none`, out of the
+          accessibility tree, unfocusable, all at once. See that effect's
+          own comment for the full derivation across all three layout
+          modes; app.css's `.depth-legend` comment records why a CSS-only
+          `max-height` clip was tried first and rejected. */}
+      <details className="depth-legend" hidden={legendHidden}>
+        <summary>{t('map.depth.legend.title')}</summary>
+        <div className="depth-legend-body">
+          <p className="depth-legend-row">
+            <span className="depth-legend-swatch" aria-hidden="true" />
+            {t('map.depth.legend.hatchLabel')}
+          </p>
+          <p>{t('map.depth.legend.basis')}</p>
+          <p>{t('map.depth.legend.caveat')}</p>
+        </div>
+      </details>
+    </>
   );
 }

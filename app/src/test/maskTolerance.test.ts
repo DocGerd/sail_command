@@ -16,6 +16,8 @@ import {
 } from '../lib/boatDepth';
 import { SAFETY_DEPTH_FIELD } from '../components/OptionsPanel';
 import { depthMaskCaveatVars } from '../lib/depthDisclosure';
+import { buildNavigabilityHatchImageData } from '../lib/depthColor';
+import { marginalDepthThresholdM } from '../lib/shallowExposure';
 import type { Lang } from '../i18n';
 
 // #455: pipeline/build_mask.py's TOLERANCE_M is the structural bound behind
@@ -42,6 +44,11 @@ const BUILD_MASK_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../pipeline/build_mask.py',
 );
+
+// #612: the SECOND cross-artifact subject in this file — see the block at the
+// bottom for why the map's per-cell hatch criterion and the route notice's
+// threshold are one inequality that needs a keeper.
+const DEPTH_COLOR_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '../lib/depthColor.ts');
 
 // F6/F7: normalise EVERY derived float the SAME way. IEEE754 residue hits
 // some of these operand pairs and not others — `3.0 - 0.9 === 2.1` is exact
@@ -430,5 +437,136 @@ describe('#54: per-boat catalogue generalises the #455 drift guard (spec C.8)', 
     // Reported, NOT failed — spec C.8 R8. The Salona 45 sits at exactly 0.0 m.
     console.info('[R8] zero floor-margin boats:', zero);
     expect(Array.isArray(zero)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #612: the MARGINAL-cell criterion has TWO consumers and no compiler between
+// them.
+//
+//   1. depthColor.ts's buildNavigabilityHatchImageData (#492, default ON):
+//      `marginal[b] = cautiousDepthLowerBoundM(byteToDepthM(b)) < safetyDepthM`
+//      — the per-CELL disclosure, painted as sc-depth-hatch on the map.
+//   2. shallowExposure.ts's marginalDepthThresholdM (#612): `depth <
+//      gate + MASK_TOLERANCE_M`, on the mask's decimetre grid — the
+//      ROUTE-scoped disclosure, the quiet line in the results panel.
+//
+// They are one inequality written two ways (cautiousDepthLowerBoundM floors
+// `d - T` to a decimetre, so `floor10(d - T) < G` iff `d < G + T`). If they
+// drift, the route line counts exposure over cells the map does not hatch, or
+// the reverse — a user-visible contradiction between two views of ONE hazard,
+// in safety copy, with nothing else to catch it.
+//
+// The twin is BEHAVIOURAL, against the real exported LUT builder rather than a
+// re-derivation of it — the #50 equivalence-tautology rule: a check that
+// recomputes the criterion it is checking always passes. The needle is
+// marginalDepthThresholdM's own predicate; the haystack is the RGBA buffer
+// #492 actually paints.
+// ---------------------------------------------------------------------------
+
+// The reachable gate domain, from SAFETY_DEPTH_FIELD itself rather than
+// hand-typed: min 2.0 (the Elan's, via safetyDepthFieldFor) through max 10, in
+// 0.1 steps. Agreement has to be a property of the DOMAIN — sampling one gate
+// would have missed every divergence this guard exists to catch, all of which
+// sit on a single boundary byte at a single gate.
+const REACHABLE_GATE_DM: number[] = [];
+for (
+  let dm = Math.round(Math.min(...BOATS.map((b) => minSafetyDepthM(b))) * 10);
+  dm <= Math.round(SAFETY_DEPTH_FIELD.max * 10);
+  dm++
+) {
+  REACHABLE_GATE_DM.push(dm);
+}
+
+/**
+ * Which BYTES depthColor.ts's shipped hatch LUT flags marginal at `gateM`,
+ * recovered from the RGBA buffer it actually produces.
+ *
+ * 8 rows are needed, not 1: the hatch is a sparse diagonal stripe gated on
+ * `(outRow + col) % HATCH_PERIOD_CELLS < HATCH_STRIPE_WIDTH_CELLS`, so at any
+ * single row only 2 of every 8 columns can paint. Over 8 rows every column
+ * hits the stripe at least once, so a byte appears here iff the LUT flagged
+ * it. Every row carries the same byte-per-column pattern, which is what makes
+ * that true. The 8 is deliberately NOT imported — HATCH_PERIOD_CELLS is
+ * private to depthColor.ts, and this file must not gain a second copy of its
+ * arithmetic; the "spans every phase" property is asserted directly by the
+ * hand-derived row below instead.
+ */
+function hatchedBytesAt(gateM: number): Set<number> {
+  const ROWS = 8;
+  const COLS = 256;
+  const data = new Uint8Array(ROWS * COLS);
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) data[r * COLS + c] = c;
+  const rgba = buildNavigabilityHatchImageData(data, ROWS, COLS, gateM);
+  const hatched = new Set<number>();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (rgba[(r * COLS + c) * 4 + 3] > 0) hatched.add(c);
+    }
+  }
+  return hatched;
+}
+
+describe('#612: the marginal-cell criterion agrees between the map hatch and the route notice', () => {
+  it('fails CLOSED: depthColor.ts still derives its LUT from cautiousDepthLowerBoundM', () => {
+    // Shape guard in this file's established style (see readToleranceM above):
+    // an explicit not.toBeNull() BEFORE any value comparison, so a criterion
+    // that is renamed, reformatted or moved out of that file reds loudly here
+    // instead of leaving the behavioural twin below silently measuring
+    // something else. Anchored on the assignment, not on prose.
+    const src = readFileSync(DEPTH_COLOR_PATH, 'utf8');
+    const match = src.match(
+      /^[ \t]*marginal\[b\]\s*=\s*cautiousDepthLowerBoundM\(byteToDepthM\(b\)\)\s*<\s*safetyDepthM/m,
+    );
+    expect(
+      match,
+      "depthColor.ts's marginal[] LUT assignment not found (renamed, reformatted, or moved) — " +
+        're-derive shallowExposure.ts::marginalDepthThresholdM against the new form before ' +
+        'updating this regex; the two are one inequality with no compiler between them',
+    ).not.toBeNull();
+  });
+
+  it('the recovery is non-vacuous: hand-derived hatched sets at both ends of the gate domain', () => {
+    // Hand-derived from the criterion, NOT read back from either
+    // implementation. At a 10.0 m gate the threshold is 10.0 + 0.9 = 10.9 m,
+    // so bytes 1..108 (0.1..10.8 m) are marginal and 109 (10.9 m) is not; at
+    // 2.0 m it is 2.9 m, so bytes 1..28. Byte 0 is land and never hatched;
+    // byte 255 decodes to 25.4 m, whose cautious floor 24.5 m is above every
+    // reachable gate. This row is what licenses the domain sweep below: it
+    // proves hatchedBytesAt() can see a byte at EVERY stripe phase and that
+    // the sets are neither empty nor everything.
+    const wide = hatchedBytesAt(10.0);
+    expect([...wide].sort((a, b) => a - b)).toEqual(Array.from({ length: 108 }, (_, i) => i + 1));
+    const narrow = hatchedBytesAt(2.0);
+    expect([...narrow].sort((a, b) => a - b)).toEqual(Array.from({ length: 28 }, (_, i) => i + 1));
+    expect(wide.has(0)).toBe(false);
+    expect(wide.has(255)).toBe(false);
+  });
+
+  it('agrees on EVERY byte at EVERY reachable gate', () => {
+    const disagreements: string[] = [];
+    for (const gateDm of REACHABLE_GATE_DM) {
+      const gateM = gateDm / 10;
+      const hatched = hatchedBytesAt(gateM);
+      const thresholdM = marginalDepthThresholdM(gateM);
+      // Bytes 1..254 are the real depth readings (b/10 metres). Byte 0 (land
+      // OR unsurveyed OR drying, indistinguishable — #597) and byte 255 (the
+      // >= 25.4 m cap) are OUT OF DOMAIN for a solver-validated leg, which
+      // can only traverse cells at or above its own gate, and are asserted
+      // separately: the hand-derived row above pins that neither is ever
+      // hatched, and shallowExposure.test.ts pins that a capped cell never
+      // counts as marginal at any reachable gate.
+      for (let b = 1; b <= 254; b++) {
+        const expected = b / 10 < thresholdM;
+        if (hatched.has(b) !== expected) {
+          disagreements.push(`gate ${gateM} m / byte ${b} (${b / 10} m): hatch=${hatched.has(b)}`);
+        }
+      }
+    }
+    // Report the disagreements themselves, never a bare boolean — at 3am in
+    // CI the failing gate/byte pair is the whole diagnosis (CLAUDE.md's
+    // assert-the-value rule). The naive `safetyDepthM + MASK_TOLERANCE_M`
+    // form reds this with 18 entries, starting at gate 3.2 m / byte 41.
+    expect(disagreements).toEqual([]);
   });
 });

@@ -119,7 +119,14 @@ const NON_CONTIGUOUS_SHALLOW_LEGS: Leg[] = [
 ];
 
 function makePlan(
-  over: { id?: string; distanceNm?: number; rigRecommendation?: RigRecommendation } = {},
+  over: {
+    id?: string;
+    distanceNm?: number;
+    rigRecommendation?: RigRecommendation;
+    // #540: defaults to true (every pre-existing test's assumption); pass
+    // false to exercise the budget-truncated disclosure path.
+    comparisonComplete?: boolean;
+  } = {},
 ): Plan {
   const distanceNm = over.distanceNm ?? GENOA_RESULT.distanceNm;
   return {
@@ -146,7 +153,7 @@ function makePlan(
         { sailId: 'fock', result: null, reason: 'calm-motor-off' },
       ],
       recommended: 'genoa',
-      comparisonComplete: true,
+      comparisonComplete: over.comparisonComplete ?? true,
       snappedOrigin: { lat: 54.79, lon: 9.43 },
       snappedDestination: { lat: 54.85, lon: 10.52 },
       // #259: only set when a test explicitly asks for it — most tests
@@ -1170,6 +1177,40 @@ describe('PlannerPanel', () => {
       const chip = container.querySelector('.chip-faster-rig');
       expect(chip?.textContent).toBe(
         'The sails were not compared for this passage, so no faster rig is claimed',
+      );
+    });
+
+    // #540 spec §E.3: same 'not-compared' verdict as the row above, but the
+    // DISCRIMINATING control (comparisonComplete: false) — the
+    // budget-truncated sentence must render INSTEAD of the generic
+    // rigNotCompared one used by the #553 row.
+    it('#540: a not-compared verdict with comparisonComplete false renders the budget-truncated chip, not the generic one', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan: makePlan({
+          rigRecommendation: { kind: 'not-compared' },
+          comparisonComplete: false,
+        }),
+        rig: 'genoa',
+      });
+      const chip = container.querySelector('.chip-faster-rig');
+      expect(chip?.textContent).toBe(
+        'The search ran out of time before comparing both sails, so no faster rig is claimed',
+      );
+    });
+
+    // #540: comparisonComplete true (the #553 row's default) must never
+    // show the budget-specific sentence — pinned explicitly rather than
+    // relying on the #553 row above staying byte-exact by coincidence.
+    it('#540: a not-compared verdict with comparisonComplete true never shows the budget-truncated chip', () => {
+      const { container } = renderPanelReturningContainer({
+        planning: { phase: 'idle' },
+        plan: makePlan({ rigRecommendation: { kind: 'not-compared' } }),
+        rig: 'genoa',
+      });
+      const chip = container.querySelector('.chip-faster-rig');
+      expect(chip?.textContent).not.toBe(
+        'The search ran out of time before comparing both sails, so no faster rig is claimed',
       );
     });
   });

@@ -97,9 +97,9 @@ verifying signatures — they are conjuncts, not alternatives. The second
 conjunct is met today: the process is documented below and the maintainer's
 signing key is registered and retrievable at the endpoint named below (query
 it yourself — `gh api users/DocGerd/ssh_signing_keys` or the plain URL — it
-is not a promise). The first conjunct — an actual signed tag — is met once
-`v0.8.0` itself ships; **both** conjuncts, together, are what satisfy the
-criterion, not the tag alone.
+is not a promise). The first conjunct — an actual signed tag — has been met
+since `v0.8.0` shipped on 2026-08-03; **both** conjuncts, together, are what
+satisfy the criterion, not the tag alone.
 
 **Live, as of `v0.8.0`:** release tags are signed with the maintainer's SSH
 signing key (`gpg.format = ssh` — GitHub's lowest-friction signing option,
@@ -222,9 +222,9 @@ requiring no GPG toolchain):
   ```
 
   A tag that shows the badge reports `"verified": true, "reason": "valid"`.
-  Run on 2026-08-19 across every signed tag then published (`v0.8.1` through
-  `v0.11.0`), each returned `verified: true` — on real release tags, not just
-  the throwaway probe tag the fix was originally proven against.
+  Exercised against real release tags, not just the throwaway probe tag the
+  fix was originally proven against: `v0.12.0` and `v0.12.1` each returned
+  `verified: true, reason: "valid"` when checked on 2026-08-20.
   The v0.8.0 tag is a documented exception: it was signed under an email
   address not
   registered on the maintainer's GitHub account, so GitHub shows it
@@ -293,8 +293,13 @@ If a report turns out to affect an upstream dependency rather than this
 project's own code, the maintainer forwards it upstream, updates the dependency
 once a fix is available, and says so in the thread.
 
-**No vulnerability has been reported or resolved in this project to date**, so
-this process has not yet been exercised in anger. It is written down so the
+**No vulnerability has been reported through this channel, and none has been
+found in SailCommand's own code, to date**, so this process has not yet been
+exercised in anger. The `### Security` changelog entries naming an advisory
+identifier — GHSA-v2hh-gcrm-f6hx (`fast-uri`, #90/#91) and
+GHSA-mh99-v99m-4gvg (`brace-expansion`, #281) — were Dependabot findings in
+transitive dependencies, handled by the upstream path described just above,
+not reports through this process. It is written down so the
 first time is not improvised.
 
 ## Branch protection & code review

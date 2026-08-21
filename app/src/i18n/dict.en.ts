@@ -216,6 +216,22 @@ export const en = {
   // than that the sails are equal, because that is the honest difference.
   'route.rigNotCompared':
     'The sails were not compared for this passage, so no faster rig is claimed',
+  // #540 spec §E.3: a budget-exhausted sail is ALSO a 'not-compared' verdict
+  // (rigVerdictKey collapses it onto rigNotCompared above), but a stalled
+  // search reads very differently from "nothing to compare" — the
+  // ★-suppressed recommendation is still computed over one completed sail
+  // only, and without this sentence that reads as a finished two-sail
+  // comparison rather than a truncated one. Rendered instead of
+  // rigNotCompared exactly when PlanResultOk.comparisonComplete is false
+  // (resultVerdictKey in lib/resultSummary.ts derives which key to use).
+  // Per the DocGerd comment on #540: comparisonComplete is computed PER
+  // TIER, not per plan — a plan that fell back to an earlier tier after a
+  // budget-truncated attempt can still report comparisonComplete: true for
+  // the tier that actually produced the result. This sentence claims only
+  // "the reported comparison did not finish", not "nothing anywhere in this
+  // plan's search was cut short".
+  'route.comparisonIncomplete':
+    'The search ran out of time before comparing both sails, so no faster rig is claimed',
   'route.staleForecast':
     'Forecast is more than 12 hours old relative to departure — wind conditions may have changed since it was fetched.',
   // #504 fix wave 4: restructured from ONE dense paragraph into three parts
@@ -315,6 +331,46 @@ export const en = {
   // CLOSED — "poses no risk" still evades it.
   'route.shallow.caveat':
     'Chart data can both understate and overstate real depths, so this warning is not exhaustive: a section without it is not guaranteed to be clear. Verify the highlighted sections against official charts and your depth sounder.',
+  // #612 (the implementation half of #455): the ROUTE-SCOPED marginal-depth
+  // notice, for a route that did NOT relax. Everything above in this
+  // `route.shallow.*` family renders only when #53's relaxation tier fired
+  // (planRoute.ts's three flagShallowLegs call sites all sit inside
+  // `if (relaxed !== null)`), so before this key an ordinary route disclosed
+  // nothing at all about the ~10,746 gate-crossing cells #455 measured.
+  //
+  // TRIGGER: lib/shallowExposure.ts's marginalExposureNm — cells the shipped
+  // mask charts at or above the gate but whose more cautious reading of the
+  // same EMODnet product falls below it. NOT the shipped
+  // `route.shallow.exposure` threshold, which measures charted-below-gate
+  // distance and MEASURES 0.0 nm on 67/67 non-relaxed plans (#455 spike §9).
+  // ESCALATION to `.noticeSevere`: `safetyDepthM - MASK_TOLERANCE_M <
+  // boat.draftM`, the same pairing ShallowWarning already uses. False at
+  // every catalogue boat's own default gate by construction, so it fires only
+  // once a user has lowered their safety depth — which is exactly what the
+  // severe clause names ("at this setting"), never a general claim.
+  //
+  // TWO CLAUSES DELIBERATELY ABSENT, each because it would be FALSE or
+  // misleading:
+  // 1. No claim that the CHARTED reading stays at or above the gate. True of
+  //    the mask the plan was routed against, but this walk runs against the
+  //    CURRENTLY LOADED mask (lib/shallowExposure.ts's own residual, shared
+  //    with #505's exhaustiveMinDepth), so a mask rebuild could falsify it.
+  //    The sentence states only what was actually measured.
+  // 2. No reassurance in the non-severe branch that the cautious reading
+  //    stays above the draft. It is true for a non-relaxed route at a default
+  //    gate, but reads as the general claim "below-draft needs a
+  //    user-lowered gate" — which the app's own `about.caveats.depthMask`
+  //    contradicts: a RELAXED route reaches below the draft at DEFAULT
+  //    settings, disclosed by the banner above rather than by this line.
+  //
+  // Never asserts chart truth: "a more cautious reading of the charted depth
+  // data" names WHICH of the two readings of one product the figure bounds,
+  // and that wording is lifted verbatim from `route.shallow.lead` above so
+  // the same hazard reads the same way wherever it appears.
+  'route.marginal.notice':
+    '{dist} of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of {requested} m.',
+  'route.marginal.noticeSevere':
+    "Caution: {dist} of this route crosses water that a more cautious reading of the charted depth data puts below your safety depth of {requested} m — at this setting that reading can fall below this boat's {draft} m draft.",
   'route.totals.distance': 'Distance',
   'route.totals.duration': 'Duration',
   'route.totals.eta': 'ETA',
@@ -394,6 +450,39 @@ export const en = {
   // OF the number, never alongside it.
   'profile.minDepthUnknown': 'min. — unknown',
   'map.depth.toggle': 'Water depths',
+  // #598: collapsible legend for the #492 navigability hatch, default
+  // collapsed, rendered inside .data-layer-controls so it's reachable
+  // without a plan (the hatch itself has no other toggle/opt-in — it rides
+  // depthVisible). Covers the HATCH SYMBOL only, never the absolute
+  // depth-ramp colours (out of scope per the maintainer ruling on #598).
+  // Deliberately says "cautious reading", never "shallow water" — the hatch
+  // is a cautious-reading indicator, not a shallow-water one, and can flag
+  // water that is in fact deep enough (depthColor.ts's own doc comment on
+  // buildNavigabilityHatchImageData has the full derivation). The basis
+  // clause states the CONSERVATIVE mechanism without hardcoding
+  // MASK_TOLERANCE_M's 0.9 m literal in prose — see mask.ts for that
+  // constant if a numeric citation is ever needed here.
+  'map.depth.legend.title': 'Legend',
+  'map.depth.legend.hatchLabel': 'Cautious-reading hatch',
+  'map.depth.legend.basis':
+    'Diagonal hatching flags water where the more cautious of the two depth readings behind the colour overlay could fall below your safety depth — even where the shown colour still looks clear. It can flag water that turns out to be deep enough; that trade-off is deliberate, so the hatching favours over-warning rather than looking clear when it might not be.',
+  // #597: the caveat this legend was created to carry — unsurveyed/drying
+  // water (mask byte 0) is indistinguishable from land and gets no cue at
+  // all, so its ABSENCE must never read as "clear". Kept as its own
+  // sentence/key rather than folded into the basis paragraph above so a
+  // future edit to one cannot silently drop the other.
+  //
+  // PR #625 self-review Major 1: the first version of sentence 1 said this
+  // water "looks the same as dry land" — false, and false in the DANGEROUS
+  // direction. depthColor.ts:82 returns fully transparent for byte 0 and the
+  // hatch LUT loop (depthColor.ts:243) starts at b=1, so the app paints
+  // NOTHING over byte 0 either way — what a user actually sees there is the
+  // basemap alone, i.e. ORDINARY BLUE WATER (OSM land polygons don't cover
+  // unsurveyed water or drying flats), not anything land-coloured. The old
+  // wording handed the user an inverted detection heuristic ("scan for
+  // land-like patches"); #597's own issue text states the correct direction.
+  'map.depth.legend.caveat':
+    'Unsurveyed and drying water carries no hatching either, and nothing else marks it, so it looks like ordinary water. Absence of hatching is not a guarantee the water is clear — it may simply be a place with no data.',
   // Seamarks / aids-to-navigation overlay (#7) — default OFF, opt-in.
   'map.seamarks.toggle': 'Seamarks',
   'seamark.popover.type': 'Type',
