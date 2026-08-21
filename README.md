@@ -66,14 +66,18 @@ installs as a standalone icon and works fully offline after the first visit
   pick a departure time within the forecast horizon. A water-depths overlay
   shades the bathymetry while you plan (shallows warm, deep water fading
   out), and hatches water whose cautious, worst-case reading falls below
-  your safety depth; it is on by default and can be toggled off.
+  your safety depth; it is on by default and can be toggled off. A
+  collapsible legend below the map's layer controls, collapsed by default,
+  explains what the hatch does and does not mark.
 - The router fetches hourly wind, then computes the fastest sailable route
   twice — once per foresail of the selected boat — and recommends the faster
   (marked ★). Where the two tables cannot honestly be ranked it says so
   instead of naming a winner: on the two fleet boats both tables are
   *estimated* and differ only by a documented overlay ramp rather than by
-  anything about the hull, so no faster sail is claimed. Tacks and gybes are
-  priced as a time penalty inside the routing cost, not bolted on afterwards.
+  anything about the hull, so no faster sail is claimed. It says so again when
+  the search ran out of time before both sails were compared. Tacks and gybes
+  are priced as a time penalty inside the routing cost, not bolted on
+  afterwards.
 - Land and depth are respected against a configurable safety depth, whose
   default is the selected boat's draft plus the depth mask's 0.9 m tolerance
   — 3.0 m for the 2.1 m-draft Salona 45 and Salona 44, 2.8 m for the 1.9 m
@@ -124,14 +128,15 @@ npm --prefix app/ run build                      # production build to app/dist
 ```
 
 `npm run test` runs the full unit/property battery (polar interpolation,
-isochrone routing, mask queries, persistence, UI) — 2032 tests across 143
-files as of `04384c2` (2026-08-19).
+isochrone routing, mask queries, persistence, UI) — 2136 tests across 145
+files as of `5b2032d` (2026-08-20).
 `npm run e2e` builds the app and drives it with Playwright, including a
 true offline reload against a killed preview server.
 
 Timeout policy: solver-heavy test files set generous file-level timeouts
-(`vi.setConfig({ testTimeout: 120_000 })`; the seeded property suite carries
-900 s). CI is slower than dev machines, but not by one flat multiplier:
+(imported from `app/src/test/timeouts.ts` — `SOLVER_TEST_TIMEOUT_MS`, and the
+seeded property suite's 900 s). CI is slower than dev machines, but not by
+one flat multiplier:
 measured 2026-08-03 (#341) for the vitest unit suite, `npm run test` ran
 249.8 s local vs ~515–535 s on CI (~2.1×), and `npm run test:coverage` ran
 ~983–1029 s local vs 2558 s on CI (~2.5×) — coverage instrumentation is a
@@ -220,6 +225,14 @@ data; the code license is covered in the [License](#license) section below.
 - Only 33 curated harbors are included; a handful of shallow/narrow
   approaches (Schlei fairway, Dyvig channel, Gråsten bridge) remain
   disconnected from the routable mask at sub-cell resolution.
+- The depth mask can read deeper than the survey supports: a route that
+  stays inside your safety depth can still cross water that a more cautious
+  reading of the same bathymetry puts below it. The app says how far, per
+  route, on both the Plan and Routes tabs. Unsurveyed and drying water
+  carries no hatching at all and looks like ordinary water, so absent
+  hatching is not a guarantee the water is clear
+  ([#455](https://github.com/DocGerd/sail_command/issues/455),
+  [#597](https://github.com/DocGerd/sail_command/issues/597)).
 - Two of the three boats — the Salona 44 *SPEEDY GO!* and the Elan Impression
   444 *PIRANJA* — carry **estimated** polar tables scaled from the Salona 45's
   certificate rather than measured data, and their drafts are the model's

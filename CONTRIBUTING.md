@@ -168,16 +168,18 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.13.0` — the next release.
-- `v0.14.0` — the release after next.
+- `v0.13.0` — this cut; its milestone closes when the release PR merges and
+  the tag is pushed.
+- `v0.13.1` — the release after it, a PATCH cut (see the PATCH exception below).
+- `v0.14.0` — the next MINOR release.
+- `v0.15.0` — opened fresh at this cut, per the roll-forward convention
+  below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
 `v0.4.0` through `v0.12.0` are closed (plus the `v0.5.1` and `v0.12.1`
-patch milestones). `v0.13.0` is open and scoped as the next release
-milestone, and `v0.14.0` was opened fresh at the `v0.12.0` cut per the
-roll-forward convention below. Milestone state closes only once the
-release PR merges and the tag is pushed, so
+patch milestones). A milestone closes only once its release PR merges and
+the tag is pushed, per the roll-forward convention below, so
 `gh api repos/DocGerd/sail_command/milestones` is the fact, not this
 sentence. The `v0.8.1` patch release (documentation-only) shipped
 on 2026-08-04 and, per the PATCH exception below, carries no milestone of
@@ -375,8 +377,9 @@ distinguishing fact (is the *key* registered? is the *email* registered?)
 has to be checked separately at `github.com/settings/keys` (the list of
 **registered** Signing Keys — `github.com/settings/ssh/new` is the add-a-key
 *form*, not the list, and won't tell you what's already registered) and
-`github.com/settings/emails`. `unknown_key` and `not_signing_key` are also
-in the attribution/registration family — both are key-registration gaps
+`github.com/settings/emails`. `unverified_email`, `bad_email`,
+`unknown_key` and `not_signing_key` are also in the
+attribution/registration family — the last two are key-registration gaps
 (an unrecognized key, or one registered only for authentication, not
 signing) routed the same way as case 1 above. Other `reason` values
 (`bad_signature`/`malformed_signature`/`invalid`/`expired_key`/
@@ -389,8 +392,9 @@ set again in every fresh clone, worktree, or successor's machine, or that
 clone will reproduce case (2). The release runbook's §5a now asserts this
 identity before tagging for exactly that reason (`.claude/skills/release/SKILL.md`).
 
-**Recommended pre-flight probe before any real release tag** (cheap and
-side-effect-free — this is exactly what would have caught v0.8.0's gap
+**Run this pre-flight probe before every real release tag** — not merely a
+nice-to-have (cheap and side-effect-free — this is exactly what would have
+caught v0.8.0's gap
 before it shipped): push a signed tag whose name does **not** match
 `v[0-9]*` — so neither `deploy.yml` nor `release.yml` fires — read its
 `.verification` back from the API above, then delete both the local and

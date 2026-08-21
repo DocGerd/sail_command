@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-20
+
+### Added
+
+- The map's depth-overlay controls now include a legend (collapsed by
+  default, reachable without an active plan) explaining the cautious-reading
+  hatch: it flags water where the more cautious of two depth readings could
+  fall below your safety depth, even where the depth color itself still
+  looks clear (#598).
+
+### Fixed
+
+- A route whose sail comparison was cut short by the search budget now says
+  so: the rig-comparison chip on the Routes tab and the compact planning
+  result now show a dedicated "search ran out of time" message instead of
+  the generic no-comparison text, so a one-sail recommendation is never
+  mistaken for a finished two-sail comparison. A legacy stored plan from a
+  narrow pre-fix window that had wrongly kept its faster-rig star despite an
+  incomplete comparison now loses it on re-open (#540).
+- The depth profile chart on the Routes tab now reads the safety depth the
+  active plan was actually solved with, instead of the Boat tab's current
+  safety-depth setting — lowering or raising the setting after planning no
+  longer changes what the chart's safety line shows for an already-computed
+  route (#551).
+- The new depth-hatch legend (#598) states plainly that unsurveyed and
+  drying water carries no hatching at all and looks like ordinary water on
+  the map, so its absence must never be read as "the water is clear" (#597).
+- The depth-navigability hatch now picks its stripe width per zoom band
+  instead of using one fixed cell-space pattern at every zoom, so the
+  stripes stay legible instead of washing out to a faint haze when zoomed
+  out. Measured in a real browser, the on-screen stripe at the app's
+  starting zoom goes from about 1 px to about 8 px, and the wide bands at
+  harbour-approach zoom are halved. Which water the hatch marks is
+  unchanged — this affects only how that marking is drawn (#599).
+- A route that stays within your safety depth now says so when it still
+  crosses water a more cautious reading of the chart puts below that depth,
+  and states how far. Until now only routes the planner had to re-plan at a
+  reduced depth carried any per-route depth warning at all (#612).
+
 ## [0.12.1] - 2026-08-19
 
 ### Added
@@ -737,7 +776,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/DocGerd/sail_command/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/DocGerd/sail_command/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/DocGerd/sail_command/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/DocGerd/sail_command/compare/v0.10.0...v0.11.0
