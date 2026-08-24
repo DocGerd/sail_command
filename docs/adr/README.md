@@ -25,6 +25,9 @@ rather than reusing or renumbering the old one.
 - [0002-pre-1.0-db-migration-low-priority.md](0002-pre-1.0-db-migration-low-priority.md) —
   Pre-1.0.0, local-DB migration is low priority.
 
+This index lists ADRs only — see "Two decision-record locations" below for
+`docs/spikes/`.
+
 ## Two decision-record locations — read both
 
 This repo also has `docs/spikes/`, which predates this directory and holds
