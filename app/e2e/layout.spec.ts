@@ -1195,7 +1195,7 @@ function probeLegendWordBreak(page: Page): Promise<string> {
     // `boundingBox()` cannot see silent overflow (#299) — assert it here.
     if (bodyEl.scrollWidth > bodyEl.clientWidth)
       return `.depth-legend-body overflows: scrollWidth ${bodyEl.scrollWidth} > clientWidth ${bodyEl.clientWidth}`;
-    let longest: { word: string; rects: number } | null = null;
+    let longest: { word: string; rects: number; width: number } | null = null;
     for (const p of Array.from(body.querySelectorAll('p'))) {
       for (const node of Array.from(p.childNodes)) {
         if (node.nodeType !== Node.TEXT_NODE) continue;
@@ -1210,13 +1210,36 @@ function probeLegendWordBreak(page: Page): Promise<string> {
           const range = document.createRange();
           range.setStart(node, m.index);
           range.setEnd(node, m.index + m[0].length);
-          longest = { word: m[0], rects: range.getClientRects().length };
+          const rects = Array.from(range.getClientRects());
+          // Summed, not max: a token split across line boxes has its width
+          // split too, so the total is the width it WOULD need unbroken.
+          longest = {
+            word: m[0],
+            rects: rects.length,
+            width: rects.reduce((a, r) => a + r.width, 0),
+          };
         }
       }
     }
     if (!longest) return '.depth-legend-body rendered no text at all';
     if (longest.rects !== 1)
       return `"${longest.word}" broke across ${longest.rects} line boxes in a ${bodyEl.clientWidth}px column`;
+    // MARGIN, not just absence-of-break — and this row is here because the
+    // obvious weaker guard was MEASURED to pass through the wrong fix.
+    // Dropping the wide `width` while keeping `max-width: none` re-hands
+    // sizing to `.map-stack-tl`'s shrink-to-fit ceiling, which settles at
+    // exactly `longest token + this element's own horizontal chrome` — the
+    // column then equals the token to the pixel, one unbroken rect, and a
+    // break/no-break assertion alone reports GREEN (measured: 1 passed).
+    // That is the hairline regime #638's brief warned about: correct today
+    // by luck, and one font-metric or copy change away from breaking again
+    // with no test able to see it coming. 1.2x is a floor, not the design
+    // point (the shipped 14rem measures 1.72x at 1024x900), chosen well
+    // above the 1.00x the hairline produces and well below what ships, so
+    // it discriminates the two regimes without pinning the exact width.
+    const ratio = bodyEl.clientWidth / longest.width;
+    if (ratio < 1.2)
+      return `"${longest.word}" fits only at ${ratio.toFixed(2)}x: ${longest.width.toFixed(2)}px token in a ${bodyEl.clientWidth}px column — sized by the shrink-to-fit ceiling, not by the wide-layout width`;
     return 'ok';
   });
 }
