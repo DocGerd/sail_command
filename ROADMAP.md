@@ -13,70 +13,66 @@ The authoritative, always-current view is the
 milestones. This file is the human-readable summary of that state, refreshed at
 each release cut.
 
-Current release: **v0.13.0**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
+Current release: **v0.13.1**. See [`CHANGELOG.md`](CHANGELOG.md) for what has
 shipped.
 
-## Now — v0.13.0
+## Now — v0.13.1
 
-The `v0.13.0` cut (2026-08-20) closed all 10 items in the
-[`v0.13.0` milestone](https://github.com/DocGerd/sail_command/milestones),
-and with them the largest safety item the project carried
-([#455](https://github.com/DocGerd/sail_command/issues/455)). The depth mask
-still reads optimistically on roughly ten thousand cells (10,746
-gate-crossing cells at the shipped 0.9 m tolerance, recorded in
-`docs/spikes/455-depth-mask-optimism.md`) — what changed is that a route
-crossing them is no longer silent about it. Until this cut, only routes the
-planner had to re-plan at a reduced depth carried any per-route depth warning
-at all; a route that stays within your safety depth now says so when it still
-crosses water a more cautious reading of the chart puts below that depth, and
-states how far ([#612](https://github.com/DocGerd/sail_command/issues/612)).
-A relaxed route can still reach a cautious reading as low as the boat's own
-draft minus that 0.9 m bound — the relaxation floor is per boat
-(`relaxationFloorM`, `app/src/lib/boatDepth.ts`), so a shallower-drafted hull
-reaches a shallower figure. After `v0.12.0`'s proven blend bound, a cell
-navigable at a boat's own default gate — its draft plus that 0.9 m bound —
-cannot read below that boat's draft; a gate lowered by hand lowers that floor
-with it.
+The `v0.13.1` cut (2026-08-24) closed the
+[`v0.13.1` milestone](https://github.com/DocGerd/sail_command/milestones)
+— a small patch of correctness and copy fixes. Two would
+blank or empty a rendered surface outright: opening the Live tab with a
+saved route missing its safety-depth setting no longer crashes the app, and
+now honestly reports "not checked" instead
+([#632](https://github.com/DocGerd/sail_command/issues/632)); and an
+unrecognised stored no-route reason no longer renders an empty alert,
+falling back to the generic error message instead
+([#614](https://github.com/DocGerd/sail_command/issues/614)). Three
+boat-catalogue notes on the Boat tab had an internal spec-section id, an
+issue number, and raw catalogue ids leaking into user-facing copy; all three
+now read in plain language
+([#595](https://github.com/DocGerd/sail_command/issues/595)). And the #598
+depth-hatch legend, which shipped in `v0.13.0` with no panel background at
+all and a 104 px column that broke German compounds mid-word, now renders on
+its own chrome in both themes with a readable wide column
+([#638](https://github.com/DocGerd/sail_command/issues/638)).
 
-Four further user-visible changes, across five issues, landed alongside it.
-The map's depth overlay gained a legend for the cautious-reading hatch —
-collapsed by default, reachable without an active plan
-([#598](https://github.com/DocGerd/sail_command/issues/598)) — which states
-plainly that unsurveyed and drying water carries no hatching at all, so its
-absence must never be read as "the water is clear"
-([#597](https://github.com/DocGerd/sail_command/issues/597)); that hatch now
-picks its stripe width per zoom band instead of using one fixed cell-space
-pattern, so the stripes stay legible instead of washing out when zoomed out,
-with which water is marked unchanged
-([#599](https://github.com/DocGerd/sail_command/issues/599)); a route whose
-sail comparison was cut short by the search budget now says so instead of
-showing the generic no-comparison text, so a one-sail recommendation is never
-mistaken for a finished two-sail comparison
-([#540](https://github.com/DocGerd/sail_command/issues/540)); and three
-long-deferred code items closed, the user-visible one being the depth profile
-chart, which now reads the safety depth the active plan was actually solved
-with rather than the Boat tab's current setting
-([#551](https://github.com/DocGerd/sail_command/issues/551)).
+The remaining issues in the milestone carry no user-visible surface — a
+self-staling documentation citation, a flaky test, a reachability-gate
+constant pinned alongside #638's own fix, and a platform-spinner
+investigation closed by an ADR — and are covered under "Development
+workflow" below.
 
-The remaining three issues carry no user-visible surface — test integrity and
-CI robustness — and are covered under "Development workflow" below.
+## Next — v0.14.0
 
-## Next — v0.13.1
-
-The [`v0.13.1` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds the small stuff, none of it large: a patch cut of correctness and copy
-fixes. Two would blank or empty a rendered surface outright — a settings-less
-stored record blanking the app in Live View
-([#632](https://github.com/DocGerd/sail_command/issues/632)) and an
-unrecognised stored no-route reason rendering an empty alert
-([#614](https://github.com/DocGerd/sail_command/issues/614)). Alongside them
-sit German-copy and provenance-text residue from the multi-boat work
-([#595](https://github.com/DocGerd/sail_command/issues/595),
-[#596](https://github.com/DocGerd/sail_command/issues/596),
-[#607](https://github.com/DocGerd/sail_command/issues/607)), a collapsible
-map-overlay cluster for small screens
-([#628](https://github.com/DocGerd/sail_command/issues/628)),
-and test-integrity and documentation-accuracy items.
+The [`v0.14.0` milestone](https://github.com/DocGerd/sail_command/milestones)
+holds 31 open issues — a mixed minor cut, with three threads standing out.
+The first is a run of stored-record hardening in the same shape as
+`v0.13.1`'s #632 and #614: a saved plan missing `viaPoints` throws on load
+and blanks the whole app, in three unguarded clusters rather than only the
+`RouteSummary` render path — the one issue in the milestone marked high
+priority ([#654](https://github.com/DocGerd/sail_command/issues/654)) — and
+an unvalidated `rigRecommendation` on a migrated stored plan renders an
+empty verdict chip instead of falling back honestly
+([#661](https://github.com/DocGerd/sail_command/issues/661)). The second is
+depth-disclosure follow-up from the `v0.13.0`/`v0.13.1` safety work: the
+navigability hatch renders as hard-edged, aliased mask-cell squares at close
+zoom instead of a fine diagonal pattern
+([#648](https://github.com/DocGerd/sail_command/issues/648)), and the
+per-leg cautious chip and shallow-water map casing still mount only on
+routes the #53 relaxation branch actually touched, so an ordinary,
+non-relaxed route still gets no per-leg depth disclosure at all
+([#651](https://github.com/DocGerd/sail_command/issues/651)). The third is
+copy and layout residue that fell out of `v0.13.1`'s narrower scope: mixed
+decimal conventions within one German sentence
+([#596](https://github.com/DocGerd/sail_command/issues/596)), catalogue
+provenance notes rendering in English under a German UI
+([#607](https://github.com/DocGerd/sail_command/issues/607)), and a
+map-overlay time-slider cluster that obstructs the map on small screens
+([#628](https://github.com/DocGerd/sail_command/issues/628)). The rest of
+the milestone is smaller bug fixes, test coverage, and tooling upkeep,
+including continued progress toward the OpenSSF Silver badge
+([#667](https://github.com/DocGerd/sail_command/issues/667)).
 
 ## Themes for the next year
 
@@ -169,6 +165,30 @@ revisited, not that it has been lifted.
 
 Not user-visible, but it is where a meaningful share of the effort goes and it
 sets the pace of everything above.
+
+The `v0.13.1` cut fixed three items in this area, none with a user-visible
+surface. `SECURITY.md` stated its OpenSSF Scorecard *Branch-Protection*
+rating as a bare number with no date and no run reference — a figure that
+decays silently every time the checks or the repository's posture move — and
+now states it as a dated past-tense measurement with the run named
+([#579](https://github.com/DocGerd/sail_command/issues/579)). A
+low-frequency `App.test.tsx` flake, isolated while triaging a CI failure on
+an unrelated PR, was root-caused not to the wall-clock dependence the issue
+first proposed — that explanation was measured and refuted — but to a
+scheduler race: `App.tsx`'s plan-form sync effect writes the departure back
+from the plan in a passive-effect flush that can land after the commit
+re-enabling the Plan button, so a test gating on that button could edit the
+form before the still-pending effect overwrote it. Reproduced naturally at
+one failure in 25 full-file runs under 48-way CPU contention, and closed
+test-side by draining React's pending passive effects at all four sites
+carrying that shape; the underlying product race is untouched and tracked
+separately ([#631](https://github.com/DocGerd/sail_command/issues/631),
+[#660](https://github.com/DocGerd/sail_command/issues/660)). And the same PR
+that fixed #638's depth-hatch legend chrome also settled that legend's
+reachability gate, whose `44px` threshold an earlier, superseded fix attempt
+would have made stale: the number now lives behind a named constant with a
+CSS/TS drift test pinning it against `app.css`, rather than a bare literal
+([#641](https://github.com/DocGerd/sail_command/issues/641)).
 
 The `v0.13.0` cut fixed three items in this area, none with a user-visible
 surface. `ci.yml`'s `e2e` job carried no `timeout-minutes` at all, so a
