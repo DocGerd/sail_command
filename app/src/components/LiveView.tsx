@@ -124,7 +124,54 @@ export default function LiveView({
   // plan, then getting one, would render a different number of hooks across
   // renders).
   const mask = useNavMask();
-  const safetyDepthM = plan?.request.settings.safetyDepthM ?? null;
+  // #632: migratePlan.ts's migrateRequest never validates the stored
+  // plan's `settings` field (`grep -c settings
+  // app/src/services/migratePlan.ts` -> 0), so a record saved before that
+  // field existed migrates with `settings` missing rather than rejected —
+  // and reading its safety depth unguarded threw `TypeError: Cannot read
+  // properties of undefined` the instant the Live tab mounted such a
+  // plan. With no error boundary anywhere in app/src, that blanked the
+  // whole app.
+  //
+  // Unlike the sibling presentation-only sites (App.tsx, RouteSummary.tsx)
+  // that fall back to a fixed default safety depth when this field is
+  // missing, this value feeds foldProbe's own
+  // `idx !== null && safetyNow !== null` gate (~:209) -> checkHeadingDepth,
+  // the on-water hazard path: fabricating a plausible-looking depth here
+  // would render a confident caution verdict against a value the user
+  // never actually chose — a wrong number is worse than an absent one on
+  // this surface. Per the maintainer's own triage ruling this fails to
+  // `null` instead, which already flows through that gate to the honest
+  // 'unavailable' -> "Depth not checked" state. Do NOT gate whether the
+  // caution note RENDERS on `safetyDepthM !== null` — see the `!plan`
+  // comment below: a guard that can suppress the note is the same false
+  // all-clear. (Gating the interpolated NUMBER is a different thing and is
+  // fine; see the `safety:` interpolation in the caution note, ~:409.)
+  //
+  // `typeof … === 'number' && Number.isFinite(…) && … > 0` — plain
+  // `Number.isFinite` ALONE is not enough: it admits `0`, `-0` and
+  // NEGATIVE numbers, and `checkHeadingDepth` treats a non-positive
+  // threshold as "nothing is shallower than this" — measured against the
+  // real NavMask/checkHeadingDepth with an all-LAND grid: threshold 3
+  // correctly reports `caution/land`, but 0, -0 and -5 ALL report
+  // `{state: 'clear'}`. `'clear'` renders NO NOTE AT ALL, which is a
+  // NOTE-LESS FALSE ALL-CLEAR — strictly worse than the NaN crash this
+  // guard already caught, because a crash is loud and a silent all-clear on
+  // the on-water path is not (see the `depthCheck` comment below on why a
+  // note-less heading must never be mistaken for "checked, and clear").
+  //
+  // The leading `typeof … === 'number'` term is there for TYPE NARROWING,
+  // not for an extra value class: `Number.isFinite` coerces nothing and is
+  // already `false` for every non-number (measured: '3.0', null, undefined,
+  // true, {}, [], [3], new Number(3) — all false). What `typeof` buys is
+  // narrowing `number | undefined` for every later term in this chain, so
+  // `> 0` typechecks and no `as number` cast is needed.
+  const req = plan?.request;
+  const rawSafetyDepthM = req?.settings?.safetyDepthM;
+  const safetyDepthM =
+    typeof rawSafetyDepthM === 'number' && Number.isFinite(rawSafetyDepthM) && rawSafetyDepthM > 0
+      ? rawSafetyDepthM
+      : null;
   const holdKey = `${plan?.id ?? ''}:${rig ?? ''}`;
 
   // Asymmetric hysteresis: engages instantly, drops only after a sustained
@@ -342,7 +389,24 @@ export default function LiveView({
                     // banner uses for both of its depths (RouteSummary.tsx),
                     // so the two depth warnings never render the same number
                     // differently.
-                    safety: plan.request.settings.safetyDepthM.toFixed(1),
+                    //
+                    // #632: consumes the SAME guarded `safetyDepthM` local
+                    // computed above, never a fresh unguarded read.
+                    // Invariant: `depthCheck.state` can only reach
+                    // 'caution' through foldProbe's
+                    // `idx !== null && safetyNow !== null` gate (~:209),
+                    // and `safetyDepthM` is a stable function of the same
+                    // `plan` for the life of this `holdKey` — so the em-dash
+                    // branch below is provably unreachable. Narrowed this
+                    // way (not `!`, which would be the first production
+                    // non-null assertion in app/src/components/) purely to
+                    // satisfy TypeScript. Uses the same em-dash placeholder
+                    // as the COG/SOG fields below (`'—'`, not `''`) for
+                    // consistency with this file's existing missing-value
+                    // convention — an unreachable empty string would still
+                    // render as "…your safety depth ( m)", a malformed
+                    // sentence, if this invariant were ever violated.
+                    safety: safetyDepthM !== null ? safetyDepthM.toFixed(1) : '—',
                   })}
             </p>
           )}
