@@ -210,9 +210,9 @@ export const BOATS = [
       // papers could disagree — unlike the two fleet entries below.
       hullVerified: true,
       note:
-        "The app's reference boat, model-level with no individual vessel behind it (spec J " +
-        'OQ-4 carve-out). 2.1 m is the draft the #455 mask-tolerance guarantee is derived ' +
-        'against.',
+        "The app's reference boat: a boat model, not one individual vessel, so there is no " +
+        'hull whose papers this draft could disagree with. 2.1 m is also the draft the ' +
+        "app's default safety-depth margin is calculated from.",
     },
     motorSpeedKn: 6.5,
     maneuverPenaltyS: 45,

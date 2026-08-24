@@ -277,7 +277,7 @@ describe('#566: draftProvenance.note renders per boat, INCLUDING the hull-verifi
       .closest('.boat-option')! as HTMLElement;
     expect(within(option).queryByText(/Assumed keel/)).not.toBeInTheDocument();
     expect(
-      within(option).getByText(/reference boat, model-level with no individual vessel/),
+      within(option).getByText(/default safety-depth margin is calculated from/),
     ).toBeInTheDocument();
   });
 });
