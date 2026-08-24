@@ -345,7 +345,8 @@ review control is the set of ruleset/workflow gates listed above — the
 mandatory agent self-review loop with ruleset-enforced thread resolution plus
 the required `app` + `e2e` checks. Future Scorecard triage should treat these
 findings (both checks) as "won't fix" without re-litigating them; revisit if a
-second trusted maintainer joins. Scorecard re-runs on every `develop` push and
-weekly on schedule, so these two figures will drift over time — the current
-score is always the live badge in `README.md`
+second trusted maintainer joins. Scorecard re-runs on every push to
+`develop`, weekly on schedule, and on any branch-protection rule change
+(`.github/workflows/scorecard.yml`'s `on:` block), so these two figures will
+drift over time — the current score is always the live badge in `README.md`
 (<https://api.scorecard.dev/projects/github.com/DocGerd/sail_command/badge>).
