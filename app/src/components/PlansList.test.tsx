@@ -7,7 +7,6 @@ import { savePlan, __resetDbForTests } from '../services/db';
 import * as db from '../services/db';
 import * as openMeteo from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
-import { toLocalInputValue } from '../lib/format';
 import { DEFAULT_SETTINGS, type Plan, type SailId, type WindGrid } from '../types';
 import PlansList, { type PlansListProps } from './PlansList';
 import { de } from '../i18n/dict.de';
@@ -313,45 +312,34 @@ describe('PlansList recalculate (#114)', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Departure').value).toBe('2026-01-20T10:00');
   });
 
-  it('#643: resyncs the recalc editor to the last-known departure instead of swallowing an empty value', async () => {
-    // Sibling of the identical PlannerPanel.tsx defect (#643): stepping the
-    // datetime-local's month/year segment to a nonexistent date makes the
-    // browser report value === '' with no other signal; jsdom reproduces the
-    // same DOM write via a bare empty-string change event.
-    //
-    // MEASURED (see PlannerPanel.test.tsx's twin row for the full writeup):
-    // this pair of assertions is GREEN even against the pre-#643-fix handler
-    // in both jsdom and real Chromium — react-dom's own controlled-input
-    // restore already rewrites the DOM `.value` back to the last-rendered
-    // prop synchronously whenever a native input/change event's handler
-    // doesn't update state, independent of any code here. Kept as a
-    // scope-pinning regression test for the desired behavior; the
-    // production resync is kept as an explicit, documented defense not
-    // provably redundant across every rendering engine.
-    vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
-    await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS }));
-    const { onRecalculate } = renderList();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Recalculate' }));
-    const input = screen.getByLabelText<HTMLInputElement>('Departure');
-    expect(input.value).toBe(toLocalInputValue(FUTURE_DEPARTURE_MS));
-
-    fireEvent.change(input, { target: { value: '' } });
-
-    // (b): computed independently from the literal FUTURE_DEPARTURE_MS this
-    // test seeded, never from the component's own rendered output — but see
-    // the note above: this assertion is ALSO satisfied without the
-    // production fix, for the reason explained there.
-    expect(input.value).toBe(toLocalInputValue(FUTURE_DEPARTURE_MS));
-
-    // No recalc state mutation: running the recalc now still reports the
-    // ORIGINAL stored departure, proving the empty branch never wrote
-    // through setRecalc.
-    fireEvent.click(screen.getByRole('button', { name: 'Recalculate as new plan' }));
-    await waitFor(() => expect(onRecalculate).toHaveBeenCalledTimes(1));
-    const [, departureMs] = vi.mocked(onRecalculate).mock.calls[0];
-    expect(departureMs).toBe(FUTURE_DEPARTURE_MS);
-  });
+  // #643 follow-up — deliberately NO regression test here (2026-08-24). An
+  // earlier "fire an empty change, check the DOM resyncs" row was deleted:
+  // MEASURED (jsdom here, plus real Chromium 151.0.7922.34 and real WebKit
+  // 26.5 against two genuine `vite build` outputs — full record in PR #665)
+  // that react-dom 19.2.8's own controlled-input restore performs that exact
+  // resync synchronously, with the production resync line removed. So that
+  // construction is a theorem given React's behavior, not a fact about this
+  // handler, and shipping it would read as coverage while proving nothing.
+  //
+  // PlannerPanel.test.tsx's twin row replaced that with a genuine,
+  // mutation-checked discriminator: re-render with a DIFFERENT external
+  // `departureMs` PROP (no onChange fired) and assert the input tracks it —
+  // this reds if the input stops being a controlled React element (e.g.
+  // `value=` swapped for `defaultValue=`), which is the actual mechanism the
+  // #643 symptom depends on.
+  //
+  // That construction is NOT available here: `recalc.departureMs` is local
+  // component state with exactly THREE write sites — `handleRecalcTap` (open,
+  // a fresh mount), `closeRecalc` (unmount), and this input's own onChange
+  // (the handler under test). There is no external prop that re-drives the
+  // value while the editor stays mounted, so there is no way to vary it
+  // out-of-band the way PlannerPanel's `departureMs` prop can be. Every
+  // construction tried collapses to either "value at fresh mount" (true
+  // regardless of controlled/uncontrolled, since `defaultValue` also sets
+  // correctly on mount) or "value after a real user edit" (true regardless,
+  // since the browser sets `.value` from user input independently of React).
+  // If PlansList's recalc editor is ever refactored to accept an externally
+  // supplied seed, add the PlannerPanel-shaped test then.
 
   it('replace requires a second confirming tap before anything runs', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);

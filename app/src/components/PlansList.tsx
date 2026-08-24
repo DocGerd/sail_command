@@ -291,14 +291,19 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                       max={toLocalInputValue(recalc.maxMs)}
                       onChange={(e) => {
                         // #643: identical hazard to PlannerPanel's departure
-                        // input — stepping a segment to a nonexistent date
-                        // leaves Chromium reporting value === '' with the
-                        // draft state untouched. Resync the DOM node back to
-                        // the last known-good value rather than silently
-                        // swallowing; mirror the `r ? … : r` null-safety the
-                        // rest of this editor already uses, since `recalc`
-                        // could in principle have closed between render and
-                        // this event.
+                        // input — see that file's onChange for the full,
+                        // measured writeup (Chromium 151.0.7922.34 blanks a
+                        // nonexistent composite date; react-dom 19.2.8's own
+                        // controlled-input restore already rewrites the DOM
+                        // back to the last-rendered prop with this line
+                        // deleted, confirmed against real Chromium and real
+                        // WebKit builds, PR #665). This write is therefore a
+                        // measured NO-OP in every engine tested, kept only as
+                        // explicit defensive code — it does not close #643.
+                        // Mirror the `r ? … : r` null-safety the rest of this
+                        // editor already uses, since `recalc` could in
+                        // principle have closed between render and this
+                        // event.
                         if (!e.target.value) {
                           if (recalc) e.target.value = toLocalInputValue(recalc.departureMs);
                           return;
