@@ -380,6 +380,23 @@ making design-level decisions; do not silently deviate.
   2026-08-04 — neither is unguarded now; re-read before citing either).
   Per the guard-asymmetry rule below: an absent security control is the
   expensive failure direction, so the check must fail closed.
+- **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
+  an object literal used as a lookup table for STORED/untrusted input.** EVERY
+  `Object.getOwnPropertyNames(Object.prototype)` member passes it (12 of them on
+  Node v24.15.0, measured 2026-08-24 — an engine count, not a constant), and
+  `t(TABLE['toString'])` resolves to a FUNCTION that coerces to a non-key, so
+  React renders NOTHING (#614/PR #656 — the fix for an empty `role="alert"`
+  re-created the empty `role="alert"`; the reviewer measured 8 fall-open members
+  plus a control, 9/9, before the table was widened to all 12). Use
+  `Object.hasOwn` (ES2022; `tsconfig.app.json` targets es2023, so no polyfill).
+  There was NO in-repo precedent: `Object.hasOwn`'s only occurrence IS that fix,
+  and `usePersistedBoatId.ts`'s `isCatalogueBoatId` is a `BOATS.some(...)` ARRAY
+  scan — a round-1 review comment called it the precedent and it reached this
+  file unchecked. Derive any prototype-name test table from
+  `Object.getOwnPropertyNames(Object.prototype)`, never a hand-written list — a
+  hand-written 8 missed `__defineGetter__`/`__defineSetter__`/`__lookupGetter__`/
+  `__lookupSetter__`, and a literal array can be stubbed to `[]` leaving the
+  guard green.
 - **Markdown bold immediately before a slash TERMINATES a block comment.**
   `**584**/119` inside JSDoc contains `*/`, so the comment ends there and
   eslint reports a bare `Parsing error: ';' expected` at or after the `*/`,
@@ -749,6 +766,20 @@ making design-level decisions; do not silently deviate.
   find the in-flight same-ref run before investigating the new one. Let the
   healthy jobs reach `success` BEFORE cancelling, so `rerun --failed` re-runs
   only the wedged job instead of all of them.
+- **Any e2e test of the departure `datetime-local` MUST mock the clock.** The
+  app's `max` is `now + FORECAST_DAYS * 86_400_000` (`FORECAST_DAYS = 6`,
+  `services/openMeteo.ts`), and Chromium makes the month/year segments INERT when
+  `min` and `max` fall in the same calendar month — so for ~3 weeks of every
+  month the blanking defect is UNREACHABLE and a test of it silently proves
+  nothing (measured #643: one investigator's "not reproducible on Chromium" was
+  this artifact, not a finding). Also: **Playwright's Linux WebKit cannot test
+  this control at all** — it renders `datetime-local` UNSEGMENTED, so
+  ArrowUp/typing leave `.value` byte-identical, and a green WebKit arm is not
+  evidence about Safari (measured 2026-08-24 against the WebKit build bundled
+  with `@playwright/test` 1.62.1, browser revision 2336; re-check after any
+  Playwright bump). The
+  record is #643's verification transcript — PR #665's body publishes only the
+  Chromium half.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -2263,6 +2294,23 @@ making design-level decisions; do not silently deviate.
   CURRENT WORLD STATE rather than against the diff. When the orchestrator mutates
   real state (labels, milestones, deploys, issue state), re-check any in-flight
   PR prose that DESCRIBES that state.
+- **Rewording a citation needs THREE separate questions, not one**: is it still
+  TRUE, is it still SAYING THE SAME THING, and is it still WORTH ITS PLACE. A
+  sentence can pass the first and fail the other two — #595's rewrite replaced a
+  boat-SPECIFIC structural fact (`TOLERANCE_M = 0.9` chosen so `3.0 - 0.9` lands
+  exactly on this hull's draft) with a generic formula true of EVERY boat, and
+  true of `salona-44-speedy-go` verbatim since it shares the 2.1 m draft — while
+  duplicating copy `about.caveats.depthMask` already ships in both languages.
+- **Ask of every guard: what does it do when the problem is FIXED?** — not only
+  "does it fire when the problem is present?" A leak-detection row asserting
+  `expect(internalOnly.length).toBeGreaterThan(0)` REDS on a BETTER catalogue
+  (renaming the leaked id empties the array and fails the assert) and was
+  SIMULTANEOUSLY vacuous (green with its collector stubbed to `[]`). Per the
+  guard-asymmetry rule a NUDGE-class guard must fail OPEN; this one failed
+  closed on exactly the outcome it existed to encourage. CAUGHT IN REVIEW, never
+  shipped — `boats.test.ts` asserts non-vacuity on `collectRenderedNotes()`
+  instead, leaving an empty `internalOnly` as the legitimate all-clear
+  (#595/PR #657).
 - **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
   PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
   lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
@@ -2491,6 +2539,24 @@ making design-level decisions; do not silently deviate.
   navigable corridor is >1 km wide at 90.8% of navigable-centreline points.
   The decline rests on the data being unusable, not on the corridor being
   narrow.
+- **`polarProvenance` and `draftProvenance` have DIFFERENT blast radii — a
+  no-sweep or no-twin argument cleared for one does NOT transfer to the other.**
+  `BoatSnapshot` omits `draftProvenance`; `types.ts` DOES copy
+  `polarProvenance.note`. And a polar note lives in THREE artifacts no compiler
+  spans: `app/src/data/boats.ts`, `pipeline/polars-source.json` (hand-authored —
+  `estimate_polars.mjs` states there is deliberately NO mode that rewrites it),
+  and each shipped `app/public/data/polars/*.json` `source` field
+  (`build_polars.mjs` sets `source: sail.provenance.note`).
+  `app/src/test/polarProvenance.test.ts` (#54 Task 12) reads all three and reds
+  the REQUIRED `app` check on drift — measured on PR #657, where a scope
+  widening updated one of the three. Fix order: edit the pipeline source, THEN
+  `npm --prefix pipeline run polars`; never hand-edit the shipped assets.
+  **Edit `polars-source.json` with `sed -i` via Bash, NOT Edit/Write** — the
+  PostToolUse prettier hook (Working style, below) matches `Edit|Write` on
+  `*.json` with only `*package-lock.json` excluded, and there is no
+  `.prettierignore`, so it reformatted this file 287 -> 343 lines (measured
+  2026-08-24), churning the Salona 45 block exactly as `pipeline/README.md`
+  warns. Bash carries no `file_path`, so the hook never fires.
 - **Wind grids are stored with each plan** (IndexedDB). A saved route must
   always render against the forecast it was computed from, never a re-fetched
   one.
@@ -3041,6 +3107,29 @@ making design-level decisions; do not silently deviate.
   given `'de'` to satisfy `tsc`. What made it safe was an explicit falsification:
   flipping all 13 to `'en'` REDS with `Unable to find element: 77.0 nm`, proving
   the DOM really contains German. Demand that probe on any such migration.
+- **Never state a CI check's state from your own tracking table.** Two measured
+  orchestrator errors in one session: a PR was re-synced believing it green when
+  it had been RED on its own head all along (sending a diagnostician after a
+  composition defect that did not exist), and a PR was merged off a table entry
+  reading "approved" when its reviewer had only been SPAWNED. Gate every merge on
+  an explicit reviewer VERDICT plus a freshly-read check-run status — never on
+  your own bookkeeping.
+- **Forbid implementers the full test suite outright; CI is the authority.**
+  MEASURED: 3 of 5 sonnet implementers independently backgrounded the ~8.3 min
+  suite and then ended their turn "waiting on the background run" — a message
+  that arrives AS an idle notification, i.e. with no live children, so it never
+  wakes. A preemptive warning did NOT prevent it (one agent received the warning
+  and stalled anyway). Brief a FILTERED FOREGROUND run instead.
+- **A worktree agent's completion notification reports its branch as
+  `worktree-agent-<id>`, not the branch you asked for** (observed 2026-08-24 on
+  Claude Code 2.1.241 — a harness property, re-check after an upgrade), so the
+  notification structurally cannot tell you whether it based its work on
+  `origin/develop`. Require the merge-base as a deliverable; once a PR exists,
+  `mergeable_state` is the second signal (the PIN THE BASE BRANCH bullet below).
+- **`gh api repos/O/R/commits/<sha>/check-runs` can 422 "No commit found" on a
+  7-char abbreviation while the FULL 40-char SHA works at the same instant** —
+  intermittent, not a rule (every earlier PR in the same merge train accepted the
+  short form). Use the full SHA in poll loops.
 - **PIN THE BASE BRANCH in every agent brief**, and require the agent to
   report its merge-base as part of its deliverable — `isolation: worktree`
   reliably comes up on the WRONG branch, not merely sometimes: **10 of 10**
