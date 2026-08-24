@@ -381,13 +381,18 @@ making design-level decisions; do not silently deviate.
   Per the guard-asymmetry rule below: an absent security control is the
   expensive failure direction, so the check must fail closed.
 - **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
-  an object literal used as a lookup table for STORED/untrusted input.** All 12
-  `Object.getOwnPropertyNames(Object.prototype)` members pass it, and
+  an object literal used as a lookup table for STORED/untrusted input.**
+  `Object.getOwnPropertyNames(Object.prototype)` members pass it (12 measured on
+  Node v24.15.0, 2026-08-24 — an engine count, not a constant), and
   `t(TABLE['toString'])` resolves to a FUNCTION that coerces to a non-key, so
-  React renders NOTHING (measured 9/9, #614/PR #656 — the fix for an empty
-  `role="alert"` re-created the empty `role="alert"`). Use `Object.hasOwn`
-  (ES2022; tsconfig targets es2023). `usePersistedBoatId.ts` was already the
-  in-repo precedent. Derive any prototype-name test table from
+  React renders NOTHING (#614/PR #656 — the fix for an empty `role="alert"`
+  re-created the empty `role="alert"`; the reviewer measured 8 fall-open members
+  plus a control, 9/9, before the table was widened to all 12). Use
+  `Object.hasOwn` (ES2022; `tsconfig.app.json` targets es2023, so no polyfill).
+  There was NO in-repo precedent: `Object.hasOwn`'s only occurrence IS that fix,
+  and `usePersistedBoatId.ts`'s `isCatalogueBoatId` is a `BOATS.some(...)` ARRAY
+  scan — a round-1 review comment called it the precedent and it reached this
+  file unchecked. Derive any prototype-name test table from
   `Object.getOwnPropertyNames(Object.prototype)`, never a hand-written list — a
   hand-written 8 missed `__defineGetter__`/`__defineSetter__`/`__lookupGetter__`/
   `__lookupSetter__`, and a literal array can be stubbed to `[]` leaving the
@@ -762,14 +767,18 @@ making design-level decisions; do not silently deviate.
   healthy jobs reach `success` BEFORE cancelling, so `rerun --failed` re-runs
   only the wedged job instead of all of them.
 - **Any e2e test of the departure `datetime-local` MUST mock the clock.** The
-  app's `max` is now+6d, and Chromium makes the month/year segments INERT when
+  app's `max` is `now + FORECAST_DAYS * 86_400_000` (`FORECAST_DAYS = 6`,
+  `services/openMeteo.ts`), and Chromium makes the month/year segments INERT when
   `min` and `max` fall in the same calendar month — so for ~3 weeks of every
   month the blanking defect is UNREACHABLE and a test of it silently proves
   nothing (measured #643: one investigator's "not reproducible on Chromium" was
   this artifact, not a finding). Also: **Playwright's Linux WebKit cannot test
   this control at all** — it renders `datetime-local` UNSEGMENTED, so
   ArrowUp/typing leave `.value` byte-identical, and a green WebKit arm is not
-  evidence about Safari.
+  evidence about Safari (measured 2026-08-24 against the WebKit
+  `@playwright/test` 1.62.1 bundles; re-check after any Playwright bump). The
+  record is #643's verification transcript — PR #665's body publishes only the
+  Chromium half.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -2297,7 +2306,10 @@ making design-level decisions; do not silently deviate.
   (renaming the leaked id empties the array and fails the assert) and was
   SIMULTANEOUSLY vacuous (green with its collector stubbed to `[]`). Per the
   guard-asymmetry rule a NUDGE-class guard must fail OPEN; this one failed
-  closed on exactly the outcome it existed to encourage (#595/PR #657).
+  closed on exactly the outcome it existed to encourage. CAUGHT IN REVIEW, never
+  shipped — `boats.test.ts` asserts non-vacuity on `collectRenderedNotes()`
+  instead, leaving an empty `internalOnly` as the legitimate all-clear
+  (#595/PR #657).
 - **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
   PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
   lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
@@ -2539,10 +2551,11 @@ making design-level decisions; do not silently deviate.
   widening updated one of the three. Fix order: edit the pipeline source, THEN
   `npm --prefix pipeline run polars`; never hand-edit the shipped assets.
   **Edit `polars-source.json` with `sed -i` via Bash, NOT Edit/Write** — the
-  PostToolUse `prettier --write` hook fires on every `*.json` (there is no
-  `.prettierignore`) and reformats it 287 -> 343 lines, churning the Salona 45
-  block exactly as `pipeline/README.md` warns; Bash carries no `file_path`, so
-  the hook never fires.
+  PostToolUse prettier hook (Working style, below) matches `Edit|Write` on
+  `*.json` with only `*package-lock.json` excluded, and there is no
+  `.prettierignore`, so it reformatted this file 287 -> 343 lines (measured
+  2026-08-24), churning the Salona 45 block exactly as `pipeline/README.md`
+  warns. Bash carries no `file_path`, so the hook never fires.
 - **Wind grids are stored with each plan** (IndexedDB). A saved route must
   always render against the forecast it was computed from, never a re-fetched
   one.
@@ -3107,9 +3120,11 @@ making design-level decisions; do not silently deviate.
   wakes. A preemptive warning did NOT prevent it (one agent received the warning
   and stalled anyway). Brief a FILTERED FOREGROUND run instead.
 - **A worktree agent's completion notification reports its branch as
-  `worktree-agent-<id>`, never the branch you asked for** — so the notification
-  structurally cannot tell you whether it based its work on `origin/develop`.
-  The merge-base remains the only signal, and a required deliverable.
+  `worktree-agent-<id>`, not the branch you asked for** (observed 2026-08-24 on
+  Claude Code 2.1.241 — a harness property, re-check after an upgrade), so the
+  notification structurally cannot tell you whether it based its work on
+  `origin/develop`. Require the merge-base as a deliverable; once a PR exists,
+  `mergeable_state` is the second signal (next bullet).
 - **`gh api repos/O/R/commits/<sha>/check-runs` can 422 "No commit found" on a
   7-char abbreviation while the FULL 40-char SHA works at the same instant** —
   intermittent, not a rule (every earlier PR in the same merge train accepted the
