@@ -306,11 +306,14 @@ describe('#595: rendered notes carry no internal register', () => {
     const labels = BOATS.flatMap((b) => b.sails.map((s) => s.label.toLowerCase()));
     const sailIds = [...new Set(BOATS.flatMap((b) => b.sails.map((s) => s.id)))];
     const internalOnly = sailIds.filter((id) => !labels.some((l) => l.includes(id.toLowerCase())));
-    expect(
-      internalOnly.length,
-      'no internal-only sail id to check — is this row still live?',
-    ).toBeGreaterThan(0);
-    for (const { id, note } of collectRenderedNotes()) {
+    // Non-vacuity is asserted on the NOTES, not on `internalOnly`: an empty
+    // `internalOnly` is a legitimate all-clear (every sail id is also how a
+    // label spells it), so asserting on it would red this row on a strictly
+    // BETTER catalogue — MEASURED: renaming the `fock` id to `jib` empties it.
+    // The notes are what must never be empty, or the loop below scans nothing.
+    const notes = collectRenderedNotes();
+    expect(notes.length).toBeGreaterThan(0);
+    for (const { id, note } of notes) {
       for (const sailId of internalOnly) {
         expect(
           note.toLowerCase(),
