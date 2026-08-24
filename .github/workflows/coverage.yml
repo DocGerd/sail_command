@@ -103,3 +103,25 @@ jobs:
         #   restoring verified coupling with a real YAML parse. If you change
         #   this number, change `JOB_CAP_MINUTES` too.
         timeout-minutes: 240
+      # #346: upload the lcov report (app/vite.config.ts's coverage.reporter
+      # now includes 'lcov') to Codecov for the README badge. Deliberately
+      # NOT added to the required `app`/`e2e` jobs in ci.yml — this step lives
+      # only in this pre-existing NIGHTLY job, so the badge can lag `develop`
+      # by up to ~24h and costs zero PR-critical-path minutes (the
+      # alternative, a per-PR non-required job like hangarfit's, would add a
+      # ~40+ min non-blocking job to every PR per this file's own coverage
+      # timing comments above — not adopted here without a separate decision).
+      # `fail_ci_if_error: true` is a DELIBERATE divergence from hangarfit's
+      # `false`: this job is advisory/nightly only (never gates a merge), so
+      # a loud red job here costs nothing, while a silent upload failure
+      # (e.g. a missing/expired CODECOV_TOKEN) would leave the badge stale
+      # with no signal that it happened — same asymmetry as this file's
+      # guard-design principle (a nudge should fail open; here failing
+      # LOUD is the cheap direction, not the expensive one, since nothing
+      # downstream depends on this job succeeding).
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: app/coverage/lcov.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

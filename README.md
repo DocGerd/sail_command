@@ -1,5 +1,6 @@
 [![CI](https://github.com/DocGerd/sail_command/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DocGerd/sail_command/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/DocGerd/sail_command/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/DocGerd/sail_command/actions/workflows/codeql.yml)
+[![codecov](https://codecov.io/gh/DocGerd/sail_command/branch/develop/graph/badge.svg)](https://codecov.io/gh/DocGerd/sail_command)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/DocGerd/sail_command/badge)](https://scorecard.dev/viewer/?uri=github.com/DocGerd/sail_command)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13749/badge)](https://www.bestpractices.dev/projects/13749)
 
