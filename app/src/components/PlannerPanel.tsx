@@ -551,7 +551,32 @@ export default function PlannerPanel({
             min={toLocalInputValue(bounds.min)}
             max={toLocalInputValue(bounds.max)}
             onChange={(e) => {
-              if (!e.target.value) return;
+              // #643: stepping a datetime-local segment (e.g. the month) to a
+              // date that doesn't exist (31 Feb) makes the browser set
+              // value === '' at the moment the engine parses the composite
+              // date. #643's OWN report (reproduced 2026-08-24, Chromium
+              // 151.0.7922.34, real keyboard, month-spanning min/max bounds)
+              // confirms that blanking DOES occur. What #643 additionally
+              // claimed — that the empty value then stays "swallowed",
+              // leaving the field visibly empty — was measured NOT to
+              // happen: react-dom 19.2.8's own controlled-input restore
+              // (`restoreStateOfTarget`) rewrites the DOM node back to the
+              // last-rendered `value` prop synchronously, before paint,
+              // REGARDLESS of whether this handler does anything at all —
+              // confirmed with this exact line deleted, against two real
+              // `vite build` outputs, in both Chromium 151.0.7922.34 and
+              // WebKit 26.5 (full record in PR #665). So this write is a
+              // measured NO-OP in every engine tested, kept only as
+              // explicit, self-documenting defensive code (belt-and-braces
+              // against an engine/React combination not covered by that
+              // measurement) — it does not close #643, and must not be
+              // described as fixing it. Do NOT call onDepartureChange here:
+              // that would fire a needless state update for a value that
+              // never actually changed.
+              if (!e.target.value) {
+                e.target.value = toLocalInputValue(departureMs);
+                return;
+              }
               onDepartureChange(new Date(e.target.value).getTime());
             }}
           />
