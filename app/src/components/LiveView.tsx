@@ -136,21 +136,17 @@ export default function LiveView({
   // Unlike the sibling presentation-only sites (App.tsx, RouteSummary.tsx)
   // that fall back to a fixed default safety depth when this field is
   // missing, this value feeds foldProbe's own
-  // `idx !== null && safetyNow !== null` gate (~:207) -> checkHeadingDepth,
+  // `idx !== null && safetyNow !== null` gate (~:208) -> checkHeadingDepth,
   // the on-water hazard path: fabricating a plausible-looking depth here
   // would render a confident caution verdict against a value the user
   // never actually chose — a wrong number is worse than an absent one on
   // this surface. Per the maintainer's own triage ruling this fails to
   // `null` instead, which already flows through that gate to the honest
-  // 'unavailable' -> "Depth not checked" state. SCOPED prohibition: do NOT
-  // add a NEW `safetyDepthM !== null` gate that can SUPPRESS the caution
-  // note or the JSX block it lives in (~:334 below) — see the `!plan`
-  // comment below, "a guard that can suppress the caution note is the same
-  // false all-clear". This does NOT forbid narrowing `safetyDepthM` for a
-  // DISPLAYED VALUE once 'caution' is already showing (the `safety:`
-  // interpolation below does exactly that) — narrowing what number is
-  // printed inside an already-visible note is not the same as deciding
-  // whether the note renders at all.
+  // 'unavailable' -> "Depth not checked" state. Do NOT gate whether the
+  // caution note RENDERS on `safetyDepthM !== null` — see the `!plan`
+  // comment below: a guard that can suppress the note is the same false
+  // all-clear. (Gating the interpolated NUMBER is a different thing and is
+  // fine; see ~:380.)
   //
   // `typeof … === 'number' && Number.isFinite(…) && … > 0` — plain
   // `Number.isFinite` ALONE is not enough: it admits `0`, `-0` and
@@ -397,7 +393,7 @@ export default function LiveView({
                     // computed above, never a fresh unguarded read.
                     // Invariant: `depthCheck.state` can only reach
                     // 'caution' through foldProbe's
-                    // `idx !== null && safetyNow !== null` gate (~:207),
+                    // `idx !== null && safetyNow !== null` gate (~:208),
                     // and `safetyDepthM` is a stable function of the same
                     // `plan` for the life of this `holdKey` — so the em-dash
                     // branch below is provably unreachable. Narrowed this
