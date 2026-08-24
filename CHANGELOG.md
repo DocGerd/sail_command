@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-08-24
+
+### Fixed
+
+- Reworded three boat-catalogue notes on the Boat tab into plain language,
+  removing an internal spec section id, an issue number, and three raw
+  catalogue ids (two boat ids, one sail id) that had leaked into user-facing
+  copy (#595).
+- An unrecognised stored no-route reason no longer renders an empty alert
+  and now falls back to the generic error message (#614).
+- Opening the Live tab with a previously saved route that is missing its
+  safety-depth setting no longer crashes the app; the depth check now
+  honestly reports "not checked" instead (#632).
+- The depth-hatch legend now renders on its own panel background in both
+  light and dark mode, and its text no longer breaks mid-word on wider
+  screens (#638).
+
 ## [0.13.0] - 2026-08-20
 
 ### Added
@@ -776,7 +793,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/DocGerd/sail_command/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/DocGerd/sail_command/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/DocGerd/sail_command/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/DocGerd/sail_command/compare/v0.11.0...v0.12.0
