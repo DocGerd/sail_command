@@ -136,7 +136,7 @@ export default function LiveView({
   // Unlike the sibling presentation-only sites (App.tsx, RouteSummary.tsx)
   // that fall back to a fixed default safety depth when this field is
   // missing, this value feeds foldProbe's own
-  // `idx !== null && safetyNow !== null` gate (~:208) -> checkHeadingDepth,
+  // `idx !== null && safetyNow !== null` gate (~:209) -> checkHeadingDepth,
   // the on-water hazard path: fabricating a plausible-looking depth here
   // would render a confident caution verdict against a value the user
   // never actually chose — a wrong number is worse than an absent one on
@@ -146,7 +146,7 @@ export default function LiveView({
   // caution note RENDERS on `safetyDepthM !== null` — see the `!plan`
   // comment below: a guard that can suppress the note is the same false
   // all-clear. (Gating the interpolated NUMBER is a different thing and is
-  // fine; see ~:380.)
+  // fine; see the `safety:` interpolation in the caution note, ~:409.)
   //
   // `typeof … === 'number' && Number.isFinite(…) && … > 0` — plain
   // `Number.isFinite` ALONE is not enough: it admits `0`, `-0` and
@@ -158,13 +158,14 @@ export default function LiveView({
   // NOTE-LESS FALSE ALL-CLEAR — strictly worse than the NaN crash this
   // guard already caught, because a crash is loud and a silent all-clear on
   // the on-water path is not (see the `depthCheck` comment below on why a
-  // note-less heading must never be mistaken for "checked, and clear"). The
-  // `typeof === 'number'` term also closes the numeric-STRING case
-  // (a migrated `"3.0"`), which `Number.isFinite` alone would have admitted
-  // through a different door (`Number.isFinite('3.0')` is `false`, so that
-  // one is actually caught either way, but a non-number type in general is
-  // not guaranteed to be). `typeof` narrows the type for every later term in
-  // this chain, so no `as number` cast is needed.
+  // note-less heading must never be mistaken for "checked, and clear").
+  //
+  // The leading `typeof … === 'number'` term is there for TYPE NARROWING,
+  // not for an extra value class: `Number.isFinite` coerces nothing and is
+  // already `false` for every non-number (measured: '3.0', null, undefined,
+  // true, {}, [], [3], new Number(3) — all false). What `typeof` buys is
+  // narrowing `number | undefined` for every later term in this chain, so
+  // `> 0` typechecks and no `as number` cast is needed.
   const req = plan?.request;
   const rawSafetyDepthM = req?.settings?.safetyDepthM;
   const safetyDepthM =
@@ -393,7 +394,7 @@ export default function LiveView({
                     // computed above, never a fresh unguarded read.
                     // Invariant: `depthCheck.state` can only reach
                     // 'caution' through foldProbe's
-                    // `idx !== null && safetyNow !== null` gate (~:208),
+                    // `idx !== null && safetyNow !== null` gate (~:209),
                     // and `safetyDepthM` is a stable function of the same
                     // `plan` for the life of this `holdKey` — so the em-dash
                     // branch below is provably unreachable. Narrowed this

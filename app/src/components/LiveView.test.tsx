@@ -752,8 +752,8 @@ describe('LiveView', () => {
       await screen.findByText('Depth not checked');
       // (c) ...and NOT a fabricated caution against a depth nobody chose —
       // this is the assertion the vacuity trap above is about, and the one
-      // the required mutation check (swap the :127 guard's `null` fallback
-      // for a default) must turn red.
+      // the required mutation check (swap the `safetyDepthM` guard's `null`
+      // fallback, ~:171, for a default) must turn red.
       expect(screen.queryByText(/Bearing crosses/)).not.toBeInTheDocument();
     });
 
