@@ -692,6 +692,85 @@ describe('LiveView', () => {
       expect(screen.queryByText(/crosses 0\.0 m/)).not.toBeInTheDocument();
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     });
+
+    // #632: migratePlan.ts's migrateRequest never validates a stored plan's
+    // `settings` field, so a record saved before it existed migrates with
+    // the field simply MISSING rather than rejected — and a bare unguarded
+    // read used to throw the instant the component evaluated, blanking the
+    // whole app (no error boundary anywhere in app/src).
+    //
+    // THE VACUITY TRAP: 'Depth not checked' is produced by TWO independent
+    // conditions — a null safetyDepthM (what this test is FOR) and a
+    // null/failed mask (checkHeadingDepth's own 'unavailable' path). Using
+    // the mask-unavailable setup here (mockRejectedValue) would pass even
+    // with a `DEFAULT_SETTINGS.safetyDepthM` fail-open fallback shipped —
+    // exactly the defect this row exists to catch. So this uses the SAME
+    // healthy-mask setup as 'shows the depth caution...' above (a resolved
+    // mask + segmentShallowestBelow spied to 2.1, well below any plausible
+    // default safety depth): if the settings guard ever regressed to a
+    // fabricated default, THIS setup would render the caution, not silently
+    // stay clear.
+    it('#632: a plan whose stored request is missing `settings` shows "Depth not checked" — never a fabricated caution — even with a healthy mask reporting shallow water on the exact bearing', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { settings: _dropped, ...requestWithoutSettings } = TEST_PLAN.request;
+      const plan = {
+        ...TEST_PLAN,
+        id: 'live-plan-no-settings',
+        request: requestWithoutSettings,
+      } as unknown as Plan;
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, plan);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      // (a) Reaching this line already proves no throw — the earlier
+      // render()/click()/act() calls above would have failed first. Kept
+      // only for a readable failure message; per the brief this is a
+      // theorem given (b) and (c), not independent evidence on its own.
+      // (b) the honest degraded state renders...
+      await screen.findByText('Depth not checked');
+      // (c) ...and NOT a fabricated caution against a depth nobody chose —
+      // this is the assertion the vacuity trap above is about, and the one
+      // the required mutation check (swap the :127 guard's `null` fallback
+      // for a default) must turn red.
+      expect(screen.queryByText(/Bearing crosses/)).not.toBeInTheDocument();
+    });
+
+    // Discriminating control for the row above (required, not optional —
+    // see its comment): the IDENTICAL healthy-mask setup, but with
+    // `settings` present, must still show the depth caution. Without this,
+    // a green result above could be proving the mask path rather than the
+    // settings path — this is also exactly what 'shows the depth caution
+    // with the measured depth...' above already demonstrates, restated here
+    // explicitly so the pairing with the row above is undeniable rather than
+    // merely implied by file order.
+    it('#632 discriminating control: the identical healthy-mask setup WITH `settings` present still shows the depth caution', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      await screen.findByText(/Bearing crosses 2\.1 m/);
+    });
   });
 
   // #115 manual "reroute from here" — only rendered when App wires the

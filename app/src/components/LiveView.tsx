@@ -124,7 +124,35 @@ export default function LiveView({
   // plan, then getting one, would render a different number of hooks across
   // renders).
   const mask = useNavMask();
-  const safetyDepthM = plan?.request.settings.safetyDepthM ?? null;
+  // #632: migratePlan.ts's migrateRequest never validates the stored
+  // plan's `settings` field (`grep -c settings
+  // app/src/services/migratePlan.ts` -> 0), so a record saved before that
+  // field existed migrates with `settings` missing rather than rejected —
+  // and reading its safety depth unguarded threw `TypeError: Cannot read
+  // properties of undefined` the instant the Live tab mounted such a
+  // plan. With no error boundary anywhere in app/src, that blanked the
+  // whole app.
+  //
+  // Unlike the sibling presentation-only sites (App.tsx, RouteSummary.tsx)
+  // that fall back to a fixed default safety depth when this field is
+  // missing, this value feeds foldProbe -> checkHeadingDepth below
+  // (~:161-163), the on-water hazard path: fabricating a plausible-looking
+  // depth here would render a confident caution verdict against a value
+  // the user never actually chose — a wrong number is worse than an
+  // absent one on this surface. Per the maintainer's own triage ruling
+  // this fails to `null` instead, which already flows through foldProbe's
+  // existing `safetyNow !== null` gate to the honest 'unavailable' ->
+  // "Depth not checked" state. Do NOT add a `safetyDepthM !== null` gate
+  // anywhere else in this file to "help" — see the `!plan` comment below:
+  // a guard that can suppress the caution note is the same false
+  // all-clear.
+  //
+  // `Number.isFinite`, not a plain optional chain: a migrated-but-odd
+  // record could carry NaN/Infinity, both of which would otherwise reach
+  // the hazard math and render nonsense in safety copy.
+  const req = plan?.request;
+  const rawSafetyDepthM = req?.settings?.safetyDepthM;
+  const safetyDepthM = Number.isFinite(rawSafetyDepthM) ? (rawSafetyDepthM as number) : null;
   const holdKey = `${plan?.id ?? ''}:${rig ?? ''}`;
 
   // Asymmetric hysteresis: engages instantly, drops only after a sustained
@@ -342,7 +370,18 @@ export default function LiveView({
                     // banner uses for both of its depths (RouteSummary.tsx),
                     // so the two depth warnings never render the same number
                     // differently.
-                    safety: plan.request.settings.safetyDepthM.toFixed(1),
+                    //
+                    // #632: consumes the SAME guarded `safetyDepthM` local
+                    // computed above, never a fresh unguarded read.
+                    // Invariant: `depthCheck.state` can only reach
+                    // 'caution' through foldProbe's `safetyNow !== null`
+                    // gate (~:161-163), and `safetyDepthM` is a stable
+                    // function of the same `plan` for the life of this
+                    // `holdKey` — so the `: ''` branch below is provably
+                    // unreachable. Narrowed this way (not `!`, which would
+                    // be the first production non-null assertion in
+                    // app/src/components/) purely to satisfy TypeScript.
+                    safety: safetyDepthM !== null ? safetyDepthM.toFixed(1) : '',
                   })}
             </p>
           )}
