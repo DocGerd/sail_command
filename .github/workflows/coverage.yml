@@ -103,3 +103,31 @@ jobs:
         #   restoring verified coupling with a real YAML parse. If you change
         #   this number, change `JOB_CAP_MINUTES` too.
         timeout-minutes: 240
+      # #346: upload the lcov report (app/vite.config.ts's coverage.reporter
+      # now includes 'lcov') to Codecov for the README badge. Deliberately
+      # NOT added to the required `app`/`e2e` jobs in ci.yml — this step lives
+      # only in this pre-existing NIGHTLY job, so the badge can lag `develop`
+      # by up to ~24h and costs zero PR-critical-path minutes (the
+      # alternative, a per-PR non-required job like hangarfit's, would add a
+      # ~40+ min non-blocking job to every PR per this file's own coverage
+      # timing comments above — not adopted here without a separate decision).
+      # `fail_ci_if_error: true` is a DELIBERATE divergence from hangarfit's
+      # `false`. It is NOT an application of CLAUDE.md's guard-asymmetry rule
+      # ("a NUDGE should fail open") but a reasoned departure from it: that
+      # rule assumes a fail-closed guard can cost someone a blocked merge, and
+      # nothing here can block anything (this job is not in `protect-main`).
+      # With no merge cost on either side, the remaining asymmetry is
+      # VISIBILITY — a silent upload failure (missing/expired CODECOV_TOKEN, a
+      # Codecov outage) leaves the README badge stale with no signal at all,
+      # where a red job at least surfaces it. Stated plainly because this file
+      # argues the other way in the `timeout-minutes: 240` comment above:
+      # a permanently-red non-required check DOES get ignored. If this step
+      # ever starts failing chronically, fix or remove it — do not flip this
+      # to `false`.
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: app/coverage/lcov.info
+          disable_search: true
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

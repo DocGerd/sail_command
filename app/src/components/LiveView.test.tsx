@@ -143,6 +143,17 @@ function fullyDeepMaskBuffer(): ArrayBuffer {
   return new Uint8Array(MASK_META.rows * MASK_META.cols).fill(255).buffer;
 }
 
+// #632 review Important: unlike the buffer above, THIS content is
+// load-bearing — byte 0 is charted LAND, and the one test using it
+// deliberately does NOT spy on segmentShallowestBelow (a mocked return
+// ignores the threshold entirely, which is exactly the vacuity the
+// reviewer's supplied test setup exists to avoid). Real NavMask, real
+// checkHeadingDepth, a real `depthM < thresholdM` comparison against a
+// threshold of 0.
+function fullyLandMaskBuffer(): ArrayBuffer {
+  return new Uint8Array(MASK_META.rows * MASK_META.cols).fill(0).buffer;
+}
+
 function TestSetPlan({ plan }: { plan: Plan }) {
   const { setPlan } = useActivePlan();
   useEffect(() => {
@@ -691,6 +702,131 @@ describe('LiveView', () => {
       await screen.findByText('Bearing crosses charted land');
       expect(screen.queryByText(/crosses 0\.0 m/)).not.toBeInTheDocument();
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
+    });
+
+    // #632: migratePlan.ts's migrateRequest never validates a stored plan's
+    // `settings` field, so a record saved before it existed migrates with
+    // the field simply MISSING rather than rejected — and a bare unguarded
+    // read used to throw the instant the component evaluated, blanking the
+    // whole app (no error boundary anywhere in app/src).
+    //
+    // THE VACUITY TRAP: 'Depth not checked' is produced by TWO independent
+    // conditions — a null safetyDepthM (what this test is FOR) and a
+    // null/failed mask (checkHeadingDepth's own 'unavailable' path). Using
+    // the mask-unavailable setup here (mockRejectedValue) would pass even
+    // with a `DEFAULT_SETTINGS.safetyDepthM` fail-open fallback shipped —
+    // exactly the defect this row exists to catch. So this uses the SAME
+    // healthy-mask setup as 'shows the depth caution...' above (a resolved
+    // mask + segmentShallowestBelow spied to 2.1, well below any plausible
+    // default safety depth): if the settings guard ever regressed to a
+    // fabricated default, THIS setup would render the caution, not silently
+    // stay clear.
+    it('#632: a plan whose stored request is missing `settings` shows "Depth not checked" — never a fabricated caution — even with a healthy mask reporting shallow water on the exact bearing', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { settings: _dropped, ...requestWithoutSettings } = TEST_PLAN.request;
+      const plan = {
+        ...TEST_PLAN,
+        id: 'live-plan-no-settings',
+        request: requestWithoutSettings,
+      } as unknown as Plan;
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, plan);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      // (a) Reaching this line already proves no throw — the earlier
+      // render()/click()/act() calls above would have failed first. Kept
+      // only for a readable failure message; per the brief this is a
+      // theorem given (b) and (c), not independent evidence on its own.
+      // (b) the honest degraded state renders...
+      await screen.findByText('Depth not checked');
+      // (c) ...and NOT a fabricated caution against a depth nobody chose —
+      // this is the assertion the vacuity trap above is about, and the one
+      // the required mutation check (swap the `safetyDepthM` guard's `null`
+      // fallback, ~:171, for a default) must turn red.
+      expect(screen.queryByText(/Bearing crosses/)).not.toBeInTheDocument();
+    });
+
+    // Discriminating control for the row above (required, not optional —
+    // see its comment): the IDENTICAL healthy-mask setup, but with
+    // `settings` present, must still show the depth caution. Without this,
+    // a green result above could be proving the mask path rather than the
+    // settings path — this is also exactly what 'shows the depth caution
+    // with the measured depth...' above already demonstrates, restated here
+    // explicitly so the pairing with the row above is undeniable rather than
+    // merely implied by file order.
+    it('#632 discriminating control: the identical healthy-mask setup WITH `settings` present still shows the depth caution', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      await screen.findByText(/Bearing crosses 2\.1 m/);
+    });
+
+    // #632 review Important: Number.isFinite ALONE admits 0, -0 and any
+    // negative number — and NavMask.segmentShallowestBelow compares
+    // `depthM < thresholdM`, so at a non-positive threshold NOTHING is ever
+    // shallower, charted LAND included. That collapses to `{state:'clear'}`,
+    // which renders NO NOTE AT ALL — a note-less false all-clear, strictly
+    // worse than the NaN crash the guard already caught (a crash is loud; a
+    // silent all-clear on the on-water hazard path is not).
+    //
+    // Deliberately does NOT spy on segmentShallowestBelow (unlike every
+    // sibling depth-check test above): a mocked return value ignores the
+    // threshold argument entirely, which would make this test pass even
+    // with the pre-fix `Number.isFinite`-only guard (0 is finite) — the
+    // exact vacuity the reviewer flagged. Real mask, real NavMask, real
+    // checkHeadingDepth, an all-LAND buffer, so the `depthM < thresholdM`
+    // comparison the hazard depends on is genuinely exercised.
+    it('#632 review: a stored safetyDepthM of 0 shows "Depth not checked" — never a silent no-note all-clear, even crossing charted land', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyLandMaskBuffer(),
+      } as never);
+
+      const plan: Plan = {
+        ...TEST_PLAN,
+        id: 'live-plan-zero-safety-depth',
+        request: { ...TEST_PLAN.request, settings: { ...DEFAULT_SETTINGS, safetyDepthM: 0 } },
+      };
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, plan);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      // The honest degraded state renders...
+      await screen.findByText('Depth not checked');
+      // ...and — the assertion that actually discriminates the defect —
+      // some depth-annotation element exists at all. `depthAnnotation()`
+      // (defined above) returns null ONLY when no `.live-view-hts-note`
+      // element is in the DOM, which is exactly the note-less 'clear' state
+      // this row exists to rule out.
+      expect(depthAnnotation()).not.toBeNull();
+      expect(screen.queryByText(/Bearing crosses/)).not.toBeInTheDocument();
     });
   });
 

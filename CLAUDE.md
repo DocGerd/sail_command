@@ -95,8 +95,8 @@ making design-level decisions; do not silently deviate.
 - Statement coverage baseline: 93.92% (4100/4365 statements; branches 88.99%,
   functions 92.28%, lines 95.52%), measured 2026-08-03 via `npm --prefix app
   run test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
-  hand-added or inferred: **2032 tests, 143 files**, all passing (2026-08-19
-  at `cbc6055`, the v0.12.0 cut). That run's DURATION is DISCARDED — six agents ran
+  hand-added or inferred: **2136 tests, 145 files**, all passing (2026-08-21
+  at `5b2032d`, the v0.13.0 cut). That run's DURATION is DISCARDED — a browser agent ran
   concurrently, the same contention that invalidated an earlier 393 s figure.
   Two rules distilled from repeated re-measurements of this pair: **counts are
   load-independent, durations are not** (never quote a duration measured under
@@ -380,6 +380,23 @@ making design-level decisions; do not silently deviate.
   2026-08-04 — neither is unguarded now; re-read before citing either).
   Per the guard-asymmetry rule below: an absent security control is the
   expensive failure direction, so the check must fail closed.
+- **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
+  an object literal used as a lookup table for STORED/untrusted input.** EVERY
+  `Object.getOwnPropertyNames(Object.prototype)` member passes it (12 of them on
+  Node v24.15.0, measured 2026-08-24 — an engine count, not a constant), and
+  `t(TABLE['toString'])` resolves to a FUNCTION that coerces to a non-key, so
+  React renders NOTHING (#614/PR #656 — the fix for an empty `role="alert"`
+  re-created the empty `role="alert"`; the reviewer measured 8 fall-open members
+  plus a control, 9/9, before the table was widened to all 12). Use
+  `Object.hasOwn` (ES2022; `tsconfig.app.json` targets es2023, so no polyfill).
+  There was NO in-repo precedent: `Object.hasOwn`'s only occurrence IS that fix,
+  and `usePersistedBoatId.ts`'s `isCatalogueBoatId` is a `BOATS.some(...)` ARRAY
+  scan — a round-1 review comment called it the precedent and it reached this
+  file unchecked. Derive any prototype-name test table from
+  `Object.getOwnPropertyNames(Object.prototype)`, never a hand-written list — a
+  hand-written 8 missed `__defineGetter__`/`__defineSetter__`/`__lookupGetter__`/
+  `__lookupSetter__`, and a literal array can be stubbed to `[]` leaving the
+  guard green.
 - **Markdown bold immediately before a slash TERMINATES a block comment.**
   `**584**/119` inside JSDoc contains `*/`, so the comment ends there and
   eslint reports a bare `Parsing error: ';' expected` at or after the `*/`,
@@ -749,6 +766,20 @@ making design-level decisions; do not silently deviate.
   find the in-flight same-ref run before investigating the new one. Let the
   healthy jobs reach `success` BEFORE cancelling, so `rerun --failed` re-runs
   only the wedged job instead of all of them.
+- **Any e2e test of the departure `datetime-local` MUST mock the clock.** The
+  app's `max` is `now + FORECAST_DAYS * 86_400_000` (`FORECAST_DAYS = 6`,
+  `services/openMeteo.ts`), and Chromium makes the month/year segments INERT when
+  `min` and `max` fall in the same calendar month — so for ~3 weeks of every
+  month the blanking defect is UNREACHABLE and a test of it silently proves
+  nothing (measured #643: one investigator's "not reproducible on Chromium" was
+  this artifact, not a finding). Also: **Playwright's Linux WebKit cannot test
+  this control at all** — it renders `datetime-local` UNSEGMENTED, so
+  ArrowUp/typing leave `.value` byte-identical, and a green WebKit arm is not
+  evidence about Safari (measured 2026-08-24 against the WebKit build bundled
+  with `@playwright/test` 1.62.1, browser revision 2336; re-check after any
+  Playwright bump). The
+  record is #643's verification transcript — PR #665's body publishes only the
+  Chromium half.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
   service-worker fetches (Playwright #2311) — the offline spec kills the
   preview server instead. Never "simplify" that away.
@@ -1024,7 +1055,14 @@ making design-level decisions; do not silently deviate.
   then served the chunk name the tag run had built, proving that run's BUILD
   was always correct and only its DEPLOYMENT no-opped.
 
-  **EXERCISED FOUR TIMES; the margin is NOT a predictor.** On one basis
+  **EXERCISED FIVE TIMES; the margin is NOT a predictor, and n=5 now PROVES
+  it rather than merely failing to refute it: v0.13.0's gap was 54 s and the
+  tag run TOOK, while v0.11.0's 54 s was also safe and v0.10.0's 128 s
+  no-opped — the SAME gap value now appears on BOTH outcomes, so the gap
+  carries zero information.** At v0.13.0 the gate read correctly in advance:
+  merge-push run `32441905475` had `deploy: completed/cancelled` (all five
+  jobs), so tag run `32441958743` deployed cleanly and `smoke-probe` passed.
+  On one basis
   (Deploy workflow-RUN creation→creation) the gap was **128 s** at v0.10.0 (DID no-op —
   the probe fired and was right), **54 s** at v0.11.0 (safe), **70 s** at
   v0.12.0 (safe) and **43 s** at v0.12.1 (safe — merge-push run 32313173754
@@ -1805,6 +1843,25 @@ making design-level decisions; do not silently deviate.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
+- **A guard can pass forever for TWO opposite reasons, and both shipped a
+  defect in v0.13.0.** (a) JOINT BLINDNESS — #638's legend rendered with no
+  panel background and a 104px column at every viewport, while its only e2e
+  guard ran at **320px ONLY** (asserting overflow and collision) and its unit
+  guard was jsdom, which computes no paint. Both green, both CORRECT; they
+  measure quantities orthogonal to the defect. For viewport-conditional CSS a
+  guard at one viewport is evidence about THAT viewport — pair it with the
+  shared `STANDARD_VIEWPORTS`/`EDGE_VIEWPORTS` matrix. (b) CALIBRATED TO THE
+  LIMITATION — #648's hatch pixelation is measured by exactly the right guard
+  (`datalayers.spec.ts`'s z16 stripe-width test), whose threshold is `<= 100px`
+  with an adjacent comment reading "the accepted limit of the per-cell-raster
+  approach, not a fix". A guard whose bound was set to tolerate the known
+  residual can NEVER fire on it. Ask both "what can this not see?" and "was
+  this threshold chosen to accept the thing I am asking it to catch?"
+- **The release ship gate earns its cost — do not optimise it away as
+  ceremony.** At the v0.13.0 cut, `app`, `e2e`, `hook-selftests`, CodeQL,
+  Scorecard, Deploy and 2136 unit tests were ALL green, and a human looking at
+  a screenshot found #638 in a control reachable with ZERO setup
+  (`depthVisible` defaults ON, no plan required).
 - A verification method that structurally cannot see a regression class will
   report green through it. Three separate cases in one day:
   `queryRenderedFeatures` counts are order-independent, so a per-family
@@ -1933,8 +1990,12 @@ making design-level decisions; do not silently deviate.
   COMPLETELY silent
   local-font path — no fetch, no warning — whenever the style's `glyphs` URL
   is falsy, and `glyphManager.setURL()` is fed from the style's `glyphs`
-  field at two sites in `style.ts` including the style-DIFF path (`:491`)
-  that `styleReload.ts` exercises on every `styledata` re-add. `glyphs` is
+  field at two sites in `style.ts` — `_load` (`~:491` at 6.3.0, `~:488` at
+  6.5.0), which is what a `map.setStyle()` reaches and therefore what
+  `styleReload.ts`'s `styledata` re-add exercises, and `setGlyphs` (`~:1953` /
+  `~:1933`), the style-DIFF path. Anchor on the METHOD NAMES: an earlier
+  revision here called `_load` "the style-DIFF path", which named the wrong
+  method for the right site. `glyphs` is
   documented OPTIONAL in the maplibre style spec, so nothing upstream flags
   it. A label-render test needs THREE signals — a rendered-feature check,
   the zero-warnings check, and a timing-independent assertion that
@@ -2237,6 +2298,23 @@ making design-level decisions; do not silently deviate.
   CURRENT WORLD STATE rather than against the diff. When the orchestrator mutates
   real state (labels, milestones, deploys, issue state), re-check any in-flight
   PR prose that DESCRIBES that state.
+- **Rewording a citation needs THREE separate questions, not one**: is it still
+  TRUE, is it still SAYING THE SAME THING, and is it still WORTH ITS PLACE. A
+  sentence can pass the first and fail the other two — #595's rewrite replaced a
+  boat-SPECIFIC structural fact (`TOLERANCE_M = 0.9` chosen so `3.0 - 0.9` lands
+  exactly on this hull's draft) with a generic formula true of EVERY boat, and
+  true of `salona-44-speedy-go` verbatim since it shares the 2.1 m draft — while
+  duplicating copy `about.caveats.depthMask` already ships in both languages.
+- **Ask of every guard: what does it do when the problem is FIXED?** — not only
+  "does it fire when the problem is present?" A leak-detection row asserting
+  `expect(internalOnly.length).toBeGreaterThan(0)` REDS on a BETTER catalogue
+  (renaming the leaked id empties the array and fails the assert) and was
+  SIMULTANEOUSLY vacuous (green with its collector stubbed to `[]`). Per the
+  guard-asymmetry rule a NUDGE-class guard must fail OPEN; this one failed
+  closed on exactly the outcome it existed to encourage. CAUGHT IN REVIEW, never
+  shipped — `boats.test.ts` asserts non-vacuity on `collectRenderedNotes()`
+  instead, leaving an empty `internalOnly` as the legitimate all-clear
+  (#595/PR #657).
 - **MOVING text is not a no-op, and it fails in TWO distinct ways** (#493,
   PR #504). RE-SEQUENCING breaks ANAPHORA: the restructured shallow banner's
   lead opened "a more cautious reading of THAT SAME depth data" / "Lesart
@@ -2379,7 +2457,11 @@ making design-level decisions; do not silently deviate.
   reproduces only under a fixed-snap convention the app does not use —
   `planRoute.ts` re-snaps 46.3 m onto a conservative-3.0 m cell, losing zero
   pairs. Gate-conditional: the floor degrades to 1.3 m at the UI's 2.2 m
-  minimum. ~10,746 crossers remain, so #455 stays OPEN.
+  minimum. ~10,746 crossers remain — cited, not re-derived, and on the
+  NAVIGABLE-cell basis (45.08%); 48.35% is the wrong denominator. #455 CLOSED
+  2026-08-20 on a deliberately narrowed basis (#492's per-cell hatch already
+  discloses exactly this criterion), so the mask optimism is now an ACCEPTED,
+  DISCLOSED source-data limit — the residual itself is tracked in NO issue.
 - **Every per-boat depth lever is on the GATE side, and the two gates differ**
   (#54/#539, `app/src/lib/boatDepth.ts`). `defaultSafetyDepthM(b)` is
   `ceilToDecimetre(b.draftM + MASK_TOLERANCE_M)` — so `gate - T = draft`
@@ -2399,16 +2481,31 @@ making design-level decisions; do not silently deviate.
   the production path; passing it as `findRelaxedGate`'s `floorM` instead of
   `relaxationFloorM(deps.boat)` is what `boatDepth.ts` calls "THE SINGLE MOST
   DANGEROUS SHORTCUT IN THIS FEATURE" — surviving reads are test-side only.
+- **#53 relaxation is PER-CELL, not route-wide — since v0.12.0** (#452 P3,
+  `e63f8cb`). `depthGate.ts`'s `APPROACH_RADIUS_M = 1852` + `gateAtCell` return
+  the REQUESTED depth outside every waypoint disc; `findRelaxedGate` replaced
+  the old scalar and `planRoute.ts` never rebuilds `{ ...s, safetyDepthM }`.
+  Measured 2026-08-21: Flensburg→Marstal crosses **0.000 nm** of sub-gate water
+  beyond 1 nm of Marstal, 1.18x the provable floor. **#452's TITLE still says
+  "the WHOLE route" and is STALE in both clauses** — it closed ACCIDENTALLY, on
+  a stray bare `fix #452` in a docs commit SUBJECT (`f99a5d68`), while the real
+  fix (PR #518) used `Refs`. Briefing an agent from that title produced a false
+  premise this session (#649). Note the bare form closes even after a
+  conventional-commit prefix, unlike the measured bracketed `fix(#54):`.
 - **The disclosure stack mounts ONLY on relaxed routes** (#455; verified
-  2026-08-20). All three `flagShallowLegs` call sites (`planRoute.ts`
+  2026-08-20, re-verified 2026-08-21 AFTER #612 — still true). All three `flagShallowLegs` call sites (`planRoute.ts`
   ~:713/:723/:738) sit inside `if (relaxed !== null)`; every non-relaxed
   success returns `assemble(tierN, null)` (~:603/:614/:630). So the banner,
   the cautious chip and the exposure sentence — four PRs of depth UI
   (#504/#509/#518/#523) — render for NO ordinary route, while ~10,746
   gate-crossing cells produce no per-route signal. NO test caught this: every
   test that renders the stack hands it a non-null `ShallowInfo`, so the defect
-  is in whether the component MOUNTS, not in the component. #612 is the fix,
-  gated on #455's measurement half.
+  is in whether the component MOUNTS, not in the component. **#612 did NOT
+  close this** — it shipped a SEPARATE, low-prominence `marginal-depth-notice`
+  (`RouteSummary.tsx`, driven by `marginalExposureNm`) gated as the banner's
+  exact COMPLEMENT, over a DIFFERENT population: charted readings AT OR ABOVE
+  the gate whose cautious reading falls below it. Do not read #612 as having
+  mounted the stack.
 - **The cautious floor is now DISCLOSED at the leg, not fixed** (#493, PR #504,
   shipped 2026-08-10). Because the mask is built so `depth_blend <= depth_max
   + T`, the inequality runs BACKWARDS too — `conservative >= shipped - T` per
@@ -2446,6 +2543,24 @@ making design-level decisions; do not silently deviate.
   navigable corridor is >1 km wide at 90.8% of navigable-centreline points.
   The decline rests on the data being unusable, not on the corridor being
   narrow.
+- **`polarProvenance` and `draftProvenance` have DIFFERENT blast radii — a
+  no-sweep or no-twin argument cleared for one does NOT transfer to the other.**
+  `BoatSnapshot` omits `draftProvenance`; `types.ts` DOES copy
+  `polarProvenance.note`. And a polar note lives in THREE artifacts no compiler
+  spans: `app/src/data/boats.ts`, `pipeline/polars-source.json` (hand-authored —
+  `estimate_polars.mjs` states there is deliberately NO mode that rewrites it),
+  and each shipped `app/public/data/polars/*.json` `source` field
+  (`build_polars.mjs` sets `source: sail.provenance.note`).
+  `app/src/test/polarProvenance.test.ts` (#54 Task 12) reads all three and reds
+  the REQUIRED `app` check on drift — measured on PR #657, where a scope
+  widening updated one of the three. Fix order: edit the pipeline source, THEN
+  `npm --prefix pipeline run polars`; never hand-edit the shipped assets.
+  **Edit `polars-source.json` with `sed -i` via Bash, NOT Edit/Write** — the
+  PostToolUse prettier hook (Working style, below) matches `Edit|Write` on
+  `*.json` with only `*package-lock.json` excluded, and there is no
+  `.prettierignore`, so it reformatted this file 287 -> 343 lines (measured
+  2026-08-24), churning the Salona 45 block exactly as `pipeline/README.md`
+  warns. Bash carries no `file_path`, so the hook never fires.
 - **Wind grids are stored with each plan** (IndexedDB). A saved route must
   always render against the forecast it was computed from, never a re-fetched
   one.
@@ -2996,6 +3111,29 @@ making design-level decisions; do not silently deviate.
   given `'de'` to satisfy `tsc`. What made it safe was an explicit falsification:
   flipping all 13 to `'en'` REDS with `Unable to find element: 77.0 nm`, proving
   the DOM really contains German. Demand that probe on any such migration.
+- **Never state a CI check's state from your own tracking table.** Two measured
+  orchestrator errors in one session: a PR was re-synced believing it green when
+  it had been RED on its own head all along (sending a diagnostician after a
+  composition defect that did not exist), and a PR was merged off a table entry
+  reading "approved" when its reviewer had only been SPAWNED. Gate every merge on
+  an explicit reviewer VERDICT plus a freshly-read check-run status — never on
+  your own bookkeeping.
+- **Forbid implementers the full test suite outright; CI is the authority.**
+  MEASURED: 3 of 5 sonnet implementers independently backgrounded the ~8.3 min
+  suite and then ended their turn "waiting on the background run" — a message
+  that arrives AS an idle notification, i.e. with no live children, so it never
+  wakes. A preemptive warning did NOT prevent it (one agent received the warning
+  and stalled anyway). Brief a FILTERED FOREGROUND run instead.
+- **A worktree agent's completion notification reports its branch as
+  `worktree-agent-<id>`, not the branch you asked for** (observed 2026-08-24 on
+  Claude Code 2.1.241 — a harness property, re-check after an upgrade), so the
+  notification structurally cannot tell you whether it based its work on
+  `origin/develop`. Require the merge-base as a deliverable; once a PR exists,
+  `mergeable_state` is the second signal (the PIN THE BASE BRANCH bullet below).
+- **`gh api repos/O/R/commits/<sha>/check-runs` can 422 "No commit found" on a
+  7-char abbreviation while the FULL 40-char SHA works at the same instant** —
+  intermittent, not a rule (every earlier PR in the same merge train accepted the
+  short form). Use the full SHA in poll loops.
 - **PIN THE BASE BRANCH in every agent brief**, and require the agent to
   report its merge-base as part of its deliverable — `isolation: worktree`
   reliably comes up on the WRONG branch, not merely sometimes: **10 of 10**
@@ -3166,6 +3304,27 @@ making design-level decisions; do not silently deviate.
   4`). Pipe instead: `gh api URL | jq -r --arg p "$p" '…'`. Caught only by
   foreground-testing a poll body before arming a Monitor — armed as written it
   emits nothing forever, which reads as "still running".
+- **REST and GraphQL disagree on the review-event enum.** `POST
+  /repos/{o}/{r}/pulls/{n}/reviews` wants `event: "COMMENT"`; `"COMMENTED"` is
+  the GraphQL spelling and 422s with `Variable $event of type
+  PullRequestReviewEvent was provided invalid value`. Same family as
+  `.jobs[].conclusion` vs a deployment-status value — never mix the two
+  vocabularies.
+- **`jq --arg` cannot carry a base64 image payload** — `Argument list too
+  long`, surfacing as a misleading `{"message":"Body should be a JSON
+  object"}` HTTP 400 from `gh` rather than an argv error. Use `jq --rawfile`
+  or build the JSON in Python. Hit whenever a UI-bug screenshot is uploaded to
+  the `issue-assets` branch via `gh api PUT /contents/`.
+- **Never use `FETCH_HEAD` in this checkout.** It is shared with concurrent
+  agents and gets overwritten mid-task: a reviewer's `FETCH_HEAD` silently
+  resolved to `develop`, its grep for the PR's content came back EMPTY, and
+  that empty would have read as a FINDING. Always
+  `git fetch origin <branch>:refs/remotes/origin/<name>` and name the ref.
+- **An un-isolated agent can leave the SHARED CHECKOUT on ITS branch.** A
+  git-plumbing agent ran `git switch -c` in the repo root, silently moving the
+  session off `develop` (measured 2026-08-21; nothing lost, tree was clean).
+  Check `git rev-parse --abbrev-ref HEAD` after delegating any git task to an
+  un-isolated agent, or give it `isolation: worktree`.
 - **`gh pr merge` is SERVER-SIDE, so your local checkout never moves.** Seven
   PRs merged over ~4 h left the main tree at the pre-milestone commit. Harmless
   while every check names an explicit ref (`origin/develop`,

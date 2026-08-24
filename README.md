@@ -1,5 +1,6 @@
 [![CI](https://github.com/DocGerd/sail_command/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DocGerd/sail_command/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/DocGerd/sail_command/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/DocGerd/sail_command/actions/workflows/codeql.yml)
+[![Codecov](https://codecov.io/gh/DocGerd/sail_command/branch/develop/graph/badge.svg)](https://codecov.io/gh/DocGerd/sail_command)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/DocGerd/sail_command/badge)](https://scorecard.dev/viewer/?uri=github.com/DocGerd/sail_command)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13749/badge)](https://www.bestpractices.dev/projects/13749)
 
@@ -128,8 +129,8 @@ npm --prefix app/ run build                      # production build to app/dist
 ```
 
 `npm run test` runs the full unit/property battery (polar interpolation,
-isochrone routing, mask queries, persistence, UI) — 2136 tests across 145
-files as of `5b2032d` (2026-08-20).
+isochrone routing, mask queries, persistence, UI) — 2160 tests across 146
+files as of `39bbcd6` (2026-08-24).
 `npm run e2e` builds the app and drives it with Playwright, including a
 true offline reload against a killed preview server.
 

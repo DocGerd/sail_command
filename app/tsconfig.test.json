@@ -111,6 +111,13 @@
   // the sweep is excluded from `npm run test` and CI by design, which is
   // exactly why the hardcoded literal went unnoticed there; a guard placed
   // beside it would be equally invisible.
+  // depthLegendGate.test.ts (#641): reads app/src/app.css via `node:fs` to
+  // hold `.depth-legend > summary`'s `min-height` literal — and the
+  // zero-vertical-padding property of `.depth-legend`'s own #638 chrome — to
+  // LEGEND_COLLAPSED_HEIGHT_PX, which DataLayers.tsx's reachability gate
+  // compares its computed budget against. Same reason and pattern as
+  // panelWidth.test.ts/useBannerHeight.test.ts above: a CSS-to-TypeScript
+  // invariant with no compiler spanning both.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -131,6 +138,7 @@
     "src/**/verifyMaskBoatGate.test.ts",
     "src/**/verifyMaskConnectivity.test.ts",
     "src/**/sweepSailIds.test.ts",
+    "src/**/depthLegendGate.test.ts",
     "sweep/**/*.ts"
   ]
 }

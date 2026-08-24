@@ -74,9 +74,11 @@ import { startPreview } from './helpers';
 //      renders 100% from local fallback. This needs no maplibre upgrade to
 //      trigger and no network failure — `glyphManager.setURL()` is fed from
 //      the style's `glyphs` field at TWO call sites in style.ts: the full
-//      style-load path (`_load`, style.ts:491) and the style-DIFF/update
-//      path (`setGlyphs`, style.ts:1953, invoked from `setState`'s diff
-//      operations) — the second is exactly the path this repo's own
+//      style-load path (`_load`, style.ts:488) and the style-DIFF/update
+//      path (`setGlyphs`, style.ts:1933, invoked from `setState`'s diff
+//      operations; both numbers re-derived against maplibre-gl@6.5.0 —
+//      anchor on the symbol names, the line numbers are only hints) — the
+//      second is exactly the path this repo's own
 //      `lib/styleReload.ts` machinery exercises on every `styledata`
 //      re-add when `MapView.tsx` rebuilds and re-applies its style (that
 //      subsystem has real bug history here: #159, #163). A regression

@@ -906,7 +906,17 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
         },
         { timeout: 10_000 },
       )
-      .toBeGreaterThan(0);
+      // #638 halved this margin (32px -> 16px) by giving `.depth-legend` 16px
+      // of horizontal chrome padding. MEASURED at that commit: exactly 16.00px
+      // in BOTH languages and viewport-INVARIANT from 280px to 375px —
+      // `.route-layer-controls` is `right: 0.5rem` with
+      // `max-width: calc(100% - 9.5rem)`, so while clipped its left edge sits
+      // at `vw - 8 - (vw - 152)` = 144px whatever the width, against the
+      // legend's own 8 + 120 = 128px right edge. A bare `> 0` would still pass
+      // at 1px, and the margin left is now exactly this element's own padding
+      // — so pin the MAGNITUDE, for the same reason the #638 wide-column probe
+      // carries a ratio floor rather than a break/no-break assertion.
+      .toBeGreaterThanOrEqual(12);
   } finally {
     server.kill();
   }
@@ -1118,3 +1128,200 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
     }
   });
 }
+
+// #638: the depth-hatch legend rendered with NO panel background at all, and
+// with a 104px text column at EVERY viewport including 3840x2160 — so its
+// longest German compounds broke mid-word on desktop.
+//
+// This guard exists because of HOW #638 shipped, not only because of what it
+// was. Its two pre-existing guards were both green and both correct:
+// `datalayers.spec.ts` swept `EDGE_VIEWPORTS` for reachability, and this
+// file's own `#598` test measured overflow and collision at 320px ONLY —
+// where a 104px column is as-designed. Neither measures paint, and neither
+// looks at a wide viewport, so the defect sat orthogonal to both (CLAUDE.md's
+// JOINT BLINDNESS entry names this as its worked example). The two halves
+// below are therefore deliberately different in scope:
+//
+//   (A) CHROME — the full `STANDARD_VIEWPORTS` matrix x both colour schemes.
+//       Asserts the RESOLVED `background` SHORTHAND, never `backgroundColor`:
+//       both the broken and the fixed state read `rgba(0, 0, 0, 0)` for
+//       `backgroundColor` under jsdom, so only the shorthand discriminates
+//       (the #493/#506 chip lesson). Equality against `.data-layer-controls`'s
+//       own pill alone would be VACUOUS — two transparent boxes are equal —
+//       so it additionally requires the resolved value NOT to be the
+//       transparent default. Neither half is sufficient on its own.
+//       Runs whether or not the legend is `hidden`: `display: none` still
+//       resolves a background, so this half stays non-vacuous at the narrow
+//       viewports where DataLayers.tsx's reachability gate may hide it.
+//
+//   (B) MID-WORD BREAK — WIDE entries only, SELECTED BY WIDTH against the
+//       >=1024px breakpoint rather than by a hand-written name list, so a
+//       future STANDARD_VIEWPORTS entry on the wide side is covered
+//       automatically. Sweeping this across the whole matrix would RED a
+//       CORRECT fix: at `tabletPortrait`/`phonePortrait` the narrow 104px
+//       bound is the shipped design, and the wide override is scoped
+//       `@media (min-width: 1024px)` precisely because an unscoped width
+//       change reopens the #598 collision at 320px (measured there at
+//       4940px²). Longest HYPHEN-FREE token, because a break at a real
+//       hyphen is a legitimate line-break opportunity and only an
+//       opportunity-free token can expose `overflow-wrap: break-word`
+//       actually firing.
+//
+// Both halves poll a DESCRIPTIVE STRING and re-read the DOM inside the poll
+// callback — no value is captured before the layout settles (#412), and a
+// failure names the measured value rather than reporting `false` (the
+// boolean-predicate lesson).
+//
+// The colour-scheme axis adds no discriminating power for (A): the chrome is
+// one `color-mix(in srgb, var(--sc-bg) 90%, transparent)` token and the
+// pre-fix state was transparent in both themes. It is swept anyway because
+// the issue title says "illegible in dark mode", so a light-only pass would
+// not close it — but it is NOT what makes this test fail before the fix.
+// Derived from the breakpoint rather than enumerated: `lib/useWideLayout.ts`'s
+// WIDE_LAYOUT_QUERY is `min-width: 1024px`, and the wide override half (B)
+// tests is scoped to that same query — so a future STANDARD_VIEWPORTS entry on
+// the wide side is picked up automatically instead of silently skipped.
+const WIDE_LAYOUT_MIN_WIDTH_PX = 1024;
+
+/** `ok`, or a string naming both resolved backgrounds. */
+function probeLegendChrome(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const legend = document.querySelector('details.depth-legend');
+    const pill = document.querySelector('.data-layer-controls');
+    if (!legend) return 'no .depth-legend in the DOM at all';
+    if (!pill) return 'no .data-layer-controls in the DOM at all';
+    const legendBg = getComputedStyle(legend).background;
+    const pillBg = getComputedStyle(pill).background;
+    // The transparent default, in the exact spelling Chromium resolves it to.
+    if (/^rgba\(0, *0, *0, *0\)/.test(legendBg))
+      return `.depth-legend has no panel background: ${legendBg}`;
+    if (legendBg !== pillBg)
+      return `.depth-legend background ${legendBg} != .data-layer-controls ${pillBg}`;
+    return 'ok';
+  });
+}
+
+/** `ok`, or a string naming the split token, its rect count and the column width. */
+function probeLegendWordBreak(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const body = document.querySelector('.depth-legend-body');
+    if (!body) return 'no .depth-legend-body in the DOM at all';
+    const bodyEl = body as HTMLElement;
+    // `boundingBox()` cannot see silent overflow (#299) — assert it here.
+    if (bodyEl.scrollWidth > bodyEl.clientWidth)
+      return `.depth-legend-body overflows: scrollWidth ${bodyEl.scrollWidth} > clientWidth ${bodyEl.clientWidth}`;
+    // WIDEST BY MEASURED PIXELS, not longest by character count. The two are
+    // different tokens and the difference is LIVE, not hypothetical (measured
+    // at 1920x1080 on this branch): in EN the widest run is `Unsurveyed`
+    // (81.31px, 10 chars) while the longest is `deliberate,` (73.48px, 11
+    // chars); in DE three runs tie at 16 chars and span 106.00-120.88px, so a
+    // character-count pick is decided by DOM order. Since the ratio floor
+    // below is a statement about PIXELS, selecting by characters can only ever
+    // OVERSTATE the margin — the fail-open direction.
+    let widest: { word: string; rects: number; width: number } | null = null;
+    for (const p of Array.from(body.querySelectorAll('p'))) {
+      for (const node of Array.from(p.childNodes)) {
+        if (node.nodeType !== Node.TEXT_NODE) continue;
+        const text = node.textContent ?? '';
+        // Hyphen-free runs only: a break AT a hyphen is a legitimate
+        // line-break opportunity, so a hyphenated token cannot evidence a
+        // mid-word break.
+        const re = /[^\s-]+/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(text))) {
+          const range = document.createRange();
+          range.setStart(node, m.index);
+          range.setEnd(node, m.index + m[0].length);
+          const rects = Array.from(range.getClientRects());
+          // Summed, not max: a token split across line boxes has its width
+          // split too, so the total is the width it WOULD need unbroken.
+          const width = rects.reduce((a, r) => a + r.width, 0);
+          if (widest && width <= widest.width) continue;
+          widest = { word: m[0], rects: rects.length, width };
+        }
+      }
+    }
+    if (!widest) return '.depth-legend-body rendered no text at all';
+    if (widest.rects !== 1)
+      return `"${widest.word}" broke across ${widest.rects} line boxes in a ${bodyEl.clientWidth}px column`;
+    // MARGIN, not just absence-of-break — and this row is here because the
+    // obvious weaker guard was MEASURED to pass through the wrong fix.
+    // Dropping the wide `width` while keeping `max-width: none` re-hands
+    // sizing to `.map-stack-tl`'s shrink-to-fit ceiling, which settles at
+    // exactly `widest token + this element's own horizontal chrome` — the
+    // column then equals the token to the pixel, one unbroken rect, and a
+    // break/no-break assertion alone reports GREEN (measured: 1 passed).
+    // That is the hairline regime #638's brief warned about: correct today
+    // by luck, and one font-metric or copy change away from breaking again
+    // with no test able to see it coming. 1.2x is a floor, not the design
+    // point (the shipped 14rem measures 1.72x at 1024x900), chosen well
+    // above the 1.00x the hairline produces and well below what ships, so
+    // it discriminates the two regimes without pinning the exact width.
+    const ratio = bodyEl.clientWidth / widest.width;
+    if (ratio < 1.2)
+      return `"${widest.word}" fits only at ${ratio.toFixed(2)}x: ${widest.width.toFixed(2)}px token in a ${bodyEl.clientWidth}px column — sized by the shrink-to-fit ceiling, not by the wide-layout width`;
+    return 'ok';
+  });
+}
+
+test('#638: the depth-hatch legend has panel chrome at every STANDARD_VIEWPORTS entry in both themes, and no mid-word break on wide layouts', async ({
+  browser,
+}) => {
+  const server = await startPreview();
+  try {
+    for (const lang of ['de', 'en'] as const) {
+      const context = await browser.newContext();
+      await context.addInitScript((l) => {
+        window.localStorage.setItem('sc-lang', l);
+      }, lang);
+      const page = await context.newPage();
+      try {
+        await page.setViewportSize(STANDARD_VIEWPORTS.desktopHd);
+        await page.goto(server.url);
+        await mapReady(page);
+        // Same idiom as this file's #598 test: the SW "offline ready" toast
+        // fires on every fresh browser context and moves DataLayers.tsx's
+        // reachability budget, which would hide the legend at the narrow
+        // entries below. Dismissing it keeps this test measuring chrome and
+        // wrapping rather than re-measuring the #598 gate.
+        await page
+          .locator('.reload-prompt .banner-dismiss')
+          .click({ timeout: 5_000 })
+          .catch(() => {});
+
+        for (const scheme of ['light', 'dark'] as const) {
+          await page.emulateMedia({ colorScheme: scheme });
+          for (const [name, vp] of Object.entries(STANDARD_VIEWPORTS)) {
+            await page.setViewportSize(vp);
+            const label = `${name} (${vp.width}x${vp.height}) / ${lang} / ${scheme}`;
+
+            await expect
+              .poll(() => probeLegendChrome(page), { timeout: 10_000, message: label })
+              .toBe('ok');
+
+            if (vp.width < WIDE_LAYOUT_MIN_WIDTH_PX) continue;
+
+            const details = page.locator('details.depth-legend');
+            // Wide layout takes DataLayers.tsx's "always reachable" early
+            // return, so this branch is never `hidden` — assert that rather
+            // than assume it, or half B could silently measure nothing.
+            expect(
+              await details.evaluate((el) => (el as HTMLDetailsElement).hidden),
+              `${label}: wide layout must never hide the legend`,
+            ).toBe(false);
+            await details.evaluate((el) => {
+              (el as HTMLDetailsElement).open = true;
+            });
+            await expect
+              .poll(() => probeLegendWordBreak(page), { timeout: 10_000, message: label })
+              .toBe('ok');
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    }
+  } finally {
+    server.kill();
+  }
+});

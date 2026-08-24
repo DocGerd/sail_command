@@ -312,6 +312,35 @@ describe('PlansList recalculate (#114)', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Departure').value).toBe('2026-01-20T10:00');
   });
 
+  // #643 follow-up — deliberately NO regression test here (2026-08-24). An
+  // earlier "fire an empty change, check the DOM resyncs" row was deleted:
+  // MEASURED (jsdom here, plus real Chromium 151.0.7922.34 and real WebKit
+  // 26.5 against two genuine `vite build` outputs — full record in PR #665)
+  // that react-dom 19.2.8's own controlled-input restore performs that exact
+  // resync synchronously, with the production resync line removed. So that
+  // construction is a theorem given React's behavior, not a fact about this
+  // handler, and shipping it would read as coverage while proving nothing.
+  //
+  // PlannerPanel.test.tsx's twin row replaced that with a genuine,
+  // mutation-checked discriminator: re-render with a DIFFERENT external
+  // `departureMs` PROP (no onChange fired) and assert the input tracks it —
+  // this reds if the input stops being a controlled React element (e.g.
+  // `value=` swapped for `defaultValue=`), which is the actual mechanism the
+  // #643 symptom depends on.
+  //
+  // That construction is NOT available here: `recalc.departureMs` is local
+  // component state with exactly THREE write sites — `handleRecalcTap` (open,
+  // a fresh mount), `closeRecalc` (unmount), and this input's own onChange
+  // (the handler under test). There is no external prop that re-drives the
+  // value while the editor stays mounted, so there is no way to vary it
+  // out-of-band the way PlannerPanel's `departureMs` prop can be. Every
+  // construction tried collapses to either "value at fresh mount" (true
+  // regardless of controlled/uncontrolled, since `defaultValue` also sets
+  // correctly on mount) or "value after a real user edit" (true regardless,
+  // since the browser sets `.value` from user input independently of React).
+  // If PlansList's recalc editor is ever refactored to accept an externally
+  // supplied seed, add the PlannerPanel-shaped test then.
+
   it('replace requires a second confirming tap before anything runs', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
     await savePlan(makePlan({ id: 'p1', createdAtMs: 1000, departureMs: FUTURE_DEPARTURE_MS }));
