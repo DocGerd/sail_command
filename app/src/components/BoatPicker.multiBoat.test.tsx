@@ -276,9 +276,7 @@ describe('#566: draftProvenance.note renders per boat, INCLUDING the hull-verifi
       .getByRole('radio', { name: /Shoal 40/ })
       .closest('.boat-option')! as HTMLElement;
     expect(within(option).queryByText(/Assumed keel/)).not.toBeInTheDocument();
-    expect(
-      within(option).getByText(/default safety-depth margin is calculated from/),
-    ).toBeInTheDocument();
+    expect(within(option).getByText(/depth data was chosen against/)).toBeInTheDocument();
   });
 });
 

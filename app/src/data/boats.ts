@@ -139,7 +139,7 @@ const FOCK_NOTE =
 // deliberately NOT used: that test boat carried the upgraded 75 hp saildrive
 // against a 55 hp standard, so the figure is not attributable to PIRANJA.
 const S44_GENOA_NOTE =
-  "Tier C, ESTIMATED - this hull's own jib table (see the salona-44-speedy-go fock note) " +
+  "Tier C, ESTIMATED - this hull's own jib table (see the Salona 44 (SPEEDY GO!) fock note) " +
   "multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa " +
   'table divided by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at ' +
   "25 kn). The difference between this boat's two tables is therefore a function of THAT RAMP, " +
@@ -161,7 +161,7 @@ const S44_FOCK_NOTE =
   'tune with the performance factor. NOT race-calibrated, and never measured against this boat.';
 
 const ELAN_GENOA_NOTE =
-  "Tier C, ESTIMATED - this hull's own jib table (see the elan-444-piranja fock note) " +
+  "Tier C, ESTIMATED - this hull's own jib table (see the Elan Impression 444 (PIRANJA) fock note) " +
   "multiplied cell-by-cell by the Salona 45's documented genoa overlay ramp, i.e. its genoa " +
   'table divided by its jib table (+3-5% light-air upwind/reach, 0 at 14-20 kn, -2% upwind at ' +
   "25 kn). The difference between this boat's two tables is therefore a function of THAT RAMP, " +
@@ -212,7 +212,8 @@ export const BOATS = [
       note:
         "The app's reference boat: a boat model, not one individual vessel, so there is no " +
         'hull whose papers this draft could disagree with. 2.1 m is also the draft the ' +
-        "app's default safety-depth margin is calculated from.",
+        "safety margin built into the app's depth data was chosen against, and the one " +
+        "this boat's default safety depth is calculated from.",
     },
     motorSpeedKn: 6.5,
     maneuverPenaltyS: 45,

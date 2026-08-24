@@ -203,7 +203,7 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     // load-bearing on its own if a future refactor ever drops or reorders
     // that loop.
     expect(
-      within(optionFor('salona-45')).getByText(/default safety-depth margin is calculated from/),
+      within(optionFor('salona-45')).getByText(/depth data was chosen against/),
     ).toBeInTheDocument();
   });
 

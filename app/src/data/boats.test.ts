@@ -204,3 +204,78 @@ describe('boat catalogue', () => {
     expect(DEFAULT_BOAT_ID).toBe('salona-45');
   });
 });
+
+// #595. `draftProvenance.note` and every sail's `polarProvenance.note` render
+// UNCONDITIONALLY and VERBATIM (BoatPicker.tsx ~:126 / ~:150) — the deliberate,
+// spec-sanctioned exception to the i18n rule that lets a source citation stay
+// exact per language. That exemption is also the hazard: nothing else stands
+// between an author's internal shorthand ("spec J OQ-4 carve-out", "#455") and
+// the rendered page. #595 found exactly that leak in the Salona 45's own
+// draftProvenance.note; the reviewer additionally found two catalogue-id leaks
+// in the polar notes (S44_GENOA_NOTE, ELAN_GENOA_NOTE). This guard exists so a
+// THIRD leak reds a test instead of shipping silently, the way this one did.
+describe('#595: rendered notes carry no internal register', () => {
+  // Reads every note through BOATS itself — never by importing the module's
+  // private *_NOTE constants (S44_GENOA_NOTE et al. are not exported) — so the
+  // scan sees EXACTLY the strings BoatPicker renders, and a new boat or sail
+  // is covered with zero maintenance here.
+  function collectRenderedNotes(): Array<{ id: string; note: string }> {
+    const notes: Array<{ id: string; note: string }> = [];
+    for (const b of BOATS) {
+      notes.push({ id: `${b.id}/draftProvenance.note`, note: b.draftProvenance.note });
+      for (const s of b.sails) {
+        notes.push({ id: `${b.id}/${s.id}/polarProvenance.note`, note: s.polarProvenance.note });
+      }
+    }
+    return notes;
+  }
+
+  // Catalogue ids are derived from BOATS itself, not hand-listed, so a future
+  // fourth boat's id is covered automatically (review "Additional scope" item
+  // 2). Escaped even though today's ids need no escaping — an id containing a
+  // regex metacharacter must not silently widen or narrow what this matches.
+  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const CATALOGUE_ID_PATTERNS = BOATS.map((b) => new RegExp(escapeRegExp(b.id)));
+  const INTERNAL_TOKEN_PATTERNS: readonly RegExp[] = [
+    /#\d+/, // an issue number, e.g. "#455"
+    /spec [A-Z]/, // a spec section reference, e.g. "spec J"
+    /OQ-\d/, // an internal hull code, e.g. "OQ-4"
+    ...CATALOGUE_ID_PATTERNS, // a raw catalogue id leaking instead of a display name
+  ];
+
+  // FAIL CLOSED (this repo's useBannerHeight.test.ts pattern): assert the scan
+  // actually found notes BEFORE trusting any content check below. Reviewer's
+  // mutation check #2 stubs collectRenderedNotes() to return [] and confirms
+  // THIS assertion trips first, ahead of the (vacuously green) content check.
+  it('collects at least one note per boat and per sail (fail CLOSED)', () => {
+    const notes = collectRenderedNotes();
+    const expectedCount = BOATS.length + BOATS.reduce((n, b) => n + b.sails.length, 0);
+    expect(notes.length).toBeGreaterThan(0);
+    expect(notes.length).toBe(expectedCount);
+    for (const b of BOATS) {
+      expect(
+        notes.some((n) => n.id === `${b.id}/draftProvenance.note`),
+        `${b.id} draftProvenance.note missing from the scan`,
+      ).toBe(true);
+      for (const s of b.sails) {
+        expect(
+          notes.some((n) => n.id === `${b.id}/${s.id}/polarProvenance.note`),
+          `${b.id}/${s.id} polarProvenance.note missing from the scan`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('rejects internal-register tokens in every rendered note', () => {
+    const notes = collectRenderedNotes();
+    // Re-asserted (not just relied on via the row above): this row alone must
+    // still fail closed if it is ever split out or reordered ahead of the
+    // dedicated non-vacuity row.
+    expect(notes.length).toBeGreaterThan(0);
+    for (const { id, note } of notes) {
+      for (const pattern of INTERNAL_TOKEN_PATTERNS) {
+        expect(note, `${id} matched ${pattern} in rendered note: "${note}"`).not.toMatch(pattern);
+      }
+    }
+  });
+});
