@@ -906,7 +906,17 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
         },
         { timeout: 10_000 },
       )
-      .toBeGreaterThan(0);
+      // #638 halved this margin (32px -> 16px) by giving `.depth-legend` 16px
+      // of horizontal chrome padding. MEASURED at that commit: exactly 16.00px
+      // in BOTH languages and viewport-INVARIANT from 280px to 375px —
+      // `.route-layer-controls` is `right: 0.5rem` with
+      // `max-width: calc(100% - 9.5rem)`, so while clipped its left edge sits
+      // at `vw - 8 - (vw - 152)` = 144px whatever the width, against the
+      // legend's own 8 + 120 = 128px right edge. A bare `> 0` would still pass
+      // at 1px, and the margin left is now exactly this element's own padding
+      // — so pin the MAGNITUDE, for the same reason the #638 wide-column probe
+      // carries a ratio floor rather than a break/no-break assertion.
+      .toBeGreaterThanOrEqual(12);
   } finally {
     server.kill();
   }
@@ -1144,9 +1154,10 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
 //       resolves a background, so this half stays non-vacuous at the narrow
 //       viewports where DataLayers.tsx's reachability gate may hide it.
 //
-//   (B) MID-WORD BREAK — WIDE viewports only (`desktop4k`, `desktopHd`,
-//       `tabletLandscape`, i.e. the >=1024px side of this app's single
-//       breakpoint). Sweeping this across the whole matrix would RED a
+//   (B) MID-WORD BREAK — WIDE entries only, SELECTED BY WIDTH against the
+//       >=1024px breakpoint rather than by a hand-written name list, so a
+//       future STANDARD_VIEWPORTS entry on the wide side is covered
+//       automatically. Sweeping this across the whole matrix would RED a
 //       CORRECT fix: at `tabletPortrait`/`phonePortrait` the narrow 104px
 //       bound is the shipped design, and the wide override is scoped
 //       `@media (min-width: 1024px)` precisely because an unscoped width
@@ -1166,7 +1177,11 @@ for (const [label, viewport] of Object.entries(SHORT_LANDSCAPE_VIEWPORTS)) {
 // pre-fix state was transparent in both themes. It is swept anyway because
 // the issue title says "illegible in dark mode", so a light-only pass would
 // not close it — but it is NOT what makes this test fail before the fix.
-const WIDE_VIEWPORT_KEYS: readonly string[] = ['desktop4k', 'desktopHd', 'tabletLandscape'];
+// Derived from the breakpoint rather than enumerated: `lib/useWideLayout.ts`'s
+// WIDE_LAYOUT_QUERY is `min-width: 1024px`, and the wide override half (B)
+// tests is scoped to that same query — so a future STANDARD_VIEWPORTS entry on
+// the wide side is picked up automatically instead of silently skipped.
+const WIDE_LAYOUT_MIN_WIDTH_PX = 1024;
 
 /** `ok`, or a string naming both resolved backgrounds. */
 function probeLegendChrome(page: Page): Promise<string> {
@@ -1195,7 +1210,15 @@ function probeLegendWordBreak(page: Page): Promise<string> {
     // `boundingBox()` cannot see silent overflow (#299) — assert it here.
     if (bodyEl.scrollWidth > bodyEl.clientWidth)
       return `.depth-legend-body overflows: scrollWidth ${bodyEl.scrollWidth} > clientWidth ${bodyEl.clientWidth}`;
-    let longest: { word: string; rects: number; width: number } | null = null;
+    // WIDEST BY MEASURED PIXELS, not longest by character count. The two are
+    // different tokens and the difference is LIVE, not hypothetical (measured
+    // at 1920x1080 on this branch): in EN the widest run is `Unsurveyed`
+    // (81.31px, 10 chars) while the longest is `deliberate,` (73.48px, 11
+    // chars); in DE three runs tie at 16 chars and span 106.00-120.88px, so a
+    // character-count pick is decided by DOM order. Since the ratio floor
+    // below is a statement about PIXELS, selecting by characters can only ever
+    // OVERSTATE the margin — the fail-open direction.
+    let widest: { word: string; rects: number; width: number } | null = null;
     for (const p of Array.from(body.querySelectorAll('p'))) {
       for (const node of Array.from(p.childNodes)) {
         if (node.nodeType !== Node.TEXT_NODE) continue;
@@ -1206,29 +1229,26 @@ function probeLegendWordBreak(page: Page): Promise<string> {
         const re = /[^\s-]+/g;
         let m: RegExpExecArray | null;
         while ((m = re.exec(text))) {
-          if (longest && m[0].length <= longest.word.length) continue;
           const range = document.createRange();
           range.setStart(node, m.index);
           range.setEnd(node, m.index + m[0].length);
           const rects = Array.from(range.getClientRects());
           // Summed, not max: a token split across line boxes has its width
           // split too, so the total is the width it WOULD need unbroken.
-          longest = {
-            word: m[0],
-            rects: rects.length,
-            width: rects.reduce((a, r) => a + r.width, 0),
-          };
+          const width = rects.reduce((a, r) => a + r.width, 0);
+          if (widest && width <= widest.width) continue;
+          widest = { word: m[0], rects: rects.length, width };
         }
       }
     }
-    if (!longest) return '.depth-legend-body rendered no text at all';
-    if (longest.rects !== 1)
-      return `"${longest.word}" broke across ${longest.rects} line boxes in a ${bodyEl.clientWidth}px column`;
+    if (!widest) return '.depth-legend-body rendered no text at all';
+    if (widest.rects !== 1)
+      return `"${widest.word}" broke across ${widest.rects} line boxes in a ${bodyEl.clientWidth}px column`;
     // MARGIN, not just absence-of-break — and this row is here because the
     // obvious weaker guard was MEASURED to pass through the wrong fix.
     // Dropping the wide `width` while keeping `max-width: none` re-hands
     // sizing to `.map-stack-tl`'s shrink-to-fit ceiling, which settles at
-    // exactly `longest token + this element's own horizontal chrome` — the
+    // exactly `widest token + this element's own horizontal chrome` — the
     // column then equals the token to the pixel, one unbroken rect, and a
     // break/no-break assertion alone reports GREEN (measured: 1 passed).
     // That is the hairline regime #638's brief warned about: correct today
@@ -1237,9 +1257,9 @@ function probeLegendWordBreak(page: Page): Promise<string> {
     // point (the shipped 14rem measures 1.72x at 1024x900), chosen well
     // above the 1.00x the hairline produces and well below what ships, so
     // it discriminates the two regimes without pinning the exact width.
-    const ratio = bodyEl.clientWidth / longest.width;
+    const ratio = bodyEl.clientWidth / widest.width;
     if (ratio < 1.2)
-      return `"${longest.word}" fits only at ${ratio.toFixed(2)}x: ${longest.width.toFixed(2)}px token in a ${bodyEl.clientWidth}px column — sized by the shrink-to-fit ceiling, not by the wide-layout width`;
+      return `"${widest.word}" fits only at ${ratio.toFixed(2)}x: ${widest.width.toFixed(2)}px token in a ${bodyEl.clientWidth}px column — sized by the shrink-to-fit ceiling, not by the wide-layout width`;
     return 'ok';
   });
 }
@@ -1279,7 +1299,7 @@ test('#638: the depth-hatch legend has panel chrome at every STANDARD_VIEWPORTS 
               .poll(() => probeLegendChrome(page), { timeout: 10_000, message: label })
               .toBe('ok');
 
-            if (!WIDE_VIEWPORT_KEYS.includes(name)) continue;
+            if (vp.width < WIDE_LAYOUT_MIN_WIDTH_PX) continue;
 
             const details = page.locator('details.depth-legend');
             // Wide layout takes DataLayers.tsx's "always reachable" early
