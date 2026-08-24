@@ -192,7 +192,7 @@ CSS/TS drift test pinning it against `app.css`, rather than a bare literal
 departure-picker minute→hour carry was investigated and closed `won't fix`
 in favour of keeping the native control — the remaining behaviour is
 Android's own `TimePickerSpinnerDelegate` carry, and a `datetime-local`
-input exposes neither `shadowRoot` nor `selectionStart`, so page JavaScript
+input's `shadowRoot` and `selectionStart` are both `null`, so page JavaScript
 cannot tell which segment has focus. Recorded as the project's first
 decision record, `docs/adr/0001-keep-native-datetime-input.md` (#642).
 
