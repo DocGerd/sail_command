@@ -342,6 +342,44 @@ test('depth-hatch legend (#598) is either reachable or properly unreachable, nev
               );
               expect(overlapX * overlapY, `${label}: legend overlaps tab strip`).toBe(0);
             }
+
+            // #641: everything above reads `summary`'s OWN box, which is
+            // structurally blind to anything `.depth-legend` adds around it.
+            // The gate in DataLayers.tsx is sized from `> summary`'s 44px
+            // `min-height` (twinned by `lib/depthLegendGate.test.ts`), so it
+            // is only correct while the ANCESTOR's collapsed box is that same
+            // 44px — #638's chrome padding is horizontal-only for exactly this
+            // reason. Assert the consequence geometrically rather than
+            // recomputing `budgetPx` here: re-deriving the gate's own formula
+            // in the test would be a duplicated algorithm with a shared bug
+            // and no differential check.
+            //
+            // #412: RE-SAMPLE both boxes inside the poll callback. A pair
+            // captured once, before the `--sc-banner-height` ResizeObserver
+            // write and the CSS push it drives have settled, produces a
+            // byte-identical PASS whether or not the defect is live.
+            await expect
+              .poll(
+                async () => {
+                  const lb = await details.boundingBox();
+                  const tbNow = await page.getByRole('tablist').boundingBox();
+                  if (!lb) return 'legend has no box';
+                  if (!tbNow) return 'ok'; // no tab strip at this layout
+                  const ox = Math.max(
+                    0,
+                    Math.min(lb.x + lb.width, tbNow.x + tbNow.width) - Math.max(lb.x, tbNow.x),
+                  );
+                  const oy = Math.max(
+                    0,
+                    Math.min(lb.y + lb.height, tbNow.y + tbNow.height) - Math.max(lb.y, tbNow.y),
+                  );
+                  return ox * oy === 0
+                    ? 'ok'
+                    : `${ox * oy}px² overlap: legend ${JSON.stringify(lb)} vs tablist ${JSON.stringify(tbNow)}`;
+                },
+                { timeout: 10_000, message: `${label}: .depth-legend's own box vs the tab strip` },
+              )
+              .toBe('ok');
           }
         }
       } finally {
@@ -648,10 +686,10 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
           window as unknown as {
             __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
           }
-        )
-          // wackerballig's own snap point — no animation. mapReady() has
-          // already installed window.__scE2eMap as a side effect.
-          .__scE2eMap.jumpTo({ zoom: z, center: [9.872, 54.7604] });
+        )// wackerballig's own snap point — no animation. mapReady() has
+        // already installed window.__scE2eMap as a side effect.
+        .__scE2eMap
+          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
       }, zoom);
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference
