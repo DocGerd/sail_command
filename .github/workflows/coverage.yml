@@ -120,7 +120,7 @@ jobs:
       # VISIBILITY — a silent upload failure (missing/expired CODECOV_TOKEN, a
       # Codecov outage) leaves the README badge stale with no signal at all,
       # where a red job at least surfaces it. Stated plainly because this file
-      # argues the other way ~15 lines below, about the `timeout-minutes` cap:
+      # argues the other way in the `timeout-minutes: 240` comment above:
       # a permanently-red non-required check DOES get ignored. If this step
       # ever starts failing chronically, fix or remove it — do not flip this
       # to `false`.
