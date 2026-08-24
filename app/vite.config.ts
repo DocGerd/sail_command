@@ -584,7 +584,11 @@ export default defineConfig(({ command }) => ({
     // that actually bit in #96 and #118).
     coverage: {
       provider: 'v8',
-      reporter: ['text-summary', 'text'],
+      // 'lcov' added for #346: Codecov's upload action reads lcov.info (or
+      // cobertura XML); the pre-existing 'text-summary'/'text' reporters are
+      // console-only and produce no file codecov/codecov-action can ingest.
+      // Written to app/coverage/lcov.info by the nightly coverage.yml job.
+      reporter: ['text-summary', 'text', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'src/**/*.test.{ts,tsx}',

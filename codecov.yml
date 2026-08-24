@@ -1,0 +1,43 @@
+# Codecov configuration — see https://docs.codecov.com/docs/codecovyml-reference
+#
+# Why this exists (#346): Codecov's `patch`/`project` status checks are NOT
+# required checks here — `protect-main` requires only `app` + `e2e`
+# (CLAUDE.md's Deploy — concurrency and environments bullet). Under the
+# default auto-target, Codecov posts a RED conclusion on ordinary coverage
+# variance even though nothing here is gating on it, which is misleading
+# noise on a signal that was only ever meant to be informational. Mirrors
+# hangarfit's `codecov.yml` (the maintainer's reference implementation,
+# named explicitly in #346) for the same reason: `informational: true`
+# makes both statuses always PASS while still posting the coverage number,
+# so the badge and PR comment stay visible without a red X on a
+# non-blocking check.
+#
+# `.github/workflows/coverage.yml` is the ONLY producer of this data —
+# nightly (`schedule` + `workflow_dispatch`), not per-PR — so a PR here
+# never gets a fresh Codecov comment at all; the badge and any status this
+# posts reflect the last nightly run. See that workflow's own comments for
+# why coverage stays off the per-PR critical path.
+#
+# #319: src/sw.ts and src/routing/worker.ts sit at ~0% coverage BY DESIGN
+# (jsdom has no real ServiceWorker/dedicated-Worker execution model; their
+# functional assurance is e2e, not unit coverage — see CLAUDE.md's Commands
+# section). Do NOT add an `ignore:` list here for them, or anything else —
+# excluding paths would RAISE the published percentage rather than preserve
+# it, exactly the overstated-number defect class this project's CLAUDE.md
+# repeatedly warns about. There is currently no `ignore:` section at all.
+#
+# Badge branch (#346): README.md pins this badge to `develop`, not `main`
+# like the other four badges. GitHub runs a `schedule` workflow against the
+# DEFAULT branch and `coverage.yml` sets no `ref:` override, so `develop` is
+# the only branch Codecov ever receives data for — a `main`-pinned badge
+# would read "unknown" permanently. #346 asked any new badge to follow the
+# `?branch=main` convention or state why it differs; this is the why.
+
+coverage:
+  status:
+    patch:
+      default:
+        informational: true
+    project:
+      default:
+        informational: true
