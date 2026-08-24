@@ -269,6 +269,15 @@ describe('#54 migratePlan: pre-#54 records', () => {
     });
   });
 
+  it('#614: falls back to null for a stored reason outside the NoRouteReason union', () => {
+    const raw = legacyPlan();
+    const result = raw.result as Record<string, unknown>;
+    result.fock = null;
+    result.fockReason = 'route-teleported-to-mars';
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.sails[1].reason).toBe(null);
+  });
+
   it('derives comparisonComplete: true when every sail finished its search', () => {
     expect(migratePlan(legacyPlan())!.result.comparisonComplete).toBe(true);
   });

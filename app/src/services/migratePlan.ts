@@ -1,4 +1,5 @@
 import { BOATS, boatById, DEFAULT_BOAT_ID } from '../data/boats';
+import { NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import {
   boatSnapshot,
   PLAN_SCHEMA_VERSION,
@@ -154,7 +155,9 @@ function sailResultOf(sailId: SailId, result: unknown, reason: unknown): SailRes
     sailId,
     result: rigResult,
     reason:
-      rigResult === null && typeof reason === 'string' ? (reason as SailResult['reason']) : null,
+      rigResult === null && typeof reason === 'string' && reason in NO_ROUTE_MESSAGE_KEY
+        ? (reason as SailResult['reason'])
+        : null,
   };
 }
 
