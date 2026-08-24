@@ -326,9 +326,11 @@ enforced by repository rulesets applied identically to both `main` and
 
 ### OpenSSF Scorecard posture (Branch-Protection, Code-Review)
 
-Scorecard rates this repository's *Branch-Protection* check **4/10**; that
-ceiling is deliberate. Three of its remaining Warn classes are intentionally
-**not** adopted in this solo-maintainer repository:
+Scorecard rated this repository's *Branch-Protection* check **4/10** as
+measured on 2026-08-21 at commit `31c90d9`, in the push-triggered
+[Scorecard run](https://github.com/DocGerd/sail_command/actions/runs/32451114028);
+that ceiling is deliberate. Three of its remaining Warn classes are
+intentionally **not** adopted in this solo-maintainer repository:
 
 - required approving reviews ≥ 1,
 - CODEOWNERS-backed review requirement,
@@ -336,11 +338,14 @@ ceiling is deliberate. Three of its remaining Warn classes are intentionally
 
 GitHub does not count self-approval, so with a single human maintainer each of
 these would hard-block every PR on a reviewer that does not exist. The
-*Code-Review* check (**0/10**) shares this disposition for the same reason: it
-measures approving reviews from a second maintainer, which self-approval rules
-make impossible here. The repository's actual review control is the set of
-ruleset/workflow gates listed above — the mandatory agent self-review loop
-with ruleset-enforced thread resolution plus the required `app` + `e2e`
-checks. Future Scorecard triage should treat these findings (both checks) as
-"won't fix" without re-litigating them; revisit if a second trusted maintainer
-joins.
+*Code-Review* check, rated **0/10** by that same run, shares this disposition
+for the same reason: it measures approving reviews from a second maintainer,
+which self-approval rules make impossible here. The repository's actual
+review control is the set of ruleset/workflow gates listed above — the
+mandatory agent self-review loop with ruleset-enforced thread resolution plus
+the required `app` + `e2e` checks. Future Scorecard triage should treat these
+findings (both checks) as "won't fix" without re-litigating them; revisit if a
+second trusted maintainer joins. Scorecard re-runs on every `develop` push and
+weekly on schedule, so these two figures will drift over time — the current
+score is always the live badge in `README.md`
+(<https://api.scorecard.dev/projects/github.com/DocGerd/sail_command/badge>).
