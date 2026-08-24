@@ -381,9 +381,9 @@ making design-level decisions; do not silently deviate.
   Per the guard-asymmetry rule below: an absent security control is the
   expensive failure direction, so the check must fail closed.
 - **`in` walks the PROTOTYPE CHAIN — never use it as a membership test against
-  an object literal used as a lookup table for STORED/untrusted input.**
-  `Object.getOwnPropertyNames(Object.prototype)` members pass it (12 measured on
-  Node v24.15.0, 2026-08-24 — an engine count, not a constant), and
+  an object literal used as a lookup table for STORED/untrusted input.** EVERY
+  `Object.getOwnPropertyNames(Object.prototype)` member passes it (12 of them on
+  Node v24.15.0, measured 2026-08-24 — an engine count, not a constant), and
   `t(TABLE['toString'])` resolves to a FUNCTION that coerces to a non-key, so
   React renders NOTHING (#614/PR #656 — the fix for an empty `role="alert"`
   re-created the empty `role="alert"`; the reviewer measured 8 fall-open members
@@ -775,8 +775,9 @@ making design-level decisions; do not silently deviate.
   this artifact, not a finding). Also: **Playwright's Linux WebKit cannot test
   this control at all** — it renders `datetime-local` UNSEGMENTED, so
   ArrowUp/typing leave `.value` byte-identical, and a green WebKit arm is not
-  evidence about Safari (measured 2026-08-24 against the WebKit
-  `@playwright/test` 1.62.1 bundles; re-check after any Playwright bump). The
+  evidence about Safari (measured 2026-08-24 against the WebKit build bundled
+  with `@playwright/test` 1.62.1, browser revision 2336; re-check after any
+  Playwright bump). The
   record is #643's verification transcript — PR #665's body publishes only the
   Chromium half.
 - **Honest offline testing**: Playwright's `setOffline(true)` does NOT block
@@ -3124,7 +3125,7 @@ making design-level decisions; do not silently deviate.
   Claude Code 2.1.241 — a harness property, re-check after an upgrade), so the
   notification structurally cannot tell you whether it based its work on
   `origin/develop`. Require the merge-base as a deliverable; once a PR exists,
-  `mergeable_state` is the second signal (next bullet).
+  `mergeable_state` is the second signal (the PIN THE BASE BRANCH bullet below).
 - **`gh api repos/O/R/commits/<sha>/check-runs` can 422 "No commit found" on a
   7-char abbreviation while the FULL 40-char SHA works at the same instant** —
   intermittent, not a rule (every earlier PR in the same merge train accepted the
