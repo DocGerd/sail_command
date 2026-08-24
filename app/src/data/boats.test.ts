@@ -266,6 +266,60 @@ describe('#595: rendered notes carry no internal register', () => {
     }
   });
 
+  // APERTURE (#524's pattern). The two rows above BOTH enumerate the same two
+  // hand-written field paths, so they move together: a THIRD note-bearing
+  // field added to BoatDef is invisible to the collector AND absent from
+  // `expectedCount`, and the guard stays green over a note it never read.
+  // MEASURED: a `hullProvenance: { note: 'Per spec J OQ-4, see the
+  // elan-444-piranja rig note (#999).' }` on one boat — every rejected pattern
+  // at once — left this file 15/15 GREEN before this row existed.
+  //
+  // So cross-check the aperture with a deliberately PERMISSIVE scan that knows
+  // nothing about the field paths: walk BOATS for every property literally
+  // named `note`, and require the collector to have seen exactly those.
+  it('collects EVERY note reachable in BOATS (aperture cross-check)', () => {
+    const permissive: string[] = [];
+    const walk = (v: unknown): void => {
+      if (Array.isArray(v)) {
+        for (const el of v) walk(el);
+        return;
+      }
+      if (typeof v !== 'object' || v === null) return;
+      for (const [k, val] of Object.entries(v)) {
+        if (k === 'note' && typeof val === 'string') permissive.push(val);
+        else walk(val);
+      }
+    };
+    walk(BOATS);
+    const collected = collectRenderedNotes().map((n) => n.note);
+    expect(permissive.length).toBeGreaterThan(0);
+    expect([...permissive].sort()).toEqual([...collected].sort());
+  });
+
+  // The catalogue-id patterns above cover BOAT ids only. A SAIL id is the same
+  // leak: `fock` is an internal id for a sail every label calls "Jib", and it
+  // shipped inside two polar notes. Derived, not hand-listed: a sail id is
+  // allowed in a note only when it is ALSO how the catalogue spells that sail
+  // to the reader, i.e. it appears in some sail label. That admits `genoa`
+  // (labels "Genoa 135 %", "Genoa") and rejects `fock` (no label contains it).
+  it('rejects sail ids that no sail label spells out', () => {
+    const labels = BOATS.flatMap((b) => b.sails.map((s) => s.label.toLowerCase()));
+    const sailIds = [...new Set(BOATS.flatMap((b) => b.sails.map((s) => s.id)))];
+    const internalOnly = sailIds.filter((id) => !labels.some((l) => l.includes(id.toLowerCase())));
+    expect(
+      internalOnly.length,
+      'no internal-only sail id to check — is this row still live?',
+    ).toBeGreaterThan(0);
+    for (const { id, note } of collectRenderedNotes()) {
+      for (const sailId of internalOnly) {
+        expect(
+          note.toLowerCase(),
+          `${id} names the internal sail id "${sailId}"; use the label instead`,
+        ).not.toContain(sailId.toLowerCase());
+      }
+    }
+  });
+
   it('rejects internal-register tokens in every rendered note', () => {
     const notes = collectRenderedNotes();
     // Re-asserted (not just relied on via the row above): this row alone must
