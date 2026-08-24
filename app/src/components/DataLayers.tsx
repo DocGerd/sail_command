@@ -36,6 +36,7 @@ import {
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { usePersistedNumber } from '../lib/usePersistedNumber';
+import { LEGEND_COLLAPSED_HEIGHT_PX } from '../lib/depthLegendGate';
 import { ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { AIS_STACK_BOTTOM_LAYER } from './AisLayer';
 import type { Harbor, MaskMeta, SeamarkProperties } from '../types';
@@ -909,7 +910,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
         8 - // 0.5rem
         el.getBoundingClientRect().height -
         60; // gap + compass + gap, matching `.depth-legend`'s own `top`
-      setLegendHidden(budgetPx < 44);
+      // #641: TWINNED to `app.css`'s `.depth-legend > summary { min-height:
+      // 44px }` — the legend's whole COLLAPSED box, since #638's chrome
+      // padding on `.depth-legend` is horizontal-only by design. No compiler
+      // spans CSS and TypeScript, so `lib/depthLegendGate.test.ts` pins the
+      // two together (both the number AND the zero-vertical-padding property
+      // that makes the number the right one); read that file's header before
+      // changing either side.
+      setLegendHidden(budgetPx < LEGEND_COLLAPSED_HEIGHT_PX);
     };
     const ro = new ResizeObserver(recompute);
     ro.observe(el);

@@ -651,10 +651,52 @@ select {
    `app/e2e/layout.spec.ts`'s own #598 test comment carries that
    measurement.) 104px was also already confirmed overflow-free with
    `overflow-wrap: break-word` (below) in both languages, independent of the
-   collision question. */
+   collision question.
+
+   #638 UPDATE — this paragraph is still true, but it describes only the
+   NARROW layout, and the regime it names is not the one that actually
+   binds. MEASURED at every `STANDARD_VIEWPORTS` entry (dev server, DE,
+   legend forced open): `.map-stack-tl` is 124.27px wide and `.depth-legend`
+   renders at exactly **104px**, i.e. at `.depth-legend-body`'s own
+   `max-width` — NOT at the 124.27px containing-block ceiling. Both bounds
+   are real and the SMALLER wins: shrink-to-fit is `min(max(min-content,
+   available), max-content)`, and a child `max-width` clamps this element's
+   own max-content, so below ~124px the BODY's bound is what sizes the pill
+   and the ceiling is inert. That is why an ordinary `max-width` bump cannot
+   fix the wide-layout mid-word break (raising it past the ceiling just hands
+   sizing back to the ceiling, landing the body a hairline either side of the
+   120.88px `Farbüberlagerung` it has to clear) and why the wide fix below is
+   an explicit `width` on `.depth-legend[open]` instead — scoped
+   `@media (min-width: 1024px)` only, because at narrow a `width` escapes the
+   ceiling and collides, exactly as the paragraph above says.
+
+   #638 also gives this element the panel chrome it lost when #598 pulled it
+   out of `.data-layer-controls` (see that rule below). Its `padding` is
+   HORIZONTAL-ONLY by design: vertical padding would grow the COLLAPSED box
+   past `> summary`'s 44px, and `DataLayers.tsx`'s reachability gate
+   (`budgetPx < 44`) is twinned to that 44px — see `depthLegendGate.test.ts`,
+   which fails closed if the two ever drift. The open state's bottom
+   breathing room comes from `.depth-legend-body`'s existing `margin-bottom`
+   instead, so no `max-height` term below changes either. MEASURED cost at
+   narrow: 16px of horizontal padding raises this element's max-content from
+   104px to 120px, so its rendered width goes 104px -> 120px and its right
+   edge at a 320px viewport goes 112px -> 128px, cutting clearance to
+   `.route-layer-controls`'s 144px left edge from 32px to 16px — still
+   POSITIVE, and `app/e2e/layout.spec.ts`'s #598 test pins it. */
 .depth-legend {
   position: absolute;
   left: 0;
+  /* #638: `.depth-legend` is NOT a member of the shared
+     `.route-layer-controls, .data-layer-controls` chrome rule above, and
+     deliberately does not join it — that rule also sets `display: flex`,
+     which would change this `<details>` element's box type. The three
+     chrome properties are restated here instead, reusing the SAME token
+     expression so the pill is byte-identical to its two siblings and
+     inherits their dark-mode behaviour through `--sc-bg` with no separate
+     `prefers-color-scheme` override. */
+  background: color-mix(in srgb, var(--sc-bg) 90%, transparent);
+  border-radius: 8px;
+  padding: 0 0.5rem;
   /* MEASURED regression from moving this OUT of `.data-layer-controls`
      (which sets `font-size: 0.85rem` on itself and its NESTED descendants,
      app.css's `.route-layer-controls, .data-layer-controls` base rule):
@@ -812,10 +854,53 @@ select {
    calc() for a boundary that does not exist on wide layout.
    `.depth-legend` ITSELF needs no such override any more — reachability
    (including the wide-layout "always reachable" case) is decided in JS
-   now (DataLayers.tsx's `useLayoutEffect`), not by a CSS `max-height`. */
+   now (DataLayers.tsx's `useLayoutEffect`), not by a CSS `max-height`.
+
+   #638: this block used to relax HEIGHT only, so the base rule's
+   `max-width: 6.5rem` (104px) — tuned for narrow chrome — stayed live at
+   desktop too and mid-word-broke the copy's longest German compound
+   ("Farbüberlagerung", MEASURED at 120.88px against a 104px column, splitting
+   into 2 `Range.getClientRects()` at every one of `STANDARD_VIEWPORTS`
+   including 3840x2160). The width half is fixed HERE, wide-only, in two
+   parts that only work together:
+
+     - `width` on `.depth-legend[open]`, not `max-width` on the body. A
+       `max-width` bump cannot do this job: raising it past `.map-stack-tl`'s
+       ~124.27px shrink-to-fit ceiling hands sizing back to that ceiling, and
+       124.27px minus this element's own 16px of horizontal chrome padding is
+       108.27px of text column — still under the 120.88px it has to clear. An
+       explicit `width` escapes the ceiling deliberately. Scoped to
+       `@media (min-width: 1024px)` because at NARROW that same escape is the
+       collision the base rule's comment warns about (`app/e2e/layout.spec.ts`
+       measured 4940px² of overlap with `.route-layer-controls` for a forced
+       narrow `width`).
+     - `[open]` and not the bare element, so the COLLAPSED pill stays
+       shrink-to-fit (~85.94px around the one-word summary) instead of
+       becoming a 224px bar holding a single word.
+     - `max-width: none` on the body, or the base rule's 104px would clamp it
+       straight back inside the widened pill.
+
+   `14rem` (224px, 208px of text column) is MEASURED, not picked: sweeping
+   10-20rem at 1024x900 in both languages, the mid-word break is already gone
+   at 10rem (DE `Farbüberlagerung` back to 1 rect) so the bound is not what
+   sets this value — readability is. DE's copy needs `scrollHeight` 857px at
+   10rem, 545px at 14rem and only stops scrolling inside `max-height: 24rem`
+   (384px) at 20rem/320px, which is 47% of the map's own width at the
+   NARROWEST wide viewport (measured 675px at 1024x900) and was rejected as
+   map occlusion. 14rem is 33% there and 18% at 1920x1080, keeps 72% of
+   headroom over the widest token, and leaves `.route-layer-controls`
+   ~201px away at 1024x900 (legend right edge 581px vs its 782px left edge).
+   RE-MEASURE this value if the legend copy or `font-size` changes; the
+   sweep above is `Range.getClientRects().length` on the longest
+   hyphen-free token, which is what `app/e2e/layout.spec.ts` now pins. */
 @media (min-width: 1024px) {
+  .depth-legend[open] {
+    width: 14rem;
+  }
+
   .depth-legend-body {
     max-height: 24rem;
+    max-width: none;
   }
 }
 
