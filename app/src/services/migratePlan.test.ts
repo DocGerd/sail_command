@@ -279,31 +279,32 @@ describe('#54 migratePlan: pre-#54 records', () => {
   });
 
   // #614 follow-up (review finding): `in` walks the PROTOTYPE CHAIN, so
-  // every one of these eight names is `in NO_ROUTE_MESSAGE_KEY` even though
-  // none is an OWN key of it — `NO_ROUTE_MESSAGE_KEY` is a plain object
-  // literal, so it inherits Object.prototype's own members. A guard written
-  // as `reason in NO_ROUTE_MESSAGE_KEY` therefore lets each of these cast
-  // straight through, reproducing #614 with a different sentinel: the cast
-  // value coerces to a non-message (a function, for `toString`), `t()`
+  // every OWN name of Object.prototype is `in NO_ROUTE_MESSAGE_KEY` even
+  // though none is an OWN key of it — `NO_ROUTE_MESSAGE_KEY` is a plain
+  // object literal, so it inherits Object.prototype's own members. A guard
+  // written as `reason in NO_ROUTE_MESSAGE_KEY` therefore lets each of these
+  // cast straight through, reproducing #614 with a different sentinel: the
+  // cast value coerces to a non-message (a function, for `toString`), `t()`
   // resolves nothing, and the alert renders empty again. `Object.hasOwn`
-  // checks OWN properties only, so all eight must fall back to null.
-  it.each([
-    'toString',
-    'constructor',
-    'valueOf',
-    'hasOwnProperty',
-    '__proto__',
-    'isPrototypeOf',
-    'propertyIsEnumerable',
-    'toLocaleString',
-  ])('#614 follow-up: falls back to null for the Object.prototype member %s', (name) => {
-    const raw = legacyPlan();
-    const result = raw.result as Record<string, unknown>;
-    result.fock = null;
-    result.fockReason = name;
-    const migrated = migratePlan(raw)!;
-    expect(migrated.result.sails[1].reason).toBe(null);
-  });
+  // checks OWN properties only, so all of them must fall back to null.
+  //
+  // Sourced from Object.getOwnPropertyNames(Object.prototype) itself, not a
+  // hand-copied list, so needle (the JS engine's own member set) and
+  // haystack (the production guard) stay independent and the table cannot
+  // silently go stale or be emptied without the suite noticing (the
+  // SOLVER_LABELS shape from #411's review: a hardcoded list has no twin and
+  // can be stubbed to `[]` while the guard keeps reporting green).
+  it.each(Object.getOwnPropertyNames(Object.prototype))(
+    '#614 follow-up: falls back to null for the Object.prototype member %s',
+    (name) => {
+      const raw = legacyPlan();
+      const result = raw.result as Record<string, unknown>;
+      result.fock = null;
+      result.fockReason = name;
+      const migrated = migratePlan(raw)!;
+      expect(migrated.result.sails[1].reason).toBe(null);
+    },
+  );
 
   // #614 follow-up (review Minor 4): types.ts documents reason as null
   // EXACTLY when the sail has a result. genoa here already carries a real
