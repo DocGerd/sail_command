@@ -1990,8 +1990,12 @@ making design-level decisions; do not silently deviate.
   COMPLETELY silent
   local-font path — no fetch, no warning — whenever the style's `glyphs` URL
   is falsy, and `glyphManager.setURL()` is fed from the style's `glyphs`
-  field at two sites in `style.ts` including the style-DIFF path (`:491`)
-  that `styleReload.ts` exercises on every `styledata` re-add. `glyphs` is
+  field at two sites in `style.ts` — `_load` (`~:491` at 6.3.0, `~:488` at
+  6.5.0), which is what a `map.setStyle()` reaches and therefore what
+  `styleReload.ts`'s `styledata` re-add exercises, and `setGlyphs` (`~:1953` /
+  `~:1933`), the style-DIFF path. Anchor on the METHOD NAMES: an earlier
+  revision here called `_load` "the style-DIFF path", which named the wrong
+  method for the right site. `glyphs` is
   documented OPTIONAL in the maplibre style spec, so nothing upstream flags
   it. A label-render test needs THREE signals — a rendered-feature check,
   the zero-warnings check, and a timing-independent assertion that
