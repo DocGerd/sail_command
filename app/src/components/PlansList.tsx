@@ -290,7 +290,19 @@ export default function PlansList({ online, busy, onRecalculate }: PlansListProp
                       min={toLocalInputValue(recalc.minMs)}
                       max={toLocalInputValue(recalc.maxMs)}
                       onChange={(e) => {
-                        if (!e.target.value) return;
+                        // #643: identical hazard to PlannerPanel's departure
+                        // input — stepping a segment to a nonexistent date
+                        // leaves Chromium reporting value === '' with the
+                        // draft state untouched. Resync the DOM node back to
+                        // the last known-good value rather than silently
+                        // swallowing; mirror the `r ? … : r` null-safety the
+                        // rest of this editor already uses, since `recalc`
+                        // could in principle have closed between render and
+                        // this event.
+                        if (!e.target.value) {
+                          if (recalc) e.target.value = toLocalInputValue(recalc.departureMs);
+                          return;
+                        }
                         const ms = new Date(e.target.value).getTime();
                         setRecalc((r) => (r ? { ...r, departureMs: ms } : r));
                       }}

@@ -2,7 +2,7 @@ import { render, screen, fireEvent, within, cleanup } from '@testing-library/rea
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
-import { formatTime } from '../lib/format';
+import { formatTime, toLocalInputValue } from '../lib/format';
 import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
@@ -454,6 +454,47 @@ describe('PlannerPanel', () => {
 
     fireEvent.change(input, { target: { value: '2026-07-21T10:30' } });
     expect(props.onDepartureChange).toHaveBeenCalledWith(new Date('2026-07-21T10:30').getTime());
+  });
+
+  it('#643: resyncs the DOM to the last-known departure instead of swallowing an empty value', () => {
+    // Stepping the datetime-local's month/year segment to a nonexistent date
+    // (e.g. 31 Jan -> Feb) makes the browser report value === '' with no
+    // other signal. jsdom reproduces the same DOM write on a bare
+    // empty-string change event, which is the documented way to exercise
+    // this without trying to simulate real segment stepping.
+    //
+    // MEASURED (not assumed): this pair of assertions is GREEN even against
+    // the pre-#643-fix handler (a bare early-return on an empty target
+    // value, no resync write), in BOTH jsdom and a real Chromium session
+    // (verified 2026-08-24 by
+    // manually stepping the day/month segments of the actual planner input
+    // via keyboard). React's own controlled-input restore
+    // (`restoreStateOfTarget` in react-dom, unconditional for any element
+    // matching `isTextInputElement`, which includes datetime-local) already
+    // rewrites the DOM's `.value` back to the last-rendered `value` prop
+    // synchronously after any native input/change event whose handler
+    // doesn't update state — independent of this component's own code. So
+    // this row does NOT discriminate the fix from its absence in this
+    // engine; it is kept as a scope-pinning regression test for the DESIRED
+    // behavior (state untouched, field shows the correct value), and the
+    // production resync is kept as an explicit, documented defense not
+    // provably redundant across every rendering engine (Safari/WebKit was
+    // not tested here).
+    const props = renderPanel();
+    const input = screen.getByLabelText('Departure') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: '' } });
+
+    // (a) is vacuous as evidence of the fix on its own — the handler never
+    // called onDepartureChange on the empty branch either before or after
+    // this fix. Kept because it pins the SCOPE of the change: application
+    // state must stay untouched, only the DOM node's displayed value moves.
+    expect(props.onDepartureChange).toHaveBeenCalledTimes(0);
+    // (b), computed independently from the literal DEPARTURE_MS this test
+    // set up, never from the component's own rendered output (the #50
+    // equivalence trap) — but see the note above: this assertion is ALSO
+    // satisfied without the production fix, for the reason explained there.
+    expect(input.value).toBe(toLocalInputValue(DEPARTURE_MS));
   });
 
   it('disables the plan button and shows the offline disabled reason (offline suppresses onboarding)', () => {

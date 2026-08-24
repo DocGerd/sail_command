@@ -551,7 +551,24 @@ export default function PlannerPanel({
             min={toLocalInputValue(bounds.min)}
             max={toLocalInputValue(bounds.max)}
             onChange={(e) => {
-              if (!e.target.value) return;
+              // #643: stepping a datetime-local segment (e.g. the month) to a
+              // date that doesn't exist (31 Feb) makes the browser report
+              // value === '' with no other signal. State is still correct —
+              // it's the DOM node that drifted — so resync the visible field
+              // back to the last known-good value instead of silently
+              // no-op'ing and leaving the user staring at an empty required
+              // input. Do NOT call onDepartureChange here: that would fire a
+              // needless state update for a value that never actually changed.
+              // NOTE (measured, see PR body): React's own controlled-input
+              // restore already performs this exact resync for a plain
+              // Chromium datetime-local — this write is deliberately kept as
+              // an explicit, documented belt-and-braces defense rather than
+              // relying solely on that internal mechanism (unverified across
+              // engines other than Chromium here).
+              if (!e.target.value) {
+                e.target.value = toLocalInputValue(departureMs);
+                return;
+              }
               onDepartureChange(new Date(e.target.value).getTime());
             }}
           />
