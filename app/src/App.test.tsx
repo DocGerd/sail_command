@@ -457,6 +457,39 @@ function simulateMapClick(
   });
 }
 
+// #631: a plan becoming active and App.tsx's plan-form sync effect running
+// are TWO separate scheduler tasks. That effect (the `syncedPlanIdRef` one,
+// keyed on plan.id + harborsLoaded) writes origin, destination, departureMs
+// AND the via draft from the plan's own request, and it runs in a passive-
+// effect flush that lands AFTER the commit which re-enables the Plan button.
+// So `waitFor(() => expect(planButton).toBeEnabled())` observes
+// `planning.phase`, NOT that effect — and under load the gap between the two
+// widens far enough that a form edit made straight after that gate is
+// silently overwritten by the still-pending effect. MEASURED: 1 failure in 25
+// full-file runs under 48-way CPU contention, and once in CI (run
+// 32365975638, `expected '2026-08-20T12:00' to be '2026-08-20T16:53'` — the
+// departure reverting to the plan's own seed).
+//
+// There is nothing to POLL for here: on these plans the effect re-writes
+// values the form already holds, so its writes are invisible in the DOM.
+// (Where they ARE visible the tests gate on them directly instead — see
+// 'adding a via point (a draft-only edit) does not clobber a departure the
+// user edited after loading', which waits for the prefilled departure value.)
+// Flushing React's pending passive effects is therefore the only
+// deterministic gate available, and it is a flush rather than a sleep: it
+// drains the work already scheduled, it does not wait a fixed time for it.
+//
+// This makes the TEST deterministic. It does NOT fix, and must not be read as
+// fixing, the product race it steps around: a user who edits the Plan form
+// before that effect fires still loses the edit. That is #660, still open —
+// most reachably on a cold boot with a restored session, where the effect is
+// parked behind `harborsLoaded` for the whole asset load.
+async function flushPlanFormSync(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 // Simulates MapLibre firing a runtime 'error' event (see the maplibre-gl
 // mock's FakeMap.on above) — used to drive the project-gate map-error
 // banner without a real WebGL/MapLibre runtime.
@@ -1146,6 +1179,7 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
     await waitFor(() => expect(planButton).toBeEnabled()); // back to idle — the plan is now active
+    await flushPlanFormSync(); // #631 — see the helper; the via add below is a sync-effect-written field
     const callsAfterInitialPlan = routingMock.calls.length;
 
     // Add a via — it appears in the panel list immediately (plain draft
@@ -1191,6 +1225,7 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     await waitFor(() =>
       expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
     );
+    await flushPlanFormSync(); // #631 — see the helper; the via add below is a sync-effect-written field
 
     // No pending edit yet — the map-side chip is absent.
     expect(document.querySelector('.via-markers-spinner-chip')).toBeNull();
@@ -1247,6 +1282,7 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     await waitFor(() =>
       expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
     );
+    await flushPlanFormSync(); // #631 — this is the site the flake was observed on
 
     // Dirty the departure first — a non-via reason formDirty goes true.
     const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
@@ -1374,6 +1410,7 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
     await waitFor(() => expect(planButton).toBeEnabled());
+    await flushPlanFormSync(); // #631 — see the helper; the via add below is a sync-effect-written field
 
     // Add a via to the now-active plan — a pending, UNAPPLIED draft edit
     // (never persisted, never routed — see draftViaPoints's own comment).
@@ -1414,6 +1451,7 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     await waitFor(() =>
       expect(screen.getByRole('button', { name: de['planner.plan'] })).toBeEnabled(),
     );
+    await flushPlanFormSync(); // #631 — see the helper; the via add below is a sync-effect-written field
 
     // Add a via ~15 m from ORIGIN_A — inside the 60 m dedupe threshold.
     const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
@@ -2686,6 +2724,7 @@ describe('#572: a new plan is solved with the SELECTED boat', () => {
     expect(routingMock.calls[0].request.boat.id).toBe('elan-444-piranja');
     routingMock.calls[0].resolve(okPlanResult(10));
     await waitFor(() => expect(planButton).toBeEnabled());
+    await flushPlanFormSync(); // #631 — see the helper; the via add below is a sync-effect-written field
 
     // Add a via WHILE the Elan is still selected — a pending draft edit,
     // never dispatched to the router (see 'via edits are draft-only and
