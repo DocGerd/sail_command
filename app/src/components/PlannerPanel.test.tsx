@@ -2,7 +2,7 @@ import { render, screen, fireEvent, within, cleanup } from '@testing-library/rea
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
-import { formatTime } from '../lib/format';
+import { formatTime, toLocalInputValue } from '../lib/format';
 import { MAX_GPX_FILE_BYTES } from '../lib/gpx';
 import { FORECAST_DAYS } from '../services/openMeteo';
 import { uniformWindGrid } from '../test/fixtures';
@@ -454,6 +454,64 @@ describe('PlannerPanel', () => {
 
     fireEvent.change(input, { target: { value: '2026-07-21T10:30' } });
     expect(props.onDepartureChange).toHaveBeenCalledWith(new Date('2026-07-21T10:30').getTime());
+  });
+
+  it('#643 follow-up: the departure input stays CONTROLLED — its value tracks the departureMs prop across a re-render, not just at mount', () => {
+    // An earlier version of this row fired an empty-string change event and
+    // asserted the DOM value restored to the rendered prop. That is VACUOUS
+    // in this codebase: MEASURED 2026-08-24 (jsdom here, plus real Chromium
+    // 151.0.7922.34 and real WebKit 26.5 against two genuine `vite build`
+    // outputs — see PR #665) that react-dom 19.2.8's own controlled-input
+    // restore (`restoreStateOfTarget`) performs that exact resync
+    // synchronously, in BOTH engines, WITH THE PRODUCTION RESYNC LINE
+    // DELETED. So "fire an empty change, read the value back" cannot tell
+    // this component's own resync apart from React's, and stays green
+    // either way — a theorem given React's behavior, not a fact about this
+    // component's code.
+    //
+    // What the #643 SYMPTOM (a required field frozen on a stale/empty value)
+    // actually depends on is this input remaining a CONTROLLED React
+    // element — i.e. its displayed value re-derives from the `departureMs`
+    // PROP on every render, not merely once at mount. Both the resync write
+    // in the handler and React's own restore work by writing the CURRENT
+    // value prop into the DOM; neither can help once the element stops
+    // being controlled (e.g. `value=` swapped for `defaultValue=`, an
+    // easy-to-make, diff-innocuous mistake), because an uncontrolled
+    // element's initial value is never revisited after mount.
+    //
+    // This row pins THAT — re-render with a DIFFERENT departureMs prop, no
+    // onChange event fired at all — and is a real, mutation-checked
+    // discriminator: switching `value=` to `defaultValue=` on the
+    // production input (resync line left untouched) turns this row RED
+    // (measured: `Expected: "2026-07-20T12:00", Received: "2026-07-20T11:00"`
+    // — the input freezes at its mount-time value and never sees the
+    // re-rendered prop); reverting turns it back GREEN. It intentionally
+    // never fires onChange, so it does NOT discriminate for or against the
+    // handler's own resync line — that line stays as documented,
+    // measured-redundant defensive code.
+    localStorage.setItem('sc-lang', 'en');
+    const props = baseProps();
+    const { rerender } = render(
+      <I18nProvider>
+        <PlannerPanel {...props} />
+      </I18nProvider>,
+    );
+    const input = screen.getByLabelText('Departure') as HTMLInputElement;
+    expect(input.value).toBe(toLocalInputValue(DEPARTURE_MS));
+
+    const NEXT_DEPARTURE_MS = DEPARTURE_MS + 3_600_000;
+    rerender(
+      <I18nProvider>
+        <PlannerPanel {...props} departureMs={NEXT_DEPARTURE_MS} />
+      </I18nProvider>,
+    );
+
+    expect(input.value).toBe(toLocalInputValue(NEXT_DEPARTURE_MS));
+    // Scope pin, unchanged in intent from the deleted row: no onChange event
+    // was fired here at all, so this is trivially true — kept only to
+    // document that a prop-driven re-render must never itself invoke the
+    // callback.
+    expect(props.onDepartureChange).toHaveBeenCalledTimes(0);
   });
 
   it('disables the plan button and shows the offline disabled reason (offline suppresses onboarding)', () => {

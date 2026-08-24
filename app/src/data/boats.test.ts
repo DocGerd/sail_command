@@ -204,3 +204,135 @@ describe('boat catalogue', () => {
     expect(DEFAULT_BOAT_ID).toBe('salona-45');
   });
 });
+
+// #595. `draftProvenance.note` and every sail's `polarProvenance.note` render
+// UNCONDITIONALLY and VERBATIM (BoatPicker.tsx ~:126 / ~:150) — the deliberate,
+// spec-sanctioned exception to the i18n rule that lets a source citation stay
+// exact per language. That exemption is also the hazard: nothing else stands
+// between an author's internal shorthand ("spec J OQ-4 carve-out", "#455") and
+// the rendered page. #595 found exactly that leak in the Salona 45's own
+// draftProvenance.note; the reviewer additionally found two catalogue-id leaks
+// in the polar notes (S44_GENOA_NOTE, ELAN_GENOA_NOTE). This guard exists so a
+// THIRD leak reds a test instead of shipping silently, the way this one did.
+describe('#595: rendered notes carry no internal register', () => {
+  // Reads every note through BOATS itself — never by importing the module's
+  // private *_NOTE constants (S44_GENOA_NOTE et al. are not exported) — so the
+  // scan sees EXACTLY the strings BoatPicker renders, and a new boat or sail
+  // is covered with zero maintenance here.
+  function collectRenderedNotes(): Array<{ id: string; note: string }> {
+    const notes: Array<{ id: string; note: string }> = [];
+    for (const b of BOATS) {
+      notes.push({ id: `${b.id}/draftProvenance.note`, note: b.draftProvenance.note });
+      for (const s of b.sails) {
+        notes.push({ id: `${b.id}/${s.id}/polarProvenance.note`, note: s.polarProvenance.note });
+      }
+    }
+    return notes;
+  }
+
+  // Catalogue ids are derived from BOATS itself, not hand-listed, so a future
+  // fourth boat's id is covered automatically (review "Additional scope" item
+  // 2). Escaped even though today's ids need no escaping — an id containing a
+  // regex metacharacter must not silently widen or narrow what this matches.
+  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const CATALOGUE_ID_PATTERNS = BOATS.map((b) => new RegExp(escapeRegExp(b.id)));
+  const INTERNAL_TOKEN_PATTERNS: readonly RegExp[] = [
+    /#\d+/, // an issue number, e.g. "#455"
+    /spec [A-Z]/, // a spec section reference, e.g. "spec J"
+    /OQ-\d/, // an internal hull code, e.g. "OQ-4"
+    ...CATALOGUE_ID_PATTERNS, // a raw catalogue id leaking instead of a display name
+  ];
+
+  // FAIL CLOSED (this repo's useBannerHeight.test.ts pattern): assert the scan
+  // actually found notes BEFORE trusting any content check below. Reviewer's
+  // mutation check #2 stubs collectRenderedNotes() to return [] and confirms
+  // THIS assertion trips first, ahead of the (vacuously green) content check.
+  it('collects at least one note per boat and per sail (fail CLOSED)', () => {
+    const notes = collectRenderedNotes();
+    const expectedCount = BOATS.length + BOATS.reduce((n, b) => n + b.sails.length, 0);
+    expect(notes.length).toBeGreaterThan(0);
+    expect(notes.length).toBe(expectedCount);
+    for (const b of BOATS) {
+      expect(
+        notes.some((n) => n.id === `${b.id}/draftProvenance.note`),
+        `${b.id} draftProvenance.note missing from the scan`,
+      ).toBe(true);
+      for (const s of b.sails) {
+        expect(
+          notes.some((n) => n.id === `${b.id}/${s.id}/polarProvenance.note`),
+          `${b.id}/${s.id} polarProvenance.note missing from the scan`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  // APERTURE (#524's pattern). The two rows above BOTH enumerate the same two
+  // hand-written field paths, so they move together: a THIRD note-bearing
+  // field added to BoatDef is invisible to the collector AND absent from
+  // `expectedCount`, and the guard stays green over a note it never read.
+  // MEASURED: a `hullProvenance: { note: 'Per spec J OQ-4, see the
+  // elan-444-piranja rig note (#999).' }` on one boat — every rejected pattern
+  // at once — left this file 15/15 GREEN before this row existed.
+  //
+  // So cross-check the aperture with a deliberately PERMISSIVE scan that knows
+  // nothing about the field paths: walk BOATS for every property literally
+  // named `note`, and require the collector to have seen exactly those.
+  it('collects EVERY note reachable in BOATS (aperture cross-check)', () => {
+    const permissive: string[] = [];
+    const walk = (v: unknown): void => {
+      if (Array.isArray(v)) {
+        for (const el of v) walk(el);
+        return;
+      }
+      if (typeof v !== 'object' || v === null) return;
+      for (const [k, val] of Object.entries(v)) {
+        if (k === 'note' && typeof val === 'string') permissive.push(val);
+        else walk(val);
+      }
+    };
+    walk(BOATS);
+    const collected = collectRenderedNotes().map((n) => n.note);
+    expect(permissive.length).toBeGreaterThan(0);
+    expect([...permissive].sort()).toEqual([...collected].sort());
+  });
+
+  // The catalogue-id patterns above cover BOAT ids only. A SAIL id is the same
+  // leak: `fock` is an internal id for a sail every label calls "Jib", and it
+  // shipped inside two polar notes. Derived, not hand-listed: a sail id is
+  // allowed in a note only when it is ALSO how the catalogue spells that sail
+  // to the reader, i.e. it appears in some sail label. That admits `genoa`
+  // (labels "Genoa 135 %", "Genoa") and rejects `fock` (no label contains it).
+  it('rejects sail ids that no sail label spells out', () => {
+    const labels = BOATS.flatMap((b) => b.sails.map((s) => s.label.toLowerCase()));
+    const sailIds = [...new Set(BOATS.flatMap((b) => b.sails.map((s) => s.id)))];
+    const internalOnly = sailIds.filter((id) => !labels.some((l) => l.includes(id.toLowerCase())));
+    // Non-vacuity is asserted on the NOTES, not on `internalOnly`: an empty
+    // `internalOnly` is a legitimate all-clear (every sail id is also how a
+    // label spells it), so asserting on it would red this row on a strictly
+    // BETTER catalogue — MEASURED: renaming the `fock` id to `jib` empties it.
+    // The notes are what must never be empty, or the loop below scans nothing.
+    const notes = collectRenderedNotes();
+    expect(notes.length).toBeGreaterThan(0);
+    for (const { id, note } of notes) {
+      for (const sailId of internalOnly) {
+        expect(
+          note.toLowerCase(),
+          `${id} names the internal sail id "${sailId}"; use the label instead`,
+        ).not.toContain(sailId.toLowerCase());
+      }
+    }
+  });
+
+  it('rejects internal-register tokens in every rendered note', () => {
+    const notes = collectRenderedNotes();
+    // Re-asserted (not just relied on via the row above): this row alone must
+    // still fail closed if it is ever split out or reordered ahead of the
+    // dedicated non-vacuity row.
+    expect(notes.length).toBeGreaterThan(0);
+    for (const { id, note } of notes) {
+      for (const pattern of INTERNAL_TOKEN_PATTERNS) {
+        expect(note, `${id} matched ${pattern} in rendered note: "${note}"`).not.toMatch(pattern);
+      }
+    }
+  });
+});

@@ -18,6 +18,16 @@ rather than reusing or renumbering the old one.
   `## Revisiting this` section (or a note added at the top pointing to the
   successor).
 
+## Index
+
+- [0001-keep-native-datetime-input.md](0001-keep-native-datetime-input.md) —
+  Keep the native `datetime-local` input for departure entry.
+- [0002-pre-1.0-db-migration-low-priority.md](0002-pre-1.0-db-migration-low-priority.md) —
+  Pre-1.0.0, local-DB migration is low priority.
+
+This index lists ADRs only — see "Two decision-record locations" below for
+`docs/spikes/`.
+
 ## Two decision-record locations — read both
 
 This repo also has `docs/spikes/`, which predates this directory and holds
