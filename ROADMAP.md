@@ -46,7 +46,7 @@ workflow" below.
 ## Next — v0.14.0
 
 The [`v0.14.0` milestone](https://github.com/DocGerd/sail_command/milestones)
-holds 31 open issues — a mixed minor cut, with three threads standing out.
+holds the next minor cut — a mixed one, with three threads standing out.
 The first is a run of stored-record hardening in the same shape as
 `v0.13.1`'s #632 and #614: a saved plan missing `viaPoints` throws on load
 and blanks the whole app, in three unguarded clusters rather than only the
@@ -166,7 +166,7 @@ revisited, not that it has been lifted.
 Not user-visible, but it is where a meaningful share of the effort goes and it
 sets the pace of everything above.
 
-The `v0.13.1` cut fixed three items in this area, none with a user-visible
+The `v0.13.1` cut settled four items in this area, none with a user-visible
 surface. `SECURITY.md` stated its OpenSSF Scorecard *Branch-Protection*
 rating as a bare number with no date and no run reference — a figure that
 decays silently every time the checks or the repository's posture move — and
@@ -180,7 +180,7 @@ from the plan in a passive-effect flush that can land after the commit
 re-enabling the Plan button, so a test gating on that button could edit the
 form before the still-pending effect overwrote it. Reproduced naturally at
 one failure in 25 full-file runs under 48-way CPU contention, and closed
-test-side by draining React's pending passive effects at all four sites
+test-side by draining React's pending passive effects at every site
 carrying that shape; the underlying product race is untouched and tracked
 separately ([#631](https://github.com/DocGerd/sail_command/issues/631),
 [#660](https://github.com/DocGerd/sail_command/issues/660)). And the same PR
@@ -188,7 +188,13 @@ that fixed #638's depth-hatch legend chrome also settled that legend's
 reachability gate, whose `44px` threshold an earlier, superseded fix attempt
 would have made stale: the number now lives behind a named constant with a
 CSS/TS drift test pinning it against `app.css`, rather than a bare literal
-([#641](https://github.com/DocGerd/sail_command/issues/641)).
+([#641](https://github.com/DocGerd/sail_command/issues/641)). And a reported
+departure-picker minute→hour carry was investigated and closed `won't fix`
+in favour of keeping the native control — the remaining behaviour is
+Android's own `TimePickerSpinnerDelegate` carry, and a `datetime-local`
+input exposes neither `shadowRoot` nor `selectionStart`, so page JavaScript
+cannot tell which segment has focus. Recorded as the project's first
+decision record, `docs/adr/0001-keep-native-datetime-input.md` (#642).
 
 The `v0.13.0` cut fixed three items in this area, none with a user-visible
 surface. `ci.yml`'s `e2e` job carried no `timeout-minutes` at all, so a
