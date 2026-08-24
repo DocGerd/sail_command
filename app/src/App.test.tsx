@@ -1179,6 +1179,7 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
     await waitFor(() => expect(planButton).toBeEnabled()); // back to idle — the plan is now active
+    await flushPlanFormSync(); // #631 — see the helper; the via add below is a sync-effect-written field
     const callsAfterInitialPlan = routingMock.calls.length;
 
     // Add a via — it appears in the panel list immediately (plain draft
@@ -1409,6 +1410,7 @@ describe('via edits are draft-only and never auto-replan (#571 redesign)', () =>
     await waitFor(() => expect(routingMock.calls.length).toBe(1));
     routingMock.calls[0].resolve(okPlanResult(10));
     await waitFor(() => expect(planButton).toBeEnabled());
+    await flushPlanFormSync(); // #631 — see the helper; the via add below is a sync-effect-written field
 
     // Add a via to the now-active plan — a pending, UNAPPLIED draft edit
     // (never persisted, never routed — see draftViaPoints's own comment).
