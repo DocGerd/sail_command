@@ -155,7 +155,9 @@ function sailResultOf(sailId: SailId, result: unknown, reason: unknown): SailRes
     sailId,
     result: rigResult,
     reason:
-      rigResult === null && typeof reason === 'string' && reason in NO_ROUTE_MESSAGE_KEY
+      rigResult === null &&
+      typeof reason === 'string' &&
+      Object.hasOwn(NO_ROUTE_MESSAGE_KEY, reason)
         ? (reason as SailResult['reason'])
         : null,
   };

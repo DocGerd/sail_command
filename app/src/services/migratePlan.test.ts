@@ -278,6 +278,48 @@ describe('#54 migratePlan: pre-#54 records', () => {
     expect(migrated.result.sails[1].reason).toBe(null);
   });
 
+  // #614 follow-up (review finding): `in` walks the PROTOTYPE CHAIN, so
+  // every one of these eight names is `in NO_ROUTE_MESSAGE_KEY` even though
+  // none is an OWN key of it — `NO_ROUTE_MESSAGE_KEY` is a plain object
+  // literal, so it inherits Object.prototype's own members. A guard written
+  // as `reason in NO_ROUTE_MESSAGE_KEY` therefore lets each of these cast
+  // straight through, reproducing #614 with a different sentinel: the cast
+  // value coerces to a non-message (a function, for `toString`), `t()`
+  // resolves nothing, and the alert renders empty again. `Object.hasOwn`
+  // checks OWN properties only, so all eight must fall back to null.
+  it.each([
+    'toString',
+    'constructor',
+    'valueOf',
+    'hasOwnProperty',
+    '__proto__',
+    'isPrototypeOf',
+    'propertyIsEnumerable',
+    'toLocaleString',
+  ])('#614 follow-up: falls back to null for the Object.prototype member %s', (name) => {
+    const raw = legacyPlan();
+    const result = raw.result as Record<string, unknown>;
+    result.fock = null;
+    result.fockReason = name;
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.sails[1].reason).toBe(null);
+  });
+
+  // #614 follow-up (review Minor 4): types.ts documents reason as null
+  // EXACTLY when the sail has a result. genoa here already carries a real
+  // RigResult from legacyPlan() — stamp a stored reason alongside it (as a
+  // corrupted or pre-#54 record might) and confirm the migration still
+  // drops it. Deleting the `rigResult === null` guard term alone (leaving
+  // the membership check intact) would let both survive together, silently
+  // violating that invariant.
+  it('#614 follow-up: reason stays null when the sail already has a result', () => {
+    const raw = legacyPlan();
+    const result = raw.result as Record<string, unknown>;
+    result.genoaReason = 'unreachable';
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.sails[0]!.reason).toBe(null);
+  });
+
   it('derives comparisonComplete: true when every sail finished its search', () => {
     expect(migratePlan(legacyPlan())!.result.comparisonComplete).toBe(true);
   });
