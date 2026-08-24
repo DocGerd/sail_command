@@ -143,6 +143,17 @@ function fullyDeepMaskBuffer(): ArrayBuffer {
   return new Uint8Array(MASK_META.rows * MASK_META.cols).fill(255).buffer;
 }
 
+// #632 review Important: unlike the buffer above, THIS content is
+// load-bearing — byte 0 is charted LAND, and the one test using it
+// deliberately does NOT spy on segmentShallowestBelow (a mocked return
+// ignores the threshold entirely, which is exactly the vacuity the
+// reviewer's supplied test setup exists to avoid). Real NavMask, real
+// checkHeadingDepth, a real `depthM < thresholdM` comparison against a
+// threshold of 0.
+function fullyLandMaskBuffer(): ArrayBuffer {
+  return new Uint8Array(MASK_META.rows * MASK_META.cols).fill(0).buffer;
+}
+
 function TestSetPlan({ plan }: { plan: Plan }) {
   const { setPlan } = useActivePlan();
   useEffect(() => {
@@ -770,6 +781,52 @@ describe('LiveView', () => {
       });
 
       await screen.findByText(/Bearing crosses 2\.1 m/);
+    });
+
+    // #632 review Important: Number.isFinite ALONE admits 0, -0 and any
+    // negative number — and NavMask.segmentShallowestBelow compares
+    // `depthM < thresholdM`, so at a non-positive threshold NOTHING is ever
+    // shallower, charted LAND included. That collapses to `{state:'clear'}`,
+    // which renders NO NOTE AT ALL — a note-less false all-clear, strictly
+    // worse than the NaN crash the guard already caught (a crash is loud; a
+    // silent all-clear on the on-water hazard path is not).
+    //
+    // Deliberately does NOT spy on segmentShallowestBelow (unlike every
+    // sibling depth-check test above): a mocked return value ignores the
+    // threshold argument entirely, which would make this test pass even
+    // with the pre-fix `Number.isFinite`-only guard (0 is finite) — the
+    // exact vacuity the reviewer flagged. Real mask, real NavMask, real
+    // checkHeadingDepth, an all-LAND buffer, so the `depthM < thresholdM`
+    // comparison the hazard depends on is genuinely exercised.
+    it('#632 review: a stored safetyDepthM of 0 shows "Depth not checked" — never a silent no-note all-clear, even crossing charted land', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyLandMaskBuffer(),
+      } as never);
+
+      const plan: Plan = {
+        ...TEST_PLAN,
+        id: 'live-plan-zero-safety-depth',
+        request: { ...TEST_PLAN.request, settings: { ...DEFAULT_SETTINGS, safetyDepthM: 0 } },
+      };
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, plan);
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      // The honest degraded state renders...
+      await screen.findByText('Depth not checked');
+      // ...and — the assertion that actually discriminates the defect —
+      // some depth-annotation element exists at all. `depthAnnotation()`
+      // (defined above) returns null ONLY when no `.live-view-hts-note`
+      // element is in the DOM, which is exactly the note-less 'clear' state
+      // this row exists to rule out.
+      expect(depthAnnotation()).not.toBeNull();
+      expect(screen.queryByText(/Bearing crosses/)).not.toBeInTheDocument();
     });
   });
 
