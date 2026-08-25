@@ -12,7 +12,11 @@ import { vi } from 'vitest';
 // installStyleSetup hook (lib/styleReload.ts) relies on exactly that for a
 // still-pending 'load' one-shot. Delegated `(type, layerId, fn)`
 // registrations (popup/hover handlers) are stored under a separate key so
-// `fire('styledata')`/`fire('load')` can never reach them.
+// `fire('styledata')`/`fire('load')` can never reach them — `fireLayerEvent`
+// (#232 item 3) is the deliberate way to reach that separate key and deliver
+// an event object to a delegated handler; `fire()` itself stays untouched
+// (no args, no delegated bucket) so every existing non-delegated caller is
+// unaffected.
 
 export interface FakeSource {
   setData: ReturnType<typeof vi.fn>;
@@ -77,6 +81,18 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       const pending = [...bucket(onceListeners, type)];
       bucket(onceListeners, type).clear();
       for (const fn of pending) fn();
+    },
+    // #232 item 3: delivers `event` to handlers registered via the delegated
+    // `map.on(type, layerId, fn)` form (e.g. DataLayers' SEAMARKS_LAYER click
+    // handler) — computes the same NUL-joined bucket key() below uses at
+    // registration time, so this reaches exactly the handlers `fire(type)`
+    // above is documented to never reach, and nothing else.
+    fireLayerEvent: (type: string, layerId: string, event: unknown) => {
+      const k = key(type, layerId);
+      for (const fn of [...bucket(listeners, k)]) fn(event);
+      const pending = [...bucket(onceListeners, k)];
+      bucket(onceListeners, k).clear();
+      for (const fn of pending) fn(event);
     },
     isStyleLoaded: () => state.styleLoaded,
     on: vi.fn((type: string, layerOrFn: string | Handler, maybeFn?: Handler) => {
