@@ -54,6 +54,19 @@ results table at the bottom, and note it in the box below the check.
       In short landscape, and in any narrow layout with too little height
       left below the compass, the legend is deliberately not rendered at
       all — by design, not a missing control.
+- [ ] **Cable/pipeline seamarks visible at Standard.** Turn the **Seamarks**
+      map overlay on — it is OFF by default, unlike "Water depths" — and
+      leave the Seamarks display-tier control at its default "Standard"
+      setting (not "All"). Zoom to about z12 or closer on a stretch of coast
+      known to carry submarine cable or pipeline marks (e.g. the Flensburg
+      Fjord approaches); they render at Standard,
+      not only at "All" (#521).
+- [ ] **"Display options" collapses the overlay cluster.** The route-overlay
+      toggles, forecast-time slider, and route legend now live behind one
+      "Display options" control instead of always covering part of the
+      chart. On a narrow/mobile-width screen it starts collapsed; on a wide
+      screen it starts open. Toggling the control shows/hides the whole
+      cluster together (#628).
 
 ## 2. Route A — Flensburg → Marstal
 
@@ -130,14 +143,23 @@ selected in §1.
       line must NOT move: the chart reads the depth the open plan was
       requested at, not the current setting (#551). It moves only after a
       re-plan.
+- [ ] **2.12 Per-leg cautious marker doesn't require a relaxed route.**
+      Independent of whether this route relaxed (§2.10): once the map has
+      finished loading, in the legs table, any leg whose cautious depth
+      reading falls below your safety depth
+      shows a "Shallow …" or "Marginal …" chip alongside a "cautious: as low
+      as … m" sub-chip, and the map's shallow-water highlight (the wide
+      casing under the route line) covers that same leg — both now appear
+      on an ordinary, non-relaxed route too, not only inside a route the
+      relaxation banner already flagged (#651).
 
 **Result:** Pass / Fail / Partial — notes: ___________________________
 
 ## 3. Route B — Flensburg → Sønderborg
 
 Repeat the same route/rig/motor/ETA checks as §2 for Flensburg → Sønderborg.
-Checks 2.9–2.11 (depth hatching, marginal-depth line, depth profile) apply
-here too, with the same expected outcomes.
+Checks 2.9–2.12 (depth hatching, marginal-depth line, depth profile,
+per-leg cautious marker) apply here too, with the same expected outcomes.
 
 - [ ] **3.1** Route stays in water.
 - [ ] **3.2** Rounds Broager Land / Kegnæs sanely.

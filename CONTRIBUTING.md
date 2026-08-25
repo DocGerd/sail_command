@@ -168,17 +168,17 @@ labels on **pull requests** are applied automatically from changed paths by
 
 **Milestones**
 
-- `v0.13.1` — this cut, a PATCH cut (see the PATCH exception below); its
-  milestone closes when the release PR merges and the tag is pushed.
-- `v0.14.0` — the next MINOR release.
-- `v0.15.0` — opened fresh at the `v0.13.0` cut, per the roll-forward
-  convention below.
+- `v0.14.0` — this cut; its milestone closes when the release PR merges and
+  the tag is pushed.
+- `v0.15.0` — the next MINOR release.
+- `v0.16.0` — opened fresh at this cut, per the roll-forward convention
+  below.
 - `Backlog` — accepted, not yet scheduled into a release.
 - `Icebox` — deferred / maybe-never; revisit opportunistically.
 
-`v0.4.0` through `v0.13.0` are closed (plus the `v0.5.1` and `v0.12.1`
-patch milestones). A milestone closes only once its release PR merges and
-the tag is pushed, per the roll-forward convention below, so
+`v0.4.0` through `v0.14.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
+`v0.13.1` patch milestones). A milestone closes only once its release PR
+merges and the tag is pushed, per the roll-forward convention below, so
 `gh api repos/DocGerd/sail_command/milestones` is the fact, not this
 sentence. The `v0.8.1` patch release (documentation-only) shipped
 on 2026-08-04 and, per the PATCH exception below, carries no milestone of
