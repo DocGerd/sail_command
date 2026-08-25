@@ -69,7 +69,7 @@ export const en = {
   'settings.seamarkCategory.standard': 'Standard',
   'settings.seamarkCategory.all': 'All',
   'settings.seamarkCategory.help':
-    'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything except submarine cable and pipeline markers — choose "All" to show those too.',
+    'Cardinal, lateral, safe-water and isolated-danger marks, and major lights, are always shown, even at "Base". "Standard" (the default) shows everything, including submarine cable and pipeline markers. "All" currently shows the same as "Standard".',
   'planner.card.trip': 'Trip',
   'planner.card.result': 'Result',
   'planner.origin.label': 'Origin',
