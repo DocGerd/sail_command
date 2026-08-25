@@ -127,6 +127,68 @@ describe('legsToFeatureCollection', () => {
   });
 });
 
+describe('legsToFeatureCollection: #651 render-time MARGINAL flag', () => {
+  // A plain gate, deliberately not DEFAULT_SETTINGS.safetyDepthM — this file
+  // tests legsToFeatureCollection's own threading, not the app's default
+  // value, and marginalDepthThresholdM's own boundary arithmetic is pinned
+  // separately in shallowExposure.test.ts.
+  const GATE_M = 3.0;
+
+  it('flags a leg shallow when it crosses marginal water and the leg carries no #53 flag', () => {
+    // Uniform 3.5 m: >= the 3.0 m gate (so this leg was never relaxed) but
+    // < marginalDepthThresholdM(3.0) = 3.9 m — the MARGINAL band.
+    const mask = makeMask(() => 35);
+    const fc = legsToFeatureCollection([SAIL_LEG], 'en', { mask, gateM: GATE_M });
+    expect(fc.features[0].properties.shallow).toBe(true);
+  });
+
+  it('does not flag a leg crossing only ordinary deep water', () => {
+    const mask = makeMask(() => 200 /* 20 m */);
+    const fc = legsToFeatureCollection([SAIL_LEG], 'en', { mask, gateM: GATE_M });
+    expect(fc.features[0].properties.shallow).toBe(false);
+  });
+
+  it('a #53-flagged leg stays shallow regardless of the render-time mask/gate', () => {
+    const flagged: Leg = { ...SAIL_LEG, shallow: { minDepthM: 2.3 } };
+    const mask = makeMask(() => 200); // deep — would not itself trip the marginal walk
+    const fc = legsToFeatureCollection([flagged], 'en', { mask, gateM: GATE_M });
+    expect(fc.features[0].properties.shallow).toBe(true);
+  });
+
+  it('never flags anything when mask/gateM are omitted — the #324 alt-rig overlay call site (backward compatible default)', () => {
+    // No opts at all — the exact shape the alt-rig overlay's own
+    // legsToFeatureCollection(altResult?.legs ?? [], lang) call in
+    // RouteLayer.tsx uses. Over a mask that WOULD flag SAIL_LEG if threaded
+    // (proven two rows above), so this proves the OMISSION is what
+    // suppresses it, not an accidentally non-marginal geometry.
+    const fc = legsToFeatureCollection([SAIL_LEG], 'en');
+    expect(fc.features[0].properties.shallow).toBe(false);
+  });
+
+  it('never flags anything while mask is null (not yet loaded) — NOT-YET-KNOWN, never a false all-clear', () => {
+    const fc = legsToFeatureCollection([SAIL_LEG], 'en', { mask: null, gateM: GATE_M });
+    expect(fc.features[0].properties.shallow).toBe(false);
+  });
+
+  // #651 fix-wave: DELIBERATELY INVERTED from "an out-of-bounds leg leaves
+  // EVERY leg unflagged for the marginal half — legMinDepthsM's own
+  // null-for-the-whole-array contract". Per review, legMinDepthsM's
+  // whole-array null was an AGGREGATE contract (right for a summed distance)
+  // misapplied to a per-leg MARKER — suppressing a good leg's marker because
+  // a sibling leg's walk was inconclusive removes true signal for no safety
+  // gain, so legMinDepthsM now nulls only the failing leg's own entry.
+  it('an out-of-bounds leg leaves ONLY that leg unflagged for the marginal half — its siblings are unaffected', () => {
+    const outside: LatLon = { lat: 90, lon: 0 };
+    const outLeg: Leg = { ...MOTOR_LEG, start: outside, end: outside };
+    const mask = makeMask(() => 35); // marginal everywhere reachable
+    const fc = legsToFeatureCollection([SAIL_LEG, outLeg], 'en', { mask, gateM: GATE_M });
+    // SAIL_LEG alone would be marginal under this mask (first row above) —
+    // this proves the out-of-bounds SIBLING leg no longer suppresses it: only
+    // the leg that actually failed the bound check goes unflagged.
+    expect(fc.features.map((f) => f.properties.shallow)).toEqual([true, false]);
+  });
+});
+
 describe('routePointFeatures', () => {
   const ETA_MS = 12_600_000;
 

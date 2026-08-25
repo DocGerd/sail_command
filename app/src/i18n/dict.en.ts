@@ -396,6 +396,17 @@ export const en = {
   // table context (e.g. by a screen reader in linear mode).
   'route.legs.shallow': 'Shallow',
   'route.legs.shallowMarker': 'Shallow {depth} m',
+  // #651: the render-time complement to shallowMarker above, for a leg the
+  // router did NOT relax (leg.shallow undefined — every leg on most routes,
+  // per CLAUDE.md's "disclosure stack" domain rule). {depth} here is the
+  // mask's own charted reading, at or above the plan's requested gate —
+  // "Shallow" would be false, since the charted data does not put this cell
+  // below the gate at all; only the #493 more-cautious reading of the SAME
+  // cell might (isMarginalDepthM, lib/shallowExposure.ts's own #612
+  // criterion, applied per leg). "Marginal" names that distinction; the
+  // sibling shallowCautious chip below states the actual cautious figure
+  // unconditionally, so this label never has to.
+  'route.legs.marginalMarker': 'Marginal {depth} m',
   // #493/#504: cautious lower bound for the SAME cell, rendered ALONGSIDE
   // the marker above (never replacing it) — see cautiousDepthLowerBoundM in
   // app/src/lib/mask.ts for the derivation. Worded as a HAZARD, not a
@@ -423,7 +434,18 @@ export const en = {
   'route.legend.maneuver': 'Tack/gybe',
   'route.legend.headingChange': 'Heading change',
   'route.legend.via': 'Via waypoint',
-  'route.legend.shallow': 'Charted shallower than safety depth',
+  // #651 fix-wave, MAJOR 1: was 'Charted shallower than safety depth' — that
+  // labels the sc-route-shallow swatch, which #651 now ALSO paints for
+  // MARGINAL legs (RouteLayer.tsx's ROUTE_STACK_BOTTOM_LAYER), and a
+  // marginal leg is BY DEFINITION charted AT OR ABOVE the gate (see
+  // route.legs.marginalMarker's own comment below) — so the old string
+  // asserted the opposite of what the layer actually paints for that
+  // population. The union of both populations (relaxed-shallow: charted min
+  // < gate, so cautious = charted - T < gate; marginal: charted min < gate +
+  // T, so cautious < gate) is exactly "the cautious reading falls below the
+  // gate" — one line covers both, tightly, with no "charted" claim to be
+  // wrong about.
+  'route.legend.shallow': 'Cautious depth reading below safety depth',
   // #324: map-only overlay of the rig NOT currently shown as the primary
   // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
   'route.legend.altRig': 'Other rig (dashed)',

@@ -350,6 +350,15 @@ export const de = {
   // Text statt reiner Farbe).
   'route.legs.shallow': 'Untiefe',
   'route.legs.shallowMarker': 'Untiefe {depth} m',
+  // #651: siehe dict.en.ts's Kommentar für Zweck und Herkunft (das
+  // render-seitige Gegenstück zu shallowMarker oben, für eine Etappe, die
+  // der Planer NICHT gelockert hat). {depth} ist hier die kartierte
+  // Maskenlesart, auf oder über dem angeforderten Gate — "Untiefe" wäre
+  // falsch, da die kartierten Daten diese Zelle nicht unter das Gate
+  // stellen; nur die vorsichtigere #493-Lesart derselben Zelle kann das
+  // (isMarginalDepthM, lib/shallowExposure.ts's eigenes #612-Kriterium, pro
+  // Etappe angewandt). "Grenzwertig" benennt diesen Unterschied.
+  'route.legs.marginalMarker': 'Grenzwertig {depth} m',
   // #493/#504: vorsichtige Untergrenze derselben Zelle, NEBEN der obigen
   // Marke gerendert (nie ersetzend) — siehe cautiousDepthLowerBoundM in
   // app/src/lib/mask.ts für die Herleitung. Als GEFAHR formuliert, nicht als
@@ -378,7 +387,11 @@ export const de = {
   'route.legend.maneuver': 'Wende/Halse',
   'route.legend.headingChange': 'Kursänderung',
   'route.legend.via': 'Zwischenpunkt',
-  'route.legend.shallow': 'Flacher als Sicherheitstiefe kartiert',
+  // #651 fix-wave, MAJOR 1: siehe dict.en.ts's Kommentar für die vollständige
+  // Begründung (die alte Formulierung war für die neue MARGINAL-Population
+  // sachlich falsch, da diese per Definition auf oder über dem Gate kartiert
+  // ist).
+  'route.legend.shallow': 'Vorsichtige Tiefenlesart unter Sicherheitstiefe',
   // #324: map-only overlay of the rig NOT currently shown as the primary
   // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
   'route.legend.altRig': 'Anderes Rigg (gestrichelt)',
