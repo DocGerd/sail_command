@@ -110,6 +110,6 @@
     "src/**/verifyMaskConnectivity.test.ts",
     "src/**/sweepSailIds.test.ts",
     "src/**/depthLegendGate.test.ts",
-    "src/app.css.test.ts"
+    "src/**/app.css.test.ts"
   ]
 }

@@ -4,11 +4,19 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 
 // #711: MapLibre's own AttributionControl chrome hardcodes
-// `.maplibregl-ctrl-attrib.maplibregl-compact-show{background-color:#fff;
+// `.maplibregl-ctrl-attrib.maplibregl-compact{background-color:#fff;
 // color:#000}` and `.maplibregl-ctrl-attrib a{color:rgba(0,0,0,.75)}` with
-// no dark variant (node_modules/maplibre-gl/dist/maplibre-gl.css) — the same
-// defect class CLAUDE.md documents for .seamark-popup/.ais-popup. jsdom
-// computes no CSS cascade, so no DOM/component test can see whether a
+// no dark variant (read against maplibre-gl 6.5.0,
+// node_modules/maplibre-gl/dist/maplibre-gl.css) — the same defect class
+// CLAUDE.md documents for .seamark-popup/.ais-popup. The colour pair sits
+// on `.maplibregl-compact` itself, NOT on `.maplibregl-compact-show`
+// (which adds only padding/visibility) — `.compact-show` never appears
+// without `.compact` already present (MapLibre's own
+// `_toggleAttribution`/`_updateData`), so `.compact` alone is the
+// selector that covers both the collapsed steady state (see MapView.tsx's
+// #33 comment: the control starts COLLAPSED everywhere) and the
+// one-shot-expanded state. jsdom computes no CSS cascade, so no
+// DOM/component test can see whether a
 // `@media (prefers-color-scheme: dark)` rule exists or what it contains —
 // this follows the repo's established pattern for exactly that gap
 // (useBannerHeight.test.ts, panelWidth.test.ts, maskTolerance.test.ts,
@@ -71,11 +79,16 @@ describe('#711: app.css themes the MapLibre attribution control in dark mode', (
     // mentions the attribution control at all yet).
     expect(attribBlocks, 'no dark-mode .maplibregl-ctrl-attrib block found').toHaveLength(1);
     const block = attribBlocks[0];
+    // The negative lookahead requires the SUPERSET selector
+    // `.maplibregl-compact` (covers both the collapsed steady state and
+    // the opened one) — it fails to match `.maplibregl-compact-show{...}`,
+    // since `-show` follows `compact` before the brace, so a regression
+    // back to the narrower opened-only selector reds this row.
     expect(block).toMatch(
-      /\.maplibregl-ctrl-attrib\.maplibregl-compact-show\s*\{[^}]*background-color:\s*var\(--sc-bg\)/,
+      /\.maplibregl-ctrl-attrib\.maplibregl-compact(?!-show)\s*\{[^}]*background-color:\s*var\(--sc-bg\)/,
     );
     expect(block).toMatch(
-      /\.maplibregl-ctrl-attrib\.maplibregl-compact-show\s*\{[^}]*color:\s*var\(--sc-fg\)/,
+      /\.maplibregl-ctrl-attrib\.maplibregl-compact(?!-show)\s*\{[^}]*color:\s*var\(--sc-fg\)/,
     );
     expect(block).toMatch(/\.maplibregl-ctrl-attrib\s+a\s*\{[^}]*color:\s*var\(--sc-fg\)/);
   });
