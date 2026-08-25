@@ -412,8 +412,8 @@ function AppShell() {
     setOrigin(syncedOrigin);
     setDestination(syncedDestination);
     setDepartureMs(departureSeedMs(plan));
-    // #654: plan.request.viaPoints read through the shared accessor — a
-    // plan saved before eb2d7ee never carries the field at all.
+    // #654: plan.request.viaPoints read through the shared accessor —
+    // defends a hand-edited/corrupted stored record; see planViaPoints.ts.
     setDraftViaPoints(planViaPoints(plan.request));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id + harborsLoaded deliberately, see the comment above
   }, [plan?.id, harborsLoaded]);
@@ -831,8 +831,8 @@ function AppShell() {
   // made the chip briefly disagree with the panel's own, correctly-silent
   // stale indicator). `plan !== null` mirrors ViaMarkers' OWN precondition —
   // it renders nothing without an active plan.
-  // #654: plan.request.viaPoints read through the shared accessor — a plan
-  // saved before eb2d7ee never carries the field at all.
+  // #654: plan.request.viaPoints read through the shared accessor —
+  // defends a hand-edited/corrupted stored record; see planViaPoints.ts.
   const viaDraftStale =
     plan !== null &&
     origin !== null &&

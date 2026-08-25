@@ -228,8 +228,8 @@ export function planFormDirty(
     form.destination.source === 'harbor' ? form.destination.harborId : null;
   if (harborsAvailable && formDestinationHarborId !== req.destinationHarborId) return true;
 
-  // #654: req.viaPoints read through the shared accessor — a plan saved
-  // before eb2d7ee never carries the field at all.
+  // #654: req.viaPoints read through the shared accessor — defends a
+  // hand-edited/corrupted stored record; see planViaPoints.ts.
   if (viaPointsDiffer(form.viaPoints, planViaPoints(req))) return true;
 
   return routingSettingsDirty(plan, form.settings);

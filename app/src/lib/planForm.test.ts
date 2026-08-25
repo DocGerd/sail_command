@@ -286,17 +286,20 @@ describe('planFormDirty (#301)', () => {
       expect(planFormDirty(makePlan(), form, true)).toBe(false);
     });
 
-    // #654: a plan saved before eb2d7ee ("feat: via-waypoint segmented
-    // routing", 2026-07-15) never carries request.viaPoints at all — the
-    // field and the feature were introduced by that one commit
-    // (docs/adr/0002-pre-1.0-db-migration-low-priority.md). planFormDirty
-    // used to read req.viaPoints straight off the request and hand it to
+    // #654: request.viaPoints being absent cannot happen for a legitimate
+    // stored plan — services/db.ts (the only IndexedDB writer) postdates
+    // the field's introducing commit eb2d7ee by ~3 hours, both predating
+    // v0.1.0 (git-verified 2026-08-25; full argument in migratePlan.ts's
+    // normaliseViaPoints). This row defends a hand-edited/corrupted record
+    // instead (docs/adr/0002-pre-1.0-db-migration-low-priority.md's
+    // boundary: "does NOT waive defensive reads"). planFormDirty used to
+    // read req.viaPoints straight off the request and hand it to
     // viaPointsDiffer, which throws "Cannot read properties of undefined
-    // (reading 'length')" on such a plan rather than degrading. An absent
+    // (reading 'length')" on such a record rather than degrading. An absent
     // viaPoints is normalised to [], so a form with its own via points is
     // correctly DIRTY against it (matching "removed the only via point"
     // above) rather than throwing.
-    it('treats an unmigrated plan (viaPoints key absent) as having an empty via list, not a crash', () => {
+    it('treats a plan with the viaPoints key absent (hand-edited/corrupted record) as having an empty via list, not a crash', () => {
       const oldShapedRequest = { ...ORIGINAL_REQUEST } as Partial<{
         -readonly [K in keyof PlanRequest]: PlanRequest[K];
       }>;

@@ -54,10 +54,23 @@ function isRecord(x: unknown): x is Record<string, unknown> {
  * via-waypoint segmented routing", 2026-07-15) — the SAME commit that
  * introduced the via-points feature itself (adds the whole
  * `routing/viaPoints.test.ts` suite and the `planRoute.ts` via-solving
- * logic in one diff). No earlier shape of `PlanRequest` could have used via
- * points without the field existing, so a stored record whose `request`
- * lacks `viaPoints` entirely genuinely never had any — `[]` is the FAITHFUL
- * reading of that record, not a fabricated default
+ * logic in one diff; `git log -S'waypoints:' -S'via:' -- types.ts` finds no
+ * earlier key it could have been renamed from either). No earlier shape of
+ * `PlanRequest` could have used via points without the field existing —
+ * BUT that does not make an absent key reachable for a genuine stored
+ * record: `services/db.ts`, the only IndexedDB writer this app has ever
+ * shipped, was created by `a1d2e6f` ~3 hours AFTER eb2d7ee (both predate
+ * `v0.1.0`, git-verified 2026-08-25) — persistence itself did not exist
+ * until after the field did, so no plan this app ever wrote could omit it.
+ * The `undefined` branch below therefore guards a HAND-EDITED or otherwise
+ * foreign/corrupted IndexedDB record, not an old app version — the same
+ * class of defense this file already applies to every other field
+ * (`migrateBoat`, `isLegShaped`, …), and cheap insurance against a future
+ * regression of the very guarantee this fix establishes (see
+ * `lib/planViaPoints.ts`'s own docstring for how that guarantee is proven,
+ * not merely assumed, at every downstream read site). `[]` is still the
+ * FAITHFUL normalisation for that shape, not a fabricated default — an
+ * absent list, however it arose, contains no via points to lose
  * (docs/adr/0002-pre-1.0-db-migration-low-priority.md, "the boundary that
  * makes this safe": normalising an absent list is in scope for that ADR,
  * distinct from fabricating a value for a field that IS present but
@@ -68,7 +81,9 @@ function isRecord(x: unknown): x is Record<string, unknown> {
  * points", it is corrupted or foreign data, and this refuses the whole
  * record (`null`) rather than guess at a value, per ADR-0002's fail-closed
  * rule ("failing closed must never mean falling back to a fabricated
- * default").
+ * default"). THIS is the reachable case for a real user: any value stored
+ * via `structuredClone`/IndexedDB can in principle be corrupted by browser
+ * storage damage or hand-editing, same as any other field in this file.
  */
 function normaliseViaPoints(x: unknown): LatLon[] | null {
   if (x === undefined) return [];
@@ -400,10 +415,10 @@ function migrateRequest(
   const boat = migrateBoat(request, fallbackBoat);
   if (boat === null) return null;
   if (typeof request.departureMs !== 'number') return null;
-  // #654: a record predating eb2d7ee (2026-07-15, "feat: via-waypoint
-  // segmented routing") never carries `viaPoints` at all — see
-  // normaliseViaPoints' own comment for why an absent list normalises to
-  // `[]` rather than refusing the record.
+  // #654: defends a hand-edited/corrupted stored record (no legitimate one
+  // can lack this key — see normaliseViaPoints' own comment for the dated
+  // proof) by normalising an absent/malformed `viaPoints` rather than
+  // letting it crash a downstream reader.
   const viaPoints = normaliseViaPoints(request.viaPoints);
   if (viaPoints === null) return null;
   // A pre-#54 request has no sailIds; the sails the plan actually compared,

@@ -141,8 +141,10 @@ export function ShallowWarning({
   // own provenance.
   const confinedWithin = useMemo(() => {
     if (!mask || !legs || legs.length === 0) return null;
-    // #654: plan.request.viaPoints read through the shared accessor — a plan
-    // saved before eb2d7ee never carries the field at all.
+    // #654: plan.request.viaPoints read through the shared accessor —
+    // defends a hand-edited/corrupted stored record (see planViaPoints.ts's
+    // own comment for why an empty fallback can only suppress the
+    // confinement sentence, never fabricate a false "confined" claim).
     const viaPoints = planViaPoints(plan.request);
     const waypoints = [plan.result.snappedOrigin, ...viaPoints, plan.result.snappedDestination];
     const allowanceM = [0, ...viaPoints.map(() => 300), 0];

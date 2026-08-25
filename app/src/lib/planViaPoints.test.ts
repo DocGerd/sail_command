@@ -11,11 +11,11 @@ describe('planViaPoints (#654)', () => {
     expect(planViaPoints({ viaPoints })).toBe(viaPoints);
   });
 
-  it('returns [] when viaPoints is undefined (a record predating eb2d7ee)', () => {
+  it('returns [] when viaPoints is undefined (a hand-edited/corrupted stored record — no legitimate one can lack this key, see planViaPoints.ts)', () => {
     // PlanRequest.viaPoints is a required LatLon[], so the missing-key shape
     // this guards against can only be represented by stepping outside the
     // type — exactly what `services/migratePlan.ts`'s pre-#654
-    // `as unknown as PlanRequest` cast does for an unmigrated stored record.
+    // `as unknown as PlanRequest` cast did for a foreign/corrupted record.
     const request = {} as Pick<PlanRequest, 'viaPoints'>;
     expect(planViaPoints(request)).toEqual([]);
   });

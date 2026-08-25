@@ -5,27 +5,68 @@ import type { LatLon, PlanRequest } from '../types';
  *
  * `viaPoints` was introduced by `eb2d7ee` ("feat: via-waypoint segmented
  * routing", 2026-07-15) — the SAME commit that introduced the via-points
- * feature itself. No earlier `PlanRequest` shape could have used via points
- * without the field existing, so a stored plan whose record predates that
- * field genuinely never had any via points: normalising an absent/invalid
- * value to `[]` is the FAITHFUL reading, not a fabricated default (see
- * `docs/adr/0002-pre-1.0-db-migration-low-priority.md`).
+ * feature itself, and never a rename of an earlier key (`git log
+ * -S'waypoints:' -S'via:' -- types.ts` finds nothing). That does NOT make an
+ * absent key reachable for a genuine stored record, though: `services/db.ts`,
+ * the only IndexedDB writer this app has ever shipped, was created ~3 hours
+ * AFTER eb2d7ee (both predate `v0.1.0`, git-verified 2026-08-25) —
+ * persistence itself did not exist until after the field did. So this
+ * function's `[]` fallback below defends a HAND-EDITED/corrupted stored
+ * record or a future regression, never a real "plan from before via points
+ * existed" (see `services/migratePlan.ts`'s `normaliseViaPoints` for the
+ * full dated argument, which this accessor's docstring intentionally does
+ * not duplicate further).
  *
  * `services/migratePlan.ts` already normalises this at read time for any
  * `Plan` loaded through `getPlan()`, so by the time a component sees
- * `plan.request`, `viaPoints` should always be a real array. This accessor
- * is the belt to that suspenders — ADR-0002 explicitly does NOT waive
- * defensive reads at the point of use ("This ADR waives migration
- * machinery. It does NOT waive defensive reads."): every direct read of
- * `plan.request.viaPoints` in app/src goes through this function instead of
- * the bare property, so a future bypass of migratePlan (a test fixture, a
- * new load path, a refactor) degrades to an empty via list rather than
- * throwing on an old stored record. `PlanRequest.viaPoints`'s TYPE says
- * `LatLon[]` unconditionally — that type is a lie for a record that reached
- * this accessor without going through migrateRequest's normalisation, which
- * is exactly the case this guards against, so the `Array.isArray` check
- * here is deliberate belt-and-braces against a value the type system
- * insists cannot occur.
+ * `plan.request`, `viaPoints` should always be a real array — PROVEN, not
+ * merely assumed: reverting only `migratePlan.ts`'s normalisation (keeping
+ * every call site below on this accessor) left the #654 regression tests
+ * green, because this accessor's own `Array.isArray` fallback independently
+ * caught the crash. This accessor is the belt to that suspenders — ADR-0002
+ * explicitly does NOT waive defensive reads at the point of use ("This ADR
+ * waives migration machinery. It does NOT waive defensive reads."): every
+ * direct read of `plan.request.viaPoints` in app/src goes through this
+ * function instead of the bare property, so a future bypass of migratePlan
+ * (a test fixture, a new load path, a refactor) degrades to an empty via
+ * list rather than throwing.
+ *
+ * DELIBERATE ASYMMETRY with `normaliseViaPoints` (migratePlan.ts), which
+ * fails CLOSED (refuses the whole record) on a present-but-malformed
+ * `viaPoints`, while this accessor fails OPEN (substitutes `[]`) on the
+ * identical input shape. Both are correct for the guard-asymmetry rule
+ * (CLAUDE.md "Working style"), because the two guards are not deciding the
+ * same question:
+ * - `normaliseViaPoints` is the BLOCKING admission gate for a whole record —
+ *   it decides whether an untrusted stored `PlanRequest` (every field of
+ *   it, `viaPoints` included) is trustworthy enough to open at all, so it
+ *   must fail closed: a wrong-but-plausible via-point list is exactly the
+ *   "confident wrong number" ADR-0002 forbids fabricating on a record this
+ *   consequential.
+ * - This accessor is a NUDGE-class, POST-validation redundancy read: by its
+ *   own documented precondition, everything reaching it has already passed
+ *   `normaliseViaPoints` (or is fresh, live-form state that was never
+ *   malformed to begin with — a via point can only enter `draftViaPoints`
+ *   through a map click/drag, which always yields a well-typed `{lat, lon}`
+ *   pair). Degrading to `[]` here is the CHEAP direction: for the one
+ *   consumer where this list feeds a safety reading —
+ *   `RouteSummary.tsx`'s `confinedWithin`, via `shallowConfinedWithinM` — a
+ *   SHORTER waypoint list can only make "every shallow cell lies within
+ *   APPROACH_RADIUS_M of a waypoint" HARDER to satisfy, never easier, so
+ *   dropping via points moves the result toward `false`/`null`, which that
+ *   component already treats as "suppress the reassuring sentence
+ *   silently" (its own comment). An empty fallback can therefore only
+ *   suppress a positive claim, never fabricate one — it cannot manufacture
+ *   a false "confined" reassurance. Every other consumer (App.tsx's
+ *   draft-dirty comparison, recalc.ts's re-seeded request) is UI/product
+ *   state with no safety reading riding on it at all. That is why this
+ *   accessor is allowed to fail open where `normaliseViaPoints` may not.
+ *
+ * The `Array.isArray` check itself is retained deliberately even though its
+ * branch is unreachable via any load path this app has today (see above) —
+ * it is what makes the belt-and-suspenders claim two sentences up true
+ * rather than aspirational, and it is what the reverted-migratePlan.ts test
+ * above actually exercises.
  */
 export function planViaPoints(request: Pick<PlanRequest, 'viaPoints'>): LatLon[] {
   return Array.isArray(request.viaPoints) ? request.viaPoints : [];

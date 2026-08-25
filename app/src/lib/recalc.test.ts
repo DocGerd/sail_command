@@ -158,16 +158,19 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
     expect(seeded.originHarborId).toBe('flensburg');
   });
 
-  // #654: same mechanism as the sailIds backfill above, on viaPoints. A plan
-  // saved before eb2d7ee ("feat: via-waypoint segmented routing",
-  // 2026-07-15) does not carry the key at all — the via-points feature and
-  // the field were introduced by that ONE commit, so an absent key means the
-  // plan genuinely never had any via points (docs/adr/
-  // 0002-pre-1.0-db-migration-low-priority.md). Before this fix,
-  // recalcRequest called `plan.request.viaPoints.map(...)` unconditionally,
-  // throwing "Cannot read properties of undefined (reading 'map')" on
-  // recalculation of such a plan rather than degrading to an empty via list.
-  it('normalises viaPoints to [] on a pre-#654-shaped saved plan (viaPoints key absent)', () => {
+  // #654: same mechanism as the sailIds backfill above, on viaPoints — but
+  // NOT the same reachability: no legitimate stored plan can lack this key
+  // (services/db.ts, the only IndexedDB writer, postdates the field's
+  // introducing commit `eb2d7ee` by ~3 hours, both predating v0.1.0,
+  // git-verified 2026-08-25 — unlike sailIds, which really did predate a
+  // persistence-writing app version). This row instead defends a
+  // hand-edited/corrupted stored record (docs/adr/
+  // 0002-pre-1.0-db-migration-low-priority.md's boundary: "does NOT waive
+  // defensive reads"). Before this fix, recalcRequest called
+  // `plan.request.viaPoints.map(...)` unconditionally, throwing "Cannot
+  // read properties of undefined (reading 'map')" on recalculation of such
+  // a record rather than degrading to an empty via list.
+  it('normalises viaPoints to [] on a saved plan with the viaPoints key absent (hand-edited/corrupted record)', () => {
     const oldShapedRequest = { ...ORIGINAL_REQUEST } as Partial<{
       -readonly [K in keyof PlanRequest]: PlanRequest[K];
     }>;

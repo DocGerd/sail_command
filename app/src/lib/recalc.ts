@@ -46,8 +46,8 @@ export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
     ...plan.request,
     origin: { ...plan.request.origin },
     destination: { ...plan.request.destination },
-    // #654: plan.request.viaPoints read through the shared accessor — a
-    // plan saved before eb2d7ee never carries the field at all.
+    // #654: plan.request.viaPoints read through the shared accessor —
+    // defends a hand-edited/corrupted stored record; see planViaPoints.ts.
     viaPoints: planViaPoints(plan.request).map((v) => ({ ...v })),
     settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
     sailIds: plan.request.sailIds ?? DEFAULT_SAIL_IDS,

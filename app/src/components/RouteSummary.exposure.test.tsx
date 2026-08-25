@@ -479,18 +479,22 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
   });
 });
 
-// #654: a plan record saved before eb2d7ee ("feat: via-waypoint segmented
-// routing", 2026-07-15) never carries `request.viaPoints` at all — the field
-// didn't exist yet. `confinedWithin`'s useMemo (RouteSummary.tsx) used to
-// spread and `.map()` that value unconditionally, which throws
-// "TypeError: plan.request.viaPoints is not iterable" once the mask resolves
-// and the memo body actually runs (on the FIRST render `mask` is still null,
-// so the crash is invisible until this exact re-render). This regression
-// test drives the same real component path as the confined-mask test above,
-// against a plan whose `viaPoints` key is entirely absent — never merely
-// `[]` — and asserts it renders IDENTICALLY to the explicit-empty-list case,
-// proving the accessor's normalisation rather than just "did not throw".
-describe('#654: viaPoints read through the shared accessor on an unmigrated stored plan', () => {
+// #654: `request.viaPoints` cannot genuinely be absent from any record this
+// app itself wrote — `services/db.ts` (the only IndexedDB writer) postdates
+// the field's introducing commit, `eb2d7ee`, by ~3 hours (both predate
+// v0.1.0, git-verified 2026-08-25; see migratePlan.ts's `normaliseViaPoints`
+// for the full dated argument). This row instead defends a HAND-EDITED or
+// otherwise corrupted stored record. `confinedWithin`'s useMemo
+// (RouteSummary.tsx) used to spread and `.map()` that value unconditionally,
+// which throws "TypeError: plan.request.viaPoints is not iterable" once the
+// mask resolves and the memo body actually runs (on the FIRST render `mask`
+// is still null, so the crash is invisible until this exact re-render). This
+// regression test drives the same real component path as the confined-mask
+// test above, against a plan whose `viaPoints` key is entirely absent —
+// never merely `[]` — and asserts it renders IDENTICALLY to the
+// explicit-empty-list case, proving the accessor's normalisation rather than
+// just "did not throw".
+describe('#654: viaPoints read through the shared accessor on a corrupted stored plan', () => {
   it('renders the confinement sentence exactly as with an empty via list when request.viaPoints is entirely absent', async () => {
     mockedLoad.mockResolvedValue(confinedShallowMask());
     localStorage.setItem('sc-lang', 'en');

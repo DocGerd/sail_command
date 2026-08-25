@@ -656,9 +656,16 @@ describe('#54 migratePlan: the snapshot is by VALUE, never a catalogue alias', (
 // #654: `request.viaPoints` was introduced by `eb2d7ee` ("feat: via-waypoint
 // segmented routing", 2026-07-15) — the SAME commit that introduced the
 // via-points feature itself. `legacyPlan()` above already carries
-// `viaPoints: []` (it postdates eb2d7ee by weeks), so it cannot exercise this
-// gap: these rows construct a record that genuinely predates the field.
-describe('#654 migratePlan: a record predating eb2d7ee (viaPoints key absent)', () => {
+// `viaPoints: []`, so it cannot exercise this gap.
+//
+// No LEGITIMATE stored record can lack the key, though: `services/db.ts`,
+// the only IndexedDB writer this app has ever shipped, was created by
+// `a1d2e6f` ~3 hours AFTER eb2d7ee (both predate `v0.1.0`, git-verified
+// 2026-08-25) — persistence itself did not exist until after the field did.
+// These rows construct a HAND-EDITED/corrupted record instead (or stand in
+// for a future regression of the guarantee migratePlan.ts establishes) —
+// `normaliseViaPoints`'s own docstring carries the full dated argument.
+describe('#654 migratePlan: an absent/malformed viaPoints key (hand-edited or corrupted record)', () => {
   it('normalises an entirely absent viaPoints key to [] rather than refusing the record', () => {
     const raw = legacyPlan();
     delete (raw.request as Record<string, unknown>).viaPoints;
@@ -696,6 +703,24 @@ describe('#654 migratePlan: a record predating eb2d7ee (viaPoints key absent)', 
   ])('refuses %s rather than fabricating a via-point list', (_label, viaPoints) => {
     const raw = legacyPlan();
     (raw.request as Record<string, unknown>).viaPoints = viaPoints;
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  // Reviewer finding (Minor 1, self-review of PR #687): every row above ALSO
+  // reds if `!isRecord(p) ||` is deleted from normaliseViaPoints, because
+  // each non-object element (`'not-a-point'`, a missing/non-numeric lat/lon)
+  // independently fails the `Number.isFinite` terms too — so that term was
+  // untested (a per-term deletion battery reds 84/84 either way). This row
+  // isolates it: an ARRAY carrying its own `lat`/`lon` OWN PROPERTIES passes
+  // BOTH `Number.isFinite` checks (JS arrays are ordinary objects, so
+  // attaching arbitrary keys is legal), so only `isRecord`'s
+  // `!Array.isArray(x)` term can reject it — `isRecord` rejects arrays
+  // specifically so a via point can never be array-shaped, distinct from a
+  // plain `{lat, lon}` record.
+  it('refuses an array-shaped element even when it carries lat/lon properties that would otherwise pass every Number.isFinite check (isolates the isRecord term)', () => {
+    const raw = legacyPlan();
+    const arrayShapedPoint: unknown = Object.assign([], { lat: 54.83, lon: 9.9 });
+    (raw.request as Record<string, unknown>).viaPoints = [arrayShapedPoint];
     expect(migratePlan(raw)).toBeNull();
   });
 });
