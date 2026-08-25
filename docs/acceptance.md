@@ -59,7 +59,7 @@ results table at the bottom, and note it in the box below the check.
       leave the Seamarks display-tier control at its default "Standard"
       setting (not "All"). Zoom to about z12 or closer on a stretch of coast
       known to carry submarine cable or pipeline marks (e.g. the Flensburg
-      Fjord approaches, which carry 20 of them); they render at Standard,
+      Fjord approaches); they render at Standard,
       not only at "All" (#521).
 - [ ] **"Display options" collapses the overlay cluster.** The route-overlay
       toggles, forecast-time slider, and route legend now live behind one
