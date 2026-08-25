@@ -491,6 +491,22 @@ describe('RouteSummary', () => {
     expect(screen.getByText('088°')).toBeInTheDocument();
   });
 
+  it('#707: every legs-table header cell carries scope="col", and the table has a visually-hidden caption naming it', () => {
+    const { container } = renderSummary({ rig: 'genoa' });
+    const headers = Array.from(container.querySelectorAll('table.route-legs thead th'));
+    expect(headers).toHaveLength(10);
+    for (const th of headers) {
+      expect(th.getAttribute('scope'), th.textContent ?? '(no text)').toBe('col');
+    }
+    const caption = container.querySelector('table.route-legs caption');
+    expect(caption).not.toBeNull();
+    expect(caption).toHaveClass('sr-only');
+    // Same key/params as the Disclosure summary above the table (#707: no
+    // new i18n key) — asserted against the shared en dict so a wording
+    // change to route.legs.disclosure can't silently desync the two.
+    expect(caption?.textContent).toBe(en['route.legs.disclosure'].replace('{count}', '3'));
+  });
+
   it('renders the ten legs-table headers in order, including Duration (#379) and Shallow (#452)', () => {
     const { container } = renderSummary({ rig: 'genoa' });
     const headers = Array.from(container.querySelectorAll('table.route-legs thead th')).map(

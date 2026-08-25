@@ -1970,6 +1970,23 @@ describe('harbor marker click-to-pick (#38)', () => {
   });
 });
 
+describe('#707: structural semantics', () => {
+  it('exposes exactly one <main> landmark wrapping the tab-specific panel content', async () => {
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    // Before #707 the app had zero `<main>`/role="main" elements at all —
+    // getByRole('main') throws "Unable to find an accessible element" on the
+    // pre-fix tree, so this fails RED with no <main> present. The class
+    // assertion pins WHICH div became the landmark (.app-panel, the
+    // tab-specific content), not just that some <main> exists somewhere.
+    const main = screen.getByRole('main');
+    expect(main).toHaveClass('app-panel');
+    // Exactly one landmark: getByRole throws on >1 match too, so a second
+    // <main> (e.g. wrapping .map-area as well) would also fail this line.
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+  });
+});
+
 describe('toPlannerStatus (#53: relaxed-depth probe phase mapping)', () => {
   // The adapter only uses `t` on the error branch (t(messageKey)); an identity
   // stub is enough to pin the passthrough there.

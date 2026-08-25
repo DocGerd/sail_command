@@ -207,6 +207,33 @@ describe('#54 BoatPicker against the shipped catalogue', () => {
     ).toBeInTheDocument();
   });
 
+  it('#707: draftProvenance.note and every sail’s polarProvenance.note carry lang="en" (WCAG 2.1 SC 3.1.2) under the German-default render', () => {
+    renderPicker();
+    // renderPicker() sets sc-lang to 'en' (see its own comment), but
+    // I18nProvider's default UI language is 'de' — the #607 hazard this
+    // targets ('the German keel sentence renders immediately before the
+    // English note, so a screen reader code-switches mid-block with no
+    // warning') only exists under a German document.documentElement.lang,
+    // so this asserts the attribute is present REGARDLESS of what the
+    // surrounding UI language happens to be, which is the point: the
+    // element's own `lang` must be correct independent of the ambient one.
+    for (const boat of BOATS) {
+      const option = optionFor(boat.id);
+      const draftNote = option.querySelector('.boat-option-draft-note');
+      expect(draftNote, `${boat.id}: no draft note rendered`).not.toBeNull();
+      expect(draftNote?.getAttribute('lang'), boat.id).toBe('en');
+      const sailNotes = option.querySelectorAll('.boat-option-sail-note');
+      // Every sail's own note, not just the first — mirrors the #566 "BOTH
+      // sails' notes" rationale two tests above: a fix that only tagged the
+      // first sail note would pass a getBy-style check but leave the
+      // second sail's citation mis-tagged.
+      expect(sailNotes.length, boat.id).toBe(boat.sails.length);
+      for (const note of Array.from(sailNotes)) {
+        expect(note.getAttribute('lang'), `${boat.id}: sail note "${note.textContent}"`).toBe('en');
+      }
+    }
+  });
+
   it('starts with an empty live region rather than a stale announcement', () => {
     renderPicker();
     const status = screen.getByRole('status');

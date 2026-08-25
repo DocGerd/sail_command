@@ -1766,6 +1766,33 @@ select {
   border-bottom-color: var(--sc-bg);
 }
 
+/* #711: MapLibre's own AttributionControl chrome hardcodes a white
+   background + near-black link colour with no dark variant
+   (maplibre-gl.css: `.maplibregl-ctrl-attrib.maplibregl-compact-show{
+   background-color:#fff;color:#000 }` and `.maplibregl-ctrl-attrib a{
+   color:rgba(0,0,0,.75) }`) — same defect class as .seamark-popup/.ais-popup
+   above, on the control that surfaces the ODbL/Protomaps/EMODnet/Open-Meteo
+   credits this app is legally required to show. Unlike those two popups,
+   this is scoped inside `@media (prefers-color-scheme: dark)` rather than
+   applied unconditionally: --sc-bg/--sc-fg in LIGHT mode (#fbfbfc/#14161a)
+   are close to but not identical to the library's hardcoded #fff/#000, and
+   this control has no dark-mode DoD leeway for that drift — light mode must
+   stay byte-identical to the pre-#711 build, so the override only exists
+   where the hardcoded chrome is actually wrong. No className to add here
+   (unlike the Popup className hook in DataLayers.tsx/MapView.tsx's AIS
+   layer): AttributionControl has none, so this themes the library's own
+   global `.maplibregl-ctrl-attrib` class directly. */
+@media (prefers-color-scheme: dark) {
+  .maplibregl-ctrl-attrib.maplibregl-compact-show {
+    background-color: var(--sc-bg);
+    color: var(--sc-fg);
+  }
+
+  .maplibregl-ctrl-attrib a {
+    color: var(--sc-fg);
+  }
+}
+
 /* AIS status chip (#25) — a small map overlay on the Live tab, top-centered so
    it clears the top-left data-layer controls and the top-right route cluster.
    Tier 2 ("map chrome" — see the tier-order comment above .app-header): it
