@@ -4,6 +4,7 @@ import {
   boatSnapshot,
   PLAN_SCHEMA_VERSION,
   type BoatSnapshot,
+  type LatLon,
   type Plan,
   type PlanRequest,
   type PlanResultOk,
@@ -46,6 +47,38 @@ const BUDGET_REASON = 'search-budget-exceeded';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
+}
+
+/**
+ * #654: `PlanRequest.viaPoints` was introduced by `eb2d7ee` ("feat:
+ * via-waypoint segmented routing", 2026-07-15) — the SAME commit that
+ * introduced the via-points feature itself (adds the whole
+ * `routing/viaPoints.test.ts` suite and the `planRoute.ts` via-solving
+ * logic in one diff). No earlier shape of `PlanRequest` could have used via
+ * points without the field existing, so a stored record whose `request`
+ * lacks `viaPoints` entirely genuinely never had any — `[]` is the FAITHFUL
+ * reading of that record, not a fabricated default
+ * (docs/adr/0002-pre-1.0-db-migration-low-priority.md, "the boundary that
+ * makes this safe": normalising an absent list is in scope for that ADR,
+ * distinct from fabricating a value for a field that IS present but
+ * unreadable).
+ *
+ * A PRESENT-but-malformed `viaPoints` (wrong container type, or an element
+ * missing a finite lat/lon) is a different case — that is not "no via
+ * points", it is corrupted or foreign data, and this refuses the whole
+ * record (`null`) rather than guess at a value, per ADR-0002's fail-closed
+ * rule ("failing closed must never mean falling back to a fabricated
+ * default").
+ */
+function normaliseViaPoints(x: unknown): LatLon[] | null {
+  if (x === undefined) return [];
+  if (!Array.isArray(x)) return null;
+  const out: LatLon[] = [];
+  for (const p of x) {
+    if (!isRecord(p) || !Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return null;
+    out.push({ lat: p.lat as number, lon: p.lon as number });
+  }
+  return out;
 }
 
 /**
@@ -367,6 +400,12 @@ function migrateRequest(
   const boat = migrateBoat(request, fallbackBoat);
   if (boat === null) return null;
   if (typeof request.departureMs !== 'number') return null;
+  // #654: a record predating eb2d7ee (2026-07-15, "feat: via-waypoint
+  // segmented routing") never carries `viaPoints` at all — see
+  // normaliseViaPoints' own comment for why an absent list normalises to
+  // `[]` rather than refusing the record.
+  const viaPoints = normaliseViaPoints(request.viaPoints);
+  if (viaPoints === null) return null;
   // A pre-#54 request has no sailIds; the sails the plan actually compared,
   // in the order the result lists them, is the honest reconstruction of it.
   //
@@ -434,7 +473,7 @@ function migrateRequest(
   // separate) does not apply to `.includes`, which is false, not
   // vacuously true, on an empty array.
   if (!sailIds.includes(recommended)) return null;
-  return { ...request, sailIds, boat } as unknown as PlanRequest;
+  return { ...request, sailIds, boat, viaPoints } as unknown as PlanRequest;
 }
 
 export function migratePlan(raw: unknown): Plan | null {

@@ -158,6 +158,31 @@ describe('recalcRequest (#114 seed-from-plan)', () => {
     expect(seeded.originHarborId).toBe('flensburg');
   });
 
+  // #654: same mechanism as the sailIds backfill above, on viaPoints. A plan
+  // saved before eb2d7ee ("feat: via-waypoint segmented routing",
+  // 2026-07-15) does not carry the key at all — the via-points feature and
+  // the field were introduced by that ONE commit, so an absent key means the
+  // plan genuinely never had any via points (docs/adr/
+  // 0002-pre-1.0-db-migration-low-priority.md). Before this fix,
+  // recalcRequest called `plan.request.viaPoints.map(...)` unconditionally,
+  // throwing "Cannot read properties of undefined (reading 'map')" on
+  // recalculation of such a plan rather than degrading to an empty via list.
+  it('normalises viaPoints to [] on a pre-#654-shaped saved plan (viaPoints key absent)', () => {
+    const oldShapedRequest = { ...ORIGINAL_REQUEST } as Partial<{
+      -readonly [K in keyof PlanRequest]: PlanRequest[K];
+    }>;
+    delete oldShapedRequest.viaPoints;
+    const plan = makePlan();
+    plan.request = oldShapedRequest as PlanRequest;
+
+    expect(() => recalcRequest(plan, 1_780_086_400_000)).not.toThrow();
+    const seeded = recalcRequest(plan, 1_780_086_400_000);
+
+    expect(seeded.viaPoints).toEqual([]);
+    // Every field the old plan DID have is still preserved verbatim.
+    expect(seeded.originHarborId).toBe('flensburg');
+  });
+
   // #54 Task 11: pins the PROPERTY the keeper below rests on, not just its
   // detection logic (#516). That keeper discriminates ONLY because ['fock']
   // is not value-equal to DEFAULT_SAIL_IDS; if the default boat's sail set

@@ -12,6 +12,7 @@ import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { planViaPoints } from '../lib/planViaPoints';
 import {
   resultSummary,
   resultVerdictKey,
@@ -140,12 +141,11 @@ export function ShallowWarning({
   // own provenance.
   const confinedWithin = useMemo(() => {
     if (!mask || !legs || legs.length === 0) return null;
-    const waypoints = [
-      plan.result.snappedOrigin,
-      ...plan.request.viaPoints,
-      plan.result.snappedDestination,
-    ];
-    const allowanceM = [0, ...plan.request.viaPoints.map(() => 300), 0];
+    // #654: plan.request.viaPoints read through the shared accessor — a plan
+    // saved before eb2d7ee never carries the field at all.
+    const viaPoints = planViaPoints(plan.request);
+    const waypoints = [plan.result.snappedOrigin, ...viaPoints, plan.result.snappedDestination];
+    const allowanceM = [0, ...viaPoints.map(() => 300), 0];
     return shallowConfinedWithinM(
       legs,
       mask,

@@ -652,3 +652,50 @@ describe('#54 migratePlan: the snapshot is by VALUE, never a catalogue alias', (
     expect(a.request.boat).toEqual(defaultBoatSnapshot());
   });
 });
+
+// #654: `request.viaPoints` was introduced by `eb2d7ee` ("feat: via-waypoint
+// segmented routing", 2026-07-15) — the SAME commit that introduced the
+// via-points feature itself. `legacyPlan()` above already carries
+// `viaPoints: []` (it postdates eb2d7ee by weeks), so it cannot exercise this
+// gap: these rows construct a record that genuinely predates the field.
+describe('#654 migratePlan: a record predating eb2d7ee (viaPoints key absent)', () => {
+  it('normalises an entirely absent viaPoints key to [] rather than refusing the record', () => {
+    const raw = legacyPlan();
+    delete (raw.request as Record<string, unknown>).viaPoints;
+    const migrated = migratePlan(raw);
+    expect(migrated).not.toBeNull();
+    expect(migrated!.request.viaPoints).toEqual([]);
+  });
+
+  // The positive control the row above needs: a record that DOES carry real
+  // via points still reads them back verbatim — normalisation only kicks in
+  // when the key is absent, it must never clobber a genuine list.
+  it('preserves a genuine non-empty viaPoints list unchanged', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = [
+      { lat: 54.83, lon: 9.9 },
+      { lat: 54.9, lon: 10.2 },
+    ];
+    const migrated = migratePlan(raw);
+    expect(migrated!.request.viaPoints).toEqual([
+      { lat: 54.83, lon: 9.9 },
+      { lat: 54.9, lon: 10.2 },
+    ]);
+  });
+
+  // Fail-CLOSED, per ADR-0002: a PRESENT but malformed viaPoints is not "no
+  // via points" — it is corrupted or foreign data, and normalising it to []
+  // would be exactly the fabricated default the ADR forbids. The whole
+  // record is refused instead, same as every other structurally-damaged
+  // field in this file.
+  it.each([
+    ['a non-array value', 'not-an-array'],
+    ['an array containing a non-object element', [{ lat: 54.83, lon: 9.9 }, 'not-a-point']],
+    ['an array containing a point missing lon', [{ lat: 54.83 }]],
+    ['an array containing a point with a non-numeric lat', [{ lat: 'north', lon: 9.9 }]],
+  ])('refuses %s rather than fabricating a via-point list', (_label, viaPoints) => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = viaPoints;
+    expect(migratePlan(raw)).toBeNull();
+  });
+});

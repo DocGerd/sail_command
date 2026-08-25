@@ -1,4 +1,5 @@
 import { DEFAULT_SAIL_IDS } from '../data/boats';
+import { planViaPoints } from './planViaPoints';
 import {
   boatSnapshot,
   defaultBoatSnapshot,
@@ -45,7 +46,9 @@ export function recalcRequest(plan: Plan, departureMs: number): PlanRequest {
     ...plan.request,
     origin: { ...plan.request.origin },
     destination: { ...plan.request.destination },
-    viaPoints: plan.request.viaPoints.map((v) => ({ ...v })),
+    // #654: plan.request.viaPoints read through the shared accessor — a
+    // plan saved before eb2d7ee never carries the field at all.
+    viaPoints: planViaPoints(plan.request).map((v) => ({ ...v })),
     settings: { ...DEFAULT_SETTINGS, ...plan.request.settings },
     sailIds: plan.request.sailIds ?? DEFAULT_SAIL_IDS,
     // #54 Task 11: copied rather than carried through the spread above, for

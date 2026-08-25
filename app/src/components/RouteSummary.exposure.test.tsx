@@ -479,6 +479,49 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
   });
 });
 
+// #654: a plan record saved before eb2d7ee ("feat: via-waypoint segmented
+// routing", 2026-07-15) never carries `request.viaPoints` at all — the field
+// didn't exist yet. `confinedWithin`'s useMemo (RouteSummary.tsx) used to
+// spread and `.map()` that value unconditionally, which throws
+// "TypeError: plan.request.viaPoints is not iterable" once the mask resolves
+// and the memo body actually runs (on the FIRST render `mask` is still null,
+// so the crash is invisible until this exact re-render). This regression
+// test drives the same real component path as the confined-mask test above,
+// against a plan whose `viaPoints` key is entirely absent — never merely
+// `[]` — and asserts it renders IDENTICALLY to the explicit-empty-list case,
+// proving the accessor's normalisation rather than just "did not throw".
+describe('#654: viaPoints read through the shared accessor on an unmigrated stored plan', () => {
+  it('renders the confinement sentence exactly as with an empty via list when request.viaPoints is entirely absent', async () => {
+    mockedLoad.mockResolvedValue(confinedShallowMask());
+    localStorage.setItem('sc-lang', 'en');
+    const base = makePlan([EXPOSURE_LEG]);
+    // Dropping the key IS the point of this destructure, so the binding is
+    // deliberately unused — mirrors makeNonRelaxedPlan's identical pattern
+    // below for `shallow`. A cast is required: PlanRequest.viaPoints is a
+    // required LatLon[], so a record genuinely missing the key can only be
+    // represented by stepping outside the type it violates.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { viaPoints: _dropped, ...requestWithoutViaPoints } = base.request;
+    const plan = { ...base, request: requestWithoutViaPoints } as unknown as Plan;
+
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => {
+      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const detail = container.querySelector('.shallow-warning__detail');
+    const text = detail?.textContent ?? '';
+    // Byte-identical to the '#516 increment 2' confined-mask assertion above
+    // — an absent viaPoints key must behave exactly like an explicit `[]`.
+    expect(text).toContain(
+      'Every stretch below your safety depth lies within 1.0 nm of your origin, destination or waypoints.',
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // #612: the quiet MARGINAL-depth notice, for a route that did NOT relax.
 //

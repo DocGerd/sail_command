@@ -2519,6 +2519,44 @@ describe('plan-form sync (#301)', () => {
     expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs));
   });
 
+  // #654: a stored plan record predating eb2d7ee ("feat: via-waypoint
+  // segmented routing", 2026-07-15) never carries `request.viaPoints` at
+  // all — the field and the feature were introduced by that ONE commit
+  // (docs/adr/0002-pre-1.0-db-migration-low-priority.md), so an absent key
+  // is normalised to []. `db.savePlan` writes the raw record straight into
+  // IndexedDB with no validation, so deleting the key here reproduces
+  // exactly what a genuinely pre-#654 record looks like on disk; loading it
+  // drives the REAL path — services/db.ts's getPlan -> migratePlan ->
+  // App.tsx's syncedPlanIdRef sync effect (setDraftViaPoints) ->
+  // planFormDirty (lib/planForm.ts). Before this fix, the sync effect wrote
+  // `undefined` into draftViaPoints and the next formDirty computation threw
+  // reading `.length` off it, unmounting the whole React root with no error
+  // boundary to catch it — the app just goes blank.
+  it('loading a plan whose stored record predates eb2d7ee (viaPoints key absent) does not blank the app', async () => {
+    const plan = prefillPlan('prefill-no-viapoints-key');
+    const rawRequest = plan.request as Partial<PlanRequest>;
+    delete rawRequest.viaPoints;
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    // The app is still alive (heading present, tabs still respond) rather
+    // than a blank root — the observable symptom of the unguarded crash.
+    expect(screen.getByRole('heading', { name: 'SailCommand' })).toBeInTheDocument();
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+    // The via list synced from the absent field renders as genuinely empty,
+    // not merely "did not throw".
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    expect(within(viaSection).queryAllByRole('listitem')).toHaveLength(0);
+  });
+
   it('harbors landing AFTER the plan becomes active still prefills labels once they resolve', async () => {
     // A harbors.json fetch this test controls the resolution of — everything
     // else answers immediately, same as the shared fetchMock() helper.

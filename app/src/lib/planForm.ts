@@ -1,6 +1,7 @@
 import type { Lang } from '../i18n';
 import { formatLatLon } from './format';
 import { nextFullHourMs } from '../components/PlannerPanel';
+import { planViaPoints } from './planViaPoints';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -227,7 +228,9 @@ export function planFormDirty(
     form.destination.source === 'harbor' ? form.destination.harborId : null;
   if (harborsAvailable && formDestinationHarborId !== req.destinationHarborId) return true;
 
-  if (viaPointsDiffer(form.viaPoints, req.viaPoints)) return true;
+  // #654: req.viaPoints read through the shared accessor — a plan saved
+  // before eb2d7ee never carries the field at all.
+  if (viaPointsDiffer(form.viaPoints, planViaPoints(req))) return true;
 
   return routingSettingsDirty(plan, form.settings);
 }

@@ -285,6 +285,31 @@ describe('planFormDirty (#301)', () => {
       form.viaPoints = [{ lat: 54.83, lon: 9.9 }]; // same content as ORIGINAL_REQUEST.viaPoints
       expect(planFormDirty(makePlan(), form, true)).toBe(false);
     });
+
+    // #654: a plan saved before eb2d7ee ("feat: via-waypoint segmented
+    // routing", 2026-07-15) never carries request.viaPoints at all — the
+    // field and the feature were introduced by that one commit
+    // (docs/adr/0002-pre-1.0-db-migration-low-priority.md). planFormDirty
+    // used to read req.viaPoints straight off the request and hand it to
+    // viaPointsDiffer, which throws "Cannot read properties of undefined
+    // (reading 'length')" on such a plan rather than degrading. An absent
+    // viaPoints is normalised to [], so a form with its own via points is
+    // correctly DIRTY against it (matching "removed the only via point"
+    // above) rather than throwing.
+    it('treats an unmigrated plan (viaPoints key absent) as having an empty via list, not a crash', () => {
+      const oldShapedRequest = { ...ORIGINAL_REQUEST } as Partial<{
+        -readonly [K in keyof PlanRequest]: PlanRequest[K];
+      }>;
+      delete oldShapedRequest.viaPoints;
+      const plan = makePlan(oldShapedRequest as PlanRequest);
+      const form = matchingForm(); // form.viaPoints: [{ lat: 54.83, lon: 9.9 }]
+
+      expect(() => planFormDirty(plan, form, true)).not.toThrow();
+      expect(planFormDirty(plan, form, true)).toBe(true);
+
+      const emptyForm = { ...matchingForm(), viaPoints: [] };
+      expect(planFormDirty(plan, emptyForm, true)).toBe(false);
+    });
   });
 
   // One row per routing-relevant field — each alone must flip the predicate.
