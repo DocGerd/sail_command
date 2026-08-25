@@ -700,6 +700,20 @@ describe('#654 migratePlan: an absent/malformed viaPoints key (hand-edited or co
     ['an array containing a non-object element', [{ lat: 54.83, lon: 9.9 }, 'not-a-point']],
     ['an array containing a point missing lon', [{ lat: 54.83 }]],
     ['an array containing a point with a non-numeric lat', [{ lat: 'north', lon: 9.9 }]],
+    // Reviewer-supplied (Minor 1, self-review of PR #687), adopted verbatim.
+    // `null.lat` THROWS synchronously (unlike `'not-a-point'.lat`, which
+    // returns `undefined` harmlessly) — deleting `!isRecord(p) ||` turns
+    // this row from an honest refusal into a raw TypeError propagating out
+    // of migratePlan(), the exact crash class #654 exists to close, one
+    // level in. This is the row that DISCRIMINATES the mutation (measured:
+    // 84/84 stay green without it; see the dedicated isolating test below
+    // for the other, non-throwing half of the same gap).
+    ['an array containing a null element', [null]],
+    // Pins the other shape isRecord excludes (arrays) — does not itself
+    // discriminate the isRecord deletion (a plain array's .lat is
+    // `undefined`, caught by Number.isFinite regardless), kept for
+    // completeness per the reviewer's own comment.
+    ['an array containing an array element', [[54.83, 9.9]]],
   ])('refuses %s rather than fabricating a via-point list', (_label, viaPoints) => {
     const raw = legacyPlan();
     (raw.request as Record<string, unknown>).viaPoints = viaPoints;

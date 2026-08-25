@@ -67,6 +67,18 @@ import type { LatLon, PlanRequest } from '../types';
  * it is what makes the belt-and-suspenders claim two sentences up true
  * rather than aspirational, and it is what the reverted-migratePlan.ts test
  * above actually exercises.
+ *
+ * Reviewer's own summary (Minor 2, self-review of PR #687), adopted
+ * verbatim as the NECESSITY half of the argument above (the SAFETY half —
+ * why an empty fallback cannot fabricate a false reassurance — is the
+ * bulleted argument above it, and the two are complementary, not
+ * duplicates): a present-but-malformed value also normalises to `[]` here,
+ * deliberately diverging from `services/migratePlan.ts`'s
+ * `normaliseViaPoints`, which refuses such a record outright — that refusal
+ * is the authoritative gate and runs first, so any malformed value reaching
+ * *this* accessor has already bypassed it, and a component has no way to
+ * refuse a record, only to render one. Degrading to an empty via list is
+ * the only non-throwing option at this layer.
  */
 export function planViaPoints(request: Pick<PlanRequest, 'viaPoints'>): LatLon[] {
   return Array.isArray(request.viaPoints) ? request.viaPoints : [];
