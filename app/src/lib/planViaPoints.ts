@@ -30,8 +30,9 @@ import type { LatLon, PlanRequest } from '../types';
  * the earlier "PROVEN" phrasing here was wrong: it attached that measurement
  * to the property `plan.request.viaPoints` itself, which the accessor
  * cannot make true — in the cited experiment that property genuinely WAS
- * `undefined`, confirmed independently by un-guarding one `App.tsx` call
- * site at a time under the same revert and getting the `TypeError`): reverting
+ * `undefined`, which the reviewer confirmed directly by un-guarding one
+ * `App.tsx` call site at a time under the same revert and getting the
+ * `TypeError`): reverting
  * only `migratePlan.ts`'s normalisation — keeping every call site below on
  * this accessor — left the #654 regression tests green, because this
  * accessor's own `Array.isArray` fallback independently caught the crash
