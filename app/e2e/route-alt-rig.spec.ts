@@ -42,6 +42,27 @@ async function planAndGetAltToggle(page: Page, serverUrl: string) {
   await planButton.click();
   await expect(planButton).toBeEnabled({ timeout: 60_000 });
 
+  // #628: the alt-rig checkbox now lives inside a collapsible Disclosure
+  // that starts CLOSED on narrow viewports (RouteLayer.tsx's own comment) —
+  // at the `phonePortrait` test below, set BEFORE this helper runs, the
+  // checkbox never mounts visibly until the cluster is expanded. Guarded,
+  // not unconditional: at this file's two other (default, wide) viewports
+  // the cluster is already open, and an unconditional click would TOGGLE IT
+  // CLOSED, breaking those two.
+  //
+  // Deliberately reads the real `.open` IDL PROPERTY via evaluate(), never
+  // `getAttribute('open')` — MEASURED live (2026-08-25): that returns the
+  // EMPTY STRING when the attribute IS present, which is FALSY in JS, so
+  // `!getAttribute('open')` is `true` regardless of actual state and
+  // unconditionally clicks — it broke both of this file's WIDE-viewport
+  // tests (toggling an already-open cluster CLOSED) before this was caught
+  // by actually running the suite, not by reading the code.
+  const disclosure = page.locator('details.route-layer-controls-disclosure');
+  const isDisclosureOpen = await disclosure.evaluate((el) => (el as HTMLDetailsElement).open);
+  if (!isDisclosureOpen) {
+    await disclosure.locator('> summary').click();
+  }
+
   const altToggle = page.getByRole('checkbox', { name: 'Anderes Rigg anzeigen' });
   await expect(altToggle).toBeVisible({ timeout: 60_000 });
   await page.waitForFunction(() =>

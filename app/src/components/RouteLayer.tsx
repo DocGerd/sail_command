@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LngLatBounds, Map as MaplibreMap } from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
@@ -489,14 +489,55 @@ export default function RouteLayer({
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
-  // #628: default-open state for the collapsible controls cluster below is
-  // layout-dependent, not persisted — wide (side-panel) layouts have room to
-  // spare so the cluster starts open there; narrow (map-overlay) layouts are
-  // exactly where this cluster obstructs the chart, so it starts collapsed.
-  // Read once per mount (Disclosure's own `defaultOpen` contract); a manual
-  // user toggle is never overridden by a later resize, only by the whole
-  // `.route-layer-controls` block unmounting (plan -> null) and remounting.
+  // #628 (review Major 3): default-open state for the collapsible controls
+  // cluster below is layout-dependent, not persisted — wide (side-panel)
+  // layouts have room to spare so the cluster starts open there; narrow
+  // (map-overlay) layouts are exactly where this cluster obstructs the
+  // chart, so it starts collapsed. `Disclosure`'s own `defaultOpen` is read
+  // ONCE via `useState` and ignores later prop changes — so on its own it
+  // would leave a cluster that opened on a wide layout still OPEN after a
+  // resize/rotation down to narrow (a 320px-tall cluster covering ~27% of a
+  // tabletPortrait viewport, reached with ZERO user interaction — squarely
+  // in the obstruction band #628's own captures measured). The `key`+effect
+  // pair below is what closes that gap: `disclosureKey` remounts `Disclosure`
+  // (re-seeding `defaultOpen` from the CURRENT `isWide`) whenever `isWide`
+  // changes, UNLESS the user has manually toggled the cluster since mount —
+  // an explicit choice must survive any later resize, never get silently
+  // reset back to the layout default.
   const isWide = useWideLayout();
+  const userToggledDisclosureRef = useRef(false);
+  const [disclosureKey, setDisclosureKey] = useState(() => (isWide ? 'wide' : 'narrow'));
+  useEffect(() => {
+    if (userToggledDisclosureRef.current) return;
+    setDisclosureKey(isWide ? 'wide' : 'narrow');
+  }, [isWide]);
+  // `Disclosure` has no `onToggle`/controlled-open prop (its three other
+  // consumers — BoatPicker, AboutDialog x2, RouteSummary — are all genuinely
+  // uncontrolled, so adding one is out of THIS task's scope) — so the only
+  // way to observe a user's manual toggle from here is a native DOM
+  // listener on the underlying `<details>`. The native `toggle` event does
+  // NOT bubble, but a CAPTURE-phase listener on an ancestor still sees it on
+  // the way down to its target, so this attaches to the wrapping div rather
+  // than needing a ref forwarded through Disclosure. Filtered to the outer
+  // `.route-layer-controls-disclosure` element specifically — the nested
+  // `RouteLegend`'s own `<details class="route-legend">` fires the same
+  // event and must NOT be mistaken for a toggle of the whole cluster.
+  // Setting the ref alone triggers no re-render, so a toggle never causes an
+  // immediate self-defeating remount — only a LATER real `isWide` change
+  // would have, and the effect above now skips re-seeding once this is true.
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = controlsRef.current;
+    if (!el) return;
+    const onNativeToggle = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.classList.contains('route-layer-controls-disclosure')) {
+        userToggledDisclosureRef.current = true;
+      }
+    };
+    el.addEventListener('toggle', onNativeToggle, true);
+    return () => el.removeEventListener('toggle', onNativeToggle, true);
+  }, []);
   // #63: both overlays default ON (a skipper wants the wind and the numbers
   // without hunting for checkboxes) and persist an explicit choice across
   // reloads. The toggles below stay as the clean-chart escape hatch.
@@ -804,7 +845,7 @@ export default function RouteLayer({
   if (!plan) return null;
 
   return (
-    <div className="route-layer-controls">
+    <div className="route-layer-controls" ref={controlsRef}>
       {/* #628: ViaMarkers renders NO visible box of its own most of the time
           (maplibre Markers attach straight to the map container, outside this
           DOM subtree) — its only DOM output is the rare "draft differs from
@@ -812,7 +853,11 @@ export default function RouteLayer({
           regardless of collapse state, so it sits OUTSIDE the Disclosure
           below rather than inside its collapsible body. */}
       <ViaMarkers viaPoints={draftViaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
+      {/* #628 (review Major 3): `key={disclosureKey}` deliberately remounts
+          this Disclosure on an unresponded `isWide` change (see that state's
+          own comment above) — do not remove the key thinking it is inert. */}
       <Disclosure
+        key={disclosureKey}
         className="route-layer-controls-disclosure"
         defaultOpen={isWide}
         summary={t('route.controls.summary')}

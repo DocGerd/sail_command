@@ -1123,11 +1123,22 @@ select {
    `.route-layer-controls` (gap: 0.35rem, base rule above); now they're one
    level deeper, inside `.sc-disclosure-body` (a plain block box by default,
    see the "Disclosure" section below) — reproduce the same column+gap here
-   so collapsing them into the Disclosure doesn't lose the spacing. */
+   so collapsing them into the Disclosure doesn't lose the spacing.
+   `padding-bottom: 0` (review Minor 4) strips the primitive's own default
+   `padding: 0 0 0.75rem` (side padding is already 0 there, so only the
+   BOTTOM 12px was ever in play) — the same "back down to `.route-legend`'s
+   bare-<details> footprint" argument as the outer rule's border/padding
+   strip above, just for the body element instead of the outer <details>.
+   MEASURED (real Chromium): expanded height 320.38px -> 308.38px, and at
+   390x844 — this repo's actively-tested narrow baseline — the narrow
+   `max-height` resolves to 315.80px, so without this the expanded cluster
+   clipped and scrolled internally where it should have fit. Width
+   unchanged (this padding was never horizontal). */
 .route-layer-controls-disclosure > .sc-disclosure-body {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  padding-bottom: 0;
 }
 
 /* #155: top-left map-overlay stack — DataLayers' toggles with the compass

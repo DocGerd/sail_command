@@ -908,15 +908,121 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
       )
       // #638 halved this margin (32px -> 16px) by giving `.depth-legend` 16px
       // of horizontal chrome padding. MEASURED at that commit: exactly 16.00px
-      // in BOTH languages and viewport-INVARIANT from 280px to 375px —
-      // `.route-layer-controls` is `right: 0.5rem` with
-      // `max-width: calc(100% - 9.5rem)`, so while clipped its left edge sits
-      // at `vw - 8 - (vw - 152)` = 144px whatever the width, against the
-      // legend's own 8 + 120 = 128px right edge. A bare `> 0` would still pass
-      // at 1px, and the margin left is now exactly this element's own padding
-      // — so pin the MAGNITUDE, for the same reason the #638 wide-column probe
-      // carries a ratio floor rather than a break/no-break assertion.
+      // in BOTH languages and viewport-INVARIANT from 280px to 375px, via
+      // `.route-layer-controls`'s `right: 0.5rem` + `max-width: calc(100% -
+      // 9.5rem)` clipping its left edge to `vw - 8 - (vw - 152)` = 144px.
+      // #628 review Minor 5 (SAME-PR-INVALIDATED by the #628 collapsible
+      // cluster, since this test never expands it): `.route-layer-controls`
+      // is now COLLAPSED by default at this narrow viewport, so its natural
+      // width is driven by the much shorter summary row ("Display options")
+      // instead of the "Times & speeds" checkbox label — it no longer
+      // reaches the `max-width` clip threshold at all in this collapsed
+      // state, so the 144px-left-edge math above no longer describes what
+      // this test measures. RE-MEASURED live at this exact site (2026-08-25):
+      // `routeControls.x` is now 179.64px (EN), giving a clearance of
+      // 51.64px — comfortably above the `12` floor below, not because the
+      // floor got looser but because the SUBJECT shrank (the collapsed
+      // cluster is simply narrower). A bare `> 0` would still pass at 1px;
+      // pin the MAGNITUDE regardless, so a future regression here still
+      // names its own number rather than a bare pass/fail. The EXPANDED-
+      // cluster scenario this comment used to describe (both collapsibles
+      // open at a narrow viewport) is now covered separately, by the
+      // `#628` test below.
       .toBeGreaterThanOrEqual(12);
+  } finally {
+    server.kill();
+  }
+});
+
+// #628 review Major 1: #277/#598 above now measure `.route-layer-controls`
+// in its DEFAULT COLLAPSED state at 320px (Minor 5's comment on the
+// assertion above has the re-measured numbers) — a lighter subject that
+// passes MORE EASILY because it shrank, which silently dropped the "both
+// collapsibles open at a narrow viewport" coverage those two tests used to
+// provide. This restores it: the same 320px/DE scenario, but with the new
+// outer Disclosure EXPANDED as well as `.depth-legend` — the two-
+// collapsibles-open case #277/#598 always meant to cover, now re-exercised
+// against the SHRUNK-then-EXPANDED subject rather than the always-open one.
+// This ALSO serves as review Major 2's keeper — MUTATION-CHECKED, not
+// merely asserted: deleting the three `.route-layer-controls-disclosure`
+// override rules in app.css lets the expanded cluster clip at the resolved
+// `max-width` cap instead of rendering at its natural width, and this test
+// reds (MEASURED 2026-08-25: the scrollWidth/clientWidth overflow check
+// below fires first, `Received: 8` — the width pin two assertions down is a
+// second, independent line of defense against the SAME mutation, not the
+// one that happened to fire). #277/#598's own (collapsed-state) assertions
+// cannot, by construction, ever reach the override at all.
+test('#628 review Major 1: the controls cluster and depth-hatch legend can BOTH be expanded at 320px without overflow or collision (DE)', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    await page.getByRole('tab', { name: 'Planen' }).click();
+    const originSection = page.getByRole('region', { name: 'Start' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    const originResults = originSection.getByRole('option');
+    await expect(originResults).toHaveCount(1);
+    await originResults.first().click();
+
+    const destSection = page.getByRole('region', { name: 'Ziel' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    const destResults = destSection.getByRole('option');
+    await expect(destResults).toHaveCount(1);
+    await destResults.first().click();
+
+    const planButton = page.getByRole('button', { name: 'Route planen' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    const routeControls = page.locator('.route-layer-controls');
+    await expect(routeControls).toBeVisible();
+
+    // Expand the #628 outer disclosure — collapsed by default at this
+    // narrow viewport.
+    const disclosure = routeControls.locator('details.route-layer-controls-disclosure');
+    await disclosure.locator('> summary').click();
+    await expect(disclosure).toHaveJSProperty('open', true);
+
+    // Dismiss the incidental SW toast before reaching for the depth legend
+    // (same idiom as #598 above — the reachability gate there hides an
+    // invisible control under a live banner).
+    await page
+      .locator('.reload-prompt .banner-dismiss')
+      .click({ timeout: 5_000 })
+      .catch(() => {});
+    const depthLegend = page.locator('.depth-legend');
+    await depthLegend.locator('> summary').click();
+    await expect(depthLegend).toHaveJSProperty('open', true);
+
+    // Silent-overflow check first (`boundingBox()` cannot see it — #299).
+    await expect
+      .poll(async () => routeControls.evaluate((el) => el.scrollWidth - el.clientWidth), {
+        timeout: 5_000,
+      })
+      .toBeLessThanOrEqual(0);
+
+    // The Major-2 keeper: MEASURED live (2026-08-25) with the override
+    // present, expanded width is 233.86px (DE natural width, matching
+    // BASE); with the three override rules deleted it clips to 238.00px at
+    // this viewport's resolved `max-width` cap. `240` sits strictly between
+    // the two and is re-sampled every poll tick, never a frozen baseline.
+    await expect
+      .poll(async () => (await box(routeControls)).width, { timeout: 5_000 })
+      .toBeLessThan(240);
+
+    // The two clusters (`.data-layer-controls` top-left, `.route-layer-
+    // controls` top-right) must not overlap even with BOTH collapsibles
+    // open — the #277 pin's own scenario, re-exercised in the expanded
+    // state rather than the now-default collapsed one.
+    const dataControls = page.locator('.data-layer-controls');
+    await expect
+      .poll(async () => overlapArea(await box(dataControls), await box(routeControls)), {
+        timeout: 10_000,
+      })
+      .toBe(0);
   } finally {
     server.kill();
   }
@@ -932,10 +1038,23 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
 // on narrow (<1024px — exactly where the obstruction was measured), open on
 // wide (side-panel layouts have room to spare, matching the pre-#628
 // behaviour there byte-for-byte).
+//
+// #628 review Minor 7: trimmed from 4 narrow / 2 wide entries. Each of
+// these 6 tests boots its own preview server and runs a real route solve —
+// this file's most expensive test shape — and `playwright.config.ts` runs
+// `workers: 1, fullyParallel: false`, so they add their full wall time
+// SERIALLY to the `e2e` job (capped at 30 min, #605). The default-open
+// decision is a single `matchMedia` read at mount, so every narrow entry
+// exercises the SAME branch, and both assertions below were MEASURED
+// viewport-INVARIANT (collapsed height exactly 60.00px) at every one of the
+// original four narrow entries plus both wide ones — `tabletPortrait` and
+// `narrowPortrait360` bought no discriminating power over the two the issue
+// itself measured, which are kept. Dropped from `WIDE_OPEN_VIEWPORTS`
+// below, symmetrically: `tabletLandscape` (kept only in the separate Major
+// 3 rotation test, which needs it specifically for straddling the
+// breakpoint — this loop does not).
 const NARROW_COLLAPSE_VIEWPORTS: Record<string, Viewport> = {
   phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
-  tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
-  narrowPortrait360: EDGE_VIEWPORTS.narrowPortrait360,
   partialPushBand375: EDGE_VIEWPORTS.partialPushBand375,
 };
 for (const [label, viewport] of Object.entries(NARROW_COLLAPSE_VIEWPORTS)) {
@@ -973,8 +1092,18 @@ for (const [label, viewport] of Object.entries(NARROW_COLLAPSE_VIEWPORTS)) {
       // A generous ceiling, not a tight pixel pin (font metrics vary by
       // platform): just the summary row's >=44px touch target plus the
       // outer cluster's own 0.5rem top+bottom padding (16px).
+      // #628 review Minor 8: POLL this, never a one-shot `boundingBox()`
+      // read — a coordinate frozen before `--sc-banner-height`'s
+      // ResizeObserver (and any SW-toast-driven push) has settled produces
+      // a signature byte-identical to a real interception (CLAUDE.md's
+      // #412 lesson, `layout.spec.ts`'s own `box()` helper comment above).
+      // The baseline used by the `+100` comparison below is taken from a
+      // SECOND live read, only after this poll confirms the geometry has
+      // actually settled at a value satisfying the ceiling.
+      await expect
+        .poll(async () => (await box(routeControls)).height, { timeout: 5_000 })
+        .toBeLessThanOrEqual(70);
       const collapsedHeight = (await box(routeControls)).height;
-      expect(collapsedHeight).toBeLessThanOrEqual(70);
 
       // Expand and confirm the content is actually reachable underneath —
       // this is what proves the small measurement above was genuinely
@@ -996,7 +1125,6 @@ for (const [label, viewport] of Object.entries(NARROW_COLLAPSE_VIEWPORTS)) {
 
 const WIDE_OPEN_VIEWPORTS: Record<string, Viewport> = {
   desktopHd: STANDARD_VIEWPORTS.desktopHd,
-  tabletLandscape: STANDARD_VIEWPORTS.tabletLandscape,
 };
 for (const [label, viewport] of Object.entries(WIDE_OPEN_VIEWPORTS)) {
   test(`#628: the map-overlay controls cluster starts OPEN on wide (side-panel) layouts (${label}, ${viewport.width}x${viewport.height})`, async ({
@@ -1034,6 +1162,54 @@ for (const [label, viewport] of Object.entries(WIDE_OPEN_VIEWPORTS)) {
     }
   });
 }
+
+// #628 review Major 3: real-browser confirmation of the exact defect the
+// review measured — `defaultOpen` alone is read ONCE via `useState`
+// (`Disclosure.tsx`), so without RouteLayer.tsx's `key`+effect pair a
+// tabletLandscape -> tabletPortrait rotation (wide -> narrow, no plan
+// change, no unmount) would leave an already-OPEN cluster open on a narrow
+// viewport, squarely in the obstruction band #628's own captures measured,
+// reached with ZERO user interaction. `RouteLayer.test.tsx` already pins
+// this at the unit level (mutation-checked: a static `key` reds it) — this
+// is the same scenario end-to-end in a real browser, against a real plan
+// and real CSS, rather than jsdom's `.open` PROPERTY tracking alone.
+test('#628 review Major 3: rotating from a wide to a narrow layout auto-collapses the cluster with NO user interaction', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletLandscape); // wide -> auto-open
+    await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+    await page.getByRole('button', { name: 'English anzeigen' }).click();
+    await page.getByRole('tab', { name: 'Plan' }).click();
+    const originSection = page.getByRole('region', { name: 'Origin' });
+    await originSection.getByRole('combobox').fill('Langballigau');
+    const originResults = originSection.getByRole('option');
+    await expect(originResults).toHaveCount(1);
+    await originResults.first().click();
+
+    const destSection = page.getByRole('region', { name: 'Destination' });
+    await destSection.getByRole('combobox').fill('Sønderborg');
+    const destResults = destSection.getByRole('option');
+    await expect(destResults).toHaveCount(1);
+    await destResults.first().click();
+
+    const planButton = page.getByRole('button', { name: 'Plan route' });
+    await planButton.click();
+    await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+    const disclosure = page.locator('details.route-layer-controls-disclosure');
+    await expect(disclosure).toBeVisible();
+    await expect(disclosure).toHaveJSProperty('open', true);
+
+    // The rotation: no click, no navigation, the plan object is untouched.
+    await page.setViewportSize(STANDARD_VIEWPORTS.tabletPortrait);
+    await expect(disclosure).toHaveJSProperty('open', false);
+  } finally {
+    server.kill();
+  }
+});
 
 // #231: on a SHORT LANDSCAPE narrow viewport, the base COLUMN layout for
 // `.map-stack-tl` (DataLayers' two toggles stacked, then the compass) was
