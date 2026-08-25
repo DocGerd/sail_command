@@ -2668,6 +2668,204 @@ describe('plan-form sync (#301)', () => {
     // gets both closed before either delete has to make progress.
     await Promise.all([db.__resetDbForTests(), freshDb.__resetDbForTests()]);
   });
+
+  // #660: shared setup for the four field-guard regression tests below — same
+  // deferred-harbors.json technique as 'harbors landing AFTER the plan
+  // becomes active…' above (a session-restored plan + a FRESH module graph,
+  // since services/assets.ts module-caches loadRoutingAssets()'s result for
+  // the lifetime of the page — without vi.resetModules() the harborsPromise
+  // stub below would never even be reached). Returns `resolveHarbors` so each
+  // test can edit a field WHILE the window is open, plus `originSection` (the
+  // shared per-field control target: origin is never the field under test's
+  // OWN edit in the destination/departure/via tests, so it doubles as proof
+  // the OTHER three fields still sync normally) and a `cleanupFresh` that
+  // must run before the test ends (mirrors the sibling test's own DB-cleanup
+  // comment above).
+  async function renderFreshAppWithDeferredHarbors(plan: Plan): Promise<{
+    resolveHarbors: (r: Response) => void;
+    originSection: HTMLElement;
+    cleanupFresh: () => Promise<void>;
+  }> {
+    let resolveHarbors!: (r: Response) => void;
+    const harborsPromise = new Promise<Response>((res) => {
+      resolveHarbors = res;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('mask.meta.json')) return Promise.resolve(jsonResponse(TEST_MASK_META));
+        if (url.includes('mask.bin')) {
+          const buf = new ArrayBuffer(TEST_MASK_META.rows * TEST_MASK_META.cols);
+          return Promise.resolve(new Response(buf, { status: 200 }));
+        }
+        if (url.includes('salona-45-genoa.json')) return Promise.resolve(jsonResponse(TEST_POLAR));
+        if (url.includes('salona-45-fock.json'))
+          return Promise.resolve(jsonResponse({ ...TEST_POLAR, rig: 'fock' }));
+        if (url.includes('/data/polars/')) return Promise.resolve(jsonResponse(TEST_POLAR));
+        if (url.includes('harbors.json')) return harborsPromise;
+        if (url.includes('seamarks.json'))
+          return Promise.resolve(jsonResponse({ type: 'FeatureCollection', features: [] }));
+        if (url.includes('basemap.pmtiles.png')) {
+          return Promise.resolve(
+            new Response(Uint8Array.from([0x50, 0x4d, 0x54, 0x69, 0x6c, 0x65, 0x73]), {
+              status: 206,
+            }),
+          );
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${url}`));
+      }),
+    );
+
+    await db.savePlan(plan);
+    localStorage.setItem('sc-session', `{"v":1,"planId":"${plan.id}","tab":"plan","rig":"genoa"}`);
+
+    vi.resetModules();
+    const { default: FreshApp } = await import('./App');
+
+    render(
+      <I18nProvider>
+        <FreshApp />
+      </I18nProvider>,
+    );
+    await screen.findByRole('heading', { name: 'SailCommand' });
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    // Window control (shared with the sibling deferred-harbors test above):
+    // origin must not already show the harbor label, or the pending window
+    // was never open and an edit made "during" it would prove nothing.
+    expect(within(originSection).queryByText('Flensburg')).not.toBeInTheDocument();
+
+    async function cleanupFresh(): Promise<void> {
+      cleanup();
+      const freshDb = await import('./services/db');
+      await Promise.all([db.__resetDbForTests(), freshDb.__resetDbForTests()]);
+    }
+
+    return { resolveHarbors, originSection, cleanupFresh };
+  }
+
+  // Per-field coverage (not one joint test): each of the four writes the sync
+  // effect makes gets its OWN edit-during-the-window + resolve + assert-
+  // preserved test, so a guard that works for one field but not another reds
+  // exactly the one row it should — the per-term rule (a joint test can pass
+  // on a partial fix).
+  it('#660: origin edited during the harborsLoaded-pending window is not reverted once harbors resolve', async () => {
+    const plan = prefillPlan('prefill-660-origin');
+    const { resolveHarbors, originSection, cleanupFresh } =
+      await renderFreshAppWithDeferredHarbors(plan);
+
+    fireEvent.click(within(originSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    simulateMapClick(ORIGIN_A.lat, ORIGIN_A.lon);
+    expect(
+      within(originSection).getByText(formatLatLon(ORIGIN_A), { selector: 'p' }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      resolveHarbors(jsonResponse(HARBORS));
+      await Promise.resolve();
+    });
+    await flushPlanFormSync();
+
+    // The edit survives — not reverted to the plan's own 'Flensburg' origin.
+    expect(
+      within(originSection).getByText(formatLatLon(ORIGIN_A), { selector: 'p' }),
+    ).toBeInTheDocument();
+    expect(within(originSection).queryByText('Flensburg')).not.toBeInTheDocument();
+
+    // Per-field control: departure (untouched) DOES get synced from the plan
+    // — proving the guard is per-field, not "any edit blocks every write".
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    await waitFor(() =>
+      expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs)),
+    );
+
+    await cleanupFresh();
+  });
+
+  it('#660: destination edited during the harborsLoaded-pending window is not reverted once harbors resolve', async () => {
+    const plan = prefillPlan('prefill-660-destination');
+    const { resolveHarbors, originSection, cleanupFresh } =
+      await renderFreshAppWithDeferredHarbors(plan);
+
+    const destSection = screen.getByRole('region', { name: de['planner.destination.label'] });
+    fireEvent.click(within(destSection).getByRole('button', { name: de['planner.pickOnMap'] }));
+    simulateMapClick(DEST_A.lat, DEST_A.lon);
+    expect(
+      within(destSection).getByText(formatLatLon(DEST_A), { selector: 'p' }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      resolveHarbors(jsonResponse(HARBORS));
+      await Promise.resolve();
+    });
+    await flushPlanFormSync();
+
+    // The edit survives — not reverted to the plan's own tap-point destination.
+    expect(
+      within(destSection).getByText(formatLatLon(DEST_A), { selector: 'p' }),
+    ).toBeInTheDocument();
+    expect(
+      within(destSection).queryByText(formatLatLon(PREFILL_DEST), { selector: 'p' }),
+    ).not.toBeInTheDocument();
+
+    // Per-field control: origin (untouched) DOES get synced from the plan.
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+
+    await cleanupFresh();
+  });
+
+  it('#660: departure edited during the harborsLoaded-pending window is not reverted once harbors resolve', async () => {
+    const plan = prefillPlan('prefill-660-departure');
+    const { resolveHarbors, originSection, cleanupFresh } =
+      await renderFreshAppWithDeferredHarbors(plan);
+
+    const departureInput = screen.getByLabelText(de['planner.departure.label']) as HTMLInputElement;
+    const editedMs = Date.now() + 5 * 3_600_000;
+    fireEvent.change(departureInput, { target: { value: toLocalInputValue(editedMs) } });
+    expect(departureInput.value).toBe(toLocalInputValue(editedMs));
+
+    await act(async () => {
+      resolveHarbors(jsonResponse(HARBORS));
+      await Promise.resolve();
+    });
+    await flushPlanFormSync();
+
+    // The edit survives — not reverted to the plan's own departure.
+    expect(departureInput.value).toBe(toLocalInputValue(editedMs));
+
+    // Per-field control: origin (untouched) DOES get synced from the plan.
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+
+    await cleanupFresh();
+  });
+
+  it('#660: a via added during the harborsLoaded-pending window is not reverted once harbors resolve', async () => {
+    const plan = prefillPlan('prefill-660-via');
+    const { resolveHarbors, originSection, cleanupFresh } =
+      await renderFreshAppWithDeferredHarbors(plan);
+
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    fireEvent.click(within(viaSection).getByRole('button', { name: de['planner.via.add'] }));
+    simulateMapClick(VIA_A.lat, VIA_A.lon);
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+
+    await act(async () => {
+      resolveHarbors(jsonResponse(HARBORS));
+      await Promise.resolve();
+    });
+    await flushPlanFormSync();
+
+    // The added via survives — not reverted to the plan's own empty via list
+    // (prefillPlan's default `viaPoints: []`).
+    expect(within(viaSection).getAllByRole('listitem')).toHaveLength(1);
+
+    // Per-field control: origin (untouched) DOES get synced from the plan.
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+
+    await cleanupFresh();
+  });
 });
 // #572: the selection → request span. Nothing asserted this before: the
 // multi-boat suites cover the catalogue, the picker's own rendering, the

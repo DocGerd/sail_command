@@ -109,6 +109,31 @@ export function viaPointsDiffer(a: LatLon[], b: LatLon[]): boolean {
   return a.some((p, i) => p.lat !== b[i].lat || p.lon !== b[i].lon);
 }
 
+/**
+ * True when a form's origin/destination has moved from a reference point —
+ * exact `===` on lat/lon, no epsilon, mirroring planFormDirty's own
+ * coordinate comparison above (same rationale: the values being compared are
+ * either byte-identical carries or genuinely new points, never "close
+ * enough"). `null` counts as different from any non-null point and the same
+ * as another `null`.
+ *
+ * Used by App.tsx's #660 sync-effect guard: unlike planFormDirty (which
+ * compares the CURRENT form against the ACTIVE plan's own request, to detect
+ * an edit made AFTER a sync completed), this compares the CURRENT form
+ * against a BASELINE captured the instant a new plan became pending — so it
+ * can detect an edit made BEFORE the first sync for that plan ever runs (the
+ * harborsLoaded-parked window #660 is about). The reference point differs by
+ * caller; the equality semantics are the same function, not a second
+ * definition of dirtiness.
+ */
+export function pickedPointMoved(
+  current: PickedPoint | null,
+  baseline: PickedPoint | null,
+): boolean {
+  if (current === null || baseline === null) return current !== baseline;
+  return current.point.lat !== baseline.point.lat || current.point.lon !== baseline.point.lon;
+}
+
 // #301: the eight ROUTING-RELEVANT Settings fields — each has a real call
 // site under app/src/routing/ (grep-verified: safetyDepthM x9 files,
 // depthComfortMarginM incl. planRoute.ts, motorSpeedKn/motorThresholdKn/
