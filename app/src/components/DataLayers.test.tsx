@@ -24,12 +24,25 @@ import type { MsgKey } from '../i18n/dict.de';
 // hook's own #492 comment in this file for why), so every render below is
 // wrapped in AppStateProvider, which the pre-#492 tests never needed.
 
+// #232 items 3-4: the seamark click handler's popup is a real maplibre-gl
+// `Popup` (mocked above/below for jsdom), so pinning WHERE it anchors and
+// WHAT it renders needs the mock to record its constructor calls rather than
+// just no-op through them. `popupCalls` records only the LAST popup's
+// setLngLat argument and setDOMContent container — sufficient because every
+// test below fires exactly one click.
+const popupCalls = vi.hoisted(() => ({
+  lastLngLat: undefined as unknown,
+  lastContainer: undefined as HTMLElement | undefined,
+}));
+
 vi.mock('maplibre-gl', () => ({
   Popup: class {
-    setLngLat() {
+    setLngLat(lngLat: unknown) {
+      popupCalls.lastLngLat = lngLat;
       return this;
     }
-    setDOMContent() {
+    setDOMContent(container: HTMLElement) {
+      popupCalls.lastContainer = container;
       return this;
     }
     addTo() {
@@ -131,6 +144,11 @@ beforeEach(async () => {
   // safetyDepthM.
   await __resetDbForTests();
   localStorage.clear();
+  // #232: no test relies on a stale popup call surviving into it (every test
+  // that asserts on popupCalls fires its own click first), but reset it
+  // anyway so a future test can't silently inherit a previous one's popup.
+  popupCalls.lastLngLat = undefined;
+  popupCalls.lastContainer = undefined;
 });
 
 describe('DataLayers setup', () => {
@@ -353,5 +371,76 @@ describe('#492 navigability hatch wiring', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// #232 items 3-4: pin that DataLayers' SEAMARKS_LAYER click handler actually
+// USES pickSeamarkByPriority (rather than e.features[0]) and anchors the
+// popup at the picked feature's own coordinates when the pick differs from
+// the topmost one. Neither was pinned before #232 — `pickSeamarkByPriority`
+// itself was unit-tested (seamarkGeoJson.test.ts), but nothing exercised
+// DataLayers.tsx's click handler at all, so a revert to e.features[0] would
+// have stayed green everywhere.
+//
+// A topmost feature (`e.features[0]`) is what queryRenderedFeatures/MapLibre
+// hands over FIRST at z>=12 (#200's paint-order inversion, #232 item 1 —
+// the least significant of an overlapping group is painted, and reported,
+// on top). `buoy_special_purpose` (priority 12) as the topmost, over a
+// `buoy_cardinal` (priority 2) underneath it, is exactly that shape.
+describe('SEAMARKS_LAYER click handler (#232 items 3-4)', () => {
+  const overlappingTopmost = {
+    properties: { seamarkType: 'buoy_special_purpose', priority: 12 },
+    geometry: { type: 'Point', coordinates: [10.9, 54.9] },
+  };
+  const overlappingCardinal = {
+    properties: { seamarkType: 'buoy_cardinal', priority: 2 },
+    geometry: { type: 'Point', coordinates: [10.1, 54.1] },
+  };
+  const TAP_LNGLAT = { lng: 10.5, lat: 54.5 };
+
+  it('resolves an overlapping click to the PRIORITY pick, not e.features[0] (#232 item 3)', async () => {
+    const map = makeFakeMap();
+    await renderAndSettle(map);
+    act(() => {
+      map.fireLayerEvent('click', SEAMARKS_LAYER, {
+        features: [overlappingTopmost, overlappingCardinal],
+        lngLat: TAP_LNGLAT,
+      });
+    });
+    const text = popupCalls.lastContainer?.textContent ?? '';
+    // The popover must describe the CARDINAL (the priority pick) …
+    expect(text).toContain(de['seamark.value.type.buoy_cardinal']);
+    // … never the special-purpose buoy that MapLibre reported first.
+    expect(text).not.toContain(de['seamark.value.type.buoy_special_purpose']);
+  });
+
+  it('anchors the popup at the picked feature’s own coordinates when the pick differs from the topmost (#232 item 4)', async () => {
+    const map = makeFakeMap();
+    await renderAndSettle(map);
+    act(() => {
+      map.fireLayerEvent('click', SEAMARKS_LAYER, {
+        features: [overlappingTopmost, overlappingCardinal],
+        lngLat: TAP_LNGLAT,
+      });
+    });
+    expect(popupCalls.lastLngLat).toEqual([10.1, 54.1]); // the cardinal's own geometry
+    expect(popupCalls.lastLngLat).not.toEqual(TAP_LNGLAT);
+  });
+
+  it('keeps the tap-point anchor for an ordinary, non-overlapping click (#232 item 4)', async () => {
+    const map = makeFakeMap();
+    await renderAndSettle(map);
+    const solo = {
+      properties: { seamarkType: 'buoy_lateral', category: 'port', colour: 'red', priority: 8 },
+      geometry: { type: 'Point', coordinates: [9.9, 54.8] },
+    };
+    act(() => {
+      map.fireLayerEvent('click', SEAMARKS_LAYER, { features: [solo], lngLat: TAP_LNGLAT });
+    });
+    // The single feature IS the pick AND the topmost, so the tap point is
+    // preserved verbatim — not silently replaced by the feature's own
+    // (different) coordinates.
+    expect(popupCalls.lastLngLat).toBe(TAP_LNGLAT);
+    expect(popupCalls.lastContainer?.textContent).toContain(de['seamark.value.type.buoy_lateral']);
   });
 });

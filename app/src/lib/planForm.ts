@@ -1,6 +1,7 @@
 import type { Lang } from '../i18n';
 import { formatLatLon } from './format';
 import { nextFullHourMs } from '../components/PlannerPanel';
+import { planViaPoints } from './planViaPoints';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
@@ -106,6 +107,31 @@ export interface PlanFormSnapshot {
 export function viaPointsDiffer(a: LatLon[], b: LatLon[]): boolean {
   if (a.length !== b.length) return true;
   return a.some((p, i) => p.lat !== b[i].lat || p.lon !== b[i].lon);
+}
+
+/**
+ * True when a form's origin/destination has moved from a reference point —
+ * exact `===` on lat/lon, no epsilon, mirroring planFormDirty's own
+ * coordinate comparison above (same rationale: the values being compared are
+ * either byte-identical carries or genuinely new points, never "close
+ * enough"). `null` counts as different from any non-null point and the same
+ * as another `null`.
+ *
+ * Used by App.tsx's #660 sync-effect guard: unlike planFormDirty (which
+ * compares the CURRENT form against the ACTIVE plan's own request, to detect
+ * an edit made AFTER a sync completed), this compares the CURRENT form
+ * against a BASELINE captured the instant a new plan became pending — so it
+ * can detect an edit made BEFORE the first sync for that plan ever runs (the
+ * harborsLoaded-parked window #660 is about). The reference point differs by
+ * caller; the equality semantics are the same function, not a second
+ * definition of dirtiness.
+ */
+export function pickedPointMoved(
+  current: PickedPoint | null,
+  baseline: PickedPoint | null,
+): boolean {
+  if (current === null || baseline === null) return current !== baseline;
+  return current.point.lat !== baseline.point.lat || current.point.lon !== baseline.point.lon;
 }
 
 // #301: the eight ROUTING-RELEVANT Settings fields — each has a real call
@@ -227,7 +253,9 @@ export function planFormDirty(
     form.destination.source === 'harbor' ? form.destination.harborId : null;
   if (harborsAvailable && formDestinationHarborId !== req.destinationHarborId) return true;
 
-  if (viaPointsDiffer(form.viaPoints, req.viaPoints)) return true;
+  // #654: req.viaPoints read through the shared accessor — defends a
+  // hand-edited/corrupted stored record; see planViaPoints.ts.
+  if (viaPointsDiffer(form.viaPoints, planViaPoints(req))) return true;
 
   return routingSettingsDirty(plan, form.settings);
 }
