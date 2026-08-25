@@ -453,13 +453,16 @@ export function marginalExposureNm(
  * renders for every other "no data yet" state, never a positive "verified
  * clear" claim (this app has no such badge to conflict with).
  *
- * Both null paths are structurally UNREACHABLE for a plan that actually
- * solved: `planRoute.ts` snaps and validates every waypoint against the
- * mask before the solver ever runs, so no solver-emitted leg endpoint falls
- * outside `mask.meta`; and `walkLegCells`'s own doc comment argues its
- * iteration guard is unreachable given two in-bounds endpoints and the
- * mask's convex coverage rectangle. So this is a latent-shape fix, not a
- * behaviour change reachable from any real plan today.
+ * Both null paths are structurally UNREACHABLE for a plan rendered against
+ * the SAME mask it was routed with: planRoute.ts snaps and validates every
+ * waypoint against the mask before the solver runs, so no solver-emitted
+ * leg endpoint falls outside that mask's meta. A stored plan re-opened
+ * after a mask REBUILD is the reachable exception — the same premise this
+ * file's caveat 1 and #651's own belowGateMask() test rest on — which is
+ * precisely why the per-leg shape is worth having rather than merely
+ * tidier. `walkLegCells`'s own doc comment argues its iteration guard is
+ * unreachable given two in-bounds endpoints and the mask's convex coverage
+ * rectangle.
  */
 export function legMinDepthsM(
   legs: readonly Leg[],
@@ -512,14 +515,18 @@ export function isMarginalDepthM(
 }
 
 /**
- * #651 fix-wave, Minor 4: the SOLE derivation of a plan's requested gate —
- * `MarginalDepthNotice` (`components/RouteSummary.tsx`, #612) called this
- * inline rather than through this function until this fix-wave, which left
- * TWO live copies of one derivation (the twin this repo's own twin-search
- * rule exists to collapse) despite this function's original doc claiming
- * "cannot silently drift". `MarginalDepthNotice` now calls this function
- * directly; read its own call site for why the guard matters for THAT
- * component specifically (a safety notice must degrade gracefully on a
+ * #651 fix-wave, Minor 4: the sole derivation of a plan's requested gate for
+ * the DEPTH-DISCLOSURE surfaces (this file's marginal walk, RouteSummary's
+ * legs table and #612 notice, RouteLayer's map casing) — App.tsx:~1309
+ * keeps its own byte-identical copy for DepthProfile's axis, out of this
+ * PR's scope and tracked nowhere; collapsing that one too is a separate
+ * change. `MarginalDepthNotice` (`components/RouteSummary.tsx`, #612) called
+ * this inline rather than through this function until this fix-wave, which
+ * left TWO live copies of one derivation (the twin this repo's own
+ * twin-search rule exists to collapse) despite this function's original doc
+ * claiming "cannot silently drift". `MarginalDepthNotice` now calls this
+ * function directly; read its own call site for why the guard matters for
+ * THAT component specifically (a safety notice must degrade gracefully on a
  * pre-#624 stored plan, not blank the whole app).
  *
  * The REQUESTED safety-depth gate a plan was computed at, read from the

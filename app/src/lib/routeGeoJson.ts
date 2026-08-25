@@ -32,7 +32,8 @@ export interface LegProperties {
   // RouteLayer's sc-route-shallow highlight layer filters on this ONE
   // boolean. opts.mask/opts.gateM are optional and default to "unknown" (no
   // marginal contribution) — never a false all-clear, since the relaxed-leg
-  // half of this OR is unaffected either way.
+  // half of this OR is unaffected either way; an unresolved per-leg entry
+  // likewise contributes nothing for that leg alone.
   shallow: boolean;
 }
 
@@ -48,14 +49,17 @@ export function legsToFeatureCollection(
   opts: { motorLetter?: string; mask?: NavMask | null; gateM?: number | undefined } = {},
 ): FeatureCollection<LineString, LegProperties> {
   const motorLetter = opts.motorLetter ?? 'M';
-  // #651: computed ONCE for the whole collection, never per feature — the
-  // null-for-the-WHOLE-ARRAY contract (see legMinDepthsM's own doc comment)
-  // means a per-leg call could not be more granular anyway, and this keeps
-  // the O(legs) mask walk to a single pass. `null` here (mask not loaded, or
-  // gateM not supplied by this call site — the #324 alt-rig overlay's own
-  // legsToFeatureCollection call never passes either) means NOT-YET-KNOWN:
-  // every leg falls back to the existing leg.shallow-only check below, never
-  // a false "not marginal" claim about water nobody actually walked.
+  // #651: computed ONCE for the whole collection, never per feature —
+  // legMinDepthsM returns one entry per leg in order (PER-LEG null; see its
+  // own doc comment for why a whole-array null was replaced), so a per-leg
+  // call would gain nothing but repeat the setup, and this keeps the
+  // O(legs) mask walk to a single pass. `null` HERE is a different state
+  // from a null ENTRY: it means mask or gateM was not supplied by this call
+  // site at all (the #324 alt-rig overlay's own legsToFeatureCollection
+  // call passes neither), so no leg was walked. A null ENTRY means that ONE
+  // leg's walk was inconclusive and suppresses only its own marker. Both
+  // fall back to the leg.shallow-only check below — never a false "not
+  // marginal" claim about water nobody actually walked.
   const minDepths = opts.mask && opts.gateM !== undefined ? legMinDepthsM(legs, opts.mask) : null;
   return {
     type: 'FeatureCollection',

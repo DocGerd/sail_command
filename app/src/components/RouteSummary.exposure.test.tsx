@@ -515,6 +515,18 @@ function belowGateMask() {
   );
 }
 
+// #651 fix-wave, Minor 9: charted EXACTLY AT the 3.0 m default gate — the
+// untested boundary between marginalMask() (3.5 m, above) and
+// belowGateMask() (2.5 m, below). Mask bytes are exact decimetres, so byte
+// 30 at the default gate is the single most likely marginal reading near
+// the threshold, not an exotic edge case.
+function atGateMask() {
+  return assetsWithMask(
+    (row, col) =>
+      row === ROW && (col === 55 || col === 56 || col === 57) ? 30 /* 3.0 m */ : 200 /* 20 m */,
+  );
+}
+
 /**
  * A plan that did NOT relax — `shallow: null`, the state no existing test in
  * this file constructs. `safetyDepthM` is spread over DEFAULT_SETTINGS so a
@@ -823,6 +835,16 @@ describe('#651: legs-table marker for a MARGINAL (non-relaxed) leg', () => {
     expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.5 m');
     expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
       'cautious: as low as 1.6 m',
+    );
+  });
+
+  it('#651 Minor 5 boundary: charted EXACTLY at the gate is Marginal, not Shallow', async () => {
+    mockedLoad.mockResolvedValue(atGateMask()); // byte 30 = 3.0 m on the same cells
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Marginal 3.0 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'cautious: as low as 2.1 m',
     );
   });
 });
