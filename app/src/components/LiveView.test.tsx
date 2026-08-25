@@ -525,6 +525,44 @@ describe('LiveView', () => {
       expect(document.querySelectorAll('[role="alert"]')).toHaveLength(0);
     });
 
+    // #596: the SAME fixture as the English row above (mask/mocked-shallowest/
+    // safety-depth all unchanged), rendered in German instead — `renderLive`
+    // hardcodes 'en', so this bypasses it and builds the tree directly. Both
+    // interpolated numbers (the measured 2.1 and the safety-depth 3.0) must
+    // read with a decimal COMMA, matching every other depth figure this PR
+    // fixed — a regression back to a bare `toFixed(1)` here would still pass
+    // the English row above and only red in this one.
+    it('#596: shows the depth caution with a German COMMA in both numbers', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      localStorage.setItem('sc-lang', 'de');
+      const { wp, emitFix } = fakeWatchPosition();
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveView watchPosition={wp} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Live-Ansicht' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      await screen.findByText(/Peilung kreuzt 2,1 m/);
+      expect(screen.getByText(/flacher als deine Sicherheitstiefe \(3,0 m\)/)).toBeInTheDocument();
+      // The English-formatted numbers must never appear alongside the German
+      // sentence — the mixed-convention shape #596 exists to close.
+      expect(screen.queryByText(/2\.1 m/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/3\.0 m/)).not.toBeInTheDocument();
+    });
+
     it('shows no depth note when the bearing is clear', async () => {
       vi.mocked(loadRoutingAssets).mockResolvedValue({
         maskMeta: MASK_META,

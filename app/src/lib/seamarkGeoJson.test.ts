@@ -4,6 +4,7 @@ import {
   pickSeamarkByPriority,
   seamarkDisplayFilter,
   seamarkFeatureCollectionWithIcons,
+  seamarkPopupAnchor,
   seamarksLayout,
   type SeamarkFeatureCollection,
 } from './seamarkGeoJson';
@@ -299,5 +300,53 @@ describe('pickSeamarkByPriority (#200 tap resolution at z>=12)', () => {
     expect(pickSeamarkByPriority([ranked, unranked])).toBe(ranked);
     expect(pickSeamarkByPriority([unranked, { properties: {} }])).toBe(unranked);
     expect(pickSeamarkByPriority([{ properties: { priority: 'nope' } }, ranked])).toBe(ranked);
+  });
+});
+
+// #232 item 4: anchor the popup at the picked feature's own coordinates only
+// when the priority pick differs from the topmost feature — the one case
+// where the user has no other cue which mark the popover describes. The
+// ordinary (single-feature, or tied) click keeps the tap-point anchor.
+describe('seamarkPopupAnchor (#232 item 4)', () => {
+  const pointFeature = (seamarkType: string, priority: number, coords: [number, number]) => ({
+    properties: { seamarkType, priority },
+    geometry: { type: 'Point' as const, coordinates: coords },
+  });
+  const TAP: [number, number] = [10.5, 54.5];
+
+  it('anchors at the picked feature when the priority pick differs from the topmost', () => {
+    // Topmost (features[0]) is the LEAST significant — a routine special-
+    // purpose buoy painted on top of a cardinal underneath it (#200's
+    // z>=12 paint-order inversion, item 1, is exactly why this can happen).
+    const topmost = pointFeature('buoy_special_purpose', 12, [10.9, 54.9]);
+    const cardinal = pointFeature('buoy_cardinal', 2, [10.1, 54.1]);
+    const picked = pickSeamarkByPriority([topmost, cardinal]);
+    expect(picked).toBe(cardinal);
+    expect(seamarkPopupAnchor(picked, topmost, TAP)).toEqual([10.1, 54.1]);
+  });
+
+  it('keeps the tap-point anchor when the pick IS the topmost feature (the ordinary, non-overlapping case)', () => {
+    const only = pointFeature('buoy_lateral', 8, [10.9, 54.9]);
+    const picked = pickSeamarkByPriority([only]);
+    expect(picked).toBe(only);
+    expect(seamarkPopupAnchor(picked, only, TAP)).toBe(TAP);
+  });
+
+  it('keeps the tap-point anchor on a tie (pickSeamarkByPriority itself falls back to topmost)', () => {
+    const a = pointFeature('buoy_cardinal', 2, [10.9, 54.9]);
+    const b = pointFeature('beacon_cardinal', 2, [10.1, 54.1]);
+    const picked = pickSeamarkByPriority([a, b]);
+    expect(picked).toBe(a); // pickSeamarkByPriority's own documented tie rule
+    expect(seamarkPopupAnchor(picked, a, TAP)).toBe(TAP);
+  });
+
+  it('falls back to the tap point for an undefined pick (no features)', () => {
+    expect(seamarkPopupAnchor(undefined, undefined, TAP)).toBe(TAP);
+  });
+
+  it('falls back to the tap point when the picked feature has no Point geometry (defensive)', () => {
+    const picked = { properties: { seamarkType: 'buoy_cardinal', priority: 2 } };
+    const topmost = { properties: { seamarkType: 'buoy_special_purpose', priority: 12 } };
+    expect(seamarkPopupAnchor(picked, topmost, TAP)).toBe(TAP);
   });
 });

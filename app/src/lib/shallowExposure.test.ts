@@ -1,18 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { APPROACH_RADIUS_M } from './depthGate';
 import { haversineNm } from './geo';
 import { makeMask, TEST_MASK_META } from '../test/fixtures';
 import { MASK_TOLERANCE_M } from './mask';
 import {
+  isMarginalDepthM,
+  legMinDepthsM,
   marginalDepthThresholdM,
   marginalExposureNm,
+  requestedGateM,
   roundExposureNm,
   shallowConfinedWithinM,
   shallowExposureNm,
 } from './shallowExposure';
 import type { NavMask } from './mask';
-import type { LatLon, Leg, MaskMeta } from '../types';
+import { DEFAULT_SETTINGS, defaultBoatSnapshot, PLAN_SCHEMA_VERSION } from '../types';
+import type { LatLon, Leg, MaskMeta, Plan, Settings } from '../types';
 
 const CELL_LAT = (TEST_MASK_META.north - TEST_MASK_META.south) / TEST_MASK_META.rows; // 0.005
 const CELL_LON = (TEST_MASK_META.east - TEST_MASK_META.west) / TEST_MASK_META.cols; // 0.005
@@ -688,5 +692,193 @@ describe('marginalDepthThresholdM / marginalExposureNm (#612)', () => {
     for (let gateDm = 20; gateDm <= 100; gateDm++) {
       expect(marginalExposureNm([leg], mask, gateDm / 10)).toBe(0);
     }
+  });
+});
+
+describe('legMinDepthsM / isMarginalDepthM (#651)', () => {
+  it('finds the per-leg minimum charted depth, one entry per leg, in order', () => {
+    const ROW = 100;
+    const a = pointAt(ROW + 0.5, 50.3);
+    const b = pointAt(ROW + 0.5, 70.7);
+    // Column 60 charted 3.5 m — interior to the a->b span (columns 51..69 are
+    // full columns, per this file's own "hand-derived value" case above) —
+    // everything else on the row 20 m, so the leg's minimum is unambiguous
+    // and not an endpoint artifact.
+    const mask = makeMask((row, col) => (row === ROW && col === 60 ? 35 /* 3.5 m */ : 200));
+    const legAtoB = makeLeg(a, b, 10);
+    const legBtoA = makeLeg(b, a, 10); // reversed direction, same swept cells
+    const result = legMinDepthsM([legAtoB, legBtoA], mask);
+    expect(result[0]).toEqual({ depthM: 3.5, capped: false });
+    expect(result[1]).toEqual({ depthM: 3.5, capped: false });
+  });
+
+  it('reports a deep-capped segment minimum as {depthM: 25.4, capped: true}, matching segmentMinDepthInfoM directly', () => {
+    // legMinDepthsM is a thin wrapper over NavMask.segmentMinDepthInfoM (never
+    // a duplicated traversal) — this pins that the wrapper does not silently
+    // transform the underlying method's own {depthM, capped} shape.
+    const ROW = 100;
+    const a = pointAt(ROW + 0.5, 50.3);
+    const b = pointAt(ROW + 0.5, 70.7);
+    const mask = makeMask(() => 255);
+    const result = legMinDepthsM([makeLeg(a, b, 10)], mask);
+    expect(result[0]).toEqual({ depthM: 25.4, capped: true });
+  });
+
+  // #651 fix-wave: DELIBERATELY INVERTED from "an out-of-bounds leg endpoint
+  // nulls the WHOLE array, never just skips that leg". Per review, that
+  // whole-array contract was inherited from shallowExposureNm's own AGGREGATE
+  // contract (right for a summed distance, where a partial sum is a wrong
+  // NUMBER) and misapplied to this function, which returns independent
+  // per-leg MARKERS: suppressing a good leg's marker because a SIBLING leg's
+  // walk was inconclusive removes true signal and adds no safety margin, so
+  // per-leg null is strictly whole-array null PLUS more true markers — never
+  // less safe. legMinDepthsM now nulls ONLY the failing leg's own entry.
+  it("an out-of-bounds leg endpoint nulls ONLY that leg's own entry, never its siblings'", () => {
+    const inside = pointAt(120.5, 10.3);
+    const outside: LatLon = { lat: TEST_MASK_META.north + 1, lon: TEST_MASK_META.west + 0.01 };
+    const mask = makeMask(() => 200);
+    // Two legs: the FIRST is entirely valid, the SECOND touches the
+    // out-of-bounds point — pins that a later leg's failure does NOT null an
+    // earlier leg's otherwise-good entry.
+    const result = legMinDepthsM([makeLeg(inside, inside, 1), makeLeg(inside, outside, 5)], mask);
+    expect(result[0]).toEqual({ depthM: 20, capped: false });
+    expect(result[1]).toBeNull();
+  });
+
+  // #651 fix-wave, Minor 3: a SPY control proving the withinMask bound check
+  // actually runs BEFORE segmentMinDepthInfoM is ever called for an
+  // out-of-bounds leg — the pre-existing rows above only observe the RESULT
+  // (null), which segmentMinDepthInfoM's own walk-incomplete null could also
+  // produce on its own, so neither pinned the bound check itself. Control:
+  // deleting the pre-existing withinMask check inside shallowExposureNm
+  // (this file's "an out-of-bounds leg endpoint nulls the WHOLE route" row,
+  // above) reds 2 rows on its own — proving THAT check is independently
+  // load-bearing, unlike this one before this spy existed.
+  it('bound-checks BOTH endpoints BEFORE calling segmentMinDepthInfoM at all, for an out-of-bounds leg', () => {
+    const inside = pointAt(120.5, 10.3);
+    const outside: LatLon = { lat: TEST_MASK_META.north + 1, lon: TEST_MASK_META.west + 0.01 };
+    const mask = makeMask(() => 200);
+    const spy = vi.spyOn(mask, 'segmentMinDepthInfoM');
+    const result = legMinDepthsM([makeLeg(inside, outside, 5)], mask);
+    expect(result[0]).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('isMarginalDepthM: true strictly below marginalDepthThresholdM(gateM), matching the #612 criterion exactly', () => {
+    // marginalDepthThresholdM(3.0) === 3.9 (pinned above in this file).
+    expect(isMarginalDepthM({ depthM: 3.8, capped: false }, 3.0)).toBe(true);
+    expect(isMarginalDepthM({ depthM: 3.9, capped: false }, 3.0)).toBe(false); // boundary excluded
+    expect(isMarginalDepthM({ depthM: 4.0, capped: false }, 3.0)).toBe(false);
+  });
+
+  it('a capped (byte 255, 25.4 m) reading is never marginal, at every reachable gate', () => {
+    for (let gateDm = 20; gateDm <= 100; gateDm++) {
+      expect(isMarginalDepthM({ depthM: 25.4, capped: true }, gateDm / 10)).toBe(false);
+    }
+  });
+
+  // #651 fix-wave, Minor 2: the sweep above cannot discriminate the
+  // `!info.capped` term — marginalDepthThresholdM maxes at 10.9 m (gate 10.0,
+  // the widest selectable), always < 25.4 m, so the DEPTH term alone already
+  // returns false for every row in that sweep; deleting `!info.capped &&`
+  // there leaves it 148/148 GREEN (CLAUDE.md's fourth vacuity class — a row
+  // served by a DIFFERENT term of the same predicate). This row uses a
+  // type-legal but non-physical combination (segmentMinDepthInfoM would
+  // never itself pair `capped: true` with a depth other than 25.4 — see the
+  // "reports a deep-capped segment minimum" row above) specifically to
+  // exercise the capped term IN ISOLATION from the depth term: at depthM 3.5
+  // the depth comparison alone would say `true` (marginal), so only the
+  // capped exclusion can make this `false`.
+  it('the capped exclusion is independently load-bearing, isolated from the depth comparison', () => {
+    expect(isMarginalDepthM({ depthM: 3.5, capped: true }, 3.0)).toBe(false);
+  });
+
+  // #651 fix-wave, Minor 6: renamed from "...unreachable given
+  // legMinDepthsM's own null-for-the-WHOLE-ARRAY contract" — that contract no
+  // longer exists (see the inverted row above): legMinDepthsM now returns a
+  // per-leg null for exactly this case, so isMarginalDepthM(null, ...) is
+  // GENUINELY REACHABLE for any leg whose own walk was inconclusive, not a
+  // defensive dead branch. `false` is still the right answer: that leg
+  // renders NO marker, the same neutral "no data" absence every other
+  // unflagged leg already renders as — never a positive "this leg IS clear"
+  // claim, since this app has no such badge for that claim to contradict.
+  it('a null entry (an unresolved leg) reads as "no marker", never a false all-clear claim', () => {
+    expect(isMarginalDepthM(null, 3.0)).toBe(false);
+  });
+});
+
+// Minimal Plan builder — requestedGateM reads only request.settings, so
+// everything else here is structurally required but inert. Kept LOCAL to
+// this file (not shared with components/RouteSummary.exposure.test.tsx's own
+// much larger makePlan) since the two files test different layers and this
+// one needs none of the routing/mask machinery the other's fixture carries.
+function makeGatePlan(settings: Settings | undefined): Plan {
+  const origin: LatLon = { lat: 54.8, lon: 9.9 };
+  return {
+    id: 'gate-plan',
+    name: 'gate test plan',
+    createdAtMs: 0,
+    schemaVersion: PLAN_SCHEMA_VERSION,
+    request: {
+      origin,
+      destination: origin,
+      viaPoints: [],
+      originHarborId: null,
+      destinationHarborId: null,
+      departureMs: 0,
+      settings: settings as Settings,
+      sailIds: ['genoa'],
+      boat: defaultBoatSnapshot(),
+    },
+    windGrid: {
+      lats: [54.3, 55.3],
+      lons: [9.4, 11.0],
+      timesMs: [0],
+      speedKn: new Float32Array(4),
+      dirFromDeg: new Float32Array(4),
+      gustKn: new Float32Array(4),
+      fetchedAtMs: 0,
+      model: 'test',
+    },
+    result: {
+      status: 'ok',
+      sails: [],
+      recommended: 'genoa',
+      comparisonComplete: true,
+      snappedOrigin: origin,
+      snappedDestination: origin,
+    },
+  };
+}
+
+describe('requestedGateM (#651)', () => {
+  it('reads plan.request.settings.safetyDepthM when present', () => {
+    const plan = makeGatePlan({ ...DEFAULT_SETTINGS, safetyDepthM: 2.9 });
+    expect(requestedGateM(plan)).toBe(2.9);
+  });
+
+  it('accepts a legitimate 0 — Number.isFinite(0) is true, unlike a truthy check', () => {
+    const plan = makeGatePlan({ ...DEFAULT_SETTINGS, safetyDepthM: 0 });
+    expect(requestedGateM(plan)).toBe(0);
+  });
+
+  it('falls back to DEFAULT_SETTINGS.safetyDepthM on NaN/Infinity, which typeof === "number" would wrongly accept', () => {
+    expect(requestedGateM(makeGatePlan({ ...DEFAULT_SETTINGS, safetyDepthM: NaN }))).toBe(
+      DEFAULT_SETTINGS.safetyDepthM,
+    );
+    expect(requestedGateM(makeGatePlan({ ...DEFAULT_SETTINGS, safetyDepthM: Infinity }))).toBe(
+      DEFAULT_SETTINGS.safetyDepthM,
+    );
+  });
+
+  it('falls back on a stored plan with no request.settings at all (#624/#551)', () => {
+    // `settings` is REQUIRED on PlanRequest, so this stored-record shape has
+    // to be built by dropping the key — the same construction
+    // RouteSummary.exposure.test.tsx's own #624/#551 regression row uses.
+    const base = makeGatePlan(DEFAULT_SETTINGS);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { settings: _dropped, ...requestWithoutSettings } = base.request;
+    const plan = { ...base, request: requestWithoutSettings } as unknown as Plan;
+    expect(requestedGateM(plan)).toBe(DEFAULT_SETTINGS.safetyDepthM);
   });
 });

@@ -24,7 +24,8 @@
 //    disagree on the very same plan; that is not a bug in either.
 import { haversineNm } from './geo';
 import { MASK_TOLERANCE_M } from './mask';
-import type { LatLon, Leg, MaskMeta } from '../types';
+import { DEFAULT_SETTINGS } from '../types';
+import type { LatLon, Leg, MaskMeta, Plan } from '../types';
 import type { NavMask } from './mask';
 
 // Matches depthGate.ts's APPROACH_RADIUS_M unit (metres) and mask.ts's own
@@ -411,4 +412,148 @@ export function marginalExposureNm(
   safetyDepthM: number,
 ): number | null {
   return shallowExposureNm(legs, mask, marginalDepthThresholdM(safetyDepthM));
+}
+
+/**
+ * #651: per-leg RENDER-TIME minimum charted depth, one entry per `legs`, in
+ * order — the presentation-only counterpart of `planRoute.ts`'s
+ * `flagShallowLegs`, which only ever runs inside the #53 relaxation branch
+ * (CLAUDE.md's "disclosure stack" domain rule), so `leg.shallow` is
+ * `undefined` on every cleanly-solved route. This is what lets the legs-table
+ * cautious chip and the map's `sc-route-shallow` casing surface a signal for
+ * an ORDINARY route too — never by widening `flagShallowLegs`' own call
+ * sites, which would move a field onto `Leg`/`PlanResult` and cost a #282
+ * acceptance sweep. `PlanResult` gains no field here; this is computed fresh
+ * from the plan's own legs against the CURRENTLY LOADED mask, exactly the
+ * #516/#612 shape (see this file's own header).
+ *
+ * Calls `NavMask.segmentMinDepthInfoM` — mask.ts's own PUBLIC min-depth walk,
+ * the same one `routeProfile.ts`'s `exhaustiveMinDepth` calls for the depth
+ * profile's headline figure — rather than a new traversal: per CLAUDE.md's
+ * own rule, a duplicated TRAVERSAL is a safety-figure risk with no signal at
+ * all (must be proven equivalent by differential testing), while a
+ * duplicated CALL to an already-public method carries none of that risk.
+ *
+ * PER-LEG null, one entry per leg, NEVER a whole-array null — this is a
+ * DELIBERATE DEPARTURE from shallowExposureNm's own null-for-the-WHOLE-ARRAY
+ * contract (the #251/#255 rule), not an oversight. That contract is right
+ * for an AGGREGATE: a partial sum is a wrong NUMBER that reads as
+ * authoritative. This function returns MARKERS, one independent fact per
+ * leg, with no such coupling — suppressing legs 1 and 2 because leg 3's walk
+ * was inconclusive removes true signal and adds none, so per-leg null is
+ * strictly whole-array null PLUS more true markers: there is no case where
+ * whole-array null is the safer shape. The "a partial disclosure could be
+ * misread as complete" objection does not rescue whole-array null either —
+ * with no third UI state, a null array renders as "the whole route is
+ * clear", the very same misread, maximised. So each leg whose endpoints fall
+ * outside `mask.meta`'s coverage rectangle, or whose own walk trips its
+ * iteration guard, contributes `null` at ITS OWN index only; every other
+ * leg's entry is unaffected. `isMarginalDepthM` below treats a `null` entry
+ * as "no marker" (see its own comment) — the same neutral absence this app
+ * renders for every other "no data yet" state, never a positive "verified
+ * clear" claim (this app has no such badge to conflict with).
+ *
+ * Both null paths are structurally UNREACHABLE for a plan rendered against
+ * the SAME mask it was routed with: planRoute.ts snaps and validates every
+ * waypoint against the mask before the solver runs, so no solver-emitted
+ * leg endpoint falls outside that mask's meta. A stored plan re-opened
+ * after a mask REBUILD is the reachable exception — the same premise this
+ * file's caveat 1 and #651's own belowGateMask() test rest on — which is
+ * precisely why the per-leg shape is worth having rather than merely
+ * tidier. `walkLegCells`'s own doc comment argues its iteration guard is
+ * unreachable given two in-bounds endpoints and the mask's convex coverage
+ * rectangle.
+ */
+export function legMinDepthsM(
+  legs: readonly Leg[],
+  mask: NavMask,
+): ReadonlyArray<{ depthM: number; capped: boolean } | null> {
+  return legs.map((leg) => {
+    if (!withinMask(mask.meta, leg.start) || !withinMask(mask.meta, leg.end)) return null;
+    return mask.segmentMinDepthInfoM(leg.start, leg.end);
+  });
+}
+
+/**
+ * #651: whether one `legMinDepthsM` entry counts as MARGINAL at `gateM` —
+ * #612's own criterion (`marginalDepthThresholdM`), reused rather than
+ * re-derived, so the legs-table chip, the map casing and #612's route-scoped
+ * `MarginalDepthNotice` sentence share ONE THRESHOLD and can never disagree
+ * about where it sits. They do NOT share one TRAVERSAL: this walks via
+ * `NavMask.segmentMinDepthInfoM` (called from `legMinDepthsM` above), while
+ * `marginalExposureNm` walks via this file's own `walkLegCells` — two
+ * independently-written traversals differentially verified against each
+ * other under #523, not proven identical by construction, so "the two can
+ * never disagree" would overclaim; "share one threshold" is what is actually
+ * true.
+ *
+ * `info === null` — a `legMinDepthsM` entry that could not be resolved (its
+ * leg's endpoints fell outside `mask.meta`, or its own walk was
+ * inconclusive) — returns `false` here: that leg renders NO marker, exactly
+ * the neutral "no data" absence every other unflagged leg already renders
+ * as, never a positive claim that the leg IS clear (this app has no
+ * "verified clear" badge for that claim to contradict). Callers pass
+ * `legMinDepthsM`'s own per-leg entries straight through; there is no
+ * separate whole-array gate to apply first any more (see that function's
+ * own comment for why the PER-LEG null shape replaced one).
+ *
+ * Deep-capped cells (byte 255, "≥25.4 m, actual depth unknown") never
+ * qualify, matching `isShallowAt` above: `marginalDepthThresholdM` never
+ * reaches 25.4 m within this app's reachable safety-depth range (it maxes at
+ * 10.9 m for the widest selectable gate), so the exclusion is here for the
+ * same documented reason `isShallowAt` carries it, not because it is
+ * reachable through a real charted depth today — a synthetic
+ * `{depthM: 3.5, capped: true}` reading (never produced by
+ * `segmentMinDepthInfoM` for a real byte-255 cell, whose `depthM` is always
+ * 25.4) is what actually discriminates this term in a test.
+ */
+export function isMarginalDepthM(
+  info: { depthM: number; capped: boolean } | null,
+  gateM: number,
+): boolean {
+  return info !== null && !info.capped && info.depthM < marginalDepthThresholdM(gateM);
+}
+
+/**
+ * #651 fix-wave, Minor 4: the sole derivation of a plan's requested gate for
+ * the DEPTH-DISCLOSURE surfaces (this file's marginal walk, RouteSummary's
+ * legs table and #612 notice, RouteLayer's map casing) — App.tsx:~1309
+ * keeps its own byte-identical copy for DepthProfile's axis, out of this
+ * PR's scope and tracked nowhere; collapsing that one too is a separate
+ * change. `MarginalDepthNotice` (`components/RouteSummary.tsx`, #612) called
+ * this inline rather than through this function until this fix-wave, which
+ * left TWO live copies of one derivation (the twin this repo's own
+ * twin-search rule exists to collapse) despite this function's original doc
+ * claiming "cannot silently drift". `MarginalDepthNotice` now calls this
+ * function directly; read its own call site for why the guard matters for
+ * THAT component specifically (a safety notice must degrade gracefully on a
+ * pre-#624 stored plan, not blank the whole app).
+ *
+ * The REQUESTED safety-depth gate a plan was computed at, read from the
+ * plan's own frozen `request.settings` snapshot — never the live
+ * OptionsPanel value, so a re-opened plan keeps describing the gate it was
+ * actually solved against.
+ *
+ * GUARDED per #624/#551: `migratePlan.ts` never validates `request.settings`,
+ * so a plan stored before that field existed migrates NON-NULL and a bare
+ * `settings.safetyDepthM` read throws `TypeError`. With no error boundary
+ * anywhere in `app/src` that blanks the whole app, a caller relying on this
+ * throwing would take down more than itself — MEASURED by PR #630's review:
+ * `App.test.tsx` was 68/68 on plain `develop` and 67/68 once a sibling
+ * branch merged into it, a cross-PR composition defect invisible against
+ * either side alone.
+ *
+ * `Number.isFinite`, not `typeof === 'number'` and not a
+ * `{ ...DEFAULT_SETTINGS, ...settings }` object-spread default: an object
+ * spread copies an own key whose value is `undefined` (so a stored-but-
+ * `undefined` `safetyDepthM` would still read as present), and `typeof NaN`
+ * / `typeof Infinity` are both `'number'` — a `NaN` gate would render "your
+ * safety depth of NaN m" in safety copy and reach `marginalDepthThresholdM`
+ * as `Math.ceil(NaN)`, silently suppressing every marginal disclosure. This
+ * form closes all of that while still accepting a legitimate 0.
+ */
+export function requestedGateM(plan: Plan): number {
+  return Number.isFinite(plan.request.settings?.safetyDepthM)
+    ? (plan.request.settings.safetyDepthM as number)
+    : DEFAULT_SETTINGS.safetyDepthM;
 }

@@ -69,7 +69,7 @@ export const de = {
   'settings.seamarkCategory.standard': 'Standard',
   'settings.seamarkCategory.all': 'Alle',
   'settings.seamarkCategory.help':
-    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles außer Unterwasserkabeln und Pipelines — wähle „Alle“, um auch diese anzuzeigen.',
+    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles, einschließlich Unterwasserkabeln und Pipelines. „Alle“ zeigt derzeit dasselbe wie „Standard“.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
@@ -140,6 +140,18 @@ export const de = {
     'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
   'error.internal':
     'Routenplanung unerwartet fehlgeschlagen. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+  // #662: RouteSummary.tsx's fallback for a SAVED plan whose stored no-route
+  // reason cannot be trusted (PR #656 / #614 made `reason` fall back to
+  // `null` for a value outside the NoRouteReason union). This render site is
+  // reached only when viewing an already-saved plan, never while live-
+  // planning — "Erneut versuchen"/"App neu laden" would both be futile here
+  // (a retry re-runs planning, which this screen isn't doing; a reload
+  // changes nothing about what a stored record contains), so unlike
+  // error.internal above this key names the one thing that DOES help:
+  // planning the route again. App.tsx's RETRY_MAY_HELP_KEYS mechanism is not
+  // involved — this key never reaches the live-planning Retry button.
+  'error.savedPlanUnreadable':
+    'Das Ergebnis dieses gespeicherten Plans konnte nicht gelesen werden. Route neu planen, um ein aktuelles Ergebnis zu erhalten.',
   // #433: Ursachen, die zuvor alle auf error.internal zusammenfielen, jetzt
   // unterscheidbar — jeweils mit Hinweistext, der ehrlich sagt, ob „Erneut
   // versuchen" tatsächlich helfen kann (siehe App.tsx's RETRY_MAY_HELP_KEYS).
@@ -208,7 +220,12 @@ export const de = {
   // #259: honest copy for the two cases where badging one rig as
   // "recommended" would be misleading — an ETA tie (too close to call) and
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
-  'route.rigTie': 'Genua und Fock liegen für diese Passage praktisch gleichauf',
+  // #578: parameterised — the two names used to be hardcoded "Genua und
+  // Fock", correct only because every catalogue boat's foresail happens to
+  // use those two ids. lib/resultSummary.ts's renderRigVerdict resolves
+  // both slots from the PLAN's own compared sails (solve order), through
+  // the same sailLabelKey every other rig-facing string uses.
+  'route.rigTie': '{sailA} und {sailB} liegen für diese Passage praktisch gleichauf',
   'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
   // #553 / spec §N.4: schwächere Aussage als rigTie oben — dort ist ein
   // Vergleich gelaufen und endete unentschieden, hier hat gar keiner
@@ -350,6 +367,15 @@ export const de = {
   // Text statt reiner Farbe).
   'route.legs.shallow': 'Untiefe',
   'route.legs.shallowMarker': 'Untiefe {depth} m',
+  // #651: siehe dict.en.ts's Kommentar für Zweck und Herkunft (das
+  // render-seitige Gegenstück zu shallowMarker oben, für eine Etappe, die
+  // der Planer NICHT gelockert hat). {depth} ist hier die kartierte
+  // Maskenlesart, auf oder über dem angeforderten Gate — "Untiefe" wäre
+  // falsch, da die kartierten Daten diese Zelle nicht unter das Gate
+  // stellen; nur die vorsichtigere #493-Lesart derselben Zelle kann das
+  // (isMarginalDepthM, lib/shallowExposure.ts's eigenes #612-Kriterium, pro
+  // Etappe angewandt). "Grenzwertig" benennt diesen Unterschied.
+  'route.legs.marginalMarker': 'Grenzwertig {depth} m',
   // #493/#504: vorsichtige Untergrenze derselben Zelle, NEBEN der obigen
   // Marke gerendert (nie ersetzend) — siehe cautiousDepthLowerBoundM in
   // app/src/lib/mask.ts für die Herleitung. Als GEFAHR formuliert, nicht als
@@ -378,7 +404,11 @@ export const de = {
   'route.legend.maneuver': 'Wende/Halse',
   'route.legend.headingChange': 'Kursänderung',
   'route.legend.via': 'Zwischenpunkt',
-  'route.legend.shallow': 'Flacher als Sicherheitstiefe kartiert',
+  // #651 fix-wave, MAJOR 1: siehe dict.en.ts's Kommentar für die vollständige
+  // Begründung (die alte Formulierung war für die neue MARGINAL-Population
+  // sachlich falsch, da diese per Definition auf oder über dem Gate kartiert
+  // ist).
+  'route.legend.shallow': 'Vorsichtige Tiefenlesart unter Sicherheitstiefe',
   // #324: map-only overlay of the rig NOT currently shown as the primary
   // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
   'route.legend.altRig': 'Anderes Rigg (gestrichelt)',
@@ -388,6 +418,10 @@ export const de = {
   'route.annotations.toggle': 'Zeiten & Geschwindigkeiten',
   'route.altRig.toggle': 'Anderes Rigg anzeigen',
   'route.altRig.unavailable': 'Nur ein Rigg hat eine Route gefunden',
+  // #628: summary label for the Disclosure wrapping the whole map-overlay
+  // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
+  // legend) — collapsible so it stops obstructing the chart on mobile.
+  'route.controls.summary': 'Anzeigeoptionen',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Tiefenprofil',
@@ -607,7 +641,7 @@ export const de = {
   // write, foreign tool) lands here too — and the row's only control is an
   // irreversible delete, so the copy must not overstate recoverability.
   'plansList.unreadable.newerVersion':
-    'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese ältere Version kann ihn nicht lesen.',
+    'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese ältere Version kann ihn nicht lesen. Er bleibt gespeichert.',
   'plansList.unreadable.damaged':
     'Dieser Plan kann nicht geöffnet werden – der gespeicherte Datensatz ist unvollständig oder beschädigt. Er bleibt gespeichert.',
   // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,

@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import type { Settings } from '../types';
 import { BOATS, boatById, type BoatDef, type BoatId } from '../data/boats';
-import { useT } from '../i18n';
+import { useLang, useT } from '../i18n';
 import { clampSettingsToBoat } from '../lib/boatSettings';
 import { POLAR_TIER_LABEL_KEY, weakestPolarTier } from '../lib/boatProvenance';
+import { formatDepthM } from '../lib/depthDisclosure';
 import Card from './Card';
 import Chip from './Chip';
 import Disclosure from './Disclosure';
@@ -30,6 +31,7 @@ interface BoatOptionProps {
 
 function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
   const t = useT();
+  const [lang] = useLang();
   const tier = weakestPolarTier(boat);
   const inputId = `boat-option-${boat.id}`;
   const keelId = `${inputId}-keel`;
@@ -77,7 +79,7 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
         <span className="boat-option-name">{boat.name}</span>
         <span className="boat-option-facts">
           <span className="boat-option-draft tabular-nums">
-            {t('boat.draft', { depth: boat.draftM.toFixed(1) })}
+            {t('boat.draft', { depth: formatDepthM(boat.draftM, lang) })}
           </span>
           {/* The tier word alone ("Estimated") does not say what is estimated,
               so the accessible name spells the subject out while the visible
@@ -126,8 +128,20 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           hull-verified", which is trivially false for the reference boat —
           but the note is a citation that exists for every boat regardless).
           Catalogue data per spec F.3, same as `sail.polarProvenance.note`
-          below — not an i18n key, so it renders as authored, verbatim. */}
-      <p className="boat-option-draft-note">{boat.draftProvenance.note}</p>
+          below — not an i18n key, so it renders as authored, verbatim.
+          #607 maintainer ruling (2026-08-25, DELIBERATE): this renders in
+          the citation's ORIGINAL language regardless of the active UI
+          language — paraphrasing a source citation per language is how a
+          citation becomes wrong. Not a missing i18n key; do not re-file
+          this as an anomaly (it already has been — #607 itself).
+          #707: `lang="en"` (every catalogue note constant in data/boats.ts is
+          verified English — WCAG 2.1 SC 3.1.2, Language of Parts) — this
+          marks the LANGUAGE of the verbatim citation for assistive tech, it
+          does not translate or paraphrase it, so it is fully compatible with
+          the #607 ruling above, not a reversal of it. */}
+      <p className="boat-option-draft-note" lang="en">
+        {boat.draftProvenance.note}
+      </p>
       <Disclosure className="boat-option-polars" summary={t('boat.polarDetail.summary')}>
         <ul className="boat-option-sails">
           {boat.sails.map((sail) => (
@@ -146,8 +160,16 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
               {/* The catalogue's own source note, verbatim. Not an i18n key:
                   it is provenance data (spec F.3 — the same reason sail
                   labels are catalogue strings), and paraphrasing a source
-                  citation per language is how a citation becomes wrong. */}
-              <span className="boat-option-sail-note">{sail.polarProvenance.note}</span>
+                  citation per language is how a citation becomes wrong.
+                  #607 maintainer ruling (2026-08-25, DELIBERATE): renders in
+                  the citation's original language regardless of UI
+                  language, by design — do not re-file this as an anomaly.
+                  #707: `lang="en"` — same rationale as
+                  `boat-option-draft-note` above (WCAG 2.1 SC 3.1.2); marks
+                  the citation's language, does not translate it. */}
+              <span className="boat-option-sail-note" lang="en">
+                {sail.polarProvenance.note}
+              </span>
             </li>
           ))}
         </ul>
@@ -178,6 +200,7 @@ export default function BoatPicker({
   onSettingsChange,
 }: BoatPickerProps) {
   const t = useT();
+  const [lang] = useLang();
   const [notice, setNotice] = useState<ClampNotice | null>(null);
 
   function handleSelect(nextId: BoatId): void {
@@ -240,7 +263,7 @@ export default function BoatPicker({
       <p className="boat-picker-notice" role="status">
         {notice
           ? t('boat.clamp.notice', {
-              depth: notice.depthM.toFixed(1),
+              depth: formatDepthM(notice.depthM, lang),
               boat: notice.boatName,
             })
           : null}

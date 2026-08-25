@@ -1351,9 +1351,29 @@ test('#208 review "Major 3": .route-layer-controls (interactive) stays clear of 
     // is where the review measured the cluster's lower rows landing squarely
     // in the tab-strip's band pre-fix.
     await page.setViewportSize({ width: 740, height: 360 });
+    // #628 (review Major 3): `.route-layer-controls` now contains TWO
+    // <details> — the new outer Disclosure wrapping the whole cluster, and
+    // RouteLegend's pre-existing `details.route-legend` nested one level in.
+    // The outer one FOLLOWS `isWide` across a resize (RouteLayer.tsx's own
+    // comment): every viewport in the loop above is narrow, so by this point
+    // it has auto-COLLAPSED, hiding the nested legend entirely (a closed
+    // native <details> does not render its non-summary children at all,
+    // MEASURED: `getByText('Legende')` timed out as "hidden" without this).
+    // Expand it first — same guard shape as
+    // route-alt-rig.spec.ts's planAndGetAltToggle, and the same
+    // evaluate()-based `.open` IDL-property read: `getAttribute('open')`
+    // returns the EMPTY STRING when present, which is FALSY in JS, so
+    // `!getAttribute('open')` cannot distinguish open from closed.
+    const outerDisclosure = controls.locator('details.route-layer-controls-disclosure');
+    const isOuterOpen = await outerDisclosure.evaluate((el) => (el as HTMLDetailsElement).open);
+    if (!isOuterOpen) {
+      await outerDisclosure.locator('> summary').click();
+    }
     const legend = controls.getByText('Legende');
     await expect(legend).toBeVisible();
-    const legendDetails = controls.locator('details');
+    // A bare `controls.locator('details')` is a strict-mode ambiguity now
+    // that there are two — narrow to the legend's own class.
+    const legendDetails = controls.locator('details.route-legend');
     await expect(legendDetails).not.toHaveAttribute('open');
     await legend.click();
     await expect(legendDetails).toHaveAttribute('open', '');

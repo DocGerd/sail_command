@@ -4,6 +4,7 @@ import {
   boatSnapshot,
   PLAN_SCHEMA_VERSION,
   type BoatSnapshot,
+  type LatLon,
   type Plan,
   type PlanRequest,
   type PlanResultOk,
@@ -46,6 +47,64 @@ const BUDGET_REASON = 'search-budget-exceeded';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
+}
+
+/**
+ * #654: `PlanRequest.viaPoints` was introduced by `eb2d7ee` ("feat:
+ * via-waypoint segmented routing", 2026-07-15) — the SAME commit that
+ * introduced the via-points feature itself (adds the whole
+ * `routing/viaPoints.test.ts` suite and the `planRoute.ts` via-solving
+ * logic in one diff; `git show eb2d7ee^:app/src/types.ts` shows a
+ * `PlanRequest` with no via field of any spelling —
+ *   origin/destination/originHarborId/destinationHarborId/departureMs/
+ *   settings only, verified 2026-08-25 — so it is not a rename of an
+ * earlier key either). A supplementary pickaxe sweep for a rename spread
+ * across EARLIER commits (`git log --oneline --pickaxe-regex
+ * -S'waypoints|wayPoints|viaPoint\b' -- app/src/types.ts` — the correct
+ * pathspec from repo root, ONE `-S` per invocation since repeated `-S` does
+ * NOT and the last one silently wins, controlled against a known-present
+ * `-S'viaPoints'` hit before trusting the empty result) finds nothing
+ * either, 2026-08-25 — corroborating, not load-bearing: the pre-image above
+ * is definitive for THIS commit, the sweep can only rule out a candidate
+ * name actually searched for. No earlier shape of
+ * `PlanRequest` could have used via points without the field existing —
+ * BUT that does not make an absent key reachable for a genuine stored
+ * record: `services/db.ts`, the only IndexedDB writer this app has ever
+ * shipped, was created by `a1d2e6f` ~3 hours AFTER eb2d7ee (both predate
+ * `v0.1.0`, git-verified 2026-08-25) — persistence itself did not exist
+ * until after the field did, so no plan this app ever wrote could omit it.
+ * The `undefined` branch below therefore guards a HAND-EDITED or otherwise
+ * foreign/corrupted IndexedDB record, not an old app version — the same
+ * class of defense this file already applies to every other field
+ * (`migrateBoat`, `isLegShaped`, …), and cheap insurance against a future
+ * regression of the very guarantee this fix establishes (see
+ * `lib/planViaPoints.ts`'s own docstring for how that guarantee is proven,
+ * not merely assumed, at every downstream read site). `[]` is still the
+ * FAITHFUL normalisation for that shape, not a fabricated default — an
+ * absent list, however it arose, contains no via points to lose
+ * (docs/adr/0002-pre-1.0-db-migration-low-priority.md, "the boundary that
+ * makes this safe": normalising an absent list is in scope for that ADR,
+ * distinct from fabricating a value for a field that IS present but
+ * unreadable).
+ *
+ * A PRESENT-but-malformed `viaPoints` (wrong container type, or an element
+ * missing a finite lat/lon) is a different case — that is not "no via
+ * points", it is corrupted or foreign data, and this refuses the whole
+ * record (`null`) rather than guess at a value, per ADR-0002's fail-closed
+ * rule ("failing closed must never mean falling back to a fabricated
+ * default"). THIS is the reachable case for a real user: any value stored
+ * via `structuredClone`/IndexedDB can in principle be corrupted by browser
+ * storage damage or hand-editing, same as any other field in this file.
+ */
+function normaliseViaPoints(x: unknown): LatLon[] | null {
+  if (x === undefined) return [];
+  if (!Array.isArray(x)) return null;
+  const out: LatLon[] = [];
+  for (const p of x) {
+    if (!isRecord(p) || !Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return null;
+    out.push({ lat: p.lat as number, lon: p.lon as number });
+  }
+  return out;
 }
 
 /**
@@ -196,6 +255,73 @@ function migrateSails(result: Record<string, unknown>): SailResult[] | null {
   return out.length > 0 ? out : null;
 }
 
+/**
+ * #661: `rigVerdictKey`'s exhaustiveness switch (lib/resultSummary.ts) is a
+ * BUILD-TIME-ONLY guarantee — `erasableSyntaxOnly` strips its `never`-typed
+ * arm at runtime, so an unrecognised stored `kind` sails straight through
+ * that switch's `default` case and comes back out as the raw invalid string,
+ * typed as a MsgKey it never actually is. `useT()` (a bare
+ * `dicts[lang][key]` lookup, no existence check, no fallback) then renders
+ * that absent key as nothing at all — the rig chip goes silently empty, no
+ * error, no console output. This validates `kind` at the read boundary
+ * instead, mirroring migrateBoat's structural validation a few lines above:
+ * neither trusts an untyped stored discriminant to already be a member of
+ * its union.
+ *
+ * An unrecognised value is mapped onto the EXISTING 'not-compared' member
+ * rather than simply omitted. Omitting looks like the safer, more honest
+ * choice and is not: `rigRecommendationOf` (lib/resultSummary.ts) falls back
+ * UNCONDITIONALLY to `{ kind: 'decided', rig: result.recommended }` whenever
+ * `PlanResultOk.rigRecommendation` is `undefined`. That fallback is correct
+ * for a genuinely pre-#259 record that never had the field at all (see
+ * migrateResult's own #540 comment) — but reproducing an absent field for a
+ * record that DID once carry a real, now-corrupted comparison outcome would
+ * route it through that exact fallback and silently star `result.recommended`
+ * as "faster" with no comparison behind it, precisely the fabricated verdict
+ * ADR-0002 forbids. 'not-compared' is the one RigRecommendation member that
+ * makes no comparative claim at all ("no faster rig is claimed",
+ * route.rigNotCompared / route.comparisonIncomplete) — degrading an
+ * unreadable verdict onto it can therefore never assert a wrong winner, a
+ * false tie, or a false "rig doesn't matter" claim; it only declines to pick
+ * one. No new i18n string or RigRecommendation member is needed for this:
+ * the existing 'not-compared' vocabulary already says exactly the honest
+ * thing ("this build has no faster-rig claim to offer for this record").
+ *
+ * EXPORTED FOR DIRECT TESTING ONLY (mirrors services/db.ts's own "test-only
+ * helper" convention) — production code never imports this outside
+ * migrateResult below. Reviewer-caught vacuity (#661 review): the call
+ * site's own `?? { kind: 'not-compared' }` fallback makes the `'not-compared'`
+ * switch arm indistinguishable from `default` when observed only through
+ * migratePlan()'s rendered output — mutating that one arm to `return null`
+ * left every existing test green, because both paths land on the identical
+ * `{ kind: 'not-compared' }` value. Exporting this function lets the test
+ * suite assert on ITS return value directly, bypassing that fallback, so the
+ * arm is provably covered rather than merely redundant with the safety net
+ * around it.
+ */
+export function validRigRecommendation(
+  stored: unknown,
+): NonNullable<PlanResultOk['rigRecommendation']> | null {
+  if (!isRecord(stored)) return null;
+  switch (stored.kind) {
+    case 'decided':
+      // SailId is minted from an unvalidated stored string throughout this
+      // file (see e.g. migrateSails/sailResultOf above) — an unrecognised
+      // rig id still renders via sailLabelKey's own 'route.rig.unknown'
+      // fallback, a designed-for state documented at that helper's
+      // definition in lib/resultSummary.ts.
+      return typeof stored.rig === 'string' ? { kind: 'decided', rig: stored.rig as SailId } : null;
+    case 'tie':
+      return { kind: 'tie' };
+    case 'moot':
+      return { kind: 'moot' };
+    case 'not-compared':
+      return { kind: 'not-compared' };
+    default:
+      return null;
+  }
+}
+
 function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
   if (result.status !== 'ok') return null;
   if (!isRecord(result.snappedOrigin) || !isRecord(result.snappedDestination)) return null;
@@ -268,9 +394,30 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
         { rigRecommendation: { kind: 'not-compared' } as const }
       : result.rigRecommendation !== undefined
         ? {
-            rigRecommendation: result.rigRecommendation as NonNullable<
-              PlanResultOk['rigRecommendation']
-            >,
+            // #661: validated, never a blind cast — see
+            // validRigRecommendation's own comment for why an unrecognised
+            // `kind` degrades to 'not-compared' instead of being cast
+            // through unchecked or omitted.
+            //
+            // #661 review MINOR B: `route.rigNotCompared` ("the sails were
+            // not compared…") is REUSED here deliberately, and it is
+            // slightly broad for this specific corrupted-record case — a
+            // real comparison very likely DID run once; what actually
+            // happened is that THIS BUILD cannot read the stored verdict.
+            // Not a safety issue (comparisonComplete is validated
+            // separately above and unaffected by a corrupt `kind`, so a
+            // corrupted-but-complete record still renders rigNotCompared
+            // rather than the timeout-implying comparisonIncomplete — no
+            // false comparative claim is ever made either way) and not
+            // worth a new RigRecommendation.kind member (that would touch
+            // types.ts, inside the #282 sweep closure, out of scope here)
+            // for a hand-edited/corrupted-record edge case. A sharper
+            // "this build cannot interpret the stored comparison" string
+            // is the honest follow-up if this nuance is ever judged worth
+            // fixing on its own.
+            rigRecommendation: validRigRecommendation(result.rigRecommendation) ?? {
+              kind: 'not-compared',
+            },
           }
         : {}),
     snappedOrigin: result.snappedOrigin as unknown as PlanResultOk['snappedOrigin'],
@@ -367,6 +514,12 @@ function migrateRequest(
   const boat = migrateBoat(request, fallbackBoat);
   if (boat === null) return null;
   if (typeof request.departureMs !== 'number') return null;
+  // #654: defends a hand-edited/corrupted stored record (no legitimate one
+  // can lack this key — see normaliseViaPoints' own comment for the dated
+  // proof) by normalising an absent/malformed `viaPoints` rather than
+  // letting it crash a downstream reader.
+  const viaPoints = normaliseViaPoints(request.viaPoints);
+  if (viaPoints === null) return null;
   // A pre-#54 request has no sailIds; the sails the plan actually compared,
   // in the order the result lists them, is the honest reconstruction of it.
   //
@@ -434,7 +587,7 @@ function migrateRequest(
   // separate) does not apply to `.includes`, which is false, not
   // vacuously true, on an empty array.
   if (!sailIds.includes(recommended)) return null;
-  return { ...request, sailIds, boat } as unknown as PlanRequest;
+  return { ...request, sailIds, boat, viaPoints } as unknown as PlanRequest;
 }
 
 export function migratePlan(raw: unknown): Plan | null {
