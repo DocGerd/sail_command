@@ -280,17 +280,28 @@ describe('RouteSummary', () => {
   });
 
   // #578 review Minor 5: the FALLBACK path specifically — a `tie` verdict
-  // whose sailIds has only ONE usable entry. Deliberately malformed
-  // (assemble()'s own guard makes 'tie' reachable in production only when
-  // exactly two sails were compared; the #578 row above tests the real
-  // two-sail path and cannot reach `tiedSailIds`' fallback at all), the same
-  // shape as this file's own "#54: names a stored sail the catalogue no
-  // longer knows" row above. Restoring the fallback to
-  // `sailIds[1] ?? sailIds[0]` renders "Genoa and Genoa are effectively
-  // tied" — a self-tie that reads as a genuine result rather than a
-  // degraded one — so this asserts BOTH the honest fallback label's
-  // PRESENCE and the self-tie's ABSENCE: a presence-only assertion would
-  // still pass if both slots happened to render "Genoa".
+  // whose sailIds has only ONE usable entry. `assemble()`'s own guard (see
+  // tiedSailIds' doc comment, lib/resultSummary.ts) means a FRESHLY SOLVED
+  // plan cannot reach this branch — the #578 row above tests that real
+  // two-sail path. #578 review Minor C found the guard says nothing about
+  // a plan loaded from STORAGE: migratePlan.ts passes a stored
+  // rigRecommendation through with a bare cast, uncorrelated with the
+  // stored sails array's length. So this fixture, built the same way as
+  // this file's own "#54: names a stored sail the catalogue no longer
+  // knows" row above, pins a branch reachable from real stored data, not
+  // a purely defensive one.
+  //
+  // Restoring the fallback to `sailIds[1] ?? sailIds[0]` renders "Genoa and
+  // Genoa are effectively tied" — a self-tie that reads as a genuine
+  // result rather than a degraded one. MEASURED (review round 2, Minor D):
+  // under that mutation the row reds at the PRESENCE assertion below —
+  // `getByText` cannot find the exact sentence naming "Unknown sail",
+  // because the render is "Genoa and Genoa ..." instead — so the ABSENCE
+  // assertion never even runs; deleting either assertion alone still reds
+  // the row. Both stay as belt-and-braces on a copy defect that reads as a
+  // real result: the presence check pins the whole honest sentence, and
+  // the absence check names the exact hazard (a duplicated sail name)
+  // explicitly, independent of what the correct sentence happens to say.
   it('#578 review Minor 5: a tie verdict with only ONE usable sail id renders the honest fallback, never a self-tie', () => {
     const plan = makePlan({ rigRecommendation: { kind: 'tie' } });
     plan.result = {
@@ -303,8 +314,9 @@ describe('RouteSummary', () => {
         `Genoa and ${en['route.rig.unknown']} are effectively tied for this passage`,
       ),
     ).toBeInTheDocument();
-    // THE discriminating assertion — a self-tie must never render, whatever
-    // exact wording carries it.
+    // Names the exact hazard (a duplicated sail name) explicitly — see the
+    // block comment above for why this is kept alongside the presence
+    // check rather than instead of it.
     expect(screen.queryByText(/Genoa and Genoa/)).not.toBeInTheDocument();
   });
 

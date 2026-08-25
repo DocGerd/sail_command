@@ -177,12 +177,20 @@ export function resultVerdictKey(
  * name. `{kind:'tie'}`'s sole producer is `compareRigs` (`planRoute.ts`),
  * and `assemble()`'s own guard (`planRoute.ts`, the
  * `!comparisonSuppressed && sails.length === 2 && a.rigResult && b.rigResult`
- * check immediately before it calls `compareRigs`) is what establishes a
- * 'tie' verdict is reachable only when EXACTLY two sails were compared — so
- * `sailIds` (the plan's own `plan.result.sails` in solve order — the
- * #340/#54 guarantee) always carries two entries whenever this is actually
- * called. The fallback below is defensive only, for a value that should
- * never be reached in practice.
+ * check immediately before it calls `compareRigs`) establishes that a
+ * FRESHLY SOLVED plan cannot produce a 'tie' verdict with fewer than two
+ * compared sails — so `sailIds` (the plan's own `plan.result.sails` in
+ * solve order — the #340/#54 guarantee) always carries two entries right
+ * after a live solve.
+ *
+ * #578 review Minor C: that guard says nothing about a plan loaded from
+ * STORAGE. `migratePlan.ts` passes a stored `rigRecommendation` through with
+ * a bare cast and never correlates it with the stored `sails` array's
+ * length — MEASURED (review round 2): a throwaway probe fed it a
+ * one-sail record with `rigRecommendation: {kind:'tie'}` and it came
+ * through unchanged. So the fallback below is reachable from real STORED
+ * data, not merely defensive — `RouteSummary.test.tsx`'s "#578 review
+ * Minor 5" row pins exactly this case.
  */
 function tiedSailIds(sailIds: readonly SailId[]): [string, string] {
   // #578 review Minor 5: NOT `sailIds[1] ?? sailIds[0]` — that would render
