@@ -55,22 +55,22 @@ making design-level decisions; do not silently deviate.
 - `app/src/test/` is the DENSEST cluster of source-SCANNING guards: most of
   them read a FOREIGN artifact (`readFileSync`, or `import.meta.glob(…,
   {query:'?raw'})` for source scans) and assert against it — **but `?raw` glob
-  is VACUOUS for `.css`**: vitest's `CSS_LANGS_RE` matches a CSS-suffixed path
-  WITH OR WITHOUT a query string and mocks the module, so under the default
-  `css: { include: [] }` every matched stylesheet resolves to the EMPTY STRING
-  and the guard passes having read zero bytes. Measured 2026-08-25 against the
+  is VACUOUS for `.css`**: vitest's `CSSEnablerPlugin`
+  (`vitest:css-empty-post`) matches a CSS-suffixed path WITH OR WITHOUT a
+  query string and returns `export default ""`, so under the default `css: {
+  include: [] }` every matched stylesheet resolves to the EMPTY STRING and the
+  guard passes having read zero bytes. Measured 2026-08-25 against the
   lockfile-pinned vitest 4.1.11 / vite 8.2.2 with a positive control: `?raw`
   glob of `/src/app.css` → length 0, of `/src/types.ts` → length 18744, same
   query shape and only the extension differing. Every stylesheet-reading guard
   in this repo uses `readFileSync` for THAT reason, not for style; a new one
   must too (and needs the tsconfig node-types split those files already
-  carry)., so editing
+  carry). Because these guards read foreign artifacts, editing
   `app/src/data/boats.ts`, `pipeline/{verify_mask.py,build_polars.mjs,
   estimate_polars.mjs,polars-source.json}`, `app/public/data/polars/*.json`,
   `app/sweep/sweepArms.ts` or `app/src/app.css` can red the REQUIRED `app`
   check from a file you never opened. Read the guard's own header before
-  changing its twin. More of these keepers live BESIDE their subject than
-  inside `app/src/test/` itself —
+  changing its twin. More of the `app.css` keepers live BESIDE their subject than inside `app/src/test/` itself —
   `app/src/lib/{panelWidth,useBannerHeight,depthLegendGate}.test.ts` each pin
   an `app.css` literal against a TS constant, and `app/src/app.css.test.ts`
   scans the stylesheet from the `app/src/` top level — so before touching
@@ -457,15 +457,22 @@ making design-level decisions; do not silently deviate.
   hole in the `@media (prefers-color-scheme: dark)` block and must not be
   "completed". Do not propose a dark/night basemap palette as a design
   improvement — a night mode would be a separate, explicitly-requested
-  feature. Recorded because this repo re-files settled conventions (#607 was
-  re-raised twice before its convention was written down).
+  feature. Ruling recorded on #666's closing comment, 2026-08-25. Written down
+  here because this repo re-files settled conventions — #607's own ruling
+  comment asks that it not be re-filed again.
 - MapLibre chrome ships hardcoded light-mode colour with no dark variant — the
   Popup (`background:#fff`) and the compact attribution control
   (`.maplibregl-ctrl-attrib.maplibregl-compact`: `background-color:#fff;
   color:#000`, read against `maplibre-gl@6.5.0`, fixed in #711). Any new Popup
-  or control needs a `className` plus `--sc-*` app.css overrides — for a
-  Popup, `.maplibregl-popup-content` and BOTH popup-tip borders with `--sc-bg`
-  (see `.seamark-popup`, #7). Grep the installed `src/css/maplibre-gl.css` for
+  needs a `className` plus `--sc-*` app.css overrides —
+  `.maplibregl-popup-content` and BOTH popup-tip borders with `--sc-bg` (see
+  `.seamark-popup`, #7). A CONTROL may have NO className hook at all —
+  `AttributionControl` does not — in which case theme the library's own global
+  class, and scope that override inside `@media (prefers-color-scheme: dark)`
+  rather than unconditionally as the popups do: `--sc-bg`/`--sc-fg` are close
+  to but not identical to `#fff`/`#000`, and light mode must stay
+  byte-identical to the pre-#711 build. Grep the installed
+  `src/css/maplibre-gl.css` for
   the hardcoded pair rather than assuming a control inherits theming; the
   attribution case, and why its override must NOT be narrowed to
   `-compact-show`, live in app.css's own #711 comment and its guard.
@@ -1974,9 +1981,11 @@ making design-level decisions; do not silently deviate.
   **"did the SUBJECT under test change size?"** The third is new (#628 / PR
   #688 Major 1): the #277/#598 width pins run at 320px, where #628 made the
   cluster default-COLLAPSED, so they pass MORE EASILY after the change
-  (clearance 16.00px → 41.98/51.64px, measured) and "they still pass" cannot
+  (clearance 16.00px → 41.98px DE / 51.64px EN, measured) and "they still pass" cannot
   establish that the change cost no width. A guard that got EASIER is not a
-  control.
+  control. `app/e2e/layout.spec.ts` (~:918-922) witnesses the EN pair
+  (`179.64px` left edge, `51.64px` clearance) in its own comment; the DE
+  figure has no twin in the repo, so treat it as the weaker half.
 - **The release ship gate earns its cost — do not optimise it away as
   ceremony.** At the v0.13.0 cut, `app`, `e2e`, `hook-selftests`, CodeQL,
   Scorecard, Deploy and 2136 unit tests were ALL green, and a human looking at
