@@ -238,6 +238,30 @@ describe('DepthProfile', () => {
     );
   });
 
+  // #596 review Minor 4: `renderProfile` hardcodes 'en' (and so does the
+  // one other mount, App.tsx), so nothing in this file previously exercised
+  // DepthProfile in the language #596 is about. Bypasses `renderProfile`
+  // to set 'de' directly, mirroring its body otherwise (same default plan/
+  // rig/safetyDepthM=3). MEASURED: reverting the two DepthProfile.tsx
+  // `formatDepthM` conversions (summary text, safety label) makes this row
+  // red — `Received: "min. 20.0 m"` / `"3.0 m"` — and restoring them makes
+  // it green again.
+  it('#596: renders BOTH user-visible depth figures with a German comma', async () => {
+    localStorage.setItem('sc-lang', 'de');
+    const { container } = render(
+      <I18nProvider>
+        <DepthProfile plan={makePlan()} rig="genoa" safetyDepthM={3} />
+      </I18nProvider>,
+    );
+    await waitForChart(container);
+    const summary = container.querySelector('.depth-profile-summary');
+    expect(summary?.textContent).toContain('min. 20,0 m');
+    expect(summary?.textContent).not.toContain('min. 20.0 m');
+    const safetyLabel = container.querySelector('.dp-safety-label');
+    expect(safetyLabel?.textContent).toContain('3,0 m');
+    expect(safetyLabel?.textContent).not.toContain('3.0 m');
+  });
+
   it('opens by default on wide viewports, stays collapsed on narrow (matchMedia at mount)', async () => {
     setMatchMedia(true);
     const wide = renderProfile();

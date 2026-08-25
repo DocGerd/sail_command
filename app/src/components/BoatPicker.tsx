@@ -133,7 +133,7 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           the citation's ORIGINAL language regardless of the active UI
           language — paraphrasing a source citation per language is how a
           citation becomes wrong. Not a missing i18n key; do not re-file
-          this as an anomaly (it already has been, twice — #607 itself). */}
+          this as an anomaly (it already has been — #607 itself). */}
       <p className="boat-option-draft-note">{boat.draftProvenance.note}</p>
       <Disclosure className="boat-option-polars" summary={t('boat.polarDetail.summary')}>
         <ul className="boat-option-sails">

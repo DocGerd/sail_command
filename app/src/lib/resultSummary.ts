@@ -174,16 +174,25 @@ export function resultVerdictKey(
 
 /**
  * #578: the two sail ids `route.rigTie`'s `{sailA}`/`{sailB}` slots should
- * name. `rigVerdictKey`'s own doc establishes a 'tie' verdict is reachable
- * only when EXACTLY two sails were compared, so `sailIds` (the plan's own
- * `plan.result.sails` in solve order — the #340/#54 guarantee) always
- * carries two entries whenever this is actually called; the
- * `?? sailIds[0] ?? 'unknown'` fallback is defensive only, mirroring
- * `noRouteLabel`'s fail-safe-not-fail-silent shape, and resolves through
- * `sailLabelKey`'s own 'route.rig.unknown' fallback if it is ever reached.
+ * name. `{kind:'tie'}`'s sole producer is `compareRigs` (`planRoute.ts`),
+ * and `assemble()`'s own guard (`planRoute.ts`, the
+ * `!comparisonSuppressed && sails.length === 2 && a.rigResult && b.rigResult`
+ * check immediately before it calls `compareRigs`) is what establishes a
+ * 'tie' verdict is reachable only when EXACTLY two sails were compared — so
+ * `sailIds` (the plan's own `plan.result.sails` in solve order — the
+ * #340/#54 guarantee) always carries two entries whenever this is actually
+ * called. The fallback below is defensive only, for a value that should
+ * never be reached in practice.
  */
 function tiedSailIds(sailIds: readonly SailId[]): [string, string] {
-  return [sailIds[0] ?? 'unknown', sailIds[1] ?? sailIds[0] ?? 'unknown'];
+  // #578 review Minor 5: NOT `sailIds[1] ?? sailIds[0]` — that would render
+  // "Genoa and Genoa are effectively tied", a self-tie that reads as a
+  // genuine (if odd) result rather than a degraded one. Per this repo's
+  // guard-asymmetry rule a fallback must fail OBVIOUSLY wrong, not
+  // plausibly right: `'unknown'` resolves through `sailLabelKey`'s own
+  // `?? 'route.rig.unknown'` fallback, so a caller reaching this branch sees
+  // "Unknown sail" rather than a fabricated second name.
+  return [sailIds[0] ?? 'unknown', sailIds[1] ?? 'unknown'];
 }
 
 /**
