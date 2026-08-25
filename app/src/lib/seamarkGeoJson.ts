@@ -118,6 +118,57 @@ export function pickSeamarkByPriority<T extends { properties?: unknown }>(
 }
 
 /**
+ * Extracts a Point feature's own `[lng, lat]` — the coordinates
+ * `queryRenderedFeatures` reports on a picked feature's `geometry`, distinct
+ * from the tap point (`e.lngLat`) that produced the click. Returns null for
+ * anything that isn't a Point (defensive: `sc-seamarks` is Point-only, but
+ * this stays generic like `pickSeamarkByPriority` above rather than assuming).
+ */
+function pointCoordinates(f: { geometry?: unknown } | undefined): [number, number] | null {
+  const g = f?.geometry as { type?: unknown; coordinates?: unknown } | undefined;
+  if (!g || g.type !== 'Point') return null;
+  const c = g.coordinates;
+  if (!Array.isArray(c) || c.length < 2) return null;
+  const [lng, lat] = c;
+  return typeof lng === 'number' && typeof lat === 'number' ? [lng, lat] : null;
+}
+
+/**
+ * #232 item 4 — popup anchoring. `pickSeamarkByPriority` (above) can hand a
+ * click to a mark that ISN'T the one under the user's finger/cursor: in the
+ * shared pixels of two overlapping icons at z>=12, the user sees the TOP
+ * glyph but the popover describes the HAZARD underneath it (deliberate — see
+ * `pickSeamarkByPriority`'s own doc comment). Before this, every seamark
+ * popup anchored at the tap point (`e.lngLat`), so in that mismatch case
+ * there was no positional cue pointing at the mark the popover actually
+ * describes.
+ *
+ * Anchoring UNCONDITIONALLY at the picked feature's own coordinates would
+ * fix that case but change behaviour for the far more common
+ * non-overlapping one too — today's tap-follow anchor is arguably the
+ * better feel on touch there (a design nuance the implementer raised on PR
+ * #225 and #232 explicitly carries forward rather than assuming away). So
+ * this only moves the anchor when the priority pick DIFFERS from the
+ * topmost feature — exactly the case where the user would otherwise have no
+ * cue which mark they got. Ties, and the ordinary single-feature click,
+ * keep the tap point unchanged (`picked === topmost`, including when both
+ * are `undefined`).
+ *
+ * `picked`/`topmost` are handed in — rather than a raw features array this
+ * re-derives `pickSeamarkByPriority` from — so the caller (DataLayers.tsx)
+ * computes the pick exactly once per click and this stays a pure comparison
+ * over its result.
+ */
+export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: unknown }, TTap>(
+  picked: T | undefined,
+  topmost: T | undefined,
+  tapLngLat: TTap,
+): [number, number] | TTap {
+  if (!picked || picked === topmost) return tapLngLat;
+  return pointCoordinates(picked) ?? tapLngLat;
+}
+
+/**
  * Layout for the `sc-seamarks` symbol layer (#144), exported so unit tests
  * pin the exact expressions without mounting MapLibre. DataLayers spreads
  * this and adds only the `visibility` wiring (component concern).
@@ -152,7 +203,38 @@ export function pickSeamarkByPriority<T extends { properties?: unknown }>(
  *         Nothing in this layer can fix that — `symbol-z-order: 'viewport-y'`
  *         would disable sortFeaturesByKey and take the placement priority with
  *         it. Only splitting the hazard families into their own symbol layer,
- *         stacked above this one, decouples the two; that is a follow-up.
+ *         stacked above this one, decouples the two; that is a follow-up
+ *         (#232 item 1 — out of scope for #232 items 2-4).
+ *     (c) Cross-tile ordering leaks, and it is INHERENT to the mechanism, not
+ *         a ranking bug (#232 item 2 — documented here, not fixed). The sort
+ *         above only orders features WITHIN one tile's own bucket:
+ *         `SymbolBucket.populate()` sorts `this.features` in place when
+ *         `sortFeaturesByKey` is set (`node_modules/maplibre-gl/src/data/
+ *         bucket/symbol_bucket.ts:551-555`), and a fresh `SymbolBucket` is
+ *         built per (tile, layer) by `WorkerTile` — one `WorkerTile` per tile
+ *         (`source/worker_tile.ts:112`'s `layer.createBucket(...)`) — so the
+ *         sort never sees features from any other tile. A low-priority
+ *         (routine) mark placed in an earlier-processed tile can still win
+ *         the collision against a high-priority (hazard) mark ranked lower
+ *         in a LATER tile, because the two are sorted in two entirely
+ *         separate arrays that are never merged before placement runs. No
+ *         choice of `priority` values fixes this — it is a property of the
+ *         tiled-bucket architecture, not of the ranking — and it is why
+ *         hazard retention at z8/z9 (#200) is measured high but not 100%.
+ *         Verified against `maplibre-gl@6.5.0` (`SymbolBucket.populate`,
+ *         its `this.features.sort(...)` call, and `WorkerTile`'s per-tile
+ *         `createBucket` call), confirmed via `npm ci` against
+ *         `app/package-lock.json`'s pin rather than a possibly-stale
+ *         `node_modules` (#392's documented trap) — re-derive the line
+ *         numbers after any future maplibre-gl upgrade. A single non-tiled
+ *         source or a source `buffer`/`tolerance` change was considered and
+ *         does not help either: the tiling (and therefore the per-tile
+ *         bucket boundary) is intrinsic to how MapLibre's vector/GeoJSON
+ *         sources feed the symbol placement pipeline, not a property of one
+ *         source's settings. "Documented as inherent, with the measured
+ *         residual recorded" is the issue's own accepted closing condition
+ *         for this item — this comment plus the #200 z8/z9 retention figures
+ *         it references are that record.
  *   Below z12 the older trade-off still stands: collision-hidden symbols are
  *   absent from queryRenderedFeatures, so culled minor marks are untappable
  *   by design. (There, at most one icon can cover any given point — an
