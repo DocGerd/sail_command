@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { migratePlan } from './migratePlan';
+import { migratePlan, validRigRecommendation } from './migratePlan';
 import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot } from '../types';
 
 // The one leg literal in this file: legacyRigResult spreads it, and the
@@ -460,6 +460,31 @@ describe('#661 migratePlan: rigRecommendation.kind is validated, never passed th
     delete (raw.result as Record<string, unknown>).rigRecommendation;
     const migrated = migratePlan(raw)!;
     expect('rigRecommendation' in migrated.result).toBe(false);
+  });
+});
+
+// #661 review MINOR A: the it.each 'not-compared' row above (line ~439)
+// exercises migratePlan()'s RENDERED output, and that output is byte-identical
+// whether validRigRecommendation's own `case 'not-compared'` arm returns
+// `{ kind: 'not-compared' }` OR `null` — the call site's `?? { kind:
+// 'not-compared' }` fallback (migrateResult) silently substitutes the exact
+// same value either way. MEASURED: mutating that one arm to `return null`
+// left every existing #661/#54/#654 test GREEN (100/100). These two tests
+// bypass the call site and assert on validRigRecommendation's OWN return
+// value, so the arm is provably covered rather than merely shadowed by the
+// fallback around it. The other three arms ('decided'/'tie'/'moot') do NOT
+// share this gap — their correct return value differs from the fallback's
+// substitute, so the existing it.each rows above already discriminate them
+// (reviewer-verified: mutating any of those three to `return null` reds its
+// own positive-control row, because migratePlan() then returns
+// `{ kind: 'not-compared' }` where the test expects the real verdict).
+describe('#661 validRigRecommendation: direct unit tests (closes the not-compared coverage gap)', () => {
+  it('returns { kind: "not-compared" } for a well-formed not-compared record — the row the call-site fallback shadows', () => {
+    expect(validRigRecommendation({ kind: 'not-compared' })).toEqual({ kind: 'not-compared' });
+  });
+
+  it('returns null (not a fabricated verdict) for an unrecognised kind', () => {
+    expect(validRigRecommendation({ kind: 'somehow-corrupted' })).toBeNull();
   });
 });
 

@@ -275,8 +275,20 @@ function migrateSails(result: Record<string, unknown>): SailResult[] | null {
  * one. No new i18n string or RigRecommendation member is needed for this:
  * the existing 'not-compared' vocabulary already says exactly the honest
  * thing ("this build has no faster-rig claim to offer for this record").
+ *
+ * EXPORTED FOR DIRECT TESTING ONLY (mirrors services/db.ts's own "test-only
+ * helper" convention) — production code never imports this outside
+ * migrateResult below. Reviewer-caught vacuity (#661 review): the call
+ * site's own `?? { kind: 'not-compared' }` fallback makes the `'not-compared'`
+ * switch arm indistinguishable from `default` when observed only through
+ * migratePlan()'s rendered output — mutating that one arm to `return null`
+ * left every existing test green, because both paths land on the identical
+ * `{ kind: 'not-compared' }` value. Exporting this function lets the test
+ * suite assert on ITS return value directly, bypassing that fallback, so the
+ * arm is provably covered rather than merely redundant with the safety net
+ * around it.
  */
-function validRigRecommendation(
+export function validRigRecommendation(
   stored: unknown,
 ): NonNullable<PlanResultOk['rigRecommendation']> | null {
   if (!isRecord(stored)) return null;
@@ -375,6 +387,23 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
             // validRigRecommendation's own comment for why an unrecognised
             // `kind` degrades to 'not-compared' instead of being cast
             // through unchecked or omitted.
+            //
+            // #661 review MINOR B: `route.rigNotCompared` ("the sails were
+            // not compared…") is REUSED here deliberately, and it is
+            // slightly broad for this specific corrupted-record case — a
+            // real comparison very likely DID run once; what actually
+            // happened is that THIS BUILD cannot read the stored verdict.
+            // Not a safety issue (comparisonComplete is validated
+            // separately above and unaffected by a corrupt `kind`, so a
+            // corrupted-but-complete record still renders rigNotCompared
+            // rather than the timeout-implying comparisonIncomplete — no
+            // false comparative claim is ever made either way) and not
+            // worth a new RigRecommendation.kind member (that would touch
+            // types.ts, inside the #282 sweep closure, out of scope here)
+            // for a hand-edited/corrupted-record edge case. A sharper
+            // "this build cannot interpret the stored comparison" string
+            // is the honest follow-up if this nuance is ever judged worth
+            // fixing on its own.
             rigRecommendation: validRigRecommendation(result.rigRecommendation) ?? {
               kind: 'not-compared',
             },
