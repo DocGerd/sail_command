@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Submarine cable and pipeline seamarks are now shown at the default
   "Standard" map-display setting instead of only at "All" (#521).
-- The map-overlay toggles, forecast-time slider and route legend now
+- The route-overlay toggles, forecast-time slider and route legend now
   collapse behind one "Display options" control instead of always covering
   part of the chart, starting collapsed on mobile-width screens and open on
   wide screens (#628).

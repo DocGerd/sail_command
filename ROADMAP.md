@@ -56,9 +56,10 @@ The item that wasn't on last release's "Next" list: cable and pipeline
 seamarks now show at the default "Standard" display tier instead of only at
 "All" ([#521](https://github.com/DocGerd/sail_command/issues/521)), and one
 of the four #232 map-chrome residuals — an overlapping seamark tap
-anchoring its popover on the wrong mark — is fixed alongside it; the other
-three remain open, one split out as its own issue
-([#682](https://github.com/DocGerd/sail_command/issues/682)), the rest
+anchoring its popover on the wrong mark — is fixed alongside it, and a
+second (the tap wiring itself, previously unpinned by any test) is now
+pinned; the other two remain open, one split out as its own issue
+([#682](https://github.com/DocGerd/sail_command/issues/682)), the other
 still under [#232](https://github.com/DocGerd/sail_command/issues/232),
 both rolled to `v0.15.0`.
 
@@ -69,11 +70,13 @@ covered under "Development workflow" below.
 
 The [`v0.15.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 holds eight issues, four of them seamark/depth-overlay follow-on from this
-cut. Three residuals remain from #200's original four map-chrome findings
-after `v0.14.0` fixed popup anchoring: hazard marks can still paint under
-routine marks at z≥12, now split into its own issue
-([#682](https://github.com/DocGerd/sail_command/issues/682)), with
-cross-tile ordering and unpinned tap wiring still tracked under
+cut. Two residuals remain from #200's original four map-chrome findings
+after `v0.14.0` fixed popup anchoring and pinned the tap wiring: hazard
+marks can still paint under routine marks at z≥12, now split into its own
+issue ([#682](https://github.com/DocGerd/sail_command/issues/682)), and
+cross-tile ordering — whose original "inherent" premise was refuted during
+#685 against maplibre-gl 6.5.0, leaving #200's z8/z9 retention figure
+unexplained — still tracked under
 [#232](https://github.com/DocGerd/sail_command/issues/232). #521's move of
 cable/pipeline marks to the Standard tier left the "All" seamark-display
 radio a no-op against today's shipped data — the underlying mechanism is

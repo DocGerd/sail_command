@@ -54,12 +54,14 @@ results table at the bottom, and note it in the box below the check.
       In short landscape, and in any narrow layout with too little height
       left below the compass, the legend is deliberately not rendered at
       all — by design, not a missing control.
-- [ ] **Cable/pipeline seamarks visible at Standard.** With the Seamarks
-      display-tier control at its default "Standard" setting (not "All"),
-      pan the map to a stretch of coast known to carry submarine cable or
-      pipeline marks (e.g. the Flensburg Fjord approaches); they render at
-      Standard, not only at "All" (#521).
-- [ ] **"Display options" collapses the overlay cluster.** The map-overlay
+- [ ] **Cable/pipeline seamarks visible at Standard.** Turn the **Seamarks**
+      map overlay on — it is OFF by default, unlike "Water depths" — and
+      leave the Seamarks display-tier control at its default "Standard"
+      setting (not "All"). Zoom to about z12 or closer on a stretch of coast
+      known to carry submarine cable or pipeline marks (e.g. the Flensburg
+      Fjord approaches, which carry 20 of them); they render at Standard,
+      not only at "All" (#521).
+- [ ] **"Display options" collapses the overlay cluster.** The route-overlay
       toggles, forecast-time slider, and route legend now live behind one
       "Display options" control instead of always covering part of the
       chart. On a narrow/mobile-width screen it starts collapsed; on a wide
@@ -142,8 +144,9 @@ selected in §1.
       requested at, not the current setting (#551). It moves only after a
       re-plan.
 - [ ] **2.12 Per-leg cautious marker doesn't require a relaxed route.**
-      Independent of whether this route relaxed (§2.10): in the legs table,
-      any leg whose cautious depth reading falls below your safety depth
+      Independent of whether this route relaxed (§2.10): once the map has
+      finished loading, in the legs table, any leg whose cautious depth
+      reading falls below your safety depth
       shows a "Shallow …" or "Marginal …" chip alongside a "cautious: as low
       as … m" sub-chip, and the map's shallow-water highlight (the wide
       casing under the route line) covers that same leg — both now appear
