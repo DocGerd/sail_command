@@ -5,13 +5,13 @@ import type { LatLon, PlanRequest } from '../types';
  *
  * `viaPoints` was introduced by `eb2d7ee` ("feat: via-waypoint segmented
  * routing", 2026-07-15) — the SAME commit that introduced the via-points
- * feature itself; that commit's own diff to `PlanRequest` is a pure
- * insertion of the `viaPoints:` line with no field removed, which is
- * positive proof it is not a same-commit rename (re-read 2026-08-25 — see
+ * feature itself; `git show eb2d7ee^:app/src/types.ts` shows a
+ * `PlanRequest` with no via field of any spelling, so it is not a rename of
+ * an earlier key either (verified 2026-08-25 — see
  * `services/migratePlan.ts`'s `normaliseViaPoints` for the full dated
- * argument, plus a controlled, corrected pickaxe sweep for an earlier-commit
- * rename, which this docstring intentionally does not duplicate). That does
- * NOT make an
+ * argument, plus a controlled, corrected pickaxe sweep for a rename spread
+ * across earlier commits, which this docstring intentionally does not
+ * duplicate). That does NOT make an
  * absent key reachable for a genuine stored record, though: `services/db.ts`,
  * the only IndexedDB writer this app has ever shipped, was created ~3 hours
  * AFTER eb2d7ee (both predate `v0.1.0`, git-verified 2026-08-25) —
@@ -23,20 +23,19 @@ import type { LatLon, PlanRequest } from '../types';
  * not duplicate further).
  *
  * `services/migratePlan.ts` already normalises this at read time for any
- * `Plan` loaded through `getPlan()`, so — AS LONG AS that normalisation
- * runs — by the time a component sees `plan.request`, `viaPoints` is a real
- * array. That upstream guarantee is not what the mutation below establishes,
- * though, and the "PROVEN" claim previously attached to it here was wrong:
- * reverting only `migratePlan.ts`'s normalisation (keeping every call site
- * below on this accessor) left the #654 regression tests green — but that is
- * because `plan.request.viaPoints` reaching those call sites WAS `undefined`
- * in that experiment (a reviewer independently confirmed this by
- * un-guarding one `App.tsx` call site at a time under the same revert and
- * getting the `TypeError`), and THIS accessor's own `Array.isArray`
- * fallback caught it before it could throw. What the mutation actually
- * proves is that this accessor is independently load-bearing — a second,
- * working line of defense — not that the property it reads is always a
- * real array by the time it gets here. This accessor is the belt to that
+ * `Plan` loaded through `getPlan()`, so `plan.request.viaPoints` is normally
+ * already a real array by the time a component reads it. The accessor is
+ * NOT redundant on that account, and
+ * that is measured rather than assumed (Minor 3, self-review of PR #687 —
+ * the earlier "PROVEN" phrasing here was wrong: it attached that measurement
+ * to the property `plan.request.viaPoints` itself, which the accessor
+ * cannot make true — in the cited experiment that property genuinely WAS
+ * `undefined`, confirmed independently by un-guarding one `App.tsx` call
+ * site at a time under the same revert and getting the `TypeError`): reverting
+ * only `migratePlan.ts`'s normalisation — keeping every call site below on
+ * this accessor — left the #654 regression tests green, because this
+ * accessor's own `Array.isArray` fallback independently caught the crash
+ * that revert reintroduces. This accessor is the belt to that
  * suspenders — ADR-0002
  * explicitly does NOT waive defensive reads at the point of use ("This ADR
  * waives migration machinery. It does NOT waive defensive reads."): every
