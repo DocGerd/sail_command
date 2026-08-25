@@ -197,8 +197,9 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *   style-spec: a lower key is placed first and wins collisions when overlap
  *   is 'never'; when overlap is 'always' a HIGHER key paints ON TOP. So the
  *   very ranking that protects hazard marks from being culled below z12 also
- *   paints them UNDERNEATH routine marks at z>=12. Two consequences, both
- *   accepted rather than fixed here:
+ *   paints them UNDERNEATH routine marks at z>=12. THREE consequences: (a)
+ *   and (b) are accepted rather than fixed here; (c) is NOT accepted — it is
+ *   a live, unresolved finding (see its own STATUS line below):
  *     (a) Tap resolution is NOT left to paint order. `queryRenderedFeatures`
  *         returns symbols top-to-bottom, so DataLayers' click handler would
  *         otherwise open the popover of the least significant overlapping
@@ -223,30 +224,36 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         `symbol-z-order` — exactly the condition `LayerPlacement`'s
  *         `_sortAcrossTiles` flag tests (`style/pauseable_placement.ts:
  *         20-21`, the SAME predicate as `sortFeaturesByKey` above). When
- *         that flag is true, `continuePlacement` (`:29-56`) first collects
+ *         that flag is true, `continuePlacement` (`:29-58`) first collects
  *         ONE `BucketPart` per tile-local `sortKeyRange` from EVERY
  *         renderable tile of the source (`:33-41`; `getBucketParts`,
  *         `symbol/placement.ts:245,303-307` — `sortKeyRanges` are the
- *         WORKER-side per-tile grouping the sort above feeds via
- *         `addToSortKeyRanges`, `data/bucket/symbol_bucket.ts:891-902`),
- *         collects them all into ONE array, THEN sorts that whole array by
- *         `sortKey` GLOBALLY (`:43-46`) BEFORE placing any part of it
- *         (`:48-56`). So a hazard mark in a later-processed tile IS placed
- *         — and therefore collision-wins — before a routine mark in an
- *         earlier tile: the per-tile sort above is a worker-side grouping
- *         step feeding this later cross-tile merge, not the final placement
- *         order.
+ *         WORKER-side per-tile grouping that `SymbolBucket.populate()`'s OWN
+ *         per-tile sort (`data/bucket/symbol_bucket.ts:552-557`) feeds via
+ *         `addToSortKeyRanges` (`:891-902`)), collects them all into ONE
+ *         array, THEN sorts that whole array by `sortKey` GLOBALLY (`:43-46`)
+ *         BEFORE placing any part of it (`:48-56`). So a hazard mark in a
+ *         later-processed tile IS placed — and therefore collision-wins —
+ *         before a routine mark in an earlier tile: `SymbolBucket.populate()`'s
+ *         per-tile sort (`data/bucket/symbol_bucket.ts:552-557`) is a
+ *         WORKER-side grouping step feeding this LATER, GLOBAL cross-tile
+ *         merge — it is not itself the final placement order.
  *         STATUS: NOT resolved, and no longer documentable as "inherent" —
  *         that framing, and the closing condition it was meant to satisfy,
  *         are both withdrawn here. #200's measured z8/z9 hazard retention
  *         (high but not 100%) is a real number this comment does NOT
- *         explain any more: the mechanism verified above does not produce a
- *         cross-tile leak for this layer's configuration, and no
- *         alternative cause was established in this pass. #232 item 2 needs
- *         either a fresh investigation of the real cause, or a
- *         re-measurement confirming the residual still exists at all,
- *         before it can be closed either way — this comment records the
- *         refutation, not a resolution.
+ *         explain any more: the cross-tile GLOBAL SORT mechanism verified in
+ *         this bullet does not produce a cross-tile leak for this layer's
+ *         configuration, and no alternative cause was established in this
+ *         pass. #232 item 2 needs either a fresh investigation of the real
+ *         cause, or a re-measurement confirming the residual still exists at
+ *         all, before it can be closed either way — this comment records
+ *         the refutation, not a resolution. (The single-non-tiled-source /
+ *         `buffer`/`tolerance` options an earlier revision of this comment
+ *         considered and rejected were evaluated against the now-refuted
+ *         per-tile-only premise; they have NOT been re-evaluated against the
+ *         mechanism verified above, and #232's own body still carries that
+ *         option list verbatim if a future investigation needs it.)
  *   Below z12 the older trade-off still stands: collision-hidden symbols are
  *   absent from queryRenderedFeatures, so culled minor marks are untappable
  *   by design. (There, at most one icon can cover any given point — an
