@@ -286,10 +286,15 @@ describe('RouteSummary', () => {
   // two-sail path. #578 review Minor C found the guard says nothing about
   // a plan loaded from STORAGE: migratePlan.ts passes a stored
   // rigRecommendation through with a bare cast, uncorrelated with the
-  // stored sails array's length. So this fixture, built the same way as
-  // this file's own "#54: names a stored sail the catalogue no longer
-  // knows" row above, pins a branch reachable from real stored data, not
-  // a purely defensive one.
+  // stored sails array's length. #578 review Minor E: this fixture, built
+  // the same way as this file's own "#54: names a stored sail the
+  // catalogue no longer knows" row above, pins a branch reachable from a
+  // stored record: nothing in the current code writes one (assemble()
+  // won't), but nothing at the read boundary rejects one either. The
+  // worrying door is shut, though — migrateSails fails closed on a
+  // damaged sail, so "two stored, one dropped on read" cannot happen; what
+  // remains is a hand-edited or corrupted store, a foreign writer, or a
+  // future build.
   //
   // Restoring the fallback to `sailIds[1] ?? sailIds[0]` renders "Genoa and
   // Genoa are effectively tied" — a self-tie that reads as a genuine

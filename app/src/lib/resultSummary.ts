@@ -188,9 +188,14 @@ export function resultVerdictKey(
  * a bare cast and never correlates it with the stored `sails` array's
  * length — MEASURED (review round 2): a throwaway probe fed it a
  * one-sail record with `rigRecommendation: {kind:'tie'}` and it came
- * through unchanged. So the fallback below is reachable from real STORED
- * data, not merely defensive — `RouteSummary.test.tsx`'s "#578 review
- * Minor 5" row pins exactly this case.
+ * through unchanged. #578 review Minor E: the fallback below is reachable
+ * from a stored record: nothing in the current code writes one
+ * (`assemble()` won't), but nothing at the read boundary rejects one
+ * either. The worrying door is shut, though — `migrateSails` fails closed
+ * on a damaged sail, so "two stored, one dropped on read" cannot happen;
+ * what remains is a hand-edited or corrupted store, a foreign writer, or a
+ * future build. `RouteSummary.test.tsx`'s "#578 review Minor 5" row pins
+ * exactly this case.
  */
 function tiedSailIds(sailIds: readonly SailId[]): [string, string] {
   // #578 review Minor 5: NOT `sailIds[1] ?? sailIds[0]` — that would render
