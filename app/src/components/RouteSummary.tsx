@@ -19,7 +19,10 @@ import {
   sailLabelKey,
 } from '../lib/resultSummary';
 import {
+  isMarginalDepthM,
+  legMinDepthsM,
   marginalExposureNm,
+  requestedGateM,
   roundExposureNm,
   shallowConfinedWithinM,
   shallowExposureNm,
@@ -472,12 +475,30 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
 // truncating, so there's nothing here for a tooltip to reveal). Shares the
 // --sc-depth-warning-* family (#251) with the plan-level ShallowWarning
 // banner above, so the same hazard reads consistently wherever it appears.
-function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
+function ShallowLegMarker({
+  minDepthM,
+  marginal = false,
+}: {
+  minDepthM: number;
+  // #651: true for a render-time MARGINAL leg — the router did NOT relax
+  // (leg.shallow is undefined), so minDepthM here is the mask's own charted
+  // reading at or above the plan's requested gate; only the more cautious
+  // #493 reading of the same cell falls below it (isMarginalDepthM,
+  // lib/shallowExposure.ts). false (the default) is the pre-existing case:
+  // the router itself relaxed the gate to route through this leg
+  // (leg.shallow present), so minDepthM is genuinely BELOW the plan's
+  // originally requested safety depth. Selects only the PRIMARY chip's
+  // wording below — the secondary cautious-floor chip is the same fact
+  // either way, since it is derived from minDepthM alone.
+  marginal?: boolean;
+}) {
   const t = useT();
   return (
     <>
       <Chip className="chip-shallow">
-        {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
+        {t(marginal ? 'route.legs.marginalMarker' : 'route.legs.shallowMarker', {
+          depth: minDepthM.toFixed(1),
+        })}
       </Chip>
       {/* #493/#504: sound lower bound on the mask's more cautious (conservative)
           reading, derived from the SAME shipped figure the chip above
@@ -539,6 +560,26 @@ export default function RouteSummary({
   // (every plan solves exactly the same two sails req.sailIds always
   // carries) and correctly generalises if that ever changes.
   const sailTabs = plan.result.sails.map((s) => s.sailId);
+
+  // #651: the legs-table cautious chip's render-time complement to the
+  // `leg.shallow` case above — see ShallowLegMarker's own `marginal` prop
+  // comment for the two cases this covers. `useNavMask()` starts null and
+  // resolves asynchronously (same acquisition path ShallowWarning and
+  // MarginalDepthNotice below already use), so `legMinDepths` is null on
+  // first paint — every leg falls back to the pre-existing leg.shallow-only
+  // check until the mask loads, never a false "not marginal" claim in the
+  // meantime. `result` is a stable reference across re-renders for an
+  // unchanged plan/rig (lib/plan.ts's activeRigResult reads it straight off
+  // `plan.result.sails`, never rebuilding it), so this only recomputes when
+  // the mask resolves or the plan/rig actually changes.
+  const mask = useNavMask();
+  // Not useMemo: legMinDepthsM is a single O(legs) walk, no cheaper than the
+  // unmemoized resultSummary()/rigRecommendationOf() calls above it, and no
+  // effect keys off this value's referential identity — only its content,
+  // read straight into JSX below.
+  const legMinDepths =
+    mask && result && result.legs.length > 0 ? legMinDepthsM(result.legs, mask) : null;
+  const gateM = requestedGateM(plan);
 
   return (
     <Card
@@ -727,7 +768,25 @@ export default function RouteSummary({
                         </span>
                       )}
                     </td>
-                    <td>{leg.shallow && <ShallowLegMarker minDepthM={leg.shallow.minDepthM} />}</td>
+                    <td>
+                      {leg.shallow ? (
+                        <ShallowLegMarker minDepthM={leg.shallow.minDepthM} />
+                      ) : (
+                        // #651: the render-time complement — this leg was
+                        // never relaxed (no leg.shallow), but the currently
+                        // loaded mask finds it MARGINAL at the plan's own
+                        // requested gate (isMarginalDepthM, #612's own
+                        // criterion). legMinDepths is null (never a per-leg
+                        // omission) whenever any leg's own walk was
+                        // inconclusive — see legMinDepthsM's own doc comment
+                        // — which correctly suppresses every row here rather
+                        // than rendering a partial, possibly-wrong result.
+                        legMinDepths &&
+                        isMarginalDepthM(legMinDepths[i], gateM) && (
+                          <ShallowLegMarker minDepthM={legMinDepths[i].depthM} marginal />
+                        )
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

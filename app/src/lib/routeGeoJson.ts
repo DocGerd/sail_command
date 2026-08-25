@@ -2,6 +2,7 @@ import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import type { Board, LatLon, Leg, LegKind, ManeuverKind, WindGrid } from '../types';
 import { formatKn, formatTime, type Lang } from './format';
 import { WindField } from './wind';
+import { isMarginalDepthM, legMinDepthsM } from './shallowExposure';
 import type { NavMask } from './mask';
 
 export interface LegProperties {
@@ -18,18 +19,44 @@ export interface LegProperties {
   // imports the i18n dictionary; the 'M' default only mirrors that
   // language-invariant key for standalone/test callers.
   speedLabel: string;
-  // #53: true when the leg crosses cells charted below the plan's requested
-  // safety depth (leg.shallow present) — RouteLayer's sc-route-shallow
-  // highlight layer filters on it.
+  // #53/#651: true when the leg crosses cells charted below the plan's
+  // requested safety depth (leg.shallow present — the router itself
+  // relaxed the gate to route through this leg, only possible on a relaxed
+  // plan) OR — for an ordinary, non-relaxed leg, which is every leg on most
+  // routes (CLAUDE.md's "disclosure stack" domain rule: flagShallowLegs only
+  // ever runs inside the #53 relaxation branch) — when a RENDER-TIME walk
+  // against the CURRENTLY LOADED mask (opts.mask + opts.gateM) finds a cell
+  // charted at or above the gate whose more cautious #493 reading falls
+  // below it (#612's own MARGINAL criterion, via
+  // lib/shallowExposure.ts's isMarginalDepthM/legMinDepthsM). Either way
+  // RouteLayer's sc-route-shallow highlight layer filters on this ONE
+  // boolean. opts.mask/opts.gateM are optional and default to "unknown" (no
+  // marginal contribution) — never a false all-clear, since the relaxed-leg
+  // half of this OR is unaffected either way.
   shallow: boolean;
 }
 
 export function legsToFeatureCollection(
   legs: Leg[],
   lang: Lang,
-  opts: { motorLetter?: string } = {},
+  // gateM is `number | undefined`, not bare `number`, because callers that
+  // may or may not know a plan's gate (RouteLayer.tsx, `plan ? requestedGateM
+  // (plan) : undefined`) build this object with the key always PRESENT —
+  // exactOptionalPropertyTypes distinguishes an omitted key from one
+  // explicitly set to undefined, and only the latter is what such a caller
+  // actually produces.
+  opts: { motorLetter?: string; mask?: NavMask | null; gateM?: number | undefined } = {},
 ): FeatureCollection<LineString, LegProperties> {
   const motorLetter = opts.motorLetter ?? 'M';
+  // #651: computed ONCE for the whole collection, never per feature — the
+  // null-for-the-WHOLE-ARRAY contract (see legMinDepthsM's own doc comment)
+  // means a per-leg call could not be more granular anyway, and this keeps
+  // the O(legs) mask walk to a single pass. `null` here (mask not loaded, or
+  // gateM not supplied by this call site — the #324 alt-rig overlay's own
+  // legsToFeatureCollection call never passes either) means NOT-YET-KNOWN:
+  // every leg falls back to the existing leg.shallow-only check below, never
+  // a false "not marginal" claim about water nobody actually walked.
+  const minDepths = opts.mask && opts.gateM !== undefined ? legMinDepthsM(legs, opts.mask) : null;
   return {
     type: 'FeatureCollection',
     features: legs.map((leg, legIndex): Feature<LineString, LegProperties> => ({
@@ -50,7 +77,11 @@ export function legsToFeatureCollection(
           leg.kind === 'motor'
             ? `${motorLetter} · ${formatKn(leg.speedKn, lang)}`
             : formatKn(leg.speedKn, lang),
-        shallow: leg.shallow !== undefined,
+        shallow:
+          leg.shallow !== undefined ||
+          (minDepths !== null &&
+            opts.gateM !== undefined &&
+            isMarginalDepthM(minDepths[legIndex], opts.gateM)),
       },
     })),
   };

@@ -396,6 +396,17 @@ export const en = {
   // table context (e.g. by a screen reader in linear mode).
   'route.legs.shallow': 'Shallow',
   'route.legs.shallowMarker': 'Shallow {depth} m',
+  // #651: the render-time complement to shallowMarker above, for a leg the
+  // router did NOT relax (leg.shallow undefined — every leg on most routes,
+  // per CLAUDE.md's "disclosure stack" domain rule). {depth} here is the
+  // mask's own charted reading, at or above the plan's requested gate —
+  // "Shallow" would be false, since the charted data does not put this cell
+  // below the gate at all; only the #493 more-cautious reading of the SAME
+  // cell might (isMarginalDepthM, lib/shallowExposure.ts's own #612
+  // criterion, applied per leg). "Marginal" names that distinction; the
+  // sibling shallowCautious chip below states the actual cautious figure
+  // unconditionally, so this label never has to.
+  'route.legs.marginalMarker': 'Marginal {depth} m',
   // #493/#504: cautious lower bound for the SAME cell, rendered ALONGSIDE
   // the marker above (never replacing it) — see cautiousDepthLowerBoundM in
   // app/src/lib/mask.ts for the derivation. Worded as a HAZARD, not a

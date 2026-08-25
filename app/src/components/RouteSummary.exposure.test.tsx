@@ -712,3 +712,87 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// #651: the legs-table marker's render-time complement — a leg the router
+// did NOT relax (no leg.shallow), so the pre-#651 table rendered NOTHING for
+// it, no matter how marginal the mask's own reading of its cells. Reuses
+// this file's #612 mask/plan fixtures directly: marginalMask() (row 100,
+// cols 55/56/57 at 3.5 m — >= the 3.0 m default gate so genuinely
+// non-relaxed, < marginalDepthThresholdM(3.0) = 3.9 m so genuinely
+// marginal), deepMask() (uniform 20 m, the negative control) and
+// makeNonRelaxedPlan/renderNonRelaxed (plan.result.shallow omitted).
+// ---------------------------------------------------------------------------
+describe('#651: legs-table marker for a MARGINAL (non-relaxed) leg', () => {
+  it('renders the Marginal chip with the render-time charted minimum depth, plus the same cautious sub-chip the relaxed case uses', async () => {
+    mockedLoad.mockResolvedValue(marginalMask());
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row).not.toBeNull();
+    // The VALUE, never merely that a key resolved (#388's prose-vs-value
+    // trap): 3.5 m is marginalMask()'s own charted reading for every touched
+    // shallow cell, so the leg's render-time minimum is exactly 3.5.
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Marginal 3.5 m');
+    // cautiousDepthLowerBoundM(3.5) = floor10(3.5 - 0.9) = 2.6 — the SAME
+    // derived quantity the relaxed case's sub-chip already shows, unaffected
+    // by which primary label rendered above it.
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'cautious: as low as 2.6 m',
+    );
+  });
+
+  it('renders NOTHING for an ordinary leg crossing only deep water — with a discriminating control', async () => {
+    // The absence half. deepMask() (every cell 20 m) is the ONE difference
+    // from the row above: same leg, same plan, same settle sequence.
+    mockedLoad.mockResolvedValue(deepMask());
+    const absent = await renderNonRelaxed([EXPOSURE_LEG]);
+    const absentRow = absent.querySelector('table.route-legs tbody tr');
+    expect(absentRow?.querySelector('.chip-shallow')).toBeNull();
+    expect(absentRow?.querySelector('.chip-shallow-cautious')).toBeNull();
+
+    // THE CONTROL: change exactly one input — the mask — and confirm the
+    // same construction DOES render, so the absence above is evidence the
+    // walk ran and found nothing, not evidence it never ran at all.
+    cleanup();
+    mockedLoad.mockResolvedValue(marginalMask());
+    const present = await renderNonRelaxed([EXPOSURE_LEG]);
+    const presentRow = present.querySelector('table.route-legs tbody tr');
+    expect(
+      presentRow?.querySelector('.chip-shallow'),
+      'control: a marginal mask must make the marker render',
+    ).not.toBeNull();
+  });
+
+  it('omits the marker while the mask is still loading — no fallback marker, never a false all-clear', async () => {
+    // mockedLoad left at the beforeEach default: a promise that never
+    // resolves — the mask genuinely has not loaded yet.
+    localStorage.setItem('sc-lang', 'en');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeNonRelaxedPlan([EXPOSURE_LEG])} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')).toBeNull();
+  });
+
+  it('a genuinely RELAXED leg keeps the "Shallow" wording, never "Marginal", even under a mask that would ALSO trip the marginal walk', async () => {
+    // A composition risk this PR itself introduces: leg.shallow's own branch
+    // must win regardless of what the render-time mask says about the same
+    // leg. makePlan() (not makeNonRelaxedPlan) carries a non-null
+    // plan.result.shallow, matching the relaxed shape; the leg additionally
+    // carries its own leg.shallow.
+    mockedLoad.mockResolvedValue(marginalMask());
+    const relaxedLeg: Leg = { ...EXPOSURE_LEG, shallow: { minDepthM: 1.9 } };
+    localStorage.setItem('sc-lang', 'en');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makePlan([relaxedLeg])} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 1.9 m');
+  });
+});
