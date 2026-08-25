@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-25
+
+### Changed
+
+- Submarine cable and pipeline seamarks are now shown at the default
+  "Standard" map-display setting instead of only at "All" (#521).
+- The map-overlay toggles, forecast-time slider and route legend now
+  collapse behind one "Display options" control instead of always covering
+  part of the chart, starting collapsed on mobile-width screens and open on
+  wide screens (#628).
+
+### Fixed
+
+- Tapping an overlapping pair of seamark symbols now anchors the info
+  popover on the mark it actually describes instead of always on the tap
+  point (#232).
+- The saved-plans list now tells you a plan saved by a newer app version is
+  kept, not deleted, matching the wording already used for a damaged record
+  (#561).
+- The "sails are effectively tied" message now names the two sails actually
+  being compared, instead of a hardcoded "Genoa and Fock" that would have
+  named the wrong sails for a future boat with different sail names (#578).
+- Depth figures in German now use a decimal comma, matching the distances
+  and speeds beside them, instead of mixing a comma-formatted distance with
+  a point-formatted depth in the same sentence (#596).
+- The legs-table depth marker and the map's shallow-water highlight now
+  also appear on an ordinary route that crosses water whose more cautious
+  depth reading falls below your safety depth, even when the route itself
+  was never depth-relaxed — previously only a relaxed route showed either
+  signal (#651).
+- Fixed a crash when opening a saved route whose waypoint data was
+  corrupted; such a route now shows as unable to open instead of crashing
+  the app (#654).
+- Editing the origin, destination, departure, or a via point on the Plan
+  form while a restored plan is still loading harbor data no longer gets
+  silently discarded once that data finishes loading (#660).
+- Fixed a saved route whose stored rig-comparison verdict was corrupted or
+  unrecognised rendering a blank recommendation chip; it now shows the
+  honest "no faster rig claimed" message instead (#661).
+- A saved plan whose stored routing outcome can no longer be read now tells
+  you to plan the route again, instead of showing generic "try again or
+  reload the app" copy that could never help on that screen (#662).
+
 ## [0.13.1] - 2026-08-24
 
 ### Fixed
@@ -793,7 +836,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/DocGerd/sail_command/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/DocGerd/sail_command/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/DocGerd/sail_command/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/DocGerd/sail_command/compare/v0.12.0...v0.12.1
