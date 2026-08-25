@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ROUTING_RELEVANT_SETTINGS_KEYS,
   departureSeedMs,
+  pickedPointMoved,
   pickedPointsOfPlan,
   planFormDirty,
   viaPointsDiffer,
@@ -13,6 +14,7 @@ import { uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
+  type PickedPoint,
   type Plan,
   type PlanRequest,
   type Settings,
@@ -212,6 +214,49 @@ describe('viaPointsDiffer', () => {
     const a = { lat: 54.8, lon: 9.6 };
     const b = { lat: 54.83, lon: 9.9 };
     expect(viaPointsDiffer([a, b], [b, a])).toBe(true);
+  });
+});
+
+// #660: used by App.tsx's plan-form sync effect to guard each of its four
+// writes against a user edit made in the harborsLoaded-pending window — see
+// pickedPointMoved's own comment for the reference-point distinction from
+// planFormDirty above.
+describe('pickedPointMoved (#660)', () => {
+  const A: PickedPoint = { source: 'tap', point: { lat: 54.8, lon: 9.6 }, label: 'A' };
+  const A_SAME_COORDS: PickedPoint = {
+    source: 'harbor',
+    point: { lat: 54.8, lon: 9.6 },
+    harborId: 'flensburg',
+    label: 'Flensburg',
+  };
+  const B: PickedPoint = { source: 'tap', point: { lat: 54.83, lon: 9.9 }, label: 'B' };
+
+  it('is false for two nulls', () => {
+    expect(pickedPointMoved(null, null)).toBe(false);
+  });
+
+  it('is true when current is non-null and baseline is null', () => {
+    expect(pickedPointMoved(A, null)).toBe(true);
+  });
+
+  it('is true when current is null and baseline is non-null', () => {
+    expect(pickedPointMoved(null, A)).toBe(true);
+  });
+
+  it('is false for content-identical lat/lon, even from different PickedPoint objects (source/harborId/label ignored)', () => {
+    expect(pickedPointMoved(A, A_SAME_COORDS)).toBe(false);
+  });
+
+  it("is true when a point's lat differs", () => {
+    expect(pickedPointMoved(A, { ...A, point: { lat: 54.9, lon: 9.6 } })).toBe(true);
+  });
+
+  it("is true when a point's lon differs", () => {
+    expect(pickedPointMoved(A, { ...A, point: { lat: 54.8, lon: 10.0 } })).toBe(true);
+  });
+
+  it('is true for two genuinely different points', () => {
+    expect(pickedPointMoved(A, B)).toBe(true);
   });
 });
 
