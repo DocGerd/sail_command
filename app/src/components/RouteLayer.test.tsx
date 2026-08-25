@@ -791,4 +791,56 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
     act(() => mm.setMatches(false));
     expect(details().open).toBe(true);
   });
+
+  // #628 review wave 3 Major A: the capture-phase toggle listener's effect
+  // must attach AFTER a null -> plan transition, not only at a mount that
+  // already has a plan. `renderRouteLayer` (used by every other test in
+  // this describe block) passes `plan={makePlan()}` from the FIRST render
+  // — exactly the one case that cannot see this defect. The real app
+  // (`App.tsx`) always mounts RouteLayer with `plan={null}` first, since it
+  // renders RouteLayer unconditionally and RouteLayer itself returns null
+  // until a plan exists — so this test reproduces that real sequence
+  // directly, bypassing `renderRouteLayer`.
+  it('#628 review wave 3 Major A: the manual-toggle listener still attaches after mounting with plan={null} first', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const mm = setMatchMedia(false); // narrow -> auto-collapsed once a plan exists
+    const { container, rerender } = render(
+      <RouteLayer
+        plan={null}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    expect(container.querySelector('.route-layer-controls')).toBeNull();
+
+    rerender(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    const details = () =>
+      container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')!;
+    expect(details().open).toBe(false);
+
+    // Same manual-toggle-survives-a-resize construction as the test above,
+    // now against the REAL null-first mount sequence.
+    fireEvent.click(details().querySelector('summary')!);
+    expect(details().open).toBe(true);
+    act(() => {
+      details().dispatchEvent(new Event('toggle'));
+    });
+
+    act(() => mm.setMatches(true));
+    act(() => mm.setMatches(false));
+    expect(details().open).toBe(true);
+  });
 });

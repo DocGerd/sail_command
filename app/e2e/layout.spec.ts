@@ -939,25 +939,46 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
 // assertion above has the re-measured numbers) — a lighter subject that
 // passes MORE EASILY because it shrank, which silently dropped the "both
 // collapsibles open at a narrow viewport" coverage those two tests used to
-// provide. This restores it: the same 320px/DE scenario, but with the new
-// outer Disclosure EXPANDED as well as `.depth-legend` — the two-
-// collapsibles-open case #277/#598 always meant to cover, now re-exercised
-// against the SHRUNK-then-EXPANDED subject rather than the always-open one.
-// This ALSO serves as review Major 2's keeper — MUTATION-CHECKED, not
-// merely asserted: deleting the three `.route-layer-controls-disclosure`
-// override rules in app.css lets the expanded cluster clip at the resolved
-// `max-width` cap instead of rendering at its natural width, and this test
-// reds (MEASURED 2026-08-25: the scrollWidth/clientWidth overflow check
-// below fires first, `Received: 8` — the width pin two assertions down is a
-// second, independent line of defense against the SAME mutation, not the
-// one that happened to fire). #277/#598's own (collapsed-state) assertions
-// cannot, by construction, ever reach the override at all.
-test('#628 review Major 1: the controls cluster and depth-hatch legend can BOTH be expanded at 320px without overflow or collision (DE)', async ({
+// provide. This restores it: the new outer Disclosure EXPANDED as well as
+// `.depth-legend` — the two-collapsibles-open case #277/#598 always meant
+// to cover, now re-exercised against the SHRUNK-then-EXPANDED subject
+// rather than the always-open one.
+//
+// #628 review wave 3 Major B: run at 390px, deliberately NOT 320px like
+// #277/#598 above. MEASURED at 320px (real Chromium, real `dist` confirmed
+// rebuilt after the mutation): `.route-layer-controls`'s resolved
+// `max-width: calc(100% - 9.5rem)` is 168.00px there, and the EXPANDED
+// cluster clips to exactly that width whether the CSS override is present
+// or deleted — 168.00px either way (DE natural width, 233.86px, is already
+// well over 168px, so it was clipping at 320px regardless) — so a width pin
+// at 320px cannot discriminate the override's presence at all; only the
+// overflow check could there (0 vs 8).
+//
+// At 390px the cap resolves to 238.00px instead, which the override-PRESENT
+// natural width (233.86px) sits under (unclipped) while the
+// override-DELETED width clips TO exactly that cap. RE-MEASURED HERE
+// (2026-08-25, mutation confirmed to actually rebuild: grepped the built
+// `dist/assets/*.css` and confirmed all three `route-layer-controls-
+// disclosure` rules were physically absent, not just a `tsc`-succeeded
+// assumption): override present -> width 233.859375px, overflow 0;
+// override deleted -> width 238px, overflow 0. The overflow check does
+// NOT discriminate at this viewport (0 both ways — the earlier revision of
+// this comment carried the 320px overflow figure, 8, into this 390px
+// context, the exact citation-halo mistake Major B itself was filed to
+// fix) — the WIDTH pin below is the SOLE keeper here, so its threshold
+// must sit strictly BETWEEN 233.86 and 238.00, not merely under some round
+// number: `236` is what the reviewer's own suggested fix used, and a wider
+// margin (this file's earlier `240`) is provably vacuous — both 233.86 and
+// 238.00 are under 240, so that threshold would have passed the mutation
+// too, undetected, had this not been re-verified live rather than assumed
+// from the 320px numbers. #277/#598's own (collapsed-state, 320px)
+// assertions cannot, by construction, ever reach the override at all.
+test('#628 review Major 1: the controls cluster and depth-hatch legend can BOTH be expanded at 390px without overflow or collision (DE)', async ({
   page,
 }) => {
   const server = await startPreview();
   try {
-    await page.setViewportSize({ width: 320, height: 700 });
+    await page.setViewportSize({ width: 390, height: 700 });
     await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
 
     await page.getByRole('tab', { name: 'Planen' }).click();
@@ -997,21 +1018,24 @@ test('#628 review Major 1: the controls cluster and depth-hatch legend can BOTH 
     await depthLegend.locator('> summary').click();
     await expect(depthLegend).toHaveJSProperty('open', true);
 
-    // Silent-overflow check first (`boundingBox()` cannot see it — #299).
+    // General safety check, but NOT the Major-2 keeper at this viewport
+    // (MEASURED: 0 both with and without the override — see the comment
+    // above the test).
     await expect
       .poll(async () => routeControls.evaluate((el) => el.scrollWidth - el.clientWidth), {
         timeout: 5_000,
       })
       .toBeLessThanOrEqual(0);
 
-    // The Major-2 keeper: MEASURED live (2026-08-25) with the override
-    // present, expanded width is 233.86px (DE natural width, matching
-    // BASE); with the three override rules deleted it clips to 238.00px at
-    // this viewport's resolved `max-width` cap. `240` sits strictly between
-    // the two and is re-sampled every poll tick, never a frozen baseline.
+    // THE Major-2 keeper at this viewport (the overflow check above is
+    // not): MEASURED live with the override present, expanded width is
+    // 233.859375px; with the three override rules deleted it clips to
+    // 238px at this viewport's resolved `max-width` cap. `236` sits
+    // strictly between the two and is re-sampled every poll tick, never a
+    // frozen baseline.
     await expect
       .poll(async () => (await box(routeControls)).width, { timeout: 5_000 })
-      .toBeLessThan(240);
+      .toBeLessThan(236);
 
     // The two clusters (`.data-layer-controls` top-left, `.route-layer-
     // controls` top-right) must not overlap even with BOTH collapsibles

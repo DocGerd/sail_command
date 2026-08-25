@@ -525,6 +525,27 @@ export default function RouteLayer({
   // Setting the ref alone triggers no re-render, so a toggle never causes an
   // immediate self-defeating remount — only a LATER real `isWide` change
   // would have, and the effect above now skips re-seeding once this is true.
+  //
+  // #628 review wave 3 Major A: this effect's deps were `[]` (mount-only),
+  // but `App.tsx` renders `RouteLayer` UNCONDITIONALLY — it returns `null`
+  // (the guard above the JSX return) until a plan exists, so on the real
+  // FIRST mount `controlsRef.current` is null, the effect no-ops, and
+  // because `[]` never re-runs it, the listener is NEVER attached for the
+  // lifetime of the component even once a plan later appears and the div
+  // renders. MEASURED: the manual-toggle-survives-a-resize behaviour this
+  // effect exists for was silently dead in production; only a test that
+  // mounts with `plan={null}` FIRST and then supplies one can see this — a
+  // fixture that starts with a plan already present (as the OTHER `#628`
+  // tests in RouteLayer.test.tsx do) cannot, because that shortcut happens
+  // to put the div there for the very first commit, which is exactly the
+  // one case the real app never starts in. Depending on `[plan]` instead
+  // makes the effect re-run whenever `plan`'s identity changes — including
+  // the null -> non-null transition where the div (and so `controlsRef`)
+  // first exists, which is when the listener actually needs to attach. A
+  // later replan (a new plan object while already non-null) re-runs this
+  // again onto the SAME still-mounted DOM node (plan changing doesn't
+  // remount `.route-layer-controls` itself) — a harmless redundant
+  // detach+reattach, not a correctness issue.
   const controlsRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = controlsRef.current;
@@ -537,7 +558,7 @@ export default function RouteLayer({
     };
     el.addEventListener('toggle', onNativeToggle, true);
     return () => el.removeEventListener('toggle', onNativeToggle, true);
-  }, []);
+  }, [plan]);
   // #63: both overlays default ON (a skipper wants the wind and the numbers
   // without hunting for checkboxes) and persist an explicit choice across
   // reloads. The toggles below stay as the clean-chart escape hatch.
