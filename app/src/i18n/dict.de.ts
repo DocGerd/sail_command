@@ -387,7 +387,11 @@ export const de = {
   'route.legend.maneuver': 'Wende/Halse',
   'route.legend.headingChange': 'Kursänderung',
   'route.legend.via': 'Zwischenpunkt',
-  'route.legend.shallow': 'Flacher als Sicherheitstiefe kartiert',
+  // #651 fix-wave, MAJOR 1: siehe dict.en.ts's Kommentar für die vollständige
+  // Begründung (die alte Formulierung war für die neue MARGINAL-Population
+  // sachlich falsch, da diese per Definition auf oder über dem Gate kartiert
+  // ist).
+  'route.legend.shallow': 'Vorsichtige Tiefenlesart unter Sicherheitstiefe',
   // #324: map-only overlay of the rig NOT currently shown as the primary
   // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
   'route.legend.altRig': 'Anderes Rigg (gestrichelt)',

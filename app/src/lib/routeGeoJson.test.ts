@@ -170,15 +170,22 @@ describe('legsToFeatureCollection: #651 render-time MARGINAL flag', () => {
     expect(fc.features[0].properties.shallow).toBe(false);
   });
 
-  it("an out-of-bounds leg leaves EVERY leg unflagged for the marginal half — legMinDepthsM's own null-for-the-whole-array contract", () => {
+  // #651 fix-wave: DELIBERATELY INVERTED from "an out-of-bounds leg leaves
+  // EVERY leg unflagged for the marginal half — legMinDepthsM's own
+  // null-for-the-whole-array contract". Per review, legMinDepthsM's
+  // whole-array null was an AGGREGATE contract (right for a summed distance)
+  // misapplied to a per-leg MARKER — suppressing a good leg's marker because
+  // a sibling leg's walk was inconclusive removes true signal for no safety
+  // gain, so legMinDepthsM now nulls only the failing leg's own entry.
+  it('an out-of-bounds leg leaves ONLY that leg unflagged for the marginal half — its siblings are unaffected', () => {
     const outside: LatLon = { lat: 90, lon: 0 };
     const outLeg: Leg = { ...MOTOR_LEG, start: outside, end: outside };
     const mask = makeMask(() => 35); // marginal everywhere reachable
     const fc = legsToFeatureCollection([SAIL_LEG, outLeg], 'en', { mask, gateM: GATE_M });
     // SAIL_LEG alone would be marginal under this mask (first row above) —
-    // this proves the out-of-bounds SIBLING leg suppresses it too, rather
-    // than only the leg that actually failed the bound check.
-    expect(fc.features.map((f) => f.properties.shallow)).toEqual([false, false]);
+    // this proves the out-of-bounds SIBLING leg no longer suppresses it: only
+    // the leg that actually failed the bound check goes unflagged.
+    expect(fc.features.map((f) => f.properties.shallow)).toEqual([true, false]);
   });
 });
 

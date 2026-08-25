@@ -434,7 +434,18 @@ export const en = {
   'route.legend.maneuver': 'Tack/gybe',
   'route.legend.headingChange': 'Heading change',
   'route.legend.via': 'Via waypoint',
-  'route.legend.shallow': 'Charted shallower than safety depth',
+  // #651 fix-wave, MAJOR 1: was 'Charted shallower than safety depth' — that
+  // labels the sc-route-shallow swatch, which #651 now ALSO paints for
+  // MARGINAL legs (RouteLayer.tsx's ROUTE_STACK_BOTTOM_LAYER), and a
+  // marginal leg is BY DEFINITION charted AT OR ABOVE the gate (see
+  // route.legs.marginalMarker's own comment below) — so the old string
+  // asserted the opposite of what the layer actually paints for that
+  // population. The union of both populations (relaxed-shallow: charted min
+  // < gate, so cautious = charted - T < gate; marginal: charted min < gate +
+  // T, so cautious < gate) is exactly "the cautious reading falls below the
+  // gate" — one line covers both, tightly, with no "charted" claim to be
+  // wrong about.
+  'route.legend.shallow': 'Cautious depth reading below safety depth',
   // #324: map-only overlay of the rig NOT currently shown as the primary
   // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
   'route.legend.altRig': 'Other rig (dashed)',
