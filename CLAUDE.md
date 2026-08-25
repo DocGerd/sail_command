@@ -95,8 +95,11 @@ making design-level decisions; do not silently deviate.
 - Statement coverage baseline: 93.92% (4100/4365 statements; branches 88.99%,
   functions 92.28%, lines 95.52%), measured 2026-08-03 via `npm --prefix app
   run test:coverage`. The trailing test/file COUNT is RE-MEASURED, never
-  hand-added or inferred: **2136 tests, 145 files**, all passing (2026-08-21
-  at `5b2032d`, the v0.13.0 cut). That run's DURATION is DISCARDED — a browser agent ran
+  hand-added or inferred: **2160 tests, 146 files**, all passing (2026-08-24
+  at `39bbcd6`, the v0.13.1 cut; +24 over v0.13.0 = 12 plain `it(` cases plus
+  ONE `it.each(Object.getOwnPropertyNames(Object.prototype))` row expanding to
+  12 — a token grep for added `it(` returns eleven and reads as a
+  contradiction, so a test COUNT can never be derived by grepping `it(`). That run's DURATION is DISCARDED — a browser agent ran
   concurrently, the same contention that invalidated an earlier 393 s figure.
   Two rules distilled from repeated re-measurements of this pair: **counts are
   load-independent, durations are not** (never quote a duration measured under
@@ -272,8 +275,15 @@ making design-level decisions; do not silently deviate.
   `verify-mask.yml` may use trigger filters precisely because neither is
   required. It fails CLOSED: filter error, empty diff, unreachable base,
   non-PR event, or any unmatched path all run e2e. `.claude/**` is
-  deliberately NOT allowlisted (it holds executable hooks); `CLAUDE.md`,
-  `LICENSE`, `docs/**` and `changelog.d/**` are. Measured on a real
+  deliberately NOT allowlisted (it holds executable hooks). The allowlist is
+  the `case` arm at `classify-docs-only.sh:389` — THIRTEEN members, not the
+  four this file used to name: `CHANGELOG.md`, `README.md`, `ROADMAP.md`,
+  `GOVERNANCE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
+  `CLAUDE.md`, `LICENSE`, `docs/*`, `.github/ISSUE_TEMPLATE/*`,
+  `.github/PULL_REQUEST_TEMPLATE.md`, `changelog.d/*` — so a whole #132
+  release docs sweep skips e2e (measured on PR #677). Read the arm, don't
+  trust this list. The globs are ONE star: in a bash `case`, `*` matches `/`,
+  so nested paths do match (selftest case 10 pins it). Measured on a real
   `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
   `mergeable_state: clean` — so a skipped-but-successful required check does
   satisfy `develop`'s gating.
@@ -1055,7 +1065,10 @@ making design-level decisions; do not silently deviate.
   then served the chunk name the tag run had built, proving that run's BUILD
   was always correct and only its DEPLOYMENT no-opped.
 
-  **EXERCISED FIVE TIMES; the margin is NOT a predictor, and n=5 now PROVES
+  **EXERCISED SIX TIMES; the margin is NOT a predictor, and the recorded
+  range is now actively INVERTED against the intuitive reading: v0.13.1's
+  33 s is the SMALLEST gap ever recorded and was SAFE, while the ONLY no-op
+  sits at the LARGEST value (128 s). n>=5 also PROVES
   it rather than merely failing to refute it: v0.13.0's gap was 54 s and the
   tag run TOOK, while v0.11.0's 54 s was also safe and v0.10.0's 128 s
   no-opped — the SAME gap value now appears on BOTH outcomes, so the gap
@@ -1065,10 +1078,12 @@ making design-level decisions; do not silently deviate.
   On one basis
   (Deploy workflow-RUN creation→creation) the gap was **128 s** at v0.10.0 (DID no-op —
   the probe fired and was right), **54 s** at v0.11.0 (safe), **70 s** at
-  v0.12.0 (safe) and **43 s** at v0.12.1 (safe — merge-push run 32313173754
+  v0.12.0 (safe), **43 s** at v0.12.1 (safe — merge-push run 32313173754
   had every job `cancelled`, so tag run 32313225085 at the same head deployed
-  cleanly), the last being SMALLER than both earlier safe gaps AND than the
-  128 s one that DID no-op. n=4 happens to run the intuitive way and that is
+  cleanly) and **33 s** at v0.13.1 (safe — merge-push run 32777433573 had all
+  five jobs `cancelled`, so tag run 32777486953 deployed cleanly and
+  `smoke-probe` passed), the last two being SMALLER than both earlier safe
+  gaps AND than the 128 s one that DID no-op. n=4 happens to run the intuitive way and that is
   NOT evidence:
   the outcome is set by whether `cancel-in-progress` killed the earlier run
   before its `deploy` job reached terminal `success`, not by the gap — so never
@@ -1092,6 +1107,13 @@ making design-level decisions; do not silently deviate.
   byte-identical across both builds, so it passes straight through a no-op (one
   v0.10.0 run showed both verdicts at once — a red entry-chunk probe beside a
   green Range probe).
+  A SECOND, independent prod check, cheap from the main session and answering
+  a DIFFERENT question: fetch the live entry chunk and grep it for a
+  `git describe` suffix. `smoke-probe` proves THIS RUN'S DEPLOYMENT took (a
+  no-op 404s a never-deployed chunk name); an absent
+  `v0\.1[0-9]\.[0-9]+-[0-9]+-g[0-9a-f]+` match proves THIS RUN'S BUILD saw the
+  tag. Neither subsumes the other — at v0.10.0 the build was right and only
+  the deployment no-opped. Measured clean at v0.13.1 on `index-NcFacjS3.js`.
 - **UAT can NEVER show a bare tag — correct, not a bug.** The release tag sits
   on the develop→main MERGE commit, a DESCENDANT of develop's tip, and `git
   describe` walks BACKWARDS — so `/uat/` reads `vX.Y.Z-N-g<sha>` (measured at
@@ -1481,6 +1503,15 @@ making design-level decisions; do not silently deviate.
   (`Image.crop().resize(…, Image.LANCZOS)` — ImageMagick is not installed
   here), or programmatically via `queryRenderedFeatures`; never by trying to
   interact with the canvas.
+- **The depth legend's mid-sentence clipping at WIDE viewports is a SCROLL
+  CONTAINER, not a truncation, and predates #638.** Measured live:
+  `.depth-legend-body` scrollHeight 545 / clientHeight 384,
+  `overflow-y: auto`, `max-height: 384px` (24rem), scrollTop moving 0→161
+  reveals the rest. `diff <(git show v0.13.0:app/src/app.css) app/src/app.css`
+  shows `max-height: 24rem` as an UNCHANGED CONTEXT line — #638 added only
+  `width: 14rem` and `max-width: none`. The trade-off is measured and
+  deliberately accepted in that commit's own comment (20rem rejected as map
+  occlusion). Don't re-investigate it at the next ship gate.
 - **The CHECK can be the thing that's wrong — and it fails by ACCUSING a
   correct artifact.** Verifying `CONTRIBUTING.md`'s "`v0.4.0` through
   `v0.12.0` are closed", a regex of `v0\.(4|…|12)\.` also matched the OPEN
@@ -3335,6 +3366,10 @@ making design-level decisions; do not silently deviate.
   `git merge --ff-only origin/develop` after merging, or keep naming refs.
 - `gh pr edit` hits the Projects-classic GraphQL bug like `gh pr view` —
   update PR bodies via `gh api repos/…/pulls/N --method PATCH --input body.json`.
+- Setting an issue's MILESTONE: `gh api repos/O/R/issues/N -X PATCH -F
+  milestone=<number>` — `-F` (typed int), not `-f` (string). The obvious
+  `issues/N/milestone` endpoint DOES NOT EXIST and 404s (measured on #642).
+  Read the title back to assert it, per the rule below.
 - UNDRAFTING a PR is GraphQL-only: `gh api repos/…/pulls/N --method PATCH -f
   draft=false` SILENTLY NO-OPS (returns `draft=true`, exit 0, no error).
   Use `markPullRequestReadyForReview` with the PR's node id. General rule, of
