@@ -43,15 +43,21 @@ import { startPreview, mapReady } from './helpers';
 // tracked in #521. Those 119 are themselves part of the 259
 // above, so the correction did not clear that set: 140 of the 259 are shown
 // at the default and 119 are not (measured 2026-08-13 against the committed
-// `app/public/data/seamarks.json`). So hiding THOSE two categories makes
-// the PIN VALUES below SMALLER than PR1's own committed baseline at the
-// identical cluster/zoom pair, by construction, but only by however many of
-// them happen to sit in this specific geographic box (measured per-pin below,
-// not assumed) — this test re-measures the "category=All" case afterwards
-// specifically to prove that selection reproduces PR1's original,
-// unfiltered counts byte-for-byte (the BASE-vs-HEAD control this PR owes
+// `app/public/data/seamarks.json`) — describing the state #513 F1/F2
+// shipped, NOT the state today: the #521 maintainer ruling (2026-08-21)
+// reversed that carve-out (`SPECIAL_PURPOSE_ALL_CATEGORIES` in
+// seamarkGlyphs.ts is now empty), so the STANDARD default hides ZERO of
+// 1794 and `SEAMARK_DISPLAY_TIER_ALL` is inert for today's shipped data —
+// "All" renders identically to "Standard". So the Standard-category PIN
+// VALUES below are no longer smaller than PR1's own committed baseline at
+// the identical cluster/zoom pair; they are now IDENTICAL to it (measured,
+// not assumed) — this test still re-measures the "category=All" case
+// afterwards, which now proves both that selection reproduces PR1's
+// original, unfiltered counts byte-for-byte AND that it is
+// indistinguishable from "Standard" (the BASE-vs-HEAD control this PR owes
 // per CLAUDE.md's #191/#192 rule, now one level indirect: HEAD's "All"
-// selection must equal BASE's only selection).
+// selection must equal BASE's only selection — and, since #521, HEAD's
+// "Standard" selection too).
 //
 // Two zoom regimes are measured because they behave OPPOSITELY
 // (SEAMARKS_LAYOUT's own `icon-overlap` is `['step', ['zoom'], 'never', 12,
@@ -134,11 +140,12 @@ interface ScTestMap {
 // not just its anchor coordinate (see the file header's #484 F2 note), so
 // one mark whose anchor sits just outside the box still qualifies because
 // its icon overlaps the edge — expected, not a discrepancy to chase. #353
-// PR2 adds a SECOND, SMALLER z>=12 pin at the default category (Standard,
-// hiding only this box's `cable`/`pipeline`-categorised `specialPurpose`
-// marks — #513 F1/F2's corrected mapping) — that reduction is the new
-// display-category filter working as designed, not a re-occurrence of this
-// same effect.
+// PR2 originally added a SECOND, SMALLER z>=12 pin at the default category
+// (Standard, hiding only this box's `cable`/`pipeline`-categorised
+// `specialPurpose` marks — #513 F1/F2's corrected mapping); since #521
+// (2026-08-21 ruling) reversed that carve-out, the Standard-category z>=12
+// pin below is now IDENTICAL to this All-category one, not smaller — see
+// the file header and the pin's own comment below.
 const CLUSTER_CENTER: [number, number] = [10.515, 54.855];
 const CLUSTER_HALF_DEGREES = 0.015;
 // #484 F2: 11.5, not 10 — see the file header for why. Still comfortably
@@ -305,17 +312,23 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
     // would move the z<12 SET away from its pin while the z>=12 set
     // (structurally collision-immune, and querying the exact same
     // geographic box) stays exactly where it is — the #191/#192 signature
-    // this file exists to catch. These two sets are SMALLER than PR1's own
-    // baseline at the identical cluster/zoom pair, but only by the
-    // `specialPurpose` marks in this box whose `category` is `cable` or
-    // `pipeline` — measured, not inferred from the icon id
-    // (`seamark-special-*` is colour-keyed, not category-keyed): at z11.5,
-    // 1 of 1 `seamark-special-black` is hidden and 1 of 1
-    // `seamark-special-default` is shown; at z13, 2 of 4
-    // `seamark-special-black` are hidden and 4 of 4 `seamark-special-default`
-    // are shown — expected (see the file header), re-verified below by
-    // reproducing PR1's original counts at
-    // category=All.
+    // this file exists to catch.
+    //
+    // #521 (maintainer ruling, 2026-08-21): `cable`/`pipeline` marks now
+    // resolve to STANDARD instead of ALL (`SPECIAL_PURPOSE_ALL_CATEGORIES`
+    // in seamarkGlyphs.ts is now empty), so these two sets are NO LONGER
+    // smaller than PR1's own baseline at the identical cluster/zoom pair —
+    // they are IDENTICAL to it, and to the category=All pins measured
+    // later in this same test. Before #521 (under #513 F1/F2's
+    // now-superseded carve-out) this box's Standard set was missing 1 of 1
+    // `seamark-special-black` at z11.5 and 2 of 4 at z13 — measured, not
+    // inferred from the icon id (`seamark-special-*` is colour-keyed, not
+    // category-keyed). #521 restores both, verified below (in this same
+    // run) against the console-logged `high`/`low` reads before the
+    // assertions were updated, and re-verified structurally by the
+    // category=All re-measurement further down, which now doubles as
+    // proof that "Standard" and "All" render identically in this box, not
+    // just that "All" reproduces PR1's original counts.
     //
     // #484 F6: pinned as the FULL SORTED ID ARRAY, not `.length` — the
     // settle gate above already refuses to call a read "stable" on a
@@ -344,6 +357,7 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
       'seamark-lateral-spar-black-port',
       'seamark-lateral-spar-black-port',
       'seamark-lateral-spar-red-port',
+      'seamark-special-black',
       'seamark-special-default',
     ]);
     expect(
@@ -386,6 +400,8 @@ test('#353: seamark size-axis guard — icon-overlap collision culling below z12
       'seamark-lateral-spar-red-port',
       'seamark-lateral-spar-red-port',
       'seamark-light-minor',
+      'seamark-special-black',
+      'seamark-special-black',
       'seamark-special-black',
       'seamark-special-black',
       'seamark-special-default',
