@@ -164,7 +164,14 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
   topmost: T | undefined,
   tapLngLat: TTap,
 ): [number, number] | TTap {
-  if (!picked || picked === topmost) return tapLngLat;
+  // A separate `!picked` arm was here and is deliberately removed (PR #685
+  // review): it was unreachable-as-discriminating from the real call site
+  // (pickSeamarkByPriority returns undefined only when e.features is empty
+  // or absent, in which case e.features?.[0] — topmost — is undefined too,
+  // so `picked === topmost` already covers it) and pointCoordinates(undefined)
+  // safely falls through to tapLngLat below regardless, so no defensiveness
+  // is lost by dropping it.
+  if (picked === topmost) return tapLngLat;
   return pointCoordinates(picked) ?? tapLngLat;
 }
 
@@ -203,38 +210,43 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         Nothing in this layer can fix that — `symbol-z-order: 'viewport-y'`
  *         would disable sortFeaturesByKey and take the placement priority with
  *         it. Only splitting the hazard families into their own symbol layer,
- *         stacked above this one, decouples the two; that is a follow-up
- *         (#232 item 1 — out of scope for #232 items 2-4).
- *     (c) Cross-tile ordering leaks, and it is INHERENT to the mechanism, not
- *         a ranking bug (#232 item 2 — documented here, not fixed). The sort
- *         above only orders features WITHIN one tile's own bucket:
- *         `SymbolBucket.populate()` sorts `this.features` in place when
- *         `sortFeaturesByKey` is set (`node_modules/maplibre-gl/src/data/
- *         bucket/symbol_bucket.ts:551-555`), and a fresh `SymbolBucket` is
- *         built per (tile, layer) by `WorkerTile` — one `WorkerTile` per tile
- *         (`source/worker_tile.ts:112`'s `layer.createBucket(...)`) — so the
- *         sort never sees features from any other tile. A low-priority
- *         (routine) mark placed in an earlier-processed tile can still win
- *         the collision against a high-priority (hazard) mark ranked lower
- *         in a LATER tile, because the two are sorted in two entirely
- *         separate arrays that are never merged before placement runs. No
- *         choice of `priority` values fixes this — it is a property of the
- *         tiled-bucket architecture, not of the ranking — and it is why
- *         hazard retention at z8/z9 (#200) is measured high but not 100%.
- *         Verified against `maplibre-gl@6.5.0` (`SymbolBucket.populate`,
- *         its `this.features.sort(...)` call, and `WorkerTile`'s per-tile
- *         `createBucket` call), confirmed via `npm ci` against
- *         `app/package-lock.json`'s pin rather than a possibly-stale
- *         `node_modules` (#392's documented trap) — re-derive the line
- *         numbers after any future maplibre-gl upgrade. A single non-tiled
- *         source or a source `buffer`/`tolerance` change was considered and
- *         does not help either: the tiling (and therefore the per-tile
- *         bucket boundary) is intrinsic to how MapLibre's vector/GeoJSON
- *         sources feed the symbol placement pipeline, not a property of one
- *         source's settings. "Documented as inherent, with the measured
- *         residual recorded" is the issue's own accepted closing condition
- *         for this item — this comment plus the #200 z8/z9 retention figures
- *         it references are that record.
+ *         stacked above this one, decouples the two; that is a follow-up,
+ *         filed as #682 (out of scope for #232 items 2-4).
+ *     (c) Cross-tile ordering (#232 item 2) — the issue's ORIGINAL hypothesis
+ *         here ("the sort only orders within one tile, so a low-priority
+ *         mark in an earlier tile can beat a high-priority one in a later
+ *         tile, and no ranking fixes it") is REFUTED by source, read against
+ *         `maplibre-gl` **6.5.0** (`app/node_modules/maplibre-gl`, matched
+ *         to `app/package-lock.json`'s pin via `npm ci` before reading, not
+ *         a possibly-stale `node_modules` — #392's documented trap).
+ *         `sc-seamarks` sets a non-constant `symbol-sort-key` and never sets
+ *         `symbol-z-order` — exactly the condition `LayerPlacement`'s
+ *         `_sortAcrossTiles` flag tests (`style/pauseable_placement.ts:
+ *         20-21`, the SAME predicate as `sortFeaturesByKey` above). When
+ *         that flag is true, `continuePlacement` (`:29-56`) first collects
+ *         ONE `BucketPart` per tile-local `sortKeyRange` from EVERY
+ *         renderable tile of the source (`:33-41`; `getBucketParts`,
+ *         `symbol/placement.ts:245,303-307` — `sortKeyRanges` are the
+ *         WORKER-side per-tile grouping the sort above feeds via
+ *         `addToSortKeyRanges`, `data/bucket/symbol_bucket.ts:891-902`),
+ *         collects them all into ONE array, THEN sorts that whole array by
+ *         `sortKey` GLOBALLY (`:43-46`) BEFORE placing any part of it
+ *         (`:48-56`). So a hazard mark in a later-processed tile IS placed
+ *         — and therefore collision-wins — before a routine mark in an
+ *         earlier tile: the per-tile sort above is a worker-side grouping
+ *         step feeding this later cross-tile merge, not the final placement
+ *         order.
+ *         STATUS: NOT resolved, and no longer documentable as "inherent" —
+ *         that framing, and the closing condition it was meant to satisfy,
+ *         are both withdrawn here. #200's measured z8/z9 hazard retention
+ *         (high but not 100%) is a real number this comment does NOT
+ *         explain any more: the mechanism verified above does not produce a
+ *         cross-tile leak for this layer's configuration, and no
+ *         alternative cause was established in this pass. #232 item 2 needs
+ *         either a fresh investigation of the real cause, or a
+ *         re-measurement confirming the residual still exists at all,
+ *         before it can be closed either way — this comment records the
+ *         refutation, not a resolution.
  *   Below z12 the older trade-off still stands: collision-hidden symbols are
  *   absent from queryRenderedFeatures, so culled minor marks are untappable
  *   by design. (There, at most one icon can cover any given point — an
