@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A saved plan whose stored routing outcome can no longer be read now tells
   you to plan the route again, instead of showing generic "try again or
   reload the app" copy that could never help on that screen (#662).
+- Improved screen-reader support: the app now exposes a single "main
+  content" landmark, the route legs table announces its column headers and a
+  name, and the boat catalogue's English source citations are marked as
+  English so they aren't read with German pronunciation (#707).
+- Fixed the map's attribution ("i") card showing a stark white background in
+  dark mode — both collapsed, as it appears on load, and when opened; it now
+  matches the app's dark theme (#711).
 
 ## [0.13.1] - 2026-08-24
 
