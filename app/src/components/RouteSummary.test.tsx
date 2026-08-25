@@ -279,6 +279,35 @@ describe('RouteSummary', () => {
     expect(screen.queryByText(/Genoa and Fock/)).not.toBeInTheDocument();
   });
 
+  // #578 review Minor 5: the FALLBACK path specifically — a `tie` verdict
+  // whose sailIds has only ONE usable entry. Deliberately malformed
+  // (assemble()'s own guard makes 'tie' reachable in production only when
+  // exactly two sails were compared; the #578 row above tests the real
+  // two-sail path and cannot reach `tiedSailIds`' fallback at all), the same
+  // shape as this file's own "#54: names a stored sail the catalogue no
+  // longer knows" row above. Restoring the fallback to
+  // `sailIds[1] ?? sailIds[0]` renders "Genoa and Genoa are effectively
+  // tied" — a self-tie that reads as a genuine result rather than a
+  // degraded one — so this asserts BOTH the honest fallback label's
+  // PRESENCE and the self-tie's ABSENCE: a presence-only assertion would
+  // still pass if both slots happened to render "Genoa".
+  it('#578 review Minor 5: a tie verdict with only ONE usable sail id renders the honest fallback, never a self-tie', () => {
+    const plan = makePlan({ rigRecommendation: { kind: 'tie' } });
+    plan.result = {
+      ...plan.result,
+      sails: [{ sailId: 'genoa', result: GENOA_RESULT, reason: null }],
+    };
+    renderSummary({ plan, rig: 'genoa' });
+    expect(
+      screen.getByText(
+        `Genoa and ${en['route.rig.unknown']} are effectively tied for this passage`,
+      ),
+    ).toBeInTheDocument();
+    // THE discriminating assertion — a self-tie must never render, whatever
+    // exact wording carries it.
+    expect(screen.queryByText(/Genoa and Genoa/)).not.toBeInTheDocument();
+  });
+
   it('#259: a moot comparison (all-motor) shows neither ★ and an honest moot chip', () => {
     const plan = makePlan({ rigRecommendation: { kind: 'moot' } });
     renderSummary({ plan, rig: 'fock' });
