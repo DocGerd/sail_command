@@ -69,7 +69,7 @@ export const de = {
   'settings.seamarkCategory.standard': 'Standard',
   'settings.seamarkCategory.all': 'Alle',
   'settings.seamarkCategory.help':
-    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles außer Unterwasserkabeln und Pipelines — wähle „Alle“, um auch diese anzuzeigen.',
+    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles, einschließlich Unterwasserkabeln und Pipelines. „Alle“ zeigt derzeit dasselbe wie „Standard“.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
@@ -607,7 +607,7 @@ export const de = {
   // write, foreign tool) lands here too — and the row's only control is an
   // irreversible delete, so the copy must not overstate recoverability.
   'plansList.unreadable.newerVersion':
-    'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese ältere Version kann ihn nicht lesen.',
+    'Dieser Plan wurde mit einer neueren Version der App gespeichert. Diese ältere Version kann ihn nicht lesen. Er bleibt gespeichert.',
   'plansList.unreadable.damaged':
     'Dieser Plan kann nicht geöffnet werden – der gespeicherte Datensatz ist unvollständig oder beschädigt. Er bleibt gespeichert.',
   // #114: recalculate a saved plan with a FRESH forecast (unlike a via-replan,

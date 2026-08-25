@@ -54,8 +54,19 @@ function isRecord(x: unknown): x is Record<string, unknown> {
  * via-waypoint segmented routing", 2026-07-15) — the SAME commit that
  * introduced the via-points feature itself (adds the whole
  * `routing/viaPoints.test.ts` suite and the `planRoute.ts` via-solving
- * logic in one diff; `git log -S'waypoints:' -S'via:' -- types.ts` finds no
- * earlier key it could have been renamed from either). No earlier shape of
+ * logic in one diff; `git show eb2d7ee^:app/src/types.ts` shows a
+ * `PlanRequest` with no via field of any spelling —
+ *   origin/destination/originHarborId/destinationHarborId/departureMs/
+ *   settings only, verified 2026-08-25 — so it is not a rename of an
+ * earlier key either). A supplementary pickaxe sweep for a rename spread
+ * across EARLIER commits (`git log --oneline --pickaxe-regex
+ * -S'waypoints|wayPoints|viaPoint\b' -- app/src/types.ts` — the correct
+ * pathspec from repo root, ONE `-S` per invocation since repeated `-S` does
+ * NOT and the last one silently wins, controlled against a known-present
+ * `-S'viaPoints'` hit before trusting the empty result) finds nothing
+ * either, 2026-08-25 — corroborating, not load-bearing: the pre-image above
+ * is definitive for THIS commit, the sweep can only rule out a candidate
+ * name actually searched for. No earlier shape of
  * `PlanRequest` could have used via points without the field existing —
  * BUT that does not make an absent key reachable for a genuine stored
  * record: `services/db.ts`, the only IndexedDB writer this app has ever

@@ -304,15 +304,16 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *
  * - BASE (product floor, broader than IMO's Display Base — see above):
  *   `isolatedDanger`, `cardinal`, `lateral`, `safeWater`, `lightMajor`.
- * - STANDARD (default) adds: `lightMinor`, `unknown`, and every
- *   `specialPurpose` mark EXCEPT the two categories named below — Appendix
- *   2 item 2.3's undivided AtoN group covers the whole `specialPurpose`
- *   family, all 703 (26 distinct raw category strings; measured, not
- *   assumed), every one of which is a point mark whatever it annotates; the
- *   584/119 split is this app's, not the standard's. The **584** shown at
- *   STANDARD are e.g. `leading` (64),
- *   `clearing` (3 — the *Gefahrenpeilung* this repo's own German-
- *   terminology notes name, #300), `no_entry`, `firing_danger_area`,
+ * - STANDARD (default) adds: `lightMinor`, `unknown`, and — since the #521
+ *   maintainer ruling (2026-08-21) — the ENTIRE `specialPurpose` family,
+ *   all 703 (26 distinct raw category strings; measured, not assumed),
+ *   every one of which is a point mark whatever it annotates. Appendix 2
+ *   item 2.3's undivided AtoN group covers the whole family, and this app
+ *   used to carve two categories out to ALL as a declutter choice; #521
+ *   reversed that (full reasoning in the ALL bullet below). The 584
+ *   categories that were ALREADY Standard-tier before #521 are e.g.
+ *   `leading` (64), `clearing` (3 — the *Gefahrenpeilung* this repo's own
+ *   German-terminology notes name, #300), `no_entry`, `firing_danger_area`,
  *   `warning`, `yachting`, `recording`, `odas`, `recreation_zone`,
  *   `recreational`, `mooring`, `marine_farm`, `target`, `degaussing_range`,
  *   `foul_ground`, `lanby`, `unknown_purpose`, `wave_recorder`, `notice`,
@@ -324,38 +325,52 @@ const FAMILY_RANK: Record<SeamarkFamily, number> = {
  *   mark must fail toward being SHOWN. An earlier revision also cited item
  *   2.6's "prohibited and restricted areas" here; dropped, because every
  *   shipped feature is a Point — the same category error as the item-3.2
- *   claim corrected in the next bullet.
- * - ALL adds two `specialPurpose` categories: `cable` (117 marks) and
- *   `pipeline` (2). This is a DELIBERATE DECLUTTERING CHOICE — a departure
- *   from the ECDIS convention, not an application of it. An earlier
- *   revision justified it with Appendix 2 item 3.2's "submarine cables and
- *   pipelines"; that is a CATEGORY ERROR and is not used here. Item 3.2 is
- *   plain English and names no object class; in S-57 that content is
- *   `CBLSUB` (Line) / `PIPSOL`, whereas all 1794 features in the shipped
- *   data are POINTS (measured 2026-08-13: zero lines, zero areas) —
- *   `category=cable` is S-57 CATSPM 6, "cable mark", a
- *   point aid to navigation under item 2.3 exactly like the STANDARD-tier
- *   marks above. Whether these two categories should be tiered ALL at all
- *   is therefore OPEN, tracked in **#521**. Residual, stated rather than
- *   implied: these 119 marks are hidden at the STANDARD default and they
- *   are part of the 259 the #513 review counted as
- *   hazard/prohibition-categorised, so 140 of those 259 are shown at the
- *   default and 119 are not (measured 2026-08-13 against
- *   `app/public/data/seamarks.json`). That 259 is the distinct features of
- *   `seamarkType` `buoy_special_purpose`, `beacon_special_purpose` or
- *   `light_minor` whose `category`, split on `;`, contains any of `cable`,
- *   `no_entry`, `firing_danger_area`, `warning`, `marine_farm`, `target`,
- *   `clearing`, `pipeline`, `foul_ground` — re-run it to check the figure.
+ *   claim below.
+ * - ALL: no `specialPurpose` category lands here any more, and no other
+ *   family ever did (see `DISPLAY_TIER_OF_FAMILY` below) — so at the
+ *   shipped data ALL is INERT: selecting it renders identically to
+ *   STANDARD. This is the "honest cost" #521 itself named (three radio
+ *   buttons, two distinct outcomes; BASE still differs).
+ *   `SPECIAL_PURPOSE_ALL_CATEGORIES` is kept as a live (now-empty) Set
+ *   rather than deleted, so a FUTURE product decision to decant some other
+ *   category to ALL has somewhere to land without re-plumbing
+ *   `specialPurposeDisplayTier`.
+ *
+ *   Until #521, `cable` (117 marks) and `pipeline` (2) were the two
+ *   categories tiered ALL — a DELIBERATE DECLUTTERING CHOICE, a departure
+ *   from the ECDIS convention rather than an application of it. An earlier
+ *   revision justified that with Appendix 2 item 3.2's "submarine cables
+ *   and pipelines"; that was a CATEGORY ERROR and is not used here. Item
+ *   3.2 is plain English and names no object class; in S-57 that content
+ *   is `CBLSUB` (Line) / `PIPSOL`, whereas all 1794 features in the
+ *   shipped data are POINTS (measured 2026-08-13: zero lines, zero
+ *   areas) — `category=cable` is S-57 CATSPM 6, "cable mark", a point aid
+ *   to navigation under item 2.3 exactly like every other STANDARD-tier
+ *   mark. The maintainer ruling on #521 (2026-08-21) resolved the
+ *   resulting product question in favour of showing them: at the Standard
+ *   default the cable/pipeline mark was the ONLY on-chart cue that a
+ *   submarine cable or pipeline exists at all, in the Flensburg Fjord /
+ *   Danish South Sea area where anchoring is routine — hiding it removed
+ *   the sole warning rather than decluttering a redundant one.
+ *
+ *   **UNVERIFIED, and NOT settled by the #521 ruling**: the S-52
+ *   Presentation Library's own lookup tables assign display category per
+ *   object class AND attribute, and are not freely retrievable (registered
+ *   distribution) — nobody has checked whether PresLib places `BOYSPP` +
+ *   `CATSPM=6` in OTHER. #521's ruling is a PRODUCT decision made without
+ *   that data, not a resolution of the PresLib question; it stays open for
+ *   a future issue, not this one.
  *
  * At the shipped data (measured against `app/public/data/seamarks.json`,
  * 1794 features: lateral 828, specialPurpose 703 [cable 117, pipeline 2,
  * everything else 584], cardinal 121, lightMinor 107, safeWater 23,
- * lightMajor 6, isolatedDanger 6, unknown 0), the default (STANDARD) hides
- * exactly the 119 cable/pipeline marks — not the 810 the family-level
- * mapping in the FIRST #353 PR2 revision hid, which is what #513's Blocker
- * (F1) was about. That 119-hidden figure does NOT depend on whether
- * `safeWater`/`lightMajor` sit in BASE or STANDARD (both are shown at the
- * STANDARD default either way) — only on the `specialPurpose` split.
+ * lightMajor 6, isolatedDanger 6, unknown 0), the default (STANDARD) now
+ * hides ZERO `specialPurpose` marks — not the 119 cable/pipeline marks it
+ * hid before #521, and not the 810 the family-level mapping in the FIRST
+ * #353 PR2 revision hid (#513's Blocker F1). That does NOT depend on
+ * whether `safeWater`/`lightMajor` sit in BASE or STANDARD (both are shown
+ * at the STANDARD default either way) — only on the `specialPurpose` split,
+ * which #521 made a no-op.
  */
 export type SeamarkDisplayTier = 0 | 1 | 2;
 export const SEAMARK_DISPLAY_TIER_BASE = 0;
@@ -368,28 +383,31 @@ export const SEAMARK_DISPLAY_TIER_ALL = 2;
  * NOT because ECDIS loads into it: an earlier revision of this comment
  * cited §3.4 for a load default, which the resolution does not say — §5.4
  * has power-up return to "the most recent manually selected settings".
- * Post #513 F1/F2: everything except the two ALL-tier `specialPurpose`
- * categories (`cable`/`pipeline`) is shown out of the box. */
+ * Post #521 (maintainer ruling 2026-08-21): the STANDARD default now shows
+ * the ENTIRE `specialPurpose` family out of the box, `cable`/`pipeline`
+ * included — the #513 F1/F2 carve-out to ALL is reversed; see the
+ * tier-ladder doc comment above for the full reasoning and for why ALL is
+ * now inert for today's shipped data. */
 export const DEFAULT_SEAMARK_DISPLAY_TIER: SeamarkDisplayTier = SEAMARK_DISPLAY_TIER_STANDARD;
 
-/** The `specialPurpose` categories this app declutters to the ALL tier — the
- * ONLY `specialPurpose` marks tiered ALL rather than STANDARD (#513 F1/F2).
- * A product choice, NOT an Appendix 2 item 3.2 application; see
- * `seamarkDisplayTier`'s doc comment above and #521. Measured against the
- * shipped data: neither value ever co-occurs with another category in the
- * same `;`-joined tag (`cable` is always the WHOLE category string, 117
- * times; so is `pipeline`, twice)
- * — but `specialPurposeDisplayTier` below still splits and checks every
- * token, not just an exact match, so a future compound tag (e.g.
- * `cable;warning`) still lands ALL rather than silently falling to
- * STANDARD. */
-const SPECIAL_PURPOSE_ALL_CATEGORIES = new Set(['cable', 'pipeline']);
+/** The `specialPurpose` categories this app declutters to the ALL tier —
+ * EMPTY since the #521 maintainer ruling (2026-08-21): `cable` and
+ * `pipeline` moved to STANDARD (see `seamarkDisplayTier`'s doc comment
+ * above for the full reasoning and the still-UNVERIFIED PresLib caveat).
+ * A product choice, not an Appendix 2 item 3.2 application. Kept as a live
+ * Set rather than deleted or inlined to a constant `false` — the mechanism
+ * (and `specialPurposeDisplayTier`'s compound-tag handling below) stays
+ * ready for a FUTURE product decision to decant some other category to
+ * ALL, without needing to re-plumb this function. */
+const SPECIAL_PURPOSE_ALL_CATEGORIES = new Set<string>();
 
-/** The `specialPurpose` family alone is NOT a uniform display tier (#513
- * F1/F2) — most of it (no_entry/firing_danger_area/warning/... and the
- * untagged plurality) stays STANDARD as point AtoN content (MSC.232(82)
- * Appendix 2 item 2.3), while `cable`/`pipeline` are decluttered to ALL by
- * product choice rather than by any Appendix 2 item (#521). */
+/** The `specialPurpose` family is now a UNIFORM display tier (#521,
+ * reversing #513 F1/F2's cable/pipeline carve-out to ALL) — the whole
+ * family, `cable`/`pipeline` included, stays STANDARD as point AtoN
+ * content (MSC.232(82) Appendix 2 item 2.3).
+ * `SPECIAL_PURPOSE_ALL_CATEGORIES` being empty is what makes this uniform
+ * in practice; the split logic below is retained for a possible future
+ * category (see that Set's own doc comment). */
 function specialPurposeDisplayTier(category: string | undefined): SeamarkDisplayTier {
   const tokens = (category ?? '').split(';').map((s) => s.trim());
   return tokens.some((t) => SPECIAL_PURPOSE_ALL_CATEGORIES.has(t))
