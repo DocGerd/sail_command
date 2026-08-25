@@ -13,11 +13,13 @@ import {
 } from '../lib/routeGeoJson';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
+import { useWideLayout } from '../lib/useWideLayout';
 import { registerBarbImages } from '../lib/windBarbs';
 import { NavMask } from '../lib/mask';
 import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
+import Disclosure from './Disclosure';
 import type { LatLon, Plan, SailId } from '../types';
 
 export interface RouteLayerProps {
@@ -487,6 +489,14 @@ export default function RouteLayer({
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
+  // #628: default-open state for the collapsible controls cluster below is
+  // layout-dependent, not persisted — wide (side-panel) layouts have room to
+  // spare so the cluster starts open there; narrow (map-overlay) layouts are
+  // exactly where this cluster obstructs the chart, so it starts collapsed.
+  // Read once per mount (Disclosure's own `defaultOpen` contract); a manual
+  // user toggle is never overridden by a later resize, only by the whole
+  // `.route-layer-controls` block unmounting (plan -> null) and remounting.
+  const isWide = useWideLayout();
   // #63: both overlays default ON (a skipper wants the wind and the numbers
   // without hunting for checkboxes) and persist an explicit choice across
   // reloads. The toggles below stay as the clean-chart escape hatch.
@@ -795,62 +805,74 @@ export default function RouteLayer({
 
   return (
     <div className="route-layer-controls">
-      <label>
-        <input
-          type="checkbox"
-          checked={annotationsVisible}
-          onChange={(e) => setAnnotationsVisible(e.target.checked)}
-        />
-        {t('route.annotations.toggle')}
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={barbsVisible}
-          onChange={(e) => setBarbsVisible(e.target.checked)}
-        />
-        {t('route.windBarbs.toggle')}
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={altRigVisible}
-          disabled={!altToggleAvailable}
-          onChange={(e) => setAltRigVisible(e.target.checked)}
-          aria-describedby={altToggleAvailable ? undefined : 'route-alt-rig-note'}
-        />
-        {t('route.altRig.toggle')}
-      </label>
-      {/* A `title` attribute is hover-only — unreachable on this app's
-          primary (touch) context. A visible note, wired via
-          aria-describedby, reaches both. Reused for BOTH unavailable
-          causes (fock/genoa's own result null, or the complement's) — "only
-          one rig found a route" is accurate either way; a `Plan` only exists
-          once at least the recommended rig has solved (types.ts:
-          `recommendedResult`'s invariant), so the two results can never be
-          null AT THE SAME TIME. */}
-      {!altToggleAvailable && (
-        <p id="route-alt-rig-note" className="route-alt-rig-note">
-          {t('route.altRig.unavailable')}
-        </p>
-      )}
-      {hourOptions.length > 1 && (
-        <div className="route-layer-time-slider">
-          <input
-            type="range"
-            min={0}
-            max={hourOptions.length - 1}
-            step={1}
-            value={clampedHourIdx}
-            onChange={(e) => setHourIdx(Number(e.target.value))}
-            aria-label={t('route.windBarbs.timeSlider')}
-            aria-valuetext={formatDateTime(tMs, lang)}
-          />
-          <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
-        </div>
-      )}
+      {/* #628: ViaMarkers renders NO visible box of its own most of the time
+          (maplibre Markers attach straight to the map container, outside this
+          DOM subtree) — its only DOM output is the rare "draft differs from
+          the committed route" status chip. That chip must stay visible
+          regardless of collapse state, so it sits OUTSIDE the Disclosure
+          below rather than inside its collapsible body. */}
       <ViaMarkers viaPoints={draftViaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
-      <RouteLegend />
+      <Disclosure
+        className="route-layer-controls-disclosure"
+        defaultOpen={isWide}
+        summary={t('route.controls.summary')}
+      >
+        <label>
+          <input
+            type="checkbox"
+            checked={annotationsVisible}
+            onChange={(e) => setAnnotationsVisible(e.target.checked)}
+          />
+          {t('route.annotations.toggle')}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={barbsVisible}
+            onChange={(e) => setBarbsVisible(e.target.checked)}
+          />
+          {t('route.windBarbs.toggle')}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={altRigVisible}
+            disabled={!altToggleAvailable}
+            onChange={(e) => setAltRigVisible(e.target.checked)}
+            aria-describedby={altToggleAvailable ? undefined : 'route-alt-rig-note'}
+          />
+          {t('route.altRig.toggle')}
+        </label>
+        {/* A `title` attribute is hover-only — unreachable on this app's
+            primary (touch) context. A visible note, wired via
+            aria-describedby, reaches both. Reused for BOTH unavailable
+            causes (fock/genoa's own result null, or the complement's) — "only
+            one rig found a route" is accurate either way; a `Plan` only exists
+            once at least the recommended rig has solved (types.ts:
+            `recommendedResult`'s invariant), so the two results can never be
+            null AT THE SAME TIME. */}
+        {!altToggleAvailable && (
+          <p id="route-alt-rig-note" className="route-alt-rig-note">
+            {t('route.altRig.unavailable')}
+          </p>
+        )}
+        {hourOptions.length > 1 && (
+          <div className="route-layer-time-slider">
+            <input
+              type="range"
+              min={0}
+              max={hourOptions.length - 1}
+              step={1}
+              value={clampedHourIdx}
+              onChange={(e) => setHourIdx(Number(e.target.value))}
+              aria-label={t('route.windBarbs.timeSlider')}
+              aria-valuetext={formatDateTime(tMs, lang)}
+            />
+            <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
+          </div>
+        )}
+        <RouteLegend />
+      </Disclosure>
     </div>
   );
 }

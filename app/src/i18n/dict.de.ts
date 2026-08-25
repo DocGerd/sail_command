@@ -388,6 +388,10 @@ export const de = {
   'route.annotations.toggle': 'Zeiten & Geschwindigkeiten',
   'route.altRig.toggle': 'Anderes Rigg anzeigen',
   'route.altRig.unavailable': 'Nur ein Rigg hat eine Route gefunden',
+  // #628: summary label for the Disclosure wrapping the whole map-overlay
+  // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
+  // legend) — collapsible so it stops obstructing the chart on mobile.
+  'route.controls.summary': 'Anzeigeoptionen',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Tiefenprofil',

@@ -433,6 +433,10 @@ export const en = {
   'route.annotations.toggle': 'Times & speeds',
   'route.altRig.toggle': 'Show other rig',
   'route.altRig.unavailable': 'Only one rig found a route',
+  // #628: summary label for the Disclosure wrapping the whole map-overlay
+  // controls cluster (annotation/barb/alt-rig toggles, forecast slider,
+  // legend) — collapsible so it stops obstructing the chart on mobile.
+  'route.controls.summary': 'Display options',
   'route.motorLetter': 'M',
   // Depth profile (#45)
   'profile.title': 'Depth profile',

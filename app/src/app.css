@@ -1087,6 +1087,49 @@ select {
   min-height: 44px;
 }
 
+/* #628: the toggle/slider/legend cluster above collapses behind ONE
+   Disclosure (Disclosure.tsx), so it can stop obstructing the chart on
+   mobile — default-collapsed on narrow layouts, default-open on wide
+   (RouteLayer.tsx's own comment). The primitive's OWN `.sc-disclosure*`
+   rules (below, in the "Disclosure" section) are sized for PANEL content —
+   a bordered box with 0.75rem side padding — not this absolutely-positioned,
+   shrink-to-fit map-chrome pill: `.route-layer-controls`'s own `max-width`
+   rule above documents ONLY ~4px of width headroom at the 390px baseline
+   before content growth clips visibly, and #598's sibling `.depth-legend`
+   collapsible (`.data-layer-controls`'s own section) already measured and
+   REJECTED that same bordered/padded primitive for exactly this reason on
+   the OPPOSITE corner of the map. So this strips the primitive's border and
+   side padding back down to `.route-legend`'s own bare-`<details>` footprint
+   (that rule, above) — same >=44px touch target, same rotating-chevron
+   affordance, zero added width. Compound selectors throughout (never a
+   bare `.route-layer-controls-disclosure` alone): `.sc-disclosure` is
+   declared LATER in this file, so a same-specificity single-class modifier
+   here would lose to it outright (the single-class-modifier-loses-to-a-
+   later-base-rule trap, `.chip-shallow`'s own history). Verify any change
+   here with getComputedStyle in a real browser or against real app.css in
+   jsdom, never by reading this rule — jsdom's `backgroundColor` and
+   `border-color` don't resolve `var()`, but `border-style`/`border-width`/
+   `padding` are plain lengths and DO discriminate. */
+.sc-disclosure.route-layer-controls-disclosure {
+  border: none;
+  padding: 0;
+}
+
+.route-layer-controls-disclosure > .sc-disclosure-summary {
+  font-weight: 400;
+}
+
+/* The checkboxes/slider/legend below used to be direct flex children of
+   `.route-layer-controls` (gap: 0.35rem, base rule above); now they're one
+   level deeper, inside `.sc-disclosure-body` (a plain block box by default,
+   see the "Disclosure" section below) — reproduce the same column+gap here
+   so collapsing them into the Disclosure doesn't lose the spacing. */
+.route-layer-controls-disclosure > .sc-disclosure-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 /* #155: top-left map-overlay stack — DataLayers' toggles with the compass
    below them, as ONE absolutely-positioned flex column.
    Opposite corner from the plan-gated route cluster so the two can never

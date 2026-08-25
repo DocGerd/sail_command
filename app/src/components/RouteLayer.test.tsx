@@ -643,3 +643,74 @@ describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () 
     expect(slider).toHaveAttribute('aria-valuetext', '15/07/2026, 10:00');
   });
 });
+
+// #628: the toggle/slider/legend cluster now lives inside ONE collapsible
+// Disclosure so it stops obstructing the chart on narrow (mobile) viewports.
+// jsdom implements <details>'s `.open` PROPERTY faithfully (that part is JS
+// state, not rendering) but not its content-hiding RENDERING behaviour, so
+// these tests pin structure/state — a real-browser pass covers the visual
+// collapse per this repo's own UI-verification convention.
+function setMatchMedia(matches: boolean) {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+}
+
+describe('RouteLayer collapsible controls cluster (#628)', () => {
+  it('wraps the toggles, slider and legend in ONE details, labelled by the shared summary', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    const details = document.querySelector('details.route-layer-controls-disclosure');
+    expect(details).not.toBeNull();
+    expect(screen.getByText('Anzeigeoptionen').closest('summary')).not.toBeNull();
+    // Every previously-direct child of .route-layer-controls now lives
+    // inside that one details element.
+    expect(details?.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(details?.querySelector('.route-layer-time-slider')).not.toBeNull();
+    expect(details?.querySelector('details.route-legend')).not.toBeNull();
+  });
+
+  it('opens by default on wide viewports, stays collapsed on narrow (matchMedia at mount)', () => {
+    setMatchMedia(true);
+    const wide = renderRouteLayer(makeFakeMap(), null);
+    expect(
+      wide.container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')
+        ?.open,
+    ).toBe(true);
+    wide.unmount();
+
+    setMatchMedia(false);
+    const narrow = renderRouteLayer(makeFakeMap(), null);
+    expect(
+      narrow.container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')
+        ?.open,
+    ).toBe(false);
+  });
+
+  it('keeps the via-draft-stale status chip OUTSIDE the collapsible, so it stays visible regardless of collapse state', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { container } = render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning
+        onViaDragEnd={async () => true}
+      />,
+    );
+    const chip = container.querySelector('.via-markers-spinner-chip');
+    expect(chip).not.toBeNull();
+    expect(chip?.closest('details.route-layer-controls-disclosure')).toBeNull();
+    // Still a direct child of the outer plan-gated cluster.
+    expect(chip?.closest('.route-layer-controls')).not.toBeNull();
+  });
+});

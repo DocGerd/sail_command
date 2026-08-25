@@ -922,6 +922,119 @@ test('#598: opening the depth-hatch legend does not overflow or collide with .ro
   }
 });
 
+// #628: the annotations/barb/alt-rig toggles, forecast-time slider and route
+// legend now collapse behind ONE Disclosure (RouteLayer.tsx wrapping
+// Disclosure.tsx), so the cluster stops obstructing the chart on mobile —
+// the issue's own measured obstruction was 33.8%/35.4% of VIEWPORT HEIGHT at
+// 390x844/375x667 respectively, both reused as viewport entries below
+// (`phonePortrait`, `partialPushBand375`). Default-open state is
+// layout-dependent (RouteLayer.tsx's own comment, not persisted): collapsed
+// on narrow (<1024px — exactly where the obstruction was measured), open on
+// wide (side-panel layouts have room to spare, matching the pre-#628
+// behaviour there byte-for-byte).
+const NARROW_COLLAPSE_VIEWPORTS: Record<string, Viewport> = {
+  phonePortrait: STANDARD_VIEWPORTS.phonePortrait,
+  tabletPortrait: STANDARD_VIEWPORTS.tabletPortrait,
+  narrowPortrait360: EDGE_VIEWPORTS.narrowPortrait360,
+  partialPushBand375: EDGE_VIEWPORTS.partialPushBand375,
+};
+for (const [label, viewport] of Object.entries(NARROW_COLLAPSE_VIEWPORTS)) {
+  test(`#628: the map-overlay controls cluster starts collapsed and recovers map area on narrow layouts (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+      await page.getByRole('button', { name: 'English anzeigen' }).click();
+      await page.getByRole('tab', { name: 'Plan' }).click();
+      const originSection = page.getByRole('region', { name: 'Origin' });
+      await originSection.getByRole('combobox').fill('Langballigau');
+      const originResults = originSection.getByRole('option');
+      await expect(originResults).toHaveCount(1);
+      await originResults.first().click();
+
+      const destSection = page.getByRole('region', { name: 'Destination' });
+      await destSection.getByRole('combobox').fill('Sønderborg');
+      const destResults = destSection.getByRole('option');
+      await expect(destResults).toHaveCount(1);
+      await destResults.first().click();
+
+      const planButton = page.getByRole('button', { name: 'Plan route' });
+      await planButton.click();
+      await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+      const disclosure = page.locator('details.route-layer-controls-disclosure');
+      await expect(disclosure).toBeVisible();
+      await expect(disclosure).toHaveJSProperty('open', false);
+
+      const routeControls = page.locator('.route-layer-controls');
+      // A generous ceiling, not a tight pixel pin (font metrics vary by
+      // platform): just the summary row's >=44px touch target plus the
+      // outer cluster's own 0.5rem top+bottom padding (16px).
+      const collapsedHeight = (await box(routeControls)).height;
+      expect(collapsedHeight).toBeLessThanOrEqual(70);
+
+      // Expand and confirm the content is actually reachable underneath —
+      // this is what proves the small measurement above was genuinely
+      // COLLAPSED content, not an unrelated small cluster (`open: false`
+      // alone can't tell those apart). Re-samples the box live inside the
+      // poll rather than freezing a coordinate before the toggle settles
+      // (#412's stale-geometry lesson).
+      await disclosure.locator('> summary').click();
+      await expect(disclosure).toHaveJSProperty('open', true);
+      await expect(page.getByRole('checkbox', { name: 'Show wind barbs' })).toBeVisible();
+      await expect
+        .poll(async () => (await box(routeControls)).height, { timeout: 5_000 })
+        .toBeGreaterThan(collapsedHeight + 100);
+    } finally {
+      server.kill();
+    }
+  });
+}
+
+const WIDE_OPEN_VIEWPORTS: Record<string, Viewport> = {
+  desktopHd: STANDARD_VIEWPORTS.desktopHd,
+  tabletLandscape: STANDARD_VIEWPORTS.tabletLandscape,
+};
+for (const [label, viewport] of Object.entries(WIDE_OPEN_VIEWPORTS)) {
+  test(`#628: the map-overlay controls cluster starts OPEN on wide (side-panel) layouts (${label}, ${viewport.width}x${viewport.height})`, async ({
+    page,
+  }) => {
+    const server = await startPreview();
+    try {
+      await page.setViewportSize(viewport);
+      await page.goto(`${server.url}?windFixture=test-fixtures/wind-sw12.json`);
+
+      await page.getByRole('button', { name: 'English anzeigen' }).click();
+      await page.getByRole('tab', { name: 'Plan' }).click();
+      const originSection = page.getByRole('region', { name: 'Origin' });
+      await originSection.getByRole('combobox').fill('Langballigau');
+      const originResults = originSection.getByRole('option');
+      await expect(originResults).toHaveCount(1);
+      await originResults.first().click();
+
+      const destSection = page.getByRole('region', { name: 'Destination' });
+      await destSection.getByRole('combobox').fill('Sønderborg');
+      const destResults = destSection.getByRole('option');
+      await expect(destResults).toHaveCount(1);
+      await destResults.first().click();
+
+      const planButton = page.getByRole('button', { name: 'Plan route' });
+      await planButton.click();
+      await expect(planButton).toBeEnabled({ timeout: 60_000 });
+
+      const disclosure = page.locator('details.route-layer-controls-disclosure');
+      await expect(disclosure).toBeVisible();
+      await expect(disclosure).toHaveJSProperty('open', true);
+      await expect(page.getByRole('checkbox', { name: 'Show wind barbs' })).toBeVisible();
+    } finally {
+      server.kill();
+    }
+  });
+}
+
 // #231: on a SHORT LANDSCAPE narrow viewport, the base COLUMN layout for
 // `.map-stack-tl` (DataLayers' two toggles stacked, then the compass) was
 // measured (#231's own issue text) to occupy ~46% of a 360px-tall viewport,
