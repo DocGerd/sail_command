@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { migratePlan } from './migratePlan';
+import { migratePlan, validRigRecommendation } from './migratePlan';
 import { DEFAULT_SETTINGS, PLAN_SCHEMA_VERSION, defaultBoatSnapshot } from '../types';
 
 // The one leg literal in this file: legacyRigResult spreads it, and the
@@ -393,6 +393,101 @@ describe('#54 migratePlan: pre-#54 records', () => {
   });
 });
 
+// #661: an unrecognised stored `rigRecommendation.kind` used to be cast
+// straight through unchecked (`result.rigRecommendation as NonNullable<...>`)
+// and reach lib/resultSummary.ts's rigVerdictKey exhaustiveness switch as a
+// bogus MsgKey — that switch's `never`-typed default arm is a BUILD-TIME-ONLY
+// guarantee (erasableSyntaxOnly strips it at runtime), and useT() (a bare
+// `dicts[lang][key]` lookup with no existence check) renders an absent key
+// as nothing at all. See migratePlan.ts's validRigRecommendation for the
+// full mechanism, including why simply OMITTING a present-but-invalid field
+// is not the safe fallback it looks like: rigRecommendationOf's
+// `?? { kind: 'decided', rig: result.recommended }` fallback exists for a
+// genuinely pre-#259 record that never had the field, and would fabricate a
+// verdict for a record that DID once carry a real, now-corrupted one —
+// exactly what ADR-0002 forbids. Every row below degrades to 'not-compared'
+// instead, the one RigRecommendation member that makes no comparative claim.
+describe('#661 migratePlan: rigRecommendation.kind is validated, never passed through unchecked', () => {
+  it('degrades an unrecognised kind to not-compared rather than passing it through unchecked', () => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).rigRecommendation = { kind: 'somehow-corrupted' };
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'not-compared' });
+  });
+
+  // Isolates the `isRecord` term: `null` is present (not undefined, so this
+  // does not take the 'genuinely absent' path below) but is not a record —
+  // `.kind` on `null` throws if that guard is ever deleted, rather than
+  // silently misreading as an unrecognised kind.
+  it('degrades a non-record stored value (null) rather than throwing or passing it through', () => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).rigRecommendation = null;
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'not-compared' });
+  });
+
+  // Isolates the decided/rig term: a recognised `kind` whose `rig` is
+  // missing (not a string), which would otherwise mint `{ kind: 'decided',
+  // rig: undefined }` — a fabricated star on an undefined "winner".
+  it('degrades a "decided" verdict with a missing/non-string rig rather than passing it through', () => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).rigRecommendation = { kind: 'decided' };
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'not-compared' });
+  });
+
+  // Positive controls: every EXISTING, well-formed verdict must still pass
+  // through unchanged — the validator must not over-reject a genuine record.
+  it.each([
+    ['decided', { kind: 'decided', rig: 'fock' }],
+    ['tie', { kind: 'tie' }],
+    ['moot', { kind: 'moot' }],
+    ['not-compared', { kind: 'not-compared' }],
+  ])('leaves a well-formed %s verdict unchanged', (_label, verdict) => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).rigRecommendation = verdict;
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual(verdict);
+  });
+
+  // This fix touches only the PRESENT-but-invalid branch — a genuinely
+  // absent field must still omit the key (unchanged from the pre-existing
+  // 'omits an absent optional' test above), never get stamped to
+  // not-compared, so rigRecommendationOf's pre-#259 fallback still fires
+  // for the record it is designed for.
+  it('still omits a genuinely absent rigRecommendation rather than stamping not-compared onto it', () => {
+    const raw = legacyPlan();
+    delete (raw.result as Record<string, unknown>).rigRecommendation;
+    const migrated = migratePlan(raw)!;
+    expect('rigRecommendation' in migrated.result).toBe(false);
+  });
+});
+
+// #661 review MINOR A: the it.each 'not-compared' row above (line ~439)
+// exercises migratePlan()'s RENDERED output, and that output is byte-identical
+// whether validRigRecommendation's own `case 'not-compared'` arm returns
+// `{ kind: 'not-compared' }` OR `null` — the call site's `?? { kind:
+// 'not-compared' }` fallback (migrateResult) silently substitutes the exact
+// same value either way. MEASURED: mutating that one arm to `return null`
+// left every existing #661/#54/#654 test GREEN (100/100). These two tests
+// bypass the call site and assert on validRigRecommendation's OWN return
+// value, so the arm is provably covered rather than merely shadowed by the
+// fallback around it. The other three arms ('decided'/'tie'/'moot') do NOT
+// share this gap — their correct return value differs from the fallback's
+// substitute, so the existing it.each rows above already discriminate them
+// (reviewer-verified: mutating any of those three to `return null` reds its
+// own positive-control row, because migratePlan() then returns
+// `{ kind: 'not-compared' }` where the test expects the real verdict).
+describe('#661 validRigRecommendation: direct unit tests (closes the not-compared coverage gap)', () => {
+  it('returns { kind: "not-compared" } for a well-formed not-compared record — the row the call-site fallback shadows', () => {
+    expect(validRigRecommendation({ kind: 'not-compared' })).toEqual({ kind: 'not-compared' });
+  });
+
+  it('returns null (not a fabricated verdict) for an unrecognised kind', () => {
+    expect(validRigRecommendation({ kind: 'somehow-corrupted' })).toBeNull();
+  });
+});
+
 describe('#54 migratePlan: records this build already understands', () => {
   it('passes a current-version record through with its boat snapshot intact', () => {
     const raw = migratePlan(legacyPlan())!;
@@ -650,5 +745,97 @@ describe('#54 migratePlan: the snapshot is by VALUE, never a catalogue alias', (
     );
     expect(a.request.boat).not.toBe(defaultBoatSnapshot());
     expect(a.request.boat).toEqual(defaultBoatSnapshot());
+  });
+});
+
+// #654: `request.viaPoints` was introduced by `eb2d7ee` ("feat: via-waypoint
+// segmented routing", 2026-07-15) — the SAME commit that introduced the
+// via-points feature itself. `legacyPlan()` above already carries
+// `viaPoints: []`, so it cannot exercise this gap.
+//
+// No LEGITIMATE stored record can lack the key, though: `services/db.ts`,
+// the only IndexedDB writer this app has ever shipped, was created by
+// `a1d2e6f` ~3 hours AFTER eb2d7ee (both predate `v0.1.0`, git-verified
+// 2026-08-25) — persistence itself did not exist until after the field did.
+// These rows construct a HAND-EDITED/corrupted record instead (or stand in
+// for a future regression of the guarantee migratePlan.ts establishes) —
+// `normaliseViaPoints`'s own docstring carries the full dated argument.
+describe('#654 migratePlan: an absent/malformed viaPoints key (hand-edited or corrupted record)', () => {
+  it('normalises an entirely absent viaPoints key to [] rather than refusing the record', () => {
+    const raw = legacyPlan();
+    delete (raw.request as Record<string, unknown>).viaPoints;
+    const migrated = migratePlan(raw);
+    expect(migrated).not.toBeNull();
+    expect(migrated!.request.viaPoints).toEqual([]);
+  });
+
+  // The positive control the row above needs: a record that DOES carry real
+  // via points still reads them back verbatim — normalisation only kicks in
+  // when the key is absent, it must never clobber a genuine list.
+  it('preserves a genuine non-empty viaPoints list unchanged', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = [
+      { lat: 54.83, lon: 9.9 },
+      { lat: 54.9, lon: 10.2 },
+    ];
+    const migrated = migratePlan(raw);
+    expect(migrated!.request.viaPoints).toEqual([
+      { lat: 54.83, lon: 9.9 },
+      { lat: 54.9, lon: 10.2 },
+    ]);
+  });
+
+  // Fail-CLOSED, per ADR-0002: a PRESENT but malformed viaPoints is not "no
+  // via points" — it is corrupted or foreign data, and normalising it to []
+  // would be exactly the fabricated default the ADR forbids. The whole
+  // record is refused instead, same as every other structurally-damaged
+  // field in this file.
+  it.each([
+    ['a non-array value', 'not-an-array'],
+    ['an array containing a non-object element', [{ lat: 54.83, lon: 9.9 }, 'not-a-point']],
+    ['an array containing a point missing lon', [{ lat: 54.83 }]],
+    ['an array containing a point with a non-numeric lat', [{ lat: 'north', lon: 9.9 }]],
+    // Reviewer-supplied (Minor 1, self-review of PR #687), adopted verbatim.
+    // `null.lat` THROWS synchronously (unlike `'not-a-point'.lat`, which
+    // returns `undefined` harmlessly) — deleting `!isRecord(p) ||` turns
+    // this row from an honest refusal into a raw TypeError propagating out
+    // of migratePlan(), the exact crash class #654 exists to close, one
+    // level in. This is the row that DISCRIMINATES the mutation (measured:
+    // 84/84 stay green without it; see the dedicated isolating test below
+    // for the other, non-throwing half of the same gap).
+    ['an array containing a null element', [null]],
+    // Pins the other shape isRecord excludes (arrays) — does not itself
+    // discriminate the isRecord deletion (a plain array's .lat is
+    // `undefined`, caught by Number.isFinite regardless), kept for
+    // completeness per the reviewer's own comment.
+    ['an array containing an array element', [[54.83, 9.9]]],
+  ])('refuses %s rather than fabricating a via-point list', (_label, viaPoints) => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = viaPoints;
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  // Reviewer finding (Major 1, self-review of PR #687): my own comment here
+  // previously said these rows RED under the mutation — inverted. Re-measured
+  // at f65e790: baseline `npm --prefix app run test -- migratePlan.test` is
+  // `Tests 87 passed (87)`; with `!isRecord(p) ||` deleted from
+  // normaliseViaPoints it is `Tests 2 failed | 85 passed (87)` — exactly the
+  // `[null]` row above and the isolating row below. Every ORIGINAL row
+  // (`'not-a-point'`, `{ lat: 54.83 }`, `{ lat: 'north', lon: 9.9 }`) and the
+  // `[[54.83, 9.9]]` row all STAY GREEN under the mutation: each is refused
+  // by a DIFFERENT term the mutation leaves intact (`!Array.isArray(x)` for
+  // the whole-value case, or a `Number.isFinite` term for an element with a
+  // missing/non-numeric lat or lon) — so none of them discriminates whether
+  // `isRecord` itself is present. That gap is exactly why this row was
+  // needed: an ARRAY carrying its own `lat`/`lon` OWN PROPERTIES passes BOTH
+  // `Number.isFinite` checks (JS arrays are ordinary objects, so attaching
+  // arbitrary keys is legal), so only `isRecord`'s `!Array.isArray(x)` term
+  // can reject it — `isRecord` rejects arrays specifically so a via point
+  // can never be array-shaped, distinct from a plain `{lat, lon}` record.
+  it('refuses an array-shaped element even when it carries lat/lon properties that would otherwise pass every Number.isFinite check (isolates the isRecord term)', () => {
+    const raw = legacyPlan();
+    const arrayShapedPoint: unknown = Object.assign([], { lat: 54.83, lon: 9.9 });
+    (raw.request as Record<string, unknown>).viaPoints = [arrayShapedPoint];
+    expect(migratePlan(raw)).toBeNull();
   });
 });

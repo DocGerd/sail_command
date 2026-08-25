@@ -7,12 +7,12 @@
 // @ts-expect-error process is not typed in browser context
 process.env.TZ = 'Europe/Berlin';
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RouteLayer, { HIGHLIGHT_LAYER, ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { I18nProvider } from '../i18n';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
-import { uniformWindGrid } from '../test/fixtures';
+import { TEST_MASK_META, uniformWindGrid } from '../test/fixtures';
 import { DEFAULT_SETTINGS, type Leg, type Plan } from '../types';
 import { defaultBoatSnapshot } from '../types';
 import { PLAN_SCHEMA_VERSION } from '../types';
@@ -64,6 +64,15 @@ vi.mock('./MapView', () => ({ useMapInstance: () => hoisted.map }));
 vi.mock('../services/assets', () => ({
   loadRoutingAssets: vi.fn(() => new Promise(() => {})),
 }));
+// #651: imported (never used by any test above this line) so the mask-
+// casing describe block near the end of this file can resolve it for a
+// SINGLE render via mockResolvedValueOnce — every other test in this file
+// keeps getting the factory's own never-resolving implementation, unaffected
+// (the RouteSummary.exposure.test.tsx precedent for this exact shape uses a
+// full mockImplementation reset per test instead, which is unnecessary here
+// since this file has no beforeEach touching this mock at all).
+import { loadRoutingAssets } from '../services/assets';
+const mockedLoad = vi.mocked(loadRoutingAssets);
 
 const DEPARTURE_MS = Date.UTC(2026, 6, 15, 8, 0, 0);
 const ETA_MS = DEPARTURE_MS + 3_600_000;
@@ -903,5 +912,84 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
 
     act(() => mm.setMatches(false)); // rotate to narrow, zero user interaction
     expect(details()?.open).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------
+// #651: the map's own half of the fix RouteSummary.exposure.test.tsx's own
+// "#651: legs-table marker" describe block covers for the legs table —
+// RouteLayer threading the loaded mask + the plan's own requested gate into
+// legsToFeatureCollection so ROUTE_STACK_BOTTOM_LAYER (sc-route-shallow, the
+// #53 casing) paints for a leg the router did NOT relax but that a
+// render-time walk finds MARGINAL (charted at/above the gate, cautious
+// reading below it — #612's own criterion, applied per leg via
+// lib/shallowExposure.ts's isMarginalDepthM/legMinDepthsM). makePlan()'s
+// single LEG carries no leg.shallow and its plan.result carries no `shallow`
+// block, so every row below is the non-relaxed case throughout.
+// -----------------------------------------------------------------------
+function assetsWithMask(fn: (row: number, col: number) => number) {
+  const data = new Uint8Array(TEST_MASK_META.rows * TEST_MASK_META.cols);
+  for (let r = 0; r < TEST_MASK_META.rows; r++)
+    for (let c = 0; c < TEST_MASK_META.cols; c++) data[r * TEST_MASK_META.cols + c] = fn(r, c);
+  return {
+    maskMeta: TEST_MASK_META,
+    maskBuffer: data.buffer,
+    polars: {},
+    harbors: [],
+    seamarks: { type: 'FeatureCollection' as const, features: [] },
+  };
+}
+
+// Uniform 3.5 m: >= DEFAULT_SETTINGS.safetyDepthM (3.0, makePlan()'s own
+// settings — so LEG was never relaxed) but < marginalDepthThresholdM(3.0) =
+// 3.9 m — the MARGINAL band. Uniform rather than geometry-precise: this
+// suite tests THREADING (does RouteLayer pass mask/gateM through at all, all
+// the way to the painted GeoJSON property), not per-cell traversal
+// precision, which shallowExposure.test.ts already covers exhaustively.
+function marginalAssets() {
+  return assetsWithMask(() => 35 /* 3.5 m */);
+}
+
+function deepAssets() {
+  return assetsWithMask(() => 200 /* 20 m */);
+}
+
+describe('RouteLayer #651: sc-route-shallow casing for a MARGINAL (non-relaxed) leg', () => {
+  it('flags the leg shallow once the mask resolves and the leg crosses marginal water', async () => {
+    mockedLoad.mockResolvedValueOnce(marginalAssets());
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    await act(async () => {});
+    const data = sourceData(map, 'sc-route');
+    expect(data.features).toHaveLength(1);
+    expect(data.features[0].properties?.shallow).toBe(true);
+  });
+
+  it('does not flag the leg while the mask is still loading (default never-resolving mock)', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    const data = sourceData(map, 'sc-route');
+    expect(data.features[0].properties?.shallow).toBe(false);
+  });
+
+  it('does not flag an ordinary leg crossing only deep water — with a discriminating control', async () => {
+    mockedLoad.mockResolvedValueOnce(deepAssets());
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    await act(async () => {});
+    expect(sourceData(map, 'sc-route').features[0].properties?.shallow).toBe(false);
+
+    // THE CONTROL: same construction, only the mask differs — confirms the
+    // false above is evidence the walk ran and found nothing marginal, not
+    // evidence the threading never ran at all.
+    cleanup();
+    mockedLoad.mockResolvedValueOnce(marginalAssets());
+    const map2 = makeFakeMap();
+    renderRouteLayer(map2, null);
+    await act(async () => {});
+    expect(
+      sourceData(map2, 'sc-route').features[0].properties?.shallow,
+      'control: a marginal mask must flag the same leg',
+    ).toBe(true);
   });
 });

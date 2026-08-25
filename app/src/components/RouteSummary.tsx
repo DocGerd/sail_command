@@ -12,6 +12,7 @@ import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
+import { planViaPoints } from '../lib/planViaPoints';
 import {
   resultSummary,
   resultVerdictKey,
@@ -19,7 +20,10 @@ import {
   sailLabelKey,
 } from '../lib/resultSummary';
 import {
+  isMarginalDepthM,
+  legMinDepthsM,
   marginalExposureNm,
+  requestedGateM,
   roundExposureNm,
   shallowConfinedWithinM,
   shallowExposureNm,
@@ -28,7 +32,6 @@ import { useWideLayout } from '../lib/useWideLayout';
 import { useNavMask } from '../state/useNavMask';
 import { safetyDepthFieldFor } from './OptionsPanel';
 import type { MsgKey } from '../i18n/dict.de';
-import { DEFAULT_SETTINGS } from '../types';
 import type { Board, Leg, NoRouteReason, Plan, SailId, ShallowInfo } from '../types';
 import Card from './Card';
 import Chip from './Chip';
@@ -140,12 +143,13 @@ export function ShallowWarning({
   // own provenance.
   const confinedWithin = useMemo(() => {
     if (!mask || !legs || legs.length === 0) return null;
-    const waypoints = [
-      plan.result.snappedOrigin,
-      ...plan.request.viaPoints,
-      plan.result.snappedDestination,
-    ];
-    const allowanceM = [0, ...plan.request.viaPoints.map(() => 300), 0];
+    // #654: plan.request.viaPoints read through the shared accessor —
+    // defends a hand-edited/corrupted stored record (see planViaPoints.ts's
+    // own comment for why an empty fallback can only suppress the
+    // confinement sentence, never fabricate a false "confined" claim).
+    const viaPoints = planViaPoints(plan.request);
+    const waypoints = [plan.result.snappedOrigin, ...viaPoints, plan.result.snappedDestination];
+    const allowanceM = [0, ...viaPoints.map(() => 300), 0];
     return shallowConfinedWithinM(
       legs,
       mask,
@@ -332,28 +336,15 @@ export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] |
   const t = useT();
   const [lang] = useLang();
   const mask = useNavMask();
-  // The REQUESTED gate this plan was computed at, from the plan's own frozen
-  // settings — never the live OptionsPanel value, so a re-opened plan keeps
-  // describing the gate it was actually solved against.
-  // GUARDED, per #624/#551: `migratePlan.ts` never validates `request.settings`,
-  // so a stored plan without it migrates NON-NULL and a bare read throws
-  // `TypeError: Cannot read properties of undefined`. With no error boundary
-  // anywhere in app/src that blanks the whole app — a safety notice taking the
-  // results panel down with it is strictly worse than the silent no-op #612
-  // exists to fix. MEASURED by PR #630's review: `App.test.tsx` is 68/68 on
-  // plain develop and 67/68 once this branch is merged into it, a cross-PR
-  // composition defect invisible against either side alone.
-  //
-  // `Number.isFinite`, not `typeof === 'number'` and not a
-  // `{ ...DEFAULT_SETTINGS, ...settings }` spread: object spread copies an own
-  // key whose value is `undefined`, and `typeof NaN` / `typeof Infinity` are
-  // both `'number'`. A NaN gate would render "your safety depth of NaN m" in
-  // safety copy and reach marginalDepthThresholdM as `Math.ceil(NaN)`,
-  // silently suppressing the notice on every route. This form closes all four
-  // while still accepting a legitimate 0.
-  const gateM = Number.isFinite(plan.request.settings?.safetyDepthM)
-    ? (plan.request.settings.safetyDepthM as number)
-    : DEFAULT_SETTINGS.safetyDepthM;
+  // #651 fix-wave, Minor 4: was an inline duplicate of this exact derivation
+  // (a stray second copy the original #651 extraction claimed, wrongly, that
+  // it could not drift from) — now the single call site's own comment on
+  // `requestedGateM` (lib/shallowExposure.ts) carries the full guard
+  // rationale (#624/#551 stored-plan safety, the #630 cross-PR measurement,
+  // why `Number.isFinite` and not a `typeof`/spread check). A safety notice
+  // must degrade gracefully on a pre-#624 stored plan rather than blank the
+  // whole app — that requirement is unchanged, only its implementation moved.
+  const gateM = requestedGateM(plan);
   // A relaxed route is ShallowWarning's business, not this line's: it already
   // gets a banner carrying a strictly stronger statement, and rendering both
   // would say the same hazard twice in two vocabularies. Gated HERE rather
@@ -472,12 +463,40 @@ function LegKindChip({ leg, rig }: { leg: Leg; rig: SailId }) {
 // truncating, so there's nothing here for a tooltip to reveal). Shares the
 // --sc-depth-warning-* family (#251) with the plan-level ShallowWarning
 // banner above, so the same hazard reads consistently wherever it appears.
-function ShallowLegMarker({ minDepthM }: { minDepthM: number }) {
+function ShallowLegMarker({
+  minDepthM,
+  marginal = false,
+}: {
+  minDepthM: number;
+  // #651 (Minor 5 fix-wave): true for a render-time MARGINAL leg — the
+  // mask's own charted reading is AT OR ABOVE the plan's requested gate
+  // (depthM >= gateM), and only the more cautious #493 reading of the same
+  // cell falls below it (isMarginalDepthM, lib/shallowExposure.ts). This
+  // component does NOT compare depthM against a gate itself — the CALLER
+  // (RouteSummary's legs-table map, `marginal={legInfo.depthM >= gateM}`)
+  // enforces the bound, since only the caller has gateM in scope.
+  //
+  // false (the default) covers TWO cases the caller must not conflate in
+  // wording: (a) the router itself relaxed the gate to route through this
+  // leg (leg.shallow present), so minDepthM is genuinely BELOW the plan's
+  // ORIGINALLY requested safety depth; (b) a render-time walk against the
+  // CURRENTLY LOADED mask — which can differ from the mask this plan was
+  // routed against, lib/shallowExposure.ts's own header caveat — finds
+  // depthM itself below the CURRENT gate: genuinely shallow by present
+  // data, not merely marginal, even though the router never flagged it.
+  //
+  // Selects only the PRIMARY chip's wording below — the secondary
+  // cautious-floor chip is the same fact either way, since it is derived
+  // from minDepthM alone.
+  marginal?: boolean;
+}) {
   const t = useT();
   return (
     <>
       <Chip className="chip-shallow">
-        {t('route.legs.shallowMarker', { depth: minDepthM.toFixed(1) })}
+        {t(marginal ? 'route.legs.marginalMarker' : 'route.legs.shallowMarker', {
+          depth: minDepthM.toFixed(1),
+        })}
       </Chip>
       {/* #493/#504: sound lower bound on the mask's more cautious (conservative)
           reading, derived from the SAME shipped figure the chip above
@@ -539,6 +558,26 @@ export default function RouteSummary({
   // (every plan solves exactly the same two sails req.sailIds always
   // carries) and correctly generalises if that ever changes.
   const sailTabs = plan.result.sails.map((s) => s.sailId);
+
+  // #651: the legs-table cautious chip's render-time complement to the
+  // `leg.shallow` case above — see ShallowLegMarker's own `marginal` prop
+  // comment for the two cases this covers. `useNavMask()` starts null and
+  // resolves asynchronously (same acquisition path ShallowWarning and
+  // MarginalDepthNotice below already use), so `legMinDepths` is null on
+  // first paint — every leg falls back to the pre-existing leg.shallow-only
+  // check until the mask loads, never a false "not marginal" claim in the
+  // meantime. `result` is a stable reference across re-renders for an
+  // unchanged plan/rig (lib/plan.ts's activeRigResult reads it straight off
+  // `plan.result.sails`, never rebuilding it), so this only recomputes when
+  // the mask resolves or the plan/rig actually changes.
+  const mask = useNavMask();
+  // Not useMemo: legMinDepthsM is a single O(legs) walk, no cheaper than the
+  // unmemoized resultSummary()/rigRecommendationOf() calls above it, and no
+  // effect keys off this value's referential identity — only its content,
+  // read straight into JSX below.
+  const legMinDepths =
+    mask && result && result.legs.length > 0 ? legMinDepthsM(result.legs, mask) : null;
+  const gateM = requestedGateM(plan);
 
   return (
     <Card
@@ -692,44 +731,88 @@ export default function RouteSummary({
                 </tr>
               </thead>
               <tbody>
-                {result.legs.map((leg, i) => (
-                  <tr key={i}>
-                    <td>{formatTime(leg.startTimeMs, lang)}</td>
-                    {/* endTimeMs/startTimeMs live on LegCommon, so both sail
-                        and motor legs render a real duration here — no
-                        `kind` narrowing needed or wanted (a defensive
-                        ternary would wrongly print '—' over real data). */}
-                    <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
-                    <td>
-                      <LegKindChip leg={leg} rig={rig} />
-                    </td>
-                    <td>{formatHeading(leg.headingDeg)}</td>
-                    <td>{leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}</td>
-                    <td>{formatKn(leg.twsKn, lang)}</td>
-                    {/* #439: NOT formatLegNm — speed keeps formatKn's one-
-                        decimal precision unchanged. Raising distance alone
-                        (below) to two decimals reopens the algebraic-
-                        mismatch readability concern this file's own comment
-                        on the table header warns about (distance/duration/
-                        speed are dependent by construction); flagged in the
-                        PR body rather than silently resolved by also
-                        touching speed's precision here. */}
-                    <td>{formatKn(leg.speedKn, lang)}</td>
-                    <td>{formatLegNm(leg.distanceNm, lang)}</td>
-                    <td>
-                      {leg.maneuverAtStart && (
-                        <span className="chip chip-maneuver">
-                          {t(
-                            leg.maneuverAtStart === 'tack'
-                              ? 'route.maneuver.tack'
-                              : 'route.maneuver.gybe',
-                          )}
-                        </span>
-                      )}
-                    </td>
-                    <td>{leg.shallow && <ShallowLegMarker minDepthM={leg.shallow.minDepthM} />}</td>
-                  </tr>
-                ))}
+                {result.legs.map((leg, i) => {
+                  // #651 fix-wave, Minor 5: `legInfo` is this leg's OWN
+                  // legMinDepthsM entry (per-leg null now — see that
+                  // function's own doc comment for why a whole-array null
+                  // was replaced), narrowed here once so the JSX below can
+                  // read `legInfo.depthM` without re-deriving the check.
+                  const legInfo = legMinDepths ? legMinDepths[i] : null;
+                  return (
+                    <tr key={i}>
+                      <td>{formatTime(leg.startTimeMs, lang)}</td>
+                      {/* endTimeMs/startTimeMs live on LegCommon, so both
+                          sail and motor legs render a real duration here —
+                          no `kind` narrowing needed or wanted (a defensive
+                          ternary would wrongly print '—' over real data). */}
+                      <td>{formatLegDuration(leg.endTimeMs - leg.startTimeMs)}</td>
+                      <td>
+                        <LegKindChip leg={leg} rig={rig} />
+                      </td>
+                      <td>{formatHeading(leg.headingDeg)}</td>
+                      <td>{leg.kind === 'sail' ? `${Math.round(Math.abs(leg.twaDeg))}°` : '—'}</td>
+                      <td>{formatKn(leg.twsKn, lang)}</td>
+                      {/* #439: NOT formatLegNm — speed keeps formatKn's one-
+                          decimal precision unchanged. Raising distance alone
+                          (below) to two decimals reopens the algebraic-
+                          mismatch readability concern this file's own
+                          comment on the table header warns about (distance/
+                          duration/speed are dependent by construction);
+                          flagged in the PR body rather than silently
+                          resolved by also touching speed's precision here. */}
+                      <td>{formatKn(leg.speedKn, lang)}</td>
+                      <td>{formatLegNm(leg.distanceNm, lang)}</td>
+                      <td>
+                        {leg.maneuverAtStart && (
+                          <span className="chip chip-maneuver">
+                            {t(
+                              leg.maneuverAtStart === 'tack'
+                                ? 'route.maneuver.tack'
+                                : 'route.maneuver.gybe',
+                            )}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {leg.shallow ? (
+                          <ShallowLegMarker minDepthM={leg.shallow.minDepthM} />
+                        ) : (
+                          // #651: the render-time complement — this leg was
+                          // never relaxed (no leg.shallow), but the
+                          // currently loaded mask finds it MARGINAL at the
+                          // plan's own requested gate (isMarginalDepthM,
+                          // #612's own criterion). `legInfo === null`
+                          // (mask not loaded, or THIS leg's own walk was
+                          // inconclusive — legMinDepthsM's own per-leg
+                          // contract) correctly suppresses only THIS row,
+                          // never its siblings.
+                          //
+                          // #651 fix-wave, Minor 5: `marginal` is bounded
+                          // from BELOW too, not just by isMarginalDepthM's
+                          // own `< threshold` above — this walk runs against
+                          // the CURRENTLY LOADED mask, which can differ from
+                          // the one this plan was routed against (#516's own
+                          // residual), so a re-opened plan under a rebuilt
+                          // mask could find `legInfo.depthM` itself below
+                          // `gateM` even though the router never flagged
+                          // this leg. That is GENUINELY shallow by present
+                          // data, not merely marginal, so it falls through
+                          // to the existing "Shallow" wording
+                          // (`marginal={legInfo.depthM >= gateM}`) rather
+                          // than under-stating it as "Marginal" — the
+                          // expensive direction for a depth cue.
+                          legInfo !== null &&
+                          isMarginalDepthM(legInfo, gateM) && (
+                            <ShallowLegMarker
+                              minDepthM={legInfo.depthM}
+                              marginal={legInfo.depthM >= gateM}
+                            />
+                          )
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {result.legs.length > 0 && (

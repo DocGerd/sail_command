@@ -479,6 +479,53 @@ describe('#516 increment 2: ShallowWarning confinement sentence', () => {
   });
 });
 
+// #654: `request.viaPoints` cannot genuinely be absent from any record this
+// app itself wrote — `services/db.ts` (the only IndexedDB writer) postdates
+// the field's introducing commit, `eb2d7ee`, by ~3 hours (both predate
+// v0.1.0, git-verified 2026-08-25; see migratePlan.ts's `normaliseViaPoints`
+// for the full dated argument). This row instead defends a HAND-EDITED or
+// otherwise corrupted stored record. `confinedWithin`'s useMemo
+// (RouteSummary.tsx) used to spread and `.map()` that value unconditionally,
+// which throws "TypeError: plan.request.viaPoints is not iterable" once the
+// mask resolves and the memo body actually runs (on the FIRST render `mask`
+// is still null, so the crash is invisible until this exact re-render). This
+// regression test drives the same real component path as the confined-mask
+// test above, against a plan whose `viaPoints` key is entirely absent —
+// never merely `[]` — and asserts it renders IDENTICALLY to the
+// explicit-empty-list case, proving the accessor's normalisation rather than
+// just "did not throw".
+describe('#654: viaPoints read through the shared accessor on a corrupted stored plan', () => {
+  it('renders the confinement sentence exactly as with an empty via list when request.viaPoints is entirely absent', async () => {
+    mockedLoad.mockResolvedValue(confinedShallowMask());
+    localStorage.setItem('sc-lang', 'en');
+    const base = makePlan([EXPOSURE_LEG]);
+    // Dropping the key IS the point of this destructure, so the binding is
+    // deliberately unused — mirrors makeNonRelaxedPlan's identical pattern
+    // below for `shallow`. A cast is required: PlanRequest.viaPoints is a
+    // required LatLon[], so a record genuinely missing the key can only be
+    // represented by stepping outside the type it violates.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { viaPoints: _dropped, ...requestWithoutViaPoints } = base.request;
+    const plan = { ...base, request: requestWithoutViaPoints } as unknown as Plan;
+
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={plan} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => {
+      expect(container.querySelector('.shallow-warning__detail')?.textContent).toMatch(/nm/);
+    });
+    const detail = container.querySelector('.shallow-warning__detail');
+    const text = detail?.textContent ?? '';
+    // Byte-identical to the '#516 increment 2' confined-mask assertion above
+    // — an absent viaPoints key must behave exactly like an explicit `[]`.
+    expect(text).toContain(
+      'Every stretch below your safety depth lies within 1.0 nm of your origin, destination or waypoints.',
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // #612: the quiet MARGINAL-depth notice, for a route that did NOT relax.
 //
@@ -499,6 +546,31 @@ function marginalMask() {
   return assetsWithMask(
     (row, col) =>
       row === ROW && (col === 55 || col === 56 || col === 57) ? 35 /* 3.5 m */ : 200 /* 20 m */,
+  );
+}
+
+// #651 fix-wave, Minor 5: charted BELOW the 3.0 m default gate (unlike
+// marginalMask()'s 3.5 m, which sits at/above it) — models a plan re-opened
+// under a mask that has since been REBUILT to read shallower for the same
+// cells (lib/shallowExposure.ts's own header caveat 1: the walk always runs
+// against the CURRENTLY LOADED mask, never the one the plan was routed
+// against). Same row/columns as marginalMask() so only the depth differs.
+function belowGateMask() {
+  return assetsWithMask(
+    (row, col) =>
+      row === ROW && (col === 55 || col === 56 || col === 57) ? 25 /* 2.5 m */ : 200 /* 20 m */,
+  );
+}
+
+// #651 fix-wave, Minor 9: charted EXACTLY AT the 3.0 m default gate — the
+// untested boundary between marginalMask() (3.5 m, above) and
+// belowGateMask() (2.5 m, below). Mask bytes are exact decimetres, so byte
+// 30 at the default gate is the single most likely marginal reading near
+// the threshold, not an exotic edge case.
+function atGateMask() {
+  return assetsWithMask(
+    (row, col) =>
+      row === ROW && (col === 55 || col === 56 || col === 57) ? 30 /* 3.0 m */ : 200 /* 20 m */,
   );
 }
 
@@ -709,6 +781,117 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
     const notice = container.querySelector('.marginal-depth-notice');
     expect(notice?.textContent).toContain(
       '3,0 nm dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von 3.0 m setzt.',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #651: the legs-table marker's render-time complement — a leg the router
+// did NOT relax (no leg.shallow), so the pre-#651 table rendered NOTHING for
+// it, no matter how marginal the mask's own reading of its cells. Reuses
+// this file's #612 mask/plan fixtures directly: marginalMask() (row 100,
+// cols 55/56/57 at 3.5 m — >= the 3.0 m default gate so genuinely
+// non-relaxed, < marginalDepthThresholdM(3.0) = 3.9 m so genuinely
+// marginal), deepMask() (uniform 20 m, the negative control) and
+// makeNonRelaxedPlan/renderNonRelaxed (plan.result.shallow omitted).
+// ---------------------------------------------------------------------------
+describe('#651: legs-table marker for a MARGINAL (non-relaxed) leg', () => {
+  it('renders the Marginal chip with the render-time charted minimum depth, plus the same cautious sub-chip the relaxed case uses', async () => {
+    mockedLoad.mockResolvedValue(marginalMask());
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row).not.toBeNull();
+    // The VALUE, never merely that a key resolved (#388's prose-vs-value
+    // trap): 3.5 m is marginalMask()'s own charted reading for every touched
+    // shallow cell, so the leg's render-time minimum is exactly 3.5.
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Marginal 3.5 m');
+    // cautiousDepthLowerBoundM(3.5) = floor10(3.5 - 0.9) = 2.6 — the SAME
+    // derived quantity the relaxed case's sub-chip already shows, unaffected
+    // by which primary label rendered above it.
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'cautious: as low as 2.6 m',
+    );
+  });
+
+  it('renders NOTHING for an ordinary leg crossing only deep water — with a discriminating control', async () => {
+    // The absence half. deepMask() (every cell 20 m) is the ONE difference
+    // from the row above: same leg, same plan, same settle sequence.
+    mockedLoad.mockResolvedValue(deepMask());
+    const absent = await renderNonRelaxed([EXPOSURE_LEG]);
+    const absentRow = absent.querySelector('table.route-legs tbody tr');
+    expect(absentRow?.querySelector('.chip-shallow')).toBeNull();
+    expect(absentRow?.querySelector('.chip-shallow-cautious')).toBeNull();
+
+    // THE CONTROL: change exactly one input — the mask — and confirm the
+    // same construction DOES render, so the absence above is evidence the
+    // walk ran and found nothing, not evidence it never ran at all.
+    cleanup();
+    mockedLoad.mockResolvedValue(marginalMask());
+    const present = await renderNonRelaxed([EXPOSURE_LEG]);
+    const presentRow = present.querySelector('table.route-legs tbody tr');
+    expect(
+      presentRow?.querySelector('.chip-shallow'),
+      'control: a marginal mask must make the marker render',
+    ).not.toBeNull();
+  });
+
+  it('omits the marker while the mask is still loading — no fallback marker, never a false all-clear', async () => {
+    // mockedLoad left at the beforeEach default: a promise that never
+    // resolves — the mask genuinely has not loaded yet.
+    localStorage.setItem('sc-lang', 'en');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makeNonRelaxedPlan([EXPOSURE_LEG])} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')).toBeNull();
+  });
+
+  it('a genuinely RELAXED leg keeps the "Shallow" wording, never "Marginal", even under a mask that would ALSO trip the marginal walk', async () => {
+    // A composition risk this PR itself introduces: leg.shallow's own branch
+    // must win regardless of what the render-time mask says about the same
+    // leg. makePlan() (not makeNonRelaxedPlan) carries a non-null
+    // plan.result.shallow, matching the relaxed shape; the leg additionally
+    // carries its own leg.shallow.
+    mockedLoad.mockResolvedValue(marginalMask());
+    const relaxedLeg: Leg = { ...EXPOSURE_LEG, shallow: { minDepthM: 1.9 } };
+    localStorage.setItem('sc-lang', 'en');
+    const { container } = render(
+      <I18nProvider>
+        <RouteSummary plan={makePlan([relaxedLeg])} rig="genoa" onRigChange={vi.fn()} />
+      </I18nProvider>,
+    );
+    await waitFor(() => expect(mockedLoad).toHaveBeenCalled());
+    await act(async () => {});
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 1.9 m');
+  });
+
+  it('#651 fix-wave, Minor 5: a leg genuinely below the CURRENT gate falls through to "Shallow" wording, never under-stated as "Marginal"', async () => {
+    // belowGateMask() charts the leg's swept cells at 2.5 m — below the 3.0 m
+    // default gate, unlike marginalMask()'s 3.5 m (at/above it). This never
+    // happens for a plan whose mask hasn't changed (planRoute only leaves a
+    // leg unflagged when its charted min is >= the gate it solved against),
+    // but the walk here runs against the CURRENTLY LOADED mask, which can
+    // differ from that one — so "Marginal 2.5 m" would UNDER-state a leg
+    // that is now genuinely shallow, the expensive direction for a depth cue.
+    mockedLoad.mockResolvedValue(belowGateMask());
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Shallow 2.5 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'cautious: as low as 1.6 m',
+    );
+  });
+
+  it('#651 Minor 5 boundary: charted EXACTLY at the gate is Marginal, not Shallow', async () => {
+    mockedLoad.mockResolvedValue(atGateMask()); // byte 30 = 3.0 m on the same cells
+    const container = await renderNonRelaxed([EXPOSURE_LEG]);
+    const row = container.querySelector('table.route-legs tbody tr');
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Marginal 3.0 m');
+    expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
+      'cautious: as low as 2.1 m',
     );
   });
 });

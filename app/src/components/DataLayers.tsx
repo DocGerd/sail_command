@@ -16,6 +16,7 @@ import {
   pickSeamarkByPriority,
   seamarkDisplayFilter,
   seamarkFeatureCollectionWithIcons,
+  seamarkPopupAnchor,
   seamarksLayout,
 } from '../lib/seamarkGeoJson';
 import {
@@ -724,7 +725,8 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
       // navigationally significant of an overlapping group. Pick by priority
       // so a cardinal or isolated-danger mark owns the shared pixels. Below
       // z12 overlapping icons collision-cull, so this is a no-op there.
-      const props = pickSeamarkByPriority(e.features)?.properties as SeamarkProperties | undefined;
+      const picked = pickSeamarkByPriority(e.features);
+      const props = picked?.properties as SeamarkProperties | undefined;
       if (!props) return;
       const container = document.createElement('div');
       container.className = 'seamark-popover';
@@ -741,8 +743,14 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
       disclaimer.className = 'seamark-popover-disclaimer';
       disclaimer.textContent = t('app.disclaimer');
       container.append(disclaimer);
+      // #232 item 4: anchor at the picked feature's own coordinates only when
+      // the priority pick differs from the topmost (overlap-mismatch) feature
+      // — the ordinary, non-overlapping case keeps the tap-point anchor
+      // unchanged. See seamarkPopupAnchor's own doc comment for the full
+      // rationale (this was a deliberate design nuance carried into #232,
+      // not assumed away).
       new Popup({ closeButton: true, maxWidth: '240px', className: 'seamark-popup' })
-        .setLngLat(e.lngLat)
+        .setLngLat(seamarkPopupAnchor(picked, e.features?.[0], e.lngLat))
         .setDOMContent(container)
         .addTo(map);
     };

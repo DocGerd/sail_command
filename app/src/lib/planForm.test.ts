@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ROUTING_RELEVANT_SETTINGS_KEYS,
   departureSeedMs,
+  pickedPointMoved,
   pickedPointsOfPlan,
   planFormDirty,
   viaPointsDiffer,
@@ -13,6 +14,7 @@ import { uniformWindGrid } from '../test/fixtures';
 import {
   DEFAULT_SETTINGS,
   type Harbor,
+  type PickedPoint,
   type Plan,
   type PlanRequest,
   type Settings,
@@ -215,6 +217,49 @@ describe('viaPointsDiffer', () => {
   });
 });
 
+// #660: used by App.tsx's plan-form sync effect to guard each of its four
+// writes against a user edit made in the harborsLoaded-pending window — see
+// pickedPointMoved's own comment for the reference-point distinction from
+// planFormDirty above.
+describe('pickedPointMoved (#660)', () => {
+  const A: PickedPoint = { source: 'tap', point: { lat: 54.8, lon: 9.6 }, label: 'A' };
+  const A_SAME_COORDS: PickedPoint = {
+    source: 'harbor',
+    point: { lat: 54.8, lon: 9.6 },
+    harborId: 'flensburg',
+    label: 'Flensburg',
+  };
+  const B: PickedPoint = { source: 'tap', point: { lat: 54.83, lon: 9.9 }, label: 'B' };
+
+  it('is false for two nulls', () => {
+    expect(pickedPointMoved(null, null)).toBe(false);
+  });
+
+  it('is true when current is non-null and baseline is null', () => {
+    expect(pickedPointMoved(A, null)).toBe(true);
+  });
+
+  it('is true when current is null and baseline is non-null', () => {
+    expect(pickedPointMoved(null, A)).toBe(true);
+  });
+
+  it('is false for content-identical lat/lon, even from different PickedPoint objects (source/harborId/label ignored)', () => {
+    expect(pickedPointMoved(A, A_SAME_COORDS)).toBe(false);
+  });
+
+  it("is true when a point's lat differs", () => {
+    expect(pickedPointMoved(A, { ...A, point: { lat: 54.9, lon: 9.6 } })).toBe(true);
+  });
+
+  it("is true when a point's lon differs", () => {
+    expect(pickedPointMoved(A, { ...A, point: { lat: 54.8, lon: 10.0 } })).toBe(true);
+  });
+
+  it('is true for two genuinely different points', () => {
+    expect(pickedPointMoved(A, B)).toBe(true);
+  });
+});
+
 describe('planFormDirty (#301)', () => {
   it('is NOT dirty when the form matches the plan request exactly', () => {
     expect(planFormDirty(makePlan(), matchingForm(), true)).toBe(false);
@@ -284,6 +329,34 @@ describe('planFormDirty (#301)', () => {
       const form = matchingForm();
       form.viaPoints = [{ lat: 54.83, lon: 9.9 }]; // same content as ORIGINAL_REQUEST.viaPoints
       expect(planFormDirty(makePlan(), form, true)).toBe(false);
+    });
+
+    // #654: request.viaPoints being absent cannot happen for a legitimate
+    // stored plan — services/db.ts (the only IndexedDB writer) postdates
+    // the field's introducing commit eb2d7ee by ~3 hours, both predating
+    // v0.1.0 (git-verified 2026-08-25; full argument in migratePlan.ts's
+    // normaliseViaPoints). This row defends a hand-edited/corrupted record
+    // instead (docs/adr/0002-pre-1.0-db-migration-low-priority.md's
+    // boundary: "does NOT waive defensive reads"). planFormDirty used to
+    // read req.viaPoints straight off the request and hand it to
+    // viaPointsDiffer, which throws "Cannot read properties of undefined
+    // (reading 'length')" on such a record rather than degrading. An absent
+    // viaPoints is normalised to [], so a form with its own via points is
+    // correctly DIRTY against it (matching "removed the only via point"
+    // above) rather than throwing.
+    it('treats a plan with the viaPoints key absent (hand-edited/corrupted record) as having an empty via list, not a crash', () => {
+      const oldShapedRequest = { ...ORIGINAL_REQUEST } as Partial<{
+        -readonly [K in keyof PlanRequest]: PlanRequest[K];
+      }>;
+      delete oldShapedRequest.viaPoints;
+      const plan = makePlan(oldShapedRequest as PlanRequest);
+      const form = matchingForm(); // form.viaPoints: [{ lat: 54.83, lon: 9.9 }]
+
+      expect(() => planFormDirty(plan, form, true)).not.toThrow();
+      expect(planFormDirty(plan, form, true)).toBe(true);
+
+      const emptyForm = { ...matchingForm(), viaPoints: [] };
+      expect(planFormDirty(plan, emptyForm, true)).toBe(false);
     });
   });
 

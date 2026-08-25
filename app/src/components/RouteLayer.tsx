@@ -16,6 +16,7 @@ import { usePersistedToggle } from '../lib/usePersistedToggle';
 import { useWideLayout } from '../lib/useWideLayout';
 import { registerBarbImages } from '../lib/windBarbs';
 import { NavMask } from '../lib/mask';
+import { requestedGateM } from '../lib/shallowExposure';
 import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
@@ -694,14 +695,28 @@ export default function RouteLayer({
   useEffect(() => {
     if (!map || styleEpoch === 0) return;
     const legs = result?.legs ?? [];
-    const routeData = legsToFeatureCollection(legs, lang, { motorLetter: t('route.motorLetter') });
+    // #651: mask + gateM feed legsToFeatureCollection's own render-time
+    // MARGINAL-leg walk (see LegProperties.shallow's doc comment in
+    // routeGeoJson.ts) — the map's sc-route-shallow casing painting for a
+    // non-relaxed leg is this component's half of the same fix RouteSummary's
+    // legs-table chip covers. `mask` here is the SAME NavMask instance the
+    // barb land-culling effect above already loads (no second fetch); gateM
+    // is undefined while `plan` is null, which legsToFeatureCollection's own
+    // contract treats as NOT-YET-KNOWN (leg.shallow-only), never a false
+    // all-clear.
+    const gateM = plan ? requestedGateM(plan) : undefined;
+    const routeData = legsToFeatureCollection(legs, lang, {
+      motorLetter: t('route.motorLetter'),
+      mask,
+      gateM,
+    });
     const pointData = routePointFeatures(legs, result?.etaMs ?? 0, lang);
     (map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined)?.setData(routeData);
     (map.getSource(MANEUVER_SOURCE) as GeoJSONSource | undefined)?.setData(pointData);
     // t() is re-derived from lang every render; only lang's identity should
     // retrigger this rebuild (the strings are language-dependent).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, styleEpoch, result, lang]);
+  }, [map, styleEpoch, result, lang, mask, plan]);
 
   // #324: the alt-rig overlay's line data. No labels/points depend on this
   // source (see setupLayers' comment), so — unlike the effect above — this
