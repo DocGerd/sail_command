@@ -54,15 +54,29 @@ making design-level decisions; do not silently deviate.
   one to a spec is a main-session act.
 - `app/src/test/` is the DENSEST cluster of source-SCANNING guards: most of
   them read a FOREIGN artifact (`readFileSync`, or `import.meta.glob(…,
-  {query:'?raw'})` for source scans) and assert against it, so editing
+  {query:'?raw'})` for source scans) and assert against it — **but `?raw` glob
+  is VACUOUS for `.css`**: vitest's `CSS_LANGS_RE` matches a CSS-suffixed path
+  WITH OR WITHOUT a query string and mocks the module, so under the default
+  `css: { include: [] }` every matched stylesheet resolves to the EMPTY STRING
+  and the guard passes having read zero bytes. Measured 2026-08-25 against the
+  lockfile-pinned vitest 4.1.11 / vite 8.2.2 with a positive control: `?raw`
+  glob of `/src/app.css` → length 0, of `/src/types.ts` → length 18744, same
+  query shape and only the extension differing. Every stylesheet-reading guard
+  in this repo uses `readFileSync` for THAT reason, not for style; a new one
+  must too (and needs the tsconfig node-types split those files already
+  carry)., so editing
   `app/src/data/boats.ts`, `pipeline/{verify_mask.py,build_polars.mjs,
   estimate_polars.mjs,polars-source.json}`, `app/public/data/polars/*.json`,
   `app/sweep/sweepArms.ts` or `app/src/app.css` can red the REQUIRED `app`
   check from a file you never opened. Read the guard's own header before
-  changing its twin. Two more keepers live BESIDE their subject in
-  `app/src/lib/` — `panelWidth.test.ts` and `useBannerHeight.test.ts`, each
-  pinning an `app.css` literal against a TS constant — so this directory is
-  not the only place to look. And `.github/workflows/coverage.yml`'s
+  changing its twin. More of these keepers live BESIDE their subject than
+  inside `app/src/test/` itself —
+  `app/src/lib/{panelWidth,useBannerHeight,depthLegendGate}.test.ts` each pin
+  an `app.css` literal against a TS constant, and `app/src/app.css.test.ts`
+  scans the stylesheet from the `app/src/` top level — so before touching
+  `app.css`, enumerate with `grep -rln 'app\.css' app/src
+  --include='*.test.ts*'` rather than trusting any list here. And
+  `.github/workflows/coverage.yml`'s
   `timeout-minutes` is NOT guarded at all: `timeoutBudgetVsJobCap.test.ts`
   DECLARES `JOB_CAP_MINUTES = 240` rather than reading it (PR #351 removed the
   read after four fail-opens), so the two are kept in sync by a twin comment
@@ -437,10 +451,24 @@ making design-level decisions; do not silently deviate.
 - Never transfer the wind grid's buffers to the worker (clone keeps the saved
   plan's forecast intact); only the mask buffer is transferred, always as a
   `.slice(0)` copy of the cached original.
-- MapLibre Popup chrome hardcodes `background:#fff` (no dark variant) — any new
-  Popup needs a `className` plus app.css overrides theming
-  `.maplibregl-popup-content` and BOTH popup-tip borders with `--sc-bg`
-  (see `.seamark-popup`, #7).
+- **SETTLED (maintainer ruling, 2026-08-25): dark mode themes the app's OWN
+  panel chrome only — the MapLibre basemap keeps its light chart styling in
+  both themes.** Deliberate, and what typical chartplotters do; it is not a
+  hole in the `@media (prefers-color-scheme: dark)` block and must not be
+  "completed". Do not propose a dark/night basemap palette as a design
+  improvement — a night mode would be a separate, explicitly-requested
+  feature. Recorded because this repo re-files settled conventions (#607 was
+  re-raised twice before its convention was written down).
+- MapLibre chrome ships hardcoded light-mode colour with no dark variant — the
+  Popup (`background:#fff`) and the compact attribution control
+  (`.maplibregl-ctrl-attrib.maplibregl-compact`: `background-color:#fff;
+  color:#000`, read against `maplibre-gl@6.5.0`, fixed in #711). Any new Popup
+  or control needs a `className` plus `--sc-*` app.css overrides — for a
+  Popup, `.maplibregl-popup-content` and BOTH popup-tip borders with `--sc-bg`
+  (see `.seamark-popup`, #7). Grep the installed `src/css/maplibre-gl.css` for
+  the hardcoded pair rather than assuming a control inherits theming; the
+  attribution case, and why its override must NOT be narrowed to
+  `-compact-show`, live in app.css's own #711 comment and its guard.
 - Vite `server.fs.allow` REPLACES the default workspace root when set, and the
   dev-server transform check tests BOTH `cleanUrl(id)` AND the `?raw`-suffixed
   id — an out-of-root `?raw` import needs `[APP_DIR, file, file + '?raw']`
@@ -805,6 +833,19 @@ making design-level decisions; do not silently deviate.
   to exactly what it was credited with catching. Treat reachability as
   UNMEASURED unless the construction demonstrably lands inside the window;
   two residual sites are tracked in #422.
+- **`getAttribute()` on a BOOLEAN attribute cannot tell present from absent**
+  — it returns `""` when set and `null` when not, and BOTH are JS-falsy, so
+  `if (!(await el.getAttribute('open'))) await summary.click()` fires
+  UNCONDITIONALLY and toggles an already-open `<details>` CLOSED. Reproduced
+  2026-08-25 from a minimal `setContent` fixture on the bundled Chromium
+  (`@playwright/test` 1.62.1), and measured live in PR #688: both
+  wide-viewport `route-alt-rig.spec.ts` tests timed out at 60 s before the fix
+  and passed in 7.5 s after. Read the IDL property through `evaluate()`
+  (`el.open`); same for `disabled`/`checked`/`hidden`. That snippet reached
+  the implementer as reviewer-supplied verbatim text, so **verbatim adoption
+  is what would have shipped it** — the standing "a supplied line believed
+  WRONG is reported, never silently improved" exception is load-bearing, not
+  decorative.
 - E2E determinism: no fixed `waitForTimeout` as a synchronization wait — gate
   on state signals with `expect.poll`; settle canvas baselines via two
   consecutive byte-equal screenshots before byte-comparing frames against them.
@@ -1430,7 +1471,17 @@ making design-level decisions; do not silently deviate.
   every feature PR: fold each fragment's text by hand into the new
   `## [X.Y.Z] - date` section (grouped under the matching `### Category`
   heading) and update the comparison links at the bottom, then DELETE the
-  fragment files (release runbook `.claude/skills/release/SKILL.md` §2b).
+  fragment files (release runbook `.claude/skills/release/SKILL.md` §2b). **A
+  fragment whose PR merges AFTER the sweep has already folded is silently
+  LOST** — the sweep correctly deleted the fragments it saw, so the later PR's
+  file sits alone in `changelog.d/` looking like ordinary pending work, and
+  nothing reds: `changelog.test.ts` only requires a released section to be
+  NON-EMPTY, never COMPLETE. Measured at the v0.14.0 cut (fold-in commit
+  `584dc28`): PR #717 merged after PR #693's sweep and dropped `707.fixed.md`
+  + `711.fixed.md`, leaving the released section two entries short of the
+  milestone; it was caught at the ship gate by a human, by nothing else.
+  Re-`ls changelog.d/` immediately BEFORE pushing the tag, not only at the
+  sweep.
   `app/src/lib/changelog.ts`'s `ENTRY_RE` is `/^- (.*)$/` — anchored with NO
   leading whitespace — so folding a multi-entry fragment as an INDENTED
   sub-list silently glues the indented bullet onto the previous entry, dash
@@ -1604,7 +1655,29 @@ making design-level decisions; do not silently deviate.
   provably MOVE the subject (a mask swap changing 18 legs to 16). For any
   green mutation row, ask first whether the mutation could have changed the
   subject at all — and beware `-t` filters, where `0 passed | 13 skipped` and
-  `1 passed | 12 skipped` look alike in a summary.
+  `1 passed | 12 skipped` look alike in a summary. **More basic than
+  unreachability: an experiment that never RAN emits exactly the output of one
+  that found nothing.** Three measured shapes, all 2026-08-25. (1) The
+  mutation lands in a COMMENT — a first-occurrence replace of `depthM >=
+  gateM` in `RouteSummary.tsx` hit one of the prose mentions sitting ABOVE its
+  single JSX site, gave 75/75 green and read as "this guard is vacuous";
+  re-aimed at the JSX it redded 1/75 with `Expected "Marginal 3.0 m" /
+  Received "Shallow 3.0 m"` (PR #690). This repo's prose-rich JSDoc convention
+  makes that the LIKELY case, not the exotic one — count occurrences and
+  target the executed one. (2) The mutation does not COMPILE — a bare deletion
+  tripped `tsc` TS6133, so `vite build` never replaced `dist` and the browser
+  probe read the UNMUTATED bundle and "passed" (PR #688); for any probe over a
+  BUILT artifact, assert the build succeeded AND that `dist` changed before
+  reading the result. (3) The probe cannot MATCH — `git log -S'…' -- types.ts`
+  from the repo root matches nothing because the file is `app/src/types.ts`,
+  and repeated `-S` does not AND: it is single-valued, so the LAST one
+  silently wins (measured in both orderings — `-S'viaPoints'` → {4a02676,
+  1a63d60}, `-S'sailIds'` → {4547ced}, the pair → whichever was written last,
+  never the union and never the intersection). **Give any probe whose
+  EMPTINESS you intend to interpret a POSITIVE CONTROL** — a needle known to
+  be present. The first write-up of that very finding shipped a "control" that
+  was itself vacuous (both its example strings occur zero times in that file's
+  history), which is how convincing the shape is.
 - **`.gitignore` entries with a TRAILING SLASH match directories only**, so a
   SYMLINK at that path is not ignored — and a committed symlink stores its
   TARGET STRING as blob content, which is how an absolute home path reaches a
@@ -1873,7 +1946,17 @@ making design-level decisions; do not silently deviate.
   `actions/runs/<id>/jobs`. Foreground-test any poll query before arming it.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
-  fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155).
+  fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155). Same
+  class one step earlier, in the fixture's INITIAL state: `renderRouteLayer`
+  hands `RouteLayer` a plan at FIRST render, but production renders it
+  unconditionally and it returns `null` until a plan exists — so a `[]`-dep
+  effect reading `controlsRef.current` at mount sees a mounted node in every
+  test and `null` in the app. MEASURED at app start: `.route-layer-controls
+  present (plan===null): false`; the feature was DEAD CODE in production under
+  a fully green suite (PR #688 Major A, fixed by keying that effect on
+  `[plan]` — the effect's own comment says why). Whenever a component has a
+  null-render phase, at least one test must render it IN that phase and then
+  transition into the live one.
 - **A guard can pass forever for TWO opposite reasons, and both shipped a
   defect in v0.13.0.** (a) JOINT BLINDNESS — #638's legend rendered with no
   panel background and a 104px column at every viewport, while its only e2e
@@ -1886,8 +1969,14 @@ making design-level decisions; do not silently deviate.
   (`datalayers.spec.ts`'s z16 stripe-width test), whose threshold is `<= 100px`
   with an adjacent comment reading "the accepted limit of the per-cell-raster
   approach, not a fix". A guard whose bound was set to tolerate the known
-  residual can NEVER fire on it. Ask both "what can this not see?" and "was
-  this threshold chosen to accept the thing I am asking it to catch?"
+  residual can NEVER fire on it. Ask all three: "what can this not see?", "was
+  this threshold chosen to accept the thing I am asking it to catch?", and
+  **"did the SUBJECT under test change size?"** The third is new (#628 / PR
+  #688 Major 1): the #277/#598 width pins run at 320px, where #628 made the
+  cluster default-COLLAPSED, so they pass MORE EASILY after the change
+  (clearance 16.00px → 41.98/51.64px, measured) and "they still pass" cannot
+  establish that the change cost no width. A guard that got EASIER is not a
+  control.
 - **The release ship gate earns its cost — do not optimise it away as
   ceremony.** At the v0.13.0 cut, `app`, `e2e`, `hook-selftests`, CodeQL,
   Scorecard, Deploy and 2136 unit tests were ALL green, and a human looking at
@@ -1971,9 +2060,17 @@ making design-level decisions; do not silently deviate.
   artifact over constructing an argument; (5) make claims PER-SITE — every
   failure was a GENERALISATION or a GROUP NOUN, falsifiable the moment it is
   split into members, though checking a suspect field's ONE call site beat
-  group-splitting as the general form; (6) brief the reviewer at the REPLACEMENT
-  TEXT specifically and tell it to EXPECT a successor rather than assume the
-  last fix stopped it.
+  group-splitting as the general form; (6) brief the reviewer at the
+  REPLACEMENT TEXT specifically and tell it to EXPECT a successor rather than
+  assume the last fix stopped it; and (7) brief it at ORCHESTRATOR-authored
+  prose too — the main session gets no pass for holding the plan. At the
+  v0.14.0 train BOTH Majors of one review round sat in the main session's own
+  spec commit (PR #692, `7291b80`), and one of them wrote into
+  `docs/superpowers/specs/` an unsupported count that a sibling commit in the
+  SAME wave (`135b1fb`) had just deleted from a `BoatPicker.tsx` comment. A
+  claim RETIRED from code and re-landing in a spec is strictly worse than
+  never deleting it: the spec is this file's declared source of truth, so the
+  migration UPGRADES the claim's authority while nobody re-checks it.
   Four shapes worth naming: a correction can invent a DERIVATION the source
   explicitly denies while every number in it is verbatim correct — the defect is
   the *because*, which survives a numeric check; a "correction" can replace
@@ -3099,10 +3196,14 @@ making design-level decisions; do not silently deviate.
   shape than the heredoc-prose case — `-f` inside a longer word or a longer
   flag is not `-f` as a TOKEN, so exact-match on the argument would fix them
   without the parser PR #233 was closed over. Still out of repo scope (#236).
-- PR review threads via API: send bodies containing backticks as JSON `--input`
-  files (double-quoted shell interpolation mangles them); inline comments 422
-  outside diff hunks — anchor to in-diff lines, put out-of-diff findings in a
-  PR comment. `.claude/skills/pr-selfreview/resolve-threads.sh` (#178, PR
+- PR review threads via API: send bodies containing backticks as JSON
+  `--input` files (double-quoted shell interpolation mangles them) — and put
+  `event` INSIDE that same JSON, never as a sibling `-f`, which `--input`
+  diverts to the query string and turns the post into an invisible PENDING
+  draft (mechanism in the `gh api` flag-composition bullet below). Inline
+  comments 422 outside diff hunks — anchor to in-diff lines, put out-of-diff
+  findings in a PR comment. `.claude/skills/pr-selfreview/resolve-threads.sh`
+  (#178, PR
   #329) batches the reply+resolve loop: it paginates `reviewThreads` on
   `hasNextPage`, re-enumerates fresh at the end, and exits non-zero if any
   thread is still open. Mapping-file gotcha (session 24): when a thread's
@@ -3371,8 +3472,15 @@ making design-level decisions; do not silently deviate.
   `issues/N/milestone` endpoint DOES NOT EXIST and 404s (measured on #642).
   Read the title back to assert it, per the rule below.
 - UNDRAFTING a PR is GraphQL-only: `gh api repos/…/pulls/N --method PATCH -f
-  draft=false` SILENTLY NO-OPS (returns `draft=true`, exit 0, no error).
-  Use `markPullRequestReadyForReview` with the PR's node id. General rule, of
+  draft=false` SILENTLY NO-OPS (returns `draft=true`, exit 0, no error). Use
+  `markPullRequestReadyForReview` with the PR's node id. It also triggers **no
+  new CI run**: `ci.yml`'s trigger is a bare `on: pull_request:` with no
+  `types:` key, and GitHub's default activity types are
+  `opened`/`synchronize`/`reopened` only — `ready_for_review` is not among
+  them (read off `ci.yml` and GitHub's events documentation, 2026-08-25). So a
+  check that looks missing after an undraft was never going to appear, and
+  undrafting is never the explanation for a stale or duplicated check-run
+  object; push a commit if you need a fresh run. General rule, of
   which this and the Pages same-SHA no-op are instances: after any mutating
   `gh` call, assert the NEW STATE in the same breath — never the exit code.
 - `gh api graphql -F body=@file` posts the FILE as the body of a form field
@@ -3387,7 +3495,21 @@ making design-level decisions; do not silently deviate.
   graphql -F body=@file.json` → `"A query attribute must be specified"` exit 1.
   Use a JSON `--input` file for any GraphQL call carrying a body with
   backticks (e.g. a review-thread reply) — `--input` is the PREFERRED form,
-  not a REST-only fallback.
+  not a REST-only fallback. Two REST-side traps, measured 2026-08-25 on gh
+  2.45.0 and captured with `GH_DEBUG=api` against harmless endpoints
+  (`/rate_limit`, plus a 404-ing probe path — no live PR touched). (1)
+  **`--input` does NOT compose with field flags**: `gh api --help` states
+  outright that with `--input`, any `-f`/`-F` is appended to the URL QUERY
+  STRING, reproduced as `…/rate_limit?event=COMMENT` with the JSON body
+  unchanged — so `--input review.json -f event=COMMENT` posts a review
+  carrying no `event`, which GitHub accepts as an invisible PENDING draft and
+  which surfaces only as a 422 on the NEXT post. Put every field INSIDE the
+  `--input` JSON. (2) On a REST endpoint, `-F body=@file` does not fail loudly
+  the way the GraphQL form does — it posts the file's ENTIRE raw text,
+  JSON-escaped, as the STRING value of `body` (captured outgoing body:
+  `{"body": "{\"body\":\"hello world\",…}\n"}`). Neither is visible in the
+  exit code: per the assert-the-new-state rule above, read the review back and
+  check `state`.
 - GitHub links a code-scanning alert to an issue only when the alert URL
   appears as a TASK-LIST item (`- [ ] <url>`) in the issue body — a plain
   markdown link does nothing, and the REST alert object exposes no tracking
