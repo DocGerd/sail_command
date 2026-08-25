@@ -716,9 +716,16 @@ export default function RouteSummary({
             summary={t('route.legs.disclosure', { count: result.legs.length })}
           >
             <table className="route-legs">
+              {/* #707: visually-hidden accessible name for the table itself —
+                  reuses the SAME `route.legs.disclosure` key/params as the
+                  Disclosure summary above (no new i18n key), so the table's
+                  name and its collapsed-state summary always agree. */}
+              <caption className="sr-only">
+                {t('route.legs.disclosure', { count: result.legs.length })}
+              </caption>
               <thead>
                 <tr>
-                  <th>{t('route.legs.time')}</th>
+                  <th scope="col">{t('route.legs.time')}</th>
                   {/* #379: leg-scale elapsed time (endTimeMs - startTimeMs).
                       Placed next to Time (same dimension, read together) and
                       away from Distance/Speed — those two plus this one are
@@ -727,19 +734,19 @@ export default function RouteSummary({
                       showing all three is a deck-readability convenience —
                       cross-reading without doing arithmetic — never
                       independent confirmation of one another. */}
-                  <th>{t('route.legs.duration')}</th>
-                  <th>{t('route.legs.kind')}</th>
+                  <th scope="col">{t('route.legs.duration')}</th>
+                  <th scope="col">{t('route.legs.kind')}</th>
                   {/* #379: this column shows headingDeg, which is course over
                       ground despite its field name — no leeway model exists
                       in this app, so a true heading value would be
                       fabricated. Label as COG, not "Heading". */}
-                  <th>{t('route.legs.cog')}</th>
-                  <th>{t('route.legs.twa')}</th>
-                  <th>{t('route.legs.tws')}</th>
-                  <th>{t('route.legs.speed')}</th>
-                  <th>{t('route.legs.distance')}</th>
-                  <th>{t('route.legs.maneuver')}</th>
-                  <th>{t('route.legs.shallow')}</th>
+                  <th scope="col">{t('route.legs.cog')}</th>
+                  <th scope="col">{t('route.legs.twa')}</th>
+                  <th scope="col">{t('route.legs.tws')}</th>
+                  <th scope="col">{t('route.legs.speed')}</th>
+                  <th scope="col">{t('route.legs.distance')}</th>
+                  <th scope="col">{t('route.legs.maneuver')}</th>
+                  <th scope="col">{t('route.legs.shallow')}</th>
                 </tr>
               </thead>
               <tbody>

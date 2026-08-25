@@ -1766,6 +1766,49 @@ select {
   border-bottom-color: var(--sc-bg);
 }
 
+/* #711: MapLibre's own AttributionControl chrome hardcodes a white
+   background + near-black link colour with no dark variant — same defect
+   class as .seamark-popup/.ais-popup above, on the control that surfaces
+   the ODbL/Protomaps/EMODnet/Open-Meteo credits this app is legally
+   required to show. The hardcoded pair lives on `.maplibregl-compact`
+   itself (read against maplibre-gl 6.5.0, dist/maplibre-gl.css:
+   `@media screen{.maplibregl-ctrl-attrib.maplibregl-compact{...
+   background-color:#fff;color:#000...}}`) — NOT on
+   `.maplibregl-compact-show`, which adds only padding/visibility; an
+   earlier revision of this comment cited `-compact-show` for the colours,
+   which was wrong. `.maplibregl-ctrl-attrib a{color:rgba(0,0,0,.75)}` is
+   unconditional. MapView.tsx constructs `AttributionControl({ compact:
+   true })` (~:324), so `.compact` is present from the first attribution
+   string onward, and per the #33 comment above that construction the
+   control starts COLLAPSED everywhere: `.compact-show` is a one-shot
+   auto-expand class MapView.tsx strips on the same tick, so the STEADY
+   state on an ordinary page load carries `.compact` WITHOUT
+   `.compact-show` — a small pill in the map corner that a
+   `.compact-show`-only override left unthemed in dark mode. MapLibre's
+   own toggle logic (`_toggleAttribution`/`_updateData`) never adds
+   `.compact-show` without `.compact` already present, so `.compact` alone
+   is the superset selector and covers both the collapsed and the opened
+   state in one rule. Unlike .seamark-popup/.ais-popup, this is scoped
+   inside `@media (prefers-color-scheme: dark)` rather than applied
+   unconditionally: --sc-bg/--sc-fg in LIGHT mode (#fbfbfc/#14161a) are
+   close to but not identical to the library's hardcoded #fff/#000, and
+   this control has no dark-mode DoD leeway for that drift — light mode
+   must stay byte-identical to the pre-#711 build, so the override only
+   exists where the hardcoded chrome is actually wrong. No className to
+   add here (unlike the Popup className hook in DataLayers.tsx/
+   MapView.tsx's AIS layer): AttributionControl has none, so this themes
+   the library's own global `.maplibregl-ctrl-attrib` class directly. */
+@media (prefers-color-scheme: dark) {
+  .maplibregl-ctrl-attrib.maplibregl-compact {
+    background-color: var(--sc-bg);
+    color: var(--sc-fg);
+  }
+
+  .maplibregl-ctrl-attrib a {
+    color: var(--sc-fg);
+  }
+}
+
 /* AIS status chip (#25) — a small map overlay on the Live tab, top-centered so
    it clears the top-left data-layer controls and the top-right route cluster.
    Tier 2 ("map chrome" — see the tier-order comment above .app-header): it

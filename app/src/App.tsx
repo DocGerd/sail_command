@@ -1264,7 +1264,16 @@ function AppShell() {
           </button>
         </nav>
 
-        <div className="app-panel">
+        {/* #707: the single <main> landmark. .app-panel is the tab-specific
+            task content (Plan form / Routes results / Live readout / Boat
+            settings) — the genuinely primary content a screen-reader user
+            would want a "skip to main content" target for. .map-area above
+            is shared chrome present under every tab and is largely opaque
+            to assistive tech regardless (MapLibre renders to canvas with no
+            DOM node per feature), so it stays a plain <div>. Class name is
+            unchanged — every existing `.app-panel`-scoped selector/test
+            still matches. */}
+        <main className="app-panel">
           {tab === 'plan' && (
             <PlannerPanel
               harbors={harbors}
@@ -1382,7 +1391,7 @@ function AppShell() {
               on narrow the slot isn't rendered and the readout stays a
               bottom-docked card above the tab strip. */}
           {tab === 'live' && isWide && <div className="app-panel-live" ref={setLiveSlot} />}
-        </div>
+        </main>
       </div>
 
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} boat={boat} />

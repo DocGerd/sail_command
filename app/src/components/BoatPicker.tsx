@@ -133,8 +133,15 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
           the citation's ORIGINAL language regardless of the active UI
           language — paraphrasing a source citation per language is how a
           citation becomes wrong. Not a missing i18n key; do not re-file
-          this as an anomaly (it already has been — #607 itself). */}
-      <p className="boat-option-draft-note">{boat.draftProvenance.note}</p>
+          this as an anomaly (it already has been — #607 itself).
+          #707: `lang="en"` (every catalogue note constant in data/boats.ts is
+          verified English — WCAG 2.1 SC 3.1.2, Language of Parts) — this
+          marks the LANGUAGE of the verbatim citation for assistive tech, it
+          does not translate or paraphrase it, so it is fully compatible with
+          the #607 ruling above, not a reversal of it. */}
+      <p className="boat-option-draft-note" lang="en">
+        {boat.draftProvenance.note}
+      </p>
       <Disclosure className="boat-option-polars" summary={t('boat.polarDetail.summary')}>
         <ul className="boat-option-sails">
           {boat.sails.map((sail) => (
@@ -156,8 +163,13 @@ function BoatOption({ boat, selected, onSelect }: BoatOptionProps) {
                   citation per language is how a citation becomes wrong.
                   #607 maintainer ruling (2026-08-25, DELIBERATE): renders in
                   the citation's original language regardless of UI
-                  language, by design — do not re-file this as an anomaly. */}
-              <span className="boat-option-sail-note">{sail.polarProvenance.note}</span>
+                  language, by design — do not re-file this as an anomaly.
+                  #707: `lang="en"` — same rationale as
+                  `boat-option-draft-note` above (WCAG 2.1 SC 3.1.2); marks
+                  the citation's language, does not translate it. */}
+              <span className="boat-option-sail-note" lang="en">
+                {sail.polarProvenance.note}
+              </span>
             </li>
           ))}
         </ul>

@@ -118,6 +118,11 @@
   // compares its computed budget against. Same reason and pattern as
   // panelWidth.test.ts/useBannerHeight.test.ts above: a CSS-to-TypeScript
   // invariant with no compiler spanning both.
+  // app.css.test.ts (#711): reads app/src/app.css via `node:fs` to hold the
+  // dark-mode `.maplibregl-ctrl-attrib` override to exactly one
+  // `@media (prefers-color-scheme: dark)` block and never outside one —
+  // same reason and pattern as panelWidth.test.ts/useBannerHeight.test.ts/
+  // depthLegendGate.test.ts above.
   "include": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -139,6 +144,7 @@
     "src/**/verifyMaskConnectivity.test.ts",
     "src/**/sweepSailIds.test.ts",
     "src/**/depthLegendGate.test.ts",
+    "src/**/app.css.test.ts",
     "sweep/**/*.ts"
   ]
 }

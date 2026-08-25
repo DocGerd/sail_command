@@ -78,6 +78,17 @@
   // depthLegendGate.test.ts (#641) is the same shape again — reads app.css
   // via `node:fs` to hold `.depth-legend > summary`'s `min-height` to
   // LEGEND_COLLAPSED_HEIGHT_PX, same pattern as panelWidth.test.ts above.
+  // app.css.test.ts (#711) is the same shape once more — reads app.css via
+  // `node:fs` to structurally guard the dark-mode
+  // `.maplibregl-ctrl-attrib` override exists, is scoped to exactly one
+  // `@media (prefers-color-scheme: dark)` block, and never leaks outside
+  // one (light mode must stay untouched) — same pattern as
+  // useBannerHeight.test.ts/panelWidth.test.ts/chipShallowFill.test.ts
+  // above. MEASURED (not assumed) that the `import.meta.glob(...'?raw')`
+  // browser-safe form other tests use for non-CSS source (depthColor.test.ts)
+  // does NOT work here: Vitest's default `test.css: false` mocks out every
+  // `.css`-suffixed module with an empty proxy regardless of query string,
+  // so this file genuinely needs `node:fs`, not merely by convention.
   "exclude": [
     "src/**/realmask.repro.test.ts",
     "src/**/gpx.parse.test.ts",
@@ -98,6 +109,7 @@
     "src/**/verifyMaskBoatGate.test.ts",
     "src/**/verifyMaskConnectivity.test.ts",
     "src/**/sweepSailIds.test.ts",
-    "src/**/depthLegendGate.test.ts"
+    "src/**/depthLegendGate.test.ts",
+    "src/**/app.css.test.ts"
   ]
 }
