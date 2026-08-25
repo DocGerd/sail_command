@@ -244,6 +244,61 @@ function migrateSails(result: Record<string, unknown>): SailResult[] | null {
   return out.length > 0 ? out : null;
 }
 
+/**
+ * #661: `rigVerdictKey`'s exhaustiveness switch (lib/resultSummary.ts) is a
+ * BUILD-TIME-ONLY guarantee — `erasableSyntaxOnly` strips its `never`-typed
+ * arm at runtime, so an unrecognised stored `kind` sails straight through
+ * that switch's `default` case and comes back out as the raw invalid string,
+ * typed as a MsgKey it never actually is. `useT()` (a bare
+ * `dicts[lang][key]` lookup, no existence check, no fallback) then renders
+ * that absent key as nothing at all — the rig chip goes silently empty, no
+ * error, no console output. This validates `kind` at the read boundary
+ * instead, mirroring migrateBoat's structural validation a few lines above:
+ * neither trusts an untyped stored discriminant to already be a member of
+ * its union.
+ *
+ * An unrecognised value is mapped onto the EXISTING 'not-compared' member
+ * rather than simply omitted. Omitting looks like the safer, more honest
+ * choice and is not: `rigRecommendationOf` (lib/resultSummary.ts) falls back
+ * UNCONDITIONALLY to `{ kind: 'decided', rig: result.recommended }` whenever
+ * `PlanResultOk.rigRecommendation` is `undefined`. That fallback is correct
+ * for a genuinely pre-#259 record that never had the field at all (see
+ * migrateResult's own #540 comment) — but reproducing an absent field for a
+ * record that DID once carry a real, now-corrupted comparison outcome would
+ * route it through that exact fallback and silently star `result.recommended`
+ * as "faster" with no comparison behind it, precisely the fabricated verdict
+ * ADR-0002 forbids. 'not-compared' is the one RigRecommendation member that
+ * makes no comparative claim at all ("no faster rig is claimed",
+ * route.rigNotCompared / route.comparisonIncomplete) — degrading an
+ * unreadable verdict onto it can therefore never assert a wrong winner, a
+ * false tie, or a false "rig doesn't matter" claim; it only declines to pick
+ * one. No new i18n string or RigRecommendation member is needed for this:
+ * the existing 'not-compared' vocabulary already says exactly the honest
+ * thing ("this build has no faster-rig claim to offer for this record").
+ */
+function validRigRecommendation(
+  stored: unknown,
+): NonNullable<PlanResultOk['rigRecommendation']> | null {
+  if (!isRecord(stored)) return null;
+  switch (stored.kind) {
+    case 'decided':
+      // SailId is minted from an unvalidated stored string throughout this
+      // file (see e.g. migrateSails/sailResultOf above) — an unrecognised
+      // rig id still renders via sailLabelKey's own 'route.rig.unknown'
+      // fallback, a designed-for state documented at that helper's
+      // definition in lib/resultSummary.ts.
+      return typeof stored.rig === 'string' ? { kind: 'decided', rig: stored.rig as SailId } : null;
+    case 'tie':
+      return { kind: 'tie' };
+    case 'moot':
+      return { kind: 'moot' };
+    case 'not-compared':
+      return { kind: 'not-compared' };
+    default:
+      return null;
+  }
+}
+
 function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
   if (result.status !== 'ok') return null;
   if (!isRecord(result.snappedOrigin) || !isRecord(result.snappedDestination)) return null;
@@ -316,9 +371,13 @@ function migrateResult(result: Record<string, unknown>): PlanResultOk | null {
         { rigRecommendation: { kind: 'not-compared' } as const }
       : result.rigRecommendation !== undefined
         ? {
-            rigRecommendation: result.rigRecommendation as NonNullable<
-              PlanResultOk['rigRecommendation']
-            >,
+            // #661: validated, never a blind cast — see
+            // validRigRecommendation's own comment for why an unrecognised
+            // `kind` degrades to 'not-compared' instead of being cast
+            // through unchecked or omitted.
+            rigRecommendation: validRigRecommendation(result.rigRecommendation) ?? {
+              kind: 'not-compared',
+            },
           }
         : {}),
     snappedOrigin: result.snappedOrigin as unknown as PlanResultOk['snappedOrigin'],

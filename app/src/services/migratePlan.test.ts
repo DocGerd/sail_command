@@ -393,6 +393,76 @@ describe('#54 migratePlan: pre-#54 records', () => {
   });
 });
 
+// #661: an unrecognised stored `rigRecommendation.kind` used to be cast
+// straight through unchecked (`result.rigRecommendation as NonNullable<...>`)
+// and reach lib/resultSummary.ts's rigVerdictKey exhaustiveness switch as a
+// bogus MsgKey — that switch's `never`-typed default arm is a BUILD-TIME-ONLY
+// guarantee (erasableSyntaxOnly strips it at runtime), and useT() (a bare
+// `dicts[lang][key]` lookup with no existence check) renders an absent key
+// as nothing at all. See migratePlan.ts's validRigRecommendation for the
+// full mechanism, including why simply OMITTING a present-but-invalid field
+// is not the safe fallback it looks like: rigRecommendationOf's
+// `?? { kind: 'decided', rig: result.recommended }` fallback exists for a
+// genuinely pre-#259 record that never had the field, and would fabricate a
+// verdict for a record that DID once carry a real, now-corrupted one —
+// exactly what ADR-0002 forbids. Every row below degrades to 'not-compared'
+// instead, the one RigRecommendation member that makes no comparative claim.
+describe('#661 migratePlan: rigRecommendation.kind is validated, never passed through unchecked', () => {
+  it('degrades an unrecognised kind to not-compared rather than passing it through unchecked', () => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).rigRecommendation = { kind: 'somehow-corrupted' };
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'not-compared' });
+  });
+
+  // Isolates the `isRecord` term: `null` is present (not undefined, so this
+  // does not take the 'genuinely absent' path below) but is not a record —
+  // `.kind` on `null` throws if that guard is ever deleted, rather than
+  // silently misreading as an unrecognised kind.
+  it('degrades a non-record stored value (null) rather than throwing or passing it through', () => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).rigRecommendation = null;
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'not-compared' });
+  });
+
+  // Isolates the decided/rig term: a recognised `kind` whose `rig` is
+  // missing (not a string), which would otherwise mint `{ kind: 'decided',
+  // rig: undefined }` — a fabricated star on an undefined "winner".
+  it('degrades a "decided" verdict with a missing/non-string rig rather than passing it through', () => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).rigRecommendation = { kind: 'decided' };
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual({ kind: 'not-compared' });
+  });
+
+  // Positive controls: every EXISTING, well-formed verdict must still pass
+  // through unchanged — the validator must not over-reject a genuine record.
+  it.each([
+    ['decided', { kind: 'decided', rig: 'fock' }],
+    ['tie', { kind: 'tie' }],
+    ['moot', { kind: 'moot' }],
+    ['not-compared', { kind: 'not-compared' }],
+  ])('leaves a well-formed %s verdict unchanged', (_label, verdict) => {
+    const raw = legacyPlan();
+    (raw.result as Record<string, unknown>).rigRecommendation = verdict;
+    const migrated = migratePlan(raw)!;
+    expect(migrated.result.rigRecommendation).toEqual(verdict);
+  });
+
+  // This fix touches only the PRESENT-but-invalid branch — a genuinely
+  // absent field must still omit the key (unchanged from the pre-existing
+  // 'omits an absent optional' test above), never get stamped to
+  // not-compared, so rigRecommendationOf's pre-#259 fallback still fires
+  // for the record it is designed for.
+  it('still omits a genuinely absent rigRecommendation rather than stamping not-compared onto it', () => {
+    const raw = legacyPlan();
+    delete (raw.result as Record<string, unknown>).rigRecommendation;
+    const migrated = migratePlan(raw)!;
+    expect('rigRecommendation' in migrated.result).toBe(false);
+  });
+});
+
 describe('#54 migratePlan: records this build already understands', () => {
   it('passes a current-version record through with its boat snapshot intact', () => {
     const raw = migratePlan(legacyPlan())!;
