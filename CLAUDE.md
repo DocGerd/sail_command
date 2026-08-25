@@ -57,9 +57,9 @@ making design-level decisions; do not silently deviate.
   {query:'?raw'})` for source scans) and assert against it — **but `?raw` glob
   is VACUOUS for `.css`**: vitest's `CSSEnablerPlugin`
   (`vitest:css-empty-post`) matches a CSS-suffixed path WITH OR WITHOUT a
-  query string and returns `export default ""`, so under the default `css: {
-  include: [] }` every matched stylesheet resolves to the EMPTY STRING and the
-  guard passes having read zero bytes. Measured 2026-08-25 against the
+  query string and returns `export default ""`, so with vitest's default `css:
+  { include: [] }` every matched stylesheet resolves to the EMPTY STRING and
+  the guard passes having read zero bytes. Measured 2026-08-25 against the
   lockfile-pinned vitest 4.1.11 / vite 8.2.2 with a positive control: `?raw`
   glob of `/src/app.css` → length 0, of `/src/types.ts` → length 18744, same
   query shape and only the extension differing. Every stylesheet-reading guard
@@ -70,20 +70,18 @@ making design-level decisions; do not silently deviate.
   estimate_polars.mjs,polars-source.json}`, `app/public/data/polars/*.json`,
   `app/sweep/sweepArms.ts` or `app/src/app.css` can red the REQUIRED `app`
   check from a file you never opened. Read the guard's own header before
-  changing its twin. More of the `app.css` keepers live BESIDE their subject than inside `app/src/test/` itself —
+  changing its twin. More of the `app.css` keepers live BESIDE their subject
+  than inside `app/src/test/` itself —
   `app/src/lib/{panelWidth,useBannerHeight,depthLegendGate}.test.ts` each pin
   an `app.css` literal against a TS constant, and `app/src/app.css.test.ts`
   scans the stylesheet from the `app/src/` top level — so before touching
   `app.css`, enumerate with `grep -rln 'app\.css' app/src
   --include='*.test.ts*'` rather than trusting any list here. And
-  `.github/workflows/coverage.yml`'s
-  `timeout-minutes` is NOT guarded at all: `timeoutBudgetVsJobCap.test.ts`
-  DECLARES `JOB_CAP_MINUTES = 240` rather than reading it (PR #351 removed the
-  read after four fail-opens), so the two are kept in sync by a twin comment
-  only and #359 tracks restoring a real read.
-
-## Commands
-
+  `.github/workflows/coverage.yml`'s `timeout-minutes` is NOT guarded at all:
+  `timeoutBudgetVsJobCap.test.ts` DECLARES `JOB_CAP_MINUTES = 240` rather than
+  reading it (PR #351 removed the read after four fail-opens), so the two are
+  kept in sync by a twin comment only and #359 tracks restoring a real read.
+  ## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
@@ -311,8 +309,7 @@ making design-level decisions; do not silently deviate.
   script correctly fail-closes to `run_e2e=true` with "base or head commit
   unreachable" — which looks like an answer and isn't. Measured 2026-08-19:
   a 32-file docs sweep ran a full e2e run (6 min 38 s on that run) because
-  of exactly one path,
-  `.claude/skills/release/SKILL.md`.
+  of exactly one path, `.claude/skills/release/SKILL.md`.
 - `app/package.json`'s `version: 0.1.0` is NOT the app version — but it is not
   dead code either: `vite.config.ts`'s `appVersion()` sets `__SC_APP_VERSION__`
   to `'dev'` on `serve`, else `git describe --tags --always`, and falls back to
@@ -469,10 +466,10 @@ making design-level decisions; do not silently deviate.
   `.seamark-popup`, #7). A CONTROL may have NO className hook at all —
   `AttributionControl` does not — in which case theme the library's own global
   class, and scope that override inside `@media (prefers-color-scheme: dark)`
-  rather than unconditionally as the popups do: `--sc-bg`/`--sc-fg` are close
-  to but not identical to `#fff`/`#000`, and light mode must stay
-  byte-identical to the pre-#711 build. Grep the installed
-  `src/css/maplibre-gl.css` for
+  rather than unconditionally as the popups do: `--sc-bg`/`--sc-fg` IN LIGHT
+  MODE (`#fbfbfc`/`#14161a`) are close to but not identical to `#fff`/`#000`,
+  and light mode must stay byte-identical to the pre-#711 build. Grep the
+  installed `src/css/maplibre-gl.css` for
   the hardcoded pair rather than assuming a control inherits theming; the
   attribution case, and why its override must NOT be narrowed to
   `-compact-show`, live in app.css's own #711 comment and its guard.
@@ -1799,8 +1796,7 @@ making design-level decisions; do not silently deviate.
   one source is the worse tautology (#388's shape). Discriminating
   experiment: perturb EACH SIDE ALONE — changing production only reds the
   structural row; changing the test's own table reds two rows. Had the
-  needle come from production, that second probe would have been
-  unobservable.
+  needle come from production, that second probe would have been unobservable.
   SHARPER INSTANCE (#516/PR #523): the critical datum can be a numeric
   property of a FIXTURE. The differential DDA keeper only works because
   `TIE_META` uses a power-of-two grid step — that is what makes an exact
@@ -1938,8 +1934,7 @@ making design-level decisions; do not silently deviate.
   and branch protection is itself NAME-keyed, so `mergeable_state` stayed
   `blocked` for ~3m40s while the run-ID poll was correctly reporting green.
   Run ID answers "is my gating run green"; `mergeable_state` answers "will the
-  merge button work". Poll the run; gate the merge on `mergeable_state`.
-  Rule:
+  merge button work". Poll the run; gate the merge on `mergeable_state`. Rule:
   enumerate `gh api
   repos/OWNER/REPO/actions/runs?head_sha=<sha>` and monitor each relevant run
   ID explicitly — never poll by check name alone.
@@ -1981,11 +1976,14 @@ making design-level decisions; do not silently deviate.
   **"did the SUBJECT under test change size?"** The third is new (#628 / PR
   #688 Major 1): the #277/#598 width pins run at 320px, where #628 made the
   cluster default-COLLAPSED, so they pass MORE EASILY after the change
-  (clearance 16.00px → 41.98px DE / 51.64px EN, measured) and "they still pass" cannot
+  (clearance 16.00px → 41.98px DE / 51.64px EN, measured) and "they still
+  pass" cannot
   establish that the change cost no width. A guard that got EASIER is not a
-  control. `app/e2e/layout.spec.ts` (~:918-922) witnesses the EN pair
-  (`179.64px` left edge, `51.64px` clearance) in its own comment; the DE
-  figure has no twin in the repo, so treat it as the weaker half.
+  control. `app/e2e/layout.spec.ts`'s `RE-MEASURED live at this exact site
+  (2026-08-25)` comment witnesses the EN pair (`179.64px` left edge, `51.64px`
+  clearance); the DE figure has NO twin anywhere in the tracked tree or that
+  file's history (searched for both decimal separators), so treat it as the
+  weaker half.
 - **The release ship gate earns its cost — do not optimise it away as
   ceremony.** At the v0.13.0 cut, `app`, `e2e`, `hook-selftests`, CodeQL,
   Scorecard, Deploy and 2136 unit tests were ALL green, and a human looking at
