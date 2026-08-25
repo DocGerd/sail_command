@@ -140,6 +140,18 @@ export const de = {
     'Windvorhersage konnte nicht geladen werden. Bitte in Kürze erneut versuchen.',
   'error.internal':
     'Routenplanung unerwartet fehlgeschlagen. Erneut versuchen; bei wiederholtem Auftreten die App neu laden.',
+  // #662: RouteSummary.tsx's fallback for a SAVED plan whose stored no-route
+  // reason cannot be trusted (PR #656 / #614 made `reason` fall back to
+  // `null` for a value outside the NoRouteReason union). This render site is
+  // reached only when viewing an already-saved plan, never while live-
+  // planning — "Erneut versuchen"/"App neu laden" would both be futile here
+  // (a retry re-runs planning, which this screen isn't doing; a reload
+  // changes nothing about what a stored record contains), so unlike
+  // error.internal above this key names the one thing that DOES help:
+  // planning the route again. App.tsx's RETRY_MAY_HELP_KEYS mechanism is not
+  // involved — this key never reaches the live-planning Retry button.
+  'error.savedPlanUnreadable':
+    'Das Ergebnis dieses gespeicherten Plans konnte nicht gelesen werden. Route neu planen, um ein aktuelles Ergebnis zu erhalten.',
   // #433: Ursachen, die zuvor alle auf error.internal zusammenfielen, jetzt
   // unterscheidbar — jeweils mit Hinweistext, der ehrlich sagt, ob „Erneut
   // versuchen" tatsächlich helfen kann (siehe App.tsx's RETRY_MAY_HELP_KEYS).
@@ -208,7 +220,12 @@ export const de = {
   // #259: honest copy for the two cases where badging one rig as
   // "recommended" would be misleading — an ETA tie (too close to call) and
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
-  'route.rigTie': 'Genua und Fock liegen für diese Passage praktisch gleichauf',
+  // #578: parameterised — the two names used to be hardcoded "Genua und
+  // Fock", correct only because every catalogue boat's foresail happens to
+  // use those two ids. lib/resultSummary.ts's renderRigVerdict resolves
+  // both slots from the PLAN's own compared sails (solve order), through
+  // the same sailLabelKey every other rig-facing string uses.
+  'route.rigTie': '{sailA} und {sailB} liegen für diese Passage praktisch gleichauf',
   'route.rigMoot': 'Riggwahl spielt hier keine Rolle — die Passage läuft durchgehend unter Motor',
   // #553 / spec §N.4: schwächere Aussage als rigTie oben — dort ist ein
   // Vergleich gelaufen und endete unentschieden, hier hat gar keiner

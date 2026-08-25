@@ -26,8 +26,11 @@ import { MASK_TOLERANCE_M } from './mask';
 const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
 
 /**
- * One decimal place, in the active language's own decimal separator — "1,9"
- * for German, "1.9" for English.
+ * One decimal place BY DEFAULT, in the active language's own decimal
+ * separator — "1,9" for German, "1.9" for English. `fractionDigits` is an
+ * escape hatch for a caller with no fraction to show at all (an integer
+ * axis-tick label) — it is display precision, never a licence to show more
+ * precision than the mask can justify.
  *
  * The shipped German copy hardcoded "2,1 m" / "1,2 m" before these numbers
  * became placeholders, and a bare `toFixed(1)` would have silently regressed
@@ -35,14 +38,24 @@ const LOCALES: Record<Lang, string> = { de: 'de-DE', en: 'en-GB' };
  * `maskTolerance.test.ts`'s hand-written `measurement()` twin expects, so a
  * regression here reds a real assertion rather than passing unnoticed.
  *
- * Deliberately NOT reused for `route.shallow.lead`'s `{draft}` slot, which has
- * always rendered `toFixed(1)` in both languages: changing that is a separate,
- * wider copy decision and not #539's to make.
+ * #596: this comment used to defer reusing this formatter for
+ * `route.shallow.lead`'s `{draft}` slot as "a separate, wider copy decision
+ * and not #539's to make". That decision is now MADE: every USER-VISIBLE
+ * depth figure across RouteSummary.tsx/LiveView.tsx/BoatPicker.tsx/
+ * DepthProfile.tsx now goes through this function, because #525 made
+ * `formatNm`/`formatKn` locale-aware while depth figures stayed on bare
+ * `toFixed(1)` — which is what let one German sentence mix a comma-formatted
+ * distance beside a point-formatted depth (`route.shallow.exposure`,
+ * `route.marginal.notice`). The ~40 SVG-geometry `toFixed(` calls in
+ * DepthProfile.tsx (path `d` strings, `transform`, `viewBox`, bare
+ * `x`/`y`/`width`/`height` attributes) are deliberately EXCLUDED — a locale
+ * comma inside an SVG coordinate or path attribute corrupts the rendering,
+ * so those stay locale-invariant.
  */
-export function formatDepthM(value: number, lang: Lang): string {
+export function formatDepthM(value: number, lang: Lang, fractionDigits = 1): string {
   return new Intl.NumberFormat(LOCALES[lang], {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   }).format(value);
 }
 
