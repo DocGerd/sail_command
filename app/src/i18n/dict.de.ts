@@ -69,7 +69,7 @@ export const de = {
   'settings.seamarkCategory.standard': 'Standard',
   'settings.seamarkCategory.all': 'Alle',
   'settings.seamarkCategory.help':
-    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles außer Unterwasserkabeln und Pipelines — wähle „Alle“, um auch diese anzuzeigen.',
+    'Kardinal-, Lateral- und Mitte-Fahrwasser-Zeichen, Einzelgefahrenzeichen sowie Leuchttürme werden immer angezeigt, auch bei „Basis“. „Standard“ (Voreinstellung) zeigt alles, einschließlich Unterwasserkabeln und Pipelines. „Alle“ zeigt derzeit dasselbe wie „Standard“.',
   'planner.card.trip': 'Reise',
   'planner.card.result': 'Ergebnis',
   'planner.origin.label': 'Start',
@@ -404,7 +404,11 @@ export const de = {
   'route.legend.maneuver': 'Wende/Halse',
   'route.legend.headingChange': 'Kursänderung',
   'route.legend.via': 'Zwischenpunkt',
-  'route.legend.shallow': 'Flacher als Sicherheitstiefe kartiert',
+  // #651 fix-wave, MAJOR 1: siehe dict.en.ts's Kommentar für die vollständige
+  // Begründung (die alte Formulierung war für die neue MARGINAL-Population
+  // sachlich falsch, da diese per Definition auf oder über dem Gate kartiert
+  // ist).
+  'route.legend.shallow': 'Vorsichtige Tiefenlesart unter Sicherheitstiefe',
   // #324: map-only overlay of the rig NOT currently shown as the primary
   // route (dashed, reduced opacity — see RouteLayer.tsx's setupLayers).
   'route.legend.altRig': 'Anderes Rigg (gestrichelt)',

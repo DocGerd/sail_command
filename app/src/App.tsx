@@ -39,8 +39,10 @@ import UatBadge from './components/UatBadge';
 import PanelResizer from './components/PanelResizer';
 import { isStaleForecast } from './lib/plan';
 import { recalcRequest } from './lib/recalc';
+import { planViaPoints } from './lib/planViaPoints';
 import {
   departureSeedMs,
+  pickedPointMoved,
   pickedPointsOfPlan,
   planFormDirty,
   routingSettingsDirty,
@@ -399,6 +401,46 @@ function AppShell() {
   // GPX-draft values while planFormDirty reads the freshly-loaded plan as
   // dirty — backwards, since the form would actually be WRONG.
   const syncedPlanIdRef = useRef<string | null>(null);
+
+  // #660: the form's own origin/destination/departureMs/draftViaPoints
+  // values the INSTANT a new plan.id becomes active — captured BEFORE the
+  // (possibly parked, see the sync effect's own comment below) write effect
+  // gets a chance to run. Keyed on `plan?.id` alone, deliberately narrower
+  // than the sync effect's own dep array: it must capture exactly once per
+  // NEW plan id, on the same commit the plan arrives, regardless of whether
+  // harborsLoaded is already true — a later harborsLoaded flip must NOT
+  // recapture (that would silently adopt whatever the user typed in the
+  // meantime as the new "baseline", defeating the whole guard). Declared
+  // BEFORE the sync effect below so, in a commit where both fire (the common
+  // case — harbors already loaded), React runs this one FIRST and the sync
+  // effect's per-field comparisons see a baseline that is still exactly
+  // "the form as it stood the moment the plan arrived", not a stale one.
+  //
+  // This is what the guarded writes below compare the CURRENT form against
+  // to tell an untouched field from a user edit made during the pending
+  // window: if a field still equals its baseline when the sync finally
+  // fires, nothing has touched it since the plan arrived and it is safe to
+  // overwrite with the plan's own value; if it differs, the user edited it
+  // in the interim and that field's write is skipped — the expensive
+  // failure (losing a typed edit) is made structurally unreachable, at the
+  // cost of the cheap one (occasionally still showing the plan's own value
+  // for a field the user in fact never touched, which cannot happen here
+  // since equality is exact, but would be the acceptable direction if it
+  // could).
+  //
+  // No-ops on `plan === null`, same reason as the sync effect below.
+  const pendingFormBaselineRef = useRef<{
+    origin: PickedPoint | null;
+    destination: PickedPoint | null;
+    departureMs: number;
+    draftViaPoints: LatLon[];
+  } | null>(null);
+  useEffect(() => {
+    if (!plan) return;
+    pendingFormBaselineRef.current = { origin, destination, departureMs, draftViaPoints };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id ONLY, deliberately: see the comment above
+  }, [plan?.id]);
+
   useEffect(() => {
     if (!plan || !harborsLoaded) return;
     if (syncedPlanIdRef.current === plan.id) return;
@@ -408,10 +450,27 @@ function AppShell() {
       harbors,
       lang,
     );
-    setOrigin(syncedOrigin);
-    setDestination(syncedDestination);
-    setDepartureMs(departureSeedMs(plan));
-    setDraftViaPoints(plan.request.viaPoints);
+    // #660: per-field guard against a user edit made in the harborsLoaded-
+    // parked window — see pendingFormBaselineRef's own comment above. Each
+    // write is independent: editing one field must not block syncing the
+    // other three (a joint all-or-nothing guard would, on a cold boot with
+    // no prior plan, leave origin/destination/vias permanently empty just
+    // because the user had already touched the departure field).
+    const baseline = pendingFormBaselineRef.current;
+    if (baseline === null || !pickedPointMoved(origin, baseline.origin)) {
+      setOrigin(syncedOrigin);
+    }
+    if (baseline === null || !pickedPointMoved(destination, baseline.destination)) {
+      setDestination(syncedDestination);
+    }
+    if (baseline === null || departureMs === baseline.departureMs) {
+      setDepartureMs(departureSeedMs(plan));
+    }
+    if (baseline === null || !viaPointsDiffer(draftViaPoints, baseline.draftViaPoints)) {
+      // #654: plan.request.viaPoints read through the shared accessor —
+      // defends a hand-edited/corrupted stored record; see planViaPoints.ts.
+      setDraftViaPoints(planViaPoints(plan.request));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on plan id + harborsLoaded deliberately, see the comment above
   }, [plan?.id, harborsLoaded]);
 
@@ -828,11 +887,13 @@ function AppShell() {
   // made the chip briefly disagree with the panel's own, correctly-silent
   // stale indicator). `plan !== null` mirrors ViaMarkers' OWN precondition —
   // it renders nothing without an active plan.
+  // #654: plan.request.viaPoints read through the shared accessor —
+  // defends a hand-edited/corrupted stored record; see planViaPoints.ts.
   const viaDraftStale =
     plan !== null &&
     origin !== null &&
     destination !== null &&
-    viaPointsDiffer(draftViaPoints, plan.request.viaPoints);
+    viaPointsDiffer(draftViaPoints, planViaPoints(plan.request));
   // #299 fix (PR #486 review): the cross-tab staleness BANNER (.banner-area,
   // below) intentionally uses this NARROWER signal instead of `formDirty` —
   // see routingSettingsDirty's own comment in lib/planForm.ts for why (in

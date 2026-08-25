@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { APPROACH_RADIUS_M } from './depthGate';
 import { haversineNm } from './geo';
@@ -708,9 +708,8 @@ describe('legMinDepthsM / isMarginalDepthM (#651)', () => {
     const legAtoB = makeLeg(a, b, 10);
     const legBtoA = makeLeg(b, a, 10); // reversed direction, same swept cells
     const result = legMinDepthsM([legAtoB, legBtoA], mask);
-    expect(result).not.toBeNull();
-    expect(result![0]).toEqual({ depthM: 3.5, capped: false });
-    expect(result![1]).toEqual({ depthM: 3.5, capped: false });
+    expect(result[0]).toEqual({ depthM: 3.5, capped: false });
+    expect(result[1]).toEqual({ depthM: 3.5, capped: false });
   });
 
   it('reports a deep-capped segment minimum as {depthM: 25.4, capped: true}, matching segmentMinDepthInfoM directly', () => {
@@ -722,19 +721,47 @@ describe('legMinDepthsM / isMarginalDepthM (#651)', () => {
     const b = pointAt(ROW + 0.5, 70.7);
     const mask = makeMask(() => 255);
     const result = legMinDepthsM([makeLeg(a, b, 10)], mask);
-    expect(result).not.toBeNull();
-    expect(result![0]).toEqual({ depthM: 25.4, capped: true });
+    expect(result[0]).toEqual({ depthM: 25.4, capped: true });
   });
 
-  it('an out-of-bounds leg endpoint nulls the WHOLE array, never just skips that leg', () => {
+  // #651 fix-wave: DELIBERATELY INVERTED from "an out-of-bounds leg endpoint
+  // nulls the WHOLE array, never just skips that leg". Per review, that
+  // whole-array contract was inherited from shallowExposureNm's own AGGREGATE
+  // contract (right for a summed distance, where a partial sum is a wrong
+  // NUMBER) and misapplied to this function, which returns independent
+  // per-leg MARKERS: suppressing a good leg's marker because a SIBLING leg's
+  // walk was inconclusive removes true signal and adds no safety margin, so
+  // per-leg null is strictly whole-array null PLUS more true markers — never
+  // less safe. legMinDepthsM now nulls ONLY the failing leg's own entry.
+  it("an out-of-bounds leg endpoint nulls ONLY that leg's own entry, never its siblings'", () => {
     const inside = pointAt(120.5, 10.3);
     const outside: LatLon = { lat: TEST_MASK_META.north + 1, lon: TEST_MASK_META.west + 0.01 };
     const mask = makeMask(() => 200);
     // Two legs: the FIRST is entirely valid, the SECOND touches the
-    // out-of-bounds point — pins that a later leg's failure still nulls an
-    // earlier leg's otherwise-good entry, not just its own.
+    // out-of-bounds point — pins that a later leg's failure does NOT null an
+    // earlier leg's otherwise-good entry.
     const result = legMinDepthsM([makeLeg(inside, inside, 1), makeLeg(inside, outside, 5)], mask);
-    expect(result).toBeNull();
+    expect(result[0]).toEqual({ depthM: 20, capped: false });
+    expect(result[1]).toBeNull();
+  });
+
+  // #651 fix-wave, Minor 3: a SPY control proving the withinMask bound check
+  // actually runs BEFORE segmentMinDepthInfoM is ever called for an
+  // out-of-bounds leg — the pre-existing rows above only observe the RESULT
+  // (null), which segmentMinDepthInfoM's own walk-incomplete null could also
+  // produce on its own, so neither pinned the bound check itself. Control:
+  // deleting the pre-existing withinMask check inside shallowExposureNm
+  // (this file's "an out-of-bounds leg endpoint nulls the WHOLE route" row,
+  // above) reds 2 rows on its own — proving THAT check is independently
+  // load-bearing, unlike this one before this spy existed.
+  it('bound-checks BOTH endpoints BEFORE calling segmentMinDepthInfoM at all, for an out-of-bounds leg', () => {
+    const inside = pointAt(120.5, 10.3);
+    const outside: LatLon = { lat: TEST_MASK_META.north + 1, lon: TEST_MASK_META.west + 0.01 };
+    const mask = makeMask(() => 200);
+    const spy = vi.spyOn(mask, 'segmentMinDepthInfoM');
+    const result = legMinDepthsM([makeLeg(inside, outside, 5)], mask);
+    expect(result[0]).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('isMarginalDepthM: true strictly below marginalDepthThresholdM(gateM), matching the #612 criterion exactly', () => {
@@ -750,7 +777,32 @@ describe('legMinDepthsM / isMarginalDepthM (#651)', () => {
     }
   });
 
-  it("a null entry is the defensive fallback (false), unreachable given legMinDepthsM's own null-for-the-WHOLE-ARRAY contract — callers must never construct this case themselves", () => {
+  // #651 fix-wave, Minor 2: the sweep above cannot discriminate the
+  // `!info.capped` term — marginalDepthThresholdM maxes at 10.9 m (gate 10.0,
+  // the widest selectable), always < 25.4 m, so the DEPTH term alone already
+  // returns false for every row in that sweep; deleting `!info.capped &&`
+  // there leaves it 148/148 GREEN (CLAUDE.md's fourth vacuity class — a row
+  // served by a DIFFERENT term of the same predicate). This row uses a
+  // type-legal but non-physical combination (segmentMinDepthInfoM would
+  // never itself pair `capped: true` with a depth other than 25.4 — see the
+  // "reports a deep-capped segment minimum" row above) specifically to
+  // exercise the capped term IN ISOLATION from the depth term: at depthM 3.5
+  // the depth comparison alone would say `true` (marginal), so only the
+  // capped exclusion can make this `false`.
+  it('the capped exclusion is independently load-bearing, isolated from the depth comparison', () => {
+    expect(isMarginalDepthM({ depthM: 3.5, capped: true }, 3.0)).toBe(false);
+  });
+
+  // #651 fix-wave, Minor 6: renamed from "...unreachable given
+  // legMinDepthsM's own null-for-the-WHOLE-ARRAY contract" — that contract no
+  // longer exists (see the inverted row above): legMinDepthsM now returns a
+  // per-leg null for exactly this case, so isMarginalDepthM(null, ...) is
+  // GENUINELY REACHABLE for any leg whose own walk was inconclusive, not a
+  // defensive dead branch. `false` is still the right answer: that leg
+  // renders NO marker, the same neutral "no data" absence every other
+  // unflagged leg already renders as — never a positive "this leg IS clear"
+  // claim, since this app has no such badge for that claim to contradict.
+  it('a null entry (an unresolved leg) reads as "no marker", never a false all-clear claim', () => {
     expect(isMarginalDepthM(null, 3.0)).toBe(false);
   });
 });

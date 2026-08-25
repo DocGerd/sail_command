@@ -1393,13 +1393,15 @@ describe('seamarkPriority (#144/#200 symbol-sort-key: lower = placed first = win
   });
 });
 
-// #353 PR2, mapping corrected #513 F1/F2: BASE is a PRODUCT-SPECIFIC safety
-// floor broader than IMO MSC.232(82) Appendix 2's own Display Base (which
-// contains no AtoN class at all — see seamarkGlyphs.ts's own
-// `seamarkDisplayTier` doc comment for the full citation and the reasoning
-// for keeping cardinal/lateral/safeWater/lightMajor there anyway). STANDARD
-// adds lightMinor, unknown, and every `specialPurpose` mark except
-// cable/pipeline; ALL adds those last two.
+// #353 PR2, mapping corrected #513 F1/F2, #521 (2026-08-21 maintainer
+// ruling): BASE is a PRODUCT-SPECIFIC safety floor broader than IMO
+// MSC.232(82) Appendix 2's own Display Base (which contains no AtoN class
+// at all — see seamarkGlyphs.ts's own `seamarkDisplayTier` doc comment for
+// the full citation and the reasoning for keeping
+// cardinal/lateral/safeWater/lightMajor there anyway). STANDARD adds
+// lightMinor, unknown, and — since #521 reversed the #513 F1/F2 carve-out —
+// the ENTIRE `specialPurpose` family, cable/pipeline included; ALL is inert
+// for today's shipped data (see seamarkGlyphs.ts).
 describe('seamarkDisplayTier (#353 PR2: the display-category floor/ladder)', () => {
   it('BASE: isolatedDanger, cardinal, lateral, safeWater and lightMajor are NEVER hidden by any selection', () => {
     for (const seamarkType of [
@@ -1419,16 +1421,16 @@ describe('seamarkDisplayTier (#353 PR2: the display-category floor/ladder)', () 
     }
   });
 
-  // #513: specialPurpose is SPLIT by `category`, not a uniform family tier —
-  // see the dedicated describe block below for the full category matrix.
-  // This just pins the two ends: an untagged mark (the 281-of-703 plurality
-  // in the shipped data) and a `cable` mark.
-  it('specialPurpose: untagged lands STANDARD, cable lands ALL', () => {
+  // #521 (2026-08-21 ruling) made specialPurpose a UNIFORM STANDARD-tier
+  // family — see the dedicated describe block below for the full category
+  // matrix. This just pins the two ends: an untagged mark (the 281-of-703
+  // plurality in the shipped data) and a `cable` mark, both STANDARD now.
+  it('specialPurpose: untagged and cable both land STANDARD (#521)', () => {
     expect(seamarkDisplayTier({ seamarkType: 'buoy_special_purpose' })).toBe(
       SEAMARK_DISPLAY_TIER_STANDARD,
     );
     expect(seamarkDisplayTier({ seamarkType: 'buoy_special_purpose', category: 'cable' })).toBe(
-      SEAMARK_DISPLAY_TIER_ALL,
+      SEAMARK_DISPLAY_TIER_STANDARD,
     );
   });
 
@@ -1445,18 +1447,21 @@ describe('seamarkDisplayTier (#353 PR2: the display-category floor/ladder)', () 
   });
 });
 
-// #513 F1/F2: the specialPurpose category split — the substantive new
-// logic. Every category value ACTUALLY PRESENT in the shipped
+// #513 F1/F2 introduced a specialPurpose category split; #521 (2026-08-21
+// ruling) reversed it — `SPECIAL_PURPOSE_ALL_CATEGORIES` is now empty, so
+// `specialPurposeDisplayTier` returns STANDARD for every category. Every
+// category value ACTUALLY PRESENT in the shipped
 // `app/public/data/seamarks.json` (measured directly, not assumed) is
-// covered, split into the two real ALL-tier categories and every other
-// observed value (including compound `;`-joined tags and the untagged
-// case), so a category this table omits reads as a gap, not silent
-// coverage.
-describe('specialPurposeDisplayTier via seamarkDisplayTier (#513 F1/F2: cable/pipeline split)', () => {
-  it('cable and pipeline (117 + 2 marks in the shipped data) land ALL — the ONLY two that do', () => {
+// covered here — cable/pipeline pinned by name (the categories the old
+// split carved out, and the ones a regression would most likely repopulate
+// the Set with) plus every other observed value (including compound
+// `;`-joined tags and the untagged case), so a category this table omits
+// reads as a gap, not silent coverage.
+describe('specialPurposeDisplayTier via seamarkDisplayTier (#521: cable/pipeline moved to STANDARD)', () => {
+  it('cable and pipeline (117 + 2 marks in the shipped data) land STANDARD, not ALL (#521)', () => {
     for (const category of ['cable', 'pipeline']) {
       expect(seamarkDisplayTier({ seamarkType: 'buoy_special_purpose', category })).toBe(
-        SEAMARK_DISPLAY_TIER_ALL,
+        SEAMARK_DISPLAY_TIER_STANDARD,
       );
     }
   });
@@ -1500,25 +1505,31 @@ describe('specialPurposeDisplayTier via seamarkDisplayTier (#513 F1/F2: cable/pi
     }
   });
 
-  // A category value neither observed today nor named as an ALL example —
-  // must fail toward STANDARD (the more visible tier), the same
-  // guard-asymmetry direction as `unknown`'s family fallback (#513 F2), not
-  // toward ALL (more hidden) by some accidental substring match.
-  it('an unrecognized category (not cable/pipeline) falls back to STANDARD, never ALL', () => {
+  // A category value neither observed today nor named in
+  // `SPECIAL_PURPOSE_ALL_CATEGORIES` (empty since #521) — must fail toward
+  // STANDARD (the more visible tier), the same guard-asymmetry direction as
+  // `unknown`'s family fallback (#513 F2), not toward ALL (more hidden) by
+  // some accidental substring match.
+  it('an unrecognized category falls back to STANDARD, never ALL', () => {
     expect(
       seamarkDisplayTier({ seamarkType: 'buoy_special_purpose', category: 'a_future_category' }),
     ).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
   });
 
-  // A compound tag naming cable/pipeline ALONGSIDE something else still
-  // lands ALL — the split checks every `;`-joined token, not just an exact
-  // whole-string match (none of the 703 shipped specialPurpose marks
-  // combine cable/pipeline with another category today, but the logic must
-  // not silently regress if a future pull introduces one).
-  it('a compound category containing cable/pipeline alongside another value still lands ALL', () => {
+  // A compound tag naming cable/pipeline alongside something else lands
+  // STANDARD now too (#521) — the split still checks every `;`-joined
+  // token, not just an exact whole-string match, so this stays a real
+  // regression guard rather than a vacuous one: if
+  // `SPECIAL_PURPOSE_ALL_CATEGORIES` is ever repopulated with `cable`
+  // (undoing #521), this test goes red, because the split-and-check logic
+  // would find the token and route the compound tag to ALL again (none of
+  // the 703 shipped specialPurpose marks combine cable/pipeline with
+  // another category today, but the logic must not silently regress if a
+  // future pull introduces one).
+  it('a compound category containing cable/pipeline alongside another value lands STANDARD (#521)', () => {
     expect(
       seamarkDisplayTier({ seamarkType: 'buoy_special_purpose', category: 'cable;warning' }),
-    ).toBe(SEAMARK_DISPLAY_TIER_ALL);
+    ).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
   });
 });
 
