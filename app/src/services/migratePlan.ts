@@ -4,6 +4,7 @@ import {
   boatSnapshot,
   PLAN_SCHEMA_VERSION,
   type BoatSnapshot,
+  type LatLon,
   type Plan,
   type PlanRequest,
   type PlanResultOk,
@@ -46,6 +47,64 @@ const BUDGET_REASON = 'search-budget-exceeded';
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
+}
+
+/**
+ * #654: `PlanRequest.viaPoints` was introduced by `eb2d7ee` ("feat:
+ * via-waypoint segmented routing", 2026-07-15) — the SAME commit that
+ * introduced the via-points feature itself (adds the whole
+ * `routing/viaPoints.test.ts` suite and the `planRoute.ts` via-solving
+ * logic in one diff; `git show eb2d7ee^:app/src/types.ts` shows a
+ * `PlanRequest` with no via field of any spelling —
+ *   origin/destination/originHarborId/destinationHarborId/departureMs/
+ *   settings only, verified 2026-08-25 — so it is not a rename of an
+ * earlier key either). A supplementary pickaxe sweep for a rename spread
+ * across EARLIER commits (`git log --oneline --pickaxe-regex
+ * -S'waypoints|wayPoints|viaPoint\b' -- app/src/types.ts` — the correct
+ * pathspec from repo root, ONE `-S` per invocation since repeated `-S` does
+ * NOT and the last one silently wins, controlled against a known-present
+ * `-S'viaPoints'` hit before trusting the empty result) finds nothing
+ * either, 2026-08-25 — corroborating, not load-bearing: the pre-image above
+ * is definitive for THIS commit, the sweep can only rule out a candidate
+ * name actually searched for. No earlier shape of
+ * `PlanRequest` could have used via points without the field existing —
+ * BUT that does not make an absent key reachable for a genuine stored
+ * record: `services/db.ts`, the only IndexedDB writer this app has ever
+ * shipped, was created by `a1d2e6f` ~3 hours AFTER eb2d7ee (both predate
+ * `v0.1.0`, git-verified 2026-08-25) — persistence itself did not exist
+ * until after the field did, so no plan this app ever wrote could omit it.
+ * The `undefined` branch below therefore guards a HAND-EDITED or otherwise
+ * foreign/corrupted IndexedDB record, not an old app version — the same
+ * class of defense this file already applies to every other field
+ * (`migrateBoat`, `isLegShaped`, …), and cheap insurance against a future
+ * regression of the very guarantee this fix establishes (see
+ * `lib/planViaPoints.ts`'s own docstring for how that guarantee is proven,
+ * not merely assumed, at every downstream read site). `[]` is still the
+ * FAITHFUL normalisation for that shape, not a fabricated default — an
+ * absent list, however it arose, contains no via points to lose
+ * (docs/adr/0002-pre-1.0-db-migration-low-priority.md, "the boundary that
+ * makes this safe": normalising an absent list is in scope for that ADR,
+ * distinct from fabricating a value for a field that IS present but
+ * unreadable).
+ *
+ * A PRESENT-but-malformed `viaPoints` (wrong container type, or an element
+ * missing a finite lat/lon) is a different case — that is not "no via
+ * points", it is corrupted or foreign data, and this refuses the whole
+ * record (`null`) rather than guess at a value, per ADR-0002's fail-closed
+ * rule ("failing closed must never mean falling back to a fabricated
+ * default"). THIS is the reachable case for a real user: any value stored
+ * via `structuredClone`/IndexedDB can in principle be corrupted by browser
+ * storage damage or hand-editing, same as any other field in this file.
+ */
+function normaliseViaPoints(x: unknown): LatLon[] | null {
+  if (x === undefined) return [];
+  if (!Array.isArray(x)) return null;
+  const out: LatLon[] = [];
+  for (const p of x) {
+    if (!isRecord(p) || !Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return null;
+    out.push({ lat: p.lat as number, lon: p.lon as number });
+  }
+  return out;
 }
 
 /**
@@ -367,6 +426,12 @@ function migrateRequest(
   const boat = migrateBoat(request, fallbackBoat);
   if (boat === null) return null;
   if (typeof request.departureMs !== 'number') return null;
+  // #654: defends a hand-edited/corrupted stored record (no legitimate one
+  // can lack this key — see normaliseViaPoints' own comment for the dated
+  // proof) by normalising an absent/malformed `viaPoints` rather than
+  // letting it crash a downstream reader.
+  const viaPoints = normaliseViaPoints(request.viaPoints);
+  if (viaPoints === null) return null;
   // A pre-#54 request has no sailIds; the sails the plan actually compared,
   // in the order the result lists them, is the honest reconstruction of it.
   //
@@ -434,7 +499,7 @@ function migrateRequest(
   // separate) does not apply to `.includes`, which is false, not
   // vacuously true, on an empty array.
   if (!sailIds.includes(recommended)) return null;
-  return { ...request, sailIds, boat } as unknown as PlanRequest;
+  return { ...request, sailIds, boat, viaPoints } as unknown as PlanRequest;
 }
 
 export function migratePlan(raw: unknown): Plan | null {

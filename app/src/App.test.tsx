@@ -2519,6 +2519,47 @@ describe('plan-form sync (#301)', () => {
     expect(departureInput.value).toBe(toLocalInputValue(plan.request.departureMs));
   });
 
+  // #654: an absent `request.viaPoints` cannot happen for a legitimate
+  // stored plan — services/db.ts (the only IndexedDB writer this app has
+  // ever shipped) was created ~3 hours AFTER eb2d7ee, the commit that added
+  // the field, and both predate v0.1.0 (git-verified 2026-08-25; full dated
+  // argument in migratePlan.ts's normaliseViaPoints). `db.savePlan` writes
+  // the raw record straight into IndexedDB with no validation, so deleting
+  // the key here instead reproduces a HAND-EDITED or otherwise corrupted
+  // record — the same class of defense
+  // docs/adr/0002-pre-1.0-db-migration-low-priority.md requires ("does NOT
+  // waive defensive reads"). Loading it drives the REAL path —
+  // services/db.ts's getPlan -> migratePlan -> App.tsx's syncedPlanIdRef
+  // sync effect (setDraftViaPoints) -> planFormDirty (lib/planForm.ts).
+  // Before this fix, the sync effect wrote `undefined` into draftViaPoints
+  // and the next formDirty computation threw reading `.length` off it,
+  // unmounting the whole React root with no error boundary to catch it —
+  // the app just goes blank.
+  it('loading a plan with the viaPoints key absent (hand-edited/corrupted record) does not blank the app', async () => {
+    const plan = prefillPlan('prefill-no-viapoints-key');
+    const rawRequest = plan.request as Partial<PlanRequest>;
+    delete rawRequest.viaPoints;
+    await db.savePlan(plan);
+
+    renderApp();
+    await screen.findByRole('heading', { name: 'SailCommand' });
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.routes'] }));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(plan.name) }));
+    await waitFor(() => expect(screen.getByText(formatNm(99, 'de'))).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: de['nav.plan'] }));
+    // The app is still alive (heading present, tabs still respond) rather
+    // than a blank root — the observable symptom of the unguarded crash.
+    expect(screen.getByRole('heading', { name: 'SailCommand' })).toBeInTheDocument();
+    const originSection = screen.getByRole('region', { name: de['planner.origin.label'] });
+    await waitFor(() => expect(within(originSection).getByText('Flensburg')).toBeInTheDocument());
+    // The via list synced from the absent field renders as genuinely empty,
+    // not merely "did not throw".
+    const viaSection = screen.getByRole('region', { name: de['planner.via.label'] });
+    expect(within(viaSection).queryAllByRole('listitem')).toHaveLength(0);
+  });
+
   it('harbors landing AFTER the plan becomes active still prefills labels once they resolve', async () => {
     // A harbors.json fetch this test controls the resolution of — everything
     // else answers immediately, same as the shared fetchMock() helper.

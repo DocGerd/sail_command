@@ -652,3 +652,95 @@ describe('#54 migratePlan: the snapshot is by VALUE, never a catalogue alias', (
     expect(a.request.boat).toEqual(defaultBoatSnapshot());
   });
 });
+
+// #654: `request.viaPoints` was introduced by `eb2d7ee` ("feat: via-waypoint
+// segmented routing", 2026-07-15) — the SAME commit that introduced the
+// via-points feature itself. `legacyPlan()` above already carries
+// `viaPoints: []`, so it cannot exercise this gap.
+//
+// No LEGITIMATE stored record can lack the key, though: `services/db.ts`,
+// the only IndexedDB writer this app has ever shipped, was created by
+// `a1d2e6f` ~3 hours AFTER eb2d7ee (both predate `v0.1.0`, git-verified
+// 2026-08-25) — persistence itself did not exist until after the field did.
+// These rows construct a HAND-EDITED/corrupted record instead (or stand in
+// for a future regression of the guarantee migratePlan.ts establishes) —
+// `normaliseViaPoints`'s own docstring carries the full dated argument.
+describe('#654 migratePlan: an absent/malformed viaPoints key (hand-edited or corrupted record)', () => {
+  it('normalises an entirely absent viaPoints key to [] rather than refusing the record', () => {
+    const raw = legacyPlan();
+    delete (raw.request as Record<string, unknown>).viaPoints;
+    const migrated = migratePlan(raw);
+    expect(migrated).not.toBeNull();
+    expect(migrated!.request.viaPoints).toEqual([]);
+  });
+
+  // The positive control the row above needs: a record that DOES carry real
+  // via points still reads them back verbatim — normalisation only kicks in
+  // when the key is absent, it must never clobber a genuine list.
+  it('preserves a genuine non-empty viaPoints list unchanged', () => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = [
+      { lat: 54.83, lon: 9.9 },
+      { lat: 54.9, lon: 10.2 },
+    ];
+    const migrated = migratePlan(raw);
+    expect(migrated!.request.viaPoints).toEqual([
+      { lat: 54.83, lon: 9.9 },
+      { lat: 54.9, lon: 10.2 },
+    ]);
+  });
+
+  // Fail-CLOSED, per ADR-0002: a PRESENT but malformed viaPoints is not "no
+  // via points" — it is corrupted or foreign data, and normalising it to []
+  // would be exactly the fabricated default the ADR forbids. The whole
+  // record is refused instead, same as every other structurally-damaged
+  // field in this file.
+  it.each([
+    ['a non-array value', 'not-an-array'],
+    ['an array containing a non-object element', [{ lat: 54.83, lon: 9.9 }, 'not-a-point']],
+    ['an array containing a point missing lon', [{ lat: 54.83 }]],
+    ['an array containing a point with a non-numeric lat', [{ lat: 'north', lon: 9.9 }]],
+    // Reviewer-supplied (Minor 1, self-review of PR #687), adopted verbatim.
+    // `null.lat` THROWS synchronously (unlike `'not-a-point'.lat`, which
+    // returns `undefined` harmlessly) — deleting `!isRecord(p) ||` turns
+    // this row from an honest refusal into a raw TypeError propagating out
+    // of migratePlan(), the exact crash class #654 exists to close, one
+    // level in. This is the row that DISCRIMINATES the mutation (measured:
+    // 84/84 stay green without it; see the dedicated isolating test below
+    // for the other, non-throwing half of the same gap).
+    ['an array containing a null element', [null]],
+    // Pins the other shape isRecord excludes (arrays) — does not itself
+    // discriminate the isRecord deletion (a plain array's .lat is
+    // `undefined`, caught by Number.isFinite regardless), kept for
+    // completeness per the reviewer's own comment.
+    ['an array containing an array element', [[54.83, 9.9]]],
+  ])('refuses %s rather than fabricating a via-point list', (_label, viaPoints) => {
+    const raw = legacyPlan();
+    (raw.request as Record<string, unknown>).viaPoints = viaPoints;
+    expect(migratePlan(raw)).toBeNull();
+  });
+
+  // Reviewer finding (Major 1, self-review of PR #687): my own comment here
+  // previously said these rows RED under the mutation — inverted. Re-measured
+  // at f65e790: baseline `npm --prefix app run test -- migratePlan.test` is
+  // `Tests 87 passed (87)`; with `!isRecord(p) ||` deleted from
+  // normaliseViaPoints it is `Tests 2 failed | 85 passed (87)` — exactly the
+  // `[null]` row above and the isolating row below. Every ORIGINAL row
+  // (`'not-a-point'`, `{ lat: 54.83 }`, `{ lat: 'north', lon: 9.9 }`) and the
+  // `[[54.83, 9.9]]` row all STAY GREEN under the mutation: each is refused
+  // by a DIFFERENT term the mutation leaves intact (`!Array.isArray(x)` for
+  // the whole-value case, or a `Number.isFinite` term for an element with a
+  // missing/non-numeric lat or lon) — so none of them discriminates whether
+  // `isRecord` itself is present. That gap is exactly why this row was
+  // needed: an ARRAY carrying its own `lat`/`lon` OWN PROPERTIES passes BOTH
+  // `Number.isFinite` checks (JS arrays are ordinary objects, so attaching
+  // arbitrary keys is legal), so only `isRecord`'s `!Array.isArray(x)` term
+  // can reject it — `isRecord` rejects arrays specifically so a via point
+  // can never be array-shaped, distinct from a plain `{lat, lon}` record.
+  it('refuses an array-shaped element even when it carries lat/lon properties that would otherwise pass every Number.isFinite check (isolates the isRecord term)', () => {
+    const raw = legacyPlan();
+    const arrayShapedPoint: unknown = Object.assign([], { lat: 54.83, lon: 9.9 });
+    (raw.request as Record<string, unknown>).viaPoints = [arrayShapedPoint];
+    expect(migratePlan(raw)).toBeNull();
+  });
+});

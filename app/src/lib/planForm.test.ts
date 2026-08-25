@@ -285,6 +285,34 @@ describe('planFormDirty (#301)', () => {
       form.viaPoints = [{ lat: 54.83, lon: 9.9 }]; // same content as ORIGINAL_REQUEST.viaPoints
       expect(planFormDirty(makePlan(), form, true)).toBe(false);
     });
+
+    // #654: request.viaPoints being absent cannot happen for a legitimate
+    // stored plan — services/db.ts (the only IndexedDB writer) postdates
+    // the field's introducing commit eb2d7ee by ~3 hours, both predating
+    // v0.1.0 (git-verified 2026-08-25; full argument in migratePlan.ts's
+    // normaliseViaPoints). This row defends a hand-edited/corrupted record
+    // instead (docs/adr/0002-pre-1.0-db-migration-low-priority.md's
+    // boundary: "does NOT waive defensive reads"). planFormDirty used to
+    // read req.viaPoints straight off the request and hand it to
+    // viaPointsDiffer, which throws "Cannot read properties of undefined
+    // (reading 'length')" on such a record rather than degrading. An absent
+    // viaPoints is normalised to [], so a form with its own via points is
+    // correctly DIRTY against it (matching "removed the only via point"
+    // above) rather than throwing.
+    it('treats a plan with the viaPoints key absent (hand-edited/corrupted record) as having an empty via list, not a crash', () => {
+      const oldShapedRequest = { ...ORIGINAL_REQUEST } as Partial<{
+        -readonly [K in keyof PlanRequest]: PlanRequest[K];
+      }>;
+      delete oldShapedRequest.viaPoints;
+      const plan = makePlan(oldShapedRequest as PlanRequest);
+      const form = matchingForm(); // form.viaPoints: [{ lat: 54.83, lon: 9.9 }]
+
+      expect(() => planFormDirty(plan, form, true)).not.toThrow();
+      expect(planFormDirty(plan, form, true)).toBe(true);
+
+      const emptyForm = { ...matchingForm(), viaPoints: [] };
+      expect(planFormDirty(plan, emptyForm, true)).toBe(false);
+    });
   });
 
   // One row per routing-relevant field — each alone must flip the predicate.
