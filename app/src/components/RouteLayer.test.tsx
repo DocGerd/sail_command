@@ -8,7 +8,7 @@
 process.env.TZ = 'Europe/Berlin';
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RouteLayer, { HIGHLIGHT_LAYER, ROUTE_STACK_BOTTOM_LAYER } from './RouteLayer';
 import { I18nProvider } from '../i18n';
 import { makeFakeMap, simulateStyleReload } from '../test/fakeMaplibre';
@@ -650,6 +650,268 @@ describe('RouteLayer wind-barb slider aria-valuetext (#292, #373 fix-wave)', () 
     );
     const slider = screen.getByRole('slider', { name: 'Forecast time' });
     expect(slider).toHaveAttribute('aria-valuetext', '15/07/2026, 10:00');
+  });
+});
+
+// #628: the toggle/slider/legend cluster now lives inside ONE collapsible
+// Disclosure so it stops obstructing the chart on narrow (mobile) viewports.
+// jsdom implements <details>'s `.open` PROPERTY faithfully (that part is JS
+// state, not rendering) but not its content-hiding RENDERING behaviour, so
+// these tests pin structure/state — a real-browser pass covers the visual
+// collapse per this repo's own UI-verification convention.
+// #628 review Minor 6: returns a `setMatches` escape hatch (used by the
+// Major 3 rotation tests below to fire a real 'change' event against the
+// SAME mql object useWideLayout.ts's effect registered a listener on,
+// reproducing a real resize/rotation without unmounting RouteLayer) and
+// installs the mock as a MODULE-level `window.matchMedia` override —
+// cleaned up by the `afterEach` below on every test, not just these ones,
+// so a later test in this file can never silently inherit a leftover stub
+// (jsdom's own absence of `matchMedia` is load-bearing per
+// lib/useWideLayout.ts's own comment: unstubbed, every OTHER test in this
+// file exercises the narrow/no-matchMedia render branch).
+function setMatchMedia(matches: boolean) {
+  let changeListener: (() => void) | null = null;
+  const mql = {
+    matches,
+    media: '(min-width: 1024px)',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn((event: string, cb: () => void) => {
+      if (event === 'change') changeListener = cb;
+    }),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  };
+  window.matchMedia = vi.fn().mockReturnValue(mql) as unknown as typeof window.matchMedia;
+  return {
+    setMatches(next: boolean) {
+      mql.matches = next;
+      changeListener?.();
+    },
+  };
+}
+
+afterEach(() => {
+  delete (window as { matchMedia?: unknown }).matchMedia;
+});
+
+describe('RouteLayer collapsible controls cluster (#628)', () => {
+  it('wraps the toggles, slider and legend in ONE details, labelled by the shared summary', () => {
+    const map = makeFakeMap();
+    renderRouteLayer(map, null);
+    const details = document.querySelector('details.route-layer-controls-disclosure');
+    expect(details).not.toBeNull();
+    expect(screen.getByText('Anzeigeoptionen').closest('summary')).not.toBeNull();
+    // Every previously-direct child of .route-layer-controls now lives
+    // inside that one details element.
+    expect(details?.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(details?.querySelector('.route-layer-time-slider')).not.toBeNull();
+    expect(details?.querySelector('details.route-legend')).not.toBeNull();
+  });
+
+  it('opens by default on wide viewports, stays collapsed on narrow (matchMedia at mount)', () => {
+    setMatchMedia(true);
+    const wide = renderRouteLayer(makeFakeMap(), null);
+    expect(
+      wide.container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')
+        ?.open,
+    ).toBe(true);
+    wide.unmount();
+
+    setMatchMedia(false);
+    const narrow = renderRouteLayer(makeFakeMap(), null);
+    expect(
+      narrow.container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')
+        ?.open,
+    ).toBe(false);
+  });
+
+  it('keeps the via-draft-stale status chip OUTSIDE the collapsible, so it stays visible regardless of collapse state', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const { container } = render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning
+        onViaDragEnd={async () => true}
+      />,
+    );
+    const chip = container.querySelector('.via-markers-spinner-chip');
+    expect(chip).not.toBeNull();
+    expect(chip?.closest('details.route-layer-controls-disclosure')).toBeNull();
+    // Still a direct child of the outer plan-gated cluster.
+    expect(chip?.closest('.route-layer-controls')).not.toBeNull();
+  });
+
+  // #628 review Major 3: `defaultOpen` alone is read ONCE via `useState`, so
+  // without the `key`+effect pair in RouteLayer.tsx a wide->narrow
+  // resize/rotation (tabletLandscape -> tabletPortrait, no plan change, no
+  // unmount) would leave an already-open cluster open on a narrow viewport —
+  // exactly the obstruction #628 exists to remove, reached with ZERO user
+  // interaction. This fires a REAL `change` event against the same `mql`
+  // object useWideLayout.ts's effect subscribed to, which is what makes it a
+  // genuine reproduction of a resize rather than a fresh mount at a
+  // different `matchMedia` answer (the "opens by default..." test above).
+  it('#628 review Major 3: follows a resize/rotation when the user has NOT manually toggled', () => {
+    const mm = setMatchMedia(true); // start wide -> auto-open
+    const { container } = renderRouteLayer(makeFakeMap(), null);
+    const details = () =>
+      container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure');
+    expect(details()?.open).toBe(true);
+
+    act(() => mm.setMatches(false)); // rotate to narrow, no click
+    expect(details()?.open).toBe(false);
+  });
+
+  // #628 review Major 3, second half: a user's EXPLICIT choice must survive
+  // any later resize rather than being silently reset back to the layout
+  // default. Discriminating construction: starting narrow (auto-collapsed),
+  // the user manually OPENS it, then the viewport resizes UP to wide and
+  // BACK DOWN to narrow. A naive "always re-seed from isWide on every
+  // change" alternative (rejected in RouteLayer.tsx's own comment) would
+  // force it closed again on that SECOND transition, back to the narrow
+  // default — so asserting only the first (wide) leg cannot tell the two
+  // apart; the return-to-narrow leg is what actually discriminates.
+  it('#628 review Major 3: a manual toggle survives being resized past the OTHER layout and back', () => {
+    const mm = setMatchMedia(false); // start narrow -> auto-collapsed
+    const { container } = renderRouteLayer(makeFakeMap(), null);
+    const details = () =>
+      container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')!;
+    expect(details().open).toBe(false);
+
+    // A real user click on the summary — exercises the same native `toggle`
+    // event path the capture-phase listener in RouteLayer.tsx observes.
+    // jsdom flips the `open` attribute synchronously but (matching the HTML
+    // spec, which queues the 'toggle' event as a separate task) does not
+    // necessarily dispatch 'toggle' itself before this synchronous test body
+    // continues — dispatch it explicitly so this test exercises the capture
+    // listener deterministically rather than depending on jsdom's queuing.
+    fireEvent.click(details().querySelector('summary')!);
+    expect(details().open).toBe(true);
+    act(() => {
+      details().dispatchEvent(new Event('toggle'));
+    });
+
+    act(() => mm.setMatches(true));
+    act(() => mm.setMatches(false));
+    expect(details().open).toBe(true);
+  });
+
+  // #628 review wave 3 Major A: the capture-phase toggle listener's effect
+  // must attach AFTER a null -> plan transition, not only at a mount that
+  // already has a plan. `renderRouteLayer` (used by every other test in
+  // this describe block) passes `plan={makePlan()}` from the FIRST render
+  // — exactly the one case that cannot see this defect. The real app
+  // (`App.tsx`) always mounts RouteLayer with `plan={null}` first, since it
+  // renders RouteLayer unconditionally and RouteLayer itself returns null
+  // until a plan exists — so this test reproduces that real sequence
+  // directly, bypassing `renderRouteLayer`.
+  it('#628 review wave 3 Major A: the manual-toggle listener still attaches after mounting with plan={null} first', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const mm = setMatchMedia(false); // narrow -> auto-collapsed once a plan exists
+    const { container, rerender } = render(
+      <RouteLayer
+        plan={null}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    expect(container.querySelector('.route-layer-controls')).toBeNull();
+
+    rerender(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    const details = () =>
+      container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure')!;
+    expect(details().open).toBe(false);
+
+    // Same manual-toggle-survives-a-resize construction as the test above,
+    // now against the REAL null-first mount sequence.
+    fireEvent.click(details().querySelector('summary')!);
+    expect(details().open).toBe(true);
+    act(() => {
+      details().dispatchEvent(new Event('toggle'));
+    });
+
+    act(() => mm.setMatches(true));
+    act(() => mm.setMatches(false));
+    expect(details().open).toBe(true);
+  });
+
+  // #628 review wave 4 Minor: the toggle-latch ref lives on RouteLayer,
+  // which never unmounts, but `.route-layer-controls` DOES (plan -> null,
+  // App.tsx's setPlan(null)) — so a stale `true` survives a plan reset and
+  // blocks the NEXT plan's disclosure from following a later real `isWide`
+  // change, reproducing #628's own obstruction. Walks the measured
+  // sequence: wide+plan (open) -> user toggles closed (latches) ->
+  // plan -> null -> plan (re-seeded open, matching isWide=true — the
+  // user's earlier choice is already gone by this point) -> rotate to
+  // narrow, with NO further user interaction.
+  it('#628 review wave 4 Minor: a toggle does not latch across a plan reset (plan -> null -> plan)', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const mm = setMatchMedia(true); // start wide -> auto-open
+    const { container, rerender } = render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    const details = () =>
+      container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure');
+    expect(details()?.open).toBe(true);
+
+    fireEvent.click(details()!.querySelector('summary')!);
+    expect(details()?.open).toBe(false);
+    act(() => {
+      details()!.dispatchEvent(new Event('toggle'));
+    });
+
+    rerender(
+      <RouteLayer
+        plan={null}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    expect(container.querySelector('.route-layer-controls')).toBeNull();
+
+    rerender(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    expect(details()?.open).toBe(true);
+
+    act(() => mm.setMatches(false)); // rotate to narrow, zero user interaction
+    expect(details()?.open).toBe(false);
   });
 });
 

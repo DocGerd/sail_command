@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LngLatBounds, Map as MaplibreMap } from 'maplibre-gl';
 import type { GeoJSONSource } from 'maplibre-gl';
 import { useMapInstance } from './MapView';
@@ -13,12 +13,14 @@ import {
 } from '../lib/routeGeoJson';
 import { installStyleSetup } from '../lib/styleReload';
 import { usePersistedToggle } from '../lib/usePersistedToggle';
+import { useWideLayout } from '../lib/useWideLayout';
 import { registerBarbImages } from '../lib/windBarbs';
 import { NavMask } from '../lib/mask';
 import { requestedGateM } from '../lib/shallowExposure';
 import { loadRoutingAssets } from '../services/assets';
 import ViaMarkers from './ViaMarkers';
 import RouteLegend from './RouteLegend';
+import Disclosure from './Disclosure';
 import type { LatLon, Plan, SailId } from '../types';
 
 export interface RouteLayerProps {
@@ -488,6 +490,83 @@ export default function RouteLayer({
   const map = useMapInstance();
   const [lang] = useLang();
   const t = useT();
+  // #628 (review Major 3): default-open state for the collapsible controls
+  // cluster below is layout-dependent, not persisted — wide (side-panel)
+  // layouts have room to spare so the cluster starts open there; narrow
+  // (map-overlay) layouts are exactly where this cluster obstructs the
+  // chart, so it starts collapsed. `Disclosure`'s own `defaultOpen` is read
+  // ONCE via `useState` and ignores later prop changes — so on its own it
+  // would leave a cluster that opened on a wide layout still OPEN after a
+  // resize/rotation down to narrow (a 320px-tall cluster covering ~27% of a
+  // tabletPortrait viewport, reached with ZERO user interaction — squarely
+  // in the obstruction band #628's own captures measured). The `key`+effect
+  // pair below is what closes that gap: `disclosureKey` remounts `Disclosure`
+  // (re-seeding `defaultOpen` from the CURRENT `isWide`) whenever `isWide`
+  // changes, UNLESS the user has manually toggled the cluster since mount —
+  // an explicit choice must survive any later resize, never get silently
+  // reset back to the layout default.
+  const isWide = useWideLayout();
+  const userToggledDisclosureRef = useRef(false);
+  const [disclosureKey, setDisclosureKey] = useState(() => (isWide ? 'wide' : 'narrow'));
+  useEffect(() => {
+    if (userToggledDisclosureRef.current) return;
+    setDisclosureKey(isWide ? 'wide' : 'narrow');
+  }, [isWide]);
+  // `Disclosure` has no `onToggle`/controlled-open prop (its three other
+  // consumers — BoatPicker, AboutDialog x2, RouteSummary — are all genuinely
+  // uncontrolled, so adding one is out of THIS task's scope) — so the only
+  // way to observe a user's manual toggle from here is a native DOM
+  // listener on the underlying `<details>`. The native `toggle` event does
+  // NOT bubble, but a CAPTURE-phase listener on an ancestor still sees it on
+  // the way down to its target, so this attaches to the wrapping div rather
+  // than needing a ref forwarded through Disclosure. Filtered to the outer
+  // `.route-layer-controls-disclosure` element specifically — the nested
+  // `RouteLegend`'s own `<details class="route-legend">` fires the same
+  // event and must NOT be mistaken for a toggle of the whole cluster.
+  // Setting the ref alone triggers no re-render, so a toggle never causes an
+  // immediate self-defeating remount — only a LATER real `isWide` change
+  // would have, and the effect above now skips re-seeding once this is true.
+  //
+  // #628 review wave 3 Major A: this effect's deps were `[]` (mount-only),
+  // but `App.tsx` renders `RouteLayer` UNCONDITIONALLY — it returns `null`
+  // (the guard above the JSX return) until a plan exists, so on the real
+  // FIRST mount `controlsRef.current` is null, the effect no-ops, and
+  // because `[]` never re-runs it, the listener is NEVER attached for the
+  // lifetime of the component even once a plan later appears and the div
+  // renders. MEASURED: the manual-toggle-survives-a-resize behaviour this
+  // effect exists for was silently dead in production; only a test that
+  // mounts with `plan={null}` FIRST and then supplies one can see this — a
+  // fixture that starts with a plan already present (as the OTHER `#628`
+  // tests in RouteLayer.test.tsx do) cannot, because that shortcut happens
+  // to put the div there for the very first commit, which is exactly the
+  // one case the real app never starts in. Depending on `[plan]` instead
+  // makes the effect re-run whenever `plan`'s identity changes — including
+  // the null -> non-null transition where the div (and so `controlsRef`)
+  // first exists, which is when the listener actually needs to attach. A
+  // later replan (a new plan object while already non-null) re-runs this
+  // again onto the SAME still-mounted DOM node (plan changing doesn't
+  // remount `.route-layer-controls` itself) — a harmless redundant
+  // detach+reattach, not a correctness issue.
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = controlsRef.current;
+    // #628 review wave 4 Minor: reset on unmount (plan -> null) — this ref
+    // outlives the disclosure it tracks, so without the reset a toggle
+    // latches across a plan reset and blocks the NEXT plan from following
+    // isWide, reproducing #628's own obstruction.
+    if (!el) {
+      userToggledDisclosureRef.current = false;
+      return;
+    }
+    const onNativeToggle = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.classList.contains('route-layer-controls-disclosure')) {
+        userToggledDisclosureRef.current = true;
+      }
+    };
+    el.addEventListener('toggle', onNativeToggle, true);
+    return () => el.removeEventListener('toggle', onNativeToggle, true);
+  }, [plan]);
   // #63: both overlays default ON (a skipper wants the wind and the numbers
   // without hunting for checkboxes) and persist an explicit choice across
   // reloads. The toggles below stay as the clean-chart escape hatch.
@@ -809,63 +888,79 @@ export default function RouteLayer({
   if (!plan) return null;
 
   return (
-    <div className="route-layer-controls">
-      <label>
-        <input
-          type="checkbox"
-          checked={annotationsVisible}
-          onChange={(e) => setAnnotationsVisible(e.target.checked)}
-        />
-        {t('route.annotations.toggle')}
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={barbsVisible}
-          onChange={(e) => setBarbsVisible(e.target.checked)}
-        />
-        {t('route.windBarbs.toggle')}
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={altRigVisible}
-          disabled={!altToggleAvailable}
-          onChange={(e) => setAltRigVisible(e.target.checked)}
-          aria-describedby={altToggleAvailable ? undefined : 'route-alt-rig-note'}
-        />
-        {t('route.altRig.toggle')}
-      </label>
-      {/* A `title` attribute is hover-only — unreachable on this app's
-          primary (touch) context. A visible note, wired via
-          aria-describedby, reaches both. Reused for BOTH unavailable
-          causes (fock/genoa's own result null, or the complement's) — "only
-          one rig found a route" is accurate either way; a `Plan` only exists
-          once at least the recommended rig has solved (types.ts:
-          `recommendedResult`'s invariant), so the two results can never be
-          null AT THE SAME TIME. */}
-      {!altToggleAvailable && (
-        <p id="route-alt-rig-note" className="route-alt-rig-note">
-          {t('route.altRig.unavailable')}
-        </p>
-      )}
-      {hourOptions.length > 1 && (
-        <div className="route-layer-time-slider">
-          <input
-            type="range"
-            min={0}
-            max={hourOptions.length - 1}
-            step={1}
-            value={clampedHourIdx}
-            onChange={(e) => setHourIdx(Number(e.target.value))}
-            aria-label={t('route.windBarbs.timeSlider')}
-            aria-valuetext={formatDateTime(tMs, lang)}
-          />
-          <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
-        </div>
-      )}
+    <div className="route-layer-controls" ref={controlsRef}>
+      {/* #628: ViaMarkers renders NO visible box of its own most of the time
+          (maplibre Markers attach straight to the map container, outside this
+          DOM subtree) — its only DOM output is the rare "draft differs from
+          the committed route" status chip. That chip must stay visible
+          regardless of collapse state, so it sits OUTSIDE the Disclosure
+          below rather than inside its collapsible body. */}
       <ViaMarkers viaPoints={draftViaPoints} replanning={viaReplanning} onDragEnd={onViaDragEnd} />
-      <RouteLegend />
+      {/* #628 (review Major 3): `key={disclosureKey}` deliberately remounts
+          this Disclosure on an unresponded `isWide` change (see that state's
+          own comment above) — do not remove the key thinking it is inert. */}
+      <Disclosure
+        key={disclosureKey}
+        className="route-layer-controls-disclosure"
+        defaultOpen={isWide}
+        summary={t('route.controls.summary')}
+      >
+        <label>
+          <input
+            type="checkbox"
+            checked={annotationsVisible}
+            onChange={(e) => setAnnotationsVisible(e.target.checked)}
+          />
+          {t('route.annotations.toggle')}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={barbsVisible}
+            onChange={(e) => setBarbsVisible(e.target.checked)}
+          />
+          {t('route.windBarbs.toggle')}
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={altRigVisible}
+            disabled={!altToggleAvailable}
+            onChange={(e) => setAltRigVisible(e.target.checked)}
+            aria-describedby={altToggleAvailable ? undefined : 'route-alt-rig-note'}
+          />
+          {t('route.altRig.toggle')}
+        </label>
+        {/* A `title` attribute is hover-only — unreachable on this app's
+            primary (touch) context. A visible note, wired via
+            aria-describedby, reaches both. Reused for BOTH unavailable
+            causes (fock/genoa's own result null, or the complement's) — "only
+            one rig found a route" is accurate either way; a `Plan` only exists
+            once at least the recommended rig has solved (types.ts:
+            `recommendedResult`'s invariant), so the two results can never be
+            null AT THE SAME TIME. */}
+        {!altToggleAvailable && (
+          <p id="route-alt-rig-note" className="route-alt-rig-note">
+            {t('route.altRig.unavailable')}
+          </p>
+        )}
+        {hourOptions.length > 1 && (
+          <div className="route-layer-time-slider">
+            <input
+              type="range"
+              min={0}
+              max={hourOptions.length - 1}
+              step={1}
+              value={clampedHourIdx}
+              onChange={(e) => setHourIdx(Number(e.target.value))}
+              aria-label={t('route.windBarbs.timeSlider')}
+              aria-valuetext={formatDateTime(tMs, lang)}
+            />
+            <span>{formatSliderTime(tMs, hourOptions, lang, nowMs)}</span>
+          </div>
+        )}
+        <RouteLegend />
+      </Disclosure>
     </div>
   );
 }
