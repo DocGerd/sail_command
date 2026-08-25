@@ -720,17 +720,23 @@ describe('#654 migratePlan: an absent/malformed viaPoints key (hand-edited or co
     expect(migratePlan(raw)).toBeNull();
   });
 
-  // Reviewer finding (Minor 1, self-review of PR #687): every row above ALSO
-  // reds if `!isRecord(p) ||` is deleted from normaliseViaPoints, because
-  // each non-object element (`'not-a-point'`, a missing/non-numeric lat/lon)
-  // independently fails the `Number.isFinite` terms too — so that term was
-  // untested (a per-term deletion battery reds 84/84 either way). This row
-  // isolates it: an ARRAY carrying its own `lat`/`lon` OWN PROPERTIES passes
-  // BOTH `Number.isFinite` checks (JS arrays are ordinary objects, so
-  // attaching arbitrary keys is legal), so only `isRecord`'s
-  // `!Array.isArray(x)` term can reject it — `isRecord` rejects arrays
-  // specifically so a via point can never be array-shaped, distinct from a
-  // plain `{lat, lon}` record.
+  // Reviewer finding (Major 1, self-review of PR #687): my own comment here
+  // previously said these rows RED under the mutation — inverted. Re-measured
+  // at f65e790: baseline `npm --prefix app run test -- migratePlan.test` is
+  // `Tests 87 passed (87)`; with `!isRecord(p) ||` deleted from
+  // normaliseViaPoints it is `Tests 2 failed | 85 passed (87)` — exactly the
+  // `[null]` row above and the isolating row below. Every ORIGINAL row
+  // (`'not-a-point'`, `{ lat: 54.83 }`, `{ lat: 'north', lon: 9.9 }`) and the
+  // `[[54.83, 9.9]]` row all STAY GREEN under the mutation: each is refused
+  // by a DIFFERENT term the mutation leaves intact (`!Array.isArray(x)` for
+  // the whole-value case, or a `Number.isFinite` term for an element with a
+  // missing/non-numeric lat or lon) — so none of them discriminates whether
+  // `isRecord` itself is present. That gap is exactly why this row was
+  // needed: an ARRAY carrying its own `lat`/`lon` OWN PROPERTIES passes BOTH
+  // `Number.isFinite` checks (JS arrays are ordinary objects, so attaching
+  // arbitrary keys is legal), so only `isRecord`'s `!Array.isArray(x)` term
+  // can reject it — `isRecord` rejects arrays specifically so a via point
+  // can never be array-shaped, distinct from a plain `{lat, lon}` record.
   it('refuses an array-shaped element even when it carries lat/lon properties that would otherwise pass every Number.isFinite check (isolates the isRecord term)', () => {
     const raw = legacyPlan();
     const arrayShapedPoint: unknown = Object.assign([], { lat: 54.83, lon: 9.9 });

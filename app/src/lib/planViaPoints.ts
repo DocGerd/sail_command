@@ -5,8 +5,13 @@ import type { LatLon, PlanRequest } from '../types';
  *
  * `viaPoints` was introduced by `eb2d7ee` ("feat: via-waypoint segmented
  * routing", 2026-07-15) — the SAME commit that introduced the via-points
- * feature itself, and never a rename of an earlier key (`git log
- * -S'waypoints:' -S'via:' -- types.ts` finds nothing). That does NOT make an
+ * feature itself; that commit's own diff to `PlanRequest` is a pure
+ * insertion of the `viaPoints:` line with no field removed, which is
+ * positive proof it is not a same-commit rename (re-read 2026-08-25 — see
+ * `services/migratePlan.ts`'s `normaliseViaPoints` for the full dated
+ * argument, plus a controlled, corrected pickaxe sweep for an earlier-commit
+ * rename, which this docstring intentionally does not duplicate). That does
+ * NOT make an
  * absent key reachable for a genuine stored record, though: `services/db.ts`,
  * the only IndexedDB writer this app has ever shipped, was created ~3 hours
  * AFTER eb2d7ee (both predate `v0.1.0`, git-verified 2026-08-25) —
@@ -18,12 +23,21 @@ import type { LatLon, PlanRequest } from '../types';
  * not duplicate further).
  *
  * `services/migratePlan.ts` already normalises this at read time for any
- * `Plan` loaded through `getPlan()`, so by the time a component sees
- * `plan.request`, `viaPoints` should always be a real array — PROVEN, not
- * merely assumed: reverting only `migratePlan.ts`'s normalisation (keeping
- * every call site below on this accessor) left the #654 regression tests
- * green, because this accessor's own `Array.isArray` fallback independently
- * caught the crash. This accessor is the belt to that suspenders — ADR-0002
+ * `Plan` loaded through `getPlan()`, so — AS LONG AS that normalisation
+ * runs — by the time a component sees `plan.request`, `viaPoints` is a real
+ * array. That upstream guarantee is not what the mutation below establishes,
+ * though, and the "PROVEN" claim previously attached to it here was wrong:
+ * reverting only `migratePlan.ts`'s normalisation (keeping every call site
+ * below on this accessor) left the #654 regression tests green — but that is
+ * because `plan.request.viaPoints` reaching those call sites WAS `undefined`
+ * in that experiment (a reviewer independently confirmed this by
+ * un-guarding one `App.tsx` call site at a time under the same revert and
+ * getting the `TypeError`), and THIS accessor's own `Array.isArray`
+ * fallback caught it before it could throw. What the mutation actually
+ * proves is that this accessor is independently load-bearing — a second,
+ * working line of defense — not that the property it reads is always a
+ * real array by the time it gets here. This accessor is the belt to that
+ * suspenders — ADR-0002
  * explicitly does NOT waive defensive reads at the point of use ("This ADR
  * waives migration machinery. It does NOT waive defensive reads."): every
  * direct read of `plan.request.viaPoints` in app/src goes through this
@@ -53,11 +67,19 @@ import type { LatLon, PlanRequest } from '../types';
  *   `RouteSummary.tsx`'s `confinedWithin`, via `shallowConfinedWithinM` — a
  *   SHORTER waypoint list can only make "every shallow cell lies within
  *   APPROACH_RADIUS_M of a waypoint" HARDER to satisfy, never easier, so
- *   dropping via points moves the result toward `false`/`null`, which that
- *   component already treats as "suppress the reassuring sentence
- *   silently" (its own comment). An empty fallback can therefore only
- *   suppress a positive claim, never fabricate one — it cannot manufacture
- *   a false "confined" reassurance. Every other consumer (App.tsx's
+ *   dropping via points can only move the result toward `false` — NOT
+ *   toward `null` (re-verified 2026-08-25 against `lib/shallowExposure.ts`:
+ *   `waypoints`/`allowanceM` are read ONLY inside `legConfinedWithin`'s
+ *   per-cell loop, which can only flip its own `confined` boolean; `null`
+ *   comes exclusively from `shallowConfinedWithinM`'s `withinMask` bounds
+ *   check on each leg's endpoints and from `legConfinedWithin`'s
+ *   `walkLegCells` completion guard, NEITHER of which ever reads
+ *   `waypoints` at all, so a shorter waypoint list cannot produce or
+ *   suppress a `null`). `false` is what that component already treats as
+ *   "suppress the reassuring sentence silently" (its own comment). An empty
+ *   fallback can therefore only suppress a positive claim, never fabricate
+ *   one — it cannot manufacture a false "confined" reassurance. Every other
+ *   consumer (App.tsx's
  *   draft-dirty comparison, recalc.ts's re-seeded request) is UI/product
  *   state with no safety reading riding on it at all. That is why this
  *   accessor is allowed to fail open where `normaliseViaPoints` may not.
