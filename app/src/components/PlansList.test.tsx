@@ -458,6 +458,31 @@ describe('PlansList recalculate (#114)', () => {
       }
     });
 
+    // #561: the damaged row tells the user the record is kept, not deleted;
+    // the newer-version row must say the same, in the damaged string's own
+    // wording — listPlans never deletes either case, so the disclosure
+    // asymmetry was never backed by a behavioural difference.
+    it('#561: the newer-version row discloses retention the same way the damaged row does', () => {
+      for (const [lang, dict] of [
+        ['de', de],
+        ['en', en],
+      ] as const) {
+        const retentionClause = dict['plansList.unreadable.damaged'].slice(
+          dict['plansList.unreadable.damaged'].indexOf(lang === 'de' ? 'Er bleibt' : 'It is kept'),
+        );
+        expect(dict['plansList.unreadable.newerVersion'], lang).toContain(retentionClause);
+      }
+    });
+
+    it('#561: renders the retention clause on the newer-version row', async () => {
+      await saveUnreadable('p2', 2000, 'From The Future');
+
+      renderList();
+
+      expect(await screen.findByText(/newer version of the app/i)).toBeInTheDocument();
+      expect(screen.getByText(/kept, not deleted/i)).toBeInTheDocument();
+    });
+
     it('says a genuinely damaged record is damaged, not that it came from a newer build', async () => {
       await saveDamaged('p3', 2000, 'Broken One');
 
