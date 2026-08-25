@@ -549,7 +549,14 @@ export default function RouteLayer({
   const controlsRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = controlsRef.current;
-    if (!el) return;
+    // #628 review wave 4 Minor: reset on unmount (plan -> null) — this ref
+    // outlives the disclosure it tracks, so without the reset a toggle
+    // latches across a plan reset and blocks the NEXT plan from following
+    // isWide, reproducing #628's own obstruction.
+    if (!el) {
+      userToggledDisclosureRef.current = false;
+      return;
+    }
     const onNativeToggle = (e: Event) => {
       const target = e.target as HTMLElement | null;
       if (target?.classList.contains('route-layer-controls-disclosure')) {

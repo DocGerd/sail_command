@@ -843,4 +843,65 @@ describe('RouteLayer collapsible controls cluster (#628)', () => {
     act(() => mm.setMatches(false));
     expect(details().open).toBe(true);
   });
+
+  // #628 review wave 4 Minor: the toggle-latch ref lives on RouteLayer,
+  // which never unmounts, but `.route-layer-controls` DOES (plan -> null,
+  // App.tsx's setPlan(null)) — so a stale `true` survives a plan reset and
+  // blocks the NEXT plan's disclosure from following a later real `isWide`
+  // change, reproducing #628's own obstruction. Walks the measured
+  // sequence: wide+plan (open) -> user toggles closed (latches) ->
+  // plan -> null -> plan (re-seeded open, matching isWide=true — the
+  // user's earlier choice is already gone by this point) -> rotate to
+  // narrow, with NO further user interaction.
+  it('#628 review wave 4 Minor: a toggle does not latch across a plan reset (plan -> null -> plan)', () => {
+    const map = makeFakeMap();
+    hoisted.map = map;
+    const mm = setMatchMedia(true); // start wide -> auto-open
+    const { container, rerender } = render(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    const details = () =>
+      container.querySelector<HTMLDetailsElement>('details.route-layer-controls-disclosure');
+    expect(details()?.open).toBe(true);
+
+    fireEvent.click(details()!.querySelector('summary')!);
+    expect(details()?.open).toBe(false);
+    act(() => {
+      details()!.dispatchEvent(new Event('toggle'));
+    });
+
+    rerender(
+      <RouteLayer
+        plan={null}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    expect(container.querySelector('.route-layer-controls')).toBeNull();
+
+    rerender(
+      <RouteLayer
+        plan={makePlan()}
+        rig="genoa"
+        activeLegIndex={null}
+        draftViaPoints={[]}
+        viaReplanning={false}
+        onViaDragEnd={async () => true}
+      />,
+    );
+    expect(details()?.open).toBe(true);
+
+    act(() => mm.setMatches(false)); // rotate to narrow, zero user interaction
+    expect(details()?.open).toBe(false);
+  });
 });
