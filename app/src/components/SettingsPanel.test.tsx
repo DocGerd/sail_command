@@ -379,13 +379,16 @@ describe('SettingsPanel (#299 Boat tab)', () => {
 
     // #513 F7 (content half): the old help text said only what Base keeps,
     // never what the DEFAULT (Standard) hides — a user reading it concluded
-    // nothing important was hidden, when 810 marks were (F1's Blocker). The
-    // corrected mapping only hides cable/pipeline markers at the default;
-    // the help text must say so explicitly, not leave it implied.
-    it('states what the DEFAULT (Standard) tier hides — cable and pipeline markers, not a vague "some marks"', () => {
+    // nothing important was hidden, when 810 marks were (F1's Blocker). #521
+    // (2026-08-21 ruling) then reversed the cable/pipeline carve-out to
+    // "All" entirely — the DEFAULT (Standard) tier no longer hides anything
+    // in the specialPurpose family, and the help text must say so
+    // explicitly (a stale "except submarine cable and pipeline markers"
+    // claim would ship a lie the moment the behaviour changed).
+    it('states that the DEFAULT (Standard) tier now shows cable and pipeline markers, not that it hides them (#521)', () => {
       renderPanel();
       expect(
-        screen.getByText(/shows everything except submarine cable and pipeline markers/),
+        screen.getByText(/shows everything, including submarine cable and pipeline markers/),
       ).toBeInTheDocument();
     });
 
