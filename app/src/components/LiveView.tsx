@@ -19,6 +19,7 @@ import {
 } from '../lib/headingDepth';
 import type { NavMask } from '../lib/mask';
 import { useNavMask } from '../state/useNavMask';
+import { formatDepthM } from '../lib/depthDisclosure';
 import { formatDriftMin, formatHeading, formatKn, formatNm, formatTime } from '../lib/format';
 import { claimGpsHintOnce } from '../lib/gpsHint';
 import { watchPosition as realWatchPosition, type GpsFix } from '../services/geolocation';
@@ -384,12 +385,15 @@ export default function LiveView({
               {depthCheck.hazard === 'land'
                 ? t('live.hts.landCaution')
                 : t('live.hts.depthCaution', {
-                    depth: depthCheck.shallowestM.toFixed(1),
-                    // Same one-decimal form the sibling route-level shallow
-                    // banner uses for both of its depths (RouteSummary.tsx),
-                    // so the two depth warnings never render the same number
-                    // differently.
-                    //
+                    // #596: through formatDepthM, not a bare `toFixed(1)` —
+                    // same locale-aware one-decimal form the sibling
+                    // route-level shallow banner uses for both of its depths
+                    // (RouteSummary.tsx), so the two depth warnings never
+                    // render the same number differently, IN EITHER
+                    // language (a bare `toFixed(1)` here would have left
+                    // this sentence point-formatted after RouteSummary's own
+                    // switched to comma-formatted German).
+                    depth: formatDepthM(depthCheck.shallowestM, lang),
                     // #632: consumes the SAME guarded `safetyDepthM` local
                     // computed above, never a fresh unguarded read.
                     // Invariant: `depthCheck.state` can only reach
@@ -406,7 +410,7 @@ export default function LiveView({
                     // convention — an unreachable empty string would still
                     // render as "…your safety depth ( m)", a malformed
                     // sentence, if this invariant were ever violated.
-                    safety: safetyDepthM !== null ? safetyDepthM.toFixed(1) : '—',
+                    safety: safetyDepthM !== null ? formatDepthM(safetyDepthM, lang) : '—',
                   })}
             </p>
           )}

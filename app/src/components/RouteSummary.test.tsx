@@ -248,6 +248,37 @@ describe('RouteSummary', () => {
     expect(screen.queryByText(/Faster:/)).not.toBeInTheDocument();
   });
 
+  // #578: NON-VACUOUS against the real hazard — a fixture whose compared
+  // sail ids are NOT genoa/fock. A hardcoded "Genoa and Fock are
+  // effectively tied..." string would still pass every OTHER test in this
+  // file (the default fixture always uses genoa/fock), so this is the one
+  // row that would catch a regression back to the literal. `code0` mirrors
+  // the existing "#54: names a stored sail the catalogue no longer knows"
+  // row's own `'code0' as SailId` cast above — a stored/future sail id
+  // outside today's catalogue. Mixing ONE known id (genoa) with ONE unknown
+  // one, rather than two unknowns, proves PER-ID resolution: a component
+  // that fell back to some other static pair (or swapped in a generic
+  // placeholder for BOTH slots) would not produce this exact combination.
+  it('#578: a tie chip names the PLAN’s own compared sails, never the hardcoded "Genoa and Fock"', () => {
+    const unknown = 'code0' as SailId;
+    const plan = makePlan({ rigRecommendation: { kind: 'tie' } });
+    plan.result = {
+      ...plan.result,
+      sails: [
+        { sailId: 'genoa', result: GENOA_RESULT, reason: null },
+        { sailId: unknown, result: { ...GENOA_RESULT, sailId: unknown }, reason: null },
+      ],
+    };
+    renderSummary({ plan, rig: 'genoa' });
+    expect(
+      screen.getByText(
+        `Genoa and ${en['route.rig.unknown']} are effectively tied for this passage`,
+      ),
+    ).toBeInTheDocument();
+    // The hardcoded literal must never appear for THIS fixture.
+    expect(screen.queryByText(/Genoa and Fock/)).not.toBeInTheDocument();
+  });
+
   it('#259: a moot comparison (all-motor) shows neither ★ and an honest moot chip', () => {
     const plan = makePlan({ rigRecommendation: { kind: 'moot' } });
     renderSummary({ plan, rig: 'fock' });
@@ -492,6 +523,31 @@ describe('RouteSummary', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
+  // #662: `reason: null` alongside `result: null` is the SAVED-plan-only
+  // state PR #656 (#614) introduced — a stored no-route reason outside the
+  // NoRouteReason union falls back to `null` rather than a bad cast. Before
+  // #662 this rendered the generic, live-planning-flavoured `error.internal`
+  // ("Try again; reload the app"), which is untrue here: this screen is
+  // reading an already-saved record, not running a live plan, so neither
+  // action can do anything. The fix names the one thing that DOES help.
+  it('#662: a saved plan with an untrusted stored no-route reason gets copy that says to re-plan, not "try again"/"reload"', () => {
+    const plan = makePlan();
+    setSail(plan, 'fock', { result: null, reason: null });
+    renderSummary({ plan, rig: 'fock' });
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent(en['error.savedPlanUnreadable']);
+    // The generic live-planning fallback must NOT render for this saved-plan
+    // path — that would be the #662 defect reappearing.
+    expect(alert.textContent).not.toContain(en['error.internal']);
+    // Its remedy framing specifically: no retry/reload language, unlike
+    // error.internal's own "Try again; if it keeps happening, reload the
+    // app." — a regression back to that generic key would still say "Try
+    // again" and this is what would catch it even if the key name survived.
+    expect(alert.textContent).not.toMatch(/try again/i);
+    expect(alert.textContent).not.toMatch(/reload the app/i);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
   it('GPX export creates a Blob via URL.createObjectURL and clicks an anchor named "<name>-<rig>.gpx"', () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature must accept a Blob for the tuple-typed assertion below
     const createObjectURL = vi.fn((_blob: Blob) => 'blob:mock');
@@ -612,9 +668,11 @@ describe('shallow-water warning banner (#53/#452)', () => {
     expect(banner).toHaveAttribute('role', 'alert');
     // Requested / used / minGate — same three distinct values as the English
     // case above, so a dropped placeholder in the DE string reds here too.
-    expect(banner?.textContent).toContain('3.0 m');
-    expect(banner?.textContent).toContain('2.5 m');
-    expect(banner?.textContent).toContain('2.3 m');
+    // #596: comma-formatted (formatDepthM), not the English case's points —
+    // the discriminating half of the locale pair this test exists to prove.
+    expect(banner?.textContent).toContain('3,0 m');
+    expect(banner?.textContent).toContain('2,5 m');
+    expect(banner?.textContent).toContain('2,3 m');
     // The honesty hedge, in German: never claims an unflagged section IS
     // safe — this is the same #455 constraint as the English copy, and it
     // has to hold independently since the two strings are maintained by hand.
@@ -853,9 +911,11 @@ describe('#493: cautious depth disclosure', () => {
       </I18nProvider>,
     );
     const row = container.querySelector('table.route-legs tbody tr');
-    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Untiefe 2.3 m');
+    // #596: comma-formatted (formatDepthM) — the discriminating half of the
+    // locale pair against the English case above, which reads with points.
+    expect(row?.querySelector('.chip-shallow')?.textContent).toBe('Untiefe 2,3 m');
     expect(row?.querySelector('.chip-shallow-cautious')?.textContent).toBe(
-      'vorsichtig: bis auf 1.4 m',
+      'vorsichtig: bis auf 1,4 m',
     );
   });
 
@@ -981,16 +1041,20 @@ describe('#493: cautious depth disclosure', () => {
       expect(banner).not.toBeNull();
       expect(banner).toHaveClass('shallow-warning--severe');
       const lead = banner?.querySelector('.shallow-warning__lead');
+      // #596: comma-formatted (formatDepthM) — CAUTIOUS_BELOW_BOUNDARY_M and
+      // BOAT_DRAFT_M.toFixed(1) above are the ENGLISH-formatted literals the
+      // sibling test above shares; German needs its own decimal-comma forms
+      // of the same two numbers (2.0 -> 2,0; 2.1 -> 2,1), not a re-use.
       expect(lead?.textContent).toBe(
         interpolate(de['route.shallow.leadSevere'], {
-          cautious: CAUTIOUS_BELOW_BOUNDARY_M,
-          draft: BOAT_DRAFT_M.toFixed(1),
+          cautious: '2,0',
+          draft: '2,1',
         }),
       );
       // Dict-independence requirement, typed here rather than read from
       // `de[...]`.
-      expect(lead?.textContent).toContain('kann bis auf 2.0 m sinken');
-      expect(lead?.textContent).toContain('unter den Bootstiefgang von 2.1 m');
+      expect(lead?.textContent).toContain('kann bis auf 2,0 m sinken');
+      expect(lead?.textContent).toContain('unter den Bootstiefgang von 2,1 m');
     });
   });
 });

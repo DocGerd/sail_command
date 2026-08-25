@@ -693,10 +693,21 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
     expect(notice?.textContent).not.toContain('NaN');
   });
 
-  it('renders the German copy with a German number', async () => {
+  it('renders the German copy with a German number in EVERY slot of the same sentence', async () => {
     // The de/en pair is what makes a mixed-language announcement impossible
     // to ship unnoticed — formatNm is locale-aware (#525), so the DE figure
     // must read "3,0 nm", never "3.0 nm".
+    //
+    // #596: before this fix, `{requested}` stayed on a bare `toFixed(1)`
+    // while `{dist}` (formatNm) was already locale-aware — this exact row
+    // used to pin "3,0 nm ... von 3.0 m setzt." as EXPECTED, a comma-
+    // formatted distance beside a point-formatted depth in one German
+    // sentence, which is precisely the hazard #596 exists to close. Both
+    // numbers now go through the same locale-aware formatter, so the whole
+    // sentence reads with a comma throughout — the discriminating
+    // assertion is `${lang: 'de'}` yielding a COMMA here, contrasted with
+    // the sibling English case above ('renders the quiet line with its
+    // measured FIGURE') yielding a POINT for the identical fixture.
     localStorage.setItem('sc-lang', 'de');
     mockedLoad.mockResolvedValue(marginalMask());
     const { container } = render(
@@ -708,7 +719,7 @@ describe('#612: the marginal-depth notice on a route that did not relax', () => 
     await act(async () => {});
     const notice = container.querySelector('.marginal-depth-notice');
     expect(notice?.textContent).toContain(
-      '3,0 nm dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von 3.0 m setzt.',
+      '3,0 nm dieser Route verlaufen durch Wasser, das eine vorsichtigere Lesart der Kartentiefen unter die eingestellte Sicherheitstiefe von 3,0 m setzt.',
     );
   });
 });

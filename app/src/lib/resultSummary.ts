@@ -172,6 +172,50 @@ export function resultVerdictKey(
   return rigVerdictKey(kind);
 }
 
+/**
+ * #578: the two sail ids `route.rigTie`'s `{sailA}`/`{sailB}` slots should
+ * name. `rigVerdictKey`'s own doc establishes a 'tie' verdict is reachable
+ * only when EXACTLY two sails were compared, so `sailIds` (the plan's own
+ * `plan.result.sails` in solve order — the #340/#54 guarantee) always
+ * carries two entries whenever this is actually called; the
+ * `?? sailIds[0] ?? 'unknown'` fallback is defensive only, mirroring
+ * `noRouteLabel`'s fail-safe-not-fail-silent shape, and resolves through
+ * `sailLabelKey`'s own 'route.rig.unknown' fallback if it is ever reached.
+ */
+function tiedSailIds(sailIds: readonly SailId[]): [string, string] {
+  return [sailIds[0] ?? 'unknown', sailIds[1] ?? sailIds[0] ?? 'unknown'];
+}
+
+/**
+ * #578: the full display text for a non-'decided' rig verdict, resolving
+ * `route.rigTie`'s `{sailA}`/`{sailB}` slots from the plan's OWN sail ids
+ * rather than the two catalogue-hardcoded sail names #578 found ("Genoa and
+ * Fock are effectively tied") — `SailId` is structurally derived from the
+ * boat catalogue
+ * (`(typeof BOATS)[number]['sails'][number]['id']`, not narrowed to those
+ * two literals), so a boat with a different foresail id would otherwise
+ * render a message naming sails it does not carry, with no type error and no
+ * failing test (the string was a compile-time constant).
+ *
+ * Both display surfaces (RouteSummary's rig-comparison chip, PlannerPanel's
+ * Ergebnis-strip chip) call this instead of `t(resultVerdictKey(...))`
+ * directly, so the two can never drift on how a tie is worded — same reason
+ * `resultVerdictKey` itself is shared rather than duplicated per surface.
+ */
+export function renderRigVerdict(
+  kind: Exclude<RigRecommendation['kind'], 'decided'>,
+  comparisonComplete: boolean,
+  sailIds: readonly SailId[],
+  t: (key: MsgKey, vars?: Record<string, string | number>) => string,
+): string {
+  const key = resultVerdictKey(kind, comparisonComplete);
+  if (key === 'route.rigTie') {
+    const [a, b] = tiedSailIds(sailIds);
+    return t(key, { sailA: t(sailLabelKey(a)), sailB: t(sailLabelKey(b)) });
+  }
+  return t(key);
+}
+
 /** Average speed in knots over the whole passage; 0 for a zero-duration result. */
 export function averageSpeedKn(distanceNm: number, durationMs: number): number {
   const hours = durationMs / 3_600_000;

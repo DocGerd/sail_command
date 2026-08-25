@@ -183,10 +183,15 @@ describe('#539 item 1 / spec C.7: the clamp is WIRED to the boat switch', () => 
     // i18n KEY parity is compiler-enforced; PLACEHOLDER parity is not — a de
     // string spelling `{tiefe}` would render the brace literally and this is
     // the only thing that would notice.
+    //
+    // #596: the depth figure is now locale-aware (formatDepthM) like every
+    // other user-visible depth in the app, so the German render reads
+    // "2,4 m" — a decimal COMMA, not the English "2.4 m" this row pinned
+    // before #596 fixed the mixed-convention hazard.
     renderPicker({ safetyDepthM: 2.2, lang: 'de' });
     selectBoat(/Deep 46/);
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Sicherheitstiefe auf 2.4 m angehoben – Mindestwert für Deep 46.',
+      'Sicherheitstiefe auf 2,4 m angehoben – Mindestwert für Deep 46.',
     );
   });
 

@@ -12,7 +12,7 @@ import {
 import { GpxParseError, MAX_GPX_FILE_BYTES, parseGpx, type GpxErrorReason } from '../lib/gpx';
 import { activeRigResult } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
-import { resultSummary, resultVerdictKey, sailLabelKey } from '../lib/resultSummary';
+import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
 import HarborPicker from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
@@ -271,11 +271,17 @@ export default function PlannerPanel({
   // gated on `summary || shallow`, not `summary` alone.
   const shallow = plan?.result.shallow ?? null;
   // #540: plan-level, like `shallow` immediately above — feeds
-  // resultVerdictKey() for the rig-comparison chip below. Defaults to `true`
+  // renderRigVerdict() for the rig-comparison chip below. Defaults to `true`
   // (never trips the budget-specific copy) when `plan` is absent; the chip
   // that reads it is gated on `summary`, which is itself null whenever
   // `plan` is, so the default is never actually rendered.
   const comparisonComplete = plan?.result.comparisonComplete ?? true;
+  // #578: `route.rigTie`'s two sail ids, in solve order — computed here,
+  // where `plan` is still a bare `Plan | null` prop, so the chip render site
+  // below never needs its own `plan` null-narrowing (mirrors the
+  // `comparisonComplete` default immediately above: unused whenever `plan`
+  // is absent, since the chip is gated on `summary`).
+  const comparedSailIds: readonly SailId[] = plan ? plan.result.sails.map((s) => s.sailId) : [];
 
   // Cross-PR composition fix (Refs #299, found by an adversarial cumulative-
   // diff sweep over PR #486): computed independently of App.tsx's own
@@ -685,7 +691,12 @@ export default function PlannerPanel({
               <Chip className="chip-faster-rig">
                 {summary.rigRecommendation.kind === 'decided'
                   ? t('route.fasterRig', { rig: t(sailLabelKey(summary.rigRecommendation.rig)) })
-                  : t(resultVerdictKey(summary.rigRecommendation.kind, comparisonComplete))}
+                  : renderRigVerdict(
+                      summary.rigRecommendation.kind,
+                      comparisonComplete,
+                      comparedSailIds,
+                      t,
+                    )}
               </Chip>
               {/* #301: the form has drifted from this displayed route — a
                   re-run right now would produce something different. Sits ON
