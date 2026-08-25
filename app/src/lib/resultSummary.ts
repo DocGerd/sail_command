@@ -172,6 +172,72 @@ export function resultVerdictKey(
   return rigVerdictKey(kind);
 }
 
+/**
+ * #578: the two sail ids `route.rigTie`'s `{sailA}`/`{sailB}` slots should
+ * name. `{kind:'tie'}`'s sole producer is `compareRigs` (`planRoute.ts`),
+ * and `assemble()`'s own guard (`planRoute.ts`, the
+ * `!comparisonSuppressed && sails.length === 2 && a.rigResult && b.rigResult`
+ * check immediately before it calls `compareRigs`) establishes that a
+ * FRESHLY SOLVED plan cannot produce a 'tie' verdict with fewer than two
+ * compared sails — so `sailIds` (the plan's own `plan.result.sails` in
+ * solve order — the #340/#54 guarantee) always carries two entries right
+ * after a live solve.
+ *
+ * #578 review Minor C: that guard says nothing about a plan loaded from
+ * STORAGE. `migratePlan.ts` passes a stored `rigRecommendation` through with
+ * a bare cast and never correlates it with the stored `sails` array's
+ * length — MEASURED (review round 2): a throwaway probe fed it a
+ * one-sail record with `rigRecommendation: {kind:'tie'}` and it came
+ * through unchanged. #578 review Minor E: the fallback below is reachable
+ * from a stored record: nothing in the current code writes one
+ * (`assemble()` won't), but nothing at the read boundary rejects one
+ * either. The worrying door is shut, though — `migrateSails` fails closed
+ * on a damaged sail, so "two stored, one dropped on read" cannot happen;
+ * what remains is a hand-edited or corrupted store, a foreign writer, or a
+ * future build. `RouteSummary.test.tsx`'s "#578 review Minor 5" row pins
+ * exactly this case.
+ */
+function tiedSailIds(sailIds: readonly SailId[]): [string, string] {
+  // #578 review Minor 5: NOT `sailIds[1] ?? sailIds[0]` — that would render
+  // "Genoa and Genoa are effectively tied", a self-tie that reads as a
+  // genuine (if odd) result rather than a degraded one. Per this repo's
+  // guard-asymmetry rule a fallback must fail OBVIOUSLY wrong, not
+  // plausibly right: `'unknown'` resolves through `sailLabelKey`'s own
+  // `?? 'route.rig.unknown'` fallback, so a caller reaching this branch sees
+  // "Unknown sail" rather than a fabricated second name.
+  return [sailIds[0] ?? 'unknown', sailIds[1] ?? 'unknown'];
+}
+
+/**
+ * #578: the full display text for a non-'decided' rig verdict, resolving
+ * `route.rigTie`'s `{sailA}`/`{sailB}` slots from the plan's OWN sail ids
+ * rather than the two catalogue-hardcoded sail names #578 found ("Genoa and
+ * Fock are effectively tied") — `SailId` is structurally derived from the
+ * boat catalogue
+ * (`(typeof BOATS)[number]['sails'][number]['id']`, not narrowed to those
+ * two literals), so a boat with a different foresail id would otherwise
+ * render a message naming sails it does not carry, with no type error and no
+ * failing test (the string was a compile-time constant).
+ *
+ * Both display surfaces (RouteSummary's rig-comparison chip, PlannerPanel's
+ * Ergebnis-strip chip) call this instead of `t(resultVerdictKey(...))`
+ * directly, so the two can never drift on how a tie is worded — same reason
+ * `resultVerdictKey` itself is shared rather than duplicated per surface.
+ */
+export function renderRigVerdict(
+  kind: Exclude<RigRecommendation['kind'], 'decided'>,
+  comparisonComplete: boolean,
+  sailIds: readonly SailId[],
+  t: (key: MsgKey, vars?: Record<string, string | number>) => string,
+): string {
+  const key = resultVerdictKey(kind, comparisonComplete);
+  if (key === 'route.rigTie') {
+    const [a, b] = tiedSailIds(sailIds);
+    return t(key, { sailA: t(sailLabelKey(a)), sailB: t(sailLabelKey(b)) });
+  }
+  return t(key);
+}
+
 /** Average speed in knots over the whole passage; 0 for a zero-duration result. */
 export function averageSpeedKn(distanceNm: number, durationMs: number): number {
   const hours = durationMs / 3_600_000;

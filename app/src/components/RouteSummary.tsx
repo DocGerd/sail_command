@@ -10,12 +10,13 @@ import {
 } from '../lib/format';
 import { toGpx } from '../lib/gpx';
 import { APPROACH_RADIUS_M } from '../lib/depthGate';
+import { formatDepthM } from '../lib/depthDisclosure';
 import { cautiousDepthLowerBoundM, MASK_TOLERANCE_M } from '../lib/mask';
 import { activeRigResult, isStaleForecast, NO_ROUTE_MESSAGE_KEY } from '../lib/plan';
 import { planViaPoints } from '../lib/planViaPoints';
 import {
+  renderRigVerdict,
   resultSummary,
-  resultVerdictKey,
   rigRecommendationOf,
   sailLabelKey,
 } from '../lib/resultSummary';
@@ -105,7 +106,7 @@ export function ShallowWarning({
   const containerClassName = isSevere
     ? 'shallow-warning shallow-warning--severe'
     : 'shallow-warning';
-  const cautiousM = cautiousDepthLowerBoundM(shallow.usedDepthM).toFixed(1);
+  const cautiousM = formatDepthM(cautiousDepthLowerBoundM(shallow.usedDepthM), lang);
   // #516 increment 1: presentation-only exposure figure — how much of the
   // ACTIVE rig's own legs cross cells the mask charts below the REQUESTED
   // depth, re-walked at render time against the currently-loaded mask
@@ -220,30 +221,22 @@ export function ShallowWarning({
       <p className="shallow-warning__lead">
         {/* #54 spec C.4(a), fixed in #539: renders THE PLAN'S OWN boat's
             draft — see the `draftM` read above for why the plan, not the
-            picker, decides. `toFixed(1)` in both languages is unchanged
-            behaviour for this key and deliberately not touched here.
-            PR #590 review (MAJOR, round 2): this comment used to claim the
-            German decimal comma was "a separate copy question, live only in
-            about.caveats.depthMask" — #525 made that FALSE. `exposureDist`
-            (used in the sibling __detail paragraph below, via `formatNm`)
-            and the confinement sentence's `{radius}` are now comma-formatted
-            in German, so this SAME role="alert" banner mixes a comma-
-            formatted distance beside these still-point-formatted depth
-            values (draft/requested/used/minGate, all bare `toFixed(1)`) —
-            in one sentence, in German. That inconsistency is a KNOWN,
-            ACCEPTED-FOR-NOW consequence of #525, not fixed here: #525's own
-            scope was formatNm/formatKn call sites, and depthDisclosure.ts's
-            formatDepthM call predates it with an explicit "separate, wider
-            copy decision" scoping note of its own — this PR does not
-            silently resolve that scoping, it just makes the resulting
-            inconsistency visible inside one sentence instead of latent
-            across two components. A follow-up should decide the depth
-            `toFixed(1)` sites deliberately (there are 8 more like them
-            across RouteSummary.tsx/LiveView.tsx/BoatPicker.tsx/
-            DepthProfile.tsx) rather than one-off. */}
+            picker, decides.
+            #596 (fixed here): PR #590 review (MAJOR, round 2) found that
+            #525 made `formatNm`/`formatKn` locale-aware while every depth
+            figure in this banner (draft/requested/used/minGate) stayed on a
+            bare `toFixed(1)`, mixing a comma-formatted distance
+            (`exposureDist` below, via `formatNm`, and the confinement
+            sentence's `{radius}`) beside still-point-formatted depths in ONE
+            German sentence. That was left as a known, accepted-for-now
+            inconsistency — depthDisclosure.ts's `formatDepthM` predates #525
+            with its own "separate, wider copy decision" scoping note, and
+            fixing it was #596's job, not this PR's. It is fixed now: every
+            depth figure in this component goes through `formatDepthM`, so a
+            German sentence never mixes the two conventions again. */}
         {t(isSevere ? 'route.shallow.leadSevere' : 'route.shallow.lead', {
           cautious: cautiousM,
-          draft: draftM.toFixed(1),
+          draft: formatDepthM(draftM, lang),
         })}
       </p>
       <p className="shallow-warning__detail">
@@ -251,7 +244,7 @@ export function ShallowWarning({
           <>
             {t('route.shallow.exposure', {
               dist: exposureDist,
-              requested: shallow.requestedDepthM.toFixed(1),
+              requested: formatDepthM(shallow.requestedDepthM, lang),
             })}{' '}
           </>
         )}
@@ -265,9 +258,9 @@ export function ShallowWarning({
           <>{t('route.shallow.confined', { radius: formatNm(APPROACH_RADIUS_M / 1852, lang) })} </>
         )}
         {t('route.shallow.detail', {
-          requested: shallow.requestedDepthM.toFixed(1),
-          used: shallow.usedDepthM.toFixed(1),
-          minGate: shallow.minGateDepthM.toFixed(1),
+          requested: formatDepthM(shallow.requestedDepthM, lang),
+          used: formatDepthM(shallow.usedDepthM, lang),
+          minGate: formatDepthM(shallow.minGateDepthM, lang),
         })}
         {locator && (
           <>
@@ -392,13 +385,11 @@ export function MarginalDepthNotice({ plan, legs }: { plan: Plan; legs?: Leg[] |
     >
       {t(isSevere ? 'route.marginal.noticeSevere' : 'route.marginal.notice', {
         dist: exposureDist,
-        requested: gateM.toFixed(1),
-        // `toFixed(1)` in both languages, matching route.shallow.lead's own
-        // {draft} slot exactly — the German decimal-comma question for DEPTH
-        // values is a known, deliberately-scoped-out inconsistency (see
-        // ShallowWarning's lead comment above); this key must not resolve it
-        // unilaterally in one of the two places the same number appears.
-        draft: draftM.toFixed(1),
+        // #596: through formatDepthM, matching route.shallow.lead's own
+        // {draft} slot exactly — both places the same number appears now
+        // resolve the German decimal-comma question the SAME way, together.
+        requested: formatDepthM(gateM, lang),
+        draft: formatDepthM(draftM, lang),
       })}
     </p>
   );
@@ -491,11 +482,17 @@ function ShallowLegMarker({
   marginal?: boolean;
 }) {
   const t = useT();
+  // #596: needed only for formatDepthM's locale below — the two chips'
+  // production of the SAME depth family as ShallowWarning/MarginalDepthNotice
+  // above, which already read `lang` via useLang(); this component didn't
+  // until now because it only ever called the locale-invariant bare
+  // `toFixed(1)`.
+  const [lang] = useLang();
   return (
     <>
       <Chip className="chip-shallow">
         {t(marginal ? 'route.legs.marginalMarker' : 'route.legs.shallowMarker', {
-          depth: minDepthM.toFixed(1),
+          depth: formatDepthM(minDepthM, lang),
         })}
       </Chip>
       {/* #493/#504: sound lower bound on the mask's more cautious (conservative)
@@ -508,7 +505,7 @@ function ShallowLegMarker({
           styling with its sibling above instead of re-declaring it. */}
       <Chip className="chip-shallow-cautious">
         {t('route.legs.shallowCautious', {
-          depth: cautiousDepthLowerBoundM(minDepthM).toFixed(1),
+          depth: formatDepthM(cautiousDepthLowerBoundM(minDepthM), lang),
         })}
       </Chip>
     </>
@@ -615,7 +612,7 @@ export default function RouteSummary({
       <Chip className="chip-faster-rig">
         {rigRecommendation.kind === 'decided'
           ? t('route.fasterRig', { rig: t(sailLabelKey(rigRecommendation.rig)) })
-          : t(resultVerdictKey(rigRecommendation.kind, plan.result.comparisonComplete))}
+          : renderRigVerdict(rigRecommendation.kind, plan.result.comparisonComplete, sailTabs, t)}
       </Chip>
 
       {stale && <p role="alert">{t('route.staleForecast')}</p>}
@@ -642,7 +639,22 @@ export default function RouteSummary({
       <MarginalDepthNotice plan={plan} legs={result?.legs ?? null} />
 
       {!result || !summary ? (
-        <p role="alert">{t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.internal')}</p>
+        <p role="alert">
+          {/* #662: this branch renders ONLY for a SAVED plan (`plan` is a
+              required prop, so this is never the live-planning failure
+              surface — that one is App.tsx's own Retry-button banner). When
+              `reason` is a recognised NoRouteReason, NO_ROUTE_MESSAGE_KEY
+              names what actually happened. `reason === null` here means the
+              stored reason could not be trusted (PR #656/#614) — a
+              fundamentally different situation the generic, live-planning-
+              flavoured `error.internal` ("Try again; reload the app")
+              answers wrong on this screen, since neither action can change
+              what a stored record contains. `error.savedPlanUnreadable` is
+              the honest fallback: it names the one remedy that DOES apply
+              here, re-planning, instead of retry/reload framing that
+              cannot. */}
+          {t(reason ? NO_ROUTE_MESSAGE_KEY[reason] : 'error.savedPlanUnreadable')}
+        </p>
       ) : (
         <>
           <div className="ergebnis-stats">

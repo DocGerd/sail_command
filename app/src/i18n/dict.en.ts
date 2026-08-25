@@ -136,6 +136,18 @@ export const en = {
   'error.windService': 'Wind forecast could not be loaded. Try again in a moment.',
   'error.internal':
     'Route planning failed unexpectedly. Try again; if it keeps happening, reload the app.',
+  // #662: RouteSummary.tsx's fallback for a SAVED plan whose stored no-route
+  // reason cannot be trusted (PR #656 / #614 made `reason` fall back to
+  // `null` for a value outside the NoRouteReason union). This render site is
+  // reached only when viewing an already-saved plan, never while live-
+  // planning — "Try again"/"reload the app" would both be futile here (a
+  // retry re-runs planning, which this screen isn't doing; a reload changes
+  // nothing about what a stored record contains), so unlike error.internal
+  // above this key names the one thing that DOES help: planning the route
+  // again. App.tsx's RETRY_MAY_HELP_KEYS mechanism is not involved — this
+  // key never reaches the live-planning Retry button.
+  'error.savedPlanUnreadable':
+    "This saved plan's outcome could not be read. Plan the route again for a current result.",
   // #433: causes that used to collapse onto error.internal above, now
   // distinguishable — each with remedy copy honest about whether "Try
   // again" can actually help (see App.tsx's RETRY_MAY_HELP_KEYS).
@@ -204,7 +216,12 @@ export const en = {
   // #259: honest copy for the two cases where badging one rig as
   // "recommended" would be misleading — an ETA tie (too close to call) and
   // an all-motor route (the polar never drove a leg, so rig choice is moot).
-  'route.rigTie': 'Genoa and Fock are effectively tied for this passage',
+  // #578: parameterised — the two names used to be hardcoded "Genoa and
+  // Fock", correct only because every catalogue boat's foresail happens to
+  // use those two ids. lib/resultSummary.ts's renderRigVerdict resolves
+  // both slots from the PLAN's own compared sails (solve order), through
+  // the same sailLabelKey every other rig-facing string uses.
+  'route.rigTie': '{sailA} and {sailB} are effectively tied for this passage',
   'route.rigMoot': 'Rig does not matter here — this passage runs entirely under engine',
   // #553 / spec §N.4: strictly WEAKER than rigTie above, and the distinction
   // is the whole point — 'tie' reports the outcome of a comparison that ran,

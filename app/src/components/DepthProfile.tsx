@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type RefObject } from 'rea
 import { useLang, useT } from '../i18n';
 import { activeRigResult } from '../lib/plan';
 import { formatKn, formatTime } from '../lib/format';
+import { formatDepthM } from '../lib/depthDisclosure';
 import { NavMask } from '../lib/mask';
 import { WindField } from '../lib/wind';
 import { barbSegments } from '../lib/windBarbs';
@@ -246,7 +247,11 @@ export default function DepthProfile({ plan, rig, safetyDepthM }: DepthProfilePr
   const summaryValue =
     headlineMin === null
       ? t('profile.minDepthUnknown')
-      : `${t('profile.minDepth')} ${headlineMin.capped ? t('profile.deepCap') : `${headlineMin.depthM.toFixed(1)} m`}`;
+      : // #596: formatDepthM, not a bare `toFixed(1)` — this is the ONE
+        // number in this glance line, so it never shares a sentence with a
+        // comma-formatted distance, but it is still a depth figure reaching
+        // German user-facing copy and belongs in #596's scope either way.
+        `${t('profile.minDepth')} ${headlineMin.capped ? t('profile.deepCap') : `${formatDepthM(headlineMin.depthM, lang)} m`}`;
 
   // #64 phase 3: the profile gets the card treatment for visual consistency
   // with the Ergebnis card. The inner <details> keeps its own collapse + SVG
@@ -398,9 +403,18 @@ function ProfileChart({
             fontSize="9"
             fill="currentColor"
           >
+            {/* #596: `formatDepthM(d, lang, 0)`, not a bare `toFixed(0)` — a
+                Y-axis depth tick. `gridStep` (above) only ever produces
+                integers, so this never actually shows a decimal separator
+                and the German/English rendering is byte-identical today;
+                converted anyway for the same reason the confirmed sites are
+                converted — a number reaching German user-facing copy, per
+                the same formatter, so this is never the exception that
+                later needs re-deriving if a fractional grid step is ever
+                introduced. */}
             {capped && Math.abs(d - axisMax) < 1e-6 && Math.abs(axisMax - 25) < 1e-6
               ? t('profile.deepCap')
-              : d.toFixed(0)}
+              : formatDepthM(d, lang, 0)}
           </text>
         </g>
       ))}
@@ -535,7 +549,11 @@ function ProfileChart({
         stroke="var(--sc-bg)"
         strokeWidth="2.5"
       >
-        {t('profile.safetyDepth')} {safetyDepthM.toFixed(1)} m
+        {/* #596: formatDepthM, not a bare `toFixed(1)` — user-visible SVG
+            text content, unlike the geometry attributes elsewhere in this
+            chart, which must stay locale-invariant (a decimal comma inside
+            an x/y/width/transform/path-d attribute corrupts the shape). */}
+        {t('profile.safetyDepth')} {formatDepthM(safetyDepthM, lang)} m
       </text>
 
       {/* Plot frame (left + bottom axes) */}
