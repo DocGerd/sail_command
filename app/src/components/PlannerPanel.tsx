@@ -14,6 +14,7 @@ import { activeRigResult } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
+import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef } from '../data/boats';
@@ -591,6 +592,11 @@ export default function PlannerPanel({
           className="planner-safety-depth"
           label={t(safetyDepthField.labelKey)}
           htmlFor="planner-safety-depth"
+          help={t('options.safetyDepth.help', {
+            min: formatDepthM(safetyDepthField.min, lang),
+            max: formatDepthM(safetyDepthField.max, lang),
+          })}
+          helpId="planner-safety-depth-help"
         >
           <NumberInput
             id="planner-safety-depth"
@@ -598,6 +604,7 @@ export default function PlannerPanel({
             min={safetyDepthField.min}
             max={safetyDepthField.max}
             step={safetyDepthField.step}
+            aria-describedby="planner-safety-depth-help"
             onCommit={(n) => commitSetting(settings, 'safetyDepthM', n, onSettingsChange)}
           />
         </Field>

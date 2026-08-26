@@ -1,7 +1,8 @@
 import type { Ref } from 'react';
 import type { Settings } from '../types';
-import { useT } from '../i18n';
+import { useLang, useT } from '../i18n';
 import { isValidMmsi } from '../lib/mmsi';
+import { formatDepthM } from '../lib/depthDisclosure';
 import {
   SEAMARK_DISPLAY_TIER_ALL,
   SEAMARK_DISPLAY_TIER_BASE,
@@ -120,7 +121,12 @@ export default function SettingsPanel({
   titleRef,
 }: SettingsPanelProps) {
   const t = useT();
+  const [lang] = useLang();
   const boat = boatById(boatId);
+  // #699: computed once and reused for both the NumericField's spec and its
+  // help text's {min}/{max} interpolation, rather than calling
+  // safetyDepthFieldFor(boat) twice for the same render.
+  const safetyDepthField = safetyDepthFieldFor(boat);
   const mmsi = value.ownMmsi ?? '';
   const mmsiInvalid = mmsi !== '' && !isValidMmsi(mmsi);
 
@@ -179,7 +185,15 @@ export default function SettingsPanel({
         {/* #539 item 2: bounds follow the SELECTED boat (spec J OQ-1's
             `draftM + 0.1`), not the catalogue default — a 2.30 m hull must
             not be offered the Salona 45's 2.2 m floor. */}
-        <NumericField spec={safetyDepthFieldFor(boat)} value={value} onChange={onChange} />
+        <NumericField
+          spec={safetyDepthField}
+          value={value}
+          onChange={onChange}
+          help={t('options.safetyDepth.help', {
+            min: formatDepthM(safetyDepthField.min, lang),
+            max: formatDepthM(safetyDepthField.max, lang),
+          })}
+        />
         <NumericField
           spec={DEPTH_COMFORT_MARGIN_FIELD}
           value={value}

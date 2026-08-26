@@ -60,6 +60,52 @@ describe('SettingsPanel (#299 Boat tab)', () => {
     expect(input).toHaveValue(DEFAULT_SETTINGS.safetyDepthM);
   });
 
+  // #699: this was the one numeric field in the Boat tab without a help
+  // paragraph at all — its allowed range existed only as native min/max
+  // attributes. Mirrors the depth-comfort-margin test right below for the
+  // wiring shape (aria-describedby -> a real element, not a title tooltip).
+  // Both bounds go through formatDepthM (fractionDigits defaults to 1), so
+  // max renders "10.0" here, not a bare "10" — see the review-fix test
+  // below for why raw numbers were wrong in the first place.
+  it('#699: discloses the allowed range as visible, described help text', () => {
+    renderPanel();
+    const input = screen.getByLabelText('Safety depth (m)');
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(input).not.toHaveAttribute('title');
+    const help = document.getElementById(describedBy!);
+    expect(help).toHaveTextContent('Allowed range: 2.2–10.0 m');
+  });
+
+  // #699 REVIEW FIX (MAJOR): useT()'s interpolation is a bare String(v)
+  // (i18n/index.tsx) — locale-blind, always a decimal POINT. Passing raw
+  // numbers as {min}/{max} therefore rendered a German decimal POINT
+  // ("Erlaubter Bereich: 2.2-10 m"), contradicting the comma convention
+  // every OTHER depth figure in this app uses via formatDepthM — including
+  // this very PR's own boat.clamp.notice two components over ("Sicherheitstiefe
+  // auf 2,4 m angehoben"). renderPanel() hardcodes English, so this test
+  // renders directly under 'de' to reach the gap no other row in this file
+  // exercises. MUTATION-CHECKED: reverting SettingsPanel.tsx's help vars to
+  // the bare numbers (no formatDepthM) reds this row, rendering the point
+  // form instead of the comma form asserted here.
+  it('#699: renders the range with the LOCALE decimal separator (German comma, not a point)', () => {
+    localStorage.setItem('sc-lang', 'de');
+    render(
+      <I18nProvider>
+        <SettingsPanel
+          value={DEFAULT_SETTINGS}
+          onChange={vi.fn()}
+          boatId={DEFAULT_BOAT_ID}
+          onBoatIdChange={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    const input = screen.getByLabelText('Sicherheitstiefe (m)');
+    const describedBy = input.getAttribute('aria-describedby');
+    const help = document.getElementById(describedBy!);
+    expect(help).toHaveTextContent('Erlaubter Bereich: 2,2–10,0 m');
+  });
+
   it('commits safety depth on blur and clamps to its 2.2-10 bounds (same SAFETY_DEPTH_FIELD spec as the inline field)', () => {
     const onChange = renderPanel();
     const input = screen.getByLabelText('Safety depth (m)');
