@@ -65,9 +65,10 @@ export function seamarkFeatureCollectionWithIcons(
  * or below the user's selected tier — tiers are CUMULATIVE
  * (`SEAMARK_DISPLAY_TIER_ALL` matches every real tier). No longer exported
  * on its own (#682 review: the prior `seamarkDisplayFilter` wrapper had NO
- * production call site — `SettingsPanel.tsx` uses `seamarkDisplayTier` from
- * `seamarkGlyphs.ts`, a different function, and nothing else referenced it —
- * so it was dead code kept alive by a stale comment). `seamarkRoutineFilter`
+ * production call site — `SettingsPanel.tsx` imports `toSeamarkDisplayTier`
+ * and the three tier constants from `seamarkGlyphs.ts`, never this
+ * expression, and nothing else referenced it — so it was dead code kept
+ * alive by a stale comment). `seamarkRoutineFilter`
  * / `seamarkHazardFilter` below are the only consumers now, each ANDing this
  * with the `hazard` partition.
  */

@@ -120,12 +120,18 @@ describe('seamarkFeatureCollectionWithIcons', () => {
 // #682: the routine/hazard layer split. Pinned by literal AST shape (this
 // repo's tests can't evaluate a MapLibre expression tree without a real
 // style engine — the e2e order comparison in datalayers.spec.ts is what
-// exercises these filters against real rendered features). Between the two
-// `it`s below, the `['<=', ['get', 'displayTier'], tier]` shape is pinned at
-// all three real tier values (BASE, STANDARD, ALL) — the coverage the
-// former standalone `seamarkDisplayFilter` describe block gave, before that
-// export was deleted as dead code (#682 review: it had no production call
-// site — see seamarkDisplayTierExpression's own doc comment).
+// exercises these filters against real rendered features).
+//
+// #682 review MINOR A: the two `it`s below pin the
+// `['<=', ['get', 'displayTier'], tier]` SHAPE at all three real tier
+// values (BASE, STANDARD, ALL) — shape coverage IS preserved from the
+// former standalone `seamarkDisplayFilter` describe block (deleted as dead
+// code, see seamarkDisplayTierExpression's own doc comment). VALUE
+// coverage was NOT: writing a `SEAMARK_DISPLAY_TIER_*` constant on BOTH
+// sides of `toEqual` is a tautology with respect to the constant's own
+// value and cannot catch a renumbering (MEASURED: mutating
+// `SEAMARK_DISPLAY_TIER_BASE` 0 -> 5 reds nothing here). The third `it`
+// below restores that, pinning the literal tier NUMBERS directly.
 describe('seamarkRoutineFilter / seamarkHazardFilter (#682)', () => {
   it('each ANDs the SAME display-tier cut with the opposite half of `hazard`', () => {
     expect(seamarkRoutineFilter(SEAMARK_DISPLAY_TIER_STANDARD)).toEqual([
@@ -150,6 +156,31 @@ describe('seamarkRoutineFilter / seamarkHazardFilter (#682)', () => {
       'all',
       ['<=', ['get', 'displayTier'], SEAMARK_DISPLAY_TIER_ALL],
       ['get', 'hazard'],
+    ]);
+  });
+
+  // #682 review MINOR A: hand-written literal tier NUMBERS (0/1/2), not the
+  // SEAMARK_DISPLAY_TIER_* constants — deriving needle and haystack from one
+  // source is the worse tautology (CLAUDE.md). The input side still passes
+  // the constant (so this also proves BASE/STANDARD/ALL currently equal
+  // 0/1/2); the EXPECTED side is what breaks the tautology, since a
+  // renumbered constant would move the function's real output away from
+  // this fixed literal.
+  it('pins the literal tier numbers 0/1/2 directly, not the SEAMARK_DISPLAY_TIER_* constants', () => {
+    expect(seamarkRoutineFilter(SEAMARK_DISPLAY_TIER_BASE)).toEqual([
+      'all',
+      ['<=', ['get', 'displayTier'], 0],
+      ['!', ['get', 'hazard']],
+    ]);
+    expect(seamarkHazardFilter(SEAMARK_DISPLAY_TIER_STANDARD)).toEqual([
+      'all',
+      ['<=', ['get', 'displayTier'], 1],
+      ['get', 'hazard'],
+    ]);
+    expect(seamarkRoutineFilter(SEAMARK_DISPLAY_TIER_ALL)).toEqual([
+      'all',
+      ['<=', ['get', 'displayTier'], 2],
+      ['!', ['get', 'hazard']],
     ]);
   });
 });

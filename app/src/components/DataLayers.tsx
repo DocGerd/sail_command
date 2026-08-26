@@ -780,11 +780,12 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
 
   // #353 PR2 (mapping corrected #513 F1/F2): the display-category filter.
   // The tier cut is cumulative (SEAMARK_DISPLAY_TIER_ALL reproduces the
-  // unfiltered pre-#353 layer exactly), and the Base tier
-  // (isolatedDanger/cardinal/lateral/safeWater/lightMajor) is NEVER excluded
-  // by any selection — see seamarkGlyphs.ts's `seamarkDisplayTier` doc
-  // comment for the full MSC.232(82)-informed mapping and why Base is a
-  // product-specific floor rather than a literal ECDIS Display Base.
+  // unfiltered pre-#353 feature set, now split across the two layers), and
+  // the Base tier (isolatedDanger/cardinal/lateral/safeWater/lightMajor) is
+  // NEVER excluded by any selection — see seamarkGlyphs.ts's
+  // `seamarkDisplayTier` doc comment for the full MSC.232(82)-informed
+  // mapping and why Base is a product-specific floor rather than a literal
+  // ECDIS Display Base.
   // #682: the SAME tier cut now applies to TWO layers, each additionally
   // partitioned on the `hazard` boolean — seamarkRoutineFilter/
   // seamarkHazardFilter (seamarkGeoJson.ts) so a feature renders on exactly
