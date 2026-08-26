@@ -86,6 +86,27 @@ select {
   min-height: 40px;
 }
 
+/* #710: text/number/datetime fields render bare native chrome inside an
+   otherwise-designed panel (Card/Button/Chip/Disclosure all draw the same
+   1px --sc-border box + 10px-ish radius per spec §3.2) — this is the one
+   base rule that never got that treatment. Excludes checkbox AND radio
+   (native round/square controls a bordered box would visually cage — the
+   issue's own proposed selector named only checkbox; radio is the same
+   hazard by the same reasoning, `.boat-option-radio` is a type=radio) and
+   range (`.route-layer-time-slider` — a bordered/padded box around a native
+   slider track is not the "input" this issue means). `min-height` stays on
+   the UNSPLIT rule above deliberately: splitting it here would additionally
+   change checkbox/radio/range sizing, which is the #231 fix's own concern,
+   not this one's. */
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
+select {
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  background: var(--sc-bg);
+  color: var(--sc-fg);
+  padding: 0 0.6rem;
+}
+
 /* ---- App shell: full-viewport map with overlaid header/banners/sheet ---- */
 
 .app-shell {
@@ -319,13 +340,17 @@ select {
   color: var(--sc-banner-error-fg);
 }
 
+/* #708: no min-* override here any more — the global `button { min-height:
+   44px; min-width: 44px }` floor (top of this file, "Cockpit-use,
+   boat-glove-friendly touch targets") now applies unmodified. The 32px
+   override this rule used to carry was 27% under that floor, on the ×
+   dismiss for six App.tsx banner instances plus two in ReloadPrompt.tsx —
+   the app's own error/warning surface. */
 .banner-dismiss {
   background: transparent;
   border: none;
   font-size: 1.1rem;
   line-height: 1;
-  min-width: 32px;
-  min-height: 32px;
 }
 
 /* ReloadPrompt's needRefresh banner: a labeled action (not a dismiss ×),
@@ -401,8 +426,25 @@ select {
   font-weight: 600;
 }
 
+/* #706: the app's most-used control had no focus ring at all before this —
+   `-2px` (inset), not `.rig-tabs button:focus-visible`'s `2px`: these
+   buttons sit flush edge-to-edge in one row with zero gap, so an outward
+   ring would overlap the neighbouring tab's own ring; same reasoning as
+   `.panel-resizer:focus-visible`'s `-2px` for a control flush against an
+   edge. */
+.app-tabs button:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: -2px;
+}
+
+/* #708: `.app-panel` is a nested `overflow-y: auto` scrollport inside the
+   `height: 100dvh; overflow: hidden` shell (`.app-shell`) — the classic shape
+   where an overscrolled nested box rubber-bands the fixed page (and the map
+   behind it) on iOS Safari. `overscroll-behavior` appeared zero times in this
+   stylesheet before this line. */
 .app-panel {
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 0.75rem;
 }
 
@@ -586,6 +628,24 @@ select {
   overflow-y: auto;
 }
 
+/* #706: map-chrome checkboxes (Wassertiefen/Seezeichen toggles here, plus
+   the annotations/wind-barbs/alt-rig toggles inside
+   `.route-layer-controls-disclosure`'s body below) had no `accent-color`,
+   so their tick fill rendered in the browser/OS default accent — a
+   different blue from every other accented control in the app — and no
+   `:focus-visible` ring at all. `.boat-option-radio` is the only prior
+   `accent-color` use in this file; this reuses the same token. */
+.data-layer-controls input[type='checkbox'],
+.route-layer-controls-disclosure input[type='checkbox'] {
+  accent-color: var(--sc-accent);
+}
+
+.data-layer-controls input[type='checkbox']:focus-visible,
+.route-layer-controls-disclosure input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
 /* #598: collapsible legend for the #492 navigability hatch. Reachable with
    NO plan (the hatch itself has no other opt-in), default-collapsed. Bare
    `<details>`, mirroring `.route-legend`'s own convention rather than the
@@ -758,6 +818,12 @@ select {
   align-items: center;
   gap: 0.3rem;
   cursor: pointer;
+}
+
+/* #706: bare <details><summary> disclosures had no focus ring. */
+.depth-legend > summary:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: -2px;
 }
 
 .depth-legend > summary::before {
@@ -1807,6 +1873,28 @@ select {
   .maplibregl-ctrl-attrib a {
     color: var(--sc-fg);
   }
+
+  /* #718: the "i" attribution-TOGGLE button independently hardcodes a
+     translucent-white circle behind an implicit-black SVG glyph (read
+     against maplibre-gl 6.5.0, dist/maplibre-gl.css:
+     `.maplibregl-ctrl-attrib-button{background-image:url("data:image/svg+
+     xml...");background-color:hsla(0,0%,100%,.5)...}`), toggled visible via
+     `.maplibregl-compact .maplibregl-ctrl-attrib-button{display:block}` —
+     the SAME `.compact` superset selector the container rule above already
+     reasons about (covers both the collapsed steady state and the
+     one-shot-expanded `.compact-show` state, since `-show` never appears
+     without `.compact` already present). No CSS colour property can
+     retarget a background-image data URI's own embedded fill, so this
+     inverts the whole button instead of recolouring it: the translucent
+     white background (hsla(0,0%,100%,.5)) inverts to translucent black — a
+     soft dark disc against the dark chrome — and the black SVG glyph
+     inverts to white, readable against it. Accepted residual: `:focus`'s
+     `#0096ff` box-shadow (dist/maplibre-gl.css) inverts too, to its RGB
+     complement (a muted orange) — harmless, focus is rare on a touch
+     control and stays clearly visible either colour. */
+  .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
+  }
 }
 
 /* AIS status chip (#25) — a small map overlay on the Live tab, top-centered so
@@ -1891,6 +1979,13 @@ select {
 .route-layer-time-slider input[type='range'] {
   flex: 1 1 auto;
   min-width: 0;
+  accent-color: var(--sc-accent);
+}
+
+/* #706: no focus ring on this control before. */
+.route-layer-time-slider input[type='range']:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
 }
 
 /* Collapsible route legend (#46a), rendered inside .route-layer-controls. */
@@ -1901,6 +1996,12 @@ select {
   align-items: center;
   gap: 0.3rem;
   cursor: pointer;
+}
+
+/* #706: bare <details><summary> disclosures had no focus ring. */
+.route-legend > summary:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: -2px;
 }
 
 /* display:flex drops the native ::marker disclosure triangle, so give an
@@ -2600,6 +2701,12 @@ select {
   accent-color: var(--sc-accent);
 }
 
+/* #706: the one native radio group had no focus ring. */
+.boat-option-radio:focus-visible {
+  outline: 2px solid var(--sc-accent);
+  outline-offset: 2px;
+}
+
 .boat-option-label {
   display: flex;
   flex-wrap: wrap;
@@ -2610,6 +2717,16 @@ select {
   min-height: 2.75rem;
   align-content: center;
   cursor: pointer;
+}
+
+/* #706: same color-mix formula `.boat-option-selected` uses for its
+   background, at a lower percentage so hover reads as a lighter preview
+   rather than competing with the selected state. Deliberately `:hover` on
+   the label alone, not `.boat-option:has(:hover)` — this repo has a
+   documented MQ3/MQ4 + :has() support-floor trap (see app.css's own
+   banner-clearance rule comment). */
+.boat-option-label:hover {
+  background: color-mix(in srgb, var(--sc-accent) 4%, transparent);
 }
 
 .boat-option-name {
@@ -3136,8 +3253,17 @@ select {
   padding: 0.3rem 0;
 }
 
+/* #708: flex's default `min-width: auto` floors this at its own content
+   size, so at narrow viewports a via row (this coord + three 44px ghost
+   buttons) overflows rather than shrinking — the same fix
+   `.harbor-picker-caveat` two rules below already applies, with the same
+   reasoning in its own comment. `overflow-wrap: anywhere` (not the
+   nowrap/ellipsis trio) so the full coordinate always stays readable rather
+   than being truncated — this is safety-adjacent position data, not a label. */
 .planner-via-coord {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
