@@ -64,9 +64,11 @@ typed failures (`calm-motor-off` 55, `unreachable` 54, `beyond-horizon` 28,
 `snap-failed-destination` 3). The three AGGREGATE figures (`ok` 74,
 `ok+shallow` 83, 140 typed failures) match the record at `0c494f9` — that
 record carries only those three, not the per-cause split, so this is agreement
-on what both measured, NOT a full match. It is also **not** the "stronger
-control" CLAUDE.md defines: that requires matching per-arm sha256 PREFIXES
-across machine/day/merge-base, and no prefixes are on record for `0c494f9`.
+on what both measured, NOT a full match. It is also **not** the stronger,
+cross-machine control: matching per-arm sha256 prefixes across
+machine/day/merge-base would prove the baseline stable against the very
+thing that could invalidate it, rather than merely deterministic against
+itself — and no prefixes are on record for `0c494f9`.
 
 Note `margin-zero`'s prefix here (`fa5e30f1`) differs from the `44f1e2…`
 recorded at the PR #488 review. The ARM DEFINITION is byte-identical between
@@ -94,11 +96,12 @@ That config is necessary, not decoration: vitest 4 has **no `--include` flag**
 `vitest@4.1.10`), and `--dir` only narrows the scan — neither can widen the
 root config's `include`, which by construction excludes this directory.
 
-Two consequences worth knowing: `npm --prefix app run lint` is literally
-`eslint src`, so these files are not linted by CI (same status as `app/e2e/**`,
-issue #420); and they are typechecked only because `tsconfig.test.json`'s
-`include` names `sweep/**/*.ts` — they need node builtins, like the other
-entries there.
+Two consequences worth knowing: `npm --prefix app run lint` is `eslint src
+e2e` (`app/package.json`'s `lint` script), which does not name this
+directory — so these files are not linted by CI, unlike `app/e2e/**`, which
+PR #508 added to that script and closed issue #420 (2026-08-11); and they
+are typechecked only because `tsconfig.test.json`'s `include` names
+`sweep/**/*.ts` — they need node builtins, like the other entries there.
 
 ## Running it
 
@@ -260,7 +263,7 @@ no longer comparable. **Add an arm rather than editing one.**
 
 **Covers only the ORIGINAL six arms (198 of the 297 plans this harness now
 produces).** No baseline has been recorded for the three #452 arms below
-(`margin-zero`, `relaxation-dense`, `tier4-forcing`) — the BASE double-run
+(`margin-zero`, `relaxation-dense`, `margin-extreme`) — the BASE double-run
 control for those was deliberately deferred to whenever a real
 depth-relaxation change is actually implemented, so it can be recorded
 against that change's own merge-base rather than a `develop` that keeps
