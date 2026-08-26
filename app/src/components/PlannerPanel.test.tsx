@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { useState } from 'react';
 import { I18nProvider } from '../i18n';
 import { en } from '../i18n/dict.en';
 import { formatTime, toLocalInputValue } from '../lib/format';
@@ -461,6 +462,69 @@ describe('PlannerPanel', () => {
     await waitFor(() =>
       expect(within(destinationSection).getByRole('button', { name: 'Change' })).toHaveFocus(),
     );
+  });
+
+  // #695 (PR #736 review Minor): the four rows above all use a re-pick (the
+  // endpoint already had a value, "Change" was clicked to reopen the
+  // search), where `onPickOrigin` being a stub in `baseProps` doesn't matter
+  // — `origin` was already truthy. A first-ever pick needs the picked value
+  // to actually flow back into the `origin` prop for the Change button to
+  // mount at all, so this row wraps PlannerPanel in a tiny stateful harness
+  // that plays the role App.tsx plays in production.
+  it('#695: returns focus to the origin Change button after a first-ever pick (previously null origin)', async () => {
+    localStorage.setItem('sc-lang', 'en');
+    function Harness() {
+      const [origin, setOrigin] = useState<PickedPoint | null>(null);
+      return <PlannerPanel {...baseProps({ origin, onPickOrigin: setOrigin })} />;
+    }
+    render(
+      <I18nProvider>
+        <Harness />
+      </I18nProvider>,
+    );
+    const originSection = screen.getByRole('region', { name: 'Origin' });
+    fireEvent.change(within(originSection).getByRole('combobox'), { target: { value: 'Marstal' } });
+    fireEvent.click(within(originSection).getByRole('option', { name: 'Marstal' }));
+    await waitFor(() =>
+      expect(within(originSection).getByRole('button', { name: 'Change' })).toHaveFocus(),
+    );
+  });
+
+  // #695 (PR #736 review Blocker): an earlier version of the fix keyed
+  // restoration off a PROP diff (`!origin || editingOrigin` transitioning),
+  // which also fired — and stole focus — whenever `origin`/`destination`
+  // changed for any reason OTHER than a HarborPicker exit, e.g. App.tsx's
+  // session/plan-restore sync effect setting them on cold load. This row
+  // reproduces exactly that shape directly against PlannerPanel: an origin
+  // prop change via `rerender`, with no picker interaction at all, must
+  // leave focus wherever it already was.
+  it('#695: does not move focus when the origin prop changes without a HarborPicker interaction', () => {
+    localStorage.setItem('sc-lang', 'en');
+    const { rerender } = render(
+      <I18nProvider>
+        <PlannerPanel {...baseProps({ origin: null })} />
+      </I18nProvider>,
+    );
+    const departureField = screen.getByLabelText('Departure');
+    departureField.focus();
+    expect(departureField).toHaveFocus();
+
+    rerender(
+      <I18nProvider>
+        <PlannerPanel
+          {...baseProps({
+            origin: {
+              source: 'harbor',
+              point: FLENSBURG.snap,
+              harborId: FLENSBURG.id,
+              label: 'Flensburg',
+            },
+          })}
+        />
+      </I18nProvider>,
+    );
+
+    expect(departureField).toHaveFocus();
   });
 
   it('keeps the combobox for a first, still-unselected endpoint when the search is dismissed', () => {

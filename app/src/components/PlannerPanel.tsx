@@ -176,45 +176,44 @@ export default function PlannerPanel({
   const [editingOrigin, setEditingOrigin] = useState(false);
   const [editingDestination, setEditingDestination] = useState(false);
 
-  // #695: the HarborPicker combobox unmounts on every select/cancel/map-tap
-  // exit, and nothing restored focus, so it dropped to <body>. An endpoint's
-  // combobox is showing whenever it has no committed point yet OR its own
-  // "editing" flag is set; we track that boolean's PREVIOUS value per
-  // endpoint and, when it flips from showing to not-showing (the combobox
-  // just unmounted and the collapsed row + "Ändern"/"Change" button just
-  // mounted in its place), focus that button once it is back in the DOM.
-  // Keyed on the SHOWING flag rather than only `editingOrigin`/
-  // `editingDestination` so this also covers a FIRST-EVER pick (origin/
-  // destination null throughout, no editing-flag transition at all) as well
-  // as the re-pick flow the issue's own workflow example describes.
+  // #695: the HarborPicker combobox unmounts on every select/cancel exit, and
+  // nothing restored focus, so it dropped to <body>. Deliberately driven from
+  // the FOUR exit-path callbacks themselves (onSelect/onCancel below), never
+  // from a prop diff: an earlier version of this fix keyed restoration off
+  // `!origin || editingOrigin` transitioning true->false, which ALSO fired
+  // whenever `origin`/`destination` changed for any OTHER reason — including
+  // App.tsx's session/plan-restore sync effect setting them on cold load or
+  // on loading a different saved plan mid-session — stealing focus from
+  // whatever the user was doing (PR #736 review Blocker; reproduced live: a
+  // plain prop change while focus sat on the departure field yanked it to
+  // the Change button). A prop diff can only guess why the prop changed; the
+  // callback knows the user just acted.
   //
-  // Refs a wrapping `<section>`, not the button itself: `Button` (the UI
-  // primitive) is a plain function component, not `forwardRef`-wrapped, so
-  // `ref={...}` on `<Button>` fails to typecheck (`ref` is not in
-  // `ButtonProps`) — see this PR's own verification. Querying for the
-  // rendered `.sc-btn-ghost` class inside the section is what the "Ändern"/
-  // "Change" row-collapse button always renders as (the ONLY other button in
-  // that section, "Pick on map", is `variant="secondary"` -> `.sc-btn-secondary`),
-  // and by the time this effect runs the picker has already unmounted, so
-  // there is no ambiguity from a transient ghost button inside HarborPicker.
-  const originSectionRef = useRef<HTMLElement>(null);
-  const destinationSectionRef = useRef<HTMLElement>(null);
-  const showingOriginPicker = !origin || editingOrigin;
-  const showingDestinationPicker = !destination || editingDestination;
-  const wasShowingOriginPickerRef = useRef(showingOriginPicker);
-  const wasShowingDestinationPickerRef = useRef(showingDestinationPicker);
+  // `pendingFocusRef` is set by the callback (a ref write, not state — no
+  // setState-inside-effect cascade) and consumed by the no-deps effect
+  // below, which runs after every commit and is a no-op whenever the ref is
+  // null. The commit that mounts the "Ändern"/"Change" button is guaranteed
+  // to already have happened by the time it runs non-null, because every
+  // caller also fires a REAL state update in the same synchronous handler
+  // (setEditingOrigin/setEditingDestination, or the parent's onPickOrigin/
+  // onPickDestination prop callback) that React batches together with the
+  // ref write's enclosing render — so first-ever pick (origin/destination
+  // still null until the parent's callback runs) is covered too, not just
+  // the re-pick flow.
+  const pendingFocusRef = useRef<'origin' | 'destination' | null>(null);
   useEffect(() => {
-    if (wasShowingOriginPickerRef.current && !showingOriginPicker) {
-      originSectionRef.current?.querySelector<HTMLButtonElement>('.sc-btn-ghost')?.focus();
-    }
-    wasShowingOriginPickerRef.current = showingOriginPicker;
-  }, [showingOriginPicker]);
-  useEffect(() => {
-    if (wasShowingDestinationPickerRef.current && !showingDestinationPicker) {
-      destinationSectionRef.current?.querySelector<HTMLButtonElement>('.sc-btn-ghost')?.focus();
-    }
-    wasShowingDestinationPickerRef.current = showingDestinationPicker;
-  }, [showingDestinationPicker]);
+    const target = pendingFocusRef.current;
+    if (!target) return;
+    pendingFocusRef.current = null;
+    // Identity-based, not style-based (PR #736 review Major): an earlier
+    // version queried the rendered `.sc-btn-ghost` class, which only
+    // uniquely identified the Change button because "Pick on map" happens to
+    // be `variant="secondary"` today — nothing pins that, and a second ghost
+    // button added to the section later would silently steal focus via
+    // querySelector's first-match-in-document-order semantics. The two
+    // Change buttons instead carry a `data-focus-target` unique per endpoint.
+    document.querySelector<HTMLButtonElement>(`[data-focus-target="${target}-change"]`)?.focus();
+  });
 
   // GPX import (#3): a hidden file input triggered by the Button primitive.
   // Parsing is pure local file handling (available offline); only the later
@@ -449,11 +448,7 @@ export default function PlannerPanel({
           )}
         </section>
 
-        <section
-          ref={originSectionRef}
-          aria-label={t('planner.origin.label')}
-          className="planner-endpoint"
-        >
+        <section aria-label={t('planner.origin.label')} className="planner-endpoint">
           <h3 className="sc-section-title">{t('planner.origin.label')}</h3>
           {origin && !editingOrigin ? (
             <div className="planner-endpoint-selected">
@@ -464,7 +459,11 @@ export default function PlannerPanel({
                   <p className="endpoint-caveat">{originHarbor.approachNote[lang]}</p>
                 )}
               </div>
-              <Button variant="ghost" onClick={() => setEditingOrigin(true)}>
+              <Button
+                data-focus-target="origin-change"
+                variant="ghost"
+                onClick={() => setEditingOrigin(true)}
+              >
                 {t('planner.change')}
               </Button>
             </div>
@@ -475,12 +474,16 @@ export default function PlannerPanel({
               onSelect={(h) => {
                 remember(h.id);
                 setEditingOrigin(false);
+                pendingFocusRef.current = 'origin';
                 onPickOrigin(harborToPickedPoint(h, lang));
               }}
               // Abandoning a re-pick over a committed origin collapses back to
               // the row (no-op on a first, still-unselected pick — origin stays
               // null, so the combobox keeps showing).
-              onCancel={() => setEditingOrigin(false)}
+              onCancel={() => {
+                setEditingOrigin(false);
+                pendingFocusRef.current = 'origin';
+              }}
             />
           )}
           <Button
@@ -494,11 +497,7 @@ export default function PlannerPanel({
           </Button>
         </section>
 
-        <section
-          ref={destinationSectionRef}
-          aria-label={t('planner.destination.label')}
-          className="planner-endpoint"
-        >
+        <section aria-label={t('planner.destination.label')} className="planner-endpoint">
           <h3 className="sc-section-title">{t('planner.destination.label')}</h3>
           {destination && !editingDestination ? (
             <div className="planner-endpoint-selected">
@@ -513,7 +512,11 @@ export default function PlannerPanel({
                   <p className="endpoint-caveat">{destinationHarbor.approachNote[lang]}</p>
                 )}
               </div>
-              <Button variant="ghost" onClick={() => setEditingDestination(true)}>
+              <Button
+                data-focus-target="destination-change"
+                variant="ghost"
+                onClick={() => setEditingDestination(true)}
+              >
                 {t('planner.change')}
               </Button>
             </div>
@@ -524,9 +527,13 @@ export default function PlannerPanel({
               onSelect={(h) => {
                 remember(h.id);
                 setEditingDestination(false);
+                pendingFocusRef.current = 'destination';
                 onPickDestination(harborToPickedPoint(h, lang));
               }}
-              onCancel={() => setEditingDestination(false)}
+              onCancel={() => {
+                setEditingDestination(false);
+                pendingFocusRef.current = 'destination';
+              }}
             />
           )}
           <Button
