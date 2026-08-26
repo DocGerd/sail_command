@@ -176,6 +176,46 @@ export default function PlannerPanel({
   const [editingOrigin, setEditingOrigin] = useState(false);
   const [editingDestination, setEditingDestination] = useState(false);
 
+  // #695: the HarborPicker combobox unmounts on every select/cancel/map-tap
+  // exit, and nothing restored focus, so it dropped to <body>. An endpoint's
+  // combobox is showing whenever it has no committed point yet OR its own
+  // "editing" flag is set; we track that boolean's PREVIOUS value per
+  // endpoint and, when it flips from showing to not-showing (the combobox
+  // just unmounted and the collapsed row + "Ändern"/"Change" button just
+  // mounted in its place), focus that button once it is back in the DOM.
+  // Keyed on the SHOWING flag rather than only `editingOrigin`/
+  // `editingDestination` so this also covers a FIRST-EVER pick (origin/
+  // destination null throughout, no editing-flag transition at all) as well
+  // as the re-pick flow the issue's own workflow example describes.
+  //
+  // Refs a wrapping `<section>`, not the button itself: `Button` (the UI
+  // primitive) is a plain function component, not `forwardRef`-wrapped, so
+  // `ref={...}` on `<Button>` fails to typecheck (`ref` is not in
+  // `ButtonProps`) — see this PR's own verification. Querying for the
+  // rendered `.sc-btn-ghost` class inside the section is what the "Ändern"/
+  // "Change" row-collapse button always renders as (the ONLY other button in
+  // that section, "Pick on map", is `variant="secondary"` -> `.sc-btn-secondary`),
+  // and by the time this effect runs the picker has already unmounted, so
+  // there is no ambiguity from a transient ghost button inside HarborPicker.
+  const originSectionRef = useRef<HTMLElement>(null);
+  const destinationSectionRef = useRef<HTMLElement>(null);
+  const showingOriginPicker = !origin || editingOrigin;
+  const showingDestinationPicker = !destination || editingDestination;
+  const wasShowingOriginPickerRef = useRef(showingOriginPicker);
+  const wasShowingDestinationPickerRef = useRef(showingDestinationPicker);
+  useEffect(() => {
+    if (wasShowingOriginPickerRef.current && !showingOriginPicker) {
+      originSectionRef.current?.querySelector<HTMLButtonElement>('.sc-btn-ghost')?.focus();
+    }
+    wasShowingOriginPickerRef.current = showingOriginPicker;
+  }, [showingOriginPicker]);
+  useEffect(() => {
+    if (wasShowingDestinationPickerRef.current && !showingDestinationPicker) {
+      destinationSectionRef.current?.querySelector<HTMLButtonElement>('.sc-btn-ghost')?.focus();
+    }
+    wasShowingDestinationPickerRef.current = showingDestinationPicker;
+  }, [showingDestinationPicker]);
+
   // GPX import (#3): a hidden file input triggered by the Button primitive.
   // Parsing is pure local file handling (available offline); only the later
   // Plan action needs network. On success we prefill the planner inputs and
@@ -409,7 +449,11 @@ export default function PlannerPanel({
           )}
         </section>
 
-        <section aria-label={t('planner.origin.label')} className="planner-endpoint">
+        <section
+          ref={originSectionRef}
+          aria-label={t('planner.origin.label')}
+          className="planner-endpoint"
+        >
           <h3 className="sc-section-title">{t('planner.origin.label')}</h3>
           {origin && !editingOrigin ? (
             <div className="planner-endpoint-selected">
@@ -450,7 +494,11 @@ export default function PlannerPanel({
           </Button>
         </section>
 
-        <section aria-label={t('planner.destination.label')} className="planner-endpoint">
+        <section
+          ref={destinationSectionRef}
+          aria-label={t('planner.destination.label')}
+          className="planner-endpoint"
+        >
           <h3 className="sc-section-title">{t('planner.destination.label')}</h3>
           {destination && !editingDestination ? (
             <div className="planner-endpoint-selected">
