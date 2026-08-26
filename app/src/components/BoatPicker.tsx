@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { Settings } from '../types';
 import { BOATS, boatById, type BoatDef, type BoatId } from '../data/boats';
 import { useLang, useT } from '../i18n';
@@ -211,13 +211,25 @@ export default function BoatPicker({
   // handleSelect: at the point handleSelect calls setNotice the DOM still
   // shows the PREVIOUS (possibly empty, zero-height per the "costs no layout
   // while empty" CSS rule — test/boatPickerNoticeLiveRegion.test.ts) state,
-  // so scrollIntoView measured then would target the wrong box. This effect
-  // fires after React has committed the notice's real (expanded) text, so it
-  // scrolls to where the announcement actually ends up. `notice` is null on
-  // an unclamped switch (see the branch below), so this never fires then —
-  // matching the issue's own "only when clamped" requirement without a
-  // separate boolean.
-  useEffect(() => {
+  // so scrollIntoView measured then would target the wrong box. `notice` is
+  // null on an unclamped switch (see the branch below), so this never fires
+  // then — matching the issue's own "only when clamped" requirement without
+  // a separate boolean.
+  //
+  // useLayoutEffect, not useEffect (#699 REVIEW FIX, MINOR): `noticeRef` is
+  // this component's OWN JSX descendant, so it is already attached by the
+  // time either hook fires — not the sibling-ref hazard PanelResizer.tsx's
+  // own comment documents. A passive `useEffect` runs AFTER the browser's
+  // next paint, so a clamping switch could paint the expanded notice and
+  // only scroll a frame later; `useLayoutEffect` runs synchronously after
+  // the DOM mutation but BEFORE that paint, closing the flash while still
+  // seeing the real (post-commit, non-empty) box `useEffect` did. REASONED,
+  // NOT MEASURED: this rests on React's documented effect-timing contract,
+  // not on an observed flash — the real catalogue has only 3 boats, so the
+  // notice already sits fully in view with nothing to visibly scroll past,
+  // and no tool available here captures frame-level paint timing to show
+  // the difference on a card that DOES overflow.
+  useLayoutEffect(() => {
     if (notice) noticeRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [notice]);
 

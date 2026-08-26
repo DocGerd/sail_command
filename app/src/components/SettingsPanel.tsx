@@ -1,7 +1,8 @@
 import type { Ref } from 'react';
 import type { Settings } from '../types';
-import { useT } from '../i18n';
+import { useLang, useT } from '../i18n';
 import { isValidMmsi } from '../lib/mmsi';
+import { formatDepthM } from '../lib/depthDisclosure';
 import {
   SEAMARK_DISPLAY_TIER_ALL,
   SEAMARK_DISPLAY_TIER_BASE,
@@ -120,6 +121,7 @@ export default function SettingsPanel({
   titleRef,
 }: SettingsPanelProps) {
   const t = useT();
+  const [lang] = useLang();
   const boat = boatById(boatId);
   // #699: computed once and reused for both the NumericField's spec and its
   // help text's {min}/{max} interpolation, rather than calling
@@ -188,8 +190,8 @@ export default function SettingsPanel({
           value={value}
           onChange={onChange}
           help={t('options.safetyDepth.help', {
-            min: safetyDepthField.min,
-            max: safetyDepthField.max,
+            min: formatDepthM(safetyDepthField.min, lang),
+            max: formatDepthM(safetyDepthField.max, lang),
           })}
         />
         <NumericField
