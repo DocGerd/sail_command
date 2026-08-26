@@ -21,7 +21,11 @@ grid = np.frombuffer((OUT / "mask.bin").read_bytes(), dtype=np.uint8).reshape(
 def rc_of(lat: float, lon: float) -> tuple[int, int]:
     row = int((lat - meta["south"]) / (meta["north"] - meta["south"]) * meta["rows"])
     col = int((lon - meta["west"]) / (meta["east"] - meta["west"]) * meta["cols"])
-    assert 0 <= row < meta["rows"] and 0 <= col < meta["cols"], f"probe {lat},{lon} maps outside the mask grid"
+    # #613: was a bare `assert` - Python strips those under -O/PYTHONOPTIMIZE,
+    # silently disabling this mask-grid-bounds check. `if not (...): raise` is
+    # not affected by either flag.
+    if not (0 <= row < meta["rows"] and 0 <= col < meta["cols"]):
+        raise AssertionError(f"probe {lat},{lon} maps outside the mask grid")
     return row, col
 
 
@@ -144,24 +148,31 @@ GATE_DERIVATION_CASES: list[tuple[float, float]] = [
 ]
 for _draft_m, _gate_m in GATE_DERIVATION_CASES:
     _got = default_gate_m(_draft_m)
-    assert _got == _gate_m, f"gate derivation drifted: draft {_draft_m} m -> {_got} m, expected {_gate_m} m"
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE). This is
+    # the gate-derivation cross-check verifyMaskBoatGate.test.ts relies on
+    # this file reproducing - it must be unconditional.
+    if _got != _gate_m:
+        raise AssertionError(f"gate derivation drifted: draft {_draft_m} m -> {_got} m, expected {_gate_m} m")
 
 
 def dm(x: float) -> int:
     """Decimetre key for a value that is ALREADY a whole decimetre.
 
     The round() here is NOT quantising - that is ceil_to_decimetre's job two
-    functions up, and must never be a round. It only turns a float the assert
-    has already bounded to within 1e-6 of an integer into that integer, where
-    int() would truncate 29.9999999 to 29. The assert is what keeps the two
-    roles from being confused: hand this a half-decimetre and banker's rounding
-    would key it to the nearest even one silently, so it aborts instead.
+    functions up, and must never be a round. It only turns a float the check
+    below has already bounded to within 1e-6 of an integer into that integer,
+    where int() would truncate 29.9999999 to 29. That check is what keeps the
+    two roles from being confused: hand this a half-decimetre and banker's
+    rounding would key it to the nearest even one silently, so it aborts
+    instead.
     """
     tenths = x * 10
     key = int(round(tenths))
-    assert abs(tenths - key) < 1e-6, (
-        f"{x} m is not a whole decimetre - the mask encodes decimetres and every gate must be one"
-    )
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE). This is
+    # what keeps the rounding role (line above) and the drift-detection role
+    # (here) from being confused - it must fire unconditionally.
+    if abs(tenths - key) >= 1e-6:
+        raise AssertionError(f"{x} m is not a whole decimetre - the mask encodes decimetres and every gate must be one")
     return key
 
 
@@ -399,7 +410,11 @@ for b in CATALOGUE_BOATS:
     gate_m = b["gateM"]
     print(f"\n=== {b['id']}: derived gate {gate_m:.1f} m (draft {b['draftM']:.2f} m + tolerance {TOLERANCE_M} m) ===")
     seed_cells = SEED_COMPONENT_CELLS[dm(gate_m)]
-    assert seed_cells != 0, f"connectivity seed ({SEED_LAT},{SEED_LON}) is not itself navigable at {gate_m} m"
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE). Without
+    # this, a bad connectivity seed would silently produce a false
+    # "disconnected" verdict for every harbor at this gate.
+    if seed_cells == 0:
+        raise AssertionError(f"connectivity seed ({SEED_LAT},{SEED_LON}) is not itself navigable at {gate_m} m")
     print(f"open-water seed component: {seed_cells} cells at >= {gate_m} m")
 
     connectivity_report = []
@@ -407,9 +422,10 @@ for b in CATALOGUE_BOATS:
         hid = h["id"]
         exception_m = CONNECTIVITY_EXCEPTIONS_M.get((hid, gate_m))
         if exception_m is not None:
-            assert "approachNote" in h, (
-                f"CONNECTIVITY_EXCEPTIONS_M[({hid}, {gate_m})] has no approachNote to justify it"
-            )
+            # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE),
+            # which would silently allow an undocumented depth exception.
+            if "approachNote" not in h:
+                raise AssertionError(f"CONNECTIVITY_EXCEPTIONS_M[({hid}, {gate_m})] has no approachNote to justify it")
             if connected_at(hid, gate_m):
                 failures.append(
                     f"EXCEPTION {hid} is not needed at gate {gate_m} m - it reaches open water unaided; "
