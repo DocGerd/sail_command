@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
-  seamarkDisplayFilter,
   seamarkFeatureCollectionWithIcons,
   seamarkHazardFilter,
   seamarkPopupAnchor,
@@ -118,33 +117,15 @@ describe('seamarkFeatureCollectionWithIcons', () => {
   });
 });
 
-// #353 PR2: the display-category filter expression, unit-tested directly so
-// a typo'd MapLibre expression fails at test time rather than only at
-// runtime (mirrors the #144 rationale on SEAMARKS_LAYOUT's own pin below —
-// enum/expression shapes typo silently past `tsc`).
-describe('seamarkDisplayFilter (#353 PR2)', () => {
-  it('is cumulative: ALL reproduces the pre-#353 "show everything" shape (tier <= 2 matches every real tier)', () => {
-    expect(seamarkDisplayFilter(SEAMARK_DISPLAY_TIER_ALL)).toEqual([
-      '<=',
-      ['get', 'displayTier'],
-      SEAMARK_DISPLAY_TIER_ALL,
-    ]);
-  });
-
-  it('BASE (0) only matches features whose own displayTier is 0', () => {
-    expect(seamarkDisplayFilter(SEAMARK_DISPLAY_TIER_BASE)).toEqual([
-      '<=',
-      ['get', 'displayTier'],
-      0,
-    ]);
-  });
-});
-
-// #682: the routine/hazard layer split. Pinned by literal AST shape, same
-// convention as seamarkDisplayFilter above (this repo's tests can't evaluate
-// a MapLibre expression tree without a real style engine — the e2e order
-// comparison in datalayers.spec.ts is what exercises these filters against
-// real rendered features).
+// #682: the routine/hazard layer split. Pinned by literal AST shape (this
+// repo's tests can't evaluate a MapLibre expression tree without a real
+// style engine — the e2e order comparison in datalayers.spec.ts is what
+// exercises these filters against real rendered features). Between the two
+// `it`s below, the `['<=', ['get', 'displayTier'], tier]` shape is pinned at
+// all three real tier values (BASE, STANDARD, ALL) — the coverage the
+// former standalone `seamarkDisplayFilter` describe block gave, before that
+// export was deleted as dead code (#682 review: it had no production call
+// site — see seamarkDisplayTierExpression's own doc comment).
 describe('seamarkRoutineFilter / seamarkHazardFilter (#682)', () => {
   it('each ANDs the SAME display-tier cut with the opposite half of `hazard`', () => {
     expect(seamarkRoutineFilter(SEAMARK_DISPLAY_TIER_STANDARD)).toEqual([

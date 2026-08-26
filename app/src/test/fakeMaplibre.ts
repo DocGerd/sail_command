@@ -23,14 +23,26 @@ import { vi } from 'vitest';
 // `node_modules/maplibre-gl/dist/maplibre-gl.d.ts:13727`, re-derived against
 // the installed 6.5.0, matched to `app/package-lock.json`'s pin — #392's
 // documented trap) — DataLayers.tsx's seamark click/hover handlers now use
-// it to cover both `sc-seamarks*` layers with one registration. This fake
-// models that by registering the SAME handler under EACH layer id's own
-// bucket key, so `fireLayerEvent(type, oneOfTheLayerIds, event)` reaches it
-// regardless of which id in the array is fired — matching real MapLibre's
-// `_createDelegatedListener`, which re-queries `queryRenderedFeatures` across
-// every given layer and merges the results into one `e.features` before
-// invoking the listener once (this fake does not model that merge; tests
-// drive `e.features` directly via `fireLayerEvent`'s `event` argument).
+// it to cover both `sc-seamarks*` layers with one registration.
+//
+// A delegated (layer-scoped) registration is stored as ONE group covering
+// every id it was given, in a separate `delegated` array below — NOT as one
+// bucket entry per id — because real MapLibre's own `_removeDelegatedListener`
+// (`ui/map.ts`, same version) only removes a registration on an EXACT-SET
+// match: `delegatedListener.layers.length === layerIds.length &&
+// delegatedListener.layers.every((id) => layerIds.includes(id))`. A `off`
+// call naming a SUBSET of the original layers is therefore a NO-OP in real
+// MapLibre — the whole original group survives — never a partial removal of
+// just the named ids. `once()` compounds this: the real implementation wraps
+// EVERY delegate to call `_removeDelegatedListener` (removing the WHOLE
+// group) BEFORE invoking the original listener, so a multi-layer `once`
+// self-destructs as one unit on the FIRST fire from ANY of its layers, not
+// once per layer. `fireLayerEvent` models both: it scans `delegated` for a
+// `type`+`layers.includes(layerId)` match, and for a `once` entry removes
+// the WHOLE registration before invoking. This fake does not model
+// `_createDelegatedListener`'s own `queryRenderedFeatures` re-query/merge
+// across layers — tests drive `e.features` directly via `fireLayerEvent`'s
+// `event` argument.
 
 export interface FakeSource {
   setData: ReturnType<typeof vi.fn>;
@@ -82,12 +94,17 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
   };
   const key = (type: string, layerOrFn: unknown): string =>
     typeof layerOrFn === 'string' ? `${type}\u0000${layerOrFn}` : type;
-  // #682: the array form -- one bucket key per layer id, so a single
-  // registration reaches fireLayerEvent for ANY of them. A bare (type, fn)
-  // call (layerOrFn is a function) still collapses to the single non-
-  // delegated `type` key via `key()` above, unchanged.
-  const keysFor = (type: string, layerOrFn: unknown): string[] =>
-    Array.isArray(layerOrFn) ? layerOrFn.map((id) => key(type, id)) : [key(type, layerOrFn)];
+  // #682 review MINOR 4: delegated (layer-scoped) registrations, stored as
+  // GROUPS (see the file header for why exact-set match matters).
+  interface DelegatedRegistration {
+    type: string;
+    layers: string[];
+    listener: Handler;
+    once: boolean;
+  }
+  const delegated: DelegatedRegistration[] = [];
+  const sameLayerSet = (a: string[], b: string[]): boolean =>
+    a.length === b.length && a.every((id) => b.includes(id));
   return {
     sources,
     layers,
@@ -103,32 +120,56 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       for (const fn of pending) fn();
     },
     // #232 item 3: delivers `event` to handlers registered via the delegated
-    // `map.on(type, layerId, fn)` form (e.g. DataLayers' SEAMARKS_LAYER click
-    // handler) — computes the same NUL-joined bucket key() below uses at
-    // registration time, so this reaches exactly the handlers `fire(type)`
-    // above is documented to never reach, and nothing else.
+    // `map.on(type, layerId(s), fn)` form (e.g. DataLayers' seamark click
+    // handler) — reaches exactly the registrations `fire(type)` above is
+    // documented to never reach, and nothing else. A `once` match removes
+    // its WHOLE registration group before invoking, mirroring real
+    // MapLibre's self-destruct-as-one-unit semantics (file header).
     fireLayerEvent: (type: string, layerId: string, event: unknown) => {
-      const k = key(type, layerId);
-      for (const fn of [...bucket(listeners, k)]) fn(event);
-      const pending = [...bucket(onceListeners, k)];
-      bucket(onceListeners, k).clear();
-      for (const fn of pending) fn(event);
+      for (const reg of [...delegated]) {
+        if (reg.type !== type || !reg.layers.includes(layerId)) continue;
+        if (reg.once) {
+          const idx = delegated.indexOf(reg);
+          if (idx !== -1) delegated.splice(idx, 1);
+        }
+        reg.listener(event);
+      }
     },
     isStyleLoaded: () => state.styleLoaded,
     on: vi.fn((type: string, layerOrFn: string | string[] | Handler, maybeFn?: Handler) => {
-      const fn = maybeFn ?? (layerOrFn as Handler);
-      for (const k of keysFor(type, layerOrFn)) bucket(listeners, k).add(fn);
+      if (typeof layerOrFn === 'function') {
+        bucket(listeners, key(type, layerOrFn)).add(layerOrFn);
+        return;
+      }
+      if (maybeFn) {
+        const layers = Array.isArray(layerOrFn) ? layerOrFn : [layerOrFn];
+        delegated.push({ type, layers, listener: maybeFn, once: false });
+      }
     }),
     once: vi.fn((type: string, layerOrFn: string | string[] | Handler, maybeFn?: Handler) => {
-      const fn = maybeFn ?? (layerOrFn as Handler);
-      for (const k of keysFor(type, layerOrFn)) bucket(onceListeners, k).add(fn);
+      if (typeof layerOrFn === 'function') {
+        bucket(onceListeners, key(type, layerOrFn)).add(layerOrFn);
+        return;
+      }
+      if (maybeFn) {
+        const layers = Array.isArray(layerOrFn) ? layerOrFn : [layerOrFn];
+        delegated.push({ type, layers, listener: maybeFn, once: true });
+      }
     }),
     off: vi.fn((type: string, layerOrFn: string | string[] | Handler, maybeFn?: Handler) => {
-      const fn = maybeFn ?? (layerOrFn as Handler);
-      for (const k of keysFor(type, layerOrFn)) {
-        listeners.get(k)?.delete(fn);
-        onceListeners.get(k)?.delete(fn);
+      if (typeof layerOrFn === 'function') {
+        listeners.get(key(type, layerOrFn))?.delete(layerOrFn);
+        onceListeners.get(key(type, layerOrFn))?.delete(layerOrFn);
+        return;
       }
+      if (!maybeFn) return;
+      const layers = Array.isArray(layerOrFn) ? layerOrFn : [layerOrFn];
+      // EXACT-SET match only (file header) — a subset `off` is a no-op,
+      // never a partial per-id removal.
+      const idx = delegated.findIndex(
+        (reg) => reg.type === type && reg.listener === maybeFn && sameLayerSet(reg.layers, layers),
+      );
+      if (idx !== -1) delegated.splice(idx, 1);
     }),
     addSource: vi.fn((id: string, def: FakeSource['def']) => {
       sources.set(id, { setData: vi.fn(), def });

@@ -37,8 +37,9 @@ export type SeamarkPropertiesWithIcon = SeamarkProperties & {
  * can be a plain `['get', 'icon']` instead of re-deriving the family/colour/
  * shape logic in a MapLibre expression — the `priority` collision rank
  * (#144) next to it, read by `symbol-sort-key` the same way — and the
- * `displayTier` display-category rank (#353 PR2), read by the layer's
- * `filter` via `seamarkDisplayFilter()` below.
+ * `displayTier` display-category rank (#353 PR2), read by the two
+ * layers' filters via `seamarkRoutineFilter()`/`seamarkHazardFilter()`
+ * below.
  */
 export function seamarkFeatureCollectionWithIcons(
   fc: SeamarkFeatureCollection,
@@ -59,22 +60,19 @@ export function seamarkFeatureCollectionWithIcons(
 }
 
 /**
- * MapLibre `filter` expression for the display-CATEGORY cut (#353 PR2):
- * keeps a feature only while its own `displayTier` (stamped by
- * `seamarkFeatureCollectionWithIcons` above) is at or below the user's
- * selected tier — tiers are CUMULATIVE (`SEAMARK_DISPLAY_TIER_ALL` shows
- * everything, matching the pre-#353 unfiltered layer exactly). Used directly
- * by neither symbol layer any more (#682 split them) — `seamarkRoutineFilter`
- * / `seamarkHazardFilter` below each AND this with the `hazard` partition —
- * but stays exported: `seamarkGeoJson.test.ts` and `SettingsPanel.tsx`'s own
- * display-tier reasoning still reference the bare display-category cut.
+ * The display-CATEGORY cut (#353 PR2): true only while a feature's own
+ * `displayTier` (stamped by `seamarkFeatureCollectionWithIcons` above) is at
+ * or below the user's selected tier — tiers are CUMULATIVE
+ * (`SEAMARK_DISPLAY_TIER_ALL` matches every real tier). No longer exported
+ * on its own (#682 review: the prior `seamarkDisplayFilter` wrapper had NO
+ * production call site — `SettingsPanel.tsx` uses `seamarkDisplayTier` from
+ * `seamarkGlyphs.ts`, a different function, and nothing else referenced it —
+ * so it was dead code kept alive by a stale comment). `seamarkRoutineFilter`
+ * / `seamarkHazardFilter` below are the only consumers now, each ANDing this
+ * with the `hazard` partition.
  */
 function seamarkDisplayTierExpression(selectedTier: SeamarkDisplayTier): ExpressionSpecification {
   return ['<=', ['get', 'displayTier'], selectedTier];
-}
-
-export function seamarkDisplayFilter(selectedTier: SeamarkDisplayTier): FilterSpecification {
-  return seamarkDisplayTierExpression(selectedTier);
 }
 
 /**
@@ -87,12 +85,12 @@ export function seamarkDisplayFilter(selectedTier: SeamarkDisplayTier): FilterSp
  * EXACTLY one of the two layers, never both and never neither.
  *
  * Built from `seamarkDisplayTierExpression` (the `ExpressionSpecification`-
- * typed helper above), NOT from `seamarkDisplayFilter` — the maplibre-gl
- * style-spec types the `'all'` combinator's members as
- * `ExpressionSpecification`, a NARROWER type than the wider `FilterSpecification`
- * union `seamarkDisplayFilter` returns (which also admits legacy filter
- * forms and bare booleans); nesting the wider type inside `'all'` fails to
- * typecheck (measured — `tsc` TS2322).
+ * typed helper above) rather than a `FilterSpecification`-typed one — the
+ * maplibre-gl style-spec types the `'all'` combinator's members as
+ * `ExpressionSpecification`, a NARROWER type than the wider
+ * `FilterSpecification` union (which also admits legacy filter forms and
+ * bare booleans); nesting the wider type inside `'all'` fails to typecheck
+ * (measured — `tsc` TS2322).
  */
 export function seamarkRoutineFilter(selectedTier: SeamarkDisplayTier): FilterSpecification {
   return ['all', seamarkDisplayTierExpression(selectedTier), ['!', ['get', 'hazard']]];
@@ -109,8 +107,9 @@ export function seamarkRoutineFilter(selectedTier: SeamarkDisplayTier): FilterSp
  * seamarks overlay is visible at all — kept as an explicit AND, not a bare
  * `['get', 'hazard']`, for symmetry with seamarkRoutineFilter and so a
  * future tier restructuring can't silently start hiding a hazard family
- * without this filter noticing. Same `seamarkDisplayTierExpression`-not-
- * `seamarkDisplayFilter` typing reason as seamarkRoutineFilter above.
+ * without this filter noticing. Same
+ * `ExpressionSpecification`-vs-`FilterSpecification` typing reason as
+ * seamarkRoutineFilter above for building on `seamarkDisplayTierExpression`.
  */
 export function seamarkHazardFilter(selectedTier: SeamarkDisplayTier): FilterSpecification {
   return ['all', seamarkDisplayTierExpression(selectedTier), ['get', 'hazard']];

@@ -686,10 +686,10 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
           window as unknown as {
             __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
           }
-        )// wackerballig's own snap point — no animation. mapReady() has
-        // already installed window.__scE2eMap as a side effect.
-        .__scE2eMap
-          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
+        )
+          // wackerballig's own snap point — no animation. mapReady() has
+          // already installed window.__scE2eMap as a side effect.
+          .__scE2eMap.jumpTo({ zoom: z, center: [9.872, 54.7604] });
       }, zoom);
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference
@@ -861,22 +861,22 @@ const HAZARD_CLUSTER_HALF_DEGREES = 0.015;
 // where routine marks can paint over hazard ones absent the #682 fix.
 const HAZARD_ZOOM = 13;
 
+// #682 review MINOR 2: poll the VALUE (which layer id is still missing),
+// not a boolean — a boolean `expect.poll` can only ever report
+// `Expected: true / Received: false` plus a timeout, which means both "too
+// slow" and "never going to happen" and cannot name WHICH layer never
+// appeared (CLAUDE.md's e2e-assert-the-value-not-a-boolean lesson).
 async function waitForBothSeamarkLayers(page: Page): Promise<void> {
   await expect
     .poll(
       () =>
         page.evaluate(() => {
           const map = (window as unknown as { __scE2eMap: Sc682TestMap }).__scE2eMap;
-          return (
-            Boolean(map.getLayer('sc-seamarks')) && Boolean(map.getLayer('sc-seamarks-hazard'))
-          );
+          return ['sc-seamarks', 'sc-seamarks-hazard'].filter((id) => !map.getLayer(id));
         }),
-      {
-        timeout: 30_000,
-        message: "'sc-seamarks' and/or 'sc-seamarks-hazard' never both appeared on the map",
-      },
+      { timeout: 30_000 },
     )
-    .toBe(true);
+    .toEqual([]);
 }
 
 async function jumpToHazardCluster(page: Page, zoom: number): Promise<void> {

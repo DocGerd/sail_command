@@ -172,7 +172,11 @@ vi.mock('maplibre-gl', () => {
     // SEAMARKS_HAZARD_LAYER], handleClick)`, real MapLibre's own array form
     // of the delegated `on(type, layerIds, fn)` overload) rather than a
     // single string — this fake registers the SAME handler under each id in
-    // `layerClickHandlers`, mirroring `test/fakeMaplibre.ts`'s `keysFor`.
+    // `layerClickHandlers`. Deliberately simpler than `test/fakeMaplibre.ts`'s
+    // exact-set delegated-registration model (#682 review MINOR 4): nothing
+    // in this file exercises a SUBSET `off`/multi-layer `once`, so the
+    // per-id form here is not a divergence this suite could catch either
+    // way — see that file's own header comment for the real semantics.
     on(event: string, layerOrCb: unknown, maybeCb?: unknown) {
       if (typeof layerOrCb === 'function') {
         if (event === 'click')
