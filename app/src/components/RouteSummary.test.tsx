@@ -493,6 +493,19 @@ describe('RouteSummary', () => {
     expect(document.activeElement).toBe(genoaTab);
   });
 
+  // #704 review Minor: the tested wrap above is ArrowLeft-from-first only —
+  // this covers the other direction, ArrowRight-from-LAST wrapping to
+  // FIRST. `rig: 'fock'` starts the harness on the last tab (index 1 of 2).
+  it('#704: ArrowRight from the last rig tab wraps to the first', () => {
+    const { onRigChange } = renderSummary({ rig: 'fock' });
+    const fockTab = screen.getByRole('tab', { name: /Fock/ });
+    const genoaTab = screen.getByRole('tab', { name: /Genoa/ });
+
+    fireEvent.keyDown(fockTab, { key: 'ArrowRight' });
+    expect(onRigChange).toHaveBeenCalledWith('genoa');
+    expect(document.activeElement).toBe(genoaTab);
+  });
+
   it('renders the stat grid with hand-derived distance, duration and avg speed', () => {
     const { container } = renderSummary({ rig: 'genoa' });
     const stats = container.querySelector('.ergebnis-stats') as HTMLElement;

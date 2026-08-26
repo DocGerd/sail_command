@@ -732,6 +732,20 @@ describe('App', () => {
     expect(document.activeElement).toBe(boatTab);
   });
 
+  // #704 review Minor: the tested wrap above is ArrowLeft-from-first only —
+  // this covers the other direction, ArrowRight-from-LAST wrapping to FIRST.
+  it('#704: ArrowRight from the last app-shell tab wraps to the first', async () => {
+    renderApp();
+
+    const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const boatTab = screen.getByRole('tab', { name: de['nav.boat'] });
+
+    fireEvent.click(boatTab);
+    fireEvent.keyDown(boatTab, { key: 'ArrowRight' });
+    expect(planTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(planTab);
+  });
+
   // #299: the fourth "Boot"/"Boat" tab renders SettingsPanel's grouped
   // content — a peer content tab like the other three, not a modal.
   it('adds a fourth Boot tab that renders the grouped Boat-settings content (#299)', async () => {
