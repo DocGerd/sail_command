@@ -220,10 +220,14 @@ def main() -> None:
     # ones (independently verified via a full-file bbox-intersect scan, not
     # just this filtered read), so a high threshold here would be testing
     # this dataset's incidental shape, not our correctness. Real coverage is
-    # what the land cell count and water fraction asserts below (and the
+    # what the land cell count and water fraction checks below (and the
     # connectivity gate in verify_mask.py) actually check; this just catches
     # a badly wrong zip inner path/CRS returning an empty-ish read.
-    assert len(gdf) > 50, f"OSM land polygons: only {len(gdf)} features in bbox - check zip inner path/CRS"
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE), which
+    # would let a badly wrong zip inner path/CRS write the mask with no
+    # plausibility check at all.
+    if not (len(gdf) > 50):
+        raise AssertionError(f"OSM land polygons: only {len(gdf)} features in bbox - check zip inner path/CRS")
     land = features.rasterize(
         gdf.geometry,
         out_shape=(ROWS, COLS),
@@ -248,7 +252,9 @@ def main() -> None:
     # cells (>10x the naive 4x-only estimate) since most of this bbox's area
     # is actually land (the mainland + islands), not thin fringe - 200000 is
     # a wide-margin floor against a badly broken read, not a tight estimate.
-    assert n_land > 200000, f"OSM land raster: only {n_land} land cells - implausible for this coastline"
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE).
+    if not (n_land > 200000):
+        raise AssertionError(f"OSM land raster: only {n_land} land cells - implausible for this coastline")
 
     print("carving the Schlei (OSM water=fjord relation, not coastline-tagged) out of the land mask...")
     schlei_geojson = json.loads((SRC / "schlei_relation.geojson.json").read_text())
@@ -256,9 +262,9 @@ def main() -> None:
         [{"type": "Feature", "geometry": r["geojson"], "properties": {}} for r in schlei_geojson],
         crs="EPSG:4326",
     )
-    assert schlei.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).all(), (
-        f"Schlei relation returned unexpected geometry types: {set(schlei.geometry.geom_type)}"
-    )
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE).
+    if not schlei.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).all():
+        raise AssertionError(f"Schlei relation returned unexpected geometry types: {set(schlei.geometry.geom_type)}")
     schlei_water = features.rasterize(
         schlei.geometry,
         out_shape=(ROWS, COLS),
@@ -270,9 +276,11 @@ def main() -> None:
     n_schlei = int(schlei_water.sum())
     print(f"Schlei carve: {n_schlei} cells")
     # Thresholds scale ~4x vs. the original 1100x1200 grid (2x cols * 2x rows).
-    assert 8000 < n_schlei < 120000, (
-        f"Schlei carve size {n_schlei} implausible - expected a fjord of roughly 40 km x ~10-20 cells width"
-    )
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE).
+    if not (8000 < n_schlei < 120000):
+        raise AssertionError(
+            f"Schlei carve size {n_schlei} implausible - expected a fjord of roughly 40 km x ~10-20 cells width"
+        )
     land[schlei_water] = False
 
     depth_m = np.where(np.isnan(elev), np.nan, np.maximum(-elev, 0.0))
@@ -287,7 +295,11 @@ def main() -> None:
 
     water_frac = float((code > 0).mean())
     print(f"water fraction: {water_frac:.3f}")
-    assert 0.45 < water_frac < 0.85, "implausible land/water split - inspect inputs"
+    # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE) - without
+    # it, a badly broken read would write the mask with no plausibility
+    # check on the land/water split at all.
+    if not (0.45 < water_frac < 0.85):
+        raise AssertionError("implausible land/water split - inspect inputs")
 
     code_south_first = np.flipud(code)  # app convention: row 0 = south
     (OUT).mkdir(parents=True, exist_ok=True)

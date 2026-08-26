@@ -507,6 +507,32 @@ export function seamarkPriority(props: SeamarkProperties): number {
   return FAMILY_RANK[classifySeamark(props.seamarkType)] - (lit ? 1 : 0);
 }
 
+/**
+ * #682: the TIER 1 families from the FAMILY_RANK doc comment above — the two
+ * marks whose warning is SELF-CONTAINED and that must never be visually
+ * covered by a routine mark. Named explicitly in #682's issue text ("A
+ * hazard-bearing mark (cardinal, isolated danger)…"), so this is the single
+ * definition every #682 consumer (the hazard/routine layer split in
+ * DataLayers.tsx, the two filters below in seamarkGeoJson.ts) derives from —
+ * never re-enumerate the two family names at a second call site.
+ */
+const HAZARD_SEAMARK_FAMILIES: ReadonlySet<SeamarkFamily> = new Set<SeamarkFamily>([
+  'isolatedDanger',
+  'cardinal',
+]);
+
+/**
+ * #682: whether a seamark belongs to a hazard family (isolatedDanger,
+ * cardinal) — stamped per feature at data-build time
+ * (seamarkFeatureCollectionWithIcons, seamarkGeoJson.ts) as the `hazard`
+ * boolean the two symbol layers' filters partition on, exactly the same
+ * "stamped once, never re-derived in a style expression" convention
+ * seamarkPriority above documents for `priority`.
+ */
+export function isHazardSeamark(props: SeamarkProperties): boolean {
+  return HAZARD_SEAMARK_FAMILIES.has(classifySeamark(props.seamarkType));
+}
+
 type ShapeBucket = 'can' | 'conical' | 'spar' | 'spherical' | 'pillar';
 
 /** Buckets the raw OSM `shape` tag into one of a handful of drawable

@@ -208,6 +208,57 @@ describe('#539 item 1 / spec C.7: the clamp is WIRED to the boat switch', () => 
   });
 });
 
+// #699: the notice's own text was always correct — the defect was that it
+// could render below the Boat card's rows, inside .app-panel's own
+// overflow-y:auto, with nothing bringing it into view. jsdom leaves
+// scrollIntoView undefined (same gap HarborPicker.test.tsx's own "scrolls
+// the active option into view" row works around); install a mock so the
+// effect's DOM call is observable.
+describe('#699: a clamping switch scrolls the notice into view', () => {
+  function installScrollIntoViewMock() {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: scrollIntoView,
+      configurable: true,
+      writable: true,
+    });
+    return scrollIntoView;
+  }
+
+  it('scrolls on a switch that DOES clamp', () => {
+    const scrollIntoView = installScrollIntoViewMock();
+    renderPicker({ safetyDepthM: 2.2 });
+    selectBoat(/Deep 46/);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+  });
+
+  it('does NOT scroll on a switch that clamps nothing — the issue’s own "only when clamped" requirement', () => {
+    const scrollIntoView = installScrollIntoViewMock();
+    renderPicker({ safetyDepthM: 4.0 });
+    selectBoat(/Shoal 40/);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('scrolls again on a SECOND clamping switch, even though `notice` never becomes null in between', () => {
+    // The effect is keyed on `notice`, a new OBJECT each clamp (never a
+    // referentially-stable one) — if it were somehow keyed on a boolean or a
+    // primitive that happened not to change between two clamping switches,
+    // this row would catch it: two consecutive clamps must each scroll.
+    //
+    // Both switches clamp against the SAME static settings.safetyDepthM: 1.0
+    // — this test harness (like the 'clears a previous clamp notice' row
+    // above) does not feed onSettingsChange's result back into a re-render,
+    // so the second click still sees the original 1.0 m, well under either
+    // boat's floor.
+    const scrollIntoView = installScrollIntoViewMock();
+    renderPicker({ safetyDepthM: 1.0 });
+    selectBoat(/Deep 46/); // draft 2.3 m -> floor 2.4 m, clamps (1.0 < 2.4)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    selectBoat(/Shoal 40/); // draft 1.6 m -> floor 1.7 m, ALSO clamps (1.0 < 1.7)
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('#54 spec N.2: the keel assumption is disclosed on the picker', () => {
   it('renders the unchecked-draft sentence for a boat that declares one', () => {
     renderPicker();
