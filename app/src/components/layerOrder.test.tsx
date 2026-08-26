@@ -127,12 +127,20 @@ vi.mock('../services/assets', () => ({
 // setupLayers adds the absolute ramp, then the hazard-hatch overlay, BEFORE
 // the harbor/seamark layers that follow, all sharing the same beforeId
 // anchor (insertion order = bottom-to-top for same-anchor additions).
+// #682: 'sc-seamarks-hazard' is added LAST among this component's own
+// layers, so it sits directly above 'sc-seamarks' (still below the AIS
+// stack via the shared anchor) — pinning this position here is the "layer
+// order pinned by an explicit test, not by setup timing" requirement from
+// #682's own definition of done, exercised across every setup-timing
+// interleaving AND the #153 style-reload re-add path this file already
+// covers for the rest of the stack.
 const OVERLAYS_BELOW_AIS = [
   'sc-depth',
   'sc-depth-hatch',
   'sc-harbor-points',
   'sc-harbor-labels',
   'sc-seamarks',
+  'sc-seamarks-hazard',
   'sc-ais-vectors',
   'sc-ais-vessels',
   'sc-ais-labels',

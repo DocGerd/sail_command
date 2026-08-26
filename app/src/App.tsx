@@ -14,7 +14,11 @@ import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
 import MapView from './components/MapView';
-import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './components/DataLayers';
+import DataLayers, {
+  HARBOR_CIRCLE_LAYER,
+  SEAMARKS_HAZARD_LAYER,
+  SEAMARKS_LAYER,
+} from './components/DataLayers';
 import CompassControl from './components/CompassControl';
 import ScaleBar from './components/ScaleBar';
 import RouteLayer from './components/RouteLayer';
@@ -71,7 +75,27 @@ import {
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
 // #7). Module-level for a stable identity — MapView syncs it into a ref
 // every render.
-const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER, AIS_VESSEL_LAYER];
+//
+// #682: BOTH sc-seamarks* layers must be listed — DataLayers.tsx split the
+// single `sc-seamarks` layer into a routine layer and a `sc-seamarks-hazard`
+// overlay (cardinal/isolated-danger marks, stacked above), and each renders
+// features the other does not. Omitting either one here reopens the exact
+// race this array exists to prevent: a tap on a mark living only on the
+// omitted layer would open DataLayers' own seamark popover (its click
+// handler is registered on both layers) AND ALSO fall through to
+// MapView.tsx's generic tap-pick, silently setting that tap point as
+// origin/destination in the same native click. `App.test.tsx`'s '#682
+// tap-safety' test pins this by REFLECTING over DataLayers' own exports
+// (every `SEAMARKS*_LAYER` string it exports) rather than hardcoding this
+// two-element list a second time, so a future third seamark layer fails
+// that test closed if it isn't added here too.
+// eslint-disable-next-line react-refresh/only-export-components
+export const INTERACTIVE_MAP_LAYER_IDS = [
+  HARBOR_CIRCLE_LAYER,
+  SEAMARKS_LAYER,
+  SEAMARKS_HAZARD_LAYER,
+  AIS_VESSEL_LAYER,
+];
 
 const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
   origin: 'planner.origin.label',
