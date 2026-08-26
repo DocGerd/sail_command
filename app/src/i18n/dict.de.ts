@@ -10,6 +10,12 @@ export const de = {
   'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
+  // #699: der zulässige Bereich hing bislang nur als natives min/max-Attribut
+  // am Feld, ohne sichtbaren oder für Screenreader zugänglichen Text — ein
+  // außerhalb liegender Wert wurde beim Verlassen des Felds stillschweigend
+  // auf den nächsten gültigen Wert korrigiert. {min}/{max} kommen aus
+  // safetyDepthFieldFor(boat), ist also je nach Boot unterschiedlich.
+  'options.safetyDepth.help': 'Erlaubter Bereich: {min}–{max} m',
   // #299: die Sicherheitstiefe erscheint jetzt an ZWEI Stellen — hier als
   // Schnellzugriff und im Boot-Tab (SettingsPanel) als kanonisches Zuhause,
   // eine gemeinsame Quelle (PR #486 review). Die Tiefenkomfort-Spanne und

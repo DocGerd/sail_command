@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { Settings } from '../types';
 import { BOATS, boatById, type BoatDef, type BoatId } from '../data/boats';
 import { useLang, useT } from '../i18n';
@@ -202,6 +202,36 @@ export default function BoatPicker({
   const t = useT();
   const [lang] = useLang();
   const [notice, setNotice] = useState<ClampNotice | null>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+
+  // #699: a clamping switch scrolls the notice into view — without this, the
+  // announcement can render below the Boat card's ~18-20 rows of boat
+  // options, inside .app-panel's own overflow-y:auto, with nothing drawing
+  // the eye to it. Runs in an effect keyed on `notice`, not inline in
+  // handleSelect: at the point handleSelect calls setNotice the DOM still
+  // shows the PREVIOUS (possibly empty, zero-height per the "costs no layout
+  // while empty" CSS rule — test/boatPickerNoticeLiveRegion.test.ts) state,
+  // so scrollIntoView measured then would target the wrong box. `notice` is
+  // null on an unclamped switch (see the branch below), so this never fires
+  // then — matching the issue's own "only when clamped" requirement without
+  // a separate boolean.
+  //
+  // useLayoutEffect, not useEffect (#699 REVIEW FIX, MINOR): `noticeRef` is
+  // this component's OWN JSX descendant, so it is already attached by the
+  // time either hook fires — not the sibling-ref hazard PanelResizer.tsx's
+  // own comment documents. A passive `useEffect` runs AFTER the browser's
+  // next paint, so a clamping switch could paint the expanded notice and
+  // only scroll a frame later; `useLayoutEffect` runs synchronously after
+  // the DOM mutation but BEFORE that paint, closing the flash while still
+  // seeing the real (post-commit, non-empty) box `useEffect` did. REASONED,
+  // NOT MEASURED: this rests on React's documented effect-timing contract,
+  // not on an observed flash — the real catalogue has only 3 boats, so the
+  // notice already sits fully in view with nothing to visibly scroll past,
+  // and no tool available here captures frame-level paint timing to show
+  // the difference on a card that DOES overflow.
+  useLayoutEffect(() => {
+    if (notice) noticeRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [notice]);
 
   function handleSelect(nextId: BoatId): void {
     if (nextId === boatId) return;
@@ -260,7 +290,7 @@ export default function BoatPicker({
           than setting `display: none`, which would take it back out of that
           tree and lose the announcement — see that rule's own comment, and
           test/boatPickerNoticeLiveRegion.test.ts, which pins it. */}
-      <p className="boat-picker-notice" role="status">
+      <p className="boat-picker-notice" role="status" ref={noticeRef}>
         {notice
           ? t('boat.clamp.notice', {
               depth: formatDepthM(notice.depthM, lang),
