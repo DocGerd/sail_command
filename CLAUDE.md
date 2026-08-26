@@ -1122,9 +1122,14 @@ making design-level decisions; do not silently deviate.
   TOOK and `smoke-probe` passed (runs 32876067990 then 32876158745). Do NOT
   hand-maintain a running total in this sentence: it read "SIX TIMES" until
   2026-08-26 and had gone off-by-one the moment v0.14.0 shipped, untouched by
-  that release's own learnings commit. COUNT the per-cut list enumerated
-  below instead — it decays on the same schedule as the thing it describes,
-  and a MISSING ENTRY is visible in a way a stale ordinal is not.
+  that release's own learnings commit. COUNT the rows of the `On one basis
+  (Deploy workflow-RUN creation→creation)` gap list below instead, and add a
+  row there at every cut — that list decays on the same schedule as the thing
+  it describes only for as long as it is kept COMPLETE. It was not: v0.13.0
+  and v0.14.0 had to be folded into it on 2026-08-26, having been recorded in
+  the prose around it while the list itself read five. A pointer at an
+  incomplete list is WORSE than the ordinal it replaced — it answered 5
+  against a true 7.
   The margin is NOT a predictor, and the recorded
   range is now actively INVERTED against the intuitive reading: v0.13.1's
   33 s is the SMALLEST gap ever recorded and was SAFE, while the ONLY no-op
@@ -1140,10 +1145,17 @@ making design-level decisions; do not silently deviate.
   the probe fired and was right), **54 s** at v0.11.0 (safe), **70 s** at
   v0.12.0 (safe), **43 s** at v0.12.1 (safe — merge-push run 32313173754
   had every job `cancelled`, so tag run 32313225085 at the same head deployed
-  cleanly) and **33 s** at v0.13.1 (safe — merge-push run 32777433573 had all
-  five jobs `cancelled`, so tag run 32777486953 deployed cleanly and
-  `smoke-probe` passed), the last two being SMALLER than both earlier safe
-  gaps AND than the 128 s one that DID no-op. n=4 happens to run the intuitive way and that is
+  cleanly), **54 s** at v0.13.0 (safe — merge-push run 32441905475's `deploy`
+  job `cancelled`, so tag run 32441958743 deployed cleanly), **33 s** at
+  v0.13.1 (safe — merge-push run 32777433573 had all five jobs `cancelled`,
+  so tag run 32777486953 deployed cleanly and `smoke-probe` passed) and
+  **56 s** at v0.14.0 (safe — merge-push run 32876067990's `deploy` job
+  `cancelled`, so tag run 32876158745 deployed cleanly and `smoke-probe`
+  passed). That is SEVEN rows, one per cut since v0.10.0 — completeness is
+  the whole point, since this list is what the paragraph above tells you to
+  count instead of an ordinal. v0.13.1's 33 s and v0.12.1's 43 s are SMALLER
+  than every other safe gap AND than the 128 s one that DID no-op. That the
+  first FOUR recorded gaps happened to run the intuitive way was
   NOT evidence:
   the outcome is set by whether `cancel-in-progress` killed the earlier run
   before its `deploy` job reached terminal `success`, not by the gap — so never
@@ -3127,8 +3139,11 @@ making design-level decisions; do not silently deviate.
   shell** — which is why membership alone is not always enough. `find` is
   excluded outright for `-delete`/`-exec`, and `file` because `file -C -m X`
   WRITES `X.mgc` (measured — it merely looked read-only).
-  **`grep` and `sed` are NOT excluded — they were RE-ADMITTED to
-  `READONLY_VERBS` (#530, commits `96c4a0b`/`f4cf257`), each gated by its own
+  **`grep` and `sed` are NOT excluded — `grep` was RE-ADMITTED to
+  `READONLY_VERBS` and `sed` admitted there for the FIRST time (#530,
+  `96c4a0b`, plus later hardening commits; measured off the array at each
+  commit — `213f8cd` held `grep` alone, `e3ea820` held NEITHER, `96c4a0b`
+  holds both), each gated by its own
   verb-scoped disqualifier** — `grep_readonly_ok` / `sed_readonly_ok`,
   dispatched from the membership loop (`artifact-guard.sh`, `case "$verb" in`)
   and evaluated LAST, after the char/newline/token checks, which is what makes
@@ -3166,7 +3181,15 @@ making design-level decisions; do not silently deviate.
   wrong. `cd` removes ZERO of 1,115 asks; `;`-only and newline-only ZERO;
   `&&`-only **2**. 89.5% of asks begin with a verb no allowlist widening can
   reach (`cd` 286, `grep` 162, `git` 128, `python3` 65, `sed` 59), so this
-  whole class of fix has a small ceiling by construction. Segmentation is
+  whole class of fix has a small ceiling by construction. **SUPERSEDED IN
+  PART by #530 (2026-08-14), and only in part — the measurement stands, its
+  sweeping conclusion does not**: #530 admitted `grep` and `sed`, i.e.
+  162 + 59 = 221 of those 1,115 asks (19.8% of the ask population), each
+  behind a verb-scoped disqualifier rather than on membership alone.
+  `cd`, `git` and `python3` remain unreachable by any widening.
+  `artifact-guard.sh` has carried this correction in its own comment since
+  #530; this file did not, until 2026-08-26 — a twin that disagreed silently
+  for twelve days. Segmentation is
   additionally UNSAFE: it runs before the char check, so a 343 KB heredoc
   timed the hook out against `settings.json`'s 5 s cap into a SILENT ALLOW —
   a killed guard and a satisfied one emit the same nothing. The general trap, worth more than the specific verdicts: **a
