@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Settings } from '../types';
 import { BOATS, boatById, type BoatDef, type BoatId } from '../data/boats';
 import { useLang, useT } from '../i18n';
@@ -202,6 +202,24 @@ export default function BoatPicker({
   const t = useT();
   const [lang] = useLang();
   const [notice, setNotice] = useState<ClampNotice | null>(null);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+
+  // #699: a clamping switch scrolls the notice into view — without this, the
+  // announcement can render below the Boat card's ~18-20 rows of boat
+  // options, inside .app-panel's own overflow-y:auto, with nothing drawing
+  // the eye to it. Runs in an effect keyed on `notice`, not inline in
+  // handleSelect: at the point handleSelect calls setNotice the DOM still
+  // shows the PREVIOUS (possibly empty, zero-height per the "costs no layout
+  // while empty" CSS rule — test/boatPickerNoticeLiveRegion.test.ts) state,
+  // so scrollIntoView measured then would target the wrong box. This effect
+  // fires after React has committed the notice's real (expanded) text, so it
+  // scrolls to where the announcement actually ends up. `notice` is null on
+  // an unclamped switch (see the branch below), so this never fires then —
+  // matching the issue's own "only when clamped" requirement without a
+  // separate boolean.
+  useEffect(() => {
+    if (notice) noticeRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [notice]);
 
   function handleSelect(nextId: BoatId): void {
     if (nextId === boatId) return;
@@ -260,7 +278,7 @@ export default function BoatPicker({
           than setting `display: none`, which would take it back out of that
           tree and lose the announcement — see that rule's own comment, and
           test/boatPickerNoticeLiveRegion.test.ts, which pins it. */}
-      <p className="boat-picker-notice" role="status">
+      <p className="boat-picker-notice" role="status" ref={noticeRef}>
         {notice
           ? t('boat.clamp.notice', {
               depth: formatDepthM(notice.depthM, lang),

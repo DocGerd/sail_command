@@ -653,6 +653,34 @@ describe('PlannerPanel', () => {
       expect(screen.getByLabelText('Safety depth (m)')).toBeInTheDocument();
     });
 
+    // #699: the boat-dependent min/max previously existed only as native
+    // min/max attributes on the <input> — never as visible or
+    // accessible-description text. Assert BOTH halves: the wiring
+    // (aria-describedby actually pointing at the help paragraph's id) and
+    // the paragraph's own text, so a broken id match can't pass by
+    // coincidence with a help paragraph that merely exists somewhere.
+    it('#699: discloses the allowed range as visible, described help text', () => {
+      renderPanel();
+      const input = screen.getByLabelText('Safety depth (m)');
+      expect(input).toHaveAttribute('aria-describedby', 'planner-safety-depth-help');
+      const help = document.getElementById('planner-safety-depth-help');
+      expect(help).not.toBeNull();
+      expect(help).toHaveTextContent(
+        en['options.safetyDepth.help'].replace('{min}', '2.2').replace('{max}', '10'),
+      );
+    });
+
+    // #539 item 2: the help text's range must follow the SELECTED boat, not
+    // the catalogue default — same boat-dependence the clamp-floor test
+    // above pins for the numeric bound.
+    it('#699: the help text range follows the SELECTED boat', () => {
+      renderPanel({ boat: { ...boatById(DEFAULT_BOAT_ID), id: 'deep-46', draftM: 2.3 } });
+      const help = document.getElementById('planner-safety-depth-help');
+      expect(help).toHaveTextContent(
+        en['options.safetyDepth.help'].replace('{min}', '2.4').replace('{max}', '10'),
+      );
+    });
+
     it('commits a clamped safety depth on blur (max 10)', () => {
       const props = renderPanel();
       const input = screen.getByLabelText('Safety depth (m)');

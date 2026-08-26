@@ -60,6 +60,20 @@ describe('SettingsPanel (#299 Boat tab)', () => {
     expect(input).toHaveValue(DEFAULT_SETTINGS.safetyDepthM);
   });
 
+  // #699: this was the one numeric field in the Boat tab without a help
+  // paragraph at all — its allowed range existed only as native min/max
+  // attributes. Mirrors the depth-comfort-margin test right below for the
+  // wiring shape (aria-describedby -> a real element, not a title tooltip).
+  it('#699: discloses the allowed range as visible, described help text', () => {
+    renderPanel();
+    const input = screen.getByLabelText('Safety depth (m)');
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(input).not.toHaveAttribute('title');
+    const help = document.getElementById(describedBy!);
+    expect(help).toHaveTextContent('Allowed range: 2.2–10 m');
+  });
+
   it('commits safety depth on blur and clamps to its 2.2-10 bounds (same SAFETY_DEPTH_FIELD spec as the inline field)', () => {
     const onChange = renderPanel();
     const input = screen.getByLabelText('Safety depth (m)');

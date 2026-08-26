@@ -12,6 +12,12 @@ export const en = {
   'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
   'options.safetyDepth.label': 'Safety depth (m)',
+  // #699: the allowed range used to hang only off the field's native
+  // min/max attributes, with no visible or screen-reader-accessible text —
+  // an out-of-range value was silently corrected to the nearest valid one on
+  // blur. {min}/{max} come from safetyDepthFieldFor(boat), so they vary per
+  // boat.
+  'options.safetyDepth.help': 'Allowed range: {min}–{max} m',
   // #299: safety depth now appears in TWO places — here for quick access
   // and on the Boat tab (SettingsPanel) as its canonical home, one shared
   // source (PR #486 review). The depth comfort margin and the rest of the
