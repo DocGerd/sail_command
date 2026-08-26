@@ -93,6 +93,31 @@ describe('#711: app.css themes the MapLibre attribution control in dark mode', (
     expect(block).toMatch(/\.maplibregl-ctrl-attrib\s+a\s*\{[^}]*color:\s*var\(--sc-fg\)/);
   });
 
+  it('#718: also themes the attribution-TOGGLE BUTTON (translucent-white circle + black SVG glyph)', () => {
+    const { blocks } = darkMediaBlocks(readAppCss());
+    // Still exactly ONE dark block mentions `.maplibregl-ctrl-attrib` — the
+    // #718 button rule lives INSIDE the SAME block as the #711 container
+    // rule above, not a new sibling block. A new top-level dark block for
+    // this selector would ALSO satisfy `.includes('.maplibregl-ctrl-attrib')`
+    // (that substring is a prefix of `-button` too), so this assertion is a
+    // real structural check, not a restatement of the first test above.
+    const attribBlocks = blocks.filter((b) => b.includes('.maplibregl-ctrl-attrib'));
+    expect(attribBlocks, 'still exactly one dark-mode .maplibregl-ctrl-attrib block').toHaveLength(
+      1,
+    );
+    const block = attribBlocks[0];
+    // Same superset-selector reasoning as the container rule above:
+    // `.maplibregl-compact-show` never appears without `.maplibregl-compact`
+    // already present, so anchoring the button rule on `-show` alone would
+    // miss the everyday collapsed steady state. Negative lookahead rejects
+    // that narrower selector — mutation-checked: narrowing the source rule
+    // to `.maplibregl-compact-show .maplibregl-ctrl-attrib-button` reds this
+    // row; dropping the rule entirely reds it too.
+    expect(block).toMatch(
+      /\.maplibregl-ctrl-attrib\.maplibregl-compact(?!-show)\s+\.maplibregl-ctrl-attrib-button\s*\{[^}]*filter:\s*invert\(1\)/,
+    );
+  });
+
   it('never overrides .maplibregl-ctrl-attrib OUTSIDE a dark-mode media block (light mode stays untouched)', () => {
     // Structural twin of the PR's build-diff proof (dist CSS outside every
     // dark-media block is byte-identical before/after #711): confirms the
