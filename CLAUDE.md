@@ -288,13 +288,14 @@ making design-level decisions; do not silently deviate.
   required. It fails CLOSED: filter error, empty diff, unreachable base,
   non-PR event, or any unmatched path all run e2e. `.claude/**` is
   deliberately NOT allowlisted (it holds executable hooks). The allowlist is
-  the `case` arm at `classify-docs-only.sh:389` — THIRTEEN members, not the
-  four this file used to name (`grep -n CODE_OF_CONDUCT.md
-  .github/scripts/classify-docs-only.sh` prints the arm, robust to line
-  drift) — so a whole #132 release docs sweep skips e2e (measured on PR
-  #677). Read the arm, don't
-  trust any enumeration of it copied into this file. The globs are ONE star: in a bash `case`, `*` matches `/`,
-  so nested paths do match (selftest case 10 pins it). Measured on a real
+  the `case` arm at `classify-docs-only.sh:389` — THIRTEEN members as of
+  2026-08-26, and the count is not checked by anything, so read the arm
+  rather than trusting it: `grep -n CODE_OF_CONDUCT.md
+  .github/scripts/classify-docs-only.sh` prints the whole arm on one line and
+  is robust to line drift. A whole #132 release docs sweep skips e2e
+  (measured on PR #677). Never copy the member list into this file again.
+  The globs are ONE star: in a bash `case`, `*` matches `/`, so nested paths
+  do match (selftest case 10 pins it). Measured on a real
   `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
   `mergeable_state: clean` — so a skipped-but-successful required check does
   satisfy `develop`'s gating.
@@ -358,7 +359,7 @@ making design-level decisions; do not silently deviate.
   `pipeline/extract_basemap.sh [YYYYMMDD]`; per-asset detail and the
   never-hand-edit-a-generated-file rule are in `pipeline/README.md`. (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
-  requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
+  requirements.txt`). `pipeline/data-src/` is an ~887 MiB (~930 MB) gitignored download
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
   when removing worktrees. `verify_mask.py` must exit 0: it flood-fill-checks
   every harbor snap and has a documented KNOWN_DISCONNECTED allowlist (#9).
@@ -1116,48 +1117,51 @@ making design-level decisions; do not silently deviate.
   then served the chunk name the tag run had built, proving that run's BUILD
   was always correct and only its DEPLOYMENT no-opped.
 
-  **EXERCISED AT EVERY RELEASE CUT SINCE v0.10.0 — most recently the LAST
-  ROW of the table below.** Do NOT hand-maintain a running total in prose:
-  an earlier version of this passage read "SIX TIMES" until 2026-08-26 and had gone
-  off-by-one the moment v0.14.0 shipped, untouched by that release's own
-  learnings commit. A pointer at an incomplete list is WORSE than the ordinal
-  it replaced — it answered 5 against a true 7. COUNT THE TABLE ROWS
-  instead, and add a row at every cut — the table decays on the same
-  schedule as the thing it describes only for as long as it is kept
-  COMPLETE: v0.13.0 and v0.14.0 both had to be folded in on 2026-08-26,
-  having been recorded only in surrounding prose while the table itself
-  (then a list) read five.
+  **EXERCISED AT EVERY RELEASE CUT SINCE v0.10.0 — most recently at the cut
+  named in the LAST ROW of the table below.** Do NOT hand-maintain a running
+  total in prose: an earlier version of this passage read "SIX TIMES" until
+  2026-08-26 and had gone off-by-one the moment v0.14.0 shipped, untouched by
+  that release's own learnings commit. COUNT THE TABLE ROWS instead, and add a
+  row at every cut — the table decays on the same schedule as the thing it
+  describes only for as long as it is kept COMPLETE: v0.13.0 and v0.14.0 both
+  had to be folded in on 2026-08-26, having been recorded only in surrounding
+  prose while the table itself (then a list) read five. A pointer at an
+  incomplete list is WORSE than the ordinal it replaced — it answered 5
+  against a true 7.
 
   On one basis (Deploy workflow-RUN creation→creation):
 
-  | Cut | Gap | Merge-run `deploy` job | Outcome | Evidence |
-  |---|---|---|---|---|
-  | v0.10.0 | 128 s | — | DID no-op | probe fired and was right |
-  | v0.11.0 | 54 s | — | safe | — |
-  | v0.12.0 | 70 s | `cancelled` (MEASURED) | safe | — |
-  | v0.12.1 | 43 s | `cancelled` (every job) | safe | merge-push `32313173754` → tag `32313225085` (same head) deployed cleanly |
-  | v0.13.0 | 54 s | `completed`/`cancelled` (all five jobs) | safe | merge-push `32441905475` → tag `32441958743` deployed cleanly, `smoke-probe` passed — the gate read correctly IN ADVANCE here, not just in hindsight |
-  | v0.13.1 | 33 s | `cancelled` (all five jobs) | safe | merge-push `32777433573` → tag `32777486953` deployed cleanly, `smoke-probe` passed |
-  | v0.14.0 | 56 s | `cancelled` | safe | merge-push `32876067990` → tag `32876158745` deployed cleanly, `smoke-probe` passed |
+  | Cut | Date | Gap | Merge-run `deploy` job | Outcome | Evidence |
+  |---|---|---|---|---|---|
+  | v0.10.0 | — | 128 s | — | DID no-op | probe fired and was right |
+  | v0.11.0 | — | 54 s | — | safe | — |
+  | v0.12.0 | — | 70 s | `cancelled` (MEASURED) | safe | — |
+  | v0.12.1 | — | 43 s | `cancelled` (every job) | safe | merge-push `32313173754` → tag `32313225085` (same head) deployed cleanly |
+  | v0.13.0 | — | 54 s | `completed`/`cancelled` (all five jobs) | safe | merge-push `32441905475` → tag `32441958743` deployed cleanly, `smoke-probe` passed — the gate read correctly IN ADVANCE here, not just in hindsight |
+  | v0.13.1 | — | 33 s | `cancelled` (all five jobs) | safe | merge-push `32777433573` → tag `32777486953` deployed cleanly, `smoke-probe` passed |
+  | v0.14.0 | 2026-08-25 | 56 s | `cancelled` | safe | merge-push `32876067990` → tag `32876158745` deployed cleanly, `smoke-probe` passed |
 
-  SEVEN rows, one per cut since v0.10.0 — completeness is the whole point,
-  since this table is what the COUNT THE TABLE ROWS instruction above tells
-  you to count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded
-  Deploy workflow run IDs or job conclusions — don't fabricate any.)
+  One row per cut since v0.10.0 — completeness is the whole point, since
+  this table is what the COUNT THE TABLE ROWS instruction above tells you to
+  count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
+  workflow run IDs or job conclusions for those cuts, and only v0.14.0's date
+  is on record here — don't fabricate any.)
   **The gap carries ZERO information — never gate on it, and never read
-  "fast tag push" as a protection.** The margin is NOT a predictor, and the
-  recorded range is actively INVERTED against the intuitive reading:
-  v0.13.1's 33 s is the SMALLEST gap ever recorded and was SAFE, while the
-  ONLY no-op sits at the LARGEST value (128 s). n>=5 also PROVES it rather
-  than merely failing to refute it: v0.13.0's gap was 54 s and the tag run
-  TOOK, while v0.11.0's 54 s was also safe and v0.10.0's 128 s no-opped — the
-  SAME gap value appears on BOTH outcomes. v0.13.1's 33 s and v0.12.1's 43 s
-  are SMALLER than every other safe gap AND than the 128 s one that DID
-  no-op. That the first FOUR recorded gaps happened to run the intuitive way
-  was NOT evidence: the outcome is set by whether `cancel-in-progress`
-  killed the earlier run before its `deploy` job reached terminal `success`,
-  not by the gap. (An older, UNRELATED 43 s figure was completion→creation
-  and is NOT comparable — differencing the two bases is this file's own "two
+  "fast tag push" as a protection.** That rests on the MECHANISM, not on the
+  table: the outcome is set by whether `cancel-in-progress` killed the
+  earlier run before its `deploy` job reached terminal `success`, which the
+  gap does not measure. Do NOT cite the table as evidence for it — read the
+  rows honestly and they are entirely CONSISTENT with a gap threshold (the
+  one no-op sits at the LARGEST gap in the table; every safe row is below
+  it), which is exactly the reading to distrust. What the rows DO rule out
+  is the opposite intuition, that a fast tag push races the merge run:
+  v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
+  v0.12.1's 43 s likewise. No gap value has yet been observed on both
+  outcomes — 54 s appears TWICE (v0.11.0, v0.13.0) and both were safe — so
+  the sample cannot separate the two stories, which is weaker than having
+  refuted the gap. That the first FOUR recorded gaps happened to fit the
+  larger-is-worse story was NOT evidence for it either. (An older, UNRELATED
+  43 s figure was completion→creation and is NOT comparable — differencing the two bases is this file's own "two
   measurements of DIFFERENT subjects cannot be differenced", and two
   same-valued figures on different bases must not be conflated.)
   **Gate on the earlier run's `deploy` JOB conclusion, and the test is TERMINAL
@@ -1415,11 +1419,12 @@ making design-level decisions; do not silently deviate.
   tag marked `Latest` — `--latest` is load-bearing on creation, since without
   it the previous version keeps the badge, a silent wrong state rather than
   an error.
-- **Deploy-collision timing, back-merge and hotfix flow**: `cancel-in-progress`
-  cancel-supersedes (mechanism in the "Deploy — concurrency and environments"
-  bullet above) — so the tag run cancels the still-running merge run, and a
-  back-merge push landing inside THAT window (while the tag run is still in
-  flight) cancels the tag run in turn: then NEITHER release run deployed and
+- **Deploy-collision timing, back-merge and hotfix flow** — this is WHY step
+  5b must pass BEFORE the back-merge: `cancel-in-progress` cancel-supersedes
+  and tag runs share the `pages` group (mechanism in the "Deploy —
+  concurrency and environments" bullet above), so the tag run cancels the
+  still-running merge run, and a back-merge push landing inside THAT window
+  (while the tag run is still in flight) cancels the tag run in turn: then NEITHER release run deployed and
   production keeps serving the PREVIOUS release's bytes, signalled only by a
   grey "cancelled", never a red. (`cancel-in-progress: false` does not fix it — a
   merely PENDING run is cancelled too; a ref-conditional group WOULD, and was
