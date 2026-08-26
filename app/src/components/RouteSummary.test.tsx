@@ -429,6 +429,70 @@ describe('RouteSummary', () => {
     expect(onRigChange).not.toHaveBeenCalled();
   });
 
+  // #704: the ARIA Tabs contract's association half — both tabs'
+  // aria-controls point at the single tabpanel's id, and the tabpanel's
+  // aria-labelledby tracks whichever rig is active.
+  it('#704: rig tabs are wired to a tabpanel via aria-controls/aria-labelledby', () => {
+    renderSummary({ rig: 'genoa' });
+    const genoaTab = screen.getByRole('tab', { name: /Genoa/ });
+    const fockTab = screen.getByRole('tab', { name: /Fock/ });
+    const panel = screen.getByRole('tabpanel');
+
+    expect(genoaTab).toHaveAttribute('aria-controls', panel.id);
+    expect(fockTab).toHaveAttribute('aria-controls', panel.id);
+    expect(panel).toHaveAttribute('aria-labelledby', genoaTab.id);
+  });
+
+  // #704: roving tabIndex — exactly one rig tab is in the natural Tab
+  // order, and it is the ACTIVE rig, not merely the first.
+  it('#704: exactly one rig tab has tabIndex 0, and it tracks the active rig', () => {
+    renderSummary({ rig: 'fock' });
+    const genoaTab = screen.getByRole('tab', { name: /Genoa/ });
+    const fockTab = screen.getByRole('tab', { name: /Fock/ });
+    expect(fockTab).toHaveAttribute('tabindex', '0');
+    expect(genoaTab).toHaveAttribute('tabindex', '-1');
+  });
+
+  // #704: ArrowLeft/ArrowRight (wrapping) on the rig tablist — automatic
+  // activation, so arrowing calls onRigChange AND moves focus onto the
+  // newly-active tab. `rig` is a controlled prop here (onRigChange is a
+  // plain mock, not wired to a real setState), so `aria-selected` cannot be
+  // asserted post-arrow in this harness — the onRigChange call target and
+  // the focus destination are what's observable, and both are load-bearing:
+  // App.test.tsx's app-shell equivalent already covers the state-driven
+  // aria-selected transition on a real setState.
+  it('#704: ArrowRight/ArrowLeft cycle the rig tablist and call onRigChange', () => {
+    const { onRigChange } = renderSummary({ rig: 'genoa' });
+    const fockTab = screen.getByRole('tab', { name: /Fock/ });
+    const genoaTab = screen.getByRole('tab', { name: /Genoa/ });
+
+    fireEvent.keyDown(genoaTab, { key: 'ArrowRight' });
+    expect(onRigChange).toHaveBeenCalledWith('fock');
+    expect(document.activeElement).toBe(fockTab);
+
+    vi.mocked(onRigChange).mockClear();
+    // ArrowLeft from the FIRST tab (genoa, index 0) wraps to the LAST (fock).
+    fireEvent.keyDown(genoaTab, { key: 'ArrowLeft' });
+    expect(onRigChange).toHaveBeenCalledWith('fock');
+  });
+
+  // #704: Home/End jump to the first/last rig tab. Home from the already-
+  // first tab (genoa) must NOT call onRigChange (matches the existing
+  // "clicking the already-active tab" contract above) but must still move
+  // focus onto it.
+  it('#704: Home/End jump to the first/last rig tab', () => {
+    const { onRigChange } = renderSummary({ rig: 'genoa' });
+    const genoaTab = screen.getByRole('tab', { name: /Genoa/ });
+
+    fireEvent.keyDown(genoaTab, { key: 'End' });
+    expect(onRigChange).toHaveBeenCalledWith('fock');
+
+    vi.mocked(onRigChange).mockClear();
+    fireEvent.keyDown(genoaTab, { key: 'Home' });
+    expect(onRigChange).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(genoaTab);
+  });
+
   it('renders the stat grid with hand-derived distance, duration and avg speed', () => {
     const { container } = renderSummary({ rig: 'genoa' });
     const stats = container.querySelector('.ergebnis-stats') as HTMLElement;

@@ -658,6 +658,80 @@ describe('App', () => {
     expect(await screen.findByText(de['live.noPlan'])).toBeInTheDocument();
   });
 
+  // #704: the ARIA Tabs contract's association half — each tab's
+  // aria-controls points at the single tabpanel's id, and the tabpanel's
+  // aria-labelledby tracks whichever tab is currently selected. There is
+  // exactly one `<main className="app-panel">` whose CONTENT swaps per
+  // `tab`, so `getByRole('tabpanel')` must find exactly one element
+  // throughout — a second panel materialising would fail that query.
+  it('#704: app-shell tabs are wired to a tabpanel via aria-controls/aria-labelledby', async () => {
+    renderApp();
+
+    const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const routesTab = screen.getByRole('tab', { name: de['nav.routes'] });
+    const panel = screen.getByRole('tabpanel');
+
+    expect(planTab).toHaveAttribute('aria-controls', panel.id);
+    expect(routesTab).toHaveAttribute('aria-controls', panel.id);
+    expect(panel).toHaveAttribute('aria-labelledby', planTab.id);
+
+    fireEvent.click(routesTab);
+    expect(panel).toHaveAttribute('aria-labelledby', routesTab.id);
+  });
+
+  // #704: roving tabIndex — exactly one tab is in the natural Tab order
+  // (tabIndex 0) at any time, and it must be the SELECTED one, not merely
+  // the first.
+  it('#704: exactly one app-shell tab has tabIndex 0, and it tracks selection', async () => {
+    renderApp();
+
+    const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const routesTab = screen.getByRole('tab', { name: de['nav.routes'] });
+    const liveTab = screen.getByRole('tab', { name: de['nav.live'] });
+    const boatTab = screen.getByRole('tab', { name: de['nav.boat'] });
+
+    expect(planTab).toHaveAttribute('tabindex', '0');
+    expect(routesTab).toHaveAttribute('tabindex', '-1');
+    expect(liveTab).toHaveAttribute('tabindex', '-1');
+    expect(boatTab).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.click(boatTab);
+    expect(boatTab).toHaveAttribute('tabindex', '0');
+    expect(planTab).toHaveAttribute('tabindex', '-1');
+  });
+
+  // #704: ArrowLeft/ArrowRight (wrapping) and Home/End on the app-shell
+  // tablist — the WAI-ARIA "automatic activation" variant, so arrowing to a
+  // tab also selects it and moves focus onto it.
+  it('#704: ArrowLeft/ArrowRight/Home/End cycle the app-shell tablist', async () => {
+    renderApp();
+
+    const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const routesTab = screen.getByRole('tab', { name: de['nav.routes'] });
+    const boatTab = screen.getByRole('tab', { name: de['nav.boat'] });
+
+    fireEvent.keyDown(planTab, { key: 'ArrowRight' });
+    expect(routesTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(routesTab);
+
+    fireEvent.keyDown(routesTab, { key: 'ArrowLeft' });
+    expect(planTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(planTab);
+
+    // ArrowLeft from the FIRST tab wraps to the LAST.
+    fireEvent.keyDown(planTab, { key: 'ArrowLeft' });
+    expect(boatTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(boatTab);
+
+    fireEvent.keyDown(boatTab, { key: 'Home' });
+    expect(planTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(planTab);
+
+    fireEvent.keyDown(planTab, { key: 'End' });
+    expect(boatTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(boatTab);
+  });
+
   // #299: the fourth "Boot"/"Boat" tab renders SettingsPanel's grouped
   // content — a peer content tab like the other three, not a modal.
   it('adds a fourth Boot tab that renders the grouped Boat-settings content (#299)', async () => {
