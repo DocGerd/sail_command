@@ -254,11 +254,13 @@ select {
        ancestor (`.planner-panel`, `.app-panel`, `.app-bottom-sheet`,
        `.app-shell`, the `#root` wrapper, `body`) is `z-index: auto` with no
        `transform`/`opacity`/`contain`/`isolation`, so it sits in the SAME
-       root stacking context as Tier 2 above and ties
+       root stacking context as Tier 2 above and, whenever it is actually
+       positioned (`position: sticky`, wide layout only — at narrow it is
+       `static` and `z-index` never applies), ties
        `.maplibregl-ctrl-bottom-right`'s own `z-index: 2` — DOM order
        decides that tie, and `.app-bottom-sheet` is later in the DOM than
-       `.map-area`, so `.planner-actions` wins it. Shares Tier 2's numeral
-       by coincidence, not membership.
+       `.map-area`, so `.planner-actions` wins it there. Shares Tier 2's
+       numeral by coincidence, not membership.
      - `.about-dialog-backdrop` (`z-index: 100`) — a true modal; always above
        everything, including Tier 3, by design.
 
