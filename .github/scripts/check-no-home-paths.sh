@@ -62,7 +62,12 @@
 # classes, unconditionally - never gated on whether the target resolves - so
 # detection does not depend on the accident that a dangling or
 # directory-target symlink already failed the plain readable-regular-file
-# check for an unrelated reason.
+# check for an unrelated reason. That means a symlink no longer falls through
+# to the readable-regular-file branch above AT ALL (the `[ -L ]` branch below
+# always `continue`s) - this is DELIBERATE, not a narrowing of the FAIL-CLOSED
+# guarantee above: for a symlink, whether the TARGET resolves is irrelevant to
+# whether the TARGET STRING leaks a home path, so judging the string directly
+# is the correct fail-closed behaviour, not merely a preserved one.
 #
 # Production usage (from the repo root, or any cwd inside the work tree -
 # `git ls-files` resolves relative to the work tree regardless of cwd):
@@ -212,8 +217,13 @@ scan_file() {
 # target unconditionally, never gated on whether the target resolves, so
 # detection does not depend on that accident. Deliberately mirrors scan_file's
 # two-step grep/bash-ere/allowlist structure (same classes, same allowlist) -
-# a symlink target is a single string with no lines, so "symlink-target"
-# stands in for scan_file's line number rather than a line existing to report.
+# but the grep call below omits `-n`, deliberately: a symlink target is a
+# single filesystem attribute, not a multi-line document a reader would
+# navigate to by line, so no line number is ever computed for it (even
+# though the target STRING itself could in principle contain a literal
+# newline byte - POSIX places no such restriction on it). "symlink-target"
+# is a fixed label standing in for scan_file's line number in the output
+# format, not evidence that one could not exist.
 scan_symlink_target() {
   local f="$1" target="$2" i class ere bashere applyallow match token found=1
   for i in "${!CLASS_NAMES[@]}"; do
@@ -580,6 +590,10 @@ if [ "${1:-}" = "--selftest" ]; then
 
   r=$(mkrepo); addlink "$r" dangling-leak "/home/bob-selftest/never-existed"
   check "30 symlink to a NON-existent target that still leaks a home dir" fail "$r"
+  case "$LAST_OUT" in
+    *"dangling-leak:symlink-target:linux-home:/home/bob-selftest"*) ;;
+    *) echo "SELFTEST FAIL: 30 message did not name symlink-target/linux-home -> $LAST_OUT"; fail=1 ;;
+  esac
 
   r=$(mkrepo); add "$r" real-target.txt 'clean'; addlink "$r" relative-link '../real-target.txt'
   check "31 symlink with a benign relative target" pass "$r"
