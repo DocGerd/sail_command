@@ -89,16 +89,31 @@ select {
 /* #710: text/number/datetime fields render bare native chrome inside an
    otherwise-designed panel (Card/Button/Chip/Disclosure all draw the same
    1px --sc-border box + 10px-ish radius per spec §3.2) — this is the one
-   base rule that never got that treatment. Excludes checkbox AND radio
-   (native round/square controls a bordered box would visually cage — the
-   issue's own proposed selector named only checkbox; radio is the same
-   hazard by the same reasoning, `.boat-option-radio` is a type=radio) and
-   range (`.route-layer-time-slider` — a bordered/padded box around a native
-   slider track is not the "input" this issue means). `min-height` stays on
-   the UNSPLIT rule above deliberately: splitting it here would additionally
-   change checkbox/radio/range sizing, which is the #231 fix's own concern,
-   not this one's. */
-input:not([type='checkbox']):not([type='radio']):not([type='range']),
+   base rule that never got that treatment. Excludes checkbox, radio AND
+   range — the issue's own proposed selector named only checkbox. MEASURED
+   (not assumed) which of the other two actually needs excluding: Chromium
+   IGNORES author border/radius/padding on an `appearance: auto` radio
+   entirely — a forced `!important` border+radius+padding on
+   `.boat-option-radio` computed to `0px none / 0px / 0px` and the rendered
+   13x13px dial was byte-identical with or without this rule, so radio would
+   have been harmless to include. `range` is the real, measured hazard: the
+   SAME probe on `.route-layer-time-slider`'s thumb/track picks up a real
+   1px border and 0 0.6rem padding under the literal `input, select`
+   selector, visibly boxing the slider. Both stay excluded regardless (a
+   bordered/padded box is not what either control means to a user even
+   where Chromium happens to no-op it — a different engine may not), but the
+   citation is `range`, not "radio caging". `:where()` around the negations
+   keeps this rule's specificity at the ORIGINAL bare-element (0,0,1) — see
+   this file's own specificity-invariant note below (#106/MAJOR-1: without
+   `:where()`, three chained `:not()` pseudo-classes each count as a class
+   for specificity, computing to (0,3,1), which OUT-SPECIFIES every
+   single-class rule in this file, inverting that invariant; measured
+   concretely on `.sr-only` losing its `padding: 0`/`border: 0` to this rule
+   on the GPX file input before the fix). `min-height` stays on the UNSPLIT
+   rule above deliberately: splitting it here would additionally change
+   checkbox/radio/range sizing, which is the #231 fix's own concern, not
+   this one's. */
+input:where(:not([type='checkbox']):not([type='radio']):not([type='range'])),
 select {
   border: 1px solid var(--sc-border);
   border-radius: 8px;
@@ -234,9 +249,10 @@ select {
 
    OUT OF THIS ORDERING — different stacking context, doesn't compete here:
      - `.planner-actions` (`z-index: 2`) — a LOCAL sticky-positioning offset
-       inside the scrollable panel content, inert until the wide layout
-       makes it `position: sticky`. Shares Tier 2's numeral by coincidence,
-       not membership.
+       inside the scrollable panel content (#702: `position: sticky` at
+       every width now, narrow included — a horizontal inset keeps it clear
+       of the map's attribution corner there instead; see that rule's own
+       comment). Shares Tier 2's numeral by coincidence, not membership.
      - `.about-dialog-backdrop` (`z-index: 100`) — a true modal; always above
        everything, including Tier 3, by design.
 
@@ -353,8 +369,13 @@ select {
   line-height: 1;
 }
 
-/* ReloadPrompt's needRefresh banner: a labeled action (not a dismiss ×),
-   sized to fit the same compact banner strip as .banner-dismiss above. */
+/* ReloadPrompt's needRefresh banner: a labeled text action (not a dismiss
+   ×), sized to fit the compact banner strip on its OWN 32px height —
+   #708 removed `.banner-dismiss`'s matching 32px override above so the
+   global 44px button floor applies there instead, so the two no longer
+   share a size; this rule is deliberately UNCHANGED (a labelled action
+   reads its whole width as the touch target, not just its box height, the
+   way a bare × dismiss glyph does). */
 .reload-prompt-action {
   min-width: 0;
   min-height: 32px;
@@ -2588,14 +2609,32 @@ select {
   align-self: flex-start;
 }
 
-/* §3.3 sticky primary action — reachable without scrolling past a long panel. */
+/* §3.3 sticky primary action — reachable without scrolling past a long panel.
+   #702: sticky is now ON at every width, not narrow-gated any more — see the
+   narrow-only inset immediately below for why that is safe.
+
+   HISTORY, because the #64 comment this replaced was itself measured as
+   STALE (#702): the ORIGINAL #64 Phase 3 regression made the sticky bar pin
+   over the map's attribution control at the viewport bottom-right and
+   intercept its clicks, and the fix at the time was to disable stickiness on
+   narrow entirely. #702 re-verified that finding live rather than trusting
+   the comment: scoping sticky to `.app-panel`'s OWN `overflow-y: auto`
+   scrollport — which #64 predates — does NOT by itself avoid the collision.
+   MEASURED (Playwright, geometry re-sampled inside a 3-consecutive-identical
+   poll, `.planner-actions` forced sticky, `.app-panel` scrolled to its own
+   max `scrollTop`): a consistent ~484px² overlap between `.planner-actions`
+   and `.maplibregl-ctrl-attrib-button`, reproduced at ALL FIVE narrow
+   EDGE_VIEWPORTS (`phonePortrait`, `narrowPortrait360`, `shortLandscape844`,
+   `shortLandscape740`, `deepPortrait320`) — because MapLibre's attribution
+   button sits at `viewportWidth - 34px` (its own 24px box + a 10px control
+   margin, both maplibre-gl@6.5.0 defaults) while this bar's sticky-pinned
+   right edge sits at `viewportWidth - 12px` (`.app-panel`'s own padding) at
+   EVERY tested width — the 22px gap between those two formulas is constant
+   because both edges scale with viewport width identically, which is what
+   makes a single, width-independent horizontal inset a complete fix rather
+   than a per-viewport tuning problem. See the narrow-only rule below. */
 .planner-actions {
-  /* In the narrow bottom-sheet the sticky bar would pin over the map's
-     attribution control at the viewport bottom-right and intercept its clicks
-     (#64 Phase 3 regression caught by plan.spec). Sticky is scoped to the wide
-     side-panel below, where the panel is its own column and cannot overlap the
-     map chrome. bottom/z-index stay here — inert until position:sticky applies. */
-  position: static;
+  position: sticky;
   bottom: 0;
   z-index: 2;
   display: flex;
@@ -2603,6 +2642,22 @@ select {
   gap: 0.5rem;
   padding: 0.5rem 0;
   background: var(--sc-bg);
+}
+
+/* #702: the horizontal inset that clears the attribution control (see the
+   measurement in the comment above), scoped to narrow only — the wide
+   side-panel never reaches that corner, so it doesn't need to give up any
+   width. Level 3 `max-width: 1023.98px`, matching this file's own established
+   MQ3-vs-MQ4 convention (see the banner-clearance rule's own comment for why
+   `not (min-width: 1024px)` is avoided here). 24px, not the measured 22px
+   minimum: MapLibre's control margin is a library default, not a value this
+   app owns, so a couple of px of headroom is cheap insurance against a future
+   maplibre-gl bump nudging it. Pure geometry — no z-index invented, no tier
+   crossed; `.planner-actions` keeps its existing `z-index: 2` unchanged. */
+@media (max-width: 1023.98px) {
+  .planner-actions {
+    margin-right: 24px;
+  }
 }
 
 .planner-status {
@@ -2721,10 +2776,16 @@ select {
 
 /* #706: same color-mix formula `.boat-option-selected` uses for its
    background, at a lower percentage so hover reads as a lighter preview
-   rather than competing with the selected state. Deliberately `:hover` on
-   the label alone, not `.boat-option:has(:hover)` — this repo has a
-   documented MQ3/MQ4 + :has() support-floor trap (see app.css's own
-   banner-clearance rule comment). */
+   rather than competing with the selected state. Plain `:hover` on the
+   label itself, not `.boat-option:has(:hover)`: `:has()` would answer "is
+   some descendant hovered", which is not the question here — the label
+   element IS the thing the pointer is over (it wraps the radio + text and
+   carries the row's own `cursor: pointer`), so styling it directly is both
+   simpler and sufficient. (`:has()` is not a support-floor concern in this
+   codebase either way — `.options-field:has(input[type='checkbox'])` below
+   already ships it; an earlier revision of this comment cited an MQ3/MQ4
+   `:has()` trap that the cited passage itself says is unrelated to `:has()`
+   support at all, only to an MQ3-vs-MQ4 SYNTAX choice — corrected here.) */
 .boat-option-label:hover {
   background: color-mix(in srgb, var(--sc-accent) 4%, transparent);
 }
@@ -3148,12 +3209,12 @@ select {
     height: 220px; /* more vertical room on the wide two-column layout */
   }
 
-  /* Sticky "Route planen" only on the wide side-panel (§3.3) — its own column,
-     so it cannot overlap the map attribution the way it does in the narrow
-     bottom-sheet. */
-  .planner-actions {
-    position: sticky;
-  }
+  /* #702: `.planner-actions` is now `position: sticky` unconditionally in its
+     own base rule (it never collided on the wide side-panel — that column
+     never reaches the map's attribution corner — so nothing here changes on
+     wide); this override used to be where stickiness turned on and is kept
+     only as a deliberate no-op documenting that removing it changes nothing
+     at this breakpoint. */
 }
 
 /* #46a: options help text (OptionsPanel) and motor footnote (RouteSummary);
@@ -3256,10 +3317,11 @@ select {
 /* #708: flex's default `min-width: auto` floors this at its own content
    size, so at narrow viewports a via row (this coord + three 44px ghost
    buttons) overflows rather than shrinking — the same fix
-   `.harbor-picker-caveat` two rules below already applies, with the same
-   reasoning in its own comment. `overflow-wrap: anywhere` (not the
-   nowrap/ellipsis trio) so the full coordinate always stays readable rather
-   than being truncated — this is safety-adjacent position data, not a label. */
+   `.harbor-picker-caveat` (further below, in the harbor-combobox section)
+   already applies, with the same reasoning in its own comment.
+   `overflow-wrap: anywhere` (not the nowrap/ellipsis trio) so the full
+   coordinate always stays readable rather than being truncated — this is
+   safety-adjacent position data, not a label. */
 .planner-via-coord {
   flex: 1;
   min-width: 0;
