@@ -247,12 +247,18 @@ select {
        would instead fight the attribution's `2` and win by DOM order,
        covering it — see that rule's own comment.
 
-   OUT OF THIS ORDERING — different stacking context, doesn't compete here:
+   OUT OF THIS ORDERING, each for its own reason:
      - `.planner-actions` (`z-index: 2`) — a LOCAL sticky-positioning offset
-       inside the scrollable panel content (#702: `position: sticky` at
-       every width now, narrow included — a horizontal inset keeps it clear
-       of the map's attribution corner there instead; see that rule's own
-       comment). Shares Tier 2's numeral by coincidence, not membership.
+       inside the scrollable panel content, inert until the wide layout
+       makes it `position: sticky`. NOT a different stacking context: every
+       ancestor (`.planner-panel`, `.app-panel`, `.app-bottom-sheet`,
+       `.app-shell`, the `#root` wrapper, `body`) is `z-index: auto` with no
+       `transform`/`opacity`/`contain`/`isolation`, so it sits in the SAME
+       root stacking context as Tier 2 above and ties
+       `.maplibregl-ctrl-bottom-right`'s own `z-index: 2` — DOM order
+       decides that tie, and `.app-bottom-sheet` is later in the DOM than
+       `.map-area`, so `.planner-actions` wins it. Shares Tier 2's numeral
+       by coincidence, not membership.
      - `.about-dialog-backdrop` (`z-index: 100`) — a true modal; always above
        everything, including Tier 3, by design.
 
@@ -2609,32 +2615,14 @@ select {
   align-self: flex-start;
 }
 
-/* §3.3 sticky primary action — reachable without scrolling past a long panel.
-   #702: sticky is now ON at every width, not narrow-gated any more — see the
-   narrow-only inset immediately below for why that is safe.
-
-   HISTORY, because the #64 comment this replaced was itself measured as
-   STALE (#702): the ORIGINAL #64 Phase 3 regression made the sticky bar pin
-   over the map's attribution control at the viewport bottom-right and
-   intercept its clicks, and the fix at the time was to disable stickiness on
-   narrow entirely. #702 re-verified that finding live rather than trusting
-   the comment: scoping sticky to `.app-panel`'s OWN `overflow-y: auto`
-   scrollport — which #64 predates — does NOT by itself avoid the collision.
-   MEASURED (Playwright, geometry re-sampled inside a 3-consecutive-identical
-   poll, `.planner-actions` forced sticky, `.app-panel` scrolled to its own
-   max `scrollTop`): a consistent ~484px² overlap between `.planner-actions`
-   and `.maplibregl-ctrl-attrib-button`, reproduced at ALL FIVE narrow
-   EDGE_VIEWPORTS (`phonePortrait`, `narrowPortrait360`, `shortLandscape844`,
-   `shortLandscape740`, `deepPortrait320`) — because MapLibre's attribution
-   button sits at `viewportWidth - 34px` (its own 24px box + a 10px control
-   margin, both maplibre-gl@6.5.0 defaults) while this bar's sticky-pinned
-   right edge sits at `viewportWidth - 12px` (`.app-panel`'s own padding) at
-   EVERY tested width — the 22px gap between those two formulas is constant
-   because both edges scale with viewport width identically, which is what
-   makes a single, width-independent horizontal inset a complete fix rather
-   than a per-viewport tuning problem. See the narrow-only rule below. */
+/* §3.3 sticky primary action — reachable without scrolling past a long panel. */
 .planner-actions {
-  position: sticky;
+  /* In the narrow bottom-sheet the sticky bar would pin over the map's
+     attribution control at the viewport bottom-right and intercept its clicks
+     (#64 Phase 3 regression caught by plan.spec). Sticky is scoped to the wide
+     side-panel below, where the panel is its own column and cannot overlap the
+     map chrome. bottom/z-index stay here — inert until position:sticky applies. */
+  position: static;
   bottom: 0;
   z-index: 2;
   display: flex;
@@ -2642,22 +2630,6 @@ select {
   gap: 0.5rem;
   padding: 0.5rem 0;
   background: var(--sc-bg);
-}
-
-/* #702: the horizontal inset that clears the attribution control (see the
-   measurement in the comment above), scoped to narrow only — the wide
-   side-panel never reaches that corner, so it doesn't need to give up any
-   width. Level 3 `max-width: 1023.98px`, matching this file's own established
-   MQ3-vs-MQ4 convention (see the banner-clearance rule's own comment for why
-   `not (min-width: 1024px)` is avoided here). 24px, not the measured 22px
-   minimum: MapLibre's control margin is a library default, not a value this
-   app owns, so a couple of px of headroom is cheap insurance against a future
-   maplibre-gl bump nudging it. Pure geometry — no z-index invented, no tier
-   crossed; `.planner-actions` keeps its existing `z-index: 2` unchanged. */
-@media (max-width: 1023.98px) {
-  .planner-actions {
-    margin-right: 24px;
-  }
 }
 
 .planner-status {
@@ -3209,12 +3181,12 @@ select {
     height: 220px; /* more vertical room on the wide two-column layout */
   }
 
-  /* #702: `.planner-actions` is now `position: sticky` unconditionally in its
-     own base rule (it never collided on the wide side-panel — that column
-     never reaches the map's attribution corner — so nothing here changes on
-     wide); this override used to be where stickiness turned on and is kept
-     only as a deliberate no-op documenting that removing it changes nothing
-     at this breakpoint. */
+  /* Sticky "Route planen" only on the wide side-panel (§3.3) — its own column,
+     so it cannot overlap the map attribution the way it does in the narrow
+     bottom-sheet. */
+  .planner-actions {
+    position: sticky;
+  }
 }
 
 /* #46a: options help text (OptionsPanel) and motor footnote (RouteSummary);
