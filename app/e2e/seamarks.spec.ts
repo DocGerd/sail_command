@@ -185,13 +185,28 @@ async function jumpToCluster(page: Page, zoom: number): Promise<void> {
   );
 }
 
-// Reads the sorted `icon` ids of every 'sc-seamarks' feature rendered inside
-// the FIXED geographic box (CLUSTER_CENTER +/- CLUSTER_HALF_DEGREES),
+// Reads the sorted `icon` ids of every seamark feature rendered inside the
+// FIXED geographic box (CLUSTER_CENTER +/- CLUSTER_HALF_DEGREES),
 // re-projected to the CURRENT screen pixels every call — never cached across
 // zoom changes, since `project()`'s output depends on the live camera
 // transform (the file header explains why a fixed geographic box, not a
 // fixed pixel box or the whole viewport, is what makes the two zoom regimes
 // comparable at all).
+//
+// #682 (found by CI, run 33008546750): queries BOTH `sc-seamarks` AND
+// `sc-seamarks-hazard` — #682 split the single seamark layer into a
+// routine layer and a hazard-family overlay (cardinal/isolatedDanger,
+// stacked above so they paint correctly at z>=12; see seamarkGeoJson.ts's
+// SEAMARKS_LAYOUT doc comment). Querying `sc-seamarks` alone silently
+// dropped the 2 hazard marks this box's own z11.5 pin below expects
+// (`seamark-cardinal-north`/`seamark-cardinal-south`) — MEASURED: at
+// z11.5, querying `sc-seamarks-hazard` alone returns exactly those 2 ids,
+// so they are correctly placed and simply live on the other layer, not
+// culled (a real z<12 culling regression would have been a design defect
+// #682 exists specifically to avoid — this was not that). This function's
+// job is "every seamark icon in the box", so it must cover every layer
+// that can hold one; the guard's PIN values are unaffected; only its
+// query scope was too narrow.
 async function readSortedSeamarkIconIdsInClusterBox(page: Page): Promise<string[]> {
   return page.evaluate(
     ({ center, half }) => {
@@ -204,7 +219,7 @@ async function readSortedSeamarkIconIdsInClusterBox(page: Page): Promise<string[
             [nw.x, nw.y],
             [se.x, se.y],
           ],
-          { layers: ['sc-seamarks'] },
+          { layers: ['sc-seamarks', 'sc-seamarks-hazard'] },
         )
         .map((f) => String(f.properties.icon))
         .sort();
