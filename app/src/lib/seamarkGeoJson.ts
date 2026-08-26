@@ -2,11 +2,16 @@
 // MapLibre wiring lives in components/DataLayers.tsx, mirroring how
 // harborGeoJson.ts backs DataLayers' harbor markers.
 import type { Feature, FeatureCollection, Point } from 'geojson';
-import type { FilterSpecification, SymbolLayerSpecification } from 'maplibre-gl';
+import type {
+  ExpressionSpecification,
+  FilterSpecification,
+  SymbolLayerSpecification,
+} from 'maplibre-gl';
 import type { SeamarkProperties } from '../types';
 import {
   SEAMARK_NATURAL_ICON_PX,
   SEAMARK_SIZE_SCALE,
+  isHazardSeamark,
   seamarkDisplayTier,
   seamarkImageId,
   seamarkPriority,
@@ -20,6 +25,10 @@ export type SeamarkPropertiesWithIcon = SeamarkProperties & {
   priority: number;
   /** #353 PR2 — see `seamarkDisplayTier()`'s own doc comment. */
   displayTier: SeamarkDisplayTier;
+  /** #682 — see `isHazardSeamark()`'s own doc comment. Read by
+   * `seamarkHazardFilter`/`seamarkRoutineFilter` below to partition one
+   * source between the two `sc-seamarks*` symbol layers. */
+  hazard: boolean;
 };
 
 /**
@@ -43,20 +52,68 @@ export function seamarkFeatureCollectionWithIcons(
         icon: seamarkImageId(f.properties),
         priority: seamarkPriority(f.properties),
         displayTier: seamarkDisplayTier(f.properties),
+        hazard: isHazardSeamark(f.properties),
       },
     })),
   };
 }
 
 /**
- * MapLibre `filter` expression for the `sc-seamarks` layer's display
- * category (#353 PR2): keeps a feature only while its own `displayTier`
- * (stamped by `seamarkFeatureCollectionWithIcons` above) is at or below the
- * user's selected tier — tiers are CUMULATIVE (`SEAMARK_DISPLAY_TIER_ALL`
- * shows everything, matching the pre-#353 unfiltered layer exactly).
+ * MapLibre `filter` expression for the display-CATEGORY cut (#353 PR2):
+ * keeps a feature only while its own `displayTier` (stamped by
+ * `seamarkFeatureCollectionWithIcons` above) is at or below the user's
+ * selected tier — tiers are CUMULATIVE (`SEAMARK_DISPLAY_TIER_ALL` shows
+ * everything, matching the pre-#353 unfiltered layer exactly). Used directly
+ * by neither symbol layer any more (#682 split them) — `seamarkRoutineFilter`
+ * / `seamarkHazardFilter` below each AND this with the `hazard` partition —
+ * but stays exported: `seamarkGeoJson.test.ts` and `SettingsPanel.tsx`'s own
+ * display-tier reasoning still reference the bare display-category cut.
  */
-export function seamarkDisplayFilter(selectedTier: SeamarkDisplayTier): FilterSpecification {
+function seamarkDisplayTierExpression(selectedTier: SeamarkDisplayTier): ExpressionSpecification {
   return ['<=', ['get', 'displayTier'], selectedTier];
+}
+
+export function seamarkDisplayFilter(selectedTier: SeamarkDisplayTier): FilterSpecification {
+  return seamarkDisplayTierExpression(selectedTier);
+}
+
+/**
+ * #682: filter for the ROUTINE (`sc-seamarks`) layer — the display-tier cut
+ * above, ANDed with NOT `hazard`, so a hazard family (isolatedDanger,
+ * cardinal — `seamarkGlyphs.ts`'s `isHazardSeamark`) never renders here: it
+ * belongs on `seamarkHazardFilter`'s layer instead. Partitioning the ONE
+ * `SEAMARKS_SOURCE` this way (rather than filtering by `hazard` alone on
+ * each layer with no tier cut) is what keeps every feature rendering on
+ * EXACTLY one of the two layers, never both and never neither.
+ *
+ * Built from `seamarkDisplayTierExpression` (the `ExpressionSpecification`-
+ * typed helper above), NOT from `seamarkDisplayFilter` — the maplibre-gl
+ * style-spec types the `'all'` combinator's members as
+ * `ExpressionSpecification`, a NARROWER type than the wider `FilterSpecification`
+ * union `seamarkDisplayFilter` returns (which also admits legacy filter
+ * forms and bare booleans); nesting the wider type inside `'all'` fails to
+ * typecheck (measured — `tsc` TS2322).
+ */
+export function seamarkRoutineFilter(selectedTier: SeamarkDisplayTier): FilterSpecification {
+  return ['all', seamarkDisplayTierExpression(selectedTier), ['!', ['get', 'hazard']]];
+}
+
+/**
+ * #682: filter for the HAZARD overlay layer (`sc-seamarks-hazard`, stacked
+ * ABOVE the routine layer in DataLayers.tsx — see SEAMARKS_LAYOUT's own doc
+ * comment for why that ordering alone fixes both the z>=12 paint-order
+ * inversion and preserves the z<12 placement priority) — the same
+ * display-tier cut, ANDed with `hazard`. Both hazard families are BASE tier
+ * (`seamarkGlyphs.ts`'s `DISPLAY_TIER_OF_FAMILY`), the tier NEVER hidden by
+ * any user selection, so in practice this evaluates true whenever the
+ * seamarks overlay is visible at all — kept as an explicit AND, not a bare
+ * `['get', 'hazard']`, for symmetry with seamarkRoutineFilter and so a
+ * future tier restructuring can't silently start hiding a hazard family
+ * without this filter noticing. Same `seamarkDisplayTierExpression`-not-
+ * `seamarkDisplayFilter` typing reason as seamarkRoutineFilter above.
+ */
+export function seamarkHazardFilter(selectedTier: SeamarkDisplayTier): FilterSpecification {
+  return ['all', seamarkDisplayTierExpression(selectedTier), ['get', 'hazard']];
 }
 
 /**
@@ -196,32 +253,71 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *   most surprising thing about this layer, so state it plainly. Per the
  *   style-spec: a lower key is placed first and wins collisions when overlap
  *   is 'never'; when overlap is 'always' a HIGHER key paints ON TOP. So the
- *   very ranking that protects hazard marks from being culled below z12 also
- *   paints them UNDERNEATH routine marks at z>=12. THREE consequences: (a)
- *   and (b) are accepted rather than fixed here; (c) is NOT accepted — it is
- *   a live, unresolved finding (see its own STATUS line below):
+ *   very ranking that protects hazard marks from being culled below z12
+ *   USED TO also paint them UNDERNEATH routine marks at z>=12 — see (b),
+ *   FIXED by #682. THREE consequences: (a) is accepted rather than fixed
+ *   here; (b) is FIXED (#682); (c) is NOT accepted — it is a live,
+ *   unresolved finding (see its own STATUS line below):
  *     (a) Tap resolution is NOT left to paint order. `queryRenderedFeatures`
  *         returns symbols top-to-bottom, so DataLayers' click handler would
  *         otherwise open the popover of the least significant overlapping
- *         mark; it calls pickSeamarkByPriority() instead (see above).
- *     (b) Paint order is a REMAINING residual: where icons overlap at z>=12 a
- *         routine mark can visually cover a cardinal or isolated-danger mark.
- *         Measured on the committed data, 31 of 49 hazard marks with a
- *         higher-key neighbour within 320 m are partially covered at z12.
- *         Nothing in this layer can fix that — `symbol-z-order: 'viewport-y'`
- *         would disable sortFeaturesByKey and take the placement priority with
- *         it. Only splitting the hazard families into their own symbol layer,
- *         stacked above this one, decouples the two; that is a follow-up,
- *         filed as #682 (out of scope for #232 items 2-4).
+ *         mark; it calls pickSeamarkByPriority() instead (see above). #682
+ *         registers that click handler on BOTH `sc-seamarks*` layers
+ *         (`map.on('click', [SEAMARKS_LAYER, SEAMARKS_HAZARD_LAYER], …)`,
+ *         DataLayers.tsx), so `e.features` still spans whichever of the two
+ *         layers the tap point actually hit and the SAME priority pick
+ *         resolves it — see that file's own comment for why a single
+ *         delegated listener over both layer ids is enough.
+ *     (b) FIXED by #682: hazard families (isolatedDanger, cardinal —
+ *         `seamarkGlyphs.ts`'s `isHazardSeamark`, R1001 Tier 1 above, the
+ *         two whose warning is self-contained) render on a SECOND symbol
+ *         layer, `sc-seamarks-hazard` (`SEAMARKS_HAZARD_LAYER`,
+ *         DataLayers.tsx), reading the SAME `SEAMARKS_SOURCE` and stacked
+ *         ABOVE this one. `seamarkRoutineFilter`/`seamarkHazardFilter`
+ *         (below) partition the source on the `hazard` boolean
+ *         `seamarkFeatureCollectionWithIcons` now stamps, so every feature
+ *         renders on EXACTLY one of the two layers, never both.
+ *
+ *         Splitting the layer decouples paint order from placement priority
+ *         WITHOUT any cross-layer `symbol-sort-key` coordination — stacking
+ *         order alone is sufficient. MapLibre's placement pass runs its
+ *         per-frame collision pass TOP-TO-BOTTOM over the STYLE's own layer
+ *         array: `PauseablePlacement`'s `_currentPlacementIndex` is
+ *         initialised to `order.length - 1` (the TOPMOST layer) and
+ *         decrements from there (`style/pauseable_placement.ts:80,101-102,124`,
+ *         re-derived against `maplibre-gl` **6.5.0**, matched to
+ *         `app/package-lock.json`'s pin via `npm ci` before reading, not a
+ *         possibly-stale `node_modules` — #392's documented trap). So a
+ *         layer added LATER — which DataLayers.tsx's own `setupLayers`
+ *         ordering comment already establishes is a layer painted ON TOP,
+ *         since a later `addLayer(layer, beforeId)` call with the SAME
+ *         `beforeId` lands immediately above an earlier one — is ALSO
+ *         placed FIRST: it claims the shared collision index before the
+ *         layer below it is even considered. Under `icon-overlap: 'never'`
+ *         that means the hazard layer's marks get first claim on contested
+ *         space and a routine mark below can never cull one out from under
+ *         it, and under `icon-overlap: 'always'` it paints on top — the
+ *         hazard layer wins BOTH halves purely from being the topmost
+ *         layer, with `symbol-sort-key` left doing exactly what it did
+ *         before WITHIN each layer (isolatedDanger before cardinal in the
+ *         hazard layer; #200's routine-family ordering, minus the two
+ *         Tier-1 members, in this one).
+ *
+ *         Measured on the committed data BEFORE this split, 31 of 49
+ *         hazard marks with a higher-key neighbour within 320 m were
+ *         partially covered at z12 — the defect this fix targets; see
+ *         `app/e2e/datalayers.spec.ts`'s BASE-vs-HEAD
+ *         `queryRenderedFeatures` order comparison for the after-state.
  *     (c) Cross-tile ordering (#232 item 2) — the issue's ORIGINAL hypothesis
  *         here ("the sort only orders within one tile, so a low-priority
  *         mark in an earlier tile can beat a high-priority one in a later
  *         tile, and no ranking fixes it") is REFUTED by source, read against
  *         `maplibre-gl` **6.5.0** (`app/node_modules/maplibre-gl`, matched
  *         to `app/package-lock.json`'s pin via `npm ci` before reading, not
- *         a possibly-stale `node_modules` — #392's documented trap).
- *         `sc-seamarks` sets a non-constant `symbol-sort-key` and never sets
- *         `symbol-z-order` — exactly the condition `LayerPlacement`'s
+ *         a possibly-stale `node_modules` — #392's documented trap). Both
+ *         `sc-seamarks` and (since #682) `sc-seamarks-hazard` set a
+ *         non-constant `symbol-sort-key` and never set `symbol-z-order` —
+ *         exactly the condition `LayerPlacement`'s
  *         `_sortAcrossTiles` flag tests (`style/pauseable_placement.ts:
  *         20-21`, the SAME predicate as `sortFeaturesByKey` above). When
  *         that flag is true, `continuePlacement` (`:29-58`) first collects
@@ -243,7 +339,7 @@ export function seamarkPopupAnchor<T extends { properties?: unknown; geometry?: 
  *         are both withdrawn here. #200's measured z8/z9 hazard retention
  *         (high but not 100%) is a real number this comment does NOT
  *         explain any more: the cross-tile GLOBAL SORT mechanism verified in
- *         this bullet does not produce a cross-tile leak for this layer's
+ *         this bullet does not produce a cross-tile leak for EITHER layer's
  *         configuration, and no alternative cause was established in this
  *         pass. #232 item 2 needs either a fresh investigation of the real
  *         cause, or a re-measurement confirming the residual still exists at

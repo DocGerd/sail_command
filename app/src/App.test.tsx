@@ -2,11 +2,13 @@ import 'fake-indexeddb/auto';
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App, {
+  INTERACTIVE_MAP_LAYER_IDS,
   planErrorBannerKind,
   planErrorGroup,
   planErrorRetryMayHelp,
   toPlannerStatus,
 } from './App';
+import * as DataLayersModule from './components/DataLayers';
 import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
 import { en } from './i18n/dict.en';
@@ -165,24 +167,44 @@ vi.mock('maplibre-gl', () => {
     // (MapView's click/error) and layer-scoped `on(event, layerId, cb)`
     // (DataLayers' harbor-marker click/hover) — the layer-scoped form must
     // not overwrite the generic hooks.
+    // #682: DataLayers.tsx now registers its seamark click/hover handler on
+    // an ARRAY of layer ids (`map.on('click', [SEAMARKS_LAYER,
+    // SEAMARKS_HAZARD_LAYER], handleClick)`, real MapLibre's own array form
+    // of the delegated `on(type, layerIds, fn)` overload) rather than a
+    // single string — this fake registers the SAME handler under each id in
+    // `layerClickHandlers`, mirroring `test/fakeMaplibre.ts`'s `keysFor`.
     on(event: string, layerOrCb: unknown, maybeCb?: unknown) {
       if (typeof layerOrCb === 'function') {
         if (event === 'click')
           mapTestHooks.clickHandler = layerOrCb as typeof mapTestHooks.clickHandler;
         if (event === 'error')
           mapTestHooks.errorHandler = layerOrCb as typeof mapTestHooks.errorHandler;
-      } else if (
-        event === 'click' &&
-        typeof layerOrCb === 'string' &&
-        typeof maybeCb === 'function'
-      ) {
-        mapTestHooks.layerClickHandlers[layerOrCb] =
-          maybeCb as (typeof mapTestHooks.layerClickHandlers)[string];
+      } else if (event === 'click' && typeof maybeCb === 'function') {
+        const layerIds = Array.isArray(layerOrCb) ? layerOrCb : [layerOrCb];
+        for (const id of layerIds) {
+          if (typeof id !== 'string') continue;
+          mapTestHooks.layerClickHandlers[id] =
+            maybeCb as (typeof mapTestHooks.layerClickHandlers)[string];
+        }
       }
     }
+    // #682: MUST distinguish "a delegated layer-scoped off (string OR
+    // array second argument)" from "the plain 2-arg off(event, fn) form" by
+    // checking for a STRING/ARRAY explicitly — the old `typeof layerOrCb ===
+    // 'string'` check fell through to the generic-handler branch for an
+    // ARRAY (neither a string nor a function), which cleared
+    // mapTestHooks.clickHandler on EVERY DataLayers seamark-effect re-run
+    // and made every raw-tap-pick test in this file time out waiting for a
+    // clickHandler that had just been wiped by an unrelated cleanup
+    // (MEASURED: reverting this array branch back to the old string-only
+    // check reproduces 18 failures across this file, all timing out on
+    // `mapTestHooks.clickHandler` staying null).
     off(event: string, layerOrCb?: unknown) {
-      if (typeof layerOrCb === 'string') {
-        if (event === 'click') delete mapTestHooks.layerClickHandlers[layerOrCb];
+      if (typeof layerOrCb === 'string' || Array.isArray(layerOrCb)) {
+        if (event === 'click') {
+          const layerIds = Array.isArray(layerOrCb) ? layerOrCb : [layerOrCb];
+          for (const id of layerIds) delete mapTestHooks.layerClickHandlers[id as string];
+        }
         return;
       }
       if (event === 'click') mapTestHooks.clickHandler = null;
@@ -1967,6 +1989,45 @@ describe('harbor marker click-to-pick (#38)', () => {
     renderApp();
     const toggle = await screen.findByRole('checkbox', { name: de['map.depth.toggle'] });
     expect(toggle).not.toBeChecked();
+  });
+});
+
+// #682: DataLayers.tsx split the single `sc-seamarks` layer into a routine
+// layer and a `sc-seamarks-hazard` overlay (cardinal/isolated-danger marks,
+// stacked above so they paint over routine marks at z>=12 — see
+// seamarkGeoJson.ts's SEAMARKS_LAYOUT doc comment for the full mechanism).
+// Both layers register DataLayers' own click handler (it opens the seamark
+// popover), but MapView.tsx's generic tap handler ALSO owns any click that
+// does NOT land on a layer named in App.tsx's `INTERACTIVE_MAP_LAYER_IDS` —
+// so a hazard mark living ONLY on the new layer would, if that array forgot
+// it, be hit by BOTH: the popover opens AND the SAME native click silently
+// sets that tap point as origin/destination (MapView.tsx's own `handleClick`
+// comment describes this exact race). Nothing anywhere pinned that array
+// before this test — a repo-wide grep for INTERACTIVE_MAP_LAYER_IDS /
+// interactiveLayerIds across app/src/**/*.test.ts(x) and app/e2e found zero
+// hits.
+//
+// Deliberately a structural pin, not a full behavioural simulation of the
+// tap race: it asserts the PROPERTY ("every seamark layer id DataLayers
+// exports is in the gate array"), derived by REFLECTING over DataLayers'
+// own module exports rather than hardcoding the two current layer id
+// strings a second time here — so a THIRD `SEAMARKS_*_LAYER` export added
+// later (following the naming convention `SEAMARKS_LAYER`/
+// `SEAMARKS_HAZARD_LAYER` already set) is covered automatically, with no
+// edit to this test, exactly the "fails closed" property a two-element
+// hardcoded list would not have.
+describe('#682 tap-safety: every seamark layer must gate the raw tap-pick', () => {
+  it('INTERACTIVE_MAP_LAYER_IDS lists every SEAMARKS*_LAYER id DataLayers exports', () => {
+    const seamarkLayerIds = Object.entries(DataLayersModule)
+      .filter(([name, value]) => typeof value === 'string' && /^SEAMARKS.*LAYER$/.test(name))
+      .map(([, value]) => value as string);
+    // Non-vacuity: a renamed export or a broken reflection must not pass
+    // trivially by iterating zero times (CLAUDE.md's "ask of every guard
+    // what it does when the problem is fixed / stubbed to []" lesson).
+    expect(seamarkLayerIds.length).toBeGreaterThanOrEqual(2);
+    for (const id of seamarkLayerIds) {
+      expect(INTERACTIVE_MAP_LAYER_IDS).toContain(id);
+    }
   });
 });
 

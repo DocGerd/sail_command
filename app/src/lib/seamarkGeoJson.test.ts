@@ -4,7 +4,9 @@ import {
   pickSeamarkByPriority,
   seamarkDisplayFilter,
   seamarkFeatureCollectionWithIcons,
+  seamarkHazardFilter,
   seamarkPopupAnchor,
+  seamarkRoutineFilter,
   seamarksLayout,
   type SeamarkFeatureCollection,
 } from './seamarkGeoJson';
@@ -52,6 +54,11 @@ describe('seamarkFeatureCollectionWithIcons', () => {
       // floor (danger-bearing per the same Table 16 citation as `priority`
       // above) — see seamarkGlyphs.ts's `seamarkDisplayTier` doc comment.
       displayTier: SEAMARK_DISPLAY_TIER_BASE,
+      // #682 hand-derived: `lateral` is Tier 3 in FAMILY_RANK, not Tier 1
+      // (isolatedDanger/cardinal) — HAZARD_SEAMARK_FAMILIES excludes it, so
+      // this renders on the routine `sc-seamarks` layer, not the hazard
+      // overlay.
+      hazard: false,
     });
     expect(withIcons.features[1].properties.icon).toBe('seamark-light-major');
     // #200 hand-derived: unlit light_major = 4 (Tier 2 — R1001 §2.7 "other
@@ -62,12 +69,52 @@ describe('seamarkFeatureCollectionWithIcons', () => {
     // Base includes — see seamarkGlyphs.ts's `seamarkDisplayTier` doc
     // comment; MSC.232(82)'s own Display Base contains no AtoN class at all).
     expect(withIcons.features[1].properties.displayTier).toBe(SEAMARK_DISPLAY_TIER_BASE);
+    // #682 hand-derived: `lightMajor` is Tier 2, not Tier 1 — not a hazard
+    // family either, despite also being BASE display tier (the two are
+    // independent classifications).
+    expect(withIcons.features[1].properties.hazard).toBe(false);
     expect(withIcons.features[2].properties.icon).toBe('seamark-light-minor');
     // #513 F1/F2 hand-derived: `lightMinor` is display-category STANDARD —
     // MSC.232(82) Appendix 2 item 2.3's undivided "buoys, beacons, other
     // aids to navigation" group is Standard Display, promoted here from the
     // first #353 PR2 revision's (wrong) ALL placement.
     expect(withIcons.features[2].properties.displayTier).toBe(SEAMARK_DISPLAY_TIER_STANDARD);
+    // #682 hand-derived: `lightMinor` is Tier 4 — not a hazard family.
+    expect(withIcons.features[2].properties.hazard).toBe(false);
+  });
+
+  // #682: a discriminating positive case for BOTH hazard families —
+  // #455/CLAUDE.md's "give any probe whose emptiness you intend to
+  // interpret a positive control" lesson: the three cases above are all
+  // `hazard: false`, so without this test a stubbed-always-false
+  // `isHazardSeamark` would pass every assertion in this file.
+  it('stamps hazard: true for BOTH Tier 1 families (isolatedDanger, cardinal) and hazard: false for a non-hazard family', () => {
+    const mixed: SeamarkFeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [10.0, 54.5] },
+          properties: { seamarkType: 'buoy_isolated_danger' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [10.1, 54.6] },
+          properties: { seamarkType: 'buoy_cardinal', category: 'north' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [10.2, 54.7] },
+          properties: { seamarkType: 'buoy_safe_water' },
+        },
+      ],
+    };
+    const withIcons = seamarkFeatureCollectionWithIcons(mixed);
+    expect(withIcons.features[0].properties.hazard).toBe(true);
+    expect(withIcons.features[1].properties.hazard).toBe(true);
+    // safeWater is Tier 2, not Tier 1 — the control that proves this isn't
+    // vacuously true for every feature.
+    expect(withIcons.features[2].properties.hazard).toBe(false);
   });
 });
 
@@ -89,6 +136,39 @@ describe('seamarkDisplayFilter (#353 PR2)', () => {
       '<=',
       ['get', 'displayTier'],
       0,
+    ]);
+  });
+});
+
+// #682: the routine/hazard layer split. Pinned by literal AST shape, same
+// convention as seamarkDisplayFilter above (this repo's tests can't evaluate
+// a MapLibre expression tree without a real style engine — the e2e order
+// comparison in datalayers.spec.ts is what exercises these filters against
+// real rendered features).
+describe('seamarkRoutineFilter / seamarkHazardFilter (#682)', () => {
+  it('each ANDs the SAME display-tier cut with the opposite half of `hazard`', () => {
+    expect(seamarkRoutineFilter(SEAMARK_DISPLAY_TIER_STANDARD)).toEqual([
+      'all',
+      ['<=', ['get', 'displayTier'], SEAMARK_DISPLAY_TIER_STANDARD],
+      ['!', ['get', 'hazard']],
+    ]);
+    expect(seamarkHazardFilter(SEAMARK_DISPLAY_TIER_STANDARD)).toEqual([
+      'all',
+      ['<=', ['get', 'displayTier'], SEAMARK_DISPLAY_TIER_STANDARD],
+      ['get', 'hazard'],
+    ]);
+  });
+
+  it('carries the selected tier through unchanged at BASE and ALL too, not just STANDARD', () => {
+    expect(seamarkRoutineFilter(SEAMARK_DISPLAY_TIER_BASE)).toEqual([
+      'all',
+      ['<=', ['get', 'displayTier'], SEAMARK_DISPLAY_TIER_BASE],
+      ['!', ['get', 'hazard']],
+    ]);
+    expect(seamarkHazardFilter(SEAMARK_DISPLAY_TIER_ALL)).toEqual([
+      'all',
+      ['<=', ['get', 'displayTier'], SEAMARK_DISPLAY_TIER_ALL],
+      ['get', 'hazard'],
     ]);
   });
 });

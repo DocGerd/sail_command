@@ -17,6 +17,20 @@ import { vi } from 'vitest';
 // an event object to a delegated handler; `fire()` itself stays untouched
 // (no args, no delegated bucket) so every existing non-delegated caller is
 // unaffected.
+//
+// #682: real MapLibre also accepts an ARRAY of layer ids as the delegated
+// form's second argument (`Map#on<T>(type, layerIds: string[], listener)`,
+// `node_modules/maplibre-gl/dist/maplibre-gl.d.ts:13727`, re-derived against
+// the installed 6.5.0, matched to `app/package-lock.json`'s pin — #392's
+// documented trap) — DataLayers.tsx's seamark click/hover handlers now use
+// it to cover both `sc-seamarks*` layers with one registration. This fake
+// models that by registering the SAME handler under EACH layer id's own
+// bucket key, so `fireLayerEvent(type, oneOfTheLayerIds, event)` reaches it
+// regardless of which id in the array is fired — matching real MapLibre's
+// `_createDelegatedListener`, which re-queries `queryRenderedFeatures` across
+// every given layer and merges the results into one `e.features` before
+// invoking the listener once (this fake does not model that merge; tests
+// drive `e.features` directly via `fireLayerEvent`'s `event` argument).
 
 export interface FakeSource {
   setData: ReturnType<typeof vi.fn>;
@@ -68,6 +82,12 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
   };
   const key = (type: string, layerOrFn: unknown): string =>
     typeof layerOrFn === 'string' ? `${type}\u0000${layerOrFn}` : type;
+  // #682: the array form -- one bucket key per layer id, so a single
+  // registration reaches fireLayerEvent for ANY of them. A bare (type, fn)
+  // call (layerOrFn is a function) still collapses to the single non-
+  // delegated `type` key via `key()` above, unchanged.
+  const keysFor = (type: string, layerOrFn: unknown): string[] =>
+    Array.isArray(layerOrFn) ? layerOrFn.map((id) => key(type, id)) : [key(type, layerOrFn)];
   return {
     sources,
     layers,
@@ -95,17 +115,20 @@ export function makeFakeMap({ styleLoaded = true }: { styleLoaded?: boolean } = 
       for (const fn of pending) fn(event);
     },
     isStyleLoaded: () => state.styleLoaded,
-    on: vi.fn((type: string, layerOrFn: string | Handler, maybeFn?: Handler) => {
-      bucket(listeners, key(type, layerOrFn)).add(maybeFn ?? (layerOrFn as Handler));
-    }),
-    once: vi.fn((type: string, layerOrFn: string | Handler, maybeFn?: Handler) => {
-      bucket(onceListeners, key(type, layerOrFn)).add(maybeFn ?? (layerOrFn as Handler));
-    }),
-    off: vi.fn((type: string, layerOrFn: string | Handler, maybeFn?: Handler) => {
-      const k = key(type, layerOrFn);
+    on: vi.fn((type: string, layerOrFn: string | string[] | Handler, maybeFn?: Handler) => {
       const fn = maybeFn ?? (layerOrFn as Handler);
-      listeners.get(k)?.delete(fn);
-      onceListeners.get(k)?.delete(fn);
+      for (const k of keysFor(type, layerOrFn)) bucket(listeners, k).add(fn);
+    }),
+    once: vi.fn((type: string, layerOrFn: string | string[] | Handler, maybeFn?: Handler) => {
+      const fn = maybeFn ?? (layerOrFn as Handler);
+      for (const k of keysFor(type, layerOrFn)) bucket(onceListeners, k).add(fn);
+    }),
+    off: vi.fn((type: string, layerOrFn: string | string[] | Handler, maybeFn?: Handler) => {
+      const fn = maybeFn ?? (layerOrFn as Handler);
+      for (const k of keysFor(type, layerOrFn)) {
+        listeners.get(k)?.delete(fn);
+        onceListeners.get(k)?.delete(fn);
+      }
     }),
     addSource: vi.fn((id: string, def: FakeSource['def']) => {
       sources.set(id, { setData: vi.fn(), def });

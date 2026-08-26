@@ -686,10 +686,10 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
           window as unknown as {
             __scE2eMap: { jumpTo: (o: { zoom: number; center: [number, number] }) => void };
           }
-        )
-          // wackerballig's own snap point — no animation. mapReady() has
-          // already installed window.__scE2eMap as a side effect.
-          .__scE2eMap.jumpTo({ zoom: z, center: [9.872, 54.7604] });
+        )// wackerballig's own snap point — no animation. mapReady() has
+        // already installed window.__scE2eMap as a side effect.
+        .__scE2eMap
+          .jumpTo({ zoom: z, center: [9.872, 54.7604] });
       }, zoom);
 
     // Two frames per zoom, differing ONLY in safetyDepthM, so the difference
@@ -807,6 +807,204 @@ test('navigability hatch (#599): the on-screen stripe stays legible at overview 
       fracStripe,
       `a fractional zoom must use the band of the whole zoom below it (#599 quantisation): measured ${fracStripe}px (p90 of ${fracRuns.length} runs). Quantised z10.9 predicts ~15.8px; continuous selection would predict ~7.9px.`,
     ).toBeGreaterThan(12);
+  } finally {
+    server.kill();
+  }
+});
+
+// #682: hazard-family seamarks (isolatedDanger, cardinal) must paint ABOVE
+// routine ones where they overlap at z>=12, and must keep their z<12
+// collision-survival priority — see seamarkGeoJson.ts's SEAMARKS_LAYOUT doc
+// comment (b) for the full mechanism this test exercises: `sc-seamarks` was
+// split into a routine layer and a `sc-seamarks-hazard` overlay, added AFTER
+// (and therefore painted above) it with the SAME beforeId anchor.
+//
+// DoD (issue #682): "Measured BASE vs HEAD with an `idle`-gated
+// `queryRenderedFeatures` over a FIXED geographic box built with
+// `map.project()` — never a whole-viewport comparison across zooms... Counts
+// are order-independent... the assertion must read ORDER." This test reads
+// ORDER, not counts: `queryRenderedFeatures` merges results from MULTIPLE
+// layers by LAYER STACKING, never per-feature depth — maplibre-gl's own
+// `Style._flattenAndSortRenderedFeatures` (`style/style.ts`, re-derived
+// against the installed 6.5.0, matched to `app/package-lock.json`'s pin via
+// `npm ci` — #392's documented trap) iterates the style's layer order
+// top-to-bottom and, for ordinary 2D layers (both of these are plain symbol
+// layers, not fill-extrusion), appends ALL of one layer's matched features
+// before moving to the next layer down: "The order between features in two
+// 2D layers is always determined by layer order" (that method's own
+// comment). So querying BOTH `sc-seamarks*` layers together at once, EVERY
+// `sc-seamarks-hazard` feature must appear before EVERY `sc-seamarks`
+// feature in the combined result — a stronger, and easier to state,
+// guarantee than "any one overlapping pair is ordered correctly": it holds
+// for the whole box at once, and fails loudly (not silently) if the layer
+// stacking is ever inverted.
+//
+// Reuses the SAME dense cluster `seamarks.spec.ts` already measured (one of
+// the two joint-densest cells in the committed `app/public/data/seamarks.json`,
+// 43 marks within +/-0.015 deg) — duplicated locally rather than imported,
+// matching this repo's own stated per-spec-file self-containment convention
+// (every `page.evaluate()` callback below is re-parsed and run inside the
+// BROWSER realm, sharing no closure with this module or any other spec).
+interface Sc682TestMap {
+  jumpTo(options: { center: [number, number]; zoom: number }): unknown;
+  getLayer(id: string): unknown;
+  project(lngLat: [number, number]): { x: number; y: number };
+  queryRenderedFeatures(
+    geometry: [[number, number], [number, number]],
+    options: { layers: string[] },
+  ): Array<{ properties: Record<string, unknown> }>;
+}
+
+const HAZARD_CLUSTER_CENTER: [number, number] = [10.515, 54.855];
+const HAZARD_CLUSTER_HALF_DEGREES = 0.015;
+// #484 F2 (seamarks.spec.ts): 13, well above the z12 icon-overlap threshold
+// where routine marks can paint over hazard ones absent the #682 fix.
+const HAZARD_ZOOM = 13;
+
+async function waitForBothSeamarkLayers(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const map = (window as unknown as { __scE2eMap: Sc682TestMap }).__scE2eMap;
+          return (
+            Boolean(map.getLayer('sc-seamarks')) && Boolean(map.getLayer('sc-seamarks-hazard'))
+          );
+        }),
+      {
+        timeout: 30_000,
+        message: "'sc-seamarks' and/or 'sc-seamarks-hazard' never both appeared on the map",
+      },
+    )
+    .toBe(true);
+}
+
+async function jumpToHazardCluster(page: Page, zoom: number): Promise<void> {
+  await page.evaluate(
+    ({ center, zoom }) =>
+      (window as unknown as { __scE2eMap: Sc682TestMap }).__scE2eMap.jumpTo({ center, zoom }),
+    { center: HAZARD_CLUSTER_CENTER, zoom },
+  );
+}
+
+// Reads the ORDERED `hazard` booleans of every seamark feature — across
+// BOTH layers, queried TOGETHER in one call so maplibre's own cross-layer
+// z-order merge is what produces the ordering, not two separate queries
+// concatenated by this function — rendered inside the fixed geographic box.
+// `hazard` is stamped per feature at data-build time
+// (seamarkFeatureCollectionWithIcons, seamarkGeoJson.ts) and survives onto
+// the GeoJSON source, so it's readable straight off `properties` with no
+// re-derivation here.
+async function readOrderedHazardFlagsInCluster(page: Page): Promise<boolean[]> {
+  return page.evaluate(
+    ({ center, half }) => {
+      const map = (window as unknown as { __scE2eMap: Sc682TestMap }).__scE2eMap;
+      const nw = map.project([center[0] - half, center[1] + half]);
+      const se = map.project([center[0] + half, center[1] - half]);
+      return map
+        .queryRenderedFeatures(
+          [
+            [nw.x, nw.y],
+            [se.x, se.y],
+          ],
+          { layers: ['sc-seamarks', 'sc-seamarks-hazard'] },
+        )
+        .map((f) => f.properties.hazard === true);
+    },
+    { center: HAZARD_CLUSTER_CENTER, half: HAZARD_CLUSTER_HALF_DEGREES },
+  );
+}
+
+// Same idle-unreachable rationale and settle shape as seamarks.spec.ts's own
+// `settledSeamarkIconIds` (labels.spec.ts's `Placement.stillRecent` /
+// `fadeDuration` derivation) — three consecutive byte-identical reads at
+// 400ms, comparing the FULL ordered array (not a count, which is blind to
+// an order swap at a fixed total), failing CLOSED with the read history.
+const HAZARD_SETTLE_POLL_INTERVAL_MS = 400;
+const HAZARD_SETTLE_STABLE_READS_REQUIRED = 3;
+const HAZARD_SETTLE_MAX_READS = 27;
+
+async function settledOrderedHazardFlags(page: Page, label: string): Promise<boolean[]> {
+  const history: boolean[][] = [];
+  const recent: boolean[][] = [];
+  const first = await readOrderedHazardFlagsInCluster(page);
+  history.push(first);
+  recent.push(first);
+  for (let extra = 1; extra <= HAZARD_SETTLE_MAX_READS; extra++) {
+    await page.waitForTimeout(HAZARD_SETTLE_POLL_INTERVAL_MS);
+    const next = await readOrderedHazardFlagsInCluster(page);
+    history.push(next);
+    recent.push(next);
+    if (recent.length > HAZARD_SETTLE_STABLE_READS_REQUIRED) recent.shift();
+    const stable =
+      recent.length === HAZARD_SETTLE_STABLE_READS_REQUIRED &&
+      recent.every((r) => JSON.stringify(r) === JSON.stringify(recent[0]));
+    if (stable) return next;
+  }
+  throw new Error(
+    `[${label}] hazard/routine order in the cluster box never stabilized across ${history.length} reads ` +
+      `(${HAZARD_SETTLE_POLL_INTERVAL_MS}ms apart, ${HAZARD_SETTLE_STABLE_READS_REQUIRED} consecutive matches required); ` +
+      `reads seen: ${JSON.stringify(history)}`,
+  );
+}
+
+test('#682: hazard seamarks (cardinal/isolated-danger) paint above routine ones at z>=12, by ORDER not count', async ({
+  page,
+}) => {
+  const server = await startPreview();
+  try {
+    await page.goto(server.url);
+    await mapReady(page);
+    await waitForBothSeamarkLayers(page);
+
+    // #7: seamarks default OFF (opt-in specialist layer).
+    const seamarksToggle = page.getByRole('checkbox', { name: 'Seezeichen' });
+    await expect(seamarksToggle).toBeVisible();
+    await seamarksToggle.check();
+    await expect(seamarksToggle).toBeChecked();
+
+    await jumpToHazardCluster(page, HAZARD_ZOOM);
+    const order = await settledOrderedHazardFlags(page, `z${HAZARD_ZOOM} hazard/routine order`);
+    console.log(
+      `[#682 datalayers.spec.ts] z${HAZARD_ZOOM} cluster box: ${order.length} seamarks, ` +
+        `ordered hazard flags (topmost first): ${JSON.stringify(order)}`,
+    );
+
+    const hazardIndices = order.flatMap((h, i) => (h ? [i] : []));
+    const routineIndices = order.flatMap((h, i) => (h ? [] : [i]));
+    // Non-vacuity (CLAUDE.md's "give any probe whose emptiness you intend to
+    // interpret a positive control" lesson): this dense, joint-densest
+    // cluster (measured in seamarks.spec.ts at 43-44 marks) must actually
+    // contain BOTH a hazard mark and a routine one, or the ordering
+    // assertion below would pass trivially over an empty side.
+    expect(
+      hazardIndices.length,
+      `expected at least one hazard-family (cardinal/isolatedDanger) mark in the cluster box; got 0 of ${order.length}`,
+    ).toBeGreaterThan(0);
+    expect(
+      routineIndices.length,
+      `expected at least one routine-family mark in the cluster box; got 0 of ${order.length}`,
+    ).toBeGreaterThan(0);
+
+    // The property #682 exists to establish: querying the two seamark
+    // layers TOGETHER, every hazard feature's position precedes every
+    // routine feature's — i.e. the ordered array is a block of hazard
+    // features (however many) followed by a block of routine ones, with no
+    // interleaving. `Math.max` over hazard indices finds the LAST hazard
+    // feature; `Math.min` over routine indices the FIRST routine one — if
+    // the layer split were reverted (hazard added/painted BELOW routine,
+    // or merged back into one layer with only symbol-sort-key deciding
+    // paint order), at least one routine mark in this cluster would paint
+    // above at least one hazard mark and this comparison would fail,
+    // naming the actual observed order via the message below.
+    const lastHazardIndex = Math.max(...hazardIndices);
+    const firstRoutineIndex = Math.min(...routineIndices);
+    expect(
+      lastHazardIndex,
+      `every hazard mark must paint above every routine mark in this box at z>=12 — ` +
+        `last hazard index ${lastHazardIndex}, first routine index ${firstRoutineIndex}, ` +
+        `full ordered hazard-flag array (topmost first): ${JSON.stringify(order)}`,
+    ).toBeLessThan(firstRoutineIndex);
   } finally {
     server.kill();
   }
