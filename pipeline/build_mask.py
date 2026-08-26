@@ -220,7 +220,7 @@ def main() -> None:
     # ones (independently verified via a full-file bbox-intersect scan, not
     # just this filtered read), so a high threshold here would be testing
     # this dataset's incidental shape, not our correctness. Real coverage is
-    # what the land cell count and water fraction asserts below (and the
+    # what the land cell count and water fraction checks below (and the
     # connectivity gate in verify_mask.py) actually check; this just catches
     # a badly wrong zip inner path/CRS returning an empty-ish read.
     # #613: was a bare `assert` (stripped under -O/PYTHONOPTIMIZE), which

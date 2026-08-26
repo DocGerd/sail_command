@@ -603,14 +603,14 @@ if [ "${1:-}" = "--selftest" ]; then
 
   r=$(mkrepo)
   add "$r" docs/y.md 'cd /home/alice/repo'
-  addlink "$r" link-y '/home/bob/cache'
+  addlink "$r" a-link-y '/home/bob/cache'
   check "33 a regular-file leak and a symlink-target leak both reported" fail "$r"
   case "$LAST_OUT" in
     *"docs/y.md:"*"linux-home:/home/alice"*) ;;
     *) echo "SELFTEST FAIL: 33 did not report the regular-file leak -> $LAST_OUT"; fail=1 ;;
   esac
   case "$LAST_OUT" in
-    *"link-y:symlink-target:linux-home:/home/bob"*) ;;
+    *"a-link-y:symlink-target:linux-home:/home/bob"*) ;;
     *) echo "SELFTEST FAIL: 33 did not report the symlink-target leak -> $LAST_OUT"; fail=1 ;;
   esac
 
