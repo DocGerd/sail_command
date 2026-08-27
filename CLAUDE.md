@@ -437,6 +437,28 @@ making design-level decisions; do not silently deviate.
   formerly a `!` that died as an unnamed TypeError, forwarded as `worker-fatal`
   and shown as the generic `error.routingFailed`). Validate `length > 0`
   explicitly wherever a list means "at least one".
+- **Three chained `:not()` count as three classes.**
+  `input:not([type='checkbox']):not([type='radio']):not([type='range'])`
+  computes to **(0,3,1)** and out-specifies every single-class rule in the
+  file; wrapping the chain in `:where(...)` holds it at the bare-element
+  **(0,0,1)**. `app/src/app.css`'s `input` rule ships the `:where()` form for
+  that reason. Measured consequence before the fix (#710): `.sr-only`'s
+  `padding: 0`/`border: 0` LOST to it on `PlannerPanel.tsx`'s
+  `<input type="file" className="sr-only">`, rendering 21.19x40px with a 1px
+  border instead of 1x1.
+- **Chromium ignores author `border`/`border-radius`/`padding` on
+  `appearance: auto` radios** — a forced `!important` 3px border + 8px radius
+  computes to `0px none / 0px / 0px`, size unchanged (measured 2026-08-26).
+  `range` DOES pick them up. So excluding `radio` from a form-field box rule
+  is harmless but unnecessary; excluding `range` is the load-bearing half.
+  A correct exclusion carried a refuted reason for a full review round.
+- `Map#_removeDelegatedListener` (`app/node_modules/maplibre-gl/src/ui/map.ts`,
+  ~:2139) matches only on an **EXACT** layer-set
+  (`layers.length === layerIds.length && layers.every(includes)`) — a narrower
+  or wider `layerIds` on removal silently no-ops. `once()` on a multi-layer
+  delegate (~:2394) removes the WHOLE registration on the first event from ANY
+  covered layer, not per-layer. `test/fakeMaplibre.ts` models both; keep it
+  that way. Re-derived against `maplibre-gl@6.5.0`, 2026-08-26.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -717,6 +739,15 @@ making design-level decisions; do not silently deviate.
   disabling the placement priority entirely. Within one symbol layer,
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
+- **Placement runs TOP-TO-BOTTOM, so a later-added layer is placed FIRST.**
+  `PauseablePlacement`'s constructor
+  (`app/node_modules/maplibre-gl/src/style/pauseable_placement.ts` — NOT under
+  `symbol/`) sets `_currentPlacementIndex = order.length - 1` and
+  `continuePlacement` walks it down to `0`. So a layer stacked above wins the
+  shared collision index as well as paint order — which is why splitting one
+  symbol layer in two (#682) fixes z>=12 paint order AND preserves z<12
+  placement priority with no cross-layer `symbol-sort-key` coordination.
+  Re-derived against `maplibre-gl@6.5.0`, 2026-08-26.
 - `icon-allow-overlap` and `icon-ignore-placement` sound like the same knob
   and are not: `allow-overlap` ("place me even if I collide") governs
   whether *I* get culled by the collision index; `ignore-placement` ("do not
@@ -1583,6 +1614,11 @@ making design-level decisions; do not silently deviate.
   carrying commit `66bdc8b` subject `fix(#54): …` and #54 stayed open with
   `updated_at` unmoved. Keep the grep matching it anyway; one measurement of one
   form is not a licence to write conventional-commit scopes around issue refs.
+  SECOND observation, 2026-08-26: commit `09bc8af` (`fix(#702): scope the
+  stacking-context tie claim…`), merged via PR #735 (`d8bcf58`), left #702 OPEN
+  on milestone v0.16.0. Two observations, same non-closing behaviour — still
+  evidence, still not a licence: the check costs one API call and a miss
+  silently strands a deliberately-deferred issue.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -2262,6 +2298,39 @@ making design-level decisions; do not silently deviate.
   blindness rules above, one level earlier: before asking whether the
   measurement can see the failure, ask whether the thing it measures AGAINST
   is reachable at all. The tell was already in the log.
+- **The infeasible-baseline class also produces FALSE NEGATIVES, and those
+  escalate.** #702: sticky-CTA-on-narrow was measured at 484px² of overlap
+  with the attribution control and declared "cannot be done safely" — against
+  a baseline never measured. The SHIPPED `position: static` CSS, scrolled the
+  way a user must scroll it, already overlaps 488px² and already intercepts
+  the click. The conclusion inverted: not "sticky reopens #64" but "#64 is
+  already live", and the deliverable flipped from a spec amendment to a fix.
+  A negative finding is a claim about a COMPARISON — measure the control
+  before reporting one, especially when it will change a spec.
+- **Two guards can share one structural blind spot.** `plan.spec.ts`'s #33
+  attribution contract asserts with `toBeVisible()` (`app/e2e/plan.spec.ts`,
+  ~:55) — which checks DOM-attached, non-empty box and no hiding CSS, and does
+  NOT detect an element rendered but COVERED by something stacked on top; and
+  the #702 sweep written to guard the same surface expanded the control only
+  AFTER every assertion. Neither is wrong; together they still passed while an
+  ODbL/CC-BY-required credit link was unclickable at rest. For an occlusion
+  claim use a real `click({trial: true})` or a topmost hit-test, never
+  `toBeVisible()`.
+- **A guard in an UNTOUCHED file can break — hunk-by-hunk review cannot see
+  it.** #682 split `sc-seamarks` into two layers; `seamarks.spec.ts`'s #353
+  guard still queried `['sc-seamarks']` alone and lost exactly the 2 hazard
+  ids its own pin expected. Three review rounds passed it; CI found it. The
+  pin values were correct all along — only the query APERTURE was wrong.
+  Enumerate consumers of a renamed/split identifier by claim shape
+  (`grep -rn "<layer-id>" app/e2e app/src`) and publish the table INCLUDING
+  the hits left alone.
+- **Stealing focus is worse than dropping it.** #695's first fix keyed focus
+  restoration on a DERIVED boolean (`!origin || editingOrigin`), which also
+  goes false on `App.tsx`'s plan-sync effect — so a cold load or loading a
+  saved plan YANKED focus out of the departure field. Drive focus restoration
+  from the `onSelect`/`onCancel` CALLBACKS, which know the user acted; a
+  prop-diff can only guess. Enumerate every state a derived boolean passes
+  through, not just the transition you care about.
 - **A fix whose trigger is RARE is not verified by the trigger's absence.**
   Write "NOT YET EXERCISED" in the same breath as "landed" — every later
   healthy run reads as confirmation otherwise. The #415 deploy-retry bullet
