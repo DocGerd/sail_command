@@ -1186,25 +1186,29 @@ making design-level decisions; do not silently deviate.
   count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
   workflow run IDs or job conclusions for those cuts, and only v0.14.0's date
   is on record here — don't fabricate any.)
-  **NEVER GATE ON THE GAP — but do not call it information-free either; that
-  overstatement was retired at v0.15.0 (n=8).** The outcome is set by whether
-  `cancel-in-progress` killed the earlier run before its `deploy` job reached
-  terminal `success`. The gap is a WEAK PROXY for that, with a real mechanism:
-  a longer gap gives the merge run more time to finish, so its `deploy` is
-  likelier to own the SHA. BOTH recorded no-ops sit at the largest gap of
-  their time (v0.10.0 at 128 s; v0.15.0 at 972 s, ~7.6x the previous maximum),
-  so the rows are MORE consistent with a gap threshold than they were — which
-  is still the reading to distrust, because deploy-job DURATION varies
-  independently and no threshold has been measured. Gate on the JOB
-  CONCLUSION, which is the fact; treat the gap as a hint that licenses
-  nothing. What the rows DO rule out
+  **NEVER GATE ON THE GAP, and never read "fast tag push" as a protection —
+  but the flat "carries ZERO information" phrasing was retired 2026-08-27.**
+  The outcome is set by whether `cancel-in-progress` killed the earlier run
+  before its `deploy` job reached terminal `success`. The gap is a WEAK PROXY
+  for that, with a real mechanism: a longer gap gives the merge run more time
+  to finish, so its `deploy` is likelier to own the SHA. As recorded through
+  the v0.15.0 cut, the two no-ops were the two LARGEST gaps in the table
+  (972 s and 128 s; largest safe row 70 s) — a separation with no overlap,
+  which under no association would arise about 1 time in 28. That is why the
+  threshold reading is seductive, and it is still the reading to distrust:
+  deploy-job DURATION varies independently, no threshold has been measured,
+  and the inverse inference the mechanism invites — that a SHORT gap protects
+  you — is exactly the wrong conclusion for someone who just tagged 40 s after
+  the merge. Gate on the JOB CONCLUSION, which is the fact; the gap licenses
+  nothing in either direction. **Whoever adds row 9 re-checks this paragraph:
+  a third no-op, or a safe row above 128 s, changes what the rows support.**
+  What the rows DO rule out
   is the opposite intuition, that a fast tag push races the merge run:
   v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
   v0.12.1's 43 s likewise. No gap value has yet been observed on both
   outcomes — 54 s appears TWICE (v0.11.0, v0.13.0) and both were safe — so
   the sample cannot separate the two stories, which is weaker than having
-  refuted the gap. That the first FOUR recorded gaps happened to fit the
-  larger-is-worse story was NOT evidence for it either. (An older, UNRELATED
+  refuted the gap. (An older, UNRELATED
   43 s figure was completion→creation and is NOT comparable — differencing the two bases is this file's own "two
   measurements of DIFFERENT subjects cannot be differenced", and two
   same-valued figures on different bases must not be conflated.)
@@ -2046,9 +2050,12 @@ making design-level decisions; do not silently deviate.
   `prod-environment`, `uat-environment`. The PR therefore DISPLAYS a red check
   that belongs to the tag run and says nothing about the back-merge;
   `mergeable_state` correctly read `unstable` (optional-only red) and the merge
-  was right to proceed. Expect this at every cut where the tag no-ops, and
-  separate them with `actions/workflows/deploy.yml/runs?head_sha=<sha>`, never
-  by check name.
+  was right to proceed. Expect this at every cut where the tag no-ops AND the
+  back-merge FAST-FORWARDS — both conditions are needed; if `develop` has moved
+  past the release commit the back-merge is a real merge commit, its head is
+  not the tag commit, and no SHA is shared. Attribute each check-run by the run
+  id already carried in its own `details_url` — never by check name, and not by
+  `?head_sha=`, which has the measured lag problem noted just above.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155). Same
@@ -2166,13 +2173,20 @@ making design-level decisions; do not silently deviate.
   be supported from evidence read in a file during the task, DELETE it rather
   than hedge it; (2) require the do-not-touch list confirmed BY DIFF, not by
   trust; (3) announce a stopping rule and honour it (file the remaining Minors
-  rather than run another unreviewed wave) — MEASURED 2026-08-27 (PR #741, the
-  #132 sweep) as the one remedy that demonstrably breaks the chain: round 1
+  rather than run another unreviewed wave) — the first remedy with a
+  MEASUREMENT behind it (2026-08-27, PR #741's #132 sweep): round 1
   (open-ended brief) → 2 Majors; round 2 (open-ended) → 2 Majors BOTH CREATED
   BY the round-1 fix wave; round 3, whose brief carried an explicit BINDING
   stopping rule ("fix exactly these three, REPORT anything else, do not fix
-  it") → ZERO successors in the tracked docs. The variable that changed was
-  the stopping rule, not care or model tier; (4) prefer RETRIEVING the primary
+  it") → zero successors in the release DOCS, but one still landed in a
+  `capture.mjs` comment that ships (a correct 800px-reset decision carrying a
+  refuted reason — `plan-route.png` does NOT fit 800px, ~12 of 21 legs rows
+  render). So the chain was NARROWED, not broken — this bullet's own
+  prefer-"narrowed"-to-"closed" rule turned on itself. Treat the stopping rule
+  as the difference in the brief worth testing again, NOT as established
+  cause: round 3's brief was also narrower in content (three named fixes vs an
+  open-ended sweep), so this is one observation per arm with a visible
+  confound; (4) prefer RETRIEVING the primary
   artifact over constructing an argument; (5) make claims PER-SITE — every
   failure was a GENERALISATION or a GROUP NOUN, falsifiable the moment it is
   split into members, though checking a suspect field's ONE call site beat
