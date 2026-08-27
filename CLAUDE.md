@@ -464,7 +464,8 @@ making design-level decisions; do not silently deviate.
   delegate (~:2394) removes the WHOLE registration on the first event from ANY
   covered layer, not per-layer. `test/fakeMaplibre.ts` models both; keep it
   that way — see also the `installStyleSetup`/`fakeMaplibre.ts` bullet below,
-  which owns that fake's other invariants. Re-derived against
+  which carries that fake's other pinned invariant (`addLayer` drops layers on
+  a truthy-but-missing `beforeId`, #163). Re-derived against
   `maplibre-gl@6.5.0`, 2026-08-26.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
@@ -2309,22 +2310,23 @@ making design-level decisions; do not silently deviate.
 - **The infeasible-baseline class also produces FALSE NEGATIVES, and those
   escalate.** #702: sticky-CTA-on-narrow was measured at 484px² of overlap
   with the attribution control and declared "cannot be done safely" — against
-  a baseline never measured. Measured 2026-08-26 against `develop` @
-  `8052d2d`: the shipped `position: static` CSS, scrolled the way a user must
-  scroll it, already overlapped 488.1px²/495px² and already intercepted the
-  click. The conclusion inverted — not "sticky reopens #64" but "#64 is
-  already live" — and the spec amendment was withdrawn. (A first fix attempt,
+  a baseline never measured. Measured on `develop` @ `8fe6c8f`, 2026-08-26
+  (the `.planner-actions` block is byte-unchanged since, through `8052d2d`):
+  the shipped `position: static` CSS, scrolled the way a user must scroll
+  it, already overlapped 488.1px²/495px² and already intercepted the click. The conclusion inverted — not "sticky reopens #64" but "#64 is
+  already live" — and the proposed spec amendment was dropped. (A first fix attempt,
   a narrow-only horizontal inset, was found insufficient in round 2 and
-  reverted; #702 is deferred, not fixed.)
+  reverted; #702 is deferred, not fixed (as of 2026-08-26).)
   A negative finding is a claim about a COMPARISON — measure the control
   before reporting one, especially when it will change a spec.
 - **Two guards can share one structural blind spot.** `plan.spec.ts`'s #33
   attribution contract asserts with `toBeVisible()` (`app/e2e/plan.spec.ts`,
   the `#33 contract, part 2` block's `getByRole('link', { name: 'OpenStreetMap' })`
-  assertion, ~:55) — which checks only a non-empty box and neither
-  `visibility: hidden` nor `content-visibility: hidden`; `opacity: 0` and an
-  element scrolled out of the viewport both PASS it, and it does NOT detect an
-  element rendered but COVERED by something stacked on top; and
+  assertion, ~:55) — which checks a non-empty box, `visibility: visible`, and
+  (via `Element.checkVisibility()`, or a `<details>` fallback on WebKit) that
+  the element is rendered and not inside a closed `<details>`; `opacity: 0`
+  and an element scrolled out of the viewport both PASS it, and it does NOT
+  detect an element rendered but COVERED by something stacked on top; and
   the #702 sweep written to guard the same surface expanded the control only
   AFTER every assertion. Neither is wrong; together they still passed while an
   ODbL/CC-BY-required credit link was unclickable at rest. For an occlusion
