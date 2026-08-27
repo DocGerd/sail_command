@@ -178,9 +178,10 @@ labels on **pull requests** are applied automatically from changed paths by
 
 `v0.4.0` through `v0.14.0` are closed (plus the `v0.5.1`, `v0.12.1`, and
 `v0.13.1` patch milestones) — `v0.15.0` is not yet closed as of this docs
-sweep, even though all 13 of its issues are (see the roll-forward convention
-below for why). `gh api repos/DocGerd/sail_command/milestones` is the fact,
-not this sentence. The `v0.8.1` patch release (documentation-only) shipped
+sweep, even though all 13 of its issues are (see the `v0.15.0` bullet above:
+its milestone closes only at tag push). `gh api
+repos/DocGerd/sail_command/milestones` is the fact, not this sentence.
+The `v0.8.1` patch release (documentation-only) shipped
 on 2026-08-04 and, per the PATCH exception below, carries no milestone of
 its own.
 The [milestones page](https://github.com/DocGerd/sail_command/milestones) is

@@ -113,8 +113,9 @@ i18n: "waypoint" vs "via point" terminology is inconsistent, and
 ([#712](https://github.com/DocGerd/sail_command/issues/712)); the AIS
 popup's age row reads as a broken German calque
 ([#709](https://github.com/DocGerd/sail_command/issues/709)); and
-README's three screenshots disagree on UI language, with
-`boat-selection.png` produced by no generator at all
+`boat-selection.png`, the one screenshot the docs capture script does not
+emit (`docs/screenshots/capture.mjs` only writes `start-view.png` and
+`plan-route.png`), is produced by no generator at all
 ([#716](https://github.com/DocGerd/sail_command/issues/716)).
 
 ## Themes for the next year
