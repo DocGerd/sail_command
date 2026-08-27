@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-27
+
+### Added
+
+- The safety-depth field now shows its allowed range as visible help text, and switching to a shallower-draft boat scrolls the resulting clamp notice into view (#699).
+
+### Changed
+
+- The Live view heading-to-steer caution now gets a background wash and left border matching the route-level shallow-water warning, instead of a colour-only text change, since it is the only depth/land hazard shown while actually steering (#697).
+- The Live view GPS tracking toggle now shows a state-dependent label and a filled/outline visual distinction between tracking on and off, rather than relying solely on the non-visible aria-pressed state (#700).
+- Keyboard focus rings and the app's accent colour now cover the tab strip, the map-chrome checkboxes and time slider, the boat radio group, and the depth/route legend disclosures, and boat picker rows show a hover state (#706).
+- Text, number and departure date/time fields now draw the same bordered card box as the rest of the planner panel instead of bare native chrome (#710).
+
+### Fixed
+
+- Hazard seamarks (cardinal and isolated-danger buoys) now paint above routine marks where they overlap at the closest map zooms, instead of sometimes being hidden underneath one (#682).
+- Re-picking or cancelling an origin or destination search now returns keyboard focus to the corresponding "Change" button instead of dropping it to the page body (#695).
+- The app-shell and rig-comparison tab strips now complete the standard keyboard tabs pattern — arrow keys move between tabs, only the active tab sits in the normal Tab order, and each tab's content is programmatically linked to it for screen readers (#704).
+- Banner dismiss buttons now meet the app's 44px touch-target floor, the planner panel resists rubber-banding the map on overscroll, and a via-point coordinate no longer risks overflowing its row on narrow screens (#708).
+- Live view's HTS/COG/SOG/ETA readout no longer shifts label-value spacing from an unreset browser default, digits use tabular figures so they don't jitter on every GPS update, and the English "HTS" abbreviation now has a screen-reader expansion (#713).
+- The map attribution control's "i" toggle button now inverts to a white disc with a dark icon in dark mode instead of always keeping its fixed light-mode colours (#718).
+
 ## [0.14.0] - 2026-08-25
 
 ### Changed
@@ -843,7 +865,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - German/English (de/en) UI localization (#23).
 - Full offline operation after first load via a service worker precache, including the regional PMTiles basemap with Range/206 support (#26).
 
-[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/DocGerd/sail_command/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/DocGerd/sail_command/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/DocGerd/sail_command/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/DocGerd/sail_command/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/DocGerd/sail_command/compare/v0.12.1...v0.13.0
