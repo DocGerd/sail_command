@@ -541,11 +541,22 @@ select {
   opacity: 0.75;
 }
 
+/* #713: `display: grid` on the <dl> resets neither its own UA block margin
+   (~1em top/bottom in every mainstream UA) nor a <dd> grid ITEM's own
+   `margin-inline-start: 40px` — a grid parent only lays its items out, it
+   does not reset their box model. Left unreset, that 40px fights the
+   0.75rem column gap below and the ~16px block margin isn't accounted for
+   by .live-view-data's own 0.5rem gap. */
 .live-view-cogsog {
   display: grid;
   grid-template-columns: max-content max-content;
   justify-content: start;
   gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.live-view-cogsog dd {
+  margin-inline-start: 0;
 }
 
 /* #115: manual "reroute from here" action + its hint (needs-a-fix reason
@@ -584,8 +595,32 @@ select {
    revision coloured the base warning-orange and relied on --muted appearing
    LATER in this file to win at equal specificity — a reorder would silently
    have turned "Depth not checked" into a caution. */
+/* #697: same visual family as .shallow-warning below (background wash +
+   left border + rounded corners, same --sc-depth-warning-bg/-fg tokens and
+   same padding) — this note is the ONLY place a depth/land hazard is shown
+   against the sailor's CURRENT heading while under way, and a colour-only
+   text change was a strictly weaker treatment than the desk-planning
+   warning for the identical hazard. `color` here is UNCHANGED from before
+   this fix; only padding/border-left/border-radius/background are ADDED.
+   The two note variants stay mutually exclusive (only one of
+   depthCheck.state === 'caution'/'unavailable' is ever true at once, per
+   the comment above), so there is still no cascade contention with
+   --muted to worry about. Deliberately NOT role="alert": the #666 audit
+   that raised this also proposed the live-region role on the rationale
+   that headingDepth.ts's advanceHold/HEADING_DEPTH_CLEAR_MS hysteresis
+   means this note mounts only at hazard TRANSITIONS, not at 1 Hz —
+   LiveView.test.tsx pins seven `[role="alert"]` toHaveLength(0) assertions
+   on the current no-live-region decision (see the comment above
+   .live-view-hts--caution .live-view-hts-value), and transitions-not-1Hz
+   arguably argues FOR an alert rather than against one, so #697 declined to
+   make that call unilaterally and left it an explicit maintainer decision,
+   shipping only this visual change. */
 .live-view-hts-note--caution {
   color: var(--sc-depth-warning-text);
+  padding: 0.6rem 0.75rem;
+  border-left: 4px solid var(--sc-depth-warning-fg);
+  border-radius: 4px;
+  background: var(--sc-depth-warning-bg);
 }
 
 /* No --sc-muted token exists in app.css (checked the :root token block) — the

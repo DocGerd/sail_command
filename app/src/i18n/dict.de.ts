@@ -660,8 +660,14 @@ export const de = {
   'plansList.recalc.offline':
     'Neuberechnung nur online möglich — es wird eine frische Windvorhersage geladen.',
   'plansList.recalcName': '{name} (neu berechnet)',
-  'live.toggle': 'Live-Ansicht',
+  'live.toggle': 'Live-Ansicht starten',
+  'live.toggle.stop': 'Live-Ansicht beenden',
   'live.noPlan': 'Route laden oder planen, um die Live-Führung zu nutzen.',
+  // #713: unused today (the sr-only expansion only renders in English, since
+  // 'live.hts.label' below is already the full word) — kept for `satisfies`
+  // parity, and a real translation rather than a placeholder in case that
+  // gate ever changes.
+  'live.hts.expansion': 'Steuerkurs',
   'live.hts.label': 'Steuerkurs',
   'live.cog.label': 'COG',
   'live.sog.label': 'SOG',

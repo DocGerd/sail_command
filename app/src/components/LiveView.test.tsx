@@ -230,14 +230,14 @@ describe('LiveView', () => {
     renderLive(wp);
 
     expect(await screen.findByText(/load or plan a route/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Live view' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start live view' })).not.toBeInTheDocument();
   });
 
   it('toggling on subscribes to watchPosition, and a fix renders HTS/COG/SOG, next maneuver, and projected ETA', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
 
-    const toggle = await screen.findByRole('button', { name: 'Live view' });
+    const toggle = await screen.findByRole('button', { name: 'Start live view' });
     fireEvent.click(toggle);
     expect(wp).toHaveBeenCalledTimes(1);
 
@@ -262,7 +262,7 @@ describe('LiveView', () => {
   it('#25: never renders BoatMarker itself, even fully active with a steerable fix — the standalone OwnshipMarker is the ONLY marker render site, so this is what keeps Live View + the ownship toggle from ever showing two markers', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
 
@@ -276,7 +276,7 @@ describe('LiveView', () => {
   it('shows en dash placeholders for COG/SOG when the device does not report them', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     act(() => emitFix({ point: FIX_POINT, cogDeg: null, sogKn: null, accuracyM: 9 }));
 
@@ -287,7 +287,7 @@ describe('LiveView', () => {
   it('renders the COG placeholder — not "NaN°" — for a stationary fix (geolocation.ts maps NaN heading to null; SOG 0 still renders as 0.0 kn)', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     // What geolocation.ts's watchPosition now emits for a stationary device
     // (heading: NaN -> cogDeg: null; speed: 0 is a real reading, not NaN).
@@ -301,7 +301,7 @@ describe('LiveView', () => {
   it('projects a later ETA (positive drift) when the fix arrives behind schedule (mocked clock)', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     // LiveView reads Date.now() at render time to compute projectedEtaMs;
     // mirrors usePlanFlow.test.tsx's vi.spyOn(Date, 'now') pattern rather
@@ -317,7 +317,7 @@ describe('LiveView', () => {
   it('publishes the projected active leg index to shared AppState for RouteLayer highlighting', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN, <ActiveLegProbe />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('none');
 
@@ -329,7 +329,7 @@ describe('LiveView', () => {
   it('#142: advances the active leg as successive fixes move the boat — shared index 0 -> 1 and the next-event readout flips from the tack to "no more maneuvers"', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN, <ActiveLegProbe />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     // Fix 1: 2 nm into leg 0 (spans 0-5 nm east of P0) — leg 0 is active and
     // the tack at leg 1's start is the next event ahead.
@@ -360,7 +360,7 @@ describe('LiveView', () => {
       </I18nProvider>
     );
     const { rerender } = render(ui(true));
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
     act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
     expect(screen.getByTestId('shared-active-leg')).toHaveTextContent('0');
 
@@ -373,7 +373,7 @@ describe('LiveView', () => {
   it('#142: toggling tracking off clears the readout data block (no stale HTS/ETA lingers)', async () => {
     const { wp, emitFix } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
-    const toggle = await screen.findByRole('button', { name: 'Live view' });
+    const toggle = await screen.findByRole('button', { name: 'Start live view' });
     fireEvent.click(toggle); // on
 
     const expectedHts = formatHeading(headingToSteerDeg(LEGS, 0, FIX_POINT));
@@ -391,7 +391,7 @@ describe('LiveView', () => {
   it('a denied GPS error shows a one-time hint, recorded in localStorage, that does not reappear across remounts', async () => {
     const { wp: wp1, emitError: emitError1 } = fakeWatchPosition();
     const { unmount } = renderLive(wp1, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     act(() => emitError1('denied'));
     expect(await screen.findByText(/location access/i)).toBeInTheDocument();
@@ -402,7 +402,7 @@ describe('LiveView', () => {
 
     const { wp: wp2, emitError: emitError2 } = fakeWatchPosition();
     renderLive(wp2, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
     act(() => emitError2('denied'));
 
     expect(screen.queryByText(/location access/i)).not.toBeInTheDocument();
@@ -411,7 +411,7 @@ describe('LiveView', () => {
   it("#142: an 'unavailable' GPS error shows the same one-time hint as 'denied' (spec §4: identical treatment)", async () => {
     const { wp, emitError } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     act(() => emitError('unavailable'));
 
@@ -422,13 +422,16 @@ describe('LiveView', () => {
   it('the hint can be dismissed, and the app (the toggle) remains usable while GPS is denied', async () => {
     const { wp, emitError } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
-    fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
 
     act(() => emitError('denied'));
     fireEvent.click(await screen.findByRole('button', { name: /got it/i }));
 
     expect(screen.queryByText(/location access/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Live view' })).toBeEnabled();
+    // #700: tracking is still ON here (never toggled back off above), so the
+    // state-dependent label now reads the "stop" form, not the "start" form
+    // every other locator in this file targets.
+    expect(screen.getByRole('button', { name: 'Stop live view' })).toBeEnabled();
   });
 
   it('renders its readout into the provided panel slot via a portal, with no map instance required', async () => {
@@ -452,8 +455,8 @@ describe('LiveView', () => {
       </I18nProvider>,
     );
 
-    const toggle = await within(slot).findByRole('button', { name: 'Live view' });
-    expect(within(container).queryByRole('button', { name: 'Live view' })).toBeNull();
+    const toggle = await within(slot).findByRole('button', { name: 'Start live view' });
+    expect(within(container).queryByRole('button', { name: 'Start live view' })).toBeNull();
 
     fireEvent.click(toggle);
     act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
@@ -466,7 +469,7 @@ describe('LiveView', () => {
     const { wp, unsubscribe } = fakeWatchPosition();
     renderLive(wp, TEST_PLAN);
 
-    const toggle = await screen.findByRole('button', { name: 'Live view' });
+    const toggle = await screen.findByRole('button', { name: 'Start live view' });
     fireEvent.click(toggle); // on
     expect(wp).toHaveBeenCalledTimes(1);
     expect(unsubscribe).not.toHaveBeenCalled();
@@ -511,7 +514,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, TEST_PLAN);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => {
         emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
       });
@@ -550,7 +553,7 @@ describe('LiveView', () => {
         </I18nProvider>,
       );
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live-Ansicht' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Live-Ansicht starten' }));
       act(() => {
         emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
       });
@@ -573,7 +576,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, TEST_PLAN);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => {
         emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
       });
@@ -590,7 +593,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, TEST_PLAN);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => {
         emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
       });
@@ -612,7 +615,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       const { swapPlan } = renderSwappable(wp);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
       await screen.findByText(/Bearing crosses 2\.1 m/);
 
@@ -653,7 +656,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       const { swapPlan } = renderSwappable(wp);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
       await screen.findByText('Depth not checked');
 
@@ -682,7 +685,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, TEST_PLAN);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       // MASK_META covers 54.5–55.0 N / 9.0–10.0 E; this is well south-west.
       act(() => emitFix({ point: { lat: 53.0, lon: 8.0 }, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
 
@@ -706,7 +709,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, TEST_PLAN);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
 
       // Pre-condition: the ONLY fix this test ever emits landed while the mask
@@ -734,7 +737,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, TEST_PLAN);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
 
       await screen.findByText('Bearing crosses charted land');
@@ -777,7 +780,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, plan);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => {
         emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
       });
@@ -813,7 +816,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, TEST_PLAN);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => {
         emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
       });
@@ -851,7 +854,7 @@ describe('LiveView', () => {
       const { wp, emitFix } = fakeWatchPosition();
       renderLive(wp, plan);
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => {
         emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
       });
@@ -892,7 +895,7 @@ describe('LiveView', () => {
     it('renders no reroute action at all when the controls prop is absent', async () => {
       const { wp } = fakeWatchPosition();
       renderLive(wp, TEST_PLAN);
-      await screen.findByRole('button', { name: 'Live view' });
+      await screen.findByRole('button', { name: 'Start live view' });
       expect(screen.queryByRole('button', { name: REROUTE_NAME })).not.toBeInTheDocument();
     });
 
@@ -916,7 +919,7 @@ describe('LiveView', () => {
       const onReroute = vi.fn();
       renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
 
       const button = screen.getByRole('button', { name: REROUTE_NAME });
@@ -934,7 +937,7 @@ describe('LiveView', () => {
       const onReroute = vi.fn();
       renderWithReroute(wp, { busy: false, rerouting: false, onReroute });
 
-      const toggle = await screen.findByRole('button', { name: 'Live view' });
+      const toggle = await screen.findByRole('button', { name: 'Start live view' });
       fireEvent.click(toggle); // on
       act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
       expect(screen.getByRole('button', { name: REROUTE_NAME })).toBeEnabled();
@@ -950,7 +953,7 @@ describe('LiveView', () => {
       const onReroute = vi.fn();
       renderWithReroute(wp, { busy: true, rerouting: true, onReroute });
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Live view' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
       act(() => emitFix({ point: FIX_POINT, cogDeg: 90, sogKn: 5, accuracyM: 9 }));
 
       const button = screen.getByRole('button', {
@@ -959,6 +962,108 @@ describe('LiveView', () => {
       expect(button).toBeDisabled();
       fireEvent.click(button);
       expect(onReroute).not.toHaveBeenCalled();
+    });
+  });
+
+  // #697: the visual fix for the depth-caution note is deliberately CSS-only
+  // — this asserts on the CAUTION NOTE ELEMENT itself (not a document-wide
+  // query, unlike the seven pre-existing `[role="alert"]` toHaveLength(0)
+  // assertions above), so it would still catch a role="alert" added ONLY to
+  // this one element.
+  describe('#697: caution note stays visual-only (no role="alert")', () => {
+    it('the rendered .live-view-hts-note--caution element carries no role attribute', async () => {
+      vi.mocked(loadRoutingAssets).mockResolvedValue({
+        maskMeta: MASK_META,
+        maskBuffer: fullyDeepMaskBuffer(),
+      } as never);
+      vi.spyOn(NavMaskModule.NavMask.prototype, 'segmentShallowestBelow').mockReturnValue(2.1);
+
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      act(() => {
+        emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 });
+      });
+
+      await screen.findByText(/Bearing crosses 2\.1 m/);
+      const note = document.querySelector('.live-view-hts-note--caution');
+      expect(note).not.toBeNull();
+      expect(note).not.toHaveAttribute('role');
+    });
+  });
+
+  // #700: the toggle's visible label AND appearance must both track tracking
+  // state — aria-pressed alone is invisible to a sighted user. Checks the
+  // Button-primitive variant class directly (not just the label text) so a
+  // fix that only swapped the string, and left `variant` fixed, would still
+  // red this row.
+  describe('GPS toggle visible state (#700)', () => {
+    it('shows the off/"start" label and the secondary (outline) variant before tracking starts, then the on/"stop" label and the primary (filled) variant once toggled', async () => {
+      const { wp } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+
+      const toggle = await screen.findByRole('button', { name: 'Start live view' });
+      expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      expect(toggle).toHaveClass('sc-btn-secondary');
+      expect(toggle).not.toHaveClass('sc-btn-primary');
+
+      fireEvent.click(toggle);
+
+      const toggledOn = screen.getByRole('button', { name: 'Stop live view' });
+      expect(toggledOn).toBe(toggle); // same element, not a re-render swap
+      expect(toggledOn).toHaveAttribute('aria-pressed', 'true');
+      expect(toggledOn).toHaveClass('sc-btn-primary');
+      expect(toggledOn).not.toHaveClass('sc-btn-secondary');
+      // The neutral pre-#700 label must not survive under EITHER state.
+      expect(screen.queryByRole('button', { name: 'Live view' })).not.toBeInTheDocument();
+    });
+  });
+
+  // #713: HTS/COG/SOG/ETA are the readout a sailor glances at once a second;
+  // digits must not shift width across updates, and 'HTS' needs a
+  // screen-reader expansion since (unlike COG/SOG) it isn't a near-universal
+  // abbreviation.
+  describe('numeric readout formatting (#713)', () => {
+    it('applies tabular-nums to the HTS value, both COG/SOG dds, and the ETA line', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN);
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+
+      expect(document.querySelector('.live-view-hts-value')).toHaveClass('tabular-nums');
+      const dds = Array.from(document.querySelectorAll('.live-view-cogsog dd'));
+      expect(dds).toHaveLength(2);
+      for (const dd of dds) expect(dd).toHaveClass('tabular-nums');
+      expect(document.querySelector('.live-view-eta')).toHaveClass('tabular-nums');
+    });
+
+    it('gives an English screen reader an expansion of "HTS"; German needs none since its visible label is already the full word', async () => {
+      const { wp, emitFix } = fakeWatchPosition();
+      renderLive(wp, TEST_PLAN); // renderLive hardcodes 'en'
+      fireEvent.click(await screen.findByRole('button', { name: 'Start live view' }));
+      act(() => emitFix({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+
+      const label = document.querySelector('.live-view-label');
+      expect(label?.textContent?.trim()).toBe('HTS Heading to steer');
+      expect(label?.querySelector('.sr-only')).not.toBeNull();
+
+      cleanup();
+      localStorage.setItem('sc-lang', 'de');
+      const { wp: wpDe, emitFix: emitFixDe } = fakeWatchPosition();
+      render(
+        <I18nProvider>
+          <AppStateProvider>
+            <TestSetPlan plan={TEST_PLAN} />
+            <LiveView watchPosition={wpDe} />
+          </AppStateProvider>
+        </I18nProvider>,
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Live-Ansicht starten' }));
+      act(() => emitFixDe({ point: FIX_POINT, cogDeg: 91.4, sogKn: 6.3, accuracyM: 9 }));
+
+      const deLabel = document.querySelector('.live-view-label');
+      expect(deLabel?.textContent?.trim()).toBe('Steuerkurs');
+      expect(deLabel?.querySelector('.sr-only')).toBeNull();
     });
   });
 });
