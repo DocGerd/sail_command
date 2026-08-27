@@ -21,11 +21,11 @@ shipped.
 The `v0.15.0` cut (2026-08-27) closed the
 [`v0.15.0` milestone](https://github.com/DocGerd/sail_command/milestones),
 thirteen issues in total. Seamark map chrome: the third of #200's original
-four map-chrome residuals — hazard marks (cardinal and isolated-danger
-buoys) painting under routine marks at z≥12 — is fixed by splitting the
-layer in two, closing
+four map-chrome residuals to be discharged — hazard marks (cardinal and
+isolated-danger buoys) painting under routine marks at z≥12 (item 1 of
+#232's own enumeration) — is fixed by splitting the layer in two, closing
 [#682](https://github.com/DocGerd/sail_command/issues/682) and leaving only
-cross-tile ordering open under
+cross-tile ordering (item 2) open under
 [#232](https://github.com/DocGerd/sail_command/issues/232), rolled to
 `v0.16.0`. Interaction and accessibility hardening made up most of the
 milestone: origin/destination search re-picks and cancels now return
@@ -71,8 +71,8 @@ are covered under "Development workflow" below.
 
 The [`v0.16.0` milestone](https://github.com/DocGerd/sail_command/milestones)
 holds sixteen issues. Seamark and depth-overlay follow-on continues: the
-last of #200's four original map-chrome residuals, cross-tile symbol
-ordering, stays open under
+last of #200's four original map-chrome residuals to remain open — item 2
+of #232's own enumeration, cross-tile symbol ordering — stays open under
 [#232](https://github.com/DocGerd/sail_command/issues/232); the
 depth-navigability hatch still renders as hard-edged, aliased mask-cell
 squares at close zoom
@@ -214,9 +214,10 @@ user-visible surface. `pipeline/verify_mask.py`'s five safety-critical bare
 `assert` statements — mask-grid bounds, the per-boat gate-derivation
 cross-check, decimetre-quantisation drift, connectivity-seed navigability,
 and harbor `approachNote` completeness — could be silently stripped by
-`python -O`/`PYTHONOPTIMIZE=1`; they are now explicit `if not (...): raise
-AssertionError(...)` checks that survive optimisation, with a mutant
-reproducing the exact original hazard on a reverted single check
+`python -O`/`PYTHONOPTIMIZE=1`; each is now an explicit `if <condition>:
+raise AssertionError(...)` check (the condition differs per site — `if not
+(...)`, `!=`, `>=`, `== 0`, `not in`) that survives optimisation, with a
+mutant reproducing the exact original hazard on a reverted single check
 ([#613](https://github.com/DocGerd/sail_command/issues/613)).
 `.github/scripts/check-no-home-paths.sh` scanned tracked file *content* via
 `grep`, which follows a symlink to its target's content rather than reading
