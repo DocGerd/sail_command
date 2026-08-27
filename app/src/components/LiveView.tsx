@@ -354,9 +354,17 @@ export default function LiveView({
 
   const readout = (
     <div className="live-view">
-      <button type="button" aria-pressed={active} onClick={toggleActive}>
-        {t('live.toggle')}
-      </button>
+      {/* #700: the sighted equivalent of aria-pressed — routed through the
+          Button primitive so the pressed/on state reuses the SAME accent
+          fill `.app-tabs button[aria-selected='true']`/`.rig-tabs` already
+          use, rather than a new `[aria-pressed]` CSS rule. */}
+      <Button
+        variant={active ? 'primary' : 'secondary'}
+        aria-pressed={active}
+        onClick={toggleActive}
+      >
+        {active ? t('live.toggle.stop') : t('live.toggle')}
+      </Button>
 
       {hintVisible && (
         <div role="status" className="live-view-gps-hint">
@@ -376,8 +384,15 @@ export default function LiveView({
                 : 'live-view-hts'
             }
           >
-            <span className="live-view-label">{t('live.hts.label')}</span>
-            <span className="live-view-hts-value">{formatHeading(steerable.hts)}</span>
+            <span className="live-view-label">
+              {t('live.hts.label')}
+              {/* #713: German's label is already the full word 'Steuerkurs'
+                  — only the bare English abbreviation needs an expansion, so
+                  this is gated on lang rather than rendered unconditionally
+                  with an unused German value. */}
+              {lang === 'en' && <span className="sr-only"> {t('live.hts.expansion')}</span>}
+            </span>
+            <span className="live-view-hts-value tabular-nums">{formatHeading(steerable.hts)}</span>
           </div>
           {depthCheck.state === 'caution' && (
             <p className="live-view-hts-note live-view-hts-note--caution">
@@ -422,9 +437,13 @@ export default function LiveView({
 
           <dl className="live-view-cogsog">
             <dt>{t('live.cog.label')}</dt>
-            <dd>{steerable.fix.cogDeg !== null ? formatHeading(steerable.fix.cogDeg) : '—'}</dd>
+            <dd className="tabular-nums">
+              {steerable.fix.cogDeg !== null ? formatHeading(steerable.fix.cogDeg) : '—'}
+            </dd>
             <dt>{t('live.sog.label')}</dt>
-            <dd>{steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn, lang) : '—'}</dd>
+            <dd className="tabular-nums">
+              {steerable.fix.sogKn !== null ? formatKn(steerable.fix.sogKn, lang) : '—'}
+            </dd>
           </dl>
 
           <p className="live-view-next-event">
@@ -437,7 +456,7 @@ export default function LiveView({
               : t('live.nextEvent.none')}
           </p>
 
-          <p className="live-view-eta">
+          <p className="live-view-eta tabular-nums">
             {t('live.eta.label')}: {etaMs !== null ? formatTime(etaMs, lang) : '—'}
             {driftMs !== null && ` (${formatDriftMin(driftMs)})`}
           </p>
