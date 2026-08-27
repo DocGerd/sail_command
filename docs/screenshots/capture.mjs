@@ -153,8 +153,9 @@ const PANEL_WIDTH_PX = 518;
 // text were rendering entirely below the viewport. 1000px covers that with
 // margin. This bump is START-VIEW-ONLY: the page is resized back to the
 // shared 800px height immediately after that one screenshot so
-// plan-route.png (already verified to fit inside 800px, and shown alongside
-// a taller left-panel bordered legs table) keeps its existing framing.
+// plan-route.png is deliberately framed with its legs table scrolled — a
+// long table is meant to be cut off, unlike a form field, which is what
+// made the start-view crop a defect and this one not.
 const START_VIEW_HEIGHT_PX = 1000;
 
 const browser = await chromium.launch();
