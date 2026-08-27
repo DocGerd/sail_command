@@ -1179,20 +1179,25 @@ making design-level decisions; do not silently deviate.
   | v0.13.0 | — | 54 s | `completed`/`cancelled` (all five jobs) | safe | merge-push `32441905475` → tag `32441958743` deployed cleanly, `smoke-probe` passed — the gate read correctly IN ADVANCE here, not just in hindsight |
   | v0.13.1 | — | 33 s | `cancelled` (all five jobs) | safe | merge-push `32777433573` → tag `32777486953` deployed cleanly, `smoke-probe` passed |
   | v0.14.0 | 2026-08-25 | 56 s | `cancelled` | safe | merge-push `32876067990` → tag `32876158745` deployed cleanly, `smoke-probe` passed |
+  | v0.15.0 | 2026-08-27 | 972 s | `success` (MEASURED before the tag push) | **DID no-op** | merge-push `33062172199` → tag `33063351792`; `smoke-probe` FAILED, prod kept serving `v0.14.0-49-g3ebb554`; fixed by the back-merge |
 
   One row per cut since v0.10.0 — completeness is the whole point, since
   this table is what the COUNT THE TABLE ROWS instruction above tells you to
   count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
   workflow run IDs or job conclusions for those cuts, and only v0.14.0's date
   is on record here — don't fabricate any.)
-  **The gap carries ZERO information — never gate on it, and never read
-  "fast tag push" as a protection.** That rests on the MECHANISM, not on the
-  table: the outcome is set by whether `cancel-in-progress` killed the
-  earlier run before its `deploy` job reached terminal `success`, which the
-  gap does not measure. Do NOT cite the table as evidence for it — read the
-  rows honestly and they are entirely CONSISTENT with a gap threshold (the
-  one no-op sits at the LARGEST gap in the table; every safe row is below
-  it), which is exactly the reading to distrust. What the rows DO rule out
+  **NEVER GATE ON THE GAP — but do not call it information-free either; that
+  overstatement was retired at v0.15.0 (n=8).** The outcome is set by whether
+  `cancel-in-progress` killed the earlier run before its `deploy` job reached
+  terminal `success`. The gap is a WEAK PROXY for that, with a real mechanism:
+  a longer gap gives the merge run more time to finish, so its `deploy` is
+  likelier to own the SHA. BOTH recorded no-ops sit at the largest gap of
+  their time (v0.10.0 at 128 s; v0.15.0 at 972 s, ~7.6x the previous maximum),
+  so the rows are MORE consistent with a gap threshold than they were — which
+  is still the reading to distrust, because deploy-job DURATION varies
+  independently and no threshold has been measured. Gate on the JOB
+  CONCLUSION, which is the fact; treat the gap as a hint that licenses
+  nothing. What the rows DO rule out
   is the opposite intuition, that a fast tag push races the merge run:
   v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
   v0.12.1's 43 s likewise. No gap value has yet been observed on both
@@ -2032,6 +2037,18 @@ making design-level decisions; do not silently deviate.
   started", so a monitor on it burns its budget and reports a false timeout.
   Find the run by `?branch=` or `check-runs`, THEN monitor
   `actions/runs/<id>/jobs`. Foreground-test any poll query before arming it.
+  SHARPEST INSTANCE (v0.15.0, 2026-08-27): a FAST-FORWARD back-merge puts the
+  PR head ON the tag commit, so one SHA accumulates the merge-push run, the
+  tag run and the PR run. Measured on PR #750 (head `3ebb554` == main tip ==
+  the `v0.15.0` tag commit): `commits/<sha>/check-runs` returned **TWO
+  `smoke-probe` entries — one `failure` (tag run `33063351792`), one `success`
+  (merge-push run `33062172199`)** — plus two each of `deploy`, `build`,
+  `prod-environment`, `uat-environment`. The PR therefore DISPLAYS a red check
+  that belongs to the tag run and says nothing about the back-merge;
+  `mergeable_state` correctly read `unstable` (optional-only red) and the merge
+  was right to proceed. Expect this at every cut where the tag no-ops, and
+  separate them with `actions/workflows/deploy.yml/runs?head_sha=<sha>`, never
+  by check name.
 - A test fake that settles eases INSTANTLY makes interruption bugs
   structurally unreachable, not merely unasserted — camera-guard tests need a
   fake modelling `_stop`→`_afterEase`→`_prepareEase` ordering (#155). Same
@@ -2149,7 +2166,13 @@ making design-level decisions; do not silently deviate.
   be supported from evidence read in a file during the task, DELETE it rather
   than hedge it; (2) require the do-not-touch list confirmed BY DIFF, not by
   trust; (3) announce a stopping rule and honour it (file the remaining Minors
-  rather than run another unreviewed wave); (4) prefer RETRIEVING the primary
+  rather than run another unreviewed wave) — MEASURED 2026-08-27 (PR #741, the
+  #132 sweep) as the one remedy that demonstrably breaks the chain: round 1
+  (open-ended brief) → 2 Majors; round 2 (open-ended) → 2 Majors BOTH CREATED
+  BY the round-1 fix wave; round 3, whose brief carried an explicit BINDING
+  stopping rule ("fix exactly these three, REPORT anything else, do not fix
+  it") → ZERO successors in the tracked docs. The variable that changed was
+  the stopping rule, not care or model tier; (4) prefer RETRIEVING the primary
   artifact over constructing an argument; (5) make claims PER-SITE — every
   failure was a GENERALISATION or a GROUP NOUN, falsifiable the moment it is
   split into members, though checking a suspect field's ONE call site beat
