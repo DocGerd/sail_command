@@ -14,9 +14,10 @@ import { harborFeatureCollection } from '../lib/harborGeoJson';
 import {
   SEAMARKS_LAYOUT,
   pickSeamarkByPriority,
-  seamarkDisplayFilter,
   seamarkFeatureCollectionWithIcons,
+  seamarkHazardFilter,
   seamarkPopupAnchor,
+  seamarkRoutineFilter,
   seamarksLayout,
 } from '../lib/seamarkGeoJson';
 import {
@@ -126,6 +127,33 @@ const SEAMARKS_SOURCE = 'sc-seamarks';
 // tap-to-pick handler (a seamark click always opens the info popover below,
 // never sets origin/destination). (#7)
 export const SEAMARKS_LAYER = 'sc-seamarks';
+// #682: the hazard-family overlay (isolatedDanger, cardinal —
+// seamarkGlyphs.ts's isHazardSeamark) — see SEAMARKS_LAYOUT's own doc
+// comment in seamarkGeoJson.ts for the full mechanism and why this must be
+// the LAST layer added among this component's own layers (same beforeId,
+// later addLayer call — stacks it above SEAMARKS_LAYER). Exported for the
+// SAME reason as SEAMARKS_LAYER just above: App.tsx's
+// INTERACTIVE_MAP_LAYER_IDS raw-tap gate must include this id too, or a
+// click landing on a hazard-only mark (no longer present on SEAMARKS_LAYER
+// after the split) falls through to the origin/destination picker instead
+// of being gated to the seamark popover this component's own click handler
+// (below) opens for it.
+export const SEAMARKS_HAZARD_LAYER = 'sc-seamarks-hazard';
+// #682: every seamark symbol layer this component owns, module-scope so the
+// click/hover effect below doesn't rebuild an array literal every render
+// just to hand it to map.on/map.off. NOT exported as an array — Vite's
+// react-refresh lint (`allowConstantExport`) only recognises a Literal/
+// TemplateLiteral export as component-safe, so an exported array here would
+// fail lint (measured). App.tsx's own `INTERACTIVE_MAP_LAYER_IDS` raw-tap
+// gate — which must include every id in this array (see App.tsx's own
+// comment) — is instead pinned by `App.test.tsx`'s '#682 tap-safety' test,
+// which derives the expected set by REFLECTING over this module's own named
+// exports (every string export matching `/^SEAMARKS.*LAYER$/`) rather than
+// importing this array directly, so a future third `SEAMARKS_*_LAYER`
+// export is covered automatically with no test-file edit, as long as it
+// follows the naming convention `SEAMARKS_LAYER`/`SEAMARKS_HAZARD_LAYER`
+// already set.
+const SEAMARK_LAYER_IDS = [SEAMARKS_LAYER, SEAMARKS_HAZARD_LAYER];
 
 // Deterministic cross-component layer ordering. Documented invariant (#160,
 // AisLayer's setupLayers): route stack above the AIS stack above these
@@ -434,6 +462,38 @@ function setupLayers(
       },
       beforeId,
     );
+    // #682: the hazard-family overlay, reading the SAME source and SAME
+    // layout as SEAMARKS_LAYER just above (icon-image/icon-overlap/
+    // symbol-sort-key/icon-size/icon-padding are all identical — only the
+    // FILTER differs, applied by the effects below via
+    // seamarkRoutineFilter/seamarkHazardFilter). Added AFTER SEAMARKS_LAYER
+    // with the SAME beforeId anchor — MapLibre stacks same-beforeId
+    // additions in INSERTION order (see the #492 addLayer comment above:
+    // "each addLayer(layer, beforeId) call inserts immediately below
+    // beforeId, so a later call ends up ABOVE an earlier one"), so this
+    // paints above the routine layer while staying below the AIS/Route
+    // anchor exactly like every other layer in this function. See
+    // seamarkGeoJson.ts's SEAMARKS_LAYOUT doc comment (b) for why stacking
+    // order ALONE — with no cross-layer symbol-sort-key coordination —
+    // fixes BOTH the z>=12 paint-order inversion and the z<12 placement
+    // priority (#682).
+    map.addLayer(
+      {
+        id: SEAMARKS_HAZARD_LAYER,
+        type: 'symbol',
+        source: SEAMARKS_SOURCE,
+        layout: {
+          ...SEAMARKS_LAYOUT,
+          // Same "hidden/no filter at creation, synced by an effect"
+          // convention as SEAMARKS_LAYER — no visible flash risk either way,
+          // since SEAMARKS_SOURCE's own data starts empty until the same
+          // assets-gated effect that first sets these filters also
+          // populates it.
+          visibility: 'none',
+        },
+      },
+      beforeId,
+    );
   }
 }
 
@@ -682,9 +742,22 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     (map.getSource(SEAMARKS_SOURCE) as GeoJSONSource | undefined)?.setData(withIcons);
   }, [map, styleEpoch, assets, seamarkSizeScale]);
 
+  // #682: both sc-seamarks* layers toggle together — a single opt-in
+  // "seamarks" affordance to the user, split into two layers purely as a
+  // paint-order/placement-priority implementation detail (SEAMARKS_LAYOUT's
+  // own doc comment (b)), never a second independently-toggleable overlay.
   useEffect(() => {
-    if (!map || styleEpoch === 0 || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
-    map.setLayoutProperty(SEAMARKS_LAYER, 'visibility', seamarksVisible ? 'visible' : 'none');
+    if (!map || styleEpoch === 0 || !assets) return;
+    if (map.getLayer(SEAMARKS_LAYER)) {
+      map.setLayoutProperty(SEAMARKS_LAYER, 'visibility', seamarksVisible ? 'visible' : 'none');
+    }
+    if (map.getLayer(SEAMARKS_HAZARD_LAYER)) {
+      map.setLayoutProperty(
+        SEAMARKS_HAZARD_LAYER,
+        'visibility',
+        seamarksVisible ? 'visible' : 'none',
+      );
+    }
   }, [map, styleEpoch, assets, seamarksVisible]);
 
   // #353 PR2: the layer is CREATED (setupLayers) at the SEAMARKS_LAYOUT
@@ -693,29 +766,54 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
   // convention as the visibility toggle above. Only these two layout
   // properties vary with scale (icon-image/icon-overlap/symbol-sort-key do
   // not), so only these two are re-set rather than the whole layout object.
+  // #682: both layers share SEAMARKS_LAYOUT verbatim, so both get the SAME
+  // re-derived layout object.
   useEffect(() => {
-    if (!map || styleEpoch === 0 || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
+    if (!map || styleEpoch === 0 || !assets) return;
     const layout = seamarksLayout(seamarkSizeScale);
-    map.setLayoutProperty(SEAMARKS_LAYER, 'icon-size', layout['icon-size']);
-    map.setLayoutProperty(SEAMARKS_LAYER, 'icon-padding', layout['icon-padding']);
+    for (const layerId of [SEAMARKS_LAYER, SEAMARKS_HAZARD_LAYER]) {
+      if (!map.getLayer(layerId)) continue;
+      map.setLayoutProperty(layerId, 'icon-size', layout['icon-size']);
+      map.setLayoutProperty(layerId, 'icon-padding', layout['icon-padding']);
+    }
   }, [map, styleEpoch, assets, seamarkSizeScale]);
 
   // #353 PR2 (mapping corrected #513 F1/F2): the display-category filter.
-  // `seamarkDisplayFilter` is cumulative (SEAMARK_DISPLAY_TIER_ALL
-  // reproduces the unfiltered pre-#353 layer exactly), and the Base tier
-  // (isolatedDanger/cardinal/lateral/safeWater/lightMajor) is NEVER excluded
-  // by any selection — see seamarkGlyphs.ts's `seamarkDisplayTier` doc
-  // comment for the full MSC.232(82)-informed mapping and why Base is a
-  // product-specific floor rather than a literal ECDIS Display Base.
+  // The tier cut is cumulative (SEAMARK_DISPLAY_TIER_ALL reproduces the
+  // unfiltered pre-#353 feature set, now split across the two layers), and
+  // the Base tier (isolatedDanger/cardinal/lateral/safeWater/lightMajor) is
+  // NEVER excluded by any selection — see seamarkGlyphs.ts's
+  // `seamarkDisplayTier` doc comment for the full MSC.232(82)-informed
+  // mapping and why Base is a product-specific floor rather than a literal
+  // ECDIS Display Base.
+  // #682: the SAME tier cut now applies to TWO layers, each additionally
+  // partitioned on the `hazard` boolean — seamarkRoutineFilter/
+  // seamarkHazardFilter (seamarkGeoJson.ts) so a feature renders on exactly
+  // one of the two, never both and never neither.
   useEffect(() => {
-    if (!map || styleEpoch === 0 || !assets || !map.getLayer(SEAMARKS_LAYER)) return;
-    map.setFilter(SEAMARKS_LAYER, seamarkDisplayFilter(seamarkDisplayTier));
+    if (!map || styleEpoch === 0 || !assets) return;
+    if (map.getLayer(SEAMARKS_LAYER)) {
+      map.setFilter(SEAMARKS_LAYER, seamarkRoutineFilter(seamarkDisplayTier));
+    }
+    if (map.getLayer(SEAMARKS_HAZARD_LAYER)) {
+      map.setFilter(SEAMARKS_HAZARD_LAYER, seamarkHazardFilter(seamarkDisplayTier));
+    }
   }, [map, styleEpoch, assets, seamarkDisplayTier]);
 
   // Click a seamark glyph -> a small info popover (type/category/colour,
   // light character/colour/period when tagged) — never a route pick (#7):
   // seamarks aren't route-pickable points, unlike harbor markers, so this
   // owns its own popup rather than calling back into App/PlannerPanel state.
+  // #682: registered on BOTH sc-seamarks* layer ids via maplibre-gl's array
+  // form of the delegated `on(type, layerIds, fn)` overload
+  // (`node_modules/maplibre-gl/dist/maplibre-gl.d.ts:13727`, re-derived
+  // against the installed 6.5.0, matched to `app/package-lock.json`'s pin —
+  // #392's documented trap) — MapLibre's own delegate implementation
+  // (`ui/map.ts`'s `_createDelegatedListener`) queries EVERY given layer at
+  // the tap point and merges the results into ONE `e.features` array before
+  // invoking this handler once, so pickSeamarkByPriority below still sees
+  // candidates from whichever layer the tap actually hit, same as before
+  // the split.
   useEffect(() => {
     if (!map || styleEpoch === 0 || !assets) return;
     const handleClick = (e: MapLayerMouseEvent) => {
@@ -760,13 +858,13 @@ export default function DataLayers({ onHarborPick }: DataLayersProps) {
     const handleLeave = () => {
       map.getCanvas().style.cursor = '';
     };
-    map.on('click', SEAMARKS_LAYER, handleClick);
-    map.on('mouseenter', SEAMARKS_LAYER, handleEnter);
-    map.on('mouseleave', SEAMARKS_LAYER, handleLeave);
+    map.on('click', SEAMARK_LAYER_IDS, handleClick);
+    map.on('mouseenter', SEAMARK_LAYER_IDS, handleEnter);
+    map.on('mouseleave', SEAMARK_LAYER_IDS, handleLeave);
     return () => {
-      map.off('click', SEAMARKS_LAYER, handleClick);
-      map.off('mouseenter', SEAMARKS_LAYER, handleEnter);
-      map.off('mouseleave', SEAMARKS_LAYER, handleLeave);
+      map.off('click', SEAMARK_LAYER_IDS, handleClick);
+      map.off('mouseenter', SEAMARK_LAYER_IDS, handleEnter);
+      map.off('mouseleave', SEAMARK_LAYER_IDS, handleLeave);
     };
   }, [map, styleEpoch, assets, t]);
 

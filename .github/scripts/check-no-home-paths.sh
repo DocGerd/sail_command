@@ -51,6 +51,24 @@
 # necessarily contains the patterns it matches against, both in this header
 # and in --selftest's constructed violating examples.
 #
+# TRACKED SYMLINKS (#479): a committed symlink stores its TARGET PATH STRING
+# as blob content, not the target's own content - `grep`ing the symlink's
+# path FOLLOWS it and reads whatever the target contains instead, so a
+# symlink whose target names a contributor's home directory was previously
+# invisible whenever that target happened to exist and be readable (a
+# `.gitignore` trailing slash matches directories only, so a symlinked
+# directory is never actually ignored - #476 found 12 such entries). Every
+# tracked symlink's `readlink` target is scanned against the SAME pattern
+# classes, unconditionally - never gated on whether the target resolves - so
+# detection does not depend on the accident that a dangling or
+# directory-target symlink already failed the plain readable-regular-file
+# check for an unrelated reason. That means a symlink no longer falls through
+# to the readable-regular-file branch above AT ALL (the `[ -L ]` branch below
+# always `continue`s) - this is DELIBERATE, not a narrowing of the FAIL-CLOSED
+# guarantee above: for a symlink, whether the TARGET resolves is irrelevant to
+# whether the TARGET STRING leaks a home path, so judging the string directly
+# is the correct fail-closed behaviour, not merely a preserved one.
+#
 # Production usage (from the repo root, or any cwd inside the work tree -
 # `git ls-files` resolves relative to the work tree regardless of cwd):
 #   .github/scripts/check-no-home-paths.sh
@@ -181,6 +199,51 @@ scan_file() {
   return "$found"
 }
 
+# scan_symlink_target FILE TARGET -> prints one "FILE:symlink-target:CLASS:
+# MATCH" row per violation found in TARGET (the symlink's own stored target
+# path STRING, from `readlink`); returns 0 if at least one violation was
+# printed, 1 if none. #479: `grep -n -o -E ... -- "$f"` in scan_file FOLLOWS a
+# symlink and scans the TARGET FILE's content - never the link itself - so a
+# committed symlink whose target path names a contributor's home directory is
+# invisible to scan_file even when that target happens to exist and be
+# readable (a `.gitignore` entry with a trailing slash matches directories
+# only, so a symlinked directory or file is never actually ignored - #476).
+# MEASURED, not assumed (see the PR description this shipped in): a symlink
+# whose target does not resolve, or resolves to a directory, already fails
+# scan_tree's pre-existing "not a readable regular file" branch by accident -
+# but a symlink pointing at an EXISTING, READABLE regular file elsewhere
+# passes that branch and is never scanned at all, silently leaking the target
+# string. This function is the fix: it is applied to EVERY tracked symlink's
+# target unconditionally, never gated on whether the target resolves, so
+# detection does not depend on that accident. Deliberately mirrors scan_file's
+# two-step grep/bash-ere/allowlist structure (same classes, same allowlist) -
+# but the grep call below omits `-n`, deliberately: a symlink target is a
+# single filesystem attribute, not a multi-line document a reader would
+# navigate to by line, so no line number is ever computed for it (even
+# though the target STRING itself could in principle contain a literal
+# newline byte - POSIX places no such restriction on it). "symlink-target"
+# is a fixed label standing in for scan_file's line number in the output
+# format, not evidence that one could not exist.
+scan_symlink_target() {
+  local f="$1" target="$2" i class ere bashere applyallow match token found=1
+  for i in "${!CLASS_NAMES[@]}"; do
+    class="${CLASS_NAMES[$i]}"
+    ere="${CLASS_GREP_ERE[$i]}"
+    bashere="${CLASS_BASH_ERE[$i]}"
+    applyallow="${CLASS_APPLY_ALLOWLIST[$i]}"
+    while IFS= read -r match; do
+      [ -z "$match" ] && continue
+      if [ "$applyallow" = 1 ] && [[ "$match" =~ $bashere ]]; then
+        token="${BASH_REMATCH[1]}"
+        is_allowed_token "$token" && continue
+      fi
+      printf '%s:%s:%s:%s\n' "$f" "symlink-target" "$class" "$match"
+      found=0
+    done < <(grep -o -E "$ere" <<<"$target" 2>/dev/null)
+  done
+  return "$found"
+}
+
 # scan_tree [EXCLUDE_REL_PATH] -> scans every git-tracked file in the
 # current work tree (cwd must be inside it; `git ls-files` resolves relative
 # to the work tree root regardless of cwd, matching every other git command
@@ -189,7 +252,7 @@ scan_file() {
 # (internal / fail-closed error - unusable git, no tracked files, or an
 # unreadable tracked file).
 scan_tree() {
-  local exclude="${1:-}" any_violation=1 any_error=0 f
+  local exclude="${1:-}" any_violation=1 any_error=0 f target
 
   git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
     echo "check-no-home-paths: not inside a git work tree (or git is unavailable) - cannot scan, failing closed."
@@ -217,6 +280,29 @@ scan_tree() {
 
   for f in "${files[@]}"; do
     [ -n "$exclude" ] && [ "$f" = "$exclude" ] && continue
+    # #479: a tracked SYMLINK is handled entirely separately, BEFORE the
+    # regular-file readability check below - `[ -f "$f" ]` FOLLOWS a symlink,
+    # so a symlink pointing at an existing readable file/dir would otherwise
+    # fall into the ordinary scan_file path and have its TARGET STRING never
+    # examined at all (only the pointed-to file's unrelated content would be,
+    # which is out of scope for this guard and not what "tracked file" means
+    # here). `[ -L ]` is checked on the WORKING-TREE entry, matching this
+    # script's existing philosophy of reading the checkout directly rather
+    # than the git object database (see scan_file); on a checkout with
+    # core.symlinks=false, git materialises a tracked symlink as an ordinary
+    # text file containing the target string, `[ -L ]` is correctly false
+    # there, and the existing scan_file content-scan below already covers
+    # that shape without any change.
+    if [ -L "$f" ]; then
+      target="$(readlink -- "$f" 2>/dev/null)"
+      if [ -z "$target" ]; then
+        echo "check-no-home-paths: tracked path is a symlink whose target could not be read: $f - cannot verify it, failing closed."
+        any_error=1
+        continue
+      fi
+      scan_symlink_target "$f" "$target" && any_violation=0
+      continue
+    fi
     if [ ! -f "$f" ] || [ ! -r "$f" ]; then
       echo "check-no-home-paths: tracked path is not a readable regular file: $f (deleted from the work tree without staging, permission-denied, or a non-regular type) - cannot verify it, failing closed."
       any_error=1
@@ -264,7 +350,7 @@ self_relative_path() {
 if [ "${1:-}" = "--selftest" ]; then
   fail=0
   total_cases=0
-  EXPECTED_CASES=28
+  EXPECTED_CASES=33
 
   case "$0" in
     */*) SELF="$0" ;;
@@ -309,6 +395,18 @@ if [ "${1:-}" = "--selftest" ]; then
     local repo="$1" rel="$2" content="$3"
     mkdir -p "$repo/$(dirname "$rel")"
     printf '%s\n' "$content" > "$repo/$rel"
+    git -C "$repo" add -A >/dev/null 2>&1
+  }
+
+  # addlink REPO REL_PATH TARGET - creates a real symlink at REPO/REL_PATH
+  # pointing at TARGET (stored verbatim, never resolved) and stages it. #479:
+  # TARGET is deliberately allowed to be a path that does not exist and/or
+  # points outside REPO - the whole point of this guard is that the TARGET
+  # STRING itself is the thing under test, independent of whether it resolves.
+  addlink() {
+    local repo="$1" rel="$2" target="$3"
+    mkdir -p "$repo/$(dirname "$rel")"
+    ln -s "$target" "$repo/$rel"
     git -C "$repo" add -A >/dev/null 2>&1
   }
 
@@ -469,6 +567,52 @@ if [ "${1:-}" = "--selftest" ]; then
 
   r=$(mkrepo); add "$r" docs/x.md 'Explorer path: \\wsl$\Ubuntu-22.04\etc\wsl.conf names a distro, not a person'
   check "28 wsl-unc-dollar prefix with no \\home\\ segment must pass" pass "$r"
+
+  # --- 29-33: tracked SYMLINKS (#479) - the target path STRING is the thing
+  # under test, not the target's own content. Case 29 is the exact silent-miss
+  # this fix closes: MEASURED before this fix, a symlink pointing at an
+  # EXISTING, READABLE regular file elsewhere passed `[ -f "$f" ]`/`[ -r "$f" ]`
+  # and fell into the ordinary content scan, which follows the link and reads
+  # the TARGET FILE's (clean) content - never the link's own leaking target
+  # string - so the whole run reported clean. Giving the target file real,
+  # clean content here is deliberate: if scan_tree regressed to following the
+  # symlink instead of reading it, this case would silently pass instead of
+  # failing, exactly reproducing the bug this fix closes.
+  targetdir="$(mktemp -d)/home/alice-selftest"
+  mkdir -p "$targetdir"
+  printf 'nothing sensitive in the TARGET FILE content itself\n' > "$targetdir/real-file.txt"
+  r=$(mkrepo); addlink "$r" data-src-link "$targetdir/real-file.txt"
+  check "29 symlink to an EXISTING readable file whose path leaks a home dir" fail "$r"
+  case "$LAST_OUT" in
+    *"data-src-link:symlink-target:linux-home:"*"/home/alice-selftest"*) ;;
+    *) echo "SELFTEST FAIL: 29 message did not name symlink-target/linux-home -> $LAST_OUT"; fail=1 ;;
+  esac
+
+  r=$(mkrepo); addlink "$r" dangling-leak "/home/bob-selftest/never-existed"
+  check "30 symlink to a NON-existent target that still leaks a home dir" fail "$r"
+  case "$LAST_OUT" in
+    *"dangling-leak:symlink-target:linux-home:/home/bob-selftest"*) ;;
+    *) echo "SELFTEST FAIL: 30 message did not name symlink-target/linux-home -> $LAST_OUT"; fail=1 ;;
+  esac
+
+  r=$(mkrepo); add "$r" real-target.txt 'clean'; addlink "$r" relative-link '../real-target.txt'
+  check "31 symlink with a benign relative target" pass "$r"
+
+  r=$(mkrepo); addlink "$r" cache-link '/home/user/cache'
+  check "32 symlink target using the allowlisted /home/user placeholder" pass "$r"
+
+  r=$(mkrepo)
+  add "$r" docs/y.md 'cd /home/alice/repo'
+  addlink "$r" a-link-y '/home/bob/cache'
+  check "33 a regular-file leak and a symlink-target leak both reported" fail "$r"
+  case "$LAST_OUT" in
+    *"docs/y.md:"*"linux-home:/home/alice"*) ;;
+    *) echo "SELFTEST FAIL: 33 did not report the regular-file leak -> $LAST_OUT"; fail=1 ;;
+  esac
+  case "$LAST_OUT" in
+    *"a-link-y:symlink-target:linux-home:/home/bob"*) ;;
+    *) echo "SELFTEST FAIL: 33 did not report the symlink-target leak -> $LAST_OUT"; fail=1 ;;
+  esac
 
   if ! [ "$total_cases" -eq "$EXPECTED_CASES" ] 2>/dev/null; then
     echo "SELFTEST FAILURES: ran $total_cases cases, expected ${EXPECTED_CASES:-<unset/empty>} - a case was skipped or silently dropped"

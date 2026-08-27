@@ -81,7 +81,7 @@ making design-level decisions; do not silently deviate.
   `timeoutBudgetVsJobCap.test.ts` DECLARES `JOB_CAP_MINUTES = 240` rather than
   reading it (PR #351 removed the read after four fail-opens), so the two are
   kept in sync by a twin comment only and #359 tracks restoring a real read.
-  ## Commands
+## Commands
 - App (run from repo root): `npm --prefix app run typecheck` / `lint` / `test` /
   `build` / `dev`. CI runs lint+typecheck BEFORE tests — vitest alone will not
   catch unused imports or type errors.
@@ -288,14 +288,14 @@ making design-level decisions; do not silently deviate.
   required. It fails CLOSED: filter error, empty diff, unreachable base,
   non-PR event, or any unmatched path all run e2e. `.claude/**` is
   deliberately NOT allowlisted (it holds executable hooks). The allowlist is
-  the `case` arm at `classify-docs-only.sh:389` — THIRTEEN members, not the
-  four this file used to name: `CHANGELOG.md`, `README.md`, `ROADMAP.md`,
-  `GOVERNANCE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`,
-  `CLAUDE.md`, `LICENSE`, `docs/*`, `.github/ISSUE_TEMPLATE/*`,
-  `.github/PULL_REQUEST_TEMPLATE.md`, `changelog.d/*` — so a whole #132
-  release docs sweep skips e2e (measured on PR #677). Read the arm, don't
-  trust this list. The globs are ONE star: in a bash `case`, `*` matches `/`,
-  so nested paths do match (selftest case 10 pins it). Measured on a real
+  the `case` arm at `classify-docs-only.sh:389` — THIRTEEN members as of
+  2026-08-26, and the count is not checked by anything, so read the arm
+  rather than trusting it: `grep -n CODE_OF_CONDUCT.md
+  .github/scripts/classify-docs-only.sh` prints the whole arm on one line and
+  is robust to line drift. A whole #132 release docs sweep skips e2e
+  (measured on PR #677). Never copy the member list into this file again.
+  The globs are ONE star: in a bash `case`, `*` matches `/`, so nested paths
+  do match (selftest case 10 pins it). Measured on a real
   `CLAUDE.md`-only PR (#343): `e2e` reported success in 6 s with
   `mergeable_state: clean` — so a skipped-but-successful required check does
   satisfy `develop`'s gating.
@@ -359,7 +359,7 @@ making design-level decisions; do not silently deviate.
   `pipeline/extract_basemap.sh [YYYYMMDD]`; per-asset detail and the
   never-hand-edit-a-generated-file rule are in `pipeline/README.md`. (mask needs
   `pipeline/.venv` — `python3 -m venv .venv && .venv/bin/pip install -r
-  requirements.txt`). `pipeline/data-src/` is an ~888 MB gitignored download
+  requirements.txt`). `pipeline/data-src/` is an ~887 MiB (~930 MB) gitignored download
   cache — NEVER delete it casually (re-downloading costs an hour); preserve it
   when removing worktrees. `verify_mask.py` must exit 0: it flood-fill-checks
   every harbor snap and has a documented KNOWN_DISCONNECTED allowlist (#9).
@@ -437,6 +437,36 @@ making design-level decisions; do not silently deviate.
   formerly a `!` that died as an unnamed TypeError, forwarded as `worker-fatal`
   and shown as the generic `error.routingFailed`). Validate `length > 0`
   explicitly wherever a list means "at least one".
+- **Three chained `:not()` count as three classes.**
+  `input:not([type='checkbox']):not([type='radio']):not([type='range'])`
+  computes to **(0,3,1)** and out-specifies every single-class rule in the
+  file; wrapping the chain in `:where(...)` holds it at the bare-element
+  **(0,0,1)**. `app/src/app.css`'s `input` rule ships the `:where()` form for
+  that reason. Measured consequence before the fix (#710): `.sr-only`'s
+  `padding: 0`/`border: 0` LOST to it on `PlannerPanel.tsx`'s
+  `<input type="file" className="sr-only">`, rendering 21.19x40px with a 1px
+  border instead of 1x1. Complement of the source-order cascade bullet below
+  (a single-class modifier losing to a later base rule) — specificity and
+  source order are the two halves of the same failure; read both.
+- **Chromium ignores author `border`/`border-radius`/`padding` on
+  `appearance: auto` radios** — a forced `!important` 3px border + 8px radius
+  computes to `0px none / 0px / 0px`, size unchanged (measured 2026-08-26).
+  `range` DOES pick them up. So `range` is the load-bearing exclusion and
+  `radio` is a no-op in Chromium specifically — but KEEP `radio` excluded
+  anyway: the no-op is engine-specific and a bordered/padded box is not
+  what the control means to a user in an engine that honours it
+  (`app.css`'s own comment and PR #735 both decided this deliberately).
+  A correct exclusion carried a refuted reason for a full review round.
+- `Map#_removeDelegatedListener` (`app/node_modules/maplibre-gl/src/ui/map.ts`,
+  ~:2139) matches only on an **EXACT** layer-set
+  (`layers.length === layerIds.length && layers.every(includes)`) — a narrower
+  or wider `layerIds` on removal silently no-ops. `once()` on a multi-layer
+  delegate (~:2394) removes the WHOLE registration on the first event from ANY
+  covered layer, not per-layer. `test/fakeMaplibre.ts` models both; keep it
+  that way — see also the `installStyleSetup`/`fakeMaplibre.ts` bullet below,
+  which carries that fake's other pinned invariant (`addLayer` drops layers on
+  a truthy-but-missing `beforeId`, #163). Re-derived against
+  `maplibre-gl@6.5.0`, 2026-08-26.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -529,8 +559,8 @@ making design-level decisions; do not silently deviate.
   `.map-stack-tl`'s `offsetTop`/`offsetHeight` the DOM position is already
   correct regardless of which call site's commit lands first. NAMED
   COUPLING now points at `App.tsx`'s `<div className="banner-area">`
-  (rendered unconditionally, ~:989) and its App-level `useBannerHeight()`
-  call (~:169, kept purely for that write side-effect). Any rule that moves
+  (rendered unconditionally, ~:1091) and its App-level `useBannerHeight()`
+  call (~:181, kept purely for that write side-effect). Any rule that moves
   `.map-stack-tl` still changes `ScaleBar`'s available room — the two remain
   connected only through that runtime-measured layout value, invisible in
   the CSS, in the diff, and to any test that checks the two components
@@ -665,9 +695,11 @@ making design-level decisions; do not silently deviate.
   guard is ease-source-SPECIFIC where `isEasing()` was ease-source-AGNOSTIC —
   a foreign, bearing-changing ease carrying no `originalEvent` would now demote
   where v5 did not. No producer exists in the app today
-  (`RouteLayer.tsx:656`'s `fitBounds` passes `duration: 0` and the current
-  bearing (line number moved from :458 by today's #378/#324 insertions
-  earlier in the file, #380/#381/#382/#384 session — re-check after any
+  (`RouteLayer.tsx`'s only `map.fitBounds(` call as of 2026-08-26 — re-grep
+  before trusting "only" — ~:775, passes `duration: 0` and the current
+  bearing (line number moved :458 -> :656 -> :775 across the #378/#324
+  insertions earlier in the file and the 2026-08-26 audit — three anchors in
+  one lineage, which is why the SYMBOL is the identity here; re-check after any
   future edit that adds lines above this call site); keyboard rotation and
   drag inertia always carry `originalEvent`;
   `resetNorth` has no call site; `bearingSnap: 0` makes MapLibre's internal
@@ -715,6 +747,15 @@ making design-level decisions; do not silently deviate.
   disabling the placement priority entirely. Within one symbol layer,
   placement and paint order cannot be set independently — that needs a
   second layer (#200, #232).
+- **Placement runs TOP-TO-BOTTOM, so a later-added layer is placed FIRST.**
+  `PauseablePlacement`'s constructor
+  (`app/node_modules/maplibre-gl/src/style/pauseable_placement.ts` — NOT under
+  `symbol/`) sets `_currentPlacementIndex = order.length - 1` and
+  `continuePlacement` walks it down to `0`. So a layer stacked above wins the
+  shared collision index as well as paint order — which is why splitting one
+  symbol layer in two (#682) fixes z>=12 paint order AND preserves z<12
+  placement priority with no cross-layer `symbol-sort-key` coordination.
+  Re-derived against `maplibre-gl@6.5.0`, 2026-08-26.
 - `icon-allow-overlap` and `icon-ignore-placement` sound like the same knob
   and are not: `allow-overlap` ("place me even if I collide") governs
   whether *I* get culled by the collision index; `ignore-placement` ("do not
@@ -878,8 +919,11 @@ making design-level decisions; do not silently deviate.
   (desktop4k 3840x2160, desktopHd 1920x1080, tabletLandscape 1180x820,
   tabletPortrait 820x1180, phonePortrait 390x844) and `EDGE_VIEWPORTS` (the
   narrow/short stress cases #368's own residuals were measured against:
-  narrowPortrait360, shortLandscape844/740, deepPortrait320,
-  partialPushBand375, wrapForcing280). Specs must import and iterate these,
+  narrowPortrait360, shortLandscape844/740/932, deepPortrait320,
+  partialPushBand375, wrapForcing280 — `shortLandscape932` (932x430, #231)
+  is the newest member and the one a stale copy of this list is most likely
+  to omit; COUNT the array's own keys rather than trusting any total stated
+  here, which drifts at the next addition). Specs must import and iterate these,
   never inline viewport literals — this repo already paid for the per-file
   version of that mistake once (nine hardcoded `testTimeout` literals,
   patched two at a time across CI rounds before centralizing behind one
@@ -909,7 +953,9 @@ making design-level decisions; do not silently deviate.
   require three consecutive matches at 400ms, fail CLOSED on budget
   exhaustion with the count history and last three label sets. Three-at-400ms
   is chosen to exceed maplibre's placement throttle: `Placement.stillRecent`
-  (`symbol/placement.ts:1268-1277`, unmoved 6.2.0 -> 6.3.0) gates re-runs on
+  (`symbol/placement.ts:1268-1277`, re-derived 2026-08-26 against the
+  then-installed 6.5.0 which matched the lockfile, unmoved since 6.2.0)
+  gates re-runs on
   `commitTime + fadeDuration * durationAdjustment > now` with
   `fadeDuration: 300` defaulted at `ui/map.ts:540` (6.3.0; `:539` in 6.2.0 —
   the two drift independently, never assume one offset). Measured effect:
@@ -1110,33 +1156,53 @@ making design-level decisions; do not silently deviate.
   then served the chunk name the tag run had built, proving that run's BUILD
   was always correct and only its DEPLOYMENT no-opped.
 
-  **EXERCISED SIX TIMES; the margin is NOT a predictor, and the recorded
-  range is now actively INVERTED against the intuitive reading: v0.13.1's
-  33 s is the SMALLEST gap ever recorded and was SAFE, while the ONLY no-op
-  sits at the LARGEST value (128 s). n>=5 also PROVES
-  it rather than merely failing to refute it: v0.13.0's gap was 54 s and the
-  tag run TOOK, while v0.11.0's 54 s was also safe and v0.10.0's 128 s
-  no-opped — the SAME gap value now appears on BOTH outcomes, so the gap
-  carries zero information.** At v0.13.0 the gate read correctly in advance:
-  merge-push run `32441905475` had `deploy: completed/cancelled` (all five
-  jobs), so tag run `32441958743` deployed cleanly and `smoke-probe` passed.
-  On one basis
-  (Deploy workflow-RUN creation→creation) the gap was **128 s** at v0.10.0 (DID no-op —
-  the probe fired and was right), **54 s** at v0.11.0 (safe), **70 s** at
-  v0.12.0 (safe), **43 s** at v0.12.1 (safe — merge-push run 32313173754
-  had every job `cancelled`, so tag run 32313225085 at the same head deployed
-  cleanly) and **33 s** at v0.13.1 (safe — merge-push run 32777433573 had all
-  five jobs `cancelled`, so tag run 32777486953 deployed cleanly and
-  `smoke-probe` passed), the last two being SMALLER than both earlier safe
-  gaps AND than the 128 s one that DID no-op. n=4 happens to run the intuitive way and that is
-  NOT evidence:
-  the outcome is set by whether `cancel-in-progress` killed the earlier run
-  before its `deploy` job reached terminal `success`, not by the gap — so never
-  gate on the gap, and never read "fast tag push" as a protection. (An
-  older, UNRELATED 43 s figure was completion→creation and is NOT comparable —
-  differencing the two bases is this file's own "two measurements of DIFFERENT
-  subjects cannot be differenced", and two same-valued figures on different
-  bases must not be conflated.)
+  **EXERCISED AT EVERY RELEASE CUT SINCE v0.10.0 — most recently at the cut
+  named in the LAST ROW of the table below.** Do NOT hand-maintain a running
+  total in prose: an earlier version of this passage read "SIX TIMES" until
+  2026-08-26 and had gone off-by-one the moment v0.14.0 shipped, untouched by
+  that release's own learnings commit. COUNT THE TABLE ROWS instead, and add a
+  row at every cut — the table decays on the same schedule as the thing it
+  describes only for as long as it is kept COMPLETE: v0.13.0 and v0.14.0 both
+  had to be folded in on 2026-08-26, having been recorded only in surrounding
+  prose while the table itself (then a list) read five. A pointer at an
+  incomplete list is WORSE than the ordinal it replaced — it answered 5
+  against a true 7.
+
+  On one basis (Deploy workflow-RUN creation→creation):
+
+  | Cut | Date | Gap | Merge-run `deploy` job | Outcome | Evidence |
+  |---|---|---|---|---|---|
+  | v0.10.0 | — | 128 s | — | DID no-op | probe fired and was right |
+  | v0.11.0 | — | 54 s | — | safe | — |
+  | v0.12.0 | — | 70 s | `cancelled` (MEASURED) | safe | — |
+  | v0.12.1 | — | 43 s | `cancelled` (every job) | safe | merge-push `32313173754` → tag `32313225085` (same head) deployed cleanly |
+  | v0.13.0 | — | 54 s | `completed`/`cancelled` (all five jobs) | safe | merge-push `32441905475` → tag `32441958743` deployed cleanly, `smoke-probe` passed — the gate read correctly IN ADVANCE here, not just in hindsight |
+  | v0.13.1 | — | 33 s | `cancelled` (all five jobs) | safe | merge-push `32777433573` → tag `32777486953` deployed cleanly, `smoke-probe` passed |
+  | v0.14.0 | 2026-08-25 | 56 s | `cancelled` | safe | merge-push `32876067990` → tag `32876158745` deployed cleanly, `smoke-probe` passed |
+
+  One row per cut since v0.10.0 — completeness is the whole point, since
+  this table is what the COUNT THE TABLE ROWS instruction above tells you to
+  count instead of an ordinal. (v0.10.0–v0.11.0 carry no recorded Deploy
+  workflow run IDs or job conclusions for those cuts, and only v0.14.0's date
+  is on record here — don't fabricate any.)
+  **The gap carries ZERO information — never gate on it, and never read
+  "fast tag push" as a protection.** That rests on the MECHANISM, not on the
+  table: the outcome is set by whether `cancel-in-progress` killed the
+  earlier run before its `deploy` job reached terminal `success`, which the
+  gap does not measure. Do NOT cite the table as evidence for it — read the
+  rows honestly and they are entirely CONSISTENT with a gap threshold (the
+  one no-op sits at the LARGEST gap in the table; every safe row is below
+  it), which is exactly the reading to distrust. What the rows DO rule out
+  is the opposite intuition, that a fast tag push races the merge run:
+  v0.13.1's 33 s is the smallest gap ever recorded and was SAFE, and
+  v0.12.1's 43 s likewise. No gap value has yet been observed on both
+  outcomes — 54 s appears TWICE (v0.11.0, v0.13.0) and both were safe — so
+  the sample cannot separate the two stories, which is weaker than having
+  refuted the gap. That the first FOUR recorded gaps happened to fit the
+  larger-is-worse story was NOT evidence for it either. (An older, UNRELATED
+  43 s figure was completion→creation and is NOT comparable — differencing the two bases is this file's own "two
+  measurements of DIFFERENT subjects cannot be differenced", and two
+  same-valued figures on different bases must not be conflated.)
   **Gate on the earlier run's `deploy` JOB conclusion, and the test is TERMINAL
   `success`, not deployment-object existence.** At v0.12.0 a Pages deployment
   for that SHA WAS created and reached `error`, and the tag run's SECOND object
@@ -1320,7 +1386,8 @@ making design-level decisions; do not silently deviate.
 - Glyph `.pbf` fetches are gated by `connect-src`, not `font-src` — MapLibre
   loads them via `getArrayBuffer`/`fetch`
   (`node_modules/maplibre-gl/src/style/load_glyph_range.ts:21`, unmoved
-  through 6.3.0); `font-src`
+  through 6.5.0 — re-derived 2026-08-26 against the then-installed 6.5.0,
+  which matched the lockfile); `font-src`
   governs `@font-face` only, which this app doesn't use for map labels.
   Label RENDERING is asserted since #320/PR #375 — `app/e2e/labels.spec.ts`,
   written up in full under Verification lessons; #320 is closed.
@@ -1371,14 +1438,15 @@ making design-level decisions; do not silently deviate.
   About dialog (#197) — no manual deploy re-run any more — so the runbook's
   step 5b (`.claude/skills/release/SKILL.md`, the MECHANICAL control) must
   pass before the back-merge: the tag-triggered run reached `success` AND prod's
-  About dialog shows the clean tag. A green step 5b is not the whole cut,
-  though — a git tag and a GitHub Release are different objects, and pushing
-  the tag alone does not create one. The v0.6.0 cut (2026-07-31)
-  followed this runbook exactly — tag pushed, deploy `success`, About dialog
-  showing the clean `v0.6.0`, production verified serving it, every signal
-  green — and still shipped with no Release object; none of those signals is
-  evidence a Release exists, and it surfaced only when the maintainer noticed
-  it missing from the GitHub project page. `.github/workflows/release.yml`
+  About dialog shows the clean tag.
+- **The Release-object gap (#175)**: Passing step 5b is not the whole cut:
+  a git tag and a GitHub Release are different objects, and pushing
+  the tag alone does not create one. The v0.6.0 cut (2026-07-31) followed this
+  runbook exactly — tag pushed, deploy `success`, About dialog showing the
+  clean `v0.6.0`, production verified serving it, every signal green — and
+  still shipped with no Release object; none of those signals is evidence a
+  Release exists, and it surfaced only when the maintainer noticed it missing
+  from the GitHub project page. `.github/workflows/release.yml`
   (#175, shipped v0.7.0) now closes that gap automatically: the tag push ALSO
   triggers `release.yml`, which extracts the matching `## [X.Y.Z]`
   `CHANGELOG.md` section and creates the Release. Because a `push` on a tag
@@ -1389,18 +1457,21 @@ making design-level decisions; do not silently deviate.
   Release exists and `gh release list` shows the
   tag marked `Latest` — `--latest` is load-bearing on creation, since without
   it the previous version keeps the badge, a silent wrong state rather than
-  an error. Rationale: `cancel-in-progress`
-  cancel-supersedes and tag runs share the `pages` group, so the tag run
-  cancels the still-running merge run, and a back-merge push inside that window
-  cancels the tag run — then NEITHER release run deployed and production keeps
-  serving the PREVIOUS release's bytes, signalled only by a grey "cancelled",
-  never a red. (`cancel-in-progress: false` does not fix it — a merely PENDING
-  run is cancelled too; a ref-conditional group WOULD, and was evaluated and
-  rejected: it lets two runs reach `actions/deploy-pages` concurrently. See the
-  comment above `concurrency:` in `deploy.yml`.) At the v0.4.0 cut this
-  collision already happened in the other direction — the manual re-run
-  cancelled the back-merge run; the v0.7.0 cut (2026-08-03) confirmed the
-  standard direction empirically — the merge-push deploy run
+  an error.
+- **Deploy-collision timing, back-merge and hotfix flow** — this is WHY step
+  5b must pass BEFORE the back-merge: `cancel-in-progress` cancel-supersedes
+  and tag runs share the `pages` group (mechanism in the "Deploy —
+  concurrency and environments" bullet above), so the tag run cancels the
+  still-running merge run, and a back-merge push landing inside THAT window
+  (while the tag run is still in flight) cancels the tag run in turn: then NEITHER release run deployed and
+  production keeps serving the PREVIOUS release's bytes, signalled only by a
+  grey "cancelled", never a red. (`cancel-in-progress: false` does not fix it — a
+  merely PENDING run is cancelled too; a ref-conditional group WOULD, and was
+  evaluated and rejected: it lets two runs reach `actions/deploy-pages`
+  concurrently. See the comment above `concurrency:` in `deploy.yml`.) At the
+  v0.4.0 cut this collision already happened in the other direction — the
+  manual re-run cancelled the back-merge run; the v0.7.0 cut (2026-08-03)
+  confirmed the standard direction empirically — the merge-push deploy run
   (`main`@`a59236e`, 09:10:51) shows `cancelled`, superseded by the tag-push
   deploy run 31 s later (09:11:22) — expected, not a fluke. `deploy.yml`
   (#96, #197) fires on push to
@@ -1411,18 +1482,27 @@ making design-level decisions; do not silently deviate.
   same run — a UAT preview, not a second production. After a RELEASE, back-merge
   `main` into `develop` via a TOPIC branch (branch off `develop`, `git merge
   origin/main` — fast-forwards to the release commit, zero file diff from the
-  merge itself; step 6 of the release runbook (`.claude/skills/release/SKILL.md`)
-  adds the `ROADMAP.md` bump on top — then PR →
+  merge itself; §2b of the release runbook
+  (`.claude/skills/release/SKILL.md`) bumps `ROADMAP.md`'s `Current release:`
+  line in the docs-sweep commit — "do not defer it to step 6", in its own
+  words — and step 6 VERIFIES it landed there, bumping only as a fallback if
+  §2b skipped it (changed 2026-08-20 at the v0.12.1 cut; this file previously
+  said step 6 adds it, which was the pre-2026-08-20 flow) — then PR →
   `develop`): a DIRECT main→develop PR reads BEHIND under the strict up-to-date
   policy, and its "Update branch" button would merge develop→main, polluting the
   released branch (v0.2.0 lesson, reused for v0.3.0). A HOTFIX branches from `main`, PRs to
   `main`, then `main` is merged back into `develop` to keep it ahead. CI
-  (`ci.yml`, `codeql.yml`, `verify-mask.yml`) fires on pushes to both `main`
-  and `develop` so required checks keep reporting; the single `protect-main`
+  (`ci.yml`, `codeql.yml`) fires on pushes to both `main`
+  and `develop`, so required checks keep reporting. `verify-mask.yml` also
+  push-triggers on both, but is additionally `paths:`-gated (`pipeline/**`,
+  `app/public/data/**`, its own two workflow files), so it does NOT run on
+  every push — which costs nothing here precisely because it is ADVISORY and
+  was never a required check (see the Python-gates bullet above). The
+  single `protect-main`
   ruleset targets both `main` and `develop` via literal refs (never
   `~DEFAULT_BRANCH` — that follows a default-branch flip and would strand the
   non-default branch) and requires `app`+`e2e` on each.
-  Changelog ritual (#131, fragments landed #189): feature PRs that change
+- **Changelog ritual (#131, fragments landed #189)**: feature PRs that change
   user-visible behavior no longer edit `CHANGELOG.md`'s `[Unreleased]` section
   directly — that was the original #131 ritual, and it conflicted whenever 2+
   such PRs ran in parallel (a routine occurrence with parallel implementer
@@ -1508,7 +1588,7 @@ making design-level decisions; do not silently deviate.
   one honest "no user-visible changes" bullet only if that review turns up
   genuinely nothing. Config/tooling/docs-only PRs still add no fragment at
   all (unchanged from the original #131 rule).
-  **Closing keywords have NO negation awareness, and GitHub documents TWO
+- **Closing keywords have NO negation awareness, and GitHub documents TWO
   firing locations: the PR BODY and EVERY commit message in the merged range**
   (keep the PR TITLE clean too — it costs nothing, and this repo has never
   measured whether it fires). "This PR does NOT close #N" closes #N — the disclaimer
@@ -1542,6 +1622,12 @@ making design-level decisions; do not silently deviate.
   carrying commit `66bdc8b` subject `fix(#54): …` and #54 stayed open with
   `updated_at` unmoved. Keep the grep matching it anyway; one measurement of one
   form is not a licence to write conventional-commit scopes around issue refs.
+  SECOND observation, 2026-08-26: commit `09bc8af` (`fix(#702): scope the
+  stacking-context tie claim…`), merged via PR #735 (`d8bcf58`), left #702
+  open at merge time (still open, milestone v0.16.0, as of 2026-08-26). Two
+  observations, same non-closing behaviour — still
+  evidence, still not a licence: the check costs one API call and a miss
+  silently strands a deliberately-deferred issue.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
   merge, re-sync the next branch from its base (`git merge origin/develop`, or
   `origin/main` for a hotfix/release PR) and let full CI (~10 min) re-run before
@@ -2139,7 +2225,8 @@ making design-level decisions; do not silently deviate.
   check LICENSES the zero-warnings assertion (an absence assertion carries
   no information until the evidence-generating process is established to
   have run) and must not be deleted as redundant. `sc-maneuver-labels`
-  (`app/src/components/RouteLayer.tsx:321-333`) is the one symbol layer that
+  (`app/src/components/RouteLayer.tsx`'s `sc-maneuver-labels` addLayer block,
+  ~:335-347) is the one symbol layer that
   sets a `text-field` but no `text-font`, so it requests MapLibre's default
   `Open Sans Regular,Arial Unicode MS Regular` — a fontstack this app does
   not ship — and silently renders via TinySDF. Pre-existing (dates to the
@@ -2191,7 +2278,9 @@ making design-level decisions; do not silently deviate.
   number decays on the next commit that inserts a line above it, and a
   currency check verifies at the instant of writing, so it structurally
   cannot catch that class. Write `App.tsx`'s `<div className="banner-area">`
-  (~:989): the name is the identity, the number is a hint. A citation to a
+  (~:1091): the name is the identity, the number is a hint — and note this
+  very example's hint read `~:989` until 2026-08-26, drifting 102 lines while
+  the symbol stayed exact, which is the rule demonstrating itself. A citation to a
   never-merged diff gets no line number at all. Validated same-day: hints
   written at 09:00 drifted 46 lines by 13:00 when a sibling PR inserted above
   them — the symbol anchor still found the site where a bare number would
@@ -2218,6 +2307,47 @@ making design-level decisions; do not silently deviate.
   blindness rules above, one level earlier: before asking whether the
   measurement can see the failure, ask whether the thing it measures AGAINST
   is reachable at all. The tell was already in the log.
+- **The infeasible-baseline class also produces FALSE NEGATIVES, and those
+  escalate.** #702: sticky-CTA-on-narrow was measured at 484px² of overlap
+  with the attribution control and declared "cannot be done safely" — against
+  a baseline never measured. Measured on `develop` @ `8fe6c8f`, 2026-08-26
+  (the `.planner-actions` block is byte-unchanged since, through `8052d2d`):
+  the shipped `position: static` CSS, scrolled the way a user must scroll
+  it, already overlapped 488.1px²/495px² and already intercepted the click. The conclusion inverted — not "sticky reopens #64" but "#64 is
+  already live" — and the proposed spec amendment was dropped. (A first fix attempt,
+  a narrow-only horizontal inset, was found insufficient in round 2 and
+  reverted; #702 is deferred, not fixed (as of 2026-08-26).)
+  A negative finding is a claim about a COMPARISON — measure the control
+  before reporting one, especially when it will change a spec.
+- **Two guards can share one structural blind spot.** `plan.spec.ts`'s #33
+  attribution contract asserts with `toBeVisible()` (`app/e2e/plan.spec.ts`,
+  the `#33 contract, part 2` block's `getByRole('link', { name: 'OpenStreetMap' })`
+  assertion, ~:55) — which checks a non-empty box, `visibility: visible`, and
+  (via `Element.checkVisibility()`, or a `<details>` fallback on WebKit) that
+  the element is rendered and not inside a closed `<details>`; `opacity: 0`
+  and an element scrolled out of the viewport both PASS it, and it does NOT
+  detect an element rendered but COVERED by something stacked on top; and
+  the #702 sweep written to guard the same surface expanded the control only
+  AFTER every assertion. Neither is wrong; together they still passed while an
+  ODbL/CC-BY-required credit link was unclickable at rest. For an occlusion
+  claim use a real `click({trial: true})` or a topmost hit-test, never
+  `toBeVisible()`.
+- **A guard in an UNTOUCHED file can break — hunk-by-hunk review cannot see
+  it.** #682 split `sc-seamarks` into two layers; `seamarks.spec.ts`'s #353
+  guard still queried `['sc-seamarks']` alone and lost exactly the 2 hazard
+  ids its own pin expected. Two review rounds passed it (PR #734, both
+  `COMMENTED`); CI found it. The
+  pin values were correct all along — only the query APERTURE was wrong.
+  Enumerate consumers of a renamed/split identifier by claim shape
+  (`grep -rn "<layer-id>" app/e2e app/src`) and publish the table INCLUDING
+  the hits left alone.
+- **Stealing focus is worse than dropping it.** #695's first fix keyed focus
+  restoration on a DERIVED boolean (`!origin || editingOrigin`), which also
+  goes false on `App.tsx`'s plan-sync effect — so a cold load or loading a
+  saved plan YANKED focus out of the departure field. Drive focus restoration
+  from the `onSelect`/`onCancel` CALLBACKS, which know the user acted; a
+  prop-diff can only guess. Enumerate every state a derived boolean passes
+  through, not just the transition you care about.
 - **A fix whose trigger is RARE is not verified by the trigger's absence.**
   Write "NOT YET EXERCISED" in the same breath as "landed" — every later
   healthy run reads as confirmation otherwise. The #415 deploy-retry bullet
@@ -2502,13 +2632,14 @@ making design-level decisions; do not silently deviate.
   reading the raw numbers it summarises. #264's agent wrote a uniform field
   "weaves IDENTICALLY"; its own cited output showed 5 turns ≥45° vs 2-3, 26 legs
   vs 14, ~9 min of ETA — *differently*. That one word travelled into a CLAUDE.md
-  rule and a spec retiring a documented evidential gap with "do not re-open it",
-  and was caught only by a review told to audit for OVERSTATEMENT specifically.
-  "Not necessary for X" and "irrelevant to X" are different claims and the second
-  is far stronger. Cheapest guard: when a finding will become a durable
-  instruction, brief the reviewer to check claim STRENGTH against the evidence,
-  not just claim correctness — and prefer "narrowed" to "closed" unless the
-  measurement really covers the whole space.
+  rule and a spec retiring a documented evidential gap with "do not
+  re-open it", and was caught only by a review told to audit for
+  OVERSTATEMENT specifically. "Not necessary for X" and "irrelevant to X" are
+  different claims and the second is far stronger. Cheapest guard: when a
+  finding will become a durable instruction, brief the reviewer to check
+  claim STRENGTH against the evidence, not just claim correctness — and
+  prefer "narrowed" to "closed" unless the measurement really covers the
+  whole space.
 - **#383 was never a flake — it was a real MapLibre defect, and it is FIXED
   (PR #390).** `compass.spec.ts`'s `rotateThenTapCompassHome` helper reds
   with `Expected: "free" / Received: "north-up"` whenever its right-drag
@@ -2587,8 +2718,13 @@ making design-level decisions; do not silently deviate.
   about the user. Navigable cells reading below the hull: **924 -> 0**;
   gate-crossers 14,715 -> 10,746. **The wall is T <= 0.87** (Marstal
   disconnects, reconnects from 0.88) — NOT the 0.8 a 0.1-sampled table
-  suggests, so 0.85 looks safe and strands Marstal permanently (it needs 1.8 m
-  against the 2.1 m draft floor). Aabenraa was NEVER the blocker: that claim
+  suggests, so 0.85 looks safe and strands Marstal permanently. Do NOT
+  reach for the spike's 1.8 m figure here: it is measured against Marstal's
+  OWN 2.0 m `CONNECTIVITY_EXCEPTIONS_M` harbour gate (`verify_mask.py`), not
+  the 2.1 m boat draft, and it belongs to Direction 3 (the pure
+  `Resampling.max` rebuild, §4.3) rather than this Direction 4 T-sweep — two
+  different quantities and two different experiments, both of whose numbers
+  survive a numeric spot-check unchanged. Aabenraa was NEVER the blocker: that claim
   reproduces only under a fixed-snap convention the app does not use —
   `planRoute.ts` re-snaps 46.3 m onto a conservative-3.0 m cell, losing zero
   pairs. Gate-conditional: the floor degrades to 1.3 m at the UI's 2.2 m
@@ -3020,7 +3156,7 @@ making design-level decisions; do not silently deviate.
   spawn it (#181). When invoked it runs ALONGSIDE `sail-reviewer`, never in
   place of it.
 - Issues carry a label taxonomy — `type:` (bug/feature/chore/docs) + `priority:`
-  (high/med/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
+  (high/medium/low) + `area:` (routing/map/pwa/pipeline/deploy/ais/tooling) +
   optional `status:` — and a milestone (`v0.4.0`/`v0.5.0`/`Backlog`/`Icebox`);
   apply type+area+priority to every new issue. Taxonomy documented in
   CONTRIBUTING.md (#167/#168). The taxonomy DRIFTED into space/no-space
@@ -3075,10 +3211,11 @@ making design-level decisions; do not silently deviate.
   used to `ask` on any Bash command merely NAMING a protected path,
   read-only ones included — a deliberate over-fire the maintainer then
   overruled ("too restrictive, i had to approve several stat calls"). It now
-  suppresses only when ALL THREE hold: the command's FIRST WORD exactly
+  suppresses only when the command's FIRST WORD exactly
   matches a small no-write-capability verb set, AND the whole command
   contains none of `> < | & ; \` $ \ ( ) { } ! #` / newline / CR, AND it
-  contains none of a write-capable TOKEN list matched as substrings anywhere.
+  contains none of a write-capable TOKEN list matched as substrings anywhere
+  — plus, for `grep` and `sed` ONLY, a FOURTH verb-scoped check (below).
   A first-word- or prefix-only exemption fails OPEN and is still wrong. Read
   the three arrays off the hook itself (`WRITE_CAPABLE_CHARS`,
   `WRITE_CAPABLE_TOKENS`, `READONLY_VERBS`) rather than from any second copy
@@ -3090,14 +3227,26 @@ making design-level decisions; do not silently deviate.
   unfalsifiable: deleting `"bash -c"` reds 0 rows, MEASURED).
   **NAMED PRECONDITION:
   no allowlisted verb may be a shell FUNCTION or ALIAS in the guarded
-  shell** — `grep` is excluded precisely because in Claude Code's Bash it is
-  a function shimming to ugrep, so "the executable is its first word" is
-  false for it; `find` is excluded for `-delete`/`-exec`, `file` because
-  `file -C -m X` WRITES `X.mgc` (measured — it merely looked read-only), and
-  `sed` because sed's `w` command writes with NO flag at all
-  (`sed -n '1,5w /tmp/out' file`), so excluding only `-i` would not be
-  enough — and a `sed -n` range read is exactly the innocent-looking shape
-  that motivates asking for it.
+  shell** — which is why membership alone is not always enough. `find` is
+  excluded outright for `-delete`/`-exec`, and `file` because `file -C -m X`
+  WRITES `X.mgc` (measured — it merely looked read-only).
+  **`grep` and `sed` are NOT excluded — `grep` was RE-ADMITTED to
+  `READONLY_VERBS` and `sed` admitted there for the FIRST time (#530,
+  `96c4a0b`, plus later hardening commits; measured off the array at each
+  commit — `213f8cd` held `grep` alone, `e3ea820` held NEITHER, `96c4a0b`
+  holds both), each gated by its own
+  verb-scoped disqualifier** — `grep_readonly_ok` / `sed_readonly_ok`,
+  dispatched from the membership loop (`artifact-guard.sh`, `case "$verb" in`)
+  and evaluated LAST, after the char/newline/token checks, which is what makes
+  a string-level decision sufficient for them. They screen the exact hazards
+  that had previously justified exclusion: for `grep`, that it is a FUNCTION
+  shimming to ugrep in Claude Code's Bash (so `--filter`/`--pager`/
+  `--save-config` can write or exec); for `sed`, that the `w` command writes
+  with NO flag at all (`sed -n '1,5w /tmp/out' file`), so screening only `-i`
+  would not be enough — and a `sed -n` range read is exactly the
+  innocent-looking shape that motivates admitting it. A verb whose
+  disqualifier says no falls through to the same answer as an unrecognised
+  verb: fire. Every other entry still qualifies on membership alone.
   Before adding a verb, run `type <verb>` **in the real Bash tool**:
   measuring inside `bash script.sh` does not inherit non-exported functions,
   so the shim vanishes and every verb reports a reassuring `file`.
@@ -3123,7 +3272,15 @@ making design-level decisions; do not silently deviate.
   wrong. `cd` removes ZERO of 1,115 asks; `;`-only and newline-only ZERO;
   `&&`-only **2**. 89.5% of asks begin with a verb no allowlist widening can
   reach (`cd` 286, `grep` 162, `git` 128, `python3` 65, `sed` 59), so this
-  whole class of fix has a small ceiling by construction. Segmentation is
+  whole class of fix has a small ceiling by construction. **SUPERSEDED IN
+  PART by #530 (2026-08-14), and only in part — the measurement stands, its
+  sweeping conclusion does not**: #530 admitted `grep` and `sed`, i.e.
+  162 + 59 = 221 of those 1,115 asks (19.8% of the ask population), each
+  behind a verb-scoped disqualifier rather than on membership alone.
+  `cd`, `git` and `python3` remain unreachable by any widening.
+  `artifact-guard.sh` has carried this correction in its own comment since
+  #530; this file did not, until 2026-08-26 — a twin that disagreed silently
+  for twelve days. Segmentation is
   additionally UNSAFE: it runs before the char check, so a 343 KB heredoc
   timed the hook out against `settings.json`'s 5 s cap into a SILENT ALLOW —
   a killed guard and a satisfied one emit the same nothing. The general trap, worth more than the specific verdicts: **a

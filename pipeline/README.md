@@ -24,8 +24,8 @@ of `protect-main`'s required checks (only `app` + `e2e` are required; see
 CLAUDE.md's Release & branching section). Run locally before committing:
 
 ```
-ruff check pipeline/
-ruff format pipeline/
+pipeline/.venv/bin/ruff check pipeline/
+pipeline/.venv/bin/ruff format --check pipeline/   # what CI runs; drop --check to write the fixes
 ```
 
 JS/TS style is ESLint (`app/eslint.config.js`), enforced by the `app`
@@ -266,7 +266,7 @@ About dialog):
 Regenerate:
 
 ```
-pipeline/.venv/bin/python pipeline/build_mask.py     # downloads ~900 MB total on first run, cached in pipeline/data-src/ (gitignored) after
+pipeline/.venv/bin/python pipeline/build_mask.py     # first run downloads ~887 MiB / ~930 MB (measured 2026-08-26: 930,179,378 bytes), cached in pipeline/data-src/ (gitignored) after
 pipeline/.venv/bin/python pipeline/verify_mask.py    # sanity probes: must print "all probes OK (6 water, 5 land, 33 harbor snaps)"
 ```
 

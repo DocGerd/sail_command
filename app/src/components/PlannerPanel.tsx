@@ -14,6 +14,7 @@ import { activeRigResult } from '../lib/plan';
 import { routingSettingsDirty } from '../lib/planForm';
 import { renderRigVerdict, resultSummary, sailLabelKey } from '../lib/resultSummary';
 import { useRecentHarbors } from '../lib/useRecentHarbors';
+import { formatDepthM } from '../lib/depthDisclosure';
 import HarborPicker from './HarborPicker';
 import { commitSetting, safetyDepthFieldFor } from './OptionsPanel';
 import type { BoatDef } from '../data/boats';
@@ -174,6 +175,45 @@ export default function PlannerPanel({
   // lands on the parent's origin/destination.
   const [editingOrigin, setEditingOrigin] = useState(false);
   const [editingDestination, setEditingDestination] = useState(false);
+
+  // #695: the HarborPicker combobox unmounts on every select/cancel exit, and
+  // nothing restored focus, so it dropped to <body>. Deliberately driven from
+  // the FOUR exit-path callbacks themselves (onSelect/onCancel below), never
+  // from a prop diff: an earlier version of this fix keyed restoration off
+  // `!origin || editingOrigin` transitioning true->false, which ALSO fired
+  // whenever `origin`/`destination` changed for any OTHER reason — including
+  // App.tsx's session/plan-restore sync effect setting them on cold load or
+  // on loading a different saved plan mid-session — stealing focus from
+  // whatever the user was doing (PR #736 review Blocker; reproduced live: a
+  // plain prop change while focus sat on the departure field yanked it to
+  // the Change button). A prop diff can only guess why the prop changed; the
+  // callback knows the user just acted.
+  //
+  // `pendingFocusRef` is set by the callback (a ref write, not state — no
+  // setState-inside-effect cascade) and consumed by the no-deps effect
+  // below, which runs after every commit and is a no-op whenever the ref is
+  // null. The commit that mounts the "Ändern"/"Change" button is guaranteed
+  // to already have happened by the time it runs non-null, because every
+  // caller also fires a REAL state update in the same synchronous handler
+  // (setEditingOrigin/setEditingDestination, or the parent's onPickOrigin/
+  // onPickDestination prop callback) that React batches together with the
+  // ref write's enclosing render — so first-ever pick (origin/destination
+  // still null until the parent's callback runs) is covered too, not just
+  // the re-pick flow.
+  const pendingFocusRef = useRef<'origin' | 'destination' | null>(null);
+  useEffect(() => {
+    const target = pendingFocusRef.current;
+    if (!target) return;
+    pendingFocusRef.current = null;
+    // Identity-based, not style-based (PR #736 review Major): an earlier
+    // version queried the rendered `.sc-btn-ghost` class, which only
+    // uniquely identified the Change button because "Pick on map" happens to
+    // be `variant="secondary"` today — nothing pins that, and a second ghost
+    // button added to the section later would silently steal focus via
+    // querySelector's first-match-in-document-order semantics. The two
+    // Change buttons instead carry a `data-focus-target` unique per endpoint.
+    document.querySelector<HTMLButtonElement>(`[data-focus-target="${target}-change"]`)?.focus();
+  });
 
   // GPX import (#3): a hidden file input triggered by the Button primitive.
   // Parsing is pure local file handling (available offline); only the later
@@ -419,7 +459,11 @@ export default function PlannerPanel({
                   <p className="endpoint-caveat">{originHarbor.approachNote[lang]}</p>
                 )}
               </div>
-              <Button variant="ghost" onClick={() => setEditingOrigin(true)}>
+              <Button
+                data-focus-target="origin-change"
+                variant="ghost"
+                onClick={() => setEditingOrigin(true)}
+              >
                 {t('planner.change')}
               </Button>
             </div>
@@ -430,12 +474,16 @@ export default function PlannerPanel({
               onSelect={(h) => {
                 remember(h.id);
                 setEditingOrigin(false);
+                pendingFocusRef.current = 'origin';
                 onPickOrigin(harborToPickedPoint(h, lang));
               }}
               // Abandoning a re-pick over a committed origin collapses back to
               // the row (no-op on a first, still-unselected pick — origin stays
               // null, so the combobox keeps showing).
-              onCancel={() => setEditingOrigin(false)}
+              onCancel={() => {
+                setEditingOrigin(false);
+                pendingFocusRef.current = 'origin';
+              }}
             />
           )}
           <Button
@@ -464,7 +512,11 @@ export default function PlannerPanel({
                   <p className="endpoint-caveat">{destinationHarbor.approachNote[lang]}</p>
                 )}
               </div>
-              <Button variant="ghost" onClick={() => setEditingDestination(true)}>
+              <Button
+                data-focus-target="destination-change"
+                variant="ghost"
+                onClick={() => setEditingDestination(true)}
+              >
                 {t('planner.change')}
               </Button>
             </div>
@@ -475,9 +527,13 @@ export default function PlannerPanel({
               onSelect={(h) => {
                 remember(h.id);
                 setEditingDestination(false);
+                pendingFocusRef.current = 'destination';
                 onPickDestination(harborToPickedPoint(h, lang));
               }}
-              onCancel={() => setEditingDestination(false)}
+              onCancel={() => {
+                setEditingDestination(false);
+                pendingFocusRef.current = 'destination';
+              }}
             />
           )}
           <Button
@@ -591,6 +647,11 @@ export default function PlannerPanel({
           className="planner-safety-depth"
           label={t(safetyDepthField.labelKey)}
           htmlFor="planner-safety-depth"
+          help={t('options.safetyDepth.help', {
+            min: formatDepthM(safetyDepthField.min, lang),
+            max: formatDepthM(safetyDepthField.max, lang),
+          })}
+          helpId="planner-safety-depth-help"
         >
           <NumberInput
             id="planner-safety-depth"
@@ -598,6 +659,7 @@ export default function PlannerPanel({
             min={safetyDepthField.min}
             max={safetyDepthField.max}
             step={safetyDepthField.step}
+            aria-describedby="planner-safety-depth-help"
             onCommit={(n) => commitSetting(settings, 'safetyDepthM', n, onSettingsChange)}
           />
         </Field>

@@ -10,6 +10,12 @@ export const de = {
   'harborPicker.resultsLabel': 'Häfen',
   'harborPicker.noResults': 'Keine Häfen gefunden.',
   'options.safetyDepth.label': 'Sicherheitstiefe (m)',
+  // #699: der zulässige Bereich hing bislang nur als natives min/max-Attribut
+  // am Feld, ohne sichtbaren oder für Screenreader zugänglichen Text — ein
+  // außerhalb liegender Wert wurde beim Verlassen des Felds stillschweigend
+  // auf den nächsten gültigen Wert korrigiert. {min}/{max} kommen aus
+  // safetyDepthFieldFor(boat), ist also je nach Boot unterschiedlich.
+  'options.safetyDepth.help': 'Erlaubter Bereich: {min}–{max} m',
   // #299: die Sicherheitstiefe erscheint jetzt an ZWEI Stellen — hier als
   // Schnellzugriff und im Boot-Tab (SettingsPanel) als kanonisches Zuhause,
   // eine gemeinsame Quelle (PR #486 review). Die Tiefenkomfort-Spanne und
@@ -654,8 +660,14 @@ export const de = {
   'plansList.recalc.offline':
     'Neuberechnung nur online möglich — es wird eine frische Windvorhersage geladen.',
   'plansList.recalcName': '{name} (neu berechnet)',
-  'live.toggle': 'Live-Ansicht',
+  'live.toggle': 'Live-Ansicht starten',
+  'live.toggle.stop': 'Live-Ansicht beenden',
   'live.noPlan': 'Route laden oder planen, um die Live-Führung zu nutzen.',
+  // #713: unused today (the sr-only expansion only renders in English, since
+  // 'live.hts.label' below is already the full word) — kept for `satisfies`
+  // parity, and a real translation rather than a placeholder in case that
+  // gate ever changes.
+  'live.hts.expansion': 'Steuerkurs',
   'live.hts.label': 'Steuerkurs',
   'live.cog.label': 'COG',
   'live.sog.label': 'SOG',

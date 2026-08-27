@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { useLang, useT } from './i18n';
 import {
   AppStateProvider,
@@ -14,7 +21,11 @@ import { useOwnshipGps } from './state/useOwnshipGps';
 import { useSessionRestore } from './state/useSessionRestore';
 import { loadRoutingAssets } from './services/assets';
 import MapView from './components/MapView';
-import DataLayers, { HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER } from './components/DataLayers';
+import DataLayers, {
+  HARBOR_CIRCLE_LAYER,
+  SEAMARKS_HAZARD_LAYER,
+  SEAMARKS_LAYER,
+} from './components/DataLayers';
 import CompassControl from './components/CompassControl';
 import ScaleBar from './components/ScaleBar';
 import RouteLayer from './components/RouteLayer';
@@ -71,7 +82,27 @@ import {
 // that lands on them, so MapView gates a raw tap-pick out on a hit (#38,
 // #7). Module-level for a stable identity — MapView syncs it into a ref
 // every render.
-const INTERACTIVE_MAP_LAYER_IDS = [HARBOR_CIRCLE_LAYER, SEAMARKS_LAYER, AIS_VESSEL_LAYER];
+//
+// #682: BOTH sc-seamarks* layers must be listed — DataLayers.tsx split the
+// single `sc-seamarks` layer into a routine layer and a `sc-seamarks-hazard`
+// overlay (cardinal/isolated-danger marks, stacked above), and each renders
+// features the other does not. Omitting either one here reopens the exact
+// race this array exists to prevent: a tap on a mark living only on the
+// omitted layer would open DataLayers' own seamark popover (its click
+// handler is registered on both layers) AND ALSO fall through to
+// MapView.tsx's generic tap-pick, silently setting that tap point as
+// origin/destination in the same native click. `App.test.tsx`'s '#682
+// tap-safety' test pins this by REFLECTING over DataLayers' own exports
+// (every `SEAMARKS*_LAYER` string it exports) rather than hardcoding this
+// two-element list a second time, so a future third seamark layer fails
+// that test closed if it isn't added here too.
+// eslint-disable-next-line react-refresh/only-export-components
+export const INTERACTIVE_MAP_LAYER_IDS = [
+  HARBOR_CIRCLE_LAYER,
+  SEAMARKS_LAYER,
+  SEAMARKS_HAZARD_LAYER,
+  AIS_VESSEL_LAYER,
+];
 
 const TAP_TARGET_LABEL_KEY: Record<TapTarget, MsgKey> = {
   origin: 'planner.origin.label',
@@ -166,6 +197,25 @@ const RETRY_MAY_HELP_KEYS: ReadonlySet<MsgKey> = new Set<MsgKey>([
 // eslint-disable-next-line react-refresh/only-export-components
 export function planErrorRetryMayHelp(key: MsgKey): boolean {
   return RETRY_MAY_HELP_KEYS.has(key);
+}
+
+// #704: the app-shell tablist's stable DOM order, matching the JSX render
+// order of the four tab buttons below. Drives roving tabIndex (0 on the
+// selected tab, -1 on the rest) and ArrowLeft/ArrowRight/Home/End
+// navigation — the WAI-ARIA Tabs pattern's keyboard contract, previously
+// entirely absent (every tab stayed in the natural Tab order, no arrow-key
+// handler existed).
+const APP_TAB_ORDER: readonly Tab[] = ['plan', 'routes', 'live', 'boat'];
+
+// Stable id for the app-shell tablist's single tabpanel container (#704).
+// There is exactly one `<main className="app-panel">` whose CONTENT swaps
+// per `tab` — never four separate panel elements — so every tab's
+// `aria-controls` points at this ONE id, and the panel's own
+// `aria-labelledby` instead tracks which tab is currently active.
+const APP_TABPANEL_ID = 'app-panel-content';
+
+function appTabId(tab: Tab): string {
+  return `app-tab-${tab}`;
 }
 
 function AppShell() {
@@ -661,6 +711,40 @@ function AppShell() {
     setTab(next);
     if (next !== 'plan') setTapTarget(null);
   }, []);
+
+  // #704: roving-tabindex focus targets for the app-shell tablist, keyed by
+  // Tab. A ref object (not state) — moving focus must not itself trigger a
+  // render, and the buttons it targets are stable across the tab switch it
+  // drives.
+  const appTabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
+
+  // ArrowLeft/ArrowRight cycle (wrapping) through APP_TAB_ORDER;
+  // Home/End jump to the first/last tab. This is the WAI-ARIA "automatic
+  // activation" variant — arrowing to a tab also selects it, reusing
+  // handleTabChange so the existing tap-to-pick disarm logic still applies.
+  const handleAppTabsKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLElement>) => {
+      const currentIndex = APP_TAB_ORDER.indexOf(tab);
+      let nextIndex: number;
+      if (e.key === 'ArrowRight') {
+        nextIndex = (currentIndex + 1) % APP_TAB_ORDER.length;
+      } else if (e.key === 'ArrowLeft') {
+        nextIndex = (currentIndex - 1 + APP_TAB_ORDER.length) % APP_TAB_ORDER.length;
+      } else if (e.key === 'Home') {
+        nextIndex = 0;
+      } else if (e.key === 'End') {
+        nextIndex = APP_TAB_ORDER.length - 1;
+      } else {
+        return;
+      }
+      e.preventDefault();
+      const nextTab = APP_TAB_ORDER[nextIndex];
+      if (nextTab === undefined) return;
+      handleTabChange(nextTab);
+      appTabRefs.current[nextTab]?.focus();
+    },
+    [tab, handleTabChange],
+  );
 
   // #113: restores the last session's plan/rig/tab on boot (pure local
   // replay of PlansList's getPlan→setPlan path) and persists the small
@@ -1226,27 +1310,54 @@ function AppShell() {
       )}
 
       <div className="app-bottom-sheet" ref={panelRef}>
-        <nav className="app-tabs" role="tablist">
+        {/* #704: roving tabIndex (0 on the selected tab, -1 on the rest) plus
+            ArrowLeft/ArrowRight/Home/End on the tablist itself
+            (handleAppTabsKeyDown) completes the WAI-ARIA Tabs keyboard
+            contract — previously every tab stayed in the natural Tab order
+            and no arrow key did anything. Each tab's id/aria-controls pairs
+            with the single tabpanel below (APP_TABPANEL_ID): there is one
+            `<main>` whose content swaps per `tab`, not four separate panel
+            elements, so all four point at the same panel id and the panel's
+            own aria-labelledby tracks which tab is current. */}
+        <nav className="app-tabs" role="tablist" onKeyDown={handleAppTabsKeyDown}>
           <button
             type="button"
+            id={appTabId('plan')}
             role="tab"
             aria-selected={tab === 'plan'}
+            aria-controls={APP_TABPANEL_ID}
+            tabIndex={tab === 'plan' ? 0 : -1}
+            ref={(el) => {
+              appTabRefs.current.plan = el;
+            }}
             onClick={() => handleTabChange('plan')}
           >
             {t('nav.plan')}
           </button>
           <button
             type="button"
+            id={appTabId('routes')}
             role="tab"
             aria-selected={tab === 'routes'}
+            aria-controls={APP_TABPANEL_ID}
+            tabIndex={tab === 'routes' ? 0 : -1}
+            ref={(el) => {
+              appTabRefs.current.routes = el;
+            }}
             onClick={() => handleTabChange('routes')}
           >
             {t('nav.routes')}
           </button>
           <button
             type="button"
+            id={appTabId('live')}
             role="tab"
             aria-selected={tab === 'live'}
+            aria-controls={APP_TABPANEL_ID}
+            tabIndex={tab === 'live' ? 0 : -1}
+            ref={(el) => {
+              appTabRefs.current.live = el;
+            }}
             onClick={() => handleTabChange('live')}
           >
             {t('nav.live')}
@@ -1256,8 +1367,14 @@ function AppShell() {
               the design decision recorded on the issue). */}
           <button
             type="button"
+            id={appTabId('boat')}
             role="tab"
             aria-selected={tab === 'boat'}
+            aria-controls={APP_TABPANEL_ID}
+            tabIndex={tab === 'boat' ? 0 : -1}
+            ref={(el) => {
+              appTabRefs.current.boat = el;
+            }}
             onClick={() => handleTabChange('boat')}
           >
             {t('nav.boat')}
@@ -1274,123 +1391,131 @@ function AppShell() {
             unchanged — every existing `.app-panel`-scoped selector/test
             still matches. */}
         <main className="app-panel">
-          {tab === 'plan' && (
-            <PlannerPanel
-              harbors={harbors}
-              origin={origin}
-              destination={destination}
-              onPickOrigin={handlePickOrigin}
-              onPickDestination={handlePickDestination}
-              onImportRoute={handleImportRoute}
-              onRequestMapTap={handleRequestMapTap}
-              viaPoints={viaPoints}
-              onRemoveVia={handleRemoveVia}
-              onReorderVia={handleReorderVia}
-              departureMs={departureMs}
-              onDepartureChange={setDepartureMs}
-              settings={settings}
-              onSettingsChange={setSettings}
-              boat={boat}
-              canPlan={canPlan}
-              planDisabledReason={planDisabledReason}
-              online={online}
-              onPlan={handlePlan}
-              planning={plannerStatus}
-              plan={plan}
-              rig={rig}
-              formDirty={formDirty}
-              onViewDetails={handleViewDetails}
-              onOpenBoatSettings={handleOpenBoatSettings}
-            />
-          )}
-          {tab === 'boat' && (
-            <SettingsPanel
-              value={settings}
-              onChange={setSettings}
-              boatId={boatId}
-              onBoatIdChange={setBoatId}
-              titleRef={boatSettingsHeadingRef}
-            />
-          )}
-          {tab === 'routes' && (
-            <>
-              {plan && rig && (
-                <RouteSummary
-                  plan={plan}
-                  rig={rig}
-                  onRigChange={setRig}
-                  resultHeadingRef={routeResultHeadingRef}
-                />
-              )}
-              {plan && rig && (
-                // #551: the plan's OWN request settings, not the live
-                // settings — mirrors LiveView.tsx's `plan.request.settings
-                // .safetyDepthM` pattern. `settings.safetyDepthM` is the
-                // CURRENT Plan-tab/Boat-tab value, which the user may have
-                // lowered (or raised) after this plan was computed; the
-                // chart must render against the depth gate the plan was
-                // actually solved under.
-                //
-                // #551 review MAJOR 1: `migratePlan.ts` never validates
-                // `request.settings` at all (zero occurrences of the
-                // string 'settings' in that file — `migrateRequest` spreads
-                // it straight through unchecked), so a record with no
-                // `request.settings` migrates non-null and a bare
-                // `plan.request.settings.safetyDepthM` throws
-                // `TypeError: Cannot read properties of undefined`. With no
-                // error boundary anywhere in app/src, that blanks the whole
-                // app.
-                //
-                // #551 review round 3, Minor 5: a plain
-                // `{ ...DEFAULT_SETTINGS, ...plan.request.settings }` spread
-                // (the pattern reroute.ts/lib/planForm.ts/lib/recalc.ts use
-                // for a STORED settings object generally) defaults every
-                // absent/wrong-typed/null `settings` shape correctly, but an
-                // explicitly-present `safetyDepthM: undefined` survives a
-                // spread unchanged (object spread copies an own key whose
-                // value is `undefined`; `??` semantics do not apply) —
-                // structured clone preserves `undefined` object values into
-                // IndexedDB, so a foreign/imported record can carry that
-                // shape. The consequence is mild (DepthProfile's safety line
-                // renders under `safetyDepthM <= axisMax`, and
-                // `undefined <= axisMax` is `false`, so the line is silently
-                // OMITTED rather than throwing) but still wrong on a
-                // safety-relevant chart, so closed with a finite guard
-                // instead of a spread: the only value ever accepted is a
-                // real `number`, whatever the source.
-                //
-                // #551 review round 3 follow-up: the guard's first cut used
-                // `typeof x === 'number'`, which ALSO admits `NaN` and
-                // `±Infinity` (both are typeof 'number'). `NaN` silently
-                // drops both cues (`s.depthM < NaN` is always false, so no
-                // shallow run is shaded, and `NaN <= axisMax` is false, so
-                // the safety line is omitted too). `Infinity` is worse:
-                // `s.depthM < Infinity` is always TRUE, so EVERY sample is
-                // shaded shallow while `Infinity <= axisMax` still omits the
-                // safety line that would explain why — a whole-route false
-                // alarm with no referent. `Number.isFinite` closes all three
-                // (undefined/NaN/±Infinity) in one predicate while still
-                // accepting a legitimate `0`, which a truthiness check would
-                // have swallowed.
-                <DepthProfile
-                  plan={plan}
-                  rig={rig}
-                  safetyDepthM={
-                    Number.isFinite(plan.request.settings?.safetyDepthM)
-                      ? (plan.request.settings.safetyDepthM as number)
-                      : DEFAULT_SETTINGS.safetyDepthM
-                  }
-                />
-              )}
-              <PlansList online={online} busy={runBusy} onRecalculate={handleRecalculate} />
-            </>
-          )}
-          {/* tab === 'live': LiveView is mounted above, inside MapView's
+          {/* #704: the tabpanel half of the WAI-ARIA Tabs association. A
+              plain wrapper div (no class, no CSS) so `<main>` above keeps
+              its #707 landmark role untouched — role="tabpanel" would
+              override it. aria-labelledby tracks the CURRENTLY selected
+              tab's id; every tab's aria-controls points at this one id
+              since only one panel is ever rendered at a time. */}
+          <div role="tabpanel" id={APP_TABPANEL_ID} aria-labelledby={appTabId(tab)}>
+            {tab === 'plan' && (
+              <PlannerPanel
+                harbors={harbors}
+                origin={origin}
+                destination={destination}
+                onPickOrigin={handlePickOrigin}
+                onPickDestination={handlePickDestination}
+                onImportRoute={handleImportRoute}
+                onRequestMapTap={handleRequestMapTap}
+                viaPoints={viaPoints}
+                onRemoveVia={handleRemoveVia}
+                onReorderVia={handleReorderVia}
+                departureMs={departureMs}
+                onDepartureChange={setDepartureMs}
+                settings={settings}
+                onSettingsChange={setSettings}
+                boat={boat}
+                canPlan={canPlan}
+                planDisabledReason={planDisabledReason}
+                online={online}
+                onPlan={handlePlan}
+                planning={plannerStatus}
+                plan={plan}
+                rig={rig}
+                formDirty={formDirty}
+                onViewDetails={handleViewDetails}
+                onOpenBoatSettings={handleOpenBoatSettings}
+              />
+            )}
+            {tab === 'boat' && (
+              <SettingsPanel
+                value={settings}
+                onChange={setSettings}
+                boatId={boatId}
+                onBoatIdChange={setBoatId}
+                titleRef={boatSettingsHeadingRef}
+              />
+            )}
+            {tab === 'routes' && (
+              <>
+                {plan && rig && (
+                  <RouteSummary
+                    plan={plan}
+                    rig={rig}
+                    onRigChange={setRig}
+                    resultHeadingRef={routeResultHeadingRef}
+                  />
+                )}
+                {plan && rig && (
+                  // #551: the plan's OWN request settings, not the live
+                  // settings — mirrors LiveView.tsx's `plan.request.settings
+                  // .safetyDepthM` pattern. `settings.safetyDepthM` is the
+                  // CURRENT Plan-tab/Boat-tab value, which the user may have
+                  // lowered (or raised) after this plan was computed; the
+                  // chart must render against the depth gate the plan was
+                  // actually solved under.
+                  //
+                  // #551 review MAJOR 1: `migratePlan.ts` never validates
+                  // `request.settings` at all (zero occurrences of the
+                  // string 'settings' in that file — `migrateRequest` spreads
+                  // it straight through unchecked), so a record with no
+                  // `request.settings` migrates non-null and a bare
+                  // `plan.request.settings.safetyDepthM` throws
+                  // `TypeError: Cannot read properties of undefined`. With no
+                  // error boundary anywhere in app/src, that blanks the whole
+                  // app.
+                  //
+                  // #551 review round 3, Minor 5: a plain
+                  // `{ ...DEFAULT_SETTINGS, ...plan.request.settings }` spread
+                  // (the pattern reroute.ts/lib/planForm.ts/lib/recalc.ts use
+                  // for a STORED settings object generally) defaults every
+                  // absent/wrong-typed/null `settings` shape correctly, but an
+                  // explicitly-present `safetyDepthM: undefined` survives a
+                  // spread unchanged (object spread copies an own key whose
+                  // value is `undefined`; `??` semantics do not apply) —
+                  // structured clone preserves `undefined` object values into
+                  // IndexedDB, so a foreign/imported record can carry that
+                  // shape. The consequence is mild (DepthProfile's safety line
+                  // renders under `safetyDepthM <= axisMax`, and
+                  // `undefined <= axisMax` is `false`, so the line is silently
+                  // OMITTED rather than throwing) but still wrong on a
+                  // safety-relevant chart, so closed with a finite guard
+                  // instead of a spread: the only value ever accepted is a
+                  // real `number`, whatever the source.
+                  //
+                  // #551 review round 3 follow-up: the guard's first cut used
+                  // `typeof x === 'number'`, which ALSO admits `NaN` and
+                  // `±Infinity` (both are typeof 'number'). `NaN` silently
+                  // drops both cues (`s.depthM < NaN` is always false, so no
+                  // shallow run is shaded, and `NaN <= axisMax` is false, so
+                  // the safety line is omitted too). `Infinity` is worse:
+                  // `s.depthM < Infinity` is always TRUE, so EVERY sample is
+                  // shaded shallow while `Infinity <= axisMax` still omits the
+                  // safety line that would explain why — a whole-route false
+                  // alarm with no referent. `Number.isFinite` closes all three
+                  // (undefined/NaN/±Infinity) in one predicate while still
+                  // accepting a legitimate `0`, which a truthiness check would
+                  // have swallowed.
+                  <DepthProfile
+                    plan={plan}
+                    rig={rig}
+                    safetyDepthM={
+                      Number.isFinite(plan.request.settings?.safetyDepthM)
+                        ? (plan.request.settings.safetyDepthM as number)
+                        : DEFAULT_SETTINGS.safetyDepthM
+                    }
+                  />
+                )}
+                <PlansList online={online} busy={runBusy} onRecalculate={handleRecalculate} />
+              </>
+            )}
+            {/* tab === 'live': LiveView is mounted above, inside MapView's
               subtree (BoatMarker needs the map context). On wide it portals
               its readout into this slot so the panel column isn't empty (#31);
               on narrow the slot isn't rendered and the readout stays a
               bottom-docked card above the tab strip. */}
-          {tab === 'live' && isWide && <div className="app-panel-live" ref={setLiveSlot} />}
+            {tab === 'live' && isWide && <div className="app-panel-live" ref={setLiveSlot} />}
+          </div>
         </main>
       </div>
 

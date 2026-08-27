@@ -2,11 +2,13 @@ import 'fake-indexeddb/auto';
 import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App, {
+  INTERACTIVE_MAP_LAYER_IDS,
   planErrorBannerKind,
   planErrorGroup,
   planErrorRetryMayHelp,
   toPlannerStatus,
 } from './App';
+import * as DataLayersModule from './components/DataLayers';
 import { I18nProvider } from './i18n';
 import { de } from './i18n/dict.de';
 import { en } from './i18n/dict.en';
@@ -165,24 +167,48 @@ vi.mock('maplibre-gl', () => {
     // (MapView's click/error) and layer-scoped `on(event, layerId, cb)`
     // (DataLayers' harbor-marker click/hover) — the layer-scoped form must
     // not overwrite the generic hooks.
+    // #682: DataLayers.tsx now registers its seamark click/hover handler on
+    // an ARRAY of layer ids (`map.on('click', [SEAMARKS_LAYER,
+    // SEAMARKS_HAZARD_LAYER], handleClick)`, real MapLibre's own array form
+    // of the delegated `on(type, layerIds, fn)` overload) rather than a
+    // single string — this fake registers the SAME handler under each id in
+    // `layerClickHandlers`. Deliberately simpler than `test/fakeMaplibre.ts`'s
+    // exact-set delegated-registration model (#682 review MINOR 4): nothing
+    // in this file exercises a SUBSET `off`/multi-layer `once`, so the
+    // per-id form here is not a divergence this suite could catch either
+    // way — see that file's own header comment for the real semantics.
     on(event: string, layerOrCb: unknown, maybeCb?: unknown) {
       if (typeof layerOrCb === 'function') {
         if (event === 'click')
           mapTestHooks.clickHandler = layerOrCb as typeof mapTestHooks.clickHandler;
         if (event === 'error')
           mapTestHooks.errorHandler = layerOrCb as typeof mapTestHooks.errorHandler;
-      } else if (
-        event === 'click' &&
-        typeof layerOrCb === 'string' &&
-        typeof maybeCb === 'function'
-      ) {
-        mapTestHooks.layerClickHandlers[layerOrCb] =
-          maybeCb as (typeof mapTestHooks.layerClickHandlers)[string];
+      } else if (event === 'click' && typeof maybeCb === 'function') {
+        const layerIds = Array.isArray(layerOrCb) ? layerOrCb : [layerOrCb];
+        for (const id of layerIds) {
+          if (typeof id !== 'string') continue;
+          mapTestHooks.layerClickHandlers[id] =
+            maybeCb as (typeof mapTestHooks.layerClickHandlers)[string];
+        }
       }
     }
+    // #682: MUST distinguish "a delegated layer-scoped off (string OR
+    // array second argument)" from "the plain 2-arg off(event, fn) form" by
+    // checking for a STRING/ARRAY explicitly — the old `typeof layerOrCb ===
+    // 'string'` check fell through to the generic-handler branch for an
+    // ARRAY (neither a string nor a function), which cleared
+    // mapTestHooks.clickHandler on EVERY DataLayers seamark-effect re-run
+    // and made every raw-tap-pick test in this file time out waiting for a
+    // clickHandler that had just been wiped by an unrelated cleanup
+    // (MEASURED: reverting this array branch back to the old string-only
+    // check reproduces 18 failures across this file, all timing out on
+    // `mapTestHooks.clickHandler` staying null).
     off(event: string, layerOrCb?: unknown) {
-      if (typeof layerOrCb === 'string') {
-        if (event === 'click') delete mapTestHooks.layerClickHandlers[layerOrCb];
+      if (typeof layerOrCb === 'string' || Array.isArray(layerOrCb)) {
+        if (event === 'click') {
+          const layerIds = Array.isArray(layerOrCb) ? layerOrCb : [layerOrCb];
+          for (const id of layerIds) delete mapTestHooks.layerClickHandlers[id as string];
+        }
         return;
       }
       if (event === 'click') mapTestHooks.clickHandler = null;
@@ -630,6 +656,94 @@ describe('App', () => {
       'true',
     );
     expect(await screen.findByText(de['live.noPlan'])).toBeInTheDocument();
+  });
+
+  // #704: the ARIA Tabs contract's association half — each tab's
+  // aria-controls points at the single tabpanel's id, and the tabpanel's
+  // aria-labelledby tracks whichever tab is currently selected. There is
+  // exactly one `<main className="app-panel">` whose CONTENT swaps per
+  // `tab`, so `getByRole('tabpanel')` must find exactly one element
+  // throughout — a second panel materialising would fail that query.
+  it('#704: app-shell tabs are wired to a tabpanel via aria-controls/aria-labelledby', async () => {
+    renderApp();
+
+    const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const routesTab = screen.getByRole('tab', { name: de['nav.routes'] });
+    const panel = screen.getByRole('tabpanel');
+
+    expect(planTab).toHaveAttribute('aria-controls', panel.id);
+    expect(routesTab).toHaveAttribute('aria-controls', panel.id);
+    expect(panel).toHaveAttribute('aria-labelledby', planTab.id);
+
+    fireEvent.click(routesTab);
+    expect(panel).toHaveAttribute('aria-labelledby', routesTab.id);
+  });
+
+  // #704: roving tabIndex — exactly one tab is in the natural Tab order
+  // (tabIndex 0) at any time, and it must be the SELECTED one, not merely
+  // the first.
+  it('#704: exactly one app-shell tab has tabIndex 0, and it tracks selection', async () => {
+    renderApp();
+
+    const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const routesTab = screen.getByRole('tab', { name: de['nav.routes'] });
+    const liveTab = screen.getByRole('tab', { name: de['nav.live'] });
+    const boatTab = screen.getByRole('tab', { name: de['nav.boat'] });
+
+    expect(planTab).toHaveAttribute('tabindex', '0');
+    expect(routesTab).toHaveAttribute('tabindex', '-1');
+    expect(liveTab).toHaveAttribute('tabindex', '-1');
+    expect(boatTab).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.click(boatTab);
+    expect(boatTab).toHaveAttribute('tabindex', '0');
+    expect(planTab).toHaveAttribute('tabindex', '-1');
+  });
+
+  // #704: ArrowLeft/ArrowRight (wrapping) and Home/End on the app-shell
+  // tablist — the WAI-ARIA "automatic activation" variant, so arrowing to a
+  // tab also selects it and moves focus onto it.
+  it('#704: ArrowLeft/ArrowRight/Home/End cycle the app-shell tablist', async () => {
+    renderApp();
+
+    const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const routesTab = screen.getByRole('tab', { name: de['nav.routes'] });
+    const boatTab = screen.getByRole('tab', { name: de['nav.boat'] });
+
+    fireEvent.keyDown(planTab, { key: 'ArrowRight' });
+    expect(routesTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(routesTab);
+
+    fireEvent.keyDown(routesTab, { key: 'ArrowLeft' });
+    expect(planTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(planTab);
+
+    // ArrowLeft from the FIRST tab wraps to the LAST.
+    fireEvent.keyDown(planTab, { key: 'ArrowLeft' });
+    expect(boatTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(boatTab);
+
+    fireEvent.keyDown(boatTab, { key: 'Home' });
+    expect(planTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(planTab);
+
+    fireEvent.keyDown(planTab, { key: 'End' });
+    expect(boatTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(boatTab);
+  });
+
+  // #704 review Minor: the tested wrap above is ArrowLeft-from-first only —
+  // this covers the other direction, ArrowRight-from-LAST wrapping to FIRST.
+  it('#704: ArrowRight from the last app-shell tab wraps to the first', async () => {
+    renderApp();
+
+    const planTab = await screen.findByRole('tab', { name: de['nav.plan'] });
+    const boatTab = screen.getByRole('tab', { name: de['nav.boat'] });
+
+    fireEvent.click(boatTab);
+    fireEvent.keyDown(boatTab, { key: 'ArrowRight' });
+    expect(planTab).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(planTab);
   });
 
   // #299: the fourth "Boot"/"Boat" tab renders SettingsPanel's grouped
@@ -1967,6 +2081,45 @@ describe('harbor marker click-to-pick (#38)', () => {
     renderApp();
     const toggle = await screen.findByRole('checkbox', { name: de['map.depth.toggle'] });
     expect(toggle).not.toBeChecked();
+  });
+});
+
+// #682: DataLayers.tsx split the single `sc-seamarks` layer into a routine
+// layer and a `sc-seamarks-hazard` overlay (cardinal/isolated-danger marks,
+// stacked above so they paint over routine marks at z>=12 — see
+// seamarkGeoJson.ts's SEAMARKS_LAYOUT doc comment for the full mechanism).
+// Both layers register DataLayers' own click handler (it opens the seamark
+// popover), but MapView.tsx's generic tap handler ALSO owns any click that
+// does NOT land on a layer named in App.tsx's `INTERACTIVE_MAP_LAYER_IDS` —
+// so a hazard mark living ONLY on the new layer would, if that array forgot
+// it, be hit by BOTH: the popover opens AND the SAME native click silently
+// sets that tap point as origin/destination (MapView.tsx's own `handleClick`
+// comment describes this exact race). Nothing anywhere pinned that array
+// before this test — a repo-wide grep for INTERACTIVE_MAP_LAYER_IDS /
+// interactiveLayerIds across app/src/**/*.test.ts(x) and app/e2e found zero
+// hits.
+//
+// Deliberately a structural pin, not a full behavioural simulation of the
+// tap race: it asserts the PROPERTY ("every seamark layer id DataLayers
+// exports is in the gate array"), derived by REFLECTING over DataLayers'
+// own module exports rather than hardcoding the two current layer id
+// strings a second time here — so a THIRD `SEAMARKS_*_LAYER` export added
+// later (following the naming convention `SEAMARKS_LAYER`/
+// `SEAMARKS_HAZARD_LAYER` already set) is covered automatically, with no
+// edit to this test, exactly the "fails closed" property a two-element
+// hardcoded list would not have.
+describe('#682 tap-safety: every seamark layer must gate the raw tap-pick', () => {
+  it('INTERACTIVE_MAP_LAYER_IDS lists every SEAMARKS*_LAYER id DataLayers exports', () => {
+    const seamarkLayerIds = Object.entries(DataLayersModule)
+      .filter(([name, value]) => typeof value === 'string' && /^SEAMARKS.*LAYER$/.test(name))
+      .map(([, value]) => value as string);
+    // Non-vacuity: a renamed export or a broken reflection must not pass
+    // trivially by iterating zero times (CLAUDE.md's "ask of every guard
+    // what it does when the problem is fixed / stubbed to []" lesson).
+    expect(seamarkLayerIds.length).toBeGreaterThanOrEqual(2);
+    for (const id of seamarkLayerIds) {
+      expect(INTERACTIVE_MAP_LAYER_IDS).toContain(id);
+    }
   });
 });
 

@@ -93,9 +93,11 @@ it cannot drift from the tracker. Do this on a topic branch into `develop`
   merge and the deploy, the worst point to discover it), and renders as
   nothing in the About dialog (`ChangelogView` filters any all-empty
   release), permanently freezing that version's entry into blankness. So:
-  in this specific, zero-fragment case, the claim above that "no test edits
-  are needed" does NOT hold — the section itself must be non-empty, not the
-  tests. Two ways to make it non-empty, in order:
+  CLAUDE.md's general rule — that rolling a NON-EMPTY set of fragments into a
+  release needs no test edits, because `changelog.test.ts` pins only the
+  released tail and an ordinary cut can never force an assertion edit —
+  simply does not reach this case. The fix is the SECTION, not the tests: it
+  must be non-empty. Two ways to make it so, in order:
   1. **Almost always the right one.** Review the milestone's merged PRs
      (`gh pr list --repo DocGerd/sail_command --state merged --base
      develop --search "milestone:vX.Y.Z"`, or the merge log since the

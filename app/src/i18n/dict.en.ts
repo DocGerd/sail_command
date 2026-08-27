@@ -12,6 +12,12 @@ export const en = {
   'harborPicker.resultsLabel': 'Harbors',
   'harborPicker.noResults': 'No harbors match your search.',
   'options.safetyDepth.label': 'Safety depth (m)',
+  // #699: the allowed range used to hang only off the field's native
+  // min/max attributes, with no visible or screen-reader-accessible text —
+  // an out-of-range value was silently corrected to the nearest valid one on
+  // blur. {min}/{max} come from safetyDepthFieldFor(boat), so they vary per
+  // boat.
+  'options.safetyDepth.help': 'Allowed range: {min}–{max} m',
   // #299: safety depth now appears in TWO places — here for quick access
   // and on the Boat tab (SettingsPanel) as its canonical home, one shared
   // source (PR #486 review). The depth comfort margin and the rest of the
@@ -624,8 +630,19 @@ export const en = {
   'plansList.recalc.offline':
     'Recalculation requires a connection — it fetches a fresh wind forecast.',
   'plansList.recalcName': '{name} (recalculated)',
-  'live.toggle': 'Live view',
+  // #700: state-dependent action labels for the GPS tracking toggle — was a
+  // single neutral 'Live view' that read as a section label, not an action,
+  // and gave no SIGHTED indication of on/off state (only aria-pressed did).
+  // `live.toggle` itself is reused as the OFF/"start" label (not renamed to
+  // a `.start` sibling) so `App.test.tsx`'s `de['live.toggle']` lookup for
+  // the tracking-off state keeps resolving without that file's own edit.
+  'live.toggle': 'Start live view',
+  'live.toggle.stop': 'Stop live view',
   'live.noPlan': 'Load or plan a route to use live guidance.',
+  // #713: the visible abbreviation stays 'HTS' (unlike COG/SOG, a near-
+  // universal marine pair); this is its screen-reader-only expansion. German
+  // needs no twin — 'live.hts.label' is already the full word 'Steuerkurs'.
+  'live.hts.expansion': 'Heading to steer',
   'live.hts.label': 'HTS',
   'live.cog.label': 'COG',
   'live.sog.label': 'SOG',
