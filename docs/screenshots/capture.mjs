@@ -144,9 +144,22 @@ const WIND_FIXTURE_PATH = 'test-fixtures/wind-docs-plan-route.json';
 // App.tsx) via addInitScript, BEFORE the app boots, so it takes effect on
 // first paint rather than requiring a scripted drag of PanelResizer.
 const PANEL_WIDTH_PX = 518;
+// #741 fix wave: the Plan tab's unfilled form (empty Origin/Destination, no
+// route yet) is taller than the shared 800px capture viewport now that
+// #710's bordered card-box fields replaced bare native chrome — measured
+// live against this exact flow (navigate, switch to English, before any
+// harbor is picked): `.app-panel` starts at document y=173 and its content
+// runs to y=962, so the Departure field and the Safety-depth input/help
+// text were rendering entirely below the viewport. 1000px covers that with
+// margin. This bump is START-VIEW-ONLY: the page is resized back to the
+// shared 800px height immediately after that one screenshot so
+// plan-route.png is deliberately framed with its legs table scrolled — a
+// long table is meant to be cut off, unlike a form field, which is what
+// made the start-view crop a defect and this one not.
+const START_VIEW_HEIGHT_PX = 1000;
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const page = await browser.newPage({ viewport: { width: 1280, height: START_VIEW_HEIGHT_PX } });
 await page.addInitScript((px) => {
   window.localStorage.setItem('sc-panel-width', String(px));
 }, PANEL_WIDTH_PX);
@@ -163,6 +176,8 @@ await page.goto(startUrl.toString(), { waitUntil: 'networkidle' });
 await page.getByRole('button', { name: 'English anzeigen' }).click();
 await page.waitForTimeout(2000); // map tile settle for a static capture is fine here (not a test)
 await page.screenshot({ path: 'docs/screenshots/start-view.png' });
+// Back to the shared 800px height for the rest of the flow (plan-route.png).
+await page.setViewportSize({ width: 1280, height: 800 });
 
 // Plan flow — "Plan" tab is the default (App.tsx useState<Tab>('plan')), so
 // no tab click is needed before selecting harbors.
