@@ -445,12 +445,17 @@ making design-level decisions; do not silently deviate.
   that reason. Measured consequence before the fix (#710): `.sr-only`'s
   `padding: 0`/`border: 0` LOST to it on `PlannerPanel.tsx`'s
   `<input type="file" className="sr-only">`, rendering 21.19x40px with a 1px
-  border instead of 1x1.
+  border instead of 1x1. Complement of the source-order cascade bullet below
+  (a single-class modifier losing to a later base rule) — specificity and
+  source order are the two halves of the same failure; read both.
 - **Chromium ignores author `border`/`border-radius`/`padding` on
   `appearance: auto` radios** — a forced `!important` 3px border + 8px radius
   computes to `0px none / 0px / 0px`, size unchanged (measured 2026-08-26).
-  `range` DOES pick them up. So excluding `radio` from a form-field box rule
-  is harmless but unnecessary; excluding `range` is the load-bearing half.
+  `range` DOES pick them up. So `range` is the load-bearing exclusion and
+  `radio` is a no-op in Chromium specifically — but KEEP `radio` excluded
+  anyway: the no-op is engine-specific and a bordered/padded box is not
+  what the control means to a user in an engine that honours it
+  (`app.css`'s own comment and PR #735 both decided this deliberately).
   A correct exclusion carried a refuted reason for a full review round.
 - `Map#_removeDelegatedListener` (`app/node_modules/maplibre-gl/src/ui/map.ts`,
   ~:2139) matches only on an **EXACT** layer-set
@@ -458,7 +463,9 @@ making design-level decisions; do not silently deviate.
   or wider `layerIds` on removal silently no-ops. `once()` on a multi-layer
   delegate (~:2394) removes the WHOLE registration on the first event from ANY
   covered layer, not per-layer. `test/fakeMaplibre.ts` models both; keep it
-  that way. Re-derived against `maplibre-gl@6.5.0`, 2026-08-26.
+  that way — see also the `installStyleSetup`/`fakeMaplibre.ts` bullet below,
+  which owns that fake's other invariants. Re-derived against
+  `maplibre-gl@6.5.0`, 2026-08-26.
 - `Leg` is a discriminated union on `kind`: sail legs carry `board` + `twaDeg`;
   motor legs have `board: null` and NO `twaDeg` property. Narrow on `kind`,
   never cast.
@@ -1615,8 +1622,9 @@ making design-level decisions; do not silently deviate.
   `updated_at` unmoved. Keep the grep matching it anyway; one measurement of one
   form is not a licence to write conventional-commit scopes around issue refs.
   SECOND observation, 2026-08-26: commit `09bc8af` (`fix(#702): scope the
-  stacking-context tie claim…`), merged via PR #735 (`d8bcf58`), left #702 OPEN
-  on milestone v0.16.0. Two observations, same non-closing behaviour — still
+  stacking-context tie claim…`), merged via PR #735 (`d8bcf58`), left #702
+  open at merge time (still open, milestone v0.16.0, as of 2026-08-26). Two
+  observations, same non-closing behaviour — still
   evidence, still not a licence: the check costs one API call and a miss
   silently strands a deliberately-deferred issue.
 - Multiple open PRs: develop in parallel, merge strictly serially — after each
@@ -2301,16 +2309,22 @@ making design-level decisions; do not silently deviate.
 - **The infeasible-baseline class also produces FALSE NEGATIVES, and those
   escalate.** #702: sticky-CTA-on-narrow was measured at 484px² of overlap
   with the attribution control and declared "cannot be done safely" — against
-  a baseline never measured. The SHIPPED `position: static` CSS, scrolled the
-  way a user must scroll it, already overlaps 488px² and already intercepts
-  the click. The conclusion inverted: not "sticky reopens #64" but "#64 is
-  already live", and the deliverable flipped from a spec amendment to a fix.
+  a baseline never measured. Measured 2026-08-26 against `develop` @
+  `8052d2d`: the shipped `position: static` CSS, scrolled the way a user must
+  scroll it, already overlapped 488.1px²/495px² and already intercepted the
+  click. The conclusion inverted — not "sticky reopens #64" but "#64 is
+  already live" — and the spec amendment was withdrawn. (A first fix attempt,
+  a narrow-only horizontal inset, was found insufficient in round 2 and
+  reverted; #702 is deferred, not fixed.)
   A negative finding is a claim about a COMPARISON — measure the control
   before reporting one, especially when it will change a spec.
 - **Two guards can share one structural blind spot.** `plan.spec.ts`'s #33
   attribution contract asserts with `toBeVisible()` (`app/e2e/plan.spec.ts`,
-  ~:55) — which checks DOM-attached, non-empty box and no hiding CSS, and does
-  NOT detect an element rendered but COVERED by something stacked on top; and
+  the `#33 contract, part 2` block's `getByRole('link', { name: 'OpenStreetMap' })`
+  assertion, ~:55) — which checks only a non-empty box and neither
+  `visibility: hidden` nor `content-visibility: hidden`; `opacity: 0` and an
+  element scrolled out of the viewport both PASS it, and it does NOT detect an
+  element rendered but COVERED by something stacked on top; and
   the #702 sweep written to guard the same surface expanded the control only
   AFTER every assertion. Neither is wrong; together they still passed while an
   ODbL/CC-BY-required credit link was unclickable at rest. For an occlusion
@@ -2319,7 +2333,8 @@ making design-level decisions; do not silently deviate.
 - **A guard in an UNTOUCHED file can break — hunk-by-hunk review cannot see
   it.** #682 split `sc-seamarks` into two layers; `seamarks.spec.ts`'s #353
   guard still queried `['sc-seamarks']` alone and lost exactly the 2 hazard
-  ids its own pin expected. Three review rounds passed it; CI found it. The
+  ids its own pin expected. Two review rounds passed it (PR #734, both
+  `COMMENTED`); CI found it. The
   pin values were correct all along — only the query APERTURE was wrong.
   Enumerate consumers of a renamed/split identifier by claim shape
   (`grep -rn "<layer-id>" app/e2e app/src`) and publish the table INCLUDING
